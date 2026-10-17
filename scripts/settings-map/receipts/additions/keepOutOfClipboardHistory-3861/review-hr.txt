@@ -1,0 +1,13 @@
+{
+  "language": "hr",
+  "title": "sakrij diktate od upravitelja međuspremnika",
+  "words": [
+    "Raycast",
+    "Maccy",
+    "povijest međuspremnika"
+  ],
+  "phrases": [
+    "ne spremaj diktirani tekst u povijest međuspremnika",
+    "sakrij diktate od aplikacije Maccy"
+  ]
+}

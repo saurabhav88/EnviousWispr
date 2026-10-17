@@ -1,0 +1,13 @@
+{
+  "language": "sk",
+  "title": "skryť diktovaný text pred správcami schránky",
+  "words": [
+    "Raycast",
+    "Maccy",
+    "história schránky"
+  ],
+  "phrases": [
+    "neukladať diktovaný text do histórie schránky",
+    "skryť diktovaný text pred Maccy"
+  ]
+}

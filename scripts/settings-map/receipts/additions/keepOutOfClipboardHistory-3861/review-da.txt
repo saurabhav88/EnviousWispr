@@ -1,0 +1,1 @@
+{"language":"da","title":"skjul diktater for apps med udklipshistorik","words":["Raycast","Maccy","udklipshistorik"],"phrases":["hold diktater ude af udklipshistorikken","skjul dikteret tekst for Maccy"]}

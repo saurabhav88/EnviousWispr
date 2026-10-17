@@ -2060,7 +2060,7 @@
    "seedParent": null,
    "description": {
     "kind": "static",
-    "english": "Asks clipboard apps to skip the text we paste."
+    "english": "For apps like Raycast and Maccy."
    }
   },
   {

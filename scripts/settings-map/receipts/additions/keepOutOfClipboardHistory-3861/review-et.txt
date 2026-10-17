@@ -1,0 +1,13 @@
+{
+  "language": "et",
+  "title": "peida dikteeritud tekst lõikelauahaldurite eest",
+  "words": [
+    "Raycast",
+    "Maccy",
+    "lõikelaua ajalugu"
+  ],
+  "phrases": [
+    "ära salvesta dikteeritud teksti lõikelaua ajalukku",
+    "peida dikteeritud tekst Maccy eest"
+  ]
+}

@@ -325,14 +325,14 @@ enum DictationSettingsCopy {
       comment: "Clipboard settings: explains Restore clipboard after paste.")
 
     static let keepOutOfHistoryTitle = LocalizedStringResource(
-      "Keep dictations out of clipboard history apps",
+      "Hide dictations from clipboard manager apps",
       comment: "Clipboard settings: switch title.")
     static let keepOutOfHistoryShort = LocalizedStringResource(
-      "Asks clipboard apps to skip the text we paste.",
-      comment: "Clipboard settings: short line under Keep dictations out of clipboard history apps.")
+      "For apps like Raycast and Maccy.",
+      comment: "Clipboard settings: short line under Hide dictations from clipboard manager apps.")
     static let keepOutOfHistoryHelp = LocalizedStringResource(
-      "Asks clipboard history apps such as Maccy, Raycast and Paste to skip the text EnviousWispr puts on your clipboard for a moment while it pastes, and the clipboard it puts back. Apps that follow the common convention will not save it; apps that ignore the convention still may. A dictation that stays on your clipboard because a paste did not land is still available for clipboard history apps to save. Needs Restore clipboard after paste to be on.",
-      comment: "Clipboard settings: explains Keep dictations out of clipboard history apps.")
+      "Clipboard manager apps such as Raycast, Maccy, Paste, Pastebot, Clipy and Flycut save everything you copy. When this is on, they skip the text EnviousWispr puts on your clipboard while it pastes, and the clipboard it puts back. Other apps, such as Alfred, may still save it. This does not change your Mac clipboard, Cmd+C or Cmd+V. If EnviousWispr leaves a dictation on your clipboard after a missed paste, these apps can save it. Needs Restore clipboard after paste to be on.",
+      comment: "Clipboard settings: explains Hide dictations from clipboard manager apps.")
 
     static let smartInsertionTitle = LocalizedStringResource(
       "Smart insertion", comment: "Clipboard settings: switch title.")

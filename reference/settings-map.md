@@ -14,7 +14,7 @@ The interface ships in English and German. The other 30 languages (ar, bg, cs, d
 
 274 nodes, 248 searchable, 7936 vocabulary blocks.
 
-Fingerprints: mapSHA256 `d1c44bd6d16e3152bcdedf7d91f8cd44a5daf9effd05fd5ede7eec1e6075fdc9`, uiCatalogSHA256 `68f8ebaa9e83f586970afeb4240affef987c5dc2984b353853b90ae88eb51116`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `55ee74c2d244db94df78782b675eeb0b9b6ef494a69cbdef86ce2918df8df304`
+Fingerprints: mapSHA256 `d8b02c8de371128245fcdc6dc9e77c72505137a92d5ee3c4e779c61550e11b2b`, uiCatalogSHA256 `abb6007b4315891445f843cfe23435b2d8b659085c524a87dfdf0a8e0dbb2e0f`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `aa8b845eb26c62d9a4107c047fe7eeb0f018191a68dd8806c2cd0bf6d1618343`
 
 ## Structure
 
@@ -232,7 +232,7 @@ Fingerprints: mapSHA256 `d1c44bd6d16e3152bcdedf7d91f8cd44a5daf9effd05fd5ede7eec1
       - [Clipboard / Zwischenablage](#node-section-clipboard) `section.clipboard` (section)
         - [Auto-copy to clipboard / Automatisch in die Zwischenablage kopieren](#node-autoCopyToClipboard) `autoCopyToClipboard` (setting)
         - [Restore clipboard after paste / Zwischenablage nach dem Einfügen wiederherstellen](#node-restoreClipboard) `restoreClipboard` (setting)
-        - [Keep dictations out of clipboard history apps / Diktate aus dem Verlauf von Zwischenablage-Apps heraushalten](#node-keepOutOfClipboardHistory) `keepOutOfClipboardHistory` (setting)
+        - [Hide dictations from clipboard manager apps / Diktate vor Zwischenablage-Managern verbergen](#node-keepOutOfClipboardHistory) `keepOutOfClipboardHistory` (setting)
         - [Smart insertion / Intelligentes Einfügen](#node-smartInsertion) `smartInsertion` (setting)
       - [Quick Add / Schnell hinzufügen](#node-section-quickAddClipboard) `section.quickAddClipboard` (section)
         - [Read selections through the clipboard / Auswahl über die Zwischenablage lesen](#node-quickAddClipboardFallback) `quickAddClipboardFallback` (setting)
@@ -2197,24 +2197,24 @@ Fingerprints: mapSHA256 `d1c44bd6d16e3152bcdedf7d91f8cd44a5daf9effd05fd5ede7eec1
 
 <a id="node-keepOutOfClipboardHistory"></a>
 
-### Keep dictations out of clipboard history apps / Diktate aus dem Verlauf von Zwischenablage-Apps heraushalten (`keepOutOfClipboardHistory`)
+### Hide dictations from clipboard manager apps / Diktate vor Zwischenablage-Managern verbergen (`keepOutOfClipboardHistory`)
 
 | Field | Value |
 |---|---|
 | Structure | item |
 | Kind | setting |
 | Parent | [`section.clipboard`](#node-section-clipboard) |
-| Title source | catalog key `Keep dictations out of clipboard history apps` |
-| Description | Asks clipboard apps to skip the text we paste. / Bittet Zwischenablage-Apps, den eingefügten Text nicht zu speichern. |
-| Description source | catalog key `Asks clipboard apps to skip the text we paste.` |
+| Title source | catalog key `Hide dictations from clipboard manager apps` |
+| Description | For apps like Raycast and Maccy. / Für Apps wie Raycast und Maccy. |
+| Description source | catalog key `For apps like Raycast and Maccy.` |
 | Destination | `dictation` › `clipboard` |
 | Dictionary tab | none |
 | Shown when | `always` |
 | Arrival target | [`keepOutOfClipboardHistory`](#node-keepOutOfClipboardHistory) |
 | Fallbacks, in order | none |
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
-| Search (en) | words: clipboard manager<br>phrases: don't save dictation in clipboard history; ask clipboard managers to ignore dictated text |
-| Search (de) | words: Clipboard-Verlauf<br>phrases: speichere meine Diktate nicht im Zwischenablageverlauf; halte diktierten Text aus dem Clipboard-Verlauf raus |
+| Search (en) | words: Raycast, Maccy, clipboard history<br>phrases: keep dictations out of clipboard history; don't save dictated text in Maccy |
+| Search (de) | words: Raycast, Maccy, Zwischenablageverlauf, Clipboard-Manager, Clipboard-Historie<br>phrases: Diktate nicht im Zwischenablageverlauf speichern; Maccy soll Diktate nicht speichern |
 | Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-smartInsertion"></a>

@@ -1,0 +1,13 @@
+{
+  "language": "it",
+  "title": "nascondi le dettature alle app di gestione degli appunti",
+  "words": [
+    "Raycast",
+    "Maccy",
+    "cronologia degli appunti"
+  ],
+  "phrases": [
+    "non salvare le dettature nella cronologia degli appunti",
+    "nascondere il testo dettato a Maccy"
+  ]
+}

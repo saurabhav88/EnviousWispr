@@ -6,7 +6,7 @@ section: "Paste System"
 order: 2
 keywords: ["clipboard", "copied text", "lost what i copied", "overwrites clipboard", "restore clipboard", "cmd v", "pasteboard", "dictation replaced my clipboard", "clipboard history", "auto-copy"]
 related: ["how-text-gets-pasted-into-your-app", "adding-a-word-from-your-selection"]
-updated: 2026-10-12
+updated: 2026-10-17
 deflection: "can_resolve"
 ---
 ### Does dictating erase what I copied?
@@ -21,7 +21,7 @@ In three situations EnviousWispr does not put your old clipboard back, each to a
 
 - **The text went straight into the text box.** EnviousWispr never touched your clipboard at all.
 - **Another app changed your clipboard while you dictated.** This can happen with a clipboard manager. EnviousWispr does not overwrite the new content.
-- **The paste failed.** Your dictation is on the clipboard so you can paste it yourself, and EnviousWispr leaves it there.
+- **EnviousWispr kept the dictation after a missed paste.** It leaves the text on your clipboard so you can paste it yourself.
 
 ### Keep my dictation on the clipboard
 
@@ -29,13 +29,13 @@ Three settings on the **Clipboard** tab control this. Open **Dictation Settings*
 
 - **Restore clipboard after paste.** Puts what you had copied back after your dictation lands. Switch it off if you would rather keep the dictation on your clipboard to paste again somewhere else.
 - **Auto-copy to clipboard.** Copies your dictation to the clipboard whenever EnviousWispr is not pasting it into an app for you.
-- **Keep dictations out of clipboard history apps.** Off by default. See the next section.
+- **Hide dictations from clipboard manager apps.** Off by default. See the next section.
 
 ### Will my clipboard history app save my dictation?
 
-By default it may. When EnviousWispr uses the clipboard to paste your dictation, a clipboard history app such as Maccy, Raycast or Paste can record it. Direct insertion into a text box does not use the clipboard.
+By default it may. When EnviousWispr uses the clipboard to paste your dictation, a clipboard manager app such as Raycast, Maccy, Paste, Pastebot, Clipy or Flycut can record it. Direct insertion into a text box does not use the clipboard.
 
-Switch on **Keep dictations out of clipboard history apps** to ask those apps to skip it. EnviousWispr then marks the temporary copy of your dictation, and the clipboard it puts back, with the common "do not record" label. Apps that follow that label will not save them. An app that ignores the label still may. The setting only applies while **Restore clipboard after paste** is on, because that is when the dictation is on your clipboard only for a moment. When a paste fails and EnviousWispr leaves your dictation on the clipboard for you, history apps can still save it.
+Switch on **Hide dictations from clipboard manager apps** to ask those apps to skip it. EnviousWispr then marks the temporary copy of your dictation, and the clipboard it puts back, with the common "do not record" label. Raycast, Maccy, Paste, Pastebot, Clipy and Flycut follow that label and will not save them. Other apps, such as Alfred, may still save them. The setting only applies while **Restore clipboard after paste** is on, because that is when the dictation is on your clipboard only for a moment. When a paste fails and EnviousWispr leaves your dictation on the clipboard for you, clipboard manager apps can still save it. The switch does not change your Mac clipboard, Cmd+C or Cmd+V.
 
 **Dictation Settings** > **Clipboard** also holds **Smart insertion**, which matches spacing and capitals to the text around your cursor. See [_How Text Gets Pasted Into Your App_](/help/how-text-gets-pasted-into-your-app/).
 

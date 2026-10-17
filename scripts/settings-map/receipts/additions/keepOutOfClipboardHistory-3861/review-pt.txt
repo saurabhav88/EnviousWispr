@@ -1,0 +1,14 @@
+{
+  "language": "pt",
+  "title": "ocultar ditados de gerenciadores da área de transferência",
+  "words": [
+    "Raycast",
+    "Maccy",
+    "histórico da área de transferência",
+    "gerenciador da área de transferência"
+  ],
+  "phrases": [
+    "não salvar ditados no histórico da área de transferência",
+    "ocultar texto ditado do Maccy"
+  ]
+}

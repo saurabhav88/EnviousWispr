@@ -1,0 +1,12 @@
+{
+  "language": "en",
+  "words": [
+    "Raycast",
+    "Maccy",
+    "clipboard history"
+  ],
+  "phrases": [
+    "keep dictations out of clipboard history",
+    "don't save dictated text in Maccy"
+  ]
+}

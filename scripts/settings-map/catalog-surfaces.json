@@ -687,7 +687,7 @@
   "mac-ctl-keep-out-of-clipboard-history": {
    "kind": "control",
    "parent": "mac-sec-clipboard",
-   "label": "Keep dictations out of clipboard history apps"
+   "label": "Hide dictations from clipboard manager apps"
   },
   "mac-ctl-casual-mode": {
    "kind": "control",

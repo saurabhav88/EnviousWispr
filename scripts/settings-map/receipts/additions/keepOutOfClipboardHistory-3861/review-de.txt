@@ -1,0 +1,13 @@
+{
+  "language": "de",
+  "words": [
+    "Raycast",
+    "Maccy",
+    "Zwischenablageverlauf",
+    "Clipboard-Historie"
+  ],
+  "phrases": [
+    "speichere meine Diktate nicht im Zwischenablageverlauf",
+    "verberge meine Diktate vor Maccy"
+  ]
+}

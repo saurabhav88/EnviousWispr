@@ -1,0 +1,1 @@
+{"language":"ro","title":"ascunde dictările de aplicațiile de gestionare a clipboardului","words":["Raycast","Maccy","istoric clipboard"],"phrases":["nu salva dictările în istoricul clipboardului","ascunde textul dictat de Maccy"]}

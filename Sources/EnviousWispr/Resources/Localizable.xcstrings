@@ -3392,28 +3392,6 @@
         }
       }
     },
-    "Asks clipboard apps to skip the text we paste." : {
-      "comment" : "Clipboard settings: short line under Keep dictations out of clipboard history apps.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bittet Zwischenablage-Apps, den eingefügten Text nicht zu speichern."
-          }
-        }
-      }
-    },
-    "Asks clipboard history apps such as Maccy, Raycast and Paste to skip the text EnviousWispr puts on your clipboard for a moment while it pastes, and the clipboard it puts back. Apps that follow the common convention will not save it; apps that ignore the convention still may. A dictation that stays on your clipboard because a paste did not land is still available for clipboard history apps to save. Needs Restore clipboard after paste to be on." : {
-      "comment" : "Clipboard settings: explains Keep dictations out of clipboard history apps.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bittet Zwischenablage-Apps wie Maccy, Raycast und Paste, den Text nicht zu speichern, den EnviousWispr beim Einfügen kurz in die Zwischenablage legt, sowie den anschließend wiederhergestellten Inhalt. Apps, die der üblichen Konvention folgen, speichern diese Inhalte nicht; andere Apps können sie weiterhin speichern. Bleibt ein Diktat nach einem fehlgeschlagenen Einfügen in der Zwischenablage, können Zwischenablage-Apps es speichern. Dafür muss „Zwischenablage nach dem Einfügen wiederherstellen“ eingeschaltet sein."
-          }
-        }
-      }
-    },
     "Assamese" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -5073,6 +5051,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Zwischenablage"
+          }
+        }
+      }
+    },
+    "Clipboard manager apps such as Raycast, Maccy, Paste, Pastebot, Clipy and Flycut save everything you copy. When this is on, they skip the text EnviousWispr puts on your clipboard while it pastes, and the clipboard it puts back. Other apps, such as Alfred, may still save it. This does not change your Mac clipboard, Cmd+C or Cmd+V. If EnviousWispr leaves a dictation on your clipboard after a missed paste, these apps can save it. Needs Restore clipboard after paste to be on." : {
+      "comment" : "Clipboard settings: explains Hide dictations from clipboard manager apps.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zwischenablage-Manager wie Raycast, Maccy, Paste, Pastebot, Clipy und Flycut speichern alles, was du kopierst. Ist diese Option eingeschaltet, überspringen sie den Text, den EnviousWispr beim Einfügen in deine Zwischenablage legt, und den Inhalt, den es danach wiederherstellt. Andere Apps wie Alfred können ihn trotzdem speichern. An der Funktionsweise deiner Mac-Zwischenablage sowie von Cmd+C und Cmd+V ändert sich dadurch nichts. Wenn EnviousWispr ein Diktat nach einem fehlgeschlagenen Einfügen in deiner Zwischenablage belässt, können diese Apps es speichern. Dafür muss „Zwischenablage nach dem Einfügen wiederherstellen“ eingeschaltet sein."
           }
         }
       }
@@ -7833,6 +7822,17 @@
         }
       }
     },
+    "For apps like Raycast and Maccy." : {
+      "comment" : "Clipboard settings: short line under Hide dictations from clipboard manager apps.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für Apps wie Raycast und Maccy."
+          }
+        }
+      }
+    },
     "For dictation cleanup, look for Flash in the name. Those are tuned for fast, light tasks." : {
       "comment" : "AI Polish, Why use Gemini: which model to pick. Keep Flash as written.",
       "localizations" : {
@@ -8507,6 +8507,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hilf uns, Abstürze und Fehler zu beheben."
+          }
+        }
+      }
+    },
+    "Hide dictations from clipboard manager apps" : {
+      "comment" : "Clipboard settings: switch title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktate vor Zwischenablage-Managern verbergen"
           }
         }
       }
@@ -9264,17 +9275,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diktiere weiter. Wir wechseln automatisch."
-          }
-        }
-      }
-    },
-    "Keep dictations out of clipboard history apps" : {
-      "comment" : "Clipboard settings: switch title.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Diktate aus dem Verlauf von Zwischenablage-Apps heraushalten"
           }
         }
       }

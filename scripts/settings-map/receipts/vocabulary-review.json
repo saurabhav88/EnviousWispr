@@ -5,7 +5,7 @@
   {
    "id": "keepOutOfClipboardHistory",
    "review": "additions/keepOutOfClipboardHistory.json",
-   "reviewSHA256": "f492de9f5738c95cba5e7a9972f6b02dda3d7d57d3bbbfaf932db12783cf5ea6"
+   "reviewSHA256": "4c40a74b6c91d8e5d1be0099514e791398934b39051b401f49e72b897f6f9dc7"
   },
   {
    "id": "casualMode",
@@ -16,8 +16,8 @@
  "retiredIDs": [],
  "resource": {
   "path": "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json",
-  "sha256": "55ee74c2d244db94df78782b675eeb0b9b6ef494a69cbdef86ce2918df8df304",
-  "bytes": 1606257
+  "sha256": "aa8b845eb26c62d9a4107c047fe7eeb0f018191a68dd8806c2cd0bf6d1618343",
+  "bytes": 1606522
  },
  "sources": [
   {
@@ -36,7 +36,7 @@
   {
    "name": "reviewed-edits.json",
    "path": "scripts/settings-map/receipts/reviewed-edits.json",
-   "sha256": "b18cd547ff5520178c90ce2fd626beced2157cd84a4ef4e4578be2d839f4d2e3"
+   "sha256": "8fb0ecde83219866f57468a04544f7126ec6455745a9989e4ae553fed6ac0a39"
   }
  ],
  "excludedIDs": [
@@ -301,7 +301,7 @@
  "languages": [
   {
    "language": "ar",
-   "contentSHA256": "e01d0e6a9baacb4145dd1260dbd6308c646eeffbd7b13766205042d58a51bfa5",
+   "contentSHA256": "adc4bc33f940f0ea103280186dee121413c86aad5b907abfc684e4870c3d6219",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -421,13 +421,32 @@
      "date": "2026-10-14",
      "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
      "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings), after the #3861 rename to \"Hide dictations from clipboard manager apps\"; first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-17",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory-3861/draft.json",
+      "sha256": "a94266b7ec42cb0afad1c0008457adbe8afc864df307925722777c0497d18dd0"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-driver.py.txt",
+      "sha256": "00e028aa615b4c32266afc5c64e11533ea1fa0e74afb482a80b3d878587a1abe"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-ar.txt",
+      "sha256": "b2783f612e6f4f01de0260baccae4da90e26ff65c113cdca9cfe56b398bafaf9"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "bg",
-   "contentSHA256": "b48348028ee09ee813e452f85fbbaa4cbba03ab06992fb52953933919aeb0509",
+   "contentSHA256": "2713aeeb60be9e3a28dad649c6bdc4dad25a24ad5ba41cd03b43c1656702a8c0",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -538,13 +557,32 @@
      "date": "2026-10-14",
      "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
      "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings), after the #3861 rename to \"Hide dictations from clipboard manager apps\"; first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-17",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory-3861/draft.json",
+      "sha256": "a94266b7ec42cb0afad1c0008457adbe8afc864df307925722777c0497d18dd0"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-driver.py.txt",
+      "sha256": "00e028aa615b4c32266afc5c64e11533ea1fa0e74afb482a80b3d878587a1abe"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-bg.txt",
+      "sha256": "2244e51ceef9cb8424f1b7a6bb4d2fae6d934f874eeae1215602ca2c7d9f1db3"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "cs",
-   "contentSHA256": "e8bf60d75727ba13d1eb7863234f64ed2fab57f1f0fd7438fa8f18baedfde5d1",
+   "contentSHA256": "01ec9b8f8ece880f85e6bb78aa007e02d0f7afba36ef04d6654e56bfa44d0e38",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -655,13 +693,32 @@
      "date": "2026-10-14",
      "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
      "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings), after the #3861 rename to \"Hide dictations from clipboard manager apps\"; first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-17",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory-3861/draft.json",
+      "sha256": "a94266b7ec42cb0afad1c0008457adbe8afc864df307925722777c0497d18dd0"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-driver.py.txt",
+      "sha256": "00e028aa615b4c32266afc5c64e11533ea1fa0e74afb482a80b3d878587a1abe"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-cs.txt",
+      "sha256": "b37a0282d4fa7bdecd9390c79c3594908d7a81afb9ea998913fba4d6d9f20511"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "da",
-   "contentSHA256": "9d22f511ce1d9857df6b3eeda8ce7628cee601445a5da83722ea245cbd93aaf9",
+   "contentSHA256": "a3406ebbc5f579ff8c8a648dfe91effdcdd140b959fae8093f45509e3ba3a09c",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -772,13 +829,32 @@
      "date": "2026-10-14",
      "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
      "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings), after the #3861 rename to \"Hide dictations from clipboard manager apps\"; first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-17",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory-3861/draft.json",
+      "sha256": "a94266b7ec42cb0afad1c0008457adbe8afc864df307925722777c0497d18dd0"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-driver.py.txt",
+      "sha256": "00e028aa615b4c32266afc5c64e11533ea1fa0e74afb482a80b3d878587a1abe"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-da.txt",
+      "sha256": "f8f7f48c8de668567befbb888746bb7deeb69b09538a736da301b5d6366d0c73"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "de",
-   "contentSHA256": "c068a4e723468e2f45fd88ba42bce02295236e4908ab17297acad91d05c447c8",
+   "contentSHA256": "473d3adfac91e49beedd2d3f1eab06acf631bab6b0f3269c5516b3ea62f9f794",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -913,13 +989,33 @@
      "date": "2026-10-14",
      "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
      "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings), after the #3861 rename to \"Hide dictations from clipboard manager apps\"; first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-17",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory-3861/draft.json",
+      "sha256": "a94266b7ec42cb0afad1c0008457adbe8afc864df307925722777c0497d18dd0"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-driver.py.txt",
+      "sha256": "00e028aa615b4c32266afc5c64e11533ea1fa0e74afb482a80b3d878587a1abe"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-de.txt",
+      "sha256": "a9d319ca46f64f81ebae8efa5c3f03c63621e3ec358e342191e53c140d2b7c51"
+     },
+     "disposition": "adopted with the GPT and Gemini council's corrections (session ew-3861-german-2026-10-17): non-imperative phrases, \"Clipboard-Manager\" added; \"Verlauf\" and \"Paste\" from the Gemini answer left out because they collide with the History page and the paste settings (additions/keepOutOfClipboardHistory.json)",
+     "note": "German: Codex review, then the GPT and Gemini council (Azure, under the founder's standing approval of 2026-10-17)."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "el",
-   "contentSHA256": "e43bbba3c90950b8dd3ad52b3fc833291e219c50ed2f8cdba268340f359568d0",
+   "contentSHA256": "ddc0a868d4d9d48a71c8e6f0c4e64fbcbd45ff1c69b6cc6c93be89c78c299f49",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1039,13 +1135,32 @@
      "date": "2026-10-14",
      "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
      "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings), after the #3861 rename to \"Hide dictations from clipboard manager apps\"; first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-17",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory-3861/draft.json",
+      "sha256": "a94266b7ec42cb0afad1c0008457adbe8afc864df307925722777c0497d18dd0"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-driver.py.txt",
+      "sha256": "00e028aa615b4c32266afc5c64e11533ea1fa0e74afb482a80b3d878587a1abe"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-el.txt",
+      "sha256": "dd18c6b944c3f849c914408f1080939e0f4cf3eeb3b6c2c93566cec99e108435"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "en",
-   "contentSHA256": "f99abdba6caacbc593a21cfc1b218125c7976159951b9263219fff51d660d545",
+   "contentSHA256": "e0dd4c32075f8d5cc96bddebf8e65d22ce7e47e97ece44fb0b3a02bd9f8da504",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1171,13 +1286,32 @@
      "date": "2026-10-14",
      "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
      "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings), after the #3861 rename to \"Hide dictations from clipboard manager apps\"; first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-17",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory-3861/draft.json",
+      "sha256": "a94266b7ec42cb0afad1c0008457adbe8afc864df307925722777c0497d18dd0"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-driver.py.txt",
+      "sha256": "00e028aa615b4c32266afc5c64e11533ea1fa0e74afb482a80b3d878587a1abe"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-en.txt",
+      "sha256": "5af59bcb33ac0b7bcb660bb44d4f24bcd80085aef2545823aca614330ccc4299"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "es",
-   "contentSHA256": "93b9439d1956e627e2e4c69b0adfcb09a0f781c13918239f27ec4fb948e1f120",
+   "contentSHA256": "d217b25cfc115a0191d74bf1ee36c28ad586619def3077267700f4f030f3b1c3",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1297,13 +1431,32 @@
      "date": "2026-10-14",
      "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
      "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings), after the #3861 rename to \"Hide dictations from clipboard manager apps\"; first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-17",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory-3861/draft.json",
+      "sha256": "a94266b7ec42cb0afad1c0008457adbe8afc864df307925722777c0497d18dd0"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-driver.py.txt",
+      "sha256": "00e028aa615b4c32266afc5c64e11533ea1fa0e74afb482a80b3d878587a1abe"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-es.txt",
+      "sha256": "0b80fc9f28d567db489dee9f04ca94656bea6b8a74cb899d0af495fa578ca4c4"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "et",
-   "contentSHA256": "8654a55625dd440e121c00c10e0741a4137552053b8efe8713657380f3b3fdcb",
+   "contentSHA256": "13a1a14e980282c3cdd33a1f8c2c0990cca98047e728236255ce96d717abe5d1",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1414,13 +1567,32 @@
      "date": "2026-10-14",
      "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
      "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings), after the #3861 rename to \"Hide dictations from clipboard manager apps\"; first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-17",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory-3861/draft.json",
+      "sha256": "a94266b7ec42cb0afad1c0008457adbe8afc864df307925722777c0497d18dd0"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-driver.py.txt",
+      "sha256": "00e028aa615b4c32266afc5c64e11533ea1fa0e74afb482a80b3d878587a1abe"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-et.txt",
+      "sha256": "75128a24dcc9159248f6811a605fb82431bce25f971f93d2fa0ff62e4dd3877a"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fi",
-   "contentSHA256": "0782a84b8de74a6e99bdfd79935a7326db2e3f6245f8ef6d28d8ecbe308bdda4",
+   "contentSHA256": "43e4a782518bdcf93f0e8236d88563a00f1e53ece7a7ba4160dad02cd6ae8763",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1531,13 +1703,32 @@
      "date": "2026-10-14",
      "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
      "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings), after the #3861 rename to \"Hide dictations from clipboard manager apps\"; first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-17",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory-3861/draft.json",
+      "sha256": "a94266b7ec42cb0afad1c0008457adbe8afc864df307925722777c0497d18dd0"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-driver.py.txt",
+      "sha256": "00e028aa615b4c32266afc5c64e11533ea1fa0e74afb482a80b3d878587a1abe"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-fi.txt",
+      "sha256": "d10cf3c65534b38f6bafb01cf33c524338f845747fe2792f680bc35b0720ae4b"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fr",
-   "contentSHA256": "65956bbd0521aaec20896fcf12f80bf69273b203f07d818f4dffadb6f2971a00",
+   "contentSHA256": "0a2c45041d4c2269229ae5f19525598b39a799d77aa249976281f1cd5129e0cd",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1648,13 +1839,32 @@
      "date": "2026-10-14",
      "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
      "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings), after the #3861 rename to \"Hide dictations from clipboard manager apps\"; first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-17",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory-3861/draft.json",
+      "sha256": "a94266b7ec42cb0afad1c0008457adbe8afc864df307925722777c0497d18dd0"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-driver.py.txt",
+      "sha256": "00e028aa615b4c32266afc5c64e11533ea1fa0e74afb482a80b3d878587a1abe"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-fr.txt",
+      "sha256": "2df686c397451f97dc00f88d3bf95d911c27e3ebfcc4a55a6f6d529fdbf4cebd"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hi",
-   "contentSHA256": "e79060a48a22a3d86c6b0e0a9b8ab05a0163fb24d794a57e6f1c68c2cd45ee8e",
+   "contentSHA256": "65758a3a99d53f35447ed69f37a0ed2d129f8257e0c48dcbc010cd9571b90a46",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1765,13 +1975,32 @@
      "date": "2026-10-14",
      "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
      "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings), after the #3861 rename to \"Hide dictations from clipboard manager apps\"; first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-17",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory-3861/draft.json",
+      "sha256": "a94266b7ec42cb0afad1c0008457adbe8afc864df307925722777c0497d18dd0"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-driver.py.txt",
+      "sha256": "00e028aa615b4c32266afc5c64e11533ea1fa0e74afb482a80b3d878587a1abe"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-hi.txt",
+      "sha256": "ae054dcce193bef01ec6602a687c781fea4506c255f603492d4175c71b9ccfdc"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hr",
-   "contentSHA256": "6193173af4b7b9a9c37c436f2d9d2e863e4ee2688dfd29903f768daacd5c5a3a",
+   "contentSHA256": "5ffe1c72cc91216a0419df28c213a9bda0c1759bb5b59b3a74f3367d8f79cae8",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1882,13 +2111,32 @@
      "date": "2026-10-14",
      "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
      "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings), after the #3861 rename to \"Hide dictations from clipboard manager apps\"; first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-17",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory-3861/draft.json",
+      "sha256": "a94266b7ec42cb0afad1c0008457adbe8afc864df307925722777c0497d18dd0"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-driver.py.txt",
+      "sha256": "00e028aa615b4c32266afc5c64e11533ea1fa0e74afb482a80b3d878587a1abe"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-hr.txt",
+      "sha256": "559d919b1d534c4d0c16237f40f24101ec5099562271021fa219d254fc17bff8"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hu",
-   "contentSHA256": "2d679655c12209b000129f892f34d89f0c92e5d59a32ed828d299ee4ae1b4c7f",
+   "contentSHA256": "a00cbb020f289c545883704c2b36fdcf69db25a963fba42408d49de9af62028f",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1999,13 +2247,32 @@
      "date": "2026-10-14",
      "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
      "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings), after the #3861 rename to \"Hide dictations from clipboard manager apps\"; first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-17",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory-3861/draft.json",
+      "sha256": "a94266b7ec42cb0afad1c0008457adbe8afc864df307925722777c0497d18dd0"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-driver.py.txt",
+      "sha256": "00e028aa615b4c32266afc5c64e11533ea1fa0e74afb482a80b3d878587a1abe"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-hu.txt",
+      "sha256": "42c255e8639544b0cbbae4067d8aa97ab168c49feb01994c016bb4e6e9cbce54"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "it",
-   "contentSHA256": "3d3e1ee0f99efef32206ef03180cec958576c997f435144d747de83de5ecc66b",
+   "contentSHA256": "80e2a017c7d7e6a0e42d306e4c9c3d75cf4becb4c5b07abfe45e889dbed834d1",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2125,13 +2392,32 @@
      "date": "2026-10-14",
      "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
      "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings), after the #3861 rename to \"Hide dictations from clipboard manager apps\"; first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-17",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory-3861/draft.json",
+      "sha256": "a94266b7ec42cb0afad1c0008457adbe8afc864df307925722777c0497d18dd0"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-driver.py.txt",
+      "sha256": "00e028aa615b4c32266afc5c64e11533ea1fa0e74afb482a80b3d878587a1abe"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-it.txt",
+      "sha256": "0dbf60a89bc0d574756a3c990812307c68834cfef4cc512b61a5812ca9ad04d7"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ja",
-   "contentSHA256": "e4a60c3c78667d32c88fa83b65591a30b3b81c17deb3a030c484c7fc332bf6e3",
+   "contentSHA256": "b4b0874d7e2ceaeb62da7f2f9853ebe230191efd0b0ef65035cdb2b6e658c674",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2242,13 +2528,32 @@
      "date": "2026-10-14",
      "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
      "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings), after the #3861 rename to \"Hide dictations from clipboard manager apps\"; first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-17",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory-3861/draft.json",
+      "sha256": "a94266b7ec42cb0afad1c0008457adbe8afc864df307925722777c0497d18dd0"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-driver.py.txt",
+      "sha256": "00e028aa615b4c32266afc5c64e11533ea1fa0e74afb482a80b3d878587a1abe"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-ja.txt",
+      "sha256": "49a3bfff3ed4a15f8ebac29b21b42049842cdbc35399a48a100e6d581c6a32e8"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ko",
-   "contentSHA256": "efecea0f4ef4cb427d56e958cc44f1966aaa560a6d6c3bba60b0a4f9a5d4b782",
+   "contentSHA256": "5dbed5bd589920f22f739b4ff4e299a0561e603e07b43be975bcc7dc9d9b044e",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2359,13 +2664,32 @@
      "date": "2026-10-14",
      "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
      "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings), after the #3861 rename to \"Hide dictations from clipboard manager apps\"; first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-17",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory-3861/draft.json",
+      "sha256": "a94266b7ec42cb0afad1c0008457adbe8afc864df307925722777c0497d18dd0"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-driver.py.txt",
+      "sha256": "00e028aa615b4c32266afc5c64e11533ea1fa0e74afb482a80b3d878587a1abe"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-ko.txt",
+      "sha256": "f6a347550feb8604e46fb36838251bf38d3f377568b0660c52939ae4685e897b"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lt",
-   "contentSHA256": "3b6a654dde2707eb6d55f2c70d1ccb39cbd6000ecf0f1c9f232b0cb7b68d5f30",
+   "contentSHA256": "b26af2d57de1eae91ece688119c552d3dc88a8eecd2e9084aeddd1ad0441a631",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2485,13 +2809,32 @@
      "date": "2026-10-14",
      "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
      "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings), after the #3861 rename to \"Hide dictations from clipboard manager apps\"; first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-17",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory-3861/draft.json",
+      "sha256": "a94266b7ec42cb0afad1c0008457adbe8afc864df307925722777c0497d18dd0"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-driver.py.txt",
+      "sha256": "00e028aa615b4c32266afc5c64e11533ea1fa0e74afb482a80b3d878587a1abe"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-lt.txt",
+      "sha256": "d0a7057c071e7752daf40968c61f5de83b87d574a7f77a1dac3171b90f018786"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lv",
-   "contentSHA256": "60741089c24072ed8e892b5ea52edf11efd2aaaeae04d5f2fbd50f539a11c9e5",
+   "contentSHA256": "d90f1e3cc8b9197c849291cb0626b06f6dcd98fa964141a9f9ac1f504a41075f",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2602,13 +2945,32 @@
      "date": "2026-10-14",
      "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
      "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings), after the #3861 rename to \"Hide dictations from clipboard manager apps\"; first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-17",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory-3861/draft.json",
+      "sha256": "a94266b7ec42cb0afad1c0008457adbe8afc864df307925722777c0497d18dd0"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-driver.py.txt",
+      "sha256": "00e028aa615b4c32266afc5c64e11533ea1fa0e74afb482a80b3d878587a1abe"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-lv.txt",
+      "sha256": "92bba251847d286df1cab65d93ee113868bf14f8d495cf60178a5f02f97ab876"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "mt",
-   "contentSHA256": "cb8300197597682293267100a518e4db30d4eb4ce9b91365b6d3f6ff7f099dcc",
+   "contentSHA256": "8e2fd8009cd8792c136028d2ccb0372c2d75dd5b312c8c11566c77739b5aa8d3",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2728,13 +3090,32 @@
      "date": "2026-10-14",
      "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
      "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings), after the #3861 rename to \"Hide dictations from clipboard manager apps\"; first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-17",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory-3861/draft.json",
+      "sha256": "a94266b7ec42cb0afad1c0008457adbe8afc864df307925722777c0497d18dd0"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-driver.py.txt",
+      "sha256": "00e028aa615b4c32266afc5c64e11533ea1fa0e74afb482a80b3d878587a1abe"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-mt.txt",
+      "sha256": "8384b2cfb5c27ab2e695e1c6496be74ca57046dd6decc7c3c4f4883ef17979e4"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "nl",
-   "contentSHA256": "5d68f97148dd7e6711e0b6e517c40045bf3fdd7d5b97bc998d75608f99b83fea",
+   "contentSHA256": "4d611f081fed4b158f78290908c33ba0115710002761b3e2b001314ac34c1e14",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2845,13 +3226,32 @@
      "date": "2026-10-14",
      "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
      "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings), after the #3861 rename to \"Hide dictations from clipboard manager apps\"; first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-17",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory-3861/draft.json",
+      "sha256": "a94266b7ec42cb0afad1c0008457adbe8afc864df307925722777c0497d18dd0"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-driver.py.txt",
+      "sha256": "00e028aa615b4c32266afc5c64e11533ea1fa0e74afb482a80b3d878587a1abe"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-nl.txt",
+      "sha256": "f2a344d56f981447e787df14fa9f740f2710381282e50762fe09fbb90666155b"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pl",
-   "contentSHA256": "43d11bb3add8f032c506154d9689e0cb00417b4e2fed1a8c260dd6b1e651f20e",
+   "contentSHA256": "239e30ab9062e98b1613dfd7cd9d38ee685b142192b2ef16c12ce9c52096798c",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2962,13 +3362,32 @@
      "date": "2026-10-14",
      "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
      "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings), after the #3861 rename to \"Hide dictations from clipboard manager apps\"; first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-17",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory-3861/draft.json",
+      "sha256": "a94266b7ec42cb0afad1c0008457adbe8afc864df307925722777c0497d18dd0"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-driver.py.txt",
+      "sha256": "00e028aa615b4c32266afc5c64e11533ea1fa0e74afb482a80b3d878587a1abe"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-pl.txt",
+      "sha256": "d62011f3349ebc69497ae29d466e0f3a0e5b2db36929835f692090a386341c89"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pt",
-   "contentSHA256": "3199808e071b1535deb2f4dc330d221b2b1765241c6ed5f920cd46efc2ff3f44",
+   "contentSHA256": "3c27ee79f5da0a5f906c4486202b4e4b8b6fe3898ea0b124a7663ed45b359718",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3087,13 +3506,32 @@
      "date": "2026-10-14",
      "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
      "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings), after the #3861 rename to \"Hide dictations from clipboard manager apps\"; first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-17",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory-3861/draft.json",
+      "sha256": "a94266b7ec42cb0afad1c0008457adbe8afc864df307925722777c0497d18dd0"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-driver.py.txt",
+      "sha256": "00e028aa615b4c32266afc5c64e11533ea1fa0e74afb482a80b3d878587a1abe"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-pt.txt",
+      "sha256": "32b4885084abe44a47ec0184ab1192d0a04b2b6b620986de55d0806c5899a6b3"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ro",
-   "contentSHA256": "01679e8d8eb22e7b4dbfd9969e3b75b6adc814fb507731a25b2374c52a04b05b",
+   "contentSHA256": "a0b4225a63f847f5d9a5b08554ede5365a6a1cac5201d7f25bfb97e825ed89b0",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3204,13 +3642,32 @@
      "date": "2026-10-14",
      "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
      "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings), after the #3861 rename to \"Hide dictations from clipboard manager apps\"; first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-17",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory-3861/draft.json",
+      "sha256": "a94266b7ec42cb0afad1c0008457adbe8afc864df307925722777c0497d18dd0"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-driver.py.txt",
+      "sha256": "00e028aa615b4c32266afc5c64e11533ea1fa0e74afb482a80b3d878587a1abe"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-ro.txt",
+      "sha256": "f9a4fc19109ea15677405bc6c6a86f260f1a56de41ba54c4e93afb0285cd4223"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ru",
-   "contentSHA256": "e40265e4fbdd67936283eb7f6ed1471ffbc96672cf01d1d309eafc7dc81b80b7",
+   "contentSHA256": "e5846f39b398c82a3c9374cf454e089c8d8368f9377a988f3030fdae53ef8937",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3321,13 +3778,32 @@
      "date": "2026-10-14",
      "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
      "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings), after the #3861 rename to \"Hide dictations from clipboard manager apps\"; first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-17",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory-3861/draft.json",
+      "sha256": "a94266b7ec42cb0afad1c0008457adbe8afc864df307925722777c0497d18dd0"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-driver.py.txt",
+      "sha256": "00e028aa615b4c32266afc5c64e11533ea1fa0e74afb482a80b3d878587a1abe"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-ru.txt",
+      "sha256": "8071977c5ac6c92b2b265219a49c2f412923f9971a56095a6339f84b4cd6acdb"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sk",
-   "contentSHA256": "2fc9660c2802750607c4464eacbe504d8c4fbb7c7c00fa0414a877f162c10073",
+   "contentSHA256": "6f406ba792d5631c4dc1985f60462494570d1f00670a6c2e51b6467508f7899f",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3438,13 +3914,32 @@
      "date": "2026-10-14",
      "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
      "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings), after the #3861 rename to \"Hide dictations from clipboard manager apps\"; first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-17",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory-3861/draft.json",
+      "sha256": "a94266b7ec42cb0afad1c0008457adbe8afc864df307925722777c0497d18dd0"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-driver.py.txt",
+      "sha256": "00e028aa615b4c32266afc5c64e11533ea1fa0e74afb482a80b3d878587a1abe"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-sk.txt",
+      "sha256": "0ad11f72d70418bde3d1813cfbaaa09e075fcc48423e8b68ce8205705bf78f6f"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sl",
-   "contentSHA256": "b1f2d3a828f6ea3ecce2f2bda1becf0985c0b8710f8917fac7ef98c4dea70528",
+   "contentSHA256": "946b5bfdbe1c801a582020432e8751db3c2247bfa968b35806d0308633834c0d",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3564,13 +4059,32 @@
      "date": "2026-10-14",
      "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
      "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings), after the #3861 rename to \"Hide dictations from clipboard manager apps\"; first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-17",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory-3861/draft.json",
+      "sha256": "a94266b7ec42cb0afad1c0008457adbe8afc864df307925722777c0497d18dd0"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-driver.py.txt",
+      "sha256": "00e028aa615b4c32266afc5c64e11533ea1fa0e74afb482a80b3d878587a1abe"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-sl.txt",
+      "sha256": "9bbfdff05a0aa6ae62eedba6e3656fbe6e0cf9e07a0058aa98c21f3f375260b5"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sv",
-   "contentSHA256": "d92291e6dae7b5a2daf26525b89ac48546d6b66e08b7b32df3cbcede2e723373",
+   "contentSHA256": "f2fdb22e579f05791ea87c3e7d73f70663bbe4b08e600eb5ce553e0b5f01e0b5",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3681,13 +4195,32 @@
      "date": "2026-10-14",
      "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
      "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings), after the #3861 rename to \"Hide dictations from clipboard manager apps\"; first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-17",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory-3861/draft.json",
+      "sha256": "a94266b7ec42cb0afad1c0008457adbe8afc864df307925722777c0497d18dd0"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-driver.py.txt",
+      "sha256": "00e028aa615b4c32266afc5c64e11533ea1fa0e74afb482a80b3d878587a1abe"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-sv.txt",
+      "sha256": "f1f3d5c94cc22ba33b7ff10533d7089b66f50fc8c7d835d04c7df9f9a64154e3"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "tr",
-   "contentSHA256": "02575d5d0f559a43acda91801bc974ced8e8f9c2dff4c65accaa1296dc065db0",
+   "contentSHA256": "5292e3ea089b26fe5c17ee4d2dc0e091b5a0faa7cd575fc92307dca7d8b233d4",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3798,13 +4331,32 @@
      "date": "2026-10-14",
      "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
      "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings), after the #3861 rename to \"Hide dictations from clipboard manager apps\"; first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-17",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory-3861/draft.json",
+      "sha256": "a94266b7ec42cb0afad1c0008457adbe8afc864df307925722777c0497d18dd0"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-driver.py.txt",
+      "sha256": "00e028aa615b4c32266afc5c64e11533ea1fa0e74afb482a80b3d878587a1abe"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-tr.txt",
+      "sha256": "ac321a22ea7053e2d44df3dd8dbbbdada4a824edf2bfe9e469c386fa55e4a80d"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "uk",
-   "contentSHA256": "0f8bf593cc1342e5b29473ca64119d373fd2576b802a9f92dfe407c0f59c4f63",
+   "contentSHA256": "5f9260e6efe265603e7f3aeb0bfc44066fe8584ad750247c9a48d1e8ef8def6d",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3924,13 +4476,32 @@
      "date": "2026-10-14",
      "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
      "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings), after the #3861 rename to \"Hide dictations from clipboard manager apps\"; first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-17",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory-3861/draft.json",
+      "sha256": "a94266b7ec42cb0afad1c0008457adbe8afc864df307925722777c0497d18dd0"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-driver.py.txt",
+      "sha256": "00e028aa615b4c32266afc5c64e11533ea1fa0e74afb482a80b3d878587a1abe"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-uk.txt",
+      "sha256": "808ec53f28146ed4bc3e134a17799fe8dad7a592cb89a624d17095cbbe10a38b"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "vi",
-   "contentSHA256": "f4829a4d09aea492b47be6736ce6fb590cc1a1c2716f5334edc8ae5d33c7cf23",
+   "contentSHA256": "02f39fd43ba5b48675386fdc625d30138c9d75f91e828bd4c42060a11ea5f5cb",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4041,13 +4612,32 @@
      "date": "2026-10-14",
      "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
      "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings), after the #3861 rename to \"Hide dictations from clipboard manager apps\"; first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-17",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory-3861/draft.json",
+      "sha256": "a94266b7ec42cb0afad1c0008457adbe8afc864df307925722777c0497d18dd0"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-driver.py.txt",
+      "sha256": "00e028aa615b4c32266afc5c64e11533ea1fa0e74afb482a80b3d878587a1abe"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-vi.txt",
+      "sha256": "e69ef7b5d308fc429a8ba508f4b7916a2c8df0366c51c2bf74086d566ddfaf56"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "zh",
-   "contentSHA256": "5c742c641b5cde0aaa710cb8479560d0ce3823172d2d6cad5e24e94a1370d39b",
+   "contentSHA256": "f4c4b7a000bf29077cfd78a5880a07b29cf0085a215e91cae27bbf4b37d1e05e",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4158,6 +4748,25 @@
      "date": "2026-10-14",
      "method": "#3735 chunk 9: the Universal preview download is now the transcribe.cpp whisper-small q8_0 file, 270 MB by whisper-preview-delivery-manifest.json (LivePreviewEnginePresentationTests binds the English copy to that manifest)",
      "disposition": "replaced the size token 217 with 270 in the reviewed words; no other word changed and no new translated content"
+    },
+    {
+     "kind": "addition-content",
+     "id": "keepOutOfClipboardHistory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Clipboard tab siblings), after the #3861 rename to \"Hide dictations from clipboard manager apps\"; first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-17",
+     "draft": {
+      "path": "additions/keepOutOfClipboardHistory-3861/draft.json",
+      "sha256": "a94266b7ec42cb0afad1c0008457adbe8afc864df307925722777c0497d18dd0"
+     },
+     "prompt": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-driver.py.txt",
+      "sha256": "00e028aa615b4c32266afc5c64e11533ea1fa0e74afb482a80b3d878587a1abe"
+     },
+     "output": {
+      "path": "additions/keepOutOfClipboardHistory-3861/review-zh.txt",
+      "sha256": "7682fb07cf091c9fb6ffe576bcb13160cd33d6af9a751c6337c166e5e16a2c69"
+     },
+     "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
     }
    ],
    "phraseExemptions": []
@@ -4236,7 +4845,7 @@
   "inputDevice.device": "d20e838b00653dfa7a7cb319b55a27dcfca81ca8715148ea19d9bcba856c489f",
   "inputSocket": "cda24a6f89cc814e3bb1bca9cd81b09c4b5cb58292a9804225d4d4a621ca4d60",
   "inputSocket.input": "d0dc92af4c11b261bb8523ee339d31ed5bd602f6388f49037ceb6b3157c23258",
-  "keepOutOfClipboardHistory": "312be4ada874b771a0ed258f23ec82c77223f1e11fc443207e91eb99a8920254",
+  "keepOutOfClipboardHistory": "ede29bca55183392f14b9986e3c6e481d2ca1d2fe2873db79a4d8aaea71e3703",
   "keybind.resetToDefault": "765eac97bf622e1ddb30d0dace76ef3b942c0e0f72be5b6a7b56ca42ae14405e",
   "learnFrom": "132dbd5d38d7d6a1fd18907912195b6d47bfb9fc25556e31f49b081286f3d2ed",
   "license.gpl": "0b55c18a302405e180a46395765c7a2c5f6e5b6bb9d8e69a8e21530109fdbf77",

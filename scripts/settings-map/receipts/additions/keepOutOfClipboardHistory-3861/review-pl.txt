@@ -1,0 +1,13 @@
+{
+  "language": "pl",
+  "title": "ukrywaj dyktowany tekst przed menedżerami schowka",
+  "words": [
+    "Raycast",
+    "Maccy",
+    "historia schowka"
+  ],
+  "phrases": [
+    "nie zapisuj dyktowanego tekstu w historii schowka",
+    "ukryj dyktowany tekst przed Maccy"
+  ]
+}

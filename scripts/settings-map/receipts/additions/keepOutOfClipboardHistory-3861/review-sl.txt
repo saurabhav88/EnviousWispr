@@ -1,0 +1,13 @@
+{
+  "language": "sl",
+  "title": "skrij narekovano besedilo pred upravljalniki odložišča",
+  "words": [
+    "Raycast",
+    "Maccy",
+    "zgodovina odložišča"
+  ],
+  "phrases": [
+    "ne shranjuj narekovanega besedila v zgodovino odložišča",
+    "skrij narekovano besedilo pred Maccy"
+  ]
+}

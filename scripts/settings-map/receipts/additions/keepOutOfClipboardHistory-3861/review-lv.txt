@@ -1,0 +1,13 @@
+{
+  "language": "lv",
+  "title": "slēpt diktēto tekstu no starpliktuves pārvaldniekiem",
+  "words": [
+    "Raycast",
+    "Maccy",
+    "starpliktuves vēsture"
+  ],
+  "phrases": [
+    "nesaglabāt diktēto tekstu starpliktuves vēsturē",
+    "slēpt diktēto tekstu no Maccy"
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "language": "fr",
+  "title": "masquer les dictées aux gestionnaires de presse-papiers",
+  "words": [
+    "Raycast",
+    "Maccy",
+    "historique du presse-papiers"
+  ],
+  "phrases": [
+    "ne pas enregistrer mes dictées dans l’historique de Raycast",
+    "masquer mes dictées à Maccy"
+  ]
+}

@@ -26,14 +26,14 @@ struct ClipboardSettingsCopyTests {
       "Saves and restores whatever was on your clipboard before pasting your dictation."
     ),
     "keepOutOfHistoryTitle": (
-      Copy.keepOutOfHistoryTitle, "Keep dictations out of clipboard history apps"
+      Copy.keepOutOfHistoryTitle, "Hide dictations from clipboard manager apps"
     ),
     "keepOutOfHistoryShort": (
-      Copy.keepOutOfHistoryShort, "Asks clipboard apps to skip the text we paste."
+      Copy.keepOutOfHistoryShort, "For apps like Raycast and Maccy."
     ),
     "keepOutOfHistoryHelp": (
       Copy.keepOutOfHistoryHelp,
-      "Asks clipboard history apps such as Maccy, Raycast and Paste to skip the text EnviousWispr puts on your clipboard for a moment while it pastes, and the clipboard it puts back. Apps that follow the common convention will not save it; apps that ignore the convention still may. A dictation that stays on your clipboard because a paste did not land is still available for clipboard history apps to save. Needs Restore clipboard after paste to be on."
+      "Clipboard manager apps such as Raycast, Maccy, Paste, Pastebot, Clipy and Flycut save everything you copy. When this is on, they skip the text EnviousWispr puts on your clipboard while it pastes, and the clipboard it puts back. Other apps, such as Alfred, may still save it. This does not change your Mac clipboard, Cmd+C or Cmd+V. If EnviousWispr leaves a dictation on your clipboard after a missed paste, these apps can save it. Needs Restore clipboard after paste to be on."
     ),
     "smartInsertionTitle": (Copy.smartInsertionTitle, "Smart insertion"),
     "smartInsertionShort": (

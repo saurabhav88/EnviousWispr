@@ -1,0 +1,1 @@
+{"language":"tr","title":"dikteleri pano yöneticisi uygulamalarından gizle","words":["Raycast","Maccy","pano geçmişi"],"phrases":["dikte edilen metni pano geçmişine kaydetme","dikteleri Maccy'den gizle"]}

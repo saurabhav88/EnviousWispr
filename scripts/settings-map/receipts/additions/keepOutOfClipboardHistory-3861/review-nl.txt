@@ -1,0 +1,13 @@
+{
+  "language": "nl",
+  "title": "dictaten verbergen voor klembordbeheerders",
+  "words": [
+    "Raycast",
+    "Maccy",
+    "klembordgeschiedenis"
+  ],
+  "phrases": [
+    "dictaten niet opslaan in de klembordgeschiedenis",
+    "gedicteerde tekst verbergen voor Maccy"
+  ]
+}

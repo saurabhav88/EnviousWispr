@@ -1,0 +1,422 @@
+{
+ "id": "keepOutOfClipboardHistory",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "إخفاء الإملاءات عن تطبيقات إدارة الحافظة",
+   "words": [
+    "Raycast",
+    "Maccy",
+    "سجل الحافظة"
+   ],
+   "phrases": [
+    "عدم حفظ الإملاء في سجل الحافظة",
+    "إخفاء النص المملى عن Maccy"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "скриване на диктовките от мениджърите на клипборда",
+   "words": [
+    "Raycast",
+    "Maccy",
+    "история на клипборда"
+   ],
+   "phrases": [
+    "без диктовки в историята на клипборда",
+    "скриване на диктовките от Maccy"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "skrýt diktování před správci schránky",
+   "words": [
+    "Raycast",
+    "Maccy",
+    "historie schránky"
+   ],
+   "phrases": [
+    "neukládat diktovaný text do historie schránky",
+    "skrýt diktovaný text před Maccy"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "skjul diktater for udklipsholderapps",
+   "words": [
+    "Raycast",
+    "Maccy",
+    "udklipshistorik"
+   ],
+   "phrases": [
+    "hold diktater ude af udklipshistorikken",
+    "skjul dikteret tekst for Maccy"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [
+    "Raycast",
+    "Maccy",
+    "Zwischenablageverlauf",
+    "Clipboard-Historie"
+   ],
+   "phrases": [
+    "speichere meine Diktate nicht im Zwischenablageverlauf",
+    "verberge meine Diktate vor Maccy"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "απόκρυψη υπαγορεύσεων από εφαρμογές διαχείρισης προχείρου",
+   "words": [
+    "Raycast",
+    "Maccy",
+    "ιστορικό προχείρου"
+   ],
+   "phrases": [
+    "να μη μένουν οι υπαγορεύσεις στο ιστορικό προχείρου",
+    "απόκρυψη υπαγορεύσεων από το Maccy"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [
+    "Raycast",
+    "Maccy",
+    "clipboard history"
+   ],
+   "phrases": [
+    "keep dictations out of clipboard history",
+    "don't save dictated text in Maccy"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "ocultar los dictados a las apps de gestión del portapapeles",
+   "words": [
+    "Raycast",
+    "Maccy",
+    "historial del portapapeles"
+   ],
+   "phrases": [
+    "no guardar dictados en el historial del portapapeles",
+    "ocultar mis dictados a Maccy"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "peida dikteeritud tekst lõikelauahaldurite eest",
+   "words": [
+    "Raycast",
+    "Maccy",
+    "lõikelaua ajalugu"
+   ],
+   "phrases": [
+    "ära salvesta dikteeritud teksti lõikelaua ajalukku",
+    "peida dikteeritud tekst Maccy eest"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "piilota sanelut leikepöydän hallintasovelluksilta",
+   "words": [
+    "Raycast",
+    "Maccy",
+    "leikepöytähistoria"
+   ],
+   "phrases": [
+    "älä tallenna saneluja leikepöydän historiaan",
+    "piilota sanelut Maccylta"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "masquer les dictées aux gestionnaires de presse-papiers",
+   "words": [
+    "Raycast",
+    "Maccy",
+    "historique du presse-papiers"
+   ],
+   "phrases": [
+    "ne pas garder les dictées dans l’historique du presse-papiers",
+    "masquer mes dictées à Maccy"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "बोलकर लिखे गए टेक्स्ट को क्लिपबोर्ड मैनेजर ऐप्स से छिपाएँ",
+   "words": [
+    "Raycast",
+    "Maccy",
+    "क्लिपबोर्ड हिस्ट्री"
+   ],
+   "phrases": [
+    "बोलकर लिखा टेक्स्ट क्लिपबोर्ड हिस्ट्री में न रखें",
+    "Maccy से डिक्टेशन छिपाएँ"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "sakrij diktate od upravitelja međuspremnika",
+   "words": [
+    "Raycast",
+    "Maccy",
+    "povijest međuspremnika"
+   ],
+   "phrases": [
+    "ne spremaj diktirani tekst u povijest međuspremnika",
+    "sakrij diktate od Maccyja"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "diktálások elrejtése a vágólapkezelő alkalmazások elől",
+   "words": [
+    "Raycast",
+    "Maccy",
+    "vágólapelőzmények"
+   ],
+   "phrases": [
+    "ne kerüljenek a diktálások a vágólapelőzményekbe",
+    "diktált szöveg elrejtése a Maccy elől"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "nascondi le dettature alle app di gestione degli appunti",
+   "words": [
+    "Raycast",
+    "Maccy",
+    "cronologia degli appunti"
+   ],
+   "phrases": [
+    "non salvare le dettature nella cronologia degli appunti",
+    "nascondere il testo dettato a Maccy"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "音声入力したテキストをクリップボード管理アプリから隠す",
+   "words": [
+    "Raycast",
+    "Maccy",
+    "クリップボード履歴"
+   ],
+   "phrases": [
+    "音声入力をクリップボードの履歴に残さない",
+    "Maccyに音声入力の内容を保存させない"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "클립보드 관리 앱에서 받아쓰기 숨기기",
+   "words": [
+    "Raycast",
+    "Maccy",
+    "클립보드 기록"
+   ],
+   "phrases": [
+    "받아쓴 내용을 클립보드 기록에 남기지 않기",
+    "Maccy에서 받아쓴 내용 숨기기"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "slėpti diktuojamą tekstą nuo iškarpinės tvarkyklių",
+   "words": [
+    "Raycast",
+    "Maccy",
+    "iškarpinės istorija"
+   ],
+   "phrases": [
+    "nesaugoti diktuojamo teksto iškarpinės istorijoje",
+    "slėpti diktuojamą tekstą nuo Maccy"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "slēpt diktēto tekstu no starpliktuves pārvaldniekiem",
+   "words": [
+    "Raycast",
+    "Maccy",
+    "starpliktuves vēsture"
+   ],
+   "phrases": [
+    "nesaglabāt diktēto tekstu starpliktuves vēsturē",
+    "slēpt diktēto tekstu no Maccy"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "aħbi d-dettati mill-apps li jimmaniġġjaw il-clipboard",
+   "words": [
+    "Raycast",
+    "Maccy",
+    "kronoloġija tal-clipboard"
+   ],
+   "phrases": [
+    "tissejvjax id-dettati fil-kronoloġija tal-clipboard",
+    "aħbi t-test iddettat minn Maccy"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "dictaten verbergen voor klembordbeheerders",
+   "words": [
+    "Raycast",
+    "Maccy",
+    "klembordgeschiedenis"
+   ],
+   "phrases": [
+    "dictaten niet opslaan in de klembordgeschiedenis",
+    "gedicteerde tekst verbergen voor Maccy"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "ukrywaj dyktowany tekst przed menedżerami schowka",
+   "words": [
+    "Raycast",
+    "Maccy",
+    "historia schowka"
+   ],
+   "phrases": [
+    "nie zapisuj dyktowanego tekstu w historii schowka",
+    "ukryj dyktowany tekst przed Maccy"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "ocultar ditados dos gestores da área de transferência",
+   "words": [
+    "Raycast",
+    "Maccy",
+    "histórico da área de transferência",
+    "gerenciador de clipboard"
+   ],
+   "phrases": [
+    "não salvar ditados no histórico da área de transferência",
+    "ocultar texto ditado do Maccy"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "ascunde dictările de aplicațiile de gestionare a clipboardului",
+   "words": [
+    "Raycast",
+    "Maccy",
+    "istoric clipboard"
+   ],
+   "phrases": [
+    "nu salva dictările în istoricul clipboardului",
+    "ascunde textul dictat de Maccy"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "скрывать диктовки от менеджеров буфера обмена",
+   "words": [
+    "Raycast",
+    "Maccy",
+    "история буфера обмена"
+   ],
+   "phrases": [
+    "не сохранять диктовки в истории буфера обмена",
+    "скрыть надиктованный текст от Maccy"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "skryť diktovaný text pred správcami schránky",
+   "words": [
+    "Raycast",
+    "Maccy",
+    "história schránky"
+   ],
+   "phrases": [
+    "neukladať diktovaný text do histórie schránky",
+    "skryť diktovaný text pred Maccy"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "skrij narekovano besedilo pred upravljalniki odložišča",
+   "words": [
+    "Raycast",
+    "Maccy",
+    "zgodovina odložišča"
+   ],
+   "phrases": [
+    "ne shranjuj narekovanega besedila v zgodovino odložišča",
+    "skrij narekovano besedilo pred Maccy"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "dölj dikteringar för urklippshanterare",
+   "words": [
+    "Raycast",
+    "Maccy",
+    "urklippshistorik"
+   ],
+   "phrases": [
+    "spara inte dikteringar i urklippshistoriken",
+    "dölj dikterad text för Maccy"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "dikteleri pano yöneticisi uygulamalarından gizle",
+   "words": [
+    "Raycast",
+    "Maccy",
+    "pano geçmişi"
+   ],
+   "phrases": [
+    "dikte edilen metni pano geçmişine kaydetme",
+    "dikteleri Maccy'den gizle"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "приховувати диктування від менеджерів буфера обміну",
+   "words": [
+    "Raycast",
+    "Maccy",
+    "історія буфера обміну"
+   ],
+   "phrases": [
+    "не зберігати надиктований текст в історії буфера обміну",
+    "приховати надиктований текст від Maccy"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "ẩn văn bản đọc chính tả khỏi ứng dụng quản lý bảng nhớ tạm",
+   "words": [
+    "Raycast",
+    "Maccy",
+    "lịch sử clipboard"
+   ],
+   "phrases": [
+    "không lưu văn bản đọc chính tả vào lịch sử bảng nhớ tạm",
+    "ẩn nội dung đọc chính tả khỏi Maccy"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "向剪贴板管理应用隐藏听写内容",
+   "words": [
+    "Raycast",
+    "Maccy",
+    "剪贴板历史",
+    "剪贴簿记录"
+   ],
+   "phrases": [
+    "不把听写内容保存到剪贴板历史",
+    "不让 Maccy 记录语音输入的文字"
+   ]
+  }
+ ]
+}

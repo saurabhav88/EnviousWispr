@@ -1,0 +1,13 @@
+{
+  "language": "sv",
+  "title": "dölj dikteringar för urklippshanterare",
+  "words": [
+    "Raycast",
+    "Maccy",
+    "urklippshistorik"
+  ],
+  "phrases": [
+    "spara inte dikteringar i urklippshistoriken",
+    "dölj dikterad text för Maccy"
+  ]
+}

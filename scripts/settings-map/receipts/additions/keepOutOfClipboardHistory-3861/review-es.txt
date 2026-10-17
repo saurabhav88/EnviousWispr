@@ -1,0 +1,13 @@
+{
+  "language": "es",
+  "title": "ocultar los dictados a los gestores del portapapeles",
+  "words": [
+    "Raycast",
+    "Maccy",
+    "historial del portapapeles"
+  ],
+  "phrases": [
+    "no guardar dictados en el historial del portapapeles",
+    "ocultar mis dictados a Maccy"
+  ]
+}

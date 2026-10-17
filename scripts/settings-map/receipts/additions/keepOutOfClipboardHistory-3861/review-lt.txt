@@ -1,0 +1,1 @@
+{"language":"lt","title":"slėpti diktuojamą tekstą nuo iškarpinės tvarkyklių","words":["Raycast","Maccy","iškarpinės istorija"],"phrases":["nesaugoti diktuojamo teksto iškarpinės istorijoje","slėpti diktuojamą tekstą nuo Maccy"]}

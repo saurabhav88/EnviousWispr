@@ -1,0 +1,1 @@
+{"language":"mt","title":"aħbi d-dettati mill-apps li jimmaniġġjaw il-clipboard","words":["Raycast","Maccy","kronoloġija tal-clipboard"],"phrases":["tissejvjax id-dettati fil-kronoloġija tal-clipboard","aħbi t-test iddettat minn Maccy"]}

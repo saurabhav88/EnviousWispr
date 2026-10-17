@@ -21,7 +21,7 @@ The Codex session runs from an empty folder outside every repository, with a pri
 
 ## Review and adopt
 
-1. Review the draft: accuracy against the real control (Codex, with repo access), naturalness per language (a fresh Codex session per language; German also through the GPT and Gemini council, which needs founder approval for the spend). Save the reviewed result as `scripts/settings-map/receipts/additions/<id>.json` in the shape `{"id": "<id>", "blocks": {"<language>": {"title"?, "words", "phrases"}, ...}}` with all 32 languages, next to the review transcript.
+1. Review the draft: accuracy against the real control (Codex, with repo access), naturalness per language (a fresh Codex session per language; German also through the GPT and Gemini council (Azure spend under global GR-NO-CLOUD-SPEND)). Save the reviewed result as `scripts/settings-map/receipts/additions/<id>.json` in the shape `{"id": "<id>", "blocks": {"<language>": {"title"?, "words", "phrases"}, ...}}` with all 32 languages, next to the review transcript.
 2. Record it in `scripts/settings-map/receipts/reviewed-edits.json`. The builder reconciles every id into exactly one group and stops on anything else:
    - a retained id (in the Phase 0 source and still mapped): reviewed word, phrase or translated-title changes go under `blocks.<id>.<language>` (English and German titles come from the interface and are not edited here);
    - an added id (mapped, not in the Phase 0 source): `added.<id>` with `blocks` for all 32 languages, `review` (the path of that JSON under `receipts/`) and `reviewSHA256` (its SHA-256). The verifier and the tests require the file to stay under `receipts/`, match the hash, name the id and hold exactly the adopted blocks;

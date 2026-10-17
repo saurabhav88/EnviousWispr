@@ -1,0 +1,13 @@
+{
+  "language": "vi",
+  "title": "ẩn văn bản đọc chính tả khỏi ứng dụng quản lý bảng nhớ tạm",
+  "words": [
+    "Raycast",
+    "Maccy",
+    "lịch sử clipboard"
+  ],
+  "phrases": [
+    "không lưu văn bản đọc chính tả vào lịch sử bảng nhớ tạm",
+    "ẩn nội dung đọc chính tả khỏi Maccy"
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "language": "fi",
+  "title": "piilota sanelut leikepöydän hallintasovelluksilta",
+  "words": [
+    "Raycast",
+    "Maccy",
+    "leikepöytähistoria"
+  ],
+  "phrases": [
+    "älä tallenna saneluja leikepöydän historiaan",
+    "piilota sanelut Maccylta"
+  ]
+}

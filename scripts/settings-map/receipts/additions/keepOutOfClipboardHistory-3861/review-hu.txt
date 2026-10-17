@@ -1,0 +1,13 @@
+{
+  "language": "hu",
+  "title": "diktálások elrejtése a vágólapkezelő alkalmazások elől",
+  "words": [
+    "Raycast",
+    "Maccy",
+    "vágólapelőzmények"
+  ],
+  "phrases": [
+    "ne kerüljenek a diktálások a vágólapelőzményekbe",
+    "diktált szöveg elrejtése a Maccy elől"
+  ]
+}
