@@ -337,8 +337,19 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// 2c: the explicit user-Remove unload, reached through the driver so the
   /// adapter TYPE stays module-internal. No-op for engines without one
   /// (Parakeet's removal story is not this PR's).
-  package func unloadEngineForRemoval() async {
-    await (adapter as? WhisperEngineAdapter)?.unloadForRemoval()
+  package func unloadEngine() async {
+    await (adapter as? WhisperEngineAdapter)?.unloadModel()
+  }
+
+  /// #3849: engine switch away from this engine. Whisper parks and frees its model, returning
+  /// the receipt; nil for engines without it (Parakeet's switch unload is `ASRManager`'s).
+  package func parkEngine() async -> UnloadReceipt? {
+    await (adapter as? WhisperEngineAdapter)?.parkEngine()
+  }
+
+  /// #3849: this engine is active again and may load. No-op for engines without a park.
+  package func unparkEngine() async {
+    await (adapter as? WhisperEngineAdapter)?.unparkEngine()
   }
 
   /// The per-session context the wiring's closures read (PR-4 §3.3 — "captured

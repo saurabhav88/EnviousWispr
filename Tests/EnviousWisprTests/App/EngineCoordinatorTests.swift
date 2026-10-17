@@ -4,7 +4,9 @@ import EnviousWisprServices
 import Foundation
 import Testing
 
+@testable import EnviousWisprASR
 @testable import EnviousWisprAppKit
+@testable import EnviousWisprModelDelivery
 
 /// #1171 — deterministic coverage for every race the duct-tape design lost six
 /// review rounds to, expressed against the injectable `EngineCoordinator` (fake
@@ -286,6 +288,100 @@ struct EngineCoordinatorTests {
   }
 
   // MARK: - isSwitching gate
+
+  // MARK: - #3849 Whisper release on switch
+
+  typealias Gate = EngineCoordinatorUpgradeActivationTests.Gate
+
+  @Test("a switch requested while the engine lease is held waits, and the release applies it")
+  func heldLeaseDefersSwitchUntilRelease() async {
+    let fake = FakeEngineDeps(selected: .parakeet, active: .parakeet)
+    let lease = EngineLease()
+    fake.engineHeld = { lease.isBusy }
+    guard case .granted(let token) = lease.admit(.dictation) else {
+      Issue.record("a fresh lease refused the first claim")
+      return
+    }
+    let c = fake.makeStartedCoordinator()
+    lease.onReleased = { c.poke(.parakeetUpgradeOwed) }
+    fake.selected = .whisper
+    c.poke(.settingsChanged)
+    #expect(await enginePoll { c.status.blockedReason == .pipelineActive })
+    #expect(fake.switchCount == 0, "no switch unloads the engine under the lease holder")
+    #expect(fake.warmCount == 0)
+    // No test-issued poke: the lease's own release must apply the pending choice.
+    lease.release(token)
+    #expect(await enginePoll { fake.active == .whisper })
+    #expect(await enginePoll { fake.whisperReadiness == .ready })
+    #expect(fake.switchCount == 1)
+  }
+
+  @Test("switching away from Whisper frees its model and logs the receipt before Parakeet warms")
+  func switchAwayParksBeforeReplacementWarm() async {
+    let fake = FakeEngineDeps(selected: .whisper, active: .whisper)
+    let probe = WhisperSwitchProbe()
+    fake.whisperSwitch = probe
+    let park = Gate()
+    probe.onPark = { await park.wait() }
+    let c = fake.makeStartedCoordinator()
+    fake.selected = .parakeet
+    c.poke(.settingsChanged)
+    #expect(await enginePoll { probe.events.contains("park") })
+    #expect(!probe.events.contains("switch parakeet"), "the manager waits for the park")
+    #expect(!probe.events.contains("warm parakeet"))
+    park.open()
+    #expect(await enginePoll { probe.events.contains("warm parakeet") })
+    #expect(
+      probe.events == [
+        "park", "parked", "Whisper model released for engine switch freed=1 remaining=0",
+        "switch parakeet", "warm parakeet",
+      ])
+    #expect(await probe.backend.parkCount == 1)
+  }
+
+  @Test("switching to Whisper keeps it parked through the outgoing unload, then it warms")
+  func switchTowardWhisperUnparksAfterOutgoingUnload() async throws {
+    let fake = FakeEngineDeps(selected: .parakeet, active: .parakeet)
+    let probe = WhisperSwitchProbe()
+    fake.whisperSwitch = probe
+    _ = await probe.backend.park()  // parked at launch: Parakeet was selected
+    let outgoing = Gate()
+    probe.onManagerSwitch = { await outgoing.wait() }
+    let c = fake.makeStartedCoordinator()
+    fake.selected = .whisper
+    c.poke(.settingsChanged)
+    #expect(await enginePoll { probe.events.contains("switch whisper") })
+    // A delayed Whisper warm during Parakeet's unload is refused.
+    await #expect(throws: (any Error).self) { try await probe.backend.prepare() }
+    #expect(!probe.events.contains("unpark"))
+    outgoing.open()
+    // The fake starts both engines ready, so wait for the warm itself, then its result.
+    #expect(await enginePoll { probe.events.contains("warm whisper") })
+    #expect(await enginePoll { c.status.selectedReadiness == .ready })
+    #expect(probe.events == ["switch whisper", "unpark", "warm whisper"])
+    #expect(await probe.backend.parkCount == 1, "toward Whisper never parks it again")
+  }
+
+  @Test(
+    "the stored selection decides at construction whether Whisper may load",
+    arguments: [ASRBackendType.parakeet, .whisper])
+  func initialSelectionControlsWhisperAdmission(selected: ASRBackendType) async throws {
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent("ew-3849-wiring-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let home = ModelDeliveryHome(
+      engineMutationScope: .alwaysAllowedForTesting,
+      manifestBundle: try #require(
+        Bundle(url: RepoRoot.url.appendingPathComponent("Sources/EnviousWispr/Resources"))),
+      appSupportOverride: root,
+      deliveryFlagDefaults: try #require(TestDefaults.suite("ew-3849-flags-\(UUID().uuidString)")))
+    let settings = SettingsManager(
+      defaults: try #require(TestDefaults.suite("ew-3849-settings-\(UUID().uuidString)")))
+    settings.selectedBackend = selected
+    let wired = WhisperDeliveryWiring.make(
+      modelDelivery: home, settings: settings, engineMutationScope: .alwaysAllowedForTesting)
+    #expect(await wired.backend.isParkedForTesting == (selected != .whisper))
+  }
 
   @Test("isSwitching is held across the whole switch await")
   func isSwitchingHeldAcrossAwait() async {

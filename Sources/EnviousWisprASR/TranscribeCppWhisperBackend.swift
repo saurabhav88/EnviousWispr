@@ -1022,6 +1022,9 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
     (inFlight, pressurePending)
   }
 
+  /// #3849: the composition's initial park, read without attempting a load.
+  var isParkedForTesting: Bool { parked }
+
   /// #3849 test seam: suspensions a test must reach before it acts, announced synchronously
   /// on the actor once the caller is parked.
   enum TestEvent: Sendable { case waitingForPressureBinding, joinedUnload }
