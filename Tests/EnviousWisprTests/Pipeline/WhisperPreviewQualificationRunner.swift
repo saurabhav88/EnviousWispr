@@ -206,7 +206,7 @@ struct WhisperPreviewQualificationRunner {
     let prepareMs = MeasuringDriver.ms(ContinuousClock.now - prepareStart)
 
     let shown = Shown()
-    let session = try await recognizer.openSession(lookups: nil, onText: shown.append)
+    let session = try await recognizer.openSession(vocabulary: .init(lookups: nil, contextualPhrases: [], dictionaryEnabled: true), onText: shown.append)
     let recordStart = ContinuousClock.now
     var index = 0
     var chunk = 0

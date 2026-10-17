@@ -38,6 +38,7 @@ struct PillWordsCapabilityTests {
     LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
       isPreviewOn: { previewOn },
+      isDictionaryOn: { true },
       languageMode: { .locked("en") },
       selectedRoute: {
         LivePreviewEngineRoute(
@@ -92,6 +93,7 @@ struct PillWordsCapabilityTests {
     let c = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
       isPreviewOn: { previewOn },
+      isDictionaryOn: { true },
       languageMode: { .locked("en") },
       selectedRoute: {
         LivePreviewEngineRoute(

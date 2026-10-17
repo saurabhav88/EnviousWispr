@@ -259,7 +259,7 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
   /// so this file's own callers and tests are unaffected; this only boxes it in the
   /// handle the coordinator can hold without naming Apple.
   func openSession(
-    lookups: WordCorrector.Lookups?,
+    vocabulary: LivePreviewVocabulary,
     onText: @escaping @Sendable (String) -> Void
   ) async throws -> any LivePreviewEngineSession {
     // **Re-assert the reservation here, not only in `prepare()`.**
@@ -281,9 +281,11 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
     // Claiming also REGISTERS this session's use, atomically, so the claim cannot be evicted
     // between being taken and being used. Released in `ApplePreviewSessionHandle.end()`, which the
     // coordinator always calls.
+    let inputs = ApplePreviewHints.inputs(for: vocabulary)
     try await LocaleClaims.shared.claim(locale, purpose: "session")
     do {
-      let session = try await startSession(lookups: lookups, onText: onText)
+      let session = try await startSession(
+        lookups: inputs.lookups, contextualPhrases: inputs.phrases, onText: onText)
       return ApplePreviewSessionHandle(
         recognizer: self, session: session, claimedLocale: locale)
     } catch {
@@ -306,7 +308,8 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
   /// rather than ordering two awaits, which is the same lesson the `Session` value
   /// above already encodes: shared mutable state on this actor is the bug.
   func startSession(
-    lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+    lookups: WordCorrector.Lookups?, contextualPhrases: [String],
+    onText: @escaping @Sendable (String) -> Void
   ) async throws -> Session {
     guard let target = targetFormat, let source = sourceFormat else {
       throw LivePreviewError.notPrepared
@@ -314,22 +317,33 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
     currentToken &+= 1
     let token = currentToken
 
-    let opening = try makeStartResources(
-      source: source, target: target, lookups: lookups, onText: onText)
-
-    do {
-      try await opening.analyzer.start(inputSequence: opening.stream)
-    } catch {
-      await discardStartResources(opening)
-      throw error
-    }
+    await AppLogger.shared.log(
+      "LIVE_PREVIEW hints requested count=\(contextualPhrases.count)", category: "LivePreview")
     // Superseded while `start` was suspended: this session's resources are ours
     // alone, so close them rather than handing back something whose every later
     // call would be rejected.
-    guard token == currentToken else {
-      await discardStartResources(opening)
-      throw LivePreviewError.superseded
-    }
+    let opening = try await ApplePreviewSessionSetup.start(
+      phrases: contextualPhrases,
+      make: {
+        try makeStartResources(source: source, target: target, lookups: lookups, onText: onText)
+      },
+      attach: { opening, phrases in
+        let context = AnalysisContext()
+        context.contextualStrings[.general] = phrases
+        try await opening.analyzer.setContext(context)
+        await AppLogger.shared.log(
+          "LIVE_PREVIEW hints configured count=\(phrases.count)", category: "LivePreview")
+      },
+      start: { opening in
+        try await opening.analyzer.start(inputSequence: opening.stream)
+      },
+      discard: { opening in await discardStartResources(opening) },
+      isCurrent: { currentToken == token },
+      contextFailed: { error in
+        await AppLogger.shared.log(
+          "LIVE_PREVIEW hints unavailable count=\(contextualPhrases.count) errorType=\(String(reflecting: type(of: error)))",
+          category: "LivePreview")
+      })
     return Session(
       token: token, analyzer: opening.analyzer, continuation: opening.continuation,
       collector: opening.collector,

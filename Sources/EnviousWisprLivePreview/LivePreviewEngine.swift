@@ -2,6 +2,21 @@ import EnviousWisprCore
 import EnviousWisprPostProcessing
 import Foundation
 
+/// Immutable per-open inputs. Hint application is Apple policy; other engines retain lookups.
+package struct LivePreviewVocabulary: Sendable {
+  package let lookups: WordCorrector.Lookups?
+  package let contextualPhrases: [String]
+  package let dictionaryEnabled: Bool
+
+  package init(
+    lookups: WordCorrector.Lookups?, contextualPhrases: [String], dictionaryEnabled: Bool
+  ) {
+    self.lookups = lookups
+    self.contextualPhrases = contextualPhrases
+    self.dictionaryEnabled = dictionaryEnabled
+  }
+}
+
 /// What the live preview needs from a recognizer, and nothing more (#2077).
 ///
 /// The coordinator used to name `ApplePreviewRecognizer` in nine places, which was
@@ -35,12 +50,12 @@ package protocol LivePreviewEngine: Sendable {
   /// bounded by the producer, and must be cheap: it is invoked from whatever task
   /// the engine collects on.
   ///
-  /// `lookups` is this recording's Custom Words snapshot, passed IN rather than
+  /// `vocabulary` is this recording's Custom Words snapshot, passed IN rather than
   /// read from engine state. That is not a style choice — the stored-property
   /// version was racy, and a session opened straight after preparation could
   /// capture `nil` and visibly mangle a user's own names for a whole recording.
   func openSession(
-    lookups: WordCorrector.Lookups?,
+    vocabulary: LivePreviewVocabulary,
     onText: @escaping @Sendable (String) -> Void
   ) async throws -> any LivePreviewEngineSession
 }

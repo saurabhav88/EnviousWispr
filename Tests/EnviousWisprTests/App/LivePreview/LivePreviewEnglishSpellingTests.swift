@@ -36,7 +36,7 @@ struct LivePreviewEnglishSpellingTests {
       init(heard: String) { self.heard = heard }
       func prepare() async throws {}
       func openSession(
-        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+        vocabulary: LivePreviewVocabulary, onText: @escaping @Sendable (String) -> Void
       ) async throws -> any LivePreviewEngineSession {
         struct Idle: LivePreviewEngineSession {
           func feed(_ samples: [Float]) async {}
@@ -51,7 +51,7 @@ struct LivePreviewEnglishSpellingTests {
     final class SilentEngine: LivePreviewEngine, @unchecked Sendable {
       func prepare() async throws {}
       func openSession(
-        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+        vocabulary: LivePreviewVocabulary, onText: @escaping @Sendable (String) -> Void
       ) async throws -> any LivePreviewEngineSession {
         struct Idle: LivePreviewEngineSession {
           func feed(_ samples: [Float]) async {}
@@ -69,6 +69,7 @@ struct LivePreviewEnglishSpellingTests {
       heard: String?, spelling: @escaping () -> EnglishSpelling,
       mode: @escaping () -> LanguageMode = { .locked("en") },
       vocabulary: CorrectorVocabulary = .empty,
+      dictionaryOn: Bool = true,
       deadline: Duration = .seconds(10),
       changeAfterStart: (() -> Void)? = nil
     ) async -> (shown: String?, resolvedWith: LanguageMode?) {
@@ -77,6 +78,7 @@ struct LivePreviewEnglishSpellingTests {
       let coordinator = LivePreviewCoordinator(
         readSamples: { _ in ([], 0) },
         isPreviewOn: { true },
+        isDictionaryOn: { dictionaryOn },
         languageMode: mode,
         englishSpelling: spelling,
         selectedRoute: {
@@ -165,6 +167,17 @@ struct LivePreviewEnglishSpellingTests {
         generation: 1)
       let result = await Self.firstShownText(
         heard: "the color recognizer", spelling: { .british }, vocabulary: vocabulary)
+      #expect(result.shown == "the color recogniser")
+    }
+
+    @Test("dictionary off preserves the existing British custom-word spelling protection")
+    func dictionaryOffKeepsSpellingProtection() async {
+      let result = await Self.firstShownText(
+        heard: "the color recognizer", spelling: { .british },
+        vocabulary: CorrectorVocabulary(terms: [
+          CustomWord(canonical: "Color Street"),
+          CustomWord(canonical: "recognizer", source: .builtin),
+        ], generation: 1), dictionaryOn: false)
       #expect(result.shown == "the color recogniser")
     }
 

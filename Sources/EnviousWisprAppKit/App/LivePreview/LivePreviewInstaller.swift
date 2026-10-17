@@ -90,6 +90,7 @@ enum LivePreviewInstaller {
       // interface itself: see `LivePreviewSampleReader`.
       readSamples: { index in await capture.getSamplesSnapshot(fromIndex: index) },
       isPreviewOn: { settings.livePreviewEnabled },
+      isDictionaryOn: { settings.wordCorrectionEnabled },
       // #3124: the PREVIEW's language, which asks Apple for its British model when English (UK)
       // is in force. Preview only: dictation keeps receiving `settings.languageMode`.
       languageMode: {

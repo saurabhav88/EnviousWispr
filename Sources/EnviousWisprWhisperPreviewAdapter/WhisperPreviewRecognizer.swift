@@ -110,14 +110,16 @@ package actor WhisperPreviewRecognizer: LivePreviewEngine {
 
   /// Open a session and start delivering text.
   ///
-  /// `lookups` is this recording's Custom Words snapshot, passed IN rather than
+  /// `vocabulary.lookups` is this recording's Custom Words snapshot, passed IN rather than
   /// read from engine state — the stored-property version was racy, and a session
   /// opened straight after preparation could capture nil and mangle a user's own
   /// names for a whole recording.
   package func openSession(
-    lookups: WordCorrector.Lookups?,
+    vocabulary: LivePreviewVocabulary,
     onText: @escaping @Sendable (String) -> Void
   ) async throws -> any LivePreviewEngineSession {
+    // #3457: Apple-only hints/application controls do not change Universal (#3839).
+    let lookups = vocabulary.lookups
     // Hold the lock across the ENTIRE transaction — end the old session, build
     // the new one, attach it, record it. Every one of those steps suspends, and
     // actor isolation alone lets a second caller in at any of them.

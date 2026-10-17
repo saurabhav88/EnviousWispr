@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprPostProcessing
 import Foundation
 import Testing
 
@@ -206,7 +207,7 @@ struct TranscribeCppPreviewRecognizerTests {
     let recognizer = Self.recognizer(driver, residency: .init())
     let first = Delivered()
     let a = try await Self.step("the first open", driver) {
-      try await recognizer.openSession(lookups: nil, onText: first.append)
+      try await recognizer.openSession(vocabulary: .init(lookups: nil, contextualPhrases: [], dictionaryEnabled: true), onText: first.append)
     }
     try await Self.step("the first feed", driver) { await a.feed(Self.speech) }
     await Self.within("the first session's decode", driver) {
@@ -218,7 +219,7 @@ struct TranscribeCppPreviewRecognizerTests {
     let stopping = Task { await a.end() }
     let second = Delivered()
     let opening = Task { () throws -> (any LivePreviewEngineSession, Int) in
-      let session = try await recognizer.openSession(lookups: nil, onText: second.append)
+      let session = try await recognizer.openSession(vocabulary: .init(lookups: nil, contextualPhrases: [], dictionaryEnabled: true), onText: second.append)
       return (session, driver.exited)
     }
     await Self.within("the old decode's cancellation reaching the boundary", driver) {
@@ -243,6 +244,39 @@ struct TranscribeCppPreviewRecognizerTests {
     #expect(driver.lanes.allSatisfy { $0 == .preview }, "load and decodes stay on the preview lane")
   }
 
+  @Test("Apple-only dictionary controls preserve Universal's original correction lookups")
+  func appleApplicationFlagDoesNotGateUniversal() async throws {
+    let driver = FakeDriver(text: "Hello aliasword.")
+    let recognizer = Self.recognizer(driver, residency: .init())
+    let (texts, delivered) = AsyncStream<String>.makeStream(bufferingPolicy: .bufferingNewest(1))
+    defer { delivered.finish(); driver.openAll() }
+    let lookups = WordCorrector.buildLookups(words: [
+      CustomWord(canonical: "PreviewWord", aliases: ["aliasword"])
+    ])
+    let session = try await Self.step("the dictionary-off Universal open", driver) {
+      try await recognizer.openSession(
+        vocabulary: .init(lookups: lookups, contextualPhrases: ["UnusedHint"], dictionaryEnabled: false),
+        onText: { text in delivered.yield(text); delivered.finish() })
+    }
+    do {
+      try await Self.step("the compatibility feed", driver) { await session.feed(Self.speech) }
+      await Self.within("the compatibility decode", driver) {
+        await driver.until { driver.entered == 1 }
+      }
+      driver.releaseAll()
+      let text = try await Self.step("the corrected Universal preview", driver) {
+        for await text in texts { return text }
+        throw CancellationError()
+      }
+      #expect(text == "Hello PreviewWord.")
+    } catch {
+      driver.openAll()
+      try? await Self.step("the compatibility failure cleanup", driver) { await session.end() }
+      throw error
+    }
+    try await Self.step("the compatibility end", driver) { await session.end() }
+  }
+
   @Test("a refused open releases the turnover, and the next open works once the model is admitted")
   func refusedOpenDoesNotWedge() async throws {
     let driver = FakeDriver()
@@ -250,13 +284,13 @@ struct TranscribeCppPreviewRecognizerTests {
     let recognizer = Self.recognizer(driver, admitted: { admitted.value }, residency: .init())
     await #expect(throws: TranscribeCppPreviewRuntime.LoadFailure.notAdmitted) {
       _ = try await Self.step("the refused open", driver) {
-        try await recognizer.openSession(lookups: nil, onText: { _ in })
+        try await recognizer.openSession(vocabulary: .init(lookups: nil, contextualPhrases: [], dictionaryEnabled: true), onText: { _ in })
       }
     }
     #expect(driver.loads == 0, "an unadmitted model is never loaded")
     admitted.value = true
     let session = try await Self.step("the admitted open", driver) {
-      try await recognizer.openSession(lookups: nil, onText: { _ in })
+      try await recognizer.openSession(vocabulary: .init(lookups: nil, contextualPhrases: [], dictionaryEnabled: true), onText: { _ in })
     }
     try await Self.step("the admitted session's end", driver) { await session.end() }
     #expect(driver.loads == 1)
@@ -279,7 +313,7 @@ struct TranscribeCppPreviewRecognizerTests {
       #expect(driver.loads == 1)
       #expect(residency.loadedCount == 1)
       session = try await Self.step("the recording's open", driver) {
-        try await engine.openSession(lookups: nil, onText: { _ in })
+        try await engine.openSession(vocabulary: .init(lookups: nil, contextualPhrases: [], dictionaryEnabled: true), onText: { _ in })
       }
     }
     try await Self.step("the recording's feed", driver) { await session.feed(Self.speech) }

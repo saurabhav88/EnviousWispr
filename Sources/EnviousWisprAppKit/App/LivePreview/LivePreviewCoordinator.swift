@@ -107,6 +107,7 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
 
   private let readSamples: LivePreviewSampleReader
   private let isPreviewOn: () -> Bool
+  private let isDictionaryOn: () -> Bool
   private let languageMode: () -> LanguageMode
   /// #3124: the English spelling IN FORCE (`EnglishSpelling.effective`), read with the route and
   /// the language when a recording starts. American by default, so a construction that does not
@@ -142,6 +143,7 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
 
   /// Lookups for `correctorVocabulary`, or `nil` when there is nothing to correct.
   private var correctorLookups: WordCorrector.Lookups?
+  private var contextualPhrases: [String] = []
 
   /// The generation `correctorLookups` was built for. **Optional, and that is
   /// load-bearing:** the seed `wireCustomWords` sends carries generation 0, and so
@@ -239,6 +241,7 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   private struct RecordingSnapshot {
     let route: LivePreviewEngineRoute
     let enabled: Bool
+    let dictionaryOn: Bool
     /// #3124: the preview language and spelling frozen WITH the route, so a setting changed while
     /// the session is still resolving applies to the next recording, and a new language can never
     /// be paired with the old spelling.
@@ -285,12 +288,14 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   init(
     readSamples: @escaping LivePreviewSampleReader,
     isPreviewOn: @escaping () -> Bool,
+    isDictionaryOn: @escaping () -> Bool,
     languageMode: @escaping () -> LanguageMode,
     englishSpelling: @escaping () -> EnglishSpelling = { .american },
     selectedRoute: @escaping () -> LivePreviewEngineRoute
   ) {
     self.readSamples = readSamples
     self.isPreviewOn = isPreviewOn
+    self.isDictionaryOn = isDictionaryOn
     self.languageMode = languageMode
     self.englishSpelling = englishSpelling
     self.selectedRoute = selectedRoute
@@ -383,7 +388,8 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
       // is not suppressed beyond that take.
       guard !isRemovingModel else {
         recordingSnapshot = RecordingSnapshot(
-          route: selectedRoute(), enabled: false, languageMode: languageMode(),
+          route: selectedRoute(), enabled: false, dictionaryOn: isDictionaryOn(),
+          languageMode: languageMode(),
           englishSpelling: englishSpelling())
         display = .off
         return
@@ -394,6 +400,7 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
       let route = selectedRoute()
       recordingSnapshot = RecordingSnapshot(
         route: route, enabled: route.isSupportedOnThisSystem() && isPreviewOn(),
+        dictionaryOn: isDictionaryOn(),
         languageMode: languageMode(), englishSpelling: englishSpelling())
 
       guard recordingSnapshot?.enabled == true else {
@@ -594,7 +601,10 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     do {
       // Read synchronously on the main actor at the moment the session opens, so
       // the session cannot start before the vocabulary reaches it.
-      session = try await engine.openSession(lookups: correctorLookups, onText: publish)
+      let vocabulary = LivePreviewVocabulary(
+        lookups: correctorLookups, contextualPhrases: contextualPhrases,
+        dictionaryEnabled: snapshot.dictionaryOn)
+      session = try await engine.openSession(vocabulary: vocabulary, onText: publish)
     } catch {
       guard isCurrent(generation) else { return }
       reportOutcome("open_failed", engine: route.telemetryEngineID)
@@ -914,6 +924,7 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     correctorLookups =
       correctorVocabulary.terms.isEmpty
       ? nil : WordCorrector.buildLookups(words: correctorVocabulary.terms)
+    contextualPhrases = ApplePreviewHints.build(from: correctorVocabulary.terms)
   }
 
   private func ensurePrepared(_ candidate: LivePreviewEngineCandidate) async -> Bool {

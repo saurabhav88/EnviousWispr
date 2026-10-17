@@ -64,6 +64,7 @@ struct LivePreviewCoordinatorTests {
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
       isPreviewOn: { previewOn },
+      isDictionaryOn: { true },
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in .blocked(.unsupportedSystem) }
     )
@@ -137,7 +138,7 @@ struct LivePreviewCoordinatorTests {
       init(stuck: Gate) { self.stuck = stuck }
       func prepare() async throws { await stuck.wait() }
       func openSession(
-        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+        vocabulary: LivePreviewVocabulary, onText: @escaping @Sendable (String) -> Void
       ) async throws -> any LivePreviewEngineSession {
         struct Idle: LivePreviewEngineSession {
           func feed(_ samples: [Float]) async {}
@@ -150,6 +151,7 @@ struct LivePreviewCoordinatorTests {
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
       isPreviewOn: { true },
+      isDictionaryOn: { true },
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in
         .ready(
@@ -228,7 +230,7 @@ struct LivePreviewCoordinatorTests {
       init(gate: Gate) { self.gate = gate }
       func prepare() async throws {}
       func openSession(
-        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+        vocabulary: LivePreviewVocabulary, onText: @escaping @Sendable (String) -> Void
       ) async throws -> any LivePreviewEngineSession {
         // Held INSIDE the open: past preparation, before the coordinator can
         // register a teardown for it.
@@ -244,6 +246,7 @@ struct LivePreviewCoordinatorTests {
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
       isPreviewOn: { true },
+      isDictionaryOn: { true },
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in
         .ready(
@@ -291,7 +294,7 @@ struct LivePreviewCoordinatorTests {
       init(opens: Opens) { self.opens = opens }
       func prepare() async throws {}
       func openSession(
-        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+        vocabulary: LivePreviewVocabulary, onText: @escaping @Sendable (String) -> Void
       ) async throws -> any LivePreviewEngineSession {
         opens.record()
         struct Idle: LivePreviewEngineSession {
@@ -304,6 +307,7 @@ struct LivePreviewCoordinatorTests {
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
       isPreviewOn: { true },
+      isDictionaryOn: { true },
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in
         .ready(
@@ -376,6 +380,7 @@ struct LivePreviewCoordinatorTests {
       let coordinator = LivePreviewCoordinator(
         readSamples: { _ in ([], 0) },
         isPreviewOn: { true },
+        isDictionaryOn: { true },
         languageMode: { .locked("en") },
         selectedRoute: {
           LivePreviewEngineRoute(
@@ -412,7 +417,7 @@ struct LivePreviewCoordinatorTests {
       final class ReadyEngine: LivePreviewEngine, @unchecked Sendable {
         func prepare() async throws {}
         func openSession(
-          lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+          vocabulary: LivePreviewVocabulary, onText: @escaping @Sendable (String) -> Void
         ) async throws -> any LivePreviewEngineSession {
           struct Idle: LivePreviewEngineSession {
             func feed(_ samples: [Float]) async {}
@@ -424,6 +429,7 @@ struct LivePreviewCoordinatorTests {
       let coordinator = LivePreviewCoordinator(
         readSamples: { _ in ([], 0) },
         isPreviewOn: { true },
+        isDictionaryOn: { true },
         languageMode: { .locked("en") },
         selectedRoute: previewRoute { _ in
           .ready(
@@ -499,7 +505,7 @@ struct LivePreviewCoordinatorTests {
         init(gate: Gate) { self.gate = gate }
         func prepare() async throws {}
         func openSession(
-          lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+          vocabulary: LivePreviewVocabulary, onText: @escaping @Sendable (String) -> Void
         ) async throws -> any LivePreviewEngineSession {
           await gate.wait()
           struct Idle: LivePreviewEngineSession {
@@ -513,6 +519,7 @@ struct LivePreviewCoordinatorTests {
       let coordinator = LivePreviewCoordinator(
         readSamples: { _ in ([], 0) },
         isPreviewOn: { true },
+        isDictionaryOn: { true },
         languageMode: { .locked("en") },
         selectedRoute: previewRoute { _ in
           .ready(
@@ -550,7 +557,7 @@ struct LivePreviewCoordinatorTests {
       final class FailingEngine: LivePreviewEngine, @unchecked Sendable {
         func prepare() async throws { throw Boom() }
         func openSession(
-          lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+          vocabulary: LivePreviewVocabulary, onText: @escaping @Sendable (String) -> Void
         ) async throws -> any LivePreviewEngineSession {
           throw Boom()
         }
@@ -558,6 +565,7 @@ struct LivePreviewCoordinatorTests {
       let coordinator = LivePreviewCoordinator(
         readSamples: { _ in ([], 0) },
         isPreviewOn: { true },
+        isDictionaryOn: { true },
         languageMode: { .locked("en") },
         selectedRoute: previewRoute { _ in
           .ready(
@@ -588,7 +596,7 @@ struct LivePreviewCoordinatorTests {
       final class OpenFailsEngine: LivePreviewEngine, @unchecked Sendable {
         func prepare() async throws {}
         func openSession(
-          lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+          vocabulary: LivePreviewVocabulary, onText: @escaping @Sendable (String) -> Void
         ) async throws -> any LivePreviewEngineSession {
           throw Boom()
         }
@@ -596,6 +604,7 @@ struct LivePreviewCoordinatorTests {
       let coordinator = LivePreviewCoordinator(
         readSamples: { _ in ([], 0) },
         isPreviewOn: { true },
+        isDictionaryOn: { true },
         languageMode: { .locked("en") },
         selectedRoute: previewRoute { _ in
           .ready(
@@ -682,7 +691,7 @@ struct LivePreviewCoordinatorTests {
     final class ReadyEngine: LivePreviewEngine, @unchecked Sendable {
       func prepare() async throws {}
       func openSession(
-        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+        vocabulary: LivePreviewVocabulary, onText: @escaping @Sendable (String) -> Void
       ) async throws -> any LivePreviewEngineSession {
         struct Idle: LivePreviewEngineSession {
           func feed(_ samples: [Float]) async {}
@@ -695,6 +704,7 @@ struct LivePreviewCoordinatorTests {
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
       isPreviewOn: { true },
+      isDictionaryOn: { true },
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in
         .ready(
@@ -725,7 +735,7 @@ struct LivePreviewCoordinatorTests {
     final class ReadyEngine: LivePreviewEngine, @unchecked Sendable {
       func prepare() async throws {}
       func openSession(
-        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+        vocabulary: LivePreviewVocabulary, onText: @escaping @Sendable (String) -> Void
       ) async throws -> any LivePreviewEngineSession {
         struct Idle: LivePreviewEngineSession {
           func feed(_ samples: [Float]) async {}
@@ -737,6 +747,7 @@ struct LivePreviewCoordinatorTests {
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
       isPreviewOn: { true },
+      isDictionaryOn: { true },
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in
         .ready(
@@ -827,7 +838,7 @@ struct LivePreviewCoordinatorTests {
       init(opens: Opens) { self.opens = opens }
       func prepare() async throws {}
       func openSession(
-        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+        vocabulary: LivePreviewVocabulary, onText: @escaping @Sendable (String) -> Void
       ) async throws -> any LivePreviewEngineSession {
         opens.record()
         struct Idle: LivePreviewEngineSession {
@@ -841,6 +852,7 @@ struct LivePreviewCoordinatorTests {
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
       isPreviewOn: { true },
+      isDictionaryOn: { true },
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in
         .ready(
@@ -895,6 +907,7 @@ struct LivePreviewCoordinatorTests {
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
       isPreviewOn: { true },
+      isDictionaryOn: { true },
       languageMode: { .locked("en") },
       selectedRoute: {
         // A DIFFERENT route object each read, exactly as the real provider will
@@ -954,6 +967,7 @@ struct LivePreviewCoordinatorTests {
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
       isPreviewOn: { toggle.isOn },
+      isDictionaryOn: { true },
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in
         resolved.bump()
@@ -988,6 +1002,7 @@ struct LivePreviewCoordinatorTests {
     let coordinator = LivePreviewCoordinator(
       readSamples: { await capture.getSamplesSnapshot(fromIndex: $0) },
       isPreviewOn: { false },
+      isDictionaryOn: { true },
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in .blocked(.unsupportedSystem) }
     )
@@ -1015,6 +1030,7 @@ struct LivePreviewCoordinatorTests {
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
       isPreviewOn: { true },
+      isDictionaryOn: { true },
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in .blocked(.unsupportedSystem) }
     )
@@ -1030,6 +1046,7 @@ struct LivePreviewCoordinatorTests {
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
       isPreviewOn: { true },
+      isDictionaryOn: { true },
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in .blocked(.unsupportedSystem) }
     )
@@ -1052,6 +1069,7 @@ struct LivePreviewCoordinatorTests {
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
       isPreviewOn: { true },
+      isDictionaryOn: { true },
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in .blocked(.unsupportedSystem) }
     )
@@ -1079,6 +1097,7 @@ struct LivePreviewCoordinatorTests {
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
       isPreviewOn: { true },
+      isDictionaryOn: { true },
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in .blocked(.unsupportedSystem) }
     )
@@ -1169,6 +1188,7 @@ struct LivePreviewCoordinatorTests {
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
       isPreviewOn: { true },
+      isDictionaryOn: { true },
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in
         let nth = await resolutions.next()
@@ -1222,6 +1242,7 @@ struct LivePreviewCoordinatorTests {
         return ([], 0)
       },
       isPreviewOn: { true },
+      isDictionaryOn: { true },
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in .blocked(.unsupportedLanguage) }
     )
@@ -1286,6 +1307,7 @@ struct LivePreviewCoordinatorTests {
     LivePreviewCoordinator(
       readSamples: readSamples,
       isPreviewOn: { true },
+      isDictionaryOn: { true },
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in
         .ready(
@@ -1370,6 +1392,7 @@ struct LivePreviewCoordinatorTests {
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
       isPreviewOn: { SettingsDefaultValues.livePreviewEnabled },
+      isDictionaryOn: { true },
       languageMode: { .locked("en") },
       selectedRoute: previewRoute(supported: engineRuns) { _ in .blocked(.unsupportedSystem) }
     )
@@ -1382,6 +1405,7 @@ struct LivePreviewCoordinatorTests {
     LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
       isPreviewOn: { true },
+      isDictionaryOn: { true },
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in .blocked(.unsupportedSystem) }
     )
@@ -1484,7 +1508,7 @@ struct LivePreviewCoordinatorTests {
     final class ReadyEngine: LivePreviewEngine, @unchecked Sendable {
       func prepare() async throws {}
       func openSession(
-        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+        vocabulary: LivePreviewVocabulary, onText: @escaping @Sendable (String) -> Void
       ) async throws -> any LivePreviewEngineSession {
         struct Idle: LivePreviewEngineSession {
           func feed(_ samples: [Float]) async {}
@@ -1499,6 +1523,7 @@ struct LivePreviewCoordinatorTests {
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
       isPreviewOn: { box.enabled },
+      isDictionaryOn: { true },
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in
         .ready(
@@ -1590,7 +1615,7 @@ struct LivePreviewCoordinatorTests {
       }
       func prepare() async throws {}
       func openSession(
-        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+        vocabulary: LivePreviewVocabulary, onText: @escaping @Sendable (String) -> Void
       ) async throws -> any LivePreviewEngineSession {
         opens.record()
         struct Gated: LivePreviewEngineSession {
@@ -1607,6 +1632,7 @@ struct LivePreviewCoordinatorTests {
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
       isPreviewOn: { box.enabled },
+      isDictionaryOn: { true },
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in
         .ready(
@@ -1723,7 +1749,7 @@ struct LivePreviewCoordinatorTests {
         if hangs { await stuck.wait() }
       }
       func openSession(
-        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+        vocabulary: LivePreviewVocabulary, onText: @escaping @Sendable (String) -> Void
       ) async throws -> any LivePreviewEngineSession {
         counts.recordOpen()
         struct Idle: LivePreviewEngineSession {
@@ -1739,6 +1765,7 @@ struct LivePreviewCoordinatorTests {
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
       isPreviewOn: { box.enabled },
+      isDictionaryOn: { true },
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in
         .ready(
@@ -1843,7 +1870,7 @@ struct LivePreviewCoordinatorTests {
       }
       func prepare() async throws {}
       func openSession(
-        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+        vocabulary: LivePreviewVocabulary, onText: @escaping @Sendable (String) -> Void
       ) async throws -> any LivePreviewEngineSession {
         counts.enterOpen()
         if hangs { await slowOpen.wait() }
@@ -1860,6 +1887,7 @@ struct LivePreviewCoordinatorTests {
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
       isPreviewOn: { box.enabled },
+      isDictionaryOn: { true },
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in
         .ready(
@@ -1916,7 +1944,7 @@ struct LivePreviewCoordinatorTests {
     final class ReadyEngine: LivePreviewEngine, @unchecked Sendable {
       func prepare() async throws {}
       func openSession(
-        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+        vocabulary: LivePreviewVocabulary, onText: @escaping @Sendable (String) -> Void
       ) async throws -> any LivePreviewEngineSession {
         struct Idle: LivePreviewEngineSession {
           func feed(_ samples: [Float]) async {}
@@ -1931,6 +1959,7 @@ struct LivePreviewCoordinatorTests {
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
       isPreviewOn: { true },
+      isDictionaryOn: { true },
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in
         if box.blocked { return .blocked(.heartIsStreaming) }
@@ -1972,7 +2001,7 @@ struct LivePreviewCoordinatorTests {
       init(onPrepared: @escaping @Sendable () -> Void) { self.onPrepared = onPrepared }
       func prepare() async throws { onPrepared() }
       func openSession(
-        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+        vocabulary: LivePreviewVocabulary, onText: @escaping @Sendable (String) -> Void
       ) async throws -> any LivePreviewEngineSession {
         struct Idle: LivePreviewEngineSession {
           func feed(_ samples: [Float]) async {}
@@ -1989,6 +2018,7 @@ struct LivePreviewCoordinatorTests {
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
       isPreviewOn: { box.enabled },
+      isDictionaryOn: { true },
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in
         .ready(
@@ -2026,7 +2056,7 @@ struct LivePreviewCoordinatorTests {
       init(onPrepared: @escaping @Sendable () -> Void) { self.onPrepared = onPrepared }
       func prepare() async throws { onPrepared() }
       func openSession(
-        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+        vocabulary: LivePreviewVocabulary, onText: @escaping @Sendable (String) -> Void
       ) async throws -> any LivePreviewEngineSession {
         struct Idle: LivePreviewEngineSession {
           func feed(_ samples: [Float]) async {}
@@ -2040,6 +2070,7 @@ struct LivePreviewCoordinatorTests {
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
       isPreviewOn: { true },
+      isDictionaryOn: { true },
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in
         .ready(
@@ -2067,7 +2098,7 @@ struct LivePreviewCoordinatorTests {
       init(onPrepared: @escaping @Sendable () -> Void) { self.onPrepared = onPrepared }
       func prepare() async throws { onPrepared() }
       func openSession(
-        lookups: WordCorrector.Lookups?, onText: @escaping @Sendable (String) -> Void
+        vocabulary: LivePreviewVocabulary, onText: @escaping @Sendable (String) -> Void
       ) async throws -> any LivePreviewEngineSession {
         struct Idle: LivePreviewEngineSession {
           func feed(_ samples: [Float]) async {}
@@ -2088,6 +2119,7 @@ struct LivePreviewCoordinatorTests {
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
       isPreviewOn: { box.enabled },
+      isDictionaryOn: { true },
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in
         .ready(
@@ -2118,6 +2150,77 @@ struct LivePreviewCoordinatorTests {
       "a disabled preview must not keep an engine — and with it a loaded model — cached")
   }
 
+  private func nextVocabulary(
+    _ probe: PreviewEngineProbe, sourceLocation: SourceLocation = #_sourceLocation
+  ) async throws -> LivePreviewVocabulary {
+    let received = await withDeadline(seconds: 5) { await probe.nextOpen() } ?? nil
+    if received == nil { await probe.finishOpens() }
+    return try #require(received, "the coordinator must submit its vocabulary", sourceLocation: sourceLocation)
+  }
+
+  @Test("Apple vocabulary is paired by generation, and its application flag freezes before preparation")
+  func pairedHintsAndFrozenApplication() async throws {
+    let probe = PreviewEngineProbe()
+    let gate = PreviewSetupGate()
+    var dictionaryOn = true
+    let engine = FakePreviewEngine(probe: probe, prepareGate: gate)
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isPreviewOn: { true },
+      isDictionaryOn: { dictionaryOn },
+      languageMode: { .locked("en") },
+      selectedRoute: previewRoute { _ in
+        .ready(LivePreviewEngineCandidate(
+          key: LivePreviewEngineKey(engine: "test", commitment: "en"),
+          makeEngine: { engine }))
+      })
+    defer {
+      coordinator.setRecording(false)
+      gate.release()
+    }
+    // No manually saved user word. Initial generation zero must still carry the learned word.
+    coordinator.correctorVocabulary = CorrectorVocabulary(terms: [
+      CustomWord(canonical: "BuiltinSeed", source: .builtin),
+      CustomWord(canonical: "LearnedSeed", learnedAt: Date(timeIntervalSince1970: 1)),
+    ], generation: 0)
+    coordinator.setRecording(true)
+    let parked = await gate.waitForEntry()
+    dictionaryOn = false
+    gate.release()
+    try #require(parked, "prepare must actually be suspended before the setting changes")
+    let first = try await nextVocabulary(probe)
+    #expect(first.dictionaryEnabled)
+    #expect(first.contextualPhrases == ["LearnedSeed", "BuiltinSeed"])
+    #expect(first.lookups?.canonicalToWord.values.map(\.canonical).sorted() == ["BuiltinSeed", "LearnedSeed"])
+    coordinator.setRecording(false)
+
+    // A changed library before open updates both halves, without reading the setting again.
+    coordinator.setRecording(true)
+    coordinator.correctorVocabulary = CorrectorVocabulary(terms: [
+      CustomWord(canonical: "NewSaved"),
+      CustomWord(canonical: "NewLearned", learnedAt: Date(timeIntervalSince1970: 2)),
+    ], generation: 1)
+    let second = try await nextVocabulary(probe)
+    #expect(second.dictionaryEnabled == false)
+    #expect(second.contextualPhrases == ["NewSaved", "NewLearned"])
+    #expect(second.lookups?.canonicalToWord.values.map(\.canonical).sorted() == ["NewLearned", "NewSaved"])
+    #expect(ApplePreviewHints.inputs(for: second).lookups == nil)
+    #expect(ApplePreviewHints.inputs(for: second).phrases == [])
+    #expect(second.lookups != nil, "the shared request retains Universal's original lookups")
+    coordinator.setRecording(false)
+
+    dictionaryOn = true
+    coordinator.correctorVocabulary = CorrectorVocabulary(terms: [], generation: 2)
+    coordinator.setRecording(true)
+    let cleared = try await nextVocabulary(probe)
+    #expect(cleared.dictionaryEnabled)
+    #expect(cleared.lookups == nil)
+    #expect(cleared.contextualPhrases == [])
+    coordinator.setRecording(false)
+    await coordinator.releaseAndDrainForRemoval()
+    await probe.finishOpens()
+  }
+
 }
 
 /// #2077 — what the coordinator actually did to whatever engine it was given.
@@ -2132,9 +2235,26 @@ private actor PreviewEngineProbe {
   private(set) var sawNonNilLookups = false
 
   func notePrepare() { prepareCalls += 1 }
-  func noteOpen(lookups: WordCorrector.Lookups?) {
+  private let opens: AsyncStream<LivePreviewVocabulary>
+  private let opened: AsyncStream<LivePreviewVocabulary>.Continuation
+
+  init() {
+    (opens, opened) = AsyncStream.makeStream(bufferingPolicy: .bufferingNewest(8))
+  }
+
+  deinit { opened.finish() }
+
+  func finishOpens() { opened.finish() }
+
+  func nextOpen() async -> LivePreviewVocabulary? {
+    for await vocabulary in opens { return vocabulary }
+    return nil
+  }
+
+  func noteOpen(vocabulary: LivePreviewVocabulary) {
     sessionsOpened += 1
-    if lookups != nil { sawNonNilLookups = true }
+    if vocabulary.lookups != nil { sawNonNilLookups = true }
+    opened.yield(vocabulary)
   }
   func noteEnd() { sessionsEnded += 1 }
   func noteFeed(_ count: Int) { samplesFed += count }
@@ -2163,14 +2283,23 @@ private struct FakePreviewSession: LivePreviewEngineSession {
 /// asserted anywhere except by hand.
 private struct FakePreviewEngine: LivePreviewEngine {
   let probe: PreviewEngineProbe
+  let prepareGate: PreviewSetupGate?
 
-  func prepare() async throws { await probe.notePrepare() }
+  init(probe: PreviewEngineProbe, prepareGate: PreviewSetupGate? = nil) {
+    self.probe = probe
+    self.prepareGate = prepareGate
+  }
+
+  func prepare() async throws {
+    await probe.notePrepare()
+    if let prepareGate { await prepareGate.pause() }
+  }
 
   func openSession(
-    lookups: WordCorrector.Lookups?,
+    vocabulary: LivePreviewVocabulary,
     onText: @escaping @Sendable (String) -> Void
   ) async throws -> any LivePreviewEngineSession {
-    await probe.noteOpen(lookups: lookups)
+    await probe.noteOpen(vocabulary: vocabulary)
     return FakePreviewSession(probe: probe)
   }
 }
