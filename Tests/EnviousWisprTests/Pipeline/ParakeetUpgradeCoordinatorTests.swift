@@ -50,33 +50,73 @@ struct ParakeetUpgradeCoordinatorTests {
     #expect(rig.selection.current == afterSettle, "a settled point is not prepared again")
   }
 
+  @Test("a pending selection point is prepared once before a direct load")
+  func prepareLoadConsumesOnePendingSelection() async throws {
+    let selection = ParakeetSelectionProvider()
+    let coordinator = ParakeetUpgradeCoordinator(parakeetSelection: selection, delivery: nil)
+    let gate = StageGate(maximumEntries: 1)
+    gate.open()
+    coordinator.deliveryStageGateForTesting = { await gate.pass() }
+    coordinator.markSelectionPoint()
+    coordinator.markSelectionPoint()  // a second launch poke coalesces
+    #expect(coordinator.hasPendingSelectionPoint)
+    let prepared = try await coordinator.prepareLoad()
+    #expect(gate.entries == 1)
+    #expect(coordinator.hasPendingSelectionPoint == false)
+    #expect(prepared.isSelectionLoad)
+    #expect(selection.current == prepared.selection)
+    if ParakeetInstallLocation.directoryFromSystemApplicationSupport() != nil {
+      #expect(prepared.selection?.generation == 1)
+    }
+  }
+
   @Test("a selection point marked after a preparation returned stays pending")
   func laterSelectionPointIsNotConsumedEarly() async throws {
     let selection = ParakeetSelectionProvider()
     let coordinator = ParakeetUpgradeCoordinator(parakeetSelection: selection, delivery: nil)
+    let gate = StageGate(maximumEntries: 1)
+    gate.open()
+    coordinator.deliveryStageGateForTesting = { await gate.pass() }
     coordinator.markSelectionPoint()
     _ = try await coordinator.prepareLoad()
+    #expect(gate.entries == 1)
     coordinator.markSelectionPoint()
     #expect(coordinator.hasPendingSelectionPoint)
   }
 
   @Test("a selection point marked DURING a preparation is settled before any caller returns")
   func markDuringPreparationIsSettledBeforeReturn() async throws {
-    let gate = StageGate()
-    let coordinator = ParakeetUpgradeCoordinator(
-      parakeetSelection: ParakeetSelectionProvider(), delivery: nil)
-    coordinator.deliveryStageGateForTesting = { await gate.pass() }
-    coordinator.markSelectionPoint()
-    let runner = Task { try await coordinator.prepareLoad() }
-    await gate.waitForEntry(1)
-    let joiner = Task { try await coordinator.prepareLoad() }
-    await gate.waitForParked(coordinator, 1)
-    coordinator.markSelectionPoint()  // arrives while the first stage runs
-    gate.open()
-    _ = try await runner.value
-    _ = try await joiner.value
-    #expect(gate.entries == 2, "the stage ran again for the point marked during it")
-    #expect(coordinator.hasPendingSelectionPoint == false)
+    for withJoiner in [false, true] {
+      let gate = StageGate(maximumEntries: 2)
+      let selection = ParakeetSelectionProvider()
+      let coordinator = ParakeetUpgradeCoordinator(
+        parakeetSelection: selection, delivery: nil)
+      coordinator.deliveryStageGateForTesting = { await gate.pass() }
+      coordinator.markSelectionPoint()
+      let runner = Task { try await coordinator.prepareLoad() }
+      await gate.waitForEntry(1)
+      let joiner = withJoiner
+        ? Task { try await coordinator.prepareLoad() } : nil
+      if withJoiner {
+        await gate.waitForParked(coordinator, 1)
+      }
+      coordinator.markSelectionPoint()
+      gate.open()
+      let runnerResult = await runner.result
+      let joinerResult = await joiner?.result
+      let prepared = try runnerResult.get()
+      #expect(prepared.isSelectionLoad == true)
+      #expect(prepared.selection == selection.current)
+      if let joinerResult {
+        let joined = try joinerResult.get()
+        #expect(joined.isSelectionLoad == prepared.isSelectionLoad)
+        #expect(joined.selection == selection.current)
+      }
+      #expect(
+        gate.entries == 2,
+        "the stage ran again for the point marked during it")
+      #expect(coordinator.hasPendingSelectionPoint == false)
+    }
   }
 
   @Test("cancelling a waiting caller cancels only that caller")
@@ -98,9 +138,10 @@ struct ParakeetUpgradeCoordinatorTests {
 
   @Test("a cancelled runner lets an uncancelled waiter run the stage itself")
   func cancelledRunnerHandsOverToAWaiter() async throws {
-    let gate = StageGate()
+    let gate = StageGate(maximumEntries: 2)
+    let selection = ParakeetSelectionProvider()
     let coordinator = ParakeetUpgradeCoordinator(
-      parakeetSelection: ParakeetSelectionProvider(), delivery: nil)
+      parakeetSelection: selection, delivery: nil)
     coordinator.deliveryStageGateForTesting = { await gate.pass() }
     let runner = Task { try await coordinator.prepareLoad() }
     await gate.waitForEntry(1)
@@ -108,9 +149,14 @@ struct ParakeetUpgradeCoordinatorTests {
     await gate.waitForParked(coordinator, 1)
     runner.cancel()
     gate.open()
-    await #expect(throws: CancellationError.self) { _ = try await runner.value }
-    _ = try await joiner.value
-    #expect(gate.entries == 2, "the waiter ran the stage after the runner's cancel")
+    let ownerResult = await runner.result
+    let joinedResult = await joiner.result
+    #expect(throws: CancellationError.self) { _ = try ownerResult.get() }
+    let prepared = try joinedResult.get()
+    #expect(prepared.selection == selection.current)
+    #expect(prepared.isSelectionLoad == true)
+    #expect(coordinator.hasPendingSelectionPoint == false)
+    #expect(gate.entries == 2)
   }
 }
 
@@ -122,16 +168,22 @@ struct ParakeetUpgradeCoordinatorTests {
 private final class StageGate {
   private(set) var entries = 0
   private var isOpen = false
+  private var expired = false
   private var parked = 0
   private var held: [CheckedContinuation<Void, Never>] = []
   private var entryWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
   private var parkWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
   private var deadlineTask: Task<Void, Never>?
+  private let maximumEntries: Int?
+  private let sourceLocation: SourceLocation
 
   init(
     deadline: Duration = .seconds(5),
+    maximumEntries: Int? = nil,
     sourceLocation: SourceLocation = #_sourceLocation
   ) {
+    self.maximumEntries = maximumEntries
+    self.sourceLocation = sourceLocation
     deadlineTask = Task { @MainActor [weak self] in
       do {
         // deadline-fallback: fail loudly and release a missing-signal wait.
@@ -143,7 +195,29 @@ private final class StageGate {
     }
   }
 
+  var heldCountForTesting: Int { held.count }
+
+  func waitForDeadlineForTesting() async {
+    await deadlineTask?.value
+  }
+
+  func expireForTesting() {
+    deadlineTask?.cancel()
+    failAndRelease(sourceLocation: sourceLocation)
+  }
+
+  private func rejectExpired(_ operation: String) -> Bool {
+    guard expired else { return false }
+    Issue.record(
+      "StageGate \(operation) arrived after deadline",
+      sourceLocation: sourceLocation)
+    return true
+  }
+
   private func failAndRelease(sourceLocation: SourceLocation) {
+    // Retain terminal expiry even when no waiter existed when the deadline fired.
+    guard expired == false else { return }
+    expired = true
     guard !held.isEmpty || !entryWaiters.isEmpty || !parkWaiters.isEmpty else {
       return
     }
@@ -167,12 +241,26 @@ private final class StageGate {
   func pass() async {
     entries += 1
     resumeReached(&entryWaiters, entries)
+    if let maximumEntries, entries > maximumEntries {
+      Issue.record(
+        "Repeated preparation: StageGate entered \(entries) times; maximum is \(maximumEntries)",
+        sourceLocation: sourceLocation)
+      withUnsafeCurrentTask { $0?.cancel() }
+      return
+    }
+    if rejectExpired("pass") {
+      withUnsafeCurrentTask { $0?.cancel() }
+      return
+    }
     if isOpen { return }
     await withCheckedContinuation { held.append($0) }
+    if expired {
+      withUnsafeCurrentTask { $0?.cancel() }
+    }
   }
 
   func open() {
-    isOpen = true
+    if expired == false { isOpen = true }
     let released = held
     held = []
     for continuation in released { continuation.resume() }
@@ -180,6 +268,7 @@ private final class StageGate {
 
   func waitForEntry(_ count: Int) async {
     if entries >= count { return }
+    if rejectExpired("waitForEntry") { return }
     await withCheckedContinuation { entryWaiters.append((count, $0)) }
   }
 
@@ -190,6 +279,7 @@ private final class StageGate {
       self.resumeReached(&self.parkWaiters, self.parked)
     }
     if parked >= count { return }
+    if rejectExpired("waitForParked") { return }
     await withCheckedContinuation { parkWaiters.append((count, $0)) }
   }
 
@@ -205,6 +295,93 @@ private final class StageGate {
 @MainActor
 @Suite(.tags(.harnessContract))
 struct ParakeetUpgradeStageGateTests {
+  @Test func pendingWaitExpiryCannotBeReopened() async {
+    for park in [false, true] {
+      var cancelled = false
+      await withKnownIssue("Pending expiry rejects reopening and its late pass") {
+        let gate = StageGate(deadline: .milliseconds(1))
+        let c = ParakeetUpgradeCoordinator(
+          parakeetSelection: ParakeetSelectionProvider(), delivery: nil)
+        defer { c.onWaiterParkedForTesting = nil }
+        if park { await gate.waitForParked(c, 1) }
+        else { await gate.waitForEntry(1) }
+        await gate.waitForDeadlineForTesting()
+        gate.open()
+        cancelled = await Task {
+          await gate.pass()
+          return Task.isCancelled
+        }.value
+      }
+      #expect(cancelled == true)
+      #expect(Task.isCancelled == false)
+    }
+  }
+
+  @Test func heldExpiryPropagatesThroughCoordinator() async throws {
+    var observedHeld = false
+    var result: Result<ParakeetUpgradeCoordinator.PreparedLoad, any Error>?
+    await withKnownIssue("Held subject expires") {
+      let gate = StageGate()
+      let c = ParakeetUpgradeCoordinator(
+        parakeetSelection: ParakeetSelectionProvider(), delivery: nil)
+      c.deliveryStageGateForTesting = { await gate.pass() }
+      defer {
+        gate.open()
+        c.deliveryStageGateForTesting = nil
+      }
+      let subject = Task { try await c.prepareLoad() }
+      await gate.waitForEntry(1)
+      observedHeld = gate.heldCountForTesting == 1
+      gate.expireForTesting()
+      result = await subject.result
+    }
+    #expect(observedHeld == true)
+    let completed = try #require(result)
+    #expect(throws: CancellationError.self) { _ = try completed.get() }
+    #expect(Task.isCancelled == false)
+  }
+
+  @Test func explicitOpenBeforeExpiryPermitsPass() async {
+    let gate = StageGate()
+    gate.open()
+    await gate.pass()
+    #expect(gate.entries == 1)
+    #expect(Task.isCancelled == false)
+  }
+
+  @Test func idleExpiryRejectsLateEntryWait() async {
+    let gate = StageGate(deadline: .milliseconds(1))
+    await gate.waitForDeadlineForTesting()
+    await withKnownIssue("Late entry wait must fail without hanging") {
+      await gate.waitForEntry(1)
+    }
+  }
+
+  @Test func idleExpiryRejectsLateParkWait() async {
+    let gate = StageGate(deadline: .milliseconds(1))
+    let coordinator = ParakeetUpgradeCoordinator(
+      parakeetSelection: ParakeetSelectionProvider(), delivery: nil)
+    defer { coordinator.onWaiterParkedForTesting = nil }
+    await gate.waitForDeadlineForTesting()
+    await withKnownIssue("Late park wait must fail without hanging") {
+      await gate.waitForParked(coordinator, 1)
+    }
+  }
+
+  @Test func idleExpiryCancelsLatePassSubject() async {
+    let gate = StageGate(deadline: .milliseconds(1))
+    await gate.waitForDeadlineForTesting()
+    var cancelled = false
+    await withKnownIssue("Late pass must fail and cancel its subject") {
+      cancelled = await Task {
+        await gate.pass()
+        return Task.isCancelled
+      }.value
+    }
+    #expect(cancelled == true)
+    #expect(Task.isCancelled == false)
+  }
+
   @Test func missingProgressRecordsAnIssueAndReleasesTheWaiter() async {
     await withKnownIssue("A missing progress signal must fail instead of hanging") {
       await ParakeetUpgradePolicyTests.ProgressRecorder().waitForAny(deadline: .milliseconds(1))
@@ -231,6 +408,257 @@ struct ParakeetUpgradeStageGateTests {
 @MainActor
 @Suite("Parakeet upgrade policy", .serialized, .tags(.productOutcome))
 struct ParakeetUpgradePolicyTests {
+
+  @Test("initial eligibility survives cancelled frozen successor takeover")
+  func initialEligibilitySurvivesOwnerTakeover() async throws {
+    let rig = try await Self.rig(v3: true, ultra: true)
+    let c = rig.coordinator
+    let stages = StageGate(maximumEntries: 3)
+    let wake1 = StageGate(maximumEntries: 1)
+    let reloadGate = StageGate(maximumEntries: 1)
+    var wakes = 0
+    c.deliveryStageGateForTesting = {
+      await stages.pass()
+      if stages.entries == 2 { await reloadGate.pass() }
+    }
+    c.preparationWakeGateForTesting = {
+      wakes += 1
+      if wakes == 1 { await wake1.pass() }
+    }
+    defer {
+      stages.open()
+      wake1.open()
+      reloadGate.open()
+      c.deliveryStageGateForTesting = nil
+      c.preparationWakeGateForTesting = nil
+      c.onWaiterParkedForTesting = nil
+      try? FileManager.default.removeItem(at: rig.root)
+    }
+
+    let owner = Task { try await c.prepareLoad() }
+    await stages.waitForEntry(1)
+    let waiter = Task { try await c.prepareLoad() }
+    await stages.waitForParked(c, 1)
+    stages.open()
+    let ownerResult = await owner.result
+    await wake1.waitForEntry(1)
+
+    let successor = Task { try await c.prepareLoad() }
+    await reloadGate.waitForEntry(1)
+    wake1.open()
+    await stages.waitForParked(c, 2)
+    successor.cancel()
+    reloadGate.open()
+    let successorResult = await successor.result
+    let waiterResult = await waiter.result
+
+    let initial = try ownerResult.get()
+    #expect(throws: CancellationError.self) {
+      _ = try successorResult.get()
+    }
+    let prepared = try waiterResult.get()
+    let request = try #require(initial.selection)
+    #expect(initial.isSelectionLoad == true)
+    #expect(prepared.selection == request)
+    #expect(rig.selection.current == request)
+    #expect(prepared.isSelectionLoad == true)
+    #expect(c.hasPendingSelectionPoint == false)
+    #expect(stages.entries == 3)
+    #expect(reloadGate.entries == 1)
+    #expect(wakes == 2)
+    #expect(Self.physicalLoad(rig, succeeds: false) == .loaded)
+    let plan = await c.handleLoadFailure(
+      prepared, error: VendorLoadFailed())
+    #expect(plan == .reload)
+    #expect(rig.selection.current?.model == .v3)
+  }
+
+  @Test("initial eligibility survives only identical-request frozen handoffs")
+  func initialEligibilitySurvivesFrozenHandoff() async throws {
+    for (newPoint, rejoin) in [(false, false), (true, false), (false, true)] {
+      let rig = try await Self.rig(v3: true, ultra: true)
+      let c = rig.coordinator
+      let stages = StageGate(maximumEntries: 3)
+      let wake1 = StageGate(maximumEntries: 1)
+      let wake2 = StageGate(maximumEntries: 1)
+      let reloadGate = StageGate(maximumEntries: 1)
+      var wakes = 0
+      c.deliveryStageGateForTesting = {
+        await stages.pass()
+        if rejoin, stages.entries == 2 { await reloadGate.pass() }
+      }
+      c.preparationWakeGateForTesting = {
+        wakes += 1
+        if wakes == 1 { await wake1.pass() }
+        else { await wake2.pass() }
+      }
+      defer {
+        stages.open()
+        wake1.open()
+        wake2.open()
+        reloadGate.open()
+        c.deliveryStageGateForTesting = nil
+        c.preparationWakeGateForTesting = nil
+        c.onWaiterParkedForTesting = nil
+        try? FileManager.default.removeItem(at: rig.root)
+      }
+      let owner = Task { try await c.prepareLoad() }
+      await stages.waitForEntry(1)
+      let waiter = Task { try await c.prepareLoad() }
+      await stages.waitForParked(c, 1)
+      stages.open()
+      let ownerResult = await owner.result
+      await wake1.waitForEntry(1)
+
+      var intermediate: [Result<ParakeetUpgradeCoordinator.PreparedLoad, any Error>] = []
+      if newPoint {
+        c.markSelectionPoint()
+        intermediate.append(await Task { try await c.prepareLoad() }.result)
+      }
+      if rejoin {
+        let reload = Task { try await c.prepareLoad() }
+        await reloadGate.waitForEntry(1)
+        wake1.open()
+        await stages.waitForParked(c, 2)
+        reloadGate.open()
+        intermediate.append(await reload.result)
+        await wake2.waitForEntry(1)
+      }
+      let freshResult = await Task { try await c.prepareLoad() }.result
+      wake1.open()
+      wake2.open()
+      let joinedResult = await waiter.result
+
+      let initial = try ownerResult.get()
+      for result in intermediate { _ = try result.get() }
+      let fresh = try freshResult.get()
+      let joined = try joinedResult.get()
+      #expect(initial.isSelectionLoad == true)
+      #expect(fresh.isSelectionLoad == false)
+      #expect(joined.selection == rig.selection.current)
+      #expect(joined.selection == fresh.selection)
+      #expect(joined.isSelectionLoad == (newPoint == false))
+      if newPoint {
+        #expect(joined.selection != initial.selection)
+      } else {
+        #expect(joined.selection == initial.selection)
+      }
+      #expect(stages.entries == (newPoint || rejoin ? 3 : 2))
+      #expect(c.hasPendingSelectionPoint == false)
+      #expect(Self.physicalLoad(rig, succeeds: false) == .loaded)
+      let plan = await c.handleLoadFailure(joined, error: VendorLoadFailed())
+      // A changed request is no longer this waiter's selection load: it may repair
+      // and reload Ultra, but must not fall back to v3. The model assertion below
+      // binds that distinction.
+      #expect(plan == .reload)
+      #expect(rig.selection.current?.model == (newPoint ? .ultra : .v3))
+    }
+  }
+
+  @Test("cancelling a wake-held waiter preserves the owner request")
+  func cancellationWhileWakeHeld() async throws {
+    let rig = try await Self.rig(v3: true, ultra: true)
+    let c = rig.coordinator
+    let stage = StageGate(maximumEntries: 1)
+    let wake = StageGate(maximumEntries: 1)
+    var outcomes: [ParakeetUpgradeCoordinator.Outcome] = []
+    c.onOutcome = { outcomes.append($0) }
+    c.deliveryStageGateForTesting = { await stage.pass() }
+    c.preparationWakeGateForTesting = { await wake.pass() }
+    defer {
+      stage.open()
+      wake.open()
+      c.deliveryStageGateForTesting = nil
+      c.preparationWakeGateForTesting = nil
+      c.onWaiterParkedForTesting = nil
+      c.onOutcome = nil
+      try? FileManager.default.removeItem(at: rig.root)
+    }
+
+    let owner = Task { try await c.prepareLoad() }
+    await stage.waitForEntry(1)
+    let joiner = Task { try await c.prepareLoad() }
+    await stage.waitForParked(c, 1)
+    stage.open()
+    let ownerResult = await owner.result
+    await wake.waitForEntry(1)
+    let beforeCancel = rig.selection.current
+    joiner.cancel()
+    wake.open()
+    let joinedResult = await joiner.result
+
+    let prepared = try ownerResult.get()
+    #expect(throws: CancellationError.self) {
+      _ = try joinedResult.get()
+    }
+    #expect(prepared.selection == beforeCancel)
+    #expect(prepared.isSelectionLoad == true)
+    #expect(rig.selection.current == beforeCancel)
+    #expect(rig.selection.current?.model == .ultra)
+    #expect(c.hasPendingSelectionPoint == false)
+    #expect(stage.entries == 1)
+    #expect(wake.entries == 1)
+    #expect(outcomes.contains(.fellBackToV3) == false)
+  }
+
+  @Test("a delayed joiner receives the newer failure without a third stage")
+  func delayedJoinerReceivesNewerFailure() async throws {
+    let rig = try await Self.rig(v3: false, ultra: true, enabled: false)
+    defer { try? FileManager.default.removeItem(at: rig.root) }
+    // No v3 handle: these delivery-off decisions contain no transport await.
+    let coordinator = ParakeetUpgradeCoordinator(
+      parakeetSelection: rig.selection, delivery: nil,
+      target: .init(
+        delivery: rig.ultra, store: rig.store, ownedModelsRoot: rig.models))
+    let gate = StageGate(maximumEntries: 2)
+    coordinator.deliveryStageGateForTesting = {
+      await gate.pass()
+      if gate.entries == 2 {
+        do {
+          try rig.store.write(.init(
+            attempts: 0, refetchSpent: false, exhausted: true, declined: false))
+        } catch {
+          Issue.record(error)
+        }
+      }
+    }
+    coordinator.markSelectionPoint()
+    let runner = Task { try await coordinator.prepareLoad() }
+    await gate.waitForEntry(1)
+    let joiner = Task { try await coordinator.prepareLoad() }
+    await gate.waitForParked(coordinator, 1)
+    coordinator.markSelectionPoint()
+    gate.open()
+    let ownerResult = await runner.result
+    let joinedResult = await joiner.result
+    let expected = ParakeetUpgradeUnavailableError(reason: "exhausted")
+    #expect(throws: expected) { _ = try ownerResult.get() }
+    #expect(throws: expected) { _ = try joinedResult.get() }
+    #expect(gate.entries == 2)
+    #expect(coordinator.hasPendingSelectionPoint)
+    #expect(rig.selection.current == nil)
+
+    // A later fresh invocation must not reuse the retained failure.
+    coordinator.deliveryStageGateForTesting = nil
+    try coordinator.retry()
+    let recovered = try await coordinator.prepareLoad()
+    #expect(recovered.selection == rig.selection.current)
+    #expect(recovered.selection?.model == .ultra)
+    #expect(recovered.isSelectionLoad == true)
+    #expect(coordinator.hasPendingSelectionPoint == false)
+  }
+
+  @Test("a fresh preparation retains frozen reload semantics")
+  func completedPreparationPreservesFrozenReload() async throws {
+    let rig = try await Self.rig(v3: false, ultra: true)
+    defer { try? FileManager.default.removeItem(at: rig.root) }
+    let initial = try await rig.coordinator.prepareLoad()
+    #expect(initial.isSelectionLoad == true)
+    let reload = try await rig.coordinator.prepareLoad()
+    #expect(reload.selection == initial.selection)
+    #expect(reload.selection == rig.selection.current)
+    #expect(reload.isSelectionLoad == false)
+  }
   final class WriteSwitch: @unchecked Sendable {
     var failing = false
     private var failCall: Int?
