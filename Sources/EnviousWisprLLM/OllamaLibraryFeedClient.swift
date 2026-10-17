@@ -61,8 +61,15 @@ package struct OllamaLibraryFeedClient: Sendable {
 
     private static func fileTransport(path: String) -> OllamaCloudCatalogClient.Transport {
       { request, maximumBytes in
-        let data = try Data(contentsOf: URL(fileURLWithPath: path))
-        guard data.count <= maximumBytes, let url = request.url,
+        guard maximumBytes >= 0, maximumBytes < Int.max else {
+          throw CloudCatalogError.invalidResponse
+        }
+        // Bound the READ, not just the result: a huge file must not be loaded before it is refused.
+        let handle = try FileHandle(forReadingFrom: URL(fileURLWithPath: path))
+        defer { try? handle.close() }
+        let data = try handle.read(upToCount: maximumBytes + 1) ?? Data()
+        guard data.count <= maximumBytes else { throw CloudCatalogError.responseTooLarge }
+        guard let url = request.url,
           let response = HTTPURLResponse(
             url: url, statusCode: 200, httpVersion: nil, headerFields: nil)
         else { throw CloudCatalogError.invalidResponse }

@@ -378,8 +378,8 @@ struct OllamaSetupServiceLibraryFeedTests {
   /// check can stop it starting a second request. The release is queued as a task BEFORE the inline
   /// call; it cannot run until the inline call suspends, and by then that call has already reached
   /// `await existing.value`. Without the single-flight guard the inline call starts a second request,
-  /// which waits for a second release that never comes, so the hang guard fires and the call count
-  /// fails the test.
+  /// which also completes once the release stream is finished, so the request count becomes two
+  /// and fails the assertion.
   @Test("a forced refresh during an in-flight request joins it instead of starting another")
   func singleFlight() async throws {
     let script = Script()
