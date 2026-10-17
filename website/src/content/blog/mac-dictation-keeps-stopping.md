@@ -19,7 +19,7 @@ faqs:
   - question: "How do I stop Mac dictation from ending when I pause?"
     answer: "Keep each pause under 30 seconds. Apple's current Dictation settings list no option to change that timeout. If dictation ends during much shorter pauses, or while you are still talking, check the microphone source in Keyboard settings and follow Apple's troubleshooting guide for your version of macOS."
   - question: "Is there a way to dictate long passages on a Mac without it cutting out?"
-    answer: "Yes. EnviousWispr lets you lock recording with a double-press of your keybind and speak naturally. Hands-free recording continues through thinking pauses when Stop recording on silence is off, its default setting. If you enable that setting, a pause can end recording. A recording can last up to one hour. It then polishes the text and pastes it where you are working, and transcription runs on-device on Apple Silicon, so your voice never leaves your Mac."
+    answer: "Yes. EnviousWispr lets you lock recording with a double-press of your keybind and speak naturally. Hands-free recording continues through thinking pauses when Stop recording on silence is off, its default setting. If you enable that setting, a pause can end recording. A recording can last up to one hour. It can then polish the text and paste it where you are working, and transcription runs on-device on Apple Silicon, so your voice never leaves your Mac."
   - question: "Is the fix free?"
     answer: "Checking the built-in dictation settings costs nothing. EnviousWispr is also free to download, with no account and no subscription."
 ---
