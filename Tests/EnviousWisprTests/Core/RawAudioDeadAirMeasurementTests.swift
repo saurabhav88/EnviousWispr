@@ -140,4 +140,32 @@ struct RawAudioDeadAirMeasurementTests {
     let window = try! #require(measured.maxWindowRMS)
     #expect(whole == window, "a sub-window buffer's loudest window is the whole buffer")
   }
+
+  // MARK: #3834 advisory bar
+
+  /// When this fails, the user sees "Audio isn't capturing" after a short tap
+  /// or a quiet-room take, or misses it on a long genuinely dead take. Each row
+  /// sits on one side of one boundary: 30 ticks, a peak strictly under 0.0018,
+  /// a missing tick reading, and a disabled bar.
+  @Test(
+    "meetsAdvisoryBar selects only long takes that stayed below the peak bar",
+    arguments: [
+      // (label, visibleTicks, minimumTicks, peak, expected)
+      ("one tick short", UInt64(29), 30, Float(0), false),
+      ("exactly the duration bar, digital zero", UInt64(30), 30, Float(0), true),
+      ("just under the peak bar", UInt64(30), 30, Float(0.00179), true),
+      ("peak equal to the bar", UInt64(30), 30, Float(0.0018), false),
+      ("missing tick reading", nil, 30, Float(0), false),
+      ("long but louder than the bar", UInt64(600), 30, Float(0.005), false),
+      ("disabled bar", UInt64(600), 0, Float(0), false),
+    ] as [(String, UInt64?, Int, Float, Bool)]
+  )
+  func advisoryBar(
+    label: String, visibleTicks: UInt64?, minimumTicks: Int, peak: Float, expected: Bool
+  ) {
+    #expect(
+      RawAudioDeadAirClassifier.meetsAdvisoryBar(
+        visibleTicks: visibleTicks, minimumTicks: minimumTicks, peak: peak) == expected,
+      "\(label)")
+  }
 }

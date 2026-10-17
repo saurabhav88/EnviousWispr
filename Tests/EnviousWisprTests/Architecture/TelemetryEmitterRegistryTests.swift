@@ -200,8 +200,11 @@ struct TelemetryEmitterRegistryTests {
   /// event's row stays `ungraded`, unchanged.
   /// #3735: `settingsChangeBlocked`'s `whisperKitState:` parameter is `whisperState:` (the
   /// property is `whisper_state`). Same event, site count, cadence and meaning.
+  /// #3834: `vadGateNoSpeech` gains an `advisoryEligible:` parameter (property
+  /// `advisory_eligible`). Same event, one site, cadence `per_take`, same population (every
+  /// dead-air exit); the row stays `ungraded`, unchanged.
   static let sitesFingerprint =
-    "63cf42bfdd3fe3144c01d5a86522585cfe4ceb5d3c08d59c128ad7b935aa198c"
+    "b51e04b23004d95ac636b90f35d07a3e2334de4b7da510c2f96a1374953d383a"
   static let ungradedFingerprint =
     "8c5e46c2f2f7fb59004bb2eb5ea1ac210ef32dbb79fdcb68b3eff70a28cc133f"
 

@@ -24,6 +24,33 @@ public enum RawAudioDeadAirClassifier {
     public static let windowSamples = 640
   }
 
+  /// #3834: when a dead-air take is worth telling the user about.
+  /// Short takes and quiet working microphones can also fall below the
+  /// dead-air floors. Select the advisory only when visible recording reaches
+  /// the duration bar and peak stays strictly below the peak bar.
+  /// Presentation only: this does not establish whether speech occurred or
+  /// whether the microphone worked, and never changes routing into ASR.
+  public enum AdvisoryBar {
+    /// Visible recording time required, based on superwhisper 3.0.0's
+    /// measured 3.0-second dictation window (#3834).
+    public static let minimumDurationSeconds: Double = 3.0
+    /// Peak absolute amplitude required, based on superwhisper's 0x3aebedfa.
+    /// This lies between the measured analog-muted headset peaks
+    /// (0.0005-0.0010) and measured live-room peaks (0.0042 or more).
+    public static let maximumPeak: Float = 0.0018
+  }
+
+  /// #3834: true when a dead-air take meets the advisory bar. `visibleTicks` is
+  /// the kernel's visible-recording elapsed time in its own tick unit and
+  /// `minimumTicks` the bar converted to that unit by the caller. A missing
+  /// reading or a disabled bar selects silence: the goal is fewer false alarms.
+  public static func meetsAdvisoryBar(visibleTicks: UInt64?, minimumTicks: Int, peak: Float)
+    -> Bool
+  {
+    guard let visibleTicks, minimumTicks > 0 else { return false }
+    return visibleTicks >= UInt64(minimumTicks) && peak < AdvisoryBar.maximumPeak
+  }
+
   /// What `measure` observed while classifying a buffer (#1845).
   ///
   /// Both RMS values are OPTIONAL because the classification short-circuits:

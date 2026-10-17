@@ -35,6 +35,11 @@ import Testing
     // above stay the only ones, and they are the genuinely absent-audio cases.
     #expect(KernelDictationDriver.advisoryReason(for: .asrEmptyDespiteAudio) == nil)
     #expect(KernelDictationDriver.advisoryReason(for: .noSpeech(.emptyAfterProcessing)) == nil)
+    // #3834: dead air below the advisory bar (a short tap, or a take whose
+    // peak reached the bar) is the same moment for the user and stays silent;
+    // only `.vadGate`, selected above the bar, keeps the advisory (positive arm
+    // above).
+    #expect(KernelDictationDriver.advisoryReason(for: .noSpeech(.vadGateSilent)) == nil)
 
     // NEGATIVE — genuinely our software. These keep "Audio capture error.
     // Try again." `.captureStalled` is here deliberately: the mid-take death

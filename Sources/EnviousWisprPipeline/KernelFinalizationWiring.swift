@@ -343,6 +343,15 @@ struct KernelFinalizationWiring {
   /// within every window.
   static let tickDurationSeconds: Double = 0.1
 
+  /// #3834: the dead-air advisory bar's duration in kernel ticks. The seconds
+  /// value is owned by `RawAudioDeadAirClassifier.AdvisoryBar`; this is the one
+  /// conversion to the kernel's tick unit (3.0 s / 0.1 s = 30 ticks). Both the
+  /// kernel initializer default and the factory read it, so no literal exists.
+  static var deadAirAdvisoryMinimumTicks: Int {
+    Int((RawAudioDeadAirClassifier.AdvisoryBar.minimumDurationSeconds / tickDurationSeconds)
+      .rounded())
+  }
+
   /// Wedge window in ticks: `10 x 100 ms = 1.0 s`. Above `LoadProgressWatcher`'s
   /// default 0.8 s silence floor (`silenceFloorSeconds` init default) with a
   /// 200 ms margin —

@@ -1588,13 +1588,20 @@ public final class TelemetryService {
     captureNativeRateHz: Double?,
     captureNativeChannelCount: Int?,
     captureInputChannel: Int?,
-    takeID: String?
+    takeID: String?,
+    advisoryEligible: Bool
   ) {
     let event = "audio.vad_gate_no_speech"
+    // #3834: `advisory_eligible` is whether this dead-air take SELECTED the
+    // "Audio isn't capturing" advisory (true only above the advisory bar). It
+    // is selection, not confirmed display: a higher-priority terminal reason
+    // can still own the pill. Rows from releases before #3834 lack it, and
+    // there every dead-air take was eligible.
     var props: [String: Any] = [
       "backend": backend,
       "mode": mode,
       "raw_sample_count": rawSampleCount,
+      "advisory_eligible": advisoryEligible,
     ]
     // Float -> Double at the boundary: PostHog carries numbers as Double and the
     // DEBUG hook has a Double bucket and no Float one.
@@ -1632,9 +1639,12 @@ public final class TelemetryService {
       ] {
         if let value = props[key] as? Double { doubleProps[key] = value }
       }
+      var boolProps: [String: Bool] = [:]
+      if let value = props["advisory_eligible"] as? Bool { boolProps["advisory_eligible"] = value }
       testEventHook?(
         CapturedTelemetryEvent(
-          name: event, stringProps: stringProps, intProps: intProps, doubleProps: doubleProps))
+          name: event, stringProps: stringProps, intProps: intProps, doubleProps: doubleProps,
+          boolProps: boolProps))
       // Unlike `zeroSignalRefused`, this event DOES write a log line: #1845's Live
       // UAT needs a local witness it can correlate to the PostHog row by take key,
       // and verifying through PostHog alone is what made the sibling's UAT hard.
@@ -1645,7 +1655,7 @@ public final class TelemetryService {
             + "wholeRms=\(wholeBufferRMS.map { "\($0)" } ?? "nil") "
             + "maxWindowRms=\(maxWindowRMS.map { "\($0)" } ?? "nil") "
             + "transport=\(effectiveTransport ?? "nil") kind=\(inputDeviceKind ?? "nil") "
-            + "take=\(takeID ?? "nil")",
+            + "take=\(takeID ?? "nil") advisory=\(advisoryEligible)",
           level: .info, category: "Telemetry")
       }
     #endif

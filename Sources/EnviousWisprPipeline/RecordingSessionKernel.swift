@@ -216,6 +216,11 @@ enum NoSpeechSource: Equatable, Sendable {
   /// ASR returned empty text on a path where VAD did NOT firmly say speech
   /// (`TP:902` — "ASR empty (no speech detected)").
   case asrEmptyNoSpeech
+  /// #3834: the VAD gate fired on dead air that does NOT meet
+  /// `RawAudioDeadAirClassifier.AdvisoryBar` (a short take, or one whose peak
+  /// reached the bar). ASR is skipped exactly as for `.vadGate`, but the take
+  /// ends silently: no advisory (founder 2026-10-16, fewer false alarms).
+  case vadGateSilent
   /// #1358: the limb chain produced no lexical content (a bare filler / non-
   /// speech artifact — the recognizer's whole output was a filler like "uh").
   /// The finalization wiring already delivered any recoverable deterministic
@@ -390,6 +395,14 @@ final class RecordingSessionKernel {
   /// PR-4b production wiring; the non-zero default makes the safety opt-OUT,
   /// not opt-in.
   private let minimumRecordingTicks: Int
+
+  /// #3834: visible-recording ticks a dead-air take must reach before the
+  /// advisory can be selected (`RawAudioDeadAirClassifier.meetsAdvisoryBar`).
+  /// Same clock and subtraction as `minimumRecordingTicks`. The default is the
+  /// production conversion, so test constructions inherit the real bar; a
+  /// simulator that never advances its clock therefore sees every dead-air take
+  /// as short, which is the silent ending.
+  private let deadAirAdvisoryMinimumTicks: Int
 
   // MARK: Telemetry fan-out
 
@@ -1033,6 +1046,7 @@ final class RecordingSessionKernel {
     transcriptionCheckpoint: @escaping @MainActor (TranscriptionCheckpointEvent) -> Void = { _ in },
     wedgeStallTicks: Int = 2,
     minimumRecordingTicks: Int = 5,
+    deadAirAdvisoryMinimumTicks: Int = KernelFinalizationWiring.deadAirAdvisoryMinimumTicks,
     zombieZeroPeakTelemetry: @escaping @MainActor (ZeroPeakContext) -> Void = { _ in },
     captureTelemetry: CaptureTelemetryState? = nil,
     deadMicRetireAttemptTelemetry: @escaping @MainActor (DeadMicRetireAttemptContext) -> Void = {
@@ -1090,6 +1104,7 @@ final class RecordingSessionKernel {
     self.transcriptionCheckpoint = transcriptionCheckpoint
     self.wedgeStallTicks = wedgeStallTicks
     self.minimumRecordingTicks = minimumRecordingTicks
+    self.deadAirAdvisoryMinimumTicks = deadAirAdvisoryMinimumTicks
     self.zombieZeroPeakTelemetry = zombieZeroPeakTelemetry
     self.captureTelemetry = captureTelemetry ?? CaptureTelemetryState()
     self.deadMicRetireAttemptTelemetry = deadMicRetireAttemptTelemetry
@@ -2443,6 +2458,19 @@ final class RecordingSessionKernel {
             level: .verbose, category: "Pipeline"
           )
         }
+        // #3834: dead air alone no longer selects the advisory. Only a take
+        // that ran long AND stayed below the bar speaks; every other dead-air
+        // take ends silently. Visible ticks use the same latched pair and
+        // subtraction as `elapsedSubMinimum` above; a missing tick selects
+        // silence. ASR is skipped on both branches.
+        let visibleTicks: UInt64? = {
+          guard let started = recordingStartedAtTick, let stopped = stoppingStartedAtTick
+          else { return nil }
+          return stopped &- started
+        }()
+        let advisoryEligible = RawAudioDeadAirClassifier.meetsAdvisoryBar(
+          visibleTicks: visibleTicks, minimumTicks: deadAirAdvisoryMinimumTicks,
+          peak: rawPeakAudioLevel)
         // GAP 3 app.log parity: VAD-gate skip log (TP:800-804) — gives debug
         // log readers a clear marker for "user pressed without speaking."
         let peak = rawPeakAudioLevel
@@ -2450,11 +2478,12 @@ final class RecordingSessionKernel {
         Task {
           await AppLogger.shared.log(
             "VAD gate: no speech, skipping ASR "
-              + "(samples=\(cnt), peak=\(String(format: "%.4f", peak)))",
+              + "(samples=\(cnt), peak=\(String(format: "%.4f", peak)), "
+              + "advisory=\(advisoryEligible))",
             level: .info, category: "Pipeline"
           )
         }
-        finishTerminal(.noSpeech(.vadGate), sid: sid)
+        finishTerminal(.noSpeech(advisoryEligible ? .vadGate : .vadGateSilent), sid: sid)
         return
       }
       // Faint speech: zero VAD segments but raw energy above the dead-air floor.

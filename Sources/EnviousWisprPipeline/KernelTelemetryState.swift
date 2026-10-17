@@ -208,7 +208,8 @@ struct KernelNoSpeechTelemetry {
   /// #1845 — the two energy values `RawAudioDeadAirClassifier.measure` compared
   /// against their floors. Optional because the classification short-circuits;
   /// `nil` means NOT COMPUTED, never "computed as zero". Populated only on the
-  /// `.vadGate` route, which is the only one that runs the classifier — the
+  /// dead-air gate (`.vadGate` and #3834's `.vadGateSilent`, the only routes that
+  /// run the classifier) — the
   /// `.asrEmptyNoSpeech` stamp leaves them nil and that is correct, not a gap.
   /// #1920: `.asrEmptyDespiteAudio` likewise leaves them nil here — its energy
   /// numbers reach telemetry through the frozen `signalAttribution` snapshot,

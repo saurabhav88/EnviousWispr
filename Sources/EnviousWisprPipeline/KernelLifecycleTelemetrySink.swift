@@ -65,7 +65,7 @@ final class KernelLifecycleTelemetrySink {
       _ wholeBufferRMS: Float?, _ maxWindowRMS: Float?, _ durationMs: Int?,
       _ effectiveTransport: String?, _ selectedTransport: String?, _ inputSelectionMode: String?,
       _ inputDeviceKind: String?, _ captureNativeRateHz: Double?, _ captureNativeChannelCount: Int?,
-      _ captureInputChannel: Int?, _ takeID: String?
+      _ captureInputChannel: Int?, _ takeID: String?, _ advisoryEligible: Bool
     ) -> Void
 
   /// #1884 `dictation.started` — the denominator. Deliberately minimal: this
@@ -233,7 +233,8 @@ final class KernelLifecycleTelemetrySink {
     vadGateNoSpeech: @escaping VADGateNoSpeechSink = {
       backend, mode, rawSampleCount, peakAudioLevel, wholeBufferRMS, maxWindowRMS, durationMs,
       effectiveTransport, selectedTransport, inputSelectionMode, inputDeviceKind,
-      captureNativeRateHz, captureNativeChannelCount, captureInputChannel, takeID in
+      captureNativeRateHz, captureNativeChannelCount, captureInputChannel, takeID,
+      advisoryEligible in
       TelemetryService.shared.vadGateNoSpeech(
         backend: backend, mode: mode, rawSampleCount: rawSampleCount,
         peakAudioLevel: peakAudioLevel, wholeBufferRMS: wholeBufferRMS,
@@ -242,7 +243,8 @@ final class KernelLifecycleTelemetrySink {
         inputSelectionMode: inputSelectionMode, inputDeviceKind: inputDeviceKind,
         captureNativeRateHz: captureNativeRateHz,
         captureNativeChannelCount: captureNativeChannelCount,
-        captureInputChannel: captureInputChannel, takeID: takeID)
+        captureInputChannel: captureInputChannel, takeID: takeID,
+        advisoryEligible: advisoryEligible)
     },
     dictationStarted: @escaping DictationStartedSink = { takeID, backend, model in
       TelemetryService.shared.dictationStarted(takeID: takeID, backend: backend, model: model)
@@ -571,7 +573,10 @@ final class KernelLifecycleTelemetrySink {
       // r7 — emit the source-appropriate breadcrumb to preserve PR-1's exact
       // name/string rule. VAD-gate path = TP:787; ASR-empty no-speech = TP:902.
       switch source {
-      case .vadGate:
+      case .vadGate, .vadGateSilent:
+        // #3834: both dead-air sources keep the SAME breadcrumb and tally, so
+        // the event still counts every dead-air exit; `advisoryEligible` says
+        // which one selected the advisory (selection, not confirmed display).
         // #1845: ONE computation, TWO records. The breadcrumb is unchanged in
         // name and stage; the tally is new and is the only countable evidence
         // this terminal has ever produced — a breadcrumb is attached to a later
@@ -586,7 +591,7 @@ final class KernelLifecycleTelemetrySink {
           facts.wholeBufferRMS, facts.maxWindowRMS, facts.durationMs,
           facts.effectiveTransport, facts.selectedTransport, facts.inputSelectionMode,
           facts.inputDeviceKind, facts.captureNativeRateHz, facts.captureNativeChannelCount,
-          facts.captureInputChannel, facts.takeID)
+          facts.captureInputChannel, facts.takeID, source == .vadGate)
       case .asrEmptyNoSpeech:
         breadcrumb(
           "asr", "ASR empty (no speech detected)",
@@ -820,7 +825,8 @@ final class KernelLifecycleTelemetrySink {
     return payload
   }
 
-  /// #1845: everything the `.vadGate` terminal reports, computed ONCE and fed to
+  /// #1845: everything the dead-air terminals (`.vadGate`, #3834 `.vadGateSilent`)
+  /// report, computed ONCE and fed to
   /// BOTH the Sentry breadcrumb and the PostHog tally. Two independent reads
   /// would let the two records describe the same take differently.
   ///

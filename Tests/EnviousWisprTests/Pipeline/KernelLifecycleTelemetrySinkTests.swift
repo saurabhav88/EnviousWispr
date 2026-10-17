@@ -82,6 +82,7 @@ import Testing
       let captureNativeChannelCount: Int?
       let captureInputChannel: Int?
       let takeID: String?
+      let advisoryEligible: Bool
     }
 
     var breadcrumbs: [BreadcrumbCall] = []
@@ -161,7 +162,7 @@ import Testing
       vadGateNoSpeech: {
         backend, mode, rawSampleCount, peak, wholeRMS, maxWindowRMS, durationMs,
         effectiveTransport, selectedTransport, inputSelectionMode, deviceKind, nativeRate,
-        nativeChannels, inputChannel, takeID in
+        nativeChannels, inputChannel, takeID, advisoryEligible in
         recorder.vadGateNoSpeechCalls.append(
           Recorder.VADGateNoSpeechCall(
             backend: backend, mode: mode, rawSampleCount: rawSampleCount,
@@ -171,7 +172,7 @@ import Testing
             inputDeviceKind: deviceKind,
             captureNativeRateHz: nativeRate, captureNativeChannelCount: nativeChannels,
             captureInputChannel: inputChannel,
-            takeID: takeID))
+            takeID: takeID, advisoryEligible: advisoryEligible))
         recorder.timeline.append("vadGateNoSpeech")
       },
       captureError: { error, category, stage, extra in
@@ -840,6 +841,51 @@ import Testing
     // If that postamble is ever hoisted above the switch, this assertion fails
     // rather than the property silently emptying.
     #expect(call.takeID == "take-1845")
+    // #3834: `.vadGate` is the source the kernel selects ONLY above the
+    // advisory bar, so its row says the advisory was eligible.
+    #expect(call.advisoryEligible == true)
+  }
+
+  /// #3834: dead air below the advisory bar ends silently but must still be
+  /// COUNTED, with the same frozen facts, so `audio.vad_gate_no_speech` keeps
+  /// its population (every dead-air exit) and the eligible share is readable.
+  /// Fails if the silent source drops out of the tally or reports eligibility.
+  @Test("#3834: .vadGateSilent emits the same tally with advisory_eligible false")
+  func vadGateSilentEmitsTallyNotEligible() {
+    let recorder = Recorder()
+    let state = KernelTelemetryState()
+    state.takeID = "take-3834"
+    state.noSpeechTelemetry = KernelNoSpeechTelemetry(
+      mode: "batch",
+      rawSampleCount: 12_000,
+      peakAudioLevel: 0.0042,
+      wholeBufferRMS: 0.0006,
+      maxWindowRMS: 0.0015,
+      effectiveTransport: "usb",
+      selectedTransport: "usb",
+      inputSelectionMode: "explicit",
+      inputDeviceKind: nil
+    )
+    let sink = makeSink(recorder: recorder, telemetryState: state)
+
+    sink.emit(.noSpeech(.vadGateSilent))
+
+    #expect(recorder.vadGateNoSpeechCalls.count == 1)
+    let call = try! #require(recorder.vadGateNoSpeechCalls.first)
+    #expect(call.advisoryEligible == false)
+    #expect(call.mode == "batch")
+    #expect(call.rawSampleCount == 12_000)
+    #expect(call.peakAudioLevel == 0.0042)
+    #expect(call.wholeBufferRMS == 0.0006)
+    #expect(call.maxWindowRMS == 0.0015)
+    #expect(call.effectiveTransport == "usb")
+    #expect(call.inputDeviceKind == nil, "omit-when-nil must survive the silent source")
+    #expect(call.takeID == "take-3834")
+    // Same breadcrumb as `.vadGate`: ASR was skipped on this source too.
+    #expect(
+      recorder.breadcrumbs.contains {
+        $0.message == "VAD gate: no speech detected, skipping ASR"
+      })
   }
 
   /// A missing measurement must arrive as `nil`, never as `0`. This is the
@@ -920,7 +966,7 @@ import Testing
       vadGateNoSpeech: {
         backend, mode, rawSampleCount, peak, wholeRMS, maxWindowRMS, durationMs,
         effectiveTransport, selectedTransport, inputSelectionMode, deviceKind, nativeRate,
-        nativeChannels, inputChannel, takeID in
+        nativeChannels, inputChannel, takeID, advisoryEligible in
         recorder.vadGateNoSpeechCalls.append(
           Recorder.VADGateNoSpeechCall(
             backend: backend, mode: mode, rawSampleCount: rawSampleCount,
@@ -930,7 +976,7 @@ import Testing
             inputDeviceKind: deviceKind,
             captureNativeRateHz: nativeRate, captureNativeChannelCount: nativeChannels,
             captureInputChannel: inputChannel,
-            takeID: takeID))
+            takeID: takeID, advisoryEligible: advisoryEligible))
       })
 
     sink.emit(.noSpeech(.vadGate))

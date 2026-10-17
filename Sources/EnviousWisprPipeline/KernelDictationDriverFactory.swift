@@ -748,6 +748,9 @@ public enum KernelDictationDriverFactory {
       // documented 10-tick / 1000ms production window. Pass the production
       // constant explicitly so cold loads don't get false-positive wedged.
       wedgeStallTicks: KernelFinalizationWiring.wedgeStallTicks,
+      // #3834: passed explicitly (it is also the default) so the production
+      // advisory bar is visible at the composition root.
+      deadAirAdvisoryMinimumTicks: KernelFinalizationWiring.deadAirAdvisoryMinimumTicks,
       zombieZeroPeakTelemetry: { ctx in
         emitter.zombieZeroPeak(ctx: ctx)
       },

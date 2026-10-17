@@ -2013,7 +2013,10 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
         return .vadGateNoSpeech
       // A working microphone and a user who said nothing. Stays SILENT — they
       // already know they did not speak (founder, 2026-07-31).
-      case .asrEmptyNoSpeech, .emptyAfterProcessing:
+      // #3834: dead air below the advisory bar (a short take, or one whose
+      // peak reached the bar) is the same moment for the user and stays silent
+      // too (founder, 2026-10-16).
+      case .asrEmptyNoSpeech, .emptyAfterProcessing, .vadGateSilent:
         return nil
       }
     // #1923/#1925: zero audio buffers ever arrived — the same "nothing to
