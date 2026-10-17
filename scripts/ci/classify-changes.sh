@@ -47,7 +47,7 @@ classify() {
   # forget: the script deciding whether website validation runs is exactly the
   # script whose own breakage that validation would catch. Leaving it out meant
   # a PR editing only the classifier answered its own question with "no".
-  if grep -qE '^(website/|\.github/workflows/pr-check\.yml$|scripts/ci/classify-changes\.sh$)' <<<"$changed"; then
+  if grep -qE '^(website/|\.github/workflows/pr-check\.yml$|scripts/ci/classify-changes\.sh$|scripts/ollama-library/)' <<<"$changed"; then
     website=true
   else
     website=false
@@ -355,6 +355,11 @@ self_test() {
   _expect_classify $'docs/x.md\nwebsite/public/ollama-library.json' true "ollama feed plus docs -> build and website" true
   _expect_classify "website/public/ollama-library.json.bak" false "near-miss feed name -> website only" true
   _expect_classify "website/public/ollama-library-notes.json" false "another file beside the feed -> website only" true
+  # The feed tools run in the website-check job, so a change to them must run it too.
+  _expect_classify "scripts/ollama-library/library.py" true "feed helpers run website validation" true
+  _expect_classify "scripts/ollama-library/validate-feed.py" true "feed validator validates itself" true
+  _expect_classify "scripts/ollama-library/name-fixtures.json" true "shared feed fixtures run both lanes" true
+  _expect_classify "scripts/ollama-library-other/tool.py" true "near-miss tooling directory is not website" false
   # 2026-10-08: content no app build or test reads skips the build. Two-way controls: the
   # same names elsewhere, a near-miss name, and the kept-out neighbours still build.
   _expect_classify $'README.md

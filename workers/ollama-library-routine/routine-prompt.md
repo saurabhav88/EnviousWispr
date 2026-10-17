@@ -44,7 +44,8 @@ marketing. Adding nothing is a good outcome; never add to reach three.
 
 ## Steps
 
-1. `git switch -c data/ollama-library-$(date -u +%Y%m%d) origin/main`
+1. `git fetch origin main` then `git switch -c data/ollama-library-$(date -u +%Y%m%d) origin/main` (a local
+   working branch; you only push it in `pr` mode)
 2. `python3 -I scripts/ollama-library/scan.py --out candidates.json`
    If it exits non-zero, go to "When something fails".
 3. Read `candidates.json`. Choose 0 to 3 candidates. For each, write:
@@ -60,11 +61,24 @@ marketing. Adding nothing is a good outcome; never add to reach three.
    then `python3 -I scripts/ollama-library/validate-feed.py --registry --base origin/main --feed website/public/ollama-library.json`.
    Both must print `ok:`. If one fails, fix your rows once (usually a typo); if it still fails, go to
    "When something fails". Delete `candidates.json` before committing.
-6. If you chose nothing, stop. Do not open a pull request.
-7. Commit only `website/public/ollama-library.json` with the message
-   `data(ollama): add <names> (#2778)`, push the branch, and open a pull request titled the same,
-   with a body that lists each added model with its reason and size. Do not enable auto-merge and do
-   not merge. The repository's review rules decide what happens next.
+6. If you chose nothing, stop. Do not open a pull request or an issue.
+7. **Publication mode.** The line `PUBLICATION_MODE: issue` below is the default. A person changes it
+   to `pr` only after recording on #2778 that the repository's review gates can be met in this
+   environment or that the founder granted a written exemption for feed-only changes. Deterministic
+   validation does not replace independent review, and this environment has no independent reviewer,
+   so it never pushes in `issue` mode.
+
+   PUBLICATION_MODE: issue
+
+   - `issue` mode: do not commit or push. File one GitHub issue (label `area:polish`) titled
+     `Ollama library: proposed additions <date>` whose body holds the exact rows to append (a JSON
+     array, ready to paste), each model's reason and size, and the output of both validator commands.
+     An engineering session on the Mac reviews the rows, completes the pre-push gates, and publishes.
+   - `pr` mode: commit only `website/public/ollama-library.json` with the message
+     `data(ollama): add <names> (#2778)`, push the branch, and open a pull request titled the same,
+     with a body listing each added model, its reason and size. Do not enable auto-merge and do not
+     merge. If a later gate is unavailable after publication, leave the pull request for an
+     engineering session without enabling auto-merge.
 
 ## When something fails
 

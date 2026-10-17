@@ -3,9 +3,10 @@
 
   scan.py [--feed website/public/ollama-library.json] [--out candidates.json] [--limit 25]
 
-Reads https://ollama.com/library, drops everything we already have a position on (shipped,
+Reads https://ollama.com/library, drops every tag we already have a position on (shipped,
 measured, first party, already in the feed), drops embedding-only and cloud-only models, and
-for each remaining model resolves a real download size from the registry manifest. Prints a
+for each remaining model tag (the default tag and every size tag) resolves a real download size
+from the registry manifest. A family we already offer can still contribute a size we do not. Prints a
 JSON document: `{"cardCount": N, "candidates": [...]}`. Each candidate is a ready feed row
 (`name`, `sizeBytes`) plus the facts a person or the routine needs to judge it
 (`description`, `capabilities`, `pulls`), and `parameterCount` suggested from the size tag
@@ -40,39 +41,41 @@ def parameter_count(size_tag: str):
 
 
 def candidate_rows(card: dict) -> list:
-    """One candidate per size tag (or one for the default tag when the card lists none)."""
+    """The default tag plus every advertised size tag."""
     repo = card["name"]
     if not library.NAME_RE.fullmatch(repo) or ":" in repo:
         return []
-    sizes = [s for s in card["sizes"] if SIZE_TAG_RE.fullmatch(s)]
-    if not sizes:
-        return [{"name": repo, "parameterCount": None}]
-    return [{"name": f"{repo}:{s}", "parameterCount": parameter_count(s)} for s in sizes]
+    sizes = list(dict.fromkeys(s for s in card["sizes"] if SIZE_TAG_RE.fullmatch(s)))
+    rows = [{"name": repo, "parameterCount": None}]
+    rows.extend({"name": f"{repo}:{s}", "parameterCount": parameter_count(s)} for s in sizes)
+    return rows
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("--feed", default=str(library.REPO_ROOT / library.FEED_PATH))
     parser.add_argument("--out", help="write the JSON here instead of stdout")
-    parser.add_argument("--limit", type=int, default=25, help="most library cards to resolve")
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=60,
+        help="most eligible library cards to resolve, in page order (default 60; each card costs\n"
+        "one registry request per tag)",
+    )
     args = parser.parse_args()
 
     try:
         known = library.known_names()
         feed = json.loads(Path(args.feed).read_text(encoding="utf-8"))
         feed_names = {library.canonical(row["name"]) for row in feed["models"]}
-        feed_repos = {row["name"].split(":", 1)[0] for row in feed["models"]}
         cards = library.fetch_library_cards()
     except Exception as error:
         library.die(str(error))
 
-    known_repos = {name.split(":", 1)[0] for name in known}
     candidates, skipped = [], []
     considered = 0
     for card in cards:
         repo = card["name"]
-        if repo in known_repos or repo in feed_repos:
-            continue
         if "embedding" in card["capabilities"]:
             continue
         if not card["sizes"] and card["cloud"]:

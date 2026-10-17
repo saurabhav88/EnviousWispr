@@ -243,6 +243,53 @@ def self_test() -> int:
     except Exception as error:
         failures += 1
         print(f"FAIL [swift sources] {error}")
+    # Registry checks against fixture manifests (no network): the comparison logic must be able to FAIL.
+    original_fetch = library.fetch
+    original_cards = library.fetch_library_cards
+    fixture = {}
+
+    def fixture_fetch(url, accept=None, timeout=30):
+        if fixture.get("transport_failure"):
+            raise RuntimeError("fixture transport failure")
+        body = json.dumps({"layers": [{"size": size} for size in fixture["layers"]]})
+        return fixture.get("status", 200), body.encode("utf-8")
+
+    try:
+        library.fetch = fixture_fetch
+        library.fetch_library_cards = lambda: [
+            {"name": "olmo2", "capabilities": fixture.get("capabilities", [])}
+        ]
+        registry_cases = [
+            ("layer sum matches", {"layers": [4_000_000_000, 500_000_000]}, _GOOD, True),
+            ("wrong sum", {"layers": [4_000_000_000]}, _GOOD, False),
+            ("embedding model", {"layers": [4_500_000_000], "capabilities": ["embedding"]}, _GOOD, False),
+            ("registry 404", {"layers": [4_500_000_000], "status": 404}, _GOOD, False),
+            ("transport failure", {"layers": [], "transport_failure": True}, _GOOD, False),
+            (
+                "routine size ceiling",
+                {"layers": [17_000_000_000]},
+                _with(sizeBytes=17_000_000_000),
+                False,
+            ),
+            (
+                "boolean layer size",
+                {"layers": [4_500_000_000, True]},
+                _with(sizeBytes=4_500_000_001),
+                False,
+            ),
+        ]
+        for label, state, row, expect_ok in registry_cases:
+            fixture.clear()
+            fixture.update(state)
+            errors = registry_errors(_doc(), _doc(row))
+            if (not errors) != expect_ok:
+                failures += 1
+                print(f"FAIL [registry {label}] got {errors}")
+            else:
+                print(f"ok   [registry {label}]")
+    finally:
+        library.fetch = original_fetch
+        library.fetch_library_cards = original_cards
     print(f"== validate-feed self-test {'PASS' if failures == 0 else 'FAIL'} ==")
     return 0 if failures == 0 else 1
 

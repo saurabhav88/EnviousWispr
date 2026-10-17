@@ -205,7 +205,7 @@ def manifest_layer_bytes(name: str):
     if not isinstance(layers, list) or not layers:
         raise RuntimeError(f"registry manifest for {name} has no layers")
     sizes = [layer.get("size") for layer in layers]
-    if any(not isinstance(s, int) or s < 0 for s in sizes):
+    if any(isinstance(s, bool) or not isinstance(s, int) or s < 0 for s in sizes):
         raise RuntimeError(f"registry manifest for {name} has a malformed layer size")
     return sum(sizes)
 

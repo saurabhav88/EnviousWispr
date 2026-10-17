@@ -39,11 +39,22 @@ struct OllamaLibraryFeedTests {
     #expect(parsed.dropped.isEmpty, "rows dropped by the production parser: \(parsed.dropped)")
     #expect(parsed.entries.count == rawRows.count)
     #expect(rawNames.count == rawRows.count)
-    for (entry, name) in zip(parsed.entries, rawNames) {
+    for (entry, row) in zip(parsed.entries, rawRows) {
+      let name = try #require(row["name"] as? String)
+      let displayName = try #require(row["displayName"] as? String)
+      let parameterCount = try #require(row["parameterCount"] as? String)
+      let size = try #require(row["sizeBytes"] as? NSNumber)
+
       #expect(entry.name == name)
       #expect(
         OllamaSetupService.canonicalModelName(entry.name)
           == OllamaSetupService.canonicalModelName(name))
+      #expect(Array(entry.displayName.unicodeScalars) == Array(displayName.unicodeScalars))
+      #expect(Array(entry.parameterCount.unicodeScalars) == Array(parameterCount.unicodeScalars))
+      #expect(
+        entry.downloadSize == OllamaLibraryFeedClient.downloadSizeText(bytes: size.int64Value))
+      #expect(entry.isDownloaded == false)
+      #expect(entry.isRemote == false)
     }
     // The file is add-only and capped; the cap is the publication limit, not the runtime one.
     #expect(rawRows.count <= 40)

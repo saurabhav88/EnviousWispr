@@ -44,8 +44,32 @@ package struct OllamaLibraryFeedClient: Sendable {
 
   // An overload pair, not a default argument: see `OllamaCloudCatalogClient.init()`.
   package init() {
+    #if DEBUG
+      // Live UAT seam, compiled out of release builds: a developer build can answer the feed from
+      // a local file instead of the network, so a deterministic test feed is never published to
+      // production. Set with `defaults write com.enviouswispr.app.dev EWDevOllamaLibraryFeedFile <path>`.
+      if let path = UserDefaults.standard.string(forKey: Self.devFeedFileKey), !path.isEmpty {
+        self.transport = Self.fileTransport(path: path)
+        return
+      }
+    #endif
     self.transport = OllamaCloudCatalogClient.liveTransport(allowedHost: Self.allowedHost)
   }
+
+  #if DEBUG
+    private static let devFeedFileKey = "EWDevOllamaLibraryFeedFile"
+
+    private static func fileTransport(path: String) -> OllamaCloudCatalogClient.Transport {
+      { request, maximumBytes in
+        let data = try Data(contentsOf: URL(fileURLWithPath: path))
+        guard data.count <= maximumBytes, let url = request.url,
+          let response = HTTPURLResponse(
+            url: url, statusCode: 200, httpVersion: nil, headerFields: nil)
+        else { throw CloudCatalogError.invalidResponse }
+        return (data, response)
+      }
+    }
+  #endif
 
   package init(transport: @escaping OllamaCloudCatalogClient.Transport) {
     self.transport = transport

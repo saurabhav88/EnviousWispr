@@ -373,7 +373,14 @@ struct OllamaSetupServiceLibraryFeedTests {
     #expect(script.callCount == 3)
   }
 
-  @Test("two overlapping refreshes make one request and both see the committed result")
+  /// The second call is made INLINE and with `force: true`, which is what makes this bind to the
+  /// single-flight branch: a forced call skips the 15-minute reuse window, so only the stored-task
+  /// check can stop it starting a second request. The release is queued as a task BEFORE the inline
+  /// call; it cannot run until the inline call suspends, and by then that call has already reached
+  /// `await existing.value`. Without the single-flight guard the inline call starts a second request,
+  /// which waits for a second release that never comes, so the hang guard fires and the call count
+  /// fails the test.
+  @Test("a forced refresh during an in-flight request joins it instead of starting another")
   func singleFlight() async throws {
     let script = Script()
     script.set(try feedDocument([row("gemma4:e4b")]))
@@ -382,20 +389,34 @@ struct OllamaSetupServiceLibraryFeedTests {
     script.install(gate: (enteredContinuation, releaseStream))
     let sut = try service(script: script, clock: Clock())
 
-    let first = Task { @MainActor in await sut.refreshLibraryFeed() }
-    // The transport signals only once the first refresh is inside the request, so the
-    // second call cannot slip in before the stored task exists.
-    for await _ in enteredStream { break }
-    let second = Task { @MainActor in
+    // deadline-fallback: a pure hang guard, not a latency bound. It releases both gates and records
+    // a failure if the request never progresses.
+    let hangGuard = Task { @MainActor in
+      do { try await Task.sleep(for: .seconds(10)) } catch { return }
+      Issue.record("the refresh did not finish before the hang guard")
+      enteredContinuation.finish()
+      releaseContinuation.finish()
+    }
+    defer {
+      hangGuard.cancel()
+      enteredContinuation.finish()
+      releaseContinuation.finish()
+    }
+
+    let first = Task { @MainActor in
       await sut.refreshLibraryFeed()
       return self.feedNames(sut)
     }
-    releaseContinuation.yield(())
-    await first.value
-    let secondSaw = await second.value
+    for await _ in enteredStream { break }
+
+    let release = Task { @MainActor in releaseContinuation.finish() }
+    await sut.refreshLibraryFeed(force: true)
+    let secondSaw = feedNames(sut)
+    let firstSaw = await first.value
+    await release.value
 
     #expect(script.callCount == 1)
+    #expect(firstSaw == ["gemma4:e4b"])
     #expect(secondSaw == ["gemma4:e4b"])
-    #expect(feedNames(sut) == ["gemma4:e4b"])
   }
 }

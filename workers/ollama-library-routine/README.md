@@ -31,6 +31,10 @@ The routine does not exist yet. Create it only after both gates below.
    Mac reviews and merges each weekly pull request, or the founder grants a written exemption for
    feed-only pull requests gated by the deterministic checks. Record the decision on #2778.
 
+The prompt ships with `PUBLICATION_MODE: issue`: the routine files an issue with the exact rows and the validator
+output and pushes nothing, because it cannot run the independent review the gates require. Changing the line to
+`pr` is the act that records gate 2 as met, and it follows the recorded decision on #2778.
+
 ### Creating it
 
 Create the routine at `claude.ai/code/routines/new` with the prompt in `routine-prompt.md` (strip the
