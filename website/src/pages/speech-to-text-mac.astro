@@ -11,7 +11,7 @@ const webPageJsonLd = JSON.stringify({
   "url": `${siteUrl}/speech-to-text-mac/`,
   "isPartOf": { "@type": "WebSite", "url": siteUrl, "name": "EnviousWispr" },
   "datePublished": "2026-08-23T00:00:00Z",
-  "dateModified": "2026-10-16T00:00:00Z",
+  "dateModified": "2026-10-17T00:00:00Z",
 });
 
 const breadcrumbJsonLd = JSON.stringify({
@@ -40,7 +40,7 @@ const faqJsonLd = JSON.stringify({
       "name": "How fast is on-device speech to text on Apple Silicon?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Transcription lands in about 0.61 seconds median, a 30-day trailing median taken from production usage across real Apple Silicon Macs rather than one test machine. Optional on-device cleanup adds roughly a second, for about 1.65 seconds from release to pasted text. Cleanup time scales with how much you said.",
+        "text": "Audio is transcribed on your Mac, avoiding an upload round trip. How soon the finished text appears also depends on recording length, cleanup, AI polish, your Mac and the app receiving the text. Transcription runs after you stop talking by default, so a longer dictation takes longer, and cleanup time scales with how much you said.",
       },
     },
     {
@@ -75,7 +75,7 @@ const faqJsonLd = JSON.stringify({
         What "local" actually means, which models run on Apple Silicon, the latency to expect, and the constraints that apply.
       </p>
       <div class="hero-trust-row reveal" aria-label="Key facts">
-        <span><strong>0.61s</strong> median transcription</span>
+        <span><strong>On-device</strong> transcription</span>
         <span class="sep" aria-hidden="true"></span>
         <span><strong>Audio</strong> never uploaded</span>
         <span class="sep" aria-hidden="true"></span>
@@ -88,7 +88,7 @@ const faqJsonLd = JSON.stringify({
     <div class="container">
       <div class="answer-block reveal">
         <p class="answer-lead">
-          Local speech to text means the model runs on your own machine and the audio is never uploaded. On an Apple Silicon Mac that is no longer a compromise on speed: there is no upload and no server round trip, nothing depends on your connection, and for everyday dictation the text lands in well under a second.
+          Local speech to text means the model runs on your own machine and the audio is never uploaded. Audio is transcribed on your Mac, avoiding an upload round trip. How soon the finished text appears also depends on recording length, cleanup, AI polish, your Mac and the app receiving the text.
         </p>
         <p>
           There are two real trades. A server can run a larger model than a laptop holds, though for everyday speech the on-device models are accurate enough that the gap is not what you notice. And a cloud service that transcribes while you are still talking can finish a long dictation sooner than we do, because by default we start when you stop. For the short bursts most dictation actually consists of, the upload and the round trip cost more than they save.
@@ -140,7 +140,7 @@ const faqJsonLd = JSON.stringify({
         <div class="split-card reveal">
           <h3>Parakeet Ultra</h3>
           <p>
-            The default. Runs on the Apple Neural Engine. Fastest of the two and the reason the median lands under a second. Covers 25 European languages and detects which of them you are speaking.
+            The default. Runs on the Apple Neural Engine. Faster of the two. Covers 25 European languages and detects which of them you are speaking.
           </p>
         </div>
         <div class="split-card reveal">
@@ -161,23 +161,24 @@ const faqJsonLd = JSON.stringify({
     <div class="container">
       <h2 class="section-title-left reveal">What latency to expect</h2>
       <p class="section-sub-left reveal">
-        A 30-day trailing median from production usage across real Apple Silicon Macs, measured 2026-08-21. Your own numbers will differ with chip and dictation length.
+        Audio is transcribed on your Mac, avoiding an upload round trip. How soon the finished text appears also depends on recording length, cleanup, AI polish, your Mac and the app receiving the text.
       </p>
 
       <div class="fact-table reveal">
         <table>
           <thead>
-            <tr><th scope="col">Stage</th><th scope="col">Time</th><th scope="col">Notes</th></tr>
+            <tr><th scope="col">Stage</th><th scope="col">What sets the wait</th></tr>
           </thead>
           <tbody>
-            <tr><td>Release key to raw text</td><td><strong>0.61s median</strong></td><td>Transcription only. Text is written after you stop talking, so a longer dictation takes longer.</td></tr>
-            <tr><td>Release key to cleaned text</td><td><strong>~1.65s</strong></td><td>Adds on-device AI cleanup. This one scales with how much you said.</td></tr>
+            <tr><td>Transcription</td><td>Runs on your Mac. By default it is written after you stop talking, so a longer dictation takes longer, and your Mac's chip matters too.</td></tr>
+            <tr><td>Cleanup and AI polish</td><td>A separate step after transcription. It scales with how much you said.</td></tr>
+            <tr><td>Delivery</td><td>Depends on the app receiving the text.</td></tr>
           </tbody>
         </table>
       </div>
 
       <p class="note reveal">
-        Only the first row is the sub-second number. Cleanup is a separate step with its own cost, and it grows with length. Any tool quoting one figure for the whole path is quoting the wrong thing. By default the text arrives after you stop talking. An optional Faster Transcription mode does the transcription work while you are still speaking, so the finished text arrives sooner once you stop. It does not put text into your document mid-sentence. Seeing words as you speak is a separate setting, Live Preview, which draws a rough draft in the recording pill from a lighter engine and throws it away at the end; it never changes the text that gets pasted. We recommend leaving Faster Transcription off on the default Parakeet engine, because Parakeet stitches overlapping pieces together and the joins are where errors appear.
+        Cleanup is a separate step with its own cost, and it grows with length. Any tool quoting one figure for the whole path is quoting the wrong thing. By default the text arrives after you stop talking. An optional Faster Transcription mode does the transcription work while you are still speaking, so the finished text arrives sooner once you stop. It does not put text into your document mid-sentence. Seeing words as you speak is a separate setting, Live Preview, which draws a rough draft in the recording pill from a lighter engine and throws it away at the end; it never changes the text that gets pasted. We recommend leaving Faster Transcription off on the default Parakeet engine, because Parakeet stitches overlapping pieces together and the joins are where errors appear.
       </p>
     </div>
   </section>
@@ -265,7 +266,7 @@ const faqJsonLd = JSON.stringify({
         </div>
         <div class="faq-item">
           <h3>How fast is on-device speech to text on Apple Silicon?</h3>
-          <p>Transcription lands in about 0.61 seconds median, a 30-day trailing median taken from production usage across real Apple Silicon Macs rather than one test machine. Optional on-device cleanup adds roughly a second, for about 1.65 seconds from release to pasted text. Cleanup time scales with how much you said.</p>
+          <p>Audio is transcribed on your Mac, avoiding an upload round trip. How soon the finished text appears also depends on recording length, cleanup, AI polish, your Mac and the app receiving the text. Transcription runs after you stop talking by default, so a longer dictation takes longer, and cleanup time scales with how much you said.</p>
         </div>
         <div class="faq-item">
           <h3>What is the difference between local speech to text and cloud speech to text?</h3>

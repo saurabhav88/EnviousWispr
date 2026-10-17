@@ -10,13 +10,13 @@ const meta = {
   "breadcrumb": "EnviousWispr vs Apple Dictation",
   "ogImage": "/images/og/apple-dictation.png",
   "datePublished": "2026-04-04T21:41:19Z",
-  "dateModified": "2026-10-16T00:00:00Z"
+  "dateModified": "2026-10-17T00:00:00Z"
 };
 
 const faqs = [
   {
     "q": "Is there a better alternative to Apple Dictation on Mac?",
-    "a": "EnviousWispr is a free, on-device alternative that adds AI polish, custom vocabulary, and no timeout limit. It runs alongside Apple Dictation without interfering. Both use Apple Silicon for local processing."
+    "a": "EnviousWispr is a free, on-device alternative that adds AI polish, custom vocabulary, and no inactivity timeout by default. It runs alongside Apple Dictation without interfering. Both use Apple Silicon for local processing."
   },
   {
     "q": "Can I add custom words to Mac dictation?",
@@ -24,7 +24,7 @@ const faqs = [
   },
   {
     "q": "Why does Apple Dictation stop listening after 30 seconds?",
-    "a": "Apple Dictation has a built-in inactivity timeout. If you pause speaking for too long, it stops. EnviousWispr has no inactivity timeout, so you can pause to think and continue dictating without restarting. Each recording does have a generous one-hour cap."
+    "a": "Apple Dictation has a built-in inactivity timeout. If you pause speaking for too long, it stops. EnviousWispr keeps recording through thinking pauses when Stop recording on silence is off, its default setting. If you enable that setting, a pause can end recording. A recording can last up to one hour."
   },
   {
     "q": "Does EnviousWispr replace Apple Dictation?",
@@ -233,11 +233,11 @@ const faqs = [
       <span class="vs-brand">Apple Dictation</span>
     </div>
     <h1 class="reveal">Apple Dictation is fine. Here is what a dedicated app adds.</h1>
-    <p class="page-header-sub reveal">Both free. Both on-device. But EnviousWispr adds AI polish, custom vocabulary, and no timeout. A dedicated dictation app for people who dictate seriously.</p>
+    <p class="page-header-sub reveal">Both free. Both on-device. But EnviousWispr adds AI polish, custom vocabulary, and no inactivity timeout by default. A dedicated dictation app for people who dictate seriously.</p>
     <div class="hero-pills reveal">
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        No timeout
+        Up to 1 hour per recording
       </span>
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
@@ -312,7 +312,7 @@ const faqs = [
           </tr>
           <tr>
             <td>Timeout</td>
-            <td><span class="table-highlight">No inactivity timeout.</span> Handles long dictation sessions, up to a 60-minute cap per recording.</td>
+            <td><span class="table-highlight">No inactivity timeout by default.</span> Handles long dictation sessions, up to a 60-minute cap per recording.</td>
             <td>Stops after ~30s of silence</td>
           </tr>
           <tr>
@@ -435,11 +435,11 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">⏱️</div>
         <div class="advantage-title">No 30-second timeout</div>
-        <p class="advantage-desc">Apple Dictation stops listening after roughly 30 seconds of inactivity. EnviousWispr has no timeout. Dictate a full paragraph, pause to think, keep going. Sessions can run up to 60 minutes without cutting you off.</p>
+        <p class="advantage-desc">Apple Dictation stops listening after roughly 30 seconds of inactivity. By default, EnviousWispr has no inactivity timeout. Dictate a full paragraph, pause to think, keep going. If you switch on Stop recording on silence, a pause ends the recording. Sessions can run up to 60 minutes without cutting you off.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">⚡</div>
-        <div class="advantage-title">0.61s to finished text</div>
+        <div class="advantage-title">Sub-second transcription</div>
         <p class="advantage-desc">Median time from end of speech to transcribed text: 0.61 seconds. Processed locally on the Neural Engine or GPU, no network dependency. AI polish, when enabled, adds variable time on top that scales with how much you dictated.</p>
       </div>
       <div class="advantage-card reveal">
@@ -478,7 +478,7 @@ const faqs = [
       <div class="speed-card reveal">
         <div class="speed-value">0s</div>
         <div class="speed-label">Timeout limit</div>
-        <div class="speed-detail">No inactivity timeout. Up to a full hour per recording.</div>
+        <div class="speed-detail">No inactivity timeout by default. Up to a full hour per recording.</div>
       </div>
     </div>
     <p style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center;">Based on production data from Apple Silicon Macs. Results vary by hardware and settings.</p>
@@ -571,7 +571,7 @@ const faqs = [
     <div class="faq-list">
       <div class="faq-item reveal">
         <div class="faq-q">Is there a better alternative to Apple Dictation on Mac?</div>
-        <p class="faq-a">EnviousWispr is a free, on-device alternative that adds AI polish, custom vocabulary, and no timeout limit. It runs alongside Apple Dictation without interfering. Both use Apple Silicon for local processing.</p>
+        <p class="faq-a">EnviousWispr is a free, on-device alternative that adds AI polish, custom vocabulary, and no inactivity timeout by default. It runs alongside Apple Dictation without interfering. Both use Apple Silicon for local processing.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I add custom words to Mac dictation?</div>
@@ -579,7 +579,7 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Why does Apple Dictation stop listening after 30 seconds?</div>
-        <p class="faq-a">Apple Dictation has a built-in inactivity timeout. If you pause speaking for too long, it stops. EnviousWispr has no inactivity timeout, so you can pause to think and continue dictating without restarting. Each recording does have a generous one-hour cap.</p>
+        <p class="faq-a">Apple Dictation has a built-in inactivity timeout. If you pause speaking for too long, it stops. EnviousWispr keeps recording through thinking pauses when Stop recording on silence is off, its default setting. If you enable that setting, a pause can end recording. A recording can last up to one hour.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does EnviousWispr replace Apple Dictation?</div>

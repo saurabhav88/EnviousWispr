@@ -3,7 +3,7 @@ title: "Structural Engineering for Small Language Models in On-Device Dictation 
 description: "What it takes to turn a transcript into useful writing on your Mac."
 topic: behind-enviouswispr
 pubDate: 2026-05-30
-updatedDate: 2026-10-16
+updatedDate: 2026-10-17
 tags: ["on-device", "small-language-models", "apple-intelligence", "dictation", "benchmarks", "privacy"]
 author: "Saurabh Vaish"
 keywords: ["on-device dictation", "small language model polishing", "Apple Intelligence on-device model", "private speech to text", "on-device vs cloud language model"]
@@ -28,7 +28,7 @@ Critically, the 91.0 percent result was not a first attempt. It is the product o
 
 ## 2. System under study
 
-The system under study is EnviousWispr, an application providing free, fully on-device dictation for macOS on Apple Silicon. When the user holds a keybind and speaks, cleaned text is inserted at the cursor in under a second. Speech-to-text processing occurs entirely on-device using Parakeet as the default fast engine for 25 languages, with Whisper available for 99+ languages. An active-by-default polish stage rewrites raw transcription into finished text using Apple's on-device foundation model. This polish stage can be switched to cloud providers like OpenAI and Gemini or local Ollama models. The system is open source on GitHub under GPLv3, and nothing leaves the device by default.
+The system under study is EnviousWispr, an application providing free, fully on-device dictation for macOS on Apple Silicon. When the user holds a keybind and speaks, transcription finishes in under a second, and cleaned text is inserted at the cursor after a polish step whose time grows with how much was said. Speech-to-text processing occurs entirely on-device using Parakeet as the default fast engine for 25 languages, with Whisper available for 99+ languages. An active-by-default polish stage rewrites raw transcription into finished text using Apple's on-device foundation model. This polish stage can be switched to cloud providers like OpenAI and Gemini or local Ollama models. The system is open source on GitHub under GPLv3, and nothing leaves the device by default.
 
 ## 3. Task and evaluation
 
