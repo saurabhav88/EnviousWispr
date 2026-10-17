@@ -10,7 +10,7 @@ const meta = {
   "breadcrumb": "EnviousWispr vs whisper.cpp",
   "ogImage": "/images/og/whisper-cpp.png",
   "datePublished": "2026-04-04T21:41:19Z",
-  "dateModified": "2026-10-16T00:00:00Z"
+  "dateModified": "2026-10-17T00:00:00Z"
 };
 
 const faqs = [
@@ -239,7 +239,7 @@ const faqs = [
         Download Free
       </a>
     </div>
-    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: April 2026</p>
+    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: October 2026</p>
   </div>
 </header>
 
@@ -273,7 +273,12 @@ const faqs = [
                - Community ecosystem: third-party GUIs, bindings for Python/Go/Rust/etc.
              Firsthand testing: whisper.cpp was not tested firsthand for this comparison.
              All claims are source-verified from the official repository.
-             Last updated: 2026-04-04. -->
+             2026-10-17 re-check (README, cli README, releases v1.9.0 to v1.9.5): v1.9.0 added "parakeet : add support for
+               NVIDIA Parakeet" (#3735) with a parakeet-cli for files (parakeet-tdt-0.6b-v3), no streaming. whisper-stream
+               transcribes the live microphone. --prompt steers terms; --grammar GBNF decoding. Prebuilt binaries, Docker, npm,
+               XCFramework; WebAssembly and FreeBSD also listed. Core ML can run the Whisper encoder on the Neural Engine.
+               Built-in VAD (--vad). Latest v1.9.5 (2026-10-06). MIT.
+             Last updated: 2026-10-17. -->
         <tbody>
           <tr>
             <td>Type</td>
@@ -288,7 +293,7 @@ const faqs = [
           <tr>
             <td>Setup required</td>
             <td>Download DMG, drag to Applications</td>
-            <td>Compile from source or <code>brew install whisper-cpp</code></td>
+            <td>Compile from source, <code>brew install whisper-cpp</code>, prebuilt binaries, or Docker</td>
           </tr>
           <tr>
             <td>GUI / visual feedback</td>
@@ -303,7 +308,7 @@ const faqs = [
           <tr>
             <td>Keybind activation</td>
             <td><span class="table-check">Hold-to-talk</span>, release to transcribe, auto-paste</td>
-            <td><span class="table-cross">None</span>. Manual CLI invocation per file.</td>
+            <td><span class="table-cross">None</span>. Command-line tools for files, or a live microphone stream to the terminal.</td>
           </tr>
           <tr>
             <td>Paste into apps</td>
@@ -328,7 +333,7 @@ const faqs = [
           <tr>
             <td>Custom vocabulary</td>
             <td><span class="table-check">Yes</span>. Fuzzy matching corrects names, acronyms, jargon.</td>
-            <td><span class="table-cross">None</span></td>
+            <td>No word list. An initial prompt can steer it toward specific terms.</td>
           </tr>
           <tr>
             <td>Filler word removal</td>
@@ -338,7 +343,7 @@ const faqs = [
           <tr>
             <td>First-word capture</td>
             <td><span class="table-check">Pre-roll buffer</span> catches speech that starts before the keybind press.</td>
-            <td><span class="table-cross">N/A</span>. Processes pre-recorded files.</td>
+            <td><span class="table-cross">N/A</span>. No keybind to start recording.</td>
           </tr>
           <tr>
             <td>Warm engine / instant start</td>
@@ -348,17 +353,17 @@ const faqs = [
           <tr>
             <td>Speech engine</td>
             <td><a href="https://huggingface.co/FluidInference/parakeet-ultra-coreml" style="color: var(--accent); text-decoration: underline;">Parakeet Ultra</a> + <a href="https://huggingface.co/openai/whisper-large-v3-turbo" style="color: var(--accent); text-decoration: underline;">Whisper</a> (via <a href="https://github.com/handy-computer/transcribe.cpp" style="color: var(--accent); text-decoration: underline;">transcribe.cpp</a>)</td>
-            <td><a href="https://github.com/ggml-org/whisper.cpp" style="color: var(--accent); text-decoration: underline;">whisper.cpp</a> (C/C++ port of OpenAI Whisper)</td>
+            <td><a href="https://github.com/ggml-org/whisper.cpp" style="color: var(--accent); text-decoration: underline;">whisper.cpp</a> (C/C++ port of OpenAI Whisper; also runs NVIDIA Parakeet on files since v1.9.0)</td>
           </tr>
           <tr>
             <td>Multi-language</td>
             <td>25 European (Parakeet), 99+ via Whisper</td>
-            <td>90+ (OpenAI Whisper models)</td>
+            <td>99 (OpenAI Whisper models)</td>
           </tr>
           <tr>
             <td>Platforms</td>
             <td>macOS (Apple Silicon)</td>
-            <td>macOS, Linux, Windows, Android, iOS</td>
+            <td>macOS, Linux, Windows, Android, iOS, WebAssembly, FreeBSD</td>
           </tr>
           <tr>
             <td>Source code</td>
@@ -373,7 +378,7 @@ const faqs = [
         </tbody>
       </table>
     </div>
-    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">EnviousWispr latency from production PostHog data on Apple Silicon Macs, 30-day trailing median. whisper.cpp claims source-verified from <a href="https://github.com/ggml-org/whisper.cpp" style="color: var(--text-3); text-decoration: underline;">github.com/ggml-org/whisper.cpp</a>; not firsthand-tested. Last verified: 2026-08-21.</p>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">EnviousWispr latency from production PostHog data on Apple Silicon Macs, 30-day trailing median. whisper.cpp claims source-verified from <a href="https://github.com/ggml-org/whisper.cpp" style="color: var(--text-3); text-decoration: underline;">github.com/ggml-org/whisper.cpp</a>; not firsthand-tested. Last verified: 2026-10-17.</p>
     <div style="text-align: center; margin-top: 28px;">
       <a href="/#download" class="btn-primary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -400,7 +405,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">⌨️</div>
         <div class="advantage-title">Hold-to-talk keybind</div>
-        <p class="advantage-desc">Hold a key to record, release to transcribe. Text appears in your active app instantly. whisper.cpp processes pre-recorded audio files. There is no live dictation workflow.</p>
+        <p class="advantage-desc">Hold a key to record, release to transcribe. Text appears in your active app instantly. whisper.cpp can transcribe files or stream the microphone to a terminal, but has no keybind and does not paste into your apps.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">✨</div>
@@ -432,7 +437,7 @@ const faqs = [
     <div class="section-head reveal">
       <div class="section-label-pill cyan">How They Relate</div>
       <h2 class="section-title">Library vs. product</h2>
-      <p class="section-sub">whisper.cpp is a foundational library that many Mac dictation apps build on. EnviousWispr takes a different approach, using purpose-built engines optimized for Apple Silicon. Read more about <a href="/blog/on-device-vs-cloud-dictation-privacy/" style="color: var(--accent); text-decoration: underline;">on-device vs cloud dictation privacy</a>.</p>
+      <p class="section-sub">whisper.cpp is a foundational library that many Mac dictation apps build on. EnviousWispr takes a different approach: a finished Mac app around two engines tuned for Apple Silicon. Read more about <a href="/blog/on-device-vs-cloud-dictation-privacy/" style="color: var(--accent); text-decoration: underline;">on-device vs cloud dictation privacy</a>.</p>
     </div>
     <div class="privacy-split">
       <div class="privacy-card ew reveal">
@@ -464,7 +469,7 @@ const faqs = [
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">1</div>
-          <div>Record audio separately (another tool, ffmpeg, or a script).</div>
+          <div>Record audio separately, or use the stream example, which prints to the terminal.</div>
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">2</div>
@@ -489,7 +494,7 @@ const faqs = [
     <div class="section-head reveal">
       <div class="section-label-pill amber">Speed</div>
       <h2 class="section-title">Optimized for Apple Silicon, not just compatible</h2>
-      <p class="section-sub">whisper.cpp runs on everything. EnviousWispr runs Parakeet on the Neural Engine and Whisper through transcribe.cpp on the GPU of M-series Macs. Whisper speed depends on the model, the Mac and the runtime settings.</p>
+      <p class="section-sub">whisper.cpp runs on everything, using Metal on the Mac GPU and, through Core ML, the Neural Engine for the Whisper encoder. EnviousWispr runs Parakeet on the Neural Engine and Whisper through transcribe.cpp on the GPU of M-series Macs. Whisper speed depends on the model, the Mac and the runtime settings.</p>
     </div>
     <div class="speed-stats">
       <div class="speed-card reveal">
@@ -564,7 +569,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">🐧</div>
         <div class="advantage-title">You need Linux or Windows</div>
-        <p class="advantage-desc">whisper.cpp runs on macOS, Linux, Windows, Android, and iOS. EnviousWispr is macOS only. If you need cross-platform speech recognition, whisper.cpp is the clear choice.</p>
+        <p class="advantage-desc">whisper.cpp runs on macOS, Linux, Windows, Android, iOS, WebAssembly, and FreeBSD. EnviousWispr is macOS only. If you need cross-platform speech recognition, whisper.cpp is the clear choice.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">📜</div>
@@ -574,7 +579,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">🎛️</div>
         <div class="advantage-title">You want full control over models</div>
-        <p class="advantage-desc">whisper.cpp lets you swap any ggml-format Whisper model, tune beam search parameters, choose output formats (SRT, VTT, JSON), and integrate into custom scripts. Total flexibility for power users.</p>
+        <p class="advantage-desc">whisper.cpp lets you swap any ggml-format Whisper model, tune beam search parameters, choose output formats (SRT, VTT, JSON, CSV and more), run voice activity detection, keep a model loaded with its HTTP server, and integrate into custom scripts. Total flexibility for power users.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">📂</div>
@@ -584,12 +589,12 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">🌍</div>
         <div class="advantage-title">You need deep multilingual support</div>
-        <p class="advantage-desc">whisper.cpp supports 90+ languages natively with any Whisper model. EnviousWispr's primary engine (Parakeet) covers 25 European languages, with 99+ languages via Whisper as a secondary option.</p>
+        <p class="advantage-desc">whisper.cpp supports 99 languages with the multilingual Whisper models. EnviousWispr's primary engine (Parakeet) covers 25 European languages, with 99+ languages via Whisper as a secondary option.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🌐</div>
         <div class="advantage-title">You want the community ecosystem</div>
-        <p class="advantage-desc">whisper.cpp has bindings for Python, Go, Rust, Ruby, and more. A large community contributes optimizations, model conversions, and integrations. If you want to plug speech recognition into an existing toolchain, whisper.cpp has the broadest ecosystem.</p>
+        <p class="advantage-desc">whisper.cpp has bindings for Python, Go, Rust, Ruby, Java, .NET, Swift, and more. A large community contributes optimizations, model conversions, and integrations. If you want to plug speech recognition into an existing toolchain, whisper.cpp has the broadest ecosystem.</p>
       </div>
     </div>
     <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you want a ready-to-use Mac dictation app with a keybind, AI polish, and clipboard workflow, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. If you want a developer library, <a href="https://github.com/ggml-org/whisper.cpp" style="color: var(--accent); text-decoration: underline;">whisper.cpp</a> is excellent.</p>

@@ -10,7 +10,7 @@ const meta = {
   "breadcrumb": "EnviousWispr vs Willow Voice",
   "ogImage": "/images/og/willow-voice.png",
   "datePublished": "2026-04-04T21:41:19Z",
-  "dateModified": "2026-10-16T00:00:00Z"
+  "dateModified": "2026-10-17T00:00:00Z"
 };
 
 const faqs = [
@@ -24,7 +24,7 @@ const faqs = [
   },
   {
     "q": "Does Willow Voice work offline?",
-    "a": "Willow Voice is cloud-based and requires an internet connection for transcription. EnviousWispr was built on-device from the start. Parakeet Ultra and Whisper run natively on Apple Silicon, delivering 0.61s median latency without any cloud dependency."
+    "a": "Partly. Willow Voice transcribes in the cloud by default, and now also offers an offline mode that runs on your device; Willow's own pages describe it for Mac and iOS on its paid plan. EnviousWispr was built on-device from the start and works offline on every plan, because there is only one, and it is free. Parakeet Ultra and Whisper run natively on Apple Silicon, delivering 0.61s median latency without any cloud dependency."
   },
   {
     "q": "Does EnviousWispr work offline?",
@@ -255,7 +255,7 @@ const faqs = [
         Download Free
       </a>
     </div>
-    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: August 2026</p>
+    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: October 2026</p>
   </div>
 </header>
 
@@ -287,6 +287,13 @@ const faqs = [
                - Backing: YC-backed
              Firsthand testing: Willow Voice was not tested firsthand for this comparison.
              EnviousWispr latency (0.61s / 1.65s) and language count (99+ via Whisper) re-measured 2026-08-21.
+             2026-10-17 re-check (willowvoice.com, willowvoice.com/pricing, willowvoice.com/blog, help.willowvoice.com):
+               Homepage now lists "Offline mode: Dictate without an internet connection, powered entirely by your device."
+               Willow's blog (2026-10-16) describes it for Mac and iOS (not Windows); its pricing help article lists offline
+               dictation under Individual Pro. Default transcription is still cloud (Frontier Mini free, Frontier Pro paid).
+               Business tier ($35/mo, $28/mo annual) carries SOC 2 Type II, enforced HIPAA and zero data retention; Team Pro
+               $12 per user per month per the help article. Homepage claims "as little as 200ms" and "3x more accurate than
+               built-in dictation".
              "Not specified" is used for any feature not explicitly documented on their site. -->
         <tbody>
           <tr>
@@ -302,17 +309,17 @@ const faqs = [
           <tr>
             <td>Audio processing</td>
             <td><span class="table-highlight">On-device</span> (Apple Silicon)</td>
-            <td>Cloud-based</td>
+            <td>Cloud by default; optional offline mode on device (paid plan, Mac and iOS)</td>
           </tr>
           <tr>
             <td>Audio leaves your device</td>
             <td><span class="table-check">Never.</span> Audio stays on your Mac. If you enable cloud AI polish, only the text transcript is sent.</td>
-            <td>Yes, audio sent to servers</td>
+            <td>Yes by default, audio sent to servers; not in offline mode</td>
           </tr>
           <tr>
             <td>Works offline</td>
             <td><span class="table-check">Yes</span> for transcription (after models download)</td>
-            <td><span class="table-cross">No</span></td>
+            <td>With its offline mode, on the paid plan (Mac and iOS)</td>
           </tr>
           <tr>
             <td>AI polish</td>
@@ -322,12 +329,12 @@ const faqs = [
           <tr>
             <td>Offline AI polish</td>
             <td><span class="table-check">Yes</span> via EG-1, S1-mini by Superwhisper, local Ollama models, or Apple Intelligence (macOS 26+)</td>
-            <td><span class="table-cross">No</span> (cloud-dependent)</td>
+            <td>Not documented for offline mode</td>
           </tr>
           <tr>
             <td>Speech engines</td>
             <td><a href="https://huggingface.co/FluidInference/parakeet-ultra-coreml" style="color: var(--accent); text-decoration: underline;">Parakeet Ultra</a> + <a href="https://huggingface.co/openai/whisper-large-v3-turbo" style="color: var(--accent); text-decoration: underline;">Whisper</a> (on-device)</td>
-            <td>Cloud speech API</td>
+            <td>Frontier Mini and Frontier Pro in the cloud; an on-device model for offline mode</td>
           </tr>
           <tr>
             <td>Custom vocabulary</td>
@@ -387,12 +394,12 @@ const faqs = [
           <tr>
             <td>Transcription latency</td>
             <td><span class="table-highlight">0.61s median</span>; ~1.65s with on-device AI polish</td>
-            <td>Depends on network + server load</td>
+            <td>Claims "as little as 200ms"; depends on network and server load</td>
           </tr>
         </tbody>
       </table>
     </div>
-    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*Based on Willow Voice's public pricing page, last checked August 2026 ($12/mo billed annually for the Pro plan). EnviousWispr latency from production PostHog data on Apple Silicon Macs, 30-day trailing median. Willow Voice claims source-verified from willowvoice.com; not firsthand-tested. "Not specified" means the feature is not documented on their public site. Competitor claims last verified: 2026-08-21.</p>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*Based on Willow Voice's public pricing page, last checked October 2026 ($12/mo billed annually for the Pro plan). EnviousWispr latency from production PostHog data on Apple Silicon Macs, 30-day trailing median. Willow Voice claims source-verified from willowvoice.com; not firsthand-tested. "Not specified" means the feature is not documented on their public site. Competitor claims last verified: 2026-10-17.</p>
     <div style="text-align: center; margin-top: 28px;">
       <a href="/#download" class="btn-primary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -408,7 +415,7 @@ const faqs = [
     <div class="section-head reveal">
       <div class="section-label-pill green">Why EnviousWispr</div>
       <h2 class="section-title">Why Mac users switch from Willow Voice</h2>
-      <p class="section-sub">Willow Voice is cloud-first with a subscription model. EnviousWispr was built around a different premise: your voice data belongs on your device.</p>
+      <p class="section-sub">Willow Voice is cloud-first with a subscription model, with an offline mode on its paid plan. EnviousWispr was built around a different premise: your voice data belongs on your device.</p>
     </div>
     <div class="advantages-grid">
       <div class="advantage-card reveal">
@@ -419,7 +426,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">🔒</div>
         <div class="advantage-title">On-device by design</div>
-        <p class="advantage-desc">Willow Voice processes audio on cloud servers. EnviousWispr processes every recording on your Mac's Neural Engine or GPU. Privacy is the architecture, not an option. See <a href="/features/" style="color: var(--accent); text-decoration: underline;">how the pipeline works</a>.</p>
+        <p class="advantage-desc">Willow Voice processes audio on cloud servers unless you pay for and switch on its offline mode. EnviousWispr processes every recording on your Mac's Neural Engine or GPU. Privacy is the architecture, not an option. See <a href="/features/" style="color: var(--accent); text-decoration: underline;">how the pipeline works</a>.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">⚡</div>
@@ -522,7 +529,7 @@ const faqs = [
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">2</div>
-          <div>Audio is sent to Willow Voice's cloud servers for transcription.</div>
+          <div>By default, audio is sent to Willow Voice's cloud servers for transcription. Its paid offline mode keeps it on the device instead.</div>
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">3</div>
@@ -583,7 +590,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">🏢</div>
         <div class="advantage-title">Your team needs enterprise compliance</div>
-        <p class="advantage-desc">Willow Voice offers SOC 2 and HIPAA compliance on its Enterprise tier, with team pricing at $10/mo per seat. EnviousWispr is a single-user desktop app without enterprise certifications.</p>
+        <p class="advantage-desc">Willow Voice offers SOC 2 Type II, enforced HIPAA compliance and zero data retention on its Business tier ($35/mo, or $28/mo billed annually) and above. EnviousWispr is a single-user desktop app without enterprise certifications.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🌍</div>
@@ -591,9 +598,14 @@ const faqs = [
         <p class="advantage-desc">Willow Voice supports 100+ languages through its cloud engine with automatic grammar and formatting. EnviousWispr's fast engine (Parakeet) covers 25 European languages with no language setting to pick, and Whisper covers 99+ at higher latency.</p>
       </div>
       <div class="advantage-card reveal">
+        <div class="advantage-icon">✈️</div>
+        <div class="advantage-title">You want cloud by default with an offline switch</div>
+        <p class="advantage-desc">Willow Voice now offers an offline mode on its paid plan for Mac and iOS, so you can keep its cloud accuracy most of the time and switch to on-device dictation when you need it. EnviousWispr is on-device all the time.</p>
+      </div>
+      <div class="advantage-card reveal">
         <div class="advantage-icon">🔊</div>
         <div class="advantage-title">You want voice commands built in</div>
-        <p class="advantage-desc">Willow Voice supports formatting voice commands like "dash," "new line," and "bullet point" natively. EnviousWispr focuses on natural dictation with AI polish handling formatting, rather than explicit voice commands.</p>
+        <p class="advantage-desc">Willow Voice supports formatting voice commands like "new line" and "bullet point" natively, and handles mid-sentence corrections such as "no wait, actually". EnviousWispr focuses on natural dictation with AI polish handling formatting, rather than explicit voice commands.</p>
       </div>
     </div>
     <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you are Mac-first and care most about privacy, offline transcription, and price, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>.</p>
@@ -618,7 +630,7 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does Willow Voice work offline?</div>
-        <p class="faq-a">Willow Voice is cloud-based and requires an internet connection for transcription. EnviousWispr was built on-device from the start. Parakeet Ultra and Whisper run natively on Apple Silicon, delivering 0.61s median latency without any cloud dependency.</p>
+        <p class="faq-a">Partly. Willow Voice transcribes in the cloud by default, and now also offers an offline mode that runs on your device; Willow's own pages describe it for Mac and iOS on its paid plan. EnviousWispr was built on-device from the start and works offline on every plan, because there is only one, and it is free. Parakeet Ultra and Whisper run natively on Apple Silicon, delivering 0.61s median latency without any cloud dependency.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does EnviousWispr work offline?</div>

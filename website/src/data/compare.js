@@ -1,6 +1,6 @@
 // Dated primary-source facts for the compare hub. Sources are rendered beside
 // the table so qualifications and provenance travel with the comparison.
-export const updated = '2026-09-12';
+export const updated = '2026-10-17';
 export const checked = new Intl.DateTimeFormat('en-GB', {
   day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
 }).format(new Date(updated + 'T00:00:00Z'));
@@ -15,7 +15,7 @@ export const products = [
 
 // The detailed MacWhisper page keeps its own pair when the hub shortlist changes.
 export const macWhisperProducts = [products.find(product => product.id === 'ew'),
-  { id: 'mac', name: 'MacWhisper', note: 'Files, meetings & dictation', url: '/compare/macwhisper/', sources: [['Plans & features', 'https://www.macwhisper.com/'], ['Documentation', 'https://macwhisper.helpscoutdocs.com/']] },
+  { id: 'mac', name: 'MacWhisper', note: 'Files, meetings & dictation', url: '/compare/macwhisper/', sources: [['Plans & features', 'https://www.macwhisper.com/'], ['Documentation', 'https://docs.macwhisper.com/']] },
 ];
 
 const cell = (title, note = '') => ({ title, note });
@@ -27,7 +27,7 @@ export const groups = [
       super: cell('Free + Pro', 'Unlimited Whisper models free. Pro $8.49/month; annual and lifetime options.'),
       mac: cell('Free + Pro', 'Pro €64, one-time purchase on the official site.'),
       fluid: cell('Free', 'Local dictation and Fluid Intelligence. Cloud provider fees may apply.'),
-      spokenly: cell('Free + Pro', 'Local models free. Pro $99.99/year ($8.33/month), billed annually.'),
+      spokenly: cell('Free + paid', 'Local models free. Local+ $29 one-time. Pro $9.99/month or $99.99/year.'),
     } },
     { label: 'Getting started', cells: {
       ew: cell('No account', 'Install the app and download your models.'),
@@ -61,14 +61,14 @@ export const groups = [
       super: cell('Local or cloud AI', 'Pro includes local and cloud language models.'),
       mac: cell('Local or cloud AI', 'Pro supports AI prompts and grammar improvement.'),
       fluid: cell('Local AI included', 'Fluid Intelligence, or a cloud provider you choose.'),
-      spokenly: cell('Local or cloud AI', 'Apple Intelligence on supported Macs; cloud via your key or Pro.'),
+      spokenly: cell('Local or cloud AI', 'Its own on-device cleanup model or Apple Intelligence on supported Macs; cloud via your key or Pro.'),
     } },
   ] },
   { title: 'Everyday use', rows: [
     { label: 'Workflow', cells: {
       ew: cell('Dictate & transcribe files', 'Dictation into your apps, plus recordings you import.'),
       flow: cell('Dictation across devices', 'Mac, Windows, iOS and Android.'),
-      super: cell('Configurable dictation', 'Voice models, custom prompts and modes.'),
+      super: cell('Dictation & meetings', 'Mac, Windows, iOS and Android. Voice models, custom prompts and modes.'),
       mac: cell('Files, meetings & dictation', 'Includes subtitle and batch workflows.'),
       fluid: cell('Dictation & voice actions', 'Configurable speech models, Write Mode and Command Mode.'),
       spokenly: cell('Dictation across devices', 'Mac, Windows, Linux and iOS. Per-mode prompts and models.'),

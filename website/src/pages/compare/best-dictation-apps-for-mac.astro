@@ -12,7 +12,7 @@ const articleJsonLd = JSON.stringify({
   "url": `${siteUrl}/compare/best-dictation-apps-for-mac/`,
   "image": `${siteUrl}/images/og/best-dictation-apps-for-mac.jpg`,
   "datePublished": "2026-06-18T12:00:00Z",
-  "dateModified": "2026-10-16T00:00:00Z",
+  "dateModified": "2026-10-17T00:00:00Z",
   "author": {
     "@type": "Person",
     "name": "Saurabh Vaish",
@@ -41,7 +41,7 @@ const tableRows = [
   {
     feature: "Price",
     ew: "Free",
-    cells: ["Free (MIT, open source)", "Free (GPLv3, open source)", "$12-15/mo Pro (free 2k words/wk)", "$8.49/mo (unlimited free tier)", "~$69 (Gumroad) or $99.99 (App Store lifetime)", "$8.33/mo Pro (free 300 min/mo)", "Free (built in)", "Free for personal and one-person-company work; larger companies pay $12/seat monthly or $120 yearly ($10/mo)"],
+    cells: ["Free (MIT, open source)", "Free (GPLv3, open source)", "$12-15/mo Pro (free 2k words/wk)", "$8.49/mo (free tier with unlimited local Whisper models)", "~$69 (Gumroad) or $99.99 (App Store lifetime)", "$8.33/mo Pro (free 300 min/mo)", "Free (built in)", "Free for personal and work use (MIT, open source)"],
   },
   {
     feature: "Audio stays on your Mac",
@@ -51,12 +51,12 @@ const tableRows = [
   {
     feature: "Works offline",
     ew: "Yes",
-    cells: ["Yes (after models download)", "Yes (after models download)", "No", "Yes with local models", "Yes", "No", "Partial (enhanced needs internet)", "Yes with downloaded Gemma; Apple Intelligence may use Private Cloud Compute"],
+    cells: ["Yes (after models download)", "Yes (after models download)", "No", "Yes with local models", "Yes", "No", "Partial (enhanced needs internet)", "Yes with downloaded models"],
   },
   {
     feature: "Account",
     ew: "No account for core use",
-    cells: ["No", "No", "Email signup required", "No", "No", "Account required", "No", "No for personal use"],
+    cells: ["No", "No", "Email signup required", "No", "No", "Account required", "No", "No"],
   },
   {
     feature: "Polish / cleanup",
@@ -165,7 +165,7 @@ const tableCols = ["Handy", "FluidVoice", "WisprFlow", "SuperWhisper", "MacWhisp
   <div class="container">
     <h1 class="reveal">Best dictation app for Mac in 2026: honest picks by use case</h1>
     <p class="page-header-sub reveal">There is no single best Mac dictation app. There is a best one for what you actually do. Here is the honest pick for each kind of person.</p>
-    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/">Saurabh Vaish</a> · Last updated: August 2026</p>
+    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/">Saurabh Vaish</a> · Last updated: October 2026</p>
   </div>
 </header>
 
@@ -242,7 +242,7 @@ const tableCols = ["Handy", "FluidVoice", "WisprFlow", "SuperWhisper", "MacWhisp
     <div class="pick reveal" id="best-open-source-model-choice">
       <div class="pick-label">Best open source with its own tuned cleanup model</div>
       <h2>FluidVoice</h2>
-      <p>FluidVoice is the closest neighbour to EnviousWispr in this list: also free, also GPLv3, and also shipping its own AI model tuned specifically for cleaning up dictation, called Fluid-1. Where it goes further than we do is configurability: fourteen visible speech-model options across the Apple Speech, Cohere, Nemotron, Parakeet, and Whisper families against our two, prompt profiles that route cleanup differently per situation, and a Windows pre-build. If sheer model count is what you are after, Handy above carries the deeper catalog; FluidVoice&rsquo;s distinction is that the cleanup step is its own trained model rather than a prompt. Two honest catches: it needs macOS 15 Sequoia or later, one version newer than we require, and the license and base model behind Fluid-1 are not published in its own repository, so you cannot audit what the cleanup step is built on. Choose FluidVoice if configurability is the point; choose EnviousWispr if you would rather have a working default and a published model license.</p>
+      <p>FluidVoice is the closest neighbour to EnviousWispr in this list: also free, also GPLv3, and also shipping its own AI model tuned specifically for cleaning up dictation, called Fluid-1. Where it goes further than we do is configurability: more than a dozen speech-model options across the Apple Speech, Cohere, Fluid Speech, Nemotron, Parakeet, and Whisper families against our two, prompt profiles that route cleanup differently per situation, local meeting recording, and a Windows prerelease build. If sheer model count is what you are after, Handy above carries the deeper catalog; FluidVoice&rsquo;s distinction is that the cleanup step is its own trained model rather than a prompt. Two honest catches: it needs macOS 15 Sequoia or later, one version newer than we require, and the license and base model behind Fluid-1 are not published in its own repository, so you cannot audit what the cleanup step is built on. Choose FluidVoice if configurability is the point; choose EnviousWispr if you would rather have a working default and a published model license.</p>
       <div class="pick-links">
         <a href="/compare/fluidvoice/">Full EnviousWispr vs FluidVoice comparison</a>
       </div>
@@ -251,7 +251,7 @@ const tableCols = ["Handy", "FluidVoice", "WisprFlow", "SuperWhisper", "MacWhisp
     <div class="pick reveal" id="best-built-in-mac-dictation">
       <div class="pick-label">Best built-in, nothing to install</div>
       <h2>Apple Dictation</h2>
-      <p>If you just need to dictate a sentence or two now and then and do not want to install anything, the dictation already built into macOS is the simplest option. It is free, and on Apple Silicon Macs general text dictation can run on-device depending on language and settings. Apple Dictation can insert punctuation automatically in supported languages, and spoken commands handle simple formatting such as new lines and paragraphs. You can dictate text of any length, but the session stops after 30 seconds with no detected speech, which can interrupt a longer drafting flow. It does not remove filler words, rewrite awkward phrasing, or offer writing styles. For occasional short bursts it is the right call; for frequent dictation and automatic cleanup, a dedicated app pulls ahead.</p>
+      <p>If you just need to dictate a sentence or two now and then and do not want to install anything, the dictation already built into macOS is the simplest option. It is free, and on Apple Silicon Macs general text dictation can run on-device depending on language and settings. Apple Dictation can insert punctuation automatically in supported languages, and spoken commands handle simple formatting such as new lines and paragraphs. You can dictate text of any length, but the session stops after 30 seconds with no detected speech, which can interrupt a longer drafting flow. On macOS 27, Macs with M3 or newer and 12GB of memory get a much more accurate model that handles capitalization, punctuation and formatting as you speak. Apple does not document filler-word removal, and it does not rewrite awkward phrasing or offer writing styles. For occasional short bursts it is the right call; for frequent dictation and automatic cleanup, a dedicated app pulls ahead.</p>
       <div class="pick-links">
         <a href="/compare/apple-dictation/">Full EnviousWispr vs Apple Dictation comparison</a>
       </div>
@@ -269,7 +269,7 @@ const tableCols = ["Handy", "FluidVoice", "WisprFlow", "SuperWhisper", "MacWhisp
     <div class="pick reveal" id="best-customisable-on-device">
       <div class="pick-label">Best for a large speech and writing model library</div>
       <h2>SuperWhisper</h2>
-      <p>SuperWhisper is the better fit if choosing models is part of the experience you want. Its searchable library includes local and cloud speech models, several writing-model families, provider filters, and per-app or per-site Modes. The current app also supports system-audio capture, speaker identification, file transcription, and Claude Code or Codex plugins. Local Cohere Transcribe and S1-mini can keep speech and basic cleanup on your Mac; richer cloud modes use online providers. Its free tier is unlimited but restricted to smaller AI models, while Pro runs about $8.49 a month with a lifetime option.</p>
+      <p>SuperWhisper is the better fit if choosing models is part of the experience you want. Its searchable library includes local and cloud speech models, several writing-model families, provider filters, and per-app or per-site Modes. The current app also supports system-audio capture, speaker identification, file transcription, and Claude Code or Codex plugins. Local Cohere Transcribe and S1-mini can keep speech and basic cleanup on your Mac; richer cloud modes use online providers. It now runs on Mac, Windows, iOS and Android, and version 3.0 added a free Meetings tab on Mac. Its free tier includes unlimited local Whisper models, while Pro runs about $8.49 a month with a lifetime option.</p>
       <div class="pick-links">
         <a href="/compare/superwhisper/">Full EnviousWispr vs SuperWhisper comparison</a>
       </div>
@@ -278,7 +278,7 @@ const tableCols = ["Handy", "FluidVoice", "WisprFlow", "SuperWhisper", "MacWhisp
     <div class="pick reveal" id="best-local-modes-and-tasks">
       <div class="pick-label">Best for editable local modes and a voice task list</div>
       <h2>Vox</h2>
-      <p>Vox keeps transcription on your device and can keep cleanup local with a downloaded Gemma 4 model, then lets you shape the result with editable Voice Modes for chat, email, notes, code comments, summaries, and your own prompts. Its Mac-only VoxNotch surface can add, finish, reorder, reprioritize, and remove tasks by natural voice. The core dictation experience also runs on Windows. Vox is free for personal use; work use at a company with more than one person costs $12 per seat monthly or $120 per seat yearly, equivalent to $10 per month.</p>
+      <p>Vox keeps transcription on your device and can keep cleanup local with a downloaded Gemma 4 model, then lets you shape the result with editable Voice Modes for chat, email, notes, code comments, summaries, and your own prompts. Its Mac-only VoxNotch surface can add, finish, reorder, reprioritize, and remove tasks by natural voice. The core dictation experience also runs on Windows. Vox is now free for personal and work use, needs no account, and is open source under the MIT license.</p>
       <div class="pick-links">
         <a href="/compare/vox/">Full EnviousWispr vs Vox comparison</a>
       </div>
@@ -287,7 +287,7 @@ const tableCols = ["Handy", "FluidVoice", "WisprFlow", "SuperWhisper", "MacWhisp
     <div class="pick reveal" id="best-cross-device">
       <div class="pick-label">Best polished cross-device dictation</div>
       <h2>WisprFlow</h2>
-      <p>WisprFlow is the most complete service in this group if you work across devices, meetings, and a team. It runs on Mac, Windows, iOS, and Android, and the current Mac app includes Notetaker, shared dictionary and snippets, Transforms, Scratchpad, Insights, app-category Styles, coding-editor awareness, and enterprise controls. The trade-off is architecture and cost: transcription happens in the cloud, it needs an internet connection and account, and Pro costs $15 a month or $12 a month billed annually after a limited free tier. Choose it when the service layer matters more than local audio processing or avoiding a subscription.</p>
+      <p>WisprFlow is the most complete service in this group if you work across devices, meetings, and a team. It runs on Mac, Windows, iOS, and Android, transcribes with Canto, its own cloud speech model, and the current Mac app includes Notetaker, shared dictionary and snippets, Transforms, Scratchpad, Insights, app-category Styles, coding-editor awareness, and enterprise controls. The trade-off is architecture and cost: transcription happens in the cloud, it needs an internet connection and account, and Pro costs $15 a month or $12 a month billed annually after a limited free tier. Choose it when the service layer matters more than local audio processing or avoiding a subscription.</p>
       <div class="pick-links">
         <a href="/compare/wisprflow/">Full EnviousWispr vs WisprFlow comparison</a>
       </div>

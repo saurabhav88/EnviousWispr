@@ -11,21 +11,21 @@ const meta = {
   "breadcrumb": "EnviousWispr vs Vox",
   "ogImage": "/og-image.png",
   "datePublished": "2026-08-21T19:00:00Z",
-  "dateModified": "2026-10-16T00:00:00Z"
+  "dateModified": "2026-10-17T00:00:00Z"
 };
 
 const faqs = [
   {
     "q": "Is EnviousWispr free, like Vox?",
-    "a": "EnviousWispr is free for personal and work use under GPLv3. Vox is free for personal use, while work use at a company with more than one person requires a commercial license at $12 per seat monthly or $120 per seat yearly, equivalent to $10 per month. Neither app requires an account for personal dictation."
+    "a": "Yes. Both apps are now free for personal and work use, and neither requires an account. EnviousWispr is open source under GPLv3; Vox is open source under the MIT license. Vox accepts optional contributions."
   },
   {
     "q": "Do EnviousWispr and Vox both work offline?",
-    "a": "Yes, when using downloaded local models. Vox can transcribe locally and use downloaded Gemma 4 for local cleanup. Vox also offers Apple Intelligence, which may route text through Apple's Private Cloud Compute. EnviousWispr can use local EG-1, S1-mini by Superwhisper, Apple Intelligence, or downloaded Ollama models, plus optional cloud providers with your own key."
+    "a": "Yes, when using downloaded local models. Vox can transcribe locally and use downloaded Gemma 4 for local cleanup. Vox also offers Apple Intelligence on supported Macs. EnviousWispr can use local EG-1, S1-mini by Superwhisper, Apple Intelligence, or downloaded Ollama models, plus optional cloud providers with your own key."
   },
   {
     "q": "Does Vox have AI cleanup like EnviousWispr's EG-1?",
-    "a": "Yes. Vox can clean up text locally with a downloaded Gemma 4 model. It also offers Apple Intelligence, which may route text through Apple's Private Cloud Compute. Vox's built-in and custom Voice Modes control how cleanup behaves. EnviousWispr offers EG-1, S1-mini by Superwhisper, Apple Intelligence, or a downloaded Ollama model locally, plus optional cloud providers with your own key."
+    "a": "Yes. Vox can clean up text locally with a downloaded Gemma 4 model. It also offers Apple Intelligence on supported Macs. Vox's built-in and custom Voice Modes control how cleanup behaves. EnviousWispr offers EG-1, S1-mini by Superwhisper, Apple Intelligence, or a downloaded Ollama model locally, plus optional cloud providers with your own key."
   },
   {
     "q": "What is VoxNotch?",
@@ -33,7 +33,7 @@ const faqs = [
   },
   {
     "q": "Is Vox open source?",
-    "a": "No. Vox's official FAQ says the team is considering open-sourcing its modes engine. EnviousWispr is open source under GPLv3."
+    "a": "Yes. Vox is now open source under the MIT license, with its source on GitHub. EnviousWispr is open source under GPLv3."
   },
   {
     "q": "Which Macs do EnviousWispr and Vox support?",
@@ -216,21 +216,21 @@ const faqs = [
       <span class="vs-brand">Vox</span>
     </div>
     <h1 class="reveal">Two private dictation apps with different ideas about polish.</h1>
-    <p class="page-header-sub reveal">Both can keep speech and cleanup on your device. EnviousWispr is free and open source for personal or work use. Vox adds editable Voice Modes, Windows support, and a voice-controlled task list; paid work licenses begin at companies with more than one person.</p>
+    <p class="page-header-sub reveal">Both can keep speech and cleanup on your device. Both are free and open source for personal or work use. Vox adds editable Voice Modes, Windows support, a "Hey Vox" wake word, and a voice-controlled task list.</p>
     <div class="hero-pills reveal">
       <span class="hero-pill">Both can work offline</span>
       <span class="hero-pill">Both support M1 and newer</span>
-      <span class="hero-pill">No account for personal use</span>
+      <span class="hero-pill">No account needed</span>
     </div>
     <div class="hero-cta reveal">
       <a href="/#download" class="btn-primary">Download EnviousWispr Free</a>
     </div>
-    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: August 2026</p>
+    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: October 2026</p>
   </div>
 </header>
 
 <CompareDecisionSummary id="vox-vs-enviouswispr-answer" heading="Vox or EnviousWispr: which should you choose?">
-  <p>Both Vox and EnviousWispr can transcribe speech and clean up text locally on Apple Silicon Macs. Choose Vox if you want editable Voice Modes, automatic app-based mode suggestions, Windows support, or the VoxNotch voice-controlled task list. Choose EnviousWispr if you want free personal and work use, GPLv3 source code, direct paste, Escape Recovery, and the option to use local models or your own cloud provider. Vox is the more mode-driven product; EnviousWispr is the smaller open workflow. For personal use both are free, but Vox requires a paid license for work at companies with more than one person. Choose based on the workflow you will actually use: Vox rewards people who create multiple modes and use tasks, while EnviousWispr keeps dictation and polish in one path.</p>
+  <p>Both Vox and EnviousWispr can transcribe speech and clean up text locally on Apple Silicon Macs. Choose Vox if you want editable Voice Modes, automatic app-based mode suggestions, Windows support, or the VoxNotch voice-controlled task list. Choose EnviousWispr if you want direct paste, Escape Recovery, custom-word correction that works with either engine, and the option to use local models or your own cloud provider. Vox is the more mode-driven product; EnviousWispr is the smaller workflow. For personal use both are free, but Vox requires a paid license for work at companies with more than one person. Choose based on the workflow you will actually use: Vox rewards people who create multiple modes and use tasks, while EnviousWispr keeps dictation and polish in one path.</p>
 </CompareDecisionSummary>
 
 <section class="section" aria-label="Feature Comparison">
@@ -249,11 +249,17 @@ const faqs = [
                against https://vox.rizenhq.com/ and https://vox.rizenhq.com/teams on 2026-08-21.
                The installed app, local mode files, and settings file confirmed editable modes, Gemma 4
                cleanup choices, Parakeet/Whisper speech models, suggested modes, and VoxNotch controls.
+               2026-10-17 re-check (vox.rizenhq.com, vox.rizenhq.com/teams, github.com/KlymSerhii/Vox README):
+               "Vox is free for personal and commercial use"; "No license to buy, no seats to count";
+               "Vox is open source under the MIT license"; "Nothing to sign up for and no license key, at home or at work".
+               The Private Cloud Compute wording no longer appears on Vox's pages. README privacy: audio kept in memory
+               and never written to disk, no telemetry. Known limitation: "Parakeet doesn't use your custom dictionary".
+               Opt-in "Hey Vox" wake word and hands-free toggle (v1.9.0).
                Confidence: firsthand-tested plus source-verified. -->
           <tr>
             <td>Price and license</td>
             <td><span class="table-highlight">Free for personal and work use</span>; open source under GPLv3</td>
-            <td>Free for personal use and work at a one-person company; larger-company work is $12 per seat monthly or $120 yearly ($10 per month); closed source</td>
+            <td><span class="table-check">Free for personal and work use</span>; open source under MIT</td>
           </tr>
           <tr>
             <td>Platforms</td>
@@ -273,12 +279,12 @@ const faqs = [
           <tr>
             <td>AI cleanup</td>
             <td>EG-1, S1-mini by Superwhisper, Apple Intelligence, or a downloaded Ollama model</td>
-            <td>Downloaded Gemma 4 stays local; Apple Intelligence may use Apple's Private Cloud Compute</td>
+            <td>Downloaded Gemma 4 or Apple Intelligence</td>
           </tr>
           <tr>
             <td>Cloud cleanup</td>
             <td>Optional OpenAI, Gemini, Claude, or hosted Ollama with your own account or key</td>
-            <td>No third-party provider option; Apple Intelligence may use Apple's Private Cloud Compute</td>
+            <td>No third-party cloud provider option</td>
           </tr>
           <tr>
             <td>Writing modes</td>
@@ -303,12 +309,12 @@ const faqs = [
           <tr>
             <td>Custom vocabulary</td>
             <td><span class="table-check">Yes</span>, with aliases and Smart Import from other apps</td>
-            <td><span class="table-check">Yes</span>, a local personal dictionary</td>
+            <td><span class="table-check">Yes</span>, a local personal dictionary (not used by its Parakeet engine)</td>
           </tr>
         </tbody>
       </table>
     </div>
-    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">Vox claims were checked in Vox 1.10.0 and on <a href="https://vox.rizenhq.com/" target="_blank" rel="noopener" style="color: var(--text-3); text-decoration: underline;">Vox's official site</a>. Pricing was checked on its <a href="https://vox.rizenhq.com/teams" target="_blank" rel="noopener" style="color: var(--text-3); text-decoration: underline;">official Teams page</a>. Competitor claims last verified: 2026-08-21.</p>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">Vox claims were checked in Vox 1.10.0 and on <a href="https://vox.rizenhq.com/" target="_blank" rel="noopener" style="color: var(--text-3); text-decoration: underline;">Vox's official site</a>. Pricing was checked on its <a href="https://vox.rizenhq.com/teams" target="_blank" rel="noopener" style="color: var(--text-3); text-decoration: underline;">official Teams page</a>. Competitor claims last verified: 2026-10-17.</p>
   </div>
 </section>
 
@@ -346,9 +352,9 @@ const faqs = [
     <div class="deep-dive-grid">
       <div class="deep-dive-card reveal">
         <div class="deep-dive-icon">🟣</div>
-        <div class="deep-dive-title">Choose EnviousWispr for a smaller, open workflow</div>
+        <div class="deep-dive-title">Choose EnviousWispr for a smaller workflow</div>
         <div class="deep-dive-body">
-          <p>EnviousWispr is free for personal and work use, and the app is open source under GPLv3. It can paste directly where you were writing, recover an accidental cancellation, and import custom words from other dictation apps.</p>
+          <p>EnviousWispr can paste directly where you were writing, recover an accidental cancellation, and import custom words from other dictation apps. It corrects your custom words in whatever the speech engine writes, Parakeet included; Vox's own notes say its Parakeet engine does not use Vox's custom dictionary.</p>
           <p>You can keep polish local or bring your own cloud provider. That gives you a simple default without closing off model choice later.</p>
         </div>
       </div>
@@ -357,7 +363,7 @@ const faqs = [
         <div class="deep-dive-title">Choose Vox for modes, Windows, and VoxNotch</div>
         <div class="deep-dive-body">
           <p>Vox gives each writing context its own editable prompt. It can suggest a mode for the current app, and its built-in choices cover chat, email, notes, code comments, summaries, and more.</p>
-          <p>VoxNotch is a separate local task surface controlled by natural speech. Vox also runs on Windows, which EnviousWispr does not.</p>
+          <p>VoxNotch is a separate local task surface controlled by natural speech, and an opt-in "Hey Vox" wake word starts dictation hands-free. Vox also runs on Windows, which EnviousWispr does not.</p>
         </div>
       </div>
     </div>
@@ -370,15 +376,15 @@ const faqs = [
     <div class="faq-list">
       <div class="faq-item reveal">
         <div class="faq-q">Is EnviousWispr free, like Vox?</div>
-        <p class="faq-a">EnviousWispr is free for personal and work use under GPLv3. Vox is free for personal use, while work use at a company with more than one person requires a commercial license at $12 per seat monthly or $120 per seat yearly, equivalent to $10 per month. Neither app requires an account for personal dictation.</p>
+        <p class="faq-a">Yes. Both apps are now free for personal and work use, and neither requires an account. EnviousWispr is open source under GPLv3; Vox is open source under the MIT license. Vox accepts optional contributions.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Do EnviousWispr and Vox both work offline?</div>
-        <p class="faq-a">Yes, when using downloaded local models. Vox can transcribe locally and use downloaded Gemma 4 for local cleanup. Vox also offers Apple Intelligence, which may route text through Apple's Private Cloud Compute. EnviousWispr can use local EG-1, S1-mini by Superwhisper, Apple Intelligence, or downloaded Ollama models, plus optional cloud providers with your own key.</p>
+        <p class="faq-a">Yes, when using downloaded local models. Vox can transcribe locally and use downloaded Gemma 4 for local cleanup. Vox also offers Apple Intelligence on supported Macs. EnviousWispr can use local EG-1, S1-mini by Superwhisper, Apple Intelligence, or downloaded Ollama models, plus optional cloud providers with your own key.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does Vox have AI cleanup like EnviousWispr's EG-1?</div>
-        <p class="faq-a">Yes. Vox can clean up text locally with a downloaded Gemma 4 model. It also offers Apple Intelligence, which may route text through Apple's Private Cloud Compute. Vox's built-in and custom Voice Modes control how cleanup behaves. EnviousWispr offers EG-1, S1-mini by Superwhisper, Apple Intelligence, or a downloaded Ollama model locally, plus optional cloud providers with your own key.</p>
+        <p class="faq-a">Yes. Vox can clean up text locally with a downloaded Gemma 4 model. It also offers Apple Intelligence on supported Macs. Vox's built-in and custom Voice Modes control how cleanup behaves. EnviousWispr offers EG-1, S1-mini by Superwhisper, Apple Intelligence, or a downloaded Ollama model locally, plus optional cloud providers with your own key.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">What is VoxNotch?</div>
@@ -386,7 +392,7 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Is Vox open source?</div>
-        <p class="faq-a">No. Vox's official FAQ says the team is considering open-sourcing its modes engine. EnviousWispr is open source under GPLv3.</p>
+        <p class="faq-a">Yes. Vox is now open source under the MIT license, with its source on GitHub. EnviousWispr is open source under GPLv3.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Which Macs do EnviousWispr and Vox support?</div>
@@ -410,7 +416,7 @@ const faqs = [
 
 <section class="cta-section" aria-label="Download CTA">
   <div class="container">
-    <h2 class="reveal">Want the free, open-source option?</h2>
+    <h2 class="reveal">Want direct paste and Escape Recovery?</h2>
     <p class="reveal">No account. No subscription. Your audio stays on your Mac.</p>
     <div class="cta-actions reveal">
       <a href="/download?source=onsite" class="btn-primary" data-download-source="compare">Download EnviousWispr Free</a>

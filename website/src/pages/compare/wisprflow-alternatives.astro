@@ -32,6 +32,7 @@ const choices = [
     strengths: [
       'Free, MIT-licensed app for macOS, Windows, and Linux',
       'Local speech recognition with no account or word limit',
+      'Built-in filler-word removal, on by default',
       'Optional second shortcut for AI post-processing',
     ],
     tradeoffs: [
@@ -69,6 +70,7 @@ const choices = [
       'Voice actions can create reminders, notes, and alarms',
     ],
     tradeoffs: [
+      'Needs an M2 or newer Mac with at least 24 GB of memory and macOS 15 or later',
       'Several local models need downloading',
       'Its assistant-style features and optional context settings create a broader setup surface',
     ],
@@ -83,10 +85,11 @@ const choices = [
     strengths: [
       'Built into macOS and free to use',
       'Can add punctuation automatically in supported languages',
+      'On macOS 27, Macs with M3 or newer and 12 GB of memory get more accurate English dictation with automatic formatting',
       'Spoken commands handle basic formatting such as new lines and paragraphs',
     ],
     tradeoffs: [
-      'No automatic rewrite or filler-word cleanup',
+      'No automatic rewrite, and no documented filler-word cleanup',
       'Some enhanced capabilities depend on your language and Mac settings',
     ],
     href: '/compare/apple-dictation/',
@@ -109,7 +112,7 @@ const faqs = [
   },
   {
     question: 'What does WisprFlow do better than free alternatives?',
-    answer: 'WisprFlow is the more mature cross-device service. Its current product includes dictation across Mac, Windows, iPhone, and Android, along with meetings, shared dictionaries, snippets, app styles, backtrack, and team or enterprise controls. Choose it when that service layer matters more than local transcription or avoiding a subscription.',
+    answer: 'WisprFlow is the more mature cross-device service. Its current product includes dictation across Mac, Windows, iPhone, and Android, along with meeting notes on Mac and Windows, shared dictionaries, snippets, app styles, backtrack, and team or enterprise controls. Choose it when that service layer matters more than local transcription or avoiding a subscription.',
   },
 ];
 
@@ -121,7 +124,7 @@ const articleJsonLd = JSON.stringify({
   url: `${siteUrl}/compare/wisprflow-alternatives/`,
   image: `${siteUrl}/images/og/wisprflow.png`,
   datePublished: '2026-05-15T18:30:48Z',
-  dateModified: '2026-08-22T00:00:00Z',
+  dateModified: '2026-10-17T00:00:00Z',
   author: {
     '@type': 'Person',
     name: 'Saurabh Vaish',
@@ -226,7 +229,7 @@ const faqJsonLd = JSON.stringify({
   <div class="container">
     <h1>Free WisprFlow alternatives for Mac</h1>
     <p class="alt-lede"><strong>Short answer:</strong> if you want local push-to-talk dictation without a subscription, start with EnviousWispr. The right free alternative changes if you need model control, voice actions, or no-install dictation.</p>
-    <p class="alt-meta">Updated August 22, 2026. Product details checked against current app and product evidence.</p>
+    <p class="alt-meta">Updated October 17, 2026. Product details checked against current app and product evidence.</p>
     <a href="/download?source=onsite" class="alt-cta" data-download-source="wisprflow-alternatives-hero">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       Download EnviousWispr free

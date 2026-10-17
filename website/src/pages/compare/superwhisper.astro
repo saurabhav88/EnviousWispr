@@ -11,7 +11,7 @@ const meta = {
   "breadcrumb": "EnviousWispr vs Superwhisper",
   "ogImage": "/images/og/superwhisper.png",
   "datePublished": "2026-04-04T21:41:19Z",
-  "dateModified": "2026-10-16T00:00:00Z"
+  "dateModified": "2026-10-17T00:00:00Z"
 };
 
 const faqs = [
@@ -21,7 +21,7 @@ const faqs = [
   },
   {
     "q": "How is EnviousWispr different from Superwhisper?",
-    "a": "Both are Mac-native and offer on-device transcription. EnviousWispr is free, uses two curated local engines, and is open source under GPLv3. Superwhisper offers a much larger library of local and cloud speech models, plus meeting transcription, an iOS app, Windows support, and more writing modes. Superwhisper Pro costs about $8.49 per month."
+    "a": "Both are Mac-native and offer on-device transcription. EnviousWispr is free, uses two curated local engines, and is open source under GPLv3. Superwhisper offers a much larger library of local and cloud speech models, plus free meeting transcription on Mac, apps for iPhone, Windows and Android, and more writing modes. Superwhisper Pro costs about $8.49 per month."
   },
   {
     "q": "How does EnviousWispr compare to Superwhisper for accuracy?",
@@ -253,12 +253,12 @@ const faqs = [
         Download Free
       </a>
     </div>
-    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: August 2026</p>
+    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: October 2026</p>
   </div>
 </header>
 
 <CompareDecisionSummary id="superwhisper-vs-enviouswispr-answer" heading="Superwhisper or EnviousWispr: which should you choose?">
-  <p>Choose Superwhisper if you need meeting notes, iPhone or Windows support, a large speech and writing model library, or custom writing modes. Choose EnviousWispr if your priority is free, open-source Mac dictation with no account or subscription, local speech processing, and a smaller set of built-in defaults. Both can run transcription locally, but Superwhisper is the broader paid product and EnviousWispr is the focused free alternative. For everyday speech-to-text on an Apple Silicon Mac, the decision mainly comes down to whether you value Superwhisper's wider feature set or EnviousWispr's cost, inspectability, and simpler setup. If meetings or file work are central, Superwhisper's paid features matter. If your main job is live dictation into Mac apps, EnviousWispr covers that narrower path without a purchase.</p>
+  <p>Choose Superwhisper if you need meeting notes, iPhone, Windows or Android support, a large speech and writing model library, or custom writing modes. Choose EnviousWispr if your priority is free, open-source Mac dictation with no account or subscription, local speech processing, and a smaller set of built-in defaults. Both can run transcription locally, but Superwhisper is the broader paid product and EnviousWispr is the focused free alternative. For everyday speech-to-text on an Apple Silicon Mac, the decision mainly comes down to whether you value Superwhisper's wider feature set or EnviousWispr's cost, inspectability, and simpler setup. If meetings or file work are central, Superwhisper's paid features matter. If your main job is live dictation into Mac apps, EnviousWispr covers that narrower path without a purchase.</p>
 </CompareDecisionSummary>
 
 <!-- Side-by-Side Table -->
@@ -278,7 +278,13 @@ const faqs = [
             <th scope="col">Superwhisper</th>
           </tr>
         </thead>
-        <!-- Evidence: Superwhisper claims verified against superwhisper.com on 2026-04-04, re-verified 2026-08-21,
+        <!-- 2026-10-17 re-check (superwhisper.com, superwhisper.com/changelog): now "Available on Mac, Windows, iOS and Android";
+             "Intel Macs work best with Cloud models". Free: unlimited Whisper models, Meetings (Mac only), 3,000-word Pro trial
+             for new users (2.18.2). Pro-only: own API keys, unlimited cloud and local AI models, translation, audio/video file
+             transcription. 2.18.3 (2026-09-03): clipboard contents preserved after dictation by default. 3.0.0 (2026-10-15):
+             Meetings tab with live speaker identification (on-device separation), summaries, meeting-start notifications.
+             Current version 3.0.1. Lifetime/yearly prices load by script and were not re-read.
+             Evidence: Superwhisper claims verified against superwhisper.com on 2026-04-04, re-verified 2026-08-21,
              plus the installed app opened directly and a public web search, both on 2026-08-21.
              Sources:
                - superwhisper.com homepage (re-verified 2026-08-21): features, pricing tiers, AI model list, writing modes, custom vocabulary, meeting transcription, iOS app, offline mode, 100+ languages. Now also Windows.
@@ -303,7 +309,7 @@ const faqs = [
           <tr>
             <td>Price</td>
             <td><span class="table-highlight">Free to use. No subscription, no word limits.</span></td>
-            <td>Free tier (unlimited, smaller AI models); Pro ~$8.49/mo; Lifetime purchase available*</td>
+            <td>Free tier (unlimited local Whisper models, Mac meetings, 3,000-word Pro trial); Pro ~$8.49/mo; Lifetime purchase available*</td>
           </tr>
           <tr>
             <td>Account required</td>
@@ -353,7 +359,7 @@ const faqs = [
           <tr>
             <td>Writing style control</td>
             <td>Context-aware Smart Polish adapts to target app</td>
-            <td>Multiple modes: Formal, Casual, Legal, Chat, plus custom modes</td>
+            <td>Voice, Message and Email modes with tone control, Super Mode, plus custom modes</td>
           </tr>
           <tr>
             <td>Filler word removal</td>
@@ -373,7 +379,7 @@ const faqs = [
           <tr>
             <td>Clipboard preservation</td>
             <td><span class="table-check">Yes,</span> when enabled and no other app changes the clipboard first</td>
-            <td>Automatic pasting; clipboard preservation not specified</td>
+            <td><span class="table-check">Yes</span>, clipboard contents preserved after dictation by default</td>
           </tr>
           <tr>
             <td>Text lands in the right app</td>
@@ -388,7 +394,7 @@ const faqs = [
           <tr>
             <td>Meeting transcription</td>
             <td><span class="table-cross">No</span> (no live notes or speaker diarization)</td>
-            <td><span class="table-check">Yes</span> (live meeting recording with automatic notes)</td>
+            <td><span class="table-check">Yes</span> (Meetings tab with live speaker identification and summaries; free on Mac)</td>
           </tr>
           <tr>
             <td>System audio and speaker identification</td>
@@ -408,7 +414,7 @@ const faqs = [
           <tr>
             <td>File transcription</td>
             <td><span class="table-check">Yes</span> (audio and video files, local or cloud cleanup, switch between the original, the cleaned text and a marked-up view)</td>
-            <td><span class="table-check">Yes</span> (audio and video file transcription)</td>
+            <td><span class="table-check">Yes</span> (audio and video file transcription, Pro)</td>
           </tr>
           <tr>
             <td>Source code</td>
@@ -423,7 +429,7 @@ const faqs = [
           <tr>
             <td>Platform support</td>
             <td>macOS (Apple Silicon)</td>
-            <td>macOS (Apple Silicon + Intel), iOS, Windows</td>
+            <td>macOS (Apple Silicon; Intel works best with cloud models), iOS, Windows, Android</td>
           </tr>
           <tr>
             <td>Accessibility</td>
@@ -433,7 +439,7 @@ const faqs = [
         </tbody>
       </table>
     </div>
-    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*Based on Superwhisper's public website (superwhisper.com), last checked August 2026. Pricing: free tier (now unlimited, restricted to smaller AI models), Pro ~$8.49/mo (yearly discount available), lifetime purchase option. EnviousWispr latency from production PostHog data on Apple Silicon Macs, 30-day trailing median. Superwhisper features source-verified from superwhisper.com, the installed app opened directly, and independent public sources for S1-mini. Competitor claims last verified: 2026-08-21.</p>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*Based on Superwhisper's public website (superwhisper.com), last checked October 2026. Pricing: free tier (unlimited local Whisper models, Mac meetings, 3,000-word Pro trial), Pro ~$8.49/mo (yearly discount available), lifetime purchase option. EnviousWispr latency from production PostHog data on Apple Silicon Macs, 30-day trailing median. Superwhisper features source-verified from superwhisper.com, the installed app opened directly, and independent public sources for S1-mini. Competitor claims last verified: 2026-10-17.</p>
     <div style="text-align: center; margin-top: 28px;">
       <a href="/#download" class="btn-primary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -585,7 +591,7 @@ const faqs = [
         <div class="deep-dive-icon">🔀</div>
         <div class="deep-dive-title">Two curated engines vs. a model marketplace</div>
         <div class="deep-dive-body">
-          <p>Superwhisper 2.18.1 has a searchable speech and writing model library. The live app showed local Cohere Transcribe, Parakeet realtime, and Superwhisper-branded Nano, Fast, Standard, Pro, and Ultra choices alongside cloud models.</p>
+          <p>Superwhisper has a searchable speech and writing model library. The live app showed local Cohere Transcribe, Parakeet realtime, and Superwhisper-branded Nano, Fast, Standard, Pro, and Ultra choices alongside cloud models.</p>
           <p>EnviousWispr takes a different approach: Parakeet Ultra, a CTC/TDT hybrid model that runs at ~110x real-time on the Apple Neural Engine. It covers 25 European languages and is tuned for fast, accurate dictation. For languages outside those 25, you switch EnviousWispr to Whisper Large v3 Turbo, which runs on the Apple GPU.</p>
           <p>EnviousWispr uses Parakeet Ultra for the languages it covers and Whisper for broader language support. Superwhisper gives you much more room to compare models, providers, and local or cloud trade-offs.</p>
           <div class="deep-dive-detail">
@@ -621,12 +627,12 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">🎙</div>
         <div class="advantage-title">You need meeting transcription</div>
-        <p class="advantage-desc">Superwhisper supports live meeting recording and automatic note generation. EnviousWispr can record sessions up to 60 minutes, but has no meeting-specific features: no live notes, no speaker diarization, no summarization. If transcribing meetings is your primary use case, Superwhisper handles it today.</p>
+        <p class="advantage-desc">Superwhisper 3.0 added a Meetings tab with live speaker identification and summaries, free on Mac. EnviousWispr can record sessions up to 60 minutes, but has no meeting-specific features: no live notes, no speaker diarization, no summarization. If transcribing meetings is your primary use case, Superwhisper handles it today.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">📱</div>
         <div class="advantage-title">You want cross-platform support</div>
-        <p class="advantage-desc">Superwhisper has an iOS companion app and Windows support. EnviousWispr is macOS-only on Apple Silicon. If you need dictation on your iPhone or a Windows machine, Superwhisper covers more ground.</p>
+        <p class="advantage-desc">Superwhisper has apps for iPhone, Windows and Android. EnviousWispr is macOS-only on Apple Silicon. If you need dictation on your iPhone, a Windows machine or an Android phone, Superwhisper covers more ground.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">📅</div>
@@ -636,7 +642,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">🎨</div>
         <div class="advantage-title">You want more writing modes</div>
-        <p class="advantage-desc">Superwhisper offers predefined modes (Formal, Casual, Legal, Chat) and lets you create custom modes with fine control over formatting. EnviousWispr's Smart Polish adapts to your target app, but does not yet offer the same breadth of preset writing styles.</p>
+        <p class="advantage-desc">Superwhisper offers ready-made Voice, Message and Email modes with tone control, a screen-aware Super Mode, and custom modes with fine control over formatting. EnviousWispr's Smart Polish adapts to your target app, but does not yet offer the same breadth of preset writing styles.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">💰</div>
@@ -667,7 +673,7 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">How is EnviousWispr different from Superwhisper?</div>
-        <p class="faq-a">Both are Mac-native and offer on-device transcription. EnviousWispr is free, uses two curated local engines, and is open source under GPLv3. Superwhisper offers a much larger library of local and cloud speech models, plus meeting transcription, an iOS app, Windows support, and more writing modes. Superwhisper Pro costs about $8.49 per month.</p>
+        <p class="faq-a">Both are Mac-native and offer on-device transcription. EnviousWispr is free, uses two curated local engines, and is open source under GPLv3. Superwhisper offers a much larger library of local and cloud speech models, plus free meeting transcription on Mac, apps for iPhone, Windows and Android, and more writing modes. Superwhisper Pro costs about $8.49 per month.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">How does EnviousWispr compare to Superwhisper for accuracy?</div>

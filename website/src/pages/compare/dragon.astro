@@ -10,7 +10,7 @@ const meta = {
   "breadcrumb": "EnviousWispr vs Dragon",
   "ogImage": "/images/og/dragon.png",
   "datePublished": "2026-04-04T21:41:19Z",
-  "dateModified": "2026-10-16T00:00:00Z"
+  "dateModified": "2026-10-17T00:00:00Z"
 };
 
 const faqs = [
@@ -24,7 +24,7 @@ const faqs = [
   },
   {
     "q": "Does Dragon still work on Mac?",
-    "a": "No. Nuance discontinued Dragon for Mac in 2018. The last Mac version does not run on modern macOS with Apple Silicon. If you need dictation on a Mac, EnviousWispr is a current, actively maintained option."
+    "a": "No. Nuance discontinued Dragon for Mac in 2018. The last Mac version was built for Intel Macs and macOS 10.12 and 10.13, and has been unsupported since 2018. If you need dictation on a Mac, EnviousWispr is a current, actively maintained option."
   },
   {
     "q": "Is Dragon dictation free?",
@@ -44,7 +44,7 @@ const faqs = [
   },
   {
     "q": "What happened to Dragon after Microsoft bought Nuance?",
-    "a": "Microsoft completed its acquisition of Nuance in March 2022. Since then, Dragon consumer products have been effectively sidelined. The focus shifted to enterprise healthcare (DAX Copilot), and Dragon Professional remains a Windows-only product that receives minimal updates."
+    "a": "Microsoft completed its acquisition of Nuance in March 2022. Since then, Dragon consumer products have been effectively sidelined. The focus shifted to enterprise healthcare, now under the name Microsoft Dragon Copilot, and the desktop Dragon Professional remains Windows-only, with no major release since version 16 in 2023."
   },
   {
     "q": "Is EnviousWispr open source?",
@@ -260,7 +260,7 @@ const faqs = [
         Download Free
       </a>
     </div>
-    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: August 2026</p>
+    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: October 2026</p>
   </div>
 </header>
 
@@ -294,11 +294,15 @@ const faqs = [
                - Custom vocabularies: Dragon Professional feature page (accessed 2026-04-03)
                - Voice commands: Dragon Professional supports voice editing, formatting, navigation, and custom macros (product documentation)
                - Auto-punctuation: Dragon Professional includes automatic punctuation (product documentation)
-               - Medical/legal editions: Dragon Medical One, Dragon Legal Individual exist as specialized products (nuance.com)
+               - Medical/legal editions: Dragon Legal (v16) and Dragon Legal Anywhere (dragon.nuance.com, 2026-10-17); clinical products now
+                 sit under Microsoft Dragon Copilot (microsoft.com/health-solutions, 2026-10-17), with a migration path for Dragon Medical One
+               - Releases: Dragon Professional 16 shipped in 2023 (Nuance v16 release notes); no major release since (2026-10-17)
+               - Cloud editions: Dragon Professional Anywhere and Legal Anywhere are cloud-hosted on Microsoft Azure (Nuance data sheet,
+                 2026-10-17); Dragon Anywhere Mobile runs on iOS and Android. The desktop v16 editions process locally.
                - Accuracy claim: Nuance markets "up to 99% recognition accuracy" (product page, accessed 2026-04-03)
              Firsthand testing: Dragon was not tested firsthand for this comparison.
              All claims are source-verified from official pages, third-party retail trackers, and public records.
-             Last verified: 2026-08-21. -->
+             Last verified: 2026-10-17. -->
         <tbody>
           <tr>
             <td>Price</td>
@@ -313,17 +317,17 @@ const faqs = [
           <tr>
             <td>Platform</td>
             <td><span class="table-highlight">macOS</span> (Apple Silicon)</td>
-            <td>Windows only (Mac version discontinued 2018)</td>
+            <td>Desktop editions: Windows only (Mac version discontinued 2018); cloud Anywhere editions and mobile apps also exist</td>
           </tr>
           <tr>
             <td>Audio processing</td>
             <td><span class="table-highlight">On-device</span> (Neural Engine or GPU)</td>
-            <td>On-device (after installation)</td>
+            <td>On-device for desktop Dragon Professional v16; the Anywhere editions run in the cloud</td>
           </tr>
           <tr>
             <td>Audio leaves your computer</td>
             <td><span class="table-check">Never.</span> If you enable cloud AI polish, only the text transcript is sent.</td>
-            <td><span class="table-check">No</span> (local processing)</td>
+            <td><span class="table-check">No</span> for desktop v16 (local processing); yes for the cloud Anywhere editions</td>
           </tr>
           <tr>
             <td>Offline transcription</td>
@@ -368,7 +372,7 @@ const faqs = [
           <tr>
             <td>First-word capture</td>
             <td><span class="table-check">Yes,</span> while the mic is warm (500ms pre-roll buffer); a cold start can still clip</td>
-            <td><span class="table-check">Yes.</span> Always-listening mode with wake word.</td>
+            <td><span class="table-check">Yes.</span> The microphone can sleep and wake by voice command.</td>
           </tr>
           <tr>
             <td>Starts listening instantly</td>
@@ -418,7 +422,7 @@ const faqs = [
         </tbody>
       </table>
     </div>
-    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*Dragon Professional Individual pricing of ~$699 one-time confirmed by third-party retailers (SoftwareAdvice, GetApp) as of August 2026; <a href="https://dragon.nuance.com/en-us/dragon-professional" style="color: var(--text-3); text-decoration: underline;">Nuance's own product page</a> no longer lists a price and directs buyers to contact sales. Consumer Dragon Home has been discontinued. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Dragon claims source-verified from official Nuance pages and product documentation; not firsthand-tested. Competitor claims last verified: 2026-08-21.</p>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*Dragon Professional Individual pricing of ~$699 one-time confirmed by third-party retailers (SoftwareAdvice, GetApp) as of August 2026; <a href="https://dragon.nuance.com/en-us/dragon-professional" style="color: var(--text-3); text-decoration: underline;">Nuance's own product page</a> no longer lists a price and directs buyers to contact sales. Consumer Dragon Home has been discontinued. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Dragon claims source-verified from official Nuance pages and product documentation; not firsthand-tested. Competitor claims last verified: 2026-10-17.</p>
     <div style="text-align: center; margin-top: 28px;">
       <a href="/#download" class="btn-primary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -460,7 +464,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">🔄</div>
         <div class="advantage-title">Actively maintained</div>
-        <p class="advantage-desc">Dragon has not received meaningful updates since Microsoft acquired Nuance in 2022. Their focus shifted to enterprise healthcare. EnviousWispr ships updates regularly with new models, features, and performance improvements.</p>
+        <p class="advantage-desc">Desktop Dragon has had no major release since version 16 in 2023, a year after Microsoft acquired Nuance. Microsoft's focus shifted to enterprise healthcare. EnviousWispr ships updates regularly with new models, features, and performance improvements.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">📖</div>
@@ -541,11 +545,11 @@ const faqs = [
         <div class="deep-dive-icon">🍎</div>
         <div class="deep-dive-title">Actually runs on your Mac</div>
         <div class="deep-dive-body">
-          <p>Nuance discontinued Dragon for Mac in 2018. The last Mac version (6.0.8) predates Apple Silicon entirely. It does not run on modern macOS, and Nuance has no plans to bring it back. If you search for "Dragon Mac," you will find forum posts from frustrated users and no download link.</p>
+          <p>Nuance discontinued Dragon for Mac in 2018. The last Mac version (6.0.8) predates Apple Silicon entirely. It was built for Intel Macs and macOS 10.12 and 10.13, it has been unsupported since 2018, and Nuance has no plans to bring it back. If you search for "Dragon Mac," you will find forum posts from frustrated users and no download link.</p>
           <p>EnviousWispr is built natively for Apple Silicon. Its default engine uses Core ML and the Neural Engine directly, and its Whisper engine runs on the Apple GPU, so transcription runs on dedicated hardware rather than general-purpose CPU cores. The app is a lightweight menu bar utility that launches in seconds and uses minimal memory.</p>
           <p>This is not a compatibility layer or a port. Every component, from audio capture to paste-back, uses native macOS APIs: AVFoundation for audio, Accessibility API for text insertion, and Core ML and Metal for model inference.</p>
           <div class="deep-dive-detail">
-            <strong>Technical detail:</strong> EnviousWispr runs Parakeet Ultra (600M parameters) through Core ML on Apple Silicon's Neural Engine, and Whisper Large v3 Turbo through transcribe.cpp on the Apple GPU. Dragon's proprietary engine was optimized for x86 Windows with no Apple Silicon path. The last Dragon Mac release cannot even launch on macOS 14+.
+            <strong>Technical detail:</strong> EnviousWispr runs Parakeet Ultra (600M parameters) through Core ML on Apple Silicon's Neural Engine, and Whisper Large v3 Turbo through transcribe.cpp on the Apple GPU. Dragon's proprietary engine was optimized for x86 Windows with no Apple Silicon path. The last Dragon Mac release was never updated for Apple Silicon or any macOS after 10.13.
           </div>
         </div>
       </div>
@@ -553,7 +557,7 @@ const faqs = [
         <div class="deep-dive-icon">✨</div>
         <div class="deep-dive-title">Modern AI polish, not just raw transcript</div>
         <div class="deep-dive-body">
-          <p>Dragon gives you a transcript and expects you to fix it. It has no concept of LLM-based post-processing. Dragon was built in an era before large language models existed, and Nuance has not retrofitted this capability.</p>
+          <p>Dragon gives you a transcript and expects you to fix it. It has no concept of LLM-based post-processing. Dragon Professional was built in an era before large language models existed, and Nuance has not retrofitted this capability; Microsoft's AI drafting lives in its separate clinical product, Dragon Copilot.</p>
           <p>EnviousWispr integrates seven polish engines for Smart Polish: EG-1 (our own on-device model), S1-mini by Superwhisper (a lighter on-device model), Ollama (local models like Qwen or Gemma), Apple Intelligence (on-device, macOS 26+), and cloud options via OpenAI, Gemini, or Claude if you bring your own API key. The polish step removes filler words, fixes punctuation, restructures awkward phrasings, and adapts to the app you are dictating into.</p>
           <p>The system is context-aware. Dictating into Slack? The polish keeps it conversational. Writing an email? It formalizes. And all cloud providers only receive the text transcript, never your audio.</p>
           <div class="deep-dive-detail">
@@ -616,7 +620,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">🏥</div>
         <div class="advantage-title">Medical and legal editions</div>
-        <p class="advantage-desc">Dragon Medical One and Dragon Legal Individual ship with specialized vocabularies for clinical notes, legal briefs, and industry-specific terminology. These are purpose-built products with EHR integrations. EnviousWispr targets general dictation, not regulated industry workflows.</p>
+        <p class="advantage-desc">Dragon Legal and Microsoft Dragon Copilot (which now includes Dragon Medical One) ship with specialized vocabularies for clinical notes, legal briefs, and industry-specific terminology. These are purpose-built products with EHR integrations. EnviousWispr targets general dictation, not regulated industry workflows.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🏢</div>
@@ -647,7 +651,7 @@ const faqs = [
 
       <div class="faq-item reveal">
         <div class="faq-q">Does Dragon still work on Mac?</div>
-        <p class="faq-a">No. Nuance discontinued Dragon for Mac in 2018. The last Mac version does not run on modern macOS with Apple Silicon. If you need dictation on a Mac, EnviousWispr is a current, actively maintained option.</p>
+        <p class="faq-a">No. Nuance discontinued Dragon for Mac in 2018. The last Mac version was built for Intel Macs and macOS 10.12 and 10.13, and has been unsupported since 2018. If you need dictation on a Mac, EnviousWispr is a current, actively maintained option.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Is Dragon dictation free?</div>
@@ -667,7 +671,7 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">What happened to Dragon after Microsoft bought Nuance?</div>
-        <p class="faq-a">Microsoft completed its acquisition of Nuance in March 2022. Since then, Dragon consumer products have been effectively sidelined. The focus shifted to enterprise healthcare (DAX Copilot), and Dragon Professional remains a Windows-only product that receives minimal updates.</p>
+        <p class="faq-a">Microsoft completed its acquisition of Nuance in March 2022. Since then, Dragon consumer products have been effectively sidelined. The focus shifted to enterprise healthcare, now under the name Microsoft Dragon Copilot, and the desktop Dragon Professional remains Windows-only, with no major release since version 16 in 2023.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Is EnviousWispr open source?</div>
@@ -675,7 +679,7 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can EnviousWispr match Dragon's accuracy for medical or legal terms?</div>
-        <p class="faq-a">For general dictation, EnviousWispr's neural models are highly accurate out of the box. For specialized medical or legal terminology, Dragon's purpose-built editions (Dragon Medical One, Dragon Legal Individual) have purpose-trained vocabularies that EnviousWispr does not replicate. EnviousWispr's Custom Words feature lets you add names and terms manually, but it is not a substitute for a medical dictionary with tens of thousands of clinical terms.</p>
+        <p class="faq-a">For general dictation, EnviousWispr's neural models are highly accurate out of the box. For specialized medical or legal terminology, Dragon's purpose-built editions (Dragon Legal and Microsoft Dragon Copilot, which now includes Dragon Medical One) have purpose-trained vocabularies that EnviousWispr does not replicate. EnviousWispr's Custom Words feature lets you add names and terms manually, but it is not a substitute for a medical dictionary with tens of thousands of clinical terms.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">I used Dragon on Mac before 2018. Is EnviousWispr a replacement?</div>

@@ -10,7 +10,7 @@ const meta = {
   "breadcrumb": "EnviousWispr vs Otter.ai",
   "ogImage": "/images/og/otter-ai.png",
   "datePublished": "2026-04-04T21:41:19Z",
-  "dateModified": "2026-10-16T00:00:00Z"
+  "dateModified": "2026-10-17T00:00:00Z"
 };
 
 const faqs = [
@@ -56,7 +56,7 @@ const faqs = [
   },
   {
     "q": "Is Otter.ai free?",
-    "a": "Otter has a free tier with 300 minutes per month and a 30-minute per-conversation limit. Beyond that, Pro is $8.33/month (billed annually) and Business is $19.99/month. EnviousWispr is completely free with no usage limits, no subscription tiers, and no account required."
+    "a": "Otter has a free tier with 300 minutes per month and a 30-minute per-conversation limit. Beyond that, Pro is $8.33/month billed annually ($16.99 monthly) with 1,200 minutes a month, and Business is $19.99/month billed annually ($30 monthly). EnviousWispr is completely free with no usage limits, no subscription tiers, and no account required."
   }
 ];
 ---
@@ -254,7 +254,7 @@ const faqs = [
         Download Free
       </a>
     </div>
-    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: August 2026</p>
+    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: October 2026</p>
   </div>
 </header>
 
@@ -283,7 +283,12 @@ const faqs = [
                - Processing: Cloud-only, no on-device option (accessed 2026-04-03)
                - Features: Meeting transcription, speaker diarization, AI summaries, Zoom/Meet/Teams integration, search across transcripts, collaboration (accessed 2026-04-03)
              Firsthand testing: Otter.ai was not tested firsthand for this comparison.
-             All claims are source-verified from official pages. Last verified: 2026-04-04. -->
+             2026-10-17 re-check (otter.ai/pricing, otter.ai/privacy-policy): Basic free 300 min/mo, 30 min per conversation,
+               5 custom vocabulary terms. Pro $8.33/user/mo annual or $16.99 monthly, 1,200 min/mo, 90 min per conversation.
+               Business $19.99/user/mo annual or $30 monthly, unlimited minutes, 4 hours per conversation. Otter MCP server listed.
+               Privacy policy (effective 2026-06-16) describes training its AI on de-identified audio recordings.
+               Desktop app for Mac and Windows records without a bot (still uploads to Otter's cloud).
+             All claims are source-verified from official pages. Last verified: 2026-10-17. -->
         <tbody>
           <tr>
             <td>Primary use case</td>
@@ -293,7 +298,7 @@ const faqs = [
           <tr>
             <td>Price</td>
             <td><span class="table-highlight">Free. No subscription.</span></td>
-            <td>Free tier (300 min/mo, 30 min max); Pro $8.33/mo (annual); Business $19.99/mo*</td>
+            <td>Free tier (300 min/mo, 30 min max); Pro $8.33/mo annual or $16.99 monthly; Business $19.99/mo annual or $30 monthly*</td>
           </tr>
           <tr>
             <td>Account required</td>
@@ -337,7 +342,7 @@ const faqs = [
           </tr>
           <tr>
             <td>Search across transcripts</td>
-            <td><span class="table-cross">No</span></td>
+            <td><span class="table-check">Yes,</span> within History on your Mac</td>
             <td><span class="table-check">Yes</span> - search all past meeting transcripts</td>
           </tr>
           <tr>
@@ -363,7 +368,7 @@ const faqs = [
           <tr>
             <td>Custom vocabulary</td>
             <td><span class="table-check">Yes</span> - custom words for names, jargon, acronyms</td>
-            <td>Custom vocabulary on paid plans</td>
+            <td>Custom vocabulary on every plan (5 terms free, more on paid plans)</td>
           </tr>
           <tr>
             <td>Speech engines</td>
@@ -398,7 +403,7 @@ const faqs = [
         </tbody>
       </table>
     </div>
-    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*Based on Otter.ai's public pricing and feature pages last checked August 2026. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Otter.ai claims source-verified from otter.ai and otter.ai/pricing; not firsthand-tested. Competitor claims last verified: 2026-08-21.</p>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*Based on Otter.ai's public pricing and feature pages last checked August 2026. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Otter.ai claims source-verified from otter.ai and otter.ai/pricing; not firsthand-tested. Competitor claims last verified: 2026-10-17.</p>
     <div style="text-align: center; margin-top: 28px;">
       <a href="/#download" class="btn-primary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -489,7 +494,7 @@ const faqs = [
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">1</div>
-          <div>You speak, or Otter joins your meeting as a bot.</div>
+          <div>You speak, Otter joins your meeting as a bot, or its desktop app records without one.</div>
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">2</div>
@@ -501,7 +506,7 @@ const faqs = [
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">4</div>
-          <div>You access transcripts through the web app or mobile app. Audio and text remain on Otter's servers.</div>
+          <div>You access transcripts through the web, desktop or mobile app. Audio and text remain on Otter's servers, and Otter's privacy policy describes training its AI on de-identified recordings.</div>
         </div>
       </div>
     </div>
@@ -601,12 +606,12 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">📊</div>
         <div class="advantage-title">AI meeting summaries</div>
-        <p class="advantage-desc">Otter generates automatic summaries, action items, and key takeaways from meetings. It can answer questions about past conversations. These are features EnviousWispr does not offer.</p>
+        <p class="advantage-desc">Otter generates automatic summaries, action items, and key takeaways from meetings. It can answer questions about past conversations, and its MCP server lets AI assistants such as ChatGPT and Claude read your meeting history. These are features EnviousWispr does not offer.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🔗</div>
         <div class="advantage-title">Zoom, Teams, and Meet integration</div>
-        <p class="advantage-desc">Otter joins your video calls as a bot, records automatically, and produces transcripts without manual setup. EnviousWispr has no meeting integrations at all.</p>
+        <p class="advantage-desc">Otter joins your video calls as a bot, or records from its Mac and Windows desktop app without one, and produces transcripts without manual setup. EnviousWispr has no meeting integrations at all.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🔍</div>
@@ -616,7 +621,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">📱</div>
         <div class="advantage-title">Cross-platform availability</div>
-        <p class="advantage-desc">Otter works on web, iOS, and Android. EnviousWispr is macOS only with Apple Silicon required.</p>
+        <p class="advantage-desc">Otter works on web, iOS, Android, a Chrome extension, and a desktop app for Mac and Windows. EnviousWispr is macOS only with Apple Silicon required.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">⏱️</div>
@@ -678,7 +683,7 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Is Otter.ai free?</div>
-        <p class="faq-a">Otter has a free tier with 300 minutes per month and a 30-minute per-conversation limit. Beyond that, Pro is $8.33/month (billed annually) and Business is $19.99/month. EnviousWispr is completely free with no usage limits, no subscription tiers, and no account required.</p>
+        <p class="faq-a">Otter has a free tier with 300 minutes per month and a 30-minute per-conversation limit. Beyond that, Pro is $8.33/month billed annually ($16.99 monthly) with 1,200 minutes a month, and Business is $19.99/month billed annually ($30 monthly). EnviousWispr is completely free with no usage limits, no subscription tiers, and no account required.</p>
       </div>
     </div>
   </div>

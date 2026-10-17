@@ -10,7 +10,7 @@ const meta = {
   "breadcrumb": "EnviousWispr vs Apple Dictation",
   "ogImage": "/images/og/apple-dictation.png",
   "datePublished": "2026-04-04T21:41:19Z",
-  "dateModified": "2026-10-16T00:00:00Z"
+  "dateModified": "2026-10-17T00:00:00Z"
 };
 
 const faqs = [
@@ -40,7 +40,7 @@ const faqs = [
   },
   {
     "q": "How accurate is EnviousWispr compared to Apple Dictation?",
-    "a": "EnviousWispr uses Parakeet Ultra, a modern ASR model, combined with AI polish that fixes misrecognitions and grammar. Apple Dictation achieves ~90% in quiet conditions but degrades with background noise. EnviousWispr's AI polish layer provides an additional correction pass that Apple Dictation lacks."
+    "a": "EnviousWispr uses Parakeet Ultra, a modern ASR model, combined with AI polish that fixes misrecognitions and grammar. Apple Dictation's older engine achieves ~90% in quiet conditions but degrades with background noise; on macOS 27, Apple says Macs with M3 or newer and 12GB of memory get a major accuracy boost. EnviousWispr's AI polish layer provides an additional correction pass that Apple Dictation lacks."
   },
   {
     "q": "Can EnviousWispr remove filler words from dictation?",
@@ -254,7 +254,7 @@ const faqs = [
         Download Free
       </a>
     </div>
-    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: August 2026</p>
+    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: October 2026</p>
   </div>
 </header>
 
@@ -275,10 +275,16 @@ const faqs = [
             <th scope="col">Apple Dictation</th>
           </tr>
         </thead>
-        <!-- Evidence: Apple Dictation claims verified against Apple support documentation and firsthand testing on macOS 15.
+        <!-- 2026-10-17 re-check: Apple newsroom (2026-06, "Apple introduces Siri AI"): "Dictation now captures what users
+             say as polished text with greater precision ... automatically handling capitalization, punctuation, and
+             formatting as they speak", "a major boost in accuracy with systemwide dictation"; footnote: Mac (M3) or later
+             with at least 12GB of unified memory. macOS 27 runs on Apple silicon only. Apple Support mh40584: dictation
+             stops after 30 seconds without speech; keyboard use while dictating is "On a Mac with Apple silicon";
+             on-device processing depends on the language (Keyboard settings note). Fillers on the new model: not stated.
+             Evidence: Apple Dictation claims verified against Apple support documentation and firsthand testing on macOS 15.
              Confidence: source-verified from Apple's public support pages.
              Sources:
-               - Timeout: Apple Support HT210539 - dictation stops after ~30s of silence or inactivity
+               - Timeout: Apple Support mh40584 - dictation stops after ~30s without speech
                - On-device processing: Apple Support - on-device on Apple Silicon, cloud fallback on Intel
                - Accuracy: published third-party benchmarks (90-92% clean, degrades with noise)
                - Custom vocabulary: not available in macOS Dictation settings
@@ -303,12 +309,12 @@ const faqs = [
           <tr>
             <td>Account required</td>
             <td><span class="table-check">No</span></td>
-            <td>Apple ID (for macOS itself)</td>
+            <td>None for dictation itself</td>
           </tr>
           <tr>
             <td>Audio processing</td>
             <td><span class="table-highlight">On-device</span> (<a href="https://huggingface.co/FluidInference/parakeet-ultra-coreml" style="color: var(--accent); text-decoration: underline;">Parakeet Ultra</a> + <a href="https://huggingface.co/openai/whisper-large-v3-turbo" style="color: var(--accent); text-decoration: underline;">Whisper</a>)</td>
-            <td>On-device (Apple Silicon); cloud fallback on Intel</td>
+            <td>On-device for supported languages; older Intel Macs on macOS 26 or earlier could use Apple's servers</td>
           </tr>
           <tr>
             <td>Timeout</td>
@@ -318,17 +324,17 @@ const faqs = [
           <tr>
             <td>AI polish</td>
             <td><span class="table-highlight">EG-1, S1-mini by Superwhisper, Ollama</span> (on-device), <span class="table-highlight">Apple Intelligence</span> (on-device, macOS 26+), or BYO OpenAI/Gemini/Claude key</td>
-            <td><span class="table-cross">None</span></td>
+            <td>On macOS 27 with an M3 or newer Mac and 12GB of memory: automatic capitalization, punctuation and formatting. No rewrite step.</td>
           </tr>
           <tr>
             <td>Filler word removal</td>
             <td><span class="table-check">Yes</span>, fixed local list runs even with AI polish off; AI polish removes more</td>
-            <td><span class="table-cross">No</span> (transcribes "um", "uh" faithfully)</td>
+            <td><span class="table-cross">Not documented</span> (the older engine transcribes "um", "uh" faithfully)</td>
           </tr>
           <tr>
             <td>Writing style control</td>
             <td><span class="table-check">Yes</span> (voice-preserving AI polish that adapts to what you said)</td>
-            <td><span class="table-cross">No</span></td>
+            <td><span class="table-cross">No</span> style choices</td>
           </tr>
           <tr>
             <td>Custom vocabulary</td>
@@ -343,7 +349,7 @@ const faqs = [
           <tr>
             <td>Accuracy (clean audio)</td>
             <td>High (Parakeet Ultra + AI polish correction)</td>
-            <td>90-92% (degrades significantly with background noise)</td>
+            <td>90-92% on the older engine (third-party tests); Apple claims a major accuracy boost on M3+ Macs with macOS 27</td>
           </tr>
           <tr>
             <td>First-word capture</td>
@@ -388,7 +394,7 @@ const faqs = [
           <tr>
             <td>Works offline</td>
             <td><span class="table-check">Yes</span> (after one-time model download)</td>
-            <td>Yes on Apple Silicon; No on Intel</td>
+            <td>Yes for languages processed on-device</td>
           </tr>
           <tr>
             <td>Platform</td>
@@ -403,7 +409,7 @@ const faqs = [
         </tbody>
       </table>
     </div>
-    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">EnviousWispr latency from production PostHog data (environment=production) on Apple Silicon Macs. Apple Dictation accuracy from published third-party benchmarks. Apple Dictation features verified against Apple Support documentation and firsthand testing on macOS 15. Last verified: August 2026.</p>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">EnviousWispr latency from production PostHog data (environment=production) on Apple Silicon Macs. Apple Dictation accuracy from published third-party benchmarks. Apple Dictation features verified against Apple Support documentation firsthand testing on macOS 15, and Apple's macOS 27 announcement. Last verified: October 2026.</p>
     <div style="text-align: center; margin-top: 28px;">
       <a href="/#download" class="btn-primary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -445,7 +451,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">🔇</div>
         <div class="advantage-title">Filler words removed</div>
-        <p class="advantage-desc">Uh, um, you know, like. Apple Dictation transcribes them faithfully. EnviousWispr's AI polish strips them out so your text reads like writing, not a transcript.</p>
+        <p class="advantage-desc">Uh, um, you know, like. Apple's older dictation engine transcribes them faithfully, and Apple does not say its newer one removes them. EnviousWispr's AI polish strips them out so your text reads like writing, not a transcript.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🔍</div>
@@ -537,6 +543,11 @@ const faqs = [
         <p class="advantage-desc">Apple Dictation is already on your Mac. Turn it on in System Settings, press the microphone key, and start talking. No download, no model installation, no permissions to grant. It just works.</p>
       </div>
       <div class="advantage-card reveal">
+        <div class="advantage-icon">✨</div>
+        <div class="advantage-title">You have a newer Mac on macOS 27</div>
+        <p class="advantage-desc">On a Mac with M3 or newer and at least 12GB of memory, macOS 27 dictation is much more accurate and handles capitalization, punctuation and formatting as you speak. If that is your Mac and you need nothing else, Apple Dictation may be enough. EnviousWispr still adds custom words, filler removal, History, longer recordings, and polish on M1 and M2 Macs.</p>
+      </div>
+      <div class="advantage-card reveal">
         <div class="advantage-icon">📱</div>
         <div class="advantage-title">Works on every Apple device</div>
         <p class="advantage-desc">iPhone, iPad, Mac, Vision Pro. Apple Dictation follows you across the ecosystem with consistent behavior. EnviousWispr is macOS only and requires Apple Silicon.</p>
@@ -554,7 +565,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">⌨️</div>
         <div class="advantage-title">Mixed keyboard and voice input</div>
-        <p class="advantage-desc">On macOS 14+, you can type on the keyboard while Dictation is active. Switch freely between voice and keys mid-sentence. EnviousWispr uses a record-then-paste model, so you speak first, then the text appears.</p>
+        <p class="advantage-desc">On a Mac with Apple Silicon, you can type on the keyboard while Dictation is active. Switch freely between voice and keys mid-sentence. EnviousWispr uses a record-then-paste model, so you speak first, then the text appears.</p>
       </div>
     </div>
     <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you dictate more than a few sentences at a time and want polished output with custom vocabulary, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. It runs alongside Apple Dictation with no conflicts.</p>
@@ -595,7 +606,7 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">How accurate is EnviousWispr compared to Apple Dictation?</div>
-        <p class="faq-a">EnviousWispr uses Parakeet Ultra, a modern ASR model, combined with AI polish that fixes misrecognitions and grammar. Apple Dictation achieves ~90% in quiet conditions (third-party tests) in clean environments but degrades significantly with background noise. EnviousWispr's AI polish layer provides an additional correction pass that Apple Dictation lacks.</p>
+        <p class="faq-a">EnviousWispr uses Parakeet Ultra, a modern ASR model, combined with AI polish that fixes misrecognitions and grammar. Apple Dictation's older engine achieves ~90% in quiet conditions (third-party tests) but degrades significantly with background noise; on macOS 27, Apple says Macs with M3 or newer and 12GB of memory get a major accuracy boost. EnviousWispr's AI polish layer provides an additional correction pass that Apple Dictation lacks.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can EnviousWispr remove filler words from dictation?</div>

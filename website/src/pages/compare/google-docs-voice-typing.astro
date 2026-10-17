@@ -4,13 +4,13 @@ import CompareLayout from '../../layouts/CompareLayout.astro';
 const meta = {
   "slug": "google-docs-voice-typing",
   "title": "EnviousWispr vs Google Docs Voice Typing",
-  "description": "Compare EnviousWispr vs Google Docs Voice Typing. Both free. EnviousWispr works in any app, offline, on-device. No Chrome required.",
+  "description": "Compare EnviousWispr vs Google Docs Voice Typing. Both free. EnviousWispr works in any app, offline, on-device. No browser required.",
   "headline": "EnviousWispr vs Google Docs Voice Typing: Dictation Beyond the Browser",
   "articleDescription": "Compare EnviousWispr and Google Docs Voice Typing. Both free, but EnviousWispr works system-wide, offline, and on-device. No browser or Google account required.",
   "breadcrumb": "EnviousWispr vs Google Docs Voice Typing",
   "ogImage": "/images/og/google-docs-voice-typing.png",
   "datePublished": "2026-04-04T21:41:19Z",
-  "dateModified": "2026-10-16T00:00:00Z"
+  "dateModified": "2026-10-17T00:00:00Z"
 };
 
 const faqs = [
@@ -28,7 +28,7 @@ const faqs = [
   },
   {
     "q": "Does Google Docs voice typing send my audio to the cloud?",
-    "a": "Yes. Google Docs voice typing requires an internet connection and processes your audio on Google's servers. EnviousWispr processes audio entirely on your Mac, on the Apple Silicon Neural Engine or GPU."
+    "a": "In Chrome, yes: Google's speech service processes your audio, which needs an internet connection. Google says your browser controls the speech service, so in Edge or Safari the browser's own service handles it. EnviousWispr processes audio entirely on your Mac, on the Apple Silicon Neural Engine or GPU."
   },
   {
     "q": "Does EnviousWispr have voice commands like Google Docs?",
@@ -48,7 +48,7 @@ const faqs = [
   },
   {
     "q": "Can I use Google Docs voice typing in Slack, VS Code, or other apps?",
-    "a": "No. Google Docs Voice Typing only works inside Google Docs and Google Slides in a supported browser. If you need to dictate into Slack, VS Code, email clients, terminals, or any other app, you need a system-wide tool like EnviousWispr."
+    "a": "No. Google Docs Voice Typing only works inside Google Docs and Google Slides in a supported browser. If you need to dictate into Slack, VS Code, email clients, terminals, or any other app, you need a system-wide tool. Google's separate Gemini app for Mac now offers system-wide dictation that works in the cloud; EnviousWispr does it on your Mac."
   },
   {
     "q": "Does Google Docs voice typing add punctuation automatically?",
@@ -235,7 +235,7 @@ const faqs = [
       <span class="vs-brand">Google Docs Voice Typing</span>
     </div>
     <h1 class="reveal">Dictation that works everywhere, not just Google Docs</h1>
-    <p class="page-header-sub reveal">Google's voice typing is locked to Chrome and Google Docs. EnviousWispr works in any text field on your Mac, on-device, with no account required. Both are free.</p>
+    <p class="page-header-sub reveal">Google's voice typing is locked to Google Docs and Slides in a supported browser. EnviousWispr works in any text field on your Mac, on-device, with no account required. Both are free.</p>
     <div class="hero-pills reveal">
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
@@ -256,7 +256,7 @@ const faqs = [
         Download Free
       </a>
     </div>
-    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: August 2026</p>
+    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: October 2026</p>
   </div>
 </header>
 
@@ -282,7 +282,10 @@ const faqs = [
              Sources:
                - Pricing: Free with Google account (support.google.com/docs/answer/4492226, accessed 2026-04-04)
                - Browser: Chrome, Edge, and Safari on desktop (support.google.com/docs/answer/4492226, accessed 2026-04-04)
-               - Cloud processing: Requires internet, audio sent to Google servers (support.google.com/docs/answer/4492226, accessed 2026-04-04)
+               - Speech processing: "your web browser controls the speech-to-text service. It determines how your speech is processed" (support.google.com/docs/answer/4492226, re-checked 2026-10-17). In Chrome this is Google's cloud service.
+               - Slides: speaker notes and captions only; voice commands do not work in Slides speaker notes (same page, 2026-10-17)
+               - Voice commands: account language and document language must both be English (same page, 2026-10-17)
+               - Gemini for Mac (gemini.google/us/mac, 2026-10-17): "Think out loud to any app"; Apple silicon, macOS 15+; separate product from Docs voice typing
                - App scope: Google Docs and Google Slides only (support.google.com/docs/answer/4492226, accessed 2026-04-04)
                - Languages: over 100 languages and regional variants supported (support.google.com/docs/answer/4492226, accessed 2026-08-21)
                - Voice commands: English only, formatting and editing commands (support.google.com/docs/answer/4492226, accessed 2026-04-04)
@@ -301,7 +304,7 @@ const faqs = [
           <tr>
             <td>Works in any app</td>
             <td><span class="table-check">Yes.</span> <span class="table-highlight">Any text field</span> on macOS, system-wide</td>
-            <td><span class="table-cross">No.</span> Google Docs and Google Slides only, in Chrome</td>
+            <td><span class="table-cross">No.</span> Google Docs, and Slides speaker notes, in a supported browser</td>
           </tr>
           <tr>
             <td>Browser requirement</td>
@@ -311,12 +314,12 @@ const faqs = [
           <tr>
             <td>Audio processing</td>
             <td><span class="table-highlight">On-device</span> (Neural Engine or GPU)</td>
-            <td>Cloud (Google servers)</td>
+            <td>Your browser's speech service (Google's cloud in Chrome)</td>
           </tr>
           <tr>
             <td>Internet required</td>
             <td><span class="table-check">No</span> for transcription (after initial model download)</td>
-            <td>Yes, always</td>
+            <td>Yes in Chrome</td>
           </tr>
           <tr>
             <td>AI polish</td>
@@ -326,7 +329,7 @@ const faqs = [
           <tr>
             <td>Offline AI polish</td>
             <td><span class="table-check">Yes</span> (EG-1, S1-mini by Superwhisper, Ollama, or Apple Intelligence on macOS 26+)</td>
-            <td><span class="table-cross">No.</span> Entire tool requires internet.</td>
+            <td><span class="table-cross">No</span> AI polish in voice typing</td>
           </tr>
           <tr>
             <td>Custom vocabulary</td>
@@ -356,7 +359,7 @@ const faqs = [
           <tr>
             <td>Voice commands</td>
             <td>Not yet</td>
-            <td><span class="table-highlight">Yes</span> (formatting, editing, navigation; English only)</td>
+            <td><span class="table-highlight">Yes</span> (formatting, editing, navigation; account and document language must be English)</td>
           </tr>
           <tr>
             <td>Languages</td>
@@ -366,7 +369,7 @@ const faqs = [
           <tr>
             <td>Platform</td>
             <td>macOS (Apple Silicon)</td>
-            <td>Any OS with Chrome (desktop)</td>
+            <td>Any desktop OS with Chrome, Edge or Safari</td>
           </tr>
           <tr>
             <td>Accessibility</td>
@@ -396,7 +399,7 @@ const faqs = [
         </tbody>
       </table>
     </div>
-    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">Google Docs Voice Typing claims source-verified from <a href="https://support.google.com/docs/answer/4492226" style="color: var(--text-3); text-decoration: underline;">support.google.com/docs/answer/4492226</a> as of August 2026; not firsthand-tested. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Table expanded with 18 comparison rows covering app scope, AI features, privacy, and platform differences. Competitor claims last verified: 2026-08-21.</p>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">Google Docs Voice Typing claims source-verified from <a href="https://support.google.com/docs/answer/4492226" style="color: var(--text-3); text-decoration: underline;">support.google.com/docs/answer/4492226</a> as of October 2026; not firsthand-tested. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Table expanded with 20 comparison rows covering app scope, AI features, privacy, and platform differences. Competitor claims last verified: 2026-10-17.</p>
     <div style="text-align: center; margin-top: 28px;">
       <a href="/#download" class="btn-primary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -418,7 +421,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">🖥️</div>
         <div class="advantage-title">Works in any text field</div>
-        <p class="advantage-desc">Slack, VS Code, email, notes, terminal. EnviousWispr is a system-wide dictation tool. Google's voice typing only works inside Google Docs and Google Slides in Chrome.</p>
+        <p class="advantage-desc">Slack, VS Code, email, notes, terminal. EnviousWispr is a system-wide dictation tool. Google's voice typing only works inside Google Docs and Slides speaker notes, in a supported browser.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🔒</div>
@@ -428,7 +431,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">✈️</div>
         <div class="advantage-title">Works offline</div>
-        <p class="advantage-desc">On a plane, in a cafe with spotty Wi-Fi, or on a train. EnviousWispr transcribes without internet after the initial model download. Google's voice typing requires a constant connection.</p>
+        <p class="advantage-desc">On a plane, in a cafe with spotty Wi-Fi, or on a train. EnviousWispr transcribes without internet after the initial model download. Google's voice typing in Chrome needs a constant connection.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">✨</div>
@@ -487,11 +490,11 @@ const faqs = [
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">1</div>
-          <div>You speak into your microphone while in Google Docs on Chrome.</div>
+          <div>You speak into your microphone while in Google Docs in your browser.</div>
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">2</div>
-          <div>Audio is sent to Google's cloud servers for speech recognition.</div>
+          <div>Your browser's speech service recognizes the audio; in Chrome, that means Google's cloud servers.</div>
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">3</div>
@@ -531,7 +534,7 @@ const faqs = [
         <div class="deep-dive-icon">🔒</div>
         <div class="deep-dive-title">Privacy: on-device vs cloud</div>
         <div class="deep-dive-body">
-          <p>Google Docs Voice Typing requires a constant internet connection. Your audio is streamed to Google's servers, processed by their speech recognition API, and the text result is sent back. Google's <a href="https://policies.google.com/privacy" style="color: var(--accent); text-decoration: underline;">privacy policy</a> governs how that audio data is handled.</p>
+          <p>Google says your browser controls how voice typing processes your speech. In Chrome, the most common setup, it needs a constant internet connection: your audio is streamed to Google's servers, processed by their speech recognition, and the text result is sent back. Google's <a href="https://policies.google.com/privacy" style="color: var(--accent); text-decoration: underline;">privacy policy</a> governs how that audio data is handled.</p>
           <p>EnviousWispr processes audio entirely on your Mac, on the Apple Silicon Neural Engine or GPU. The audio buffer never leaves your device. After transcription, the audio is discarded. If you use on-device AI polish (EG-1, S1-mini by Superwhisper, Ollama, or Apple Intelligence on macOS 26+), the entire pipeline is local. No audio or text is uploaded anywhere.</p>
           <p>If you opt into a cloud LLM for polish (OpenAI, Gemini, or Claude), only the text transcript is sent, never the audio, and you provide your own API key. You control the relationship with the provider directly.</p>
           <div class="deep-dive-detail">
@@ -584,7 +587,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">🚀</div>
         <div class="advantage-title">Zero setup if you already use Docs</div>
-        <p class="advantage-desc">If you live in Google Docs and use Chrome, voice typing is built in. No download, no setup, no model to install. Just open a document and start talking. That is genuinely hard to beat for convenience.</p>
+        <p class="advantage-desc">If you live in Google Docs, voice typing is built in. No download, no setup, no model to install. Just open a document and start talking. That is genuinely hard to beat for convenience.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">💸</div>
@@ -593,13 +596,13 @@ const faqs = [
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🌍</div>
-        <div class="advantage-title">Works on any OS with Chrome</div>
-        <p class="advantage-desc">Windows, Linux, ChromeOS, macOS. If Chrome runs, voice typing works. EnviousWispr is macOS only and requires Apple Silicon.</p>
+        <div class="advantage-title">Works on any desktop OS</div>
+        <p class="advantage-desc">Windows, Linux, ChromeOS, macOS. If Chrome, Edge or Safari runs, voice typing works. EnviousWispr is macOS only and requires Apple Silicon.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🗣️</div>
         <div class="advantage-title">Voice commands for formatting</div>
-        <p class="advantage-desc">Say "bold", "italic", "new line", "select all", or "undo" while dictating in Google Docs. These formatting commands (English only) let you edit hands-free inside the document. EnviousWispr supports spoken punctuation and emoji, but has no voice commands for app navigation or editing.</p>
+        <p class="advantage-desc">Say "bold", "italics", "new line", "select all", or "stop listening" while dictating in Google Docs. These commands (English accounts and documents only) let you edit hands-free inside the document. EnviousWispr supports spoken punctuation and emoji, but has no voice commands for app navigation or editing.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🌐</div>
@@ -633,7 +636,7 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does Google Docs voice typing send my audio to the cloud?</div>
-        <p class="faq-a">Yes. Google Docs voice typing requires an internet connection and processes your audio on Google's servers. EnviousWispr processes audio entirely on your Mac, on the Apple Silicon Neural Engine or GPU.</p>
+        <p class="faq-a">In Chrome, yes: Google's speech service processes your audio, which needs an internet connection. Google says your browser controls the speech service, so in Edge or Safari the browser's own service handles it. EnviousWispr processes audio entirely on your Mac, on the Apple Silicon Neural Engine or GPU.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does EnviousWispr have voice commands like Google Docs?</div>
@@ -653,7 +656,7 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I use Google Docs voice typing in Slack, VS Code, or other apps?</div>
-        <p class="faq-a">No. Google Docs Voice Typing only works inside Google Docs and Google Slides in a supported browser. If you need to dictate into Slack, VS Code, email clients, terminals, or any other app, you need a system-wide tool like EnviousWispr.</p>
+        <p class="faq-a">No. Google Docs Voice Typing only works inside Google Docs and Google Slides in a supported browser. If you need to dictate into Slack, VS Code, email clients, terminals, or any other app, you need a system-wide tool. Google's separate Gemini app for Mac now offers system-wide dictation that works in the cloud; EnviousWispr does it on your Mac.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does Google Docs voice typing add punctuation automatically?</div>

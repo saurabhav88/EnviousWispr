@@ -11,7 +11,7 @@ const meta = {
   "breadcrumb": "EnviousWispr vs Handy",
   "ogImage": "/og-image.png",
   "datePublished": "2026-08-21T16:00:00Z",
-  "dateModified": "2026-10-16T00:00:00Z"
+  "dateModified": "2026-10-17T00:00:00Z"
 };
 
 const faqs = [
@@ -49,7 +49,7 @@ const faqs = [
   },
   {
     "q": "Which speech engines does each app use?",
-    "a": "EnviousWispr runs Parakeet Ultra and Whisper Large v3 Turbo. Handy 0.9.5 showed dozens of downloadable choices across Parakeet, Nemotron, Canary, Cohere, Whisper, Voxtral, Qwen3 ASR, FunASR, Granite, Moonshine, SenseVoice, GigaAM, Breeze, and MedASR."
+    "a": "EnviousWispr runs Parakeet Ultra and Whisper Large v3 Turbo. Handy offers dozens of downloadable choices across Parakeet, Nemotron, Canary, Cohere, Whisper, Voxtral, Qwen3 ASR, FunASR, Granite, Moonshine, SenseVoice, GigaAM, Breeze, and MedASR."
   },
   {
     "q": "Can I switch from Handy to EnviousWispr easily?",
@@ -253,7 +253,7 @@ const faqs = [
         Download Free
       </a>
     </div>
-    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: August 2026</p>
+    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: October 2026</p>
   </div>
 </header>
 
@@ -306,7 +306,12 @@ const faqs = [
              by opening the installed app directly. Features marked "Not published" or "Not documented" were
              not found in Handy's public documentation as of 2026-08-21. The live app also confirmed built-in
              custom words, explicit clipboard behavior, model unloading, and CPU/Apple GPU controls.
-             Last verified: 2026-08-21. -->
+             2026-10-17 re-check (GitHub API, v0.9.8 release 2026-10-03 and source, README, handy.computer/docs):
+               34,015 stars. v0.9.8 assets add Windows arm64 and Linux aarch64 builds. Built-in filler-word removal
+               (FillerWordRemoval setting, language-gated list in src-tauri/src/audio_toolkit/text.rs, custom list).
+               Custom models: Whisper GGML files in its models folder, GGUF models already in the Hugging Face cache.
+               Post-processing sits behind the Experimental Features toggle (Settings > Advanced).
+             Last verified: 2026-10-17. -->
         <tbody>
           <tr>
             <td>Price</td>
@@ -366,7 +371,7 @@ const faqs = [
           <tr>
             <td>Filler word removal</td>
             <td><span class="table-check">Yes</span> (built-in, automatic, language-aware, runs before AI polish)</td>
-            <td>Handled by the shipped Post Process prompt when that separate workflow is used</td>
+            <td><span class="table-check">Yes</span> (built-in, language-aware list with a custom word list; no AI step needed)</td>
           </tr>
           <tr>
             <td>Turns a spoken list into a real list, no prompt needed</td>
@@ -406,7 +411,7 @@ const faqs = [
           <tr>
             <td>Custom model support</td>
             <td><span class="table-cross">No</span>: curated engines only</td>
-            <td><span class="table-check">Yes</span>: auto-discovers custom GGUF models from Hugging Face</td>
+            <td><span class="table-check">Yes</span>: picks up custom Whisper GGML models from its models folder, and GGUF models already in the Hugging Face cache</td>
           </tr>
           <tr>
             <td>Multi-language</td>
@@ -416,7 +421,7 @@ const faqs = [
           <tr>
             <td>Platform support</td>
             <td>macOS (Apple Silicon only)</td>
-            <td><span class="table-check">macOS (Intel + Apple Silicon), Windows, Linux</span></td>
+            <td><span class="table-check">macOS (Intel + Apple Silicon), Windows and Linux, including ARM builds</span></td>
           </tr>
           <tr>
             <td>Text lands in the right app</td>
@@ -426,7 +431,7 @@ const faqs = [
         </tbody>
       </table>
     </div>
-    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">Handy claims sourced from handy.computer, handy.computer/docs/post-processing, github.com/cjpais/Handy (README, Wiki, and source code), the GitHub API, and Handy v0.9.5 opened directly. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Competitor claims last verified: 2026-08-21.</p>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">Handy claims sourced from handy.computer, handy.computer/docs/post-processing, github.com/cjpais/Handy (README, Wiki, and source code), the GitHub API, Handy v0.9.5 opened directly, and the v0.9.8 release and source. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Competitor claims last verified: 2026-10-17.</p>
     <div style="text-align: center; margin-top: 28px;">
       <a href="/#download" class="btn-primary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -467,8 +472,8 @@ const faqs = [
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🌍</div>
-        <div class="advantage-title">Filler-word removal that respects other languages</div>
-        <p class="advantage-desc">Built-in filler-word removal runs before AI polish, and it is language-aware: with your language locked to German, Dutch, Danish, or Norwegian in Settings, it keeps real words like "er" and "um" instead of stripping them as English filler.</p>
+        <div class="advantage-title">Cleanup and formatting without a second step</div>
+        <p class="advantage-desc">Both apps now remove filler words without an AI step. EnviousWispr also turns spoken numbers, dates and times into written form for English dictation, and then runs AI polish on the same hotkey.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">📥</div>
@@ -578,7 +583,7 @@ const faqs = [
         <div class="deep-dive-icon">🔀</div>
         <div class="deep-dive-title">A menu of models vs two, tuned for the job</div>
         <div class="deep-dive-body">
-          <p>Handy gives you a real menu: Whisper Small through Large with GPU acceleration, Parakeet V2 or V3, and it can auto-discover custom GGUF models you download from Hugging Face. If you run Handy on a Windows machine with a discrete GPU, that flexibility is genuinely useful, and it is one of the clearest reasons to pick Handy over EnviousWispr.</p>
+          <p>Handy gives you a real menu: Whisper Small through Large with GPU acceleration, Parakeet V2 or V3, and it can pick up custom Whisper GGML models from its models folder, plus GGUF models already in your Hugging Face cache. If you run Handy on a Windows machine with a discrete GPU, that flexibility is genuinely useful, and it is one of the clearest reasons to pick Handy over EnviousWispr.</p>
           <p>EnviousWispr keeps it to two: Parakeet Ultra is the default, tuned for speed and English/European accuracy. If you dictate in a language it doesn't cover, switch to Whisper under Dictation Settings → Engine, a one-time switch plus a download of about 886 MB the first time. The choice is manual, not automatic; there just isn't a size ladder to climb.</p>
           <div class="deep-dive-detail">
             <strong>Why it matters:</strong> Power users who want to tune the speed-versus-accuracy dial themselves, or who need Windows or Linux support, get more from Handy today. Anyone who wants one setting to change instead of four model sizes to compare gets that from EnviousWispr.
@@ -613,7 +618,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">🖥️</div>
         <div class="advantage-title">You need Windows or Linux</div>
-        <p class="advantage-desc">Handy runs on macOS (Intel and Apple Silicon), Windows, and Linux from one codebase. EnviousWispr is Apple Silicon Mac only. If your dictation needs to follow you across operating systems, Handy already does that.</p>
+        <p class="advantage-desc">Handy runs on macOS (Intel and Apple Silicon), Windows, and Linux from one codebase, with ARM builds for Windows and Linux too. EnviousWispr is Apple Silicon Mac only. If your dictation needs to follow you across operating systems, Handy already does that.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🎚️</div>
@@ -628,7 +633,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">👥</div>
         <div class="advantage-title">You value an established community</div>
-        <p class="advantage-desc">Handy has over 30,000 stars on GitHub as of August 2026, more than most dictation apps we compare against, us included, along with an active contributor base and issue tracker.</p>
+        <p class="advantage-desc">Handy has over 34,000 stars on GitHub as of October 2026, more than most dictation apps we compare against, us included, along with an active contributor base and issue tracker.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🎯</div>
@@ -687,7 +692,7 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Which speech engines does each app use?</div>
-        <p class="faq-a">EnviousWispr runs Parakeet Ultra and Whisper Large v3 Turbo. Handy 0.9.5 showed dozens of downloadable choices across Parakeet, Nemotron, Canary, Cohere, Whisper, Voxtral, Qwen3 ASR, FunASR, Granite, Moonshine, SenseVoice, GigaAM, Breeze, and MedASR.</p>
+        <p class="faq-a">EnviousWispr runs Parakeet Ultra and Whisper Large v3 Turbo. Handy offers dozens of downloadable choices across Parakeet, Nemotron, Canary, Cohere, Whisper, Voxtral, Qwen3 ASR, FunASR, Granite, Moonshine, SenseVoice, GigaAM, Breeze, and MedASR.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I switch from Handy to EnviousWispr easily?</div>

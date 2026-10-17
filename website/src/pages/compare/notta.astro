@@ -4,13 +4,13 @@ import CompareLayout from '../../layouts/CompareLayout.astro';
 const meta = {
   "slug": "notta",
   "title": "EnviousWispr vs Notta: Dictation vs Meeting Notes",
-  "description": "Notta records and transcribes meetings in the cloud. EnviousWispr is free, on-device Mac dictation for writing anywhere. Different jobs, compared.",
+  "description": "Notta records and transcribes meetings, mostly in the cloud. EnviousWispr is free, on-device Mac dictation for writing anywhere. Different jobs, compared.",
   "headline": "EnviousWispr vs Notta: Real-Time Dictation vs Meeting Transcription",
   "articleDescription": "Compare EnviousWispr and Notta.ai. One is real-time dictation for typing on Mac. The other is meeting transcription across platforms. See which fits your workflow.",
   "breadcrumb": "EnviousWispr vs Notta",
   "ogImage": "/images/og/notta.png",
   "datePublished": "2026-04-04T21:41:19Z",
-  "dateModified": "2026-10-16T00:00:00Z"
+  "dateModified": "2026-10-17T00:00:00Z"
 };
 
 const faqs = [
@@ -40,7 +40,7 @@ const faqs = [
   },
   {
     "q": "Does Notta have a free plan?",
-    "a": "Yes. Notta offers a free tier with 120 minutes of transcription per month and limited features. Their Pro plan is $8.17/mo billed annually ($13.33/mo monthly). EnviousWispr is free with no usage limits."
+    "a": "Yes. Notta offers a free tier with 120 minutes of transcription per month, up to 3 minutes per conversation. Their Pro plan is $8.17/mo billed annually, with 1,800 minutes a month. EnviousWispr is free with no usage limits."
   },
   {
     "q": "Is EnviousWispr open source?",
@@ -243,7 +243,7 @@ const faqs = [
         Download Free
       </a>
     </div>
-    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: August 2026</p>
+    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: October 2026</p>
   </div>
 </header>
 
@@ -267,13 +267,18 @@ const faqs = [
         <!-- Evidence: Notta claims verified against notta.ai on 2026-04-04.
              Confidence: source-verified from public website and pricing page.
              Sources:
-               - Pricing: notta.ai/en/pricing (re-verified 2026-08-21)  -  Free 120 min/mo, Pro $8.17/mo annual ($13.33/mo monthly), Business $16.67/mo
+               - Pricing: notta.ai/en/pricing (re-verified 2026-10-17)  -  Free 120 min/mo, up to 3 min per conversation, 3 vocabulary
+                 entries; Pro $8.17/mo annual ($97.99/yr), 1,800 min/mo, 200 entries; Business $16.67/mo annual ($199.99/yr), unlimited,
+                 1,000 entries; Enterprise unlimited entries. No monthly prices shown.
+               - Privacy Mode (notta.ai/en/features/privacy-mode, 2026-10-17): Mac and Windows desktop, beta. "transcribes on your
+                 computer", "can transcribe without an internet connection", stores recordings and transcripts in a local folder.
+                 Local model: Chinese, English, Japanese, Korean, Cantonese; Apple Speech Analyzer (macOS 26+) adds more languages.
                - Platforms: notta.ai (accessed 2026-04-04)  -  Web, iOS, Android, Chrome, Mac, Windows
-               - Cloud processing: notta.ai  -  all transcription is cloud-based
+               - Cloud processing: notta.ai  -  cloud by default; Privacy Mode (beta) is on-device
                - Meeting features: notta.ai  -  bot joins Zoom/Meet/Teams/Webex, speaker ID, AI summaries
                - Languages: notta.ai  -  58 languages, transcript translation
-               - Accuracy: notta.ai  -  98.86% accuracy (per Notta) claimed
-               - Custom vocabulary: available from Pro up (3 entries), Business (200), Enterprise (1,000); not Business-exclusive
+               - Accuracy: notta.ai  -  "98%+ Accuracy Guaranteed" claimed (2026-10-17)
+               - Custom vocabulary: Free 3, Pro 200, Business 1,000, Enterprise unlimited (2026-10-17)
                - No real-time dictation into external apps: transcripts stay in Notta's interface
              Firsthand testing: Notta was not tested firsthand for this comparison.
              All claims are source-verified from official pages.
@@ -302,7 +307,7 @@ const faqs = [
           <tr>
             <td>Price</td>
             <td><span class="table-highlight">Free. No subscription.</span></td>
-            <td>Free (120 min/mo), Pro $8.17/mo (annual), Business $16.67/mo*</td>
+            <td>Free (120 min/mo, 3 min per conversation), Pro $8.17/mo (annual), Business $16.67/mo (annual)*</td>
           </tr>
           <tr>
             <td>Account required</td>
@@ -312,12 +317,12 @@ const faqs = [
           <tr>
             <td>Audio processing</td>
             <td><span class="table-highlight">On-device</span> (Apple Silicon)</td>
-            <td>Cloud servers</td>
+            <td>Cloud servers by default; on-device in desktop Privacy Mode (beta)</td>
           </tr>
           <tr>
             <td>Works offline</td>
             <td><span class="table-check">Yes</span> for transcription (after models download)</td>
-            <td><span class="table-cross">No</span></td>
+            <td>Only in desktop Privacy Mode (beta)</td>
           </tr>
           <tr>
             <td>Transcription latency</td>
@@ -337,12 +342,12 @@ const faqs = [
           <tr>
             <td>Offline AI polish</td>
             <td><span class="table-check">Yes</span> - EG-1, S1-mini by Superwhisper, Ollama, or Apple Intelligence (macOS 26+) run locally</td>
-            <td><span class="table-cross">No</span> - AI features require cloud</td>
+            <td><span class="table-cross">Not documented</span>; AI features use the cloud</td>
           </tr>
           <tr>
             <td>Custom vocabulary</td>
             <td><span class="table-check">Yes</span> (custom words with phonetic hints)</td>
-            <td>Custom vocabulary from Pro up (3 entries; 200 on Business, 1,000 on Enterprise)</td>
+            <td>Custom vocabulary on every plan (3 entries free, 200 on Pro, 1,000 on Business, unlimited on Enterprise)</td>
           </tr>
           <tr>
             <td>Clipboard preservation</td>
@@ -362,7 +367,7 @@ const faqs = [
           <tr>
             <td>Speech engines</td>
             <td><a href="https://huggingface.co/FluidInference/parakeet-ultra-coreml" style="color: var(--accent); text-decoration: underline;">Parakeet Ultra</a> + <a href="https://huggingface.co/openai/whisper-large-v3-turbo" style="color: var(--accent); text-decoration: underline;">Whisper</a> (on-device)</td>
-            <td>Cloud speech API</td>
+            <td>Cloud speech by default; a local model or Apple Speech Analyzer in Privacy Mode</td>
           </tr>
           <tr>
             <td>Languages</td>
@@ -382,7 +387,7 @@ const faqs = [
         </tbody>
       </table>
     </div>
-    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*Based on Notta's public pricing page (notta.ai/en/pricing), re-verified 2026-08-21. Pro price shown is annual billing; monthly is $13.33/mo. Custom vocabulary is available from Pro up, not Business-exclusive. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Notta claims source-verified from notta.ai; not firsthand-tested. Competitor claims last verified: 2026-08-21.</p>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*Based on Notta's public pricing page (notta.ai/en/pricing), re-verified 2026-10-17. Prices shown are annual billing; Notta's page shows no monthly prices. Custom vocabulary is available on every plan. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Notta claims source-verified from notta.ai; not firsthand-tested. Competitor claims last verified: 2026-10-17.</p>
     <div style="text-align: center; margin-top: 28px;">
       <a href="/#download" class="btn-primary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -424,7 +429,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">✈️</div>
         <div class="advantage-title">Works offline</div>
-        <p class="advantage-desc">After models download once, transcription works without internet. Dictate on a plane, in a cafe with bad Wi-Fi, or anywhere you can open your laptop. Notta requires a network connection for all transcription.</p>
+        <p class="advantage-desc">After models download once, transcription works without internet. Dictate on a plane, in a cafe with bad Wi-Fi, or anywhere you can open your laptop. Notta needs a network connection unless you set up its desktop Privacy Mode, which is still in beta.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">📖</div>
@@ -477,7 +482,7 @@ const faqs = [
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">2</div>
-          <div>Audio is uploaded to Notta's cloud servers for transcription.</div>
+          <div>By default, audio is uploaded to Notta's cloud servers for transcription. Desktop Privacy Mode (beta) transcribes on the computer instead.</div>
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">3</div>
@@ -485,7 +490,7 @@ const faqs = [
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">4</div>
-          <div>Transcripts are stored on Notta's servers, accessible via your account.</div>
+          <div>Transcripts are stored on Notta's servers, accessible via your account, except in Privacy Mode, which keeps them in a local folder.</div>
         </div>
       </div>
     </div>
@@ -546,11 +551,11 @@ const faqs = [
         <div class="deep-dive-icon">🛡️</div>
         <div class="deep-dive-title">Privacy: on-device vs cloud</div>
         <div class="deep-dive-body">
-          <p>Notta uploads all audio to its cloud servers. Transcripts are stored online and processed by Notta's AI for summaries, action items, and search indexing. Your voice data lives on their infrastructure.</p>
+          <p>By default, Notta uploads audio to its cloud servers. Transcripts are stored online and processed by Notta's AI for summaries, action items, and search indexing. Your voice data lives on their infrastructure.</p>
           <p>EnviousWispr processes audio entirely on your Mac's Apple Silicon chip. Nothing is uploaded. The audio buffer is discarded after transcription. If you enable AI polish with a cloud provider, only the text transcript (not audio) is sent, using your own API key.</p>
           <p>For meeting transcription, cloud processing is a reasonable tradeoff: you need speaker identification, long-form recording, and team collaboration that requires server-side infrastructure. For dictation of personal messages, medical notes, legal correspondence, or anything sensitive, on-device processing means your words never leave your control.</p>
           <div class="deep-dive-detail">
-            <strong>The tradeoff:</strong> Notta's cloud approach enables speaker identification, team workspaces, and cross-meeting search. EnviousWispr's local approach means zero data exposure but no multi-speaker capabilities.
+            <strong>The tradeoff:</strong> Notta's cloud approach enables speaker identification, team workspaces, and cross-meeting search, and its newer Privacy Mode brings local meeting transcription to the desktop. EnviousWispr is local for every dictation, but has no multi-speaker capabilities.
           </div>
         </div>
       </div>
@@ -590,7 +595,12 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">📱</div>
         <div class="advantage-title">Cross-platform access</div>
-        <p class="advantage-desc">Notta works on Web, iOS, Android, Chrome, Mac, and Windows. EnviousWispr is macOS only on Apple Silicon. If you need transcription on your phone or a Windows machine, Notta covers more ground.</p>
+        <p class="advantage-desc">Notta works on Web, iOS, Android, Chrome, Mac, and Windows, and also sells a Notta Memo hardware recorder. EnviousWispr is macOS only on Apple Silicon. If you need transcription on your phone or a Windows machine, Notta covers more ground.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🔒</div>
+        <div class="advantage-title">Private meeting transcription</div>
+        <p class="advantage-desc">Notta's desktop Privacy Mode (beta) transcribes meetings on your Mac or Windows PC without an internet connection and keeps recordings in a local folder. EnviousWispr does not record meetings at all.</p>
       </div>
     </div>
     <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If your goal is to type with your voice into emails, Slack, docs, and code comments, not record meetings, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>.</p>
@@ -631,7 +641,7 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does Notta have a free plan?</div>
-        <p class="faq-a">Yes. Notta offers a free tier with 120 minutes of transcription per month and limited features. Their Pro plan is $8.17/mo billed annually ($13.33/mo monthly). EnviousWispr is free with no usage limits.</p>
+        <p class="faq-a">Yes. Notta offers a free tier with 120 minutes of transcription per month, up to 3 minutes per conversation. Their Pro plan is $8.17/mo billed annually, with 1,800 minutes a month. EnviousWispr is free with no usage limits.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Is EnviousWispr open source?</div>

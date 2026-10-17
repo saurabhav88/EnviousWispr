@@ -11,21 +11,21 @@ const meta = {
   "breadcrumb": "EnviousWispr vs TypeWhisper",
   "ogImage": "/og-image.png",
   "datePublished": "2026-08-21T20:00:00Z",
-  "dateModified": "2026-10-16T00:00:00Z"
+  "dateModified": "2026-10-17T00:00:00Z"
 };
 
 const faqs = [
   {
     "q": "Is EnviousWispr free, like TypeWhisper?",
-    "a": "Yes. TypeWhisper's core app is free and open source under GPLv3, the same license we use, with core dictation, its speech engines, and its Workflows automation system all included at no cost. TypeWhisper also sells a Commercial license, starting around 5 EUR a month, that unlocks Cloud Folder Sync and Automatic Correction Learning and lets a business use it under non-GPL terms. EnviousWispr has no paid tier at all."
+    "a": "Yes. TypeWhisper's core app is free and open source under GPLv3, the same license we use, with core dictation, its speech engines, and its Workflows automation system all included at no cost. TypeWhisper also sells a Commercial license, starting around 5 EUR a month, that unlocks Premium features such as sync, learning from corrections and meeting automation, and lets a business use it under non-GPL terms. EnviousWispr has no paid tier at all."
   },
   {
     "q": "How is EnviousWispr different from TypeWhisper?",
-    "a": "Both are GPLv3, free at the core, and run on-device. TypeWhisper offers seven engine options across Mac and Windows: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, Apple Speech, and ONNX-based engines, plus a Workflows system for building your own cleanup, translation, and formatting steps. EnviousWispr runs two engines, Parakeet Ultra and Whisper, switched manually in Settings, and EG-1, a model built and measured specifically for cleaning up dictation, with no setup required. TypeWhisper also runs on Windows in addition to Mac; EnviousWispr is Mac only."
+    "a": "Both are GPLv3, free at the core, and run on-device. TypeWhisper offers a wide catalog of local engines, including WhisperKit, Parakeet (TDT v3 and Ultra), Voxtral, Qwen3 ASR, IBM Granite Speech, Cohere Transcribe, Canary ASR and Apple SpeechAnalyzer, plus cloud engines and a Workflows system for building your own cleanup, translation, and formatting steps. EnviousWispr runs two engines, Parakeet Ultra and Whisper, switched manually in Settings, and EG-1, a model built and measured specifically for cleaning up dictation, with no setup required. TypeWhisper also runs on Windows, iPhone and iPad in addition to Mac; EnviousWispr is Mac only."
   },
   {
     "q": "Does TypeWhisper have AI cleanup like EnviousWispr's EG-1?",
-    "a": "TypeWhisper's equivalent is called Workflows, a configurable system that can send your transcript through an LLM for cleanup, translation, or formatting. The installed 1.6.0 build also contains ready-made actions for lists, email, meeting notes, translation, JSON, and more. A separate Dictionary Autocorrection feature for paid Commercial licenses learns from confident edits. EG-1 is purpose-built for dictation cleanup and ships ready inside EnviousWispr."
+    "a": "TypeWhisper's equivalent is called Workflows, a configurable system that can send your transcript through an LLM for cleanup, translation, or formatting. The installed 1.6.0 build also contains ready-made actions for lists, email, meeting notes, translation, JSON, and more, and a Local LLM (MLX) plugin can run that cleanup on-device on Apple Silicon. A separate Learn from Corrections feature for paid Commercial licenses learns from confident edits. EG-1 is purpose-built for dictation cleanup and ships ready inside EnviousWispr."
   },
   {
     "q": "Can I use EnviousWispr completely offline?",
@@ -41,11 +41,11 @@ const faqs = [
   },
   {
     "q": "Does TypeWhisper run on Windows?",
-    "a": "Yes, with its own dedicated Windows build, separate from the macOS app but sharing most of its features. EnviousWispr is macOS only, on Apple Silicon."
+    "a": "Yes, with its own dedicated Windows build, separate from the macOS app but sharing most of its features. TypeWhisper also has an iPhone and iPad app. EnviousWispr is macOS only, on Apple Silicon."
   },
   {
     "q": "Which speech engines does each app use?",
-    "a": "EnviousWispr runs Parakeet Ultra for 25 European languages and Whisper for 99+ languages, switched manually in Settings. TypeWhisper offers a much wider menu: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, and Apple Speech on Mac, plus ONNX-based engines on Windows, with cloud engines available through add-ons."
+    "a": "EnviousWispr runs Parakeet Ultra for 25 European languages and Whisper for 99+ languages, switched manually in Settings. TypeWhisper offers a much wider menu: WhisperKit, Parakeet (TDT v3 and Ultra), Voxtral, Qwen3 ASR, IBM Granite Speech, Cohere Transcribe, Canary ASR and Apple SpeechAnalyzer on Mac, its own engine set on Windows, and cloud engines through add-ons."
   },
   {
     "q": "Can I switch from TypeWhisper to EnviousWispr easily?",
@@ -228,7 +228,7 @@ const faqs = [
       <span class="vs-brand">TypeWhisper</span>
     </div>
     <h1 class="reveal">Free and open source, like TypeWhisper. Ours needs no setup.</h1>
-    <p class="page-header-sub reveal">TypeWhisper's core app is GPLv3, the same license we use, and its free tier is genuinely generous: seven speech engines, Windows and Mac, and a build-your-own cleanup system called Workflows. EnviousWispr offers two engines, switched manually in Settings, and ships EG-1, a model built and measured specifically for dictation, with nothing to configure.</p>
+    <p class="page-header-sub reveal">TypeWhisper's core app is GPLv3, the same license we use, and its free tier is genuinely generous: a wide catalog of speech engines, apps for Mac, Windows, iPhone and iPad, and a build-your-own cleanup system called Workflows. EnviousWispr offers two engines, switched manually in Settings, and ships EG-1, a model built and measured specifically for dictation, with nothing to configure.</p>
     <div class="hero-pills reveal">
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
@@ -249,12 +249,12 @@ const faqs = [
         Download Free
       </a>
     </div>
-    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: August 2026</p>
+    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: October 2026</p>
   </div>
 </header>
 
 <CompareDecisionSummary id="typewhisper-vs-enviouswispr-answer" heading="TypeWhisper or EnviousWispr: which should you choose?">
-  <p>Both apps have free GPLv3 cores and can run Mac dictation locally. Choose TypeWhisper if you want seven speech engines, Windows support, or Workflows that connect your own prompts, providers, translation, and automation steps. Choose EnviousWispr if you want two curated speech engines plus a purpose-built polish model that works without building a workflow. TypeWhisper is the stronger toolkit for people who want to configure the pipeline. EnviousWispr is the simpler option for people who want to install the app, choose a hotkey, and get polished text at the cursor with fewer decisions. The meaningful difference is control: TypeWhisper exposes more of the system, while EnviousWispr makes more choices for you. Both can keep ordinary dictation on the Mac.</p>
+  <p>Both apps have free GPLv3 cores and can run Mac dictation locally. Choose TypeWhisper if you want a wide catalog of speech engines, Windows or iPhone support, or Workflows that connect your own prompts, providers, translation, and automation steps. Choose EnviousWispr if you want two curated speech engines plus a purpose-built polish model that works without building a workflow. TypeWhisper is the stronger toolkit for people who want to configure the pipeline. EnviousWispr is the simpler option for people who want to install the app, choose a hotkey, and get polished text at the cursor with fewer decisions. The meaningful difference is control: TypeWhisper exposes more of the system, while EnviousWispr makes more choices for you. Both can keep ordinary dictation on the Mac.</p>
 </CompareDecisionSummary>
 
 <!-- Side-by-Side Table -->
@@ -295,12 +295,20 @@ const faqs = [
                Translate, plus Recorder, Watch Folder, meeting automation, plugins, snippets, and user-owned
                iCloud or folder sync surfaces. The live window could not be captured, so exact labels and
                defaults remain source-verified rather than firsthand-tested.
-             Confidence: source-verified plus installed-bundle-inspected. Last verified: 2026-08-21. -->
+             2026-10-17 re-check (typewhisper.com/en, /en/pricing, /en/changelog, typewhisper-mac README):
+               Mac 1.7.1, Windows 1.1.0, iPhone and iPad 1.1 (iOS 18+) with an Apple Watch app; Android beta link only.
+               Engines (README): WhisperKit, Parakeet (TDT v3 and Ultra), Apple SpeechAnalyzer, Granite Speech,
+               Qwen3 ASR, Voxtral, Cohere Transcribe, Canary ASR, plus cloud engines. Local LLM (MLX) plugin runs
+               Workflow prompts on-device on Apple Silicon. Commercial from EUR 5/mo unlocks Premium (sync,
+               Learn from Corrections, meeting automation). 1.7.0 added Dictation Recovery (failed recordings and the
+               last three successful dictations for 24 hours), Undo Last Dictation, Restore Raw Transcript;
+               recovering a cancelled dictation is still not documented.
+             Confidence: source-verified plus installed-bundle-inspected. Last verified: 2026-10-17. -->
         <tbody>
           <tr>
             <td>Price (core app)</td>
             <td><span class="table-highlight">Free. No paid tier at all.</span></td>
-            <td>Free (GPLv3). Paid Commercial license from EUR 5/mo unlocks non-GPL terms, Cloud Folder Sync, and Automatic Correction Learning.</td>
+            <td>Free (GPLv3). Paid Commercial license from EUR 5/mo unlocks non-GPL terms and Premium features: sync, learning from corrections, and meeting automation.</td>
           </tr>
           <tr>
             <td>Account required</td>
@@ -315,12 +323,12 @@ const faqs = [
           <tr>
             <td>Speech engines</td>
             <td><span class="table-highlight">Parakeet Ultra + Whisper</span>, switch in Settings</td>
-            <td><span class="table-check">Seven options</span>: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, Apple Speech, plus ONNX-based engines on Windows</td>
+            <td><span class="table-check">Wide catalog</span>: WhisperKit, Parakeet (TDT v3 and Ultra), Voxtral, Qwen3 ASR, IBM Granite Speech, Cohere Transcribe, Canary ASR and Apple SpeechAnalyzer, plus cloud engines</td>
           </tr>
           <tr>
             <td>AI cleanup (after transcription)</td>
             <td><span class="table-highlight">EG-1</span>, purpose-built and measured, ships ready</td>
-            <td>Workflows: configurable, sends your transcript through an LLM you set up (OpenAI, Groq referenced)</td>
+            <td>Workflows: configurable, sends your transcript through an LLM you set up (cloud providers, Apple Intelligence, or the on-device Local LLM plugin)</td>
           </tr>
           <tr>
             <td>Needs a prompt to be written</td>
@@ -330,7 +338,7 @@ const faqs = [
           <tr>
             <td>Learns your corrections automatically</td>
             <td><span class="table-cross">No</span></td>
-            <td><span class="table-check">Yes</span>, Dictionary Autocorrection, Commercial license only</td>
+            <td><span class="table-check">Yes</span>, Learn from Corrections, Commercial license only</td>
           </tr>
           <tr>
             <td>Live preview while speaking</td>
@@ -340,7 +348,7 @@ const faqs = [
           <tr>
             <td>Recover a cancelled dictation</td>
             <td><span class="table-highlight">Yes</span> (Escape Recovery, on by default, keybind/triple-press cancel only)</td>
-            <td>Not documented</td>
+            <td>Not documented for cancels; Dictation Recovery keeps failed recordings and recent dictations</td>
           </tr>
           <tr>
             <td>Custom vocabulary</td>
@@ -355,7 +363,7 @@ const faqs = [
           <tr>
             <td>Platform support</td>
             <td>macOS (Apple Silicon only)</td>
-            <td><span class="table-check">macOS and Windows</span>, dedicated builds for each</td>
+            <td><span class="table-check">macOS, Windows, iPhone and iPad</span>, dedicated builds for each</td>
           </tr>
           <tr>
             <td>System-audio recorder</td>
@@ -370,7 +378,7 @@ const faqs = [
           <tr>
             <td>Meeting automation</td>
             <td><span class="table-cross">No</span></td>
-            <td><span class="table-check">Yes</span>, calendar reminders or automatic recording when a matching meeting starts</td>
+            <td><span class="table-check">Yes</span> (Premium), calendar reminders or automatic recording when a matching meeting starts</td>
           </tr>
           <tr>
             <td>Dictionary and snippet sync</td>
@@ -380,7 +388,7 @@ const faqs = [
         </tbody>
       </table>
     </div>
-    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">TypeWhisper claims sourced from typewhisper.com, its pricing page, its changelog, the GitHub API, and the installed TypeWhisper 1.6.0 bundle. The live window could not be captured, so exact UI labels were not firsthand-tested. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Competitor claims last verified: 2026-08-21.</p>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">TypeWhisper claims sourced from typewhisper.com, its pricing page, its changelog, the GitHub API, the installed TypeWhisper 1.6.0 bundle, and its README and changelog through 1.7.1. The live window could not be captured, so exact UI labels were not firsthand-tested. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Competitor claims last verified: 2026-10-17.</p>
     <div style="text-align: center; margin-top: 28px;">
       <a href="/#download" class="btn-primary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -412,12 +420,12 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">↩️</div>
         <div class="advantage-title">Undo an accidental cancel</div>
-        <p class="advantage-desc">Escape Recovery keeps a dictation you cancel with your keybind or a triple press, instead of discarding it instantly. On by default; you can switch it off. We found no equivalent documented for TypeWhisper.</p>
+        <p class="advantage-desc">Escape Recovery keeps a dictation you cancel with your keybind or a triple press, instead of discarding it instantly. On by default; you can switch it off. TypeWhisper's Dictation Recovery keeps failed recordings and recent dictations, but we found nothing documented for recovering one you cancel.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">💵</div>
         <div class="advantage-title">No paid tier, period</div>
-        <p class="advantage-desc">TypeWhisper's GPLv3 core is free, but Cloud Folder Sync, Automatic Correction Learning, and non-GPL terms sit behind a Commercial license starting around EUR 5/mo. EnviousWispr has no paid tier of any kind.</p>
+        <p class="advantage-desc">TypeWhisper's GPLv3 core is free, but sync, learning from corrections, meeting automation and non-GPL terms sit behind a Commercial license starting around EUR 5/mo. EnviousWispr has no paid tier of any kind.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🌍</div>
@@ -475,7 +483,7 @@ const faqs = [
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">2</div>
-          <div>Audio is transcribed on-device with your chosen engine, one of seven on offer.</div>
+          <div>Audio is transcribed on-device with the local engine you choose, or by a cloud engine if you pick one.</div>
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">3</div>
@@ -530,9 +538,9 @@ const faqs = [
     <div class="deep-dive-grid">
       <div class="deep-dive-card reveal">
         <div class="deep-dive-icon">🔀</div>
-        <div class="deep-dive-title">Seven engines, or two you switch between</div>
+        <div class="deep-dive-title">A big engine catalog, or two you switch between</div>
         <div class="deep-dive-body">
-          <p>TypeWhisper offers seven engine options across Mac and Windows: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, Apple Speech, and ONNX-based engines. If you want to compare these engines directly, or you have a strong preference for one, that choice is real.</p>
+          <p>TypeWhisper offers a wide catalog of engines: WhisperKit, Parakeet (TDT v3 and Ultra), Voxtral, Qwen3 ASR, IBM Granite Speech, Cohere Transcribe, Canary ASR and Apple SpeechAnalyzer, plus cloud engines. Parakeet Ultra is the same engine EnviousWispr uses by default. If you want to compare these engines directly, or you have a strong preference for one, that choice is real.</p>
           <p>EnviousWispr runs two: Parakeet Ultra for the 25 languages it covers best, Whisper for the rest. There is no larger menu; you switch between the two in Dictation Settings, Engine.</p>
           <div class="deep-dive-detail">
             <strong>Why it matters:</strong> Power users and anyone who wants a specific model, or Windows support, get more from TypeWhisper today. Anyone who wants one setup that already works gets that from EnviousWispr.
@@ -543,7 +551,7 @@ const faqs = [
         <div class="deep-dive-icon">🧩</div>
         <div class="deep-dive-title">A configurable automation system, versus a model we tuned</div>
         <div class="deep-dive-body">
-          <p>TypeWhisper's Workflows are a genuine automation system: cleanup, translation, extraction, and formatting steps, referencing providers like OpenAI and Groq in its own changelog. The installed build also includes presets for Action Items, Create Table, email drafting, lists, JSON, Meeting Notes, Reply, and Translate.</p>
+          <p>TypeWhisper's Workflows are a genuine automation system: cleanup, translation, extraction, and formatting steps, with cloud providers such as OpenAI, Groq, Gemini and Claude, or on-device with its Local LLM (MLX) plugin. The installed build also includes presets for Action Items, Create Table, email drafting, lists, JSON, Meeting Notes, Reply, and Translate.</p>
           <p>EG-1 is a single model, fine-tuned by us specifically for the problem of turning spoken dictation into clean text, shipped with the app, with results we measure and publish. It runs on the same hotkey as transcription with nothing to configure.</p>
           <div class="deep-dive-detail">
             <strong>How it works:</strong> Deterministic filler and number cleanup runs first and always. AI polish (EG-1, S1-mini by Superwhisper, Apple Intelligence, Ollama, or your own cloud key) runs after, with output-length validation to catch fabrication. If any step fails, you still get the last successful text, never nothing.
@@ -565,18 +573,18 @@ const faqs = [
     <div class="advantages-grid">
       <div class="advantage-card reveal">
         <div class="advantage-icon">🖥️</div>
-        <div class="advantage-title">You need Windows</div>
-        <p class="advantage-desc">TypeWhisper has a dedicated Windows build. EnviousWispr is macOS only.</p>
+        <div class="advantage-title">You need Windows or iPhone</div>
+        <p class="advantage-desc">TypeWhisper has dedicated Windows, iPhone and iPad apps. EnviousWispr is macOS only.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🎚️</div>
         <div class="advantage-title">You want to choose your own speech engine</div>
-        <p class="advantage-desc">Seven engines to pick from, including specialized ones like Qwen3 ASR and IBM Granite Speech. EnviousWispr offers two, switched manually in Settings.</p>
+        <p class="advantage-desc">A wide catalog of engines to pick from, including specialized ones like Qwen3 ASR, IBM Granite Speech and Canary ASR. EnviousWispr offers two, switched manually in Settings.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🧠</div>
         <div class="advantage-title">You want automatic correction learning</div>
-        <p class="advantage-desc">TypeWhisper's Commercial license adds Dictionary Autocorrection, which learns from your confident manual edits and applies them going forward. We do not offer an equivalent.</p>
+        <p class="advantage-desc">TypeWhisper's Commercial license adds Learn from Corrections, which learns from your confident manual edits and applies them going forward. We do not offer an equivalent.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🧩</div>
@@ -584,7 +592,7 @@ const faqs = [
         <p class="advantage-desc">Workflows let you wire up your own provider, prompt, and automation steps, including translation and app-specific behavior. If that flexibility is what you are after, EG-1's single tuned model will not give it to you.</p>
       </div>
     </div>
-    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you want TypeWhisper's seven engine options, need Windows, or want the flexibility to build your own cleanup workflow, TypeWhisper is a strong pick. If you want a purpose-built polish model with a published, measured track record, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. You can always use both.</p>
+    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you want TypeWhisper's wide choice of engines, need Windows or iPhone, or want the flexibility to build your own cleanup workflow, TypeWhisper is a strong pick. If you want a purpose-built polish model with a published, measured track record, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. You can always use both.</p>
   </div>
 </section>
 
@@ -598,15 +606,15 @@ const faqs = [
     <div class="faq-list">
       <div class="faq-item reveal">
         <div class="faq-q">Is EnviousWispr free, like TypeWhisper?</div>
-        <p class="faq-a">Yes. TypeWhisper's core app is free and open source under GPLv3, the same license we use, with core dictation, its speech engines, and its Workflows automation system all included at no cost. TypeWhisper also sells a Commercial license, starting around 5 EUR a month, that unlocks Cloud Folder Sync and Automatic Correction Learning and lets a business use it under non-GPL terms. EnviousWispr has no paid tier at all.</p>
+        <p class="faq-a">Yes. TypeWhisper's core app is free and open source under GPLv3, the same license we use, with core dictation, its speech engines, and its Workflows automation system all included at no cost. TypeWhisper also sells a Commercial license, starting around 5 EUR a month, that unlocks Premium features such as sync, learning from corrections and meeting automation, and lets a business use it under non-GPL terms. EnviousWispr has no paid tier at all.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">How is EnviousWispr different from TypeWhisper?</div>
-        <p class="faq-a">Both are GPLv3, free at the core, and run on-device. TypeWhisper offers seven engine options across Mac and Windows: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, Apple Speech, and ONNX-based engines, plus a Workflows system for building your own cleanup, translation, and formatting steps. EnviousWispr runs two engines, Parakeet Ultra and Whisper, switched manually in Settings, and EG-1, a model built and measured specifically for cleaning up dictation, with no setup required. TypeWhisper also runs on Windows in addition to Mac; EnviousWispr is Mac only.</p>
+        <p class="faq-a">Both are GPLv3, free at the core, and run on-device. TypeWhisper offers a wide catalog of local engines, including WhisperKit, Parakeet (TDT v3 and Ultra), Voxtral, Qwen3 ASR, IBM Granite Speech, Cohere Transcribe, Canary ASR and Apple SpeechAnalyzer, plus cloud engines and a Workflows system for building your own cleanup, translation, and formatting steps. EnviousWispr runs two engines, Parakeet Ultra and Whisper, switched manually in Settings, and EG-1, a model built and measured specifically for cleaning up dictation, with no setup required. TypeWhisper also runs on Windows, iPhone and iPad in addition to Mac; EnviousWispr is Mac only.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does TypeWhisper have AI cleanup like EnviousWispr's EG-1?</div>
-        <p class="faq-a">TypeWhisper's equivalent is called Workflows, a configurable system that can send your transcript through an LLM for cleanup, translation, or formatting. The installed 1.6.0 build also contains ready-made actions for lists, email, meeting notes, translation, JSON, and more. A separate Dictionary Autocorrection feature for paid Commercial licenses learns from confident edits. EG-1 is purpose-built for dictation cleanup and ships ready inside EnviousWispr.</p>
+        <p class="faq-a">TypeWhisper's equivalent is called Workflows, a configurable system that can send your transcript through an LLM for cleanup, translation, or formatting. The installed 1.6.0 build also contains ready-made actions for lists, email, meeting notes, translation, JSON, and more, and a Local LLM (MLX) plugin can run that cleanup on-device on Apple Silicon. A separate Learn from Corrections feature for paid Commercial licenses learns from confident edits. EG-1 is purpose-built for dictation cleanup and ships ready inside EnviousWispr.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I use EnviousWispr completely offline?</div>
@@ -622,11 +630,11 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does TypeWhisper run on Windows?</div>
-        <p class="faq-a">Yes, with its own dedicated Windows build, separate from the macOS app but sharing most of its features. EnviousWispr is macOS only, on Apple Silicon.</p>
+        <p class="faq-a">Yes, with its own dedicated Windows build, separate from the macOS app but sharing most of its features. TypeWhisper also has an iPhone and iPad app. EnviousWispr is macOS only, on Apple Silicon.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Which speech engines does each app use?</div>
-        <p class="faq-a">EnviousWispr runs Parakeet Ultra for 25 European languages and Whisper for 99+ languages, switched manually in Settings. TypeWhisper offers a much wider menu: WhisperKit, Parakeet TDT, Voxtral, Qwen3 ASR, IBM Granite Speech, and Apple Speech on Mac, plus ONNX-based engines on Windows, with cloud engines available through add-ons.</p>
+        <p class="faq-a">EnviousWispr runs Parakeet Ultra for 25 European languages and Whisper for 99+ languages, switched manually in Settings. TypeWhisper offers a much wider menu: WhisperKit, Parakeet (TDT v3 and Ultra), Voxtral, Qwen3 ASR, IBM Granite Speech, Cohere Transcribe, Canary ASR and Apple SpeechAnalyzer on Mac, its own engine set on Windows, and cloud engines through add-ons.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I switch from TypeWhisper to EnviousWispr easily?</div>

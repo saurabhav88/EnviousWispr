@@ -11,7 +11,7 @@ const meta = {
   "breadcrumb": "EnviousWispr vs WisprFlow",
   "ogImage": "/images/og/wisprflow.png",
   "datePublished": "2026-04-04T01:54:09Z",
-  "dateModified": "2026-10-16T00:00:00Z"
+  "dateModified": "2026-10-17T00:00:00Z"
 };
 
 const faqs = [
@@ -257,7 +257,7 @@ const faqs = [
         Download Free
       </a>
     </div>
-    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: August 2026</p>
+    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: October 2026</p>
   </div>
 </header>
 
@@ -283,16 +283,24 @@ const faqs = [
             <th scope="col">WisprFlow</th>
           </tr>
         </thead>
-        <!-- Evidence: WisprFlow claims verified against wisprflow.ai on 2026-04-04, re-verified 2026-08-21,
-             plus the installed app opened directly on 2026-08-21.
+        <!-- Evidence: WisprFlow claims verified against wisprflow.ai on 2026-04-04, re-verified 2026-08-21
+             and 2026-10-17, plus the installed app opened directly on 2026-08-21.
+             2026-10-17 re-check (wisprflow.ai/pricing, /whats-new, /privacy):
+               - Free tier is 2,000 words/week on desktop, 1,000/week on mobile. Pro unchanged ($15 monthly, $12 annual).
+                 New self-serve Growth team plan above Pro (SAML SSO, org-wide HIPAA BAA, admin control of model training); Enterprise custom.
+               - Canto, Wispr's own speech model, announced 2026-08-17 and rolled out to all users 2026-09-17. Still cloud:
+                 privacy page still says "Transcription always happens in the cloud."
+               - Notetaker reached Windows 2026-09-15 (21 languages, Otter/Granola import, Google and Outlook Calendar);
+                 MCP now also works with Gemini and other MCP clients, still meeting notes only.
+               - Optional dedicated Hands-free shortcut (2026-08-21).
              Confidence: source-verified from public website pages and the installed app.
              Sources:
-               - Pricing: wisprflow.ai/pricing (re-verified 2026-08-21) — Free basic (2,000 words/week), Pro $15/mo monthly or $12/mo annual. Unchanged since April.
+               - Pricing: wisprflow.ai/pricing (re-verified 2026-10-17) — Free basic (2,000 words/week desktop), Pro $15/mo monthly or $12/mo annual.
                - Account: wisprflow.ai signup flow requires email (accessed 2026-04-04)
                - Cloud processing: wisprflow.ai/privacy (re-verified 2026-08-21) — "Transcription always happens in the cloud to provide the best speed and accuracy." Unchanged.
                - Features: wisprflow.ai/features (re-verified 2026-08-21) — dictionary, snippets, tones, filler removal, backtrack, auto-punctuation, whisper mode, command mode (Pro, voice-driven editing/rewriting), 100+ languages, syntax awareness
                - Accessibility: wisprflow.ai/accessibility (accessed 2026-04-04) — hands-free dictation focus
-               - Platforms: Mac, Windows, iPhone, Android (re-verified 2026-08-21) — a Mac-only meeting notetaker has since shipped; other platforms "coming soon"
+               - Platforms: Mac, Windows, iPhone, Android (re-verified 2026-10-17) — meeting Notetaker on Mac and Windows since 2026-09-15
                - App opened directly (2026-08-21): Settings confirms a "Vibe coding" section: variable
                  recognition for VS Code/Cursor/Windsurf and automatic file tagging in Cursor/Windsurf chat
                  (e.g. `index.tsx`). Confirmed the dictionary is genuinely auto-learning with team sharing,
@@ -307,7 +315,7 @@ const faqs = [
           <tr>
             <td>Price</td>
             <td><span class="table-highlight">Free. No limits, no subscription.</span></td>
-            <td>Free tier (2,000 words/week); Pro $12-15/mo for unlimited*</td>
+            <td>Free tier (2,000 words/week on desktop); Pro $12-15/mo for unlimited; team plans above that*</td>
           </tr>
           <tr>
             <td>Account required</td>
@@ -332,7 +340,7 @@ const faqs = [
           <tr>
             <td>Speech engines</td>
             <td><a href="https://huggingface.co/FluidInference/parakeet-ultra-coreml" style="color: var(--accent); text-decoration: underline;">Parakeet Ultra</a> + <a href="https://huggingface.co/openai/whisper-large-v3-turbo" style="color: var(--accent); text-decoration: underline;">Whisper</a> (on-device)</td>
-            <td>Cloud speech API</td>
+            <td>Canto, Wispr's own speech model, running in the cloud</td>
           </tr>
           <tr>
             <td>Multi-language</td>
@@ -382,7 +390,7 @@ const faqs = [
           <tr>
             <td>Meeting notetaker</td>
             <td><span class="table-cross">No</span></td>
-            <td><span class="table-check">Yes</span>, with live transcript, speaker labels, shared notes, imports, and questions over meetings</td>
+            <td><span class="table-check">Yes</span>, on Mac and Windows, with live transcript, speaker labels, shared notes, Otter and Granola imports, and questions over meetings</td>
           </tr>
           <tr>
             <td>Post-dictation transforms and scratchpad</td>
@@ -397,7 +405,7 @@ const faqs = [
           <tr>
             <td>MCP and connectors</td>
             <td><span class="table-cross">No</span></td>
-            <td><span class="table-check">Meeting notes only</span>: MCP excludes ordinary dictations; Google Calendar and Slack connectors support Notetaker workflows</td>
+            <td><span class="table-check">Meeting notes only</span>: MCP for Claude, ChatGPT, Gemini and other MCP tools excludes ordinary dictations; Google Calendar, Outlook Calendar and Slack connectors support Notetaker workflows</td>
           </tr>
           <tr>
             <td>First-word capture</td>
@@ -427,7 +435,7 @@ const faqs = [
           <tr>
             <td>Hands-free dictation</td>
             <td><span class="table-check">Yes.</span> Double-press to lock recording. Triple-press to cancel.</td>
-            <td>Accessibility-focused hands-free support</td>
+            <td>Optional dedicated hands-free shortcut</td>
           </tr>
           <tr>
             <td>Auto-stop on silence</td>
@@ -442,7 +450,7 @@ const faqs = [
         </tbody>
       </table>
     </div>
-    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*WisprFlow pricing and features verified from wisprflow.ai/pricing, wisprflow.ai/features, and Wispr Flow 1.6.606 opened directly. Pro is $15/mo billed monthly or $12/mo billed annually. EnviousWispr latency comes from production PostHog data on Apple Silicon Macs. Competitor claims last verified: 2026-08-21.</p>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*WisprFlow pricing and features verified from wisprflow.ai/pricing, wisprflow.ai/features, wisprflow.ai/whats-new, and Wispr Flow 1.6.606 opened directly. Pro is $15/mo billed monthly or $12/mo billed annually. EnviousWispr latency comes from production PostHog data on Apple Silicon Macs. Competitor claims last verified: 2026-10-17.</p>
     <div style="text-align: center; margin-top: 28px;">
       <a href="/#download" class="btn-primary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -464,7 +472,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">$0</div>
         <div class="advantage-title">Free to use</div>
-        <p class="advantage-desc">No subscription, no usage caps, no freemium tiers. Download it, use it, done. WisprFlow costs $15/mo at time of writing, which adds up to $180 per year.</p>
+        <p class="advantage-desc">No subscription, no usage caps, no freemium tiers. Download it, use it, done. WisprFlow Pro costs $15/mo billed monthly or $12/mo billed annually at time of writing, which adds up to $144 to $180 per year.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🔒</div>
@@ -537,7 +545,7 @@ const faqs = [
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">2</div>
-          <div>Audio is uploaded to cloud servers for transcription via a third-party API.</div>
+          <div>Audio is uploaded to Wispr's cloud servers and transcribed by Canto, Wispr's own speech model.</div>
         </div>
         <div class="privacy-step">
           <div class="privacy-step-num">3</div>
@@ -630,17 +638,17 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">📱</div>
         <div class="advantage-title">You need cross-platform</div>
-        <p class="advantage-desc">WisprFlow runs on Mac, Windows, iPhone, and Android with settings synced across devices. EnviousWispr is macOS only right now.</p>
+        <p class="advantage-desc">WisprFlow runs on Mac, Windows, iPhone, and Android with settings synced across devices, and its meeting Notetaker runs on both Mac and Windows. EnviousWispr is macOS only right now.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🎨</div>
         <div class="advantage-title">You want more features today</div>
-        <p class="advantage-desc">WisprFlow has a broader feature set: Notetaker, shared dictionary and snippets, Transforms, Scratchpad, Insights, app-category Styles, voice command editing, backtrack, team tools, and coding-editor awareness. EnviousWispr is catching up, but WisprFlow is ahead on features right now.</p>
+        <p class="advantage-desc">WisprFlow has a broader feature set: Canto, its own speech model trained for noisy and mixed-language speech, Notetaker, shared dictionary and snippets, Transforms, Scratchpad, Insights, app-category Styles, voice command editing, backtrack, team tools, and coding-editor awareness. EnviousWispr is catching up, but WisprFlow is ahead on features right now.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🏢</div>
         <div class="advantage-title">You need enterprise compliance</div>
-        <p class="advantage-desc">WisprFlow offers SOC 2 Type II, ISO 27001, enforced HIPAA compliance, SSO/SAML, and team admin controls. EnviousWispr is built for individual privacy, not enterprise compliance workflows.</p>
+        <p class="advantage-desc">WisprFlow offers SOC 2 Type II, ISO 27001, enforced HIPAA compliance, SSO/SAML, team admin controls, and organization-wide dictionaries, now including a self-serve Growth plan for teams. EnviousWispr is built for individual privacy, not enterprise compliance workflows.</p>
       </div>
     </div>
     <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you are Mac-first and care most about privacy, offline transcription, and price, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>.</p>

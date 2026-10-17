@@ -11,13 +11,13 @@ const meta = {
   "breadcrumb": "EnviousWispr vs Spokenly",
   "ogImage": "/og-image.png",
   "datePublished": "2026-08-21T21:00:00Z",
-  "dateModified": "2026-10-16T00:00:00Z"
+  "dateModified": "2026-10-17T00:00:00Z"
 };
 
 const faqs = [
   {
     "q": "Is EnviousWispr free, like Spokenly?",
-    "a": "Yes. Spokenly's free tier includes unlimited local transcription and lets you bring your own API key for cloud AI, with no time limit or word cap. Its Pro tier, around $9.99 a month, adds Spokenly's own managed cloud transcription so you do not need your own key. EnviousWispr has no paid tier of any kind."
+    "a": "Yes. Spokenly's free tier includes unlimited local transcription and lets you bring your own API key for cloud AI, with no time limit or word cap. A Local+ tier ($29 one-time) adds extra recording styles and settings sync, and its Pro tier ($9.99 a month or $99.99 a year) adds Spokenly's own managed cloud transcription and cleanup so you do not need your own key. EnviousWispr has no paid tier of any kind."
   },
   {
     "q": "How is EnviousWispr different from Spokenly?",
@@ -29,7 +29,7 @@ const faqs = [
   },
   {
     "q": "Does Spokenly have AI cleanup like EnviousWispr's EG-1?",
-    "a": "Yes, through its Modes system. A mode carries its own AI Instructions, transcription model, and AI provider, and instructions can drive translation, cleanup, and formatting. We could not confirm from Spokenly's public documentation whether its default mode ships with cleanup instructions already configured. EG-1 is purpose-built for dictation cleanup, ships with the app, needs no prompt to write, and runs on the same hotkey as transcription."
+    "a": "Yes, through its Modes system. A mode carries its own AI Instructions, transcription model, and AI provider, and instructions can drive translation, cleanup, and formatting. Since October 2026 Spokenly also has Local Model Cleanup, its own small on-device model that removes fillers and fixes punctuation without a prompt; it is off by default and needs macOS 26 on Apple Silicon. EG-1 is also purpose-built for dictation cleanup, ships with the app, needs no prompt to write, and runs on macOS 14 or later."
   },
   {
     "q": "Can I use EnviousWispr completely offline?",
@@ -45,7 +45,7 @@ const faqs = [
   },
   {
     "q": "What is Spokenly's MCP integration for?",
-    "a": "Spokenly exposes an MCP tool named ask_user_dictation. Claude Code or Codex can call it when the agent needs an answer, and the person can respond by voice through Spokenly. This is a voice-response path for agent questions, not a replacement for ordinary system-wide dictation."
+    "a": "Spokenly exposes an MCP tool named ask_user_dictation. Claude Code, Codex or Cursor can call it when the agent needs an answer, and the person can respond by voice through Spokenly. This is a voice-response path for agent questions, not a replacement for ordinary system-wide dictation."
   },
   {
     "q": "Can I switch from Spokenly to EnviousWispr easily?",
@@ -249,12 +249,12 @@ const faqs = [
         Download Free
       </a>
     </div>
-    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: August 2026</p>
+    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: October 2026</p>
   </div>
 </header>
 
 <CompareDecisionSummary id="spokenly-vs-enviouswispr-answer" heading="Spokenly or EnviousWispr: which should you choose?">
-  <p>Both can provide free local dictation, but they make different tradeoffs. Choose Spokenly if you need Windows, Linux, or iOS, want per-app AI profiles, or need Agentic Actions and coding-agent dictation. Choose EnviousWispr if you want a Mac-only app whose source code is public under GPLv3, with local speech, local polish, direct paste, and Escape Recovery in one workflow. Spokenly is broader and more automation-heavy; EnviousWispr is narrower and inspectable. Spokenly also offers a paid managed-cloud tier, while EnviousWispr has no paid tier or account requirement. For someone who wants dictation on several devices or inside agent workflows, Spokenly offers more reach. For someone who wants to inspect the app and avoid a service relationship, EnviousWispr is the clearer fit.</p>
+  <p>Both can provide free local dictation, but they make different tradeoffs. Choose Spokenly if you need Windows, Linux, or iOS, want per-app AI profiles, or need Agentic Actions and coding-agent dictation. Choose EnviousWispr if you want a Mac-only app whose source code is public under GPLv3, with local speech, local polish on macOS 14 or later, direct paste, and Escape Recovery in one workflow. Spokenly is broader and more automation-heavy; EnviousWispr is narrower and inspectable. Spokenly also offers a paid managed-cloud tier, while EnviousWispr has no paid tier or account requirement. For someone who wants dictation on several devices or inside agent workflows, Spokenly offers more reach. For someone who wants to inspect the app and avoid a service relationship, EnviousWispr is the clearer fit.</p>
 </CompareDecisionSummary>
 
 <!-- Side-by-Side Table -->
@@ -295,17 +295,26 @@ const faqs = [
                Mode, advanced context inputs, per-mode model controls, and coding-agent setup pages exposing
                the ask_user_dictation MCP tool.
              Confidence: source-verified and firsthand-tested. Cancelled-dictation recovery was not found.
-             Last verified: 2026-08-21. -->
+             2026-10-17 re-check (spokenly.app/pricing, /releases/macos, /docs/local-model-cleanup, /dictation-for-mac):
+               current version 2.31.2 (2026-10-13). Free needs "No account needed". New Local+ tier $29 one-time.
+               Pro $9.99/month or $99.99/year (pricing page shows $8.33/month billed yearly). Local Model Cleanup
+               (2.31.0): "Spokenly Cleanup 1", on-device, removes fillers and repeats, applies spoken corrections,
+               fixes punctuation and numbers; "off by default"; Mac needs Apple silicon and macOS 26 or later.
+               New local speech models since 2.26: Cohere Transcribe, Parakeet Ultra, Parakeet Redux, Phonon-2.
+               Meeting recording without a bot (2.29.0, macOS 14.4+), batch file transcription with subtitle export,
+               speaker labels. MCP setup now also covers Cursor; MCP is in the direct-download build only.
+               Organizations can enforce Local Only Mode through MDM (2.30.6).
+             Last verified: 2026-10-17. -->
         <tbody>
           <tr>
             <td>Price</td>
             <td><span class="table-highlight">Free. No paid tier at all.</span></td>
-            <td>Free (unlimited local, bring your own cloud key). Pro ~$9.99/mo adds managed cloud, not required.</td>
+            <td>Free (unlimited local, bring your own cloud key). Local+ $29 one-time. Pro $9.99/mo or $99.99/yr adds managed cloud, not required.</td>
           </tr>
           <tr>
             <td>Account required</td>
             <td><span class="table-check">No</span></td>
-            <td>Not specified for the free tier</td>
+            <td>No account needed for the free tier</td>
           </tr>
           <tr>
             <td>Source code</td>
@@ -315,7 +324,7 @@ const faqs = [
           <tr>
             <td>Speech engines</td>
             <td><span class="table-highlight">Parakeet Ultra + Whisper</span>, switch in Settings</td>
-            <td><span class="table-check">Broad choice</span>: six local options, sixteen bring-your-own API providers, plus managed online models</td>
+            <td><span class="table-check">Broad choice</span>: many local options (including Parakeet Ultra, Cohere Transcribe and Phonon-2), bring-your-own API providers, plus managed online models</td>
           </tr>
           <tr>
             <td>AI cleanup (after transcription)</td>
@@ -325,7 +334,7 @@ const faqs = [
           <tr>
             <td>Needs a prompt to be written</td>
             <td><span class="table-check">No</span></td>
-            <td>Not confirmed either way from public documentation</td>
+            <td>No for Local Model Cleanup (off by default, macOS 26+); Modes use your own AI Instructions</td>
           </tr>
           <tr>
             <td>Voice-triggered actions (web search, open apps, run Shortcuts)</td>
@@ -335,7 +344,7 @@ const faqs = [
           <tr>
             <td>Developer tool integration (MCP)</td>
             <td><span class="table-cross">No</span></td>
-            <td><span class="table-check">Yes</span>: Claude Code or Codex can call <code>ask_user_dictation</code> and receive a spoken answer</td>
+            <td><span class="table-check">Yes</span>: Claude Code, Codex or Cursor can call <code>ask_user_dictation</code> and receive a spoken answer (direct-download build)</td>
           </tr>
           <tr>
             <td>Advanced context for a Mode</td>
@@ -345,12 +354,12 @@ const faqs = [
           <tr>
             <td>File transcription</td>
             <td><span class="table-check">Yes</span>, audio and video files with local or cloud cleanup</td>
-            <td><span class="table-check">Yes</span>, common audio and video formats plus direct recording</td>
+            <td><span class="table-check">Yes</span>, common audio and video formats, batch files with subtitle export, speaker labels, and meeting recording without a bot</td>
           </tr>
           <tr>
             <td>Local-only lock</td>
             <td>Choose local transcription and local polish</td>
-            <td><span class="table-check">Yes</span>, Local Only Mode blocks network requests</td>
+            <td><span class="table-check">Yes</span>, Local Only Mode blocks network requests; organizations can enforce it</td>
           </tr>
           <tr>
             <td>Recover a cancelled dictation</td>
@@ -375,7 +384,7 @@ const faqs = [
         </tbody>
       </table>
     </div>
-    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">Spokenly claims sourced from spokenly.app, spokenly.app/open-source, spokenly.app/docs, and Spokenly 2.26.0 opened directly. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Competitor claims last verified: 2026-08-21.</p>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">Spokenly claims sourced from spokenly.app, spokenly.app/open-source, spokenly.app/docs, and Spokenly 2.26.0 opened directly, with release notes re-checked through 2.31.2. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Competitor claims last verified: 2026-10-17.</p>
     <div style="text-align: center; margin-top: 28px;">
       <a href="/#download" class="btn-primary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -401,8 +410,8 @@ const faqs = [
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🧹</div>
-        <div class="advantage-title">A model built and measured for one job</div>
-        <p class="advantage-desc">EG-1 ships fine-tuned specifically for dictation cleanup and runs on the same hotkey as transcription, with no prompt to write. Spokenly's Modes system can carry its own provider, prompt, and output style per mode; we could not confirm from public documentation whether the default mode ships with cleanup instructions already configured.</p>
+        <div class="advantage-title">Local cleanup on more Macs</div>
+        <p class="advantage-desc">EG-1 ships fine-tuned specifically for dictation cleanup and runs on the same hotkey as transcription, with no prompt to write, on macOS 14 or later. Spokenly's own on-device cleanup model is off by default and needs macOS 26 on Apple Silicon.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">↩️</div>
@@ -571,12 +580,17 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">💻</div>
         <div class="advantage-title">You want it wired into a coding agent</div>
-        <p class="advantage-desc">Spokenly exposes <code>ask_user_dictation</code>, so Claude Code or Codex can ask you a question and receive your spoken answer. If that agent-response workflow matters to you, Spokenly has it and we do not.</p>
+        <p class="advantage-desc">Spokenly exposes <code>ask_user_dictation</code>, so Claude Code, Codex or Cursor can ask you a question and receive your spoken answer. If that agent-response workflow matters to you, Spokenly has it and we do not.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🎚️</div>
         <div class="advantage-title">You want per-app AI profiles</div>
         <p class="advantage-desc">Modes let you save a different provider, prompt, and output style for different apps, switching automatically. EnviousWispr's polish setting is one setup that applies everywhere.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🎙</div>
+        <div class="advantage-title">You record meetings</div>
+        <p class="advantage-desc">Spokenly can record meetings from system audio and your microphone without a bot, transcribe batches of files with subtitle export, and label speakers. EnviousWispr transcribes files you import but does not record meetings or label speakers.</p>
       </div>
     </div>
     <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you want Windows or iOS support, voice-triggered automation, or a coding-agent integration, Spokenly is a strong pick. If you want dictation whose code you can actually read, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. You can always use both.</p>
@@ -593,7 +607,7 @@ const faqs = [
     <div class="faq-list">
       <div class="faq-item reveal">
         <div class="faq-q">Is EnviousWispr free, like Spokenly?</div>
-        <p class="faq-a">Yes. Spokenly's free tier includes unlimited local transcription and lets you bring your own API key for cloud AI, with no time limit or word cap. Its Pro tier, around $9.99 a month, adds Spokenly's own managed cloud transcription so you do not need your own key. EnviousWispr has no paid tier of any kind.</p>
+        <p class="faq-a">Yes. Spokenly's free tier includes unlimited local transcription and lets you bring your own API key for cloud AI, with no time limit or word cap. A Local+ tier ($29 one-time) adds extra recording styles and settings sync, and its Pro tier ($9.99 a month or $99.99 a year) adds Spokenly's own managed cloud transcription and cleanup so you do not need your own key. EnviousWispr has no paid tier of any kind.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">How is EnviousWispr different from Spokenly?</div>
@@ -605,7 +619,7 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does Spokenly have AI cleanup like EnviousWispr's EG-1?</div>
-        <p class="faq-a">Yes, through its Modes system. A mode carries its own AI Instructions, transcription model, and AI provider, and instructions can drive translation, cleanup, and formatting. We could not confirm from Spokenly's public documentation whether its default mode ships with cleanup instructions already configured. EG-1 is purpose-built for dictation cleanup, ships with the app, needs no prompt to write, and runs on the same hotkey as transcription.</p>
+        <p class="faq-a">Yes, through its Modes system. A mode carries its own AI Instructions, transcription model, and AI provider, and instructions can drive translation, cleanup, and formatting. Since October 2026 Spokenly also has Local Model Cleanup, its own small on-device model that removes fillers and fixes punctuation without a prompt; it is off by default and needs macOS 26 on Apple Silicon. EG-1 is also purpose-built for dictation cleanup, ships with the app, needs no prompt to write, and runs on macOS 14 or later.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I use EnviousWispr completely offline?</div>
@@ -621,7 +635,7 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">What is Spokenly's MCP integration for?</div>
-        <p class="faq-a">Spokenly exposes an MCP tool named <code>ask_user_dictation</code>. Claude Code or Codex can call it when the agent needs an answer, and the person can respond by voice through Spokenly. This is a voice-response path for agent questions, not a replacement for ordinary system-wide dictation.</p>
+        <p class="faq-a">Spokenly exposes an MCP tool named <code>ask_user_dictation</code>. Claude Code, Codex or Cursor can call it when the agent needs an answer, and the person can respond by voice through Spokenly. This is a voice-response path for agent questions, not a replacement for ordinary system-wide dictation.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I switch from Spokenly to EnviousWispr easily?</div>

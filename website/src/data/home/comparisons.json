@@ -23,7 +23,7 @@
     "audio": "On-device or server",
     "audioNote": "Depends on language and settings.",
     "polish": "Separate Writing Tools",
-    "polishNote": "Requires a supported Apple Intelligence setup.",
+    "polishNote": "Requires a supported Apple Intelligence setup. On macOS 27, M3 or newer Macs also format dictation as you speak.",
     "start": "Enable in settings",
     "startNote": "System Settings → Keyboard.",
     "sources": [
