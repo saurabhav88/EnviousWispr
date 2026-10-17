@@ -446,6 +446,105 @@ struct TranscribeCppExecutorLifetimeTests {
     return nil
   }
 
+  // MARK: The quit step over a private executor
+
+  /// Records the quit step's immediate-exit request instead of ending the test host.
+  private final class ExitRequests: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    func request() { lock.withLock { count += 1 } }
+    var value: Int { lock.withLock { count } }
+  }
+
+  /// Runs the production quit step on a plain thread (it blocks up to its bound), over this
+  /// test's executor and a temporary note directory.
+  private static func quitStep(
+    _ executor: TranscribeCppExecutor, noteDirectory: URL, timeout: Duration = .seconds(2),
+    exits: ExitRequests
+  ) async -> TranscribeCppProcessExit.Outcome {
+    await withCheckedContinuation { continuation in
+      DispatchQueue.global().async {
+        continuation.resume(
+          returning: TranscribeCppProcessExit.releaseBeforeExit(
+            release: { executor.releaseAllForTermination(timeout: $0) },
+            noteDirectory: noteDirectory, timeout: timeout, exitNow: { exits.request() }))
+      }
+    }
+  }
+
+  private static func temporaryDirectory() -> URL {
+    FileManager.default.temporaryDirectory
+      .appendingPathComponent("ew-3849-quit-\(UUID().uuidString)", isDirectory: true)
+  }
+
+  /// The note as written, read as plain JSON (independent of the type that wrote it).
+  private static func noteJSON(in directory: URL) throws -> [String: Any] {
+    let data = try Data(contentsOf: directory.appendingPathComponent("model-release-timeout.json"))
+    return try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+  }
+
+  @Test("the quit step returns normally, with no note, when every model is freed")
+  func quitStepReturnsWithoutNoteWhenReleased() async throws {
+    let native = FakeNative()
+    let executor = TranscribeCppExecutor(makeSession: native.makeSession)
+    _ = try await executor.load(modelPath: "turbo", lane: .heart)
+    let directory = Self.temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let exits = ExitRequests()
+    let outcome = await Self.quitStep(executor, noteDirectory: directory, exits: exits)
+    guard case .released(let sessions, _) = outcome else {
+      Issue.record("expected a normal return, got \(outcome)")
+      return
+    }
+    #expect(sessions == 1)
+    #expect(exits.value == 0, "a clean release never ends the process early")
+    #expect(!FileManager.default.fileExists(atPath: directory.path), "no note is written")
+    #expect(native.closeCount("turbo") == 1)
+  }
+
+  @Test("a decode stuck past the bound leaves a note, then the quit step ends the process")
+  func quitStepWritesNoteAndExitsOnStuckDecode() async throws {
+    let native = FakeNative(ignoresAbort: ["m"])
+    let executor = TranscribeCppExecutor(makeSession: native.makeSession)
+    let m = try await executor.load(modelPath: "m", lane: .heart)
+    let running = Task {
+      try await executor.transcribe(m, samples: [1], language: nil, lane: .heart)
+    }
+    await native.waitForArrivals(1)
+    let directory = Self.temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let exits = ExitRequests()
+    let outcome = await Self.quitStep(
+      executor, noteDirectory: directory, timeout: .milliseconds(200), exits: exits)
+    #expect(outcome == .exited(noteWritten: true))
+    #expect(exits.value == 1)
+    let note = try Self.noteJSON(in: directory)
+    #expect(note["sessions"] as? Int == 1)
+    #expect(note["boundMs"] as? Int == 200)
+    #expect(native.closeCount("m") == 0, "the running call still owns its session")
+    // Unblock and join the native work before the fixture ends.
+    native.release("m")
+    _ = try? await native.bounded(running)
+    await native.waitForLog("close m")
+    #expect(native.violations.isEmpty)
+  }
+
+  @Test("a release already under way is unconfirmed: note without a count, then exit")
+  func quitStepTreatsRepeatAsUnconfirmed() async throws {
+    let native = FakeNative()
+    let executor = TranscribeCppExecutor(makeSession: native.makeSession)
+    _ = try await executor.load(modelPath: "turbo", lane: .heart)
+    #expect(Self.released(await Self.release(executor)) == 1)
+    let directory = Self.temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let exits = ExitRequests()
+    let outcome = await Self.quitStep(executor, noteDirectory: directory, exits: exits)
+    #expect(outcome == .exited(noteWritten: true))
+    #expect(exits.value == 1)
+    let note = try Self.noteJSON(in: directory)
+    #expect(note["sessions"] == nil, "the count is not observable on this branch")
+  }
+
   @Test("an idle release frees every session on both lanes and nothing native runs after it")
   func idleReleaseFreesAll() async throws {
     let native = FakeNative()

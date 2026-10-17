@@ -345,6 +345,37 @@ public enum SentryBreadcrumb {
     return event
   }
 
+  /// #3849: one error event for a consumed timeout note. Built directly (as `reportAIFailure`
+  /// is) rather than through `makeHandledErrorEvent`, whose merged extras would add ambient
+  /// context: this event carries the note's declared fields and nothing else.
+  public static func captureModelReleaseTimeout(_ note: ModelReleaseTimeoutNote) {
+    guard ObservabilityBootstrap.lifecycle.isSentryRunning else { return }
+    SentrySDK.capture(event: makeModelReleaseTimeoutEvent(note))
+  }
+
+  /// Pure, so a test asserts the exact wire shape. Grouping is split by environment as the
+  /// handled-error fingerprint is (`handledErrorFingerprint`), so a dev-machine occurrence
+  /// never absorbs a real user's.
+  nonisolated static func makeModelReleaseTimeoutEvent(
+    _ note: ModelReleaseTimeoutNote,
+    environment: String = ObservabilityBootstrap.currentEnvironment
+  ) -> Event {
+    let event = Event(level: .error)
+    event.message = SentryMessage(formatted: "model_release_timeout")
+    event.tags = ["diagnostic.kind": "model_release_timeout"]
+    var extra: [String: Any] = [
+      "bundleIdentifier": note.bundleIdentifier,
+      "environment": note.environment,
+      "appVersion": note.appVersion,
+      "timestamp": ISO8601DateFormatter().string(from: note.timestamp),
+      "boundMs": note.boundMs,
+    ]
+    if let sessions = note.sessions { extra["sessions"] = sessions }
+    event.extra = extra
+    event.fingerprint = ["model_release_timeout", environment]
+    return event
+  }
+
   /// Capture a handled error with pipeline context tags.
   /// Use for failures that don't crash the app but should be diagnosable in Sentry.
   /// - Parameters:

@@ -2491,6 +2491,9 @@ package final class WisprBootstrapper {
     // #3269: the stored switches decide whether PostHog starts and Sentry's mode for this run.
     ObservabilityBootstrap.initialize(
       usageMetrics: settings.shareUsageMetrics, crashReports: settings.sendCrashReports)
+    // #3849: the previous quit's model-release timeout note, if any: removed, and reported only
+    // when crash reports are on (this build's namespace only).
+    ModelReleaseTimeoutNote.consumeAtLaunch(crashReportsEnabled: settings.sendCrashReports)
     // #3269: the local diagnostics diary records whatever the switches say; it never uploads.
     TelemetryService.shared.activateDiagnosticsDiary()
     // #3269: saved bug reports are delivered on their own, independent of both switches.
@@ -2691,6 +2694,11 @@ package final class WisprBootstrapper {
       // Live read so a just-before-quit grant isn't logged denied (cloud Codex r3).
       accessibilityStatus: permissions.accessibilityGrantedLive ? "granted" : "denied")
     appLifecycleCoordinator.runWillTerminate()
+    // #3849: LAST, synchronously, after every step above: free every transcribe.cpp model
+    // (Whisper, Universal Live Preview) so the Metal device destructor at exit finds none
+    // alive. Returns when all are freed; a native call stuck past the 2 s bound ends the
+    // process here instead, after a note the next launch reports.
+    TranscribeCppProcessExit.releaseBeforeExit()
   }
 
   // MARK: - Window titles (so the shell needs no EnviousWisprCore dependency)

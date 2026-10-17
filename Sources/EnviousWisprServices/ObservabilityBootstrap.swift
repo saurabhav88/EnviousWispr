@@ -26,7 +26,7 @@ public enum ObservabilityBootstrap {
   static let appTag = "enviouswispr"
 
   /// App version from bundle (e.g. "1.6.2" for release, "v1.6.1-14-g...-dev" for dev)
-  private static var appVersion: String {
+  static var appVersion: String {
     Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
   }
 
