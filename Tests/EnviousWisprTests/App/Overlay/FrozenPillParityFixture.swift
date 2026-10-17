@@ -166,7 +166,7 @@ enum FrozenPillParity {
         kind: "accessibilityToast", text: "Auto-paste needs Accessibility", secondary: nil,
         severity: "neutral", isMultiline: true, actionLabel: "Grant",
         actionCase: "grantAccessibility"),
-      width: .fixed(300), fixedHeight: 56,
+      width: .fixed(300), fixedHeight: nil,  // #3912: content height
       expiry: .after(seconds: 6, pausesOnHover: false),
       announcement: FrozenAnnouncement(
         text: "Accessibility permission needed for auto-paste", isHighPriority: true)),
@@ -351,7 +351,7 @@ enum FrozenPillParity {
         kind: "accessibilityToast", text: "Auto-paste needs Accessibility", secondary: nil,
         severity: "neutral", isMultiline: true, actionLabel: "Grant",
         actionCase: "grantAccessibility"),
-      width: .fixed(300), fixedHeight: 56,
+      width: .fixed(300), fixedHeight: nil,  // #3912: content height
       expiry: .after(seconds: 6, pausesOnHover: false),
       announcement: FrozenAnnouncement(
         text: "Accessibility permission needed for auto-paste", isHighPriority: true)),

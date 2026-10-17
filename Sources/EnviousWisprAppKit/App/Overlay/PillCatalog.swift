@@ -233,7 +233,8 @@ enum PillCatalog {
     case .accessibilityToast:
       return notice(
         id: id, kind: .accessibilityToast, text: DictationNarrator.accessibilityToastText,
-        width: .fixed(300), fixedHeight: 56,  // :859 and :1118 both pass height: 56
+        // #3912: keeps its 300 width (the Grant button) and takes its height from the text.
+        width: .fixed(300),  // was 300 x 56 (:859, :1118)
         expiry: .after(seconds: 6), isMultiline: true,
         action: NoticeAction(
           label: String(
@@ -268,7 +269,8 @@ enum PillCatalog {
             localized: "Turn it on to start dictating.",
             comment: "Pill line under Microphone access needed."),
           accessibilityLabel: DictationNarrator.copy(for: reason),
-          width: .fixed(400), fixedHeight: 64,
+          // #3912: keeps its 400 width (badge and button) and takes its height from the text.
+          width: .fixed(400),  // was 400 x 64
           expiry: .after(seconds: 6), severity: .error, isMultiline: true,
           action: NoticeAction(
             label: String(

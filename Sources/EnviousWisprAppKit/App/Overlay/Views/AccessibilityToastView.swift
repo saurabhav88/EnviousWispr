@@ -17,9 +17,11 @@ struct AccessibilityToastView: View {
       Image(systemName: "lock.shield.fill")
         .foregroundStyle(.orange)
         .font(.system(size: 16))
+      // #3912: wraps at the pill's width; the pill grows taller.
       Text(text)
         .font(.system(size: 13, weight: .medium))
         .foregroundStyle(.white)
+        .fixedSize(horizontal: false, vertical: true)
       Spacer(minLength: 8)
       if let action {
         Button(action: onAction) {

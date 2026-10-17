@@ -48,7 +48,7 @@ struct RenderedPillFreezeTests {
   /// only on the build that took them and SKIP elsewhere; a skipped receipt is
   /// not a passed receipt, and the portable companion below is the claim that
   /// travels. Re-take the table on a new build, and move this string with it.
-  nonisolated static let frozenOnBuild = "26A428"
+  nonisolated static let frozenOnBuild = "26B5101f"
 
   /// `sw_vers -buildVersion`, read from the process rather than shelled out:
   /// `operatingSystemVersionString` is "Version 27.0 (Build 26A428)".
@@ -70,8 +70,11 @@ struct RenderedPillFreezeTests {
   }
 
   /// Sizes of the routed content, measured 2026-08-25 on `e062ab4d` (macOS 26),
-  /// re-taken 2026-09-13 on `f117c127` under macOS 27.0 (`frozenOnBuild`), where
-  /// four rows grew one point in height and nothing else moved (#2790).
+  /// re-taken 2026-09-13 on `f117c127` under macOS 27.0, where four rows grew one
+  /// point in height and nothing else moved (#2790), and re-taken 2026-10-17 under
+  /// macOS 27.2 (`frozenOnBuild`) for #3912: the message pills now wrap at
+  /// `PillCatalog.messageWidth`, so their widths are that proposal. The hinted
+  /// advisory read 68, not 52, with no #3912 change to it.
   ///
   /// Read `RenderedPillHarness`'s own doc for what a row means: it is the
   /// content at the width the definition asks for, which is not the window's
@@ -80,27 +83,27 @@ struct RenderedPillFreezeTests {
     [(label: String, request: PillCatalogRequest, width: CGFloat, height: CGFloat)] = [
       ("processing.transcribing", .processing(phase: .transcribing), 151.5, 44),
       ("clipboardFallback", .clipboardFallback, 226.5, 44),
-      ("accessibilityToast", .accessibilityToast, 332.5, 43),
-      ("warning.polishFailed", .warning(reason: .polishFailed), 231, 38),
-      ("error.asrFailed", .error(reason: .asrFailed), 239, 39),
-      // The one row whose width is a PROPOSAL rather than an ideal, because it
-      // is the one pill asking for a fixed width and a content height. At its
+      ("accessibilityToast", .accessibilityToast, 300, 52),
+      ("warning.polishFailed", .warning(reason: .polishFailed), 320, 38),
+      ("error.asrFailed", .error(reason: .asrFailed), 320, 39),
+      // The first row whose width was a PROPOSAL rather than an ideal (#3912 made
+      // every message pill one). At its
       // real 360 it wraps to 68pt; unproposed it reports 927 x 39, a single
       // unwrapped line — which is the reading two earlier capture rounds took
       // and the reason the harness proposes a width at all.
       ("advisory.zeroSignal", .advisory(reason: .zeroSignal), 360, 68),
-      // #2664: the hinted variant names the device; one line shorter than the
-      // seventh sentence, same requested width. Measured 2026-09-05.
+      // #2664: the hinted variant names the device, same requested width.
+      // Measured 2026-09-05 at 52; 68 on the 2026-10-17 re-take.
       (
         "advisory.zeroSignal.hinted",
         .advisory(reason: .zeroSignal, hint: MultiInputAdvisoryHint(deviceName: "Scarlett 2i2 USB")),
-        360, 52
+        360, 68
       ),
-      ("interruption.deviceRemoved", .interruption(reason: .deviceRemoved), 225.5, 44),
-      ("cachingModel", .cachingModel(engineLabel: "Parakeet"), 259.5, 51),
-      ("engineReady", .engineReady, 213, 41),
-      ("recoveringLastRecording", .recoveringLastRecording, 352, 51),
-      ("recoverySucceeded", .recoverySucceeded, 245, 51),
+      ("interruption.deviceRemoved", .interruption(reason: .deviceRemoved), 320, 44),
+      ("cachingModel", .cachingModel(engineLabel: "Parakeet"), 320, 51),
+      ("engineReady", .engineReady, 320, 41),
+      ("recoveringLastRecording", .recoveringLastRecording, 320, 67),
+      ("recoverySucceeded", .recoverySucceeded, 320, 51),
       ("importStatus", .importStatus(message: "Imported 12 words"), 170, 39),
     ]
 

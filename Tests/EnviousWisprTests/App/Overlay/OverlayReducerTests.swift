@@ -642,7 +642,7 @@ struct OverlayReducerTests {
       // intent, fixed height or nil for content-sized, shipped call site
       (OverlayIntent.processing(phase: .transcribing), CGFloat?.none, "showPanel fitToContent"),
       (.clipboardFallback, nil, "showPanel fitToContent"),
-      (.accessibilityToast, 56, "showPanel height: 56"),
+      (.accessibilityToast, nil, "#3912 wraps; was showPanel height: 56"),
       (.warning(reason: .polishFailed), nil, "#3912 wraps; was showPanel default height 44"),
       (.error(reason: .asrFailed), nil, "#3912 wraps; was showPanel default height 44"),
       (.interruption(reason: .deviceRemoved), nil, "#3912 wraps; was showPanel default height 44"),
@@ -690,7 +690,7 @@ struct OverlayReducerTests {
 
   /// The two presentations that are not notices carry a box too, and neither
   /// goes through the notice factory, so the sweep above cannot see them.
-  @Test("the language chip grows with its sentence; the accessibility request keeps its box")
+  @Test("the language chip and the accessibility request grow with their sentences")
   func nonNoticePresentationsKeepTheirBoxes() {
     var chip = Self.makeReducer()
     _ = chip.reduce(
@@ -706,8 +706,8 @@ struct OverlayReducerTests {
     var toast = Self.makeReducer()
     _ = toast.reduceAccessibilityNotice(showingToast: { true })
     #expect(
-      toast.state.current?.reservesFixedHeight == 56,
-      "the accessibility toast is showPanel(height: 56) at its shipped site")
+      toast.state.current?.reservesFixedHeight == nil,
+      "the accessibility toast reserves a fixed height, so a long translation is cut off")
   }
 
   /// The accessibility half of the notice table. The closed-set sweep above

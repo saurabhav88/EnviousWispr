@@ -88,13 +88,16 @@ struct NotificationOverlayView: View {
 
       if isRich {
         VStack(alignment: .leading, spacing: 2) {
+          // #3912: both lines wrap at the pill's width; the pill grows taller.
           Text(message)
             .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(.white)
+            .fixedSize(horizontal: false, vertical: true)
           if let secondaryText {
             Text(secondaryText)
               .font(.system(size: 12))
               .foregroundStyle(.white.opacity(0.65))
+              .fixedSize(horizontal: false, vertical: true)
           }
         }
       } else {
