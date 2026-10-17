@@ -314,6 +314,41 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
     currentToken &+= 1
     let token = currentToken
 
+    let opening = try makeStartResources(
+      source: source, target: target, lookups: lookups, onText: onText)
+
+    do {
+      try await opening.analyzer.start(inputSequence: opening.stream)
+    } catch {
+      await discardStartResources(opening)
+      throw error
+    }
+    // Superseded while `start` was suspended: this session's resources are ours
+    // alone, so close them rather than handing back something whose every later
+    // call would be rejected.
+    guard token == currentToken else {
+      await discardStartResources(opening)
+      throw LivePreviewError.superseded
+    }
+    return Session(
+      token: token, analyzer: opening.analyzer, continuation: opening.continuation,
+      collector: opening.collector,
+      converter: opening.converter, sourceFormat: source, targetFormat: target,
+      fedAnyAudio: FedFlag())
+  }
+
+  private struct StartResources: Sendable {
+    let analyzer: SpeechAnalyzer
+    let stream: AsyncStream<AnalyzerInput>
+    let continuation: AsyncStream<AnalyzerInput>.Continuation
+    let collector: Task<Void, Never>
+    let converter: AVAudioConverter?
+  }
+
+  private func makeStartResources(
+    source: AVAudioFormat, target: AVAudioFormat, lookups: WordCorrector.Lookups?,
+    onText: @escaping @Sendable (String) -> Void
+  ) throws -> StartResources {
     // A fresh converter per session, so no resampler tail crosses a boundary and
     // leaks the previous dictation's audio into this one.
     //
@@ -346,35 +381,21 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
     // The session owns the vocabulary it started with.
     let collector = Self.collect(from: module, lookups: lookups, onText: onText)
 
-    // Finishing the stream and cancelling the collector is not enough: the analyzer
-    // holds its own analysis and model resources and needs an explicit end, or a
-    // rapid stop-start loop accumulates abandoned ones. `cancelAndFinishNow` rather
-    // than `finalizeAndFinishThroughEndOfInput` because this session is being thrown
-    // away — there is no result anyone will read, and finalizing an analyzer that
-    // never received input does not return (trap 2).
-    func discard() async {
-      continuation.finish()
-      collector.cancel()
-      await analyzer.cancelAndFinishNow()
-    }
+    return StartResources(
+      analyzer: analyzer, stream: stream, continuation: continuation,
+      collector: collector, converter: converter)
+  }
 
-    do {
-      try await analyzer.start(inputSequence: stream)
-    } catch {
-      await discard()
-      throw error
-    }
-    // Superseded while `start` was suspended: this session's resources are ours
-    // alone, so close them rather than handing back something whose every later
-    // call would be rejected.
-    guard token == currentToken else {
-      await discard()
-      throw LivePreviewError.superseded
-    }
-    return Session(
-      token: token, analyzer: analyzer, continuation: continuation, collector: collector,
-      converter: converter, sourceFormat: source, targetFormat: target,
-      fedAnyAudio: FedFlag())
+  // Finishing the stream and cancelling the collector is not enough: the analyzer
+  // holds its own analysis and model resources and needs an explicit end, or a
+  // rapid stop-start loop accumulates abandoned ones. `cancelAndFinishNow` rather
+  // than `finalizeAndFinishThroughEndOfInput` because this session is being thrown
+  // away — there is no result anyone will read, and finalizing an analyzer that
+  // never received input does not return (trap 2).
+  private func discardStartResources(_ opening: StartResources) async {
+    opening.continuation.finish()
+    opening.collector.cancel()
+    await opening.analyzer.cancelAndFinishNow()
   }
 
   /// Accumulate results into the text a user would actually be looking at.
