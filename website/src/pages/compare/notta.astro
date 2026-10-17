@@ -28,7 +28,7 @@ const faqs = [
   },
   {
     "q": "Can EnviousWispr transcribe meetings?",
-    "a": "No. EnviousWispr is designed for single-speaker dictation into text fields. It does not record calls, join meeting rooms, or identify multiple speakers. For meeting transcription, Notta or a similar tool is the right choice."
+    "a": "No. EnviousWispr is designed for single-speaker dictation into text fields. It does not record calls or join meeting rooms; it can label speakers only in recordings you import. For meeting transcription, Notta or a similar tool is the right choice."
   },
   {
     "q": "Will my audio be used for training?",
@@ -301,7 +301,7 @@ const faqs = [
           </tr>
           <tr>
             <td>Speaker identification</td>
-            <td><span class="table-cross">No</span> (single-speaker dictation)</td>
+            <td>Only in recordings you import (Transcribe a File); not in live dictation</td>
             <td><span class="table-check">Yes</span>, multi-speaker diarization</td>
           </tr>
           <tr>
@@ -317,12 +317,12 @@ const faqs = [
           <tr>
             <td>Audio processing</td>
             <td><span class="table-highlight">On-device</span> (Apple Silicon)</td>
-            <td>Cloud servers by default; on-device in desktop Privacy Mode (beta)</td>
+            <td>Cloud servers by default; on-device in desktop Privacy Mode (beta, paid plans)</td>
           </tr>
           <tr>
             <td>Works offline</td>
             <td><span class="table-check">Yes</span> for transcription (after models download)</td>
-            <td>Only in desktop Privacy Mode (beta)</td>
+            <td>Only in desktop Privacy Mode (beta, paid plans; checks its license about monthly)</td>
           </tr>
           <tr>
             <td>Transcription latency</td>
@@ -555,7 +555,7 @@ const faqs = [
           <p>EnviousWispr processes audio entirely on your Mac's Apple Silicon chip. Nothing is uploaded. The audio buffer is discarded after transcription. If you enable AI polish with a cloud provider, only the text transcript (not audio) is sent, using your own API key.</p>
           <p>For meeting transcription, cloud processing is a reasonable tradeoff: you need speaker identification, long-form recording, and team collaboration that requires server-side infrastructure. For dictation of personal messages, medical notes, legal correspondence, or anything sensitive, on-device processing means your words never leave your control.</p>
           <div class="deep-dive-detail">
-            <strong>The tradeoff:</strong> Notta's cloud approach enables speaker identification, team workspaces, and cross-meeting search, and its newer Privacy Mode brings local meeting transcription to the desktop. EnviousWispr is local for every dictation, but has no multi-speaker capabilities.
+            <strong>The tradeoff:</strong> Notta's cloud approach enables speaker identification, team workspaces, and cross-meeting search, and its newer Privacy Mode brings local meeting transcription to the desktop. EnviousWispr is local for every dictation and labels speakers in imported recordings, but does not record meetings.
           </div>
         </div>
       </div>
@@ -580,7 +580,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">🗣️</div>
         <div class="advantage-title">Speaker diarization</div>
-        <p class="advantage-desc">Notta identifies who said what in multi-person conversations. EnviousWispr is a single-speaker dictation tool and has no speaker identification.</p>
+        <p class="advantage-desc">Notta identifies who said what in multi-person conversations. EnviousWispr labels speakers only in recordings you import, not in live meetings.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">👥</div>
@@ -600,7 +600,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">🔒</div>
         <div class="advantage-title">Private meeting transcription</div>
-        <p class="advantage-desc">Notta's desktop Privacy Mode (beta) transcribes meetings on your Mac or Windows PC without an internet connection and keeps recordings in a local folder. EnviousWispr does not record meetings at all.</p>
+        <p class="advantage-desc">Notta's desktop Privacy Mode (beta, on paid plans) transcribes meetings on your Mac or Windows PC without an internet connection, apart from a periodic license check, and keeps recordings in a local folder. EnviousWispr does not record meetings at all.</p>
       </div>
     </div>
     <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If your goal is to type with your voice into emails, Slack, docs, and code comments, not record meetings, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>.</p>
@@ -629,7 +629,7 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can EnviousWispr transcribe meetings?</div>
-        <p class="faq-a">No. EnviousWispr is designed for single-speaker dictation into text fields. It does not record calls, join meeting rooms, or identify multiple speakers. For meeting transcription, Notta or a similar tool is the right choice.</p>
+        <p class="faq-a">No. EnviousWispr is designed for single-speaker dictation into text fields. It does not record calls or join meeting rooms; it can label speakers only in recordings you import. For meeting transcription, Notta or a similar tool is the right choice.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Will my audio be used for training?</div>

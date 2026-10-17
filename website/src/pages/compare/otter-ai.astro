@@ -332,7 +332,7 @@ const faqs = [
           </tr>
           <tr>
             <td>Speaker identification</td>
-            <td><span class="table-cross">No</span> - single-speaker dictation</td>
+            <td>Only in recordings you import (Transcribe a File); not in live dictation</td>
             <td><span class="table-check">Yes</span> - identifies who said what</td>
           </tr>
           <tr>
@@ -571,7 +571,7 @@ const faqs = [
           <p>EnviousWispr processes audio entirely on your Mac's Apple Silicon chip. Nothing is uploaded. The audio buffer is discarded after transcription. If you enable AI polish with a cloud provider, only the text transcript (not audio) is sent, using your own API key.</p>
           <p>For meeting transcription, cloud processing is a reasonable tradeoff: you need speaker identification and long-form support that requires server-side models. For dictation of personal messages, medical notes, legal correspondence, or anything sensitive, on-device processing means your words never leave your control.</p>
           <div class="deep-dive-detail">
-            <strong>The tradeoff:</strong> Otter's cloud approach enables features like speaker identification and cross-meeting search. EnviousWispr's local approach means zero data exposure but no multi-speaker capabilities.
+            <strong>The tradeoff:</strong> Otter's cloud approach enables features like speaker identification and cross-meeting search. EnviousWispr's local approach means zero data exposure, with speaker labels only for recordings you import, not live meeting capabilities.
           </div>
         </div>
       </div>
@@ -596,7 +596,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">👥</div>
         <div class="advantage-title">Speaker identification</div>
-        <p class="advantage-desc">Otter identifies who said what in a conversation with speaker diarization. EnviousWispr is single-speaker dictation only.</p>
+        <p class="advantage-desc">Otter identifies who said what in a conversation with speaker diarization. EnviousWispr labels speakers only in recordings you import, not in live meetings.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🤝</div>
@@ -626,7 +626,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">⏱️</div>
         <div class="advantage-title">Long-form recording</div>
-        <p class="advantage-desc">Otter handles hour-long meetings and lectures. EnviousWispr can handle sessions up to 60 minutes, but has no meeting-specific features: no live notes, no speaker identification, no summarization.</p>
+        <p class="advantage-desc">Otter handles hour-long meetings and lectures. EnviousWispr can handle sessions up to 60 minutes, but has no meeting-specific features: no live notes, no live speaker identification, no summarization.</p>
       </div>
     </div>
     <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you need meeting transcription, use Otter. If you want to type by speaking into any text field on your Mac, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. Many people use both.</p>

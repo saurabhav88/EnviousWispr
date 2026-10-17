@@ -27,7 +27,7 @@ const faqPairs = [
   ['Is there a free MacWhisper alternative for dictation?', 'Yes. EnviousWispr provides free on-device dictation and local AI cleanup on supported Macs. MacWhisper also has a free tier, with additional features in Pro.'],
   ['Will my audio be used for training?', 'Envious Labs does not receive your audio or transcripts. Audio transcription runs on your Mac. If you choose a cloud provider for text polish, that provider handles the selected text under its own terms.'],
   ['Can I use both EnviousWispr and MacWhisper?', 'You can choose a tool for each workflow: for example, EnviousWispr for everyday dictation and MacWhisper for subtitle or batch-transcription work. Both apps also support importing recordings.'],
-  ['Does EnviousWispr support speaker diarization?', 'The current EnviousWispr file-transcription workflow does not label individual speakers. MacWhisper offers speaker identification for recordings.'],
+  ['Does EnviousWispr support speaker diarization?', 'Yes, for recordings you import. Transcribe a File labels each turn with the speaker when it can tell the voices apart, and you can rename the speakers. MacWhisper also offers speaker identification, including for live meetings.'],
   ['What happens to my clipboard when EnviousWispr pastes text?', 'When clipboard restoration is on (the default), EnviousWispr saves your clipboard contents before a clipboard-based paste and restores them afterward, unless another app changes the clipboard in between. Direct text insertion never touches your clipboard at all.'],
 ];
 const faqs = faqPairs.map(([q, a]) => ({ q, a }));
@@ -246,7 +246,7 @@ const faqs = faqPairs.map(([q, a]) => ({ q, a }));
   <div class="container">
     <div class="section-head"><div class="section-label-pill">Being Honest</div><h2 class="section-title">Look at the work around your transcript.</h2><p class="section-sub">Both apps import recordings. MacWhisper offers additional workflows that can matter more than the dictation itself.</p></div>
     <div class="advantages-grid">
-      <div class="advantage-card"><div class="advantage-title">Subtitles and speakers</div><p class="advantage-desc">MacWhisper offers timed subtitle export, automatic subtitle translation and speaker identification. EnviousWispr’s current file workflow produces a text transcript without individual speaker labels.</p></div>
+      <div class="advantage-card"><div class="advantage-title">Subtitles and speakers</div><p class="advantage-desc">MacWhisper offers timed subtitle export, automatic subtitle translation and speaker identification. EnviousWispr labels speakers in files you import, but does not export timed subtitles.</p></div>
       <div class="advantage-card"><div class="advantage-title">Batch and meeting workflows</div><p class="advantage-desc">MacWhisper includes batch transcription, watched folders, meeting recording, a command-line tool and integrations such as Notion, Zapier and Obsidian. Check its free and Pro feature lists for the workflow you need.</p></div>
       <div class="advantage-card"><div class="advantage-title">Try your own recording</div><p class="advantage-desc">Accuracy and waiting time depend on your Mac, language, recording and models. Compare the same sample in both apps. This page does not present a head-to-head speed benchmark.</p></div>
     </div>

@@ -40,7 +40,7 @@ const faqs = [
   },
   {
     "q": "How accurate is EnviousWispr compared to Apple Dictation?",
-    "a": "EnviousWispr uses Parakeet Ultra, a modern ASR model, combined with AI polish that fixes misrecognitions and grammar. Apple Dictation's older engine achieves ~90% in quiet conditions but degrades with background noise; on macOS 27, Apple says Macs with M3 or newer and 12GB of memory get a major accuracy boost. EnviousWispr's AI polish layer provides an additional correction pass that Apple Dictation lacks."
+    "a": "EnviousWispr uses Parakeet Ultra, a modern ASR model, combined with AI polish that fixes misrecognitions and grammar. Apple Dictation's older engine achieves ~90% in quiet conditions but degrades with background noise; on macOS 27, Apple says Macs with M3 or newer and 12GB of memory get a major accuracy boost for English. EnviousWispr's AI polish layer provides an additional correction pass that Apple Dictation lacks."
   },
   {
     "q": "Can EnviousWispr remove filler words from dictation?",
@@ -324,7 +324,7 @@ const faqs = [
           <tr>
             <td>AI polish</td>
             <td><span class="table-highlight">EG-1, S1-mini by Superwhisper, Ollama</span> (on-device), <span class="table-highlight">Apple Intelligence</span> (on-device, macOS 26+), or BYO OpenAI/Gemini/Claude key</td>
-            <td>On macOS 27 with an M3 or newer Mac and 12GB of memory: automatic capitalization, punctuation and formatting. No rewrite step.</td>
+            <td>On macOS 27 with an M3 or newer Mac and 12GB of memory, for English: automatic capitalization, punctuation and formatting. No rewrite step.</td>
           </tr>
           <tr>
             <td>Filler word removal</td>
@@ -349,7 +349,7 @@ const faqs = [
           <tr>
             <td>Accuracy (clean audio)</td>
             <td>High (Parakeet Ultra + AI polish correction)</td>
-            <td>90-92% on the older engine (third-party tests); Apple claims a major accuracy boost on M3+ Macs with macOS 27</td>
+            <td>90-92% on the older engine (third-party tests); Apple claims a major accuracy boost for English on M3+ Macs with 12GB and macOS 27</td>
           </tr>
           <tr>
             <td>First-word capture</td>
@@ -545,7 +545,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">✨</div>
         <div class="advantage-title">You have a newer Mac on macOS 27</div>
-        <p class="advantage-desc">On a Mac with M3 or newer and at least 12GB of memory, macOS 27 dictation is much more accurate and handles capitalization, punctuation and formatting as you speak. If that is your Mac and you need nothing else, Apple Dictation may be enough. EnviousWispr still adds custom words, filler removal, History, longer recordings, and polish on M1 and M2 Macs.</p>
+        <p class="advantage-desc">On a Mac with M3 or newer and at least 12GB of memory, macOS 27 English dictation is much more accurate and handles capitalization, punctuation and formatting as you speak. If that is your Mac and you need nothing else, Apple Dictation may be enough. EnviousWispr still adds custom words, filler removal, History, longer recordings, and polish on M1 and M2 Macs.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">📱</div>
@@ -606,7 +606,7 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">How accurate is EnviousWispr compared to Apple Dictation?</div>
-        <p class="faq-a">EnviousWispr uses Parakeet Ultra, a modern ASR model, combined with AI polish that fixes misrecognitions and grammar. Apple Dictation's older engine achieves ~90% in quiet conditions (third-party tests) but degrades significantly with background noise; on macOS 27, Apple says Macs with M3 or newer and 12GB of memory get a major accuracy boost. EnviousWispr's AI polish layer provides an additional correction pass that Apple Dictation lacks.</p>
+        <p class="faq-a">EnviousWispr uses Parakeet Ultra, a modern ASR model, combined with AI polish that fixes misrecognitions and grammar. Apple Dictation's older engine achieves ~90% in quiet conditions (third-party tests) but degrades significantly with background noise; on macOS 27, Apple says Macs with M3 or newer and 12GB of memory get a major accuracy boost for English. EnviousWispr's AI polish layer provides an additional correction pass that Apple Dictation lacks.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can EnviousWispr remove filler words from dictation?</div>
