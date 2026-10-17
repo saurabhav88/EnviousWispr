@@ -9,12 +9,16 @@ import { ORG_REF } from '../data/entities.js';
 // than its og:image). The page passes ONE `meta` object and its FAQ list; the
 // head, the three JSON-LD blocks and the canonical URL are derived here.
 //
-// The visible page body (header, table, prose, FAQ markup) stays in the page:
-// it varies per competitor and is not a template.
+// The visible page body (header, table, prose) stays in the page: it varies per
+// competitor and is not a template. The visible FAQ is rendered from the same
+// `faqs` list passed here, so the two copies cannot drift (#3866).
 import BaseLayout from './BaseLayout.astro';
+import { faqAnswerText } from '../utils/compare-faq.js';
 
 export interface CompareFaq {
   q: string;
+  /** Answer with optional `[text](href)` and backtick code marks; the page
+   * renders it with `faqAnswerHtml`, and the JSON-LD below drops the marks. */
   a: string;
 }
 
@@ -86,7 +90,7 @@ const faqJsonLd =
         mainEntity: faqs.map(({ q, a }) => ({
           '@type': 'Question',
           name: q,
-          acceptedAnswer: { '@type': 'Answer', text: a },
+          acceptedAnswer: { '@type': 'Answer', text: faqAnswerText(a) },
         })),
       })
     : null;

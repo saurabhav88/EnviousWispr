@@ -1,5 +1,6 @@
 ---
 import CompareLayout from '../../layouts/CompareLayout.astro';
+import { faqAnswerHtml } from '../../utils/compare-faq.js';
 
 const meta = {
   "slug": "otter-ai",
@@ -24,7 +25,7 @@ const faqs = [
   },
   {
     "q": "Is there a free dictation alternative to Otter.ai?",
-    "a": "Yes. If what you actually need is dictation (typing by speaking into emails, Slack, documents), EnviousWispr does that for free with no account, no subscription, and no usage limits. Otter's free tier limits you to 300 minutes per month."
+    "a": "Yes. If what you actually need is dictation (typing by speaking into emails, Slack, documents), EnviousWispr does that for free with no account, no subscription, and no usage limits. See the [getting started guide](/blog/getting-started-enviouswispr-under-2-minutes/). Otter's free tier limits you to 300 minutes per month."
   },
   {
     "q": "Does EnviousWispr work offline?",
@@ -245,7 +246,7 @@ const faqs = [
       </span>
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        0.61s median latency
+        Sub-second for short dictations
       </span>
     </div>
     <div class="hero-cta reveal">
@@ -387,7 +388,7 @@ const faqs = [
           </tr>
           <tr>
             <td>Transcription latency</td>
-            <td><span class="table-highlight">0.61s median</span>; ~1.65s with on-device AI polish</td>
+            <td><span class="table-highlight">Under a second</span> for typical short dictations; AI polish adds time that grows with length</td>
             <td>Near real-time (depends on network and server load)</td>
           </tr>
           <tr>
@@ -519,26 +520,26 @@ const faqs = [
     <div class="section-head reveal">
       <div class="section-label-pill amber">Speed</div>
       <h2 class="section-title">Fast because there is no upload step</h2>
-      <p class="section-sub">On Apple Silicon Macs, EnviousWispr transcribes speech locally. No network round-trip before text appears in your active app.</p>
+      <p class="section-sub">On Apple Silicon Macs, EnviousWispr transcribes speech locally. Transcription never waits on an upload round trip.</p>
     </div>
     <div class="speed-stats">
       <div class="speed-card reveal">
-        <div class="speed-value">0.61s</div>
-        <div class="speed-label">Median transcription</div>
-        <div class="speed-detail">From end of speech to raw text</div>
+        <div class="speed-value">&lt;1s</div>
+        <div class="speed-label">Transcription, short dictations</div>
+        <div class="speed-detail">Typical time after you stop speaking</div>
       </div>
       <div class="speed-card reveal">
-        <div class="speed-value">1.65s</div>
-        <div class="speed-label">With AI polish</div>
-        <div class="speed-detail">EG-1 or Apple, on-device</div>
+        <div class="speed-value">Scales</div>
+        <div class="speed-label">AI polish time</div>
+        <div class="speed-detail">Grows with how much you dictated</div>
       </div>
       <div class="speed-card reveal">
         <div class="speed-value">0ms</div>
         <div class="speed-label">Network overhead</div>
-        <div class="speed-detail">Immune to bad Wi-Fi</div>
+        <div class="speed-detail">Transcription is immune to bad Wi-Fi</div>
       </div>
     </div>
-    <p style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center;">Based on production data from Apple Silicon Macs. Results vary by hardware and settings.</p>
+    <p style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center;">Transcription time is the median for short dictations (under 5 seconds of speech) with the default Parakeet Ultra engine, from production use on Apple Silicon Macs, measured October 2026. It is still under a second on the oldest supported Macs (M1). It excludes AI polish and pasting; longer recordings take longer.</p>
   </div>
 </section>
 
@@ -641,50 +642,12 @@ const faqs = [
       <h2 class="section-title">Common questions</h2>
     </div>
     <div class="faq-list">
-      <div class="faq-item reveal">
-        <div class="faq-q">Is EnviousWispr an Otter.ai alternative?</div>
-        <p class="faq-a">They solve different problems. Otter.ai is for meeting transcription: recording calls, identifying speakers, generating summaries. EnviousWispr is for dictation: speaking text into any app on your Mac. If you are looking for an Otter alternative specifically for typing by voice, EnviousWispr is built for that.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Can I use EnviousWispr to transcribe meetings?</div>
-        <p class="faq-a">No. EnviousWispr is a dictation tool, not a meeting recorder. It transcribes your voice in real time and pastes the text where your cursor is. For meeting transcription with speaker identification and summaries, Otter.ai is the better choice.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Is there a free dictation alternative to Otter.ai?</div>
-        <p class="faq-a">Yes. If what you actually need is dictation (typing by speaking into emails, Slack, documents), EnviousWispr does that for free with no account, no subscription, and no usage limits. See the <a href="/blog/getting-started-enviouswispr-under-2-minutes/" style="color: var(--accent); text-decoration: underline;">getting started guide</a>. Otter's free tier limits you to 300 minutes per month.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Does EnviousWispr work offline?</div>
-        <p class="faq-a">Transcription runs entirely on-device and works without internet. AI polish requires an LLM; you can use a local model for fully offline operation or bring your own API key for a cloud provider.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Will my audio be used for training?</div>
-        <p class="faq-a">No. Your audio is processed on your Mac and discarded after transcription. It never leaves your device, so it cannot be used for anything else.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Can I use both Otter.ai and EnviousWispr?</div>
-        <p class="faq-a">Absolutely. Many users run Otter for meeting transcription and EnviousWispr for day-to-day dictation. They do not conflict. Use Otter when you need to record and summarize a call, and EnviousWispr when you want to type by speaking.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">What Mac do I need?</div>
-        <p class="faq-a">Any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or newer. The Neural Engine and GPU on Apple Silicon are what make on-device transcription fast.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Is EnviousWispr open source?</div>
-        <p class="faq-a">Open source under the GNU General Public License v3 (GPLv3), an OSI-approved license. You can read, build, inspect, and contribute to every line of code on GitHub. Contributions are welcome.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Does Otter.ai work as a dictation tool?</div>
-        <p class="faq-a">Otter.ai is designed for meeting transcription, not for typing by voice into other apps. It records conversations and produces transcripts inside its own interface. To get that text into an email or document, you need to copy and paste. EnviousWispr is the opposite: it pastes text directly into whatever app you are using, with no intermediate step.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Can Otter.ai transcribe on-device?</div>
-        <p class="faq-a">No. Otter.ai is cloud-only. All audio is uploaded to their servers for transcription, speaker identification, and AI processing. There is no offline or on-device mode. EnviousWispr runs entirely on your Mac's Apple Silicon chip and works without internet.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Is Otter.ai free?</div>
-        <p class="faq-a">Otter has a free tier with 300 minutes per month and a 30-minute per-conversation limit. Beyond that, Pro is $8.33/month billed annually ($16.99 monthly) with 1,200 minutes a month, and Business is $19.99/month billed annually ($30 monthly). EnviousWispr is completely free with no usage limits, no subscription tiers, and no account required.</p>
-      </div>
+      {faqs.map(({ q, a }) => (
+        <div class="faq-item reveal">
+          <div class="faq-q">{q}</div>
+          <p class="faq-a" set:html={faqAnswerHtml(a)} />
+        </div>
+      ))}
     </div>
   </div>
 </section>

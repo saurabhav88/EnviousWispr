@@ -1,5 +1,6 @@
 ---
 import CompareLayout from '../../layouts/CompareLayout.astro';
+import { faqAnswerHtml } from '../../utils/compare-faq.js';
 import CompareDecisionSummary from '../../components/CompareDecisionSummary.astro';
 
 const meta = {
@@ -374,30 +375,12 @@ const faqs = [
   <div class="container">
     <div class="section-head reveal"><h2 class="section-title">Frequently asked questions</h2></div>
     <div class="faq-list">
-      <div class="faq-item reveal">
-        <div class="faq-q">Is EnviousWispr free, like Vox?</div>
-        <p class="faq-a">Yes. Both apps are now free for personal and work use, and neither requires an account. EnviousWispr is open source under GPLv3; Vox is open source under the MIT license. Vox accepts optional contributions.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Do EnviousWispr and Vox both work offline?</div>
-        <p class="faq-a">Yes, when using downloaded local models. Vox can transcribe locally and use downloaded Gemma 4 for local cleanup. Vox also offers Apple Intelligence on supported Macs. EnviousWispr can use local EG-1, S1-mini by Superwhisper, Apple Intelligence, or downloaded Ollama models, plus optional cloud providers with your own key.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Does Vox have AI cleanup like EnviousWispr's EG-1?</div>
-        <p class="faq-a">Yes. Vox can clean up text locally with a downloaded Gemma 4 model. It also offers Apple Intelligence on supported Macs. Vox's built-in and custom Voice Modes control how cleanup behaves. EnviousWispr offers EG-1, S1-mini by Superwhisper, Apple Intelligence, or a downloaded Ollama model locally, plus optional cloud providers with your own key.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">What is VoxNotch?</div>
-        <p class="faq-a">It is a local task list that sits at the top of the Mac screen. You can add, finish, remove, reorder, and reprioritize tasks by speaking naturally.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Is Vox open source?</div>
-        <p class="faq-a">Yes. Vox is now open source under the MIT license, with its source on GitHub. EnviousWispr is open source under GPLv3.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Which Macs do EnviousWispr and Vox support?</div>
-        <p class="faq-a">Both support Apple Silicon Macs starting with M1 on macOS 14 or later. Neither supports Intel Macs. Vox also supports 64-bit Windows 10 and 11, while EnviousWispr is Mac only.</p>
-      </div>
+      {faqs.map(({ q, a }) => (
+        <div class="faq-item reveal">
+          <div class="faq-q">{q}</div>
+          <p class="faq-a" set:html={faqAnswerHtml(a)} />
+        </div>
+      ))}
     </div>
   </div>
 </section>

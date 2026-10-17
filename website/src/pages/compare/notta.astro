@@ -1,5 +1,6 @@
 ---
 import CompareLayout from '../../layouts/CompareLayout.astro';
+import { faqAnswerHtml } from '../../utils/compare-faq.js';
 
 const meta = {
   "slug": "notta",
@@ -20,7 +21,7 @@ const faqs = [
   },
   {
     "q": "Is EnviousWispr really free?",
-    "a": "Yes. No subscription, no usage limits, no account required. Download and use it. The source code is open source on GitHub under the GPLv3 license."
+    "a": "Yes. No subscription, no usage limits, no account required. Download and use it. See the [getting started guide](/blog/getting-started-enviouswispr-under-2-minutes/). The source code is open source on GitHub under the GPLv3 license."
   },
   {
     "q": "Does EnviousWispr work offline?",
@@ -56,7 +57,7 @@ const faqs = [
   },
   {
     "q": "I need both meeting notes and dictation. Can I use both?",
-    "a": "Yes. They do not overlap. Use Notta for meeting transcription and team collaboration. Use EnviousWispr for quick voice typing into any app on your Mac. They serve different workflows and work fine side by side."
+    "a": "Yes. They do not overlap. Use Notta (or a similar tool) for meeting transcription and team collaboration. Use EnviousWispr for quick voice typing into any app on your Mac. They serve different workflows and work fine side by side."
   }
 ];
 ---
@@ -222,7 +223,7 @@ const faqs = [
       <span class="vs-brand">Notta</span>
     </div>
     <h1 class="reveal">Notta records meetings. EnviousWispr lets you type by speaking.</h1>
-    <p class="page-header-sub reveal">Notta records and transcribes meetings. EnviousWispr turns your voice into typed text instantly. Different tools for different jobs.</p>
+    <p class="page-header-sub reveal">Notta records and transcribes meetings. EnviousWispr turns your voice into typed text in any app. Different tools for different jobs.</p>
     <div class="hero-pills reveal">
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
@@ -234,7 +235,7 @@ const faqs = [
       </span>
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        0.61s median latency
+        Sub-second for short dictations
       </span>
     </div>
     <div class="hero-cta reveal">
@@ -326,7 +327,7 @@ const faqs = [
           </tr>
           <tr>
             <td>Transcription latency</td>
-            <td><span class="table-highlight">0.61s median</span>; ~1.65s with on-device AI polish</td>
+            <td><span class="table-highlight">Under a second</span> for typical short dictations; AI polish adds time that grows with length</td>
             <td>Near real-time (cloud-dependent)</td>
           </tr>
           <tr>
@@ -418,8 +419,8 @@ const faqs = [
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">⚡</div>
-        <div class="advantage-title">Instant text output</div>
-        <p class="advantage-desc">0.61s median from end-of-speech to text in your cursor. No waiting for cloud processing, no network dependency. Dictate an email, a Slack message, a doc paragraph, and it appears immediately.</p>
+        <div class="advantage-title">Fast text output</div>
+        <p class="advantage-desc">Short dictations are typically transcribed in under a second after you stop speaking, with no waiting for cloud processing. AI polish, when on, adds time that grows with length. Dictate an email, a Slack message, or a doc paragraph, and it lands at your cursor.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🚫</div>
@@ -503,26 +504,26 @@ const faqs = [
     <div class="section-head reveal">
       <div class="section-label-pill amber">Speed</div>
       <h2 class="section-title">Fast because there is no upload step</h2>
-      <p class="section-sub">On Apple Silicon Macs, EnviousWispr transcribes speech locally. No network round-trip before text appears.</p>
+      <p class="section-sub">On Apple Silicon Macs, EnviousWispr transcribes speech locally. Transcription never waits on an upload round trip.</p>
     </div>
     <div class="speed-stats">
       <div class="speed-card reveal">
-        <div class="speed-value">0.61s</div>
-        <div class="speed-label">Median transcription</div>
-        <div class="speed-detail">From end of speech to raw text</div>
+        <div class="speed-value">&lt;1s</div>
+        <div class="speed-label">Transcription, short dictations</div>
+        <div class="speed-detail">Typical time after you stop speaking</div>
       </div>
       <div class="speed-card reveal">
-        <div class="speed-value">1.65s</div>
-        <div class="speed-label">With AI polish</div>
-        <div class="speed-detail">EG-1 or Apple, on-device</div>
+        <div class="speed-value">Scales</div>
+        <div class="speed-label">AI polish time</div>
+        <div class="speed-detail">Grows with how much you dictated</div>
       </div>
       <div class="speed-card reveal">
         <div class="speed-value">0ms</div>
         <div class="speed-label">Network overhead</div>
-        <div class="speed-detail">Immune to bad Wi-Fi</div>
+        <div class="speed-detail">Transcription is immune to bad Wi-Fi</div>
       </div>
     </div>
-    <p style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center;">Based on production data from Apple Silicon Macs. Results vary by hardware and settings.</p>
+    <p style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center;">Transcription time is the median for short dictations (under 5 seconds of speech) with the default Parakeet Ultra engine, from production use on Apple Silicon Macs, measured October 2026. It is still under a second on the oldest supported Macs (M1). It excludes AI polish and pasting; longer recordings take longer.</p>
   </div>
 </section>
 
@@ -615,50 +616,12 @@ const faqs = [
       <h2 class="section-title">Common questions</h2>
     </div>
     <div class="faq-list">
-      <div class="faq-item reveal">
-        <div class="faq-q">Are EnviousWispr and Notta competitors?</div>
-        <p class="faq-a">Not really. They solve different problems. Notta is a meeting transcription platform: it records calls, identifies speakers, and generates summaries. EnviousWispr is a real-time dictation tool: hold a key, speak, and text appears in your cursor. If you want to dictate emails and messages, EnviousWispr is the right tool. If you want meeting notes, Notta is.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Is EnviousWispr really free?</div>
-        <p class="faq-a">Yes. No subscription, no usage limits, no account required. Download and use it. See the <a href="/blog/getting-started-enviouswispr-under-2-minutes/" style="color: var(--accent); text-decoration: underline;">getting started guide</a>. The source code is open source on GitHub under the GPLv3 license.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Does EnviousWispr work offline?</div>
-        <p class="faq-a">Transcription runs entirely on-device and works without internet. AI polish requires an LLM; you can use a local model for fully offline operation or bring your own API key for a cloud provider.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Can EnviousWispr transcribe meetings?</div>
-        <p class="faq-a">No. EnviousWispr is designed for single-speaker dictation into text fields. It does not record calls or join meeting rooms; it can label speakers only in recordings you import. For meeting transcription, Notta or a similar tool is the right choice.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Will my audio be used for training?</div>
-        <p class="faq-a">No. Your audio is processed on your Mac and discarded after transcription. It never leaves your device, so it cannot be used for anything else.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">What Mac do I need?</div>
-        <p class="faq-a">Any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or newer. The Neural Engine and GPU on Apple Silicon are what make on-device transcription fast.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Does Notta have a free plan?</div>
-        <p class="faq-a">Yes. Notta offers a free tier with 120 minutes of transcription per month, up to 3 minutes per conversation. Their Pro plan is $8.17/mo billed annually, with 1,800 minutes a month. EnviousWispr is free with no usage limits.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Is EnviousWispr open source?</div>
-        <p class="faq-a">Open source under the GNU General Public License v3 (GPLv3), an OSI-approved license. You can read, build, inspect, and contribute to every line of code on GitHub. Contributions are welcome.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Can I use EnviousWispr to take notes during meetings?</div>
-        <p class="faq-a">You can dictate your own notes during a meeting by holding your keybind and speaking. But EnviousWispr does not record the meeting itself, does not join call rooms, and does not transcribe other participants. For full meeting transcription with speaker identification, Notta or a similar meeting tool is what you need.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Does Notta work for dictation like EnviousWispr?</div>
-        <p class="faq-a">Notta has a recording mode where you can speak and get a transcript, but it stays inside Notta's app. It does not paste text into your active text field the way EnviousWispr does. Notta is designed around meetings and long recordings, not quick dictation into emails, Slack, or documents.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">I need both meeting notes and dictation. Can I use both?</div>
-        <p class="faq-a">Yes. They do not overlap. Use Notta (or a similar tool) for meeting transcription and team collaboration. Use EnviousWispr for quick voice typing into any app on your Mac. They serve different workflows and work fine side by side.</p>
-      </div>
+      {faqs.map(({ q, a }) => (
+        <div class="faq-item reveal">
+          <div class="faq-q">{q}</div>
+          <p class="faq-a" set:html={faqAnswerHtml(a)} />
+        </div>
+      ))}
     </div>
   </div>
 </section>

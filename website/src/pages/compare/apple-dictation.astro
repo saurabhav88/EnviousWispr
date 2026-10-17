@@ -1,5 +1,6 @@
 ---
 import CompareLayout from '../../layouts/CompareLayout.astro';
+import { faqAnswerHtml } from '../../utils/compare-faq.js';
 
 const meta = {
   "slug": "apple-dictation",
@@ -32,7 +33,7 @@ const faqs = [
   },
   {
     "q": "Is EnviousWispr really free?",
-    "a": "Yes. No subscription, no usage limits, no account required. Download and use it. The source code is open source on GitHub under the GPLv3 license."
+    "a": "Yes. No subscription, no usage limits, no account required. Download and use it. The source code is open source on [GitHub](https://github.com/saurabhav88/EnviousWispr) under the GPLv3 license."
   },
   {
     "q": "Does EnviousWispr work offline?",
@@ -40,23 +41,23 @@ const faqs = [
   },
   {
     "q": "How accurate is EnviousWispr compared to Apple Dictation?",
-    "a": "EnviousWispr uses Parakeet Ultra, a modern ASR model, combined with AI polish that fixes misrecognitions and grammar. Apple Dictation's older engine achieves ~90% in quiet conditions but degrades with background noise; on macOS 27, Apple says Macs with M3 or newer and 12GB of memory get a major accuracy boost for English. EnviousWispr's AI polish layer provides an additional correction pass that Apple Dictation lacks."
+    "a": "EnviousWispr uses Parakeet Ultra, a modern ASR model, combined with AI polish that fixes misrecognitions and grammar. Apple Dictation's older engine achieves ~90% in quiet conditions (third-party tests) but degrades significantly with background noise; on macOS 27, Apple says Macs with M3 or newer and 12GB of memory get a major accuracy boost for English. EnviousWispr's AI polish layer provides an additional correction pass that Apple Dictation lacks."
   },
   {
     "q": "Can EnviousWispr remove filler words from dictation?",
-    "a": "Yes. EnviousWispr removes spoken noises like um, uh, and hmm automatically, on a fixed local list that works even with AI polish off. AI polish defaults to Apple Intelligence, which needs macOS 26+; on macOS 14-25 it silently falls back to the same deterministic cleanup unless you switch to EG-1, S1-mini by Superwhisper, Ollama, or a cloud key. When AI polish does run, it goes further and also removes false starts and repeated words. Apple Dictation transcribes filler as-is."
+    "a": "Yes. EnviousWispr removes spoken noises like \"um,\" \"uh,\" and \"hmm\" automatically, on a fixed local list that runs even with AI polish switched off. AI polish defaults to Apple Intelligence, which needs macOS 26+; below that it silently falls back to the same deterministic cleanup unless you switch to EG-1, S1-mini by Superwhisper, Ollama, or a cloud key. When AI polish does run, it goes further and also removes false starts and repeated words. Apple Dictation transcribes them as-is. If you dictate longer passages, filler removal makes a noticeable difference in readability."
   },
   {
     "q": "Does EnviousWispr support voice commands like Apple Dictation?",
-    "a": "Not the same way. Apple Dictation supports voice commands such as new paragraph, comma, and emoji names as its main punctuation method. EnviousWispr supports spoken emoji (on by default) and spoken punctuation (opt-in, since AI polish already handles most punctuation automatically), but has no voice commands for app navigation or editing."
+    "a": "Not the same way. Apple Dictation supports voice commands such as \"new paragraph,\" \"comma,\" and emoji names as its main punctuation method. EnviousWispr supports spoken emoji (on by default) and spoken punctuation (opt-in, since AI polish already handles most punctuation automatically), but has no voice commands for app navigation or editing."
   },
   {
     "q": "What Mac do I need?",
-    "a": "Any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or newer. The Neural Engine and GPU on Apple Silicon are what make on-device transcription fast."
+    "a": "Any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or newer. The Neural Engine and GPU on Apple Silicon are what make on-device transcription fast. See the [2-minute getting started guide](/blog/getting-started-enviouswispr-under-2-minutes/)."
   },
   {
     "q": "Can I use both Apple Dictation and EnviousWispr at the same time?",
-    "a": "Yes. They use separate keybinds and separate audio pipelines. Keep Apple Dictation for quick inline corrections and voice commands. Use EnviousWispr for longer dictation where you want AI polish, custom vocabulary, and History."
+    "a": "Yes. They use separate keybinds and separate audio pipelines. Keep Apple Dictation for quick inline corrections and voice commands. Use EnviousWispr for longer dictation where you want AI polish, custom vocabulary, and History. They do not interfere with each other."
   }
 ];
 ---
@@ -343,7 +344,7 @@ const faqs = [
           </tr>
           <tr>
             <td>Transcription speed</td>
-            <td><span class="table-highlight">0.61s median</span>; ~1.65s with on-device AI polish</td>
+            <td><span class="table-highlight">Under a second</span> for typical short dictations; AI polish adds time that grows with length</td>
             <td>Real-time streaming (words appear as you speak)</td>
           </tr>
           <tr>
@@ -446,7 +447,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">⚡</div>
         <div class="advantage-title">Sub-second transcription</div>
-        <p class="advantage-desc">Median time from end of speech to transcribed text: 0.61 seconds. Processed locally on the Neural Engine or GPU, no network dependency. AI polish, when enabled, adds variable time on top that scales with how much you dictated.</p>
+        <p class="advantage-desc">Short dictations are typically transcribed in under a second after you stop speaking. Processed locally on the Neural Engine or GPU, no network dependency. AI polish, when enabled, adds variable time on top that scales with how much you dictated.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🔇</div>
@@ -472,14 +473,14 @@ const faqs = [
     </div>
     <div class="speed-stats">
       <div class="speed-card reveal">
-        <div class="speed-value">0.61s</div>
-        <div class="speed-label">Median transcription</div>
-        <div class="speed-detail">From end of speech to raw text</div>
+        <div class="speed-value">&lt;1s</div>
+        <div class="speed-label">Transcription, short dictations</div>
+        <div class="speed-detail">Typical time after you stop speaking</div>
       </div>
       <div class="speed-card reveal">
-        <div class="speed-value">1.65s</div>
-        <div class="speed-label">With AI polish</div>
-        <div class="speed-detail">EG-1 or Apple, on-device; scales with dictation length</div>
+        <div class="speed-value">Scales</div>
+        <div class="speed-label">AI polish time</div>
+        <div class="speed-detail">Grows with how much you dictated</div>
       </div>
       <div class="speed-card reveal">
         <div class="speed-value">60 min</div>
@@ -487,7 +488,7 @@ const faqs = [
         <div class="speed-detail">No inactivity timeout by default. Up to a full hour per recording.</div>
       </div>
     </div>
-    <p style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center;">Based on production data from Apple Silicon Macs. Results vary by hardware and settings.</p>
+    <p style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center;">Transcription time is the median for short dictations (under 5 seconds of speech) with the default Parakeet Ultra engine, from production use on Apple Silicon Macs, measured October 2026. It is still under a second on the oldest supported Macs (M1). It excludes AI polish and pasting; longer recordings take longer.</p>
   </div>
 </section>
 
@@ -580,50 +581,12 @@ const faqs = [
       <h2 class="section-title">Common questions</h2>
     </div>
     <div class="faq-list">
-      <div class="faq-item reveal">
-        <div class="faq-q">Is there a better alternative to Apple Dictation on Mac?</div>
-        <p class="faq-a">EnviousWispr is a free, on-device alternative that adds AI polish, custom vocabulary, and no inactivity timeout by default. It runs alongside Apple Dictation without interfering. Both use Apple Silicon for local processing.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Can I add custom words to Mac dictation?</div>
-        <p class="faq-a">Apple Dictation does not support custom vocabulary. EnviousWispr lets you add custom words for names, brands, and technical terms. The app applies them during transcription so specialized words come out correctly.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Why does Apple Dictation stop listening after 30 seconds?</div>
-        <p class="faq-a">Apple Dictation has a built-in inactivity timeout. If you pause speaking for too long, it stops. EnviousWispr keeps recording through thinking pauses when Stop recording on silence is off, its default setting. If you enable that setting, a pause can end recording. A recording can last up to one hour.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Does EnviousWispr replace Apple Dictation?</div>
-        <p class="faq-a">It runs alongside Apple Dictation, not instead of it. You can keep Apple Dictation enabled for quick one-liners and use EnviousWispr for longer dictation where you want AI polish and custom words. They use different keybinds and do not conflict.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Is EnviousWispr really free?</div>
-        <p class="faq-a">Yes. No subscription, no usage limits, no account required. Download and use it. The source code is available on <a href="https://github.com/saurabhav88/EnviousWispr" style="color: var(--accent); text-decoration: underline;">GitHub</a> under a GPLv3 license.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Does EnviousWispr work offline?</div>
-        <p class="faq-a">Transcription runs entirely on-device after a one-time model download. AI polish can also run locally via EG-1, S1-mini by Superwhisper, Ollama, or Apple Intelligence (macOS 26+). No internet required for the full pipeline.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">How accurate is EnviousWispr compared to Apple Dictation?</div>
-        <p class="faq-a">EnviousWispr uses Parakeet Ultra, a modern ASR model, combined with AI polish that fixes misrecognitions and grammar. Apple Dictation's older engine achieves ~90% in quiet conditions (third-party tests) but degrades significantly with background noise; on macOS 27, Apple says Macs with M3 or newer and 12GB of memory get a major accuracy boost for English. EnviousWispr's AI polish layer provides an additional correction pass that Apple Dictation lacks.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Can EnviousWispr remove filler words from dictation?</div>
-        <p class="faq-a">Yes. EnviousWispr removes spoken noises like "um," "uh," and "hmm" automatically, on a fixed local list that runs even with AI polish switched off. AI polish defaults to Apple Intelligence, which needs macOS 26+; below that it silently falls back to the same deterministic cleanup unless you switch to EG-1, S1-mini by Superwhisper, Ollama, or a cloud key. When AI polish does run, it goes further and also removes false starts and repeated words. Apple Dictation transcribes them as-is. If you dictate longer passages, filler removal makes a noticeable difference in readability.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Does EnviousWispr support voice commands like Apple Dictation?</div>
-        <p class="faq-a">Not the same way. Apple Dictation supports voice commands such as "new paragraph," "comma," and emoji names as its main punctuation method. EnviousWispr supports spoken emoji (on by default) and spoken punctuation (opt-in, since AI polish already handles most punctuation automatically), but has no voice commands for app navigation or editing.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">What Mac do I need?</div>
-        <p class="faq-a">Any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or newer. The Neural Engine and GPU on Apple Silicon are what make on-device transcription fast. See the <a href="/blog/getting-started-enviouswispr-under-2-minutes/" style="color: var(--accent); text-decoration: underline;">2-minute getting started guide</a>.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Can I use both Apple Dictation and EnviousWispr at the same time?</div>
-        <p class="faq-a">Yes. They use separate keybinds and separate audio pipelines. Keep Apple Dictation for quick inline corrections and voice commands. Use EnviousWispr for longer dictation where you want AI polish, custom vocabulary, and History. They do not interfere with each other.</p>
-      </div>
+      {faqs.map(({ q, a }) => (
+        <div class="faq-item reveal">
+          <div class="faq-q">{q}</div>
+          <p class="faq-a" set:html={faqAnswerHtml(a)} />
+        </div>
+      ))}
     </div>
   </div>
 </section>
