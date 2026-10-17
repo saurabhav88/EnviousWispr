@@ -25,6 +25,9 @@ env:
   # are asserted separately and run in both places.
   TEST_RUNNER_CI: "true"
 
+permissions:
+  contents: read
+
 jobs:
   # build-and-test: the ONE required macOS lane (#3013). ONE Release compile,
   # `build-for-testing` with ENABLE_TESTABILITY=YES (#3348; issue #1539: a test file

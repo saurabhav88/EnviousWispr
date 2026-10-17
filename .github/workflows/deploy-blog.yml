@@ -19,6 +19,9 @@ concurrency:
   group: deploy-blog
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 jobs:
   deploy:
     # Production only ever receives main. A workflow_dispatch from another ref

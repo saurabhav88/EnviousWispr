@@ -46,6 +46,9 @@ env:
   XCODE_PROJECT: EnviousWispr.xcodeproj
   XCODE_RELEASE_SCHEME: EnviousWispr-Release
 
+permissions:
+  contents: read
+
 jobs:
   # Cheap Linux decision. No concurrency group, at workflow or job level: the
   # cancellation below belongs to the warm job alone, so a docs-only push that
