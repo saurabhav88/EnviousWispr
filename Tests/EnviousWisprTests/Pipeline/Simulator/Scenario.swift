@@ -86,6 +86,12 @@ enum CaptureDirective: Sendable {
   /// Deliver one synthetic buffer below the #964 dead-air floor — a genuinely
   /// silent capture (amplitude 0.001).
   case deliverSilentBuffer
+  /// #3834: deliver dead air whose PEAK reaches the advisory bar: 640 samples,
+  /// one at 0.003 and 639 at 0.0001. Below every #964 floor (peak < 0.006,
+  /// whole-buffer RMS about 0.00015, the one 40 ms window the same), so the gate
+  /// still classifies it as dead air, but its peak is above
+  /// `RawAudioDeadAirClassifier.AdvisoryBar.maximumPeak`, so it must end silently.
+  case deliverDeadAirAboveAdvisoryBar
   /// Stall the capture stream (no buffers).
   case stall
   /// Raise an engine interruption (mic disconnect / route change). The manager
@@ -122,6 +128,12 @@ enum ScenarioStep: Sendable {
   /// strand ordinary scenarios.
   case triggerAwaitingClockRegistration(SessionTrigger)
   case advanceClock(ticks: Int)
+  /// #3834: wait until the kernel itself reports live recording (`.live`, where
+  /// `beginLiveRecording` stamps the visible-recording start tick) before the
+  /// next step. `start` is asynchronous, so advancing the clock without this can
+  /// land before the start tick and measure nothing. Uses the kernel's own state
+  /// as the signal (`KernelRecordingSession.drainUntil`), never a yield count.
+  case awaitLiveRecording
   case engine(EngineDirective)
   case capture(CaptureDirective)
   case vad(VADDirective)
@@ -175,6 +187,14 @@ struct ExpectedOutcome: Sendable {
   let resourcesReleased: Bool
   /// `nil`, or the user-visible error surface category.
   let userVisibleError: ErrorCategory?
+  /// #3834: when set, the kernel's concluded outcome must be EXACTLY
+  /// `.noSpeech(source)`. `terminalState` flattens every no-speech source to
+  /// `.noSpeech`, which cannot tell the advisory-selecting `.vadGate` from the
+  /// silent `.vadGateSilent`. `nil` keeps a scenario's existing contract.
+  let noSpeechSource: NoSpeechSource?
+  /// #3834: when set, `FakeEngine.finalizeCallCount` must equal this, so a
+  /// scenario can prove ASR never ran (`0`). `nil` asserts nothing.
+  let finalizeCallCount: Int?
 
   init(
     terminalState: FSMState,
@@ -182,7 +202,9 @@ struct ExpectedOutcome: Sendable {
     pasteOutcome: PasteOutcome,
     transcript: TranscriptExpectation,
     resourcesReleased: Bool = true,
-    userVisibleError: ErrorCategory? = nil
+    userVisibleError: ErrorCategory? = nil,
+    noSpeechSource: NoSpeechSource? = nil,
+    finalizeCallCount: Int? = nil
   ) {
     self.terminalState = terminalState
     self.pasteCount = pasteCount
@@ -190,6 +212,8 @@ struct ExpectedOutcome: Sendable {
     self.transcript = transcript
     self.resourcesReleased = resourcesReleased
     self.userVisibleError = userVisibleError
+    self.noSpeechSource = noSpeechSource
+    self.finalizeCallCount = finalizeCallCount
   }
 }
 

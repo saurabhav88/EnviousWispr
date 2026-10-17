@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import Foundation
 import Testing
 
@@ -277,5 +278,63 @@ struct ScenarioRunnerTests {
       cancelling; advance-then-cancel lets the cancel land before the wedge \
       watcher has run.
       """)
+  }
+
+  // MARK: #3834 exact-source assertions and fixture
+
+  /// The A22c fixture must be dead air by the PRODUCTION classifier and have a
+  /// peak at or above the advisory bar; otherwise A22c could pass for the wrong
+  /// reason (the gate not firing at all, or the bar never being consulted).
+  @Test("#3834: the above-bar fixture is dead air with a peak at or over the bar")
+  func aboveBarFixtureIsDeadAir() {
+    let samples = ScenarioRunner.deadAirAboveAdvisoryBarSamples
+    let peak = samples.reduce(Float(0)) { max($0, abs($1)) }
+    #expect(samples.count == 640)
+    #expect(RawAudioDeadAirClassifier.isDeadAir(samples, peak: peak))
+    #expect(peak >= RawAudioDeadAirClassifier.AdvisoryBar.maximumPeak)
+  }
+
+  /// An exact-source expectation can only be read from the real kernel; on any
+  /// other SUT it must FAIL, never pass by finding nothing to compare.
+  @Test("#3834: a no-speech source expectation without a kernel outcome is reported")
+  func noSpeechSourceWithoutKernelIsReported() async {
+    let scenario = Scenario(
+      id: "SELFTEST-SOURCE",
+      name: "exact source on a stub",
+      steps: [.trigger(.start), .trigger(.stop)],
+      expected: ExpectedOutcome(
+        terminalState: .completed, pasteCount: 1, pasteOutcome: .pasted,
+        transcript: .nonEmpty, noSpeechSource: .vadGateSilent))
+    let result = await ScenarioRunner().run(scenario, context: successContext())
+    #expect(result.passed == false)
+    #expect(result.failures.contains { $0.contains("no-speech source") })
+  }
+
+  @Test("#3834: a finalize-count mismatch is reported")
+  func finalizeCountMismatchIsReported() async {
+    let scenario = Scenario(
+      id: "SELFTEST-FINALIZE",
+      name: "finalize count on a stub that never finalizes",
+      steps: [.trigger(.start), .trigger(.stop)],
+      expected: ExpectedOutcome(
+        terminalState: .completed, pasteCount: 1, pasteOutcome: .pasted,
+        transcript: .nonEmpty, finalizeCallCount: 1))
+    let result = await ScenarioRunner().run(scenario, context: successContext())
+    #expect(result.passed == false)
+    #expect(result.failures.contains { $0.contains("finalize calls: expected 1, got 0") })
+  }
+
+  @Test("#3834: awaitLiveRecording on a non-kernel SUT is reported, not skipped")
+  func awaitLiveRecordingNeedsKernel() async {
+    let scenario = Scenario(
+      id: "SELFTEST-LIVE",
+      name: "awaitLiveRecording on a stub",
+      steps: [.trigger(.start), .awaitLiveRecording, .trigger(.stop)],
+      expected: ExpectedOutcome(
+        terminalState: .completed, pasteCount: 1, pasteOutcome: .pasted,
+        transcript: .nonEmpty))
+    let result = await ScenarioRunner().run(scenario, context: successContext())
+    #expect(result.passed == false)
+    #expect(result.failures.contains { $0.contains("awaitLiveRecording needs the kernel SUT") })
   }
 }

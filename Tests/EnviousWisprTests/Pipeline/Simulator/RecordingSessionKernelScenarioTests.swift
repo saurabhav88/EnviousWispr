@@ -35,6 +35,25 @@ struct RecordingSessionKernelScenarioTests {
     #expect(result.passed, "scenario \(scenario.id) (\(scenario.name)): \(result.failures)")
   }
 
+  /// #3834: the exact-source assertion BINDS on the real kernel. A22 (a short
+  /// silent tap, `.vadGateSilent`) run with a deliberately wrong expectation of
+  /// `.vadGate` must fail with the source named; if the runner ever stopped
+  /// comparing, A22/A22b/A22c would pass whatever the kernel chose.
+  @Test("#3834: a wrong no-speech source expectation fails against the kernel")
+  func wrongNoSpeechSourceFailsAgainstKernel() async throws {
+    let a22 = try #require(ScenarioInventory.all.first { $0.id == "A22" })
+    let wrong = Scenario(
+      id: "A22-WRONG-SOURCE", name: a22.name, steps: a22.steps,
+      expected: ExpectedOutcome(
+        terminalState: .noSpeech, pasteCount: 0, pasteOutcome: .none,
+        transcript: .none, noSpeechSource: .vadGate, finalizeCallCount: 0))
+    let result = await ScenarioRunner().run(wrong, context: makeContext())
+    #expect(result.passed == false)
+    #expect(
+      result.failures.contains { $0.contains("expected .noSpeech(vadGate)") },
+      "failures: \(result.failures)")
+  }
+
   /// Interleaving sweep against the kernel (PR-3 plan §11.2). Each
   /// concurrency-sensitive scenario is re-run under all 64 committed
   /// schedules; the schedule rewrites clock cadence, so the kernel walks the

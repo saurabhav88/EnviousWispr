@@ -393,6 +393,17 @@ final class FakeAudioCapture: AudioCaptureInterface {
     onBufferCaptured?(buffer)
   }
 
+  /// #3834: deliver an arbitrary sample shape, with the same bookkeeping and
+  /// delivery as `deliverBuffer` (append, count, yield, callback). For fixtures a
+  /// constant amplitude cannot express, such as one loud sample in quiet air.
+  func deliverSamples(_ samples: [Float]) {
+    accumulatedSamples.append(contentsOf: samples)
+    deliveredBufferCount += 1
+    guard let buffer = Self.makeBuffer(samples: samples) else { return }
+    bufferContinuation?.yield(buffer)
+    onBufferCaptured?(buffer)
+  }
+
   /// Record one VAD speech segment (so `stopCapture()` reports speech evidence).
   func addSpeechSegment(startSample: Int, endSample: Int) {
     segments.append(SpeechSegment(startSample: startSample, endSample: endSample))

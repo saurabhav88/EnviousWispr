@@ -1,5 +1,7 @@
 import Foundation
 
+@testable import EnviousWisprPipeline
+
 // MARK: - Scenario inventory (epic #827, PR-2 plan §3.8; PR-1 §11.1)
 //
 // The 37 canonical-ID heart-path scenarios, each encoded as data with a full
@@ -302,13 +304,43 @@ enum ScenarioInventory {
       steps: [
         // A silent tap (sub-floor amplitude) must still skip ASR entirely — the
         // engine is never consulted, so the configured batch success is unused.
+        // #3834: the clock never advances, so the take is short and ends
+        // SILENTLY (`.vadGateSilent`); before #3834 it selected the advisory.
         .engine(.setBehavior(.batchSuccess(text: "should never paste"))),
         .vad(.evidence(.confirmedNoSpeech)),
         .trigger(.start), .capture(.deliverSilentBuffer), .trigger(.stop),
       ],
       expected: ExpectedOutcome(
         terminalState: .noSpeech, pasteCount: 0, pasteOutcome: .none,
-        transcript: .none)),
+        transcript: .none, noSpeechSource: .vadGateSilent, finalizeCallCount: 0)),
+    Scenario(
+      // #3834: the same silent capture held for the bar's 30 ticks (3 s) is
+      // the case the advisory exists for: it selects `.vadGate`. ASR still
+      // never runs.
+      id: "A22b", name: "#3834 long dead air below the peak bar -> advisory",
+      steps: [
+        .engine(.setBehavior(.batchSuccess(text: "should never paste"))),
+        .vad(.evidence(.confirmedNoSpeech)),
+        .trigger(.start), .capture(.deliverSilentBuffer), .awaitLiveRecording,
+        .advanceClock(ticks: 30), .trigger(.stop),
+      ],
+      expected: ExpectedOutcome(
+        terminalState: .noSpeech, pasteCount: 0, pasteOutcome: .none,
+        transcript: .none, noSpeechSource: .vadGate, finalizeCallCount: 0)),
+    Scenario(
+      // #3834: long enough, but the peak reached the bar (0.003 >= 0.0018)
+      // while every #964 floor still calls it dead air. Ends silently; ASR
+      // still never runs.
+      id: "A22c", name: "#3834 long dead air with peak above the bar -> silent",
+      steps: [
+        .engine(.setBehavior(.batchSuccess(text: "should never paste"))),
+        .vad(.evidence(.confirmedNoSpeech)),
+        .trigger(.start), .capture(.deliverDeadAirAboveAdvisoryBar), .awaitLiveRecording,
+        .advanceClock(ticks: 30), .trigger(.stop),
+      ],
+      expected: ExpectedOutcome(
+        terminalState: .noSpeech, pasteCount: 0, pasteOutcome: .none,
+        transcript: .none, noSpeechSource: .vadGateSilent, finalizeCallCount: 0)),
     Scenario(
       // #1707 Phase 2: the rescue counterpart to A14. A post-capture decode
       // failure spends its one live retry; `FakeEngine.retryDecodeResult`'s
@@ -512,7 +544,7 @@ enum ScenarioInventory {
   static let canonicalIDs: Set<String> = [
     "A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10",
     "A11", "A12", "A13", "A14", "A15", "A16", "A17", "A18", "A19",
-    "A20", "A21", "A22", "A23",
+    "A20", "A21", "A22", "A22b", "A22c", "A23",
     "R1", "R2",
     "C1", "C2", "C3", "C4", "C5", "C6", "C8",
     "L1", "L2", "L3", "L4", "L5", "L6",

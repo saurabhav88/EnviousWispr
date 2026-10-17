@@ -120,6 +120,22 @@ struct ScenarioRunner {
     case .advanceClock(let ticks):
       context.clock.advance(by: ticks)
 
+    case .awaitLiveRecording:
+      // #3834: the kernel's own `.live` state is the signal; only the real
+      // kernel has one. A non-kernel SUT cannot honour the step, so say so
+      // rather than silently treating quiescence as proof.
+      guard let session = context.sut as? KernelRecordingSession else {
+        failures.append("step \(stepIndex): awaitLiveRecording needs the kernel SUT")
+        return
+      }
+      let kernel = session.testKernel
+      await session.drainUntil(
+        { kernel.state == .live && kernel.recordingOutcome == nil }, what: "live recording")
+      if kernel.state != .live {
+        failures.append(
+          "step \(stepIndex): expected live recording, got \(String(describing: kernel.state))")
+      }
+
     case .engine(let directive):
       switch directive {
       case .setBehavior(let behavior):
@@ -213,6 +229,8 @@ struct ScenarioRunner {
       // Below the #964 dead-air floor (peak/rms/window-rms all < threshold) so
       // the kernel's no-speech gate still skips ASR on a genuinely silent tap.
       context.capture.deliverBuffer(amplitude: 0.001)
+    case .deliverDeadAirAboveAdvisoryBar:
+      context.capture.deliverSamples(Self.deadAirAboveAdvisoryBarSamples)
     case .stall:
       // A stall fires the liveness-watchdog signal — not merely an absence
       // of buffers (C3 / C4). Routed through the kernel's external entry to
@@ -239,6 +257,13 @@ struct ScenarioRunner {
       context.engine.fireEngineInterrupted()
     }
   }
+
+  /// #3834: one 0.003 sample in 639 samples of 0.0001 (one 40 ms window).
+  /// Dead air by every #964 floor, peak above the advisory bar. Asserted as such
+  /// by `ScenarioRunnerTests` with the production classifier, so the fixture
+  /// cannot drift into "not dead air" and pass A22c for the wrong reason.
+  static let deadAirAboveAdvisoryBarSamples: [Float] =
+    [Float(0.003)] + [Float](repeating: 0.0001, count: 639)
 
   // MARK: Assertion library — checks the full ExpectedOutcome
 
@@ -293,6 +318,25 @@ struct ScenarioRunner {
       failures.append(
         "user-visible error: expected \(String(describing: expected.userVisibleError)), "
           + "got \(String(describing: effects.userVisibleError))")
+    }
+
+    // #3834: exact no-speech source, read from the real kernel's outcome. A
+    // missing kernel or a missing outcome is a failure, never a skip.
+    if let source = expected.noSpeechSource {
+      let outcome = (context.sut as? KernelRecordingSession)?.testKernel.recordingOutcome
+      if outcome != .noSpeech(source) {
+        failures.append(
+          "no-speech source: expected .noSpeech(\(source)), "
+            + "got \(String(describing: outcome))")
+      }
+    }
+
+    // #3834: ASR finalization count (0 proves the engine was never consulted).
+    if let expectedCalls = expected.finalizeCallCount,
+      context.engine.finalizeCallCount != expectedCalls
+    {
+      failures.append(
+        "finalize calls: expected \(expectedCalls), got \(context.engine.finalizeCallCount)")
     }
 
     return failures
