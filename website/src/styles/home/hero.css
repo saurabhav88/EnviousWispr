@@ -371,16 +371,9 @@ html[data-theme='dark'] .hero-screen-frame {
     font-size: 20px;
     max-width: 560px;
   }
-  /* A soft glow in the page color keeps the copy readable over the painted trees. */
-  .screen-hero-copy p {
-    text-shadow:
-      0 0 3px var(--bg),
-      0 0 10px var(--bg),
-      0 0 18px var(--bg);
-  }
   /* Narrow screens show the painted room (window, wall and desk) at the top of the hero. */
   .screen-hero-art {
-    background-position: 88% 0;
+    background-position: var(--hero-art-x) 0;
     background-size: auto 100%;
     bottom: auto;
     height: clamp(600px, 110vw, 940px);
@@ -721,18 +714,33 @@ html[data-theme='dark'] .screen-hero-art {
   }
 }
 
-/* Narrow-screen veil over the painted room: light needs more cover than dark. */
+/* Narrow screens follow the footer closing: the copy sits on the brightest part
+   of the painting under a light veil, with darker copy colors. Light shows the
+   pale wall and window frame behind the copy; dark shows the night window. */
 .screen-hero {
-  --hero-veil-top: 74%;
-  --hero-veil-mid: 66%;
+  --hero-art-x: 30%;
+  --hero-veil-top: 35%;
+  --hero-veil-mid: 20%;
+  --hero-copy-body: #3f3150;
 }
 html[data-theme='dark'] .screen-hero {
+  --hero-art-x: 88%;
   --hero-veil-top: 45%;
   --hero-veil-mid: 25%;
+  --hero-copy-body: #e1d5ed;
 }
 @media (prefers-color-scheme: dark) {
   html:not([data-theme]) .screen-hero {
+    --hero-art-x: 88%;
     --hero-veil-top: 45%;
     --hero-veil-mid: 25%;
+    --hero-copy-body: #e1d5ed;
+  }
+}
+@media (max-width: 999px) {
+  .screen-hero-description,
+  .screen-hero-values span,
+  .screen-hero-compatibility {
+    color: var(--hero-copy-body);
   }
 }
