@@ -29,17 +29,13 @@
   z-index: -1;
 }
 .screen-hero-content.wrap {
-  min-height: clamp(780px, 100svh, 980px);
   position: relative;
   width: min(1500px, calc(100% - 128px));
 }
 .screen-hero-copy {
-  padding: 205px 0 115px;
   position: relative;
-  width: 54%;
 }
 .screen-hero-copy h1 {
-  font-size: clamp(62px, 5.3vw, 96px);
   font-weight: 700;
   letter-spacing: -0.055em;
   line-height: 1.04;
@@ -82,17 +78,17 @@
   margin-top: 13px;
 }
 .hero-product-demo {
-  background: color-mix(in srgb, var(--bg) 94%, transparent);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
   border-radius: 20px;
-  max-width: 600px;
   padding-bottom: 9px;
-  position: absolute;
-  right: 0;
+  position: relative;
   scroll-margin-top: 112px;
-  top: 210px;
-  width: 40%;
+  width: 100%;
 }
 .hero-screen-frame {
+  -webkit-backdrop-filter: blur(14px);
   backdrop-filter: blur(14px);
   background: #f7f2fcdd;
   border: 1px solid #d9c7eb88;
@@ -293,21 +289,16 @@ html[data-theme='dark'] .hero-screen-frame {
     font-size: clamp(56px, 4.5vw, 84px);
     text-wrap: balance;
   }
-  .hero-product-demo {
-    backdrop-filter: blur(14px);
-    background: color-mix(in srgb, var(--bg) 55%, transparent);
-    max-width: none;
-    position: relative;
-    right: auto;
-    top: auto;
-    width: 100%;
-  }
   .hero-screen-canvas {
     height: clamp(440px, 36vw, 580px);
   }
-  /* The app scenes are drawn small; enlarge the whole scene evenly for every app. */
+  /* The app scenes are drawn small; enlarge the whole scene evenly for every app.
+     A transform behaves the same in every supported browser, unlike CSS zoom. */
   .hero-screen-canvas .host-app {
-    zoom: var(--hero-zoom);
+    height: calc(100% / var(--hero-zoom));
+    transform: scale(var(--hero-zoom));
+    transform-origin: 0 0;
+    width: calc(100% / var(--hero-zoom));
   }
   .hero-screen-canvas {
     --hero-zoom: 1.15;
@@ -389,14 +380,8 @@ html[data-theme='dark'] .hero-screen-frame {
       linear-gradient(0deg, var(--bg), transparent 10%);
   }
   .hero-product-demo {
-    backdrop-filter: blur(14px);
-    background: color-mix(in srgb, var(--bg) 55%, transparent);
     margin: 40px auto 0;
     max-width: 680px;
-    position: relative;
-    right: auto;
-    top: auto;
-    width: 100%;
   }
   .hero-screen-canvas {
     height: 430px;
