@@ -489,6 +489,14 @@ struct SettingsInfoButton<Content: View>: View {
   @State private var isMounted = false
   @FocusState private var buttonFocused: Bool
   @AccessibilityFocusState private var accessibilityFocused: Bool
+  @State private var pointerInside = false
+  /// See `SettingsHover.respondsToPointer`.
+  @Environment(\.isEnabled) private var environmentEnabled
+
+  /// DERIVED, never stored, with the same gate as the capsule behind the glyph.
+  private var glyphHovering: Bool {
+    SettingsHover.respondsToPointer(pointerInside, true, environmentEnabled)
+  }
 
   var body: some View {
     Button {
@@ -497,12 +505,17 @@ struct SettingsInfoButton<Content: View>: View {
       showPopover = true
     } label: {
       Image(systemName: "questionmark.circle")
-        .foregroundStyle(Color.stTextTertiary)
+        // The hover colour is a VALUE on this one Image, never a second view: the shared
+        // tinted treatment swaps the content for another view while hovering, and under
+        // this button's popover that swap is the leading suspect for the bubble closing at
+        // once on macOS 15 (#3862).
+        .foregroundStyle(glyphHovering ? Color.stAccent : Color.stTextTertiary)
         .font(.system(size: 15, weight: .regular))
         // Accent on hover: the neutral treatment's capsule is the card's own colour,
         // so on a card it never showed (founder, 2026-10-03: "the help icons should
         // have the hover effect").
-        .settingsHoverQuiet(tint: .stAccent)
+        .settingsHoverQuiet(tint: .stAccent, recoloursContent: false)
+        .onHover { pointerInside = $0 }
     }
     .buttonStyle(.borderless)
     .focused($buttonFocused)

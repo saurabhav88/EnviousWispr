@@ -224,6 +224,11 @@ private struct SettingsHoverQuietModifier: ViewModifier {
   /// spending colour on. `nil` keeps the neutral brighten, which is right for a
   /// close X or a page chevron.
   var tint: Color?
+  /// False when the call site colours its own content by hover. The tinted branch below
+  /// swaps the content for a different view while hovering; under a popover anchor that
+  /// swap is the leading suspect for the Settings "?" bubble closing on macOS 15 (#3862),
+  /// so `SettingsInfoButton` keeps its glyph one view and changes only a colour value.
+  var recoloursContent: Bool = true
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   /// See `SettingsHover.respondsToPointer`.
   @Environment(\.isEnabled) private var environmentEnabled
@@ -265,7 +270,7 @@ private struct SettingsHoverQuietModifier: ViewModifier {
   /// meant to describe the hover state would silently repaint the resting one.
   @ViewBuilder
   private func recoloured(_ content: Content) -> some View {
-    if let tint, hovering {
+    if let tint, recoloursContent, hovering {
       content.foregroundStyle(tint)
     } else {
       content
@@ -296,9 +301,13 @@ extension View {
   }
 
   /// Quiet-control hover: brighten the content, add a soft capsule behind it.
+  /// `recoloursContent: false` keeps the tinted capsule and the no-brightness look but leaves
+  /// the content's colour to the call site; see `SettingsHoverQuietModifier.recoloursContent`.
   func settingsHoverQuiet(
-    isEnabled: Bool = true, inset: CGFloat = 5, tint: Color? = nil
+    isEnabled: Bool = true, inset: CGFloat = 5, tint: Color? = nil, recoloursContent: Bool = true
   ) -> some View {
-    modifier(SettingsHoverQuietModifier(isEnabled: isEnabled, inset: inset, tint: tint))
+    modifier(
+      SettingsHoverQuietModifier(
+        isEnabled: isEnabled, inset: inset, tint: tint, recoloursContent: recoloursContent))
   }
 }
