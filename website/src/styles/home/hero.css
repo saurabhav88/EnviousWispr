@@ -389,8 +389,8 @@ html[data-theme='dark'] .hero-screen-frame {
   .screen-hero-shade {
     background: linear-gradient(
         180deg,
-        color-mix(in srgb, var(--bg) 45%, transparent),
-        color-mix(in srgb, var(--bg) 25%, transparent) 35%,
+        color-mix(in srgb, var(--bg) var(--hero-veil-top), transparent),
+        color-mix(in srgb, var(--bg) var(--hero-veil-mid), transparent) 36%,
         transparent 55%
       ),
       linear-gradient(0deg, var(--bg), transparent 10%);
@@ -718,5 +718,21 @@ html[data-theme='dark'] .screen-hero-art {
     html:not([data-theme]) .screen-hero-art {
       background-image: var(--hero-dark-0);
     }
+  }
+}
+
+/* Narrow-screen veil over the painted room: light needs more cover than dark. */
+.screen-hero {
+  --hero-veil-top: 74%;
+  --hero-veil-mid: 66%;
+}
+html[data-theme='dark'] .screen-hero {
+  --hero-veil-top: 45%;
+  --hero-veil-mid: 25%;
+}
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme]) .screen-hero {
+    --hero-veil-top: 45%;
+    --hero-veil-mid: 25%;
   }
 }
