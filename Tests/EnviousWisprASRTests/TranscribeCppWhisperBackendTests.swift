@@ -1011,14 +1011,19 @@ private final class FakeWhisperDriver: WhisperExecutorDriving, @unchecked Sendab
 
   // MARK: WhisperExecutorDriving
 
+  // Every `withTaskCancellationHandler` here passes `isolation: nil`, which calls the one copy
+  // in the Swift runtime. The default overload is emitted into each module; in the Release test
+  // lane this -Onone file's copy (80-byte frame) was linked with an -O module's frame size (64
+  // bytes), so the frame overran and the task allocator aborted with "freed pointer was not
+  // the last allocation" (#3849; swiftlang/swift#86204).
+
   func load(modelPath: String, lane: TranscribeCppExecutor.Lane) async throws -> Int {
     if let arrival = lock.withLock({ arrivalGates[modelPath] }) {
       record("travelling \(modelPath)")
-      await withTaskCancellationHandler {
-        await arrival.wait()
-      } onCancel: {
-        self.record("cancel-seen \(modelPath)")
-      }
+      await withTaskCancellationHandler(
+        operation: { await arrival.wait() },
+        onCancel: { self.record("cancel-seen \(modelPath)") },
+        isolation: nil)
       record("arrived \(modelPath)")
     }
     let gate = lock.withLock { () -> AsyncGate? in
@@ -1042,11 +1047,10 @@ private final class FakeWhisperDriver: WhisperExecutorDriving, @unchecked Sendab
       }
       self.lifetimeChanged()
     }
-    return try await withTaskCancellationHandler {
-      try await result.value().get()
-    } onCancel: {
-      result.fulfil(.failure(TranscribeCppExecutor.ExecutorError.cancelled))
-    }
+    return try await withTaskCancellationHandler(
+      operation: { try await result.value().get() },
+      onCancel: { result.fulfil(.failure(TranscribeCppExecutor.ExecutorError.cancelled)) },
+      isolation: nil)
   }
 
   func detectLanguage(
@@ -1083,15 +1087,16 @@ private final class FakeWhisperDriver: WhisperExecutorDriving, @unchecked Sendab
       result.fulfil(value)
     }
     let ignoresCancel = lock.withLock { runsIgnoreCancel }
-    return try await withTaskCancellationHandler {
-      try await result.value().get()
-    } onCancel: {
-      if ignoresCancel {
-        self.record("run-cancel-seen \(handle)")
-      } else {
-        result.fulfil(.failure(TranscribeCppExecutor.ExecutorError.cancelled))
-      }
-    }
+    return try await withTaskCancellationHandler(
+      operation: { try await result.value().get() },
+      onCancel: {
+        if ignoresCancel {
+          self.record("run-cancel-seen \(handle)")
+        } else {
+          result.fulfil(.failure(TranscribeCppExecutor.ExecutorError.cancelled))
+        }
+      },
+      isolation: nil)
   }
 
   private func endNative(_ handle: Int) {
