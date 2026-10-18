@@ -49,7 +49,7 @@ EnviousWispr's formatting step writes numbers, dates, times, prices, phone numbe
 | Web addresses | 90 |
 | Punctuation | 14 |
 
-These rules run on English dictation, or when the language is not known. See [Numbers, dates and times](/help/numbers-dates-and-times/).
+These test cases are English dictation only. To see what gets formatted in other languages, read [Numbers, dates and times](/help/numbers-dates-and-times/).
 
 ### How do we test other languages?
 
