@@ -9,18 +9,41 @@ package enum ApplePreviewHints {
 
   package static func build(from words: [CustomWord]) -> [String] {
     var phrases: [String] = []
+    phrases.reserveCapacity(maximumPhrases)
     var seen = Set<String>()
+
+    func canonicalPhrase(_ word: CustomWord) -> String? {
+      let tokens = word.canonical.split(whereSeparator: \.isWhitespace)
+      guard (1...2).contains(tokens.count) else { return nil }
+      let phrase = tokens.joined(separator: " ")
+      let key = phrase.precomposedStringWithCanonicalMapping.lowercased()
+      return seen.insert(key).inserted ? phrase : nil
+    }
+
     // Storage puts built-ins first. A user's saved AND learned words take precedence.
-    for source in [WordSource.user, .builtin] {
-      for word in words where word.source == source {
-        let tokens = word.canonical.split(whereSeparator: \.isWhitespace)
-        guard (1...2).contains(tokens.count) else { continue }
-        let phrase = tokens.joined(separator: " ")
-        let key = phrase.precomposedStringWithCanonicalMapping.lowercased()
-        guard seen.insert(key).inserted else { continue }
+    // #3917: additions append, so retain the newest eligible user phrases on overflow.
+    // This is addition order, not usage frequency. Keep every seen key, including an
+    // evicted phrase's key: a later duplicate must not promote an existing spelling.
+    var oldest = 0
+    for word in words where word.source == .user {
+      guard let phrase = canonicalPhrase(word) else { continue }
+      if phrases.count < maximumPhrases {
         phrases.append(phrase)
-        if phrases.count == maximumPhrases { return phrases }
+      } else {
+        phrases[oldest] = phrase
+        oldest = (oldest + 1) % maximumPhrases
       }
+    }
+    if oldest != 0 {
+      phrases = Array(phrases[oldest...] + phrases[..<oldest])
+    }
+
+    // Libraries that fit keep their exact order and the same built-in filling.
+    guard phrases.count < maximumPhrases else { return phrases }
+    for word in words where word.source == .builtin {
+      guard let phrase = canonicalPhrase(word) else { continue }
+      phrases.append(phrase)
+      if phrases.count == maximumPhrases { break }
     }
     return phrases
   }

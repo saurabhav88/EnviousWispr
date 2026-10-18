@@ -2158,6 +2158,85 @@ struct LivePreviewCoordinatorTests {
     return try #require(received, "the coordinator must submit its vocabulary", sourceLocation: sourceLocation)
   }
 
+  @Test("overflow hints refresh by generation while an opened session keeps its complete snapshot")
+  func overflowHintsFollowVocabularyChanges() async throws {
+    let probe = PreviewEngineProbe()
+    let engine = FakePreviewEngine(probe: probe)
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isPreviewOn: { true },
+      isDictionaryOn: { true },
+      languageMode: { .locked("en") },
+      selectedRoute: previewRoute { _ in
+        .ready(LivePreviewEngineCandidate(
+          key: LivePreviewEngineKey(engine: "test", commitment: "en"),
+          makeEngine: { engine }))
+      })
+    defer { coordinator.setRecording(false) }
+
+    var words = (0..<101).map { word("User\($0)") }
+    coordinator.correctorVocabulary = CorrectorVocabulary(terms: words, generation: 0)
+    #expect(coordinator.correctorLookupBuilds == 1)
+    coordinator.setRecording(true)
+    let first = try await nextVocabulary(probe)
+    #expect(first.contextualPhrases == (1..<101).map { "User\($0)" })
+    #expect(
+      Set(first.lookups?.canonicalToWord.values.map(\.canonical) ?? [])
+        == Set((0..<101).map { "User\($0)" }),
+      "correction lookups retain even the word outside the recognition hints")
+
+    words[0].canonical = "RenamedOld"
+    words[0].aliases = ["NewAlias"]
+    words.append(word("NewTail"))
+    coordinator.correctorVocabulary = CorrectorVocabulary(terms: words, generation: 1)
+    #expect(coordinator.correctorLookupBuilds == 2)
+    #expect(await probe.sessionsOpened == 1, "a library edit must not reopen an active session")
+    #expect(first.contextualPhrases == (1..<101).map { "User\($0)" })
+    #expect(first.lookups?.canonicalToWord.values.contains { $0.canonical == "User0" } == true)
+    #expect(first.lookups?.canonicalToWord.values.contains { $0.canonical == "RenamedOld" } == false)
+
+    coordinator.setRecording(false)
+    coordinator.setRecording(true)
+    let second = try await nextVocabulary(probe)
+    #expect(second.contextualPhrases == (2..<101).map { "User\($0)" } + ["NewTail"])
+    #expect(second.lookups?.canonicalToWord.count == 102)
+    #expect(second.lookups?.canonicalToWord.values.contains { $0.canonical == "RenamedOld" } == true)
+    coordinator.setRecording(false)
+
+    words.removeAll { $0.canonical == "User50" }
+    coordinator.correctorVocabulary = CorrectorVocabulary(terms: words, generation: 2)
+    #expect(coordinator.correctorLookupBuilds == 3)
+    coordinator.correctorVocabulary = CorrectorVocabulary(terms: words, generation: 2)
+    #expect(coordinator.correctorLookupBuilds == 3, "same generation reuses both caches")
+    coordinator.setRecording(true)
+    let afterDeletion = try await nextVocabulary(probe)
+    #expect(
+      afterDeletion.contextualPhrases
+        == (1..<50).map { "User\($0)" } + (51..<101).map { "User\($0)" } + ["NewTail"])
+    #expect(afterDeletion.lookups?.canonicalToWord.count == 101)
+    #expect(afterDeletion.lookups?.canonicalToWord.values.contains { $0.canonical == "User50" } == false)
+    coordinator.setRecording(false)
+
+    coordinator.correctorVocabulary = CorrectorVocabulary(terms: [], generation: 3)
+    coordinator.setRecording(true)
+    let cleared = try await nextVocabulary(probe)
+    #expect(cleared.contextualPhrases == [])
+    #expect(cleared.lookups == nil)
+    coordinator.setRecording(false)
+
+    coordinator.correctorVocabulary = CorrectorVocabulary(terms: [
+      CustomWord(canonical: "LearnedReturned", learnedAt: Date(timeIntervalSince1970: 1))
+    ], generation: 4)
+    coordinator.setRecording(true)
+    let repopulated = try await nextVocabulary(probe)
+    #expect(repopulated.contextualPhrases == ["LearnedReturned"])
+    #expect(repopulated.lookups?.canonicalToWord.count == 1)
+    #expect(coordinator.correctorLookupBuilds == 5)
+    coordinator.setRecording(false)
+    await coordinator.releaseAndDrainForRemoval()
+    await probe.finishOpens()
+  }
+
   @Test("Apple vocabulary is paired by generation, and its application flag freezes before preparation")
   func pairedHintsAndFrozenApplication() async throws {
     let probe = PreviewEngineProbe()
