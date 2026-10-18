@@ -1011,11 +1011,11 @@ private final class FakeWhisperDriver: WhisperExecutorDriving, @unchecked Sendab
 
   // MARK: WhisperExecutorDriving
 
-  // Every `withTaskCancellationHandler` here passes `isolation: nil`, which calls the one copy
-  // in the Swift runtime. The default overload is emitted into each module; in the Release test
-  // lane this -Onone file's copy (80-byte frame) was linked with an -O module's frame size (64
-  // bytes), so the frame overran and the task allocator aborted with "freed pointer was not
-  // the last allocation" (#3849; swiftlang/swift#86204).
+  // Every `withTaskCancellationHandler` here passes `isolation: nil`. The default overload is
+  // emitted into each module; in the Release test lane this -Onone file's copy (80-byte frame)
+  // was linked with an -O module's frame size (64 bytes), so the frame overran and the task
+  // allocator aborted with "freed pointer was not the last allocation" (#3849;
+  // swiftlang/swift#86204). The `isolation:` overload has no -O copy in this link (#3925).
 
   func load(modelPath: String, lane: TranscribeCppExecutor.Lane) async throws -> Int {
     if let arrival = lock.withLock({ arrivalGates[modelPath] }) {
