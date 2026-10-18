@@ -522,23 +522,30 @@ struct TranscribeCppRollingSessionTests {
         if held {
           // A held native run ends only when released, as an aborted run ends once the
           // executor's abort lands; its cancellation is signalled, never short-circuited.
-          await withTaskCancellationHandler {
-            await withCheckedContinuation { c in
-              let go = lock.withLock { () -> Bool in
-                if released { return true }
-                holdRelease = c
-                return false
+          // `isolation: nil` for the same reason as the Whisper fake in
+          // TranscribeCppWhisperBackendTests: the default overload's -Onone copy here was linked
+          // with an -O frame size and the Release lane aborted with "freed pointer was not the
+          // last allocation" (#3849; swiftlang/swift#86204, #3925).
+          await withTaskCancellationHandler(
+            operation: {
+              await withCheckedContinuation { c in
+                let go = lock.withLock { () -> Bool in
+                  if released { return true }
+                  holdRelease = c
+                  return false
+                }
+                if go { c.resume() }
               }
-              if go { c.resume() }
-            }
-          } onCancel: {
-            let waiters = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
-              sawCancellation = true
-              defer { cancelWaiters = [] }
-              return cancelWaiters
-            }
-            for waiter in waiters { waiter.resume() }
-          }
+            },
+            onCancel: {
+              let waiters = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
+                sawCancellation = true
+                defer { cancelWaiters = [] }
+                return cancelWaiters
+              }
+              for waiter in waiters { waiter.resume() }
+            },
+            isolation: nil)
           if Task.isCancelled, !lock.withLock({ finishDespiteCancel }) { throw CancellationError() }
         }
         if fails { throw TranscribeCppWhisperError.runFailed(status: 9) }
