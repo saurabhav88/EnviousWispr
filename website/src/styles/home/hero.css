@@ -371,18 +371,29 @@ html[data-theme='dark'] .hero-screen-frame {
     font-size: 20px;
     max-width: 560px;
   }
+  /* A soft glow in the page color keeps the copy readable over the painted trees. */
+  .screen-hero-copy p {
+    text-shadow:
+      0 0 3px var(--bg),
+      0 0 10px var(--bg),
+      0 0 18px var(--bg);
+  }
+  /* Narrow screens show the painted room (window, wall and desk) at the top of the hero. */
   .screen-hero-art {
-    background-position: 12% 0;
+    background-position: 88% 0;
+    background-size: auto 100%;
+    bottom: auto;
+    height: clamp(600px, 110vw, 940px);
+    mask-image: linear-gradient(#000 80%, transparent);
   }
   .screen-hero-shade {
     background: linear-gradient(
         180deg,
-        color-mix(in srgb, var(--bg) 70%, transparent),
-        color-mix(in srgb, var(--bg) 40%, transparent) 40%,
-        color-mix(in srgb, var(--bg) 15%, transparent) 65%,
-        transparent 80%
+        color-mix(in srgb, var(--bg) 45%, transparent),
+        color-mix(in srgb, var(--bg) 25%, transparent) 35%,
+        transparent 55%
       ),
-      linear-gradient(0deg, var(--bg), transparent 12%);
+      linear-gradient(0deg, var(--bg), transparent 10%);
   }
   .hero-product-demo {
     backdrop-filter: blur(14px);
