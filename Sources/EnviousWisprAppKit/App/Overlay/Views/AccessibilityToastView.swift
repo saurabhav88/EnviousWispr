@@ -22,6 +22,8 @@ struct AccessibilityToastView: View {
         .font(.system(size: 13, weight: .medium))
         .foregroundStyle(.white)
         .fixedSize(horizontal: false, vertical: true)
+        // #3912: the text takes the free width before the gap, and a button never wraps.
+        .layoutPriority(1)
       Spacer(minLength: 8)
       if let action {
         Button(action: onAction) {
@@ -34,6 +36,7 @@ struct AccessibilityToastView: View {
             .background(Capsule().fill(Color.orange.opacity(0.85)))
         }
         .buttonStyle(.plain)
+        .fixedSize()
         .accessibilityLabel(action.spokenLabel)
       }
     }

@@ -100,6 +100,9 @@ struct NotificationOverlayView: View {
               .fixedSize(horizontal: false, vertical: true)
           }
         }
+        // #3912: the text takes the free width before the gap, so it wraps only when it
+        // must; the button below never wraps.
+        .layoutPriority(1)
       } else {
         Text(message)
           .font(.system(size: 13, weight: .medium))
@@ -127,6 +130,7 @@ struct NotificationOverlayView: View {
           .background(Capsule().fill(Color.white.opacity(0.18)))
         }
         .buttonStyle(.plain)
+        .fixedSize()
         .accessibilityLabel(action.spokenLabel)
       }
     }

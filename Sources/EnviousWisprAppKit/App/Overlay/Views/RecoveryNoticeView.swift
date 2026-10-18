@@ -42,6 +42,8 @@ struct RecoveryNoticeView: View {
             .fixedSize(horizontal: false, vertical: true)
         }
       }
+      // #3912: the text takes the free width before the gap, and a button never wraps.
+      .layoutPriority(1)
       Spacer(minLength: 8)
       if let action {
         Button(action: onAction) {
@@ -54,6 +56,7 @@ struct RecoveryNoticeView: View {
             .background(Capsule().fill(Color.white.opacity(0.18)))
         }
         .buttonStyle(.plain)
+        .fixedSize()
         .accessibilityLabel(action.spokenLabel)
       }
     }

@@ -29,6 +29,8 @@ struct LanguageChipView: View {
         .foregroundStyle(.white)
         // #3912: no line cap; a long translation wraps and the chip grows taller.
         .fixedSize(horizontal: false, vertical: true)
+        // #3912: the text takes the free width before the gap, and a button never wraps.
+        .layoutPriority(1)
 
       Spacer(minLength: 6)
 
@@ -43,6 +45,7 @@ struct LanguageChipView: View {
             .background(Capsule().fill(Color.blue.opacity(0.85)))
         }
         .buttonStyle(.plain)
+        .fixedSize()
       }
 
       Button(action: onDismiss) {
@@ -55,6 +58,7 @@ struct LanguageChipView: View {
           .background(Capsule().fill(Color.white.opacity(0.15)))
       }
       .buttonStyle(.plain)
+      .fixedSize()
     }
     .padding(.horizontal, 14)
     .padding(.vertical, 10)
