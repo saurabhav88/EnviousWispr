@@ -49,7 +49,16 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// Inspection does not dispatch or emit bypass events. The existing prompt predicate
   /// excludes short/minimal-edit inputs; their ordinary path owns any bypass notice.
   func fileBatchMember(_ context: TextProcessingContext) -> FileBatchMember? {
+    // #2905 prepared-input checks found a lost speaker-leading word in GPT-4o mini
+    // batches and a changed source noun in Haiku 4.5, retained by matched ordinary
+    // requests. Keep these families, including dated aliases, on individual calls:
+    // valid section tags alone cannot establish that cleanup preserved meaning.
+    let model = llmModel.lowercased()
+    let keepsOrdinaryRequests =
+      (llmProvider == .openAI && model.hasPrefix("gpt-4o-mini"))
+      || (llmProvider == .claude && model.hasPrefix("claude-haiku-4-5"))
     guard [.openAI, .gemini, .claude].contains(llmProvider),
+      keepsOrdinaryRequests == false,
       DefaultPromptPlanner.cloudRequiresMinimalEdits(context.text) == false,
       context.polishedText == nil, context.fileBatchCompletionID == nil,
       context.polishWasBypassed == false

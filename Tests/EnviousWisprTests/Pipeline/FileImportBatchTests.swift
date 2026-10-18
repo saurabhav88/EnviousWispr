@@ -22,10 +22,12 @@ struct FileImportBatchTests {
   private final class Capture {
     var users: [String] = []
     var systems: [String?] = []
+    var configs: [LLMProviderConfig] = []
     var replyMode = "normal"
     var onRequest: (@MainActor () async throws -> Void)?
-    func answer(user: String, system: String?) async throws -> LLMResult {
+    func answer(user: String, system: String?, config: LLMProviderConfig) async throws -> LLMResult {
       users.append(user); systems.append(system)
+      configs.append(config)
       try await onRequest?()
       if replyMode == "error" { throw LLMError.requestFailed("Fixture failure") }
       if replyMode == "malformed" { return LLMResult(polishedText: "<s1>Missing the rest.</s1>") }
@@ -51,24 +53,26 @@ struct FileImportBatchTests {
     func polish(
       text: String, instructions: PolishInstructions, config: LLMProviderConfig,
       onToken: (@Sendable (String) -> Void)?
-    ) async throws -> LLMResult { try await capture.answer(user: text, system: instructions.systemPrompt) }
+    ) async throws -> LLMResult { try await capture.answer(user: text, system: instructions.systemPrompt, config: config) }
     func polish(
       envelope: PromptEnvelope, config: LLMProviderConfig,
       onToken: (@Sendable (String) -> Void)?
     ) async throws -> LLMResult {
       let pair = envelope.asSingleTurn()
-      return try await capture.answer(user: pair?.user ?? "", system: pair?.system)
+      return try await capture.answer(user: pair?.user ?? "", system: pair?.system, config: config)
     }
   }
   private func snapshot(
     provider: LLMProvider = .openAI, spelling: EnglishSpelling = .american,
-    language: LanguageMode = .locked("en"), correction: Bool = false
+    language: LanguageMode = .locked("en"), correction: Bool = false, model: String? = nil
   ) -> RecordingSettingsSnapshot {
-    RecordingSettingsSnapshot(
+    let batchModel = provider == .openAI ? "gpt-6.1-sol"
+      : provider == .claude ? "claude-sonnet-4-6" : LLMProvider.defaultModel(for: provider)
+    return RecordingSettingsSnapshot(
       backendType: .parakeet, backendSupportsLanguageDetection: false, languageMode: language,
       wordCorrectionEnabled: correction, fillerRemovalEnabled: false, emojiFormatterEnabled: false,
       spokenPunctuationEnabled: false, spokenPunctuationStartWords: nil,
-      llmProvider: provider.rawValue, llmModel: LLMProvider.defaultModel(for: provider), s1Control: nil,
+      llmProvider: provider.rawValue, llmModel: model ?? batchModel, s1Control: nil,
       englishSpelling: spelling, casualModeEnabled: false)
   }
   private func runner(
@@ -80,6 +84,64 @@ struct FileImportBatchTests {
       outputClassifierHolder: nil, languageIdentifier: identify, makeEGOnePolisher: nil,
       promptPlanner: nil, checkerSelectionProvider: selection,
       makePolisher: { _, _, _ in Polisher(capture: capture) })
+  }
+
+  @Test("Models that failed batch qualification retain their ordinary requests, configuration and outcomes",
+    arguments: [
+      (LLMProvider.openAI, "gpt-4o-mini"),
+      (LLMProvider.openAI, "gpt-4o-mini-2024-07-18"),
+      (LLMProvider.claude, "claude-haiku-4-5"),
+      (LLMProvider.claude, "claude-haiku-4-5-20251001")
+    ])
+  func individualRequestModelParity(provider: LLMProvider, model: String) async throws {
+    let capture = Capture(); let grouped = runner(capture)
+    let ordinaryCapture = Capture(); let ordinary = runner(ordinaryCapture)
+    let settings = snapshot(provider: provider, model: model)
+    grouped.freeze(settings: settings, vocabulary: nil)
+    ordinary.freeze(settings: settings, vocabulary: nil)
+    var expected: [FileImportRunner.PartOutcome] = []
+    for text in Self.passages { expected.append(try await ordinary.process(part: text)) }
+    var indices: [Int] = []; var actual: [FileImportRunner.PartOutcome] = []
+    try await grouped.process(parts: Self.passages) { index, outcome in
+      indices.append(index); actual.append(outcome); return true
+    }
+    #expect(indices == [0, 1, 2])
+    #expect(actual.count == 3)
+    #expect(expected.count == 3)
+    #expect(actual == expected)
+    #expect(capture.users.count == 3)
+    #expect(ordinaryCapture.users.count == 3)
+    #expect(capture.users == ordinaryCapture.users)
+    #expect(capture.systems == ordinaryCapture.systems)
+    #expect(capture.users.allSatisfy { $0.hasPrefix("Transcript to clean:\n\n<s1>") == false })
+    #expect(capture.configs.count == 3)
+    #expect(ordinaryCapture.configs.count == 3)
+    for (actual, expected) in zip(capture.configs, ordinaryCapture.configs) {
+      #expect(actual.model == model)
+      #expect(actual.model == expected.model)
+      #expect(actual.apiKeyKeychainId == expected.apiKeyKeychainId)
+      #expect(actual.outputTokens == expected.outputTokens)
+      #expect(actual.temperature == expected.temperature)
+      #expect(actual.thinking == expected.thinking)
+      #expect(actual.detectedLanguage == expected.detectedLanguage)
+    }
+  }
+
+  @Test("Qualified Gemini and Sonnet selections retain one request and ordered cleanup outcomes",
+    arguments: [LLMProvider.gemini, .claude])
+  func qualifiedProvidersKeepBatching(provider: LLMProvider) async throws {
+    let model = provider == .claude ? "claude-sonnet-4-6" : LLMProvider.defaultModel(for: provider)
+    let capture = Capture(); let subject = runner(capture)
+    subject.freeze(settings: snapshot(provider: provider, model: model), vocabulary: nil)
+    var indices: [Int] = []; var outcomes: [FileImportRunner.PartOutcome] = []
+    try await subject.process(parts: Self.passages) { index, outcome in
+      indices.append(index); outcomes.append(outcome); return true
+    }
+    #expect(indices == [0, 1, 2])
+    #expect(capture.users.count == 1)
+    #expect(capture.configs.count == 1)
+    #expect(capture.configs.first?.model == model)
+    #expect(outcomes.map { $0.displayText } == Self.cleaned)
   }
 
   @Test("Compatible sections share one call and emit their independently expected text in source order")

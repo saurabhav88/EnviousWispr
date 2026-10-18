@@ -833,7 +833,7 @@ struct FileImportCoordinatorSpeakerTests {
       backendType: .parakeet, backendSupportsLanguageDetection: false, languageMode: .locked("en"),
       wordCorrectionEnabled: false, fillerRemovalEnabled: false, emojiFormatterEnabled: false,
       spokenPunctuationEnabled: false, spokenPunctuationStartWords: nil,
-      llmProvider: LLMProvider.openAI.rawValue, llmModel: LLMProvider.defaultModel(for: .openAI),
+      llmProvider: LLMProvider.openAI.rawValue, llmModel: "gpt-6.1-sol",
       s1Control: nil, englishSpelling: .american, casualModeEnabled: false)
     var finished = BoundedWait.Signal()
     weak var observed: FileImportCoordinator?

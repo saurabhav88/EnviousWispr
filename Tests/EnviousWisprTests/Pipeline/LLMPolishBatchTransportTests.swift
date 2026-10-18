@@ -46,7 +46,8 @@ struct LLMPolishBatchTransportTests {
   private func step(_ spy: Spy, provider: LLMProvider = .openAI) -> LLMPolishStep {
     let step = LLMPolishStep(keychainManager: KeychainManager(), telemetry: .silent())
     step.llmProvider = provider
-    step.llmModel = LLMProvider.defaultModel(for: provider)
+    step.llmModel = provider == .openAI ? "gpt-6.1-sol"
+      : provider == .claude ? "claude-sonnet-4-6" : LLMProvider.defaultModel(for: provider)
     step.makePolisher = { _, _, _ in Polisher(spy: spy) }
     return step
   }
