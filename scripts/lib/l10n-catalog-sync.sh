@@ -111,7 +111,9 @@ MANUAL_KEYS = {
 # docs/audits/2026-10-07-ci-failure-audit/pr3-c2-dev-vs-release.txt and pr3-c2-dev-only-provenance.txt
 # (main checkout). A Dev check ignores these keys only while they are absent from the committed
 # catalog; the Release check fails if one of them is ever extracted for Release.
+# #3894 adds the 8 Pill Preview keys from PillPreviewSection.swift (`#if DEBUG` since #3736).
 DEV_ONLY_KEYS = frozenset({
+    '%@: %@',
     '%lldms',
     'All log events are also sent to the macOS unified logging system. View them in Console.app by filtering for subsystem: com.enviouswispr.app',
     'Audio duration:',
@@ -129,13 +131,20 @@ DEV_ONLY_KEYS = frozenset({
     'Log Level',
     'Logs are stored at ~/Library/Logs/EnviousWispr/. Maximum 10 MB per file, 5 files retained.',
     'Model status:',
+    'Not previewable',
     'OS: %@',
     'OSLog',
     'Open Console.app',
     'Open Log Directory',
     'Performance',
     'Persists across relaunches. Toggle with Cmd+Shift+D from anywhere.',
+    'Pill',
+    'Pill Preview',
+    'Pill review mode',
     'Pipeline Benchmark Results',
+    'Play',
+    'Play any pill on demand to see how it looks and how long it stays. Uses the real pill code. Buttons on a preview do nothing. Debug builds only.',
+    'Play does nothing while a real dictation or a real pill is on screen, so a preview never replaces a real one.',
     'Re-runs the onboarding flow without wiping app state. Disabled during recording.',
     'Restart Onboarding…',
     'Run ASR Benchmark',
