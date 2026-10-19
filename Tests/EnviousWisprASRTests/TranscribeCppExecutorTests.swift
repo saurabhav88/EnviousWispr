@@ -621,14 +621,20 @@ struct TranscribeCppExecutorLifetimeTests {
     #expect(native.closeCount("small") == 1)
     #expect(try await native.bounded(Task { await executor.awaitSettled(openedOn: .heart) }) == 0)
     #expect(try await native.bounded(Task { await executor.awaitSettled(openedOn: .preview) }) == 0)
+    // Bounded: if work runs after the release, a call can park in native code; it must fail
+    // the test, not hang the suite (#3865 row 2 hung the battery lane for 1800 s).
     await #expect(throws: TranscribeCppExecutor.ExecutorError.modelUnavailable) {
-      _ = try await executor.transcribe(heart, samples: [1], language: nil, lane: .heart)
+      _ = try await native.bounded(Task {
+        try await executor.transcribe(heart, samples: [1], language: nil, lane: .heart)
+      })
     }
     await #expect(throws: TranscribeCppExecutor.ExecutorError.modelUnavailable) {
-      _ = try await executor.detectLanguage(heart, samples: [1], lane: .heart)
+      _ = try await native.bounded(Task {
+        try await executor.detectLanguage(heart, samples: [1], lane: .heart)
+      })
     }
     await #expect(throws: TranscribeCppExecutor.ExecutorError.modelUnavailable) {
-      _ = try await executor.load(modelPath: "late", lane: .heart)
+      _ = try await native.bounded(Task { try await executor.load(modelPath: "late", lane: .heart) })
     }
     #expect(!native.log.contains { $0.hasPrefix("enter") }, "no native run after the release")
     #expect(native.violations.isEmpty)
