@@ -298,7 +298,7 @@ import Testing
     .bug("https://github.com/saurabhav88/EnviousWispr/issues/3949", "a fix that only removes letters is never learned"))
   func scatteredSingleLetterDeletionReachesTheJudge() {
     // Founder 2026-10-19: "Whisper Eyes" -> "WisprEyes" drops `h` and `e` at two
-    // spots; backspacing never does that, so the judge decides.
+    // spots; this shape reaches the judge under the founder's rule.
     for (original, corrected) in [
       ("Whisper Eyes", "WisprEyes"), ("Whisper", "Wispr"), ("Flicker Tumbler", "Flickr Tumblr"),
       // Only some readings scatter: "baab" -> "ba" keeps b, a and drops the
@@ -319,5 +319,16 @@ import Testing
         disposition(run(original, corrected), inputs()) == .ineligible(.unfinishedEdit),
         "\(original) -> \(corrected)")
     }
+    // The alignment search is quadratic, so it runs only up to
+    // `maxSimilarityChars`; past it the #3105 answer stands. Both rows drop
+    // the first and last letter, which scatters.
+    #expect(F.maxSimilarityChars == 200)
+    let atCap = String(repeating: "ab", count: 100)
+    let overCap = atCap + "a"
+    #expect(
+      disposition(run(atCap, String(atCap.dropFirst().dropLast())), inputs()) == .candidate(.newWord))
+    #expect(
+      disposition(run(overCap, String(overCap.dropFirst().dropLast())), inputs())
+        == .ineligible(.unfinishedEdit))
   }
 }

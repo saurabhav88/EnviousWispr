@@ -137,9 +137,12 @@ package enum CorrectionCandidateFilter {
   /// way to read it removes two or more letters from one place. The junk
   /// the judge learned was a half-finished backspace ("test experience" ->
   /// "texperience"); real corrections type new letters ("day toast" ->
-  /// "Tuist") or remove single letters in separate places, which backspacing
-  /// never leaves ("Whisper Eyes" -> "WisprEyes", "Flicker" -> "Flickr",
-  /// #3949, founder 2026-10-19). This is a shape rule, so it holds on every
+  /// "Tuist") or remove single letters in separate places ("Whisper Eyes" ->
+  /// "WisprEyes", "Flicker" -> "Flickr", #3949, founder 2026-10-19). Some
+  /// unfinished backspaces also admit that reading ("letter" -> "letr" removes
+  /// "te" in one place, or `t` and `e` apart); the judge decides those. Runs
+  /// longer than `maxSimilarityChars` keep the #3105 answer, since the
+  /// alignment search is quadratic. This is a shape rule, so it holds on every
   /// settle path: a fix sent with Enter or left with the caret beside it
   /// still reaches the judge. A join that only removes spaces ("Pay Pal" ->
   /// "PayPal") is left to the judge (the join-only rule in the #3105 plan:
@@ -160,6 +163,7 @@ package enum CorrectionCandidateFilter {
     var i = 0
     for ch in o where i < c.count && ch == c[i] { i += 1 }
     guard i == c.count else { return false }
+    guard o.count <= maxSimilarityChars else { return true }
     // Accepted residual (#3949): two one-letter trims in one run ("cats dogs"
     // -> "cat dog") and two one-letter half-edits now reach the judge too.
     return !canRemoveOnlySeparateSingleLetters(original: o, corrected: c)
