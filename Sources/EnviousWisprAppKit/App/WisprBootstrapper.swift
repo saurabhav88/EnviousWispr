@@ -2683,6 +2683,10 @@ package final class WisprBootstrapper {
     // parent exit (Codex r1 proved empirically); crash orphans are reaped by
     // the stale-sweep in EGOneServerManager.start on next launch.
     localPolishRuntimes.egOne.terminateServerForAppQuit()
+    // #3853: children first, then native runtimes. Drop the word check's MLX model without
+    // waiting (its cleanup runs off this thread), before the lifecycle flush and the
+    // transcribe.cpp release below.
+    checkerEligibility.wordCheck?.releaseForTermination()
     // #1019: tear down the network path monitor + wake observer.
     updateTriggerCoordinator.stop()
     // #1176: a Cocoa quit during onboarding is an abandon (best-effort — kill -9

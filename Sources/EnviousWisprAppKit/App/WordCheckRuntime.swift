@@ -3,6 +3,7 @@ import EnviousWisprModelDelivery
 import EnviousWisprPipeline
 import EnviousWisprWordCheck
 import Foundation
+import os
 
 /// Owns the word check for polish engines without a learned-word checker of their own (#3242):
 /// when its model downloads (`WordCheckFetchPolicy`), when it is in memory, the selection a take
@@ -14,7 +15,8 @@ import Foundation
 /// by work that will use it (`WordCheckResidencyPolicy`: a recording or file import whose engine
 /// has no checker, a take's selection, Try again), never because the settings say some engine
 /// might (#3289), and released after `idleUnloadDelay` without a take, when the Dictionary switch
-/// goes off, or when no chosen engine needs it any more.
+/// goes off, or when no chosen engine needs it any more; at quit the runtime drops its hold
+/// without waiting (`releaseForTermination`, #3853).
 ///
 /// Ownership of a load is a GENERATION, never the task handle: `unload` bumps it, and a
 /// load that finishes under an older generation publishes nothing (a Dictionary off-and-on during
@@ -69,10 +71,22 @@ final class WordCheckRuntime {
   /// the weights are read on a background queue until it ends. A new load waits for these before
   /// reading (two never overlap in memory).
   private var runningLoads: [UInt64: Task<Void, Never>] = [:]
+  /// Set once by `releaseForTermination`: the process is quitting, so no load starts again (#3853).
+  private var terminated = false
 
   package private(set) var fetchDecisionsForTests: [WordCheckFetchPolicy.Decision] = []
   /// Load tasks created, counted where one is created (#3289): the residency tests' observable.
   package private(set) var loadAttemptsForTests = 0
+  /// The off-main cleanup `releaseForTermination` handed off, for tests to await (#3853).
+  package private(set) var terminationCleanupForTests: Task<Void, Never>?
+  /// Fires as a load starts reading the model, past its generation check: the subject's signal
+  /// that a load is truly in flight (#3853).
+  package var onLoadReadingForTests: () -> Void = {}
+  /// Waits for every load still running, cancelled or not, to end: the subject's own completion
+  /// signal for tests of what a late load may publish.
+  package func runningLoadsFinishedForTests() async {
+    for task in Array(runningLoads.values) { await task.value }
+  }
 
   init(
     delivery: ModelDeliveryHome,
@@ -211,7 +225,7 @@ final class WordCheckRuntime {
   }
 
   private func startLoadIfNeeded() {
-    guard loaded == nil, loadTask == nil, isAdmitted,
+    guard !terminated, loaded == nil, loadTask == nil, isAdmitted,
       let registration = delivery.wordCheckRegistration,
       failedLoadRevision != registration.manifest.identity.revision
     else { return }
@@ -229,6 +243,7 @@ final class WordCheckRuntime {
         return
       }
       let started = ContinuousClock.now
+      self?.onLoadReadingForTests()
       do {
         let model = try await KevWordCheckModel(folder: folder)
         try await model.warmUp()
@@ -293,6 +308,42 @@ final class WordCheckRuntime {
         await AppLogger.shared.log("word check unloaded reason=\(reason)", category: "WordCheck")
       }
     #endif
+  }
+
+  /// The app is quitting (#3853): drop the runtime's hold on the model and return at once. Called
+  /// from `WisprBootstrapper.applicationWillTerminate`, which is synchronous on the main thread.
+  ///
+  /// Never waits on MLX: the model's deinit and `releaseCachedBuffers()` both clear MLX's cache,
+  /// which takes MLX's evaluation lock, so on the main thread either could stall quit behind a
+  /// take's evaluation. Both run on a detached task instead, which may still be unfinished at
+  /// `exit()`. A take or an import part holding the model keeps it until then; this frees nothing
+  /// it holds. Terminal: no load starts after it, and a load in flight publishes nothing.
+  func releaseForTermination() {
+    terminated = true
+    loadGeneration &+= 1
+    idleUnloadTask?.cancel()
+    idleUnloadTask = nil
+    loadTask?.cancel()
+    loadTask = nil
+    // Moved into a box so the detached task, not this thread, drops what may be the last reference:
+    // the deinit (and its cache clear) then runs off the main thread.
+    let held = TerminationHold(model: loaded?.model)
+    loaded = nil
+    terminationCleanupForTests = Task.detached(priority: .utility) {
+      held.drop()
+      KevWordCheckModel.releaseCachedBuffers()
+    }
+    // os.Logger, not AppLogger: written synchronously, so the line survives the exit that follows.
+    Self.quitLogger.notice("word check holder dropped reason=app_quit")
+  }
+
+  private static let quitLogger = Logger(subsystem: "com.enviouswispr.app", category: "WordCheck")
+
+  /// Carries the model to the detached cleanup. Only that task touches `model` after `init`.
+  private final class TerminationHold: @unchecked Sendable {
+    private var model: KevWordCheckModel?
+    init(model: KevWordCheckModel?) { self.model = model }
+    func drop() { model = nil }
   }
 
   private func scheduleIdleUnload() {
