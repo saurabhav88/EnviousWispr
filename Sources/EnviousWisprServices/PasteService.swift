@@ -2423,17 +2423,12 @@ public enum PasteService {
     return error == nil
   }
 
-  /// Simulate Cmd+V keystroke to paste from clipboard into the active app.
-  public static func simulatePaste() {
-    dispatchCmdV()
-  }
-
   /// Post Cmd+V to the frontmost app and report whether it was posted (#3106).
   ///
   /// Writes NOTHING to the clipboard: the caller has already put the text there inside its own
-  /// clipboard transaction (`ClipboardCleanup.manualPaste`). `pasteToActiveApp` writes the board
-  /// itself, so calling it there would write twice; `simulatePaste` drops the result, which is kept
-  /// for its History and Escape Recovery callers.
+  /// clipboard transaction (`ClipboardCleanup.manualPaste`), which Paste Last Dictation and
+  /// History's Paste (#3875) both use. `pasteToActiveApp` writes the board itself, so calling it
+  /// there would write twice.
   public static func postPasteKeystroke() -> Bool {
     dispatchCmdV()
   }

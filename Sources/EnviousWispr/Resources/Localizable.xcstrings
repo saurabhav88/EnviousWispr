@@ -5292,6 +5292,17 @@
         }
       }
     },
+    "Copied. Paste it yourself." : {
+      "comment" : "History: Paste could not press Command-V; the text is on the clipboard.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kopiert. Füge den Text manuell ein."
+          }
+        }
+      }
+    },
     "Copied. Press ⌘V to paste" : {
       "comment" : "Pill when the text was copied instead of pasted. ⌘V is the paste shortcut.",
       "localizations" : {
@@ -5523,6 +5534,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Aufnahme konnte nicht gesichert werden. Sie wurde verworfen."
+          }
+        }
+      }
+    },
+    "Couldn't paste. Your text is still in History." : {
+      "comment" : "History: Paste could not use the clipboard, so nothing was pasted.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einfügen fehlgeschlagen. Dein Text ist weiterhin im Verlauf."
           }
         }
       }
