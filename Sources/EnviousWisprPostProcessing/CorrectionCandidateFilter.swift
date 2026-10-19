@@ -29,8 +29,10 @@ package enum CorrectionCandidateFilter {
     /// The corrected run ends in a contraction suffix ("it's", "don't").
     case contractionEnding
     /// The corrected run is the original with letters deleted and nothing
-    /// typed: an edit caught half-way ("do fewer words" -> "drds",
-    /// "Sorat" -> "S", #3105). A join that removes only spaces is not this.
+    /// typed, two or more of them from one place: an edit caught half-way
+    /// ("do fewer words" -> "drds", "Sorat" -> "S", #3105). A join that
+    /// removes only spaces is not this, nor single letters removed in
+    /// separate places ("Whisper" -> "Wispr", #3949).
     case unfinishedEdit
     /// The corrected phrase, or the original as a trigger, is owned by a
     /// DIFFERENT word than the resolved target.
@@ -131,13 +133,17 @@ package enum CorrectionCandidateFilter {
   }
 
   /// #3105: the corrected text is the original with at least two letters
-  /// removed and nothing added (a case-insensitive subsequence). Every
-  /// real correction the judge learns types new letters ("day toast" -> "Tuist");
-  /// the junk it learned did not ("test experience" -> "texperience"). This is
-  /// a shape rule, so it holds on every settle path: a fix sent with Enter or
-  /// left with the caret beside it still reaches the judge. A join that only
-  /// removes spaces ("Pay Pal" -> "PayPal") is left to the judge
-  /// (edit-judge-human-speech-harvest.md FACT: join-only-edits-cannot-be-a-code-rule).
+  /// removed and nothing added (a case-insensitive subsequence), and every
+  /// way to read it removes two or more letters from one place. The junk
+  /// the judge learned was a half-finished backspace ("test experience" ->
+  /// "texperience"); real corrections type new letters ("day toast" ->
+  /// "Tuist") or remove single letters in separate places, which backspacing
+  /// never leaves ("Whisper Eyes" -> "WisprEyes", "Flicker" -> "Flickr",
+  /// #3949, founder 2026-10-19). This is a shape rule, so it holds on every
+  /// settle path: a fix sent with Enter or left with the caret beside it
+  /// still reaches the judge. A join that only removes spaces ("Pay Pal" ->
+  /// "PayPal") is left to the judge (the join-only rule in the #3105 plan:
+  /// a join cannot be told from junk by shape).
   package static func isDeletionOnly(original: String, corrected: String) -> Bool {
     let o = Array(original.lowercased())
     let c = Array(corrected.lowercased())
@@ -145,14 +151,45 @@ package enum CorrectionCandidateFilter {
     // Fewer than two LETTERS removed is a real fix the recogniser padded
     // ("adiane" -> "Adian", "Johnson's" -> "Johnson"), not an edit abandoned
     // half-way. Accepted residual (Codex PR-1 review P2, hypothetical): a
-    // completed fix that deletes two or more letters ("microphoness" ->
-    // "microphone") is not learned; the recogniser was not seen to pad a word
-    // with two junk letters, and the #3105 junk this stops was.
+    // completed fix that deletes two or more letters from one place
+    // ("microphoness" -> "microphone") is not learned; the recogniser was not
+    // seen to pad a word with two junk letters, and the #3105 junk this stops
+    // was.
     let removedLetters = o.filter(\.isLetter).count - c.filter(\.isLetter).count
     guard removedLetters >= 2 else { return false }
     var i = 0
     for ch in o where i < c.count && ch == c[i] { i += 1 }
-    return i == c.count
+    guard i == c.count else { return false }
+    // Accepted residual (#3949): two one-letter trims in one run ("cats dogs"
+    // -> "cat dog") and two one-letter half-edits now reach the judge too.
+    return !canRemoveOnlySeparateSingleLetters(original: o, corrected: c)
+  }
+
+  /// True when `corrected` is a subsequence of `original` under at least one
+  /// alignment where every removed stretch (between two kept characters)
+  /// holds at most one letter; removed spaces and punctuation do not count.
+  /// Every alignment is searched, not only the first left-to-right match:
+  /// "baab" -> "ba" scatters by keeping the second `a`. False when `corrected`
+  /// is not a subsequence at all.
+  static func canRemoveOnlySeparateSingleLetters(
+    original o: [Character], corrected c: [Character]
+  ) -> Bool {
+    // reach[j][k]: after some prefix of `o`, `j` characters of `c` are kept
+    // and the open removed stretch holds `k` letters (0 or 1).
+    var reach = Array(repeating: [false, false], count: c.count + 1)
+    reach[0][0] = true
+    for ch in o {
+      var next = Array(repeating: [false, false], count: c.count + 1)
+      for j in 0...c.count {
+        for k in 0...1 where reach[j][k] {
+          if j < c.count, ch == c[j] { next[j + 1][0] = true }
+          let letters = k + (ch.isLetter ? 1 : 0)
+          if letters < 2 { next[j][letters] = true }
+        }
+      }
+      reach = next
+    }
+    return reach[c.count][0] || reach[c.count][1]
   }
 
   /// The corrected spelling as an existing word: user words first, then the
