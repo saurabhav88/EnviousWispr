@@ -150,12 +150,12 @@ struct TranscriptDetailView: View {
   /// history" hold here too. It used to write the board as a kept copy and post Cmd+V,
   /// which left the dictation on the clipboard in place of whatever the user had there.
   private func pasteFromHistory() {
-    guard pasteAllowed, transcriptCoordinator.textForDelivery(transcript) != nil else { return }
+    guard pasteAllowed else { return }
     NSApp.hide(nil)
     Task {
       try? await Task.sleep(for: .milliseconds(TimingConstants.appHideBeforePasteDelayMs))
-      // Checked again after the wait: a dictation can start, a held row can lapse and
-      // Accessibility can be turned off while History is hidden.
+      // Checked after the wait, the one read of the text by id: a dictation can start, a held
+      // row can lapse and Accessibility can be turned off while History is hidden.
       guard permissions.accessibilityGranted, pasteAllowed,
         let text = transcriptCoordinator.textForDelivery(transcript)
       else { return }
