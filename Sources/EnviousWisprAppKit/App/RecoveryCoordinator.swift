@@ -312,10 +312,13 @@ final class RecoveryCoordinator {
 
     // #1173: single source of truth for the effective model.
     let resolvedModel = settings.effectiveLLMModel
+    // #3905: the same effective mode the live take freezes, so a replay matches it.
+    let languageMode = LanguageLockOptions.effectiveLanguageMode(
+      settings.languageMode, for: backendType)
     let snapshot = RecordingSettingsSnapshot(
       backendType: backendType,
       backendSupportsLanguageDetection: supportsLanguageDetection,
-      languageMode: settings.languageMode,
+      languageMode: languageMode,
       wordCorrectionEnabled: settings.wordCorrectionEnabled,
       fillerRemovalEnabled: settings.fillerRemovalEnabled,
       emojiFormatterEnabled: settings.emojiFormatterEnabled,
@@ -328,7 +331,7 @@ final class RecoveryCoordinator {
       s1Control: settings.s1Control,
       // #3124: the value in force for this take, replayed on recovery.
       englishSpelling: EnglishSpelling.effective(
-        languageMode: settings.languageMode, stored: settings.englishSpelling),
+        languageMode: languageMode, stored: settings.englishSpelling),
       // #3737: replayed at its record-time value.
       casualModeEnabled: settings.casualModeEnabled)
 

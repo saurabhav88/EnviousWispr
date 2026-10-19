@@ -38,14 +38,17 @@ enum FileImportSettingsFreeze {
   /// deliberately does not refill `llmModel` (#1305, #1914), so an Ollama import could
   /// freeze a cloud model id left over from another provider. #2772 §3.3.
   static func snapshot(settings: SettingsManager) -> RecordingSettingsSnapshot {
-    RecordingSettingsSnapshot(
+    // #3905: frozen as the selected engine can honour it (an unhonoured lock runs as Auto).
+    let languageMode = LanguageLockOptions.effectiveLanguageMode(
+      settings.languageMode, for: settings.selectedBackend)
+    return RecordingSettingsSnapshot(
       backendType: settings.selectedBackend,
       // **Asked, not assumed.** Hardcoding false told the resolver to ignore
       // whatever WhisperKit reported, so an automatic-language import fell back
       // to identifying the language from the ASR text — the weakest source in
       // the ladder, on the text least safe to guess from. Found by cloud review.
       backendSupportsLanguageDetection: settings.selectedBackend == .whisper,
-      languageMode: settings.languageMode,
+      languageMode: languageMode,
       wordCorrectionEnabled: settings.wordCorrectionEnabled,
       fillerRemovalEnabled: settings.fillerRemovalEnabled,
       emojiFormatterEnabled: settings.emojiFormatterEnabled,
@@ -59,7 +62,7 @@ enum FileImportSettingsFreeze {
       s1Control: settings.s1Control,
       // #3124: frozen at Start like the language; "Clean it again" re-snapshots.
       englishSpelling: EnglishSpelling.effective(
-        languageMode: settings.languageMode, stored: settings.englishSpelling),
+        languageMode: languageMode, stored: settings.englishSpelling),
       // #3737: Casual mode never applies to an imported recording (a document, not a reply); this
       // freeze also covers Clean it again and speaker-separated parts.
       casualModeEnabled: false)

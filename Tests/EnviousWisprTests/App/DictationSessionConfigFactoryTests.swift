@@ -103,6 +103,40 @@ struct DictationSessionConfigFactoryTests {
     #expect(make().englishSpelling == .american, "Auto never applies British spelling")
   }
 
+  /// #3905: the fast engine cannot honour a Japanese lock, so the take runs as
+  /// Auto everywhere. The stored setting keeps the lock for a later engine switch.
+  @Test("A lock the active engine cannot honour is frozen as Auto")
+  func unhonouredLockFrozenAsAuto() async throws {
+    let harness = try Harness.make(backend: .parakeet)
+    harness.settings.languageMode = .locked("ja")
+    harness.settings.englishSpelling = .british
+    let config = DictationSessionConfigFactory.make(
+      asrManager: harness.asrManager,
+      kernelDriver: harness.kernelDriver,
+      whisperKernelDriver: harness.whisperKernelDriver,
+      settings: harness.settings,
+      triggerSource: .pttHotkey)
+    #expect(config.languageMode == .auto)
+    #expect(config.lockedLanguageCode == nil)
+    #expect(config.englishSpelling == .american)
+    #expect(harness.settings.languageMode == .locked("ja"), "the stored lock is kept")
+
+    harness.settings.languageMode = .locked("de")
+    #expect(harness.makeConfig().lockedLanguageCode == "de", "an honoured lock is kept")
+
+    harness.settings.languageMode = .locked("en")
+    let english = harness.makeConfig()
+    #expect(english.lockedLanguageCode == "en")
+    #expect(english.englishSpelling == .british, "English UK still works on the fast engine")
+  }
+
+  @Test("The multilingual engine keeps a lock the fast engine cannot honour")
+  func whisperKeepsTheLock() async throws {
+    let harness = try Harness.make(backend: .whisper)
+    harness.settings.languageMode = .locked("ja")
+    #expect(harness.makeConfig().lockedLanguageCode == "ja")
+  }
+
   /// #2087. Same shape as the smart-insertion freeze above, applied to a setting
   /// whose value is more visible to the user: it decides whether the cancel
   /// shortcut destroys a dictation or keeps it.

@@ -741,9 +741,7 @@
         guard let found = LanguageCatalog.pickerEntries.first(where: { $0.code == code }) else {
           return .refused(code: "badValue", message: "no language picker row has that code")
         }
-        if let offered = LanguageLockOptions.lockableCodes(for: settings.selectedBackend),
-          !offered.contains(found.lockCode)
-        {
+        if !LanguageLockOptions.isLockHonoured(found.lockCode, by: settings.selectedBackend) {
           return .refused(
             code: "checkFailed",
             message: "the \(settings.selectedBackend.rawValue) language picker does not offer that language")

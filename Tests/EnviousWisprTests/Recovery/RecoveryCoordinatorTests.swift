@@ -194,6 +194,25 @@ struct RecoveryCoordinatorTests {
         == S1ControlSettings(styling: .formal, structure: .prose, context: .email))
   }
 
+  /// #3905: a crash replay must freeze the same language as the live take did.
+  @Test("the directive records an unhonoured lock as Auto")
+  func directiveRecordsEffectiveLanguage() async throws {
+    let h = Self.makeHarness()
+    let settings = Self.freshSettings(crashRecoveryEnabled: true)
+    settings.languageMode = .locked("ja")
+    func frozen(_ backend: ASRBackendType) async throws -> LanguageMode {
+      let result = await h.coordinator.makeDirective(
+        settings: settings, backendType: backend, supportsLanguageDetection: false)
+      let armed = try #require(result)
+      return try JSONDecoder().decode(RecoverySpoolDirective.self, from: armed.payload)
+        .settingsSnapshot.languageMode
+    }
+    #expect(try await frozen(.parakeet) == .auto)
+    #expect(try await frozen(.whisper) == .locked("ja"))
+    settings.languageMode = .locked("de")
+    #expect(try await frozen(.parakeet) == .locked("de"))
+  }
+
   @Test("durable save deletes that session's spool + key")
   func durableSaveDeletes() async throws {
     let h = Self.makeHarness()

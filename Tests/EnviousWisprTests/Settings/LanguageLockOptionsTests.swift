@@ -49,6 +49,53 @@ struct LanguageLockOptionsTests {
     #expect(codes?.isEmpty == false)
   }
 
+  /// #3905: a lock the active engine cannot honour runs as Auto. Without this, the
+  /// decoder ignores the lock while cleanup and AI polish still act on it, so the
+  /// user gets a mix of two languages. The STORED mode must not change (#1678).
+  @Test("An unhonoured lock runs as Auto, an honoured lock and Auto pass through")
+  func effectiveModeDropsOnlyAnUnhonouredLock() throws {
+    let parakeet = try #require(LanguageLockOptions.lockableCodes(for: .parakeet))
+    #expect(!parakeet.contains("ja"), "precondition: the fast engine does not claim Japanese")
+    #expect(parakeet.contains("de"), "precondition: the fast engine claims German")
+
+    #expect(LanguageLockOptions.effectiveLanguageMode(.locked("ja"), for: .parakeet) == .auto)
+    #expect(
+      LanguageLockOptions.effectiveLanguageMode(.locked("de"), for: .parakeet) == .locked("de"))
+    #expect(
+      LanguageLockOptions.effectiveLanguageMode(.locked("ja"), for: .whisper) == .locked("ja"))
+    #expect(LanguageLockOptions.effectiveLanguageMode(.auto, for: .parakeet) == .auto)
+    #expect(LanguageLockOptions.effectiveLanguageMode(.auto, for: .whisper) == .auto)
+    // English UK stores the plain "en" lock, so the fast engine must honour it.
+    #expect(LanguageLockOptions.isLockHonoured("en", by: .parakeet))
+  }
+
+  /// #3905 drift guard: the Settings sentence "detecting automatically" and the
+  /// recording freeze must use one membership rule, or the sentence can lie again.
+  @Test("The Settings lock warning reads the shared membership rule", .tags(.driftGuard))
+  func settingsWarningUsesTheOwner() throws {
+    let view = URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent().deletingLastPathComponent()
+      .deletingLastPathComponent().deletingLastPathComponent()
+      .appendingPathComponent(
+        "Sources/EnviousWisprAppKit/Views/Settings/SpeechEngineSettingsView.swift")
+    let code = try String(contentsOf: view, encoding: .utf8)
+      .split(separator: "\n", omittingEmptySubsequences: false)
+      .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+      .joined(separator: "\n")
+    #expect(code.contains("LanguageLockOptions.isLockHonoured(code, in: lockableLanguageCodes)"))
+    #expect(!code.contains(".contains(code)"), "a second copy of the membership rule")
+  }
+
+  /// `nil` lockable codes mean "no restriction", so every code is honoured.
+  @Test("The membership rule treats nil as unrestricted")
+  func membershipRule() {
+    #expect(LanguageLockOptions.isLockHonoured("ja", in: nil))
+    #expect(!LanguageLockOptions.isLockHonoured("ja", in: ["de"]))
+    #expect(LanguageLockOptions.isLockHonoured("de", in: ["de"]))
+    #expect(!LanguageLockOptions.isLockHonoured("ja", by: .parakeet))
+    #expect(LanguageLockOptions.isLockHonoured("ja", by: .whisper))
+  }
+
   /// #2154, cloud review r3. **Every consumer of the resolved language must read
   /// the staleness owner, not `packs.active` directly.**
   ///

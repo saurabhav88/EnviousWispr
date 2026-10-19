@@ -167,7 +167,7 @@ enum LanguageLockOptions {
     lockableCodes: Set<String>?, query: String, offersEnglishUK: Bool
   ) -> [LanguageCatalog.Entry] {
     let offered = LanguageCatalog.pickerEntries.filter {
-      (lockableCodes?.contains($0.lockCode) ?? true)
+      isLockHonoured($0.lockCode, in: lockableCodes)
         && (offersEnglishUK || $0 != LanguageCatalog.englishUK)
     }
     let needle = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -256,5 +256,28 @@ enum LanguageLockOptions {
       // model card does not claim. Never a hand-copied list here.
       return ParakeetBackend.lockableLanguageCodes
     }
+  }
+
+  /// #3905: the one membership rule for "can this set of lockable codes honour `code`".
+  /// `nil` means no restriction (see `lockableCodes(for:)`), so every code is honoured.
+  static func isLockHonoured(_ code: String, in lockable: Set<String>?) -> Bool {
+    lockable?.contains(code) ?? true
+  }
+
+  /// Whether `backend` can honour a stored locked code.
+  static func isLockHonoured(_ code: String, by backend: ASRBackendType) -> Bool {
+    isLockHonoured(code, in: lockableCodes(for: backend))
+  }
+
+  /// The language mode a RUN is frozen with (#3905): the stored mode, except that a lock the
+  /// active engine cannot honour becomes `.auto`. The decoder already ignores such a lock and
+  /// Settings already says "detecting automatically"; freezing `.auto` makes cleanup, number
+  /// formatting and AI polish agree with them. The STORED mode is never changed (#1678), so
+  /// switching back to an engine that honours the lock restores it.
+  static func effectiveLanguageMode(_ mode: LanguageMode, for backend: ASRBackendType)
+    -> LanguageMode
+  {
+    if case .locked(let code) = mode, !isLockHonoured(code, by: backend) { return .auto }
+    return mode
   }
 }

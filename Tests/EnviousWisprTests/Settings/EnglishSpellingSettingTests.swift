@@ -53,6 +53,20 @@ struct EnglishSpellingSettingTests {
     #expect(FileImportSettingsFreeze.snapshot(settings: settings).englishSpelling == .american)
   }
 
+  /// #3905: a file import freezes the lock the selected engine can honour.
+  @Test("a file import freezes an unhonoured lock as Auto")
+  func fileImportSnapshotDropsUnhonouredLock() {
+    let settings = SettingsManager(defaults: Self.freshSuite())
+    settings.selectedBackend = .parakeet
+    settings.languageMode = .locked("ja")
+    #expect(FileImportSettingsFreeze.snapshot(settings: settings).languageMode == .auto)
+    settings.languageMode = .locked("de")
+    #expect(FileImportSettingsFreeze.snapshot(settings: settings).languageMode == .locked("de"))
+    settings.languageMode = .locked("ja")
+    settings.selectedBackend = .whisper
+    #expect(FileImportSettingsFreeze.snapshot(settings: settings).languageMode == .locked("ja"))
+  }
+
   @Test("the settings-change event reports the preference as a closed value")
   func settingsTelemetryProjection() {
     let settings = SettingsManager(defaults: Self.freshSuite())

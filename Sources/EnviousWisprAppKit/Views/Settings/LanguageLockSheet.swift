@@ -402,7 +402,7 @@ struct LanguageLockSheet: View {
       // Japanese here, which the fast engine cannot honour. Filtering after
       // `prefix` would also silently shorten the list instead of showing the
       // next eligible language.
-      .filter { lockableCodes?.contains($0.key) ?? true }
+      .filter { LanguageLockOptions.isLockHonoured($0.key, in: lockableCodes) }
       .prefix(maxRecents)
       .compactMap { pair -> LanguageCatalog.Entry? in
         guard LanguageTypes.isSupported(pair.key) else { return nil }

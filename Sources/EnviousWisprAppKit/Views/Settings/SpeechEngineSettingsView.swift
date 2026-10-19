@@ -675,8 +675,8 @@ struct SpeechEngineSettingsView: View {
   /// happen is silence — the decoder falls back to auto-detect and nothing on
   /// screen would say so.
   private func isLockHonouredByActiveEngine(_ code: String) -> Bool {
-    guard let lockableLanguageCodes else { return true }
-    return lockableLanguageCodes.contains(code)
+    // #3905: the same rule the recording freezes with, so this sentence cannot drift from it.
+    LanguageLockOptions.isLockHonoured(code, in: lockableLanguageCodes)
   }
 
   /// The codes the picker may offer, for the ACTIVE backend.
@@ -865,12 +865,14 @@ struct SpeechEngineSettingsView: View {
     migratedCode: String,
     lockableCodes: Set<String>?
   ) -> String {
-    func honoured(_ code: String) -> Bool { lockableCodes?.contains(code) ?? true }
-
-    if case .locked(let code) = currentMode, honoured(code) {
+    if case .locked(let code) = currentMode,
+      LanguageLockOptions.isLockHonoured(code, in: lockableCodes)
+    {
       return code
     }
-    if LanguageTypes.isSupported(migratedCode), honoured(migratedCode) {
+    if LanguageTypes.isSupported(migratedCode),
+      LanguageLockOptions.isLockHonoured(migratedCode, in: lockableCodes)
+    {
       return migratedCode
     }
     // English is in every engine's set, so this fallback is always honourable.

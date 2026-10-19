@@ -39,6 +39,9 @@ enum DictationSessionConfigFactory {
     // #1173: the single source of truth for the effective model (was an inline
     // switch here; now shared with the settings telemetry projection).
     let resolvedModel = settings.effectiveLLMModel
+    // #3905: frozen as the ACTIVE engine can honour it (an unhonoured lock runs as Auto).
+    let languageMode = LanguageLockOptions.effectiveLanguageMode(
+      settings.languageMode, for: asrManager.activeBackendType)
     return DictationSessionConfig(
       autoCopyToClipboard: settings.autoCopyToClipboard,
       inputMode: settings.recordingMode,
@@ -51,10 +54,10 @@ enum DictationSessionConfigFactory {
       vadSilenceTimeout: settings.vadSilenceTimeout,
       vadSensitivity: settings.vadSensitivity,
       vadEnergyGate: settings.vadEnergyGate,
-      languageMode: settings.languageMode,
+      languageMode: languageMode,
       // #3124: the EFFECTIVE value, decided once here and frozen for the take.
       englishSpelling: EnglishSpelling.effective(
-        languageMode: settings.languageMode, stored: settings.englishSpelling),
+        languageMode: languageMode, stored: settings.englishSpelling),
       useStreamingASR: settings.useStreamingASR,
       modelUnloadPolicy: settings.modelUnloadPolicy,
       llmProvider: settings.llmProvider,
