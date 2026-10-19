@@ -156,7 +156,7 @@ struct TranscriptDetailView: View {
       try? await Task.sleep(for: .milliseconds(TimingConstants.appHideBeforePasteDelayMs))
       // Checked after the wait, the one read of the text by id: a dictation can start, a held
       // row can lapse and Accessibility can be turned off while History is hidden.
-      guard permissions.accessibilityGranted, pasteAllowed,
+      guard pasteAllowed, permissions.accessibilityGranted,
         let text = transcriptCoordinator.textForDelivery(transcript)
       else { return }
       let result = ClipboardCleanup.manualPaste(
