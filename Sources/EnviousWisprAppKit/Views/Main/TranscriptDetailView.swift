@@ -158,7 +158,12 @@ struct TranscriptDetailView: View {
       // row can lapse and Accessibility can be turned off while History is hidden.
       guard pasteAllowed, permissions.accessibilityGranted,
         let text = transcriptCoordinator.textForDelivery(transcript)
-      else { return }
+      else {
+        // Nothing was written or pasted; bring History back rather than leave the app hidden
+        // (cloud review of PR #3945). The row's own state now explains why Paste stood down.
+        showHistory()
+        return
+      }
       let result = ClipboardCleanup.manualPaste(
         text: text, restore: settings.restoreClipboardAfterPaste,
         markTransient: settings.keepDictationsOutOfClipboardHistory, on: .general,
@@ -189,9 +194,13 @@ struct TranscriptDetailView: View {
   }
 
   private func showPasteNotice(_ notice: String) {
+    showHistory()
+    pasteNotice = notice
+  }
+
+  private func showHistory() {
     navigationCoordinator.request(.history)
     appWindowCoordinator.showWindow()
-    pasteNotice = notice
   }
 
   // MARK: - Action bar
