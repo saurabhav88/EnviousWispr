@@ -917,4 +917,193 @@ struct PasteArrivalCaptureTests {
     scheduler.advance(ms: 100)
     #expect(ax.enableCalls == [pid], "never per read")
   }
+
+  // MARK: #3863 a web area whose AXValue is empty (Apple Mail's compose body)
+
+  /// Mail's body as measured on macOS 27.2: `AXValue` is a successful empty string before and
+  /// after a paste, while the text markers return the real body.
+  func mailShapedBody(markerReads: [PastedRegionValueRead]) {
+    ax.reads = [.text("")]
+    ax.role = "AXWebArea"
+    ax.markerRanges = [.range(PastedRegionFakeAX.markerRange)]
+    ax.markerReads = markerReads
+    ax.selectedRange = .unavailable
+  }
+
+  @Test(
+    "a web area that answers an empty AXValue is read through its text markers: the paste is found",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/3863", "false miss in Mail"))
+  func webAreaWithEmptyValueReadsMarkers() throws {
+    mailShapedBody(markerReads: [.text("")])
+    let session = try prepare("Sarah ", tier: .menuPaste, bundle: "com.apple.mail")
+    // Mail ends a pasted line with a no-break space; the count folds it like a space.
+    ax.markerReads = [.text("Sarah\u{00A0}")]
+    session.commit()
+    registration?.fire(.valueChanged)
+    #expect(session.landing == .found(.sameField))
+    #expect(
+      ax.markerRangesPassed.allSatisfy { CFEqual($0, PastedRegionFakeAX.markerRange) },
+      "the opaque marker range is handed back unchanged")
+  }
+
+  @Test("the same web area with the paste missing is still absent (the miss stays a miss)")
+  func webAreaMissStaysAbsent() throws {
+    mailShapedBody(markerReads: [.text("Dear Maya,")])
+    let session = try prepare("Sarah ", tier: .menuPaste, bundle: "com.apple.mail")
+    session.commit()
+    scheduler.advance(ms: 300)
+    #expect(session.landing == .absent)
+    session.cancel()
+  }
+
+  @Test("an empty AXValue on anything that is not a web area keeps today's value reader")
+  func emptyValueOnOtherRolesIsUnchanged() throws {
+    ax.reads = [.text("")]
+    ax.role = kAXTextAreaRole as String
+    ax.markerRanges = [.range(PastedRegionFakeAX.markerRange)]
+    ax.markerReads = [.text("Sarah ")]
+    let session = try prepare()
+    session.commit()
+    scheduler.advance(ms: 300)
+    #expect(session.landing == .absent)
+    #expect(ax.markerRangeCalls == 0, "markers are never read off a web area")
+    session.cancel()
+  }
+
+  @Test("a non-empty AXValue never asks the role or the markers")
+  func nonEmptyValueSkipsTheNewReads() throws {
+    let session = try prepare()
+    ax.reads = [.text("Hi Sarah ")]
+    session.commit()
+    registration?.fire(.valueChanged)
+    #expect(session.landing == .found(.sameField))
+    #expect(ax.roleReads == 0)
+    #expect(ax.markerRangeCalls == 0)
+  }
+
+  @Test("a web area without marker support keeps the value reader and today's verdict")
+  func webAreaWithoutMarkersKeepsValue() throws {
+    ax.reads = [.text("")]
+    ax.role = "AXWebArea"
+    ax.markerRanges = []  // absent: no support
+    let session = try prepare()
+    session.commit()
+    scheduler.advance(ms: 300)
+    #expect(session.landing == .absent, "exactly today's answer")
+    session.cancel()
+  }
+
+  @Test("a failed marker read is not quietly replaced by the empty value: the baseline is unreadable")
+  func failedMarkerReadPropagates() throws {
+    ax.reads = [.text("")]
+    ax.role = "AXWebArea"
+    ax.markerRanges = [.failed(.cannotComplete)]
+    let session = try prepare()
+    session.commit()
+    scheduler.advance(ms: 300)
+    #expect(session.landing == .cannotRead(.baselineUnreadable))
+    session.cancel()
+  }
+
+  @Test("a web area whose marker text is over the cap is unreadable, never absent")
+  func overCapMarkerTextIsUnreadable() throws {
+    mailShapedBody(
+      markerReads: [.text(String(repeating: "a", count: PastedRegionTiming.maxValueUTF16 + 1))])
+    let session = try prepare()
+    session.commit()
+    scheduler.advance(ms: 300)
+    #expect(session.landing == .cannotRead(.baselineUnreadable))
+    session.cancel()
+  }
+
+  @Test("marker support that disappears after the baseline is a changed reader, never a verdict")
+  func markerSupportFlipIsInconclusive() throws {
+    mailShapedBody(markerReads: [.text("")])
+    let session = try prepare()
+    // Every later read finds no marker support: those reads fall back to the value reader.
+    ax.markerRanges = [.absent]
+    session.commit()
+    scheduler.advance(ms: 300)
+    #expect(session.landing == .inconclusive(.readerChanged))
+    session.cancel()
+  }
+
+  @Test("a transient marker loss is not latched: a later matching read still finds the paste")
+  func markerSupportRecovers() throws {
+    mailShapedBody(markerReads: [.text("")])
+    let session = try prepare()
+    ax.markerRanges = [.absent, .range(PastedRegionFakeAX.markerRange)]
+    ax.markerReads = [.text("Sarah ")]
+    session.commit()
+    scheduler.advance(ms: 25)
+    #expect(session.landing == nil, "the value-reader attempt proves nothing")
+    scheduler.advance(ms: 25)
+    #expect(session.landing == .found(.sameField))
+  }
+
+  @Test("a refusal before the role read stops the baseline: it is unreadable, not an answer")
+  func admissionRefusalBeforeRoleIsUnreadable() throws {
+    ax.reads = [.text("")]
+    ax.role = "AXWebArea"
+    ax.markerRanges = [.range(PastedRegionFakeAX.markerRange)]
+    ax.markerReads = [.text("")]
+    var admitted = 0
+    let read = PastedRegionObserver.selectTextReader(
+      of: field, ax: ax,
+      admit: { _ in
+        admitted += 1
+        return admitted < 2  // the value read is admitted; the role read is refused
+      })
+    #expect(read == nil)
+    #expect(ax.roleReads == 0)
+  }
+
+  @Test("a refusal between the marker range and its string stops the read")
+  func admissionRefusalBeforeMarkerStringIsNil() throws {
+    mailShapedBody(markerReads: [.text("Sarah ")])
+    var admitted = 0
+    let read = PastedRegionObserver.selectTextReader(
+      of: field, ax: ax,
+      admit: { _ in
+        admitted += 1
+        return admitted < 4  // value, role, marker range admitted; marker string refused
+      })
+    #expect(read == nil)
+    #expect(ax.markerRangeCalls == 1)
+    #expect(ax.markerStringCalls == 0)
+  }
+
+  @Test("#996 captures the pasted region in a web area through the text-marker reader")
+  func editWatchCapturesThroughMarkers() async throws {
+    mailShapedBody(markerReads: [.text("")])
+    let session = try prepare("Sarah ")
+    ax.markerReads = [.text("Hi Sarah ")]
+    session.commit()
+    guard case .captured(let target) = await startEditRequest(session).result() else {
+      Issue.record("expected a capture")
+      return
+    }
+    #expect(target.reader == .textMarkers)
+    session.cancel()
+  }
+
+  @Test(
+    "accepted limit: after a reader flip #996 may watch one occurrence that was already there")
+  func editWatchAfterReaderFlipWatchesASingleOccurrence() async throws {
+    // Baseline without marker support: the value reader, empty.
+    ax.reads = [.text("")]
+    ax.role = "AXWebArea"
+    ax.markerRanges = []
+    let session = try prepare("Sarah ")
+    // Markers appear later and show one occurrence; nothing proves it is this paste's.
+    ax.markerRanges = [.range(PastedRegionFakeAX.markerRange)]
+    ax.markerReads = [.text("Sarah was here ")]
+    session.commit()
+    guard case .captured(let target) = await startEditRequest(session).result() else {
+      Issue.record("expected the incomparable-baseline single-occurrence capture")
+      return
+    }
+    #expect(target.reader == .textMarkers)
+    session.cancel()
+  }
 }

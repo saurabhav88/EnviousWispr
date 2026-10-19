@@ -135,6 +135,33 @@ final class PastedRegionFakeAX: PastedRegionAXOperations {
     guard !rangeReads.isEmpty else { return .absent }
     return rangeReads.count > 1 ? rangeReads.removeFirst() : rangeReads[0]
   }
+  /// Text-marker reader (#3863). `role` answers every role read (nil = unreadable); marker range
+  /// and string answers are consumed in order like `reads`, the last one repeating. An empty
+  /// `markerRanges` means the host has no marker support.
+  var role: String?
+  var roleReads = 0
+  var markerRanges: [PastedRegionMarkerRangeRead] = []
+  var markerRangeCalls = 0
+  var markerReads: [PastedRegionValueRead] = []
+  var markerStringCalls = 0
+  /// The opaque range a marker-range read hands out, so a test can see it come back unchanged.
+  static let markerRange: CFTypeRef = "fake-marker-range" as CFString
+  private(set) var markerRangesPassed: [CFTypeRef] = []
+  func role(of element: AXUIElement) -> String? {
+    roleReads += 1
+    return role
+  }
+  func textMarkerRange(of element: AXUIElement) -> PastedRegionMarkerRangeRead {
+    markerRangeCalls += 1
+    guard !markerRanges.isEmpty else { return .absent }
+    return markerRanges.count > 1 ? markerRanges.removeFirst() : markerRanges[0]
+  }
+  func string(of element: AXUIElement, textMarkerRange: CFTypeRef) -> PastedRegionValueRead {
+    markerStringCalls += 1
+    markerRangesPassed.append(textMarkerRange)
+    guard !markerReads.isEmpty else { return .absent }
+    return markerReads.count > 1 ? markerReads.removeFirst() : markerReads[0]
+  }
   func register(
     pid: pid_t, element: AXUIElement, application: AXUIElement,
     handler: @escaping @MainActor (PastedRegionAXNotification) -> Void

@@ -540,22 +540,13 @@ package final class PasteArrivalCapture: PasteEditCapturing {
   ) -> Baseline {
     guard budget.admit(element) else { return .unreadable }
     if SelectionReader.isSecureField(ax.subrole(of: element)) { return .unreadable }
-    // AXValue first, the range reader only for an absent or non-text value: the same order as
-    // every capture, so the reader recorded here is the one a later attempt will use.
-    var reader = PastedRegionTextReader.value
+    // The one reader choice every focused read makes (`PastedRegionObserver.selectTextReader`),
+    // so a later attempt reaches the same reader for the same answers (#3863).
     guard
-      var read = PastedRegionObserver.readText(
-        of: element, using: reader, ax: ax, admit: budget.admit)
+      let (reader, read) = PastedRegionObserver.selectTextReader(
+        of: element, ax: ax, admit: budget.admit),
+      case .text(let text) = read
     else { return .unreadable }
-    if read == .absent || read == .notText {
-      reader = .range
-      guard
-        let ranged = PastedRegionObserver.readText(
-          of: element, using: reader, ax: ax, admit: budget.admit)
-      else { return .unreadable }
-      read = ranged
-    }
-    guard case .text(let text) = read else { return .unreadable }
     let selection: PastedRegionSelectedRange =
       budget.admit(element) ? ax.selectedRange(of: element) : .unavailable
     return .field(

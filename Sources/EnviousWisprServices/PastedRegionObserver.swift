@@ -433,6 +433,21 @@ package enum PastedRegionTextReader: String, Sendable, Equatable {
   /// `AXStringForRange(0, AXNumberOfCharacters)`, for editors that expose
   /// text only through the parameterized attribute.
   case range
+  /// `AXStringForTextMarkerRange(AXTextMarkerRangeForUIElement(element))`, the element's whole
+  /// text through WebKit's text markers (#3863). Chosen only for an `AXWebArea` whose `AXValue`
+  /// is a successful EMPTY string: Mail's compose body answers `""` there before and after a
+  /// paste, while its markers return the real body (measured 2026-10-19, macOS 27.2). Wispr Flow
+  /// and superwhisper read web areas the same way.
+  case textMarkers
+}
+
+/// One read of `AXTextMarkerRangeForUIElement` (#3863). The range is an opaque WebKit value,
+/// passed back unchanged to the string read; it is never an `AXValue` range.
+package enum PastedRegionMarkerRangeRead {
+  case range(CFTypeRef)
+  /// The host does not support text markers for this element.
+  case absent
+  case failed(AXError)
 }
 
 /// The focused element of a process. `noFocus` is a distinct case name on
@@ -655,6 +670,12 @@ package protocol PastedRegionAXOperations: AnyObject {
   /// A range past the field's length fails outright rather than clamping
   /// (accessibility-macos.md FACT: reading-caret-context-from-another-app).
   func string(of element: AXUIElement, location: Int, length: Int) -> PastedRegionValueRead
+  /// `AXRole` of `element`, one call; nil when it cannot be read (#3863).
+  func role(of element: AXUIElement) -> String?
+  /// `AXTextMarkerRangeForUIElement` with `element` as its own parameter, one call (#3863).
+  func textMarkerRange(of element: AXUIElement) -> PastedRegionMarkerRangeRead
+  /// `AXStringForTextMarkerRange` for a range `textMarkerRange(of:)` returned, one call (#3863).
+  func string(of element: AXUIElement, textMarkerRange: CFTypeRef) -> PastedRegionValueRead
   /// Registers value-changed and destroyed on `element`, focused-element-changed
   /// on `application`, with the observer's run-loop source on the MAIN run loop.
   /// Returns nil when the observer could not be created or no notification
@@ -1505,12 +1526,9 @@ package final class PastedRegionObserver: PastedRegionObserving {
     // parameterized range attribute (#3073; Excel in edit mode is the
     // measured candidate). A FAILED value read is the host not answering,
     // not "no value", and is not retried through the other reader.
-    var reader = PastedRegionTextReader.value
-    var read = readText(of: element, using: reader)
-    if read == .absent || read == .notText {
-      reader = .range
-      read = readText(of: element, using: reader)
-    }
+    // `admit` never refuses here, so the optional is always a choice.
+    let (reader, read) =
+      Self.selectTextReader(of: element, ax: ax, admit: { _ in true }) ?? (.value, .absent)
     return .field(
       application: application, element: element, reader: reader, read: read,
       manualAccessibility: manualAccessibility)
@@ -1676,6 +1694,55 @@ package final class PastedRegionObserver: PastedRegionObserving {
           return .failed(error)
         }
       }
+    case .textMarkers:
+      guard admit(element) else { return nil }
+      let range: CFTypeRef
+      switch ax.textMarkerRange(of: element) {
+      case .range(let marked): range = marked
+      case .absent: return .absent
+      case .failed(let error): return .failed(error)
+      }
+      guard admit(element) else { return nil }
+      let read = ax.string(of: element, textMarkerRange: range)
+      // The size is known only once the string arrives, so the cap rejects it after receipt.
+      if case .text(let value) = read, value.utf16.count > PastedRegionTiming.maxValueUTF16 {
+        return .tooLong
+      }
+      return read
+    }
+  }
+
+  /// The ONE choice of reader for a field, shared by the arrival session's baseline and every
+  /// focused read (#3863). Returns the reader and what it read, or nil when `admit` refused (not
+  /// an answer about the field).
+  /// - `AXValue` first.
+  /// - An absent or non-text value falls through to the range reader (#3073), unchanged.
+  /// - A successful EMPTY value on an `AXWebArea` is read again through text markers. A marker
+  ///   answer that is text (empty included), too long or failed is kept; a host without marker
+  ///   support (absent or non-text) keeps the value read. Other roles keep the value read.
+  package static func selectTextReader(
+    of element: AXUIElement, ax: any PastedRegionAXOperations,
+    admit: @MainActor (AXUIElement) -> Bool
+  ) -> (reader: PastedRegionTextReader, read: PastedRegionValueRead)? {
+    guard let read = readText(of: element, using: .value, ax: ax, admit: admit) else { return nil }
+    switch read {
+    case .absent, .notText:
+      guard let ranged = readText(of: element, using: .range, ax: ax, admit: admit) else {
+        return nil
+      }
+      return (.range, ranged)
+    case .text(let value) where value.isEmpty:
+      guard admit(element) else { return nil }
+      guard ax.role(of: element) == "AXWebArea" else { return (.value, read) }
+      guard let marked = readText(of: element, using: .textMarkers, ax: ax, admit: admit) else {
+        return nil
+      }
+      switch marked {
+      case .absent, .notText: return (.value, read)
+      case .text, .tooLong, .failed, .unstable: return (.textMarkers, marked)
+      }
+    case .text, .failed, .tooLong, .unstable:
+      return (.value, read)
     }
   }
 
@@ -2413,6 +2480,52 @@ package final class LivePastedRegionAXOperations: PastedRegionAXOperations {
     var ref: CFTypeRef?
     let error = AXUIElementCopyParameterizedAttributeValue(
       element, kAXStringForRangeParameterizedAttribute as CFString, rangeValue, &ref)
+    switch error {
+    case .success:
+      guard let value = ref else { return .absent }
+      guard CFGetTypeID(value) == CFStringGetTypeID(), let text = value as? String else {
+        return .notText
+      }
+      return .text(text)
+    case .noValue, .attributeUnsupported, .parameterizedAttributeUnsupported, .notImplemented:
+      return .absent
+    default:
+      return .failed(error)
+    }
+  }
+
+  package func role(of element: AXUIElement) -> String? {
+    var ref: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &ref) == .success,
+      let value = ref, CFGetTypeID(value) == CFStringGetTypeID()
+    else { return nil }
+    return value as? String
+  }
+
+  static let textMarkerRangeForElementAttribute = "AXTextMarkerRangeForUIElement" as CFString
+  static let stringForTextMarkerRangeAttribute = "AXStringForTextMarkerRange" as CFString
+
+  package func textMarkerRange(of element: AXUIElement) -> PastedRegionMarkerRangeRead {
+    var ref: CFTypeRef?
+    let error = AXUIElementCopyParameterizedAttributeValue(
+      element, Self.textMarkerRangeForElementAttribute, element, &ref)
+    switch error {
+    case .success:
+      guard let range = ref else { return .absent }
+      return .range(range)
+    case .noValue, .attributeUnsupported, .parameterizedAttributeUnsupported, .notImplemented:
+      return .absent
+    default:
+      return .failed(error)
+    }
+  }
+
+  package func string(of element: AXUIElement, textMarkerRange: CFTypeRef)
+    -> PastedRegionValueRead
+  {
+    var ref: CFTypeRef?
+    let error = AXUIElementCopyParameterizedAttributeValue(
+      element, Self.stringForTextMarkerRangeAttribute, textMarkerRange, &ref)
     switch error {
     case .success:
       guard let value = ref else { return .absent }

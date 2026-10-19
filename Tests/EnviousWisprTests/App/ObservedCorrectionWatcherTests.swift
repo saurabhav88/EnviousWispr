@@ -136,6 +136,12 @@ private final class CaptureAX: PastedRegionAXOperations {
   func string(of element: AXUIElement, location: Int, length: Int) -> PastedRegionValueRead {
     .absent
   }
+  // Not a web area: the text-marker reader is never consulted here (#3863).
+  func role(of element: AXUIElement) -> String? { nil }
+  func textMarkerRange(of element: AXUIElement) -> PastedRegionMarkerRangeRead { .absent }
+  func string(of element: AXUIElement, textMarkerRange: CFTypeRef) -> PastedRegionValueRead {
+    .absent
+  }
   func register(
     pid: pid_t, element: AXUIElement, application: AXUIElement,
     handler: @escaping @MainActor (PastedRegionAXNotification) -> Void
