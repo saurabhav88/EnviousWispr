@@ -1708,7 +1708,17 @@ package final class PastedRegionObserver: PastedRegionObserving {
       if case .text(let value) = read, value.utf16.count > PastedRegionTiming.maxValueUTF16 {
         return .tooLong
       }
-      return read
+      guard case .text = read else { return read }
+      // As the range reader re-reads its count: a paste landing between the two calls leaves the
+      // saved range describing the OLD text, so the string is a prefix of the new one. The range is
+      // read again after the text; a different range is `unstable` (retryable), never a verdict
+      // (second-pass review of #3863).
+      guard admit(element) else { return nil }
+      switch ax.textMarkerRange(of: element) {
+      case .range(let current): return CFEqual(current, range) ? read : .unstable
+      case .absent: return .absent
+      case .failed(let error): return .failed(error)
+      }
     }
   }
 

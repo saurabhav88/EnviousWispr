@@ -1106,4 +1106,17 @@ struct PasteArrivalCaptureTests {
     #expect(target.reader == .textMarkers)
     session.cancel()
   }
+
+  @Test("a marker range that changes during the read is unstable, never a prefix taken as the text")
+  func markerRangeChangeIsUnstable() throws {
+    mailShapedBody(markerReads: [.text("Hi ")])
+    // The range read after the string differs from the one the string was read through.
+    ax.markerRanges = [
+      .range(PastedRegionFakeAX.markerRange), .range("a-later-range" as CFString),
+    ]
+    let read = PastedRegionObserver.readText(
+      of: field, using: .textMarkers, ax: ax, admit: { _ in true })
+    #expect(read == .unstable)
+    #expect(ax.markerRangeCalls == 2, "read before and after the text")
+  }
 }
