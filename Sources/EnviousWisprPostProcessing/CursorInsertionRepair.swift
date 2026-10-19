@@ -411,9 +411,16 @@ public enum CursorInsertionRepair {
   /// produced before this feature existed. Deliberately narrow — it keeps the
   /// oracle types inside this module rather than widening them so Pipeline can
   /// name one.
-  package static func legacyOnly(text: String, reason: CaseSkipReason) -> PreparedPayloads {
+  ///
+  /// `language` is the caller's best answer to "what was spoken" (#3876), and has no default
+  /// so every caller states it: a script written without spaces gets no trailing space here
+  /// either, and `nil` keeps the spaced payload.
+  package static func legacyOnly(
+    text: String, reason: CaseSkipReason, language: String?
+  ) -> PreparedPayloads {
     PreparedPayloads(
-      legacyText: legacyPayload(text),
+      legacyText: legacyPayload(
+        text, usesWordSpacing: LanguageRules.forLanguage(language).usesWordSpacing),
       repairedText: nil,
       candidateRules: [.caseSkipped(reason)])
   }
@@ -431,11 +438,12 @@ public enum CursorInsertionRepair {
     language: String? = "en",
     oracle: SeamCasingOracle
   ) -> PreparedPayloads {
-    let legacy = legacyPayload(text)
+    // The rules come first because today's payload depends on them too (#3876).
+    let rules = LanguageRules.forLanguage(language)
+    let legacy = legacyPayload(text, usesWordSpacing: rules.usesWordSpacing)
     guard let context else {
       return PreparedPayloads(legacyText: legacy, repairedText: nil, candidateRules: [])
     }
-    let rules = LanguageRules.forLanguage(language)
     // Inserting between two word characters cannot be repaired safely. The
     // spacing rules would wrap the payload in spaces and split the surrounding
     // word — `"the sto|re"` becomes `"the sto store today re"` — turning a
@@ -513,8 +521,15 @@ public enum CursorInsertionRepair {
   /// lives ONLY in the candidate `repair` offers (`.trailingSpaceSkipped` in
   /// `contextualPayload`), which Services re-verifies is still the live
   /// destination before ever committing it.
-  static func legacyPayload(_ text: String) -> String {
-    text.hasSuffix(" ") ? text : text + " "
+  ///
+  /// The language IS taken into account (#3876): a script written without spaces between
+  /// words (Japanese, Chinese, Thai and the other `LanguageTypes.isUnsegmentedScript`
+  /// languages) never gets the trailing ASCII space, because it is wrong in every field, not
+  /// just some. The language describes the dictation, not the destination, so this stays
+  /// safe at the final commit boundary. An unknown language keeps the space.
+  static func legacyPayload(_ text: String, usesWordSpacing: Bool) -> String {
+    guard usesWordSpacing else { return text }
+    return text.hasSuffix(" ") ? text : text + " "
   }
 
   // MARK: - The rules
@@ -529,7 +544,7 @@ public enum CursorInsertionRepair {
     var out = text
     var rules: [AppliedRule] = []
     guard !text.isEmpty else {
-      return (legacyPayload(text), rules)
+      return (legacyPayload(text, usesWordSpacing: language.usesWordSpacing), rules)
     }
 
     let left = leftAnchor(of: context.left)
@@ -668,8 +683,8 @@ public enum CursorInsertionRepair {
     // The URL-bar check comes FIRST and unconditionally, ahead of the
     // right-anchor checks below (#2258): a space anywhere in a browser's
     // address bar blocks pressing Enter to navigate, whatever character
-    // happens to sit to the right of the caret. `legacyPayload` carries the
-    // same exception, since a refusal earlier in `repair` falls back to it.
+    // happens to sit to the right of the caret. `legacyPayload` deliberately
+    // does NOT carry this exception; its doc comment says why.
     if context.isURLBarField {
       rules.append(.trailingSpaceSkipped(.browserAddressBar))
     } else if !language.usesWordSpacing {

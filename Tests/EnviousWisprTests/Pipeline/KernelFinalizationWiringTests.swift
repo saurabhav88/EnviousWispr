@@ -523,9 +523,10 @@ import os
     #expect(requests.legacyTexts.count == 1, "the cascade is called exactly once")
 
     // Asserted EXACTLY, trailing space included, and the earlier draft of this test trimmed
-    // it away — which is the whole reason to pin it. `CursorInsertionRepair.legacyPayload` is
-    // `text.hasSuffix(" ") ? text : text + " "`, so every delivered payload gains a space it
-    // did not have. That is shared behaviour, not snippet behaviour: single-line snippets
+    // it away — which is the whole reason to pin it. For a language written with spaces
+    // `CursorInsertionRepair.legacyPayload` is `text.hasSuffix(" ") ? text : text + " "`, so
+    // every such delivered payload gains a space it did not have (#3876 exempts only the
+    // languages written without spaces). That is shared behaviour, not snippet behaviour: single-line snippets
     // have always carried it. What CHANGED here is that a multi-line snippet used to bypass
     // the cascade and reach the clipboard byte-exact, and now takes the same path as
     // everything else, so it gains the space too. A snippet ending in a newline therefore
@@ -543,6 +544,78 @@ import os
     #expect(
       recorder.copies.isEmpty,
       "nothing may be diverted to the clipboard behind the cascade's back")
+  }
+
+  @Test(
+    "#3876 a locked Japanese take reaches the cascade with no trailing space",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/3876", "stray space after CJK"))
+  func lockedJapaneseTakeHasNoTrailingSpace() async {
+    let requests = PasteRequestRecorder()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true, languageMode: .locked("ja"))
+    let wiring = makeWiring(
+      context: context,
+      deliverPaste: { request in
+        requests.record(request.legacyText)
+        return Self.deliveredResult
+      },
+      copyToClipboard: { _ in })
+
+    let outcome = await wiring.deliver("今日は晴れです。", .ordinary)
+
+    #expect(outcome == .pasted)
+    #expect(requests.legacyTexts == ["今日は晴れです。"])
+  }
+
+  // MARK: - #3876 the language for the deadline's payload
+
+  static let japanese = DictationLanguageResolver.Resolution(
+    language: "ja", learnLanguage: "ja", source: .dictation, confidenceBucket: .ge90)
+  static let abstained = DictationLanguageResolver.Resolution(
+    language: nil, learnLanguage: nil, source: .none, confidenceBucket: .none)
+
+  @Test("#3876 a resolution the gate froze wins, including its nil language")
+  func deadlineLanguagePrefersTheFrozenResolution() {
+    let resolved = LanguageRepairDeadlineGate()
+    #expect(resolved.beginRepair(Self.japanese))
+    #expect(
+      KernelFinalizationWiring.deadlineFallbackLanguage(
+        frozen: resolved.timeOut(), lockedLanguageCode: "en", engineDetectsLanguage: true,
+        engineReportedLanguage: "de") == "ja")
+
+    let abstained = LanguageRepairDeadlineGate()
+    #expect(abstained.beginRepair(Self.abstained))
+    #expect(
+      KernelFinalizationWiring.deadlineFallbackLanguage(
+        frozen: abstained.timeOut(), lockedLanguageCode: "ja", engineDetectsLanguage: true,
+        engineReportedLanguage: "zh") == nil,
+      "the resolver abstained; nil keeps the spaced payload")
+  }
+
+  @Test("#3876 before any resolution: the lock, then a detecting engine, else nil")
+  func deadlineLanguageBeforeResolution() {
+    func language(
+      locked: String?, detects: Bool, reported: String?
+    ) -> String? {
+      // A gate that timed out before the language stage finished froze no resolution.
+      let snapshot = LanguageRepairDeadlineGate().timeOut()
+      return KernelFinalizationWiring.deadlineFallbackLanguage(
+        frozen: snapshot, lockedLanguageCode: locked, engineDetectsLanguage: detects,
+        engineReportedLanguage: reported)
+    }
+    #expect(language(locked: "ja", detects: true, reported: "en") == "ja")
+    #expect(language(locked: "", detects: true, reported: "zh") == "zh")
+    #expect(language(locked: nil, detects: true, reported: "th") == "th")
+    #expect(
+      language(locked: nil, detects: false, reported: "ja") == nil,
+      "an engine that does not detect languages stamps one anyway; it is not evidence")
+    #expect(language(locked: nil, detects: true, reported: "") == nil)
+    #expect(language(locked: nil, detects: true, reported: nil) == nil)
+    #expect(
+      KernelFinalizationWiring.deadlineFallbackLanguage(
+        frozen: nil, lockedLanguageCode: "ja", engineDetectsLanguage: false,
+        engineReportedLanguage: nil) == "ja",
+      "no snapshot at all behaves the same as one with no resolution")
   }
 
   @Test("#1921 A clipboard-only delivery cannot inherit the previous session's language fields")

@@ -528,7 +528,9 @@ struct CursorInsertionRepairTests {
     }
     #expect(payloads.candidateRules == testCase.expectedRules, "\(testCase)")
     // legacyText is independent of context in every row.
-    #expect(payloads.legacyText == CursorInsertionRepair.legacyPayload(testCase.payload))
+    #expect(
+      payloads.legacyText
+        == CursorInsertionRepair.legacyPayload(testCase.payload, usesWordSpacing: true))
   }
 
   // MARK: - The nine protected production cases
@@ -1393,14 +1395,18 @@ struct CursorInsertionRepairTests {
     #expect(payloads.candidateRules.contains(.trailingSpace))
   }
 
-  @Test("An unreadable caret context still yields today's payload in every language")
-  func fallbackIsLanguageIndependent() {
-    for language in ["en", "de", "ja", nil] {
+  @Test("An unreadable caret context yields today's payload, spaced only for a spaced language")
+  func fallbackFollowsWordSpacing() {
+    // #3876: a script written without spaces gets no trailing ASCII space here either.
+    for (language, expected) in [
+      ("en", "Store today. "), ("de", "Store today. "), ("ja", "Store today."),
+      (nil, "Store today. "),
+    ] as [(String?, String)] {
       let payloads = CursorInsertionRepair.repair(
         text: "Store today.",
         context: nil,
         protectedWords: [], language: language, oracle: Self.prototypeOracle)
-      #expect(payloads.legacyText == "Store today. ", "\(language ?? "nil")")
+      #expect(payloads.legacyText == expected, "\(language ?? "nil")")
       #expect(payloads.repairedText == nil, "\(language ?? "nil")")
     }
   }
@@ -1815,7 +1821,85 @@ struct CursorInsertionRepairTests {
     // revalidation opportunity of its own — it inherits the same
     // context-free contract every other `legacyText` carries.
     let payloads = CursorInsertionRepair.legacyOnly(
-      text: "github.com", reason: .languageNotSupported)
+      text: "github.com", reason: .languageNotSupported, language: "en")
     #expect(payloads.legacyText == "github.com ")
+  }
+
+  // MARK: - #3876: no trailing ASCII space for a script written without spaces
+
+  /// Every language `LanguageTypes.isUnsegmentedScript` names, listed literally so a change
+  /// to that list cannot quietly change what this test asserts.
+  nonisolated static let unsegmentedLanguages = ["ja", "zh", "yue", "th", "lo", "my", "km"]
+
+  @Test(
+    "Today's payload adds no trailing space for an unsegmented language",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/3876", "stray space after CJK"),
+    arguments: unsegmentedLanguages)
+  func legacyPayloadSkipsSpaceForUnsegmentedLanguage(_ language: String) {
+    let text = "今日は晴れです。"
+    // Smart Insertion off or no readable caret: `repair` is called with no context.
+    let repaired = CursorInsertionRepair.repair(
+      text: text, context: nil, protectedWords: [], language: language,
+      oracle: Self.prototypeOracle)
+    #expect(repaired.legacyText == text)
+    // The deadline path.
+    let deadline = CursorInsertionRepair.legacyOnly(
+      text: text, reason: .repairDeadlineMissed, language: language)
+    #expect(deadline.legacyText == text)
+    // A refusal inside `repair` still hands back today's payload, now without the space.
+    let refused = CursorInsertionRepair.repair(
+      text: text,
+      context: CursorInsertionRepair.CaretText(left: "", right: "明日"),
+      protectedWords: [], language: language, oracle: Self.prototypeOracle)
+    #expect(refused.repairedText == nil)
+    #expect(refused.legacyText == text)
+  }
+
+  @Test(
+    "A region-tagged unsegmented language also gets no trailing space",
+    arguments: ["ja-JP", "zh-Hans", "zh-TW"])
+  func legacyPayloadSkipsSpaceForRegionTag(_ language: String) {
+    let payloads = CursorInsertionRepair.legacyOnly(
+      text: "你好。", reason: .repairDeadlineMissed, language: language)
+    #expect(payloads.legacyText == "你好。")
+  }
+
+  @Test(
+    "Spaced and unknown languages keep today's trailing space",
+    arguments: ["en", "de", "fr", "ko", "ru", "", nil] as [String?])
+  func legacyPayloadKeepsSpaceForSpacedOrUnknownLanguage(_ language: String?) {
+    let repaired = CursorInsertionRepair.repair(
+      text: "Hello there.", context: nil, protectedWords: [], language: language,
+      oracle: Self.prototypeOracle)
+    #expect(repaired.legacyText == "Hello there. ")
+    let deadline = CursorInsertionRepair.legacyOnly(
+      text: "Hello there.", reason: .repairDeadlineMissed, language: language)
+    #expect(deadline.legacyText == "Hello there. ")
+  }
+
+  @Test("Empty text: an unsegmented language stays empty, a spaced one gets one space")
+  func emptyTextFollowsTheLanguage() {
+    #expect(
+      CursorInsertionRepair.repair(
+        text: "", context: nil, protectedWords: [], language: "ja",
+        oracle: Self.prototypeOracle
+      ).legacyText == "")
+    #expect(
+      CursorInsertionRepair.repair(
+        text: "", context: nil, protectedWords: [], language: "en",
+        oracle: Self.prototypeOracle
+      ).legacyText == " ")
+    // contextualPayload's empty-text arm, reached with a readable caret.
+    let ctx = CursorInsertionRepair.CaretText(left: "前の文。", right: "")
+    #expect(
+      CursorInsertionRepair.repair(
+        text: "", context: ctx, protectedWords: [], language: "ja",
+        oracle: Self.prototypeOracle
+      ).repairedText == "")
+    #expect(
+      CursorInsertionRepair.repair(
+        text: "", context: CursorInsertionRepair.CaretText(left: "Before. ", right: ""),
+        protectedWords: [], language: "en", oracle: Self.prototypeOracle
+      ).repairedText == " ")
   }
 }

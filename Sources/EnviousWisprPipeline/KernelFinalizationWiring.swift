@@ -1442,7 +1442,8 @@ struct KernelFinalizationWiring {
           // #2258: deliberately plain, never URL-bar-aware — see
           // `CursorInsertionRepair.legacyPayload`'s own doc comment for why.
           return (
-            CursorInsertionRepair.legacyOnly(text: text, reason: .repairDeadlineMissed),
+            CursorInsertionRepair.legacyOnly(
+              text: text, reason: .repairDeadlineMissed, language: resolution.language),
             resolution
           )
         }
@@ -1526,10 +1527,33 @@ struct KernelFinalizationWiring {
         // `.oracleTimedOut` here is what made three causal theories
         // indistinguishable in the field.
         reason: casingSnapshot?.phase == .repairAfterOracle
-          ? .oracleTimedOut : .repairDeadlineMissed)
+          ? .oracleTimedOut : .repairDeadlineMissed,
+        language: deadlineFallbackLanguage(
+          frozen: casingSnapshot, lockedLanguageCode: lockedLanguageCode,
+          engineDetectsLanguage: engineDetectsLanguage,
+          engineReportedLanguage: engineReportedLanguage))
     let resolution = deadlineResult?.1 ?? casingSnapshot?.resolution
     return InsertionRepair(
       payloads: payloads, resolution: resolution, casingSnapshot: casingSnapshot, gate: gate)
+  }
+
+  /// #3876: the language for the payload delivered when the repair deadline fires, so a
+  /// Japanese, Chinese or Thai take gets no trailing space on this path either. No
+  /// recognition runs here; the deadline has already passed.
+  /// - A resolution the gate froze wins, INCLUDING its nil language: the resolver abstained,
+  ///   and nil keeps the spaced payload.
+  /// - Otherwise a non-empty locked language, then a non-empty engine language only when the
+  ///   engine detects languages (Parakeet stamps "en" on every take); otherwise nil.
+  static func deadlineFallbackLanguage(
+    frozen: LanguageRepairDeadlineGate.Snapshot?, lockedLanguageCode: String?,
+    engineDetectsLanguage: Bool, engineReportedLanguage: String?
+  ) -> String? {
+    if let resolution = frozen?.resolution { return resolution.language }
+    if let locked = lockedLanguageCode, !locked.isEmpty { return locked }
+    if engineDetectsLanguage, let reported = engineReportedLanguage, !reported.isEmpty {
+      return reported
+    }
+    return nil
   }
 
   /// What `retryDeliveryTarget` found: the adopted field (nil when nothing usable was recovered),
