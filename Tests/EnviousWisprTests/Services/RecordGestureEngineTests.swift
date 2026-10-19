@@ -1041,6 +1041,94 @@ struct RecordGestureEngineTests {
     #expect(rig.engine.snapshot.isHeld)
   }
 
+  // MARK: - Session ended outside the engine (#3877)
+
+  /// Main's half, as `HotkeyService.setRecordingActive` runs it: refuse the retired attempt.
+  @discardableResult
+  private static func sessionEnded(_ rig: Rig) -> UInt64? {
+    let retired = rig.engine.setRecordingActive(false)
+    if let retired { rig.engine.reset(attempt: retired) }
+    return retired
+  }
+
+  /// Lock by double tap: press, quick release, second press.
+  private static func doubleTapLock(_ rig: Rig, from t: TimeInterval) {
+    _ = Self.listener(rig, true, t)
+    _ = Self.listener(rig, false, t + 0.1)
+    _ = Self.listener(rig, true, t + 0.25)
+  }
+
+  @Test("after a locked take ends from the menu, one press starts the next take")
+  func lockedTakeEndedElsewhereFreesTheNextPress() {
+    let rig = Rig()
+    rig.engine.openListenerAdmission(installation: 7)
+    _ = Self.listener(rig, true, 0)
+    rig.engine.setRecordingActive(true)  // this take's session is running
+    _ = Self.listener(rig, false, 0.1)
+    _ = Self.listener(rig, true, 0.25)
+    _ = Self.listener(rig, false, 0.35)
+    #expect(rig.engine.snapshot.isLocked)
+    #expect(Self.sessionEnded(rig) != nil)  // menu Stop, the cap, an unplug or VAD auto-stop
+    #expect(!rig.engine.snapshot.isLocked)
+    _ = Self.listener(rig, true, 5)
+    rig.engine.drainForTesting()
+    #expect(rig.sink.validNames.last == "start", "\(rig.sink.validNames)")
+    #expect(!rig.sink.validNames.contains("stopLocked"))
+  }
+
+  @Test("an earlier take's ending never unlocks a newer take, even after repeated active reports")
+  func staleEndingKeepsANewerLock() {
+    let rig = Rig()
+    rig.engine.openListenerAdmission(installation: 7)
+    _ = Self.listener(rig, true, 0)
+    rig.engine.setRecordingActive(true)
+    _ = Self.listener(rig, false, 2)  // a hold stop; take A's session is still ending
+    Self.doubleTapLock(rig, from: 3)  // take B starts fresh and locks
+    rig.engine.setRecordingActive(true)  // a repeated report for A's session
+    #expect(rig.engine.snapshot.isLocked)
+    #expect(Self.sessionEnded(rig) == nil, "A's ending retired B")
+    #expect(rig.engine.snapshot.isLocked, "A's ending wiped B's lock")
+  }
+
+  @Test("a lock made on a press that joined a running session ends with that session")
+  func joinedLockEndsWithItsSession() {
+    let rig = Rig()
+    rig.engine.openListenerAdmission(installation: 7)
+    rig.engine.setRecordingActive(true)  // a recording started from the menu is running
+    Self.doubleTapLock(rig, from: 0)
+    #expect(rig.engine.snapshot.isLocked)
+    #expect(Self.sessionEnded(rig) != nil)
+    #expect(!rig.engine.snapshot.isLocked)
+  }
+
+  @Test("a hold locked while held, then ended elsewhere: the release only clears the hold")
+  func heldLockEndedElsewhereReleasesCleanly() {
+    let rig = Rig()
+    rig.engine.openListenerAdmission(installation: 7)
+    _ = Self.listener(rig, true, 0)
+    rig.engine.setRecordingActive(true)
+    #expect(Self.lockHeld(rig, at: 0.3))
+    #expect(Self.sessionEnded(rig) != nil)
+    #expect(!rig.engine.snapshot.isLocked)
+    #expect(rig.engine.snapshot.isHeld, "the key is still down")
+    #expect(Self.listener(rig, false, 1) == nil, "the held key's release was refused")
+    #expect(!rig.engine.snapshot.isHeld)
+    _ = Self.listener(rig, true, 3)
+    rig.engine.drainForTesting()
+    #expect(rig.sink.validNames.last == "start", "\(rig.sink.validNames)")
+    #expect(!rig.sink.validNames.contains("holdStop"), "the release stopped a take")
+  }
+
+  @Test("an unlocked take's ending retires nothing")
+  func unlockedEndingRetiresNothing() {
+    let rig = Rig()
+    rig.engine.openListenerAdmission(installation: 7)
+    _ = Self.listener(rig, true, 0)
+    rig.engine.setRecordingActive(true)
+    #expect(Self.sessionEnded(rig) == nil)
+    #expect(rig.engine.snapshot.isHeld)
+  }
+
   // MARK: - Lock while held (#3517)
 
   private static func lockHeld(

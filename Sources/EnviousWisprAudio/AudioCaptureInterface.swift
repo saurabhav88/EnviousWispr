@@ -225,6 +225,10 @@ public protocol AudioCaptureInterface: AnyObject {
   func retireCapturingSource(sessionID: UInt64) -> ZeroSignalRetireResult
   func preWarm() async throws
   func abortPreWarm()
+  /// #3878: this session's take ended before capture started (a refused or failed start), so
+  /// apply the Keep engine warm policy to any prepared or warm source now, as if a recording had
+  /// just stopped. A no-op while capturing or with no source. Never throws or suspends.
+  func releaseUnstartedCapture()
   func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async -> Bool
 
   // VAD (Step 5)

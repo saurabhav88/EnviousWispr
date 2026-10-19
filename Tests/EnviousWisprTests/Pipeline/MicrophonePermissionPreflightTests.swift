@@ -42,6 +42,8 @@ struct MicrophonePermissionPreflightTests {
     #expect(
       capture.startEnginePhaseCallCount == 0,
       "a denied-mic take must never reach the capture engine at all")
+    // #3878: the refused take still hands any prepared source back to the idle policy.
+    #expect(capture.releaseUnstartedCaptureCallCount == 1)
   }
 
   @Test("granted mic is unaffected — defaulted behavior is byte-identical to before #2549")
@@ -56,5 +58,6 @@ struct MicrophonePermissionPreflightTests {
 
     #expect(capture.startEnginePhaseCallCount == 1)
     #expect(wrapper.testKernel.recordingOutcome == .completed)
+    #expect(capture.releaseUnstartedCaptureCallCount == 0, "a captured take releases by stopping")
   }
 }

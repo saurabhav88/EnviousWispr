@@ -702,8 +702,11 @@ public final class HotkeyService {
   /// Whether the pipeline is running a session now (`PipelineState.isActive`), reported on every
   /// lifecycle transition (#3544 P4). A record press made while one runs joins it, so other-key
   /// interference never ends it and the press keeps its stop and lock.
+  ///
+  /// #3877: an ending the engine did not decide retires that session's locked attempt; main
+  /// refuses it, so a late result for it cannot repopulate acceptance (#1631).
   public func setRecordingActive(_ active: Bool) {
-    engine.setRecordingActive(active)
+    if let retired = engine.setRecordingActive(active) { refuseAttempt(retired) }
   }
 
   /// The start running now found a session already running and joined it (#3544 P4), although its

@@ -300,6 +300,66 @@ struct KeyboardListenerIntegrationTests {
     #expect(ptt.stops == 0)
   }
 
+  /// #3877: a locked take ended by the menu, the cap, an unplug or VAD auto-stop. Before the fix
+  /// the next press was read as "stop the locked take" and did nothing.
+  @Test("after a locked take ends outside the key, one press starts the next take")
+  func lockedTakeEndedElsewhereThenOnePressStarts() async {
+    let ptt = PTT()
+    defer { ptt.service.stop() }
+    ptt.at(0)
+    await ptt.keys.press(ModifierKeyCodes.rightOption, at: 500)
+    await ptt.service.awaitInFlightStartForTesting()
+    ptt.service.setRecordingActive(true)
+    ptt.at(0.1)
+    await ptt.keys.release(ModifierKeyCodes.rightOption, at: 500.1)
+    ptt.at(0.25)
+    await ptt.keys.press(ModifierKeyCodes.rightOption, at: 500.25)
+    ptt.at(0.35)
+    await ptt.keys.release(ModifierKeyCodes.rightOption, at: 500.35)
+    await ListenerKeyboard.mainTurn()
+    #expect(ptt.service.isRecordingLocked)
+    ptt.service.setRecordingActive(false)  // menu Stop Recording
+    #expect(!ptt.service.isRecordingLocked)
+    ptt.at(5)
+    await ptt.keys.press(ModifierKeyCodes.rightOption, at: 505)
+    await ptt.service.awaitInFlightStartForTesting()
+    #expect(ptt.starts == 2, "the first press after the ending did not start a take")
+    #expect(ptt.stops == 0)
+  }
+
+  /// The older take's ending arrives after a newer take started and locked: the newer take keeps
+  /// its lock, and its next press still stops it.
+  @Test("an earlier take's ending leaves a newer locked take and its stop alone")
+  func staleEndingSparesTheExecutingTake() async {
+    let ptt = PTT()
+    defer { ptt.service.stop() }
+    ptt.at(0)
+    await ptt.keys.press(ModifierKeyCodes.rightOption, at: 500)
+    await ptt.service.awaitInFlightStartForTesting()
+    ptt.service.setRecordingActive(true)
+    ptt.at(2)
+    await ptt.keys.release(ModifierKeyCodes.rightOption, at: 502)  // a hold stop
+    await ListenerKeyboard.mainTurn()
+    #expect(ptt.stops == 1)
+    ptt.at(3)
+    await ptt.keys.press(ModifierKeyCodes.rightOption, at: 503)
+    await ptt.service.awaitInFlightStartForTesting()
+    ptt.at(3.1)
+    await ptt.keys.release(ModifierKeyCodes.rightOption, at: 503.1)
+    ptt.at(3.25)
+    await ptt.keys.press(ModifierKeyCodes.rightOption, at: 503.25)
+    ptt.at(3.35)
+    await ptt.keys.release(ModifierKeyCodes.rightOption, at: 503.35)
+    await ListenerKeyboard.mainTurn()
+    #expect(ptt.starts == 2 && ptt.service.isRecordingLocked)
+    ptt.service.setRecordingActive(false)  // the first take's session ends now
+    #expect(ptt.service.isRecordingLocked, "the old ending unlocked the newer take")
+    ptt.at(6)
+    await ptt.keys.press(ModifierKeyCodes.rightOption, at: 506)
+    await ListenerKeyboard.mainTurn()
+    #expect(ptt.stops == 2, "the newer locked take lost its stop")
+  }
+
   /// Run `work` on a worker while main blocks on that worker's own completion (bounded), so main
   /// runs nothing in between.
   private static func onWorkerWhileMainWaits(_ work: @escaping @Sendable () -> Void) {

@@ -554,6 +554,7 @@ struct HeartPathTelemetryWiringTests {
     func retireCapturingSource(sessionID: UInt64) -> ZeroSignalRetireResult { .sourceNotRunning }
     func preWarm() async throws {}
     func abortPreWarm() {}
+    func releaseUnstartedCapture() {}
     func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async
       -> Bool
     { true }
@@ -604,6 +605,7 @@ private final class NoOpAudioCapture: AudioCaptureInterface {
   func retireCapturingSource(sessionID: UInt64) -> ZeroSignalRetireResult { .sourceNotRunning }
   func preWarm() async throws {}
   func abortPreWarm() {}
+  func releaseUnstartedCapture() {}
   func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async -> Bool {
     true
   }

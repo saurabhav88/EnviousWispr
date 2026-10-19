@@ -328,6 +328,12 @@ final class FakeAudioCapture: AudioCaptureInterface {
     abortPreWarmCallCount += 1
   }
 
+  /// #3878: counted so a kernel test can see a pre-capture terminal release the prepared source.
+  private(set) var releaseUnstartedCaptureCallCount = 0
+  func releaseUnstartedCapture() {
+    releaseUnstartedCaptureCallCount += 1
+  }
+
   func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async
     -> Bool
   {

@@ -601,6 +601,7 @@ internal final class FixtureAudioCapture: AudioCaptureInterface {
     isCapturing = false
     isActivelyCapturing = false
   }
+  func releaseUnstartedCapture() {}
 
   func waitForFormatStabilization(
     maxWait: TimeInterval,

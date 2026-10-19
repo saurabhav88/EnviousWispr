@@ -211,6 +211,7 @@ private final class NeverFinishingAudioCapture: AudioCaptureInterface {
     isCapturing = false
     isActivelyCapturing = false
   }
+  func releaseUnstartedCapture() {}
   func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async -> Bool {
     true
   }

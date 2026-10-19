@@ -1081,6 +1081,13 @@ public final class AudioCaptureManager: AudioCaptureInterface {
       activeSource = nil
     }
 
+    /// Test seams (#3878): the warm-engine state `releaseUnstartedCapture()` changes, and a
+    /// completion signal for the teardown's asynchronous `source.stop()`.
+    var hasActiveSourceForTesting: Bool { activeSource != nil }
+    var hasPendingWarmTeardownForTesting: Bool { warmEngineTeardownTask != nil }
+    var isIdleTrackedForTesting: Bool { idleSince != nil }
+    func awaitEngineStopForTesting() async { await engineStopTask?.value }
+
     /// Test seam (#1579): arm the recovery spool directly. `startRecoverySpooling`
     /// is private and only reachable through `beginCapturePhase`, which needs a
     /// real device format a stub cannot provide — the same constraint that forced
@@ -1159,6 +1166,13 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
   public func abortPreWarm() {
     activeSource?.abortPrepare()
+  }
+
+  /// #3878: `resolveSource()` cancelled the idle timer when this take began preparing; a take
+  /// that ends before capture must re-apply the policy, or the source stays open indefinitely.
+  public func releaseUnstartedCapture() {
+    guard !isCapturing, activeSource != nil else { return }
+    scheduleWarmEngineTeardown()
   }
 
   public func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async

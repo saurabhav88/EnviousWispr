@@ -4664,7 +4664,13 @@ final class RecordingSessionKernel {
       // The `stopping` forward path already owns the stop; it flips
       // `resourcesReleased` true when its `stopCapture()` returns.
       resourcesReleased = false
-    case .notStarted, .stopped:
+    case .notStarted:
+      // #3878: the take ended before capture started, but preparing it cancelled the idle
+      // timer; apply the Keep engine warm policy so the prepared source does not stay open.
+      audioCapture.releaseUnstartedCapture()
+      log("unstarted capture released")
+      resourcesReleased = true
+    case .stopped:
       resourcesReleased = true
     }
     log("terminal \(terminal)")

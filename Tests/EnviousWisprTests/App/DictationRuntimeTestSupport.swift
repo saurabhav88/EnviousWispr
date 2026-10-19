@@ -60,6 +60,7 @@ final class RouterTestAudioCapture: AudioCaptureInterface {
     if let preWarmError { throw preWarmError }
   }
   func abortPreWarm() { abortPreWarmCallCount += 1 }
+  func releaseUnstartedCapture() {}
   func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async -> Bool {
     true
   }

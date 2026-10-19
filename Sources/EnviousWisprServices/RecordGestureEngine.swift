@@ -273,6 +273,12 @@ package final class RecordGestureEngine: Sendable {
     /// not a join, even if the pipeline has not reported the session over yet. Cleared when it
     /// does, or consumed by that next `.start`.
     var endingRequested = false
+    /// The attempt whose session the pipeline has reported active (#3877): stamped on the
+    /// inactive-to-active edge, or moved to a `.start` that joins the running session. Its
+    /// inactive edge ends that attempt's hands-free lock, so an ending the engine did not decide
+    /// (menu Stop, the cap, a mic unplug, VAD auto-stop) cannot leave the next press read as
+    /// "stop the locked take". Cleared on every inactive edge.
+    var activatedAttempt: UInt64?
     /// Bumped on every ACTUAL change of record binding, mode or any role's binding, and by the
     /// unconditional `reset()`. Distinct from `HotkeyService`'s installation counter.
     var listenerConfigurationGeneration: UInt64 = 0
@@ -392,11 +398,38 @@ package final class RecordGestureEngine: Sendable {
   }
 
   /// Whether a session is running now (#3544 P4): a fresh record press made while one is joins it.
-  package func setRecordingActive(_ active: Bool) {
-    state.withLock { s in
-      s.recordingActive = active
-      if !active { s.endingRequested = false }
+  ///
+  /// #3877: when the session ends, a hands-free lock made for THAT session ends with it, and the
+  /// retired attempt is returned so main can refuse it (`HotkeyService.refuseAttempt`), which
+  /// fences its queued batches and drains. An inactive edge for an earlier session never touches a
+  /// lock made for a newer attempt: that attempt is not `activatedAttempt`.
+  @MainActor
+  @discardableResult
+  package func setRecordingActive(_ active: Bool) -> UInt64? {
+    let (retired, work) = state.withLock { s -> (UInt64?, TimerWork) in
+      var work = TimerWork()
+      defer { s.recordingActive = active }
+      if active {
+        if !s.recordingActive {
+          let attempt = s.gesture.attemptID
+          s.activatedAttempt = s.gesture.isLiveAttempt(attempt) ? attempt : nil
+        }
+        return (nil, work)
+      }
+      s.endingRequested = false
+      let activated = s.activatedAttempt
+      s.activatedAttempt = nil
+      guard let activated, s.gesture.isLocked, s.gesture.isLiveAttempt(activated) else {
+        return (nil, work)
+      }
+      s.gesture.cleanup()
+      Self.cancelTimer(&s, into: &work)
+      // A held key's release still follows its press (`lockHeld`); otherwise nothing is owned.
+      if !s.gesture.isHeld { s.owned = nil }
+      return (activated, work)
     }
+    perform(work)
+    return retired
   }
 
   /// Start admitting listener input from `installation`. Every earlier installation's input is
@@ -806,6 +839,8 @@ package final class RecordGestureEngine: Sendable {
       let decision = s.gesture.classifyPress(input, binding: s.binding, mode: s.mode)
       if case .start = decision {
         s.joinedAttempt = Self.startWouldJoin(s) ? s.gesture.attemptID : nil
+        // #3877: a joining start takes over the running session's attribution.
+        if s.joinedAttempt != nil { s.activatedAttempt = s.gesture.attemptID }
         s.endingRequested = false
       }
       let joinsRecording = s.joinedAttempt == s.gesture.attemptID
