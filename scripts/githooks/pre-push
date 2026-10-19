@@ -1027,6 +1027,10 @@ for i in range(100):
         "import Testing\n" + "// padding for the oracle size floor\n" * 30
         + f"@Suite struct Filler{i}Tests {{\n{cases}}}\n")
 PY
+  # The recipe condition applies only to a change touching core-path source (CORE_PATHS in
+  # check-test-recipe.py), so each judged commit here carries one core-file edit.
+  core_edit() { mkdir -p "$repo/Sources/EnviousWisprAudio"; echo "// $1" >> "$repo/Sources/EnviousWisprAudio/Probe.swift"; }
+  core_edit corpus
   git -C "$repo" add -A
   git -C "$repo" commit --quiet --trailer "Recipe: resource-control FillerTests" -m "test corpus"
   rpush origin main; rc=$?
@@ -1034,7 +1038,7 @@ PY
   base_main="$(git -C "$repo" rev-parse main)"
 
   git -C "$repo" checkout --quiet -b rec
-  add_test_lines New.swift 101
+  add_test_lines New.swift 101; core_edit rec
   git -C "$repo" add -A; git -C "$repo" commit --quiet -m "tests"
   rpush origin rec; rc=$?
   check "R2 over the floor with no trailer blocks and prints the repair command" \
@@ -1128,8 +1132,10 @@ PY
 
   git -C "$repo" checkout --quiet rec
   FAKE_GH_FAIL=1 rpush origin rec:rec5; rc=$?
+  # Two warnings: the recipe check's, and the String Catalog check's COULD NOT RUN, which the
+  # core_edit under Sources/ wakes (this fixture has no Dev build).
   check "R14 the checker's own could-not-run (exit 3) warns and allows" \
-    "$rc|$(grep -c 'recipe-check::could not run' "$tmp/push.out")|$(grep -c 'OK with 1 warning' "$tmp/push.out")" "0|1|1"
+    "$rc|$(grep -c 'recipe-check::could not run' "$tmp/push.out")|$(grep -c 'catalog: COULD NOT RUN' "$tmp/push.out")|$(grep -c 'OK with 2 warning' "$tmp/push.out")" "0|1|1|1"
 
   git -C "$repo" checkout --quiet -b odd main
   printf '%s\n' '#!/usr/bin/env python3' '# "--trailers"' 'import sys' 'sys.exit(7)' > "$repo/scripts/ci/check-test-recipe.py"

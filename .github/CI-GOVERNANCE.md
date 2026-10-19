@@ -38,7 +38,8 @@ requires exactly one status check:
   - `worker-tests`: the worker unit suites
   - `website-check`: the website build and help checks when `scripts/ci/classify-changes.sh`
     requires website validation
-  - `recipe-check`: #2868, when the PR adds more than 100 lines under `Tests/`, the newest
+  - `recipe-check`: #2868, when the PR adds more than 100 lines under `Tests/` AND touches
+    core-path source (`CORE_PATHS` in the script: audio, ASR and pipeline folders), the newest
     first-parent commit in the PR's `base..head` range carrying a `Recipe:` trailer decides
     and must carry exactly one valid value (`scripts/ci/check-test-recipe.py --trailers`;
     the PR template lists the shapes)

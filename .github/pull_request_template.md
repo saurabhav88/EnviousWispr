@@ -6,7 +6,8 @@
 
 -
 
-<!-- Recipe: when this PR adds more than 100 lines under Tests/, a COMMIT on the branch must carry a
+<!-- Recipe: when this PR adds more than 100 lines under Tests/ AND touches core-path source (audio,
+     ASR, pipeline: CORE_PATHS in scripts/ci/check-test-recipe.py), a COMMIT on the branch must carry a
      `Recipe:` trailer (#3524); recipe-check and the pre-push hook read the commits, not this body.
      The newest first-parent commit in the PR's base..head range that carries one decides, and it
      must carry exactly one valid value:

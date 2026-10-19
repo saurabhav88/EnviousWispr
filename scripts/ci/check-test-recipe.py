@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
-"""A change that adds more than a floor of test lines must name how those tests are bound (#2868).
+"""A core-path change that adds more than a floor of test lines must name how those tests are bound (#2868).
 
 testing-philosophy.md RULE: write-the-test-by-day-run-the-battery-by-night states the ship
 condition: a test ships with a `test-hardening` issue carrying its recipe, or with one of the two
 substitutes the same rule names. Measured 2026-09-13: 8 of the 18 PRs merged since 2026-09-10 with
 more than 100 added lines under `Tests/` carried none of the three. Nothing checked.
+
+Scope (founder 2026-10-19): the condition applies only when the change also touches a CORE_PATHS
+source folder, the dictation heart (audio capture, transcription, the pipeline that finalizes and
+pastes). Across the overnight batteries since 2026-09 the recipes found one distinct product bug
+(#3647), so tests for features outside the heart ship without a recipe.
 
 Usage (the `recipe-check` job in pr-check.yml, and the pre-push hook, #3524):
     check-test-recipe.py --trailers --base <sha> --head <sha> [--repo <dir>] [--checkout <dir>]
@@ -31,7 +36,8 @@ The value takes one of three shapes:
 --repo is where history and GitHub questions run (git log, git diff, gh); --checkout is the tree
 whose files the validator reads. They differ in the hook, where the tree is a throwaway snapshot.
 
-Exit codes: 0 the range satisfies the condition (or is under the floor); 1 it does not, with the
+Exit codes: 0 the range satisfies the condition (or is under the floor, or touches no core path);
+1 it does not, with the
 reason printed; 3 the check could not run (a gh or git failure), which is not a verdict.
 """
 
@@ -52,6 +58,16 @@ import traceback
 # bounded wait, a renamed helper or a settle fix (#2857, #2860) ships without ceremony, and the
 # rule's daytime route for a small bug-fix test is the parent-red proof the reviewer reads.
 FLOOR = 100
+# The heart (architecture-rules.md FACT: heart-and-limbs): trigger, audio capture, ASR, text
+# finalization and paste. Pipeline also holds limbs (polish, file import); it stays whole because
+# the kernel and paste live there and a narrower list would need a file inventory to maintain.
+CORE_PATHS = (
+    "Sources/EnviousWisprAudio/",
+    "Sources/EnviousWisprASR/",
+    "Sources/EnviousWisprFluidAudioBridge/",
+    "Sources/EnviousWisprTranscribeCpp/",
+    "Sources/EnviousWisprPipeline/",
+)
 LABEL = "test-hardening"
 ISSUE_SHAPE = re.compile(r"^#(\d+)$")
 DECLARED_SHAPE = re.compile(r"^(parent-red|resource-control)\s+(\S.*)$")
@@ -102,6 +118,18 @@ def added_test_lines(repo, base, head):
         if parts[0].isdigit():
             total += int(parts[0])
     return total
+
+
+def core_paths_touched(repo, base, head):
+    """Files under CORE_PATHS that base...head changes, three-dot like the count.
+
+    A diff that cannot resolve raises: an empty answer would exempt the change with nothing
+    measured. A deleted or renamed core file counts; removing heart code is a core change.
+    """
+    rc, out = run(["git", "diff", "--name-only", "-M", f"{base}...{head}", "--", *CORE_PATHS], cwd=repo)
+    if rc != 0:
+        raise Infrastructure(f"git diff --name-only {base}...{head} failed (rc={rc}): {out.strip()[:300]}")
+    return [line for line in out.splitlines() if line]
 
 
 def recipe_trailers(repo, base, head):
@@ -166,8 +194,13 @@ def check(repo, checkout, base, head, *, labels=issue_labels, validate=validate_
     added = added_test_lines(repo, base, head)
     if added <= FLOOR:
         return 0, f"ok: {added} lines added under Tests/, at or under the {FLOOR}-line floor; no Recipe trailer required"
+    core = core_paths_touched(repo, base, head)
+    if not core:
+        return 0, (f"ok: {added} lines added under Tests/, but the change touches no core-path source "
+                   f"({', '.join(CORE_PATHS)}); no Recipe trailer required")
 
-    need = (f"{added} lines added under Tests/ is over the {FLOOR}-line floor, so a commit in "
+    need = (f"{added} lines added under Tests/ is over the {FLOOR}-line floor and the change touches "
+            f"core-path source ({core[0]}{' and others' if len(core) > 1 else ''}), so a commit in "
             f"{base[:12]}..{head[:12]} must carry a `Recipe:` trailer in one of these shapes:\n  "
             + "\n  ".join(SHAPES) + "\n" + REPAIR)
     found = recipe_trailers(repo, base, head)
@@ -228,7 +261,10 @@ def _sha(repo, rev="HEAD"):
     return subprocess.check_output(["git", "rev-parse", rev], cwd=repo, text=True, env=_GIT_ENV).strip()
 
 
-def _repo_with_test_lines(scratch, lines, path="Tests/Probe/Probe.swift", message=("tests",)):
+_CORE_FILE = "Sources/EnviousWisprAudio/Probe.swift"
+
+
+def _repo_with_test_lines(scratch, lines, path="Tests/Probe/Probe.swift", message=("tests",), core=True):
     repo = pathlib.Path(tempfile.mkdtemp(prefix="recipe-check-", dir=scratch))
     _git(repo, "init", "-q", "-b", "main")
     _git(repo, "commit", "-q", "--allow-empty", "-m", "base")
@@ -236,6 +272,9 @@ def _repo_with_test_lines(scratch, lines, path="Tests/Probe/Probe.swift", messag
     target = repo / path
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("".join(f"// line {i}\n" for i in range(lines)))
+    if core:
+        (repo / _CORE_FILE).parent.mkdir(parents=True, exist_ok=True)
+        (repo / _CORE_FILE).write_text("// a core-path change\n")
     _git(repo, "add", "-A")
     args = []
     for paragraph in message:
@@ -351,6 +390,31 @@ def _self_test(scratch):
     expect("over the floor, no trailer: fails with the repair command",
            (code, "no commit in the range" in msg, 'git commit --allow-empty --trailer "Recipe: #N"' in msg),
            (1, True, True))
+
+    # Scope: over the floor with no core-path source change needs nothing; a limb folder whose name
+    # shares a core prefix is not core; a core file deletion is core.
+    repo, base, head = _repo_with_test_lines(scratch, FLOOR + 1, core=False)
+    code, msg = run_check(repo, base, head)
+    expect("over the floor, no core-path source: no trailer needed", (code, "touches no core-path" in msg), (0, True))
+    limb = repo / "Sources" / "EnviousWisprAudioTools" / "Limb.swift"
+    limb.parent.mkdir(parents=True)
+    limb.write_text("// limb\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "limb")
+    code, msg = run_check(repo, base, _sha(repo))
+    expect("a folder sharing a core prefix is not core", (code, "touches no core-path" in msg), (0, True))
+    repo, base, head = _repo_with_test_lines(scratch, 0)
+    _git(repo, "rm", "-q", _CORE_FILE)
+    (repo / "Tests" / "Probe" / "More.swift").write_text("".join(f"// more {i}\n" for i in range(FLOOR + 1)))
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "delete core, add tests")
+    code, msg = run_check(repo, head, _sha(repo))
+    expect("deleting a core file is a core change", (code, "no commit in the range" in msg, _CORE_FILE in msg), (1, True, True))
+    try:
+        core_paths_touched(repo, "0" * 40, head)
+        expect("an unresolvable core diff raises", "returned", "raised")
+    except Infrastructure:
+        expect("an unresolvable core diff raises", "raised", "raised")
 
     # 3. Body-only text is prose, not a trailer.
     repo, base, head = _repo_with_test_lines(
