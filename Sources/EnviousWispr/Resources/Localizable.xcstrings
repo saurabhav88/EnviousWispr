@@ -23449,6 +23449,114 @@
         }
       }
     },
+    "whatsNew.launch-crash-fix.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry launch-crash-fix).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fixed a Crash at Launch"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Absturz beim Start behoben"
+          }
+        }
+      }
+    },
+    "whatsNew.launch-crash-fix.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry launch-crash-fix).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fixed a crash at launch for some people using EnviousWispr in German."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Absturz beim Start wurde behoben. Er trat bei einigen auf, die EnviousWispr auf Deutsch nutzen."
+          }
+        }
+      }
+    },
+    "whatsNew.smoother-quitting.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry smoother-quitting).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Smoother Quitting"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reibungsloseres Beenden"
+          }
+        }
+      }
+    },
+    "whatsNew.smoother-quitting.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry smoother-quitting).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "More reliable quitting after using Whisper or Universal Live Preview, and less memory in use."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zuverlässigeres Beenden nach der Nutzung von Whisper oder der Universal-Live-Vorschau und geringerer Speicherverbrauch."
+          }
+        }
+      }
+    },
+    "whatsNew.pills-fit-long-messages.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry pills-fit-long-messages).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pills Fit Long Messages"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lange Texte passen in Hinweise"
+          }
+        }
+      }
+    },
+    "whatsNew.pills-fit-long-messages.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry pills-fit-long-messages).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Long pill messages now wrap across more lines."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lange Texte in Hinweisen werden jetzt auf mehr Zeilen verteilt."
+          }
+        }
+      }
+    },
     "whatsNew.parakeet-ultra.title" : {
       "comment" : "Settings > What's New: the title of one feature announcement (entry parakeet-ultra).",
       "extractionState" : "manual",

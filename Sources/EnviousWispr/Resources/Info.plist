@@ -17,9 +17,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>2.5.4</string>
+	<string>2.5.5</string>
 	<key>CFBundleVersion</key>
-	<string>2.5.4</string>
+	<string>2.5.5</string>
 	<key>LSArchitecturePriority</key>
 	<array>
 		<string>arm64</string>
@@ -44,17 +44,17 @@
 	<string>EnviousWispr uses on-device speech recognition to show your words in the recording pill while you speak. This preview stays on your Mac and is never the text that gets pasted.</string>
 	<key>PostHogAPIKey</key>
 	<string>$(POSTHOG_API_KEY)</string>
-	<key>SentryDSN</key>
-	<string>$(SENTRY_DSN)</string>
+	<key>SUAutomaticallyUpdate</key>
+	<false/>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
 	<key>SUFeedURL</key>
 	<string>$(SU_FEED_URL)</string>
 	<key>SUPublicEDKey</key>
 	<string>jHq1RIQKDmtO64qtCdZ6jNdHNFrfyScE16yuu+ufvDw=</string>
-	<key>SUEnableAutomaticChecks</key>
-	<true/>
 	<key>SUScheduledCheckInterval</key>
 	<integer>3600</integer>
-	<key>SUAutomaticallyUpdate</key>
-	<false/>
+	<key>SentryDSN</key>
+	<string>$(SENTRY_DSN)</string>
 </dict>
 </plist>

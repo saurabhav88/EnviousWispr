@@ -54,6 +54,42 @@ enum WhatsNewContent {
   }
 
   static let entries: [Entry] = [
+    // MARK: - v2.5.5
+
+    // Draft group, 2026-10-19; the founder asked for super brief notes. Facts behind the claims:
+    // - Launch crash: #3850 / #3867 (f0eb1852). The pill's hosting view resized its own window on
+    //   every layout; German pill text made the loop raise NSGenericException (ENVIOUSWISPR-7F,
+    //   18 users, all DE/AT/BE, v2.5.4).
+    // - Quit: #3849 / #3914 fixes the Metal destructor assertion at quit after Whisper or Universal
+    //   Live Preview loaded; switching away from Whisper frees its model. Memory: #3941 unloads the
+    //   polish output classifier when nothing needs it (Codex claim check 2026-10-19: a crash on
+    //   engine SWITCH is not established, so the entry names quitting only).
+    // - Pills: #3912 / #3916 message pills wrap at one width; #3921 buttons stay on one line.
+    Entry(
+      id: "launch-crash-fix",
+      icon: "checkmark.shield",
+      title: "Fixed a Crash at Launch",
+      description:
+        "Fixed a crash at launch for some people using EnviousWispr in German.",
+      version: "2.5.5"
+    ),
+    Entry(
+      id: "smoother-quitting",
+      icon: "memorychip",
+      title: "Smoother Quitting",
+      description:
+        "More reliable quitting after using Whisper or Universal Live Preview, and less memory in use.",
+      version: "2.5.5"
+    ),
+    Entry(
+      id: "pills-fit-long-messages",
+      icon: "text.bubble",
+      title: "Pills Fit Long Messages",
+      description:
+        "Long pill messages now wrap across more lines.",
+      version: "2.5.5"
+    ),
+
     // MARK: - v2.5.4
 
     // Founder-approved group, 2026-10-16 (Claude Doc "EnviousWispr 2.5.4 Release Notes", Version 1).

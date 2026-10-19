@@ -134,6 +134,9 @@ On our own benchmark of 1,890 real dictation-cleanup cases, EG-1 passed 93.7%, a
 
 EnviousWispr ships often. A few of the user-facing improvements from recent releases:
 
+- **Fixed a Crash at Launch.** Fixed a crash at launch for some people using EnviousWispr in German. (v2.5.5)
+- **Smoother Quitting.** More reliable quitting after using Whisper or Universal Live Preview, and less memory in use. (v2.5.5)
+- **Pills Fit Long Messages.** Long pill messages now wrap across more lines. (v2.5.5)
 - **Improved Dictation Engine: Parakeet Ultra.** In our tests across 24 languages, Parakeet Ultra made about 19% fewer word errors than the old Parakeet, at the same speed. It downloads and switches over on its own. (v2.5.4)
 - **Improved Whisper Engine.** Whisper now runs on a new engine built for Apple Silicon. In our tests it made about 13% fewer errors, transcribed long recordings more than twice as fast, and stayed steady through a full day of dictation. (v2.5.4)
 - **Introducing "Hold plus Space".** In Push to Talk with a modifier key such as Right Option, hold it and press Space to go hands-free. (v2.5.4)

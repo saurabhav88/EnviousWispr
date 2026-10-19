@@ -1,0 +1,5 @@
+# One exact on-screen string per line, longer than 15 bytes, that only exists if a new
+# feature in this release reached the Release build. release.yml fails the build if one is
+# missing (scripts/ci/check-release-probes.sh). Lines starting with # are ignored.
+# #3861, PR #3913 (cd4608d5): renamed clipboard switch, DictationSettingsCopy.swift; absent from v2.5.4.
+Hide dictations from clipboard manager apps
