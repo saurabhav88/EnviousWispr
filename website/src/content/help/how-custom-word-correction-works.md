@@ -6,7 +6,7 @@ section: "Dictionary"
 order: 2
 keywords: ["how correction works", "why didnt my word work", "fuzzy match", "sounds like", "replacement rules", "custom word still wrong", "word not being caught", "sound-alike", "my word keeps coming out wrong"]
 related: ["adding-custom-words", "using-snippets"]
-updated: 2026-09-29
+updated: 2026-10-19
 deflection: "can_resolve"
 ---
 When you add a custom word, you give EnviousWispr one correct spelling. It then recognises the many ways that word can come out wrong and corrects them for you.
@@ -28,6 +28,8 @@ If nothing is corrected at all, check that **Enable Dictionary** is on at the to
 Mistakes on an unfamiliar word fall into three groups, and custom word correction handles all three.
 
 - **Split apart.** A single word that arrived in pieces is put back together. Both "Chat G P T" and "Chat GPT" become "ChatGPT".
+
+  Pieces are only joined when nothing but a space separates them. A full stop or comma you dictated between two words keeps them apart, so "still open. AI agents" stays as you said it. Pieces that include a small everyday word such as "a", "in" or "the" are not joined on their own either, so "she is a PI" stays as you said it. If your word really is spoken that way, add the split version as a mishearing.
 - **Sounds right, spelled wrong.** A word the engine heard correctly but wrote as it sounds is corrected to your spelling. "Cue Bernetes" becomes "Kubernetes".
 - **Close but not exact.** Small spelling slips from the speech engine are fixed. "Kubernettes" becomes "Kubernetes".
 

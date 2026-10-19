@@ -58,6 +58,50 @@ public struct WordCorrector: Sendable {
     return false
   }
 
+  /// #3893: whether a multi-token span crosses dictated punctuation ("open. AI", "open, AI").
+  /// Only whitespace may separate the tokens a multi-token pass joins or replaces: the first
+  /// token may carry leading decoration and the last trailing decoration, and nothing else may.
+  /// Uses the same edge decomposition the passes use to rebuild the span (`splitPunctuation`),
+  /// so the punctuation it refuses is exactly the punctuation a replacement would delete.
+  static func sliceCrossesPunctuation(_ slice: ArraySlice<String>) -> Bool {
+    guard slice.count > 1 else { return false }
+    for (offset, token) in slice.enumerated() {
+      let (prefix, _, suffix) = splitPunctuationStatic(token)
+      if offset > 0, !prefix.isEmpty { return true }
+      if offset < slice.count - 1, !suffix.isEmpty { return true }
+    }
+    return false
+  }
+
+  /// #3893: whether a multi-token span contains a stopword ("a PI" must not become "API").
+  /// Pass 0 only: it joins tokens with no alias saying the user ever spoke them apart, so an
+  /// ordinary small word there is far more likely English than a split brand. A saved split
+  /// alias ("A P I", "open A I") still matches through Pass 1's exact aliases.
+  ///
+  /// A one-letter stopword next to another single letter is a spelled letter, not a word:
+  /// "open a i" spells OpenAI, while "a PI" is the article "a".
+  static func sliceContainsStopword(_ slice: ArraySlice<String>) -> Bool {
+    guard slice.count > 1 else { return false }
+    let cores = slice.map { splitPunctuationStatic($0).core.lowercased() }
+    return cores.indices.contains { index in
+      guard stopwords.contains(cores[index]) else { return false }
+      guard cores[index].count == 1 else { return true }
+      let spelledNeighbour =
+        (index > 0 && cores[index - 1].count == 1)
+        || (index + 1 < cores.count && cores[index + 1].count == 1)
+      return !spelledNeighbour
+    }
+  }
+
+  /// The Pass 0 refusal: a stopword-bearing span may only become `canonical` when it already
+  /// says the canonical's own words, so "bank of america" still becomes "Bank of America" (a
+  /// casing fix) while "a PI" never becomes "API" (a join).
+  static func joinsThroughStopword(_ slice: ArraySlice<String>, canonical: String) -> Bool {
+    guard sliceContainsStopword(slice) else { return false }
+    let words = slice.map { splitPunctuationStatic($0).core.lowercased() }
+    return words != canonical.lowercased().split(separator: " ").map(String.init)
+  }
+
   /// Static mirror of the instance-private `stripPunctuation` used inside the
   /// reserved-word check. Stays minimal: strips leading/trailing punctuation
   /// runs only (matches the instance method's contract for our purpose).
@@ -424,6 +468,11 @@ public struct WordCorrector: Sendable {
 
     let slice = tokens[...]
     guard !sliceContainsReservedTriggerWord(slice) else { return false }
+    // #3893: Pass 0's boundary and stopword refusals, so a claim it can never consume is not
+    // reported as intercepting.
+    guard !sliceCrossesPunctuation(slice),
+      !joinsThroughStopword(slice, canonical: owner.canonical)
+    else { return false }
 
     let stripped = slice.map { stripPunctuationStatic($0) }
     let ngram = stripped.map { $0.lowercased() }.joined()
@@ -817,6 +866,17 @@ public struct WordCorrector: Sendable {
 
           // Length ratio check: ngram must be within 25% of candidate length
           if let canonical = nospaceCanonicalMap[ngram] {
+            // #3893: never join across dictated punctuation or through a stopword.
+            if Self.sliceCrossesPunctuation(slice)
+              || Self.joinsThroughStopword(slice, canonical: canonical)
+            {
+              #if DEBUG
+                Self.logger.debug(
+                  "WordCorrector: REJECT pass=ngram-compound target='\(canonical)' n=\(n) reason=boundary_or_stopword"
+                )
+              #endif
+              continue
+            }
             let canonicalNospace = canonical.replacingOccurrences(of: " ", with: "")
             // Check it's not already correct
             let rawConcat = slice.map { stripPunctuation($0) }.joined()
@@ -900,6 +960,10 @@ public struct WordCorrector: Sendable {
 
           // #341 Pass 1 reserved-word guard (same rationale as Pass 0).
           if Self.sliceContainsReservedTriggerWord(slice) {
+            continue
+          }
+          // #3893: an alias never matches across dictated punctuation.
+          if Self.sliceCrossesPunctuation(slice) {
             continue
           }
 
@@ -1014,6 +1078,10 @@ public struct WordCorrector: Sendable {
 
             // #341 Pass 2 reserved-word guard (same rationale as Pass 0/1).
             if Self.sliceContainsReservedTriggerWord(slice) {
+              continue
+            }
+            // #3893: same boundary rule as Pass 1.
+            if Self.sliceCrossesPunctuation(slice) {
               continue
             }
 
@@ -2332,6 +2400,12 @@ public struct WordCorrector: Sendable {
   }
 
   private func splitPunctuation(_ token: String) -> (prefix: String, core: String, suffix: String) {
+    Self.splitPunctuationStatic(token)
+  }
+
+  static func splitPunctuationStatic(_ token: String) -> (
+    prefix: String, core: String, suffix: String
+  ) {
     var prefix = ""
     var core = token
     var suffix = ""

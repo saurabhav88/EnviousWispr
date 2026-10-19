@@ -155,6 +155,34 @@ struct BuiltinDictionaryCorrectionTests {
     #expect(corrected("I asked claude") == "I asked Claude")
   }
 
+  /// #3893: the shipped dictionary must never join words across a full stop or comma, or
+  /// glue an ordinary small word into a brand. When this fails the user sees two sentences
+  /// merged into "OpenAI", or "a PI" turned into "API".
+  @Test(
+    "the shipped dictionary never joins across punctuation or through a small word",
+    arguments: [
+      "The question is still open. AI agents can help",
+      "It is still open, AI is not done",
+      "She's a PI on the grant",
+    ])
+  func neverJoinsAcrossABoundary(_ sentence: String) {
+    #expect(corrected(sentence) == sentence)
+  }
+
+  /// The split brand forms users really say still join, through their saved aliases.
+  @Test(
+    "split brand forms still join",
+    arguments: [
+      ("Chat G P T is fast", "ChatGPT is fast"),
+      ("Open A I shipped", "OpenAI shipped"),
+      ("open A I", "OpenAI"),
+      ("A P I", "API"),
+      ("in vious wispr", "EnviousWispr"),
+    ])
+  func splitBrandFormsStillJoin(_ heard: String, _ expected: String) {
+    #expect(corrected(heard) == expected)
+  }
+
   @Test("no other shipped word is check-only")
   func onlyClaudeIsCheckOnly() {
     #expect(shipped.filter(\.hasCheckerAliases).map(\.canonical) == ["Claude"])

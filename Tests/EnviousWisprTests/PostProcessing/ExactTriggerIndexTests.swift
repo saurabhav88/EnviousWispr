@@ -157,6 +157,12 @@ struct ExactTriggerIndexTests {
     // Reserved trigger words are skipped wholesale.
     #expect(intercepts("oneemoji", "one emoji", "Elsewhere") == false)
 
+    // #3893: Pass 0 never joins across punctuation or through a stopword, so neither does
+    // the claim check.
+    #expect(intercepts("openai", "open. AI", "OpenAI") == false)
+    #expect(intercepts("api", "a PI", "API") == false)
+    #expect(intercepts("openai", "open AI", "OpenAI"), "a bare space still joins")
+
     // The ordinary namespaces have no such gate: holding is intercepting.
     #expect(
       WordCorrector.ownerIntercepts(
