@@ -24,6 +24,9 @@ public enum OutputClassifierAttemptOutcome: Sendable, Equatable {
   case succeeded
   case failedFirstTime(reason: OutputClassifierDisabledReason)
   case failedRetryable(errorCategory: String)
+  /// #3853: `release()` ran while this load was in flight, so its result (classifier or error)
+  /// was dropped and the holder stays as the release left it.
+  case discardedAfterRelease
 }
 
 /// Reference holder so the async-prewarmed classifier becomes visible to the
@@ -46,6 +49,13 @@ public final class OutputClassifierHolder {
   }
 
   private var state: LoadState
+  /// #3853: bumped by `release()`. A load compares it after its `await` and drops its result when
+  /// it moved, so a classifier nobody needs any more is never published.
+  private var generation: UInt64 = 0
+
+  /// #3853: read synchronously when a load is REQUESTED and passed back as `requestedAt`, so a
+  /// request still queued when `release()` runs is refused rather than loading for no consumer.
+  public var releaseGeneration: UInt64 { generation }
 
   /// Read-only view for the one existing consumer (`LLMPolishStep`);
   /// non-nil only in `.ready`. Preserves the exact pre-existing read contract.
@@ -67,28 +77,59 @@ public final class OutputClassifierHolder {
   /// `CancellationError` and any other unmapped error reset to `.notStarted`
   /// so a later trigger may retry — neither is evidence the classifier itself
   /// is broken.
+  /// `requestedAt`: `releaseGeneration` when the caller decided to load; a release since then
+  /// returns `.discardedAfterRelease` without loading (#3853). Nil skips that check.
   public func beginLoadIfNeeded(
+    requestedAt: UInt64? = nil,
     loader: @Sendable () async throws -> OutputClassifierProtocol
   ) async -> OutputClassifierAttemptOutcome {
+    if let requestedAt, requestedAt != generation { return .discardedAfterRelease }
     switch state {
     case .ready: return .skippedAlreadyReady
     case .loading: return .skippedLoadInProgress
     case .disabled(let reason): return .skippedPermanentlyDisabled(reason: reason)
     case .notStarted: state = .loading
     }
+    let generationAtStart = generation
     do {
       let classifier = try await loader()
+      guard generation == generationAtStart else { return .discardedAfterRelease }
       state = .ready(classifier)
       return .succeeded
     } catch let error as OutputClassifierError {
+      guard generation == generationAtStart else { return .discardedAfterRelease }
       state = .disabled(error.reason)
       return .failedFirstTime(reason: error.reason)
     } catch is CancellationError {
+      guard generation == generationAtStart else { return .discardedAfterRelease }
       state = .notStarted
       return .failedRetryable(errorCategory: "cancelled")
     } catch {
+      guard generation == generationAtStart else { return .discardedAfterRelease }
       state = .notStarted
       return .failedRetryable(errorCategory: "unknown_load_error")
+    }
+  }
+
+  /// #3853: drops the classifier when no consumer needs it, so its `MLModel` frees by ARC once
+  /// any polish already holding it returns. A load in flight is abandoned: the state returns to
+  /// `.notStarted` NOW (a renewed demand starts a fresh load instead of waiting on the abandoned
+  /// one) and the generation bump makes the abandoned load drop whatever it completes with.
+  /// `.disabled` stays: release is not evidence the classifier was fixed. The generation moves
+  /// in `.notStarted` too, so a load requested but not yet started is refused.
+  /// Returns whether anything was released, for the caller's log line.
+  @discardableResult
+  public func release() -> Bool {
+    switch state {
+    case .ready, .loading:
+      generation &+= 1
+      state = .notStarted
+      return true
+    case .notStarted:
+      generation &+= 1
+      return false
+    case .disabled:
+      return false
     }
   }
 }

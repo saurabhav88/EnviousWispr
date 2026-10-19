@@ -82,6 +82,14 @@ final class PipelineSettingsSync {
   /// #2648 — the Ollama model a RUNNING file import froze, or nil.
   private let importPinnedOllamaModel: @MainActor () -> String?
 
+  /// #3853 — see the initializer parameters of the same names.
+  private let outputClassifierHolder: OutputClassifierHolder?
+  private let loadOutputClassifier: @MainActor () -> Void
+  private let importPinnedPolishProvider: @MainActor () -> LLMProvider?
+  /// #3853: crash-recovery replays in progress whose recording froze a provider that uses the
+  /// output classifier, counted from `outputClassifierRecoveryStarted` to `…Finished`.
+  private var recoveriesNeedingOutputClassifier = 0
+
   init(
     kernelDriver: KernelDictationDriver,
     whisperKernelDriver: KernelDictationDriver,
@@ -111,8 +119,20 @@ final class PipelineSettingsSync {
     /// weights the remaining passages were about to use, and each one then paid
     /// a reload it could exceed its polish deadline waiting for. Found by Codex.
     /// Defaults to nil so every existing construction is unchanged.
-    importPinnedOllamaModel: @escaping @MainActor () -> String? = { nil }
+    importPinnedOllamaModel: @escaping @MainActor () -> String? = { nil },
+    /// #3853 — the output classifier's holder, released when no consumer needs it. Nil leaves
+    /// the classifier out of this reconciliation (tests that do not care).
+    outputClassifierHolder: OutputClassifierHolder? = nil,
+    /// #3853 — starts the classifier load (idempotent; the composition root's prewarm, which
+    /// owns the load's telemetry).
+    loadOutputClassifier: @escaping @MainActor () -> Void = {},
+    /// #3853 — the polish provider a file import froze, while that import holds the engine
+    /// (which outlasts Stop until its work exits), or nil.
+    importPinnedPolishProvider: @escaping @MainActor () -> LLMProvider? = { nil }
   ) {
+    self.outputClassifierHolder = outputClassifierHolder
+    self.loadOutputClassifier = loadOutputClassifier
+    self.importPinnedPolishProvider = importPinnedPolishProvider
     self.importPinnedLocalProvider = importPinnedLocalProvider
     self.importPinnedOllamaModel = importPinnedOllamaModel
     self.kernelDriver = kernelDriver
@@ -257,6 +277,7 @@ final class PipelineSettingsSync {
       reconcileOllamaEviction(settings: settings)
       // #1271: EG-1 server follows the provider selection live.
       reconcileEGOneActivation(settings: settings)
+      reconcileOutputClassifierDemand(settings: settings, reason: "provider_switch")
     case .llmModel:
       if Self.shouldMirrorLLMModelToOllama(
         provider: settings.llmProvider, llmModel: settings.llmModel)
@@ -287,6 +308,9 @@ final class PipelineSettingsSync {
       reconcileOllamaEviction(settings: settings)
       reconcileEGOneActivation(settings: settings)
       onWordCheckInputsChanged()
+      if key == .fileImportLLMProvider {
+        reconcileOutputClassifierDemand(settings: settings, reason: "provider_switch")
+      }
     case .hotkeyEnabled:
       if settings.hotkeyEnabled { hotkeyService.start() } else { hotkeyService.stop() }
     case .cancelKeyCode:
@@ -774,6 +798,69 @@ final class PipelineSettingsSync {
       }
     }
     return false
+  }
+
+  // MARK: - Output classifier demand (#3853)
+
+  /// Whether a polish through `provider` reads the output classifier. Only Apple Intelligence
+  /// does (`LLMPolishStep.makePolisher`).
+  static func providerUsesOutputClassifier(_ provider: LLMProvider) -> Bool {
+    provider == .appleIntelligence
+  }
+
+  /// Every consumer of the shared classifier: dictation's selection, Transcribe a File's
+  /// effective selection, and work already in flight by its FROZEN provider (the two dictation
+  /// drivers' session configs, a running import, crash-recovery replays). A provider switch
+  /// changes the settings but not a take that already started, so that take keeps its classifier.
+  func outputClassifierIsNeeded(settings: SettingsManager) -> Bool {
+    if recoveriesNeedingOutputClassifier > 0 { return true }
+    let inFlight = [kernelDriver.currentSessionConfig, whisperKernelDriver.currentSessionConfig]
+      .compactMap { $0?.llmProvider }
+    let providers =
+      [settings.llmProvider, settings.effectiveFileImportLLMProvider] + inFlight
+      + [importPinnedPolishProvider()].compactMap { $0 }
+    return providers.contains(where: Self.providerUsesOutputClassifier)
+  }
+
+  /// Loads the classifier while any consumer needs it and releases it once none does. Called on
+  /// a polish-provider change, at launch and when a recovery replay starts; the release half is
+  /// retried when in-flight work ends (`retryDeferredOutputClassifierRelease`).
+  func reconcileOutputClassifierDemand(settings: SettingsManager, reason: String) {
+    guard outputClassifierHolder != nil else { return }
+    if outputClassifierIsNeeded(settings: settings) {
+      loadOutputClassifier()
+      return
+    }
+    releaseOutputClassifier(reason: reason)
+  }
+
+  /// Release only, never load: called on every dictation terminal, import release and replay
+  /// end, where a load request would re-count an already-disabled classifier on every take.
+  func retryDeferredOutputClassifierRelease(settings: SettingsManager) {
+    guard !outputClassifierIsNeeded(settings: settings) else { return }
+    releaseOutputClassifier(reason: "work_finished")
+  }
+
+  /// A recovery replay is about to polish with the provider its recording froze.
+  func outputClassifierRecoveryStarted(provider: LLMProvider, settings: SettingsManager) {
+    guard Self.providerUsesOutputClassifier(provider) else { return }
+    recoveriesNeedingOutputClassifier += 1
+    reconcileOutputClassifierDemand(settings: settings, reason: "recovery_started")
+  }
+
+  /// The replay that called `outputClassifierRecoveryStarted` with the same provider has ended.
+  func outputClassifierRecoveryFinished(provider: LLMProvider, settings: SettingsManager) {
+    guard Self.providerUsesOutputClassifier(provider) else { return }
+    recoveriesNeedingOutputClassifier = max(0, recoveriesNeedingOutputClassifier - 1)
+    retryDeferredOutputClassifierRelease(settings: settings)
+  }
+
+  private func releaseOutputClassifier(reason: String) {
+    guard outputClassifierHolder?.release() == true else { return }
+    Task {
+      await AppLogger.shared.log(
+        "output classifier released reason=\(reason)", level: .info, category: "LLM")
+    }
   }
 
   /// Re-register Carbon hotkeys after a config change.

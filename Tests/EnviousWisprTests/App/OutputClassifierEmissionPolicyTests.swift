@@ -6,7 +6,7 @@ import Testing
 
 /// #1452: `OutputClassifierEmissionPolicy.forOutcome` is the actual
 /// alert-dedup contract — the outcome→emission decision `WisprBootstrapper`
-/// executes. Exhaustively covers all 6 `OutputClassifierAttemptOutcome` cases
+/// executes. Exhaustively covers all 7 `OutputClassifierAttemptOutcome` cases
 /// so a wrong `switch` arm (e.g. alerting on a suppressed repeat) fails here
 /// instead of only being discoverable by reading the switch statement.
 @Suite("OutputClassifierEmissionPolicy.forOutcome")
@@ -24,6 +24,15 @@ struct OutputClassifierEmissionPolicyTests {
   @Test("skippedLoadInProgress: no log, no PostHog, no Sentry, no real load")
   func skippedLoadInProgress() {
     let plan = OutputClassifierEmissionPolicy.forOutcome(.skippedLoadInProgress)
+    #expect(plan.logMessage == nil)
+    #expect(plan.postHogErrorCategory == nil)
+    #expect(plan.sentryReason == nil)
+    #expect(plan.attemptedRealLoad == false)
+  }
+
+  @Test("discardedAfterRelease (#3853): no log, no PostHog, no Sentry")
+  func discardedAfterRelease() {
+    let plan = OutputClassifierEmissionPolicy.forOutcome(.discardedAfterRelease)
     #expect(plan.logMessage == nil)
     #expect(plan.postHogErrorCategory == nil)
     #expect(plan.sentryReason == nil)

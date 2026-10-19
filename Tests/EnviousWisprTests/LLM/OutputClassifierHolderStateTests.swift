@@ -205,4 +205,131 @@ struct OutputClassifierHolderStateTests {
     }
     #expect(outcome == .failedFirstTime(reason: reason))
   }
+
+  // MARK: - Release (#3853)
+
+  @Test("release from ready drops the classifier, and a later load loads it again")
+  func releaseFromReadyThenReload() async throws {
+    let holder = OutputClassifierHolder()
+    let spy = CallSpy()
+    _ = await holder.beginLoadIfNeeded {
+      await spy.recordCall()
+      return StubClassifier()
+    }
+    #expect(holder.classifier != nil)
+
+    #expect(holder.release() == true)
+    #expect(holder.classifier == nil)
+
+    let reload = await holder.beginLoadIfNeeded {
+      await spy.recordCall()
+      return StubClassifier()
+    }
+    #expect(reload == .succeeded)
+    #expect(holder.classifier != nil)
+    #expect(await spy.count == 2)
+  }
+
+  @Test("release while a load is in flight discards that load's classifier")
+  func releaseDuringLoadDiscardsSuccess() async throws {
+    let holder = OutputClassifierHolder()
+    let gate = ReleaseGate()
+    let started = AsyncStream.makeStream(of: Void.self)
+    let loadTask = Task { @MainActor in
+      await holder.beginLoadIfNeeded {
+        started.continuation.yield(())
+        started.continuation.finish()
+        await gate.wait()
+        return StubClassifier()
+      }
+    }
+    var iterator = started.stream.makeAsyncIterator()
+    _ = await iterator.next()
+
+    #expect(holder.release() == true)
+    await gate.release()
+    #expect(await loadTask.value == .discardedAfterRelease)
+    #expect(holder.classifier == nil)
+
+    // Not left in `.loading`: a renewed demand loads.
+    let reload = await holder.beginLoadIfNeeded { StubClassifier() }
+    #expect(reload == .succeeded)
+  }
+
+  @Test("a released load's typed error does not disable the holder")
+  func releaseDuringLoadDiscardsError() async throws {
+    let holder = OutputClassifierHolder()
+    let gate = ReleaseGate()
+    let started = AsyncStream.makeStream(of: Void.self)
+    let loadTask = Task { @MainActor in
+      await holder.beginLoadIfNeeded {
+        started.continuation.yield(())
+        started.continuation.finish()
+        await gate.wait()
+        throw OutputClassifierError.disabled(.modelLoadFailed)
+      }
+    }
+    var iterator = started.stream.makeAsyncIterator()
+    _ = await iterator.next()
+
+    holder.release()
+    await gate.release()
+    #expect(await loadTask.value == .discardedAfterRelease)
+    #expect(await holder.beginLoadIfNeeded { StubClassifier() } == .succeeded)
+  }
+
+  @Test("a load started after a release is not overwritten by the abandoned one")
+  func abandonedLoadDoesNotOverwriteNewLoad() async throws {
+    let holder = OutputClassifierHolder()
+    let gate = ReleaseGate()
+    let started = AsyncStream.makeStream(of: Void.self)
+    let abandoned = Task { @MainActor in
+      await holder.beginLoadIfNeeded {
+        started.continuation.yield(())
+        started.continuation.finish()
+        await gate.wait()
+        throw CancellationError()
+      }
+    }
+    var iterator = started.stream.makeAsyncIterator()
+    _ = await iterator.next()
+
+    holder.release()
+    #expect(await holder.beginLoadIfNeeded { StubClassifier() } == .succeeded)
+    await gate.release()
+    #expect(await abandoned.value == .discardedAfterRelease)
+    #expect(holder.classifier != nil)
+  }
+
+  @Test("release leaves a disabled holder disabled and is a no-op when nothing is loaded")
+  func releaseLeavesDisabledAndNotStarted() async throws {
+    let idle = OutputClassifierHolder()
+    #expect(idle.release() == false)
+
+    let disabled = OutputClassifierHolder()
+    _ = await disabled.beginLoadIfNeeded { throw OutputClassifierError.disabled(.missingFile) }
+    #expect(disabled.release() == false)
+    let again = await disabled.beginLoadIfNeeded { StubClassifier() }
+    #expect(again == .skippedPermanentlyDisabled(reason: .missingFile))
+  }
+
+  @Test("a load requested before a release, but not yet started, is refused")
+  func queuedRequestRefusedAfterRelease() async throws {
+    let spy = CallSpy()
+    let idle = OutputClassifierHolder()
+    let requestedAt = idle.releaseGeneration
+    idle.release()
+    let refused = await idle.beginLoadIfNeeded(requestedAt: requestedAt) {
+      await spy.recordCall()
+      return StubClassifier()
+    }
+    #expect(refused == .discardedAfterRelease)
+    #expect(idle.classifier == nil)
+    #expect(await spy.count == 0)
+
+    let fresh = await idle.beginLoadIfNeeded(requestedAt: idle.releaseGeneration) {
+      StubClassifier()
+    }
+    #expect(fresh == .succeeded)
+  }
 }

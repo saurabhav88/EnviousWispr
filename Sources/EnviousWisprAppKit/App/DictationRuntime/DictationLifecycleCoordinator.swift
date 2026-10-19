@@ -407,6 +407,7 @@ final class DictationLifecycleCoordinator {
       // frozen session pinned the old model.
       settingsSync.retryDeferredOllamaEviction(settings: settings)
       settingsSync.retryDeferredEGOneDeactivation(settings: settings)
+      settingsSync.retryDeferredOutputClassifierRelease(settings: settings)
     // #1171 — a switch deferred while this recording was active is applied by
     // the EngineCoordinator via `onEngineRelevantStateChange()` (fired above).
     // #1063 PR2: the recovery-spool cleanup is NO LONGER keyed off this
@@ -474,6 +475,7 @@ final class DictationLifecycleCoordinator {
       recordingLockedAccess.set(false)
       settingsSync.retryDeferredOllamaEviction(settings: settings)
       settingsSync.retryDeferredEGOneDeactivation(settings: settings)
+      settingsSync.retryDeferredOutputClassifierRelease(settings: settings)
     // #1171 — a deferred switch is applied by the EngineCoordinator via
     // `onEngineRelevantStateChange()` (fired above).
     // #1063 PR2: recovery-spool cleanup is driven by the kernel terminal signal

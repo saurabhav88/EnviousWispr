@@ -291,6 +291,8 @@ package final class WisprBootstrapper {
     // both constructed long before the import coordinator exists, and both have
     // to be able to see a running import.
     weak var fileImportCoordinatorForGates: FileImportCoordinator?
+    // #3853: same pattern; the import's frozen polish provider lives on the runner.
+    weak var fileImportRunnerForGates: FileImportRunner?
     // GitHub cloud review, PR #1732: captured by `isDictationActive` below,
     // assigned once `engineCoordinator` exists. (#3546 A3: declared here, ahead of the
     // Diagnostics speed test, which also reads its switch gate.) A record
@@ -838,7 +840,16 @@ package final class WisprBootstrapper {
       },
       ollamaRemotenessLookup: ollamaRemoteness,
       importPinnedLocalProvider: { fileImportCoordinatorForGates?.pinnedLocalPolishProvider },
-      importPinnedOllamaModel: { fileImportCoordinatorForGates?.pinnedOllamaModel }
+      importPinnedOllamaModel: { fileImportCoordinatorForGates?.pinnedOllamaModel },
+      outputClassifierHolder: outputClassifierHolder,
+      loadOutputClassifier: { [outputClassifierHolder] in
+        WisprBootstrapper.prewarmOutputClassifier(holder: outputClassifierHolder)
+      },
+      // #3853: the same held-engine-plus-frozen-provider read the word check uses (#3289).
+      importPinnedPolishProvider: {
+        guard fileImportCoordinatorForGates?.isEngineHeld == true else { return nil }
+        return fileImportRunnerForGates?.frozenLLMProvider
+      }
     )
     settingsSync.applyInitialSettings(settings)
     // #3242: the word check for polish engines without their own. Held by the eligibility
@@ -1144,7 +1155,7 @@ package final class WisprBootstrapper {
 
     settings.onChange = {
       [
-        weak settingsSync, weak settings, weak settingsChangeTelemetry, outputClassifierHolder,
+        weak settingsSync, weak settings, weak settingsChangeTelemetry,
         bluetoothAwarenessPresenterHolder, weak egOneCoordinator = egOneUpgrade?.coordinator,
         weak learnFromEdits, weak appWindowCoordinator, polishSetupMonitorHolder,
         menuBarControllerHolder
@@ -1177,13 +1188,8 @@ package final class WisprBootstrapper {
       if key == .appearance {
         AppearanceController.apply(settings.appearancePreference)
       }
-      // #832/#913 PR8: if the user switches polish to Apple Intelligence after
-      // launch, prewarm the classifier then (idempotent — no-op if loaded).
-      // Captures the holder (not self — self isn't fully initialized here).
-      if key == .llmProvider {
-        WisprBootstrapper.prewarmOutputClassifierIfNeeded(
-          holder: outputClassifierHolder, provider: settings.llmProvider)
-      }
+      // #832/#913 PR8, #3853: a polish-provider change loads or releases the output classifier
+      // inside `settingsSync.handleSettingChanged` above (`reconcileOutputClassifierDemand`).
       // #2096: EG-1's automatic model upgrade stands aside while first-run setup runs, so the
       // heart's model download owns the bandwidth. `runLaunch` fires once at bootstrap, so
       // without this the deferral would mean "never until relaunch" rather than "later".
@@ -1333,13 +1339,16 @@ package final class WisprBootstrapper {
       },
       // #3289: start loading the word check behind the recovered recording's transcription when
       // its frozen polish engine uses it (the model is no longer loaded at launch).
-      onReplayWillTranscribe: { [weak checkerEligibility] provider in
+      // #3853: and the output classifier counts the replay as a consumer, by the same provider.
+      onReplayWillTranscribe: { [weak checkerEligibility, weak settingsSync, settings] provider in
         checkerEligibility?.wordCheck?.recoveryStarted(
           needsWordCheck: LearnedWordCheckerEngine(provider: provider) == nil)
+        settingsSync?.outputClassifierRecoveryStarted(provider: provider, settings: settings)
       },
-      onReplayFinished: { [weak checkerEligibility] provider in
+      onReplayFinished: { [weak checkerEligibility, weak settingsSync, settings] provider in
         checkerEligibility?.wordCheck?.recoveryFinished(
           needsWordCheck: LearnedWordCheckerEngine(provider: provider) == nil)
+        settingsSync?.outputClassifierRecoveryFinished(provider: provider, settings: settings)
       },
       // Best-effort: the snapshot carries only the custom-words version, so recovery
       // applies the user's CURRENT words (pack terms omitted) — normal-quality, not
@@ -1924,6 +1933,7 @@ package final class WisprBootstrapper {
       checkerSelectionProvider: { [checkerEligibility] provider, language in
         await checkerEligibility.selection(provider: provider, language: language)
       })
+    fileImportRunnerForGates = fileImportRunner
     // #2648: the health probe asks the lease, not the settings sync, because
     // the question is "is the ONE inference slot occupied" and every workload
     // that can occupy it takes this claim. `isBusy` had no production reader
@@ -2100,6 +2110,7 @@ package final class WisprBootstrapper {
         fileImportRunner.releaseCheckerSelections()
         engineCoordinator?.poke(.driverStateChanged)
         settingsSync.retryDeferredOllamaEviction(settings: settings)
+        settingsSync.retryDeferredOutputClassifierRelease(settings: settings)
         Task { @MainActor in
           await releaseHold?.value
           // #2772: FORCED. An import that started its own bundled polisher armed no
@@ -2503,16 +2514,16 @@ package final class WisprBootstrapper {
     HelpCheckWiring.install(on: FeedbackSubmission.shared, settings: settings)
 
     // #832/#913 PR8: prewarm the output-safety classifier off the heart path.
-    // Gated on Apple Intelligence (the only provider it scores); a later switch
-    // to Apple Intelligence re-triggers via `settings.onChange` above. Never
-    // blocks launch, recording, ASR, or paste.
-    Self.prewarmOutputClassifierIfNeeded(
-      holder: outputClassifierHolder, provider: settings.llmProvider)
+    // #3853: only while a consumer needs it (dictation's or Transcribe a File's provider is
+    // Apple Intelligence); later provider changes load or release it through the same owner.
+    // Never blocks launch, recording, ASR, or paste.
+    settingsSync.reconcileOutputClassifierDemand(settings: settings, reason: "launch")
   }
 
   /// Load the on-device output-safety classifier in the background and publish
-  /// it into `holder`. Idempotent (no-op if already loaded) and gated on Apple
-  /// Intelligence polish. Every failure fails open (the polish path keeps
+  /// it into `holder`. Idempotent (no-op if already loaded); whether it is needed is
+  /// `PipelineSettingsSync.reconcileOutputClassifierDemand`'s call (#3853). Every failure
+  /// fails open (the polish path keeps
   /// #996: Debug builds mirror the learn events into app.log for Live UAT;
   /// Release emits to the vendors only.
   private static func learnFromEditsTelemetrySink() -> any LearnFromEditsRuntimeTelemetrySink {
@@ -2523,16 +2534,15 @@ package final class WisprBootstrapper {
     #endif
   }
 
-  /// working without the extra safety net). Static so the `settings.onChange`
+  /// working without the extra safety net). Static so the settings sync's load
   /// closure can call it without capturing a not-yet-initialized `self`.
   /// #832/#913 PR8.
-  private static func prewarmOutputClassifierIfNeeded(
-    holder: OutputClassifierHolder, provider: LLMProvider
-  ) {
-    guard provider == .appleIntelligence else { return }
+  private static func prewarmOutputClassifier(holder: OutputClassifierHolder) {
+    // #3853: stamped now, not when the task runs, so a release in between refuses this load.
+    let requestedAt = holder.releaseGeneration
     Task {
       let start = DispatchTime.now()
-      let outcome = await holder.beginLoadIfNeeded {
+      let outcome = await holder.beginLoadIfNeeded(requestedAt: requestedAt) {
         guard let resourceURL = Bundle.main.resourceURL else {
           throw OutputClassifierError.disabled(.missingFile)
         }
@@ -2941,7 +2951,7 @@ private struct ActionWirer: View {
 
 /// Pure mapping from a classifier-load outcome to what `WisprBootstrapper`
 /// should log, count, and alert. Colocated with the sole caller
-/// (`prewarmOutputClassifierIfNeeded`); stateless and dependency-free (no
+/// (`prewarmOutputClassifier`); stateless and dependency-free (no
 /// `TelemetryService`/`SentryBreadcrumb` import) so the outcome→emission
 /// decision — the actual alert-dedup contract — is independently unit-testable
 /// without touching Sentry or PostHog. #1452.
@@ -2958,7 +2968,8 @@ struct OutputClassifierEmissionPolicy: Equatable {
 
   static func forOutcome(_ outcome: OutputClassifierAttemptOutcome) -> Self {
     switch outcome {
-    case .skippedAlreadyReady, .skippedLoadInProgress:
+    case .skippedAlreadyReady, .skippedLoadInProgress, .discardedAfterRelease:
+      // #3853: a load abandoned by `release()` is the demand going away, not a failure.
       return .init(
         logMessage: nil, postHogErrorCategory: nil, sentryReason: nil, attemptedRealLoad: false)
     case .succeeded:
