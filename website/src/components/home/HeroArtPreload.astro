@@ -2,18 +2,38 @@
 // Preload the hero background (#2816 follow-up): it is the homepage's largest
 // paint, but as a CSS background the browser cannot request it until the
 // stylesheet has been fetched and parsed. These links let it start with the
-// HTML. The media attributes mirror hero.css so only one file is fetched;
-// a stored theme override (rare) preloads the system-theme variant instead.
+// HTML. The media attributes mirror hero.css so only one file is fetched.
+// The theme comes from data-theme, which ThemedLayout's head script stamps
+// before this slot runs, so a stored or ?theme= override preloads the variant
+// hero.css will paint (#3926). Without JavaScript there is no override, and the
+// noscript links follow the system theme the way hero.css does.
 import { heroArt, variantMedia } from '../../utils/home/hero-art.js';
 const art = await heroArt();
-const links = [];
+const choices = {};
 for (const [theme, set] of Object.entries(art)) {
-  set.forEach((image, index) => {
-    for (const media of variantMedia[index]) {
-      links.push({ href: image.src, media: `${media} and (prefers-color-scheme: ${theme})` });
-    }
-  });
+  choices[theme] = set.flatMap((image, index) =>
+    variantMedia[index].map((media) => ({ href: image.src, media })),
+  );
 }
+const systemLinks = Object.entries(choices).flatMap(([theme, links]) =>
+  links.map((link) => ({ href: link.href, media: `${link.media} and (prefers-color-scheme: ${theme})` })),
+);
 ---
 
-{links.map((link) => <link rel="preload" as="image" href={link.href} media={link.media} fetchpriority="high" />)}
+<script is:inline define:vars={{ choices }}>
+  const root = document.documentElement;
+  const theme =
+    root.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  for (const { href, media } of choices[theme] || []) {
+    const link = document.createElement('link');
+    link.rel = 'preload';
+    link.as = 'image';
+    link.media = media;
+    link.fetchPriority = 'high';
+    link.href = href;
+    document.head.appendChild(link);
+  }
+</script>
+<noscript>
+  {systemLinks.map((link) => <link rel="preload" as="image" href={link.href} media={link.media} fetchpriority="high" />)}
+</noscript>
