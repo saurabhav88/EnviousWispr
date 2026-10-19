@@ -24,6 +24,55 @@ import Testing
       func named(_ n: String) -> [CapturedTelemetryEvent] { all.filter { $0.name == n } }
     }
 
+    // MARK: #3881 microphone row state
+
+    @Test("#3881: a live denial wins over the cached grant and marks the row denied")
+    func micLiveDenialWinsOverCachedGrant() {
+      let vm = OnboardingV2ViewModel()
+      let granted = vm.syncMicrophone(isDenied: true, isAuthorized: true, emitGrant: true)
+      #expect(granted == false)
+      #expect(vm.micGranted == false)
+      #expect(vm.micDenied == true)
+    }
+
+    @Test("#3881: never asked is neither granted nor denied (the row offers Grant)")
+    func micNotDeterminedIsNeither() {
+      let vm = OnboardingV2ViewModel()
+      vm.syncMicrophone(isDenied: false, isAuthorized: false, emitGrant: true)
+      #expect(vm.micGranted == false)
+      #expect(vm.micDenied == false)
+    }
+
+    @Test("#3881: a poll-observed grant emits step_completed once, even after revoke and re-grant")
+    func micGrantTelemetryFiresOncePerSession() {
+      withHook { events in
+        let vm = OnboardingV2ViewModel()
+        vm.syncMicrophone(isDenied: true, isAuthorized: false, emitGrant: true)  // arrives denied
+        vm.syncMicrophone(isDenied: false, isAuthorized: true, emitGrant: true)  // user turns it on
+        #expect(vm.micGranted == true)
+        #expect(vm.micDenied == false)
+        vm.syncMicrophone(isDenied: true, isAuthorized: true, emitGrant: true)  // turned off again
+        #expect(vm.micGranted == false)
+        vm.syncMicrophone(isDenied: false, isAuthorized: true, emitGrant: true)  // and on again
+        #expect(vm.micGranted == true)
+        let done = events.named("onboarding.step_completed").filter {
+          $0.stringProps["step"] == "mic_permission"
+        }
+        #expect(done.count == 1)
+      }
+    }
+
+    @Test("#3881: a grant seen at appearance, restore or the dialog sets the latch without emitting")
+    func micGrantSeenOutsideThePollEmitsNothing() {
+      withHook { events in
+        let vm = OnboardingV2ViewModel()
+        vm.syncMicrophone(isDenied: false, isAuthorized: true, emitGrant: false)
+        vm.syncMicrophone(isDenied: false, isAuthorized: true, emitGrant: true)  // next poll
+        #expect(vm.micGranted == true)
+        #expect(events.named("onboarding.step_completed").isEmpty)
+      }
+    }
+
     private func withHook(_ body: (Events) -> Void) {
       let events = Events()
       TelemetryService.shared.testEventHook = { @Sendable e in events.add(e) }

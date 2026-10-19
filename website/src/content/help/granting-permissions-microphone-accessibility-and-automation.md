@@ -21,6 +21,8 @@ This permission lets EnviousWispr hear your voice while you dictate. Setup asks 
 2. Under **Microphone**, click **Request Access**. If you already said no, this button opens System Settings for you.
 3. In **System Settings** > **Privacy & Security** > **Microphone**, switch EnviousWispr on.
 
+During Setup, the **Microphone** row does the same: if you said no earlier, its button reads **Open Settings** and opens that page. If access still shows as off after you switch it on, quit and reopen EnviousWispr.
+
 You will know it worked when you hold your keybind and the meter on the recording bar moves as you speak. If it still stays flat, see [_Empty or Missing Transcription_](/help/empty-or-missing-transcription/).
 
 ### My keybind does nothing, or text is not pasting: allow Accessibility

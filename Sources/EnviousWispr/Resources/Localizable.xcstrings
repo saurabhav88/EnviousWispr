@@ -10650,6 +10650,17 @@
         }
       }
     },
+    "Microphone access is off. Open System Settings > Privacy & Security > Microphone and turn on EnviousWispr. If access still appears off, quit and reopen EnviousWispr." : {
+      "comment" : "Setup permissions: microphone row after the user turned access off. Names where the switch is, and the quit-and-reopen fallback macOS sometimes needs.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Mikrofonzugriff ist deaktiviert. Öffne die Systemeinstellungen > Datenschutz & Sicherheit > Mikrofon und schalte EnviousWispr ein. Wenn der Zugriff danach weiterhin als deaktiviert angezeigt wird, beende EnviousWispr und öffne die App erneut."
+          }
+        }
+      }
+    },
     "Microphone access needed" : {
       "comment" : "Pill title when macOS microphone permission is off.",
       "localizations" : {

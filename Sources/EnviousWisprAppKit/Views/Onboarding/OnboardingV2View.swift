@@ -56,10 +56,17 @@ final class OnboardingV2ViewModel {
   }
 
   var micGranted = false
+  /// #3881: live "microphone access is off" (denied or restricted). Drives the row's
+  /// "Open Settings" label and hint. Written only by `syncMicrophone`.
+  var micDenied = false
   var accessibilityGranted = false
   /// #735: one-time guard so the grant telemetry + autoCopy default fire once per
   /// onboarding session even though `accessibilityGranted` now toggles both ways. Never reset.
   var hasAppliedAxGrant = false
+  /// #3881: the microphone twin of `hasAppliedAxGrant`. `micGranted` can now go back to
+  /// false on a live denial, so the grant telemetry needs its own once-per-session latch.
+  /// Never reset.
+  var hasAppliedMicGrant = false
 
   var downloadError: String?
   /// Raw error details for support diagnostics (hidden behind "Copy error details" button).
@@ -1010,11 +1017,42 @@ final class OnboardingV2ViewModel {
     return "\(displayPhase(phase)) \(detail)"
   }
 
+  /// #3881: the one place Setup decides the microphone row and Continue eligibility.
+  /// Every Setup path calls it: the row's button, restoring a saved Setup, the screen
+  /// appearing, the poll, and Continue. A live denial always wins over the cached grant
+  /// (a user who granted, then turned the switch off before Continue, must not advance).
+  /// `emitGrant` is true only for the poll: a grant seen at appearance, on restore or
+  /// straight from the system dialog sets the latch without emitting, exactly as before
+  /// this change. Returns whether the microphone counts as granted.
+  @discardableResult
+  func syncMicrophone(isDenied: Bool, isAuthorized: Bool, emitGrant: Bool) -> Bool {
+    micDenied = isDenied
+    let granted = !isDenied && isAuthorized
+    if granted && !hasAppliedMicGrant {
+      hasAppliedMicGrant = true
+      if emitGrant { completeStep("mic_permission", result: "granted") }
+    }
+    micGranted = granted
+    return granted
+  }
+
+  /// Reads the live denial and the cached grant from `PermissionsService`.
+  @discardableResult
+  func syncMicrophone(permissions: PermissionsService, emitGrant: Bool) -> Bool {
+    syncMicrophone(
+      isDenied: permissions.microphonePermissionIsDenied,
+      isAuthorized: permissions.hasMicrophonePermission,
+      emitGrant: emitGrant)
+  }
+
   func requestMicPermission(permissions: PermissionsService) async {
-    let granted = await permissions.requestMicrophoneAccess()
-    micGranted = permissions.hasMicrophonePermission
-    // #1176 (E1): a denied mic prompt is a concrete onboarding block.
-    if !granted {
+    // #3881: the shared owner shows the system dialog when the user was never asked,
+    // and opens System Settings > Privacy & Security > Microphone when access was
+    // already denied (Apple's requestAccess never prompts twice). The bare request
+    // left a once-denied user stuck on this screen.
+    await permissions.requestMicrophoneAccessOrOpenSettings()
+    // #1176 (E1): a press that leaves the row ungranted is a concrete onboarding block.
+    if !syncMicrophone(permissions: permissions, emitGrant: false) {
       blockStep("mic_permission", reason: "denied", permission: "microphone")
     }
   }
@@ -1224,7 +1262,7 @@ struct OnboardingV2View: View {
       viewModel.currentScreen = .settingUp
       viewModel.checklistStatuses = [.completed, .completed, .completed]
       permissions.refreshAccessibilityStatus()
-      viewModel.micGranted = permissions.hasMicrophonePermission
+      viewModel.syncMicrophone(permissions: permissions, emitGrant: false)
       viewModel.accessibilityGranted = permissions.accessibilityGranted
       if viewModel.micGranted && viewModel.accessibilityGranted {
         viewModel.currentScreen = .ready
@@ -1712,6 +1750,7 @@ private struct PermissionsPhaseView: View {
             localized: "To hear your voice for transcription.",
             comment: "Setup permissions: why the microphone is needed."),
           isGranted: viewModel.micGranted,
+          isDenied: viewModel.micDenied,
           onGrant: {
             Task { await viewModel.requestMicPermission(permissions: permissions) }
           }
@@ -1804,6 +1843,10 @@ private struct PermissionsPhaseView: View {
             viewModel.accessibilityGranted = false
             return
           }
+          // #3881: same live recheck for the microphone (turned off before Continue).
+          guard viewModel.syncMicrophone(permissions: permissions, emitGrant: false) else {
+            return
+          }
           viewModel.currentScreen = .ready
         } label: {
           Text("Continue")
@@ -1822,7 +1865,7 @@ private struct PermissionsPhaseView: View {
     }
     .onAppear {
       permissions.refreshAccessibilityStatus()
-      viewModel.micGranted = permissions.hasMicrophonePermission
+      viewModel.syncMicrophone(permissions: permissions, emitGrant: false)
       viewModel.accessibilityGranted = permissions.accessibilityGranted
       // #735: relaunch-into-granted — pre-set the one-time latch so the poll loop
       // doesn't re-fire grant telemetry for a permission granted in a prior session.
@@ -1862,14 +1905,12 @@ private struct PermissionsPhaseView: View {
       // within one poll cycle. Mic stays one-way below — its source is cached.
       viewModel.accessibilityGranted = axNow
 
-      // Mic stays one-way: hasMicrophonePermission reads cached microphoneStatus,
-      // not a live check — #2549 keeps it refreshed periodically via the shared
-      // permission monitor (never on every access), so mirroring it both ways
-      // could still flip a true flag false between poll ticks.
-      if permissions.hasMicrophonePermission && !viewModel.micGranted {
-        viewModel.micGranted = true
-        viewModel.completeStep("mic_permission", result: "granted")
-      }
+      // The mic grant reads cached microphoneStatus, not a live check: #2549 keeps it
+      // refreshed periodically via the shared permission monitor (never on every
+      // access), so a cached grant alone never turns the row back off between ticks.
+      // #3881: a LIVE denial does turn it off (switch flipped off before Continue);
+      // the grant telemetry is latched by `hasAppliedMicGrant`, so it still fires once.
+      viewModel.syncMicrophone(permissions: permissions, emitGrant: true)
       // #735: showSkipLink no longer used (Skip-for-now backdoor removed); `elapsed` retained
       // so future telemetry can re-attach a "time-on-permissions-screen" event if needed.
       _ = elapsed
@@ -1978,6 +2019,9 @@ private struct PermissionRow: View {
   let title: String
   let subtitle: String
   let isGranted: Bool
+  /// #3881: access was turned off before (denied or restricted). The button opens
+  /// System Settings instead of asking, and the subtitle says where the switch is.
+  var isDenied: Bool = false
   let onGrant: () -> Void
 
   var body: some View {
@@ -1995,9 +2039,10 @@ private struct PermissionRow: View {
         Text(title)
           .font(.obLabel)
           .foregroundStyle(Color.obTextPrimary)
-        Text(subtitle)
+        Text(showsDeniedHint ? Self.deniedHint : subtitle)
           .font(.obCaption)
           .foregroundStyle(Color.obTextSecondary)
+          .fixedSize(horizontal: false, vertical: true)
       }
 
       Spacer()
@@ -2012,11 +2057,15 @@ private struct PermissionRow: View {
         }
         .transition(.opacity.combined(with: .scale(scale: 0.95)))
       } else {
-        Button("Grant") {
+        Button(showsDeniedHint ? Self.openSettingsTitle : Self.grantTitle) {
           onGrant()
         }
         .buttonStyle(OnboardingButtonStyle(color: .obAccent))
         .font(.system(size: 12, weight: .semibold))
+        // #3881: keep the label on one line. Beside the long denied hint the
+        // button was squeezed and "Open Settings" wrapped into a tall block;
+        // the hint text wraps instead.
+        .fixedSize()
       }
     }
     .padding(.horizontal, 14)
@@ -2024,6 +2073,20 @@ private struct PermissionRow: View {
     .background(Color.obSurface, in: RoundedRectangle(cornerRadius: 12))
     .animation(.easeInOut(duration: 0.3), value: isGranted)
   }
+
+  private var showsDeniedHint: Bool { isDenied && !isGranted }
+
+  // Existing keys: the comments match their other call sites so the catalog keeps one comment.
+  private static let grantTitle = String(
+    localized: "Grant",
+    comment: "Button to grant a requested macOS permission, including microphone or Accessibility.")
+  private static let openSettingsTitle = String(
+    localized: "Open Settings",
+    comment: "Pill button: opens the macOS microphone privacy settings.")
+  private static let deniedHint = String(
+    localized:
+      "Microphone access is off. Open System Settings > Privacy & Security > Microphone and turn on EnviousWispr. If access still appears off, quit and reopen EnviousWispr.",
+    comment: "Setup permissions: microphone row after the user turned access off. Names where the switch is, and the quit-and-reopen fallback macOS sometimes needs.")
 }
 
 // MARK: - Screen 3: Ready
