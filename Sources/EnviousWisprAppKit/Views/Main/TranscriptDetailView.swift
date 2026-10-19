@@ -156,7 +156,8 @@ struct TranscriptDetailView: View {
       try? await Task.sleep(for: .milliseconds(TimingConstants.appHideBeforePasteDelayMs))
       // Checked after the wait, the one read of the text by id: a dictation can start, a held
       // row can lapse and Accessibility can be turned off while History is hidden.
-      guard pasteAllowed, permissions.accessibilityGranted,
+      // The live read: the cached flag stops updating once both permissions are granted.
+      guard pasteAllowed, permissions.accessibilityGrantedLive,
         let text = transcriptCoordinator.textForDelivery(transcript)
       else {
         // Nothing was written or pasted; bring History back rather than leave the app hidden
