@@ -547,22 +547,37 @@ def cmd_remind(args):
 
 # The GR-STATUS-FIRST line `<label> — <STATUS>`, matched the way the Stop gate
 # ~/.claude/scripts/envious-notify-gate.py (`_STATUS_LINE`, `_NOT_A_LABEL`)
-# matches it. Only the two statuses that wait on the founder count here.
+# matches it. DONE / NEED YOU wait on the founder; WORKING / WAITING ON <x>
+# mean the session moved on. A turn ending with NO status line (the bare
+# line answering a peer notice, the gate's `Pushed.`) says nothing about the
+# founder and leaves the wait alone (#3952 follow-up: such a line cleared a
+# real NEED YOU wait, so a 34-minute hold never released).
 _WAITING_STATUS_LINE = re.compile(r"^(?P<label>.+?)\s[—–-]\s(?:DONE|NEED YOU)(?::.*)?$")
+_MOVED_ON_STATUS_LINE = re.compile(r"^(?P<label>.+?)\s[—–-]\s(?:WORKING|WAITING ON)(?:[:\s].*)?$")
 _NOT_A_LABEL = ("#", ">", "`", '"', "'", "- ", "* ", "+ ")
 # Prompts that reach a session without the founder replying: a background
-# task finishing and a peer session's message. Anything else is his reply.
-_NOT_HIS_REPLY = re.compile(r"\s*(?:<task-notification>|Another Claude session sent a message:)")
+# task finishing, a peer session's message, and the harness's cross-session
+# idle and delivery notices. Anything else is his reply.
+_NOT_HIS_REPLY = re.compile(
+    r"\s*(?:<task-notification>|Another Claude session sent a message:|\[Cross-session [a-z]+ notice\])")
 # The desktop app's blocking question box. It ends the turn without running
 # Stop hooks (measured 2026-10-20, #3952), so it marks here instead.
 DESKTOP_QUESTION_TOOL = "mcp__ccd_turn__wrap_up"
 
 
-def waits_on_founder(message):
+def _status_matches(pattern, message):
     first = message.strip().splitlines()[0].strip() if message.strip() else ""
-    m = _WAITING_STATUS_LINE.fullmatch(first)
+    m = pattern.fullmatch(first)
     return bool(m) and bool(m.group("label").strip()) \
         and not m.group("label").strip().startswith(_NOT_A_LABEL)
+
+
+def waits_on_founder(message):
+    return _status_matches(_WAITING_STATUS_LINE, message)
+
+
+def moved_on(message):
+    return _status_matches(_MOVED_ON_STATUS_LINE, message)
 
 
 def wait_decision(payload):
@@ -572,12 +587,14 @@ def wait_decision(payload):
         message = payload.get("last_assistant_message")
         if not isinstance(message, str) or not message.strip():
             return None
-        # The Stop gate's second stop ends on its bare `Pushed.` line; the
-        # first stop already decided. Any other second stop (a Codex hook
-        # block, then `WAITING ON tests`) is a real new ending and decides.
-        if payload.get("stop_hook_active") and message.strip() == "Pushed.":
-            return None
-        return "set" if waits_on_founder(message) else "clear"
+        # A second stop (a Codex hook block, then `WAITING ON tests`) is a
+        # real new ending and decides like any other; the gate's `Pushed.`
+        # carries no status line, so it changes nothing.
+        if waits_on_founder(message):
+            return "set"
+        if moved_on(message):
+            return "clear"
+        return None
     if name == "UserPromptSubmit":
         prompt = payload.get("prompt")
         if isinstance(prompt, str) and _NOT_HIS_REPLY.match(prompt):
