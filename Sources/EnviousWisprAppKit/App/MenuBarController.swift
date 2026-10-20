@@ -101,17 +101,23 @@ final class MenuBarController: NSObject {
           comment: "Menu bar menu, VoiceOver: the menu bar icon when an update is waiting.") : nil)
   }
 
-  /// Pure icon-state mapping. Logic byte-identical to the pre-PR-B.3
-  /// `AppDelegate.updateIcon()`.
+  /// Pure icon-state mapping, ported from the pre-PR-B.3
+  /// `AppDelegate.updateIcon()`; #3883 widened warning eligibility from `.idle`
+  /// to every resting state.
   static func iconState(_ state: MenuBarViewState) -> MenuBarIconAnimator.IconState {
     // #2549: the microphone warning forces the same error icon state as
     // Accessibility's, since either one means dictation is currently broken.
+    // #3883: every resting state (`!isActive`) is eligible, not only `.idle`.
+    // A finished dictation rests in `.complete` until the next session starts,
+    // so an `.idle`-only check hid a revoke made after any successful take.
+    // Active states still win, so a running take keeps its own icon.
+    let isResting = !state.pipelineState.isActive
     let needsAccessWarning =
-      state.pipelineState == .idle
+      isResting
       && (state.showAccessibilityWarning || state.showMicrophoneWarning)
     let onboardingIncomplete = !state.onboardingComplete
 
-    if needsAccessWarning || (onboardingIncomplete && state.pipelineState == .idle) {
+    if needsAccessWarning || (onboardingIncomplete && isResting) {
       return .error
     } else if case .error = state.pipelineState {
       return .error

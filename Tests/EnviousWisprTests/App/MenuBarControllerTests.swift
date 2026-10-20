@@ -64,9 +64,27 @@ struct MenuBarControllerTests {
 
   @Test("iconState: accessibility warning ignored while recording")
   func iconStateWarningIgnoredWhileRecording() {
-    // needsAccessWarning requires `pipelineState == .idle`; recording wins.
+    // #3883: warnings apply only while the pipeline rests (`!isActive`);
+    // an active state such as recording wins.
     let s = fixture(pipelineState: .recording, showAccessibilityWarning: true)
     #expect(MenuBarController.iconState(s) == .recording)
+  }
+
+  @Test(
+    "iconState: a warning or unfinished Setup shows red in every resting state, not only idle",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/3883", "menu bar warning only when idle"))
+  func iconStateWarningInRestingStates() {
+    // A finished dictation rests in `.complete` until the next session starts.
+    let completeMic = fixture(pipelineState: .complete, showMicrophoneWarning: true)
+    #expect(MenuBarController.iconState(completeMic) == .error)
+    let advisoryAX = fixture(
+      pipelineState: .advisory(.zeroSignal), showAccessibilityWarning: true)
+    #expect(MenuBarController.iconState(advisoryAX) == .error)
+    let completeSetup = fixture(pipelineState: .complete, onboardingComplete: false)
+    #expect(MenuBarController.iconState(completeSetup) == .error)
+    // Same-input control: with no warning, a finished take keeps the plain icon.
+    #expect(MenuBarController.iconState(fixture(pipelineState: .complete)) == .idle)
+    #expect(MenuBarController.iconState(fixture(pipelineState: .advisory(.zeroSignal))) == .idle)
   }
 
   @Test("iconState: idle + microphone warning → error")

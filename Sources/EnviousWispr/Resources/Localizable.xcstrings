@@ -10618,6 +10618,16 @@
         }
       }
     },
+    "Microphone Settings" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofoneinstellungen"
+          }
+        }
+      }
+    },
     "Microphone access denied" : {
       "localizations" : {
         "de" : {

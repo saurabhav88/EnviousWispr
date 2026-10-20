@@ -14,6 +14,9 @@ struct StatusView: View {
   // hotkey description) moved off the former root state onto DictationRuntime façade.
   @Environment(DictationRuntime.self) private var dictationRuntime
   @Environment(EngineCoordinator.self) private var engineCoordinator: EngineCoordinator?
+  // #3886: the error actions for a denied or missing microphone.
+  @Environment(PermissionsService.self) private var permissions
+  @Environment(NavigationCoordinator.self) private var navigationCoordinator
   @State private var elapsed: TimeInterval = 0
 
   /// Force-unwrapped: `EnviousWisprApp` always injects a real instance into the
@@ -193,8 +196,21 @@ struct StatusView: View {
           // #1558: the narrator is the sole author; no raw detail reaches here.
           Text(DictationNarrator.copy(for: reason))
         } actions: {
-          Button("Try Again") {
-            dictationRuntime.resetActivePipeline()
+          // #3886: Try Again only clears the error, so the two failures it
+          // cannot fix get the action that can.
+          switch Self.errorRecovery(for: reason) {
+          case .tryAgain:
+            Button("Try Again") {
+              dictationRuntime.resetActivePipeline()
+            }
+          case .openMicrophoneSettings:
+            Button("Open Settings") {
+              Task { await permissions.requestMicrophoneAccessOrOpenSettings() }
+            }
+          case .openMicrophoneDeviceSettings:
+            Button("Microphone Settings") {
+              navigationCoordinator.request(.dictation(.microphone))
+            }
           }
         }
 
@@ -226,6 +242,24 @@ struct StatusView: View {
     }
   }
 
+  /// The action button an `.error` state offers (#3886).
+  enum ErrorRecovery: Equatable {
+    case tryAgain
+    case openMicrophoneSettings
+    case openMicrophoneDeviceSettings
+  }
+
+  /// Pure mapping from an error reason to its action button. Try Again only
+  /// clears the error (`resetActivePipeline()` starts nothing), so the reasons
+  /// a retry cannot fix send the user where the fix lives. New reasons keep
+  /// Try Again through `default`.
+  static func errorRecovery(for reason: TerminalNoticeReason) -> ErrorRecovery {
+    switch reason {
+    case .permissionDenied: return .openMicrophoneSettings
+    case .noMicrophoneFound: return .openMicrophoneDeviceSettings
+    default: return .tryAgain
+    }
+  }
 }
 
 /// Animated pulsing rings for recording indicator.
