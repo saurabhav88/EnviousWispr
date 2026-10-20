@@ -494,7 +494,6 @@ def stage(app):
             raise d.Aborted("codex: no focused window")
         # Founder 2026-10-20: one test chat per run, not a new chat per round. A later round
         # reuses the chat this run already used, proven by its title, when its composer is empty.
-        global CODEX_TEST_CHAT
         if CODEX_TEST_CHAT and str(get_attr(window, "AXTitle") or "") == CODEX_TEST_CHAT:
             box = codex_composer(window)
             if box is not None and str(get_attr(box, "AXValue") or "").strip() in (
@@ -522,6 +521,7 @@ def stage(app):
                 raise d.Aborted(f"codex: chat {CODEX_THREAD!r} did not open with an empty composer; refusing to type")
             click_into(box, "codex composer", bundle)
             return pid, None
+        before = str(get_attr(window, "AXTitle") or "")
         button = find_element(window, role="AXButton", title="New chat", max_depth=30)
         if button is None:
             raise d.Aborted("codex: no New chat button in the sidebar")
