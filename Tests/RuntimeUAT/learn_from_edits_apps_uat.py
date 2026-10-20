@@ -62,6 +62,12 @@ PARAGRAPH = (
 )
 PARAGRAPH_BEFORE, PARAGRAPH_AFTER = "month to", "He will"
 EXPECT = "invoices"
+# #3368 `--send-after`: what Codex receives when the drill sends; harmless if a model acts on it.
+SEND_SENTENCE = "Reply with only the word okay and do nothing else"
+# `--then send`: the fix is typed, then Return. The mishearing stays the LAST word.
+SEND_FIX_SENTENCE = "Reply with only the word okay and do nothing else. Signed sorab"
+CODEX_TEST_CHAT = None
+CODEX_THREAD = None  # `--codex-thread`: the existing test chat every round types into  # title of the chat this run's Codex rounds share (founder 2026-10-20)
 CORRECT = "Saurabh"
 LOCAL_PAGE = "/tmp/ew-lfe-matrix.html"
 GMAIL_COMPOSE = "https://mail.google.com/mail/?view=cm&fs=1&tf=1"  # a full-screen compose with an empty body
@@ -83,6 +89,8 @@ APPS = {
     "discord": ("com.hnc.Discord", "Discord", "electron"),
     "obsidian": ("md.obsidian", "Obsidian", "electron"),
     "whatsapp": ("net.whatsapp.WhatsApp", "WhatsApp", "electron"),
+    # #3368: the Codex desktop app ships as ChatGPT.app with this bundle id.
+    "codex": ("com.openai.codex", "ChatGPT", "native"),
 }
 
 
@@ -153,6 +161,23 @@ def final_text_from_log(mark):
 
 
 COMPOSE_LABELS = ("message ", "message#", "type a message", "type to ")
+
+
+def codex_composer(win):
+    """#3368: the Codex composer, the window's one text area. It sits at depth 30 in a new chat
+    and 31 in an open chat (measured 2026-10-20), past `compose_box`'s walk."""
+    if win is None:
+        return None
+    areas = []
+    def walk(el, depth):
+        if depth > 60:
+            return
+        if get_attr(el, "AXRole") == "AXTextArea":
+            areas.append(el)
+        for child in (get_attr(el, "AXChildren") or []):
+            walk(child, depth + 1)
+    walk(win, 0)
+    return areas[0] if len(areas) == 1 else None
 
 
 def compose_box(win):
@@ -452,6 +477,74 @@ def stage(app):
                     raise d.Aborted(f"slack: the open conversation is not the self-DM (composer label {label.strip()!r}); refusing to type in a work conversation")
             click_into(box, f"{app} compose box", bundle)
         return pid, None
+    if app == "codex":
+        # #3368. `open -b` brings the app's window to this Space (AXWindows is empty while it is on
+        # another one). Then one click on the sidebar's "New chat" button, never a key: the File
+        # menu's "New Temporary Chat" pressed by AX left the window on the open thread (measured
+        # 2026-10-19), and that thread can be a live Codex task. The new chat must be proven
+        # before any key: the window title is the app's name, not a thread's, and the composer holds
+        # only its placeholder. Nothing here presses Return, so nothing is sent.
+        subprocess.run(["open", "-b", bundle], check=True)
+        pid = d.wait_for(f"{name} running", lambda: pid_for(bundle, name), deadline=15.0)
+        if not wait_frontmost(bundle, deadline=10.0):
+            raise d.Aborted("codex: never became frontmost")
+        app_el = get_ax_app(pid)
+        window = d.wait_for("the Codex window", lambda: get_attr(app_el, "AXFocusedWindow"), deadline=10.0)
+        if window is None:
+            raise d.Aborted("codex: no focused window")
+        # Founder 2026-10-20: one test chat per run, not a new chat per round. A later round
+        # reuses the chat this run already used, proven by its title, when its composer is empty.
+        global CODEX_TEST_CHAT
+        if CODEX_TEST_CHAT and str(get_attr(window, "AXTitle") or "") == CODEX_TEST_CHAT:
+            box = codex_composer(window)
+            if box is not None and str(get_attr(box, "AXValue") or "").strip() in (
+                    "", str(get_attr(box, "AXDescription") or "").strip()):
+                click_into(box, "codex composer", bundle)
+                return pid, None
+        if CODEX_THREAD:
+            # `--codex-thread`: an existing (test) chat, opened from the sidebar, so a later
+            # `--then newchat` really leaves a conversation.
+            button = find_element(window, role="AXButton", title=CODEX_THREAD, max_depth=40)
+            if button is None:
+                raise d.Aborted(f"codex: no sidebar chat titled {CODEX_THREAD!r}")
+            click_into(button, "codex sidebar chat", bundle)
+            def thread_composer():
+                win = get_attr(app_el, "AXFocusedWindow")
+                if win is None or str(get_attr(win, "AXTitle") or "") != CODEX_THREAD:
+                    return None
+                box = codex_composer(win)
+                if box is None:
+                    return None
+                value = str(get_attr(box, "AXValue") or "").strip()
+                return box if value in ("", str(get_attr(box, "AXDescription") or "").strip()) else None
+            box = d.wait_for("the chat's empty composer", thread_composer, deadline=10.0)
+            if box is None:
+                raise d.Aborted(f"codex: chat {CODEX_THREAD!r} did not open with an empty composer; refusing to type")
+            click_into(box, "codex composer", bundle)
+            return pid, None
+        button = find_element(window, role="AXButton", title="New chat", max_depth=30)
+        if button is None:
+            raise d.Aborted("codex: no New chat button in the sidebar")
+        # A real click: the button lists no AX actions, and AXPress did nothing (measured 2026-10-19).
+        click_into(button, "codex New chat button", bundle)
+        def new_chat_composer():
+            win = get_attr(app_el, "AXFocusedWindow")
+            # A new chat's window is titled with the app's name; a thread's with the thread's.
+            if win is None or str(get_attr(win, "AXTitle") or "") != name:
+                return None
+            # The composer is the window's one text area; while empty its AXValue is its own
+            # placeholder, which is also its AXDescription ("Do anything" in a new chat, "Work with
+            # Codex" in a thread; measured 2026-10-19).
+            box = codex_composer(win)
+            if box is None:
+                return None
+            value = str(get_attr(box, "AXValue") or "").strip()
+            return box if value in ("", str(get_attr(box, "AXDescription") or "").strip()) else None
+        box = d.wait_for("a new chat with an empty composer", new_chat_composer, deadline=10.0)
+        if box is None:
+            raise d.Aborted(f"codex: New chat did not leave thread {before!r} for an empty composer; refusing to type")
+        click_into(box, "codex composer", bundle)
+        return pid, None
     if app == "ghostty":
         osa('tell application "Ghostty" to activate')
         pid = d.wait_for("Ghostty running", lambda: pid_for(bundle, name), deadline=10.0)
@@ -482,6 +575,18 @@ def cleanup(app, pid, doc):
             press("u", bundle, ctrl=True)
             press("w", bundle, cmd=True)  # close the window this run opened
             return
+        if app == "codex" and CODEX_THREAD:
+            # A `--then newchat` round left the draft in the test chat: go back and clear it there.
+            app_el = get_ax_app(pid)
+            window = get_attr(app_el, "AXFocusedWindow")
+            row = find_element(window, role="AXButton", title=CODEX_THREAD, max_depth=40) if window is not None else None
+            if row is None:
+                raise d.Aborted(f"cleanup: no sidebar chat titled {CODEX_THREAD!r}; its draft may remain")
+            click_into(row, "codex sidebar chat", bundle)
+            box = d.wait_for("the test chat's composer", lambda: (lambda win: codex_composer(win) if win is not None and str(get_attr(win, "AXTitle") or "") == CODEX_THREAD else None)(get_attr(app_el, "AXFocusedWindow")), deadline=10.0)
+            if box is None:
+                raise d.Aborted("cleanup: the test chat's composer was not found; its draft may remain")
+            click_into(box, "codex composer", bundle)
         press("a", bundle, cmd=True)
         press("backspace", bundle)
         if app == "mail":
@@ -561,6 +666,14 @@ def cleanup(app, pid, doc):
 
 # ---------------------------------------------------------------- the arm --
 
+def remember_codex_chat(pid):
+    """The title of the chat a Codex round used, so the next round reuses it (founder 2026-10-20)."""
+    global CODEX_TEST_CHAT
+    time.sleep(2.0)  # settle: Codex names a chat after its first send; no ack
+    window = get_attr(get_ax_app(pid), "AXFocusedWindow")
+    CODEX_TEST_CHAT = str(get_attr(window, "AXTitle") or "") if window is not None else None
+
+
 def run_app(app, args):
     bundle, name, kind = APPS[app]
     row = {"app": app, "bundle": bundle, "kind": kind}
@@ -569,15 +682,34 @@ def run_app(app, args):
     require_frontmost(bundle)
     w.declare_paste_target(bundle)  # #3764: the take gate checks this target before and after
     mark = d.log_mark()
-    clip = w.tts(PARAGRAPH if args.paragraph else SENTENCE, engine="say")
+    if args.send_after is not None:
+        sentence = SEND_SENTENCE
+    elif args.then == "send":
+        sentence = SEND_FIX_SENTENCE
+    else:
+        sentence = PARAGRAPH if args.paragraph else SENTENCE
+    clip = w.tts(sentence, engine="say")
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
-        w.test_recording(audio=clip, expect=EXPECT, timeout=45.0)
+        sends = args.send_after is not None or args.then == "send"
+        w.test_recording(audio=clip, expect="okay" if sends else EXPECT, timeout=45.0)
     cascade = d.wait_for("the paste cascade line", lambda: re.search(r"Paste cascade: tier=([^,\s]+), app=([^,\s]+)", d.log_since(mark)), deadline=20.0)
     if not cascade:
         row["outcome"] = "INSTRUMENT: no paste cascade line"
         return row, pid, doc
     row["paste_tier"], row["paste_app"] = cascade.group(1), cascade.group(2)
+    if args.send_after is not None:
+        # #3368: a person who sends at once. Return is pressed only here, only in Codex (main()
+        # refuses any other app), and only after the paste is proven to be in Codex.
+        if cascade.group(2).lower() != bundle.lower():
+            row["outcome"] = f"INSTRUMENT: paste went to {cascade.group(2)}"
+            return row, pid, doc
+        time.sleep(args.send_after / 1000.0)  # the measured gap between the paste and the send
+        press("return", bundle)
+        remember_codex_chat(pid)
+        row["sent_after_ms"] = args.send_after
+        row["outcome"] = "sent"
+        return row, pid, doc
     tag = f"{app}-{args.then}{'-half' if args.half else ''}"
     time.sleep(0.8)  # settle: the pasted text renders before the proof screenshot; no ack
     row["shot_pasted"] = d.screenshot(f"{tag}-1-pasted.png") and f"{tag}-1-pasted.png"
@@ -667,7 +799,21 @@ def run_app(app, args):
         after_fix = focused_value(pid)
         row["field_after_fix"] = after_fix[-200:] if after_fix is not None else None
         time.sleep(0.8)  # settle: past flushMinQuietMs (500 ms), like a person finishing the word before moving on
-        if args.then == "switch":
+        if args.then == "newchat":
+            # #3368 negative control: the person leaves for a new chat instead of sending (Codex only).
+            window = get_attr(get_ax_app(pid), "AXFocusedWindow")
+            button = find_element(window, role="AXButton", title="New chat", max_depth=30) if window is not None else None
+            if button is None:
+                row["outcome"] = "INSTRUMENT: no New chat button"
+                return row, pid, doc
+            click_into(button, "codex New chat button", bundle)
+            row["then_at"] = time.time()
+        elif args.then == "send":
+            # #3368: the person fixes the word and sends at once (Codex only; main() refuses others).
+            press("return", bundle)
+            remember_codex_chat(pid)
+            row["then_at"] = time.time()
+        elif args.then == "switch":
             # #3101: the person moves on to another app with the caret still at the word.
             osa('tell application "Finder" to activate')
             row["switched"] = bool(d.wait_for("Finder frontmost", lambda: frontmost_bundle() == "com.apple.finder", deadline=4.0))
@@ -714,8 +860,13 @@ def run_app(app, args):
         # ends the watch with `textbox_emptied` and must flush the unjudged fix.
         time.sleep(args.send_fast / 1000.0)  # settle: the founder-chosen gap between the last keystroke and the send
         require_frontmost(bundle)
-        press("a", bundle, cmd=True)
-        press("backspace", bundle)
+        if args.then == "send":
+            # #3368: a real send (Codex only), inside the quiet interval.
+            press("return", bundle)
+            remember_codex_chat(pid)
+        else:
+            press("a", bundle, cmd=True)
+            press("backspace", bundle)
         row["sent_after_ms"] = args.send_fast
     # 16 s: the caret cap (10 s from the first deferral, which follows the 1.5 s quiet interval) must fit.
     judged = d.wait_for("learn_judged", lambda: re.search(r"learn_judged arm=\w+ outcome=\w+ candidates=\d+ accepted=\d+", d.log_since(fix_mark)), deadline=16.0)
@@ -769,24 +920,36 @@ def run_app(app, args):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-dir", required=True)
-    parser.add_argument("--export", required=True)
+    parser.add_argument("--export", help="judge export dir for the DEBUG door; omit with --shipped-judge")
+    parser.add_argument("--shipped-judge", action="store_true",
+                        help="#3948: run the judge the app ships (no export door, no banner wait)")
     parser.add_argument("--paragraph", action="store_true",
                         help="dictate a three-sentence paragraph with the mishearing in the middle sentence")
     parser.add_argument("--send-fast", type=int, default=0, metavar="MS",
                         help="empty the field MS milliseconds after the fix (a send inside the settle window); 0 = wait for the settle")
-    parser.add_argument("--then", choices=["stay", "switch", "axcaret", "mouseclick", "continue", "nextdictation"], default="stay",
+    parser.add_argument("--then", choices=["stay", "switch", "axcaret", "mouseclick", "continue", "nextdictation", "send", "newchat"], default="stay",
                         help="#3101: after the fix: leave the caret (stay); activate Finder (switch); set the caret to 0 by AX (axcaret); "
                              "a real mouse click at the field's top-left (mouseclick); Cmd+Down then type more words (continue); "
-                             "dictate the carrier again into the same field (nextdictation)")
+                             "dictate the carrier again into the same field (nextdictation); press Return, Codex only (send); open a new chat, Codex only (newchat)")
+    parser.add_argument("--send-after", type=int, default=None, metavar="MS",
+                        help="#3368, codex only: press Return MS ms after the paste instead of fixing (a send)")
+    parser.add_argument("--codex-thread", metavar="TITLE",
+                        help="#3368, codex only: type into this existing (test) chat from the sidebar instead of a new chat")
     parser.add_argument("--half", action="store_true", help="#3101: type only the first four letters of the fix")
     parser.add_argument("--apps", default="slack,discord,whatsapp,gmail,word,excel,notes,mail,safari,vscode,ghostty,obsidian,textedit")
     args = parser.parse_args()
+    if not args.shipped_judge and not args.export:
+        parser.error("--export is required unless --shipped-judge")
     d.run_dir = os.path.abspath(args.run_dir)
     os.makedirs(d.run_dir, exist_ok=True)
     apps = [a.strip() for a in args.apps.split(",") if a.strip()]
     unknown = [a for a in apps if a not in APPS]
     if unknown:
         raise d.Aborted(f"unknown apps: {unknown}")
+    global CODEX_THREAD
+    CODEX_THREAD = args.codex_thread
+    if (args.send_after is not None or args.then in ("send", "newchat") or args.codex_thread) and set(apps) != {"codex"}:
+        raise d.Aborted("--send-after and --then send send a message; allowed only with --apps codex (founder 2026-10-20)")
 
     if d.screen_is_locked():
         raise d.Aborted("the screen is locked; unlock it and hands off the Mac")
@@ -802,15 +965,15 @@ def main():
     audio_restored = True
     try:
         if d.app_pid() is None:
-            d.launchctl_set(args.export)
-            d.start_app()
+            d.launchctl_set(None if args.shipped_judge else args.export)
+            d.start_app(shipped_judge=args.shipped_judge)
         route = d.audio_route()
         route.apply()
         d.stop_app()
         d.file_restore(d.WORDS, d.empty_words_like(snaps["words"]))
         d.defaults_write_bool(True)
-        d.launchctl_set(args.export)
-        d.start_app()
+        d.launchctl_set(None if args.shipped_judge else args.export)
+        d.start_app(shipped_judge=args.shipped_judge)
         for app in apps:
             print(f"\n=== {app} ===", flush=True)
             d.park_pointer()
@@ -881,7 +1044,7 @@ def main():
             # Each app starts from the same state: the word is forgotten again.
             d.stop_app()
             d.file_restore(d.WORDS, d.empty_words_like(snaps["words"]))
-            d.start_app()
+            d.start_app(shipped_judge=args.shipped_judge)
     except d.Aborted as error:
         rows.append({"outcome": f"INSTRUMENT: {error}"})
         exit_code = 2

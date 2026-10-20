@@ -233,9 +233,13 @@ def expected_door_threshold():
         return float(json.load(fh)["decision_config"]["detection_threshold"])
 
 
-def start_app():
+def start_app(shipped_judge=False):
+    """`shipped_judge`: the app runs the judge it ships (no DEBUG export door, #3948), so there is
+    no door banner to wait for; readiness is the startup scan and the menu item, as below."""
     mark = log_mark()
     subprocess.run(["open", "-n", APP], check=True)
+    if shipped_judge:
+        return _wait_ready(mark)
     if not wait_for("the app's door banner", lambda: has(mark, DOOR_ACTIVE), deadline=90.0):
         raise Aborted("the relaunched app never logged the UAT door as ACTIVE")
     banner = [l for l in w.log_entries_since(mark) if DOOR_ACTIVE in l][-1]
@@ -246,6 +250,11 @@ def start_app():
     got = re.search(r"threshold=([0-9.eE-]+)", banner)
     if "arm=classifier" not in banner or got is None or abs(float(got.group(1)) - expected) > 1e-9:
         raise Aborted(f"door banner does not name the installed export's threshold {expected}: {banner}")
+    _wait_ready(mark)
+    return banner
+
+
+def _wait_ready(mark):
     if not wait_for("startup scan", lambda: has(mark, "scan finished"), deadline=60.0):
         raise Aborted("the app did not reach a ready state")
     # The menu-driven take taps the status item's "Start Recording". Right after
@@ -257,7 +266,7 @@ def start_app():
                     lambda: w._find_match(w._app, "Start Recording", None, exact=True), deadline=30.0):
         raise Aborted("the relaunched app never exposed its Start Recording menu item")
     time.sleep(1.0)  # settle: the overlay host and paste registry finish their first render; no ack
-    return banner
+    return None
 
 
 def app_pid():
