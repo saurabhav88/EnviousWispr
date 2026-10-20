@@ -1430,6 +1430,31 @@ struct PastedRegionObserverWatchTests {
   }
 
   @Test(
+    "three reads all landing while the new composer is still being built are not counted: the re-check finds the composer"
+  )
+  func replacedBoxRaceWithTheRebuild() throws {
+    // Measured in Codex 2026-10-20: 3 of 5 sends in a chat put all three failed reads on the
+    // transitional AXGroup/AXWebArea focus, before the new composer took focus.
+    scriptReplacement(role: "AXGroup")
+    let lines = events
+    let o = PastedRegionObserver(ax: ax, scheduler: scheduler, log: { lines.lines.append($0) })
+    o.start(target) { lines.list.append($0) }
+    let registration = try #require(ax.registrations.first)
+    ax.reads = [.text("Note: Ask Saira today please")]
+    registration.fire(.valueChanged)
+    sendReplacingTheBox()
+    for _ in 0..<3 { registration.fire(.focusedElementChanged) }
+    #expect(events.list == [.changed(region: "Ask Saira today")], "still watching")
+    #expect(!events.lines.contains { $0.hasPrefix("learn_read_failed") }, "none of them counted")
+    ax.rolesByElement[10_043] = "AXTextArea"
+    scheduler.advance(ms: PastedRegionTiming.boxTransitionRecheckMs)
+    #expect(
+      Array(events.list.suffix(2)) == [
+        .settled(region: "Ask Saira today", evidence: .strong), .ended(.elementDestroyed),
+      ])
+  }
+
+  @Test(
     "anything short of a vanished box keeps today's path: three failed reads inside the focus grace end captureUnsupported"
   )
   func replacedBoxRefusals() {
@@ -1476,7 +1501,14 @@ struct PastedRegionObserverWatchTests {
         Issue.record("no registration: \(name)")
         continue
       }
-      for _ in 0..<3 { registration.fire(.focusedElementChanged) }
+      // A focused non-text element is a composer being rebuilt: those reads are first waited out
+      // (`boxTransitionChecks`), then counted.
+      for _ in 0..<(3 + PastedRegionTiming.boxTransitionChecks) {
+        if t.events.list.contains(where: { if case .ended = $0 { return true } else { return false } }) {
+          break
+        }
+        registration.fire(.focusedElementChanged)
+      }
       #expect(t.events.list.last == .ended(.captureUnsupported), "\(name)")
       #expect(!t.events.list.contains(.ended(.elementDestroyed)), "\(name)")
     }
