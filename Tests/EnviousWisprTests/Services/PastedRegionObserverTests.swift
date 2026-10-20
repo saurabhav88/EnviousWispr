@@ -114,8 +114,36 @@ final class PastedRegionFakeAX: PastedRegionAXOperations {
     return selectedRange
   }
 
+  /// #3368: per-element value reads keyed by the handle's own pid (a field handle is pid + 10_000),
+  /// consumed in order with the last repeating. An element with no entry reads `reads`.
+  var readsByElement: [pid_t: [PastedRegionValueRead]] = [:]
+  /// #3368: per-element roles keyed like `readsByElement`; an element with no entry answers `role`.
+  var rolesByElement: [pid_t: String?] = [:]
+  /// #3368: window titles keyed by the window handle's pid; titles are consumed in order with the
+  /// last repeating, and a missing entry is unreadable (nil).
+  var titles: [pid_t: [String?]] = [:]
+  func title(of element: AXUIElement) -> String? {
+    let key = Self.handlePID(element)
+    guard var scripted = titles[key], !scripted.isEmpty else { return nil }
+    let answer = scripted.count > 1 ? scripted.removeFirst() : scripted[0]
+    titles[key] = scripted
+    return answer
+  }
+  /// Runs on every value read with the handle's pid: lets a test spend time inside one element's call.
+  var onValueRead: ((pid_t) -> Void)?
+  private static func handlePID(_ element: AXUIElement) -> pid_t {
+    var pid: pid_t = 0
+    AXUIElementGetPid(element, &pid)
+    return pid
+  }
   func readValue(of element: AXUIElement) -> PastedRegionValueRead {
     readCount += 1
+    onValueRead?(Self.handlePID(element))
+    if var scripted = readsByElement[Self.handlePID(element)], !scripted.isEmpty {
+      let answer = scripted.count > 1 ? scripted.removeFirst() : scripted[0]
+      readsByElement[Self.handlePID(element)] = scripted
+      return answer
+    }
     guard !reads.isEmpty else { return .absent }
     return reads.count > 1 ? reads.removeFirst() : reads[0]
   }
@@ -149,6 +177,7 @@ final class PastedRegionFakeAX: PastedRegionAXOperations {
   private(set) var markerRangesPassed: [CFTypeRef] = []
   func role(of element: AXUIElement) -> String? {
     roleReads += 1
+    if let scripted = rolesByElement[Self.handlePID(element)] { return scripted }
     return role
   }
   func textMarkerRange(of element: AXUIElement) -> PastedRegionMarkerRangeRead {
@@ -1082,7 +1111,7 @@ struct PastedRegionObserverWatchTests {
   }
 
   @Test(
-    "start registers the AX observer, arms the poll and the ceiling, and reads nothing until the poll"
+    "start registers the AX observer, arms the poll and the ceiling, and reads no text until the poll"
   )
   func startArms() {
     start()
@@ -1316,6 +1345,162 @@ struct PastedRegionObserverWatchTests {
     ax.reads = [.absent, .absent, .absent]
     scheduler.advance(ms: 750 * 3)
     #expect(e.list == [.ended(.captureUnsupported)])
+  }
+
+  // MARK: #3368 a composer replaced on send (Codex)
+
+  /// The measured Codex send: the watched handle answers `invalidUIElement` while focus already
+  /// sits on a new, empty composer (`field(43)`, owned by the same app) in the same window.
+  func scriptReplacement(role: String? = "AXTextArea", value: PastedRegionValueRead = .text("")) {
+    let window = PastedRegionFakeAX.app(90_001)
+    ax.windows[10_042] = .window(window)
+    ax.windows[10_043] = .window(window)
+    ax.titles[90_001] = ["Chat"]
+    ax.elementOwners[10_043] = pid
+    ax.rolesByElement[10_043] = role
+    ax.readsByElement[10_043] = [value]
+  }
+
+  func sendReplacingTheBox() {
+    ax.readsByElement[10_042] = [.failed(.invalidUIElement)]
+    ax.focused[pid] = .element(PastedRegionFakeAX.field(43))
+  }
+
+  @Test(
+    "a fix seen, then the composer replaced on send: the fix is flushed as STRONG evidence and the watch ends elementDestroyed on the first failed read"
+  )
+  func replacedBoxFlushesTheFixStrong() throws {
+    scriptReplacement()
+    let lines = events
+    let o = PastedRegionObserver(ax: ax, scheduler: scheduler, log: { lines.lines.append($0) })
+    o.start(target) { lines.list.append($0) }
+    ax.reads = [.text("Note: Ask Saira today please")]
+    scheduler.advance(ms: 750)
+    sendReplacingTheBox()
+    scheduler.advance(ms: 750)
+    #expect(
+      events.list == [
+        .changed(region: "Ask Saira today"), .settled(region: "Ask Saira today", evidence: .strong),
+        .ended(.elementDestroyed),
+      ])
+    #expect(events.lines.contains("learn_box_replaced role=AXTextArea"))
+    #expect(o.isObserving == false)
+  }
+
+  @Test("a plain send (no fix seen) ends elementDestroyed and delivers nothing to judge")
+  func replacedBoxWithoutAFix() {
+    scriptReplacement()
+    start()
+    sendReplacingTheBox()
+    scheduler.advance(ms: 750)
+    #expect(events.list == [.ended(.elementDestroyed)])
+  }
+
+  @Test("a fix already settled on WEAK evidence is re-delivered as strong when the box is replaced")
+  func replacedBoxUpgradesAWeakSettle() {
+    scriptReplacement()
+    start()
+    ax.reads = [.text("Note: Ask Saira today please")]
+    scheduler.advance(ms: 750)
+    scheduler.advance(ms: PastedRegionTiming.settleMs)
+    #expect(events.list.last == .settled(region: "Ask Saira today", evidence: .weak))
+    sendReplacingTheBox()
+    scheduler.advance(ms: 750)
+    #expect(
+      Array(events.list.suffix(2)) == [
+        .settled(region: "Ask Saira today", evidence: .strong), .ended(.elementDestroyed),
+      ])
+  }
+
+  @Test(
+    "focus walking through a group and a web area before the new composer: those reads are ordinary failures, the composer ends it"
+  )
+  func replacedBoxAfterTransitionalFocus() throws {
+    scriptReplacement(role: "AXGroup")
+    start()
+    let registration = try #require(ax.registrations.first)
+    sendReplacingTheBox()
+    registration.fire(.focusedElementChanged)
+    ax.rolesByElement[10_043] = "AXWebArea"
+    registration.fire(.focusedElementChanged)
+    #expect(events.list.isEmpty, "two transitional reads: still watching")
+    ax.rolesByElement[10_043] = "AXTextArea"
+    registration.fire(.focusedElementChanged)
+    #expect(events.list == [.ended(.elementDestroyed)])
+  }
+
+  @Test(
+    "anything short of a vanished box keeps today's path: three failed reads inside the focus grace end captureUnsupported"
+  )
+  func replacedBoxRefusals() {
+    let cases: [(String, (PastedRegionObserverWatchTests) -> Void)] = [
+      ("the new box still holds the pasted text", { t in
+        t.scriptReplacement(value: .text("Note: Ask Sarah today please")) }),
+      ("the new box holds the fixed text", { t in
+        t.scriptReplacement(value: .text("Note: Ask Saira today please")) }),
+      ("another window", { t in
+        t.scriptReplacement()
+        t.ax.windows[10_043] = .window(PastedRegionFakeAX.app(90_002)) }),
+      ("the window title changed (another conversation)", { t in
+        t.scriptReplacement()
+        t.ax.titles[90_001] = ["Chat", "Another chat"] }),
+      ("the window title was unreadable", { t in
+        t.scriptReplacement()
+        t.ax.titles[90_001] = [] }),
+      ("the start window was unreadable", { t in
+        t.scriptReplacement()
+        t.ax.windows[10_042] = .failed(.cannotComplete) }),
+      ("not a text box", { t in t.scriptReplacement(role: "AXWebArea") }),
+      ("role unreadable", { t in t.scriptReplacement(role: nil) }),
+      ("a secure field", { t in
+        t.scriptReplacement()
+        t.ax.subroles["\(CFHash(PastedRegionFakeAX.field(43)))"] = .subrole("AXSecureTextField") }),
+      ("the timeout cannot be installed", { t in
+        t.scriptReplacement()
+        t.ax.timeoutFailsFor.insert(10_043) }),
+      ("another process owns the box", { t in
+        t.scriptReplacement()
+        t.ax.elementOwners[10_043] = 77 }),
+      ("the new box cannot be read", { t in t.scriptReplacement(value: .failed(.cannotComplete)) }),
+    ]
+    for (name, setup) in cases {
+      let t = try! PastedRegionObserverWatchTests()
+      setup(t)
+      t.ax.reads = [.text("Note: Ask Saira today please")]
+      t.start()
+      t.scheduler.advance(ms: 750)
+      t.sendReplacingTheBox()
+      // The measured shape: three notification reads inside the focus grace (polls would let the
+      // grace end it as focusChanged first).
+      guard let registration = t.ax.registrations.first else {
+        Issue.record("no registration: \(name)")
+        continue
+      }
+      for _ in 0..<3 { registration.fire(.focusedElementChanged) }
+      #expect(t.events.list.last == .ended(.captureUnsupported), "\(name)")
+      #expect(!t.events.list.contains(.ended(.elementDestroyed)), "\(name)")
+    }
+    // Focus still on the watched element: nothing replaced it.
+    let t = try! PastedRegionObserverWatchTests()
+    t.scriptReplacement()
+    t.start()
+    t.ax.readsByElement[10_042] = [.failed(.invalidUIElement)]
+    t.scheduler.advance(ms: 750 * 3)
+    #expect(t.events.list == [.ended(.captureUnsupported)], "same element")
+  }
+
+  @Test("a ceiling that passes during the replacement reads ends ceilingElapsed, never a late destroyed end")
+  func replacedBoxPastTheCeiling() {
+    scriptReplacement()
+    start()
+    scheduler.advance(ms: PastedRegionTiming.ceilingMs - 1000)
+    sendReplacingTheBox()
+    let clock = scheduler
+    // Only the NEW box's read is slow: the watched read and its deadline check pass first.
+    ax.onValueRead = { handle in if handle == 10_043 { clock.jump(ms: 2000) } }
+    scheduler.advance(ms: 750)
+    #expect(events.list.last == .ended(.ceilingElapsed))
+    #expect(!events.list.contains(.ended(.elementDestroyed)))
   }
 
   @Test(

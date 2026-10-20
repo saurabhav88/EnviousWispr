@@ -38,6 +38,8 @@ package enum PastedRegionEndReason: String, Sendable, Equatable, CaseIterable {
   case dictatedTextNotFound = "dictated_text_not_found"
   case anchorAmbiguous = "anchor_ambiguous"
   case focusChanged = "focus_changed"
+  /// The watched box went away: its destroyed notification, or (#3368) a read that found its
+  /// handle invalid while focus sat on a new box without the text (`replacedBoxRole`).
   case elementDestroyed = "element_destroyed"
   case nextDictationStarted = "next_dictation_started"
   case editDistanceExceeded = "edit_distance_exceeded"
@@ -672,6 +674,9 @@ package protocol PastedRegionAXOperations: AnyObject {
   func string(of element: AXUIElement, location: Int, length: Int) -> PastedRegionValueRead
   /// `AXRole` of `element`, one call; nil when it cannot be read (#3863).
   func role(of element: AXUIElement) -> String?
+  /// `AXTitle` of `element` (a window), one call; nil when it cannot be read or is not a string
+  /// (#3368).
+  func title(of element: AXUIElement) -> String?
   /// `AXTextMarkerRangeForUIElement` with `element` as its own parameter, one call (#3863).
   func textMarkerRange(of element: AXUIElement) -> PastedRegionMarkerRangeRead
   /// `AXStringForTextMarkerRange` for a range `textMarkerRange(of:)` returned, one call (#3863).
@@ -1395,6 +1400,11 @@ package final class PastedRegionObserver: PastedRegionObserving {
 
   private struct Watch {
     let target: PastedRegionTarget
+    /// #3368: the window that held the watched box when the watch started, and that window's
+    /// title then; nil when either could not be read, which turns off `replacedBoxRole` (fail
+    /// closed).
+    var startWindow: AXUIElement?
+    var startWindowTitle: String?
     let generation: UInt64
     let onEvent: @MainActor (PastedRegionEvent) -> Void
     var registration: (any PastedRegionAXRegistration)?
@@ -1780,11 +1790,17 @@ package final class PastedRegionObserver: PastedRegionObserving {
     // The ceiling is measured from the PASTE. Capture and start may run later;
     // that time is not added, and an already-expired deadline ends at once,
     // before anything is registered.
-    let remaining = target.pastedAtMs + PastedRegionTiming.ceilingMs - scheduler.nowMs
-    guard remaining > 0 else {
+    let deadline = target.pastedAtMs + PastedRegionTiming.ceilingMs
+    guard scheduler.nowMs < deadline else {
       watch = w
       end(.ceilingElapsed)
       return
+    }
+    // #3368: bounded reads on the handle capture already bounded (the window shares its
+    // application's timeout). A failed read turns off only the replaced-box check.
+    if case .window(let window) = ax.window(of: target.element) {
+      w.startWindow = window
+      w.startWindowTitle = ax.title(of: window)
     }
     w.registration = ax.register(
       pid: target.pid, element: target.element, application: target.application
@@ -1793,6 +1809,13 @@ package final class PastedRegionObserver: PastedRegionObserving {
     }
     w.registrationFailed = w.registration == nil
     watch = w
+    // The window read and the registration message the host: the ceiling is never extended by
+    // their time.
+    let remaining = deadline - scheduler.nowMs
+    guard remaining > 0 else {
+      end(.ceilingElapsed)
+      return
+    }
     schedulePoll(generation: gen)
     watch?.ceiling = scheduler.schedule(afterMs: remaining) { [weak self] in
       guard let self, self.watch?.generation == gen else { return }
@@ -1947,6 +1970,29 @@ package final class PastedRegionObserver: PastedRegionObserving {
     if endIfPastDeadline(generation: gen) { return .ended }
     switch read {
     case .failed(let error):
+      // #3368: a chat app that replaces its composer on send (Codex) answers the old handle with
+      // `invalidUIElement` while focus already sits on the new, empty composer. That box went
+      // away: end as `elementDestroyed`, whose pending fix is strong evidence, instead of three
+      // failed reads ending `captureUnsupported` with weak evidence.
+      if error == .invalidUIElement, checkIdentity {
+        let replacedRole = replacedBoxRole(of: w)
+        // The candidate reads took time, whichever way they answered.
+        if endIfPastDeadline(generation: gen) { return .ended }
+        if let role = replacedRole {
+          guard
+            ax.destinationActivity(
+              pid: target.pid, capturedElement: nil, mode: .full, budget: nil)
+              != .notActive
+          else {
+            end(.focusChanged)
+            return .ended
+          }
+          if endIfPastDeadline(generation: gen) { return .ended }
+          log?("learn_box_replaced role=\(role)")
+          end(.elementDestroyed)
+          return .ended
+        }
+      }
       return recordReadFailure(
         error: error, kind: "failed(\(error.rawValue))", permitsLostBoxFlush: true, generation: gen)
     case .absent:
@@ -2075,6 +2121,40 @@ package final class PastedRegionObserver: PastedRegionObserving {
         return .changed
       }
     }
+  }
+
+  /// #3368: whether the watched box was REPLACED, read after its handle answered
+  /// `invalidUIElement`: focus is on a different text box of the same process and the same window,
+  /// and that box holds neither the pasted text nor the last text read. Returns that box's role, or
+  /// nil (no state changes either way). Measured in Codex 2026-10-20: a send walks focus through
+  /// `AXGroup` and `AXWebArea` to a new empty `AXTextArea` within about 150 ms; only the last one
+  /// qualifies, so the earlier reads stay ordinary failures. Leaving for another conversation in
+  /// the same window rebuilds the composer the same way (measured in Codex 2026-10-20, a half-typed
+  /// fix then New chat); the window title is what tells them apart: a send keeps the conversation
+  /// and its title, a switch changes it, so a changed or unreadable title refuses and the
+  /// half-typed fix keeps today's weak lost-box path.
+  private func replacedBoxRole(of w: Watch) -> String? {
+    guard let startWindow = w.startWindow, let startTitle = w.startWindowTitle else { return nil }
+    let target = w.target
+    guard case .element(let candidate) = ax.focusedElement(pid: target.pid),
+      !CFEqual(candidate, target.element)
+    else { return nil }
+    // A fresh handle does not inherit any timeout; install it before the first call on it.
+    guard ax.setMessagingTimeout(candidate, seconds: PasteService.axMessagingTimeoutSeconds)
+    else { return nil }
+    guard ax.pid(of: candidate) == target.pid,
+      !SelectionReader.isSecureField(ax.subrole(of: candidate)),
+      let role = ax.role(of: candidate), role == "AXTextArea" || role == "AXTextField",
+      case .window(let window) = ax.window(of: candidate), CFEqual(window, startWindow),
+      ax.title(of: window) == startTitle,
+      // `.value` only: the roles above answer AXValue, and an unreadable value refuses.
+      case .text(let value) = readText(of: candidate, using: .value),
+      case .complete(let renderedHits) = PastedRegionLocator.occurrences(
+        ofPasted: target.renderedText, in: value), renderedHits.isEmpty,
+      case .complete(let lastHits) = PastedRegionLocator.occurrences(
+        ofPasted: w.lastRegion, in: value), lastHits.isEmpty
+    else { return nil }
+    return role
   }
 
   /// Focus is off the watched element inside the same application: the first
@@ -2502,6 +2582,14 @@ package final class LivePastedRegionAXOperations: PastedRegionAXOperations {
     default:
       return .failed(error)
     }
+  }
+
+  package func title(of element: AXUIElement) -> String? {
+    var ref: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(element, kAXTitleAttribute as CFString, &ref) == .success,
+      let value = ref, CFGetTypeID(value) == CFStringGetTypeID()
+    else { return nil }
+    return value as? String
   }
 
   package func role(of element: AXUIElement) -> String? {
