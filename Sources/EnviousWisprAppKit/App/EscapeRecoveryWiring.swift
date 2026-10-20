@@ -70,10 +70,8 @@ enum EscapeRecoveryWiring {
           payload: payload,
           restorable: { coordinator.restorableHeldRow(id: $0) },
           deliver: { text, payload, takeID in
-            await HeldTextDelivery.deliver(
-              text: text, targetApp: payload.targetApp, targetElement: payload.targetElement,
-              targetWindow: payload.targetWindow, takeID: takeID, facts: payload.takeFacts,
-              settings: settings,
+            await heldDelivery(
+              text: text, payload: payload, takeID: takeID, settings: settings,
               onRetained: { takeID, changeCount, reportShown in
                 EscapeRecoveryNotice.show(
                   identity: takeID, receipt: changeCount, reason: nil, host: overlay,
@@ -90,6 +88,25 @@ enum EscapeRecoveryWiring {
           report: report)
       }
     }
+  }
+
+  /// The held delivery one Undo press makes: every target the payload froze at the take, handed
+  /// to the live held delivery. Separate from `pasteAction` so a test can run this exact mapping
+  /// with a recording `deliver` (#3961: the recorded field window must reach the request).
+  @MainActor
+  static func heldDelivery(
+    text: String, payload: CancelUndoPayload, takeID: String?, settings: HeldDeliverySettings,
+    onRetained: @escaping KernelDictationDriverFactory.RetainedCallback,
+    deliver: @MainActor (
+      _ text: String, _ targetApp: NSRunningApplication?, _ targetElement: AXUIElement?,
+      _ targetWindow: AXUIElement?, _ targetFieldWindow: AXUIElement?, _ takeID: String?,
+      _ facts: InsertionTakeFacts, _ settings: HeldDeliverySettings,
+      _ onRetained: @escaping KernelDictationDriverFactory.RetainedCallback
+    ) async -> HeldTextDeliveryResult = HeldTextDelivery.deliver
+  ) async -> HeldTextDeliveryResult {
+    await deliver(
+      text, payload.targetApp, payload.targetElement, payload.targetWindow,
+      payload.targetFieldWindow, takeID, payload.takeFacts, settings, onRetained)
   }
 
   /// The production restore reporter. Separate from `pasteAction` so a test can

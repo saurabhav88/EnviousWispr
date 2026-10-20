@@ -293,6 +293,74 @@ struct PasteLandingLifecycleTests {
     #expect(ax.landingCalls.isEmpty)
   }
 
+  // MARK: The captured field's window at record start (#3961)
+
+  private func fieldCapture(_ ax: PastedRegionFakeAX, clock: PastedRegionFakeScheduler)
+    -> PasteService.RecordedWindowCapture
+  {
+    PasteService.captureFieldWindow(of: Self.field, ax: ax, scheduler: clock)
+  }
+
+  @Test("The captured field's own window is recorded with one read, and the FIELD timeout is reset")
+  func recordsFieldWindow() {
+    let ax = PastedRegionFakeAX()
+    ax.windows[Self.fieldPid] = .window(Self.windowA)
+    var boundAtRead: (pid_t, Double)?
+    ax.onLandingCall = { call in if call == "window" { boundAtRead = ax.timeoutsSet.last } }
+    let result = fieldCapture(ax, clock: PastedRegionFakeScheduler())
+    #expect(
+      boundAtRead.map { $0.0 == Self.fieldPid && $0.1 > 0 } == true,
+      "the field's bound is installed before its window is read")
+    #expect(result.window.map { CFEqual($0, Self.windowA) } == true)
+    #expect(result.reason == "recorded")
+    #expect(ax.landingCalls.map(\.call) == ["window"])
+    #expect(ax.landingCalls.map(\.pid) == [Self.fieldPid], "the field handle is asked, not the app")
+    #expect(ax.timeoutsSet.last.map { $0.0 == Self.fieldPid && $0.1 == 0 } == true, "field reset")
+    #expect(
+      ax.timeoutsSet.contains { $0.0 == 7_001 } == false, "the returned window is never messaged")
+  }
+
+  @Test("Every unreadable field-window answer records nothing and still resets the field")
+  func unreadableFieldWindowRecordsNothing() {
+    let answers: [PastedRegionWindowRead] = [
+      .absent, .notElement, .failed(.invalidUIElement), .failed(.cannotComplete),
+    ]
+    for answer in answers {
+      let ax = PastedRegionFakeAX()
+      ax.windows[Self.fieldPid] = answer
+      let result = fieldCapture(ax, clock: PastedRegionFakeScheduler())
+      #expect(result.window == nil, "\(answer)")
+      #expect(result.reason == "field_window_unreadable")
+      #expect(ax.timeoutsSet.last.map { $0.0 == Self.fieldPid && $0.1 == 0 } == true)
+    }
+  }
+
+  @Test("A bound that cannot be installed on the field records nothing and reads nothing")
+  func fieldBoundNotInstalled() {
+    let ax = PastedRegionFakeAX()
+    ax.windows[Self.fieldPid] = .window(Self.windowA)
+    ax.timeoutFailsFor = [Self.fieldPid]
+    let result = fieldCapture(ax, clock: PastedRegionFakeScheduler())
+    #expect(result.window == nil)
+    #expect(result.reason == "budget")
+    #expect(ax.landingCalls.isEmpty)
+    // The fake rejects every write on this handle, so this proves the reset was attempted.
+    #expect(ax.timeoutsSet.last.map { $0.0 == Self.fieldPid && $0.1 == 0 } == true)
+  }
+
+  @Test("A 250 ms budget spent INSIDE the window read records nothing")
+  func fieldBudgetSpentDuringRead() {
+    let ax = PastedRegionFakeAX()
+    let clock = PastedRegionFakeScheduler()
+    ax.windows[Self.fieldPid] = .window(Self.windowA)
+    ax.onLandingCall = { _ in clock.advance(ms: PasteService.recordedWindowBudgetMs) }
+    let result = fieldCapture(ax, clock: clock)
+    #expect(result.window == nil)
+    #expect(result.reason == "budget")
+    #expect(result.elapsedMs >= PasteService.recordedWindowBudgetMs)
+    #expect(ax.timeoutsSet.last.map { $0.0 == Self.fieldPid && $0.1 == 0 } == true)
+  }
+
   // MARK: Recorded window at record start (#3304)
 
   private func capture(_ ax: PastedRegionFakeAX, clock: PastedRegionFakeScheduler)

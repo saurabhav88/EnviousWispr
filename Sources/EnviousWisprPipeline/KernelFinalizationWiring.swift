@@ -198,6 +198,11 @@ final class KernelSessionContext {
   /// paste raises it and refuses a key paste that would reach another window of the same app, and
   /// a delivery-time retry may adopt only a field inside it. Nil means today's behaviour.
   var targetWindow: AXUIElement?
+  /// #3961: the captured field's OWN window, recorded at record start ONLY when a field was
+  /// captured (so never together with `targetWindow`). An app can rebuild its text box during the
+  /// take, leaving `targetElement` dead at paste time; the window gate then accepts the focused
+  /// text box of that app in this window. Nil means today's behaviour. Never persisted.
+  var targetFieldWindow: AXUIElement?
 
   /// How the keyboard-focus owner compared with the front application at record start (#3423).
   /// The raw value is the logged and reported string.
@@ -240,12 +245,15 @@ final class KernelSessionContext {
   /// `targetWindow` is reset first, so a previous recording's window can never survive. It is
   /// recorded only when no field was captured, Accessibility is trusted, and the app is alive;
   /// liveness is re-checked after the blocking read (a pid can be reclaimed meanwhile).
+  /// `targetFieldWindow` (#3961) follows the same reset and liveness rules, recorded only when a
+  /// field WAS captured, through one bounded read of that field's own window.
   ///
   /// - Returns: the owner application's bundle id when one was resolved, for the log line.
   @discardableResult
   func recordStartTarget(
     front: NSRunningApplication?, focus: KeyboardFocusRead, trusted: Bool,
     captureWindow: (pid_t) -> AXUIElement?,
+    captureFieldWindow: (AXUIElement) -> AXUIElement? = { _ in nil },
     ownerApplication: (pid_t) -> NSRunningApplication? = {
       NSRunningApplication(processIdentifier: $0)
     },
@@ -288,8 +296,14 @@ final class KernelSessionContext {
     targetApp = app
     targetElement = element
     targetWindow = nil
+    targetFieldWindow = nil
     focusOwnerState = state
-    guard element == nil, trusted, let app, !app.isTerminated else { return ownerBundleID }
+    guard trusted, let app, !app.isTerminated else { return ownerBundleID }
+    if let element {
+      let fieldWindow = captureFieldWindow(element)
+      if !app.isTerminated { targetFieldWindow = fieldWindow }
+      return ownerBundleID
+    }
     let window = captureWindow(app.processIdentifier)
     if !app.isTerminated { targetWindow = window }
     return ownerBundleID
@@ -979,7 +993,8 @@ struct KernelFinalizationWiring {
         let result = await deliverPaste(
           Self.deliveryRequest(
             computation: computation, targetApp: context.targetApp,
-            recordedWindow: context.targetWindow, takeID: deliveryTakeID,
+            recordedWindow: context.targetWindow, capturedFieldWindow: context.targetFieldWindow,
+            takeID: deliveryTakeID,
             restoreClipboardAfterPaste: config?.restoreClipboardAfterPaste ?? false,
             keepDictationsOutOfClipboardHistory: config?.keepDictationsOutOfClipboardHistory ?? false,
             origin: .dictation))
@@ -1271,8 +1286,9 @@ struct KernelFinalizationWiring {
   /// computation, including its ONE terminal-resolution budget.
   static func deliveryRequest(
     computation: InsertionComputation, targetApp: NSRunningApplication?,
-    recordedWindow: AXUIElement?, takeID: String?, restoreClipboardAfterPaste: Bool,
-    keepDictationsOutOfClipboardHistory: Bool, origin: PasteDeliveryOrigin
+    recordedWindow: AXUIElement?, capturedFieldWindow: AXUIElement?, takeID: String?,
+    restoreClipboardAfterPaste: Bool, keepDictationsOutOfClipboardHistory: Bool,
+    origin: PasteDeliveryOrigin
   ) -> PasteDeliveryRequest {
     let payloads = computation.repair.payloads
     var request = PasteDeliveryRequest(
@@ -1296,7 +1312,8 @@ struct KernelFinalizationWiring {
       keepDictationsOutOfClipboardHistory: keepDictationsOutOfClipboardHistory,
       terminalBudget: computation.caret.terminalBudget,
       takeID: takeID,
-      recordedWindow: recordedWindow)
+      recordedWindow: recordedWindow,
+      capturedFieldWindow: capturedFieldWindow)
     request.origin = origin
     return request
   }

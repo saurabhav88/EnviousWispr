@@ -33,7 +33,8 @@ struct PasteTargetWindowGateTests {
   }
 
   private func resolved(_ element: AXUIElement?) -> PasteTargetWindow {
-    PasteTargetWindowGate.resolve(element: element, ax: ax, admit: budget().admit)
+    PasteTargetWindowGate.resolve(
+      element: element, startFieldWindow: nil, ax: ax, admit: budget().admit)
   }
 
   private func refusal(_ target: PasteTargetWindow, element: AXUIElement? = nil)
@@ -169,7 +170,8 @@ struct PasteTargetWindowGateTests {
     ax.windows[10_042] = .window(windowA)
     guard
       case .window(let window) = PasteTargetWindowGate.resolve(
-        element: field, recordedWindow: windowB, ax: ax, admit: budget().admit)
+        element: field, recordedWindow: windowB, startFieldWindow: nil, ax: ax,
+        admit: budget().admit)
     else {
       Issue.record("expected the field's own window")
       return
@@ -178,7 +180,8 @@ struct PasteTargetWindowGateTests {
     ax.landingCalls = []
     guard
       case .recordedWindow(let recorded) = PasteTargetWindowGate.resolve(
-        element: nil, recordedWindow: windowB, ax: ax, admit: budget().admit)
+        element: nil, recordedWindow: windowB, startFieldWindow: nil, ax: ax,
+        admit: budget().admit)
     else {
       Issue.record("expected .recordedWindow")
       return
@@ -187,7 +190,8 @@ struct PasteTargetWindowGateTests {
     #expect(ax.landingCalls.isEmpty, "the recorded window needs no read to resolve")
     guard
       case .none = PasteTargetWindowGate.resolve(
-        element: nil, recordedWindow: nil, ax: ax, admit: budget().admit)
+        element: nil, recordedWindow: nil, startFieldWindow: nil, ax: ax,
+        admit: budget().admit)
     else {
       Issue.record("expected .none")
       return
@@ -243,6 +247,214 @@ struct PasteTargetWindowGateTests {
         == nil)
   }
 
+  // MARK: The field's window recorded at record start (#3961)
+
+  /// A focused replacement box: same process, a text role, in `window`. Its handle pid is 5003 in
+  /// the fake, so `elementOwners` makes it belong to the target app.
+  private func replacement(role: String = "AXTextArea", in window: AXUIElement? = nil) {
+    ax.focusedByApplication[pid] = .element(otherField)
+    ax.elementOwners[5003] = pid
+    ax.rolesByElement[5003] = role
+    ax.windows[5003] = .window(window ?? windowA)
+  }
+
+  private func decideStart(_ admit: ((AXUIElement) -> Bool)? = nil)
+    -> PasteTargetWindowGate.Decision
+  {
+    PasteTargetWindowGate.decide(
+      target: .startFieldWindow(windowA), element: field, pid: pid, ax: ax,
+      admit: admit ?? budget().admit)
+  }
+
+  @Test("An unreadable field window falls back to the start window; with none, unreadable")
+  func resolveStartFieldWindow() {
+    ax.windows[10_042] = .failed(.invalidUIElement)
+    guard
+      case .startFieldWindow(let window) = PasteTargetWindowGate.resolve(
+        element: field, startFieldWindow: windowB, ax: ax, admit: budget().admit)
+    else {
+      Issue.record("expected .startFieldWindow")
+      return
+    }
+    #expect(CFEqual(window, windowB))
+    guard case .unreadable = resolved(field) else {
+      Issue.record("expected .unreadable without a start window")
+      return
+    }
+    ax.windows[10_042] = .window(windowA)
+    guard
+      case .window(let live) = PasteTargetWindowGate.resolve(
+        element: field, startFieldWindow: windowB, ax: ax, admit: budget().admit)
+    else {
+      Issue.record("a readable field window wins over the start window")
+      return
+    }
+    #expect(CFEqual(live, windowA))
+    guard
+      case .none = PasteTargetWindowGate.resolve(
+        element: nil, startFieldWindow: windowB, ax: ax, admit: budget().admit)
+    else {
+      Issue.record("no captured field stays .none")
+      return
+    }
+  }
+
+  @Test("The captured field still passes when it is the focus, before any candidate read")
+  func startWindowFieldFocused() {
+    ax.focusedByApplication[pid] = .element(field)
+    #expect(decideStart() == .pass(.fieldFocused))
+    #expect(ax.landingCalls.map(\.call) == ["focusedElement"])
+  }
+
+  @Test("A text box of the same app in the start window receives the paste (the #3961 repro)")
+  func startWindowReplacementPasses() {
+    for role in ["AXTextArea", "AXTextField", "AXComboBox", "AXSearchField"] {
+      replacement(role: role)
+      ax.landingCalls = []
+      #expect(decideStart() == .pass(.replacementField), "\(role)")
+      #expect(ax.landingCalls.map(\.call) == ["focusedElement", "pid", "window"])
+    }
+  }
+
+  @Test("Another window, another app, a password box or a non-text focus is refused")
+  func startWindowRefusals() {
+    replacement(in: windowB)
+    #expect(decideStart() == .refuse(.windowUnreadableFocusMismatch), "another window")
+
+    replacement()
+    ax.elementOwners[5003] = 77
+    #expect(decideStart() == .refuse(.windowUnreadableFocusMismatch), "another process")
+
+    replacement()
+    ax.subroles["\(CFHash(otherField))"] = .subrole(kAXSecureTextFieldSubrole as String)
+    #expect(decideStart() == .refuse(.windowUnreadableFocusMismatch), "secure field")
+    ax.subroles["\(CFHash(otherField))"] = .unreadable
+    #expect(decideStart() == .refuse(.windowUnreadableFocusMismatch), "unreadable subrole")
+    ax.subroles = [:]
+
+    for role in ["AXGroup", "AXWebArea", "AXButton"] {
+      replacement(role: role)
+      ax.landingCalls = []
+      #expect(decideStart() == .refuse(.windowUnreadableFocusMismatch), "\(role)")
+      #expect(
+        ax.landingCalls.map(\.call).contains("window") == false, "no window read for \(role)")
+    }
+  }
+
+  @Test("Every unreadable answer about the candidate refuses with today's reason")
+  func startWindowUnreadableCandidate() {
+    replacement()
+    ax.focusedByApplication[pid] = .queryFailed(.cannotComplete)
+    #expect(decideStart() == .refuse(.windowUnreadableFocusMismatch), "focus query failed")
+    ax.focusedByApplication[pid] = .noFocus
+    #expect(decideStart() == .refuse(.windowUnreadableFocusMismatch), "nothing focused")
+
+    replacement()
+    ax.elementOwners[5003] = .some(nil)
+    #expect(decideStart() == .refuse(.windowUnreadableFocusMismatch), "pid unreadable")
+
+    replacement()
+    ax.rolesByElement[5003] = .some(nil)
+    #expect(decideStart() == .refuse(.windowUnreadableFocusMismatch), "role unreadable")
+
+    let answers: [PastedRegionWindowRead] = [
+      .absent, .notElement, .failed(.invalidUIElement), .failed(.cannotComplete),
+    ]
+    for answer in answers {
+      replacement()
+      ax.windows[5003] = answer
+      #expect(decideStart() == .refuse(.windowUnreadableFocusMismatch), "\(answer)")
+    }
+  }
+
+  @Test("The budget fails closed at every admission, and nothing is read after the refusal")
+  func startWindowBudget() {
+    // The helper admits six times: the app, then the candidate before its pid, subrole, role and
+    // window reads, and once more after the window read. Refusing the Nth admission must stop
+    // every later read, including the subrole and role reads `landingCalls` does not record.
+    let expected: [(reads: [String], decision: PasteTargetWindowGate.Decision)] = [
+      ([], .refuse(.budget)),
+      (["focusedElement"], .refuse(.budget)),
+      (["focusedElement", "pid"], .refuse(.budget)),
+      (["focusedElement", "pid", "subrole"], .refuse(.budget)),
+      (["focusedElement", "pid", "subrole", "role"], .refuse(.budget)),
+      (["focusedElement", "pid", "subrole", "role", "window"], .refuse(.budget)),
+      (["focusedElement", "pid", "subrole", "role", "window"], .pass(.replacementField)),
+    ]
+    for (admitted, row) in expected.enumerated() {
+      replacement()
+      var reads: [String] = []
+      ax.onLandingCall = { reads.append($0) }
+      ax.onSubroleRead = { reads.append("subrole") }
+      let rolesBefore = ax.roleReads
+      var admissions = 0
+      let decision = PasteTargetWindowGate.decide(
+        target: .startFieldWindow(windowA), element: field, pid: pid, ax: ax,
+        admit: { _ in
+          admissions += 1
+          return admissions <= admitted
+        })
+      // The fake's role read has no hook; place it by its counter, after the subrole read.
+      if ax.roleReads > rolesBefore, let at = reads.firstIndex(of: "subrole") {
+        reads.insert("role", at: at + 1)
+      }
+      #expect(decision == row.decision, "refusing admission \(admitted + 1)")
+      #expect(reads == row.reads, "refusing admission \(admitted + 1)")
+    }
+    ax.onLandingCall = nil
+    ax.onSubroleRead = nil
+
+    // A real budget spent by the window read is caught by the final admission.
+    replacement()
+    let last = budget(totalMs: 500)
+    ax.onLandingCall = { call in if call == "window" { self.scheduler.advance(ms: 500) } }
+    #expect(decideStart(last.admit) == .refuse(.budget), "spent by the last read")
+    ax.onLandingCall = nil
+  }
+
+  @Test("A live field whose window turned unreadable: same field, same-window box, other window")
+  func liveFieldWindowTurnedUnreadable() {
+    // The window read worked at record start (it is the start window) and fails now, though the
+    // field is still alive (a refused or timed-out read, not a rebuild).
+    ax.windows[10_042] = .failed(.cannotComplete)
+    let target = PasteTargetWindowGate.resolve(
+      element: field, startFieldWindow: windowA, ax: ax, admit: budget().admit)
+    ax.focusedByApplication[pid] = .element(field)
+    #expect(
+      PasteTargetWindowGate.decide(
+        target: target, element: field, pid: pid, ax: ax, admit: budget().admit)
+        == .pass(.fieldFocused))
+    replacement()
+    #expect(
+      PasteTargetWindowGate.decide(
+        target: target, element: field, pid: pid, ax: ax, admit: budget().admit)
+        == .pass(.replacementField), "founder 2026-10-20: the box with the cursor in that window")
+    replacement(in: windowB)
+    #expect(
+      PasteTargetWindowGate.decide(
+        target: target, element: field, pid: pid, ax: ax, admit: budget().admit)
+        == .refuse(.windowUnreadableFocusMismatch))
+  }
+
+  @Test("The start window is raised on activation and logged as field_window_recorded")
+  func startWindowRaiseAndLogKind() {
+    #expect(
+      PasteCascadeExecutor.windowToRaise(.startFieldWindow(windowA)).map { CFEqual($0, windowA) }
+        == true)
+    #expect(
+      PasteCascadeExecutor.windowToRaise(.window(windowB)).map { CFEqual($0, windowB) } == true)
+    #expect(
+      PasteCascadeExecutor.windowToRaise(.recordedWindow(windowB)).map { CFEqual($0, windowB) }
+        == true)
+    #expect(PasteCascadeExecutor.windowToRaise(.unreadable) == nil)
+    #expect(PasteCascadeExecutor.windowToRaise(.none) == nil)
+    #expect(PasteCascadeExecutor.gateLogKind(.startFieldWindow(windowA)) == "field_window_recorded")
+    #expect(PasteCascadeExecutor.gateLogKind(.window(windowA)) == "field_window")
+    #expect(PasteCascadeExecutor.gateLogKind(.unreadable) == "field_window_unreadable")
+    #expect(PasteCascadeExecutor.gateLogKind(.recordedWindow(windowA)) == "recorded_window")
+    #expect(PasteCascadeExecutor.gateLogKind(.none) == nil)
+  }
+
   @Test("Decisions name why each captured-field case passed")
   func fieldPassReasons() {
     ax.focusedWindows[pid] = .window(windowA)
@@ -269,6 +481,7 @@ struct PasteTargetWindowGateTests {
     #expect(
       PasteTargetWindowGate.Pass.focusedWindowUnreadable.rawValue == "focused_window_unreadable")
     #expect(PasteTargetWindowGate.Pass.budget.rawValue == "budget")
+    #expect(PasteTargetWindowGate.Pass.replacementField.rawValue == "replacement_field")
   }
 
   @Test("Refusal reasons are the strings logged and sent as paste.tier_failures")

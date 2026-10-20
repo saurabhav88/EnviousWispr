@@ -59,13 +59,14 @@ package enum HeldTextDelivery {
   /// The production delivery: live seams, the general board and the production cascade.
   package static func deliver(
     text: String, targetApp: NSRunningApplication?, targetElement: AXUIElement?,
-    targetWindow: AXUIElement?, takeID: String?, facts: InsertionTakeFacts,
-    settings: HeldDeliverySettings,
+    targetWindow: AXUIElement?, targetFieldWindow: AXUIElement?, takeID: String?,
+    facts: InsertionTakeFacts, settings: HeldDeliverySettings,
     onRetained: @escaping KernelDictationDriverFactory.RetainedCallback
   ) async -> HeldTextDeliveryResult {
     await deliver(
       text: text, targetApp: targetApp, targetElement: targetElement, targetWindow: targetWindow,
-      takeID: takeID, facts: facts, settings: settings, seams: .live, pasteboard: .general,
+      targetFieldWindow: targetFieldWindow, takeID: takeID, facts: facts, settings: settings,
+      seams: .live, pasteboard: .general,
       cascade: { request in
         await PasteCascadeExecutor(
           pasteboard: .general, policy: KernelDictationDriverFactory.pasteDeliveryPolicy,
@@ -81,7 +82,8 @@ package enum HeldTextDelivery {
   /// request building and outcome mapping without a live field, board or cascade.
   static func deliver(
     text: String, targetApp: NSRunningApplication?, targetElement: AXUIElement?,
-    targetWindow: AXUIElement?, takeID: String?, facts: InsertionTakeFacts,
+    targetWindow: AXUIElement?, targetFieldWindow: AXUIElement? = nil, takeID: String?,
+    facts: InsertionTakeFacts,
     settings: HeldDeliverySettings, seams: KernelFinalizationWiring.InsertionSeams,
     pasteboard: NSPasteboard,
     cascade: @MainActor (PasteDeliveryRequest) async -> PasteDeliveryResult,
@@ -103,7 +105,7 @@ package enum HeldTextDelivery {
       afterCaret: { _ in facts })
     let request = KernelFinalizationWiring.deliveryRequest(
       computation: computation, targetApp: targetApp, recordedWindow: targetWindow,
-      takeID: takeID, restoreClipboardAfterPaste: settings.restoreClipboardAfterPaste,
+      capturedFieldWindow: targetFieldWindow, takeID: takeID, restoreClipboardAfterPaste: settings.restoreClipboardAfterPaste,
       keepDictationsOutOfClipboardHistory: settings.keepDictationsOutOfClipboardHistory,
       origin: .escapeRecoveryUndo)
 

@@ -106,6 +106,33 @@ struct EscapeRecoveryRestoreTests {
     #expect(spy.reports.map(\.result) == [.clipboardOnly])
   }
 
+  /// #3961: the press hands the held delivery every target the take froze, including the captured
+  /// field's recorded window, which the window gate needs when the app rebuilt its text box.
+  @Test("an Undo press hands the held delivery the take's recorded field window")
+  func pressForwardsTheRecordedFieldWindow() async {
+    let fieldWindow = AXUIElementCreateApplication(5_002)
+    let held = CancelUndoPayload(
+      transcriptID: UUID(), targetApp: nil, targetElement: nil, targetWindow: nil,
+      targetFieldWindow: fieldWindow, takeFacts: .testNone)
+    final class Seen { var fieldWindow: AXUIElement?; var window: AXUIElement?; var calls = 0 }
+    let seen = Seen()
+    _ = await EscapeRecoveryWiring.heldDelivery(
+      text: "kept", payload: held, takeID: "take-9",
+      settings: HeldDeliverySettings(
+        smartInsertion: true, autoPasteToActiveApp: true, restoreClipboardAfterPaste: false,
+        keepDictationsOutOfClipboardHistory: false),
+      onRetained: { _, _, report in report(false) },
+      deliver: { _, _, _, window, fieldWindow, _, _, _, _ in
+        seen.calls += 1
+        seen.window = window
+        seen.fieldWindow = fieldWindow
+        return HeldTextDeliveryResult(outcome: .pasted, fallbackClipboardChangeCount: nil)
+      })
+    #expect(seen.calls == 1)
+    #expect(seen.fieldWindow.map { CFEqual($0, fieldWindow) } == true)
+    #expect(seen.window == nil, "a captured-field take records no app window")
+  }
+
   /// The settings are read at the PRESS, before anything is awaited. A coordinator with no row
   /// keeps the delivery from running, so this case never reaches a live field or clipboard.
   @Test("the wiring reads the delivery settings synchronously at the press")

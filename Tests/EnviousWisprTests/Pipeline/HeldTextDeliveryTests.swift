@@ -84,7 +84,7 @@ struct HeldTextDeliveryTests {
   private func run(
     _ text: String = "World.", calls: Calls, seams: KernelFinalizationWiring.InsertionSeams,
     app: NSRunningApplication? = nil, element: AXUIElement? = HeldTextDeliveryTests.field(),
-    window: AXUIElement? = nil, takeID: String? = "take-1",
+    window: AXUIElement? = nil, fieldWindow: AXUIElement? = nil, takeID: String? = "take-1",
     facts: InsertionTakeFacts = HeldTextDeliveryTests.noFacts,
     settings: HeldDeliverySettings = HeldTextDeliveryTests.settings(),
     board: NSPasteboard? = nil,
@@ -94,7 +94,8 @@ struct HeldTextDeliveryTests {
     let pasteboard = board ?? NSPasteboard.withUniqueName()
     defer { if board == nil { pasteboard.releaseGlobally() } }
     return await HeldTextDelivery.deliver(
-      text: text, targetApp: app, targetElement: element, targetWindow: window, takeID: takeID,
+      text: text, targetApp: app, targetElement: element, targetWindow: window,
+      targetFieldWindow: fieldWindow, takeID: takeID,
       facts: facts, settings: settings, seams: seams, pasteboard: pasteboard,
       cascade: { request in
         calls.requests.append(request)
@@ -209,19 +210,20 @@ struct HeldTextDeliveryTests {
     let calls = Calls()
     let app = Self.liveApp()
     let field = Self.field()
-    let window = AXUIElementCreateApplication(5001)
+    // A captured-field take: its own window is recorded, never the app's (mutually exclusive).
+    let fieldWindow = AXUIElementCreateApplication(5002)
     let theSeams = seams(calls, caret: Self.afterSentence)
     _ = await run(
-      calls: calls, seams: theSeams, app: app, element: field, window: window,
-      settings: Self.settings(restore: true))
+      calls: calls, seams: theSeams, app: app, element: field, window: nil,
+      fieldWindow: fieldWindow, settings: Self.settings(restore: true))
     let held = try #require(calls.requests.first)
 
     let dictationComputation = await KernelFinalizationWiring.computeInsertion(
       text: "World.", smartInsertion: true, targetApp: app, targetElement: field,
-      targetWindow: window, seams: theSeams, afterCaret: { _ in Self.noFacts })
+      targetWindow: nil, seams: theSeams, afterCaret: { _ in Self.noFacts })
     let dictation = KernelFinalizationWiring.deliveryRequest(
-      computation: dictationComputation, targetApp: app, recordedWindow: window,
-      takeID: "take-1", restoreClipboardAfterPaste: true,
+      computation: dictationComputation, targetApp: app, recordedWindow: nil,
+      capturedFieldWindow: fieldWindow, takeID: "take-1", restoreClipboardAfterPaste: true,
       keepDictationsOutOfClipboardHistory: false, origin: .dictation)
 
     #expect(held.legacyText == dictation.legacyText)
@@ -230,7 +232,9 @@ struct HeldTextDeliveryTests {
     #expect(held.candidateDeletesDictatedText == dictation.candidateDeletesDictatedText)
     #expect(held.targetApp == dictation.targetApp)
     #expect(held.targetElement == dictation.targetElement)
-    #expect(held.recordedWindow == dictation.recordedWindow)
+    #expect(held.recordedWindow == nil && dictation.recordedWindow == nil)
+    #expect(held.capturedFieldWindow.map { CFEqual($0, fieldWindow) } == true)
+    #expect(held.capturedFieldWindow == dictation.capturedFieldWindow)
     #expect(held.targetElementIsRetried == dictation.targetElementIsRetried)
     #expect(held.restoreClipboardAfterPaste == dictation.restoreClipboardAfterPaste)
     #expect(held.takeID == dictation.takeID)

@@ -102,6 +102,16 @@ struct PasteCascadeLandingHandoffTests {
   }
 
   @Test(
+    "The captured field's recorded window keeps the landing check (#3961, unlike #3304)",
+    arguments: [PasteTier.cgEvent, .appleScript, .menuPaste])
+  func capturedFieldWindowKeepsTheCheck(tier: PasteTier) throws {
+    let session = try capture(tier: tier)
+    var withFieldWindow = request()
+    withFieldWindow.capturedFieldWindow = AXUIElementCreateApplication(5001)
+    #expect(executor(Calls()).landingCheck(for: session, request: withFieldWindow) != nil)
+  }
+
+  @Test(
     "Each key route gets a check carrying the legacy text and this app's permission",
     arguments: [PasteTier.cgEvent, .appleScript, .menuPaste])
   func keyRouteGetsACheck(tier: PasteTier) throws {

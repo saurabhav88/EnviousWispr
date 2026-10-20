@@ -66,8 +66,9 @@ public struct PasteElementDiagnostics: Equatable, Sendable {
 /// Handles copying text to clipboard and pasting into the active app.
 public enum PasteService {
 
-  /// AX roles that accept text insertion.
-  static let textRoles: Set<String> = [
+  /// AX roles that accept text insertion. `package`: the #3961 window gate in the Pipeline
+  /// module admits a replacement field by this same set.
+  package static let textRoles: Set<String> = [
     kAXTextFieldRole as String,
     kAXTextAreaRole as String,
     kAXComboBoxRole as String,
@@ -361,6 +362,48 @@ public enum PasteService {
     let what =
       capture.window != nil
       ? "recorded window (no field)" : "no recorded window reason=\(capture.reason)"
+    let elapsed = capture.elapsedMs
+    Task {
+      await AppLogger.shared.log(
+        "AXDiag capture: \(what) elapsed_ms=\(elapsed)", level: .info, category: "AXDiag")
+    }
+    return capture.window
+  }
+
+  /// #3961: the captured field's OWN window at record start, read once under the same cumulative
+  /// bound as `captureFocusedStandardWindow`. An app that rebuilds its text box during the take
+  /// (a chat composer re-created on a thread switch) leaves the captured handle dead at paste time,
+  /// so its window can no longer be read then; this answer stands in for it. Any refused,
+  /// unreadable or over-budget read records nothing. The FIELD handle's messaging timeout is put
+  /// back to 0 (the global default) on every exit after it was touched, so the cascade's later
+  /// reads of that handle install their own bounds, as they do today.
+  @MainActor
+  package static func captureFieldWindow(
+    of field: AXUIElement, ax: any PastedRegionAXOperations, scheduler: any PastedRegionScheduling
+  ) -> RecordedWindowCapture {
+    let budget = PasteLandingPrepareBudget(
+      totalMs: recordedWindowBudgetMs, scheduler: scheduler, ax: ax)
+    func result(_ window: AXUIElement?, _ reason: String) -> RecordedWindowCapture {
+      RecordedWindowCapture(window: window, reason: reason, elapsedMs: budget.elapsedMs)
+    }
+    defer { _ = ax.setMessagingTimeout(field, seconds: 0) }
+    guard budget.admit(field) else { return result(nil, "budget") }
+    guard case .window(let window) = ax.window(of: field) else {
+      return result(nil, "field_window_unreadable")
+    }
+    guard !budget.completedPreparation().exhausted else { return result(nil, "budget") }
+    return result(window, "recorded")
+  }
+
+  /// The live record-start capture of the captured field's window (#3961), logged by reason and
+  /// elapsed time only (never a title or text).
+  @MainActor
+  public static func captureFieldWindow(of field: AXUIElement) -> AXUIElement? {
+    let capture = captureFieldWindow(
+      of: field, ax: LivePastedRegionAXOperations(), scheduler: TaskPastedRegionScheduler())
+    let what =
+      capture.window != nil
+      ? "recorded field window" : "no field window reason=\(capture.reason)"
     let elapsed = capture.elapsedMs
     Task {
       await AppLogger.shared.log(

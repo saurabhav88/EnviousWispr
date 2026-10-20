@@ -77,6 +77,13 @@ internal struct PasteDeliveryRequest {
   /// and the delivery is key-paste only with no landing retention (plan §3 step 9), so it can never
   /// both paste and show the Copied notice. Defaulted so existing constructions keep compiling.
   var recordedWindow: AXUIElement? = nil
+  /// #3961: the captured field's OWN window, read at record start
+  /// (`PasteService.captureFieldWindow`).
+  /// Evidence for the #3121 gate only, used when the field no longer answers `AXWindow` at paste
+  /// time (an app that rebuilt its text box). Unlike `recordedWindow` it never makes the delivery
+  /// key-paste only and never turns off landing retention. Defaulted so existing constructions
+  /// keep compiling.
+  var capturedFieldWindow: AXUIElement? = nil
   /// #3437: who asked for this delivery. Defaulted so dictation constructions are unchanged.
   var origin: PasteDeliveryOrigin = .dictation
 }
@@ -395,6 +402,13 @@ enum PasteTargetWindow {
   /// window at record start stands in. Only a READ of a different focused window refuses: there is
   /// no field to fall back on, and an unreadable answer is not evidence the user moved.
   case recordedWindow(AXUIElement)
+  /// #3961: a field was captured, its window cannot be read now (the app rebuilt its text box, or
+  /// another unreadable cause), and its own window recorded at record start stands in. Fallback
+  /// evidence only: it does not assert the field is dead. The captured field still passes when it
+  /// is the focus; otherwise only a non-secure text box of the same process whose own window is
+  /// this window may receive the paste (founder 2026-10-20: paste where the cursor is, in the same
+  /// window; never another window).
+  case startFieldWindow(AXUIElement)
 }
 
 /// #3121: whether a key paste would reach the captured field's window. Pure over the injected
@@ -429,6 +443,9 @@ enum PasteTargetWindowGate {
     case focusedWindowUnreadable = "focused_window_unreadable"
     /// `.recordedWindow` only: the budget refused the read. Not evidence of a move.
     case budget = "budget"
+    /// `.startFieldWindow` only (#3961): the captured field is not the focus, and the focus is a
+    /// non-secure text box of the same process in the window the field was in at record start.
+    case replacementField = "replacement_field"
   }
 
   enum Decision: Equatable, Sendable {
@@ -438,14 +455,16 @@ enum PasteTargetWindowGate {
 
   /// Reads `element`'s window once, through `admit` (which installs the call's bound). With no
   /// captured field, the window recorded at record start (#3304) is the target; a captured field's
-  /// own window always wins over it.
+  /// own window always wins over it. When that window cannot be read now, the field's window
+  /// recorded at record start (#3961) stands in; without one, `.unreadable` as before.
   static func resolve(
-    element: AXUIElement?, recordedWindow: AXUIElement? = nil, ax: any PastedRegionAXOperations,
+    element: AXUIElement?, recordedWindow: AXUIElement? = nil,
+    startFieldWindow: AXUIElement?, ax: any PastedRegionAXOperations,
     admit: (AXUIElement) -> Bool
   ) -> PasteTargetWindow {
     guard let element else { return recordedWindow.map { .recordedWindow($0) } ?? .none }
     guard admit(element), case .window(let window) = ax.window(of: element) else {
-      return .unreadable
+      return startFieldWindow.map { .startFieldWindow($0) } ?? .unreadable
     }
     return .window(window)
   }
@@ -495,6 +514,8 @@ enum PasteTargetWindowGate {
       }
     case .unreadable:
       mismatch = .windowUnreadableFocusMismatch
+    case .startFieldWindow(let window):
+      return decideStartFieldWindow(window, element: element, pid: pid, ax: ax, admit: admit)
     }
     guard let element else { return .refuse(mismatch) }
     let application = ax.applicationElement(pid: pid)
@@ -505,6 +526,43 @@ enum PasteTargetWindowGate {
       return .pass(.fieldFocused)
     }
     return .refuse(mismatch)
+  }
+}
+
+extension PasteTargetWindowGate {
+  /// `.startFieldWindow` (#3961): the captured field still passes when it is the app's focus
+  /// (today's rule); otherwise the app's focused element must be a non-secure text box
+  /// (`PasteService.textRoles`) of the same process whose own window is `window`. Every AX call is
+  /// admitted on its exact handle first, so a fresh candidate is bounded before its first read and
+  /// each read gets only what remains of the caller's cumulative budget. A refused admission, or a
+  /// budget spent by the last read, is `.budget`; any other failed check keeps today's reason.
+  /// A focus caught mid-rebuild (#3368 measured AXGroup, then AXWebArea, then the new AXTextArea)
+  /// refuses that read; activation polls again and dispatch decides again before the paste.
+  fileprivate static func decideStartFieldWindow(
+    _ window: AXUIElement, element: AXUIElement?, pid: pid_t,
+    ax: any PastedRegionAXOperations, admit: (AXUIElement) -> Bool
+  ) -> Decision {
+    let mismatch = Decision.refuse(.windowUnreadableFocusMismatch)
+    let application = ax.applicationElement(pid: pid)
+    guard admit(application) else { return .refuse(.budget) }
+    guard case .element(let candidate) = ax.focusedElement(ofApplication: application) else {
+      return mismatch
+    }
+    if let element, CFEqual(candidate, element) { return .pass(.fieldFocused) }
+    guard admit(candidate) else { return .refuse(.budget) }
+    guard ax.pid(of: candidate) == pid else { return mismatch }
+    guard admit(candidate) else { return .refuse(.budget) }
+    // An unreadable subrole counts as secure (`isSecureField`), so it refuses too.
+    guard !SelectionReader.isSecureField(ax.subrole(of: candidate)) else { return mismatch }
+    guard admit(candidate) else { return .refuse(.budget) }
+    guard let role = ax.role(of: candidate), PasteService.textRoles.contains(role) else {
+      return mismatch
+    }
+    guard admit(candidate) else { return .refuse(.budget) }
+    guard case .window(let own) = ax.window(of: candidate) else { return mismatch }
+    // The last read may have spent the budget; an answer that arrived after it is not trusted.
+    guard admit(candidate) else { return .refuse(.budget) }
+    return CFEqual(own, window) ? .pass(.replacementField) : mismatch
   }
 }
 
@@ -980,6 +1038,7 @@ internal final class PasteCascadeExecutor {
         policy.boundTier1MessagingTimeout && tiersAttempted.contains(.axDirect)
       var activation = await activate(
         app, element: request.targetElement, recordedWindow: request.recordedWindow,
+        startFieldWindow: request.capturedFieldWindow,
         target: targetWindow, tier1BoundTheTarget: tier1BoundTheTarget)
       targetWindow = activation.target
       #if DEBUG
@@ -1285,6 +1344,7 @@ internal final class PasteCascadeExecutor {
       // bound this target's timeout here.
       let activation = await activate(
         app, element: request.targetElement, recordedWindow: request.recordedWindow,
+        startFieldWindow: request.capturedFieldWindow,
         target: targetWindow, tier1BoundTheTarget: false)
       targetWindow = activation.target
       logPasteTiming(
@@ -1631,6 +1691,7 @@ internal final class PasteCascadeExecutor {
   /// passed when an earlier tier already resolved it, so a delivery reads the window once.
   func activate(
     _ app: NSRunningApplication, element: AXUIElement?, recordedWindow: AXUIElement?,
+    startFieldWindow: AXUIElement? = nil,
     target known: PasteTargetWindow?, tier1BoundTheTarget: Bool
   ) async -> Activation {
     let timeoutMs = TimingConstants.activationTimeoutMs
@@ -1646,7 +1707,8 @@ internal final class PasteCascadeExecutor {
     let target =
       known
       ?? PasteTargetWindowGate.resolve(
-        element: element, recordedWindow: recordedWindow, ax: landingAX, admit: stepBudget().admit)
+        element: element, recordedWindow: recordedWindow, startFieldWindow: startFieldWindow,
+        ax: landingAX, admit: stepBudget().admit)
     // #3423: a destination that already owns the keyboard focus with the captured field focused
     // (a non-activating launcher panel) is never front, so activating it cannot be observed and
     // could close the panel. One admission read; the dispatch gate re-reads before the key event.
@@ -1707,12 +1769,9 @@ internal final class PasteCascadeExecutor {
       activationEffect(app)
       return
     }
-    let raise: AXUIElement?
-    switch target {
-    case .window(let window), .recordedWindow(let window): raise = window
-    case .none, .unreadable: raise = nil
-    }
-    if let raise, let seconds = Self.activationCallSeconds(remainingMs()) {
+    if let raise = Self.windowToRaise(target),
+      let seconds = Self.activationCallSeconds(remainingMs())
+    {
       let budget = PasteLandingPrepareBudget(
         totalMs: Int(seconds * 1000), scheduler: landingScheduler, ax: landingAX)
       PasteService.raiseWindow(raise, admit: budget.admit)
@@ -1721,6 +1780,17 @@ internal final class PasteCascadeExecutor {
       _ = PasteService.forceActivateApp(pid: app.processIdentifier, messagingTimeout: seconds)
     }
     app.activate()
+  }
+
+  /// The window an activation raises before bringing the app front (#3121): the captured field's
+  /// window, the window recorded with no field (#3304), or the field's window recorded at record
+  /// start when it cannot be read now (#3961). Nil when there is nothing to raise.
+  static func windowToRaise(_ target: PasteTargetWindow) -> AXUIElement? {
+    switch target {
+    case .window(let window), .recordedWindow(let window), .startFieldWindow(let window):
+      return window
+    case .none, .unreadable: return nil
+    }
   }
 
   /// The last destination read before a Tier 2 or 2b key event (#3423), after the omnibox
@@ -2048,13 +2118,7 @@ internal final class PasteCascadeExecutor {
     _ decision: PasteTargetWindowGate.Decision, target: PasteTargetWindow, takeID: String?,
     bundleId: String, origin: PasteDeliveryOrigin
   ) {
-    let kind: String
-    switch target {
-    case .none: return
-    case .window: kind = "field_window"
-    case .unreadable: kind = "field_window_unreadable"
-    case .recordedWindow: kind = "recorded_window"
-    }
+    guard let kind = Self.gateLogKind(target) else { return }
     let result: String
     switch decision {
     case .pass(let pass): result = "pass_\(pass.rawValue)"
@@ -2066,6 +2130,18 @@ internal final class PasteCascadeExecutor {
       await AppLogger.shared.log(
         "WINDOW_GATE dispatch target=\(kind) result=\(result) take_id=\(take) bundle_id=\(bundleId)\(originSuffix)",
         level: .info, category: "PasteCascade")
+    }
+  }
+
+  /// The `target=` value of a `WINDOW_GATE dispatch` line; nil for `.none`, which reads nothing
+  /// and logs nothing.
+  static func gateLogKind(_ target: PasteTargetWindow) -> String? {
+    switch target {
+    case .none: return nil
+    case .window: return "field_window"
+    case .unreadable: return "field_window_unreadable"
+    case .recordedWindow: return "recorded_window"
+    case .startFieldWindow: return "field_window_recorded"
     }
   }
 

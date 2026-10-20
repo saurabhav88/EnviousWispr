@@ -1719,7 +1719,7 @@ import os
   // window instead. The delivery-time retry may then adopt a recovered field only when it sits in
   // that window; the window itself always reaches the paste request.
 
-  @Test("record start keeps the window only when no field was captured and the app is trusted")
+  @Test("record start keeps the app window with no field, the field's own window with one (#3961)")
   func recordStartTargetRules() {
     let app = Self.stubTargetApp()
     let field = Self.stubCaretElement()
@@ -1727,15 +1727,49 @@ import os
     let context = KernelSessionContext()
     var asked: [pid_t] = []
 
+    // #3961: a captured field records its OWN window (one read of that field) and never the
+    // app's focused window; the two are never recorded together.
+    let fieldWindow = AXUIElementCreateApplication(7_103)
+    var fieldsAsked: [AXUIElement] = []
     context.recordStartTarget(
-      front: app, focus: .focused(element: field, ownerPID: app.processIdentifier), trusted: true) { asked.append($0); return window }
+      front: app, focus: .focused(element: field, ownerPID: app.processIdentifier), trusted: true,
+      captureWindow: { asked.append($0); return window },
+      captureFieldWindow: { fieldsAsked.append($0); return fieldWindow })
     #expect(context.targetElement == field)
-    #expect(context.targetWindow == nil, "a captured field needs no window")
-    #expect(asked.isEmpty, "and the window is never even read")
+    #expect(context.targetWindow == nil, "a captured field needs no app window")
+    #expect(asked.isEmpty, "and the app's window is never even read")
+    #expect(fieldsAsked.count == 1 && fieldsAsked.first.map { CFEqual($0, field) } == true)
+    #expect(context.targetFieldWindow == fieldWindow)
+
+    context.recordStartTarget(
+      front: app, focus: .focused(element: field, ownerPID: app.processIdentifier), trusted: false,
+      captureWindow: { asked.append($0); return window },
+      captureFieldWindow: { fieldsAsked.append($0); return fieldWindow })
+    #expect(context.targetFieldWindow == nil, "untrusted: no field window, and the old one is gone")
+    #expect(fieldsAsked.count == 1, "untrusted: never read")
+
+    context.recordStartTarget(
+      front: app, focus: .focused(element: field, ownerPID: app.processIdentifier), trusted: true,
+      captureWindow: { asked.append($0); return window }, captureFieldWindow: { _ in nil })
+    #expect(context.targetFieldWindow == nil, "an unreadable field window records nothing")
+
+    // A terminated target (the degenerate `NSRunningApplication()` reports `isTerminated`) is
+    // never read. Termination DURING the read is guarded by the same post-read liveness check as
+    // the #3304 window and cannot be staged with a real running app here.
+    let dead = NSRunningApplication()
+    context.recordStartTarget(
+      front: dead, focus: .focused(element: field, ownerPID: dead.processIdentifier), trusted: true,
+      captureWindow: { asked.append($0); return window },
+      captureFieldWindow: { fieldsAsked.append($0); return fieldWindow })
+    #expect(context.targetFieldWindow == nil)
+    #expect(fieldsAsked.count == 1, "a terminated app is never read")
+
+    context.targetFieldWindow = fieldWindow
 
     context.recordStartTarget(front: app, focus: .noElement, trusted: true) { asked.append($0); return window }
     #expect(context.targetApp == app)
     #expect(context.targetWindow == window)
+    #expect(context.targetFieldWindow == nil, "no field: the last take's field window is reset")
     #expect(asked == [app.processIdentifier], "read once, scoped to the recorded app")
 
     context.recordStartTarget(front: app, focus: .noElement, trusted: false) { asked.append($0); return window }

@@ -34,18 +34,23 @@ public final class CancelUndoPayload {
   /// #3437: the target app's focused window recorded at record start when no field was captured
   /// (#3304), so the Undo delivery's window gate protects the same window dictation's would.
   package let targetWindow: AXUIElement?
+  /// #3961: the captured field's own window recorded at record start, so the Undo delivery's
+  /// window gate accepts a rebuilt text box in that window exactly as dictation's would.
+  package let targetFieldWindow: AXUIElement?
   /// #3437: the take facts Smart Insertion reads, frozen when the take was held so the Undo
   /// delivery repairs the text exactly as this take's own delivery would have.
   package let takeFacts: InsertionTakeFacts
 
   package init(
     transcriptID: UUID, targetApp: NSRunningApplication?, targetElement: AXUIElement?,
-    targetWindow: AXUIElement?, takeFacts: InsertionTakeFacts
+    targetWindow: AXUIElement?, targetFieldWindow: AXUIElement? = nil,
+    takeFacts: InsertionTakeFacts
   ) {
     self.transcriptID = transcriptID
     self.targetApp = targetApp
     self.targetElement = targetElement
     self.targetWindow = targetWindow
+    self.targetFieldWindow = targetFieldWindow
     self.takeFacts = takeFacts
   }
 }

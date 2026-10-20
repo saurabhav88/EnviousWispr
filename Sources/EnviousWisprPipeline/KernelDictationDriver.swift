@@ -1387,10 +1387,12 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
         // #3304: when no field is captured, the app's focused window is recorded instead. Reset
         // BEFORE the field capture below runs, so the last recording's window never outlives it.
         context.targetWindow = nil
+        context.targetFieldWindow = nil
         let front = NSWorkspace.shared.frontmostApplication
         let ownerBundleID = context.recordStartTarget(
           front: front, focus: PasteService.captureKeyboardFocus(), trusted: AXIsProcessTrusted(),
-          captureWindow: { PasteService.captureFocusedStandardWindow(pid: $0) })
+          captureWindow: { PasteService.captureFocusedStandardWindow(pid: $0) },
+          captureFieldWindow: { PasteService.captureFieldWindow(of: $0) })
         // #3423: one line per take; the state is metadata only, never content.
         let targetFocusLine =
           "TARGET_FOCUS state=\(context.focusOwnerState?.rawValue ?? "nil") "
@@ -1660,6 +1662,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
           targetApp: context.targetApp,
           targetElement: context.targetElement,
           targetWindow: context.targetWindow,
+          targetFieldWindow: context.targetFieldWindow,
           // #3437: frozen here, while this take's context is still live. The language the engine
           // reported comes from the SAVED row, never a re-read of `adapter.lastResult`, which
           // nothing guarantees still describes this take by the time Undo is pressed.
@@ -1925,6 +1928,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       context.targetApp = nil
       context.targetElement = nil
       context.targetWindow = nil  // #3304: the recorded window ends with the recording
+      context.targetFieldWindow = nil  // #3961: so does the field's recorded window
     case .arming, .live, .stopping, .delivering:
       break
     }
