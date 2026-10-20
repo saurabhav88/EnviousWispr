@@ -188,6 +188,26 @@ class HookTests(unittest.TestCase):
         self.hook.invoke('chat-a', 'release')
         self.assertEqual(self.hook.handle(self.event(name='Stop')), {})
 
+    def test_stop_and_reply_mark_and_clear_the_wait_on_the_founder(self):
+        """#3952: a Codex holder waiting on him is released to peers after 10 minutes."""
+        import json as _json
+        self.hook.invoke('chat-a', 'claim')
+        def waiting():
+            import time as _time
+            return self.hook.lock.waited(_json.loads(self.card_path.read_text()), _time.time())
+        self.hook.handle(self.event(name='Stop', stop_hook_active=False,
+                                    last_assistant_message='Lock fix — NEED YOU: pick one'))
+        self.assertIsNotNone(waiting())
+        self.hook.handle(self.event(name='UserPromptSubmit', prompt='<task-notification>\nx'))
+        self.assertIsNotNone(waiting())
+        self.hook.handle(self.event(name='UserPromptSubmit', prompt='option 1'))
+        self.assertIsNone(waiting())
+        self.hook.handle(self.event(name='Stop', stop_hook_active=False,
+                                    last_assistant_message='Lock fix — NEED YOU: pick one'))
+        self.hook.handle(self.event(name='Stop', chat='chat-b', stop_hook_active=False,
+                                    last_assistant_message='Other — WORKING'))
+        self.assertIsNotNone(waiting(), 'a peer chat must not clear the holder wait')
+
     def test_native_reminder_only_reaches_holder(self):
         self.hook.invoke('chat-a', 'claim')
         card = json.loads(self.card_path.read_text())

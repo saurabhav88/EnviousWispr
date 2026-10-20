@@ -52,10 +52,10 @@ def context(name, text):
     return {'hookSpecificOutput': {'hookEventName': name, 'additionalContext': text}}
 
 
-def invoke(session_id, *argv):
+def invoke(session_id, *argv, payload=None):
     out = io.StringIO()
     with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
-        result = get_lock().main(list(argv), native_session_id=session_id)
+        result = get_lock().main(list(argv), native_session_id=session_id, hook_payload=payload)
     return result, out.getvalue().strip()
 
 
@@ -244,9 +244,16 @@ def handle(event):
                 return deny(text + f'. Run python3 {LOCK_TOOL} claim --label "<task>" separately first.')
         return {}
     if name in ('UserPromptSubmit', 'PostToolUse'):
+        if name == 'UserPromptSubmit':
+            # #3952: his reply ends a wait on him (the owner skips notifications).
+            invoke(session_id, 'wait-mark', payload=event)
         _, text = invoke(session_id, 'remind', '--event', name)
         return json.loads(text) if text else {}
     if name in ('Stop', 'SessionEnd', 'Interrupt'):
+        if name == 'Stop':
+            # #3952: a turn ending on NEED YOU / DONE starts the 10-minute wait
+            # after which a peer may take the app; any other ending clears it.
+            invoke(session_id, 'wait-mark', payload=event)
         result, text = invoke(session_id, 'check')
         if result == get_lock().EXIT_UNDECIDED:
             return {'systemMessage': text}

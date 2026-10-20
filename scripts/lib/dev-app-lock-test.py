@@ -68,7 +68,7 @@ def base_rewrites(lock_dir, agents='("bash",)', ps='"/bin/ps"'):
 class Session:
     """A bash process that runs tool commands, then idles until killed."""
 
-    def __init__(self, tmp, tool, commands, start_gate=None, step_sleep=0):
+    def __init__(self, tmp, tool, commands, start_gate=None, step_sleep=0, gates=None):
         self.dir = tempfile.mkdtemp(dir=tmp)
         lines = []
         if start_gate:
@@ -77,6 +77,9 @@ class Session:
         for i, cmd in enumerate(commands):
             if step_sleep and i:
                 lines.append(f"sleep {step_sleep}")
+            if gates and i in gates:
+                # Hold this step until the test creates the file.
+                lines.append(f'while [ ! -e "{gates[i]}" ]; do sleep 0.01; done')
             lines.append(f'"{sys.executable}" "{tool}" {cmd} > "{self.dir}/out{i}" 2>&1; '
                          f'echo $? > "{self.dir}/rc{i}"')
         # `exec`, not `sleep & wait`: a SIGKILLed bash orphans a background
@@ -121,7 +124,10 @@ def run_tool(tool, *args, env=None):
     # A simulated founder has no native Codex context. The codex fixture opts in.
     clean = {k: v for k, v in os.environ.items()
              if k not in ("CODEX_THREAD_ID", "CODEX_SESSION_ID")}
+    # Empty stdin: a hook command reads its payload there, and an inherited
+    # terminal would make it wait forever.
     p = subprocess.run([sys.executable, tool, *args], capture_output=True, text=True,
+                       stdin=subprocess.DEVNULL,
                        env=clean if env is None else dict(clean, **env))
     return p.returncode, p.stdout + p.stderr
 
@@ -451,6 +457,243 @@ def main():
         rc, out = run_tool(c_tool, "claim", "--label", "chain")
         check("the nearest session wins over the host above it",
               rc == 0 and card(c_lock)["pid"] == os.getpid(), out)
+
+        print("#3952: Claude desktop app sessions")
+        for label, comm, want in [
+            ("desktop app session",
+             os.path.expanduser("~/Library/Application Support/Claude/claude-code/"
+                                "2.1.299/4fa9694b7975/claude.app/Contents/MacOS/claude"), "claude"),
+            ("desktop app disclaimer helper is a host",
+             "/Applications/Claude.app/Contents/Helpers/disclaimer", None),
+            ("desktop-shaped path outside the user's Application Support",
+             "/tmp/App Support/Claude/claude-code/2.1.299/4fa9694b7975/claude.app/Contents/MacOS/claude",
+             None),
+        ]:
+            name_ps = os.path.join(tmp, f"dname-ps-{abs(hash(comm))}")
+            with open(name_ps, "w") as f:
+                f.write(f'#!/bin/sh\necho "1 Thu Jan  1 00:00:00 1970 S {comm}"\n')
+            os.chmod(name_ps, 0o755)
+            n_lock = os.path.join(tmp, f"lock-dn-{abs(hash(comm))}")
+            n_tool = make_copy(tmp, f"dn-{abs(hash(comm))}.py", [
+                ('LOCK_DIR = os.path.expanduser("~/Library/Caches/EnviousWispr/dev-app-lock")',
+                 f"LOCK_DIR = {n_lock!r}"),
+                ('PS = "/bin/ps"', f"PS = {name_ps!r}")])
+            rc, out = run_tool(n_tool, "claim", "--label", "n")
+            ok = (rc == 0 and f"claimed by {want} session" in out) if want else \
+                (rc == 0 and "founder run" in out)
+            check(f"{label} -> {want or 'founder run'}", ok, out)
+
+        print("#3952: a hold waiting on the founder is released after the wait")
+        lockw = os.path.join(tmp, "lockw")
+        w_tool = make_copy(tmp, "w.py", base_rewrites(lockw))
+        payloads = {}
+        for key, body in {
+            "need": {"hook_event_name": "Stop", "stop_hook_active": False,
+                     "last_assistant_message": "Fix Setup microphone — NEED YOU: do the test\n\nmore"},
+            "done": {"hook_event_name": "Stop", "stop_hook_active": False,
+                     "last_assistant_message": "Task — DONE\nall good"},
+            "working": {"hook_event_name": "Stop", "stop_hook_active": False,
+                        "last_assistant_message": "Task — WAITING ON the tests"},
+            "pushed": {"hook_event_name": "Stop", "stop_hook_active": True,
+                       "last_assistant_message": "Pushed."},
+            "second-stop-waiting": {"hook_event_name": "Stop", "stop_hook_active": True,
+                                    "last_assistant_message": "Task — WAITING ON the tests"},
+            "quoted": {"hook_event_name": "Stop", "stop_hook_active": False,
+                       "last_assistant_message": "> Task — NEED YOU"},
+            "reply": {"hook_event_name": "UserPromptSubmit", "prompt": "ok go"},
+            "notice": {"hook_event_name": "UserPromptSubmit",
+                       "prompt": "<task-notification>\n<task-id>x</task-id>"},
+            "peer": {"hook_event_name": "UserPromptSubmit",
+                     "prompt": "Another Claude session sent a message:\n<cross-session-message>"},
+            "box": {"hook_event_name": "PostToolUse", "tool_name": "mcp__ccd_turn__wrap_up",
+                    "tool_input": {"recap": "r", "blocked": True}},
+            "box-open": {"hook_event_name": "PostToolUse", "tool_name": "mcp__ccd_turn__wrap_up",
+                         "tool_input": {"recap": "r"}},
+            "ask": {"hook_event_name": "PreToolUse", "tool_name": "AskUserQuestion"},
+            "answered": {"hook_event_name": "PostToolUse", "tool_name": "AskUserQuestion"},
+            "other-tool": {"hook_event_name": "PostToolUse", "tool_name": "Bash"},
+        }.items():
+            path = os.path.join(tmp, f"payload-{key}.json")
+            with open(path, "w") as f:
+                json.dump(body, f)
+            payloads[key] = path
+
+        def mark_steps(*keys):
+            return [f"wait-mark < {payloads[k]}" for k in keys]
+
+        import importlib.util
+        readers = {}
+
+        def reader(lock_dir):
+            """The tool's own `waited`, from a private copy aimed at lock_dir."""
+            if lock_dir not in readers:
+                path = make_copy(tmp, f"reader-{len(readers)}.py", base_rewrites(lock_dir))
+                spec = importlib.util.spec_from_file_location(f"reader{len(readers)}", path)
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+                readers[lock_dir] = mod
+            return readers[lock_dir]
+
+        def waiting(lock_dir):
+            """When the current hold started waiting on the founder, or None."""
+            c = card(lock_dir)
+            if c is None:
+                return None
+            now = time.time()
+            w = reader(lock_dir).waited(c, now)
+            return None if w is None else now - w
+
+        hw = Session(tmp, w_tool, ["claim --label w"] + mark_steps("need"))
+        hw.wait_done()
+        first = waiting(lockw)
+        check("NEED YOU at turn end marks the holder as waiting",
+              hw.rc(1) == 0 and hw.out(1) == "" and isinstance(first, (int, float)), str(card(lockw)))
+        peer = Session(tmp, w_tool, ["claim --label peer"])
+        peer.wait_done()
+        check("a peer is still refused before the wait runs out",
+              peer.rc() == 3 and "waiting on the founder" in peer.out(), peer.out())
+        rc, out = run_tool(w_tool, "status")
+        check("status says the holder is waiting on the founder",
+              "held by" in out and "waiting on the founder" in out, out)
+        old_nonce = card(lockw)["nonce"]
+        for name in os.listdir(lockw):
+            if name.startswith(f"wait-{old_nonce}."):
+                os.unlink(os.path.join(lockw, name))
+        open(os.path.join(lockw, f"wait-{old_nonce}.{int((time.time() - 11 * 60) * 1e9)}.set"),
+             "w").close()
+        rc, out = run_tool(w_tool, "status")
+        check("status reads free once the holder waited 10 minutes",
+              rc == 0 and out.startswith("dev-app-lock: free (holder waited on the founder"), out)
+        peer2 = Session(tmp, w_tool, ["claim --label peer2"])
+        peer2.wait_done()
+        check("a peer takes over after 10 minutes of waiting with no reply",
+              peer2.rc() == 0 and "took over (holder waited on the founder" in peer2.out()
+              and card(lockw)["pid"] == peer2.proc.pid
+              and waiting(lockw) is None
+              and not [n for n in os.listdir(lockw) if n.startswith(f"wait-{old_nonce}")],
+              peer2.out())
+        hw.kill()
+        peer.kill()
+        peer2.kill()
+
+        def run_marks(name, *keys):
+            lk = os.path.join(tmp, f"lockm-{name}")
+            tl = make_copy(tmp, f"m-{name}.py", base_rewrites(lk))
+            sess = Session(tmp, tl, ["claim --label m"] + mark_steps(*keys), step_sleep=0.05)
+            sess.wait_done()
+            w = waiting(lk)
+            sess.kill()
+            return w
+
+        for name, keys, want in [
+            ("reply clears", ("need", "reply"), None),
+            ("task notification keeps the wait", ("need", "notice"), "set"),
+            ("peer message keeps the wait", ("need", "peer"), "set"),
+            ("the gate's second stop keeps the wait", ("need", "pushed"), "set"),
+            ("WAITING ON clears", ("need", "working"), None),
+            ("a second stop that is not the gate's push still decides",
+             ("need", "second-stop-waiting"), None),
+            ("DONE marks", ("done",), "set"),
+            ("a quoted status line is not a status", ("quoted",), None),
+            ("the desktop question box marks", ("box",), "set"),
+            ("a non-blocking box does not mark", ("box-open",), None),
+            ("a question marks and its answer clears", ("ask", "answered"), None),
+            ("a question marks", ("ask",), "set"),
+            ("other tools change nothing", ("need", "other-tool"), "set"),
+        ]:
+            w = run_marks(abs(hash(name)), *keys)
+            got = "set" if w is not None else None
+            check(f"wait-mark: {name}", got == want, str(w))
+
+        lk = os.path.join(tmp, "lock-oldest")
+        tl = make_copy(tmp, "oldest.py", base_rewrites(lk))
+        s3 = Session(tmp, tl, ["claim --label o"] + mark_steps("need") +
+                     ["claim --label o"], step_sleep=1.1)
+        s3.wait_done()
+        check("claiming again clears the holder's own wait",
+              s3.rc(2) == 0 and "already yours" in s3.out(2) and waiting(lk) is None, str(card(lk)))
+        s3.kill()
+        s4 = Session(tmp, tl, ["claim --label o"] + mark_steps("need", "box"), step_sleep=1.1)
+        s4.wait_done()
+        c4, w4 = card(lk), waiting(lk)
+        check("a later ask keeps the oldest wait time",
+              c4 and w4 is not None and w4 < c4["claimed_at"] + 2.0, f"{c4} {w4}")
+        s4.kill()
+
+        # #3952 Codex review: the founder's reply must land even while another
+        # process holds the mutex for a long time (a stalled ps in a peer's
+        # claim). Hold the mutex from here for the whole reply; it must clear.
+        lk = os.path.join(tmp, "lock-busy")
+        tl = make_copy(tmp, "busy.py", base_rewrites(lk))
+        go = os.path.join(tmp, "busy-go")
+        sb = Session(tmp, tl, ["claim --label b"] + mark_steps("need", "reply"), gates={2: go})
+        rc1 = os.path.join(sb.dir, "rc1")
+        deadline = time.time() + 30
+        while not (os.path.exists(rc1) and open(rc1).read().strip()) and time.time() < deadline:
+            time.sleep(0.05)
+        marked = waiting(lk) is not None
+        mfd = os.open(os.path.join(lk, "mutex"), os.O_RDWR)
+        fcntl.flock(mfd, fcntl.LOCK_EX)
+        try:
+            open(go, "w").close()
+            finished = sb.wait_done(timeout=10)
+            cleared = waiting(lk) is None
+        finally:
+            fcntl.flock(mfd, fcntl.LOCK_UN)
+            os.close(mfd)
+        check("his reply clears the wait while the mutex is held",
+              marked and finished and sb.rc(2) == 0 and cleared,
+              f"marked={marked} finished={finished} cleared={cleared}")
+        sb.kill()
+        rel = Session(tmp, tl, ["claim --label r"] + mark_steps("need") + ["release"])
+        rel.wait_done()
+        check("release removes the wait file",
+              rel.rc(2) == 0 and not [n for n in os.listdir(lk) if n.startswith("wait-")],
+              str(os.listdir(lk)))
+        rel.kill()
+
+        # Codex review round 3: a "set" whose file lands late must not undo
+        # a reply stamped after it; events replay in stamp order.
+        lk = os.path.join(tmp, "lock-order")
+        os.makedirs(lk)
+        mod = reader(lk)
+        fake = {"nonce": "order1"}
+        now = time.time()
+        mod.end_wait(fake, now - 1)
+        mod.start_wait(fake, now - 5)
+        check("a late-landing set stamped before the reply stays cleared",
+              mod.waited(fake, now) is None)
+        mod.start_wait(fake, now - 0.5)
+        mod.start_wait(fake, now - 0.2)
+        w = mod.waited(fake, now)
+        check("a new ask after the reply waits from its oldest set",
+              w is not None and 0.45 < w < 0.55, str(w))
+        mod.end_wait(fake, now - 0.2)
+        check("a reply stamped the same moment as a set wins",
+              mod.waited(fake, now) is None)
+        check("an unsafe nonce never names a path",
+              mod.wait_file({"nonce": "../x"}) is None and mod.waited({"nonce": "../x"}, now) is None)
+
+        lk = os.path.join(tmp, "lock-nonholder")
+        tl = make_copy(tmp, "nonholder.py", base_rewrites(lk))
+        owner = Session(tmp, tl, ["claim --label owner"])
+        owner.wait_done()
+        before_nh = card(lk)
+        other = Session(tmp, tl, mark_steps("need"))
+        other.wait_done()
+        check("a non-holder's wait-mark changes nothing",
+              other.rc() == 0 and card(lk) == before_nh, str(card(lk)))
+        rc, out = run_tool(tl, "wait-mark")
+        check("wait-mark with no stdin payload exits 0 silently", rc == 0 and out == "", out)
+        open(os.path.join(lk, f"wait-{before_nh['nonce']}.soon.set"), "w").close()
+        rc, out = run_tool(tl, "status")
+        check("a garbled wait file counts as not waiting (the holder keeps the app)",
+              rc == 0 and "held by" in out and "waiting on the founder" not in out, out)
+        owner.kill()
+        other.kill()
+        rc, out = run_tool(make_copy(tmp, "free-mark.py", base_rewrites(
+            os.path.join(tmp, "lock-free-mark"))), "wait-mark")
+        check("wait-mark with nobody holding exits 0 silently", rc == 0 and out == "", out)
 
         print("live tool targets the real lock")
         live_src = open(TOOL).read()

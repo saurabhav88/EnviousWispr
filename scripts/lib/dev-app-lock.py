@@ -12,6 +12,7 @@ machine-wide claim that every checkout reads instead.
     dev-app-lock.py release
     dev-app-lock.py check                 (requires the caller's existing hold)
     dev-app-lock.py remind  --event NAME   (Claude/Codex hook; always exit 0)
+    dev-app-lock.py wait-mark              (hook; reads the hook JSON on stdin; always exit 0)
 
 Exit status: 0 done, 3 held by someone else (the holder card is printed),
 2 could not decide (fail closed: treat the app as busy and say why).
@@ -24,15 +25,21 @@ CODEX_SESSION_ID is a legacy fallback, and can differ in nested CLI sessions.
 The holder stays the holder after the
 command that claimed exits, for as long as that session process lives.
 
-WHEN A HOLD ENDS. Only two ways: the holder runs `release`, or the holder
-session process exits. There is deliberately no idle timer (founder
-2026-10-03): sessions release by rule when their dev-app work is done
-(`tools-and-apps.md` RULE: peer-occupancy-procedure), and a timer would let a
-peer quit an app that is mid-test. If holds turn out to be forgotten, the
-timer is the next step, not the first. `remind` nudges the holder session
-every REMIND_SECONDS so a forgotten hold is noticed by its own session. A
-process check that fails is "cannot tell", never "gone": treating it as gone
-is how a live holder loses the app.
+WHEN A HOLD ENDS. Three ways: the holder runs `release`, the holder session
+process exits, or the holder has been WAITING ON THE FOUNDER for WAIT_SECONDS
+with no reply from him (founder 2026-10-20, #3952: "it's been 10 minutes and no
+reply from me ... that session should self release it so other sessions can
+continue"). There is still no plain idle timer (founder 2026-10-03): a holder
+that is working, or waiting on its own background job, keeps the app however
+long it takes, because a timer would let a peer quit an app that is mid-test.
+`wait-mark` (a hook) records the wait as event files named for the hold's
+nonce, `wait-<nonce>.*`, when the holder's turn ends asking him something (a `NEED YOU`/`DONE` status line, the desktop
+app's blocking question box, `AskUserQuestion`) and clears it when he replies.
+A sleeping session cannot release itself, so the release happens at the next
+peer `claim`: past WAIT_SECONDS the card counts as released. `remind` nudges
+the holder session every REMIND_SECONDS so a forgotten hold is noticed by its
+own session. A process check that fails is "cannot tell", never "gone":
+treating it as gone is how a live holder loses the app.
 
 NO SESSION FOUND. A run with no agent ancestor AND no Codex context is the founder by
 hand. The founder is never blocked (`tools-and-apps.md` RULE:
@@ -66,6 +73,9 @@ VERSION = 4
 LOCK_DIR = os.path.expanduser("~/Library/Caches/EnviousWispr/dev-app-lock")
 AGENT_NAMES = ("claude", "codex")
 REMIND_SECONDS = 30 * 60
+# #3952: a hold whose session has waited this long on the founder, with no
+# reply, counts as released.
+WAIT_SECONDS = 10 * 60
 PS = "/bin/ps"
 
 EXIT_OK = 0
@@ -159,6 +169,20 @@ CLAUDE_VERSION_PATH = re.compile(
     + r"\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?")
 
 
+# #3952: the Claude desktop app (Code tab) runs one Claude Code process per
+# session from its own bundle, e.g. ~/Library/Application Support/Claude/
+# claude-code/2.1.299/4fa9694b7975/claude.app/Contents/MacOS/claude (measured
+# 2026-10-20). "Application Support" has a space, so the first-word rule below
+# reads it as `Application` and the session ran as a founder run that took no
+# lock, letting peers quit its app mid-test. The outer app
+# (/Applications/Claude.app/...) and its `disclaimer` helper are hosts, not
+# sessions, and stay unrecognized.
+CLAUDE_DESKTOP_PATH = re.compile(
+    re.escape(os.path.expanduser("~/Library/Application Support/Claude/claude-code/"))
+    + r"\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?/[A-Za-z0-9]+"
+    + re.escape("/claude.app/Contents/MacOS/claude"))
+
+
 def agent_kind(comm):
     """`claude`/`codex` when this ps `comm` is a session process, else None.
 
@@ -175,6 +199,8 @@ def agent_kind(comm):
     launchctl, a pre-existing tmux server, a background job that outlives its
     shell) has no agent ancestor and runs as a founder run.
     """
+    if "claude" in AGENT_NAMES and CLAUDE_DESKTOP_PATH.fullmatch(comm):
+        return "claude"
     words = comm.split()
     name = os.path.basename(words[0]) if words else ""
     if name in AGENT_NAMES:
@@ -194,13 +220,107 @@ def holder_alive(card):
     return info is not None and info[1] == card["started"]
 
 
+# #3952: the wait on the founder lives OUTSIDE the card, as event files named
+# `wait-<nonce>.<ns>.set` and `wait-<nonce>.<ns>.clear`, created without the
+# mutex. A reply must never be lost because another process holds the mutex
+# (Codex review rounds 1 and 2: skipping or a bounded wait could both drop it
+# while a stalled `ps` held the mutex), and a late "set" must never undo an
+# earlier-stamped reply (round 3), so each event is its own create-only file
+# stamped when its hook STARTED, and the newest event wins. The nonce ties the
+# events to one hold, so a takeover can never inherit an old hold's wait.
+_NONCE = re.compile(r"[A-Za-z0-9_-]{1,64}")
+_WAIT_EVENT = re.compile(r"([0-9]{1,20})\.(set|clear)")
+
+
+def wait_file(card):
+    """Name prefix of this hold's wait events, or None for an unsafe nonce."""
+    nonce = card.get("nonce")
+    if not isinstance(nonce, str) or _NONCE.fullmatch(nonce) is None:
+        return None
+    return os.path.join(LOCK_DIR, f"wait-{nonce}")
+
+
+def _wait_event(card, action, when):
+    path = wait_file(card)
+    if path is None:
+        return
+    try:
+        fd = os.open(f"{path}.{int(when * 1_000_000_000)}.{action}",
+                     os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+    except FileExistsError:
+        return
+    os.close(fd)
+
+
+def start_wait(card, when):
+    _wait_event(card, "set", when)
+
+
+def end_wait(card, when=None):
+    _wait_event(card, "clear", time.time() if when is None else when)
+
+
+def waited(card, now):
+    """Seconds the holder has waited on the founder, or None if it is not waiting.
+
+    Replays this hold's events in stamp order: a clear ends a wait, and the
+    first set after it starts one (the oldest unanswered ask counts). Anything
+    unreadable counts as not waiting: the safe direction keeps the holder's app.
+    """
+    path = wait_file(card)
+    if path is None:
+        return None
+    prefix = os.path.basename(path) + "."
+    events = []
+    try:
+        for name in os.listdir(LOCK_DIR):
+            if name.startswith(prefix):
+                m = _WAIT_EVENT.fullmatch(name[len(prefix):])
+                if m:
+                    events.append((int(m.group(1)), m.group(2) == "clear"))
+    except OSError:
+        return None
+    since = None
+    # At equal stamps the clear sorts last, so the reply wins.
+    for stamp, is_clear in sorted(events):
+        if is_clear:
+            since = None
+        elif since is None:
+            since = stamp / 1_000_000_000
+    return None if since is None else max(0.0, now - since)
+
+
+def clear_all_waits():
+    """Drop every wait file. Run under the mutex when a hold starts or ends,
+    which also sweeps a file a racing `wait-mark` left for an ended hold."""
+    try:
+        names = os.listdir(LOCK_DIR)
+    except FileNotFoundError:
+        return
+    for name in names:
+        if name.startswith("wait-"):
+            try:
+                os.unlink(os.path.join(LOCK_DIR, name))
+            except FileNotFoundError:
+                pass
+
+
+def wait_expired(card, now):
+    w = waited(card, now)
+    return w is not None and w >= WAIT_SECONDS
+
+
 def describe(card, now):
     held = int(now - card["claimed_at"])
     chat = f", chat {card['session_id']}" if card.get("session_id") else ""
+    w = waited(card, now)
+    wait = "" if w is None else (
+        f", waiting on the founder {int(w) // 60}m{int(w) % 60:02d}s "
+        f"(released at {WAIT_SECONDS // 60}m with no reply)")
     return (f"{card['kind']} session pid {card['pid']}{chat}, "
             f"label \"{card.get('label') or '-'}\", "
             f"worktree {card.get('worktree') or '-'}, "
-            f"held {held // 60}m{held % 60:02d}s")
+            f"held {held // 60}m{held % 60:02d}s{wait}")
 
 
 class Store:
@@ -293,7 +413,10 @@ def cmd_status(_args):
             print("dev-app-lock: free")
             return EXIT_OK
         alive = holder_alive(card)
-    if alive:
+    if alive and wait_expired(card, now):
+        print(f"dev-app-lock: free (holder waited on the founder with no reply; "
+              f"was {describe(card, now)})")
+    elif alive:
         print(f"dev-app-lock: held by {describe(card, now)}")
     else:
         print(f"dev-app-lock: free (holder session exited; was {describe(card, now)})")
@@ -321,15 +444,21 @@ def cmd_claim(args):
         now = time.time()
         card = store.read()
         if card is not None and same_session(card, me):
+            # Claiming again is app work, so it is not waiting any more.
+            end_wait(card)
             print(f"dev-app-lock: already yours ({describe(card, now)})")
             return EXIT_OK
         note = "claimed"
         if card is not None:
-            if holder_alive(card):
+            if not holder_alive(card):
+                note = f"took over (holder session exited; was {describe(card, now)})"
+            elif wait_expired(card, now):
+                note = ("took over (holder waited on the founder with no reply; "
+                        f"was {describe(card, now)})")
+            else:
                 print(f"dev-app-lock: BUSY. Held by {describe(card, now)}. "
                       "Wait and re-run `status`, or ask that session.")
                 return EXIT_HELD
-            note = f"took over (holder session exited; was {describe(card, now)})"
         new = {
             "version": VERSION,
             "kind": me["kind"],
@@ -343,6 +472,7 @@ def cmd_claim(args):
         }
         if me["kind"] == "codex":
             new["session_id"] = me["session_id"]
+        clear_all_waits()
         store.write(new)
     print(f"dev-app-lock: {note} by {describe(new, now)}")
     return EXIT_OK
@@ -359,6 +489,7 @@ def cmd_release(args):
         if not same_session(card, me) or (args.nonce is not None and args.nonce != card["nonce"]):
             print(f"dev-app-lock: not yours to release. Held by {describe(card, now)}")
             return EXIT_HELD
+        clear_all_waits()
         store.clear()
     print("dev-app-lock: released")
     return EXIT_OK
@@ -414,13 +545,103 @@ def cmd_remind(args):
     return EXIT_OK
 
 
+# The GR-STATUS-FIRST line `<label> — <STATUS>`, matched the way the Stop gate
+# ~/.claude/scripts/envious-notify-gate.py (`_STATUS_LINE`, `_NOT_A_LABEL`)
+# matches it. Only the two statuses that wait on the founder count here.
+_WAITING_STATUS_LINE = re.compile(r"^(?P<label>.+?)\s[—–-]\s(?:DONE|NEED YOU)(?::.*)?$")
+_NOT_A_LABEL = ("#", ">", "`", '"', "'", "- ", "* ", "+ ")
+# Prompts that reach a session without the founder replying: a background
+# task finishing and a peer session's message. Anything else is his reply.
+_NOT_HIS_REPLY = re.compile(r"\s*(?:<task-notification>|Another Claude session sent a message:)")
+# The desktop app's blocking question box. It ends the turn without running
+# Stop hooks (measured 2026-10-20, #3952), so it marks here instead.
+DESKTOP_QUESTION_TOOL = "mcp__ccd_turn__wrap_up"
+
+
+def waits_on_founder(message):
+    first = message.strip().splitlines()[0].strip() if message.strip() else ""
+    m = _WAITING_STATUS_LINE.fullmatch(first)
+    return bool(m) and bool(m.group("label").strip()) \
+        and not m.group("label").strip().startswith(_NOT_A_LABEL)
+
+
+def wait_decision(payload):
+    """"set", "clear" or None (leave the card alone) for one hook event."""
+    name = payload.get("hook_event_name")
+    if name == "Stop":
+        message = payload.get("last_assistant_message")
+        if not isinstance(message, str) or not message.strip():
+            return None
+        # The Stop gate's second stop ends on its bare `Pushed.` line; the
+        # first stop already decided. Any other second stop (a Codex hook
+        # block, then `WAITING ON tests`) is a real new ending and decides.
+        if payload.get("stop_hook_active") and message.strip() == "Pushed.":
+            return None
+        return "set" if waits_on_founder(message) else "clear"
+    if name == "UserPromptSubmit":
+        prompt = payload.get("prompt")
+        if isinstance(prompt, str) and _NOT_HIS_REPLY.match(prompt):
+            return None
+        return "clear"
+    tool = payload.get("tool_name")
+    if name == "PreToolUse" and tool == "AskUserQuestion":
+        return "set"
+    if name == "PostToolUse" and tool == "AskUserQuestion":
+        return "clear"
+    if name == "PostToolUse" and tool == DESKTOP_QUESTION_TOOL:
+        tool_input = payload.get("tool_input")
+        if isinstance(tool_input, dict) and tool_input.get("blocked") is True:
+            return "set"
+    return None
+
+
+def cmd_wait_mark(args):
+    """Hook: record whether the HOLDER is waiting on the founder.
+
+    Runs on many events of every session, so it is cheap, silent and never
+    fails a session. Non-holders and a free lock change nothing. It takes no
+    mutex: the card is replaced atomically (`Store.write`), so reading it
+    unlocked sees a whole card, and each event is one create-only file. Stated limit: a reply landing in the milliseconds
+    between a peer's read of an expired wait and its takeover loses to the
+    takeover; the wait had already run its full ten minutes.
+    """
+    # Stamp the event when the hook starts, so a slow "set" sorts before a
+    # later reply however late it lands.
+    event_time = time.time()
+    try:
+        if not os.path.exists(os.path.join(LOCK_DIR, "holder.json")):
+            return EXIT_OK
+        payload = args.hook_payload
+        if payload is None:
+            payload = json.loads(sys.stdin.read(1_048_576) or "null")
+        if not isinstance(payload, dict):
+            return EXIT_OK
+        decision = wait_decision(payload)
+        if decision is None:
+            return EXIT_OK
+        me = find_session(args.native_session_id)
+        if me is None:
+            return EXIT_OK
+        with open(os.path.join(LOCK_DIR, "holder.json")) as f:
+            card = json.load(f)
+        if not isinstance(card, dict) or not same_session(card, me):
+            return EXIT_OK
+        if decision == "set":
+            start_wait(card, event_time)
+        else:
+            end_wait(card, event_time)
+    except Exception:
+        pass
+    return EXIT_OK
+
+
 def default_worktree():
     out = subprocess.run(["git", "rev-parse", "--show-toplevel"],
                          capture_output=True, text=True)
     return out.stdout.strip() if out.returncode == 0 else os.getcwd()
 
 
-def main(argv, native_session_id=None):
+def main(argv, native_session_id=None, hook_payload=None):
     parser = argparse.ArgumentParser(prog="dev-app-lock.py")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("status")
@@ -432,13 +653,16 @@ def main(argv, native_session_id=None):
     release.add_argument("--nonce", default=None)
     remind = sub.add_parser("remind")
     remind.add_argument("--event", default="PostToolUse")
+    sub.add_parser("wait-mark")
     args = parser.parse_args(argv)
     args.native_session_id = native_session_id
+    args.hook_payload = hook_payload
     try:
         if args.command == "claim" and args.worktree is None:
             args.worktree = default_worktree()
         return {"status": cmd_status, "claim": cmd_claim, "release": cmd_release,
-                "remind": cmd_remind, "check": cmd_check}[args.command](args)
+                "remind": cmd_remind, "check": cmd_check,
+                "wait-mark": cmd_wait_mark}[args.command](args)
     except (Undecided, OSError, KeyError, TypeError, ValueError,
             OverflowError, RecursionError) as e:
         # OSError: the lock folder cannot be made or opened (a Codex sandbox
