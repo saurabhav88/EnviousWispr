@@ -2157,7 +2157,9 @@ package final class PastedRegionObserver: PastedRegionObserving {
   /// and its title, a switch changes it, so a changed or unreadable title refuses and the
   /// half-typed fix keeps today's weak lost-box path.
   private func replacedBoxRole(of w: Watch) -> Result<String, ReplacedBoxRefusal> {
-    guard let startWindow = w.startWindow, let startTitle = w.startWindowTitle else {
+    // An empty title names no conversation, so it cannot tell a switch from a send.
+    guard let startWindow = w.startWindow, let startTitle = w.startWindowTitle, !startTitle.isEmpty
+    else {
       return .failure(.startWindowUnknown)
     }
     let target = w.target
@@ -2191,11 +2193,13 @@ package final class PastedRegionObserver: PastedRegionObserving {
     // A send leaves the new box EMPTY: no text, or only its placeholder. A box rebuilt with text
     // in it (a composer re-rendered mid-edit that kept a newer edit than `lastRegion`) is not a
     // send, whatever that text is (cloud review of PR #3957).
-    let shown = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    // Only line breaks are ignored (Codex appends one to its placeholder); spaces a person typed
+    // are text.
+    let shown = value.trimmingCharacters(in: .newlines)
     guard
       shown.isEmpty
         || ax.placeholderTexts(of: candidate).contains(where: {
-          $0.trimmingCharacters(in: .whitespacesAndNewlines) == shown
+          !$0.isEmpty && $0.trimmingCharacters(in: .newlines) == shown
         })
     else { return .failure(.notEmpty) }
     return .success(role)

@@ -1478,6 +1478,11 @@ struct PastedRegionObserverWatchTests {
         t.scriptReplacement(value: .text("Note: Ask Saira today please")) }),
       ("the new box holds a NEWER edit than the last read (rebuilt mid-edit, not sent)", { t in
         t.scriptReplacement(value: .text("Note: Ask Sairah today please")) }),
+      ("the new box holds only spaces a person typed", { t in
+        t.scriptReplacement(value: .text("   ")) }),
+      ("the window title was empty", { t in
+        t.scriptReplacement()
+        t.ax.titles[90_001] = [""] }),
       ("the new box holds text that is not its placeholder", { t in
         t.scriptReplacement(value: .text("Do anything"))
         t.ax.placeholders[10_043] = ["Work with Codex"] }),
