@@ -205,7 +205,18 @@ struct StatusView: View {
             }
           case .openMicrophoneSettings:
             Button("Open Settings") {
-              Task { await permissions.requestMicrophoneAccessOrOpenSettings() }
+              Task {
+                await permissions.requestMicrophoneAccessOrOpenSettings()
+                // Access already turned back on: the owner opened nothing, so
+                // clear the stale error instead of leaving a dead button. The
+                // state check keeps a take started meanwhile untouched. Reads
+                // the live denial, not the cached grant, which can lag a revoke.
+                if permissions.microphonePermissionIsDenied == false,
+                  liveRecordingState.pipelineState == .error(.permissionDenied)
+                {
+                  dictationRuntime.resetActivePipeline()
+                }
+              }
             }
           case .openMicrophoneDeviceSettings:
             Button("Microphone Settings") {
