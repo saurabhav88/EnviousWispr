@@ -684,6 +684,10 @@ package protocol PastedRegionAXOperations: AnyObject {
   /// `AXTitle` of `element` (a window), one call; nil when it cannot be read or is not a string
   /// (#3368).
   func title(of element: AXUIElement) -> String?
+  /// `AXPlaceholderValue` and `AXDescription` of `element`, the strings an EMPTY composer may
+  /// report as its value (Codex answers `AXValue` with its placeholder, which it also exposes as
+  /// `AXDescription`; measured 2026-10-20). Unreadable or non-string answers are left out (#3368).
+  func placeholderTexts(of element: AXUIElement) -> [String]
   /// `AXTextMarkerRangeForUIElement` with `element` as its own parameter, one call (#3863).
   func textMarkerRange(of element: AXUIElement) -> PastedRegionMarkerRangeRead
   /// `AXStringForTextMarkerRange` for a range `textMarkerRange(of:)` returned, one call (#3863).
@@ -2144,7 +2148,7 @@ package final class PastedRegionObserver: PastedRegionObserving {
 
   /// #3368: whether the watched box was REPLACED, read after its handle answered
   /// `invalidUIElement`: focus is on a different text box of the same process and the same window,
-  /// and that box holds neither the pasted text nor the last text read. Returns that box's role, or
+  /// and that box is empty (no text, or only its placeholder). Returns that box's role, or
   /// why not (no state changes either way). Measured in Codex 2026-10-20: a send walks focus through
   /// `AXGroup` and `AXWebArea` to a new empty `AXTextArea` within about 150 ms; only the last one
   /// qualifies, so the earlier reads stay ordinary failures. Leaving for another conversation in
@@ -2184,12 +2188,16 @@ package final class PastedRegionObserver: PastedRegionObserving {
     guard case .text(let value) = readText(of: candidate, using: .value) else {
       return .failure(.unreadable)
     }
+    // A send leaves the new box EMPTY: no text, or only its placeholder. A box rebuilt with text
+    // in it (a composer re-rendered mid-edit that kept a newer edit than `lastRegion`) is not a
+    // send, whatever that text is (cloud review of PR #3957).
+    let shown = value.trimmingCharacters(in: .whitespacesAndNewlines)
     guard
-      case .complete(let renderedHits) = PastedRegionLocator.occurrences(
-        ofPasted: target.renderedText, in: value), renderedHits.isEmpty,
-      case .complete(let lastHits) = PastedRegionLocator.occurrences(
-        ofPasted: w.lastRegion, in: value), lastHits.isEmpty
-    else { return .failure(.textStillThere) }
+      shown.isEmpty
+        || ax.placeholderTexts(of: candidate).contains(where: {
+          $0.trimmingCharacters(in: .whitespacesAndNewlines) == shown
+        })
+    else { return .failure(.notEmpty) }
     return .success(role)
   }
 
@@ -2222,7 +2230,7 @@ package final class PastedRegionObserver: PastedRegionObserving {
     case otherWindow = "other_window"
     case titleChanged = "title_changed"
     case unreadable
-    case textStillThere = "text_still_there"
+    case notEmpty = "not_empty"
   }
 
   /// Focus is off the watched element inside the same application: the first
@@ -2658,6 +2666,16 @@ package final class LivePastedRegionAXOperations: PastedRegionAXOperations {
       let value = ref, CFGetTypeID(value) == CFStringGetTypeID()
     else { return nil }
     return value as? String
+  }
+
+  package func placeholderTexts(of element: AXUIElement) -> [String] {
+    [kAXPlaceholderValueAttribute, kAXDescriptionAttribute].compactMap { attribute in
+      var ref: CFTypeRef?
+      guard AXUIElementCopyAttributeValue(element, attribute as CFString, &ref) == .success,
+        let value = ref, CFGetTypeID(value) == CFStringGetTypeID()
+      else { return nil }
+      return value as? String
+    }
   }
 
   package func role(of element: AXUIElement) -> String? {

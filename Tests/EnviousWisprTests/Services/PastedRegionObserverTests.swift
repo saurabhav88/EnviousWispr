@@ -122,6 +122,9 @@ final class PastedRegionFakeAX: PastedRegionAXOperations {
   /// #3368: window titles keyed by the window handle's pid; titles are consumed in order with the
   /// last repeating, and a missing entry is unreadable (nil).
   var titles: [pid_t: [String?]] = [:]
+  /// #3368: placeholder strings keyed by the element handle's pid; a missing entry has none.
+  var placeholders: [pid_t: [String]] = [:]
+  func placeholderTexts(of element: AXUIElement) -> [String] { placeholders[Self.handlePID(element)] ?? [] }
   func title(of element: AXUIElement) -> String? {
     let key = Self.handlePID(element)
     guard var scripted = titles[key], !scripted.isEmpty else { return nil }
@@ -1387,6 +1390,16 @@ struct PastedRegionObserverWatchTests {
     #expect(o.isObserving == false)
   }
 
+  @Test("a new box that shows only its placeholder as its value counts as empty (Codex)")
+  func replacedBoxShowingItsPlaceholder() {
+    scriptReplacement(value: .text("Work with Codex\n"))
+    ax.placeholders[10_043] = ["Work with Codex"]
+    start()
+    sendReplacingTheBox()
+    scheduler.advance(ms: 750)
+    #expect(events.list == [.ended(.elementDestroyed)])
+  }
+
   @Test("a plain send (no fix seen) ends elementDestroyed and delivers nothing to judge")
   func replacedBoxWithoutAFix() {
     scriptReplacement()
@@ -1463,6 +1476,11 @@ struct PastedRegionObserverWatchTests {
         t.scriptReplacement(value: .text("Note: Ask Sarah today please")) }),
       ("the new box holds the fixed text", { t in
         t.scriptReplacement(value: .text("Note: Ask Saira today please")) }),
+      ("the new box holds a NEWER edit than the last read (rebuilt mid-edit, not sent)", { t in
+        t.scriptReplacement(value: .text("Note: Ask Sairah today please")) }),
+      ("the new box holds text that is not its placeholder", { t in
+        t.scriptReplacement(value: .text("Do anything"))
+        t.ax.placeholders[10_043] = ["Work with Codex"] }),
       ("another window", { t in
         t.scriptReplacement()
         t.ax.windows[10_043] = .window(PastedRegionFakeAX.app(90_002)) }),
