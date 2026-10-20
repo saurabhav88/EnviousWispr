@@ -1807,9 +1807,12 @@ package final class PastedRegionObserver: PastedRegionObserving {
       end(.ceilingElapsed)
       return
     }
-    // #3368: bounded reads on the handle capture already bounded (the window shares its
-    // application's timeout). A failed read turns off only the replaced-box check.
-    if case .window(let window) = ax.window(of: target.element) {
+    // #3368: the window read goes to the field handle capture already bounded; the window handle
+    // it returns gets its own timeout before its title is read (a timeout binds only the handle it
+    // was set on). A failed read or install turns off only the replaced-box check.
+    if case .window(let window) = ax.window(of: target.element),
+      ax.setMessagingTimeout(window, seconds: PasteService.axMessagingTimeoutSeconds)
+    {
       w.startWindow = window
       w.startWindowTitle = ax.title(of: window)
     }
@@ -2171,6 +2174,10 @@ package final class PastedRegionObserver: PastedRegionObserving {
     }
     guard case .window(let window) = ax.window(of: candidate), CFEqual(window, startWindow) else {
       return .failure(.otherWindow)
+    }
+    // This window handle is new too: bound it before asking for its title.
+    guard ax.setMessagingTimeout(window, seconds: PasteService.axMessagingTimeoutSeconds) else {
+      return .failure(.timeoutNotInstalled)
     }
     guard ax.title(of: window) == startTitle else { return .failure(.titleChanged) }
     // `.value` only: the roles above answer AXValue, and an unreadable value refuses.

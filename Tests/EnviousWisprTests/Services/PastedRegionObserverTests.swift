@@ -1472,6 +1472,9 @@ struct PastedRegionObserverWatchTests {
       ("the window title was unreadable", { t in
         t.scriptReplacement()
         t.ax.titles[90_001] = [] }),
+      ("the window's timeout cannot be installed", { t in
+        t.scriptReplacement()
+        t.ax.timeoutFailsFor.insert(90_001) }),
       ("the start window was unreadable", { t in
         t.scriptReplacement()
         t.ax.windows[10_042] = .failed(.cannotComplete) }),
