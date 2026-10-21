@@ -115,7 +115,9 @@ TAKE_KEYED_EVENTS = (
     # #3105. The learn-from-edits watcher's three rows carry the paste's take when it had one
     # (capture coverage per app: the learn rows name no app, the take's dictation.completed
     # target_app does). A delivered paste always has a take; a row without the key is a paste
-    # built without one, never re-keyed.
+    # built without one, never re-keyed. #3975: a blocked pair refused keeps the take of the
+    # paste it was seen on, even when the refusal lands after the watch ended.
+    "custom_words.learn_blocked_seen",
     "custom_words.learn_judged",
     "custom_words.learn_observation_ended",
     "custom_words.learn_skipped",

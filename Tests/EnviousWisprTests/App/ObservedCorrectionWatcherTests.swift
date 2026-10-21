@@ -653,7 +653,7 @@ struct ObservedCorrectionWatcherTests {
       request.context == "Ask sarah today" && request.language == "en",
       "the judge's `Sentence:` is the PASTED text; the edit reaches it only as the pair")
     #expect(telemetry.events.contains(.judged(.rules, .verdict, 1, 1)))
-    #expect(telemetry.events.contains(.added(.existingWord)))
+    #expect(telemetry.events.contains(.added(.existingWord, .judge)))
     #expect(presenter.offers.count == 1 && presenter.offers.first?.canonical == "Saira")
     #expect(presenter.offers.first?.kind == .updated && presenter.offers.first?.wordID == saira.id)
     let live = try #require(learnedSaira())
@@ -1056,7 +1056,7 @@ struct ObservedCorrectionWatcherTests {
     #expect(observer.finishes == [.nextDictationStarted])
     #expect(telemetry.events.contains(.observationEnded(.nextDictationStarted, 1, .native)))
     #expect(
-      telemetry.events.filter { $0 == .added(.existingWord) || $0 == .added(.newWord) }.count == 2)
+      telemetry.events.filter { $0 == .added(.existingWord, .judge) || $0 == .added(.newWord, .judge) }.count == 2)
   }
 
   @Test("a bypass is reported as its own outcome, never as 'all false', and saves nothing")

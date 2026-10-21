@@ -4976,6 +4976,30 @@ public final class TelemetryService {
       case alreadyChanged = "already_changed"
       case failed
     }
+
+    /// `learn_added.via` / `learn_undone.via` (#3975): how the pair was
+    /// learned. `repeat` is a pair the judge refused, fixed again the same
+    /// way in a later dictation and learned without asking the judge.
+    package enum LearnVia: String, Sendable, CaseIterable {
+      case judge
+      case `repeat`
+    }
+
+    /// `learn_undone.memory` / `learn_refused_by_user.result` (#3975): what
+    /// the learning memory now holds for the pair after the user's "no".
+    /// `watching` after the first no, `blocked` after the second. Sent only
+    /// when the memory write committed; otherwise the key is omitted.
+    package enum UndoMemory: String, Sendable, CaseIterable {
+      case watching
+      case blocked
+    }
+
+    /// `learn_refused_by_user.source` (#3975): which user act said "no".
+    package enum RefusalSource: String, Sendable, CaseIterable {
+      case undo
+      case deleteWord = "delete_word"
+      case removeSoundAlike = "remove_sound_alike"
+    }
   }
 
   private func emitLearnEvent(_ name: String, _ props: [String: Any]) {
@@ -5053,11 +5077,14 @@ public final class TelemetryService {
     emitLearnEvent("custom_words.learn_save_failed", ["reason": reason.rawValue])
   }
 
-  /// A judged correction was saved and proven on disk (auto-learn). Emitted
-  /// only after the post-write reread finds the word; a refused or silent
-  /// non-write is `learnSaveFailed` instead.
-  package func learnAdded(state: LearnFromEditsTelemetry.AddedState) {
-    emitLearnEvent("custom_words.learn_added", ["state": state.rawValue])
+  /// A judged or repeated correction was saved and proven on disk
+  /// (auto-learn). Emitted only after the post-write reread finds the word; a
+  /// refused or silent non-write is `learnSaveFailed` instead.
+  package func learnAdded(
+    state: LearnFromEditsTelemetry.AddedState, via: LearnFromEditsTelemetry.LearnVia
+  ) {
+    emitLearnEvent(
+      "custom_words.learn_added", ["state": state.rawValue, "via": via.rawValue])
   }
 
   /// The Undo pill was admitted to the overlay: the only measure that a saved
@@ -5067,11 +5094,37 @@ public final class TelemetryService {
   }
 
   /// Undo was pressed. `outcome` says whether the exact pre-save state landed.
+  /// `memory` is nil (key omitted) unless the outcome is `undone` AND the
+  /// learning memory committed the user's "no" (#3975).
   package func learnUndone(
-    kind: LearnFromEditsTelemetry.UndoKind, outcome: LearnFromEditsTelemetry.UndoOutcome
+    kind: LearnFromEditsTelemetry.UndoKind, outcome: LearnFromEditsTelemetry.UndoOutcome,
+    via: LearnFromEditsTelemetry.LearnVia, memory: LearnFromEditsTelemetry.UndoMemory?
+  ) {
+    var props: [String: Any] = [
+      "kind": kind.rawValue, "outcome": outcome.rawValue, "via": via.rawValue,
+    ]
+    if let memory { props["memory"] = memory.rawValue }
+    emitLearnEvent("custom_words.learn_undone", props)
+  }
+
+  /// The user said "no" to a learned pair and the learning memory committed
+  /// it (#3975): Undo, deleting a learned word, or removing a learned
+  /// sound-alike. Never sent when the memory write did not land.
+  package func learnRefusedByUser(
+    source: LearnFromEditsTelemetry.RefusalSource, result: LearnFromEditsTelemetry.UndoMemory
   ) {
     emitLearnEvent(
-      "custom_words.learn_undone", ["kind": kind.rawValue, "outcome": outcome.rawValue])
+      "custom_words.learn_refused_by_user",
+      ["source": source.rawValue, "result": result.rawValue])
+  }
+
+  /// A pair the user blocked was refused before learning (#3975): once per
+  /// distinct blocked pair per watched paste. `takeID` is the paste's take
+  /// when it had one; never pair text or a pair key.
+  package func learnBlockedSeen(takeID: String?) {
+    var props: [String: Any] = [:]
+    if let takeID { props["take_id"] = takeID }
+    emitLearnEvent("custom_words.learn_blocked_seen", props)
   }
 
   // MARK: - Other audio while dictating (#1413, folded onto the terminal row)

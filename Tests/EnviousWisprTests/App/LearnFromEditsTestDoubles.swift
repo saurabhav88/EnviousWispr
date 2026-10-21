@@ -7,19 +7,21 @@ import Foundation
 // MARK: - Test doubles shared by the watcher, wiring and composition suites (#996)
 
 /// Records every learn-from-edits emission the watcher and the learned
-/// coordinator make: the runtime sink's seven events, nothing else.
+/// coordinator make: the runtime sink's nine events, nothing else.
 @MainActor
 final class LearnTelemetrySpy: LearnFromEditsRuntimeTelemetrySink {
   enum Event: Equatable {
-    // The watcher's three (`LearnFromEditsTelemetrySink`).
+    // The watcher's four (`LearnFromEditsTelemetrySink`).
     case skipped(T.SkipReason)
     case observationEnded(PastedRegionEndReason, Int, T.AppClass)
     case judged(T.Arm, T.JudgeOutcome, Int, Int)
-    // The learned coordinator's four (`LearnedCorrectionTelemetrySink`).
+    case blockedSeen(String?)
+    // The learned coordinator's five (`LearnedCorrectionTelemetrySink`).
     case saveFailed(T.SaveFailure)
-    case added(T.AddedState)
+    case added(T.AddedState, T.LearnVia)
     case undoShown
-    case undone(T.UndoKind, T.UndoOutcome)
+    case undone(T.UndoKind, T.UndoOutcome, T.LearnVia, T.UndoMemory?)
+    case refusedByUser(T.RefusalSource, T.UndoMemory)
   }
   private(set) var events: [Event] = []
 
@@ -52,10 +54,14 @@ final class LearnTelemetrySpy: LearnFromEditsRuntimeTelemetrySink {
     judgedEvidence.append(evidence)
     events.append(.judged(arm, outcome, candidates, accepted))
   }
+  func learnBlockedSeen(takeID: String?) { events.append(.blockedSeen(takeID)) }
   func learnSaveFailed(reason: T.SaveFailure) { events.append(.saveFailed(reason)) }
-  func learnAdded(state: T.AddedState) { events.append(.added(state)) }
+  func learnAdded(state: T.AddedState, via: T.LearnVia) { events.append(.added(state, via)) }
   func learnUndoShown() { events.append(.undoShown) }
-  func learnUndone(kind: T.UndoKind, outcome: T.UndoOutcome) {
-    events.append(.undone(kind, outcome))
+  func learnUndone(kind: T.UndoKind, outcome: T.UndoOutcome, via: T.LearnVia, memory: T.UndoMemory?) {
+    events.append(.undone(kind, outcome, via, memory))
+  }
+  func learnRefusedByUser(source: T.RefusalSource, result: T.UndoMemory) {
+    events.append(.refusedByUser(source, result))
   }
 }

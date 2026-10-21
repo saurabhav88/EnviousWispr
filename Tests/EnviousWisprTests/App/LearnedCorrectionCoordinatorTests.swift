@@ -11,18 +11,22 @@ import Testing
 @MainActor
 final class LearnedTelemetrySpy: LearnedCorrectionTelemetrySink {
   enum Event: Equatable {
-    case added(T.AddedState)
+    case added(T.AddedState, T.LearnVia)
     case undoShown
-    case undone(T.UndoKind, T.UndoOutcome)
+    case undone(T.UndoKind, T.UndoOutcome, T.LearnVia, T.UndoMemory?)
     case saveFailed(T.SaveFailure)
+    case refusedByUser(T.RefusalSource, T.UndoMemory)
   }
   private(set) var events: [Event] = []
-  func learnAdded(state: T.AddedState) { events.append(.added(state)) }
+  func learnAdded(state: T.AddedState, via: T.LearnVia) { events.append(.added(state, via)) }
   func learnUndoShown() { events.append(.undoShown) }
-  func learnUndone(kind: T.UndoKind, outcome: T.UndoOutcome) {
-    events.append(.undone(kind, outcome))
+  func learnUndone(kind: T.UndoKind, outcome: T.UndoOutcome, via: T.LearnVia, memory: T.UndoMemory?) {
+    events.append(.undone(kind, outcome, via, memory))
   }
   func learnSaveFailed(reason: T.SaveFailure) { events.append(.saveFailed(reason)) }
+  func learnRefusedByUser(source: T.RefusalSource, result: T.UndoMemory) {
+    events.append(.refusedByUser(source, result))
+  }
 }
 
 @MainActor
@@ -233,13 +237,13 @@ struct LearnedCorrectionCoordinatorTests {
     let live = try #require(f.library.userWords.first { $0.id == saira.id })
     #expect(live.aliases == ["sarah", "sara"] && live.learnedAliases == ["sara"])
     #expect(live.learnedAt == nil && live.priority == 2, "the rest of the word is untouched")
-    #expect(f.telemetry.events == [.added(.existingWord)])
+    #expect(f.telemetry.events == [.added(.existingWord, .judge)])
     let record = try #require(f.coordinator.undoRecord)
     #expect(record.preSave == saira && record.postSave == live && record.operation == .updated)
 
     #expect(f.coordinator.undo(pillID: pill.id) == .undone)
     #expect(f.library.userWords == [saira], "exact pre-save word")
-    #expect(f.telemetry.events.last == .undone(.updated, .undone))
+    #expect(f.telemetry.events.last == .undone(.updated, .undone, .judge, nil))
     #expect(f.presenter.calls.last == .undone(pill.id))
     #expect(f.coordinator.undoRecord == nil)
   }
@@ -278,12 +282,12 @@ struct LearnedCorrectionCoordinatorTests {
     let live = try #require(f.library.userWords.first { $0.id == pack.id })
     #expect(live.source == .user && live.aliases == ["twist", "to-ist"])
     #expect(live.learnedAliases == ["to-ist"])
-    #expect(f.telemetry.events == [.added(.packOverride)])
+    #expect(f.telemetry.events == [.added(.packOverride, .judge)])
     #expect(f.coordinator.undoRecord?.preSave == nil)
 
     #expect(f.coordinator.undo(pillID: pill.id) == .undone)
     #expect(f.library.userWords.isEmpty && f.library.removes == [pack.id])
-    #expect(f.telemetry.events.last == .undone(.updated, .undone))
+    #expect(f.telemetry.events.last == .undone(.updated, .undone, .judge, nil))
   }
 
   @Test(
@@ -298,12 +302,12 @@ struct LearnedCorrectionCoordinatorTests {
     #expect(live.id == f.ids[0] && pill.id == f.ids[1], "word id then pill id, both allocated")
     #expect(live.aliases == ["kumala"] && live.learnedAliases == ["kumala"])
     #expect(live.learnedAt == Self.learnedAt && live.category == .person && live.source == .user)
-    #expect(f.telemetry.events == [.added(.newWord)])
+    #expect(f.telemetry.events == [.added(.newWord, .judge)])
     #expect(f.coordinator.undoRecord?.operation == .added)
 
     #expect(f.coordinator.undo(pillID: pill.id) == .undone)
     #expect(f.library.userWords.isEmpty)
-    #expect(f.telemetry.events.last == .undone(.added, .undone))
+    #expect(f.telemetry.events.last == .undone(.added, .undone, .judge, nil))
   }
 
   @Test("a deleted built-in is restored and learned in one step; Undo deletes it again exactly")
@@ -319,7 +323,7 @@ struct LearnedCorrectionCoordinatorTests {
     #expect(
       live.source == .user && live.aliases.last == "git-hub" && live.learnedAliases == ["git-hub"])
     #expect(live.learnedAt == nil, "the user brought it back, they did not create it")
-    #expect(f.telemetry.events == [.added(.existingWord)])
+    #expect(f.telemetry.events == [.added(.existingWord, .judge)])
     #expect(
       f.coordinator.undoRecord?.operation == .restoredBuiltin(.deletedBuiltin(id: github.id)))
 
@@ -494,7 +498,7 @@ struct LearnedCorrectionCoordinatorTests {
     f.coordinator.pillAdmitted(pillID: pill.id)
     f.coordinator.pillAdmitted(pillID: pill.id)
     f.coordinator.pillAdmitted(pillID: UUID())
-    #expect(f.telemetry.events == [.added(.newWord), .undoShown])
+    #expect(f.telemetry.events == [.added(.newWord, .judge), .undoShown])
   }
 
   @Test(
@@ -509,7 +513,7 @@ struct LearnedCorrectionCoordinatorTests {
     #expect(f.coordinator.undoRecord == nil)
     #expect(f.coordinator.undo(pillID: pill.id) == .stale)
     #expect(f.library.removes.isEmpty && f.library.userWords.count == 1)
-    #expect(f.telemetry.events == [.added(.newWord)], "no undone row for a stale id")
+    #expect(f.telemetry.events == [.added(.newWord, .judge)], "no undone row for a stale id")
   }
 
   // MARK: Undo exactness
@@ -526,7 +530,7 @@ struct LearnedCorrectionCoordinatorTests {
     #expect(f.coordinator.undo(pillID: pill.id) == .alreadyChanged)
     #expect(f.library.updates.isEmpty && f.library.removes.isEmpty)
     #expect(f.library.userWords[0].aliases == ["sara"] && f.library.userWords[0].category == .brand)
-    #expect(f.telemetry.events.last == .undone(.updated, .alreadyChanged))
+    #expect(f.telemetry.events.last == .undone(.updated, .alreadyChanged, .judge, nil))
     #expect(f.presenter.calls.last == .close(pill.id))
     #expect(f.coordinator.undoRecord == nil)
   }
@@ -549,7 +553,7 @@ struct LearnedCorrectionCoordinatorTests {
     let pill = try #require(shown(f))
     f.library.removeRefusal = "locked"
     #expect(f.coordinator.undo(pillID: pill.id) == .failed)
-    #expect(f.telemetry.events.last == .undone(.added, .failed))
+    #expect(f.telemetry.events.last == .undone(.added, .failed, .judge, nil))
     #expect(f.presenter.calls.last == .undoError(pill.id))
     #expect(f.library.userWords.count == 1, "the word stays")
 
@@ -560,7 +564,7 @@ struct LearnedCorrectionCoordinatorTests {
     g.library.silentUpdate = true
     #expect(g.coordinator.undo(pillID: pill2.id) == .failed)
     #expect(!g.presenter.calls.contains(.undone(pill2.id)))
-    #expect(g.telemetry.events.last == .undone(.updated, .failed))
+    #expect(g.telemetry.events.last == .undone(.updated, .failed, .judge, nil))
   }
 
   @Test("a stale Undo (unknown pill) closes that pill and touches nothing")
@@ -583,7 +587,7 @@ struct LearnedCorrectionCoordinatorTests {
     f.coordinator.undo(pillID: pill.id)
     #expect(
       f.telemetry.events == [
-        .added(.existingWord), .undoShown, .undone(.updated, .undone),
+        .added(.existingWord, .judge), .undoShown, .undone(.updated, .undone, .judge, nil),
       ])
     // The spy's event type has no String or UUID payload, which is the point:
     // there is no place a word could ride.

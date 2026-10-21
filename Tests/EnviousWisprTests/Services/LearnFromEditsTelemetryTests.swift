@@ -64,10 +64,14 @@ import Testing
         "evidence",
       ],
       "custom_words.learn_save_failed": ["reason"],
-      // Auto-learn (2026-09-21 plan §3.1 step 11).
-      "custom_words.learn_added": ["state"],
+      // Auto-learn (2026-09-21 plan §3.1 step 11); `via` and `memory` #3975.
+      "custom_words.learn_added": ["state", "via"],
       "custom_words.learn_undo_shown": [],
-      "custom_words.learn_undone": ["kind", "outcome"],
+      // `memory` rides only on a committed "no" after an undone outcome.
+      "custom_words.learn_undone": ["kind", "outcome", "via", "memory"],
+      // #3975: the user's "no", and a blocked pair refused (joins by take).
+      "custom_words.learn_refused_by_user": ["source", "result"],
+      "custom_words.learn_blocked_seen": ["take_id"],
     ]
 
     @MainActor
@@ -88,15 +92,18 @@ import Testing
           arm: .rules, outcome: .verdict, candidates: 3, accepted: 1, latencyMs: 812,
           queueWaitMs: 0, takeID: "TAKE-1", evidence: .strong)
         t.learnSaveFailed(reason: .aliasOwnedElsewhere)
-        t.learnAdded(state: .packOverride)
+        t.learnAdded(state: .packOverride, via: .repeat)
         t.learnUndoShown()
-        t.learnUndone(kind: .updated, outcome: .alreadyChanged)
+        t.learnUndone(kind: .added, outcome: .undone, via: .repeat, memory: .blocked)
+        t.learnRefusedByUser(source: .deleteWord, result: .watching)
+        t.learnBlockedSeen(takeID: "TAKE-1")
       }
       let events = box.values
-      #expect(events.count == 7)
+      #expect(events.count == 9)
       let joined = events.filter { $0.stringProps["take_id"] != nil }
       #expect(Set(joined.map(\.name)) == [
         "custom_words.learn_skipped", "custom_words.learn_observation_ended", "custom_words.learn_judged",
+        "custom_words.learn_blocked_seen",
       ])
       #expect(joined.allSatisfy { $0.stringProps["take_id"] == "TAKE-1" })
       #expect(Set(events.map(\.name)) == Set(Self.contract.keys))
@@ -130,8 +137,12 @@ import Testing
         TelemetryService.shared.learnJudged(
           arm: .rules, outcome: .verdict, candidates: 1, accepted: 1, latencyMs: 3,
           queueWaitMs: nil, evidence: .strong)
-        TelemetryService.shared.learnUndone(kind: .updated, outcome: .alreadyChanged)
+        TelemetryService.shared.learnUndone(
+          kind: .updated, outcome: .alreadyChanged, via: .judge, memory: nil)
         TelemetryService.shared.learnSaveFailed(reason: .vocabularyWriteFailed)
+        TelemetryService.shared.learnAdded(state: .newWord, via: .repeat)
+        TelemetryService.shared.learnRefusedByUser(source: .removeSoundAlike, result: .blocked)
+        TelemetryService.shared.learnBlockedSeen(takeID: nil)
       }
       let ended = try #require(
         box.values.first { $0.name == "custom_words.learn_observation_ended" })
@@ -154,9 +165,23 @@ import Testing
       let undone = try #require(box.values.first { $0.name == "custom_words.learn_undone" })
       #expect(
         undone.stringProps["kind"] == "updated"
-          && undone.stringProps["outcome"] == "already_changed")
+          && undone.stringProps["outcome"] == "already_changed"
+          && undone.stringProps["via"] == "judge")
+      // #3975: no committed "no", so the memory key is absent, never a default.
+      #expect(undone.stringProps.keys.contains("memory") == false)
       let failed = try #require(box.values.first { $0.name == "custom_words.learn_save_failed" })
       #expect(failed.stringProps["reason"] == "vocabulary_write_failed")
+      let added = try #require(box.values.first { $0.name == "custom_words.learn_added" })
+      #expect(added.stringProps["state"] == "new_word" && added.stringProps["via"] == "repeat")
+      let refused = try #require(
+        box.values.first { $0.name == "custom_words.learn_refused_by_user" })
+      #expect(
+        refused.stringProps["source"] == "remove_sound_alike"
+          && refused.stringProps["result"] == "blocked")
+      // A blocked pair seen on a paste with no take carries no key at all:
+      // never the pair text or a pair key.
+      let seen = try #require(box.rawValues.first { $0.0 == "custom_words.learn_blocked_seen" })
+      #expect(seen.1.isEmpty)
     }
   }
 
@@ -193,6 +218,10 @@ struct LearnFromEditsTelemetryVocabularyTests {
     #expect(T.AddedState.allCases.map(\.rawValue) == ["existing_word", "new_word", "pack_override"])
     #expect(T.UndoKind.allCases.map(\.rawValue) == ["added", "updated"])
     #expect(T.UndoOutcome.allCases.map(\.rawValue) == ["undone", "already_changed", "failed"])
+    #expect(T.LearnVia.allCases.map(\.rawValue) == ["judge", "repeat"])
+    #expect(T.UndoMemory.allCases.map(\.rawValue) == ["watching", "blocked"])
+    #expect(
+      T.RefusalSource.allCases.map(\.rawValue) == ["undo", "delete_word", "remove_sound_alike"])
     // Every bypass kind has its own outcome; the mapping is total.
     for bypass in CorrectionJudgeBypass.allCases {
       let mapped = T.JudgeOutcome(.bypass(bypass))

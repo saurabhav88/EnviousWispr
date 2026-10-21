@@ -129,7 +129,7 @@ struct LearnFromEditsCompositionTests {
     #expect(pill.canonical == "Saira" && pill.kind == .updated && pill.phase == .learned)
     let saira = try #require(f.customWords.customWords.first { $0.canonical == "Saira" })
     #expect(saira.aliases == ["sarah"] && saira.learnedAliases == ["sarah"], "durably saved and marked")
-    #expect(f.telemetry.events.contains(.added(.existingWord)))
+    #expect(f.telemetry.events.contains(.added(.existingWord, .judge)))
     #expect(f.wiring.coordinator.undoRecord?.pillID == pill.id)
     f.overlay.dismissCurrent(.silent)
 

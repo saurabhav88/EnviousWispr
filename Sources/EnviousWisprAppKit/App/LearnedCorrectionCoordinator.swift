@@ -65,15 +65,18 @@ struct LearnedCorrectionVocabularyAccess {
   let classify: (String) -> WordCategory?
 }
 
-/// The three auto-learn rows plus the shared refusal row, typed like the
-/// `TelemetryService.learn*` emitters so a test spy records the same shape.
+/// The three auto-learn rows, the shared refusal row and the user-refusal
+/// row (#3975), typed like the `TelemetryService.learn*` emitters so a test
+/// spy records the same shape.
 @MainActor
 protocol LearnedCorrectionTelemetrySink: AnyObject {
   typealias T = TelemetryService.LearnFromEditsTelemetry
-  func learnAdded(state: T.AddedState)
+  func learnAdded(state: T.AddedState, via: T.LearnVia)
   func learnUndoShown()
-  func learnUndone(kind: T.UndoKind, outcome: T.UndoOutcome)
+  /// `memory` nil = not an `undone` outcome, or the memory write did not land.
+  func learnUndone(kind: T.UndoKind, outcome: T.UndoOutcome, via: T.LearnVia, memory: T.UndoMemory?)
   func learnSaveFailed(reason: T.SaveFailure)
+  func learnRefusedByUser(source: T.RefusalSource, result: T.UndoMemory)
 }
 
 /// The production sink is `TelemetryService`; `LearnFromEditsWiring` wraps it
@@ -345,7 +348,7 @@ final class LearnedCorrectionCoordinator {
     undoRecord = UndoRecord(
       pillID: pill.id, wordID: wordID, operation: operation, preSave: preSave,
       postSave: postSave, kind: kind == .added ? .added : .updated)
-    telemetry.learnAdded(state: state)
+    telemetry.learnAdded(state: state, via: .judge)
     presenter?.show(pill: pill)
     return .learned(pill)
   }
@@ -392,7 +395,7 @@ final class LearnedCorrectionCoordinator {
     // locked compare-and-write transaction would be a new manager contract.
     let live = vocabulary.userWords().first { $0.id == record.wordID }
     guard live == record.postSave else {
-      telemetry.learnUndone(kind: record.kind, outcome: .alreadyChanged)
+      telemetry.learnUndone(kind: record.kind, outcome: .alreadyChanged, via: .judge, memory: nil)
       presenter?.close(pillID: pillID)
       return .alreadyChanged
     }
@@ -424,11 +427,11 @@ final class LearnedCorrectionCoordinator {
     case .updated: landed = after == record.preSave
     }
     guard refusal == nil, landed else {
-      telemetry.learnUndone(kind: record.kind, outcome: .failed)
+      telemetry.learnUndone(kind: record.kind, outcome: .failed, via: .judge, memory: nil)
       presenter?.showUndoError(LearnedCorrectionUndoError(pillID: pillID))
       return .failed
     }
-    telemetry.learnUndone(kind: record.kind, outcome: .undone)
+    telemetry.learnUndone(kind: record.kind, outcome: .undone, via: .judge, memory: nil)
     presenter?.showUndone(pillID: pillID)
     return .undone
   }

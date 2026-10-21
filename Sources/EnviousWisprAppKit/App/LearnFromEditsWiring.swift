@@ -30,12 +30,12 @@ import Foundation
 // (`model_unavailable`) and the Settings row is disabled with its reason. The
 // Debug UAT door below stays the way an unshipped candidate serves.
 
-/// `TelemetryService` carries the seven `learn*` emitters; the watcher and the
+/// `TelemetryService` carries the nine `learn*` emitters; the watcher and the
 /// coordinator each talk to their own protocol so a spy can stand in.
 extension TelemetryService: LearnFromEditsTelemetrySink {}
 
-/// What the runtime composes: the watcher's three events and the learned
-/// coordinator's four, one object. `TelemetryService` is it in production;
+/// What the runtime composes: the watcher's four events and the learned
+/// coordinator's five, one object. `TelemetryService` is it in production;
 /// the Debug logging sink wraps it; tests pass one spy.
 @MainActor
 protocol LearnFromEditsRuntimeTelemetrySink: LearnFromEditsTelemetrySink,
@@ -86,17 +86,25 @@ extension TelemetryService: LearnFromEditsRuntimeTelemetrySink {}
       log("learn_save_failed reason=\(reason.rawValue)")
       inner.learnSaveFailed(reason: reason)
     }
-    func learnAdded(state: T.AddedState) {
-      log("learn_added state=\(state.rawValue)")
-      inner.learnAdded(state: state)
+    func learnAdded(state: T.AddedState, via: T.LearnVia) {
+      log("learn_added state=\(state.rawValue) via=\(via.rawValue)")
+      inner.learnAdded(state: state, via: via)
     }
     func learnUndoShown() {
       log("learn_undo_shown")
       inner.learnUndoShown()
     }
-    func learnUndone(kind: T.UndoKind, outcome: T.UndoOutcome) {
-      log("learn_undone kind=\(kind.rawValue) outcome=\(outcome.rawValue)")
-      inner.learnUndone(kind: kind, outcome: outcome)
+    func learnUndone(kind: T.UndoKind, outcome: T.UndoOutcome, via: T.LearnVia, memory: T.UndoMemory?) {
+      log("learn_undone kind=\(kind.rawValue) outcome=\(outcome.rawValue) via=\(via.rawValue) memory=\(memory?.rawValue ?? "none")")
+      inner.learnUndone(kind: kind, outcome: outcome, via: via, memory: memory)
+    }
+    func learnRefusedByUser(source: T.RefusalSource, result: T.UndoMemory) {
+      log("learn_refused_by_user source=\(source.rawValue) result=\(result.rawValue)")
+      inner.learnRefusedByUser(source: source, result: result)
+    }
+    func learnBlockedSeen(takeID: String?) {
+      log("learn_blocked_seen take=\(takeID ?? "none")")
+      inner.learnBlockedSeen(takeID: takeID)
     }
   }
 #endif

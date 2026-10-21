@@ -96,10 +96,11 @@ struct SelectedCorrectionJudge {
   var revision: String? = nil
 }
 
-/// The watcher's three telemetry events (#996 §4): why a paste was not
-/// watched, how a watched paste ended, and what the judge answered. Counts,
+/// The watcher's four telemetry events (#996 §4, #3975): why a paste was not
+/// watched, how a watched paste ended, what the judge answered, and a pair
+/// the user blocked being refused (#3975). Counts,
 /// durations and closed enums only, never text. `TelemetryService` conforms in
-/// the wiring; tests pass a spy. The learned coordinator's four events live on
+/// the wiring; tests pass a spy. The learned coordinator's five events live on
 /// `LearnedCorrectionTelemetrySink`; `LearnFromEditsRuntimeTelemetrySink` is
 /// the union the runtime composes.
 @MainActor
@@ -118,6 +119,9 @@ protocol LearnFromEditsTelemetrySink: AnyObject {
   func learnJudged(
     arm: T.Arm, outcome: T.JudgeOutcome, candidates: Int, accepted: Int, latencyMs: Int,
     queueWaitMs: Int?, takeID: String?, evidence: SettleEvidence)
+  /// Once per distinct blocked pair per watched paste (#3975); `takeID` is
+  /// that paste's take, kept even when the refusal comes after it ended.
+  func learnBlockedSeen(takeID: String?)
 }
 
 @MainActor

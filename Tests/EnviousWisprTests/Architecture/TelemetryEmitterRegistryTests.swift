@@ -206,8 +206,15 @@ struct TelemetryEmitterRegistryTests {
   /// #3292: one rare_failure feedback.report_refused site, keep whole; status/count and
   /// closed kind/size only, no take key or content. Reader: founder release review, then on request;
   /// metrics-off observations are absent, duplicates/losses prevent unique-report/rate claims.
+  /// #3975: `learnAdded` gains `via:` and `learnUndone` gains `via:`/`memory:`, which changes the
+  /// enclosing-function identity of those two existing sites (same events, same cadences; closed
+  /// string fields, `memory` omitted unless a committed "no"). Two NEW sites:
+  /// `custom_words.learn_refused_by_user` in `learnRefusedByUser` (per_user_action, keep; one row
+  /// per committed user "no", closed source/result, no text) and `custom_words.learn_blocked_seen`
+  /// in `learnBlockedSeen` (per_take, keep; once per distinct blocked pair per watched paste,
+  /// only `take_id`, in TAKE_KEYED_EVENTS). Readers: the #3975 plan §3a release review.
   static let sitesFingerprint =
-    "19afaea9417fe8c9dc92e189cd39f795e4a114f349dfc766754f5f49576bd82c"
+    "e6ffcc9cee7c7cd9317dfd465db3ac7a82c473a298188c203d18925778be1abd"
   static let ungradedFingerprint =
     "8c5e46c2f2f7fb59004bb2eb5ea1ac210ef32dbb79fdcb68b3eff70a28cc133f"
 
