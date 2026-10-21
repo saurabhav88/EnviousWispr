@@ -171,6 +171,12 @@ public final class CustomWordsManager {
   /// destroyed their dictionary by exporting it.
   /// `nonisolated`: this is a path computation with no state, and the export
   /// writer runs off the main actor.
+  /// The learning memory lives beside this dictionary (#3975), so a
+  /// temp-file manager in a test gets a temp-file memory too.
+  package var learnMemoryURL: URL {
+    fileURL.deletingLastPathComponent().appendingPathComponent(LearnMemory.fileName)
+  }
+
   nonisolated package static var liveFileURL: URL? {
     FileManager.default
       .urls(for: .applicationSupportDirectory, in: .userDomainMask).first?

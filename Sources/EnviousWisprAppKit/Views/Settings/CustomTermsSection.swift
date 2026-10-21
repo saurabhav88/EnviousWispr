@@ -241,11 +241,12 @@ struct CustomTermsSection<Actions: View>: View {
       CustomWordEditSheet(
         word: word,
         wordSuggestionService: customWordsCoordinator.suggestionService,
+        // #3975: a user's own edit or delete is their "no" for a learned pair.
         onSave: { updated in
-          customWordsCoordinator.update(updated)
+          customWordsCoordinator.updateByUser(updated)
         },
         onDelete: {
-          customWordsCoordinator.remove(id: word.id)
+          customWordsCoordinator.deleteByUser(id: word.id)
         }
       )
     }

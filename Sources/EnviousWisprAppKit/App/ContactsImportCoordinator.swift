@@ -196,7 +196,8 @@ final class ContactsImportCoordinator {
     cancelEnrichment()
     // Only erase ownership if BOTH the removal and the log reset succeed —
     // otherwise words could remain while the pill loses track of them.
-    if let error = customWords.removeBatch(ids: state.importedWordIDs) {
+    // A deliberate user removal (#3975): learned pairs of these words get one "no".
+    if let error = customWords.deleteByUser(ids: state.importedWordIDs) {
       phase = .failed(error)
       return
     }

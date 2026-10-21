@@ -194,8 +194,6 @@ final class LearnFromEditsWiring {
     packs: VocabularyPackManager,
     overlay: OverlayDirector,
     pasteCompletionRegistry: PasteCompletionRegistry,
-    /// The one per-pair learning memory (#3975); the bootstrapper owns it.
-    learnMemory: LearnMemory,
     telemetry: any LearnFromEditsRuntimeTelemetrySink,
     /// Where the ask-first ledger used to live; cleaned once at launch.
     legacyLedgerDirectory: URL = AppConstants.appSupportURL,
@@ -247,6 +245,12 @@ final class LearnFromEditsWiring {
         return customWords.redeleteRestoredBuiltin(id: id)
       },
       classify: { WordSuggestionService.classifyByHeuristic($0) })
+    // #3975: the one learning memory is the words coordinator's, so Undo,
+    // Settings deletes and the watcher share one store.
+    let learnMemory = customWords.learnMemory
+    customWords.onLearnRefusedByUser = { source, result in
+      telemetry.learnRefusedByUser(source: source, result: result)
+    }
     let coordinator = LearnedCorrectionCoordinator(
       vocabulary: vocabulary, memory: learnMemory, telemetry: telemetry)
     let presenter = LearnedCorrectionOverlayPresenter(host: overlay, coordinator: coordinator)

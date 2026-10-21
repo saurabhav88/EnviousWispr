@@ -1,5 +1,6 @@
 import EnviousWisprCore
 import EnviousWisprPostProcessing
+import EnviousWisprServices
 import Foundation
 import Observation
 
@@ -74,11 +75,25 @@ final class CustomWordsCoordinator {
   /// closure rather than injecting that coordinator into the SwiftUI
   /// environment, since this is the only interaction the view needs with it.
   var cancelBulkImportEnrichment: (@MainActor () -> Void)?
+  /// #3975: a user "no" the learning memory committed, for
+  /// `learn_refused_by_user`. `LearnFromEditsWiring` sets it to its telemetry sink.
+  var onLearnRefusedByUser:
+    (
+      @MainActor (
+        TelemetryService.LearnFromEditsTelemetry.RefusalSource,
+        TelemetryService.LearnFromEditsTelemetry.UndoMemory
+      ) -> Void
+    )?
 
   private let manager: CustomWordsManager
+  /// The one per-pair learning memory (#3975), beside the dictionary file.
+  /// The learn wiring reads it from here so every user "no" lands in one store.
+  let learnMemory: LearnMemory
 
   init() {
     self.manager = CustomWordsManager()
+    self.learnMemory = LearnMemory(
+      fileURL: manager.learnMemoryURL, report: LearnMemoryDiagnostics.forward)
     let snapshot = manager.loadSnapshot()
     customWords = snapshot?.words ?? []
     pendingEnrichmentBatchTotal = snapshot?.pendingEnrichmentBatchTotal
@@ -90,6 +105,8 @@ final class CustomWordsCoordinator {
   // periphery:ignore - test seam
   package init(manager: CustomWordsManager) {
     self.manager = manager
+    self.learnMemory = LearnMemory(
+      fileURL: manager.learnMemoryURL, report: LearnMemoryDiagnostics.forward)
     let snapshot = manager.loadSnapshot()
     customWords = snapshot?.words ?? []
     pendingEnrichmentBatchTotal = snapshot?.pendingEnrichmentBatchTotal
@@ -369,6 +386,64 @@ final class CustomWordsCoordinator {
     }
   }
 
+  // MARK: - User refusals (#3975)
+  //
+  // The ONLY doors that turn a removal into the user's "no" for a learned
+  // pair. Undo, imports, enrichment, cleanup and sanitising go through the
+  // plain doors above and record nothing, so one Undo is one no, never two.
+
+  /// The user deleted a word in Settings: each pair it learned gets one "no",
+  /// after the delete landed.
+  @discardableResult
+  func deleteByUser(id: UUID) -> String? {
+    let pairs = learnedPairs(of: customWords.filter { $0.id == id })
+    if let error = remove(id: id) { return error }
+    recordUserNo(pairs, source: .deleteWord)
+    return nil
+  }
+
+  /// Bulk delete from Settings (or the deliberate Contacts "remove imported").
+  @discardableResult
+  func deleteByUser(ids: [UUID]) -> String? {
+    let set = Set(ids)
+    let pairs = learnedPairs(of: customWords.filter { set.contains($0.id) })
+    if let error = removeBatch(ids: ids) { return error }
+    recordUserNo(pairs, source: .deleteWord)
+    return nil
+  }
+
+  /// The user saved an edit: each learned sound-alike the edit removed gets
+  /// one "no", after the save landed.
+  @discardableResult
+  func updateByUser(_ word: CustomWord) -> String? {
+    let kept = Set(word.aliases.map(CorrectionPairKey.normalise))
+    let removed = customWords.first { $0.id == word.id }.map { old in
+      old.learnedAliases.filter { !kept.contains(CorrectionPairKey.normalise($0)) }
+        .map { CorrectionPairKey.make(original: $0, corrected: old.canonical) }
+    } ?? []
+    if let error = update(word) { return error }
+    recordUserNo(removed, source: .removeSoundAlike)
+    return nil
+  }
+
+  private func learnedPairs(of words: [CustomWord]) -> [String] {
+    words.flatMap { word in
+      word.learnedAliases.map { CorrectionPairKey.make(original: $0, corrected: word.canonical) }
+    }
+  }
+
+  private func recordUserNo(
+    _ pairKeys: [String], source: TelemetryService.LearnFromEditsTelemetry.RefusalSource
+  ) {
+    for key in Set(pairKeys) {
+      switch learnMemory.recordUndo(key) {
+      case .committed(.watching): onLearnRefusedByUser?(source, .watching)
+      case .committed(.blocked): onLearnRefusedByUser?(source, .blocked)
+      case .notRemembered: break
+      }
+    }
+  }
+
   /// Bulk-update existing words (contacts-import alias enrichment, #636
   /// follow-up). One `onWordsChanged` for the whole batch so the corrector
   /// rebuilds once per flush, not once per word.
@@ -493,5 +568,20 @@ final class CustomWordsCoordinator {
     } catch {
       return note(error)
     }
+  }
+}
+
+/// #3975: the learning memory's text-free signals in production. A reset
+/// (corrupt file set aside) is a breadcrumb; an event not remembered is a
+/// Debug log line only (plan §7).
+enum LearnMemoryDiagnostics {
+  @MainActor
+  static func forward(_ diagnostic: LearnMemoryDiagnostic) {
+    if diagnostic == .memoryReset {
+      SentryBreadcrumb.add(stage: "learn_memory", message: "learn_memory_reset", level: .warning)
+    }
+    #if DEBUG
+      Task { await AppLogger.shared.log("learn_memory \(diagnostic)", category: "LearnFromEdits") }
+    #endif
   }
 }

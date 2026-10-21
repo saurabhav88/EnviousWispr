@@ -74,7 +74,7 @@ struct LearnFromEditsCompositionTests {
     }
     let wiring = LearnFromEditsWiring(
       settings: settings, customWords: customWords, packs: packs, overlay: overlay,
-      pasteCompletionRegistry: registry, learnMemory: .forTests(), telemetry: telemetry,
+      pasteCompletionRegistry: registry, telemetry: telemetry,
       legacyLedgerDirectory: dir, osMajor: osMajor,
       observer: observer, scheduler: clock,
       activeApplications: activeApplications,
@@ -92,6 +92,24 @@ struct LearnFromEditsCompositionTests {
     PasteCompletionEvent(
       pastedText: "Ask sarah today", destinationBundleID: "com.apple.Notes", language: "en",
       editCapture: edits)
+  }
+
+  @Test(
+    "#3975: the words coordinator, Undo and the watcher share one learning memory, and a Settings delete reaches learn_refused_by_user"
+  )
+  func oneMemoryAndUserRefusalTelemetry() throws {
+    let f = fixture()
+    let word = CustomWord(canonical: "Kwmala", aliases: ["kumala"], learnedAliases: ["kumala"])
+    #expect(f.customWords.add(word) == nil)
+    #expect(f.customWords.deleteByUser(id: word.id) == nil)
+    #expect(f.telemetry.events.last == .refusedByUser(.deleteWord, .watching))
+    let key = CorrectionPairKey.make(original: "kumala", corrected: "Kwmala")
+    // The learned coordinator sees the same store: its save-time check refuses
+    // once the second no lands.
+    f.customWords.learnMemory.recordUndo(key)
+    #expect(
+      f.wiring.coordinator.learn(original: "kumala", corrected: "Kwmala", expectedTarget: .newWord)
+        == .blocked)
   }
 
   @Test("production selects no judge on every macOS major (the qualification table is empty), and the Settings row is disabled with its reason")

@@ -120,16 +120,6 @@ package final class LearnMemory {
     DurableJSONFile.tightenFileIfPresent(at: fileURL)
   }
 
-  /// The production store, in the same Application Support folder as the
-  /// dictionary (`CustomWordsManager.liveFileURL`).
-  package static var liveFileURL: URL {
-    let base =
-      FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-      ?? FileManager.default.temporaryDirectory
-    return base.appendingPathComponent("EnviousWispr", isDirectory: true)
-      .appendingPathComponent(fileName)
-  }
-
   // MARK: Reads
 
   /// The judge refused this pair on a finished edit, and the user has not
