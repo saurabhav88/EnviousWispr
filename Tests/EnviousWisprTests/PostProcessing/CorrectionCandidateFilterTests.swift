@@ -5,8 +5,8 @@ import Testing
 @testable import EnviousWisprPostProcessing
 
 /// #996 chunk 5b: the filter decides which runs reach the judge and which
-/// Accept outcome a card would offer. Wrong here means a rejected pair asked
-/// again, a stopword phrase judged, a sound-alike added to the wrong word, or
+/// Accept outcome a card would offer. Wrong here means a pair the user
+/// blocked asked again, a stopword phrase judged, a sound-alike added to the wrong word, or
 /// an existing word offered as new.
 /// Class: `.productOutcome`.
 @Suite(.tags(.productOutcome)) struct CorrectionCandidateFilterTests {
@@ -19,8 +19,10 @@ import Testing
       labels: [.substitute])
   }
 
-  private func inputs(userWords: [CustomWord] = [], packTerms: [CustomWord] = []) -> F.Inputs {
-    F.Inputs(userWords: userWords, packTerms: packTerms)
+  private func inputs(
+    userWords: [CustomWord] = [], packTerms: [CustomWord] = [], blocked: Set<String> = []
+  ) -> F.Inputs {
+    F.Inputs(userWords: userWords, packTerms: packTerms, blockedPairKeys: blocked)
   }
 
   private func disposition(_ r: EditAlignment.Run, _ inputs: F.Inputs) -> F.Disposition {
@@ -96,7 +98,7 @@ import Testing
     #expect(
       F.IneligibleReason.allCases.map(\.rawValue) == [
         "stopwordPhrase", "contractionEnding", "unfinishedEdit", "numberFormatting",
-        "aliasOwnedElsewhere",
+        "aliasOwnedElsewhere", "blockedByUser",
       ])
     // A run in any script is judged on its own merits.
     #expect(disposition(run("さら", "サラ"), inputs()) == .candidate(.newWord))
@@ -167,23 +169,45 @@ import Testing
     #expect(disposition(run("annie", "Annalou"), inputs(userWords: [kube])) == .candidate(.newWord))
   }
 
-  // MARK: - No rejection memory (2026-09-21 plan)
+  // MARK: - Blocked pairs (#3975)
 
   @Test(
-    "the inputs are the live words only: a pair the user undid earlier is an ordinary candidate again, and the reversed pair is its own key"
+    "a pair the user refused twice is blockedByUser in any letter case; its reverse is its own pair; shape reasons still win"
   )
-  func noRejectionMemory() {
+  func blockedPairIsIneligible() {
+    let r = run("Sarah", "Saira")
+    let blocked: Set = [CorrectionPairKey.make(original: "Sarah", corrected: "Saira")]
+    #expect(disposition(r, inputs(blocked: blocked)) == .ineligible(.blockedByUser))
+    #expect(disposition(run("sarah", "SAIRA"), inputs(blocked: blocked)) == .ineligible(.blockedByUser))
+    #expect(disposition(run("Saira", "Sarah"), inputs(blocked: blocked)) == .candidate(.newWord))
+    // Blocked is checked before the word-list checks.
+    let covered = CustomWord(canonical: "Saira", aliases: ["Sarah"])
+    #expect(
+      disposition(r, inputs(userWords: [covered], blocked: blocked)) == .ineligible(.blockedByUser))
+    let conflict = CustomWord(canonical: "Sara", aliases: ["sarah"])
+    #expect(
+      disposition(r, inputs(userWords: [conflict], blocked: blocked)) == .ineligible(.blockedByUser))
+    // A shape reason keeps its own token even when the pair is blocked.
+    let stop: Set = [CorrectionPairKey.make(original: "and we said", corrected: "and we")]
+    #expect(
+      disposition(run("and we said", "and we"), inputs(blocked: stop)) == .ineligible(.stopwordPhrase))
+  }
+
+  @Test(
+    "with no blocked pairs a pair undone once is an ordinary candidate again; the inputs are the word lists and the blocked keys only"
+  )
+  func refusalAloneIsStillACandidate() {
     let r = run("Sarah", "Saira")
     #expect(disposition(r, inputs()) == .candidate(.newWord))
-    #expect(disposition(run("sarah", "SAIRA"), inputs()) == .candidate(.newWord))
-    #expect(disposition(run("Saira", "Sarah"), inputs()) == .candidate(.newWord))
+    let other: Set = [CorrectionPairKey.make(original: "Sarah", corrected: "Sara")]
+    #expect(disposition(r, inputs(blocked: other)) == .candidate(.newWord))
     let covered = CustomWord(canonical: "Saira", aliases: ["Sarah"])
     #expect(disposition(r, inputs(userWords: [covered])) == .alreadyCovered)
     let conflict = CustomWord(canonical: "Sara", aliases: ["sarah"])
     #expect(disposition(r, inputs(userWords: [conflict])) == .ineligible(.aliasOwnedElsewhere))
-    // The inputs carry the two word lists and nothing else.
     let mirror = Mirror(reflecting: inputs())
-    #expect(mirror.children.map { $0.label ?? "" } == ["userWords", "packTerms"])
+    #expect(
+      mirror.children.map { $0.label ?? "" } == ["userWords", "packTerms", "blockedPairKeys"])
   }
 
   // MARK: - Evidence
