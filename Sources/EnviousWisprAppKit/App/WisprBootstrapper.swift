@@ -4,6 +4,7 @@ import EnviousWisprCore
 import EnviousWisprLLM
 import EnviousWisprModelDelivery
 import EnviousWisprPipeline
+import EnviousWisprPostProcessing
 import EnviousWisprServices
 import EnviousWisprStorage
 import SwiftUI
@@ -988,6 +989,7 @@ package final class WisprBootstrapper {
       packs: vocabularyPackManager,
       overlay: recordingOverlay,
       pasteCompletionRegistry: pasteCompletionRegistry,
+      learnMemory: LearnMemory(fileURL: LearnMemory.liveFileURL),
       telemetry: WisprBootstrapper.learnFromEditsTelemetrySink(),
       deliveryHome: modelDelivery,
       isOnboardingComplete: { [weak settings] in settings?.onboardingState == .completed })

@@ -74,7 +74,7 @@ struct LearnFromEditsCompositionTests {
     }
     let wiring = LearnFromEditsWiring(
       settings: settings, customWords: customWords, packs: packs, overlay: overlay,
-      pasteCompletionRegistry: registry, telemetry: telemetry,
+      pasteCompletionRegistry: registry, learnMemory: .forTests(), telemetry: telemetry,
       legacyLedgerDirectory: dir, osMajor: osMajor,
       observer: observer, scheduler: clock,
       activeApplications: activeApplications,

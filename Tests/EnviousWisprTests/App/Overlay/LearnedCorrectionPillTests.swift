@@ -695,7 +695,8 @@ struct LearnedCorrectionOverlayPresenterTests {
   private func fixture(host: LearnedOverlayHostFake = LearnedOverlayHostFake()) -> Fixture {
     let library = LearnedLibraryFake()
     let telemetry = LearnedTelemetrySpy()
-    let coordinator = LearnedCorrectionCoordinator(vocabulary: library.access, telemetry: telemetry)
+    let coordinator = LearnedCorrectionCoordinator(
+      vocabulary: library.access, memory: .forTests(), telemetry: telemetry)
     let presenter = LearnedCorrectionOverlayPresenter(host: host, coordinator: coordinator)
     coordinator.attach(presenter: presenter)
     return Fixture(
@@ -731,7 +732,10 @@ struct LearnedCorrectionOverlayPresenterTests {
     let undo = try #require(f.host.undos.first)
     undo()
     #expect(f.library.userWords.isEmpty, "the word was removed")
-    #expect(f.telemetry.events.last == .undone(.added, .undone, .judge, nil))
+    #expect(
+      f.telemetry.events.suffix(2) == [
+        .undone(.added, .undone, .judge, .watching), .refusedByUser(.undo, .watching),
+      ])
     let resolved = try #require(f.host.resolved.first)
     #expect(resolved.0 == pill.id && resolved.1 == f.host.admitAs && resolved.2 == .undone)
     #expect(f.host.closes.isEmpty)

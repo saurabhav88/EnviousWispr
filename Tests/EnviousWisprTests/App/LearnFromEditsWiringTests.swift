@@ -47,7 +47,7 @@ struct LearnFromEditsWiringTests {
     let telemetry = LearnTelemetrySpy()
     let wiring = LearnFromEditsWiring(
       settings: settings, customWords: customWords, packs: packs, overlay: overlay,
-      pasteCompletionRegistry: registry, telemetry: telemetry,
+      pasteCompletionRegistry: registry, learnMemory: .forTests(), telemetry: telemetry,
       legacyLedgerDirectory: dir, legacyCleanup: cleanup, osMajor: 27,
       observer: observer, scheduler: ObserverClock(),
       activeApplications: { _ in

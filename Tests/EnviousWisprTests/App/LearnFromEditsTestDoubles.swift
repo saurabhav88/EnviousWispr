@@ -1,10 +1,22 @@
 import EnviousWisprCore
+import EnviousWisprPostProcessing
 import EnviousWisprServices
 import Foundation
 
 @testable import EnviousWisprAppKit
 
 // MARK: - Test doubles shared by the watcher, wiring and composition suites (#996)
+
+extension LearnMemory {
+  /// A learning memory on its own empty temporary file (#3975), never the
+  /// live Application Support store.
+  @MainActor
+  static func forTests() -> LearnMemory {
+    let dir = FileManager.default.temporaryDirectory
+      .appendingPathComponent("ew-learn-memory-\(UUID().uuidString)", isDirectory: true)
+    return LearnMemory(fileURL: dir.appendingPathComponent(LearnMemory.fileName))
+  }
+}
 
 /// Records every learn-from-edits emission the watcher and the learned
 /// coordinator make: the runtime sink's nine events, nothing else.

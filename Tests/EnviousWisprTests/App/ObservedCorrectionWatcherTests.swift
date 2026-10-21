@@ -285,6 +285,8 @@ struct ObservedCorrectionWatcherTests {
   let library = LearnedLibraryFake()
   let presenter = LearnedPresenterSpy()
   let telemetry = LearnTelemetrySpy()
+  /// #3975: the per-pair learning memory, on its own temporary file.
+  let memory = LearnMemory.forTests()
   let coordinator: LearnedCorrectionCoordinator
   let saira = CustomWord(canonical: "Saira")
 
@@ -303,7 +305,8 @@ struct ObservedCorrectionWatcherTests {
 
   init() {
     library.userWords = [saira]
-    coordinator = LearnedCorrectionCoordinator(vocabulary: library.access, telemetry: telemetry)
+    coordinator = LearnedCorrectionCoordinator(
+      vocabulary: library.access, memory: memory, telemetry: telemetry)
     coordinator.attach(presenter: presenter)
   }
 
