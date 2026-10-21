@@ -692,7 +692,12 @@ def run_app(app, args):
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         sends = args.send_after is not None or args.then == "send"
-        w.test_recording(audio=clip, expect="okay" if sends else EXPECT, timeout=45.0)
+        recorded_ok = w.test_recording(audio=clip, expect="okay" if sends else EXPECT, timeout=45.0)
+    if not recorded_ok:
+        # #3969 cloud review: a carrier that did not come back as dictated is
+        # an instrument failure, never a row outcome.
+        row["outcome"] = f"INSTRUMENT: the recording check failed (expected {('okay' if sends else EXPECT)!r} in the delivered text)"
+        return row, pid, doc
     cascade = d.wait_for("the paste cascade line", lambda: re.search(r"Paste cascade: tier=([^,\s]+), app=([^,\s]+)", d.log_since(mark)), deadline=20.0)
     if not cascade:
         row["outcome"] = "INSTRUMENT: no paste cascade line"
@@ -842,7 +847,10 @@ def run_app(app, args):
         elif args.then == "nextdictation":
             # #3101: the person dictates again into the same field (a send-shaped end).
             with contextlib.redirect_stdout(io.StringIO()):
-                w.test_recording(audio=clip, expect=EXPECT, timeout=45.0)
+                again_ok = w.test_recording(audio=clip, expect=EXPECT, timeout=45.0)
+            if not again_ok:
+                row["outcome"] = f"INSTRUMENT: the second recording check failed (expected {EXPECT!r} in the delivered text)"
+                return row, pid, doc
             row["then_at"] = time.time()
         time.sleep(0.5)  # settle: the post-fix action renders before its proof screenshot; no ack
         row["shot_then"] = d.screenshot(f"{tag}-3-then.png") and f"{tag}-3-then.png"
@@ -939,12 +947,24 @@ def main():
     parser.add_argument("--apps", default="slack,discord,whatsapp,gmail,word,excel,notes,mail,safari,vscode,ghostty,obsidian,textedit")
     parser.add_argument("--sentence", help="#3969: the carrier to dictate; its LAST word is the one fixed (default: the sorab sentence)")
     parser.add_argument("--correct", help="#3969: what the last word is fixed to (default: Saurabh), e.g. 2 for a number-formatting edit")
+    parser.add_argument("--expect", help="#3969: a word the delivered text must contain (default: invoices); required when --sentence lacks it")
     args = parser.parse_args()
-    global SENTENCE, CORRECT
+    global SENTENCE, CORRECT, EXPECT
     if args.sentence:
         SENTENCE = args.sentence
     if args.correct:
         CORRECT = args.correct
+    if args.expect:
+        EXPECT = args.expect
+    custom = args.sentence or args.expect or args.correct
+    if args.paragraph and (args.sentence or args.expect):
+        parser.error("--paragraph uses its own text; do not combine it with --sentence or --expect")
+    if custom and (args.send_after is not None or args.then in ("send", "newchat")):
+        parser.error("send modes dictate their own fixed text; do not combine them with --sentence, --expect or --correct")
+    if args.half and len(CORRECT) <= 4:
+        parser.error("--half types the first four letters of the fix; the fix must be longer than four characters")
+    if EXPECT.lower() not in [re.sub(r"^\W+|\W+$", "", word) for word in SENTENCE.lower().split()]:
+        parser.error(f"the sentence does not contain the expected word {EXPECT!r}; pass --expect")
     if not args.shipped_judge and not args.export:
         parser.error("--export is required unless --shipped-judge")
     d.run_dir = os.path.abspath(args.run_dir)
