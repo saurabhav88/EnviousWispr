@@ -1733,8 +1733,14 @@ import os
     var fieldsAsked: [AXUIElement] = []
     context.recordStartTarget(
       front: app, focus: .focused(element: field, ownerPID: app.processIdentifier), trusted: true,
-      captureWindow: { asked.append($0); return window },
-      captureFieldWindow: { fieldsAsked.append($0); return fieldWindow })
+      captureWindow: {
+        asked.append($0)
+        return window
+      },
+      captureFieldWindow: {
+        fieldsAsked.append($0)
+        return fieldWindow
+      })
     #expect(context.targetElement == field)
     #expect(context.targetWindow == nil, "a captured field needs no app window")
     #expect(asked.isEmpty, "and the app's window is never even read")
@@ -1743,14 +1749,23 @@ import os
 
     context.recordStartTarget(
       front: app, focus: .focused(element: field, ownerPID: app.processIdentifier), trusted: false,
-      captureWindow: { asked.append($0); return window },
-      captureFieldWindow: { fieldsAsked.append($0); return fieldWindow })
+      captureWindow: {
+        asked.append($0)
+        return window
+      },
+      captureFieldWindow: {
+        fieldsAsked.append($0)
+        return fieldWindow
+      })
     #expect(context.targetFieldWindow == nil, "untrusted: no field window, and the old one is gone")
     #expect(fieldsAsked.count == 1, "untrusted: never read")
 
     context.recordStartTarget(
       front: app, focus: .focused(element: field, ownerPID: app.processIdentifier), trusted: true,
-      captureWindow: { asked.append($0); return window }, captureFieldWindow: { _ in nil })
+      captureWindow: {
+        asked.append($0)
+        return window
+      }, captureFieldWindow: { _ in nil })
     #expect(context.targetFieldWindow == nil, "an unreadable field window records nothing")
 
     // A terminated target (the degenerate `NSRunningApplication()` reports `isTerminated`) is
@@ -1759,24 +1774,39 @@ import os
     let dead = NSRunningApplication()
     context.recordStartTarget(
       front: dead, focus: .focused(element: field, ownerPID: dead.processIdentifier), trusted: true,
-      captureWindow: { asked.append($0); return window },
-      captureFieldWindow: { fieldsAsked.append($0); return fieldWindow })
+      captureWindow: {
+        asked.append($0)
+        return window
+      },
+      captureFieldWindow: {
+        fieldsAsked.append($0)
+        return fieldWindow
+      })
     #expect(context.targetFieldWindow == nil)
     #expect(fieldsAsked.count == 1, "a terminated app is never read")
 
     context.targetFieldWindow = fieldWindow
 
-    context.recordStartTarget(front: app, focus: .noElement, trusted: true) { asked.append($0); return window }
+    context.recordStartTarget(front: app, focus: .noElement, trusted: true) {
+      asked.append($0)
+      return window
+    }
     #expect(context.targetApp == app)
     #expect(context.targetWindow == window)
     #expect(context.targetFieldWindow == nil, "no field: the last take's field window is reset")
     #expect(asked == [app.processIdentifier], "read once, scoped to the recorded app")
 
-    context.recordStartTarget(front: app, focus: .noElement, trusted: false) { asked.append($0); return window }
+    context.recordStartTarget(front: app, focus: .noElement, trusted: false) {
+      asked.append($0)
+      return window
+    }
     #expect(context.targetWindow == nil, "untrusted: nothing recorded, and the old window is gone")
 
     context.targetWindow = window
-    context.recordStartTarget(front: nil, focus: .noElement, trusted: true) { asked.append($0); return window }
+    context.recordStartTarget(front: nil, focus: .noElement, trusted: true) {
+      asked.append($0)
+      return window
+    }
     #expect(context.targetWindow == nil, "no app: reset, nothing recorded")
 
     context.recordStartTarget(front: app, focus: .noElement, trusted: true) { _ in nil }
@@ -1822,6 +1852,29 @@ import os
     #expect(outcome.caretContextOutcome != "no_target")
   }
 
+  @Test("the dictation's paste request carries the field window recorded at start (#3961)")
+  func deliveryForwardsTheCapturedFieldWindow() async throws {
+    let captured = DeliveryRequestBox()
+    let context = KernelSessionContext()
+    context.config = .testDefault(autoPasteToActiveApp: true, smartInsertion: true)
+    context.targetApp = Self.stubTargetApp()
+    context.targetElement = Self.stubCaretElement()
+    let fieldWindow = AXUIElementCreateApplication(7_104)
+    context.targetFieldWindow = fieldWindow
+    let wiring = makeWiring(
+      context: context,
+      deliverPaste: { request in
+        captured.requests.append(request)
+        return Self.deliveredResult
+      })
+
+    _ = await wiring.deliver("Review this before the meeting", .ordinary)
+
+    let request = try #require(captured.requests.first)
+    #expect(request.capturedFieldWindow == fieldWindow)
+    #expect(request.recordedWindow == nil, "a captured field records no app window")
+  }
+
   @Test("a recovered field with a selection keeps its caret evidence inside the recorded window")
   func retryInsideRecordedWindowKeepsSelection() async throws {
     let captured = DeliveryRequestBox()
@@ -1845,7 +1898,8 @@ import os
     _ = await wiring.deliver("Review this before the meeting", .ordinary)
 
     let request = try #require(captured.requests.first)
-    #expect(request.caretContext == selected, "the selected replacement's evidence reaches the paste")
+    #expect(
+      request.caretContext == selected, "the selected replacement's evidence reaches the paste")
     #expect(request.legacyText == "Review this before the meeting ")
   }
 
@@ -3717,7 +3771,9 @@ extension KernelFinalizationWiringTests {
     return steps
   }
 
-  @Test("#2450 a German take's punctuation status and count travel from the step to the transcript metrics")
+  @Test(
+    "#2450 a German take's punctuation status and count travel from the step to the transcript metrics"
+  )
   func punctuationFactsReachMetrics() async throws {
     let outcome = KernelFinalizationOutcome()
     let context = KernelSessionContext()
@@ -3752,7 +3808,8 @@ extension KernelFinalizationWiringTests {
     context.config = .testDefault(autoPasteToActiveApp: true)
     let wiring = makeWiring(outcome: outcome, context: context, steps: punctuationSteps())
 
-    _ = try await wiring.processText("Ich gehe heute Abend zum See und danach in die Stadt zurück.") {}
+    _ = try await wiring.processText("Ich gehe heute Abend zum See und danach in die Stadt zurück.")
+    {}
     #expect(outcome.punctuationStatus == "ran_no_match")
     #expect(outcome.punctuationRulesFired == 0)
   }
@@ -3764,10 +3821,14 @@ extension KernelFinalizationWiringTests {
     context.config = .testDefault(autoPasteToActiveApp: true)
     let wiring = makeWiring(outcome: outcome, context: context, steps: punctuationSteps())
 
-    _ = try await wiring.processText("Ich gehe heute Abend zum See und danach in die Stadt zurück Diktiere Punkt") {}
+    _ = try await wiring.processText(
+      "Ich gehe heute Abend zum See und danach in die Stadt zurück Diktiere Punkt"
+    ) {}
     #expect(outcome.punctuationStatus == "rewrote")
 
-    _ = try await wiring.processText("please send the invoice to the client before the meeting tomorrow") {}
+    _ = try await wiring.processText(
+      "please send the invoice to the client before the meeting tomorrow"
+    ) {}
     #expect(outcome.cleanupLanguage == "en")
     #expect(outcome.punctuationStatus == nil)
     #expect(outcome.punctuationRulesFired == nil)

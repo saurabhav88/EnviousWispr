@@ -678,6 +678,22 @@ struct PasteTargetWindowGateWiringTests {
     #expect(!Self.onElseOf("gate.ownerPath", omnibox[0].node))
   }
 
+  /// The cascade's activation calls are unreachable from a test (every system-paste tier is inert
+  /// on an isolated test pasteboard), so their window arguments are checked here instead.
+  @Test("Both key-tier activations hand the gate the request's recorded windows (#3304, #3961)")
+  func activationsForwardTheRecordedWindows() throws {
+    let (calls, _) = try Self.parse()
+    let activations = calls.found.filter { $0.callee == "activate" }
+    try #require(activations.count == 2, "Tier 2 and Tier 2c: \(activations.count) call sites")
+    for activation in activations {
+      let arguments = activation.node.arguments.map {
+        ($0.label?.text, $0.expression.trimmedDescription)
+      }
+      #expect(arguments.contains { $0 == ("recordedWindow", "request.recordedWindow") })
+      #expect(arguments.contains { $0 == ("startFieldWindow", "request.capturedFieldWindow") })
+    }
+  }
+
   @Test(
     "Activation asks the owner question once before raising, and its poll stays front-only (#3423)")
   func activationAdmission() throws {
