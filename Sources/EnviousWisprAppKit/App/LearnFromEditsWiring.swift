@@ -314,6 +314,7 @@ final class LearnFromEditsWiring {
         userWords: { [weak customWords] in customWords?.customWords ?? [] },
         packTerms: { [weak packs] in packs?.enabledPackTerms() ?? [] },
         coordinator: coordinator,
+        memory: learnMemory,
         telemetry: telemetry))
     pasteCompletionRegistry.subscribe(watcher)
 

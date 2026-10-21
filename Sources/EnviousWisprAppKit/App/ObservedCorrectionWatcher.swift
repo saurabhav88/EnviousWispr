@@ -140,6 +140,8 @@ struct ObservedCorrectionWatcherDependencies {
   let packTerms: () -> [CustomWord]
   /// Saves an accepted correction at once and offers Undo (2026-09-21 plan).
   let coordinator: LearnedCorrectionCoordinator
+  /// Per-pair learning memory (#3975): judge refusals, repeats, blocks.
+  let memory: LearnMemory
   /// Bound on ONE judge call, whatever the arm: the AFM judge bounds itself,
   /// the rules judge is immediate, but a Core ML `prediction` can wedge and
   /// nothing above it would ever answer. Production: `correctionJudgeDeadlineSeconds`
@@ -156,12 +158,15 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
   /// Plan §3.1 step 4: at most two settled bursts are judged per paste.
   static let maxJudgeCallsPerPaste = 2
 
-  /// A correction the judge called one, held back only because the evidence
-  /// that the edit was finished was weak (#3101).
+  /// A correction the judge called one, or a repeat of a pair it refused
+  /// (#3975), held back only because the evidence that the edit was finished
+  /// was weak (#3101).
   private struct HeldCorrection {
     /// Matched against the text at release time, which supplies the spelling.
     let pairKey: String
     let expectedTarget: LearnTargetState
+    /// `.repeat` holds are re-checked against the shape guard at release.
+    let via: TelemetryService.LearnFromEditsTelemetry.LearnVia
   }
 
   private struct Watch {
@@ -179,9 +184,11 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
     /// snapshot is not counted twice.
     var unfinishedPairKeys: Set<String> = []
     var judgeCalls = 0
-    /// Pairs already reserved for the judge in this paste; burst two never
-    /// re-sends them.
+    /// Pairs already reserved for the judge, or handled as a repeat, in this
+    /// paste; a later burst never re-sends them.
     var sentPairKeys: Set<String> = []
+    /// #3975: blocked pairs already counted as `learn_blocked_seen` in this paste.
+    var blockedSeenKeys: Set<String> = []
     /// #3101: corrections the judge accepted but weak evidence held back. The
     /// next strong settle saves each one whose pair is still in the text (other
     /// words may have been edited since), with no new judge call.
@@ -438,11 +445,17 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
           return
         }
       }
-      guard w.settledBursts < Self.maxJudgeCallsPerPaste, !w.settledSnapshots.contains(region)
-      else { return }
+      guard !w.settledSnapshots.contains(region) else { return }
       watch?.settledSnapshots.insert(region)
-      watch?.settledBursts += 1
-      judgeBurst(region: region, evidence: evidence, generation: gen, revision: w.revision)
+      // #3975: snapshot admission is separate from the judge budget. The
+      // first two distinct settled snapshots are judged as today; later ones
+      // reach repeat handling only, so neither two bursts nor two judge calls
+      // hide a repeat, and ordinary learning is unchanged.
+      let judgeable = w.settledBursts < Self.maxJudgeCallsPerPaste
+      if judgeable { watch?.settledBursts += 1 }
+      judgeBurst(
+        region: region, evidence: evidence, judgeable: judgeable, generation: gen,
+        revision: w.revision)
     case .ended(let reason):
       watch?.ended = true
       // Only an end the OBSERVER delivered carries its loss detail; a
@@ -474,32 +487,69 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
 
   // MARK: Steps 5–7: align, filter, judge
 
-  /// Synchronous up to the reservation: alignment, filtering and the
-  /// reservation of the call count and pair keys all happen before any
-  /// suspension, so two bursts cannot both submit the same pair.
+  /// Synchronous up to the reservation: alignment, filtering, repeat saves
+  /// and the reservation of the call count and pair keys all happen before
+  /// any suspension, so two bursts cannot both submit the same pair.
+  /// `judgeable` false (a third or later settled snapshot) handles repeats
+  /// only (#3975).
   private func judgeBurst(
-    region: String, evidence: SettleEvidence, generation gen: UInt64, revision: UInt64
+    region: String, evidence: SettleEvidence, judgeable: Bool, generation gen: UInt64,
+    revision: UInt64
   ) {
     guard let w = watch, w.generation == gen, w.isLive, let selected = w.selected,
-      let target = w.target, w.judgeCalls < Self.maxJudgeCallsPerPaste
+      let target = w.target
     else { return }
     let alignment = EditAlignment.align(pasted: target.pastedText, edited: region)
     guard !alignment.limitExceeded, !alignment.runs.isEmpty else { return }
     let language = w.event.language
-    // The live words only: there is no rejection memory and no open-proposal
+    // The live words and the pairs the user blocked (#3975); no open-proposal
     // ledger any more (2026-09-21 plan §3.1 step 11).
     let inputs = CorrectionCandidateFilter.Inputs(
-      userWords: deps.userWords(), packTerms: deps.packTerms())
+      userWords: deps.userWords(), packTerms: deps.packTerms(),
+      blockedPairKeys: deps.memory.blockedKeys)
     var filtered = CorrectionCandidateFilter.filter(runs: alignment.runs, inputs: inputs)
     filtered.removeAll { w.sentPairKeys.contains($0.pairKey) }
-    for run in filtered where run.disposition == .ineligible(.unfinishedEdit) {
-      watch?.unfinishedPairKeys.insert(run.pairKey)
+    for run in filtered where run.disposition == .ineligible(.blockedByUser) {
+      countBlocked(run.pairKey, generation: gen)
+    }
+    if judgeable {
+      for run in filtered where run.disposition == .ineligible(.unfinishedEdit) {
+        watch?.unfinishedPairKeys.insert(run.pairKey)
+      }
     }
     let eligible = filtered.filter {
       if case .candidate = $0.disposition { return true }
       return false
     }
     guard !eligible.isEmpty else { return }
+    // #3975: a pair the judge refused on a finished edit, fixed the same way
+    // again and shaped like a name, brand or term, is learned without a judge
+    // call, before any judge reservation, and never spends the judge budget.
+    var judged: [CorrectionCandidateFilter.Filtered] = []
+    for f in eligible {
+      guard case .candidate(let expectedTarget) = f.disposition,
+        deps.memory.isRepeat(f.pairKey),
+        RepeatShapeGuard.passes(
+          corrected: f.run.coreReplacement, startToken: f.run.originalRange.lowerBound,
+          pasted: target.pastedText)
+      else {
+        judged.append(f)
+        continue
+      }
+      guard stillWanted(generation: gen, revision: revision) else { return }
+      guard watch?.sentPairKeys.contains(f.pairKey) == false else { continue }
+      watch?.sentPairKeys.insert(f.pairKey)
+      switch evidence {
+      case .strong:
+        save(
+          original: f.run.coreOriginal, corrected: f.run.coreReplacement,
+          expectedTarget: expectedTarget, via: .repeat, generation: gen)
+      case .weak:
+        watch?.weakHeld.append(
+          HeldCorrection(pairKey: f.pairKey, expectedTarget: expectedTarget, via: .repeat))
+      }
+    }
+    guard judgeable, !judged.isEmpty else { return }
     // One request per judge WINDOW of the pasted sentence: the judge was
     // trained and examined on the PASTED sentence (`Sentence:` is the
     // dictation, `Edit:` the pair; `train_edit_judge.py`, the exam,
@@ -510,7 +560,7 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
     // beyond the per-paste call budget are left unreserved.
     let arm = selected.arm
     let judge = selected.judge
-    for group in Self.windowGroups(eligible, in: target.pastedText) {
+    for group in Self.windowGroups(judged, in: target.pastedText) {
       guard let live = watch, live.generation == gen, live.isLive,
         live.judgeCalls < Self.maxJudgeCallsPerPaste
       else { return }
@@ -575,6 +625,16 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
       accepted: accepted, latencyMs: latency, queueWaitMs: nil,
       takeID: watch?.event.takeID, evidence: evidence)
     guard case .verdict(let decisions) = outcome else { return }
+    // #3975: a refusal on a FINISHED edit (effective strong evidence, after
+    // the weak-to-strong promotion above) is remembered so the same fix in a
+    // later dictation can be learned without asking again. Bypasses, weak
+    // answers and accepted pairs record nothing.
+    if evidence == .strong {
+      for decision in decisions where !Self.accepts(decision, evidence: .strong) {
+        guard let f = prepared.byID[decision.id], case .candidate = f.disposition else { continue }
+        deps.memory.recordJudgeRefusal(f.pairKey)
+      }
+    }
     #if DEBUG
       // Local debug log only (plan §11 UAT tokens): what the judge was asked and
       // what it answered, pair by pair, so a Live UAT can read a refusal from
@@ -594,7 +654,7 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
         guard decision.verdict.vocabularyCorrection, !Self.accepts(decision, evidence: .weak),
           let f = prepared.byID[decision.id], case .candidate(let target) = f.disposition
         else { return nil }
-        return HeldCorrection(pairKey: f.pairKey, expectedTarget: target)
+        return HeldCorrection(pairKey: f.pairKey, expectedTarget: target, via: .judge)
       }
       if !held.isEmpty { watch?.weakHeld += held }
     }
@@ -609,10 +669,31 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
       // more. A save that merely replaced the previous pill is not a reason
       // to stop: the settled evidence for the next pair is still valid.
       guard stillWanted(generation: gen, revision: revision) else { return }
-      deps.coordinator.learn(
+      save(
         original: f.run.coreOriginal, corrected: f.run.coreReplacement,
-        expectedTarget: expectedTarget)
+        expectedTarget: expectedTarget, via: .judge, generation: gen)
     }
+  }
+
+  /// Every watcher save goes through here: a pair blocked since it was
+  /// filtered is refused by the coordinator and counted once (#3975).
+  private func save(
+    original: String, corrected: String, expectedTarget: LearnTargetState,
+    via: TelemetryService.LearnFromEditsTelemetry.LearnVia, generation gen: UInt64
+  ) {
+    let outcome = deps.coordinator.learn(
+      original: original, corrected: corrected, expectedTarget: expectedTarget, via: via)
+    if outcome == .blocked {
+      countBlocked(CorrectionPairKey.make(original: original, corrected: corrected), generation: gen)
+    }
+  }
+
+  /// `learn_blocked_seen` once per distinct blocked pair per paste, with that
+  /// paste's take, even when the refusal lands after observation ended.
+  private func countBlocked(_ pairKey: String, generation gen: UInt64) {
+    guard let w = watch, w.generation == gen, !w.blockedSeenKeys.contains(pairKey) else { return }
+    watch?.blockedSeenKeys.insert(pairKey)
+    deps.telemetry.learnBlockedSeen(takeID: w.event.takeID)
   }
 
   /// #3101: the judge score weak completion evidence must reach. A half-typed
@@ -650,21 +731,42 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
     // Save the spelling the text holds NOW (a later case fix wins), matched by
     // pair key: whole changed runs first, then single-word steps, so an edit to
     // a neighbouring word that merges into the same run does not hide the fix.
-    var current: [String: (original: String, corrected: String)] = [:]
-    for step in alignment.steps where step.label == .substitute || step.label == .casing {
-      guard let o = step.original, let e = step.edited else { continue }
+    // `start` is the first pasted token of the pair, for the repeat shape
+    // guard's sentence-start test (#3975).
+    var current: [String: (original: String, corrected: String, start: Int)] = [:]
+    var pastedToken = 0
+    for step in alignment.steps {
+      let start = pastedToken
+      if step.original != nil { pastedToken += 1 }
+      guard step.label == .substitute || step.label == .casing,
+        let o = step.original, let e = step.edited
+      else { continue }
       let original = EditAlignment.lexicalCore(o)
       let corrected = EditAlignment.lexicalCore(e)
       guard !original.isEmpty, !corrected.isEmpty else { continue }
-      current[CorrectionPairKey.make(original: original, corrected: corrected)] = (original, corrected)
+      current[CorrectionPairKey.make(original: original, corrected: corrected)] =
+        (original, corrected, start)
     }
+    let blocked = deps.memory.blockedKeys
     for f in CorrectionCandidateFilter.filter(
       runs: alignment.runs,
-      inputs: .init(userWords: deps.userWords(), packTerms: deps.packTerms()))
+      inputs: .init(
+        userWords: deps.userWords(), packTerms: deps.packTerms(), blockedPairKeys: blocked))
     {
-      current[f.pairKey] = (f.run.coreOriginal, f.run.coreReplacement)
+      current[f.pairKey] = (f.run.coreOriginal, f.run.coreReplacement, f.run.originalRange.lowerBound)
     }
-    let held = w.weakHeld.compactMap { h in current[h.pairKey].map { (h, $0) } }
+    // #3975: a pair blocked meanwhile is dropped from both maps; a repeat
+    // hold saves only if its CURRENT spelling and position still pass the
+    // shape guard ("CENIT" retyped as "cenit" is not saved).
+    for h in w.weakHeld where blocked.contains(h.pairKey) && current[h.pairKey] != nil {
+      countBlocked(h.pairKey, generation: gen)
+    }
+    current = current.filter { !blocked.contains($0.key) }
+    let held = w.weakHeld.compactMap { h in current[h.pairKey].map { (h, $0) } }.filter { h, run in
+      h.via == .judge
+        || RepeatShapeGuard.passes(
+          corrected: run.corrected, startToken: run.start, pasted: target.pastedText)
+    }
     watch?.weakHeld = []
     #if DEBUG
       LearnedCorrectionCoordinator.debugLog(
@@ -672,8 +774,9 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
     #endif
     for (h, run) in held {
       guard stillWanted(generation: gen, revision: w.revision) else { return }
-      deps.coordinator.learn(
-        original: run.original, corrected: run.corrected, expectedTarget: h.expectedTarget)
+      save(
+        original: run.original, corrected: run.corrected, expectedTarget: h.expectedTarget,
+        via: h.via, generation: gen)
     }
   }
 
