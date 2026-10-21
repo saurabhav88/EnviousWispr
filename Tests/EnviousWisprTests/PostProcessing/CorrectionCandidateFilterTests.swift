@@ -50,11 +50,53 @@ import Testing
     #expect(disposition(run("x", "'s"), inputs()) == .candidate(.newWord))
   }
 
+  /// #3969: one number word written as the same number in digits is the
+  /// user's formatting choice, never a misheard word, so it never reaches the
+  /// judge. English, German and Dutch number words are read by the app's own
+  /// readers; "One" -> "1" is the accepted trade-off.
+  @Test(
+    "one number word written as the same number in digits is ineligible",
+    arguments: [
+      ("two", "2"), ("Two", "2"), ("two.", "2."), ("\"two\"", "\"2\""), ("twenty", "20"),
+      ("twenty-one", "21"), ("zero", "0"), ("fourth", "4th"), ("first", "1st"), ("fortieth", "40th"),
+      ("twenty-first", "21st"), ("zwei", "2"), ("vierte", "4."), ("einundzwanzig", "21"), ("twee", "2"),
+      ("One", "1"),
+    ])
+  func numberFormatting(original: String, corrected: String) {
+    #expect(disposition(run(original, corrected), inputs()) == .ineligible(.numberFormatting))
+  }
+
+  @Test(
+    "a different number, a kind change, a mark, a unit, a name with letters, a phrase or two numbers still reaches the judge",
+    arguments: [
+      ("two", "3"), ("two", "too"), ("two", "2nd"), ("fourth", "4"), ("first", "1th"), ("fortieth", "4th"),
+      ("twenty-one", "20"), ("twenty-and", "20"), ("twenty one", "21"), ("one hundred", "100"),
+      ("twenty first", "21st"), ("ten second", "12th"), ("twenty and first", "21st"),
+      ("HTTP two", "HTTP2"), ("five G", "5G"), ("M one", "M1"), ("seven B", "7B"), ("four K", "4K"),
+      ("seven eleven", "7-Eleven"), ("one", "Dune 1"), ("vierde", "4"), ("one", "-1"), ("ten", "10%"),
+      ("ten", "$10"), ("one", "(1)"), ("(one)", "1"), ("-one", "1"), ("$ten", "10"), ("ten%", "10"),
+      ("one thousand", "1,000"), ("two point five", "2.5"), ("four five", "4 5"), ("three, five", "3, 5"),
+    ])
+  func numberEditStillJudged(original: String, corrected: String) {
+    #expect(disposition(run(original, corrected), inputs()) != .ineligible(.numberFormatting))
+  }
+
+  @Test("the surface check is what stops a lost sign: the cores alone look like formatting")
+  func numberFormattingReadsTheSurface() {
+    let signed = run("one", "-1")
+    #expect(signed.coreOriginal == "one" && signed.coreReplacement == "1")
+    #expect(disposition(signed, inputs()) != .ineligible(.numberFormatting))
+    let ordinal = run("vierte", "4.")
+    #expect(ordinal.coreReplacement == "4")
+    #expect(disposition(ordinal, inputs()) == .ineligible(.numberFormatting))
+  }
+
   @Test("no language gate: the ineligibility vocabulary has no language member (founder 2026-09-21)")
   func noLanguageGate() {
     #expect(
       F.IneligibleReason.allCases.map(\.rawValue) == [
-        "stopwordPhrase", "contractionEnding", "unfinishedEdit", "aliasOwnedElsewhere",
+        "stopwordPhrase", "contractionEnding", "unfinishedEdit", "numberFormatting",
+        "aliasOwnedElsewhere",
       ])
     // A run in any script is judged on its own merits.
     #expect(disposition(run("さら", "サラ"), inputs()) == .candidate(.newWord))

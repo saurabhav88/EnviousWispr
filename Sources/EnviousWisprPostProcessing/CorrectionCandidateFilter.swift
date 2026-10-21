@@ -34,6 +34,10 @@ package enum CorrectionCandidateFilter {
     /// removes only spaces is not this, nor single letters removed in
     /// separate places ("Whisper" -> "Wispr", #3949).
     case unfinishedEdit
+    /// The run only writes one number word as the same number in digits
+    /// ("two" -> "2", "fourth" -> "4th", German "zwei" -> "2"): formatting,
+    /// not a misheard word, and the learned entry would be bare digits (#3969).
+    case numberFormatting
     /// The corrected phrase, or the original as a trigger, is owned by a
     /// DIFFERENT word than the resolved target.
     case aliasOwnedElsewhere
@@ -41,7 +45,7 @@ package enum CorrectionCandidateFilter {
 
   /// Plan §3.1 step 6 dispositions. Precedence when several apply (highest
   /// first): `ineligible(.stopwordPhrase)`, `ineligible(.contractionEnding)`,
-  /// `ineligible(.unfinishedEdit)`,
+  /// `ineligible(.unfinishedEdit)`, `ineligible(.numberFormatting)`,
   /// `alreadyCovered`, `ineligible(.aliasOwnedElsewhere)`, `candidate`. A
   /// covered pair is never sent to the judge.
   package enum Disposition: Sendable, Equatable {
@@ -122,6 +126,7 @@ package enum CorrectionCandidateFilter {
     if isDeletionOnly(original: run.coreOriginal, corrected: run.coreReplacement) {
       return .ineligible(.unfinishedEdit)
     }
+    if isNumberFormatting(run) { return .ineligible(.numberFormatting) }
 
     let target = resolveTarget(corrected: run.coreReplacement, inputs: inputs)
     if let target, covers(target, original: run.coreOriginal) { return .alreadyCovered }
@@ -195,6 +200,141 @@ package enum CorrectionCandidateFilter {
     }
     return reach[c.count][0] || reach[c.count][1]
   }
+
+  /// One number, read two ways: a count or a rank.
+  enum NumberForm: Hashable {
+    case cardinal(Int)
+    case ordinal(Int)
+  }
+
+  /// #3969: the run writes ONE number word as the same number in digits. The
+  /// formatter already writes 10 and up, decimals and money as digits and
+  /// keeps one to nine as words, so this is the user's own style choice
+  /// ("two" -> "2"), never a misheard word. Both SURFACE strings are checked
+  /// before anything else: the lexical core strips edge marks, so "one" ->
+  /// "-1" or "ten" -> "10%" would otherwise look like plain formatting. A sign,
+  /// unit, bracket, space or second number keeps the run with the judge.
+  /// Accepted trade-off: a name spoken as one number word and written as
+  /// digits only ("One" -> "1") is not learned; its entry would be bare digits.
+  package static func isNumberFormatting(_ run: EditAlignment.Run) -> Bool {
+    let original = withoutSentenceDecoration(run.original)
+    let replacement = withoutSentenceDecoration(run.replacement)
+    guard isLettersOnlyPhrase(original), let digits = digitNumber(replacement) else { return false }
+    return numberWordReadings(original).contains(digits)
+  }
+
+  /// Trailing sentence punctuation and enclosing quotation marks only.
+  /// Brackets stay: "(1)" can mean minus one.
+  static func withoutSentenceDecoration(_ text: String) -> String {
+    var s = Substring(text.trimmingCharacters(in: .whitespacesAndNewlines))
+    let trailing: Set<Character> = [".", ",", ";", ":", "!", "?"]
+    let quotes: Set<Character> = [
+      "\"", "'", "\u{201C}", "\u{201D}", "\u{2018}", "\u{2019}", "\u{00AB}", "\u{00BB}",
+    ]
+    var changed = true
+    while changed {
+      changed = false
+      if let last = s.last, trailing.contains(last) || quotes.contains(last) {
+        s = s.dropLast()
+        changed = true
+      }
+      if let first = s.first, quotes.contains(first) {
+        s = s.dropFirst()
+        changed = true
+      }
+    }
+    return String(s)
+  }
+
+  /// Letters, with single spaces or hyphens between letters; nothing else.
+  static func isLettersOnlyPhrase(_ text: String) -> Bool {
+    guard let first = text.first, let last = text.last, first.isLetter, last.isLetter else {
+      return false
+    }
+    var previous: Character = first
+    for ch in text {
+      if ch == " " || ch == "-" {
+        guard previous.isLetter else { return false }
+      } else if !ch.isLetter {
+        return false
+      }
+      previous = ch
+    }
+    return true
+  }
+
+  /// One integer in plain digits, or an English ordinal whose suffix fits it
+  /// ("1st", "2nd", "3rd", "11th"). Anything else is nil.
+  static func digitNumber(_ text: String) -> NumberForm? {
+    let digits = text.prefix { $0.isASCII && $0.isNumber }
+    guard !digits.isEmpty, digits.count <= 9, let value = Int(digits) else { return nil }
+    let suffix = text.dropFirst(digits.count)
+    if suffix.isEmpty { return .cardinal(value) }
+    return suffix == englishOrdinalSuffix(value) ? .ordinal(value) : nil
+  }
+
+  static func englishOrdinalSuffix(_ n: Int) -> String {
+    if (11...13).contains(n % 100) { return "th" }
+    switch n % 10 {
+    case 1: return "st"
+    case 2: return "nd"
+    case 3: return "rd"
+    default: return "th"
+    }
+  }
+
+  /// Every way the app's own number readers read ONE word: English (the
+  /// formatter's lexicon, plus a hyphenated tens compound such as
+  /// "twenty-one" or "twenty-first"), German and Dutch
+  /// (`LanguageNumberGrammar`, whose compounds are single words). A phrase
+  /// with a space is not read: the formatter already writes those numbers as
+  /// digits, and reading multi-word heads invents values ("twenty and
+  /// first"), so they stay with the judge.
+  static func numberWordReadings(_ word: String) -> Set<NumberForm> {
+    guard !word.contains(" ") else { return [] }
+    var readings: Set<NumberForm> = []
+    let parts = word.lowercased().split(separator: "-", omittingEmptySubsequences: false).map(String.init)
+    if parts.count == 1 {
+      let w = parts[0]
+      if let v = InverseTextNormalizer.units[w] ?? InverseTextNormalizer.tens[w] {
+        readings.insert(.cardinal(v))
+      }
+      if let v = InverseTextNormalizer.ordinalWord[w] ?? InverseTextNormalizer.ordStandalone[w] {
+        readings.insert(.ordinal(v))
+      }
+    } else if parts.count == 2, let tens = InverseTextNormalizer.tens[parts[0]] {
+      if let unit = InverseTextNormalizer.units[parts[1]], (1...9).contains(unit) {
+        readings.insert(.cardinal(tens + unit))
+      }
+      if let unit = InverseTextNormalizer.ordUnit[parts[1]] {
+        readings.insert(.ordinal(tens + unit))
+      }
+    }
+    let snapshot = LanguageTextSnapshot(word)
+    let whole = 0..<snapshot.units.count
+    for parser in [germanNumbers, dutchNumbers].compactMap({ $0 }) {
+      if case .parsed(let n) = parser.parse(.cardinal, in: snapshot, range: whole) {
+        readings.insert(.cardinal(n.value))
+      }
+    }
+    // A German ordinal written "4." reaches here as "4": the period is
+    // sentence decoration, so it counts as the plain number.
+    if let parser = germanNumbers,
+      case .parsed(let n) = parser.parse(.ordinal, in: snapshot, range: whole)
+    {
+      readings.insert(.cardinal(n.value))
+    }
+    return readings
+  }
+
+  static let germanNumbers: LanguageNumberParser? = {
+    guard let grammar = try? LanguageNumberGrammar.forLanguage("de") else { return nil }
+    return LanguageNumberParser(grammar: grammar)
+  }()
+  static let dutchNumbers: LanguageNumberParser? = {
+    guard let grammar = try? LanguageNumberGrammar.forLanguage("nl") else { return nil }
+    return LanguageNumberParser(grammar: grammar)
+  }()
 
   /// The corrected spelling as an existing word: user words first, then the
   /// enabled pack terms, matched on the canonical case-insensitively. Returns

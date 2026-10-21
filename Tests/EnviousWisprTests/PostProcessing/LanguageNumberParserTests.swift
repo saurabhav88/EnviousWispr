@@ -558,9 +558,11 @@ struct LanguageNumberParserTests {
       if names.contains(where: { text.contains($0) }) { callers.append(file.lastPathComponent) }
     }
     #expect(scanned > 100, "the scan must read the source tree (read \(scanned))")
+    // #3969: the learn-from-edits filter reads one German or Dutch number word
+    // with the parser to tell "zwei" -> "2" (formatting) from a misheard word.
     #expect(
-      callers == ["InverseTextNormalizer+Language.swift"],
-      "runtime users of the language primitives must be the language route only: \(callers)")
+      callers.sorted() == ["CorrectionCandidateFilter.swift", "InverseTextNormalizer+Language.swift"],
+      "runtime users of the language primitives must be the language route and the learn filter only: \(callers)")
     let route = try String(
       contentsOf: sources.appending(path: "EnviousWisprPostProcessing/InverseTextNormalizer+Language.swift"),
       encoding: .utf8)

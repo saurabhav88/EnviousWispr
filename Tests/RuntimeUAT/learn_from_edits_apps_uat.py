@@ -937,7 +937,14 @@ def main():
                         help="#3368, codex only: type into this existing (test) chat from the sidebar instead of a new chat")
     parser.add_argument("--half", action="store_true", help="#3101: type only the first four letters of the fix")
     parser.add_argument("--apps", default="slack,discord,whatsapp,gmail,word,excel,notes,mail,safari,vscode,ghostty,obsidian,textedit")
+    parser.add_argument("--sentence", help="#3969: the carrier to dictate; its LAST word is the one fixed (default: the sorab sentence)")
+    parser.add_argument("--correct", help="#3969: what the last word is fixed to (default: Saurabh), e.g. 2 for a number-formatting edit")
     args = parser.parse_args()
+    global SENTENCE, CORRECT
+    if args.sentence:
+        SENTENCE = args.sentence
+    if args.correct:
+        CORRECT = args.correct
     if not args.shipped_judge and not args.export:
         parser.error("--export is required unless --shipped-judge")
     d.run_dir = os.path.abspath(args.run_dir)
