@@ -268,7 +268,8 @@
     /// `{meetingID}`: Delete audio, keeping the transcript.
     func deleteAudio(_ args: [String: Any]) async -> Result {
       await change(args, name: "deleteAudio") { _, record in
-        record.audioKept ? nil : "the meeting's audio is already deleted"
+        guard record.state != .notesOnly else { return "the meeting recorded no audio" }
+        return record.audioKept ? nil : "the meeting's audio is already deleted"
       } run: { coordinator, id in
         await coordinator.deleteAudio(meetingID: id)
       } check: { record in

@@ -94,6 +94,7 @@ struct MeetingListView: View {
     case .transcribing: return "waveform"
     case .ready: return "checkmark.circle"
     case .needsAttention: return "exclamationmark.triangle"
+    case .notesOnly: return "note.text"
     }
   }
 

@@ -89,6 +89,9 @@ public enum MeetingState: String, Sendable, Equatable, Codable {
   case processing
   case ready
   case failed
+  /// Nothing was captured on any track, but the user typed notes (#3972 R53, R56): the notes are
+  /// kept, and the meeting is never queued for transcription. Written with `formatVersion` 2.
+  case notesOnly
 }
 
 /// What the speaker analysis of one track really found, kept for the meeting and telemetry
@@ -115,9 +118,13 @@ public enum MeetingEngineChoice: String, Sendable, Equatable, Codable, CaseItera
 /// file still decodes; a file from a NEWER format is listed read-only and never rewritten or
 /// deleted by this build (#3972 §4).
 public struct MeetingRecord: Sendable, Equatable, Codable, Identifiable {
-  public static let currentFormatVersion = 1
+  /// 2 adds `MeetingState.notesOnly` (#3972 R56). A record keeps the version it was created
+  /// with until it needs a newer value: `markNotesOnly()` raises it.
+  public static let currentFormatVersion = 2
+  /// The format that introduced `MeetingState.notesOnly`.
+  public static let notesOnlyFormatVersion = 2
 
-  public let formatVersion: Int
+  public private(set) var formatVersion: Int
   public let id: UUID
   /// The History row this meeting's transcript is saved as. Minted at creation so every save
   /// replaces the same row, never a second one (#3972 R3).
@@ -169,6 +176,13 @@ public struct MeetingRecord: Sendable, Equatable, Codable, Identifiable {
     self.wasInterrupted = nil
   }
 
+  /// Nothing was captured, the user's notes are kept (#3972 R53, R56). Raises the format so an
+  /// older build that cannot decode `notesOnly` lists the meeting as newer, read-only.
+  public mutating func markNotesOnly() {
+    state = .notesOnly
+    formatVersion = max(formatVersion, Self.notesOnlyFormatVersion)
+  }
+
   /// Whether this build may rewrite the file.
   public var isWritableByThisBuild: Bool { formatVersion <= Self.currentFormatVersion }
 
@@ -190,7 +204,7 @@ public struct MeetingRecord: Sendable, Equatable, Codable, Identifiable {
     switch state {
     case .recording, .stopping: .interrupted
     case .processing: .queued
-    case .interrupted, .queued, .ready, .failed: nil
+    case .interrupted, .queued, .ready, .failed, .notesOnly: nil
     }
   }
 }

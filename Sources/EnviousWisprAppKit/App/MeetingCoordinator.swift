@@ -223,6 +223,8 @@ final class MeetingCoordinator {
       }
     /// One `meeting.json` write, run on `MeetingFileWriter`'s queue.
     var writeRecord: @Sendable (MeetingStore, MeetingRecord) throws -> Void = { try $0.save($1) }
+    /// The wait between the last notes change and its save (#3972 R46).
+    var notesDebounce: @Sendable () async -> Void = { try? await Task.sleep(for: .seconds(1)) }
   }
 
   // MARK: - Observable state
@@ -268,6 +270,8 @@ final class MeetingCoordinator {
 
   private let deps: Dependencies
   private let writer: MeetingFileWriter
+  /// Each meeting's notes and summary (#3972 R46): drafts, debounce and their file writes.
+  let documents: MeetingDocumentsOwner
   /// Each meeting as last written successfully: what `meetings` and `record(id:)` show, so a
   /// lifecycle step is visible only once it is durable.
   private var records: [UUID: MeetingRecord] = [:]
@@ -320,8 +324,12 @@ final class MeetingCoordinator {
 
   init(dependencies: Dependencies) {
     self.deps = dependencies
-    self.writer = MeetingFileWriter(
+    let writer = MeetingFileWriter(
       store: dependencies.store, writeRecord: dependencies.writeRecord)
+    self.writer = writer
+    self.documents = MeetingDocumentsOwner(
+      writer: writer,
+      dependencies: .init(debounce: dependencies.notesDebounce, log: dependencies.log))
   }
 
   // MARK: - Queries
@@ -454,7 +462,7 @@ final class MeetingCoordinator {
         Task { await delete(meetingID: meetingID) }
         continue
       }
-      if ![.ready, .failed].contains(record.state) {
+      if ![.ready, .failed, .notesOnly].contains(record.state) {
         // Unfinished: the same attempt, its start facts unknown after the relaunch.
         openAttempts[meetingID] = openAttempts[meetingID] ?? AttemptFacts()
       }
@@ -467,7 +475,8 @@ final class MeetingCoordinator {
       case .processing:
         record.state = .queued
         await persist(record)
-      case .queued, .ready, .failed:
+      case .queued, .ready, .failed, .notesOnly:
+        // A notes-only meeting has nothing to transcribe and is never queued (R53).
         continue
       }
     }
@@ -633,6 +642,16 @@ final class MeetingCoordinator {
     guard !quitting, var record = live[meetingID] else { return }
     let wroteNothing =
       report.problems.isEmpty && report.segments.values.allSatisfy { $0.isEmpty }
+    if wroteNothing, await documents.notesExist(meetingID) {
+      // Nothing captured, but the user's notes are kept (R53, R56).
+      guard !quitting, var notesOnly = live[meetingID] else { return }
+      notesOnly.trackStatus[.microphone] = .failed
+      notesOnly.endedAt = Date()
+      notesOnly.failureCode = "microphone_unavailable"
+      notesOnly.markNotesOnly()
+      if await persist(notesOnly) { endAttempt(notesOnly, outcome: .startFailed) }
+      return
+    }
     if wroteNothing {
       var refused = record
       refused.trackStatus[.microphone] = .failed
@@ -705,6 +724,7 @@ final class MeetingCoordinator {
     phase = .idle
     workChanged()
     startQueueIfNeeded()
+    await documents.flush(meetingID)
   }
 
   private static func anyCloseTimedOut(_ report: MeetingRecorder.StopReport) -> Bool {
@@ -844,9 +864,18 @@ final class MeetingCoordinator {
     guard isStillOwned(meetingID), var current = live[meetingID] else { return }
     for kind in MeetingTrackKind.allCases { current.segments[kind] = report.segments[kind] }
     guard !tracks.isEmpty else {
-      current.state = .failed
-      current.failureCode =
-        report.problems.isEmpty && damaged.isEmpty ? "no_audio" : "audio_unreadable"
+      let noAudio = report.problems.isEmpty && damaged.isEmpty
+      current.failureCode = noAudio ? "no_audio" : "audio_unreadable"
+      // Only confirmed absence with notes is notes-only (R56): unreadable audio may come back,
+      // so it stays failed and keeps Retry.
+      if noAudio, await documents.notesExist(meetingID) {
+        guard isStillOwned(meetingID), let latest = live[meetingID] else { return }
+        current = latest
+        current.failureCode = "no_audio"
+        current.markNotesOnly()
+      } else {
+        current.state = .failed
+      }
       if await persist(current) {
         endAttempt(current, outcome: .failed, gapCount: Self.markerCount(missingAudio))
       }
@@ -1096,6 +1125,8 @@ final class MeetingCoordinator {
     }
     record.deletionRequested = true
     guard await persist(record) else { return }
+    // Marked: no draft may be written any more (the store also refuses).
+    documents.forget(meetingID)
     switch phase {
     case .recording(let id, _) where id == meetingID: await stop()
     case .starting where activeMeetingID == meetingID: await stop()
@@ -1196,6 +1227,8 @@ final class MeetingCoordinator {
     queueTask?.cancel()
     job?.cancel()
     guard let recorder, let meetingID = activeMeetingID, var record = live[meetingID] else {
+      // Notes save whether or not anything records (R46), inside the same deadline.
+      documents.flushForQuit(deadline: deadline)
       endActivity()
       phase = .idle
       return
@@ -1212,6 +1245,8 @@ final class MeetingCoordinator {
       record.endedAt = Date()
       persistBounded(record, until: deadline)
     }
+    // After the audio files and the record, which matter most, and before the same deadline.
+    documents.flushForQuit(deadline: deadline)
     endActivity()
     phase = .idle
   }

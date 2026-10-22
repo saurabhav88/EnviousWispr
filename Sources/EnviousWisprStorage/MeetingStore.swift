@@ -247,8 +247,9 @@ public struct MeetingStore: Sendable {
 
   static func atomicWrite(_ data: Data, to url: URL) throws {
     let fm = FileManager.default
+    // A unique temp name per write (#3972 R46): two writers of one file never share a temp.
     let tmp = url.deletingLastPathComponent().appendingPathComponent(
-      ".\(url.lastPathComponent).tmp")
+      ".\(url.lastPathComponent).\(UUID().uuidString).tmp")
     let fd = Foundation.open(tmp.path, O_CREAT | O_WRONLY | O_TRUNC, 0o600)
     guard fd >= 0 else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno)) }
     let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: false)

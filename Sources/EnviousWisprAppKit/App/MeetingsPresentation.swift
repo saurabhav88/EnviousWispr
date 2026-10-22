@@ -132,6 +132,8 @@ enum MeetingsPresentation {
     case transcribing
     case ready
     case needsAttention
+    /// Nothing was recorded; the user's notes are kept (#3972 R53).
+    case notesOnly
   }
 
   static func status(_ record: MeetingRecord, processingID: UUID?) -> Status {
@@ -144,6 +146,7 @@ enum MeetingsPresentation {
     case .processing: return .transcribing
     case .ready: return .ready
     case .failed: return .needsAttention
+    case .notesOnly: return .notesOnly
     }
   }
 
@@ -173,6 +176,12 @@ enum MeetingsPresentation {
       return String(
         localized: "Needs attention",
         comment: "EnviousMeet list: the transcript could not be made; the detail says why.")
+    case .notesOnly:
+      return String(
+        localized: "Notes only",
+        comment:
+          "EnviousMeet list: nothing was recorded for this meeting, but the notes the user typed are kept."
+      )
     }
   }
 
@@ -204,6 +213,11 @@ enum MeetingsPresentation {
 
   /// Why a meeting needs attention, from its failure code.
   static func failureLine(_ record: MeetingRecord) -> String? {
+    if record.state == .notesOnly {
+      return String(
+        localized: "The recording failed. Your notes are kept.",
+        comment: "EnviousMeet detail: nothing was recorded, but the notes the user typed are saved.")
+    }
     guard record.state == .failed else { return nil }
     switch record.failureCode {
     case "no_audio"?, "audio_unreadable"?:
@@ -235,7 +249,9 @@ enum MeetingsPresentation {
     let settled = [.failed, .ready, .interrupted].contains(record.state)
     return Actions(
       transcribeAgain: record.audioKept && settled && !isActive && record.isWritableByThisBuild,
-      deleteAudio: record.audioKept && !isActive && record.isWritableByThisBuild,
+      // A notes-only meeting has no audio to delete, and never says it was deleted (R53).
+      deleteAudio: record.audioKept && record.state != .notesOnly && !isActive
+        && record.isWritableByThisBuild,
       delete: record.isWritableByThisBuild && !record.deletionRequested)
   }
 
