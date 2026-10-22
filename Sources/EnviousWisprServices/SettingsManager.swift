@@ -22,6 +22,11 @@ public final class SettingsManager {
     case s1MiniStructure
     case s1MiniContext
     case autoCopyToClipboard
+    /// #3972: EnviousMeet's "Also record the call sound" choice, remembered for the next meeting.
+    case meetingCaptureCallSound
+    /// #3972: the user has read EnviousMeet's explainer before macOS first asks to record the
+    /// sound the Mac plays.
+    case meetingCallSoundExplained
     case hotkeyEnabled
     case vadAutoStop
     case vadSilenceTimeout
@@ -122,7 +127,7 @@ public final class SettingsManager {
   public nonisolated static let unifiedDefaultsKeys: [String] = [
     "selectedBackend", "recordingMode", "llmProvider", "lastLLMProvider", "llmModel", "ollamaModel",
     "s1MiniStyling", "s1MiniStructure", "s1MiniContext",
-    "autoCopyToClipboard", "hotkeyEnabled", "vadAutoStop", "vadSilenceTimeout",
+    "autoCopyToClipboard", "meetingCaptureCallSound", "meetingCallSoundExplained", "hotkeyEnabled", "vadAutoStop", "vadSilenceTimeout",
     "vadSensitivity", "vadEnergyGate", "onboardingState", "hasCompletedOnboarding",
     "cancelKeyCode", "cancelModifiersRaw", "toggleKeyCode", "toggleModifiersRaw",
     "quickAddKeyCode", "quickAddModifiersRaw",
@@ -477,6 +482,25 @@ public final class SettingsManager {
     didSet {
       defaults.set(autoCopyToClipboard, forKey: "autoCopyToClipboard")
       onChange?(.autoCopyToClipboard)
+    }
+  }
+
+  /// #3972: whether an EnviousMeet recording also captures what the Mac plays (the call sound).
+  /// Read once when a meeting starts; changing it never affects a meeting already recording.
+  public var meetingCaptureCallSound: Bool {
+    didSet {
+      defaults.set(meetingCaptureCallSound, forKey: "meetingCaptureCallSound")
+      onChange?(.meetingCaptureCallSound)
+    }
+  }
+
+  /// #3972: true once the user continued past EnviousMeet's call-sound explainer (shown before
+  /// the first Start that records the call sound). It never resets: macOS remembers its own
+  /// answer, and the page explains a refusal on its own.
+  public var meetingCallSoundExplained: Bool {
+    didSet {
+      defaults.set(meetingCallSoundExplained, forKey: "meetingCallSoundExplained")
+      onChange?(.meetingCallSoundExplained)
     }
   }
 
@@ -1321,6 +1345,12 @@ public final class SettingsManager {
     autoCopyToClipboard =
       defaults.object(forKey: "autoCopyToClipboard") as? Bool
       ?? SettingsDefaultValues.autoCopyToClipboard
+    meetingCaptureCallSound =
+      defaults.object(forKey: "meetingCaptureCallSound") as? Bool
+      ?? SettingsDefaultValues.meetingCaptureCallSound
+    meetingCallSoundExplained =
+      defaults.object(forKey: "meetingCallSoundExplained") as? Bool
+      ?? SettingsDefaultValues.meetingCallSoundExplained
     hotkeyEnabled = SettingsDefaultValues.hotkeyEnabled  // toggle removed; always enabled
     vadAutoStop =
       defaults.object(forKey: "vadAutoStop") as? Bool ?? SettingsDefaultValues.vadAutoStop

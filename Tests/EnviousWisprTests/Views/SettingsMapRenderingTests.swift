@@ -228,7 +228,7 @@ struct SettingsMapRenderingTests {
       "snippets", "snippets.empty", "snippets.searching", "keybinds",
     ] + AppSettingsTab.allCases.map { "appSettings.\($0.rawValue)" } + [
       "appSettings.permissions.denied", "appSettings.privacy.restartNeeded",
-      "appSettings.appearance.languageChange", "transcribeFile",
+      "appSettings.appearance.languageChange", "transcribeFile", "meetings",
     ]
 
   static func render(_ label: String) async throws -> Rendered {
@@ -244,6 +244,7 @@ struct SettingsMapRenderingTests {
         list: list, destination: .keybinds, alwaysOnThisPage: alwaysShown(on: .keybinds))
     case "appSettings": return try await appSettings(label)
     case "transcribeFile": return try await transcribeFile()
+    case "meetings": return try await meetings()
     default: throw StateError.unknown(label)
     }
   }
@@ -786,6 +787,25 @@ struct SettingsMapRenderingTests {
     return Rendered(list: list, destination: .transcribeFile, alwaysOnThisPage: [])
   }
 
+  /// #3972: the EnviousMeet page at rest, with no meetings.
+  static func meetings() async throws -> Rendered {
+    let home = try Home()
+    let harness = try MeetingCoordinatorTests.Harness()
+    let flow = MeetingStartFlow(
+      dependencies: .init(
+        captureCallSound: { true }, isExplained: { true }, markExplained: {},
+        canStart: { true }, start: { _, _ in }, microphoneNeedsAsking: { false },
+        requestMicrophone: {}, showMeetingPage: {}))
+    let transcripts = TranscriptCoordinator(
+      store: TranscriptStore(directory: home.directory.appendingPathComponent("meetings-history")),
+      emitRenameTelemetry: { _ in }, emitTurnsDisplayedTelemetry: {})
+    let view = MeetingsView()
+      .environment(harness.coordinator).environment(flow).environment(transcripts)
+      .environment(PermissionsService())
+    let list = try await registrations(home.polish(view))
+    return Rendered(list: list, destination: .meetings, alwaysOnThisPage: [])
+  }
+
   // MARK: - The fixture
 
   struct Expected: Decodable {
@@ -978,6 +998,7 @@ struct SettingsMapRenderingTests {
     }
     let untabbed: [(String, SettingsPage)] = [
       ("keybinds", .keybinds), ("snippets", .snippets), ("transcribeFile", .transcribeFile),
+      ("meetings", .meetings),
       ("aiPolish.off", .aiPolish), ("aiPolish.openAI", .aiPolish),
     ]
     for (label, page) in untabbed {

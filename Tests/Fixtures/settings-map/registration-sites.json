@@ -70,6 +70,8 @@
  "LocalEngineStatusCard.swift | settingsMapRegistration | .localModelTestLive",
  "LocalEngineStatusCard.swift | settingsMapRegistration | .localModelTryAgain",
  "LocalEngineStatusCard.swift | settingsMapRegistration | action.id",
+ "MeetingRecordingControls.swift | SettingsRow | map .id(.meetingCaptureCallSound)",
+ "MeetingRecordingControls.swift | settingsMapRegistration | .meetingsRecorder",
  "OpenSourceLicensesView.swift | SettingsRow | map .id(.licenseGpl)",
  "OpenSourceLicensesView.swift | SettingsRow | map .id(.licenseNotices)",
  "OpenSourceLicensesView.swift | SettingsSectionHeading | map .id(.sectionAbout)",

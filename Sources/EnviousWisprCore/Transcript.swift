@@ -465,6 +465,14 @@ public struct Transcript: Codable, Identifiable, Sendable {
   /// Whether this row came from Transcribe a File. Derived, never stored twice.
   public var isImported: Bool { importedFileName != nil }
 
+  /// The EnviousMeet meeting this row is the transcript of, or nil (#3972 §4). Optional so
+  /// rows written before #3972 decode to nil (synthesized `Codable`, no custom decode), matching
+  /// `importedFileName`. A meeting row is never also an import: `importedFileName` stays nil.
+  public let meetingID: UUID?
+
+  /// Whether this row is an EnviousMeet meeting transcript. Derived, never stored twice.
+  public var isMeeting: Bool { meetingID != nil }
+
   public init(
     id: UUID = UUID(),
     text: String,
@@ -486,8 +494,12 @@ public struct Transcript: Codable, Identifiable, Sendable {
     processedText: String? = nil,
     speakerAnalysis: TranscriptSpeakerAnalysis? = nil,
     speakerNames: [String: String]? = nil,
-    turns: [Turn]? = nil
+    turns: [Turn]? = nil,
+    meetingID: UUID? = nil
   ) {
+    precondition(
+      meetingID == nil || importedFileName == nil,
+      "A transcript is never both a meeting and an imported file (#3972)")
     self.id = id
     self.text = text
     self.polishedText = polishedText
@@ -509,6 +521,7 @@ public struct Transcript: Codable, Identifiable, Sendable {
     self.speakerAnalysis = speakerAnalysis
     self.speakerNames = speakerNames
     self.turns = turns
+    self.meetingID = meetingID
   }
 
   /// A copy promoted to permanent History: the clock is cleared, everything else is

@@ -142,7 +142,6 @@ DEV_ONLY_KEYS = frozenset({
     'Pill Preview',
     'Pill review mode',
     'Pipeline Benchmark Results',
-    'Play',
     'Play any pill on demand to see how it looks and how long it stays. Uses the real pill code. Buttons on a preview do nothing. Debug builds only.',
     'Play does nothing while a real dictation or a real pill is on screen, so a preview never replaces a real one.',
     'Re-runs the onboarding flow without wiping app state. Disabled during recording.',

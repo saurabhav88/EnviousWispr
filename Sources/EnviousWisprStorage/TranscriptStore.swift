@@ -59,6 +59,17 @@ public final class TranscriptStore {
     try Self.write(transcript, into: directory)
   }
 
+  /// A writer that saves like `save`, then flushes to stable storage: the file with
+  /// `F_FULLFSYNC` (`fsync` where the volume does not support it) and the directory, so the
+  /// rename survives power loss. For an EnviousMeet meeting row (#3972 C4a), whose meeting is
+  /// marked ready only after the write returns. `@Sendable` and self-contained (it captures the
+  /// directory only), so the caller runs the encode and both flushes off the main actor. Throws
+  /// when either flush fails; the row may then be on disk but is not promised.
+  public func durableWriter() -> @Sendable (Transcript) throws -> Void {
+    let directory = directory
+    return { transcript in try Self.write(transcript, into: directory, durable: true) }
+  }
+
   // MARK: - Pending (Escape Recovery) namespace — #2087
   //
   // Pending rows live in a CHILD directory rather than being flagged by a
@@ -660,10 +671,17 @@ public final class TranscriptStore {
   }
 
   /// Shared 0600 temp-then-rename write used by `save` and `savePending`.
-  private nonisolated static func write(_ transcript: Transcript, into directory: URL) throws {
+  private nonisolated static func write(
+    _ transcript: Transcript, into directory: URL, durable: Bool = false
+  ) throws {
     let url = directory.appendingPathComponent("\(transcript.id.uuidString).json")
     let data = try JSONEncoder().encode(transcript)
-    let tmpURL = directory.appendingPathComponent(".\(transcript.id.uuidString).tmp")
+    // #3972 C4a: one temporary file per write, never per row. A durable meeting write runs off
+    // the main actor and may overlap an ordinary save of another row's or the same row's file;
+    // a shared name let one truncate or rename the other's bytes. Still `.tmp`, so the stray
+    // sweep above ages out a write a crash interrupted.
+    let tmpURL = directory.appendingPathComponent(
+      ".\(transcript.id.uuidString).\(UUID().uuidString).tmp")
     let fm = FileManager.default
     do {
       let fd = Foundation.open(tmpURL.path, O_CREAT | O_WRONLY | O_TRUNC, 0o600)
@@ -674,16 +692,27 @@ public final class TranscriptStore {
       }
       let fh = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
       try fh.write(contentsOf: data)
+      if durable, fcntl(fd, F_FULLFSYNC) != 0, fsync(fd) != 0 {
+        throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+      }
       try fh.close()
       if fm.fileExists(atPath: url.path) {
         _ = try fm.replaceItemAt(url, withItemAt: tmpURL)
       } else {
         try fm.moveItem(at: tmpURL, to: url)
       }
+      if durable { try syncDirectory(directory) }
     } catch {
       try? fm.removeItem(at: tmpURL)
       throw error
     }
+  }
+
+  private nonisolated static func syncDirectory(_ directory: URL) throws {
+    let fd = Foundation.open(directory.path, O_RDONLY)
+    guard fd >= 0 else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno)) }
+    defer { Foundation.close(fd) }
+    if fsync(fd) != 0 { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno)) }
   }
 
   /// Create the directory at 0700, optionally drop a `.metadata_never_index`

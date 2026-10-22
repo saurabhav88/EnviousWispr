@@ -1175,6 +1175,36 @@ extension ParakeetUpgradeCoordinator {
     return frozen?.model
   }
 
+  /// #3972 R17/R26: the installed, admitted model EnviousMeet's OWN engine loads, as an
+  /// immutable cache-only snapshot. Never fetches, never calls `select`/`freeze` (which publish
+  /// dictation's request and reset its cleanup), never spends the Ultra attempt budget, and
+  /// never touches `didPublishLoad`. Prefers Ultra when it is admitted and still permitted, else
+  /// v3; nil when neither is ready (the meeting then reports the model as unavailable).
+  /// `generation` is 0: the snapshot is not a dictation request and is never compared with one.
+  package func meetingSelection() async -> ParakeetModelSelection? {
+    // Delivery off: dictation loads with downloads allowed (offline mode OFF). A cache-only
+    // meeting load would then hold the shared offline mode against it, so meetings get no
+    // model while delivery is off; dictation is never refused because of a meeting.
+    guard (delivery ?? target?.delivery)?.isEnabled() == true else { return nil }
+    if let target, target.delivery.locationIsUsable, await target.delivery.isAdmitted(),
+      target.delivery.locationIsUsable, case .state(let state) = target.store.read(),
+      !state.exhausted, state.attempts < Self.attemptBudget
+    {
+      return ParakeetModelSelection(
+        model: .ultra, revision: target.delivery.modelRevision,
+        directory: target.delivery.installDirectory, cacheOnly: true,
+        displayBytes: target.delivery.modelTotalBytes, repairable: false, generation: 0)
+    }
+    if let delivery, delivery.locationIsUsable, !v3RejectedThisLaunch, await delivery.isAdmitted(),
+      delivery.locationIsUsable, !v3RejectedThisLaunch
+    {
+      return ParakeetModelSelection(
+        model: .v3, revision: delivery.modelRevision, directory: delivery.installDirectory,
+        cacheOnly: true, displayBytes: delivery.modelTotalBytes, repairable: false, generation: 0)
+    }
+    return nil
+  }
+
   /// Settings' "Model ready" read (#3385) with a target: whether the identity
   /// that serves, or will serve, is admitted and still permitted, from fresh
   /// marker and file-stamp reads. Never fetches. Rejection and load permission

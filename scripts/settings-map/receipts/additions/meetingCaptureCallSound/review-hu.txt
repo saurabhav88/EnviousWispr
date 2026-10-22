@@ -1,0 +1,1 @@
+{"language":"hu","title":"a hívás hangjának rögzítése is","words":["rendszerhang","számítógép hangja"],"phrases":["a Mac által lejátszott hang felvétele","a többiek hangjának rögzítése hívás közben"]}

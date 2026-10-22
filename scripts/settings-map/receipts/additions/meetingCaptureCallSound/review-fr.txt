@@ -1,0 +1,12 @@
+{
+  "language": "fr",
+  "title": "enregistrer aussi le son de l’appel",
+  "words": [
+    "audio système",
+    "son de l’ordinateur"
+  ],
+  "phrases": [
+    "enregistrer le son du Mac",
+    "enregistrer la voix des autres pendant l’appel"
+  ]
+}

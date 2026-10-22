@@ -12,6 +12,8 @@ struct UnifiedWindowView: View {
   /// including preparation. Stop clears the dot immediately; the physical engine release may
   /// finish later, and `isEngineHeld` is what protects the resource until it does.
   @Environment(FileImportCoordinator.self) private var fileImportCoordinator
+  /// #3972: optional, so a harness that hosts the shell without EnviousMeet still renders.
+  @Environment(MeetingCoordinator.self) private var meetings: MeetingCoordinator?
   /// The page and the Dictation tab on screen (#3385). One value, for the
   /// window's life only; see `SettingsNavigationState`.
   @State private var navigationState = SettingsNavigationState()
@@ -344,6 +346,8 @@ struct UnifiedWindowView: View {
     case .history:
       // History owns its own list/detail split layout, no page header.
       HistoryContentView()
+    case .meetings:
+      page(.meetings) { MeetingsView() }
     case .dictation:
       page(.dictation) {
         DictationSettingsView(selection: $navigationState.dictationTab, packs: livePreviewPacks)
@@ -436,8 +440,16 @@ struct UnifiedWindowView: View {
   /// thing is running, so the dot and its spoken value come from this one answer. Before,
   /// the Dictionary dot was announced as "Importing in progress". File import reads
   /// `isRunning`, which Stop clears at the press, never the engine claim it still holds.
+  /// #3972: EnviousMeet is recording a meeting or making its transcript.
+  private var meetingWorkVisible: Bool {
+    guard let meetings else { return false }
+    return meetings.isCapturing || meetings.processing != nil
+  }
+
   private func sidebarActivity(_ section: SettingsPage) -> SettingsShellCopy.SidebarActivity {
     if section == .transcribeFile && fileImportCoordinator.isRunning { return .fileImport }
+    // #3972 §3.8: the dot while a meeting records or its transcript is being made.
+    if section == .meetings && meetingWorkVisible { return .meeting }
     if section == .aiPolish && polishSetupMonitor.shows(.sidebarTag) { return .polishNeedsSetup }
     if yourWordsEnrichmentBadgeVisible(for: section) { return .dictionaryEnrichment }
     return .none

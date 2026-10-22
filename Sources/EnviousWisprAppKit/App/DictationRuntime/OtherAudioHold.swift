@@ -85,6 +85,10 @@ final class OtherAudioHold {
     /// the record would then be left alone with the Mac still lowered or muted
     /// (cloud review, PR #3000). The live closure checks the executable's name.
     var isProcessAlive: (Int32) -> Bool
+    /// #3972 R10: true while an EnviousMeet meeting is starting, recording or stopping. A
+    /// dictation then never turns down, mutes or pauses what the Mac plays, because that sound
+    /// is the meeting's call track.
+    var isMeetingCapturing: @MainActor () -> Bool = { false }
   }
 
   /// Half the slider, not a fifth: the macOS output slider is far from linear to
@@ -115,6 +119,56 @@ final class OtherAudioHold {
     self.deps = dependencies
   }
 
+  // MARK: - EnviousMeet (#3972 R10, R28)
+
+  private var mediaResumesPending: Set<UUID> = []
+  private var mediaSettleWaiters: [UUID: CheckedContinuation<Bool, Never>] = [:]
+
+  /// Called when a meeting is about to open its sources: ends a dictation hold still open
+  /// (restoring volume and mute at once) and waits up to `timeout` for a paused player's
+  /// resume to settle. Returns false when it did not settle in time, or when the caller was
+  /// cancelled; the meeting then refuses to start rather than record while the Mac's sound is
+  /// still changing (R28). Each call owns its own waiter and deadline, so a later attempt is
+  /// never released by an earlier attempt's deadline.
+  func meetingRecordingWillStart(timeout: Duration = .seconds(1)) async -> Bool {
+    if live != nil { end(reason: "meeting_recording") }
+    guard !mediaResumesPending.isEmpty else { return true }
+    guard !Task.isCancelled else { return false }
+    let waiterID = UUID()
+    let deadline = Task { @MainActor [weak self] in
+      try? await Task.sleep(for: timeout)
+      guard !Task.isCancelled else { return }
+      self?.releaseMediaSettleWaiter(waiterID, settled: false)
+    }
+    defer { deadline.cancel() }
+    return await withTaskCancellationHandler {
+      await withCheckedContinuation { continuation in
+        if Task.isCancelled || mediaResumesPending.isEmpty {
+          continuation.resume(returning: mediaResumesPending.isEmpty && !Task.isCancelled)
+        } else {
+          mediaSettleWaiters[waiterID] = continuation
+        }
+      }
+    } onCancel: {
+      Task { @MainActor [weak self] in self?.releaseMediaSettleWaiter(waiterID, settled: false) }
+    }
+  }
+
+  /// Resumes one waiter at most once: it is removed before it is resumed.
+  private func releaseMediaSettleWaiter(_ id: UUID, settled: Bool) {
+    mediaSettleWaiters.removeValue(forKey: id)?.resume(returning: settled)
+  }
+
+  private func releaseAllMediaSettleWaiters() {
+    let waiters = mediaSettleWaiters
+    mediaSettleWaiters.removeAll()
+    for waiter in waiters.values { waiter.resume(returning: true) }
+  }
+
+  #if DEBUG
+    var mediaSettleWaiterCountForTesting: Int { mediaSettleWaiters.count }
+  #endif
+
   /// Read-only test seam: the delayed apply task, so a test can await its
   /// completion instead of guessing with yields.
   var pendingApplyForTesting: Task<Void, Never>? { live?.applyTask }
@@ -132,6 +186,10 @@ final class OtherAudioHold {
     switch state {
     case .recording:
       guard live == nil, mode != .nothing else { return }
+      guard !deps.isMeetingCapturing() else {
+        deps.log("hold skipped mode=\(mode.rawValue) reason=meeting_recording")
+        return
+      }
       begin(mode: mode, backend: backend, startDelay: startDelay)
     case .idle, .loadingModel, .transcribing, .polishing, .complete, .error, .advisory:
       guard let current = live, current.backend == backend else { return }
@@ -306,6 +364,12 @@ final class OtherAudioHold {
   // MARK: - Apply (P2, P3, P4)
 
   private func apply(holdID: UUID) {
+    // #3972 R10: a meeting that started while this hold waited for its start cue wins: the
+    // delayed volume change never lands on the call sound.
+    if deps.isMeetingCapturing() {
+      if live?.record.id == holdID { end(reason: "meeting_recording") }
+      return
+    }
     guard var current = live, current.record.id == holdID else { return }
     let volume = deps.effects.volume
     let t0 = deps.nowMicros()
@@ -427,7 +491,12 @@ final class OtherAudioHold {
     _ holdID: UUID, _ disposition: OtherAudioMediaDisposition, reason: String?
   ) {
     // Whatever happens below, this hold's late route entry is spent here.
-    defer { lateRoutes.removeValue(forKey: holdID) }
+    defer {
+      lateRoutes.removeValue(forKey: holdID)
+      if mediaResumesPending.remove(holdID) != nil, mediaResumesPending.isEmpty {
+        releaseAllMediaSettleWaiters()
+      }
+    }
     // A hold's media settles ONCE (M1 -> M2/M3/M4). A pause outcome that arrives
     // after the resume already settled it (consent prompt answered minutes
     // later, live UAT 2026-09-15) must not rewrite a final disposition.
@@ -519,6 +588,7 @@ final class OtherAudioHold {
         holdID: holdID))
 
     if current.record.media == .pending {
+      mediaResumesPending.insert(holdID)
       deps.effects.media.resume(holdID: holdID) { [weak self] outcome in
         guard let self else { return }
         switch outcome {

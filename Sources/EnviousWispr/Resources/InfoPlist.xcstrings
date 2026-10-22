@@ -19,6 +19,24 @@
         }
       }
     },
+    "NSAudioCaptureUsageDescription" : {
+      "comment" : "macOS permission prompt (NSAudioCaptureUsageDescription), shown when the app first asks for this access. Say exactly what the app does with it, no more and no less.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr records the sound your Mac plays, such as the other people on a call, only while you record a meeting. The recording stays on your Mac."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr nimmt den Ton auf, den dein Mac abspielt, zum Beispiel die Stimmen anderer Personen bei einem Anruf, aber nur, während du ein Meeting aufnimmst. Die Aufnahme bleibt auf deinem Mac."
+          }
+        }
+      }
+    },
     "NSContactsUsageDescription" : {
       "comment" : "macOS permission prompt (NSContactsUsageDescription), shown when the app first asks for this access. Say exactly what the app does with it, no more and no less.",
       "extractionState" : "manual",

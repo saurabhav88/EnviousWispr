@@ -930,6 +930,91 @@ struct MenuBarControllerTests {
     #expect(spy.fired.contains("toggleRecording"))
   }
 
+  // MARK: - EnviousMeet (#3972 §3.8)
+
+  @Test("the meeting item follows Transcribe a File and names what a click will do")
+  func meetingItemTitles() {
+    let controller = makeController(spy: ActionSpy())
+    let started = Date(timeIntervalSince1970: 1_000)
+    let cases: [(MeetingCoordinator.Phase, String, Bool)] = [
+      (.idle, "Start Meeting Recording", true),
+      (.starting, "Starting Meeting Recording", false),
+      (.recording(meetingID: UUID(), startedAt: started), "Stop Meeting Recording (12:34)", true),
+      (.stopping(meetingID: UUID()), "Saving Meeting Recording", false),
+    ]
+    for (phase, title, enabled) in cases {
+      var state = fixture(pipelineState: .idle)
+      state.meetingItem = MeetingsPresentation.menuItem(phase, now: started.addingTimeInterval(754))
+      let menu = NSMenu()
+      controller.renderMenu(into: menu, state: state)
+      let meeting = item(menu, id: MenuBarItemID.meeting)
+      #expect(meeting?.title == title)
+      #expect(meeting?.isEnabled == enabled, "\(title)")
+      let transcribe = menu.items.firstIndex { $0.identifier == MenuBarItemID.transcribeFile }
+      let meetingIndex = menu.items.firstIndex { $0.identifier == MenuBarItemID.meeting }
+      #expect(transcribe.map { $0 + 1 } == meetingIndex)
+    }
+    // Before EnviousMeet exists there is no item at all.
+    let menu = NSMenu()
+    controller.renderMenu(into: menu, state: fixture(pipelineState: .idle))
+    #expect(item(menu, id: MenuBarItemID.meeting) == nil)
+  }
+
+  @Test("a click reads the meeting's phase again: Start, Stop, or nothing while it settles")
+  func meetingItemActsOnTheCurrentPhase() async {
+    let spy = ActionSpy()
+    let controller = makeController(spy: spy)
+    var state = fixture(pipelineState: .idle)
+    state.meetingItem = MeetingsPresentation.menuItem(.idle, now: Date())
+    let menu = NSMenu()
+    controller.renderMenu(into: menu, state: state)
+    let meeting = item(menu, id: MenuBarItemID.meeting)
+
+    spy.meetingPhase = .idle
+    perform(meeting)
+    await Task.yield()
+    await Task.yield()
+    #expect(spy.fired == ["requestMeetingStart"])
+
+    // The menu still says Start, but a meeting began meanwhile: the click stops it.
+    spy.meetingPhase = .recording(meetingID: UUID(), startedAt: Date())
+    perform(meeting)
+    await Task.yield()
+    await Task.yield()
+    #expect(spy.fired == ["requestMeetingStart", "stopMeeting"])
+
+    spy.meetingPhase = .stopping(meetingID: UUID())
+    perform(meeting)
+    spy.meetingPhase = nil
+    perform(meeting)
+    await Task.yield()
+    #expect(spy.fired == ["requestMeetingStart", "stopMeeting"])
+  }
+
+  @Test("a meeting recording shows the recording icon below every dictation state and warning")
+  func meetingIconPriority() {
+    func icon(_ state: MenuBarViewState) -> MenuBarIconAnimator.IconState {
+      MenuBarController.iconState(state)
+    }
+    var resting = fixture(pipelineState: .idle, updateAvailable: true)
+    resting.meetingCapturing = true
+    #expect(icon(resting) == .recording, "a meeting beats the update cue")
+    resting.meetingCapturing = false
+    #expect(icon(resting) == .updatePending)
+
+    var warned = fixture(pipelineState: .idle, showAccessibilityWarning: true)
+    warned.meetingCapturing = true
+    #expect(icon(warned) == .error)
+
+    var processing = fixture(pipelineState: .transcribing)
+    processing.meetingCapturing = true
+    #expect(icon(processing) == .processing, "a running dictation keeps its own icon")
+
+    var dictating = fixture(pipelineState: .recording)
+    dictating.meetingCapturing = true
+    #expect(icon(dictating) == .recording)
+  }
+
   @Test("accessibility-warning item dispatches openPermissions")
   func warningItemDispatchesPermissions() {
     let spy = ActionSpy()
@@ -1096,6 +1181,9 @@ struct MenuBarControllerTests {
           spy.openedAIPolishFor.append($0)
         },
         toggleRecording: { spy.fired.append("toggleRecording") },
+        meetingPhase: { spy.meetingPhase },
+        requestMeetingStart: { spy.fired.append("requestMeetingStart") },
+        stopMeeting: { spy.fired.append("stopMeeting") },
         quit: { spy.fired.append("quit") },
         lastDictation: { spy.lastDictation },
         pasteLastDictation: { rowID, target in
@@ -1278,6 +1366,8 @@ struct QuickAddMenuItemTests {
 @MainActor
 final class ActionSpy {
   var fired: [String] = []
+  /// #3972: what `meetingPhase` reports; nil means EnviousMeet is not there.
+  var meetingPhase: MeetingCoordinator.Phase?
   /// #3106: what `lastDictation` answers; nil means History has nothing to reuse.
   var lastDictation: (id: UUID, text: String)?
   /// #3438: what `polishSetupWarning` answers, and what each AI Polish open was told.

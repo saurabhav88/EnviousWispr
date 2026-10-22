@@ -204,13 +204,15 @@ struct TranscriptCoordinatorMergeTests {
     _ = try coordinator.mergeSpeakerFields(
       id: labeled.id, analysis: .labeled(count: 1), turns: Self.makeTurns())
 
-    let failure = coordinator.renameSpeaker(id: labeled.id, speakerId: "A", name: "Zach")
+    let failure = coordinator.renameSpeaker(
+      id: labeled.id, speakerId: "A", name: "Zach", isMeeting: false)
     #expect(failure == nil)
     #expect(telemetry.outcomes == [.saved])
 
     let unlabeled = Self.makeTranscript()
     try coordinator.saveAndShow(unlabeled)
-    let secondFailure = coordinator.renameSpeaker(id: unlabeled.id, speakerId: "A", name: "Zach")
+    let secondFailure = coordinator.renameSpeaker(
+      id: unlabeled.id, speakerId: "A", name: "Zach", isMeeting: false)
     #expect(secondFailure != nil, "a row with no turns has nothing to rename against")
     #expect(telemetry.outcomes == [.saved, .failed])
 
@@ -262,12 +264,12 @@ struct TranscriptCoordinatorMergeTests {
     try coordinator.saveAndShow(first)
     try coordinator.saveAndShow(second)
 
-    coordinator.noteTurnsDisplayed(id: first.id)
-    coordinator.noteTurnsDisplayed(id: first.id)
+    coordinator.noteTurnsDisplayed(id: first.id, isMeeting: false)
+    coordinator.noteTurnsDisplayed(id: first.id, isMeeting: false)
     #expect(displayed.count == 1, "re-selecting the same row is not a new fact")
-    coordinator.noteTurnsDisplayed(id: second.id)
+    coordinator.noteTurnsDisplayed(id: second.id, isMeeting: false)
     #expect(displayed.count == 2)
-    coordinator.noteTurnsDisplayed(id: first.id)
+    coordinator.noteTurnsDisplayed(id: first.id, isMeeting: false)
     #expect(displayed.count == 2, "going back to a row already reported adds nothing")
   }
 }

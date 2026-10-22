@@ -151,3 +151,4 @@ update.verify_completed	ungraded	ungraded	-	pre-#2987
 update.verify_started	ungraded	ungraded	-	pre-#2987
 wedge_detected	ungraded	ungraded	-	pre-#2987
 feedback.report_refused	rare_failure	keep	analytics-operations.md FACT: app-posthog-events (received refusal observations by kind/status/version; usage capture only, duplicate/loss limits; founder first post-release review then on request)	#3292
+meeting.ended	per_user_action	keep	analytics-operations.md FACT: app-posthog-events (founder adoption and quality query at the first release review: attempts by outcome, system-track status split, engine split, processing RTF, yield count; #3972 R11)	#3972

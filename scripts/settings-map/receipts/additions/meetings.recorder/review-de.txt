@@ -1,0 +1,1 @@
+{"language":"de","words":["Meetingaufnahme"],"phrases":["nimm ein Meeting auf"]}

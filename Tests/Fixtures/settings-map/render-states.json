@@ -962,5 +962,12 @@
    "section.livePreview",
    "section.previewEngine"
   ]
+ },
+ "meetings": {
+  "exempt": {},
+  "mapped": [
+   "meetingCaptureCallSound",
+   "meetings.recorder"
+  ]
  }
 }

@@ -1,0 +1,1 @@
+{"language":"sk","title":"nahrávať aj zvuk hovoru","words":["systémový zvuk","zvuk počítača"],"phrases":["nahrávať systémový zvuk v EnviousMeet","zaznamenať hlasy ostatných v hovore"]}

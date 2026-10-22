@@ -25,6 +25,9 @@ struct TurnDocumentView<Fallback: View>: View {
   /// view identity. The caller decides whether that is new for the document (#2811 §3e
   /// `file_import_turns_displayed`, deduplicated per document in each coordinator).
   var onTurnsDisplayed: () -> Void = {}
+  /// #3972: when set, a turn with a start time offers "play from here", which calls this with
+  /// that time. Only EnviousMeet's detail sets it.
+  var onPlayFrom: ((Int) -> Void)? = nil
   @ViewBuilder let fallback: () -> Fallback
 
   /// No `ScrollView` of its own (found by chunk review): both callers already embed this
@@ -42,7 +45,9 @@ struct TurnDocumentView<Fallback: View>: View {
     if let turns {
       LazyVStack(alignment: .leading, spacing: 16) {
         ForEach(Array(turns.enumerated()), id: \.offset) { _, turn in
-          TurnRowView(turn: turn, onRename: onRename, onRenameCancelled: onRenameCancelled)
+          TurnRowView(
+            turn: turn, onRename: onRename, onRenameCancelled: onRenameCancelled,
+            onPlayFrom: onPlayFrom)
         }
       }
       .onAppear(perform: onTurnsDisplayed)
@@ -85,6 +90,7 @@ private struct TurnRowView: View {
   let turn: TranscriptDocumentPresenter.RenderedTurn
   let onRename: (String, String) async -> RenameFailure?
   let onRenameCancelled: () -> Void
+  let onPlayFrom: ((Int) -> Void)?
   @State private var isRenaming = false
   @State private var draftName = ""
   @State private var renameFailure: RenameFailure?
@@ -102,6 +108,23 @@ private struct TurnRowView: View {
           Text(timeLabel)
             .font(.caption)
             .foregroundStyle(.secondary)
+        }
+        if let onPlayFrom, let startMs = turn.startMs {
+          Button {
+            onPlayFrom(startMs)
+          } label: {
+            Image(systemName: "play.circle")
+          }
+          .buttonStyle(.borderless)
+          .help(
+            Text(
+              "Play from here",
+              comment: "EnviousMeet transcript: plays the recording from this turn's start.")
+          )
+          .accessibilityLabel(
+            Text(
+              "Play from here",
+              comment: "EnviousMeet transcript: plays the recording from this turn's start."))
         }
       }
       content

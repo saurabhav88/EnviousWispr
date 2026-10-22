@@ -47,6 +47,10 @@ enum SettingsDefaultValues {
   static let s1Control: S1ControlSettings = .default
 
   static let autoCopyToClipboard = true
+  /// #3972: EnviousMeet records the call sound unless the user turns it off.
+  static let meetingCaptureCallSound = true
+  /// #3972: the call-sound explainer has not been read yet.
+  static let meetingCallSoundExplained = false
   static let hotkeyEnabled = true
 
   static let vadAutoStop = false

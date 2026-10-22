@@ -16,6 +16,7 @@ struct SettingsShellEnglishTests {
     #expect(SettingsPage.history.label == "History")
     #expect(SettingsPage.appSettings.label == "App Settings")
     #expect(SettingsPage.history.group == nil)
+    #expect(SettingsPage.meetings.label == "EnviousMeet")
     #expect(SettingsPage.dictation.label == "Dictation Settings")
     #expect(SettingsPage.transcribeFile.label == "Transcribe a File")
     #expect(SettingsPage.keybinds.label == "Keybinds")
@@ -26,7 +27,7 @@ struct SettingsShellEnglishTests {
     // Dictionary's moved to its Enable row's "?" (`dictionaryHeading`).
     #expect(SettingsGroup.allCases.map(\.rawValue) == ["RECORD", "PROCESS", "SYSTEM"])
     #expect(SettingsGroup.allCases.map(\.heading) == SettingsGroup.allCases.map(\.rawValue))
-    #expect(SettingsGroup.record.sections == [.dictation, .keybinds, .transcribeFile])
+    #expect(SettingsGroup.record.sections == [.meetings, .dictation, .keybinds, .transcribeFile])
     #expect(SettingsGroup.process.sections == [.aiPolish, .dictionary, .snippets])
     #if DEBUG
       #expect(SettingsGroup.system.sections == [.appSettings, .diagnostics])

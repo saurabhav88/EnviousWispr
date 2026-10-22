@@ -151,10 +151,18 @@ private struct Rig {
         // A no-op unless the test arms `delayGate`, in which case the sleep
         // suspends until released, and cancellation throws like the real one.
         sleep: { _ in try await gate.waitIfArmed() },
-        pid: pid, isProcessAlive: alive))
+        pid: pid, isProcessAlive: alive,
+        isMeetingCapturing: { [meeting] in meeting.capturing }))
     logBox = box
   }
   let logBox: LogBox
+  /// #3972: whether an EnviousMeet meeting is starting, recording or stopping.
+  let meeting = MeetingFlag()
+
+  @MainActor
+  final class MeetingFlag {
+    var capturing = false
+  }
   let delayGate = DelayGate()
 
   /// A sleep stand-in the test can hold open and release, honouring cancellation.
@@ -801,3 +809,105 @@ private func awaitApplyCompletion(_ task: Task<Void, Never>?) async {
   }
   #expect(await completed.wait(), "The scheduled apply task did not finish")
 }
+
+#if DEBUG
+/// #3972 R10, R28: when these fail, a dictation during a meeting turns down, mutes or pauses
+/// the call the meeting is recording, or a meeting starts while a paused player is still
+/// coming back.
+@MainActor
+@Suite("Other audio hold with EnviousMeet", .tags(.productOutcome), .timeLimit(.minutes(1)))
+struct OtherAudioHoldMeetingTests {
+  @Test("while a meeting captures, a new dictation changes nothing the Mac plays")
+  func meetingSuppressesNewHold() async {
+    let rig = Rig()
+    rig.meeting.capturing = true
+    await rig.start(.turnDown)
+    #expect(rig.volume.writes.isEmpty)
+    #expect(rig.records().isEmpty)
+    #expect(rig.logBox.lines.contains { $0.contains("reason=meeting_recording") })
+    rig.stop()
+    // Ordinary behaviour returns once the meeting ends.
+    rig.meeting.capturing = false
+    await rig.start(.turnDown)
+    #expect(rig.volume.writes == ["volume=0.25"])
+    rig.stop()
+  }
+
+  @Test("a hold still waiting for its start cue never lands once a meeting started")
+  func delayedApplyRechecksMeeting() async {
+    let rig = Rig()
+    rig.delayGate.arm()
+    rig.hold.handle(.recording, backend: .parakeet, mode: .mute, startDelay: 0.5)
+    #expect(await rig.delayGate.entered.wait())
+    rig.meeting.capturing = true
+    rig.delayGate.release()
+    await awaitApplyCompletion(rig.hold.pendingApplyForTesting)
+    #expect(rig.volume.writes.isEmpty)
+    #expect(rig.volume.muted == false)
+    #expect(rig.records().isEmpty)
+  }
+
+  @Test("a meeting start ends an open hold at once, restoring the volume")
+  func meetingStartEndsOpenHold() async {
+    let rig = Rig()
+    await rig.start(.turnDown)
+    #expect(rig.volume.volume == 0.25)
+    let settled = await rig.hold.meetingRecordingWillStart()
+    #expect(settled)
+    #expect(rig.volume.volume == 0.5)
+    #expect(rig.records().isEmpty)
+  }
+
+  @Test("a paused player that resumes in time lets the meeting start")
+  func lateResumeSettles() async {
+    let rig = Rig()
+    rig.media.deliverPauseImmediately = false
+    rig.media.resumeOutcome = .resumed
+    await rig.start(.pauseMusic)
+    let start = Task { await rig.hold.meetingRecordingWillStart(timeout: .seconds(30)) }
+    // The resume queued behind the unanswered pause is what the meeting waits for.
+    await Self.waitForWaiter(rig)
+    rig.media.completeQueuedPause(with: .paused(targets: ["com.apple.Music"]))
+    #expect(await start.value)
+    #expect(rig.hold.mediaSettleWaiterCountForTesting == 0)
+  }
+
+  @Test("a resume that does not settle in time refuses the start, and a retry waits again")
+  func unsettledResumeTimesOut() async {
+    let rig = Rig()
+    rig.media.deliverPauseImmediately = false
+    await rig.start(.pauseMusic)
+    #expect(await rig.hold.meetingRecordingWillStart(timeout: .milliseconds(20)) == false)
+    #expect(rig.hold.mediaSettleWaiterCountForTesting == 0)
+    // A second attempt is its own wait, released by the late settlement.
+    let retry = Task { await rig.hold.meetingRecordingWillStart(timeout: .seconds(30)) }
+    await Self.waitForWaiter(rig)
+    rig.media.completeQueuedPause(with: .paused(targets: ["com.apple.Music"]))
+    #expect(await retry.value)
+  }
+
+  @Test("a cancelled start stops waiting at once and leaves no waiter")
+  func cancelledWaitReturns() async {
+    let rig = Rig()
+    rig.media.deliverPauseImmediately = false
+    await rig.start(.pauseMusic)
+    let start = Task { await rig.hold.meetingRecordingWillStart(timeout: .seconds(30)) }
+    await Self.waitForWaiter(rig)
+    start.cancel()
+    #expect(await start.value == false)
+    #expect(rig.hold.mediaSettleWaiterCountForTesting == 0)
+    rig.media.completeQueuedPause(with: .paused(targets: ["com.apple.Music"]))
+  }
+
+  /// Waits until the meeting's wait is registered. A yield, not a clock: the registration is
+  /// synchronous once the task runs; bounded so a regression fails instead of hanging.
+  private static func waitForWaiter(
+    _ rig: Rig, sourceLocation: SourceLocation = #_sourceLocation
+  ) async {
+    for _ in 0..<1_000 where rig.hold.mediaSettleWaiterCountForTesting == 0 {
+      await Task.yield()
+    }
+    #expect(rig.hold.mediaSettleWaiterCountForTesting == 1, sourceLocation: sourceLocation)
+  }
+}
+#endif

@@ -541,6 +541,225 @@ import Testing
       "a cancel inside the existing-cache validation window must still see the staged partials")
   }
 
+  /// #3972 R26: Remove of a Parakeet model waits while an EnviousMeet pass uses the model, and
+  /// deletes only after that use ends, so the meeting engine never reads a half-deleted model.
+  @Test func removeWaitsForMeetingUse() async throws {
+    let registration = try makeRegistration(files: ManifestFixture.smallFiles)
+    try seedValidCache(registration)
+    let controller = ModelDeliveryController(
+      defaults: testDefaults(), availableDiskBytes: { _ in .max })
+    let gate = controller.meetingModelUseGate
+    let key = MeetingModelUseGate.key(forInstallDirectory: registration.installDirectory)
+    try await gate.beginUse(key)
+
+    let removal = Task { await controller.remove(registration) }
+    let requested = await withTaskGroup(of: Bool.self) { group in
+      group.addTask {
+        await gate.waitForMutationRequest()
+        return true
+      }
+      group.addTask {
+        // deadline-fallback: an ungated Remove never asks; release the watcher so the test fails
+        // instead of hanging.
+        try? await Task.sleep(for: .seconds(10))
+        guard !Task.isCancelled else { return false }
+        await gate.endUse(key)
+        try? await gate.beginMutation(key)
+        await gate.endMutation(key)
+        return false
+      }
+      let first = await group.next() ?? false
+      group.cancelAll()
+      return first
+    }
+    #expect(requested, "Remove must ask the meeting gate before deleting")
+    let file = registration.installDirectory.appendingPathComponent(ManifestFixture.smallFiles[0].path)
+    #expect(FileManager.default.fileExists(atPath: file.path), "nothing is deleted while the meeting uses the model")
+
+    await gate.endUse(key)
+    #expect(await removal.value == .removed)
+    #expect(!FileManager.default.fileExists(atPath: file.path))
+  }
+
+  // MARK: - #3972 R26 meeting gate at every install change
+
+  private func gateKey(_ registration: DeliveryRegistration) -> String {
+    MeetingModelUseGate.key(forInstallDirectory: registration.installDirectory)
+  }
+
+  @Test("an in-place admission waits for a meeting's use, then admits", .timeLimit(.minutes(1)))
+  func inPlaceAdmitWaitsForMeetingUse() async throws {
+    let registration = try makeRegistration(files: ManifestFixture.smallFiles)
+    try seedValidCache(registration)
+    let controller = ModelDeliveryController(
+      defaults: testDefaults(), availableDiskBytes: { _ in .max })
+    let gate = controller.meetingModelUseGate
+    try await gate.beginUse(gateKey(registration))
+    let admit = Task { await controller.admitIfComplete(registration) }
+    await gate.waitForMutationRequest()
+    #expect(await controller.isAdmitted(registration) == false, "no marker while the meeting reads")
+    await gate.endUse(gateKey(registration))
+    #expect(await admit.value)
+    #expect(await controller.isAdmitted(registration))
+  }
+
+  @Test(
+    "Cancel ends an attempt parked behind a meeting at once, changing nothing",
+    .timeLimit(.minutes(1)))
+  func cancelDoesNotHangBehindMeeting() async throws {
+    let registration = try makeRegistration(files: ManifestFixture.smallFiles)
+    try seedValidCache(registration)
+    let controller = ModelDeliveryController(
+      defaults: testDefaults(), availableDiskBytes: { _ in .max })
+    let gate = controller.meetingModelUseGate
+    try await gate.beginUse(gateKey(registration))
+    let attempt = Task { await controller.ensureModelAvailable(registration) }
+    await gate.waitForMutationRequest()
+    _ = await controller.cancel(registration.manifest.identity)
+    let outcome = await attempt.value
+    guard case .cancelled = outcome else {
+      Issue.record("expected cancelled, got \(outcome)")
+      return
+    }
+    #expect(await controller.isAdmitted(registration) == false)
+    // The withdrawn claim reopened the model: another meeting load is admitted at once.
+    try await gate.beginUse(gateKey(registration))
+    await gate.endUse(gateKey(registration))
+    await gate.endUse(gateKey(registration))
+  }
+
+  @Test("repair's removal of a broken component waits for a meeting's use", .timeLimit(.minutes(1)))
+  func repairRemovalWaitsForMeetingUse() async throws {
+    let registration = try makeRegistration(files: ManifestFixture.smallFiles)
+    try seedValidCache(registration)
+    let broken = registration.installDirectory.appendingPathComponent(
+      ManifestFixture.smallFiles[0].path)
+    try Data("corrupt".utf8).write(to: broken)
+    let controller = ModelDeliveryController(
+      defaults: testDefaults(), availableDiskBytes: { _ in .max })
+    let gate = controller.meetingModelUseGate
+    try await gate.beginUse(gateKey(registration))
+    let attempt = Task { await controller.ensureModelAvailable(registration) }
+    await gate.waitForMutationRequest()
+    #expect(FileManager.default.fileExists(atPath: broken.path), "nothing removed during use")
+    await gate.endUse(gateKey(registration))
+    _ = await attempt.value  // the refetch fails offline; the removal happened first
+    #expect(!FileManager.default.fileExists(atPath: broken.path))
+  }
+
+  @Test("retirement waits for a meeting's use; a cancelled retirement deletes nothing", .timeLimit(.minutes(1)))
+  func retirementWaitsAndCancelKeepsFiles() async throws {
+    let registration = try makeRegistration(files: ManifestFixture.smallFiles)
+    try seedValidCache(registration)
+    let owned = registration.installDirectory.deletingLastPathComponent()
+    let controller = ModelDeliveryController(
+      defaults: testDefaults(), availableDiskBytes: { _ in .max })
+    let gate = controller.meetingModelUseGate
+    let file = registration.installDirectory.appendingPathComponent(ManifestFixture.smallFiles[0].path)
+    try await gate.beginUse(gateKey(registration))
+
+    let cancelled = Task { await controller.retireOwnedInstall(registration, ownedModelsRoot: owned) }
+    await gate.waitForMutationRequest()
+    cancelled.cancel()
+    #expect(await cancelled.value == false)
+    #expect(FileManager.default.fileExists(atPath: file.path))
+
+    let retire = Task { await controller.retireOwnedInstall(registration, ownedModelsRoot: owned) }
+    await gate.waitForMutationRequest()
+    #expect(FileManager.default.fileExists(atPath: file.path))
+    await gate.endUse(gateKey(registration))
+    #expect(await retire.value)
+    #expect(!FileManager.default.fileExists(atPath: registration.installDirectory.path))
+  }
+
+  @Test(
+    "Remove drains an attempt also parked behind a meeting, and no meeting gets in before it ends",
+    .timeLimit(.minutes(1)))
+  func removeDrainsParkedAttempt() async throws {
+    let registration = try makeRegistration(files: ManifestFixture.smallFiles)
+    try seedValidCache(registration)
+    let controller = ModelDeliveryController(
+      defaults: testDefaults(), availableDiskBytes: { _ in .max })
+    let gate = controller.meetingModelUseGate
+    let key = gateKey(registration)
+    try await gate.beginUse(key)
+    let attempt = Task { await controller.admitIfComplete(registration) }
+    await gate.waitForMutationRequest()
+    let removal = Task { await controller.remove(registration) }
+    await gate.endUse(key)
+    #expect(await removal.value == .removed)
+    _ = await attempt.value
+    // Remove was the last writer: nothing admitted, no model files left.
+    #expect(await controller.isAdmitted(registration) == false)
+    let file = registration.installDirectory.appendingPathComponent(
+      ManifestFixture.smallFiles[0].path)
+    #expect(!FileManager.default.fileExists(atPath: file.path))
+    // The model reopened for meetings after both changes ended.
+    try await gate.beginUse(key)
+    await gate.endUse(key)
+  }
+
+  @Test("a Remove cancelled as the meeting's use ends deletes nothing", .timeLimit(.minutes(1)))
+  func cancelledRemoveRacingReleaseKeepsBytes() async throws {
+    let registration = try makeRegistration(files: ManifestFixture.smallFiles)
+    try seedValidCache(registration)
+    let controller = ModelDeliveryController(
+      defaults: testDefaults(), availableDiskBytes: { _ in .max })
+    let gate = controller.meetingModelUseGate
+    let key = gateKey(registration)
+    try await gate.beginUse(key)
+    let removal = Task { await controller.remove(registration) }
+    await gate.waitForMutationRequest()
+    removal.cancel()
+    await gate.endUse(key)
+    #expect(await removal.value == .failed(DeliveryFailure(reason: .cancelled, detail: "remove:cancelled")))
+    let file = registration.installDirectory.appendingPathComponent(
+      ManifestFixture.smallFiles[0].path)
+    #expect(try Data(contentsOf: file) == ManifestFixture.smallFiles[0].content)
+  }
+
+  @Test("a meeting reading another model never delays this model's Remove", .timeLimit(.minutes(1)))
+  func otherModelsUseDoesNotDelay() async throws {
+    let registration = try makeRegistration(files: ManifestFixture.smallFiles)
+    try seedValidCache(registration)
+    let controller = ModelDeliveryController(
+      defaults: testDefaults(), availableDiskBytes: { _ in .max })
+    try await controller.meetingModelUseGate.beginUse("/some/other/model")
+    #expect(await controller.remove(registration) == .removed)
+    await controller.meetingModelUseGate.endUse("/some/other/model")
+  }
+
+  @Test("a legacy migration that would publish waits for a meeting's use", .timeLimit(.minutes(1)))
+  func migrationWaitsForMeetingUse() async throws {
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent("controller-mig-\(UUID().uuidString)", isDirectory: true)
+    let donor = root.appendingPathComponent("FluidAudio/Models/model", isDirectory: true)
+    for f in ManifestFixture.smallFiles {
+      let url = donor.appendingPathComponent(f.path)
+      try FileManager.default.createDirectory(
+        at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+      try f.content.write(to: url)
+    }
+    let registration = DeliveryRegistration(
+      manifest: try ManifestFixture.manifest(files: ManifestFixture.smallFiles),
+      installDirectory: root.appendingPathComponent("EnviousWispr/Models/model", isDirectory: true),
+      metadataDirectory: root.appendingPathComponent("EnviousWispr/ModelDelivery", isDirectory: true),
+      legacyDonorDirectory: donor)
+    let controller = ModelDeliveryController(
+      defaults: testDefaults(), availableDiskBytes: { _ in .max })
+    let gate = controller.meetingModelUseGate
+    try await gate.beginUse(gateKey(registration))
+    let migration = Task { await controller.ensureLegacyMigration(registration) }
+    await gate.waitForMutationRequest()
+    #expect(!FileManager.default.fileExists(atPath: registration.installDirectory.path))
+    await gate.endUse(gateKey(registration))
+    #expect(await migration.value.componentsPublished == 2)
+    // Once migrated, a later call never takes the gate: a meeting's use does not delay it.
+    try await gate.beginUse(gateKey(registration))
+    #expect(await controller.ensureLegacyMigration(registration) == .none)
+    await gate.endUse(gateKey(registration))
+  }
+
   @Test func cancelWithNothingInFlight() async throws {
     let registration = try makeRegistration(files: ManifestFixture.smallFiles)
     let controller = ModelDeliveryController(

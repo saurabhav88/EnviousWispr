@@ -149,6 +149,11 @@ enum SettingsProjection {
     case .fileImportLLMProvider: return [.fileImportLLMProvider, .fileImportLLMModel]
     case .fileImportLLMModel, .fileImportOllamaModel: return [.fileImportLLMModel]
     case .autoCopyToClipboard: return [.autoCopy]
+    // #3972: no settings delta. `meeting.ended` carries the call-sound track status of every
+    // meeting, which is the question this choice answers.
+    case .meetingCaptureCallSound: return []
+    // #3972: a one-time acknowledgement, not a preference.
+    case .meetingCallSoundExplained: return []
     case .hotkeyEnabled: return [.hotkeyEnabled]
     case .vadAutoStop: return [.vadAutoStop]
     case .vadSilenceTimeout: return [.vadSilenceTimeout]

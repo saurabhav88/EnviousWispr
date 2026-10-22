@@ -81,6 +81,12 @@ public final class PermissionsService {
     }
   }
 
+  /// #3972: macOS has never been asked for the microphone. Read live, like
+  /// `microphonePermissionIsDenied`.
+  public var microphoneNeedsAsking: Bool {
+    microphoneReader() == .notDetermined
+  }
+
   /// Request microphone access. Returns true if granted.
   public func requestMicrophoneAccess() async -> Bool {
     let granted = await AVCaptureDevice.requestAccess(for: .audio)
@@ -106,6 +112,18 @@ public final class PermissionsService {
     } else {
       _ = await requestMicrophoneAccess()
     }
+  }
+
+  /// #3972: opens System Settings on Privacy & Security, Screen & System Audio Recording, where
+  /// EnviousMeet's call-sound capture is allowed. Only on an explicit user action; it grants
+  /// nothing by itself. Through the same injected opener as the microphone pane.
+  /// NOT VERIFIED on hardware: the pane anchor is checked in #3972 C6 Live UAT.
+  public func openSystemAudioRecordingSettings() {
+    guard
+      let url = URL(
+        string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")
+    else { return }
+    openMicrophoneSettings(url)
   }
 
   /// Whether microphone permission has been granted.

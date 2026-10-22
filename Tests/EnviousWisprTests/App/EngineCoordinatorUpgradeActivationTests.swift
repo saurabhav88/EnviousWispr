@@ -79,11 +79,11 @@ struct EngineCoordinatorUpgradeActivationTests {
   }
 
   enum Busy: CaseIterable {
-    case recovering, fileImport, minting, whisperDictation
+    case recovering, fileImport, minting, whisperDictation, meetingEngine
   }
 
   @Test(
-    "recovery, a file import or a starting dictation defers it",
+    "recovery, a file import, a starting dictation or a loaded meeting engine defers it",
     arguments: Busy.allCases)
   func busyWorkDefers(_ busy: Busy) async {
     let fake = FakeEngineDeps()
@@ -91,6 +91,7 @@ struct EngineCoordinatorUpgradeActivationTests {
     switch busy {
     case .recovering: fake.recovering = true
     case .fileImport: fake.fileImportRunning = true
+    case .meetingEngine: fake.meetingEngineResident = true
     case .minting: break
     case .whisperDictation: fake.whisperActive = true
     }
@@ -103,6 +104,7 @@ struct EngineCoordinatorUpgradeActivationTests {
     switch busy {
     case .recovering: fake.recovering = false
     case .fileImport: fake.fileImportRunning = false
+    case .meetingEngine: fake.meetingEngineResident = false
     case .minting: c.endMinting()
     case .whisperDictation: fake.whisperActive = false
     }
@@ -162,5 +164,35 @@ struct EngineCoordinatorUpgradeActivationTests {
     w.poke(.parakeetUpgradeOwed)
     let ranWhisper = await enginePoll(.milliseconds(300)) { whisper.activationCount > 0 }
     #expect(ranWhisper == false, "E14: Whisper users activate when they select Parakeet")
+  }
+}
+
+extension EngineCoordinatorUpgradeActivationTests {
+  @Test("#3972: meeting work ending re-offers the activation through its own poke alone")
+  func meetingWorkEndingReoffers() async {
+    let fake = FakeEngineDeps()
+    fake.activationOwed = true
+    fake.meetingEngineResident = true
+    let c = fake.makeStartedCoordinator()
+    c.poke(.parakeetUpgradeOwed)
+    let ran = await enginePoll(.milliseconds(300)) { fake.activationCount > 0 }
+    #expect(ran == false, "a running meeting unit defers the activation")
+    fake.meetingEngineResident = false
+    // The meeting's wiring pokes this reason when its claim is released or its work ends.
+    c.poke(.parakeetUpgradeOwed)
+    #expect(await enginePoll { fake.activationCount == 1 })
+  }
+
+  @Test("#3972: the end of a dictation's start window tells EnviousMeet's idle wait")
+  func mintingEndNotifiesMeetings() {
+    let fake = FakeEngineDeps()
+    let c = fake.makeStartedCoordinator()
+    var notified = 0
+    c.onMintingEnded = { notified += 1 }
+    c.beginMinting()
+    #expect(notified == 0)
+    c.endMinting()
+    #expect(notified == 1)
+    #expect(c.isMintingAnySession == false)
   }
 }

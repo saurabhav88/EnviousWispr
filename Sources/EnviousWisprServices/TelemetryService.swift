@@ -4046,6 +4046,68 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("file_import_completed", properties: props)
   }
 
+  // MARK: - EnviousMeet (#3972 R11)
+
+  /// One row per meeting attempt, at its terminal (`MeetingEndedTelemetry`). Shape only: no
+  /// title, speaker name, word, path, file name, app name or id.
+  public func trackMeetingEnded(_ event: MeetingEndedTelemetry) {
+    let props = Self.meetingEndedProperties(event)
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "meeting.ended",
+          stringProps: props.compactMapValues { $0 as? String },
+          intProps: props.compactMapValues { $0 is Bool ? nil : $0 as? Int },
+          doubleProps: props.compactMapValues { $0 as? Double },
+          boolProps: props.compactMapValues { $0 as? Bool }))
+    #endif
+    PostHogSDK.shared.capture("meeting.ended", properties: props)
+  }
+
+  /// The `meeting.ended` payload. Numbers stay numbers (`processing_seconds` and `rtf` are
+  /// `Double` seconds and a ratio, the counts `Int`), `disk_stopped` a `Bool`; `entry_point`
+  /// and `disk_stopped` are omitted when not known (an attempt recovered after a relaunch).
+  static func meetingEndedProperties(_ event: MeetingEndedTelemetry) -> [String: Any] {
+    var props: [String: Any] = [
+      "outcome": event.outcome.rawValue,
+      "duration_bucket": fileImportDurationBucket(event.durationSeconds),
+      "mic_track": event.microphoneTrack.rawValue,
+      "system_track": event.callSoundTrack.rawValue,
+      "engine": event.engine.rawValue,
+      "speaker_count_bucket": meetingSpeakerCountBucket(event.speakerCount),
+      "processing_seconds": event.processingSeconds.isFinite ? event.processingSeconds : 0,
+      "rtf": event.realTimeFactor,
+      "yield_count": event.yieldCount,
+      "gap_count": event.gapCount,
+      "echo_hidden_count_bucket": meetingEchoHiddenBucket(event.echoHiddenCount),
+    ]
+    if let entryPoint = event.entryPoint { props["entry_point"] = entryPoint.rawValue }
+    if let diskStopped = event.diskStopped { props["disk_stopped"] = diskStopped }
+    return props
+  }
+
+  /// Speakers across both tracks: `0` (no turns), `1`, `2`, `3-4`, `5+` (the file-import scale
+  /// with a `0` for a meeting that produced no speech).
+  static func meetingSpeakerCountBucket(_ count: Int) -> String {
+    switch count {
+    case ...0: return "0"
+    case 1: return "1"
+    case 2: return "2"
+    case 3...4: return "3-4"
+    default: return "5+"
+    }
+  }
+
+  /// Hidden echo turns: `0`, `1-5`, `6-20`, `21+` (the file-import turn-count scale).
+  static func meetingEchoHiddenBucket(_ count: Int) -> String {
+    switch count {
+    case ...0: return "0"
+    case 1...5: return "1-5"
+    case 6...20: return "6-20"
+    default: return "21+"
+    }
+  }
+
   /// `attemptedParts` excludes deliberate bypasses (no provider, too-short input); an import
   /// with zero attempted parts was never asking the polisher to do anything, which is
   /// `.skipped`, not `.failed`.

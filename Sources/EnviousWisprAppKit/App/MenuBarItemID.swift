@@ -9,6 +9,8 @@ enum MenuBarItemID {
   static let quickAdd = NSUserInterfaceItemIdentifier("menu.quickAdd")
   static let pasteLast = NSUserInterfaceItemIdentifier("menu.pasteLast")
   static let transcribeFile = NSUserInterfaceItemIdentifier("menu.transcribeFile")
+  /// #3972: Start or Stop Meeting Recording.
+  static let meeting = NSUserInterfaceItemIdentifier("menu.meeting")
   static let accessibilityWarning = NSUserInterfaceItemIdentifier("menu.accessibilityWarning")
   static let microphoneWarning = NSUserInterfaceItemIdentifier("menu.microphoneWarning")
   static let microphone = NSUserInterfaceItemIdentifier("menu.microphone")

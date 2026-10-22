@@ -12,9 +12,9 @@ Generated from the compiled Settings Map and the validated search vocabulary. Do
 
 The interface ships in English and German. The other 30 languages (ar, bg, cs, da, el, es, et, fi, fr, hi, hr, hu, it, ja, ko, lt, lv, mt, nl, pl, pt, ro, ru, sk, sl, sv, tr, uk, vi, zh) are search metadata only: words and titles people may type, matched against the same places. Titles below read English / German.
 
-274 nodes, 248 searchable, 7936 vocabulary blocks.
+277 nodes, 250 searchable, 8000 vocabulary blocks.
 
-Fingerprints: mapSHA256 `d8b02c8de371128245fcdc6dc9e77c72505137a92d5ee3c4e779c61550e11b2b`, uiCatalogSHA256 `b18169ed46f14a2f525da8dddb21a496ecd4dae03cf5594f351a543076054eb5`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `aa8b845eb26c62d9a4107c047fe7eeb0f018191a68dd8806c2cd0bf6d1618343`
+Fingerprints: mapSHA256 `7d1ec5f787c9ad8e187ef34d957db8f1adf513709ad6cb38b42e5e229a776f74`, uiCatalogSHA256 `3232eafa0bcf9421eb1eb23aedac3e537ea80c556eec51bd181c922866b1cecb`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `1c180aed42a45d4991b138e7c48f4da1cab47f349f574a077da25fda8bfcbfa6`
 
 ## Structure
 
@@ -280,6 +280,9 @@ Fingerprints: mapSHA256 `d8b02c8de371128245fcdc6dc9e77c72505137a92d5ee3c4e779c61
       - [Add selected word to Dictionary / Markiertes Wort zum Wörterbuch hinzufügen](#node-quickAddKeybind) `quickAddKeybind` (setting)
       - [Paste last dictation / Letztes Diktat einfügen](#node-pasteLastKeybind) `pasteLastKeybind` (setting)
       - [Copy last dictation / Letztes Diktat kopieren](#node-copyLastKeybind) `copyLastKeybind` (setting)
+  - [EnviousMeet / EnviousMeet](#node-page-meetings) `page.meetings` (page)
+    - [Start Recording / Aufnahme starten](#node-meetings-recorder) `meetings.recorder` (action)
+    - [Also record the call sound / Auch den Ton vom Mac aufnehmen](#node-meetingCaptureCallSound) `meetingCaptureCallSound` (setting)
   - [Snippets / Textbausteine](#node-page-snippets) `page.snippets` (page)
     - [Paste the text you type over and over, by voice / Füge Text, den du oft tippst, per Stimme ein](#node-snippets) `snippets` (feature)
     - [Keyword / Schlüsselwort](#node-snippetKeyword) `snippetKeyword` (setting)
@@ -415,6 +418,24 @@ Fingerprints: mapSHA256 `d8b02c8de371128245fcdc6dc9e77c72505137a92d5ee3c4e779c61
 | Title source | catalog key `Keybinds` |
 | Description | none |
 | Destination | `keybinds` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | none |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+
+<a id="node-page-meetings"></a>
+
+### EnviousMeet / EnviousMeet (`page.meetings`)
+
+| Field | Value |
+|---|---|
+| Structure | page |
+| Kind | structure only, not searchable |
+| Parent | [`window.settings`](#node-window-settings) |
+| Title source | catalog key `EnviousMeet` |
+| Description | none |
+| Destination | `meetings` |
 | Dictionary tab | none |
 | Shown when | `always` |
 | Arrival target | none |
@@ -2455,6 +2476,50 @@ Fingerprints: mapSHA256 `d8b02c8de371128245fcdc6dc9e77c72505137a92d5ee3c4e779c61
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: stages, steps, progress<br>phrases: show the steps from uploading a file to the finished transcript; show which stage my file transcription is at |
 | Search (de) | words: Schritte, Ablauf, Fortschritt<br>phrases: zeig mir die Schritte von der Datei bis zum fertigen Text; zeig mir, bei welchem Schritt die Dateitranskription gerade ist |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-meetings-recorder"></a>
+
+### Start Recording / Aufnahme starten (`meetings.recorder`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | action |
+| Parent | [`page.meetings`](#node-page-meetings) |
+| Title source | catalog key `Start Recording` |
+| Description | Record a meeting on your Mac and get a transcript with who said what. / Nimm ein Meeting auf deinem Mac auf und erhalte ein Transkript, das zeigt, wer was gesagt hat. |
+| Description source | catalog key `Record a meeting on your Mac and get a transcript with who said what.` |
+| Destination | `meetings` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`meetings.recorder`](#node-meetings-recorder) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | words: meeting recorder<br>phrases: record a meeting |
+| Search (de) | words: Meetingaufnahme<br>phrases: nimm ein Meeting auf |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-meetingCaptureCallSound"></a>
+
+### Also record the call sound / Auch den Ton vom Mac aufnehmen (`meetingCaptureCallSound`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | setting |
+| Parent | [`page.meetings`](#node-page-meetings) |
+| Title source | catalog key `Also record the call sound` |
+| Description | Records what your Mac plays, like the other people on a call. / Nimmt auf, was dein Mac abspielt, zum Beispiel die Stimmen anderer Personen bei einem Anruf. |
+| Description source | catalog key `Records what your Mac plays, like the other people on a call.` |
+| Destination | `meetings` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`meetingCaptureCallSound`](#node-meetingCaptureCallSound) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | words: system audio, computer audio, other participants<br>phrases: record what my Mac plays; capture the other people on the call |
+| Search (de) | words: Systemaudio, Systemton, Computerton, Gesprächspartner<br>phrases: nimm den Ton vom Mac mit auf; nimm die anderen im Anruf mit auf; zeichne den Systemton auf |
 | Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-enableAIPolish"></a>

@@ -89,7 +89,7 @@ struct HistoryEmptyView: View {
       ContentUnavailableView(
         "Nothing here yet",
         systemImage: "doc.text",
-        description: Text("Your dictations and transcripts will appear here.")
+        description: Text("Your dictations, transcripts and meetings will appear here.")
       )
     case .noDictations:
       ContentUnavailableView(
@@ -101,7 +101,7 @@ struct HistoryEmptyView: View {
       ContentUnavailableView(
         "No transcripts yet",
         systemImage: "doc.text",
-        description: Text("Use Transcribe a File to add one.")
+        description: Text("Use Transcribe a File, or record a meeting, to add one.")
       )
     case .noMatches:
       ContentUnavailableView(
@@ -147,7 +147,13 @@ struct TranscriptRowView: View {
           .foregroundStyle(.stTextSecondary)
       }
 
-      Text(transcript.displayText)
+      // #3972 R19: a meeting previews its visible lines only, never hidden echo.
+      Text(
+        transcript.isMeeting
+          ? MeetingHistoryPresentation.previewText(
+            transcriptCoordinator.meetingProjection(of: transcript))
+          : transcript.displayText
+      )
         .lineLimit(3)
         .font(.body)
         .foregroundStyle(.stTextPrimary)
@@ -199,8 +205,10 @@ struct TranscriptRowView: View {
         // came from Transcribe a File. Read from `isImported`, the row's only kind. Icon plus
         // text, never colour alone, like every other badge in this row.
         HStack(spacing: 2) {
-          Image(systemName: transcript.isImported ? "doc.text" : "mic")
-          Text(transcript.isImported ? "Transcript" : "Dictation")
+          Image(
+            systemName: transcript.isMeeting
+              ? "person.2.wave.2" : (transcript.isImported ? "doc.text" : "mic"))
+          Text(transcript.isMeeting ? "Meeting" : (transcript.isImported ? "Transcript" : "Dictation"))
         }
         .font(.caption2)
         .padding(.horizontal, 5)

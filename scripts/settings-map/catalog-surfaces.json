@@ -30,6 +30,15 @@
    "page.transcribeFile",
    "transcribeFile.steps"
   ],
+  "mac-page-meetings": [
+   "page.meetings"
+  ],
+  "mac-ctl-meetings-recorder": [
+   "meetings.recorder"
+  ],
+  "mac-ctl-meeting-call-sound": [
+   "meetingCaptureCallSound"
+  ],
   "mac-sec-engine-transcription": [
    "section.transcriptionEngine"
   ],
@@ -693,6 +702,21 @@
    "kind": "control",
    "parent": "mac-sec-engine-shared",
    "label": "Casual mode"
+  },
+  "mac-page-meetings": {
+   "kind": "page",
+   "parent": "mac-grp-record",
+   "label": "EnviousMeet"
+  },
+  "mac-ctl-meetings-recorder": {
+   "kind": "control",
+   "parent": "mac-page-meetings",
+   "label": "Start Recording [Stop Recording while a meeting records]"
+  },
+  "mac-ctl-meeting-call-sound": {
+   "kind": "control",
+   "parent": "mac-page-meetings",
+   "label": "Also record the call sound"
   }
  }
 }

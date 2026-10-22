@@ -1,0 +1,12 @@
+{
+  "language": "pt",
+  "title": "gravar também o áudio da chamada",
+  "words": [
+    "som do sistema",
+    "som do computador"
+  ],
+  "phrases": [
+    "gravar o som do Mac",
+    "gravar as vozes das outras pessoas na chamada"
+  ]
+}

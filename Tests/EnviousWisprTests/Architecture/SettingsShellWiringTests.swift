@@ -255,7 +255,8 @@ struct SettingsShellWiringTests {
     let wiring = Self.shellWiring(in: try Self.parse("\(Self.settingsDir)/SettingsView.swift"))
     #expect(
       wiring.hosts == [
-        ".history -> HistoryContentView", ".dictation -> page DictationSettingsView",
+        ".history -> HistoryContentView", ".meetings -> page MeetingsView",
+        ".dictation -> page DictationSettingsView",
         ".transcribeFile -> page TranscribeFileView", ".keybinds -> page KeybindsSettingsView",
         ".aiPolish -> page AIPolishSettingsView", ".dictionary -> page YourWordsView",
         ".snippets -> page SnippetsView", ".appSettings -> page AppSettingsView",
@@ -268,6 +269,8 @@ struct SettingsShellWiringTests {
     #expect(
       wiring.activity == [
         "section == .transcribeFile && fileImportCoordinator.isRunning -> .fileImport",
+        // #3972: EnviousMeet's dot reads only EnviousMeet.
+        "section == .meetings && meetingWorkVisible -> .meeting",
         // #3438: the setup tag reads only the warning monitor.
         "section == .aiPolish && polishSetupMonitor.shows(.sidebarTag) -> .polishNeedsSetup",
         "yourWordsEnrichmentBadgeVisible(for: section) -> .dictionaryEnrichment",

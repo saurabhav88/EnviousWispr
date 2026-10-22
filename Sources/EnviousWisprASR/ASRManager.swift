@@ -240,8 +240,45 @@ public final class ASRManager: ASRManagerInterface {
     offlineModeAdmissionCount -= 1
     if offlineModeAdmissionCount == 0 {
       offlineModeAdmittedValue = nil
+      let waiters = offlineModeWaiters
+      offlineModeWaiters.removeAll()
+      waiters.values.forEach { $0.resume() }
     }
   }
+
+  /// #3972: EnviousMeet's engine, refused by `admitOfflineMode` because another load holds
+  /// the other mode, waits here for that load's release instead of failing its meeting. The
+  /// signal is the release itself; nothing polls. Dictation never calls this and its admission
+  /// is unchanged. Returns once `cacheOnly` would be admitted; throws `CancellationError` if
+  /// the caller is cancelled while waiting (its waiter is removed).
+  func waitUntilOfflineModeAdmissible(cacheOnly: Bool) async throws {
+    while let admitted = offlineModeAdmittedValue, admitted != cacheOnly {
+      try Task.checkCancellation()
+      let id = UUID()
+      await withTaskCancellationHandler {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+          if Task.isCancelled {
+            continuation.resume()
+            return
+          }
+          offlineModeWaiters[id] = continuation
+          offlineModeWaiterRegisteredForTesting?()
+        }
+      } onCancel: {
+        Task { @MainActor [weak self] in self?.offlineModeWaiters.removeValue(forKey: id)?.resume() }
+      }
+    }
+    try Task.checkCancellation()
+  }
+
+  private var offlineModeWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
+
+  /// Called each time a waiter parks in `waitUntilOfflineModeAdmissible`, so a test knows it is
+  /// parked without polling.
+  var offlineModeWaiterRegisteredForTesting: (@MainActor () -> Void)?
+
+  /// Waiters parked in `waitUntilOfflineModeAdmissible`, for tests.
+  var offlineModeWaiterCount: Int { offlineModeWaiters.count }
 
   package init(
     engineMutationScope: EngineMutationScope,

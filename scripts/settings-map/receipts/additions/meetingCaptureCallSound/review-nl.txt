@@ -1,0 +1,1 @@
+{"language":"nl","title":"ook het gespreksgeluid opnemen","words":["systeemaudio","computergeluid"],"phrases":["geluid van mijn Mac opnemen","de stemmen van anderen in het gesprek opnemen"]}

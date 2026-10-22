@@ -1,0 +1,1 @@
+{"language":"hr","title":"snimaj i zvuk poziva","words":["zvuk sustava","zvuk računala"],"phrases":["snimaj zvuk koji Mac reproducira","snimaj glasove drugih u pozivu"]}

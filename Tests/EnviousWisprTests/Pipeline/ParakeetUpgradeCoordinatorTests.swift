@@ -498,6 +498,41 @@ struct ParakeetUpgradePolicyTests {
 
   // MARK: Rows
 
+  // MARK: - #3972 meeting selection: a read-only, cache-only snapshot
+
+  @Test("meeting selection: admitted Ultra within budget, chosen without spending or publishing")
+  func meetingSelectionPrefersPermittedUltra() async throws {
+    let rig = try await Self.rig(v3: true, ultra: true)
+    let before = Self.state(rig)
+    let current = rig.selection.current
+    let chosen = await rig.coordinator.meetingSelection()
+    #expect(chosen?.model == .ultra)
+    #expect(chosen?.cacheOnly == true)
+    #expect(chosen?.repairable == false)
+    #expect(Self.state(rig) == before, "no attempt counted, nothing persisted")
+    #expect(rig.selection.current == current, "dictation's request is not touched")
+  }
+
+  @Test("meeting selection: unadmitted or exhausted Ultra falls back to admitted v3")
+  func meetingSelectionFallsBackToV3() async throws {
+    let unadmitted = try await Self.rig(v3: true, ultra: false)
+    #expect(await unadmitted.coordinator.meetingSelection()?.model == .v3)
+    let exhausted = try await Self.rig(
+      v3: true, ultra: true,
+      state: ParakeetUpgradeState(attempts: 3, refetchSpent: true, exhausted: true, declined: false))
+    #expect(await exhausted.coordinator.meetingSelection()?.model == .v3)
+  }
+
+  @Test("meeting selection: nothing admitted, or delivery off, gives no model")
+  func meetingSelectionNone() async throws {
+    let none = try await Self.rig(v3: false, ultra: false)
+    #expect(await none.coordinator.meetingSelection() == nil)
+    // Delivery off: dictation may load with downloads allowed, so a cache-only meeting load
+    // must never hold the shared offline mode against it.
+    let off = try await Self.rig(v3: true, ultra: true, enabled: false)
+    #expect(await off.coordinator.meetingSelection() == nil)
+  }
+
   @Test("A: an admitted Ultra within budget is chosen, counted, activated, and v3 retired")
   func rowAActivatesAndRetiresV3() async throws {
     var rig = try await Self.rig(v3: true, ultra: true)

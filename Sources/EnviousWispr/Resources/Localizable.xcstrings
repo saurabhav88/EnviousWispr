@@ -1022,6 +1022,17 @@
         }
       }
     },
+    "%lld speakers" : {
+      "comment" : "EnviousMeet list: how many people the transcript found (two or more).",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld Sprecher"
+          }
+        }
+      }
+    },
     "%lld words" : {
       "localizations" : {
         "de" : {
@@ -1206,6 +1217,17 @@
         }
       }
     },
+    "1 speaker" : {
+      "comment" : "EnviousMeet list: the transcript found one person.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 Sprecher"
+          }
+        }
+      }
+    },
     "1 spelling" : {
       "comment" : "Quick Add panel: a row's count of misheard forms, one.",
       "localizations" : {
@@ -1334,6 +1356,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ein Claude Pro-, Max-, Team- oder Enterprise-Chat-Abo enthält keinen API-Zugang. Erstelle in Claude Platform einen eigenen API-Schlüssel und lade Guthaben auf, bevor du Claude hier nutzt. Anthropic rechnet die API-Nutzung getrennt vom Chat-Abo ab."
+          }
+        }
+      }
+    },
+    "A change to a meeting could not be saved. Its last saved state is kept." : {
+      "comment" : "EnviousMeet: writing a meeting's details failed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eine Änderung an einem Meeting konnte nicht gespeichert werden. Der zuletzt gespeicherte Stand bleibt erhalten."
           }
         }
       }
@@ -2747,6 +2780,17 @@
         }
       }
     },
+    "Allow Microphone" : {
+      "comment" : "EnviousMeet: asks macOS for microphone access, or opens System Settings if it was refused.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofonzugriff erlauben"
+          }
+        }
+      }
+    },
     "Allow microphone access so EnviousWispr can record your voice. If access was denied, Request Access opens System Settings." : {
       "localizations" : {
         "de" : {
@@ -2884,6 +2928,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Bereits für die Aufnahme verwendet. Wähle ein anderes Tastenkürzel."
+          }
+        }
+      }
+    },
+    "Also record the call sound" : {
+      "comment" : "EnviousMeet page: switch that records what the Mac plays, like a call.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auch den Ton vom Mac aufnehmen"
           }
         }
       }
@@ -3464,6 +3519,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das Audio verlässt diesen Mac nie."
+          }
+        }
+      }
+    },
+    "Audio: %@" : {
+      "comment" : "EnviousMeet detail: how much space the kept recording takes, like 42 MB.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audioaufnahme: %@"
           }
         }
       }
@@ -4079,6 +4145,28 @@
         }
       }
     },
+    "Call sound" : {
+      "comment" : "EnviousMeet: the level meter for the sound the Mac plays.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ton vom Mac"
+          }
+        }
+      }
+    },
+    "Call sound needs macOS 14.2 or later. Only your microphone is recorded." : {
+      "comment" : "EnviousMeet: this Mac cannot record the sound it plays.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Um den Ton vom Mac aufzunehmen, ist macOS 14.2 oder neuer nötig. Nur dein Mikrofon wird aufgenommen."
+          }
+        }
+      }
+    },
     "Can't reach the download server. Check your connection and try again." : {
       "comment" : "Speech model download: why it failed. Shown in setup and in Settings.",
       "localizations" : {
@@ -4102,7 +4190,7 @@
       }
     },
     "Cancel" : {
-      "comment" : "Live Preview settings, Universal engine card: button. It stops the download.\nSettings > AI Polish, local model row: button that stops the download.\nYour Words, Learn from: the self-learning dictionary row: button that stops the download.",
+      "comment" : "EnviousMeet: closes the call-sound explanation without recording.\nEnviousMeet: keeps the meeting as it is.\nLive Preview settings, Universal engine card: button. It stops the download.\nSettings > AI Polish, local model row: button that stops the download.\nYour Words, Learn from: the self-learning dictionary row: button that stops the download.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5067,7 +5155,7 @@
       }
     },
     "Close" : {
-      "comment" : "Dictation language picker: VoiceOver name of the close button.\nLive Preview settings: catalog close label.",
+      "comment" : "Dictation language picker: VoiceOver name of the close button.\nEnviousMeet: closes the meeting detail.\nLive Preview settings: catalog close label.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5250,7 +5338,7 @@
       }
     },
     "Continue" : {
-      "comment" : "Transcribe a File: button that goes to the next step.",
+      "comment" : "EnviousMeet: starts the recording after the call-sound explanation.\nTranscribe a File: button that goes to the next step.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5342,6 +5430,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kopiert dein letztes Diktat."
+          }
+        }
+      }
+    },
+    "Copy" : {
+      "comment" : "EnviousMeet: copies the visible transcript.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kopieren"
           }
         }
       }
@@ -5879,6 +5978,7 @@
       }
     },
     "Delete" : {
+      "comment" : "EnviousMeet: confirms a deletion.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5972,6 +6072,17 @@
         }
       }
     },
+    "Delete audio" : {
+      "comment" : "EnviousMeet: removes the meeting's recording and keeps its transcript.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audioaufnahme löschen"
+          }
+        }
+      }
+    },
     "Delete dictation" : {
       "comment" : "VoiceOver label of the History delete button for a dictation.",
       "localizations" : {
@@ -5979,6 +6090,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diktat löschen"
+          }
+        }
+      }
+    },
+    "Delete meeting" : {
+      "comment" : "EnviousMeet: removes the meeting, its audio and its transcript.\nVoiceOver label of the History delete button for a meeting.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meeting löschen"
+          }
+        }
+      }
+    },
+    "Delete this meeting's audio? The transcript stays, but you cannot transcribe it again." : {
+      "comment" : "EnviousMeet: confirmation before Delete audio.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Audioaufnahme dieses Meetings löschen? Das Transkript bleibt erhalten, aber du kannst das Meeting danach nicht erneut transkribieren."
+          }
+        }
+      }
+    },
+    "Delete this meeting, its audio and its transcript? This cannot be undone." : {
+      "comment" : "EnviousMeet: confirmation before Delete meeting.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Meeting samt Audioaufnahme und Transkript löschen? Das lässt sich nicht rückgängig machen."
           }
         }
       }
@@ -6352,6 +6496,7 @@
       }
     },
     "Dismiss" : {
+      "comment" : "EnviousMeet: closes a notice about the last recording.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -7024,6 +7169,17 @@
         }
       }
     },
+    "EnviousMeet" : {
+      "comment" : "Menu bar menu, VoiceOver: the icon beside the meeting recording item.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousMeet"
+          }
+        }
+      }
+    },
     "EnviousWispr can't read %@ files yet. Try a file you exported from EnviousWispr, or a plain text list." : {
       "comment" : "Your Words, import: error. %@ is the file's type, such as a file extension.",
       "localizations" : {
@@ -7119,6 +7275,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "EnviousWispr benötigt Zugriff auf Bedienungshilfen, um für dich Text einzugeben.\nDu kannst den Zugriff aktivieren und zurückkommen oder diesen Schritt überspringen."
+          }
+        }
+      }
+    },
+    "EnviousWispr needs microphone access to record a meeting. Allow it in System Settings, Privacy & Security, Microphone." : {
+      "comment" : "EnviousMeet: the microphone permission is missing.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr braucht Zugriff auf dein Mikrofon, um ein Meeting aufzunehmen. Erlaube ihn in den Systemeinstellungen unter „Datenschutz & Sicherheit“, „Mikrofon“."
           }
         }
       }
@@ -7258,6 +7425,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Alle von Apple angebotenen Sprachen sind bereits auf diesem Mac."
+          }
+        }
+      }
+    },
+    "Every line was hidden as probable echo. Show probable echo to see them." : {
+      "comment" : "History: a meeting whose every line repeats the call sound, so all of them are hidden.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jede Zeile wurde als wahrscheinliches Echo ausgeblendet. Aktiviere „Wahrscheinliches Echo anzeigen“, um sie zu sehen."
           }
         }
       }
@@ -7648,6 +7826,17 @@
         }
       }
     },
+    "Finding the speakers" : {
+      "comment" : "EnviousMeet: working out who said what.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprecher werden erkannt"
+          }
+        }
+      }
+    },
     "Finding who said what" : {
       "comment" : "Transcribe a File, Working step: the pass that labels speakers.",
       "localizations" : {
@@ -7742,6 +7931,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Beende zuerst dein aktuelles Diktat und versuche es dann erneut."
+          }
+        }
+      }
+    },
+    "Finish your dictation first, then start the meeting." : {
+      "comment" : "EnviousMeet: a dictation was still running when Start was pressed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beende zuerst dein Diktat und starte dann das Meeting."
           }
         }
       }
@@ -8263,7 +8463,7 @@
       }
     },
     "Getting ready" : {
-      "comment" : "Live Preview settings: status getting ready label.",
+      "comment" : "EnviousMeet: the transcript work is about to start.\nLive Preview settings: status getting ready label.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -9129,6 +9329,7 @@
       }
     },
     "Interrupted" : {
+      "comment" : "EnviousMeet list: the recording was cut short (the app quit); what was recorded is kept and transcribed.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -10552,6 +10753,17 @@
         }
       }
     },
+    "Measuring the audio" : {
+      "comment" : "EnviousMeet detail: the audio size is loading.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Größe der Audioaufnahme wird ermittelt"
+          }
+        }
+      }
+    },
     "Media during dictation" : {
       "comment" : "Microphone settings, media during dictation: row title for what happens to music and other audio.",
       "localizations" : {
@@ -10581,6 +10793,71 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Medikamente, Erkrankungen und klinische Begriffe."
+          }
+        }
+      }
+    },
+    "Meeting" : {
+      "comment" : "History detail title for a meeting recorded with EnviousMeet. Also the default file name when saving it.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meeting"
+          }
+        }
+      }
+    },
+    "Meeting in progress" : {
+      "comment" : "Settings sidebar, VoiceOver: EnviousMeet is recording or making a transcript.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meeting läuft"
+          }
+        }
+      }
+    },
+    "Meeting name" : {
+      "comment" : "EnviousMeet: the rename field's placeholder.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name des Meetings"
+          }
+        }
+      }
+    },
+    "Meeting work never slows your dictation: it waits while you dictate." : {
+      "comment" : "EnviousMeet: under the transcript progress bar.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Meeting-Verarbeitung bremst dein Diktat nie: Sie wartet, während du diktierst."
+          }
+        }
+      }
+    },
+    "Meeting, %@" : {
+      "comment" : "EnviousMeet: a meeting's default name, from the date and time it started.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meeting: %@"
+          }
+        }
+      }
+    },
+    "Meetings" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meetings"
           }
         }
       }
@@ -11102,7 +11379,7 @@
       }
     },
     "Needs attention" : {
-      "comment" : "AI Polish provider status chip.",
+      "comment" : "AI Polish provider status chip.\nEnviousMeet list: the transcript could not be made; the detail says why.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -11322,6 +11599,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kein Audio aufgenommen"
+          }
+        }
+      }
+    },
+    "No audio could be read from this recording." : {
+      "comment" : "EnviousMeet detail: why a meeting has no transcript.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aus dieser Aufnahme konnten keine Audiodaten gelesen werden."
           }
         }
       }
@@ -12180,7 +12468,7 @@
       }
     },
     "OK" : {
-      "comment" : "AI Polish, notice button.\nButton that closes a message.",
+      "comment" : "AI Polish, notice button.\nButton that closes a message.\nEnviousMeet: closes the Save error.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -12582,6 +12870,17 @@
         }
       }
     },
+    "Only your microphone is recorded." : {
+      "comment" : "EnviousMeet, while recording: the call sound is switched off.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur dein Mikrofon wird aufgenommen."
+          }
+        }
+      }
+    },
     "Open %@" : {
       "comment" : "Menu bar menu: opens the app's main window on History. %@ is the app name, EnviousWispr.",
       "localizations" : {
@@ -12605,7 +12904,7 @@
       }
     },
     "Open System Settings" : {
-      "comment" : "AI Polish, leave pop-up button. System Settings is the name of the macOS app.",
+      "comment" : "AI Polish, leave pop-up button. System Settings is the name of the macOS app.\nEnviousMeet: opens the macOS privacy setting for recording the Mac's sound.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -13141,7 +13440,7 @@
       }
     },
     "Pause" : {
-      "comment" : "Microphone settings, media during dictation: option that pauses what is playing.",
+      "comment" : "EnviousMeet: pauses the meeting recording.\nMicrophone settings, media during dictation: option that pauses what is playing.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -13180,6 +13479,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Pausiert, solange „Schnellere Transkription“ während der Aufnahme transkribiert"
+          }
+        }
+      }
+    },
+    "Paused while you dictate" : {
+      "comment" : "EnviousMeet: the transcript waits until the user's dictation is finished.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pausiert, während du diktierst"
           }
         }
       }
@@ -13304,6 +13614,28 @@
         }
       }
     },
+    "Play" : {
+      "comment" : "EnviousMeet: plays the meeting recording.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abspielen"
+          }
+        }
+      }
+    },
+    "Play from here" : {
+      "comment" : "EnviousMeet transcript: plays the recording from this turn's start.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ab hier abspielen"
+          }
+        }
+      }
+    },
     "Play recording chimes" : {
       "comment" : "Chimes settings: switch that plays a short sound when recording starts and stops.",
       "localizations" : {
@@ -13421,6 +13753,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Portugiesisch"
+          }
+        }
+      }
+    },
+    "Position" : {
+      "comment" : "EnviousMeet: the playback scrubber.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Position"
           }
         }
       }
@@ -13777,6 +14120,17 @@
         }
       }
     },
+    "Putting it together" : {
+      "comment" : "EnviousMeet: the last step, joining the words and the speakers.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkript und Sprecher werden zusammengeführt"
+          }
+        }
+      }
+    },
     "Quick Add" : {
       "comment" : "Clipboard settings: section heading for Quick Add, shown in capitals.\nYour Words: a tab in the side rail, the feature that adds a selected word from any app.",
       "localizations" : {
@@ -14000,7 +14354,7 @@
       }
     },
     "Ready" : {
-      "comment" : "Settings: the selected preview engine can run for the current language.\nTranscribe a File, Polish step: the line under an engine's name.",
+      "comment" : "EnviousMeet list: status of a meeting.\nSettings: the selected preview engine can run for the current language.\nTranscribe a File, Polish step: the line under an engine's name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -14160,8 +14514,19 @@
         }
       }
     },
+    "Record a meeting on your Mac and get a transcript with who said what." : {
+      "comment" : "EnviousMeet page: the line under the title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nimm ein Meeting auf deinem Mac auf und erhalte ein Transkript, das zeigt, wer was gesagt hat."
+          }
+        }
+      }
+    },
     "Recording" : {
-      "comment" : "Toolbar badge and sidebar status while recording.",
+      "comment" : "EnviousMeet list: status of a meeting.\nToolbar badge and sidebar status while recording.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -14178,6 +14543,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aufnahmeanzeige"
+          }
+        }
+      }
+    },
+    "Recording a meeting" : {
+      "comment" : "Window toolbar: EnviousMeet is recording a meeting.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meeting wird aufgenommen"
           }
         }
       }
@@ -14200,6 +14576,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aufnahme abgeschlossen"
+          }
+        }
+      }
+    },
+    "Recording for %@" : {
+      "comment" : "EnviousMeet, VoiceOver: how long the meeting has been recording.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahme läuft seit %@"
           }
         }
       }
@@ -14268,6 +14655,39 @@
         }
       }
     },
+    "Recording stopped because a file could not be saved." : {
+      "comment" : "EnviousMeet: the recording was ended by a file error.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Aufnahme wurde beendet, weil eine Datei nicht gespeichert werden konnte."
+          }
+        }
+      }
+    },
+    "Recording stopped: your Mac is almost out of space." : {
+      "comment" : "EnviousMeet: the recording was ended because the disk is nearly full.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Aufnahme wurde beendet: Dein Mac hat fast keinen Speicherplatz mehr."
+          }
+        }
+      }
+    },
+    "Recording the call sound." : {
+      "comment" : "EnviousMeet, while recording: the sound the Mac plays is being recorded.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Ton vom Mac wird aufgenommen."
+          }
+        }
+      }
+    },
     "Recording · %@" : {
       "localizations" : {
         "de" : {
@@ -14285,6 +14705,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Erfassung läuft, drücke eine Tastenkombination"
+          }
+        }
+      }
+    },
+    "Records what your Mac plays, like the other people on a call." : {
+      "comment" : "EnviousMeet page: the short line under Also record the call sound.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nimmt auf, was dein Mac abspielt, zum Beispiel die Stimmen anderer Personen bei einem Anruf."
           }
         }
       }
@@ -14518,6 +14949,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Modell wird entfernt..."
+          }
+        }
+      }
+    },
+    "Rename" : {
+      "comment" : "EnviousMeet: saves the meeting's new name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Umbenennen"
           }
         }
       }
@@ -14911,7 +15353,7 @@
       }
     },
     "Save" : {
-      "comment" : "AI Polish: button that saves the API key.",
+      "comment" : "AI Polish: button that saves the API key.\nEnviousMeet: saves the visible transcript as text.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -15006,6 +15448,17 @@
         }
       }
     },
+    "Saved by a newer version of EnviousWispr. Update the app to open it." : {
+      "comment" : "EnviousMeet list: a meeting this version cannot read.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Von einer neueren Version von EnviousWispr gespeichert. Aktualisiere die App, um es zu öffnen."
+          }
+        }
+      }
+    },
     "Saved to %@." : {
       "comment" : "Transcribe a File: the transcript was saved. %@ is the file name.",
       "localizations" : {
@@ -15051,12 +15504,34 @@
       }
     },
     "Saving" : {
-      "comment" : "Snippets, import snippets: sheet title while saving.\nYour Words, import words: sheet title, working.",
+      "comment" : "EnviousMeet list: the recording is being closed.\nSnippets, import snippets: sheet title while saving.\nYour Words, import words: sheet title, working.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wird gespeichert"
+          }
+        }
+      }
+    },
+    "Saving Meeting Recording" : {
+      "comment" : "Menu bar menu: the meeting recording is being saved (not clickable).",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meeting-Aufnahme wird gespeichert"
+          }
+        }
+      }
+    },
+    "Saving the recording" : {
+      "comment" : "EnviousMeet: the meeting recording is being closed and saved.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahme wird gespeichert"
           }
         }
       }
@@ -15800,6 +16275,17 @@
         }
       }
     },
+    "Show probable echo" : {
+      "comment" : "History, a meeting: shows the lines hidden because they repeat the call sound picked up by the microphone.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wahrscheinliches Echo anzeigen"
+          }
+        }
+      }
+    },
     "Show the Bluetooth reminder once per launch." : {
       "comment" : "Microphone settings, Bluetooth guide: short line under Show Bluetooth tips.",
       "localizations" : {
@@ -16354,6 +16840,17 @@
         }
       }
     },
+    "Start Meeting Recording" : {
+      "comment" : "Menu bar menu: starts recording a meeting with EnviousMeet.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meeting-Aufnahme starten"
+          }
+        }
+      }
+    },
     "Start Ollama" : {
       "comment" : "AI Polish, Ollama setup: the current step.",
       "localizations" : {
@@ -16377,7 +16874,7 @@
       }
     },
     "Start Recording" : {
-      "comment" : "Menu bar menu: starts a dictation.",
+      "comment" : "EnviousMeet page: the button that starts a meeting recording.\nMenu bar menu: starts a dictation.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -16452,6 +16949,17 @@
         }
       }
     },
+    "Starting Meeting Recording" : {
+      "comment" : "Menu bar menu: a meeting recording is starting (not clickable).",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meeting-Aufnahme wird gestartet"
+          }
+        }
+      }
+    },
     "Starting download..." : {
       "comment" : "AI Polish, Ollama setup: a model download is starting.\nSpeech engine settings, Whisper model: download status line.",
       "localizations" : {
@@ -16470,6 +16978,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Modell wird gestartet. Das dauert einige Sekunden."
+          }
+        }
+      }
+    },
+    "Starting the recording" : {
+      "comment" : "EnviousMeet: a meeting recording is starting.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahme wird gestartet"
           }
         }
       }
@@ -16545,8 +17064,19 @@
         }
       }
     },
+    "Stop Meeting Recording (%@)" : {
+      "comment" : "Menu bar menu: stops the meeting recording; the value is how long it ran.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meeting-Aufnahme beenden (%@)"
+          }
+        }
+      }
+    },
     "Stop Recording" : {
-      "comment" : "Menu bar menu: stops the dictation in progress.",
+      "comment" : "EnviousMeet: the button that stops the meeting recording.\nMenu bar menu: stops the dictation in progress.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -17443,6 +17973,50 @@
         }
       }
     },
+    "The audio size could not be read." : {
+      "comment" : "EnviousMeet detail: the recording's folder could not be measured.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Größe der Audioaufnahme konnte nicht ermittelt werden."
+          }
+        }
+      }
+    },
+    "The audio was deleted before it was transcribed." : {
+      "comment" : "EnviousMeet detail: why a meeting has no transcript.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Audioaufnahme wurde gelöscht, bevor sie transkribiert wurde."
+          }
+        }
+      }
+    },
+    "The audio was deleted. The transcript is kept." : {
+      "comment" : "EnviousMeet detail: after Delete audio.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Audioaufnahme wurde gelöscht. Das Transkript bleibt erhalten."
+          }
+        }
+      }
+    },
+    "The call sound could not be recorded. Only your microphone is recorded. EnviousWispr needs to be allowed under Screen & System Audio Recording in System Settings." : {
+      "comment" : "EnviousMeet: recording the sound the Mac plays did not work. The last sentence names the macOS privacy setting.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Ton vom Mac konnte nicht aufgenommen werden. Nur dein Mikrofon wird aufgenommen. EnviousWispr muss in den Systemeinstellungen unter „Datenschutz & Sicherheit“ bei „Bildschirm- und Systemaudioaufnahme“ erlaubt sein."
+          }
+        }
+      }
+    },
     "The cancel keybind (%@) isn't working while you're recording. macOS says this key combination is already taken. Choose another." : {
       "comment" : "Keybinds settings: an external conflict warning. %@ is a key combination, such as Right ⌘.",
       "localizations" : {
@@ -17728,6 +18302,17 @@
         }
       }
     },
+    "The microphone could not start. Check your microphone and try again." : {
+      "comment" : "EnviousMeet: the microphone did not start.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Mikrofon konnte nicht aktiviert werden. Prüfe dein Mikrofon und versuche es erneut."
+          }
+        }
+      }
+    },
     "The model could not be removed. Please try again." : {
       "localizations" : {
         "de" : {
@@ -17847,6 +18432,17 @@
         }
       }
     },
+    "The recording can't be played. Its audio may have been deleted or damaged." : {
+      "comment" : "EnviousMeet detail: playback could not read the meeting's audio.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Audioaufnahme kann nicht abgespielt werden. Sie wurde möglicherweise gelöscht oder ist beschädigt."
+          }
+        }
+      }
+    },
     "The recording keybind (%@) isn't working. macOS says this key combination is already taken. Choose another." : {
       "comment" : "Keybinds settings: an external conflict warning. %@ is a key combination, such as Right ⌘.",
       "localizations" : {
@@ -17920,6 +18516,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der Text für %1$@ ist länger als %2$@ Zeichen. Es wurde nichts importiert."
+          }
+        }
+      }
+    },
+    "The transcript could not be made. Transcribe again to try once more." : {
+      "comment" : "EnviousMeet detail: why a meeting has no transcript, with what to do.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Transkript konnte nicht erstellt werden. Versuche es mit „Erneut transkribieren“ noch einmal."
+          }
+        }
+      }
+    },
+    "The transcript could not be saved" : {
+      "comment" : "EnviousMeet: Save failed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Transkript konnte nicht gespeichert werden"
           }
         }
       }
@@ -18320,6 +18938,17 @@
         }
       }
     },
+    "This meeting isn't available right now." : {
+      "comment" : "History: a meeting row whose meeting details have not loaded or were removed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Meeting ist gerade nicht verfügbar."
+          }
+        }
+      }
+    },
     "This model did not pass any of our cleanup tests." : {
       "localizations" : {
         "de" : {
@@ -18653,6 +19282,17 @@
         }
       }
     },
+    "Transcribe again" : {
+      "comment" : "EnviousMeet: makes the meeting's transcript again from its kept audio.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erneut transkribieren"
+          }
+        }
+      }
+    },
     "Transcribe time" : {
       "comment" : "Speech engine settings, engine card: a row label in the card's spec table.",
       "localizations" : {
@@ -18698,7 +19338,7 @@
       }
     },
     "Transcribing" : {
-      "comment" : "Sidebar status chip while speech is turned into text. Very short space, no ellipsis.\nTranscribe a File, Working step: the transcribing row, before its minutes are known.",
+      "comment" : "EnviousMeet list: status of a meeting.\nSidebar status chip while speech is turned into text. Very short space, no ellipsis.\nTranscribe a File, Working step: the transcribing row, before its minutes are known.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -18802,7 +19442,7 @@
       }
     },
     "Transcripts" : {
-      "comment" : "History filter: rows made with Transcribe a File.",
+      "comment" : "History filter: rows made with Transcribe a File, and recorded meetings.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -19392,12 +20032,12 @@
         }
       }
     },
-    "Use Transcribe a File to add one." : {
+    "Use Transcribe a File, or record a meeting, to add one." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Füge mit „Datei transkribieren“ eine hinzu."
+            "value" : "Nutze „Datei transkribieren“ oder nimm ein Meeting auf, um eines hinzuzufügen."
           }
         }
       }
@@ -19731,6 +20371,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wortschatzpakete"
+          }
+        }
+      }
+    },
+    "Waiting" : {
+      "comment" : "EnviousMeet list: the meeting waits for its turn to be transcribed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wartet"
           }
         }
       }
@@ -20205,6 +20856,17 @@
         }
       }
     },
+    "With headphones, your microphone hears only you, and the call comes from the sound your Mac plays. Without headphones, your microphone also hears the call; EnviousMeet hides those repeated lines as probable echo. The choice applies to the next meeting you start." : {
+      "comment" : "EnviousMeet page: help for Also record the call sound.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mit Kopfhörern nimmt dein Mikrofon nur dich auf. Die anderen Gesprächsteilnehmer werden über den Ton aufgenommen, den dein Mac abspielt. Ohne Kopfhörer nimmt dein Mikrofon auch sie auf. EnviousMeet blendet diese doppelten Zeilen als wahrscheinliches Echo aus. Die Einstellung gilt für das nächste Meeting, das du startest."
+          }
+        }
+      }
+    },
     "With this on, EnviousWispr transcribes overlapping chunks of audio while you talk and joins them together. When two chunks disagree about the same moment of speech, nothing can tell which reading was right. The longer you talk, the more joins there are, so the problem grows with length." : {
       "comment" : "Speech engine settings, Faster Transcription: help panel: explanation.",
       "localizations" : {
@@ -20367,6 +21029,17 @@
         }
       }
     },
+    "Works with any headphones. Nothing leaves your Mac." : {
+      "comment" : "EnviousMeet page: under the recorder. Audio and transcripts stay on the Mac.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Funktioniert mit allen Kopfhörern. Nichts verlässt deinen Mac."
+          }
+        }
+      }
+    },
     "Works without internet." : {
       "comment" : "Welcome screen feature line under Offline-Ready.",
       "localizations" : {
@@ -20385,6 +21058,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Schreibt auf, was gesagt wurde."
+          }
+        }
+      }
+    },
+    "Writing the transcript" : {
+      "comment" : "EnviousMeet: the meeting is being turned into words.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Transkript wird erstellt"
           }
         }
       }
@@ -20417,6 +21101,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Yoruba"
+          }
+        }
+      }
+    },
+    "You" : {
+      "comment" : "EnviousMeet: the microphone level meter's label.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du"
           }
         }
       }
@@ -20472,6 +21167,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Du kannst weiter diktieren, während %@ heruntergeladen wird."
+          }
+        }
+      }
+    },
+    "You can keep dictating while EnviousMeet records." : {
+      "comment" : "EnviousMeet: while a meeting records.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du kannst weiter diktieren, während EnviousMeet aufnimmt."
           }
         }
       }
@@ -20610,6 +21316,17 @@
         }
       }
     },
+    "Your Mac is almost out of space. Free up space to record a meeting." : {
+      "comment" : "EnviousMeet: not enough disk space to start.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein Mac hat fast keinen Speicherplatz mehr. Gib Speicherplatz frei, um ein Meeting aufzunehmen."
+          }
+        }
+      }
+    },
     "Your Voice, Instantly Captured." : {
       "localizations" : {
         "de" : {
@@ -20741,12 +21458,12 @@
         }
       }
     },
-    "Your dictations and transcripts will appear here." : {
+    "Your dictations, transcripts and meetings will appear here." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Deine Diktate und Transkripte erscheinen hier."
+            "value" : "Deine Diktate, Transkripte und Meetings erscheinen hier."
           }
         }
       }
@@ -20801,6 +21518,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dein Schlüsselwort muss aus einem einzigen Wort bestehen. Wähle eines, das du nicht versehentlich sagst."
+          }
+        }
+      }
+    },
+    "Your meetings appear here after you stop a recording." : {
+      "comment" : "EnviousMeet: the meeting list before any meeting was recorded.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Meetings erscheinen hier, nachdem du eine Aufnahme beendet hast."
           }
         }
       }
@@ -21162,6 +21890,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Deine Wortliste ist zu groß für eine einzelne Datei, die EnviousWispr wieder einlesen könnte. Es wurde nichts exportiert."
+          }
+        }
+      }
+    },
+    "[Could not transcribe %@ to %@]" : {
+      "comment" : "EnviousMeet transcript: a stretch of the meeting that could not be turned into words. The two values are times in the meeting, like 1:00 and 1:30. Keep the square brackets.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "[Could not transcribe %1$@ to %2$@]"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "[Der Abschnitt von %1$@ bis %2$@ konnte nicht transkribiert werden]"
+          }
+        }
+      }
+    },
+    "[Could not transcribe from %@]" : {
+      "comment" : "EnviousMeet transcript: the meeting could not be turned into words from this time on (the end is not known). The value is a time in the meeting, like 2:00. Keep the square brackets.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "[Der Abschnitt ab %@ konnte nicht transkribiert werden]"
           }
         }
       }
@@ -22833,6 +23589,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "macOS verwendet die Globus-Taste möglicherweise bereits zum Wechseln der Tastatursprache, zum Öffnen der Emoji-Auswahl oder für die eigene Diktierfunktion. Falls das beim Diktieren passiert, kannst du diese Aktion ausschalten:"
+          }
+        }
+      }
+    },
+    "macOS will ask to let EnviousWispr record the sound your Mac plays. Only the sound is recorded, never your screen." : {
+      "comment" : "EnviousMeet: shown once before the first meeting that records the call sound, before the macOS permission prompt.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS fragt, ob EnviousWispr den Ton aufnehmen darf, den dein Mac abspielt. Nur der Ton wird aufgenommen, niemals dein Bildschirm."
           }
         }
       }

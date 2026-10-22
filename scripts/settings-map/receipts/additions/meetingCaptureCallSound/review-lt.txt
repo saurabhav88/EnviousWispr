@@ -1,0 +1,1 @@
+{"language":"lt","title":"įrašyti ir skambučio garsą","words":["sistemos garsas","kompiuterio garsas"],"phrases":["įrašyti Mac leidžiamą garsą","įrašyti kitų pokalbio dalyvių balsus"]}

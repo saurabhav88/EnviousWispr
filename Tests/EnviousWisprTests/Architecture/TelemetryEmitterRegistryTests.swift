@@ -206,8 +206,11 @@ struct TelemetryEmitterRegistryTests {
   /// #3292: one rare_failure feedback.report_refused site, keep whole; status/count and
   /// closed kind/size only, no take key or content. Reader: founder release review, then on request;
   /// metrics-off observations are absent, duplicates/losses prevent unique-report/rate claims.
+  /// #3972 R11: one per_user_action meeting.ended site (`trackMeetingEnded`), keep whole; one
+  /// row per meeting attempt at its terminal, shape only (outcome, buckets, track statuses,
+  /// counts, RTF). Reader: founder adoption and quality query at the first release review.
   static let sitesFingerprint =
-    "19afaea9417fe8c9dc92e189cd39f795e4a114f349dfc766754f5f49576bd82c"
+    "2f36c6f9ae2397dfa2c12485c8245f89205aff4361367b5dc9a0e5efb5118fd2"
   static let ungradedFingerprint =
     "8c5e46c2f2f7fb59004bb2eb5ea1ac210ef32dbb79fdcb68b3eff70a28cc133f"
 

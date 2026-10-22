@@ -83,7 +83,23 @@ final class MenuBarController: NSObject {
     sparkleUpdateController.updateCoordinator?.onAvailabilityChange = { [weak self] in
       self?.updateIcon()
     }
+    observeMeetingPhase()
     updateIcon()
+  }
+
+  /// #3972: the icon follows a meeting starting, recording and stopping, with no window or
+  /// menu open. `meetingPhase` reads `MeetingCoordinator.phase`, which is observable; the
+  /// tracking is one-shot, so each change re-arms it.
+  private func observeMeetingPhase() {
+    withObservationTracking {
+      _ = actions.meetingPhase()
+    } onChange: { [weak self] in
+      Task { @MainActor in
+        guard let self else { return }
+        self.updateIcon()
+        self.observeMeetingPhase()
+      }
+    }
   }
 
   // MARK: - Icon
@@ -127,6 +143,10 @@ final class MenuBarController: NSObject {
       || state.pipelineState == .loadingModel
     {
       return .processing
+    } else if state.meetingCapturing {
+      // #3972 §3.8: a meeting recording shows the recording icon, below every dictation state
+      // and warning, and above the update cue.
+      return .recording
     } else {
       // #1019: idle-with-update variant. Chosen ONLY here, after onboarding /
       // warning / error / recording / processing — so the update cue never
@@ -468,6 +488,22 @@ final class MenuBarController: NSObject {
     transcribeFileItem.target = self
     transcribeFileItem.identifier = MenuBarItemID.transcribeFile
     menu.addItem(transcribeFileItem)
+
+    // #3972 §3.8: Start or Stop a meeting, after Transcribe a File. The click reads the
+    // meeting's phase again (`meetingAction`), so a menu left open never acts on a stale title.
+    if let meeting = state.meetingItem {
+      let meetingItem = NSMenuItem(
+        title: meeting.title, action: #selector(meetingAction), keyEquivalent: "")
+      meetingItem.image = NSImage(
+        systemSymbolName: meeting.action == .stop ? "stop.circle" : "person.2.wave.2",
+        accessibilityDescription: String(
+          localized: "EnviousMeet",
+          comment: "Menu bar menu, VoiceOver: the icon beside the meeting recording item."))
+      meetingItem.target = self
+      meetingItem.identifier = MenuBarItemID.meeting
+      meetingItem.isEnabled = meeting.isEnabled
+      menu.addItem(meetingItem)
+    }
 
     // Auto-stop on silence indicator
     if state.vadAutoStop {
@@ -813,7 +849,9 @@ final class MenuBarController: NSObject {
           target: lastDictationTarget)
       },
       microphoneChoices: actions.microphoneChoices(),
-      microphoneSelection: settings.preferredInputDeviceIDOverride
+      microphoneSelection: settings.preferredInputDeviceIDOverride,
+      meetingItem: actions.meetingPhase().map { MeetingsPresentation.menuItem($0, now: Date()) },
+      meetingCapturing: actions.meetingPhase().map { $0 != .idle } ?? false
     )
   }
 
@@ -873,6 +911,16 @@ final class MenuBarController: NSObject {
 
   @objc private func openTranscribeFileAction() {
     actions.openTranscribeFile()
+  }
+
+  /// #3972: Start (through the shared Start flow) or Stop, decided by the phase NOW.
+  @objc private func meetingAction() {
+    guard let phase = actions.meetingPhase() else { return }
+    switch MeetingsPresentation.menuItem(phase, now: Date()).action {
+    case .start: Task { await actions.requestMeetingStart() }
+    case .stop: Task { await actions.stopMeeting() }
+    case .none: return
+    }
   }
 
   /// #3438: the AI polish setup line opens Settings on AI Polish, reporting what the line
@@ -1018,6 +1066,11 @@ struct MenuBarActions: Sendable {
   let polishSetupWarning: @MainActor () -> PolishSetupPromptSubject?
   let openAIPolish: @MainActor (PolishSetupPromptSubject) -> Void
   let toggleRecording: @MainActor () async -> Void
+  /// #3972: EnviousMeet's phase now, or nil before it exists.
+  let meetingPhase: @MainActor () -> MeetingCoordinator.Phase?
+  /// #3972: a Start from the menu, through `MeetingStartFlow` (which may open the page first).
+  let requestMeetingStart: @MainActor () async -> Void
+  let stopMeeting: @MainActor () async -> Void
   let quit: @MainActor () -> Void
   /// The newest reusable dictation, for the Paste Last row (#3106). A snapshot for rendering.
   let lastDictation: @MainActor () -> (id: UUID, text: String)?
@@ -1162,6 +1215,10 @@ struct MenuBarViewState: Equatable {
   /// #3454: the saved choice (`preferredInputDeviceIDOverride`), "" for Auto; it decides the
   /// checkmark, as it does in Settings.
   var microphoneSelection: String = ""
+  /// #3972: the meeting item, or nil when EnviousMeet is not there yet.
+  var meetingItem: MeetingsPresentation.MenuItem? = nil
+  /// #3972: a meeting is starting, recording or stopping; read by `iconState`.
+  var meetingCapturing: Bool = false
 }
 
 /// One input in the Microphone submenu (#3454): its UID and its Settings dropdown title.

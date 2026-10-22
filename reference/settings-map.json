@@ -1,14 +1,14 @@
 {
   "counts" : {
-    "nodes" : 274,
-    "searchable" : 248,
-    "vocabularyBlocks" : 7936
+    "nodes" : 277,
+    "searchable" : 250,
+    "vocabularyBlocks" : 8000
   },
   "fingerprints" : {
-    "mapSHA256" : "d8b02c8de371128245fcdc6dc9e77c72505137a92d5ee3c4e779c61550e11b2b",
-    "uiCatalogSHA256" : "b18169ed46f14a2f525da8dddb21a496ecd4dae03cf5594f351a543076054eb5",
+    "mapSHA256" : "7d1ec5f787c9ad8e187ef34d957db8f1adf513709ad6cb38b42e5e229a776f74",
+    "uiCatalogSHA256" : "3232eafa0bcf9421eb1eb23aedac3e537ea80c556eec51bd181c922866b1cecb",
     "vocabularyCanonicalization" : "length-prefixed-v1",
-    "vocabularySHA256" : "aa8b845eb26c62d9a4107c047fe7eeb0f018191a68dd8806c2cd0bf6d1618343"
+    "vocabularySHA256" : "1c180aed42a45d4991b138e7c48f4da1cab47f349f574a077da25fda8bfcbfa6"
   },
   "interfaceLanguages" : [
     "en",
@@ -7143,6 +7143,35 @@
         "de" : "Tastenkürzel",
         "en" : "Keybinds",
         "key" : "Keybinds",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "always"
+    },
+    {
+      "context" : [
+        "window.settings"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : null,
+      "destination" : {
+        "page" : "meetings"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "page.meetings",
+      "kind" : null,
+      "parent" : "window.settings",
+      "searchable" : false,
+      "structure" : "page",
+      "target" : null,
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "EnviousMeet",
+        "en" : "EnviousMeet",
+        "key" : "EnviousMeet",
         "source" : "resource",
         "table" : "Localizable"
       },
@@ -36853,6 +36882,726 @@
             "文件转写进度",
             "转写步骤",
             "处理阶段"
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.meetings"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Nimm ein Meeting auf deinem Mac auf und erhalte ein Transkript, das zeigt, wer was gesagt hat.",
+        "en" : "Record a meeting on your Mac and get a transcript with who said what.",
+        "key" : "Record a meeting on your Mac and get a transcript with who said what.",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "destination" : {
+        "page" : "meetings"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "meetings.recorder",
+      "kind" : "action",
+      "parent" : "page.meetings",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "meetings.recorder",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Aufnahme starten",
+        "en" : "Start Recording",
+        "key" : "Start Recording",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "تسجيل اجتماع"
+          ],
+          "title" : "بدء التسجيل",
+          "words" : [
+
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "запиши среща"
+          ],
+          "title" : "стартиране на запис",
+          "words" : [
+
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "nahrát schůzku"
+          ],
+          "title" : "spustit nahrávání",
+          "words" : [
+
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "optag et møde"
+          ],
+          "title" : "start optagelse",
+          "words" : [
+
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "nimm ein Meeting auf"
+          ],
+          "words" : [
+            "Meetingaufnahme"
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "ηχογράφηση συνάντησης"
+          ],
+          "title" : "έναρξη εγγραφής",
+          "words" : [
+
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "record a meeting"
+          ],
+          "words" : [
+            "meeting recorder"
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "grabar una reunión"
+          ],
+          "title" : "iniciar grabación",
+          "words" : [
+
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "salvesta koosolek"
+          ],
+          "title" : "alusta salvestamist",
+          "words" : [
+
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "nauhoita kokous"
+          ],
+          "title" : "aloita tallennus",
+          "words" : [
+
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "enregistrer une réunion"
+          ],
+          "title" : "démarrer l’enregistrement",
+          "words" : [
+
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "मीटिंग रिकॉर्ड करें"
+          ],
+          "title" : "रिकॉर्डिंग शुरू करें",
+          "words" : [
+
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "snimi sastanak"
+          ],
+          "title" : "pokreni snimanje",
+          "words" : [
+
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "megbeszélés rögzítése"
+          ],
+          "title" : "felvétel indítása",
+          "words" : [
+
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "registrare una riunione"
+          ],
+          "title" : "avvia registrazione",
+          "words" : [
+
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "会議を録音する"
+          ],
+          "title" : "録音を開始",
+          "words" : [
+
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "회의 녹음하기"
+          ],
+          "title" : "녹음 시작",
+          "words" : [
+
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "įrašyti susitikimą"
+          ],
+          "title" : "pradėti įrašymą",
+          "words" : [
+
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "ierakstīt sapulci"
+          ],
+          "title" : "sākt ierakstīšanu",
+          "words" : [
+
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "irrekordja laqgħa"
+          ],
+          "title" : "ibda r-reġistrazzjoni",
+          "words" : [
+
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "een vergadering opnemen"
+          ],
+          "title" : "opname starten",
+          "words" : [
+
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "nagraj spotkanie"
+          ],
+          "title" : "rozpocznij nagrywanie",
+          "words" : [
+
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "gravar uma reunião"
+          ],
+          "title" : "iniciar gravação",
+          "words" : [
+
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "înregistrează o ședință"
+          ],
+          "title" : "pornește înregistrarea",
+          "words" : [
+
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "записать встречу"
+          ],
+          "title" : "начать запись",
+          "words" : [
+
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "nahrať stretnutie"
+          ],
+          "title" : "spustiť nahrávanie",
+          "words" : [
+
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "posnemi sestanek"
+          ],
+          "title" : "začni snemanje",
+          "words" : [
+
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "spela in ett möte"
+          ],
+          "title" : "starta inspelning",
+          "words" : [
+
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "toplantıyı kaydet"
+          ],
+          "title" : "kaydı başlat",
+          "words" : [
+
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "записати зустріч"
+          ],
+          "title" : "почати запис",
+          "words" : [
+
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "ghi âm cuộc họp"
+          ],
+          "title" : "bắt đầu ghi âm",
+          "words" : [
+
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "录制会议"
+          ],
+          "title" : "开始录音",
+          "words" : [
+
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.meetings"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Nimmt auf, was dein Mac abspielt, zum Beispiel die Stimmen anderer Personen bei einem Anruf.",
+        "en" : "Records what your Mac plays, like the other people on a call.",
+        "key" : "Records what your Mac plays, like the other people on a call.",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "destination" : {
+        "page" : "meetings"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "meetingCaptureCallSound",
+      "kind" : "setting",
+      "parent" : "page.meetings",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "meetingCaptureCallSound",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Auch den Ton vom Mac aufnehmen",
+        "en" : "Also record the call sound",
+        "key" : "Also record the call sound",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "تسجيل الصوت الذي يشغله Mac",
+            "تسجيل أصوات الآخرين في المكالمة"
+          ],
+          "title" : "تسجيل صوت المكالمة أيضًا",
+          "words" : [
+            "صوت النظام",
+            "صوت الكمبيوتر"
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "запис на звука от Mac",
+            "записвай гласовете на другите участници"
+          ],
+          "title" : "записвай и звука от разговора",
+          "words" : [
+            "системен звук",
+            "звук от Mac"
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "nahrávat zvuk, který přehrává Mac",
+            "nahrávat hlasy ostatních v hovoru"
+          ],
+          "title" : "nahrávat i zvuk hovoru",
+          "words" : [
+            "systémový zvuk",
+            "zvuk počítače"
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "optag lyden fra min Mac",
+            "optag de andre i opkaldet"
+          ],
+          "title" : "optag også lyden fra opkaldet",
+          "words" : [
+            "systemlyd",
+            "computerlyd"
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "nimm den Ton vom Mac mit auf",
+            "nimm die anderen im Anruf mit auf",
+            "zeichne den Systemton auf"
+          ],
+          "words" : [
+            "Systemaudio",
+            "Systemton",
+            "Computerton",
+            "Gesprächspartner"
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "να γράφει τον ήχο από το Mac",
+            "καταγραφή των φωνών των άλλων στην κλήση"
+          ],
+          "title" : "εγγραφή και του ήχου της κλήσης",
+          "words" : [
+            "ήχος συστήματος",
+            "ήχος υπολογιστή"
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "record what my Mac plays",
+            "capture the other people on the call"
+          ],
+          "words" : [
+            "system audio",
+            "computer audio",
+            "other participants"
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "grabar lo que suena en el Mac",
+            "grabar las voces de los demás en la llamada"
+          ],
+          "title" : "grabar también el audio de la llamada",
+          "words" : [
+            "sonido del sistema",
+            "audio del ordenador",
+            "audio de la computadora"
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "salvesta koosolekul ka arvuti heli",
+            "salvesta kõne teiste osalejate hääled"
+          ],
+          "title" : "salvesta ka arvuti heli",
+          "words" : [
+            "süsteemiheli",
+            "arvuti heli"
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "tallenna Macin toistama ääni",
+            "tallenna muiden puhe puhelussa"
+          ],
+          "title" : "tallenna myös puhelun ääni",
+          "words" : [
+            "järjestelmä-äänet",
+            "tietokoneen äänet"
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "enregistrer le son du Mac",
+            "enregistrer la voix des autres pendant l’appel"
+          ],
+          "title" : "enregistrer aussi le son de l’appel",
+          "words" : [
+            "audio système",
+            "son de l’ordinateur"
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "Mac पर चल रही आवाज़ रिकॉर्ड करना",
+            "कॉल में दूसरे लोगों की आवाज़ रिकॉर्ड करना"
+          ],
+          "title" : "कॉल की आवाज़ भी रिकॉर्ड करें",
+          "words" : [
+            "सिस्टम ऑडियो",
+            "कंप्यूटर की आवाज़"
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "snimaj zvuk koji Mac reproducira",
+            "snimaj glasove drugih u pozivu"
+          ],
+          "title" : "snimaj i zvuk poziva",
+          "words" : [
+            "zvuk sustava",
+            "zvuk računala"
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "a Mac által lejátszott hang felvétele",
+            "a többiek hangjának rögzítése hívás közben"
+          ],
+          "title" : "a hívás hangjának rögzítése is",
+          "words" : [
+            "rendszerhang",
+            "számítógép hangja"
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "registrare il suono del Mac",
+            "registrare le voci degli altri nella chiamata"
+          ],
+          "title" : "registra anche l’audio della chiamata",
+          "words" : [
+            "audio di sistema",
+            "suono del computer"
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "Macで流れる音を録音したい",
+            "通話相手の声も録音したい"
+          ],
+          "title" : "通話の音声も録音",
+          "words" : [
+            "システム音声",
+            "パソコンの音"
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "Mac에서 재생되는 소리 녹음",
+            "통화 상대방 목소리도 녹음하기"
+          ],
+          "title" : "통화 소리도 녹음",
+          "words" : [
+            "시스템 오디오",
+            "컴퓨터 소리"
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "įrašyti Mac leidžiamą garsą",
+            "įrašyti kitų pokalbio dalyvių balsus"
+          ],
+          "title" : "įrašyti ir skambučio garsą",
+          "words" : [
+            "sistemos garsas",
+            "kompiuterio garsas"
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "ierakstīt Mac atskaņoto skaņu",
+            "ierakstīt citu sarunas dalībnieku balsis"
+          ],
+          "title" : "ierakstīt arī zvana skaņu",
+          "words" : [
+            "sistēmas audio",
+            "datora skaņa"
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "irreġistra l-ħoss tal-Mac waqt laqgħa",
+            "irreġistra l-vuċijiet tal-oħrajn fis-sejħa"
+          ],
+          "title" : "irreġistra wkoll il-ħoss tas-sejħa",
+          "words" : [
+            "awdjo tas-sistema",
+            "ħoss tal-Mac"
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "geluid van mijn Mac opnemen",
+            "de stemmen van anderen in het gesprek opnemen"
+          ],
+          "title" : "ook het gespreksgeluid opnemen",
+          "words" : [
+            "systeemaudio",
+            "computergeluid"
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "nagrywaj dźwięk odtwarzany przez komputer Mac",
+            "nagrywaj głosy innych osób w rozmowie"
+          ],
+          "title" : "nagrywaj też dźwięk rozmowy",
+          "words" : [
+            "dźwięk systemowy",
+            "audio z komputera"
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "gravar o som do Mac",
+            "gravar as vozes das outras pessoas na chamada"
+          ],
+          "title" : "gravar também o áudio da chamada",
+          "words" : [
+            "som do sistema",
+            "som do computador"
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "înregistrează ce se aude pe Mac",
+            "înregistrează vocile celorlalți din apel"
+          ],
+          "title" : "înregistrează și sunetul apelului",
+          "words" : [
+            "audio de sistem",
+            "sunetul calculatorului"
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "записывать звук с Mac",
+            "записывать голоса собеседников"
+          ],
+          "title" : "также записывать звук звонка",
+          "words" : [
+            "системный звук",
+            "звук компьютера"
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "nahrávať systémový zvuk v EnviousMeet",
+            "zaznamenať hlasy ostatných v hovore"
+          ],
+          "title" : "nahrávať aj zvuk hovoru",
+          "words" : [
+            "systémový zvuk",
+            "zvuk počítača"
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "snemaj zvok, ki ga predvaja Mac",
+            "snemaj glasove drugih v klicu"
+          ],
+          "title" : "snemaj tudi zvok klica",
+          "words" : [
+            "sistemski zvok",
+            "zvok računalnika"
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "spela in ljudet från min Mac",
+            "spela in de andras röster i samtalet"
+          ],
+          "title" : "spela även in samtalsljudet",
+          "words" : [
+            "systemljud",
+            "datorljud"
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "Mac'te çalan sesi kaydet",
+            "görüşmedeki diğer kişilerin sesini kaydet"
+          ],
+          "title" : "görüşme sesini de kaydet",
+          "words" : [
+            "sistem sesi",
+            "bilgisayar sesi"
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "записувати звук із Mac",
+            "записувати голоси співрозмовників"
+          ],
+          "title" : "записувати також звук дзвінка",
+          "words" : [
+            "системний звук",
+            "звук комп’ютера"
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "ghi âm thanh đang phát trên Mac",
+            "ghi giọng của người khác trong cuộc gọi"
+          ],
+          "title" : "ghi cả âm thanh cuộc gọi",
+          "words" : [
+            "âm thanh hệ thống",
+            "tiếng máy tính"
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "录下 Mac 播放的声音",
+            "把通话对方的声音也录下来"
+          ],
+          "title" : "同时录制通话声音",
+          "words" : [
+            "系统音频",
+            "电脑声音",
+            "内录"
           ]
         }
       }

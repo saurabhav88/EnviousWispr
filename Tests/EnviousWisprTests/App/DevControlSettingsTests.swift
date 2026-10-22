@@ -76,10 +76,10 @@
 
     // MARK: - Catalog
 
-    @Test("the table lists exactly the 70 declared keys, once each, in four kinds")
+    @Test("the table lists exactly the 72 declared keys, once each, in four kinds")
     func catalogMatchesDeclaration() throws {
       let declared = try Self.declaredKeyNames()
-      #expect(declared.count == 70)
+      #expect(declared.count == 72)
       #expect(Set(declared).count == declared.count)
       let listed = DevControlSettings.allKeys.map(DevControlSettings.name)
       #expect(listed == declared)
@@ -90,7 +90,7 @@
 
       let (_, _, settings) = Self.fixture()
       let rows = DevControlSettings.catalog(settings)
-      #expect(rows.count == 70)
+      #expect(rows.count == 72)
       #expect(rows.compactMap { $0["key"] as? String } == declared)
       for row in rows {
         #expect(row["value"] != nil)
@@ -101,7 +101,7 @@
       for row in rows {
         kinds[row["kind"] as? String ?? "?", default: []].append(row["key"] as? String ?? "?")
       }
-      #expect(kinds["direct"]?.count == 38)
+      #expect(kinds["direct"]?.count == 40)
       #expect(kinds["viaOwner"]?.count == 8)
       #expect(kinds["extractedCheck"]?.count == 16)
       #expect(kinds["staging"]?.count == 8)
@@ -225,6 +225,11 @@
       choice("s1MiniStructure", \.s1MiniStructure, [.lists, .prose], fires: .s1MiniStructure),
       choice("s1MiniContext", \.s1MiniContext, [.email, .general], fires: .s1MiniContext),
       bool("autoCopyToClipboard", \.autoCopyToClipboard, fires: .autoCopyToClipboard),
+      // #3972: EnviousMeet's call-sound choice and its explainer acknowledgement.
+      bool("meetingCaptureCallSound", \.meetingCaptureCallSound, fires: .meetingCaptureCallSound),
+      bool(
+        "meetingCallSoundExplained", \.meetingCallSoundExplained,
+        fires: .meetingCallSoundExplained),
       bool("hotkeyEnabled", \.hotkeyEnabled, fires: .hotkeyEnabled),
       bool("vadAutoStop", \.vadAutoStop, fires: .vadAutoStop),
       Row(
@@ -334,7 +339,7 @@
       "llmModel": "llmModel",
     ]
 
-    @Test("a forced write lands on the right property for every one of the 70 keys and persists")
+    @Test("a forced write lands on the right property for every one of the 72 keys and persists")
     func forcedWriteEveryKey() throws {
       let declared = try Self.declaredKeyNames()
       #expect(Self.rows.map(\.name) == declared)
@@ -368,8 +373,8 @@
         }
         exercised += 1
       }
-      #expect(exercised == 70)
-      #expect(readChecks == 70)
+      #expect(exercised == 72)
+      #expect(readChecks == 72)
     }
 
     @Test("hasCompletedOnboarding is the onboarding alias; forcing it moves onboardingState")
@@ -809,7 +814,7 @@
         if route == .shortcutField { shortcutFields.insert(DevControlSettings.name(key)) }
       }
       #expect(shortcutFields == Self.shortcutNames)
-      #expect(counts[.typed] == 46)
+      #expect(counts[.typed] == 48)
       #expect(counts[.modelCatalog] == 1)
       #expect(counts[.inputDevice] == 2)
       #expect(counts[.spokenPunctuation] == 1)
@@ -821,7 +826,7 @@
       #expect(counts[.ollamaModel] == 2)
       #expect(counts[.channelCommand] == 1)
       #expect(counts[.shortcutField] == 10)
-      #expect(counts.values.reduce(0, +) == 70)
+      #expect(counts.values.reduce(0, +) == 72)
       #expect(DevControlSettings.route(.llmModel) == .modelCatalog)
       #expect(DevControlSettings.route(.hasCompletedOnboarding) == .typed)
     }
@@ -1001,7 +1006,7 @@
         #expect(fired.contains(row.fires), "\(row.name) fired \(fired)")
         written += 1
       }
-      #expect(written == 46)
+      #expect(written == 48)
     }
 
     private static func model(_ id: String, _ provider: LLMProvider, available: Bool = true, remote: Bool = false)

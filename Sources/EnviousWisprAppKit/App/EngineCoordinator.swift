@@ -80,6 +80,12 @@ final class EngineCoordinator {
     var isFileImportRunning: @MainActor () -> Bool = { false }
     /// #3546 A3: the shared `EngineLease` has a holder; read only by the Ultra activation gate.
     var isEngineHeld: @MainActor () -> Bool = { false }
+    /// #3972: EnviousMeet's own Parakeet engine is loaded, or one of its pass units (speech,
+    /// speakers, compose) is running. Read only by the Ultra activation gate: retiring the old
+    /// install would wait on the meeting's model-use gate while this coordinator holds the
+    /// switch gate, stalling dictation for the whole pass. The meeting pokes
+    /// `.parakeetUpgradeOwed` when its engine is released and when its work ends.
+    var isMeetingEngineResident: @MainActor () -> Bool = { false }
     /// Whether the given engine's model is on disk (gates a load attempt).
     let isInstalled: @MainActor (ASRBackendType) -> Bool
     /// A telemetry label for the given engine's pipeline state.
@@ -249,7 +255,13 @@ final class EngineCoordinator {
   func endMinting() {
     isMinting = false
     poke(.driverStateChanged)
+    onMintingEnded?()
   }
+
+  /// #3972 C4a: EnviousMeet's dictation-idle wait reads `isMintingAnySession`, which is not
+  /// observable; this tells it the start window closed (a start that failed changes no
+  /// observable state).
+  @ObservationIgnored var onMintingEnded: (@MainActor () -> Void)?
 
   /// The outcome of a record-start readiness drive, so the caller shows the
   /// correct pill for EVERY cell of (press × selected-engine state) rather than
@@ -452,7 +464,8 @@ final class EngineCoordinator {
   // MARK: - In-session Parakeet upgrade (#3546 A3)
 
   /// The switch gates, applied to the activation: nothing loading, recording, transcribing,
-  /// polishing, minting, recovering or importing, no coordinator warm or join in flight, and
+  /// polishing, minting, recovering or importing, no meeting engine loaded, no coordinator warm
+  /// or join in flight, and
   /// the shared engine lease free (a Diagnostics speed test or a decode still finishing for
   /// an abandoned take holds it). Synchronous, so the check and `isSwitching` going true
   /// share one MainActor turn. The lease's release pokes this coordinator.
@@ -460,6 +473,7 @@ final class EngineCoordinator {
     deps.readiness(.parakeet) != .warming
       && !deps.isEngineActive(.parakeet) && !deps.isEngineActive(.whisper) && !isMinting
       && !deps.isRecovering() && !deps.isFileImportRunning() && !deps.isEngineHeld()
+      && !deps.isMeetingEngineResident()
       && warmingBackend == nil && joiningBackend == nil
   }
 

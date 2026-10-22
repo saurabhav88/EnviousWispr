@@ -114,6 +114,25 @@ final class TranscriptCoordinator {
   /// it so a raw turn is not disclosed as "Not fully polished" before it is a verdict. The
   /// closure reads the import coordinator's observed state, so a redraw follows.
   @ObservationIgnored var isImportInProgress: (@MainActor (UUID) -> Bool)?
+  /// #3972 R12: EnviousMeet is the one deletion authority for a meeting's row. History's delete
+  /// of a meeting row hands the meeting id here instead of deleting; EnviousMeet marks the
+  /// meeting, removes the row through `removeRow(id:)` and then the meeting folder. Nil (tests,
+  /// or before wiring) deletes the row the ordinary way.
+  @ObservationIgnored var deleteMeeting: (@MainActor (UUID) -> Void)?
+  /// #3972 R19: called by Delete All with every meeting id among the rows, BEFORE the store is
+  /// emptied, so each meeting is marked for deletion first and a crash cannot leave a finished
+  /// meeting whose History row is gone.
+  /// Returns false when any meeting could not be marked; Delete All then removes nothing, so no
+  /// meeting is left with audio but no row and no mark to finish its deletion.
+  @ObservationIgnored var meetingsWillBeDeletedWithAll: (@MainActor ([UUID]) -> Bool)?
+  /// #3972 R5/R19: a meeting's History facts (echo turns, title, speaker outcomes), by meeting
+  /// id, from EnviousMeet's in-memory durable copy. Observable on that side, so a view that
+  /// reads it redraws when the meeting changes. Nil (tests, or before wiring) and an unknown
+  /// meeting both fail closed: the row shows nothing.
+  @ObservationIgnored var meetingInfo: (@MainActor (UUID) -> MeetingHistoryInfo?)?
+  /// Rows whose probable echo is shown (#3972 R19). Per row and in memory only: one row's
+  /// choice never reaches another, and every row starts hidden.
+  private(set) var echoShownRowIDs: Set<UUID> = []
   private var loadTask: Task<Void, Never>?
   private var pulseTask: Task<Void, Never>?
 
@@ -148,8 +167,10 @@ final class TranscriptCoordinator {
     let listed: [Transcript]
     switch historyFilter {
     case .all: listed = visible
-    case .dictations: listed = visible.filter { !$0.isImported }
-    case .transcripts: listed = visible.filter { $0.isImported }
+    // #3972 R5: a meeting is a Transcript (a recording turned into a document), never a
+    // Dictation.
+    case .dictations: listed = visible.filter { !$0.isImported && !$0.isMeeting }
+    case .transcripts: listed = visible.filter { $0.isImported || $0.isMeeting }
     }
     guard !searchQuery.isEmpty else { return listed }
     // Pending rows are excluded from search DELIBERATELY: an accidental Escape
@@ -165,8 +186,9 @@ final class TranscriptCoordinator {
       // match against the speaker names themselves, a genuinely new gap this phase closes
       // (plan §6 downstream consumer matrix).
       $0.escapeRecoveredAt == nil
-        && ($0.displayText.localizedCaseInsensitiveContains(searchQuery)
+        && (searchableText(of: $0).localizedCaseInsensitiveContains(searchQuery)
           || ($0.importedFileName?.localizedCaseInsensitiveContains(searchQuery) ?? false)
+          || (meetingTitle(of: $0)?.localizedCaseInsensitiveContains(searchQuery) ?? false)
           || ($0.speakerNames?.values.contains {
             $0.localizedCaseInsensitiveContains(searchQuery)
           } ?? false))
@@ -202,8 +224,10 @@ final class TranscriptCoordinator {
   var dictationCount: Int {
     _ = expiryPulse
     let now = Date()
+    // #3972 R5: a meeting finishing during a practice take is not something the user dictated.
     return transcripts.filter {
       Self.isVisible($0, at: now) && $0.escapeRecoveredAt == nil && !$0.isImported
+        && !$0.isMeeting
     }.count
   }
 
@@ -790,9 +814,53 @@ final class TranscriptCoordinator {
   ///
   /// Throws, deliberately. The import STOPS before polishing when the first write fails,
   /// which it cannot do if this swallows the error.
+  /// #3972 C4a: a row whose durable meeting write is in flight. Ordinary writes to it are
+  /// refused until it lands, so neither write can publish over the other on disk or in the list.
+  private var durableWritesInFlight: Set<UUID> = []
+
+  #if DEBUG
+    /// Runs on the durable write's worker thread just before it writes, so a test can hold a
+    /// write while it is registered in flight.
+    @ObservationIgnored var durableWriteWillStartForTesting: (@Sendable () -> Void)?
+  #endif
+
+  /// Thrown by an ordinary write to a row whose durable meeting write is still in flight.
+  struct RowWriteInFlight: Error {}
+
   func saveAndShow(_ transcript: Transcript) throws {
+    guard !durableWritesInFlight.contains(transcript.id) else { throw RowWriteInFlight() }
     try store.save(transcript)
     // Stamped so an in-flight `load()` cannot publish the version it read BEFORE this write.
+    historyWriteRevision += 1
+    writtenAtRevision[transcript.id] = historyWriteRevision
+    if let existing = transcripts.firstIndex(where: { $0.id == transcript.id }) {
+      transcripts[existing] = transcript
+    } else {
+      transcripts.insert(transcript, at: 0)
+    }
+    reconcileSelectionWithDisplayedSet()
+    startPulseIfNeeded()
+  }
+
+  /// #3972 C4a: an EnviousMeet meeting's row, written durably (encode, `F_FULLFSYNC`, directory
+  /// sync) OFF the main actor, then shown. EnviousMeet marks the meeting ready only after this
+  /// returns, and its deletion awaits the commit that calls this, so no delete races the write.
+  func saveAndShowDurably(_ transcript: Transcript) async throws {
+    guard !durableWritesInFlight.contains(transcript.id) else { throw RowWriteInFlight() }
+    durableWritesInFlight.insert(transcript.id)
+    defer { durableWritesInFlight.remove(transcript.id) }
+    let write = store.durableWriter()
+    #if DEBUG
+      let willWrite = durableWriteWillStartForTesting
+    #endif
+    // Detached, not `Task {}`: this type is @MainActor and a plain Task inherits it; the write
+    // blocks on two disk flushes. Awaited at once, so it neither outlives nor reorders the commit.
+    try await Task.detached(priority: .utility) {
+      #if DEBUG
+        willWrite?()
+      #endif
+      try write(transcript)
+    }.value
     historyWriteRevision += 1
     writtenAtRevision[transcript.id] = historyWriteRevision
     if let existing = transcripts.firstIndex(where: { $0.id == transcript.id }) {
@@ -822,6 +890,7 @@ final class TranscriptCoordinator {
     guard let existing = transcripts.firstIndex(where: { $0.id == transcript.id }) else {
       return false
     }
+    guard !durableWritesInFlight.contains(transcript.id) else { throw RowWriteInFlight() }
     try store.save(transcript)
     historyWriteRevision += 1
     writtenAtRevision[transcript.id] = historyWriteRevision
@@ -871,7 +940,15 @@ final class TranscriptCoordinator {
   /// .renameSpeaker`, both ordinary, symmetric callers of `mergeSpeakerFields` above. Re-reads
   /// the row's CURRENT analysis and turns TOGETHER, atomically, immediately before writing —
   /// never a value captured when a popover opened (§3 Design correction 2).
-  func renameSpeaker(id transcriptID: UUID, speakerId: String, name: String) -> RenameFailure? {
+  ///
+  /// `isMeeting` is the kind of the row the caller rendered (#3972 R19): a meeting row's rename
+  /// emits no file-import telemetry. It comes from the caller because the row may already be
+  /// gone when a late callback arrives, and a missing row has no kind to read.
+  func renameSpeaker(id transcriptID: UUID, speakerId: String, name: String, isMeeting: Bool)
+    -> RenameFailure?
+  {
+    let emitRenameTelemetry: (TelemetryService.FileImportRenameOutcome) -> Void =
+      isMeeting ? { _ in } : self.emitRenameTelemetry
     guard let current = currentRow(id: transcriptID), current.turns != nil,
       let analysis = current.speakerAnalysis
     else {
@@ -901,9 +978,18 @@ final class TranscriptCoordinator {
     emitRenameTelemetry(.cancelled)
   }
 
+  /// `noteRenameCancelled()` for a row History rendered: nothing for a meeting row (#3972
+  /// R19). `isMeeting` comes from the caller, as in `renameSpeaker`.
+  func noteRenameCancelled(isMeeting: Bool) {
+    guard !isMeeting else { return }
+    noteRenameCancelled()
+  }
+
   /// History's detail view just drew a turn view for `id` (#2811 §3e). Reported once per
-  /// document per launch; re-selecting the same row is not a new fact.
-  func noteTurnsDisplayed(id: UUID) {
+  /// document per launch; re-selecting the same row is not a new fact. Never for a meeting
+  /// row (#3972 R19); `isMeeting` comes from the caller, as in `renameSpeaker`.
+  func noteTurnsDisplayed(id: UUID, isMeeting: Bool) {
+    guard !isMeeting else { return }
     guard displayedTurnIDs.insert(id).inserted else { return }
     emitTurnsDisplayedTelemetry()
   }
@@ -918,23 +1004,13 @@ final class TranscriptCoordinator {
   private var writtenAtRevision: [UUID: Int] = [:]
 
   func delete(_ transcript: Transcript) {
+    if let meetingID = transcript.meetingID, let deleteMeeting {
+      deleteMeeting(meetingID)
+      return
+    }
     do {
-      // #2807: the displayed set BEFORE the removal, so the neighbour is the row the user
-      // saw beside the one they deleted.
-      let displayed = filteredTranscripts
-      try store.delete(id: transcript.id)
-      transcripts.removeAll { $0.id == transcript.id }
+      try removeRow(id: transcript.id)
       onRowDeleted?(transcript.id)
-      if selectedTranscriptID == transcript.id {
-        // The next row in the same filter, else the previous one, else nothing — and
-        // nothing means the status view, never the live fallback (the setter arms that).
-        selectedTranscriptID = Self.neighbour(of: transcript.id, in: displayed)
-      } else if selectedTranscriptID == nil, transcript.id == liveFallbackRowID {
-        // The pane was showing this row's text through the fallback; the row is gone.
-        liveFallbackSuppressed = true
-      }
-      if transcript.id == liveFallbackRowID { liveFallbackRowID = nil }
-      refreshDiskStateThenStopIfIdle()
     } catch {
       Task {
         await AppLogger.shared.log(
@@ -957,6 +1033,13 @@ final class TranscriptCoordinator {
   /// Re-reads by id rather than trusting the caller's copy, so a row deleted in
   /// another pane is also refused. Inert, not merely harmless.
   func textForDelivery(_ transcript: Transcript) -> String? {
+    if transcript.isMeeting {
+      // #3972 R19: read again by id, and only the visible turns; nil when the row is gone,
+      // its meeting facts are unknown, or every line is hidden.
+      guard let current = currentRow(id: transcript.id) else { return nil }
+      return MeetingHistoryPresentation.deliveryText(
+        current, projection: meetingProjection(of: current), timesOn: false)
+    }
     guard transcript.escapeRecoveredAt != nil else { return transcript.displayText }
     let now = Date()
     guard
@@ -1024,6 +1107,8 @@ final class TranscriptCoordinator {
   private static func isReusableDictation(_ row: Transcript, at now: Date) -> Bool {
     isVisible(row, at: now)
       && !isImportedForReuse(row)
+      // #3972 R5: a meeting is never the last dictation to paste again.
+      && !row.isMeeting
       && row.escapeRecoveredAt == nil
       && !row.displayText.allSatisfy(\.isWhitespace)
   }
@@ -1144,11 +1229,72 @@ final class TranscriptCoordinator {
     }
   }
 
+  // MARK: - Meeting rows (#3972 R5, R19)
+
+  func isShowingEcho(rowID: UUID) -> Bool { echoShownRowIDs.contains(rowID) }
+
+  /// The document-scoped "Show probable echo" choice; C5 gives it a control.
+  func setShowEcho(_ show: Bool, rowID: UUID) {
+    if show { echoShownRowIDs.insert(rowID) } else { echoShownRowIDs.remove(rowID) }
+  }
+
+  /// What a meeting row shows; `.unavailable` for a row that is not a meeting.
+  func meetingProjection(of row: Transcript) -> MeetingHistoryPresentation.Projection {
+    guard let meetingID = row.meetingID else { return .unavailable }
+    return MeetingHistoryPresentation.project(
+      row, info: meetingInfo?(meetingID), showEcho: isShowingEcho(rowID: row.id))
+  }
+
+  /// The text search reads: a meeting's visible text only, never hidden echo lines.
+  private func searchableText(of row: Transcript) -> String {
+    guard row.isMeeting else { return row.displayText }
+    if case .visible(_, let plain) = meetingProjection(of: row) { return plain }
+    return ""
+  }
+
+  private func meetingTitle(of row: Transcript) -> String? {
+    guard let meetingID = row.meetingID else { return nil }
+    return meetingInfo?(meetingID)?.title
+  }
+
+  /// Removes one row from disk and from the list, keeping the selection on a neighbour and the
+  /// live fallback suppressed (#2807). Announces nothing: `delete(_:)` announces for History's
+  /// own deletes, and EnviousMeet calls this as the deletion authority of a meeting's row
+  /// (#3972 R12), so it must not call back. Throws when the file is still there.
+  func removeRow(id: UUID) throws {
+    // #2807: the displayed set BEFORE the removal, so the neighbour is the row the user
+    // saw beside the one they deleted.
+    let displayed = filteredTranscripts
+    try store.delete(id: id)
+    transcripts.removeAll { $0.id == id }
+    echoShownRowIDs.remove(id)
+    if selectedTranscriptID == id {
+      // The next row in the same filter, else the previous one, else nothing — and
+      // nothing means the status view, never the live fallback (the setter arms that).
+      selectedTranscriptID = Self.neighbour(of: id, in: displayed)
+    } else if selectedTranscriptID == nil, id == liveFallbackRowID {
+      // The pane was showing this row's text through the fallback; the row is gone.
+      liveFallbackSuppressed = true
+    }
+    if id == liveFallbackRowID { liveFallbackRowID = nil }
+    refreshDiskStateThenStopIfIdle()
+  }
+
   func deleteAll() {
+    let meetingIDs = transcripts.compactMap(\.meetingID)
+    if !meetingIDs.isEmpty, meetingsWillBeDeletedWithAll?(meetingIDs) == false {
+      Task {
+        await AppLogger.shared.log(
+          "Delete All refused: a meeting could not be marked for deletion",
+          level: .info, category: "TranscriptCoordinator")
+      }
+      return
+    }
     do {
       try store.deleteAll()
       let removedIDs = transcripts.map(\.id)
       transcripts.removeAll()
+      echoShownRowIDs.removeAll()
       // The same announcement `delete(_:)` makes, per row, after the list is already empty
       // (found by cloud review, round 3: this route bypassed it).
       for id in removedIDs { onRowDeleted?(id) }
@@ -1429,8 +1575,9 @@ final class TranscriptCoordinator {
 /// Which kind of History row the list shows (#2807).
 ///
 /// Two words, by meaning: a **Dictation** is a take made with the hotkey, a **Transcript** is
-/// a file put through Transcribe a File, and History is the collection of both. The kind is
-/// read from `Transcript.isImported`; nothing stores a second flag.
+/// a file put through Transcribe a File or a recorded meeting (#3972 R5), and History is the
+/// collection of both. The kind is read from `Transcript.isImported` and `isMeeting`; nothing
+/// stores a second flag.
 enum HistoryFilter: String, CaseIterable, Sendable {
   case all
   case dictations
@@ -1446,7 +1593,8 @@ enum HistoryFilter: String, CaseIterable, Sendable {
         comment: "History filter: rows made by dictating with the keyboard shortcut.")
     case .transcripts:
       return String(
-        localized: "Transcripts", comment: "History filter: rows made with Transcribe a File.")
+        localized: "Transcripts",
+        comment: "History filter: rows made with Transcribe a File, and recorded meetings.")
     }
   }
 }
@@ -1458,7 +1606,7 @@ enum HistoryEmptyState: Equatable, Sendable {
   case nothingYet
   /// Rows exist, none of them a dictation.
   case noDictations
-  /// Rows exist, none of them a transcript.
+  /// Rows exist, none of them a transcript or a meeting.
   case noTranscripts
   /// Rows exist, none matching the search.
   case noMatches

@@ -411,6 +411,13 @@ final class HALDeviceInputSource: AudioInputSource {
   /// Target capture device UID. Nil means follow the live system default input.
   var targetDeviceUID: String?
 
+  /// #3972 R14: how many buffers the stream `startCapture()` returns may hold while nobody reads
+  /// it. Dictation's default is unchanged (`.unbounded`, read by the kernel). An EnviousMeet
+  /// recorder reads `onSamples` only and sets `.bufferingNewest(0)`, so hours of capture can
+  /// never pile up in an unread stream.
+  var captureStreamBufferingPolicy: AsyncStream<AVAudioPCMBuffer>.Continuation.BufferingPolicy =
+    .unbounded
+
   /// #2664: per-device input-channel preference (device UID -> 0-based channel),
   /// copied from `AudioCaptureManager` at construction. Read ONCE, at cold
   /// `prepare()`, to choose the channel map; nothing else reads it. The
@@ -1008,9 +1015,7 @@ final class HALDeviceInputSource: AudioInputSource {
         return s.ringDrops + s.renderFailures + s.oversizedSlices + s.lostChunks
       } ?? 0
 
-    let stream = AsyncStream<AVAudioPCMBuffer> { continuation in
-      self.streamContinuation = continuation
-    }
+    let stream = makeCaptureStream()
 
     // #1810: `activate` returns the count it just pushed through `onSamples`, and
     // that batch reaches `DeadAirStreamingDetector` exactly like live audio. The
@@ -1050,6 +1055,27 @@ final class HALDeviceInputSource: AudioInputSource {
   }
 
   private var streamContinuation: AsyncStream<AVAudioPCMBuffer>.Continuation?
+
+  /// The stream `startCapture()` returns, built with `captureStreamBufferingPolicy`; its
+  /// continuation is the one the forwarder yields captured buffers into.
+  func makeCaptureStream() -> AsyncStream<AVAudioPCMBuffer> {
+    AsyncStream<AVAudioPCMBuffer>(bufferingPolicy: captureStreamBufferingPolicy) {
+      continuation in
+      self.streamContinuation = continuation
+    }
+  }
+
+  #if DEBUG
+    /// Yields `buffer` into the capture stream exactly as the forwarder does (#3972 C2b).
+    @discardableResult
+    func yieldToCaptureStreamForTesting(_ buffer: AVAudioPCMBuffer)
+      -> AsyncStream<AVAudioPCMBuffer>.Continuation.YieldResult?
+    {
+      streamContinuation?.yield(buffer)
+    }
+
+    func finishCaptureStreamForTesting() { streamContinuation?.finish() }
+  #endif
 
   #if DEBUG
     /// Capture-side actual-bound-device evidence (#1377 §3.5), same shape as
@@ -1136,13 +1162,20 @@ final class HALDeviceInputSource: AudioInputSource {
   }
 
   func stop() async -> [Float] {
+    stopSynchronously()
+    // Source does not own samples — manager accumulates via onSamples callback.
+    return []
+  }
+
+  /// `stop()`'s whole body, which never suspends. #3972: EnviousMeet's quit path must stop its
+  /// own HAL client synchronously inside `applicationWillTerminate`; this is the same teardown
+  /// authority, not a second copy of it.
+  func stopSynchronously() {
     forwarder?.stop()
     forwarder = nil
     streamContinuation = nil
     // teardownUnit() cancels stallWorkItem and drops isCapturing.
     teardownUnit()
-    // Source does not own samples — manager accumulates via onSamples callback.
-    return []
   }
 
   /// Real settling check (#1434 — replaces a stub whose comment asserted the
