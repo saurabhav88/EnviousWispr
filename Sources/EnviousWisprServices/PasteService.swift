@@ -2731,6 +2731,7 @@ public enum PasteService {
     }
     keyDown.flags = .maskCommand
     keyDown.post(tap: .cgAnnotatedSessionEventTap)
+    SyntheticKeyHold.beforeRelease()
     keyUp.flags = .maskCommand
     keyUp.post(tap: .cgAnnotatedSessionEventTap)
     return true

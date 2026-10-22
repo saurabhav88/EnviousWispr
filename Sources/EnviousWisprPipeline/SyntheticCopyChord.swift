@@ -96,6 +96,7 @@ enum SyntheticCopyChord {
     commandDown.postToPid(pid)
     keyDown.flags = .maskCommand
     keyDown.postToPid(pid)
+    SyntheticKeyHold.beforeRelease()
     keyUp.flags = .maskCommand
     keyUp.postToPid(pid)
     commandUp.postToPid(pid)
