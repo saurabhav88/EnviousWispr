@@ -1230,7 +1230,11 @@ struct ObservedCorrectionWatcherTests {
     let changed = makeWatcher()
     await watchedPaste(changed, starts: 3)
     observer.fire(.settled(region: "Ask CENIT today", evidence: .weak))
-    #expect(await waitUntil { judge.requests.count == 3 })
+    // The weak refusal is held before the text changes (the answer is not dropped as stale).
+    #expect(
+      await waitUntil {
+        telemetry.events.filter { if case .judged = $0 { true } else { false } }.count == 3
+      })
     observer.fire(.changed(region: "Ask senate today"))
     observer.fire(.settled(region: "Ask senate today", evidence: .strong))
     for _ in 0..<5 { await Task.yield() }
