@@ -1,0 +1,1 @@
+{"language":"vi","title":"xóa bộ nhớ học từ","words":["bộ nhớ","bỏ chặn từ"],"phrases":["xóa bộ nhớ về các chỉnh sửa bị từ chối","cho phép học lại các từ đã bị chặn"]}

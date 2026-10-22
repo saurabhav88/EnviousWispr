@@ -4184,6 +4184,22 @@
    "seedParent": "selfLearningDictionary"
   },
   {
+   "id": "selfLearningDictionary.forgetMemory",
+   "kind": "action",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "learnFrom"
+   },
+   "disposition": "mapped",
+   "parent": "selfLearningDictionary",
+   "target": "selfLearningDictionary.forgetMemory",
+   "fallbacks": [
+    "selfLearningDictionary"
+   ],
+   "dynamicTitle": false,
+   "seedParent": null
+  },
+  {
    "id": "selfLearningDictionary.retryChecker",
    "kind": "action",
    "destination": {

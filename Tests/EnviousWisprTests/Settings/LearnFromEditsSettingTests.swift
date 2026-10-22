@@ -1,5 +1,6 @@
 import AppKit
 import EnviousWisprContacts
+import EnviousWisprCore
 import EnviousWisprLLM
 import EnviousWisprModelDelivery
 import EnviousWisprPostProcessing
@@ -165,9 +166,10 @@ struct LearnFromEditsRowTests {
       .appendingPathComponent("ew-learning-row-\(UUID().uuidString)", isDirectory: true)
     // The default provider only wraps a `CNContactStore`; nothing here asks it
     // for access, so no permission prompt and no Contacts read.
+    let words = CustomWordsCoordinator(
+      manager: CustomWordsManager(fileURL: dir.appendingPathComponent("custom-words.json")))
     let contacts = ContactsImportCoordinator(
-      customWords: CustomWordsCoordinator(
-        manager: CustomWordsManager(fileURL: dir.appendingPathComponent("custom-words.json"))),
+      customWords: words,
       stateStore: ImportedContactsStateStore(
         fileURL: dir.appendingPathComponent("imported-contacts-state.json")))
     // #3105: the row also reads the learned-word check's eligibility. No
@@ -190,12 +192,37 @@ struct LearnFromEditsRowTests {
       ])
     let enabled = host(
       LearningSection().environment(settings).environment(contacts).environment(checker)
+        .environment(words)
         .environment(LearnFromEditsAvailability(presentation: LearnFromEditsSettingsPresentation(selection: .arm(.rules)))))
     let disabled = host(
       LearningSection().environment(settings).environment(contacts).environment(checker)
+        .environment(words)
         .environment(LearnFromEditsAvailability(presentation: .unwired)))
     #expect(enabled.fittingSize.height > 0)
     #expect(disabled.fittingSize.height > enabled.fittingSize.height, "the reason line adds a line")
+
+    // #3975 §3.4: the learning memory row appears only while the memory holds
+    // something, and Forget clears it from the same place. The mutations go
+    // straight to the memory, as Undo and the watcher do, with no manual
+    // refresh: an open tab follows them.
+    let key = CorrectionPairKey.make(original: "kumala", corrected: "Kwmala")
+    words.learnMemory.recordJudgeRefusal(key)
+    #expect(words.learnMemoryStored && words.learnMemoryBlockedCount == 0)
+    words.learnMemory.recordUndo(key)
+    words.learnMemory.recordUndo(key)
+    #expect(words.learnMemoryStored && words.learnMemoryBlockedCount == 1)
+    let withMemory = host(
+      LearningSection().environment(settings).environment(contacts).environment(checker)
+        .environment(words)
+        .environment(LearnFromEditsAvailability(presentation: LearnFromEditsSettingsPresentation(selection: .arm(.rules)))))
+    #expect(withMemory.fittingSize.height > enabled.fittingSize.height, "the memory row adds a line")
+    words.forgetLearnMemory()
+    #expect(!words.learnMemoryStored && words.learnMemoryBlockedCount == 0)
+    #expect(!words.learnMemoryForgetFailed)
+    #expect(
+      !FileManager.default.fileExists(atPath: dir.appendingPathComponent(LearnMemory.fileName).path))
+    #expect(
+      LearnFromEditsSettingsPresentation.memoryLine(blocked: 1) == "Learning memory: 1 blocked")
   }
 }
 

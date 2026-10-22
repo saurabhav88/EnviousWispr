@@ -11,13 +11,18 @@
    "id": "casualMode",
    "review": "additions/casualMode.json",
    "reviewSHA256": "a0c11e26f3b0d9950644078b0bf80ffc252177077711958cc3ec0a87715610d7"
+  },
+  {
+   "id": "selfLearningDictionary.forgetMemory",
+   "review": "additions/selfLearningDictionary.forgetMemory.json",
+   "reviewSHA256": "68da6c005df7611c8afff987422337699397665f0be3392385fec780d49cb70c"
   }
  ],
  "retiredIDs": [],
  "resource": {
   "path": "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json",
-  "sha256": "aa8b845eb26c62d9a4107c047fe7eeb0f018191a68dd8806c2cd0bf6d1618343",
-  "bytes": 1606522
+  "sha256": "18327f8ad1003a889d284150528da6faa32064a99e12fee2b7c22cee4378838b",
+  "bytes": 1614718
  },
  "sources": [
   {
@@ -301,7 +306,7 @@
  "languages": [
   {
    "language": "ar",
-   "contentSHA256": "adc4bc33f940f0ea103280186dee121413c86aad5b907abfc684e4870c3d6219",
+   "contentSHA256": "39dc1c267449d36da2781b17077bd227df732147fa98d952dfe999dd87d30f9b",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -440,13 +445,32 @@
       "sha256": "b2783f612e6f4f01de0260baccae4da90e26ff65c113cdca9cfe56b398bafaf9"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "selfLearningDictionary.forgetMemory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Learn from tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-22",
+     "draft": {
+      "path": "additions/selfLearningDictionary.forgetMemory/draft.json",
+      "sha256": "a65f81a1397d69e42fb3c22e1063bd9d7efb80bfddc951aa15d8564b9c022617"
+     },
+     "prompt": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-driver.py.txt",
+      "sha256": "714d00d8a226839ad1349969c05df3a71eb11884092860f07fe3f07e892e11eb"
+     },
+     "output": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-ar.txt",
+      "sha256": "a0c85d35e852fc6086856ba66a520689471f7d292e736d296faa05386efc2045"
+     },
+     "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "bg",
-   "contentSHA256": "2713aeeb60be9e3a28dad649c6bdc4dad25a24ad5ba41cd03b43c1656702a8c0",
+   "contentSHA256": "c11764c0d43a7c07e8411f720b12d3ef959646ea089aadf3d703057a9e6abd45",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -576,13 +600,32 @@
       "sha256": "2244e51ceef9cb8424f1b7a6bb4d2fae6d934f874eeae1215602ca2c7d9f1db3"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "selfLearningDictionary.forgetMemory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Learn from tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-22",
+     "draft": {
+      "path": "additions/selfLearningDictionary.forgetMemory/draft.json",
+      "sha256": "a65f81a1397d69e42fb3c22e1063bd9d7efb80bfddc951aa15d8564b9c022617"
+     },
+     "prompt": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-driver.py.txt",
+      "sha256": "714d00d8a226839ad1349969c05df3a71eb11884092860f07fe3f07e892e11eb"
+     },
+     "output": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-bg.txt",
+      "sha256": "1e7eeb421714732d5a72df96dcf790cc89908367114f7369f4aebdafeeb8dfd4"
+     },
+     "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "cs",
-   "contentSHA256": "01ec9b8f8ece880f85e6bb78aa007e02d0f7afba36ef04d6654e56bfa44d0e38",
+   "contentSHA256": "be873f2c851a6b3a64645a17df7dc73c203cd18ab6c93ec293953af5a683d870",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -712,13 +755,32 @@
       "sha256": "b37a0282d4fa7bdecd9390c79c3594908d7a81afb9ea998913fba4d6d9f20511"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "selfLearningDictionary.forgetMemory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Learn from tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-22",
+     "draft": {
+      "path": "additions/selfLearningDictionary.forgetMemory/draft.json",
+      "sha256": "a65f81a1397d69e42fb3c22e1063bd9d7efb80bfddc951aa15d8564b9c022617"
+     },
+     "prompt": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-driver.py.txt",
+      "sha256": "714d00d8a226839ad1349969c05df3a71eb11884092860f07fe3f07e892e11eb"
+     },
+     "output": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-cs.txt",
+      "sha256": "f270d84b043df13e14b6077ef6161bc75c44e84457464b22a6aed64c20cedfc0"
+     },
+     "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "da",
-   "contentSHA256": "a3406ebbc5f579ff8c8a648dfe91effdcdd140b959fae8093f45509e3ba3a09c",
+   "contentSHA256": "887be08ac9fd7b700d7114ddbaab952ad8feb5d0b287cb572213491b6741bb1a",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -848,13 +910,32 @@
       "sha256": "f8f7f48c8de668567befbb888746bb7deeb69b09538a736da301b5d6366d0c73"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "selfLearningDictionary.forgetMemory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Learn from tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-22",
+     "draft": {
+      "path": "additions/selfLearningDictionary.forgetMemory/draft.json",
+      "sha256": "a65f81a1397d69e42fb3c22e1063bd9d7efb80bfddc951aa15d8564b9c022617"
+     },
+     "prompt": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-driver.py.txt",
+      "sha256": "714d00d8a226839ad1349969c05df3a71eb11884092860f07fe3f07e892e11eb"
+     },
+     "output": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-da.txt",
+      "sha256": "0fa3f022a949a03763eda33eaf5a14d509529ee4ed47fadbfaf2d196743a7df4"
+     },
+     "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "de",
-   "contentSHA256": "473d3adfac91e49beedd2d3f1eab06acf631bab6b0f3269c5516b3ea62f9f794",
+   "contentSHA256": "9f9597de4165916077130b007b73af9876cdd5d97ad648b808020d8b30fb1f67",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1009,13 +1090,33 @@
      },
      "disposition": "adopted with the GPT and Gemini council's corrections (session ew-3861-german-2026-10-17): non-imperative phrases, \"Clipboard-Manager\" added; \"Verlauf\" and \"Paste\" from the Gemini answer left out because they collide with the History page and the paste settings (additions/keepOutOfClipboardHistory.json)",
      "note": "German: Codex review, then the GPT and Gemini council (Azure, under the founder's standing approval of 2026-10-17)."
+    },
+    {
+     "kind": "addition-content",
+     "id": "selfLearningDictionary.forgetMemory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Learn from tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-22",
+     "draft": {
+      "path": "additions/selfLearningDictionary.forgetMemory/draft.json",
+      "sha256": "a65f81a1397d69e42fb3c22e1063bd9d7efb80bfddc951aa15d8564b9c022617"
+     },
+     "prompt": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-driver.py.txt",
+      "sha256": "714d00d8a226839ad1349969c05df3a71eb11884092860f07fe3f07e892e11eb"
+     },
+     "output": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-de.txt",
+      "sha256": "dd390caf28389542cffe46ce6a3bce75cffba642a24f4fe4d05899d991c1e73f"
+     },
+     "disposition": "adopted with the GPT and Gemini council's corrections (session ew-3975-forget-memory-de-2026-10-22, digest additions/selfLearningDictionary.forgetMemory/council-de.txt): \"blockiert\" as on screen instead of \"gesperrt\", \"entsperren\" and \"vergessen\" kept, \"Korrekturen\" alone left out because it fits the Self-Learning Dictionary switch as well (additions/selfLearningDictionary.forgetMemory.json)",
+     "note": "German: Codex review, then the GPT and Gemini council (Azure, under the founder's standing approval)."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "el",
-   "contentSHA256": "ddc0a868d4d9d48a71c8e6f0c4e64fbcbd45ff1c69b6cc6c93be89c78c299f49",
+   "contentSHA256": "d2bf70d8ff991c44a5f1378ae4aa71f23e92910245a5bdac78659db8baabac54",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1154,13 +1255,32 @@
       "sha256": "dd18c6b944c3f849c914408f1080939e0f4cf3eeb3b6c2c93566cec99e108435"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "selfLearningDictionary.forgetMemory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Learn from tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-22",
+     "draft": {
+      "path": "additions/selfLearningDictionary.forgetMemory/draft.json",
+      "sha256": "a65f81a1397d69e42fb3c22e1063bd9d7efb80bfddc951aa15d8564b9c022617"
+     },
+     "prompt": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-driver.py.txt",
+      "sha256": "714d00d8a226839ad1349969c05df3a71eb11884092860f07fe3f07e892e11eb"
+     },
+     "output": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-el.txt",
+      "sha256": "dcafd9ccd6c42ec4199af0aca53af281d6546dc7127d49f41f701484a6ec3b01"
+     },
+     "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "en",
-   "contentSHA256": "e0dd4c32075f8d5cc96bddebf8e65d22ce7e47e97ece44fb0b3a02bd9f8da504",
+   "contentSHA256": "1c1feea07ec6439bae76f30ec2d81819689a5a3009535383f27b35e9dbff7c60",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1305,13 +1425,32 @@
       "sha256": "5af59bcb33ac0b7bcb660bb44d4f24bcd80085aef2545823aca614330ccc4299"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "selfLearningDictionary.forgetMemory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Learn from tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-22",
+     "draft": {
+      "path": "additions/selfLearningDictionary.forgetMemory/draft.json",
+      "sha256": "a65f81a1397d69e42fb3c22e1063bd9d7efb80bfddc951aa15d8564b9c022617"
+     },
+     "prompt": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-driver.py.txt",
+      "sha256": "714d00d8a226839ad1349969c05df3a71eb11884092860f07fe3f07e892e11eb"
+     },
+     "output": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-en.txt",
+      "sha256": "1519a380bea9039ac3a9747a68b47cac1ecb6c305e34a7c05b96c6e69e7eaa3a"
+     },
+     "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "es",
-   "contentSHA256": "d217b25cfc115a0191d74bf1ee36c28ad586619def3077267700f4f030f3b1c3",
+   "contentSHA256": "40500b5cfe30dc1975c72599a176483de705449e4ee4fe8af673b8feb853c148",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1450,13 +1589,32 @@
       "sha256": "0b80fc9f28d567db489dee9f04ca94656bea6b8a74cb899d0af495fa578ca4c4"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "selfLearningDictionary.forgetMemory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Learn from tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-22",
+     "draft": {
+      "path": "additions/selfLearningDictionary.forgetMemory/draft.json",
+      "sha256": "a65f81a1397d69e42fb3c22e1063bd9d7efb80bfddc951aa15d8564b9c022617"
+     },
+     "prompt": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-driver.py.txt",
+      "sha256": "714d00d8a226839ad1349969c05df3a71eb11884092860f07fe3f07e892e11eb"
+     },
+     "output": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-es.txt",
+      "sha256": "54db39fd03fa310a0730c54f5388e5222455969142bdacabe125ab2e08255ee1"
+     },
+     "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "et",
-   "contentSHA256": "13a1a14e980282c3cdd33a1f8c2c0990cca98047e728236255ce96d717abe5d1",
+   "contentSHA256": "1ba846f883e49982a9df9c695c1aa1f2728a9faadb04b43c51c05c53e8d8af48",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1586,13 +1744,32 @@
       "sha256": "75128a24dcc9159248f6811a605fb82431bce25f971f93d2fa0ff62e4dd3877a"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "selfLearningDictionary.forgetMemory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Learn from tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-22",
+     "draft": {
+      "path": "additions/selfLearningDictionary.forgetMemory/draft.json",
+      "sha256": "a65f81a1397d69e42fb3c22e1063bd9d7efb80bfddc951aa15d8564b9c022617"
+     },
+     "prompt": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-driver.py.txt",
+      "sha256": "714d00d8a226839ad1349969c05df3a71eb11884092860f07fe3f07e892e11eb"
+     },
+     "output": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-et.txt",
+      "sha256": "c07d6310a9b80b350184210fd19667f90913f9bab19df69241eea26a866d979b"
+     },
+     "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fi",
-   "contentSHA256": "43e4a782518bdcf93f0e8236d88563a00f1e53ece7a7ba4160dad02cd6ae8763",
+   "contentSHA256": "cffac924e399649676190c5e67f5dcfd6a55cae827eb2c0b3aa5b1f89579f498",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1722,13 +1899,32 @@
       "sha256": "d10cf3c65534b38f6bafb01cf33c524338f845747fe2792f680bc35b0720ae4b"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "selfLearningDictionary.forgetMemory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Learn from tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-22",
+     "draft": {
+      "path": "additions/selfLearningDictionary.forgetMemory/draft.json",
+      "sha256": "a65f81a1397d69e42fb3c22e1063bd9d7efb80bfddc951aa15d8564b9c022617"
+     },
+     "prompt": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-driver.py.txt",
+      "sha256": "714d00d8a226839ad1349969c05df3a71eb11884092860f07fe3f07e892e11eb"
+     },
+     "output": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-fi.txt",
+      "sha256": "89d90a1f131e492e1b694d5c3fdd9f29c380e3619fc38c7fd385d76f7529027e"
+     },
+     "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fr",
-   "contentSHA256": "0a2c45041d4c2269229ae5f19525598b39a799d77aa249976281f1cd5129e0cd",
+   "contentSHA256": "df035f7703bec04b1d3aaf1e3b58223ecf1790fc12c6cce9ddeae48c7f252c1d",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1858,13 +2054,32 @@
       "sha256": "2df686c397451f97dc00f88d3bf95d911c27e3ebfcc4a55a6f6d529fdbf4cebd"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "selfLearningDictionary.forgetMemory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Learn from tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-22",
+     "draft": {
+      "path": "additions/selfLearningDictionary.forgetMemory/draft.json",
+      "sha256": "a65f81a1397d69e42fb3c22e1063bd9d7efb80bfddc951aa15d8564b9c022617"
+     },
+     "prompt": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-driver.py.txt",
+      "sha256": "714d00d8a226839ad1349969c05df3a71eb11884092860f07fe3f07e892e11eb"
+     },
+     "output": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-fr.txt",
+      "sha256": "ac24e429336a9a9cef46d2bab1c61977c403c0d2eac1b3d3addf5746fd0cb6ce"
+     },
+     "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hi",
-   "contentSHA256": "65758a3a99d53f35447ed69f37a0ed2d129f8257e0c48dcbc010cd9571b90a46",
+   "contentSHA256": "c561ddc6137242f2911c19104c4c8c8a679caf8d42b32353c2237f7ac1718022",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1994,13 +2209,32 @@
       "sha256": "ae054dcce193bef01ec6602a687c781fea4506c255f603492d4175c71b9ccfdc"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "selfLearningDictionary.forgetMemory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Learn from tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-22",
+     "draft": {
+      "path": "additions/selfLearningDictionary.forgetMemory/draft.json",
+      "sha256": "a65f81a1397d69e42fb3c22e1063bd9d7efb80bfddc951aa15d8564b9c022617"
+     },
+     "prompt": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-driver.py.txt",
+      "sha256": "714d00d8a226839ad1349969c05df3a71eb11884092860f07fe3f07e892e11eb"
+     },
+     "output": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-hi.txt",
+      "sha256": "ec4b49751531290b8d365d5daba21945e5d1115d78c7225584d42fdc71ce8e49"
+     },
+     "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hr",
-   "contentSHA256": "5ffe1c72cc91216a0419df28c213a9bda0c1759bb5b59b3a74f3367d8f79cae8",
+   "contentSHA256": "09d44fcea1b5a19213f72f29c9a8d1df0f8b3b589b5eca0a81f367cd30515ed0",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2130,13 +2364,32 @@
       "sha256": "559d919b1d534c4d0c16237f40f24101ec5099562271021fa219d254fc17bff8"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "selfLearningDictionary.forgetMemory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Learn from tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-22",
+     "draft": {
+      "path": "additions/selfLearningDictionary.forgetMemory/draft.json",
+      "sha256": "a65f81a1397d69e42fb3c22e1063bd9d7efb80bfddc951aa15d8564b9c022617"
+     },
+     "prompt": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-driver.py.txt",
+      "sha256": "714d00d8a226839ad1349969c05df3a71eb11884092860f07fe3f07e892e11eb"
+     },
+     "output": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-hr.txt",
+      "sha256": "f083bb0049f3bdfc0cbcef9b8bbc5bea1e6a90c69a384fb4bb1e2914f2a60e4c"
+     },
+     "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hu",
-   "contentSHA256": "a00cbb020f289c545883704c2b36fdcf69db25a963fba42408d49de9af62028f",
+   "contentSHA256": "809604b91afaa12cbe60c98c0b83e0867a6e21f4d14e5fc38d0cd4466975e0b7",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2266,13 +2519,32 @@
       "sha256": "42c255e8639544b0cbbae4067d8aa97ab168c49feb01994c016bb4e6e9cbce54"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "selfLearningDictionary.forgetMemory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Learn from tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-22",
+     "draft": {
+      "path": "additions/selfLearningDictionary.forgetMemory/draft.json",
+      "sha256": "a65f81a1397d69e42fb3c22e1063bd9d7efb80bfddc951aa15d8564b9c022617"
+     },
+     "prompt": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-driver.py.txt",
+      "sha256": "714d00d8a226839ad1349969c05df3a71eb11884092860f07fe3f07e892e11eb"
+     },
+     "output": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-hu.txt",
+      "sha256": "a76ef7bc9272622d58f7928627388dd411ad9fc1b9f3116ba00a3a353fd0b8de"
+     },
+     "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "it",
-   "contentSHA256": "80e2a017c7d7e6a0e42d306e4c9c3d75cf4becb4c5b07abfe45e889dbed834d1",
+   "contentSHA256": "22534c78e66b42b15ea6e199b9667f886be232840bca6a2b002111e42564f79a",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2411,13 +2683,32 @@
       "sha256": "0dbf60a89bc0d574756a3c990812307c68834cfef4cc512b61a5812ca9ad04d7"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "selfLearningDictionary.forgetMemory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Learn from tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-22",
+     "draft": {
+      "path": "additions/selfLearningDictionary.forgetMemory/draft.json",
+      "sha256": "a65f81a1397d69e42fb3c22e1063bd9d7efb80bfddc951aa15d8564b9c022617"
+     },
+     "prompt": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-driver.py.txt",
+      "sha256": "714d00d8a226839ad1349969c05df3a71eb11884092860f07fe3f07e892e11eb"
+     },
+     "output": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-it.txt",
+      "sha256": "c539bd44df7ad215520bbc8de8185fc29c525e16a339d20aa4352c86536913d4"
+     },
+     "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ja",
-   "contentSHA256": "b4b0874d7e2ceaeb62da7f2f9853ebe230191efd0b0ef65035cdb2b6e658c674",
+   "contentSHA256": "c36c704473901a6fef9c836cee5a1e380057ef338e8f7721f04b974582231deb",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2547,13 +2838,32 @@
       "sha256": "49a3bfff3ed4a15f8ebac29b21b42049842cdbc35399a48a100e6d581c6a32e8"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "selfLearningDictionary.forgetMemory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Learn from tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-22",
+     "draft": {
+      "path": "additions/selfLearningDictionary.forgetMemory/draft.json",
+      "sha256": "a65f81a1397d69e42fb3c22e1063bd9d7efb80bfddc951aa15d8564b9c022617"
+     },
+     "prompt": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-driver.py.txt",
+      "sha256": "714d00d8a226839ad1349969c05df3a71eb11884092860f07fe3f07e892e11eb"
+     },
+     "output": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-ja.txt",
+      "sha256": "2c4bf36f30cc293f355099803637e631442aca6240636e63286e1cf3ec61a867"
+     },
+     "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ko",
-   "contentSHA256": "5dbed5bd589920f22f739b4ff4e299a0561e603e07b43be975bcc7dc9d9b044e",
+   "contentSHA256": "a5b85ef9a94505c46897f103b030c0ff014711b3b15d52f180e7fa3041e76cd0",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2683,13 +2993,32 @@
       "sha256": "f6a347550feb8604e46fb36838251bf38d3f377568b0660c52939ae4685e897b"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "selfLearningDictionary.forgetMemory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Learn from tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-22",
+     "draft": {
+      "path": "additions/selfLearningDictionary.forgetMemory/draft.json",
+      "sha256": "a65f81a1397d69e42fb3c22e1063bd9d7efb80bfddc951aa15d8564b9c022617"
+     },
+     "prompt": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-driver.py.txt",
+      "sha256": "714d00d8a226839ad1349969c05df3a71eb11884092860f07fe3f07e892e11eb"
+     },
+     "output": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-ko.txt",
+      "sha256": "577ba69a1df9ca655baa2682a74bbdf9a60cec646fe81e5cf5f4981df1b3cc8e"
+     },
+     "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lt",
-   "contentSHA256": "b26af2d57de1eae91ece688119c552d3dc88a8eecd2e9084aeddd1ad0441a631",
+   "contentSHA256": "299a37599ed43902ca9dab99b00f3eb5dc57489cbcbae865cfa1a04f707ffcbb",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2828,13 +3157,32 @@
       "sha256": "d0a7057c071e7752daf40968c61f5de83b87d574a7f77a1dac3171b90f018786"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "selfLearningDictionary.forgetMemory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Learn from tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-22",
+     "draft": {
+      "path": "additions/selfLearningDictionary.forgetMemory/draft.json",
+      "sha256": "a65f81a1397d69e42fb3c22e1063bd9d7efb80bfddc951aa15d8564b9c022617"
+     },
+     "prompt": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-driver.py.txt",
+      "sha256": "714d00d8a226839ad1349969c05df3a71eb11884092860f07fe3f07e892e11eb"
+     },
+     "output": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-lt.txt",
+      "sha256": "ba2d2150a0022a5a39e4b49f7c0204775126440b8682c19e4d6750995cba1cd6"
+     },
+     "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lv",
-   "contentSHA256": "d90f1e3cc8b9197c849291cb0626b06f6dcd98fa964141a9f9ac1f504a41075f",
+   "contentSHA256": "5ce4eab42cdc694967efdfe987c3d16bca9ce800755181dd9179c888113a5710",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2964,13 +3312,32 @@
       "sha256": "92bba251847d286df1cab65d93ee113868bf14f8d495cf60178a5f02f97ab876"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "selfLearningDictionary.forgetMemory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Learn from tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-22",
+     "draft": {
+      "path": "additions/selfLearningDictionary.forgetMemory/draft.json",
+      "sha256": "a65f81a1397d69e42fb3c22e1063bd9d7efb80bfddc951aa15d8564b9c022617"
+     },
+     "prompt": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-driver.py.txt",
+      "sha256": "714d00d8a226839ad1349969c05df3a71eb11884092860f07fe3f07e892e11eb"
+     },
+     "output": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-lv.txt",
+      "sha256": "8a61d0f97de68895410fb532d37837eb31deab869d4e21587969c6166985c4a0"
+     },
+     "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "mt",
-   "contentSHA256": "8e2fd8009cd8792c136028d2ccb0372c2d75dd5b312c8c11566c77739b5aa8d3",
+   "contentSHA256": "1c77124be75338bb2f9f63af9e2c580ceabaafa58e59d363a21fea791ce7c4b0",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3109,13 +3476,32 @@
       "sha256": "8384b2cfb5c27ab2e695e1c6496be74ca57046dd6decc7c3c4f4883ef17979e4"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "selfLearningDictionary.forgetMemory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Learn from tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-22",
+     "draft": {
+      "path": "additions/selfLearningDictionary.forgetMemory/draft.json",
+      "sha256": "a65f81a1397d69e42fb3c22e1063bd9d7efb80bfddc951aa15d8564b9c022617"
+     },
+     "prompt": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-driver.py.txt",
+      "sha256": "714d00d8a226839ad1349969c05df3a71eb11884092860f07fe3f07e892e11eb"
+     },
+     "output": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-mt.txt",
+      "sha256": "6fc5e6b9d39097de6766933745ca40d39678f52f5d89f45d4ca7638c70d6d851"
+     },
+     "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "nl",
-   "contentSHA256": "4d611f081fed4b158f78290908c33ba0115710002761b3e2b001314ac34c1e14",
+   "contentSHA256": "bc131d062c6d11a7cb751e736684d4048c2f40d6cfaa9c9225952cbf156c5be6",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3245,13 +3631,32 @@
       "sha256": "f2a344d56f981447e787df14fa9f740f2710381282e50762fe09fbb90666155b"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "selfLearningDictionary.forgetMemory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Learn from tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-22",
+     "draft": {
+      "path": "additions/selfLearningDictionary.forgetMemory/draft.json",
+      "sha256": "a65f81a1397d69e42fb3c22e1063bd9d7efb80bfddc951aa15d8564b9c022617"
+     },
+     "prompt": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-driver.py.txt",
+      "sha256": "714d00d8a226839ad1349969c05df3a71eb11884092860f07fe3f07e892e11eb"
+     },
+     "output": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-nl.txt",
+      "sha256": "bd4c6cdb3dcbc2d2dc6d01f51ad7783913228c4224b5ea7b4420ac5cc6eea982"
+     },
+     "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pl",
-   "contentSHA256": "239e30ab9062e98b1613dfd7cd9d38ee685b142192b2ef16c12ce9c52096798c",
+   "contentSHA256": "08219cc6595508341a725923f4db69b73c9f555312675d8b4e76ac3d9453e3fc",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3381,13 +3786,32 @@
       "sha256": "d62011f3349ebc69497ae29d466e0f3a0e5b2db36929835f692090a386341c89"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "selfLearningDictionary.forgetMemory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Learn from tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-22",
+     "draft": {
+      "path": "additions/selfLearningDictionary.forgetMemory/draft.json",
+      "sha256": "a65f81a1397d69e42fb3c22e1063bd9d7efb80bfddc951aa15d8564b9c022617"
+     },
+     "prompt": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-driver.py.txt",
+      "sha256": "714d00d8a226839ad1349969c05df3a71eb11884092860f07fe3f07e892e11eb"
+     },
+     "output": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-pl.txt",
+      "sha256": "b0ccdd1b6d9ade665525935af1587cf6995d4e64b517e182709324dd35e2ec0d"
+     },
+     "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pt",
-   "contentSHA256": "3c27ee79f5da0a5f906c4486202b4e4b8b6fe3898ea0b124a7663ed45b359718",
+   "contentSHA256": "0ff5ae65954c3e9d185cfc9a4f3c298238e2f299cec21662dbb85ca1c843d98d",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3525,13 +3949,32 @@
       "sha256": "32b4885084abe44a47ec0184ab1192d0a04b2b6b620986de55d0806c5899a6b3"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "selfLearningDictionary.forgetMemory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Learn from tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-22",
+     "draft": {
+      "path": "additions/selfLearningDictionary.forgetMemory/draft.json",
+      "sha256": "a65f81a1397d69e42fb3c22e1063bd9d7efb80bfddc951aa15d8564b9c022617"
+     },
+     "prompt": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-driver.py.txt",
+      "sha256": "714d00d8a226839ad1349969c05df3a71eb11884092860f07fe3f07e892e11eb"
+     },
+     "output": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-pt.txt",
+      "sha256": "de7f09088964d4dc7a3b51c92df9f8a70394d0e7e21c9942a3a83665c6b8d1b3"
+     },
+     "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ro",
-   "contentSHA256": "a0b4225a63f847f5d9a5b08554ede5365a6a1cac5201d7f25bfb97e825ed89b0",
+   "contentSHA256": "06386f997afdbd23add7648d1d2d4ae0c32a46fee38d69ca3d027f355c633a3a",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3661,13 +4104,32 @@
       "sha256": "f9a4fc19109ea15677405bc6c6a86f260f1a56de41ba54c4e93afb0285cd4223"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "selfLearningDictionary.forgetMemory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Learn from tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-22",
+     "draft": {
+      "path": "additions/selfLearningDictionary.forgetMemory/draft.json",
+      "sha256": "a65f81a1397d69e42fb3c22e1063bd9d7efb80bfddc951aa15d8564b9c022617"
+     },
+     "prompt": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-driver.py.txt",
+      "sha256": "714d00d8a226839ad1349969c05df3a71eb11884092860f07fe3f07e892e11eb"
+     },
+     "output": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-ro.txt",
+      "sha256": "604282198d29131177eca276f1516aa759d6bb213cedf2d7147310b433949f2f"
+     },
+     "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ru",
-   "contentSHA256": "e5846f39b398c82a3c9374cf454e089c8d8368f9377a988f3030fdae53ef8937",
+   "contentSHA256": "d7665409ece37ffd2891e7484d68b2be7e7b4e36c76e211cafea8179cfb729fb",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3797,13 +4259,32 @@
       "sha256": "8071977c5ac6c92b2b265219a49c2f412923f9971a56095a6339f84b4cd6acdb"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "selfLearningDictionary.forgetMemory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Learn from tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-22",
+     "draft": {
+      "path": "additions/selfLearningDictionary.forgetMemory/draft.json",
+      "sha256": "a65f81a1397d69e42fb3c22e1063bd9d7efb80bfddc951aa15d8564b9c022617"
+     },
+     "prompt": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-driver.py.txt",
+      "sha256": "714d00d8a226839ad1349969c05df3a71eb11884092860f07fe3f07e892e11eb"
+     },
+     "output": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-ru.txt",
+      "sha256": "3e1bf88616d2bedd84345a2169fa262a37fd47e86ffdfeeb050a53d482222715"
+     },
+     "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sk",
-   "contentSHA256": "6f406ba792d5631c4dc1985f60462494570d1f00670a6c2e51b6467508f7899f",
+   "contentSHA256": "9f84905bdf7593378d6483f627efdfd9d6cdff4469191e3d893178cecd868001",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3933,13 +4414,32 @@
       "sha256": "0ad11f72d70418bde3d1813cfbaaa09e075fcc48423e8b68ce8205705bf78f6f"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "selfLearningDictionary.forgetMemory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Learn from tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-22",
+     "draft": {
+      "path": "additions/selfLearningDictionary.forgetMemory/draft.json",
+      "sha256": "a65f81a1397d69e42fb3c22e1063bd9d7efb80bfddc951aa15d8564b9c022617"
+     },
+     "prompt": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-driver.py.txt",
+      "sha256": "714d00d8a226839ad1349969c05df3a71eb11884092860f07fe3f07e892e11eb"
+     },
+     "output": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-sk.txt",
+      "sha256": "36b3e2f1a783a992f6da00856ae5ebf83982a552f68c257fc53250109031e7d8"
+     },
+     "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sl",
-   "contentSHA256": "946b5bfdbe1c801a582020432e8751db3c2247bfa968b35806d0308633834c0d",
+   "contentSHA256": "0e4a2fac1427ede049585386e97b7130d770ed53152896cd734ad750483e2331",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4078,13 +4578,32 @@
       "sha256": "9bbfdff05a0aa6ae62eedba6e3656fbe6e0cf9e07a0058aa98c21f3f375260b5"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "selfLearningDictionary.forgetMemory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Learn from tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-22",
+     "draft": {
+      "path": "additions/selfLearningDictionary.forgetMemory/draft.json",
+      "sha256": "a65f81a1397d69e42fb3c22e1063bd9d7efb80bfddc951aa15d8564b9c022617"
+     },
+     "prompt": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-driver.py.txt",
+      "sha256": "714d00d8a226839ad1349969c05df3a71eb11884092860f07fe3f07e892e11eb"
+     },
+     "output": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-sl.txt",
+      "sha256": "e3ea490d2e7932e9ea3779e71b11e8c34346db4c6917ac0bb6d56f6f250d4301"
+     },
+     "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sv",
-   "contentSHA256": "f2fdb22e579f05791ea87c3e7d73f70663bbe4b08e600eb5ce553e0b5f01e0b5",
+   "contentSHA256": "6209e7c07f4b3ec8c171d76dc88db045b00e0d61283b5c039827d50ad0c25d91",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4214,13 +4733,32 @@
       "sha256": "f1f3d5c94cc22ba33b7ff10533d7089b66f50fc8c7d835d04c7df9f9a64154e3"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "selfLearningDictionary.forgetMemory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Learn from tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-22",
+     "draft": {
+      "path": "additions/selfLearningDictionary.forgetMemory/draft.json",
+      "sha256": "a65f81a1397d69e42fb3c22e1063bd9d7efb80bfddc951aa15d8564b9c022617"
+     },
+     "prompt": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-driver.py.txt",
+      "sha256": "714d00d8a226839ad1349969c05df3a71eb11884092860f07fe3f07e892e11eb"
+     },
+     "output": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-sv.txt",
+      "sha256": "3aef45cc2346e40d34af0d16740bcdef58accaf03f5bc5a34198c23784cb07a6"
+     },
+     "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "tr",
-   "contentSHA256": "5292e3ea089b26fe5c17ee4d2dc0e091b5a0faa7cd575fc92307dca7d8b233d4",
+   "contentSHA256": "bae8393c26265a61c58fb12f1b510ed80231fa18fbdd189ad93602d23854fce7",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4350,13 +4888,32 @@
       "sha256": "ac321a22ea7053e2d44df3dd8dbbbdada4a824edf2bfe9e469c386fa55e4a80d"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "selfLearningDictionary.forgetMemory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Learn from tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-22",
+     "draft": {
+      "path": "additions/selfLearningDictionary.forgetMemory/draft.json",
+      "sha256": "a65f81a1397d69e42fb3c22e1063bd9d7efb80bfddc951aa15d8564b9c022617"
+     },
+     "prompt": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-driver.py.txt",
+      "sha256": "714d00d8a226839ad1349969c05df3a71eb11884092860f07fe3f07e892e11eb"
+     },
+     "output": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-tr.txt",
+      "sha256": "fee6b8dac263ff2c435eb793e3b0cc0800e9da5bf7bf779a75adc07af2b12be4"
+     },
+     "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "uk",
-   "contentSHA256": "5f9260e6efe265603e7f3aeb0bfc44066fe8584ad750247c9a48d1e8ef8def6d",
+   "contentSHA256": "3b56aaf6dfd982578085aa58715f23e9264cc90eeea6de518205d7f4fcf63b52",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4495,13 +5052,32 @@
       "sha256": "808ec53f28146ed4bc3e134a17799fe8dad7a592cb89a624d17095cbbe10a38b"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "selfLearningDictionary.forgetMemory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Learn from tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-22",
+     "draft": {
+      "path": "additions/selfLearningDictionary.forgetMemory/draft.json",
+      "sha256": "a65f81a1397d69e42fb3c22e1063bd9d7efb80bfddc951aa15d8564b9c022617"
+     },
+     "prompt": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-driver.py.txt",
+      "sha256": "714d00d8a226839ad1349969c05df3a71eb11884092860f07fe3f07e892e11eb"
+     },
+     "output": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-uk.txt",
+      "sha256": "8b3cf9733e3a24b4cb464042f0cb710f4bdc648e5847b5f88577eb84acdfcb1e"
+     },
+     "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "vi",
-   "contentSHA256": "02f39fd43ba5b48675386fdc625d30138c9d75f91e828bd4c42060a11ea5f5cb",
+   "contentSHA256": "97ab942f142391a74d7fad2cb7f0687db3b1f2d7b7483e399c357bb2be5a2b47",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4631,13 +5207,32 @@
       "sha256": "e69ef7b5d308fc429a8ba508f4b7916a2c8df0366c51c2bf74086d566ddfaf56"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "selfLearningDictionary.forgetMemory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Learn from tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-22",
+     "draft": {
+      "path": "additions/selfLearningDictionary.forgetMemory/draft.json",
+      "sha256": "a65f81a1397d69e42fb3c22e1063bd9d7efb80bfddc951aa15d8564b9c022617"
+     },
+     "prompt": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-driver.py.txt",
+      "sha256": "714d00d8a226839ad1349969c05df3a71eb11884092860f07fe3f07e892e11eb"
+     },
+     "output": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-vi.txt",
+      "sha256": "9d2176c92d3b69b51693f44154726f199fd75a3db8fd8783cf5e69a063df6584"
+     },
+     "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "zh",
-   "contentSHA256": "f4c4b7a000bf29077cfd78a5880a07b29cf0085a215e91cae27bbf4b37d1e05e",
+   "contentSHA256": "2b5c0c5519015e34e4f7923347693c83b0380e21c8a05c34e70565448d601b7a",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4767,6 +5362,25 @@
       "sha256": "7682fb07cf091c9fb6ffe576bcb13160cd33d6af9a751c6337c166e5e16a2c69"
      },
      "disposition": "adopted as returned by the review (additions/keepOutOfClipboardHistory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "selfLearningDictionary.forgetMemory",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Learn from tab siblings); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-22",
+     "draft": {
+      "path": "additions/selfLearningDictionary.forgetMemory/draft.json",
+      "sha256": "a65f81a1397d69e42fb3c22e1063bd9d7efb80bfddc951aa15d8564b9c022617"
+     },
+     "prompt": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-driver.py.txt",
+      "sha256": "714d00d8a226839ad1349969c05df3a71eb11884092860f07fe3f07e892e11eb"
+     },
+     "output": {
+      "path": "additions/selfLearningDictionary.forgetMemory/review-zh.txt",
+      "sha256": "52d7ea885095d930c457bc8d2c9d1e4f0097afeefbc2661e2975597337eb5647"
+     },
+     "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
     }
    ],
    "phraseExemptions": []
@@ -5020,7 +5634,8 @@
   "yourWords.export": "d28e07ce3afffe4cb87d63ae1280d03854e7c90d3da8c047b593b356f77121ef",
   "yourWords.import": "9d9c4a63e66f3bb7799bdd48927c19066f99dab2b41c973d15eebcf19ec1b136",
   "yourWords.massEdit": "a3f4fe070d5e6fc8cf78e3122bc299db26a3c139c8b7b0ad6aff1bbae9d5ce03",
-  "yourWords.search": "e2edb884f10d397e3e04823d498a44c3c820f9115d7192febdf86633014248e0"
+  "yourWords.search": "e2edb884f10d397e3e04823d498a44c3c820f9115d7192febdf86633014248e0",
+  "selfLearningDictionary.forgetMemory": "df6f4cc0a6d055a0e8f95ed369832bb56bb7f738c3aad4f3a30c81e0bb909e1b"
  },
  "reviewedSourceNote": "Per searchable id, the SHA-256 of the English title and description its translations were reviewed against (reference/settings-map.json; SettingsSearchVocabularyTests.sourceFingerprint). First recorded 2026-10-07 at be0086b6 from the export the Phase 0 and council reviews covered. When a test names an id here, re-review that id's translated blocks, then record the hash the test prints. Limit: dynamic titles are bound by resolver name, not template wording."
 }

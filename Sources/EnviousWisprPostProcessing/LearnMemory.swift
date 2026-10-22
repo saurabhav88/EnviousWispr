@@ -102,6 +102,9 @@ package final class LearnMemory {
   /// Test seam: runs after a read and before the file is stat-ed again, so a
   /// test can commit from another instance in exactly that window.
   var afterReadForTesting: (() -> Void)?
+  /// Runs after this instance committed a change or tried a Forget, outside
+  /// the lock, so a screen showing the memory (Settings) re-reads it (#3975).
+  package var onChange: (() -> Void)?
 
   /// - Parameters:
   ///   - lockSyscall: test seam for the companion-file lock; production
@@ -202,6 +205,8 @@ package final class LearnMemory {
   /// again.
   @discardableResult
   package func forgetAll() -> Bool {
+    // A failed Forget may still have deleted some files: re-read either way.
+    defer { onChange?() }
     do {
       return try DurableJSONFile.withExclusiveLock(on: fileURL, lockSyscall: lockSyscall) {
         let fm = FileManager.default
@@ -228,6 +233,14 @@ package final class LearnMemory {
   /// Lock, reload, prune, apply, write; publish only after the write landed.
   /// `apply` returns nil to refuse the event (a cap).
   private func transact<T: Equatable & Sendable>(
+    _ apply: (inout [String: Entry]) -> T?
+  ) -> LearnMemoryMutation<T> {
+    let result = lockedTransact(apply)
+    if case .committed = result { onChange?() }
+    return result
+  }
+
+  private func lockedTransact<T: Equatable & Sendable>(
     _ apply: (inout [String: Entry]) -> T?
   ) -> LearnMemoryMutation<T> {
     do {

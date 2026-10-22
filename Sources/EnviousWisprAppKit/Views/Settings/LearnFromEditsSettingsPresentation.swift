@@ -82,6 +82,37 @@ struct LearnFromEditsSettingsPresentation: Equatable, Sendable {
   static var learnMoreLabel: String { String(localized: learnMoreLabelResource) }
   static let learnMoreURL = "https://enviouswispr.com/help/self-learning-dictionary/"
 
+  // #3975 plan §3.4: the learning memory row, shown only while the memory
+  // holds something. Forget deletes the file and every corrupt copy.
+  static let forgetMemoryTitleResource = LocalizedStringResource(
+    "Forget learning memory",
+    comment:
+      "Your Words, Learn from: the self-learning dictionary row: the action that deletes what the app remembers about the user's fixes (refused, undone and blocked words).")
+  static func memoryLine(blocked: Int) -> String {
+    String(
+      localized: "Learning memory: \(blocked) blocked",
+      comment:
+        "Your Words, Learn from: the self-learning dictionary row: how many fixes the user refused twice, so they are never learned again until Forget.")
+  }
+  static let forgetButton = String(
+    localized: "Forget",
+    comment: "Your Words, Learn from: the self-learning dictionary row: button that opens the Forget learning memory confirmation.")
+  static let forgetAlertTitle = String(
+    localized: "Forget what EnviousWispr remembers about your fixes?",
+    comment: "Your Words, Learn from: the Forget learning memory confirmation: the question.")
+  static let forgetAlertMessage = String(
+    localized: "Blocked words may be learned again.",
+    comment: "Your Words, Learn from: the Forget learning memory confirmation: what forgetting means.")
+  static let forgetConfirm = String(
+    localized: "Forget",
+    comment: "Your Words, Learn from: the Forget learning memory confirmation: the destructive button.")
+  static let cancelTitle = String(
+    localized: "Cancel",
+    comment: "Your Words, Learn from: the Forget learning memory confirmation: keeps the memory.")
+  static let forgetFailed = String(
+    localized: "Couldn’t forget. Try again.",
+    comment: "Your Words, Learn from: the self-learning dictionary row: shown when the learning memory could not be deleted.")
+
   init(selection: CorrectionJudgeArmSelection, judge: JudgePhase = .none) {
     switch (selection, judge) {
     case (.arm, _):

@@ -1,0 +1,1 @@
+{"language":"mt","title":"ħassar il-memorja tat-tagħlim","words":["memorja","korrezzjonijiet imblukkati","korrezzjonijiet irrifjutati","żblokka"],"phrases":["ħassar il-memorja tal-korrezzjonijiet imblukkati","ħalli l-app terġa’ titgħallem kliem imblukkat"]}

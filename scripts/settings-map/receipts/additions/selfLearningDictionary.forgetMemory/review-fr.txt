@@ -1,0 +1,15 @@
+{
+  "language": "fr",
+  "title": "effacer la mémoire d’apprentissage",
+  "words": [
+    "oublier",
+    "mémoire",
+    "corrections refusées",
+    "mots bloqués",
+    "débloquer"
+  ],
+  "phrases": [
+    "effacer la mémoire des corrections refusées",
+    "permettre au dictionnaire d’apprendre les mots bloqués"
+  ]
+}

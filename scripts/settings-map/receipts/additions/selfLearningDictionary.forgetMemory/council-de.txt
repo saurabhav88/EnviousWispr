@@ -1,0 +1,5 @@
+German block, GPT and Gemini council (session ew-3975-forget-memory-de-2026-10-22, round 2; raw answers in the council's encrypted history).
+Input: the isolated Codex review-de.txt block, which used "gesperrte"/"entsperren" while the UI says "blockiert".
+GPT: words Lerngedächtnis, blockiert, Korrekturen, vergessen; phrases Lerngedächtnis löschen, abgelehnte Korrekturen vergessen, blockierte Wörter wieder lernen lassen ("blockiert" matches the UI).
+Gemini: words Lerngedächtnis, blockiert, entsperren, Korrekturen; phrases Lerngedächtnis löschen, blockierte Wörter wieder lernen, abgelehnte Korrekturen vergessen (keeps "entsperren" as a user synonym).
+Adopted: both agree on "blockiert" and the three phrases; kept Gemini's "entsperren" and GPT's "vergessen" (the button's own verb); dropped "Korrekturen" alone, which fits the sibling "Selbstlernendes Wörterbuch" as well.

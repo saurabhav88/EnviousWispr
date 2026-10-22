@@ -140,6 +140,28 @@ struct LearnMemoryTests {
     #expect(memory.blockedCount == LearnMemory.blockedCap)
   }
 
+  @Test("onChange fires after each committed change and after Forget, never for an event not remembered")
+  func onChangeFollowsCommits() throws {
+    let dir = Self.tempDir()
+    defer { Self.cleanup(dir) }
+    let memory = Self.memory(dir)
+    var changes = 0
+    memory.onChange = { changes += 1 }
+    memory.recordJudgeRefusal(Self.sify)
+    memory.recordUndo(Self.sify)
+    #expect(changes == 2)
+    let lockPath = memory.fileURL.appendingPathExtension("lock").path
+    let fd = open(lockPath, O_RDWR | O_CREAT, 0o600)
+    try #require(fd >= 0)
+    defer { close(fd) }
+    try #require(flock(fd, LOCK_EX | LOCK_NB) == 0)
+    #expect(memory.recordUndo(Self.cenit) == .notRemembered)
+    #expect(changes == 2, "nothing committed")
+    flock(fd, LOCK_UN)
+    #expect(memory.forgetAll())
+    #expect(changes == 3)
+  }
+
   // MARK: Failure contracts
 
   @Test("a held lock: the event is not remembered and committed state is unchanged")

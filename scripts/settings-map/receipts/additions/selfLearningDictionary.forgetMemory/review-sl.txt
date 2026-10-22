@@ -1,0 +1,1 @@
+{"language":"sl","title":"pozabi zavrnjene popravke","words":["blokirane besede","odblokiranje"],"phrases":["počisti spomin na zavrnjene popravke","dovoli ponovno učenje blokiranih besed"]}

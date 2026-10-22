@@ -1,0 +1,13 @@
+{
+  "language": "pl",
+  "title": "wyczyść pamięć uczenia się",
+  "words": [
+    "odrzucone poprawki",
+    "zablokowane słowa",
+    "odblokowanie słów"
+  ],
+  "phrases": [
+    "wyczyść pamięć odrzuconych poprawek",
+    "pozwól aplikacji ponownie uczyć się zablokowanych słów"
+  ]
+}

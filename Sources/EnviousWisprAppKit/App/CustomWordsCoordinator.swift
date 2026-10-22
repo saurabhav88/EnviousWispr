@@ -95,6 +95,7 @@ final class CustomWordsCoordinator {
     self.learnMemory = LearnMemory(
       fileURL: manager.learnMemoryURL, report: LearnMemoryDiagnostics.forward)
     let snapshot = manager.loadSnapshot()
+    observeLearnMemory()
     customWords = snapshot?.words ?? []
     pendingEnrichmentBatchTotal = snapshot?.pendingEnrichmentBatchTotal
     wordsLoadFailureAtLaunch = manager.lastLoadFailure
@@ -108,6 +109,7 @@ final class CustomWordsCoordinator {
     self.learnMemory = LearnMemory(
       fileURL: manager.learnMemoryURL, report: LearnMemoryDiagnostics.forward)
     let snapshot = manager.loadSnapshot()
+    observeLearnMemory()
     customWords = snapshot?.words ?? []
     pendingEnrichmentBatchTotal = snapshot?.pendingEnrichmentBatchTotal
     wordsLoadFailureAtLaunch = manager.lastLoadFailure
@@ -384,6 +386,30 @@ final class CustomWordsCoordinator {
     } catch {
       return note(error)
     }
+  }
+
+  // MARK: - Learning memory in Settings (#3975 §3.4)
+
+  /// What the Learning memory row shows; read by `refreshLearnMemorySummary`.
+  private(set) var learnMemoryStored = false
+  private(set) var learnMemoryBlockedCount = 0
+  /// The last Forget did not delete everything; the row says so.
+  private(set) var learnMemoryForgetFailed = false
+
+  /// Every committed change (the watcher's refusals, Undo, a Settings delete,
+  /// Forget) updates the row, so an open Settings tab is never stale.
+  private func observeLearnMemory() {
+    learnMemory.onChange = { [weak self] in self?.refreshLearnMemorySummary() }
+  }
+
+  func refreshLearnMemorySummary() {
+    learnMemoryStored = learnMemory.hasStoredMemory
+    learnMemoryBlockedCount = learnMemory.blockedCount
+  }
+
+  /// Deletes the memory file and every corrupt copy; the row reads the result.
+  func forgetLearnMemory() {
+    learnMemoryForgetFailed = !learnMemory.forgetAll()
   }
 
   // MARK: - User refusals (#3975)

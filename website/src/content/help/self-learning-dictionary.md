@@ -4,9 +4,9 @@ description: "Fix a misheard word in text EnviousWispr pasted a moment ago, and 
 category: "custom-words"
 section: "Dictionary"
 order: 5
-keywords: ["self-learning dictionary", "learn from my edits", "learn from edits", "undo", "auto-learned", "correction", "misheard word", "custom words", "on-device", "local classifier", "word check", "Envious Word Check", "checked by", "learn-only", "privacy", "which apps", "word not learned", "remove a learned word", "turn off learning", "wrong word added to dictionary"]
+keywords: ["self-learning dictionary", "learn from my edits", "learn from edits", "undo", "auto-learned", "correction", "misheard word", "custom words", "on-device", "local classifier", "word check", "Envious Word Check", "checked by", "learn-only", "privacy", "which apps", "word not learned", "remove a learned word", "turn off learning", "wrong word added to dictionary", "learned again", "fixed the same word twice", "blocked", "stop learning a word", "forget learning memory"]
 related: ["adding-custom-words", "how-custom-word-correction-works", "adding-a-word-from-your-selection", "privacy-overview", "model-downloads-and-management"]
-updated: 2026-09-29
+updated: 2026-10-22
 deflection: "can_resolve"
 ---
 The Self-Learning Dictionary adds words to your dictionary for you. When you fix a misheard word in text EnviousWispr pasted a moment ago, and a check on your Mac agrees it was a correction, the word you typed is saved in Your Words with the mishearing attached. A small pill gives you four seconds to undo it. You never have to open Settings to teach it a name.
@@ -27,11 +27,15 @@ Click **Undo** and the pill says **Undone** for 1.5 seconds. A new word is remov
 
 If Undo says **Couldn’t undo**, the word stayed as it was. That notice stays for 3 seconds. Remove it in **Settings** > **Dictionary** > **Your Words** instead.
 
+Undo also tells EnviousWispr you did not want that fix. After one Undo, the same fix can still be learned again, so you can try the feature as often as you like. After a second "no" for the same fix, it is blocked: EnviousWispr never learns it again. Deleting a learned word, or removing a sound-alike it learned, counts as a "no" too, so one Undo and one delete also block the fix. To clear blocks, see [Forget what it remembers](#forget-what-it-remembers).
+
 ### Remove a word it learned
 
 1. Open **Settings** > **Dictionary** > **Your Words**.
 2. Choose the **Auto-learned** filter to see words the Self-Learning Dictionary added, or words it attached a sound-alike to. They carry a small sparkle, and so does each sound-alike it attached to a word you added yourself.
 3. Edit or delete them the way you would any other word.
+
+Deleting a learned word, or removing a sound-alike it learned and saving, counts like one Undo for each fix it learned. The second "no" for the same fix blocks it.
 
 ### A word I fixed wasn't learned
 
@@ -39,7 +43,11 @@ Not every edit becomes a dictionary entry. Rewriting a sentence, changing your m
 
 Before it saves a word, a small correction model on your Mac looks at the dictation and your edit. It asks one question: is the new word what you actually said, spelled the way you want it? If the answer is no, nothing happens.
 
+If the correction model says no to a fix after you clearly finished editing, EnviousWispr remembers that. If you make the same fix again in a later dictation, and the new word looks like a name, brand or term (it has a capital letter that is not only there because a sentence starts, as in "CENIT" or "TeamViewer", or it mixes letters and digits, as in "Tele2"), it is usually learned without asking the model again. A fix in all lowercase, such as "got" to "received", is always left to the correction model, however often you repeat it.
+
 If your edit was a real correction and nothing was learned, check these:
+
+- **You blocked that fix.** A fix you said "no" to twice (with Undo, or by deleting the learned word) is never learned again. Use [Forget what it remembers](#forget-what-it-remembers) to clear blocks.
 
 - **The pill said Couldn’t save.** Nothing was written. The mishearing already belongs to another word as a trigger, the word it was about had been deleted in the meantime, or the dictionary file could not be updated. This pill also stays for 3 seconds.
 - **The app does not share its text.** Some apps and custom web editors never share their text with macOS accessibility. The dictation still pastes normally, but nothing is learned.
@@ -93,10 +101,20 @@ The watching and the judging run on your Mac and send nothing off it. Envious La
 
 What Envious Labs can receive is metadata with no content in it:
 
-- **Only while Share usage metrics is on** (in **App Settings** > **Privacy**): why a watch was skipped or how it ended, how long it lasted, a broad kind of app (native, web-based, browser or other), whether the correction model answered and how long it took, whether the edit ended clearly (you moved the cursor away, sent the text or dictated again) or only by a pause or a switch to another app, whether a word was saved (and if not, which of three fixed reasons), whether the saved word was new, existing or from a pack, and whether Undo was shown and used. Each word check adds only which check ran, its version, whether it could answer and why not, and counts and timing. Some of these reports carry the same anonymous ID as that dictation's own usage report, which includes the identifier of the app you pasted into. See [What data is collected](/help/what-data-is-collected/). Also only while this switch is on, the app sends at most one memory report per launch, after 12 minutes with no dictation or file transcription: how much memory it uses, time since launch, and whether Envious Word Check is loaded and needed.
+- **Only while Share usage metrics is on** (in **App Settings** > **Privacy**): why a watch was skipped or how it ended, how long it lasted, a broad kind of app (native, web-based, browser or other), whether the correction model answered and how long it took, whether the edit ended clearly (you moved the cursor away, sent the text or dictated again) or only by a pause or a switch to another app, whether a word was saved (and if not, which of three fixed reasons), whether the saved word was new, existing or from a pack, whether it was learned by the correction model or from a repeated fix, whether Undo was shown and used, whether an Undo or a deleted learned word was remembered as a "no" (and whether that blocked the fix), and how often a blocked fix was skipped. Each word check adds only which check ran, its version, whether it could answer and why not, and counts and timing. Some of these reports carry the same anonymous ID as that dictation's own usage report, which includes the identifier of the app you pasted into. See [What data is collected](/help/what-data-is-collected/). Also only while this switch is on, the app sends at most one memory report per launch, after 12 minutes with no dictation or file transcription: how much memory it uses, time since launch, and whether Envious Word Check is loaded and needed.
 - **Error reports, controlled by Send crash reports** (in **App Settings** > **Privacy**): if the correction model fails to load, returns a broken answer or cannot be asked, one error report per kind per launch names that kind, the model's version and your macOS version. No dictated or watched text, and no error text, is attached.
 
 Every word check runs locally, including when you use cloud polish. The word check itself sends no text over the network. If you choose cloud polish, the selected text goes directly to your chosen provider under your key, never through Envious Labs, after the word check has already applied your learned words. Custom words you added yourself may also go to that provider with the selected text.
+
+### Forget what it remembers
+
+EnviousWispr keeps a small memory on your Mac of the fixes the correction model said no to and the fixes you said no to. It stays on your Mac, next to your dictionary, and is never sent anywhere. A fix that is not blocked is forgotten after 90 days without being seen again. A blocked fix stays blocked until you clear it.
+
+1. Open **Settings** > **Dictionary** > **Learn from...**.
+2. When the memory holds something, a line under the switch shows how many fixes are blocked, for example **Learning memory: 2 blocked**, with a **Forget** button.
+3. Click **Forget**, then confirm. Blocked words may be learned again.
+
+Forget clears only this memory. Words already in Your Words stay there. If it says **Couldn’t forget. Try again.**, some of the memory may not have been cleared; click **Forget** again.
 
 ### Turn off learning from my edits
 

@@ -1,0 +1,8 @@
+{
+  "language": "en",
+  "words": ["forget", "reset", "blocked", "unblock", "memory"],
+  "phrases": [
+    "clear the memory of rejected corrections",
+    "let blocked words be learned again"
+  ]
+}
