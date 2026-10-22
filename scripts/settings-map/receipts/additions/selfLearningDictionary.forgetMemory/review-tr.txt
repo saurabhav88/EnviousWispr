@@ -1,0 +1,12 @@
+{
+  "language": "tr",
+  "title": "öğrenme belleğini temizle",
+  "words": [
+    "öğrenme belleği",
+    "engellenen kelimeler"
+  ],
+  "phrases": [
+    "öğrenme belleğini sıfırla",
+    "engellenen kelimeleri yeniden öğrenebilsin"
+  ]
+}

@@ -94,6 +94,24 @@ struct LearnFromEditsCompositionTests {
       editCapture: edits)
   }
 
+  @Test(
+    "#3975: the words coordinator, Undo and the watcher share one learning memory, and a Settings delete reaches learn_refused_by_user"
+  )
+  func oneMemoryAndUserRefusalTelemetry() throws {
+    let f = fixture()
+    let word = CustomWord(canonical: "Kwmala", aliases: ["kumala"], learnedAliases: ["kumala"])
+    #expect(f.customWords.add(word) == nil)
+    #expect(f.customWords.deleteByUser(id: word.id) == nil)
+    #expect(f.telemetry.events.last == .refusedByUser(.deleteWord, .watching))
+    let key = CorrectionPairKey.make(original: "kumala", corrected: "Kwmala")
+    // The learned coordinator sees the same store: its save-time check refuses
+    // once the second no lands.
+    f.customWords.learnMemory.recordUndo(key)
+    #expect(
+      f.wiring.coordinator.learn(original: "kumala", corrected: "Kwmala", expectedTarget: .newWord)
+        == .blocked)
+  }
+
   @Test("production selects no judge on every macOS major (the qualification table is empty), and the Settings row is disabled with its reason")
   func productionSelectsNothing() {
     for major in [14, 15, 26, 27] {
@@ -129,7 +147,7 @@ struct LearnFromEditsCompositionTests {
     #expect(pill.canonical == "Saira" && pill.kind == .updated && pill.phase == .learned)
     let saira = try #require(f.customWords.customWords.first { $0.canonical == "Saira" })
     #expect(saira.aliases == ["sarah"] && saira.learnedAliases == ["sarah"], "durably saved and marked")
-    #expect(f.telemetry.events.contains(.added(.existingWord)))
+    #expect(f.telemetry.events.contains(.added(.existingWord, .judge)))
     #expect(f.wiring.coordinator.undoRecord?.pillID == pill.id)
     f.overlay.dismissCurrent(.silent)
 

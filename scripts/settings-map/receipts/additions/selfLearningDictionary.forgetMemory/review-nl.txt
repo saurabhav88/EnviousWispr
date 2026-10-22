@@ -1,0 +1,1 @@
+{"language":"nl","title":"leergeheugen wissen","words":["geheugen wissen","geblokkeerde correcties","deblokkeren"],"phrases":["wis het geheugen van afgewezen correcties","laat de app eerder geblokkeerde woorden opnieuw leren"]}

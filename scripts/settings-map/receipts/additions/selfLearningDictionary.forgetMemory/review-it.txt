@@ -1,0 +1,13 @@
+{
+  "language": "it",
+  "title": "cancella la memoria di apprendimento",
+  "words": [
+    "memoria delle correzioni",
+    "parole bloccate",
+    "azzera memoria"
+  ],
+  "phrases": [
+    "cancella la memoria delle correzioni rifiutate",
+    "permetti di imparare di nuovo le parole bloccate"
+  ]
+}

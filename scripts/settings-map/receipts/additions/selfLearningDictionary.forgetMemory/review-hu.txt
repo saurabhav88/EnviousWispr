@@ -1,0 +1,13 @@
+{
+  "language": "hu",
+  "title": "tanulási memória törlése",
+  "words": [
+    "letiltott javítások",
+    "elutasított javítások",
+    "memória törlése"
+  ],
+  "phrases": [
+    "felejtsd el a korábban elutasított javításokat",
+    "tanulhassa meg újra a letiltott szavakat"
+  ]
+}

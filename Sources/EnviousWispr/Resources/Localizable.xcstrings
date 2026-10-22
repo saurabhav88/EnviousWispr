@@ -3764,6 +3764,17 @@
         }
       }
     },
+    "Blocked words may be learned again." : {
+      "comment" : "Your Words, Learn from: the Forget learning memory confirmation: what forgetting means.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Blockierte Wörter können wieder gelernt werden."
+          }
+        }
+      }
+    },
     "Bluetooth" : {
       "comment" : "Microphone settings: the microphone is connected over Bluetooth.",
       "localizations" : {
@@ -4102,7 +4113,7 @@
       }
     },
     "Cancel" : {
-      "comment" : "Live Preview settings, Universal engine card: button. It stops the download.\nSettings > AI Polish, local model row: button that stops the download.\nYour Words, Learn from: the self-learning dictionary row: button that stops the download.",
+      "comment" : "Live Preview settings, Universal engine card: button. It stops the download.\nSettings > AI Polish, local model row: button that stops the download.\nYour Words, Learn from: the Forget learning memory confirmation: keeps the memory.\nYour Words, Learn from: the self-learning dictionary row: button that stops the download.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5710,6 +5721,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Importliste konnte nicht aktualisiert werden. Versuche es erneut."
+          }
+        }
+      }
+    },
+    "Couldn’t forget. Try again." : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: shown when the learning memory could not be deleted.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Löschen fehlgeschlagen. Erneut versuchen."
           }
         }
       }
@@ -7936,6 +7958,39 @@
         }
       }
     },
+    "Forget" : {
+      "comment" : "Your Words, Learn from: the Forget learning memory confirmation: the destructive button.\nYour Words, Learn from: the self-learning dictionary row: button that opens the Forget learning memory confirmation.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vergessen"
+          }
+        }
+      }
+    },
+    "Forget learning memory" : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: the action that deletes what the app remembers about the user's fixes (refused, undone and blocked words).",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lerngedächtnis löschen"
+          }
+        }
+      }
+    },
+    "Forget what EnviousWispr remembers about your fixes?" : {
+      "comment" : "Your Words, Learn from: the Forget learning memory confirmation: the question.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vergessen, was sich EnviousWispr über deine Korrekturen gemerkt hat?"
+          }
+        }
+      }
+    },
     "Formal" : {
       "comment" : "AI Polish, S1-mini writing-style card: tone option.",
       "localizations" : {
@@ -9838,6 +9893,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nur lernen: Diese Nachbearbeitungsoption verwendet gelernte Wörter noch nicht."
+          }
+        }
+      }
+    },
+    "Learning memory: %lld blocked" : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: how many fixes the user refused twice, so they are never learned again until Forget.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lerngedächtnis: %lld blockiert"
           }
         }
       }

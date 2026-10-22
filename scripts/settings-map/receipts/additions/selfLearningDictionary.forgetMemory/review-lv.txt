@@ -1,0 +1,1 @@
+{"language":"lv","title":"notīrīt mācīšanās atmiņu","words":["bloķētie vārdi","noraidītie labojumi","atmiņas notīrīšana"],"phrases":["aizmirst noraidītos labojumus","ļaut atkal apgūt bloķētos vārdus"]}

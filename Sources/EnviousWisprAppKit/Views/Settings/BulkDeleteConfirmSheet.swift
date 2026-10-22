@@ -141,7 +141,7 @@ struct BulkDeleteConfirmSheet: View {
   }
 
   private func deleteSelection() {
-    if let error = customWordsCoordinator.removeBatch(ids: Array(ids)) {
+    if let error = customWordsCoordinator.deleteByUser(ids: Array(ids)) {
       deleteFailureMessage = error
       return
     }

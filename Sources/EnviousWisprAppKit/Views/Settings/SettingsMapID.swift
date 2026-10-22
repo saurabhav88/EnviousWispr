@@ -236,6 +236,7 @@ enum SettingsMapID: String, CaseIterable, Hashable, Sendable {
   case learnFrom = "learnFrom"
   case selfLearningDictionary = "selfLearningDictionary"
   case selfLearningDictionaryLearnMore = "selfLearningDictionary.learnMore"
+  case selfLearningDictionaryForgetMemory = "selfLearningDictionary.forgetMemory"
   case importContacts = "importContacts"
   case contactsSyncOnLaunch = "contactsSyncOnLaunch"
   case quickAddStep1 = "quickAdd.step1"

@@ -1,0 +1,12 @@
+{
+  "language": "de",
+  "words": [
+    "Lerngedächtnis",
+    "entsperren"
+  ],
+  "phrases": [
+    "Lerngedächtnis löschen",
+    "vergiss die abgelehnten Korrekturen",
+    "gesperrte Wörter wieder lernen lassen"
+  ]
+}

@@ -1,0 +1,1 @@
+{"language":"da","title":"ryd læringshukommelsen","words":["læringshukommelse","blokerede ord","afviste rettelser"],"phrases":["glem hvilke rettelser jeg har afvist","lad blokerede ord blive lært igen"]}

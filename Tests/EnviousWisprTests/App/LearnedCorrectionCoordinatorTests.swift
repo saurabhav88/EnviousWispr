@@ -11,18 +11,22 @@ import Testing
 @MainActor
 final class LearnedTelemetrySpy: LearnedCorrectionTelemetrySink {
   enum Event: Equatable {
-    case added(T.AddedState)
+    case added(T.AddedState, T.LearnVia)
     case undoShown
-    case undone(T.UndoKind, T.UndoOutcome)
+    case undone(T.UndoKind, T.UndoOutcome, T.LearnVia, T.UndoMemory?)
     case saveFailed(T.SaveFailure)
+    case refusedByUser(T.RefusalSource, T.UndoMemory)
   }
   private(set) var events: [Event] = []
-  func learnAdded(state: T.AddedState) { events.append(.added(state)) }
+  func learnAdded(state: T.AddedState, via: T.LearnVia) { events.append(.added(state, via)) }
   func learnUndoShown() { events.append(.undoShown) }
-  func learnUndone(kind: T.UndoKind, outcome: T.UndoOutcome) {
-    events.append(.undone(kind, outcome))
+  func learnUndone(kind: T.UndoKind, outcome: T.UndoOutcome, via: T.LearnVia, memory: T.UndoMemory?) {
+    events.append(.undone(kind, outcome, via, memory))
   }
   func learnSaveFailed(reason: T.SaveFailure) { events.append(.saveFailed(reason)) }
+  func learnRefusedByUser(source: T.RefusalSource, result: T.UndoMemory) {
+    events.append(.refusedByUser(source, result))
+  }
 }
 
 @MainActor
@@ -190,6 +194,7 @@ struct LearnedCorrectionCoordinatorTests {
     let presenter: LearnedPresenterSpy
     let coordinator: LearnedCorrectionCoordinator
     let ids: [UUID]
+    let memory: LearnMemory
   }
 
   private static let learnedAt = Date(timeIntervalSince1970: 1_800_000_000)
@@ -199,13 +204,14 @@ struct LearnedCorrectionCoordinatorTests {
     let telemetry = LearnedTelemetrySpy()
     let presenter = LearnedPresenterSpy()
     var remaining = ids
+    let memory = LearnMemory.forTests()
     let coordinator = LearnedCorrectionCoordinator(
-      vocabulary: library.access, telemetry: telemetry, now: { Self.learnedAt },
+      vocabulary: library.access, memory: memory, telemetry: telemetry, now: { Self.learnedAt },
       makeID: { remaining.isEmpty ? UUID() : remaining.removeFirst() })
     coordinator.attach(presenter: presenter)
     return Fixture(
       library: library, telemetry: telemetry, presenter: presenter, coordinator: coordinator,
-      ids: ids)
+      ids: ids, memory: memory)
   }
 
   private func shown(_ f: Fixture) -> LearnedCorrectionPillModel? {
@@ -233,13 +239,16 @@ struct LearnedCorrectionCoordinatorTests {
     let live = try #require(f.library.userWords.first { $0.id == saira.id })
     #expect(live.aliases == ["sarah", "sara"] && live.learnedAliases == ["sara"])
     #expect(live.learnedAt == nil && live.priority == 2, "the rest of the word is untouched")
-    #expect(f.telemetry.events == [.added(.existingWord)])
+    #expect(f.telemetry.events == [.added(.existingWord, .judge)])
     let record = try #require(f.coordinator.undoRecord)
     #expect(record.preSave == saira && record.postSave == live && record.operation == .updated)
 
     #expect(f.coordinator.undo(pillID: pill.id) == .undone)
     #expect(f.library.userWords == [saira], "exact pre-save word")
-    #expect(f.telemetry.events.last == .undone(.updated, .undone))
+    #expect(
+      f.telemetry.events.suffix(2) == [
+        .undone(.updated, .undone, .judge, .watching), .refusedByUser(.undo, .watching),
+      ])
     #expect(f.presenter.calls.last == .undone(pill.id))
     #expect(f.coordinator.undoRecord == nil)
   }
@@ -278,12 +287,15 @@ struct LearnedCorrectionCoordinatorTests {
     let live = try #require(f.library.userWords.first { $0.id == pack.id })
     #expect(live.source == .user && live.aliases == ["twist", "to-ist"])
     #expect(live.learnedAliases == ["to-ist"])
-    #expect(f.telemetry.events == [.added(.packOverride)])
+    #expect(f.telemetry.events == [.added(.packOverride, .judge)])
     #expect(f.coordinator.undoRecord?.preSave == nil)
 
     #expect(f.coordinator.undo(pillID: pill.id) == .undone)
     #expect(f.library.userWords.isEmpty && f.library.removes == [pack.id])
-    #expect(f.telemetry.events.last == .undone(.updated, .undone))
+    #expect(
+      f.telemetry.events.suffix(2) == [
+        .undone(.updated, .undone, .judge, .watching), .refusedByUser(.undo, .watching),
+      ])
   }
 
   @Test(
@@ -298,12 +310,15 @@ struct LearnedCorrectionCoordinatorTests {
     #expect(live.id == f.ids[0] && pill.id == f.ids[1], "word id then pill id, both allocated")
     #expect(live.aliases == ["kumala"] && live.learnedAliases == ["kumala"])
     #expect(live.learnedAt == Self.learnedAt && live.category == .person && live.source == .user)
-    #expect(f.telemetry.events == [.added(.newWord)])
+    #expect(f.telemetry.events == [.added(.newWord, .judge)])
     #expect(f.coordinator.undoRecord?.operation == .added)
 
     #expect(f.coordinator.undo(pillID: pill.id) == .undone)
     #expect(f.library.userWords.isEmpty)
-    #expect(f.telemetry.events.last == .undone(.added, .undone))
+    #expect(
+      f.telemetry.events.suffix(2) == [
+        .undone(.added, .undone, .judge, .watching), .refusedByUser(.undo, .watching),
+      ])
   }
 
   @Test("a deleted built-in is restored and learned in one step; Undo deletes it again exactly")
@@ -319,7 +334,7 @@ struct LearnedCorrectionCoordinatorTests {
     #expect(
       live.source == .user && live.aliases.last == "git-hub" && live.learnedAliases == ["git-hub"])
     #expect(live.learnedAt == nil, "the user brought it back, they did not create it")
-    #expect(f.telemetry.events == [.added(.existingWord)])
+    #expect(f.telemetry.events == [.added(.existingWord, .judge)])
     #expect(
       f.coordinator.undoRecord?.operation == .restoredBuiltin(.deletedBuiltin(id: github.id)))
 
@@ -494,7 +509,7 @@ struct LearnedCorrectionCoordinatorTests {
     f.coordinator.pillAdmitted(pillID: pill.id)
     f.coordinator.pillAdmitted(pillID: pill.id)
     f.coordinator.pillAdmitted(pillID: UUID())
-    #expect(f.telemetry.events == [.added(.newWord), .undoShown])
+    #expect(f.telemetry.events == [.added(.newWord, .judge), .undoShown])
   }
 
   @Test(
@@ -509,7 +524,7 @@ struct LearnedCorrectionCoordinatorTests {
     #expect(f.coordinator.undoRecord == nil)
     #expect(f.coordinator.undo(pillID: pill.id) == .stale)
     #expect(f.library.removes.isEmpty && f.library.userWords.count == 1)
-    #expect(f.telemetry.events == [.added(.newWord)], "no undone row for a stale id")
+    #expect(f.telemetry.events == [.added(.newWord, .judge)], "no undone row for a stale id")
   }
 
   // MARK: Undo exactness
@@ -526,7 +541,7 @@ struct LearnedCorrectionCoordinatorTests {
     #expect(f.coordinator.undo(pillID: pill.id) == .alreadyChanged)
     #expect(f.library.updates.isEmpty && f.library.removes.isEmpty)
     #expect(f.library.userWords[0].aliases == ["sara"] && f.library.userWords[0].category == .brand)
-    #expect(f.telemetry.events.last == .undone(.updated, .alreadyChanged))
+    #expect(f.telemetry.events.last == .undone(.updated, .alreadyChanged, .judge, nil))
     #expect(f.presenter.calls.last == .close(pill.id))
     #expect(f.coordinator.undoRecord == nil)
   }
@@ -549,7 +564,7 @@ struct LearnedCorrectionCoordinatorTests {
     let pill = try #require(shown(f))
     f.library.removeRefusal = "locked"
     #expect(f.coordinator.undo(pillID: pill.id) == .failed)
-    #expect(f.telemetry.events.last == .undone(.added, .failed))
+    #expect(f.telemetry.events.last == .undone(.added, .failed, .judge, nil))
     #expect(f.presenter.calls.last == .undoError(pill.id))
     #expect(f.library.userWords.count == 1, "the word stays")
 
@@ -560,7 +575,7 @@ struct LearnedCorrectionCoordinatorTests {
     g.library.silentUpdate = true
     #expect(g.coordinator.undo(pillID: pill2.id) == .failed)
     #expect(!g.presenter.calls.contains(.undone(pill2.id)))
-    #expect(g.telemetry.events.last == .undone(.updated, .failed))
+    #expect(g.telemetry.events.last == .undone(.updated, .failed, .judge, nil))
   }
 
   @Test("a stale Undo (unknown pill) closes that pill and touches nothing")
@@ -569,6 +584,129 @@ struct LearnedCorrectionCoordinatorTests {
     let id = UUID()
     #expect(f.coordinator.undo(pillID: id) == .stale)
     #expect(f.presenter.calls == [.close(id)] && f.telemetry.events.isEmpty)
+  }
+
+  // MARK: Learning memory (#3975)
+
+  @Test(
+    "a pair the user blocked is refused before any write: no word, no pill, no learn_save_failed, outcome blocked"
+  )
+  func blockedPairIsNeverSaved() throws {
+    let f = fixture()
+    for _ in 0..<2 {
+      f.coordinator.learn(original: "kumala", corrected: "Kwmala", expectedTarget: .newWord)
+      let pill = try #require(shown(f))
+      #expect(f.coordinator.undo(pillID: pill.id) == .undone)
+    }
+    let key = CorrectionPairKey.make(original: "kumala", corrected: "Kwmala")
+    #expect(f.memory.isBlocked(key))
+    let callsBefore = f.presenter.calls.count
+    let eventsBefore = f.telemetry.events
+    #expect(
+      f.coordinator.learn(original: " KUMALA ", corrected: "kwmala", expectedTarget: .newWord)
+        == .blocked, "any letter case and surrounding space is the same pair")
+    #expect(f.library.userWords.isEmpty && f.presenter.calls.count == callsBefore)
+    #expect(f.telemetry.events == eventsBefore)
+    // The reverse pair is its own pair.
+    #expect(f.coordinator.learn(original: "Kwmala", corrected: "kumala", expectedTarget: .newWord) != .blocked)
+  }
+
+  @Test(
+    "the first proven Undo watches the pair, the second blocks it; each reports learn_undone memory and one learn_refused_by_user"
+  )
+  func undoRecordsOneNo() throws {
+    let f = fixture()
+    let key = CorrectionPairKey.make(original: "kumala", corrected: "Kwmala")
+    f.coordinator.learn(original: "kumala", corrected: "Kwmala", expectedTarget: .newWord)
+    let first = try #require(shown(f))
+    #expect(f.coordinator.undo(pillID: first.id) == .undone)
+    #expect(f.memory.entry(key)?.userNos == 1 && f.memory.isBlocked(key) == false)
+    #expect(
+      f.telemetry.events.suffix(2) == [
+        .undone(.added, .undone, .judge, .watching), .refusedByUser(.undo, .watching),
+      ])
+    // One Undo alone never blocks: the same fix is learned again.
+    #expect(
+      f.coordinator.learn(original: "kumala", corrected: "Kwmala", expectedTarget: .newWord)
+        != .blocked)
+    let second = try #require(shown(f))
+    #expect(f.coordinator.undo(pillID: second.id) == .undone)
+    #expect(f.memory.isBlocked(key))
+    #expect(
+      f.telemetry.events.suffix(2) == [
+        .undone(.added, .undone, .judge, .blocked), .refusedByUser(.undo, .blocked),
+      ])
+  }
+
+  @Test(
+    "a repeat learn carries via=repeat into learn_added, the Undo record and learn_undone")
+  func repeatProvenance() throws {
+    let f = fixture()
+    f.coordinator.learn(
+      original: "kumala", corrected: "Kwmala", expectedTarget: .newWord, via: .repeat)
+    let pill = try #require(shown(f))
+    #expect(f.telemetry.events == [.added(.newWord, .repeat)])
+    #expect(f.coordinator.undoRecord?.via == .repeat)
+    #expect(
+      f.coordinator.undoRecord?.pairKey
+        == CorrectionPairKey.make(original: "kumala", corrected: "Kwmala"))
+    f.coordinator.undo(pillID: pill.id)
+    #expect(
+      f.telemetry.events.suffix(2) == [
+        .undone(.added, .undone, .repeat, .watching), .refusedByUser(.undo, .watching),
+      ])
+  }
+
+  @Test(
+    "an Undo that finds the word changed, fails to land, or names a stale pill records no no and sends no refusal row"
+  )
+  func onlyAProvenUndoIsANo() throws {
+    let key = CorrectionPairKey.make(original: "kumala", corrected: "Kwmala")
+    let changed = fixture()
+    changed.coordinator.learn(original: "kumala", corrected: "Kwmala", expectedTarget: .newWord)
+    let pill1 = try #require(shown(changed))
+    changed.library.userWords[0].category = .brand
+    #expect(changed.coordinator.undo(pillID: pill1.id) == .alreadyChanged)
+    #expect(changed.memory.entry(key) == nil)
+    #expect(changed.telemetry.events.last == .undone(.added, .alreadyChanged, .judge, nil))
+
+    let failed = fixture()
+    failed.coordinator.learn(original: "kumala", corrected: "Kwmala", expectedTarget: .newWord)
+    let pill2 = try #require(shown(failed))
+    failed.library.removeRefusal = "locked"
+    #expect(failed.coordinator.undo(pillID: pill2.id) == .failed)
+    #expect(failed.memory.entry(key) == nil)
+    #expect(failed.telemetry.events.last == .undone(.added, .failed, .judge, nil))
+
+    let stale = fixture()
+    #expect(stale.coordinator.undo(pillID: UUID()) == .stale)
+    #expect(stale.memory.entry(key) == nil && stale.telemetry.events.isEmpty)
+  }
+
+  @Test(
+    "a proven Undo whose memory write cannot land still undoes; learn_undone omits memory and no refusal row is sent"
+  )
+  func undoWithMemoryNotRemembered() throws {
+    let library = LearnedLibraryFake()
+    let telemetry = LearnedTelemetrySpy()
+    let presenter = LearnedPresenterSpy()
+    let dir = FileManager.default.temporaryDirectory
+      .appendingPathComponent("ew-learn-memory-\(UUID().uuidString)", isDirectory: true)
+    let memory = LearnMemory(
+      fileURL: dir.appendingPathComponent(LearnMemory.fileName),
+      lockSyscall: { _, _ in
+        errno = EIO
+        return -1
+      })
+    let coordinator = LearnedCorrectionCoordinator(
+      vocabulary: library.access, memory: memory, telemetry: telemetry)
+    coordinator.attach(presenter: presenter)
+    coordinator.learn(original: "kumala", corrected: "Kwmala", expectedTarget: .newWord)
+    let pill = try #require(presenter.offers.last)
+    #expect(coordinator.undo(pillID: pill.id) == .undone)
+    #expect(library.userWords.isEmpty, "the Undo itself landed")
+    #expect(telemetry.events.last == .undone(.added, .undone, .judge, nil))
+    #expect(!telemetry.events.contains { if case .refusedByUser = $0 { true } else { false } })
   }
 
   // MARK: Privacy
@@ -583,7 +721,8 @@ struct LearnedCorrectionCoordinatorTests {
     f.coordinator.undo(pillID: pill.id)
     #expect(
       f.telemetry.events == [
-        .added(.existingWord), .undoShown, .undone(.updated, .undone),
+        .added(.existingWord, .judge), .undoShown, .undone(.updated, .undone, .judge, .watching),
+        .refusedByUser(.undo, .watching),
       ])
     // The spy's event type has no String or UUID payload, which is the point:
     // there is no place a word could ride.

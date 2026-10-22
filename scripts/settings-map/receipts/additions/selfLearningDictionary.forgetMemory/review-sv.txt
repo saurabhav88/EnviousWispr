@@ -1,0 +1,13 @@
+{
+  "language": "sv",
+  "title": "rensa inlärningsminnet",
+  "words": [
+    "inlärningsminne",
+    "blockerade ord",
+    "avblockera"
+  ],
+  "phrases": [
+    "rensa minnet av avvisade rättningar",
+    "låt appen lära sig blockerade ord igen"
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "language": "es",
+  "title": "borrar la memoria de aprendizaje",
+  "words": [
+    "memoria",
+    "bloqueos",
+    "desbloquear"
+  ],
+  "phrases": [
+    "permitir que se vuelvan a aprender palabras bloqueadas",
+    "borrar la memoria de correcciones rechazadas"
+  ]
+}
