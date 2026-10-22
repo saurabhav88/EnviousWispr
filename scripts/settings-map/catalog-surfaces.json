@@ -33,9 +33,6 @@
   "mac-page-meetings": [
    "page.meetings"
   ],
-  "mac-ctl-meetings-recorder": [
-   "meetings.recorder"
-  ],
   "mac-ctl-meeting-call-sound": [
    "meetingCaptureCallSound"
   ],
@@ -707,11 +704,6 @@
    "kind": "page",
    "parent": "mac-grp-record",
    "label": "EnviousMeet"
-  },
-  "mac-ctl-meetings-recorder": {
-   "kind": "control",
-   "parent": "mac-page-meetings",
-   "label": "Start Recording [Stop Recording while a meeting records]"
   },
   "mac-ctl-meeting-call-sound": {
    "kind": "control",

@@ -2284,23 +2284,6 @@
    "seedParent": null
   },
   {
-   "id": "meetings.recorder",
-   "kind": "action",
-   "destination": {
-    "page": "meetings"
-   },
-   "disposition": "mapped",
-   "parent": "page.meetings",
-   "target": "meetings.recorder",
-   "fallbacks": [],
-   "dynamicTitle": false,
-   "seedParent": null,
-   "description": {
-    "kind": "static",
-    "english": "Record a meeting on your Mac and get a transcript with who said what."
-   }
-  },
-  {
    "id": "meetingCaptureCallSound",
    "kind": "setting",
    "destination": {

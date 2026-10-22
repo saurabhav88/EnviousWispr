@@ -1,1 +1,0 @@
-{"language":"hu","title":"felvétel indítása","words":[],"phrases":["megbeszélés rögzítése"]}

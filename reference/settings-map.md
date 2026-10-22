@@ -12,9 +12,9 @@ Generated from the compiled Settings Map and the validated search vocabulary. Do
 
 The interface ships in English and German. The other 30 languages (ar, bg, cs, da, el, es, et, fi, fr, hi, hr, hu, it, ja, ko, lt, lv, mt, nl, pl, pt, ro, ru, sk, sl, sv, tr, uk, vi, zh) are search metadata only: words and titles people may type, matched against the same places. Titles below read English / German.
 
-277 nodes, 250 searchable, 8000 vocabulary blocks.
+276 nodes, 249 searchable, 7968 vocabulary blocks.
 
-Fingerprints: mapSHA256 `7d1ec5f787c9ad8e187ef34d957db8f1adf513709ad6cb38b42e5e229a776f74`, uiCatalogSHA256 `3232eafa0bcf9421eb1eb23aedac3e537ea80c556eec51bd181c922866b1cecb`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `1c180aed42a45d4991b138e7c48f4da1cab47f349f574a077da25fda8bfcbfa6`
+Fingerprints: mapSHA256 `b651439de9a9bd7a2eefe9e7efa70b4cf9b458c786774ecc350a4c804189e4c7`, uiCatalogSHA256 `f7e025076a593f1b6c367461ccde3b9ee26c7550cebf84d0555a1af8093ae2ab`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `fb88b3e14e90edb19f0f74f5a288783ff0218ce135f6fa7bb9fe196d68f39798`
 
 ## Structure
 
@@ -281,7 +281,6 @@ Fingerprints: mapSHA256 `7d1ec5f787c9ad8e187ef34d957db8f1adf513709ad6cb38b42e5e2
       - [Paste last dictation / Letztes Diktat einfügen](#node-pasteLastKeybind) `pasteLastKeybind` (setting)
       - [Copy last dictation / Letztes Diktat kopieren](#node-copyLastKeybind) `copyLastKeybind` (setting)
   - [EnviousMeet / EnviousMeet](#node-page-meetings) `page.meetings` (page)
-    - [Start Recording / Aufnahme starten](#node-meetings-recorder) `meetings.recorder` (action)
     - [Also record the call sound / Auch den Ton vom Mac aufnehmen](#node-meetingCaptureCallSound) `meetingCaptureCallSound` (setting)
   - [Snippets / Textbausteine](#node-page-snippets) `page.snippets` (page)
     - [Paste the text you type over and over, by voice / Füge Text, den du oft tippst, per Stimme ein](#node-snippets) `snippets` (feature)
@@ -2476,28 +2475,6 @@ Fingerprints: mapSHA256 `7d1ec5f787c9ad8e187ef34d957db8f1adf513709ad6cb38b42e5e2
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: stages, steps, progress<br>phrases: show the steps from uploading a file to the finished transcript; show which stage my file transcription is at |
 | Search (de) | words: Schritte, Ablauf, Fortschritt<br>phrases: zeig mir die Schritte von der Datei bis zum fertigen Text; zeig mir, bei welchem Schritt die Dateitranskription gerade ist |
-| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
-
-<a id="node-meetings-recorder"></a>
-
-### Start Recording / Aufnahme starten (`meetings.recorder`)
-
-| Field | Value |
-|---|---|
-| Structure | item |
-| Kind | action |
-| Parent | [`page.meetings`](#node-page-meetings) |
-| Title source | catalog key `Start Recording` |
-| Description | Record a meeting on your Mac and get a transcript with who said what. / Nimm ein Meeting auf deinem Mac auf und erhalte ein Transkript, das zeigt, wer was gesagt hat. |
-| Description source | catalog key `Record a meeting on your Mac and get a transcript with who said what.` |
-| Destination | `meetings` |
-| Dictionary tab | none |
-| Shown when | `always` |
-| Arrival target | [`meetings.recorder`](#node-meetings-recorder) |
-| Fallbacks, in order | none |
-| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
-| Search (en) | words: meeting recorder<br>phrases: record a meeting |
-| Search (de) | words: Meetingaufnahme<br>phrases: nimm ein Meeting auf |
 | Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingCaptureCallSound"></a>

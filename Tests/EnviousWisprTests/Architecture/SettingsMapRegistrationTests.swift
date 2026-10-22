@@ -114,7 +114,7 @@ struct SettingsMapRegistrationTests {
     ".enableAIPolish", ".enableDictionary", ".fastModelCancelDownload", ".importContacts",
     ".learnFrom", ".licenseGplView", ".licenseNoticesView", ".livePreviewBrowseDownloads",
     ".livePreviewLanguage", ".localModelCancel", ".localModelDownload", ".localModelResume",
-    ".localModelTestLive", ".localModelTryAgain", ".lockedLanguageChange", ".meetingsRecorder",
+    ".localModelTestLive", ".localModelTryAgain", ".lockedLanguageChange",
     ".ollamaBrowseModels",
     ".ollamaCancelPull", ".ollamaDownloadModel", ".ollamaDownloadOllama", ".ollamaPrepareModel",
     ".ollamaRecheck", ".ollamaStart", ".ollamaTryAgain", ".pauseDuration",

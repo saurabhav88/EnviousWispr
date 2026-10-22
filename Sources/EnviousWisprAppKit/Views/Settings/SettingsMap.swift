@@ -645,14 +645,9 @@ enum SettingsMap {
       description: nil,
       parent: .pageTranscribeFile, destination: .transcribeFile, dictionaryTab: nil,
       visibility: .always, target: .transcribeFileSteps, fallbacks: []),
-    // #3972: EnviousMeet's recorder panel (Start, or Stop while recording) and its call-sound
-    // switch. Both are always on the page. Meetings themselves are user content, never indexed.
-    SettingsMapNode(
-      id: .meetingsRecorder, structure: .item, item: .action,
-      title: .resource(MeetingsCopy.startRecording),
-      description: .resource(MeetingsCopy.pageDescription),
-      parent: .pageMeetings, destination: .meetings, dictionaryTab: nil,
-      visibility: .always, target: .meetingsRecorder, fallbacks: []),
+    // #3972: EnviousMeet's call-sound switch, always on the page. The page is settings only
+    // (R34): recording is started from the menu bar and History, never searched to. Meetings
+    // themselves are user content, never indexed.
     SettingsMapNode(
       id: .meetingCaptureCallSound, structure: .item, item: .setting,
       title: .resource(MeetingsCopy.callSoundTitle),
@@ -1446,7 +1441,7 @@ extension SettingsMap {
     case .dictionary: dictionaryTab?.mapID ?? .sectionDictionary
     case .keybinds: .sectionKeybindsRecording
     case .transcribeFile: .transcribeFileSteps
-    case .meetings: .meetingsRecorder
+    case .meetings: .meetingCaptureCallSound
     case .aiPolish: .enableAIPolish
     case .snippets: .snippets
     case .history: nil

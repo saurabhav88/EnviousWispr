@@ -86,6 +86,9 @@ enum MeetingWiring {
     inputs.transcriptCoordinator.meetingRecords = { [weak coordinator] in
       coordinator?.meetings ?? []
     }
+    coordinator.onMeetingsPublished = { [weak transcriptCoordinator = inputs.transcriptCoordinator] in
+      transcriptCoordinator?.meetingsDidChange()
+    }
     inputs.transcriptCoordinator.meetingInfo = { [weak coordinator] meetingID in
       historyInfo(coordinator, meetingID: meetingID)
     }

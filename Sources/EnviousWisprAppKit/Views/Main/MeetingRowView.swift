@@ -48,7 +48,7 @@ struct MeetingRowView: View {
         HStack(spacing: 2) {
           Image(systemName: "person.2.wave.2")
           Text(
-            "Recording",
+            "Meeting",
             comment: "History list: the kind badge of a meeting recorded with EnviousMeet.")
         }
         .font(.caption2)

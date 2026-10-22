@@ -485,7 +485,11 @@ final class MeetingCoordinator {
 
   private func publish() {
     meetings = records.values.sorted { $0.createdAt > $1.createdAt }
+    onMeetingsPublished?()
   }
+
+  /// Told after `meetings` changes, so History drops a selection whose meeting is gone.
+  @ObservationIgnored var onMeetingsPublished: (@MainActor () -> Void)?
 
   // MARK: - Start and stop
 

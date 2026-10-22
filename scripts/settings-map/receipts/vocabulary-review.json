@@ -13,11 +13,6 @@
    "reviewSHA256": "a0c11e26f3b0d9950644078b0bf80ffc252177077711958cc3ec0a87715610d7"
   },
   {
-   "id": "meetings.recorder",
-   "review": "additions/meetings.recorder.json",
-   "reviewSHA256": "dfe818d244830b23aabb73b59ec21c6ddaeb9f54f2c0f13841c12fcd29702d43"
-  },
-  {
    "id": "meetingCaptureCallSound",
    "review": "additions/meetingCaptureCallSound.json",
    "reviewSHA256": "2bea4ff80448b182c1725419619f49fef7a9c95ba075a7c63ca86333a89df961"
@@ -26,8 +21,8 @@
  "retiredIDs": [],
  "resource": {
   "path": "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json",
-  "sha256": "1c180aed42a45d4991b138e7c48f4da1cab47f349f574a077da25fda8bfcbfa6",
-  "bytes": 1616543
+  "sha256": "fb88b3e14e90edb19f0f74f5a288783ff0218ce135f6fa7bb9fe196d68f39798",
+  "bytes": 1613414
  },
  "sources": [
   {
@@ -311,7 +306,7 @@
  "languages": [
   {
    "language": "ar",
-   "contentSHA256": "f885f0a5540c503dd1833dbfae416612c44c8c95fab066587cc18af678ba0e81",
+   "contentSHA256": "ab083255076f2718e8c9c1435898ddc84ffaed3a579299073d0ca7c9d25564ce",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -453,25 +448,6 @@
     },
     {
      "kind": "addition-content",
-     "id": "meetings.recorder",
-     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Transcribe a File and the dictation record shortcut); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
-     "date": "2026-10-22",
-     "draft": {
-      "path": "additions/meetings.recorder/draft.json",
-      "sha256": "a408abe8859b2531dcad9ee086a6115f520e2ecde6e3c228ba1dc00563568c1c"
-     },
-     "prompt": {
-      "path": "additions/meetings.recorder/review-driver.py.txt",
-      "sha256": "a2cbb3a54ae4b17497749fa6cc7e9a7641c36478177e77d87a6a2f77fad4a33b"
-     },
-     "output": {
-      "path": "additions/meetings.recorder/review-ar.txt",
-      "sha256": "f25556a6f070f05568224411058e1dd71b09f8cc7a3325f5f773b14a36ced400"
-     },
-     "disposition": "adopted as returned by the review (additions/meetings.recorder.json)"
-    },
-    {
-     "kind": "addition-content",
      "id": "meetingCaptureCallSound",
      "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the EnviousMeet recorder, the microphone input and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
      "date": "2026-10-22",
@@ -494,7 +470,7 @@
   },
   {
    "language": "bg",
-   "contentSHA256": "9f0e3e28507ea04aaaa83ed29d488964d65014ed5bdbabf179da31e748778026",
+   "contentSHA256": "60ccaea7d3364cd801adc6d806d6db127813a7a886b4c8dd00bf56561cfe1e26",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -627,25 +603,6 @@
     },
     {
      "kind": "addition-content",
-     "id": "meetings.recorder",
-     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Transcribe a File and the dictation record shortcut); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
-     "date": "2026-10-22",
-     "draft": {
-      "path": "additions/meetings.recorder/draft.json",
-      "sha256": "a408abe8859b2531dcad9ee086a6115f520e2ecde6e3c228ba1dc00563568c1c"
-     },
-     "prompt": {
-      "path": "additions/meetings.recorder/review-driver.py.txt",
-      "sha256": "a2cbb3a54ae4b17497749fa6cc7e9a7641c36478177e77d87a6a2f77fad4a33b"
-     },
-     "output": {
-      "path": "additions/meetings.recorder/review-bg.txt",
-      "sha256": "14d567d58825925c50b52b5c3f022995a61f9062e60fb6db442749013b396a60"
-     },
-     "disposition": "adopted as returned by the review (additions/meetings.recorder.json)"
-    },
-    {
-     "kind": "addition-content",
      "id": "meetingCaptureCallSound",
      "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the EnviousMeet recorder, the microphone input and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
      "date": "2026-10-22",
@@ -668,7 +625,7 @@
   },
   {
    "language": "cs",
-   "contentSHA256": "a2ac6d07bf33700a39713bf0b15d001751458b32cc434cedfcf410453d26b1e5",
+   "contentSHA256": "d2c7e5ef0c74e5b69848dadd52732389ff1df17f5f2ce417a070d9ba3276f091",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -801,25 +758,6 @@
     },
     {
      "kind": "addition-content",
-     "id": "meetings.recorder",
-     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Transcribe a File and the dictation record shortcut); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
-     "date": "2026-10-22",
-     "draft": {
-      "path": "additions/meetings.recorder/draft.json",
-      "sha256": "a408abe8859b2531dcad9ee086a6115f520e2ecde6e3c228ba1dc00563568c1c"
-     },
-     "prompt": {
-      "path": "additions/meetings.recorder/review-driver.py.txt",
-      "sha256": "a2cbb3a54ae4b17497749fa6cc7e9a7641c36478177e77d87a6a2f77fad4a33b"
-     },
-     "output": {
-      "path": "additions/meetings.recorder/review-cs.txt",
-      "sha256": "d8dfd9c1d573a4f40eedc641b84e2654ffe3fd3db757da25e8be151cc36d6fc1"
-     },
-     "disposition": "adopted as returned by the review (additions/meetings.recorder.json)"
-    },
-    {
-     "kind": "addition-content",
      "id": "meetingCaptureCallSound",
      "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the EnviousMeet recorder, the microphone input and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
      "date": "2026-10-22",
@@ -842,7 +780,7 @@
   },
   {
    "language": "da",
-   "contentSHA256": "7b476ef333c110108374c4e402b430df072d0bb4e3919439f18aec5f538f5be0",
+   "contentSHA256": "5e14ea28968c57a187669d81832ad84f2347580c95c40e58a17532e9ebdc4370",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -975,25 +913,6 @@
     },
     {
      "kind": "addition-content",
-     "id": "meetings.recorder",
-     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Transcribe a File and the dictation record shortcut); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
-     "date": "2026-10-22",
-     "draft": {
-      "path": "additions/meetings.recorder/draft.json",
-      "sha256": "a408abe8859b2531dcad9ee086a6115f520e2ecde6e3c228ba1dc00563568c1c"
-     },
-     "prompt": {
-      "path": "additions/meetings.recorder/review-driver.py.txt",
-      "sha256": "a2cbb3a54ae4b17497749fa6cc7e9a7641c36478177e77d87a6a2f77fad4a33b"
-     },
-     "output": {
-      "path": "additions/meetings.recorder/review-da.txt",
-      "sha256": "df73d991477e04aaf065e8fbf2ce06a85c5d8d21d367bdda19cd9662c796ecae"
-     },
-     "disposition": "adopted as returned by the review (additions/meetings.recorder.json)"
-    },
-    {
-     "kind": "addition-content",
      "id": "meetingCaptureCallSound",
      "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the EnviousMeet recorder, the microphone input and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
      "date": "2026-10-22",
@@ -1016,7 +935,7 @@
   },
   {
    "language": "de",
-   "contentSHA256": "b9cd9fe25e8c809ba0b98dbe89171752f34c72e5ec98f961e87880dc53e648c1",
+   "contentSHA256": "4d29df7bd84038360b621c5b8b539ddce8c1caaefe998515f63fabe954920b57",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1174,29 +1093,6 @@
     },
     {
      "kind": "addition-content",
-     "id": "meetings.recorder",
-     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Transcribe a File and the dictation record shortcut); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
-     "date": "2026-10-22",
-     "draft": {
-      "path": "additions/meetings.recorder/draft.json",
-      "sha256": "a408abe8859b2531dcad9ee086a6115f520e2ecde6e3c228ba1dc00563568c1c"
-     },
-     "prompt": {
-      "path": "additions/meetings.recorder/review-driver.py.txt",
-      "sha256": "a2cbb3a54ae4b17497749fa6cc7e9a7641c36478177e77d87a6a2f77fad4a33b"
-     },
-     "output": {
-      "path": "additions/meetings.recorder/review-de.txt",
-      "sha256": "ef74f42dfca57c3538bd8615e130902a3d395f2f7ca97daa33ff1b133f7e37a7"
-     },
-     "disposition": "adopted as returned by the review; GPT and Gemini both returned OK (additions/meetings.recorder.json)",
-     "council": {
-      "path": "additions/meetings.recorder/council-de.json",
-      "sha256": "3403b17d545ee5dc9c2e51a77a09161d1a2772233f37b9c66d8c381b61b3d825"
-     }
-    },
-    {
-     "kind": "addition-content",
      "id": "meetingCaptureCallSound",
      "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the EnviousMeet recorder, the microphone input and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
      "date": "2026-10-22",
@@ -1223,7 +1119,7 @@
   },
   {
    "language": "el",
-   "contentSHA256": "8b908baf2dd91b52558a614cda063dced842aead59117a8f1be58def4737909e",
+   "contentSHA256": "a70c79587cde90ce1ef6f5cc531615c76e17f27e7845ba026c92793a1032ecd7",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1365,25 +1261,6 @@
     },
     {
      "kind": "addition-content",
-     "id": "meetings.recorder",
-     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Transcribe a File and the dictation record shortcut); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
-     "date": "2026-10-22",
-     "draft": {
-      "path": "additions/meetings.recorder/draft.json",
-      "sha256": "a408abe8859b2531dcad9ee086a6115f520e2ecde6e3c228ba1dc00563568c1c"
-     },
-     "prompt": {
-      "path": "additions/meetings.recorder/review-driver.py.txt",
-      "sha256": "a2cbb3a54ae4b17497749fa6cc7e9a7641c36478177e77d87a6a2f77fad4a33b"
-     },
-     "output": {
-      "path": "additions/meetings.recorder/review-el.txt",
-      "sha256": "e76a6b44c32360007a84e5fd16d00bb03d73517f5dee907e482491209d8e97a0"
-     },
-     "disposition": "adopted as returned by the review (additions/meetings.recorder.json)"
-    },
-    {
-     "kind": "addition-content",
      "id": "meetingCaptureCallSound",
      "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the EnviousMeet recorder, the microphone input and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
      "date": "2026-10-22",
@@ -1406,7 +1283,7 @@
   },
   {
    "language": "en",
-   "contentSHA256": "d065f674a5b87cf28857c396cb5cb2af9e59937b79828c507c585fcfdba424bb",
+   "contentSHA256": "8f72a4a8bf6fc1f24b706c0cb2149cfed2e0ba1ce3ab51be241844a6ee05b353",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1554,25 +1431,6 @@
     },
     {
      "kind": "addition-content",
-     "id": "meetings.recorder",
-     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Transcribe a File and the dictation record shortcut); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
-     "date": "2026-10-22",
-     "draft": {
-      "path": "additions/meetings.recorder/draft.json",
-      "sha256": "a408abe8859b2531dcad9ee086a6115f520e2ecde6e3c228ba1dc00563568c1c"
-     },
-     "prompt": {
-      "path": "additions/meetings.recorder/review-driver.py.txt",
-      "sha256": "a2cbb3a54ae4b17497749fa6cc7e9a7641c36478177e77d87a6a2f77fad4a33b"
-     },
-     "output": {
-      "path": "additions/meetings.recorder/review-en.txt",
-      "sha256": "e03cd0d31ef61ec898c0074ca8e7bf14dee2eee647e9ce7b5c0166f683d80f00"
-     },
-     "disposition": "adopted as returned by the review (additions/meetings.recorder.json)"
-    },
-    {
-     "kind": "addition-content",
      "id": "meetingCaptureCallSound",
      "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the EnviousMeet recorder, the microphone input and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
      "date": "2026-10-22",
@@ -1595,7 +1453,7 @@
   },
   {
    "language": "es",
-   "contentSHA256": "eded9489e298f25be0687fd318d58789e6e90c769c566d4c94524bf6124558c9",
+   "contentSHA256": "49d42b04c2ac6de377a909c28a2dfbfc3d635426c303bf939b43c2527a5c1ec6",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1737,25 +1595,6 @@
     },
     {
      "kind": "addition-content",
-     "id": "meetings.recorder",
-     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Transcribe a File and the dictation record shortcut); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
-     "date": "2026-10-22",
-     "draft": {
-      "path": "additions/meetings.recorder/draft.json",
-      "sha256": "a408abe8859b2531dcad9ee086a6115f520e2ecde6e3c228ba1dc00563568c1c"
-     },
-     "prompt": {
-      "path": "additions/meetings.recorder/review-driver.py.txt",
-      "sha256": "a2cbb3a54ae4b17497749fa6cc7e9a7641c36478177e77d87a6a2f77fad4a33b"
-     },
-     "output": {
-      "path": "additions/meetings.recorder/review-es.txt",
-      "sha256": "2a100817efbc82ab6ebca4f4e087a6d2f673436e7f675e39d15513e3348152d0"
-     },
-     "disposition": "adopted as returned by the review (additions/meetings.recorder.json)"
-    },
-    {
-     "kind": "addition-content",
      "id": "meetingCaptureCallSound",
      "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the EnviousMeet recorder, the microphone input and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
      "date": "2026-10-22",
@@ -1778,7 +1617,7 @@
   },
   {
    "language": "et",
-   "contentSHA256": "537bd24d9bf5fdd6ddbb6e8c529a0dbbec02971f3d387ad4c1e2e5de479a9d4d",
+   "contentSHA256": "97cb587c41add8f8ccbcc158643cf0a7b3c01471e56978b7e948b03ed236c220",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1911,25 +1750,6 @@
     },
     {
      "kind": "addition-content",
-     "id": "meetings.recorder",
-     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Transcribe a File and the dictation record shortcut); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
-     "date": "2026-10-22",
-     "draft": {
-      "path": "additions/meetings.recorder/draft.json",
-      "sha256": "a408abe8859b2531dcad9ee086a6115f520e2ecde6e3c228ba1dc00563568c1c"
-     },
-     "prompt": {
-      "path": "additions/meetings.recorder/review-driver.py.txt",
-      "sha256": "a2cbb3a54ae4b17497749fa6cc7e9a7641c36478177e77d87a6a2f77fad4a33b"
-     },
-     "output": {
-      "path": "additions/meetings.recorder/review-et.txt",
-      "sha256": "b167d1edd9048e76e70e9ef23c95d22351ec983c529bac273badf75058c327fd"
-     },
-     "disposition": "adopted as returned by the review (additions/meetings.recorder.json)"
-    },
-    {
-     "kind": "addition-content",
      "id": "meetingCaptureCallSound",
      "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the EnviousMeet recorder, the microphone input and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
      "date": "2026-10-22",
@@ -1952,7 +1772,7 @@
   },
   {
    "language": "fi",
-   "contentSHA256": "15b81a3f642cd22d00b5003c334e146dfeba420781e119ac4376c1fcbf6901a5",
+   "contentSHA256": "7f72c52479afcd923ada350a4173c1e587bd2891e9bc8a41ae35ae5af29b20a7",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2085,25 +1905,6 @@
     },
     {
      "kind": "addition-content",
-     "id": "meetings.recorder",
-     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Transcribe a File and the dictation record shortcut); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
-     "date": "2026-10-22",
-     "draft": {
-      "path": "additions/meetings.recorder/draft.json",
-      "sha256": "a408abe8859b2531dcad9ee086a6115f520e2ecde6e3c228ba1dc00563568c1c"
-     },
-     "prompt": {
-      "path": "additions/meetings.recorder/review-driver.py.txt",
-      "sha256": "a2cbb3a54ae4b17497749fa6cc7e9a7641c36478177e77d87a6a2f77fad4a33b"
-     },
-     "output": {
-      "path": "additions/meetings.recorder/review-fi.txt",
-      "sha256": "b9906c0cec7c4c14902ef4304c198e06fe77eea1a22a1ddc34666ae9cd61b53a"
-     },
-     "disposition": "adopted as returned by the review (additions/meetings.recorder.json)"
-    },
-    {
-     "kind": "addition-content",
      "id": "meetingCaptureCallSound",
      "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the EnviousMeet recorder, the microphone input and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
      "date": "2026-10-22",
@@ -2126,7 +1927,7 @@
   },
   {
    "language": "fr",
-   "contentSHA256": "20124ae3cb2d2b48a9524a87377288dc0a0472c4eaf2a9242f57948714abb155",
+   "contentSHA256": "32126eb2ac09ef0c944e05c3c76a9fc053ea31fb6910bd63a8de2984538041ca",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2259,25 +2060,6 @@
     },
     {
      "kind": "addition-content",
-     "id": "meetings.recorder",
-     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Transcribe a File and the dictation record shortcut); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
-     "date": "2026-10-22",
-     "draft": {
-      "path": "additions/meetings.recorder/draft.json",
-      "sha256": "a408abe8859b2531dcad9ee086a6115f520e2ecde6e3c228ba1dc00563568c1c"
-     },
-     "prompt": {
-      "path": "additions/meetings.recorder/review-driver.py.txt",
-      "sha256": "a2cbb3a54ae4b17497749fa6cc7e9a7641c36478177e77d87a6a2f77fad4a33b"
-     },
-     "output": {
-      "path": "additions/meetings.recorder/review-fr.txt",
-      "sha256": "8dab8bf4d5390f1c087adf264460c28e892f155e0a055470f40364d5c4c0abe1"
-     },
-     "disposition": "adopted as returned by the review (additions/meetings.recorder.json)"
-    },
-    {
-     "kind": "addition-content",
      "id": "meetingCaptureCallSound",
      "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the EnviousMeet recorder, the microphone input and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
      "date": "2026-10-22",
@@ -2300,7 +2082,7 @@
   },
   {
    "language": "hi",
-   "contentSHA256": "d208fff33f4cd6f6ba77be701397af2bb5a7e8273199ec738be21cd60094fe3c",
+   "contentSHA256": "bc753db50d87150bb10540d516be348160632d5c1ecef3156ee5d437c47ffa89",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2433,25 +2215,6 @@
     },
     {
      "kind": "addition-content",
-     "id": "meetings.recorder",
-     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Transcribe a File and the dictation record shortcut); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
-     "date": "2026-10-22",
-     "draft": {
-      "path": "additions/meetings.recorder/draft.json",
-      "sha256": "a408abe8859b2531dcad9ee086a6115f520e2ecde6e3c228ba1dc00563568c1c"
-     },
-     "prompt": {
-      "path": "additions/meetings.recorder/review-driver.py.txt",
-      "sha256": "a2cbb3a54ae4b17497749fa6cc7e9a7641c36478177e77d87a6a2f77fad4a33b"
-     },
-     "output": {
-      "path": "additions/meetings.recorder/review-hi.txt",
-      "sha256": "af13e8d72c943511227d753f060fa7321ca8f33db228b745625a5536da3ae218"
-     },
-     "disposition": "adopted as returned by the review (additions/meetings.recorder.json)"
-    },
-    {
-     "kind": "addition-content",
      "id": "meetingCaptureCallSound",
      "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the EnviousMeet recorder, the microphone input and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
      "date": "2026-10-22",
@@ -2474,7 +2237,7 @@
   },
   {
    "language": "hr",
-   "contentSHA256": "2f4eb1d25f4d3899425d7c23cde21defc4169a12821b28094c28662670c5fb74",
+   "contentSHA256": "40333dfa7c88d3a2db2b986f8a60defbe2d70019bef985417d025013a04044d3",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2607,25 +2370,6 @@
     },
     {
      "kind": "addition-content",
-     "id": "meetings.recorder",
-     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Transcribe a File and the dictation record shortcut); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
-     "date": "2026-10-22",
-     "draft": {
-      "path": "additions/meetings.recorder/draft.json",
-      "sha256": "a408abe8859b2531dcad9ee086a6115f520e2ecde6e3c228ba1dc00563568c1c"
-     },
-     "prompt": {
-      "path": "additions/meetings.recorder/review-driver.py.txt",
-      "sha256": "a2cbb3a54ae4b17497749fa6cc7e9a7641c36478177e77d87a6a2f77fad4a33b"
-     },
-     "output": {
-      "path": "additions/meetings.recorder/review-hr.txt",
-      "sha256": "ac581829ca182e67cdfc4abe0de9a20149c04475fe0938fff358308d08fa0cec"
-     },
-     "disposition": "adopted as returned by the review (additions/meetings.recorder.json)"
-    },
-    {
-     "kind": "addition-content",
      "id": "meetingCaptureCallSound",
      "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the EnviousMeet recorder, the microphone input and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
      "date": "2026-10-22",
@@ -2648,7 +2392,7 @@
   },
   {
    "language": "hu",
-   "contentSHA256": "d1447c016b81887b92233504e0160e6f3f7e8226654fc7c3736a8977e00402f8",
+   "contentSHA256": "68c6921795092bed8e5b3ef80437ff2cb6c360a40a00c4f02276907b954788c1",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2781,25 +2525,6 @@
     },
     {
      "kind": "addition-content",
-     "id": "meetings.recorder",
-     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Transcribe a File and the dictation record shortcut); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
-     "date": "2026-10-22",
-     "draft": {
-      "path": "additions/meetings.recorder/draft.json",
-      "sha256": "a408abe8859b2531dcad9ee086a6115f520e2ecde6e3c228ba1dc00563568c1c"
-     },
-     "prompt": {
-      "path": "additions/meetings.recorder/review-driver.py.txt",
-      "sha256": "a2cbb3a54ae4b17497749fa6cc7e9a7641c36478177e77d87a6a2f77fad4a33b"
-     },
-     "output": {
-      "path": "additions/meetings.recorder/review-hu.txt",
-      "sha256": "525202b3dff32b3ffee58eda2ecabea241a3b78f3773b7af0671d657ac3f8377"
-     },
-     "disposition": "adopted as returned by the review (additions/meetings.recorder.json)"
-    },
-    {
-     "kind": "addition-content",
      "id": "meetingCaptureCallSound",
      "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the EnviousMeet recorder, the microphone input and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
      "date": "2026-10-22",
@@ -2822,7 +2547,7 @@
   },
   {
    "language": "it",
-   "contentSHA256": "f3d1bcbd89be4286a2fd1bad0c07cb68aa15bfeeec42d07a2250b707fded23df",
+   "contentSHA256": "4a491bb1648cd0938f1400c8841c8be744779a5a3d039a1b80d321ff4ec3625b",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2964,25 +2689,6 @@
     },
     {
      "kind": "addition-content",
-     "id": "meetings.recorder",
-     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Transcribe a File and the dictation record shortcut); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
-     "date": "2026-10-22",
-     "draft": {
-      "path": "additions/meetings.recorder/draft.json",
-      "sha256": "a408abe8859b2531dcad9ee086a6115f520e2ecde6e3c228ba1dc00563568c1c"
-     },
-     "prompt": {
-      "path": "additions/meetings.recorder/review-driver.py.txt",
-      "sha256": "a2cbb3a54ae4b17497749fa6cc7e9a7641c36478177e77d87a6a2f77fad4a33b"
-     },
-     "output": {
-      "path": "additions/meetings.recorder/review-it.txt",
-      "sha256": "9a844643822aad0e8a4c67a7f3d53ef8866c5fb579aa9d2e8bd9746a8be52384"
-     },
-     "disposition": "adopted as returned by the review (additions/meetings.recorder.json)"
-    },
-    {
-     "kind": "addition-content",
      "id": "meetingCaptureCallSound",
      "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the EnviousMeet recorder, the microphone input and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
      "date": "2026-10-22",
@@ -3005,7 +2711,7 @@
   },
   {
    "language": "ja",
-   "contentSHA256": "79e7ffec6d33b4320b4d71525ec05841039291af630267d9ea4fa528e4f67f4f",
+   "contentSHA256": "d5d65da0ae7cd384656986637275921d6c28af78ba9919841da5b5d37f0c3ad6",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3138,25 +2844,6 @@
     },
     {
      "kind": "addition-content",
-     "id": "meetings.recorder",
-     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Transcribe a File and the dictation record shortcut); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
-     "date": "2026-10-22",
-     "draft": {
-      "path": "additions/meetings.recorder/draft.json",
-      "sha256": "a408abe8859b2531dcad9ee086a6115f520e2ecde6e3c228ba1dc00563568c1c"
-     },
-     "prompt": {
-      "path": "additions/meetings.recorder/review-driver.py.txt",
-      "sha256": "a2cbb3a54ae4b17497749fa6cc7e9a7641c36478177e77d87a6a2f77fad4a33b"
-     },
-     "output": {
-      "path": "additions/meetings.recorder/review-ja.txt",
-      "sha256": "d44f8bf2df283643b6d64935ba2b4d30be91eb6cae66b4e7539bba6da58cabb7"
-     },
-     "disposition": "adopted as returned by the review (additions/meetings.recorder.json)"
-    },
-    {
-     "kind": "addition-content",
      "id": "meetingCaptureCallSound",
      "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the EnviousMeet recorder, the microphone input and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
      "date": "2026-10-22",
@@ -3179,7 +2866,7 @@
   },
   {
    "language": "ko",
-   "contentSHA256": "a3c4bf54e41ee290b3749d846150ee246e183440960d1c23a58dbeecdef8795a",
+   "contentSHA256": "be164247cfdd3de9a16f7be091938ce494da0597169d99c8217723e052aef661",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3312,25 +2999,6 @@
     },
     {
      "kind": "addition-content",
-     "id": "meetings.recorder",
-     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Transcribe a File and the dictation record shortcut); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
-     "date": "2026-10-22",
-     "draft": {
-      "path": "additions/meetings.recorder/draft.json",
-      "sha256": "a408abe8859b2531dcad9ee086a6115f520e2ecde6e3c228ba1dc00563568c1c"
-     },
-     "prompt": {
-      "path": "additions/meetings.recorder/review-driver.py.txt",
-      "sha256": "a2cbb3a54ae4b17497749fa6cc7e9a7641c36478177e77d87a6a2f77fad4a33b"
-     },
-     "output": {
-      "path": "additions/meetings.recorder/review-ko.txt",
-      "sha256": "7aa5f2f33f828a3ea5dba8b0fb58aec783bf82ad6922030b8ceb46cb419278c0"
-     },
-     "disposition": "adopted as returned by the review (additions/meetings.recorder.json)"
-    },
-    {
-     "kind": "addition-content",
      "id": "meetingCaptureCallSound",
      "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the EnviousMeet recorder, the microphone input and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
      "date": "2026-10-22",
@@ -3353,7 +3021,7 @@
   },
   {
    "language": "lt",
-   "contentSHA256": "39089fe2bbd8c19a5c2594c6a65f6912bd610c35e0b5599a51b27f7371093579",
+   "contentSHA256": "d268eae14bf4cdd0250ea53f34d897803d7cfa94a7a0931907b8b5f4477257c2",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3495,25 +3163,6 @@
     },
     {
      "kind": "addition-content",
-     "id": "meetings.recorder",
-     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Transcribe a File and the dictation record shortcut); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
-     "date": "2026-10-22",
-     "draft": {
-      "path": "additions/meetings.recorder/draft.json",
-      "sha256": "a408abe8859b2531dcad9ee086a6115f520e2ecde6e3c228ba1dc00563568c1c"
-     },
-     "prompt": {
-      "path": "additions/meetings.recorder/review-driver.py.txt",
-      "sha256": "a2cbb3a54ae4b17497749fa6cc7e9a7641c36478177e77d87a6a2f77fad4a33b"
-     },
-     "output": {
-      "path": "additions/meetings.recorder/review-lt.txt",
-      "sha256": "d6c520706f50481f3fff7f2645fb9d1a37c0bce1861fe5e9c27bdd4953158a7b"
-     },
-     "disposition": "adopted as returned by the review (additions/meetings.recorder.json)"
-    },
-    {
-     "kind": "addition-content",
      "id": "meetingCaptureCallSound",
      "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the EnviousMeet recorder, the microphone input and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
      "date": "2026-10-22",
@@ -3536,7 +3185,7 @@
   },
   {
    "language": "lv",
-   "contentSHA256": "56e01d681f33e70d2c20ee6e9ed18d49105cad75dae2969bafb7632bbf7ee891",
+   "contentSHA256": "f30a98ced981c4c0e83c51bb42445e52a479fc405e185d9412849b4c63a1337b",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3669,25 +3318,6 @@
     },
     {
      "kind": "addition-content",
-     "id": "meetings.recorder",
-     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Transcribe a File and the dictation record shortcut); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
-     "date": "2026-10-22",
-     "draft": {
-      "path": "additions/meetings.recorder/draft.json",
-      "sha256": "a408abe8859b2531dcad9ee086a6115f520e2ecde6e3c228ba1dc00563568c1c"
-     },
-     "prompt": {
-      "path": "additions/meetings.recorder/review-driver.py.txt",
-      "sha256": "a2cbb3a54ae4b17497749fa6cc7e9a7641c36478177e77d87a6a2f77fad4a33b"
-     },
-     "output": {
-      "path": "additions/meetings.recorder/review-lv.txt",
-      "sha256": "4da1977b5c71389f2c995eade15676ec98912ffbb4c285520819d564af9868e2"
-     },
-     "disposition": "adopted as returned by the review (additions/meetings.recorder.json)"
-    },
-    {
-     "kind": "addition-content",
      "id": "meetingCaptureCallSound",
      "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the EnviousMeet recorder, the microphone input and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
      "date": "2026-10-22",
@@ -3710,7 +3340,7 @@
   },
   {
    "language": "mt",
-   "contentSHA256": "d538dea1480014a0bed0417f21d39a82015bb1e453ed34049a7f4153bd0c9903",
+   "contentSHA256": "69967a10b7c7ee0f007ae18894b30f7ca08c242b98ad1d306ba4d7243715c1f5",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3852,25 +3482,6 @@
     },
     {
      "kind": "addition-content",
-     "id": "meetings.recorder",
-     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Transcribe a File and the dictation record shortcut); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
-     "date": "2026-10-22",
-     "draft": {
-      "path": "additions/meetings.recorder/draft.json",
-      "sha256": "a408abe8859b2531dcad9ee086a6115f520e2ecde6e3c228ba1dc00563568c1c"
-     },
-     "prompt": {
-      "path": "additions/meetings.recorder/review-driver.py.txt",
-      "sha256": "a2cbb3a54ae4b17497749fa6cc7e9a7641c36478177e77d87a6a2f77fad4a33b"
-     },
-     "output": {
-      "path": "additions/meetings.recorder/review-mt.txt",
-      "sha256": "80f200de3bbd6aa466ccd2104578b159a7f2383cf7f1beea80df4f0de8355021"
-     },
-     "disposition": "adopted as returned by the review (additions/meetings.recorder.json)"
-    },
-    {
-     "kind": "addition-content",
      "id": "meetingCaptureCallSound",
      "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the EnviousMeet recorder, the microphone input and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
      "date": "2026-10-22",
@@ -3893,7 +3504,7 @@
   },
   {
    "language": "nl",
-   "contentSHA256": "453b9fd64d44a2e7fd459e3ed932e40bc959c053b8c5e1f42c3397a1adfcd07e",
+   "contentSHA256": "b7b957177b977150c96957a9875b09058339e12a45e01e99a1d0d27b9961f38b",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4026,25 +3637,6 @@
     },
     {
      "kind": "addition-content",
-     "id": "meetings.recorder",
-     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Transcribe a File and the dictation record shortcut); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
-     "date": "2026-10-22",
-     "draft": {
-      "path": "additions/meetings.recorder/draft.json",
-      "sha256": "a408abe8859b2531dcad9ee086a6115f520e2ecde6e3c228ba1dc00563568c1c"
-     },
-     "prompt": {
-      "path": "additions/meetings.recorder/review-driver.py.txt",
-      "sha256": "a2cbb3a54ae4b17497749fa6cc7e9a7641c36478177e77d87a6a2f77fad4a33b"
-     },
-     "output": {
-      "path": "additions/meetings.recorder/review-nl.txt",
-      "sha256": "77e867ad2ab6bb32d8a69dc1cb27a505a2f3c5780d9c593c179ad04f43ca5588"
-     },
-     "disposition": "adopted as returned by the review (additions/meetings.recorder.json)"
-    },
-    {
-     "kind": "addition-content",
      "id": "meetingCaptureCallSound",
      "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the EnviousMeet recorder, the microphone input and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
      "date": "2026-10-22",
@@ -4067,7 +3659,7 @@
   },
   {
    "language": "pl",
-   "contentSHA256": "01980852269c8f0292d2e77136850c2f929764af4a09cead321b6e5849215098",
+   "contentSHA256": "1637a59f2ddd429845a2f0b98127361e73189a00f7a07187a723e92098023739",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4200,25 +3792,6 @@
     },
     {
      "kind": "addition-content",
-     "id": "meetings.recorder",
-     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Transcribe a File and the dictation record shortcut); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
-     "date": "2026-10-22",
-     "draft": {
-      "path": "additions/meetings.recorder/draft.json",
-      "sha256": "a408abe8859b2531dcad9ee086a6115f520e2ecde6e3c228ba1dc00563568c1c"
-     },
-     "prompt": {
-      "path": "additions/meetings.recorder/review-driver.py.txt",
-      "sha256": "a2cbb3a54ae4b17497749fa6cc7e9a7641c36478177e77d87a6a2f77fad4a33b"
-     },
-     "output": {
-      "path": "additions/meetings.recorder/review-pl.txt",
-      "sha256": "df407ff5795836683ee593ff5730ed36757046743390be7498f307e27cf961c3"
-     },
-     "disposition": "adopted as returned by the review (additions/meetings.recorder.json)"
-    },
-    {
-     "kind": "addition-content",
      "id": "meetingCaptureCallSound",
      "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the EnviousMeet recorder, the microphone input and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
      "date": "2026-10-22",
@@ -4241,7 +3814,7 @@
   },
   {
    "language": "pt",
-   "contentSHA256": "e9bd53049206582e56be17c2574fccc329fc6ddbac46eb144896178086efacc3",
+   "contentSHA256": "6808cdc0b4f8130c5fa601978fd876344684dfc97d0143bbe8f72a2a52e55ab1",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4382,25 +3955,6 @@
     },
     {
      "kind": "addition-content",
-     "id": "meetings.recorder",
-     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Transcribe a File and the dictation record shortcut); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
-     "date": "2026-10-22",
-     "draft": {
-      "path": "additions/meetings.recorder/draft.json",
-      "sha256": "a408abe8859b2531dcad9ee086a6115f520e2ecde6e3c228ba1dc00563568c1c"
-     },
-     "prompt": {
-      "path": "additions/meetings.recorder/review-driver.py.txt",
-      "sha256": "a2cbb3a54ae4b17497749fa6cc7e9a7641c36478177e77d87a6a2f77fad4a33b"
-     },
-     "output": {
-      "path": "additions/meetings.recorder/review-pt.txt",
-      "sha256": "de8807dcbd4107e87dfd8b90ebec2bf7cf6d6d32398e6df18cb971c3eebc7b02"
-     },
-     "disposition": "adopted as returned by the review (additions/meetings.recorder.json)"
-    },
-    {
-     "kind": "addition-content",
      "id": "meetingCaptureCallSound",
      "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the EnviousMeet recorder, the microphone input and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
      "date": "2026-10-22",
@@ -4423,7 +3977,7 @@
   },
   {
    "language": "ro",
-   "contentSHA256": "8e64f393626f8b1e80abdf9f1f2cca1c623e411b1cf24d1455d85b9c5ee96475",
+   "contentSHA256": "fe9724ac1a600fab10744e29e0d1cd922f31bbab36588acd1a2dd3a42a969f7a",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4556,25 +4110,6 @@
     },
     {
      "kind": "addition-content",
-     "id": "meetings.recorder",
-     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Transcribe a File and the dictation record shortcut); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
-     "date": "2026-10-22",
-     "draft": {
-      "path": "additions/meetings.recorder/draft.json",
-      "sha256": "a408abe8859b2531dcad9ee086a6115f520e2ecde6e3c228ba1dc00563568c1c"
-     },
-     "prompt": {
-      "path": "additions/meetings.recorder/review-driver.py.txt",
-      "sha256": "a2cbb3a54ae4b17497749fa6cc7e9a7641c36478177e77d87a6a2f77fad4a33b"
-     },
-     "output": {
-      "path": "additions/meetings.recorder/review-ro.txt",
-      "sha256": "f32193e16a9fcd0c8d0da7781d8c135021edf9da48cc7bbf410822ed9eb90963"
-     },
-     "disposition": "adopted as returned by the review (additions/meetings.recorder.json)"
-    },
-    {
-     "kind": "addition-content",
      "id": "meetingCaptureCallSound",
      "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the EnviousMeet recorder, the microphone input and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
      "date": "2026-10-22",
@@ -4597,7 +4132,7 @@
   },
   {
    "language": "ru",
-   "contentSHA256": "bb455adc6b5f6041d62de70e73300c68462ce731bf0c9fffb761c432cd2d16e0",
+   "contentSHA256": "35a7aaf24fe28eb4bd1f1c31835664d2ca0c96b6228f1c477b7ee8263383cf8f",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4730,25 +4265,6 @@
     },
     {
      "kind": "addition-content",
-     "id": "meetings.recorder",
-     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Transcribe a File and the dictation record shortcut); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
-     "date": "2026-10-22",
-     "draft": {
-      "path": "additions/meetings.recorder/draft.json",
-      "sha256": "a408abe8859b2531dcad9ee086a6115f520e2ecde6e3c228ba1dc00563568c1c"
-     },
-     "prompt": {
-      "path": "additions/meetings.recorder/review-driver.py.txt",
-      "sha256": "a2cbb3a54ae4b17497749fa6cc7e9a7641c36478177e77d87a6a2f77fad4a33b"
-     },
-     "output": {
-      "path": "additions/meetings.recorder/review-ru.txt",
-      "sha256": "f4e275dd09cde8ffa15c3d4dbb349b3c119778ef07e1837f0c2120a72d9a63e1"
-     },
-     "disposition": "adopted as returned by the review (additions/meetings.recorder.json)"
-    },
-    {
-     "kind": "addition-content",
      "id": "meetingCaptureCallSound",
      "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the EnviousMeet recorder, the microphone input and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
      "date": "2026-10-22",
@@ -4771,7 +4287,7 @@
   },
   {
    "language": "sk",
-   "contentSHA256": "07240d4c90dfc5e741aa240352ecd669cf1c5c803267eae47a8c317cd7a05b9f",
+   "contentSHA256": "d470dc8660c3ca7137cde73020f0e5e98d2ccc3bd54d008eb82dcadaef798827",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4904,25 +4420,6 @@
     },
     {
      "kind": "addition-content",
-     "id": "meetings.recorder",
-     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Transcribe a File and the dictation record shortcut); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
-     "date": "2026-10-22",
-     "draft": {
-      "path": "additions/meetings.recorder/draft.json",
-      "sha256": "a408abe8859b2531dcad9ee086a6115f520e2ecde6e3c228ba1dc00563568c1c"
-     },
-     "prompt": {
-      "path": "additions/meetings.recorder/review-driver.py.txt",
-      "sha256": "a2cbb3a54ae4b17497749fa6cc7e9a7641c36478177e77d87a6a2f77fad4a33b"
-     },
-     "output": {
-      "path": "additions/meetings.recorder/review-sk.txt",
-      "sha256": "9e53676add00425374b230eb35df911d16c37a66a483ea9ac40b62dd75ddcbc8"
-     },
-     "disposition": "adopted as returned by the review (additions/meetings.recorder.json)"
-    },
-    {
-     "kind": "addition-content",
      "id": "meetingCaptureCallSound",
      "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the EnviousMeet recorder, the microphone input and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
      "date": "2026-10-22",
@@ -4945,7 +4442,7 @@
   },
   {
    "language": "sl",
-   "contentSHA256": "b490a292760ad6e63d2022388cfe6b1d88524cd64840d8c488c27218fba1aa02",
+   "contentSHA256": "393c8ce37a791b364d39910490e02412fed7e8b2927531bc9354c84059a8e65e",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5087,25 +4584,6 @@
     },
     {
      "kind": "addition-content",
-     "id": "meetings.recorder",
-     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Transcribe a File and the dictation record shortcut); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
-     "date": "2026-10-22",
-     "draft": {
-      "path": "additions/meetings.recorder/draft.json",
-      "sha256": "a408abe8859b2531dcad9ee086a6115f520e2ecde6e3c228ba1dc00563568c1c"
-     },
-     "prompt": {
-      "path": "additions/meetings.recorder/review-driver.py.txt",
-      "sha256": "a2cbb3a54ae4b17497749fa6cc7e9a7641c36478177e77d87a6a2f77fad4a33b"
-     },
-     "output": {
-      "path": "additions/meetings.recorder/review-sl.txt",
-      "sha256": "92fbf8a730ffd79423123cd53733c4636f14c86c3907f18d013b2323a90cd2e1"
-     },
-     "disposition": "adopted as returned by the review (additions/meetings.recorder.json)"
-    },
-    {
-     "kind": "addition-content",
      "id": "meetingCaptureCallSound",
      "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the EnviousMeet recorder, the microphone input and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
      "date": "2026-10-22",
@@ -5128,7 +4606,7 @@
   },
   {
    "language": "sv",
-   "contentSHA256": "2b7cb409002c7552caf70822008a41966e5ecf3d8fe96dce877e17491319c0cf",
+   "contentSHA256": "a0654181a4149252ebcdc46d0df1047845cf226f6fac3f2ec45193e26324d1f8",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5261,25 +4739,6 @@
     },
     {
      "kind": "addition-content",
-     "id": "meetings.recorder",
-     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Transcribe a File and the dictation record shortcut); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
-     "date": "2026-10-22",
-     "draft": {
-      "path": "additions/meetings.recorder/draft.json",
-      "sha256": "a408abe8859b2531dcad9ee086a6115f520e2ecde6e3c228ba1dc00563568c1c"
-     },
-     "prompt": {
-      "path": "additions/meetings.recorder/review-driver.py.txt",
-      "sha256": "a2cbb3a54ae4b17497749fa6cc7e9a7641c36478177e77d87a6a2f77fad4a33b"
-     },
-     "output": {
-      "path": "additions/meetings.recorder/review-sv.txt",
-      "sha256": "32e47e2574f3df675fc2a494ed1f2977d38442ab0ca9479216089d84bc69a37d"
-     },
-     "disposition": "adopted as returned by the review (additions/meetings.recorder.json)"
-    },
-    {
-     "kind": "addition-content",
      "id": "meetingCaptureCallSound",
      "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the EnviousMeet recorder, the microphone input and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
      "date": "2026-10-22",
@@ -5302,7 +4761,7 @@
   },
   {
    "language": "tr",
-   "contentSHA256": "19c72a7b8a51e7bd002c612b6cc7903a3143ffdc6be356611ff23e04ce93e19f",
+   "contentSHA256": "7c3f30d417be1235ed52a0478beeeab3f1373fb3e0dc298caa0a8aa493e02f87",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5435,25 +4894,6 @@
     },
     {
      "kind": "addition-content",
-     "id": "meetings.recorder",
-     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Transcribe a File and the dictation record shortcut); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
-     "date": "2026-10-22",
-     "draft": {
-      "path": "additions/meetings.recorder/draft.json",
-      "sha256": "a408abe8859b2531dcad9ee086a6115f520e2ecde6e3c228ba1dc00563568c1c"
-     },
-     "prompt": {
-      "path": "additions/meetings.recorder/review-driver.py.txt",
-      "sha256": "a2cbb3a54ae4b17497749fa6cc7e9a7641c36478177e77d87a6a2f77fad4a33b"
-     },
-     "output": {
-      "path": "additions/meetings.recorder/review-tr.txt",
-      "sha256": "59a96f2cecbc1a8b67cc7ba28e94a2e6d067d340eac0066da3715ba2dd4bfd3c"
-     },
-     "disposition": "adopted as returned by the review (additions/meetings.recorder.json)"
-    },
-    {
-     "kind": "addition-content",
      "id": "meetingCaptureCallSound",
      "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the EnviousMeet recorder, the microphone input and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
      "date": "2026-10-22",
@@ -5476,7 +4916,7 @@
   },
   {
    "language": "uk",
-   "contentSHA256": "07cef980cbf744c46efd620501dc85baf897d5beb9566705d91ca5d7aacc3924",
+   "contentSHA256": "94466c6d35d05fca129fc869dfe7487bc452ea3d320bda3a8a48a2322a8edd99",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5618,25 +5058,6 @@
     },
     {
      "kind": "addition-content",
-     "id": "meetings.recorder",
-     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Transcribe a File and the dictation record shortcut); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
-     "date": "2026-10-22",
-     "draft": {
-      "path": "additions/meetings.recorder/draft.json",
-      "sha256": "a408abe8859b2531dcad9ee086a6115f520e2ecde6e3c228ba1dc00563568c1c"
-     },
-     "prompt": {
-      "path": "additions/meetings.recorder/review-driver.py.txt",
-      "sha256": "a2cbb3a54ae4b17497749fa6cc7e9a7641c36478177e77d87a6a2f77fad4a33b"
-     },
-     "output": {
-      "path": "additions/meetings.recorder/review-uk.txt",
-      "sha256": "9e5db0fb58271ab92911bdb611541e1d45fc07ed43949d3aa2e96e0f30ba540c"
-     },
-     "disposition": "adopted as returned by the review (additions/meetings.recorder.json)"
-    },
-    {
-     "kind": "addition-content",
      "id": "meetingCaptureCallSound",
      "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the EnviousMeet recorder, the microphone input and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
      "date": "2026-10-22",
@@ -5659,7 +5080,7 @@
   },
   {
    "language": "vi",
-   "contentSHA256": "29c208ff763d3871c8e3ecb68c295de11a7c728c5c5de47765f5136be6dbcb2c",
+   "contentSHA256": "6647607b6daccbcf58acdb862027cfde42c7a6be62c01c4ecf4136eaaacf7b4d",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5792,25 +5213,6 @@
     },
     {
      "kind": "addition-content",
-     "id": "meetings.recorder",
-     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Transcribe a File and the dictation record shortcut); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
-     "date": "2026-10-22",
-     "draft": {
-      "path": "additions/meetings.recorder/draft.json",
-      "sha256": "a408abe8859b2531dcad9ee086a6115f520e2ecde6e3c228ba1dc00563568c1c"
-     },
-     "prompt": {
-      "path": "additions/meetings.recorder/review-driver.py.txt",
-      "sha256": "a2cbb3a54ae4b17497749fa6cc7e9a7641c36478177e77d87a6a2f77fad4a33b"
-     },
-     "output": {
-      "path": "additions/meetings.recorder/review-vi.txt",
-      "sha256": "3de6701d28cf8d7e61522323b0fae882bc529b69e2acc0ddf99d2c0e172afa6e"
-     },
-     "disposition": "adopted as returned by the review (additions/meetings.recorder.json)"
-    },
-    {
-     "kind": "addition-content",
      "id": "meetingCaptureCallSound",
      "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the EnviousMeet recorder, the microphone input and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
      "date": "2026-10-22",
@@ -5833,7 +5235,7 @@
   },
   {
    "language": "zh",
-   "contentSHA256": "0360c60b7eb2d654216279adbee8ee7d822cc8a70368780091d5459a995a7ffe",
+   "contentSHA256": "3be114a1b8f36fced192432b946553766f15f6abaa754ed21399a41d4399fcdc",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5966,25 +5368,6 @@
     },
     {
      "kind": "addition-content",
-     "id": "meetings.recorder",
-     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Transcribe a File and the dictation record shortcut); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
-     "date": "2026-10-22",
-     "draft": {
-      "path": "additions/meetings.recorder/draft.json",
-      "sha256": "a408abe8859b2531dcad9ee086a6115f520e2ecde6e3c228ba1dc00563568c1c"
-     },
-     "prompt": {
-      "path": "additions/meetings.recorder/review-driver.py.txt",
-      "sha256": "a2cbb3a54ae4b17497749fa6cc7e9a7641c36478177e77d87a6a2f77fad4a33b"
-     },
-     "output": {
-      "path": "additions/meetings.recorder/review-zh.txt",
-      "sha256": "4837d8b19950fb70737327dd81f117b4a8ec1236ecd6d167d00d20705ed57c49"
-     },
-     "disposition": "adopted as returned by the review (additions/meetings.recorder.json)"
-    },
-    {
-     "kind": "addition-content",
      "id": "meetingCaptureCallSound",
      "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the EnviousMeet recorder, the microphone input and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
      "date": "2026-10-22",
@@ -6104,7 +5487,6 @@
   "mediaDuringDictation.mute": "61261da87a72f323e1b6155942feab4029e1fa0616b1a692784408f2ffcfbc21",
   "mediaDuringDictation.pause": "1c2af924f376aed17cb6889b9607e4da0671f99c506481509e2ec708850a1323",
   "meetingCaptureCallSound": "d2a8d22a6e4f35310ec662e5a8bc64e876fb6f0be3760911affa986af88d313c",
-  "meetings.recorder": "2c1fc00ac4c82724acc519e01a9795198f5b0ed4d8fcdb89e5379012fe4b8191",
   "micReadiness": "bf8b4b6cae2085a1dff902e99abf148a5adb4f508c89ef195283d205992f0472",
   "micReadiness.10s": "0d73303cda6cd2ac7f0a6bb3fdaefe248a5c8598d6d9a17a54656bae7504919d",
   "micReadiness.30s": "03d945b51c78cadcbfd1a4d6bd83aeec1e24bb5a293ef69f43dfe68c49147d49",

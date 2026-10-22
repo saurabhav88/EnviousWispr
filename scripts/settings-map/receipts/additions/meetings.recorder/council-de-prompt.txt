@@ -1,9 +1,0 @@
-You are reviewing German Settings-search vocabulary for a macOS dictation app (EnviousWispr). Each block lists short "words" and everyday "phrases" a German user might type into the app's Settings search to find one place. Use du-form, no dashes, lowercase except nouns. The interface title is supplied separately and is not part of the block.
-
-1. Place: the EnviousMeet page's recorder (button "Aufnahme starten"; records a MEETING: the microphone and optionally the sound the Mac plays; a transcript with who said what is made on the Mac afterwards). It is not the dictation record button and not "Datei transkribieren".
-   Block: {"words":["Meetingaufnahme"],"phrases":["nimm ein Meeting auf"]}
-
-2. Place: the switch „Auch den Ton vom Mac aufnehmen“ on the EnviousMeet page (also records the sound the Mac plays, such as the other people on a video or phone call; not the screen).
-   Block: {"words":["Systemaudio","Computerton","Gesprächspartner"],"phrases":["nimm die anderen im Anruf mit auf","zeichne den Systemton auf"]}
-
-For each block answer "N. OK" or "N. <corrected JSON block>" plus a one-sentence reason. Keep 0 to 6 words and 1 to 3 phrases.

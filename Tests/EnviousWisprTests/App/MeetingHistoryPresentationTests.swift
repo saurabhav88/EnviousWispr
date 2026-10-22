@@ -142,10 +142,9 @@ struct MeetingHistoryPresentationTests {
     #expect(rig.coordinator.listedItems.map(\.id) == [.meeting(recording.id)])
     #expect(rig.coordinator.deletableCount == 1)
 
-    // Search: a meeting with no row is found by its title only.
+    // Search covers finished meetings only (R35): one still recording never matches, even by
+    // its title.
     rig.coordinator.searchQuery = "stand"
-    #expect(rig.coordinator.listedItems.map(\.id) == [.meeting(recording.id)])
-    rig.coordinator.searchQuery = "words"
     #expect(rig.coordinator.listedItems.isEmpty)
     rig.coordinator.searchQuery = ""
 
@@ -181,11 +180,52 @@ struct MeetingHistoryPresentationTests {
     #expect(rig.coordinator.historyFilter == .recordings)
     #expect(rig.coordinator.searchQuery.isEmpty)
     #expect(rig.coordinator.selectedItemID == .meeting(record.id))
+    // An empty Recordings filter says how to record one, also on a fresh install (R34).
     rig.records = []
-    #expect(rig.coordinator.emptyState == .nothingYet)
-    let dictation = Transcript(text: "a dictation", backendType: .parakeet)
-    try rig.coordinator.saveAndShow(dictation)
     #expect(rig.coordinator.emptyState == .noRecordings)
+    rig.coordinator.historyFilter = .all
+    #expect(rig.coordinator.emptyState == .nothingYet)
+  }
+
+  @Test("a meeting marked for deletion is never listed, not even as its History row")
+  func markedMeetingNotOrphaned() async throws {
+    let rig = Rig()
+    var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    let row = MeetingHistoryPresentationTests.meetingRow(
+      id: record.transcriptID, meetingID: record.id)
+    try await rig.coordinator.saveAndShowDurably(row)
+    record.deletionRequested = true
+    rig.records = [record]
+    #expect(rig.coordinator.listedItems.isEmpty, "its deletion is running, stalled or failed")
+  }
+
+  @Test("a finished meeting is searched by its words; while it is transcribed again it is not")
+  func searchFinishedOnly() async throws {
+    let rig = Rig()
+    var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    let row = MeetingHistoryPresentationTests.meetingRow(
+      id: record.transcriptID, meetingID: record.id)
+    rig.infos[record.id] = MeetingHistoryInfo(echoTurnIDs: [], title: nil)
+    try await rig.coordinator.saveAndShowDurably(row)
+    record.state = .ready
+    rig.records = [record]
+    let word = try #require(row.text.split(separator: " ").first.map(String.init))
+    rig.coordinator.searchQuery = word
+    #expect(rig.coordinator.listedItems.map(\.id) == [.meeting(record.id)])
+    record.state = .processing  // Transcribe again keeps the old row
+    rig.records = [record]
+    #expect(rig.coordinator.listedItems.isEmpty)
+  }
+
+  @Test("a meeting removed elsewhere leaves no stale selection once EnviousMeet publishes")
+  func externalRemovalClearsSelection() async throws {
+    let rig = Rig()
+    let record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    rig.records = [record]
+    rig.coordinator.selectedItemID = .meeting(record.id)
+    rig.records = []
+    rig.coordinator.meetingsDidChange()
+    #expect(rig.coordinator.selectedItemID == nil)
   }
 
   @Test("a meeting is never the last dictation to paste or copy again")
@@ -425,6 +465,7 @@ struct MeetingHistoryPresentationTests {
         == "A recording was saved by a newer version of EnviousWispr. Update the app to open it.")
     #expect(
       SidebarStatsHeader.newerFormatLine(3)
-        == "3 recordings were saved by a newer version of EnviousWispr. Update the app to open them.")
+        == "3 recordings were saved by a newer version of EnviousWispr. Update the app to open them."
+    )
   }
 }

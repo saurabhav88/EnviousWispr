@@ -158,48 +158,16 @@ struct TranscriptDetailView: View {
   /// history" hold here too. It used to write the board as a kept copy and post Cmd+V,
   /// which left the dictation on the clipboard in place of whatever the user had there.
   private func pasteFromHistory() {
-    guard pasteAllowed else { return }
-    NSApp.hide(nil)
-    Task {
-      try? await Task.sleep(for: .milliseconds(TimingConstants.appHideBeforePasteDelayMs))
-      // Checked after the wait, the one read of the text by id: a dictation can start, a held
-      // row can lapse and Accessibility can be turned off while History is hidden.
-      // The live read: the cached flag stops updating once both permissions are granted.
-      guard pasteAllowed, permissions.accessibilityGrantedLive,
-        let text = transcriptCoordinator.textForDelivery(transcript)
-      else {
-        // Nothing was written or pasted; bring History back rather than leave the app hidden
-        // (cloud review of PR #3945). The row's own state now explains why Paste stood down.
-        showHistory()
-        return
-      }
-      let result = ClipboardCleanup.manualPaste(
-        text: text, restore: settings.restoreClipboardAfterPaste,
-        markTransient: settings.keepDictationsOutOfClipboardHistory, on: .general,
-        dispatch: { PasteService.postPasteKeystroke() })
-      switch result {
-      case .dispatched:
-        // #2087: the OTHER door back to a held recovery. The pill reports its
-        // restores; without this one the funnel counted only the users who
-        // caught a three-second offer. No-op for an ordinary row. Reported only
-        // once Cmd+V was posted: an attempt, never a confirmed arrival.
-        transcriptCoordinator.reportRestoredFromHistory(transcript)
-      case .dispatchFailed:
-        // The text is on the clipboard and no restore is scheduled.
-        showPasteNotice(
-          String(
-            localized: "Copied. Paste it yourself.",
-            comment: "History: Paste could not press Command-V; the text is on the clipboard."))
-      case .clipboardBusy, .writeFailed:
-        showPasteNotice(
-          String(
-            localized: "Couldn't paste. Your text is still in History.",
-            comment: "History: Paste could not use the clipboard, so nothing was pasted."))
-      case .copied:
-        // `manualPaste` never answers `.copied`; that is `manualCopy`'s result.
-        break
-      }
-    }
+    HistoryPaste.paste(
+      allowed: { pasteAllowed },
+      text: { transcriptCoordinator.textForDelivery(transcript) },
+      settings: settings, permissions: permissions,
+      showHistory: { showHistory() },
+      showNotice: { showPasteNotice($0) },
+      // #2087: the OTHER door back to a held recovery. The pill reports its restores; without
+      // this one the funnel counted only the users who caught a three-second offer. No-op for
+      // an ordinary row. Reported only once Cmd+V was posted: an attempt, never an arrival.
+      dispatched: { transcriptCoordinator.reportRestoredFromHistory(transcript) })
   }
 
   private func showPasteNotice(_ notice: String) {

@@ -1,1 +1,0 @@
-{"language":"tr","title":"kaydı başlat","words":[],"phrases":["toplantıyı kaydet"]}

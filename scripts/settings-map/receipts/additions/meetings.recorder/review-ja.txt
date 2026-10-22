@@ -1,1 +1,0 @@
-{"language":"ja","title":"録音を開始","words":[],"phrases":["会議を録音する"]}

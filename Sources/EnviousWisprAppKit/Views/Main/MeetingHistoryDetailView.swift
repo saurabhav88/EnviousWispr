@@ -16,6 +16,12 @@ struct MeetingHistoryDetailView: View {
 
   @Environment(MeetingCoordinator.self) private var meetings
   @Environment(TranscriptCoordinator.self) private var transcripts
+  @Environment(SettingsManager.self) private var settings
+  @Environment(PermissionsService.self) private var permissions
+  @Environment(NavigationCoordinator.self) private var navigationCoordinator
+  @Environment(AppWindowCoordinator.self) private var appWindowCoordinator
+  /// Why a Paste did not happen, shown once History is back in front.
+  @State private var pasteNotice: String?
 
   @State private var titleDraft = ""
   @State private var confirming: Confirmation?
@@ -85,6 +91,14 @@ struct MeetingHistoryDetailView: View {
         Button(String(localized: "OK", comment: "EnviousMeet: closes the Save error.")) {}
       } message: {
         Text(saveError ?? "")
+      }
+      .alert(
+        pasteNotice ?? "",
+        isPresented: Binding(get: { pasteNotice != nil }, set: { if !$0 { pasteNotice = nil } })
+      ) {
+        Button(String(localized: "OK", comment: "EnviousMeet: closes the Paste message.")) {
+          pasteNotice = nil
+        }
       }
     } else if let row = meeting.row {
       // A meeting row whose meeting EnviousMeet does not hold: its transcript only.
@@ -245,7 +259,13 @@ struct MeetingHistoryDetailView: View {
             run { meetings in await meetings.deleteAudio(meetingID: meetingID) }
           case .deleteMeeting:
             dropPlayer()
-            run { meetings in await meetings.delete(meetingID: meetingID) }
+            // History's one deletion path: the selection moves to the item beside this one,
+            // then EnviousMeet deletes the meeting (Codex C8 r1).
+            transcripts.delete(
+              .meeting(
+                HistoryMeetingItem(
+                  meetingID: meetingID, record: meetings.record(id: meetingID),
+                  row: meeting.row)))
           }
         }
         .accessibilityIdentifier("meetings.detail.confirmDelete")
@@ -457,6 +477,39 @@ struct MeetingHistoryDetailView: View {
               systemImage: "square.and.arrow.down")
           }
           .disabled(!canDeliver)
+          // The text is read when the system asks for it, so a sheet left open never hands over
+          // lines that were deleted or hidden meanwhile.
+          ShareLink(
+            item: DeliverableText(resolve: { transcripts.textForDelivery(row) }),
+            preview: SharePreview(
+              record.map(MeetingsPresentation.title)
+                ?? String(localized: "Meeting", comment: "History: a meeting's default file name."))
+          ) {
+            Label(
+              String(localized: "Share", comment: "EnviousMeet: shares the visible transcript."),
+              systemImage: "square.and.arrow.up")
+          }
+          .disabled(!canDeliver)
+          Button {
+            if permissions.accessibilityGranted {
+              HistoryPaste.paste(
+                allowed: { true },
+                text: { transcripts.textForDelivery(row) },
+                settings: settings, permissions: permissions,
+                showHistory: { showHistory() },
+                showNotice: { notice in
+                  showHistory()
+                  pasteNotice = notice
+                })
+            } else {
+              navigationCoordinator.request(.appSettings(.permissions))
+            }
+          } label: {
+            Label(
+              EscapeRecoveryRowPresentation.pasteLabel,
+              systemImage: "arrow.right.doc.on.clipboard")
+          }
+          .disabled(!permissions.accessibilityGranted || !canDeliver)
         }
         switch projection {
         case .visible(let turns, _):
@@ -487,6 +540,11 @@ struct MeetingHistoryDetailView: View {
         }
       }
     }
+  }
+
+  private func showHistory() {
+    navigationCoordinator.request(.history)
+    appWindowCoordinator.showWindow()
   }
 
   /// The text is read AFTER the panel closes, so a meeting deleted meanwhile saves nothing.

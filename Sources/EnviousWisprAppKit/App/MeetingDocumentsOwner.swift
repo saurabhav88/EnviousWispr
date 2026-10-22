@@ -91,6 +91,10 @@ final class MeetingDocumentsOwner {
   func manifest(_ meetingID: UUID) -> MeetingDocumentsManifest? { entries[meetingID]?.manifest }
   func loadState(_ meetingID: UUID) -> LoadState { entries[meetingID]?.load ?? .notLoaded }
 
+  /// Whether the notes box may take typing: only once the saved notes are read and shown, so
+  /// nobody types into an apparently empty box over notes not yet on screen (Codex C8 r1).
+  func canEdit(_ meetingID: UUID) -> Bool { entries[meetingID]?.load == .loaded }
+
   /// Notes typed and not yet saved.
   func hasUnsavedNotes(_ meetingID: UUID) -> Bool { (entries[meetingID]?.unsavedEdits ?? 0) > 0 }
 

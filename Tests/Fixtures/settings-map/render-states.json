@@ -964,10 +964,11 @@
   ]
  },
  "meetings": {
-  "exempt": {},
+  "exempt": {
+   "statusLine": 2
+  },
   "mapped": [
-   "meetingCaptureCallSound",
-   "meetings.recorder"
+   "meetingCaptureCallSound"
   ]
  }
 }

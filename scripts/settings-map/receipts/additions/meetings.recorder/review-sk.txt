@@ -1,1 +1,0 @@
-{"language":"sk","title":"spustiť nahrávanie","words":[],"phrases":["nahrať stretnutie"]}

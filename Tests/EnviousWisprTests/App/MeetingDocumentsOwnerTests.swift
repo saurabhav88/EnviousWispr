@@ -497,4 +497,30 @@ struct MeetingDocumentsOwnerTests {
     documents.setNotes(kept, "accepted again")
     #expect(documents.notes(kept) == "accepted again")
   }
+
+  @Test("the notes box takes typing only once the saved notes are read")
+  func canEditOnlyWhenLoaded() async throws {
+    let harness = try Harness()
+    let record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    try harness.store.create(record)
+    _ = try harness.store.saveNotes("saved earlier", revision: 1, meeting: record.id)
+    let coordinator = Self.coordinator(harness)
+    let documents = coordinator.documents
+    #expect(documents.canEdit(record.id) == false)
+    let hold = Self.holdFileQueue()
+    let load = Task { await documents.load(record.id) }
+    await MeetingWorkAdmission.waitUntil { documents.loadState(record.id) == .loading }
+    #expect(documents.canEdit(record.id) == false, "not while the saved notes are on their way")
+    hold.signal()
+    await load.value
+    #expect(documents.canEdit(record.id))
+    #expect(documents.notes(record.id) == "saved earlier")
+
+    // Unreadable notes: the box stays locked until a read succeeds.
+    let other = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    try harness.store.create(other)
+    try Data("not json".utf8).write(to: harness.store.documentsURL(for: other.id))
+    #expect(await documents.load(other.id) == false)
+    #expect(documents.canEdit(other.id) == false)
+  }
 }

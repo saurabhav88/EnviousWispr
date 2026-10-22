@@ -186,10 +186,12 @@ final class TranscriptCoordinator {
       }
     }
     var meetings: [HistoryMeetingItem] = []
-    for record in meetingRecords?() ?? [] where !record.deletionRequested {
-      meetings.append(
-        HistoryMeetingItem(
-          meetingID: record.id, record: record, row: rowsByMeeting.removeValue(forKey: record.id)))
+    for record in meetingRecords?() ?? [] {
+      // Taken out first, so a meeting marked for deletion never comes back as an orphan row
+      // while its deletion runs, stalls or failed (Codex C8 r1).
+      let row = rowsByMeeting.removeValue(forKey: record.id)
+      guard !record.deletionRequested else { continue }
+      meetings.append(HistoryMeetingItem(meetingID: record.id, record: record, row: row))
     }
     // A meeting row whose meeting EnviousMeet does not hold (its folder is gone or unreadable)
     // is still a meeting, listed by its meeting id.
@@ -211,11 +213,14 @@ final class TranscriptCoordinator {
     return listed.filter { item in
       switch item {
       case .transcript(let row): return matchesSearch(row)
-      // A meeting is searched by its row's words and title; one without a row yet (recording,
-      // transcribing, failed) by its title only (R35: search covers finished rows).
+      // R35: search covers finished meetings only, by their visible words, title and speaker
+      // names. A meeting still recording, transcribing (a retry included) or failed is never a
+      // match, so an item does not appear and vanish as its state moves.
       case .meeting(let meeting):
-        if let row = meeting.row { return matchesSearch(row) }
-        return meeting.record?.title?.localizedCaseInsensitiveContains(searchQuery) ?? false
+        guard let row = meeting.row, meeting.record.map({ $0.state == .ready }) ?? true else {
+          return false
+        }
+        return matchesSearch(row)
       }
     }
   }
@@ -375,8 +380,10 @@ final class TranscriptCoordinator {
   /// view cannot pick the global "nothing yet" for a list that a filter emptied.
   var emptyState: HistoryEmptyState? {
     let hasMeetings = (meetingRecords?() ?? []).contains { !$0.deletionRequested }
-    guard !visibleTranscripts.isEmpty || hasMeetings else { return .nothingYet }
     guard listedItems.isEmpty else { return nil }
+    // R34: an empty Recordings filter says how to make a recording, also on a fresh install.
+    if historyFilter == .recordings, searchQuery.isEmpty { return .noRecordings }
+    guard !visibleTranscripts.isEmpty || hasMeetings else { return .nothingYet }
     guard searchQuery.isEmpty else { return .noMatches }
     switch historyFilter {
     // Unreachable: with no search, All lists every visible row, and there is at least one.
@@ -1091,6 +1098,12 @@ final class TranscriptCoordinator {
   /// would show the unpolished version until something else refreshed it. Found by Codex.
   private var historyWriteRevision = 0
   private var writtenAtRevision: [UUID: Int] = [:]
+
+  /// EnviousMeet published a change to its meetings (`MeetingCoordinator.onMeetingsPublished`):
+  /// a meeting removed elsewhere (a peer, dev control) leaves no stale selection (Codex C8 r1).
+  func meetingsDidChange() {
+    reconcileSelectionWithDisplayedSet()
+  }
 
   /// Lists Recordings with no search and selects `meetingID` when given (#3972 R45): the menu's
   /// "Show Live Transcript" and "Show in History", and the EnviousMeet page's "Show
