@@ -436,4 +436,65 @@ struct MeetingDocumentsOwnerTests {
     #expect(folders.isEmpty)
     #expect(coordinator.documents.entries.isEmpty)
   }
+
+  @Test("a failed Start whose emptied notes cannot be saved ends failed, folder and draft kept")
+  func failedStartEmptiedNotesSaveFails() async throws {
+    let harness = try Harness()
+    harness.recorderStart = .failEmpty
+    harness.recoveryHold = DispatchSemaphore(value: 0)
+    let gate = DebounceGate()  // never opened: only the cleanup's flush saves
+    defer { gate.open() }
+    let coordinator = Self.coordinator(harness, gate: gate)
+    let start = Task { await coordinator.start(from: .menu) }
+    await MeetingCoordinatorTests.eventually("meeting created") { !coordinator.meetings.isEmpty }
+    let meetingID = try #require(coordinator.meetings.first?.id)
+    await coordinator.documents.load(meetingID)
+    coordinator.documents.setNotes(meetingID, "first")
+    #expect(await coordinator.documents.flush(meetingID))
+    // Every later document write fails: documents.json becomes a directory.
+    let manifest = harness.store.documentsURL(for: meetingID)
+    try FileManager.default.removeItem(at: manifest)
+    try FileManager.default.createDirectory(at: manifest, withIntermediateDirectories: false)
+    coordinator.documents.setNotes(meetingID, "")
+
+    harness.recoveryHold?.signal()
+    _ = await start.value  // returns: the cleanup does not loop on the failing save
+    await MeetingCoordinatorTests.eventually("failed") {
+      coordinator.record(id: meetingID)?.state == .failed
+    }
+    #expect(coordinator.notice == .storageFailed)
+    #expect(FileManager.default.fileExists(atPath: harness.store.folder(for: meetingID).path))
+    #expect(coordinator.documents.hasUnsavedNotes(meetingID))
+  }
+
+  @Test("a deletion after a removal fence stays final; reopen undoes only its own fence")
+  func reopenNeverUndoesDeletion() async throws {
+    let harness = try Harness()
+    let coordinator = Self.coordinator(harness)
+    let documents = coordinator.documents
+    var ids: [UUID] = []
+    for _ in 0..<2 {
+      let record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+      try harness.store.create(record)
+      #expect(await documents.load(record.id))
+      ids.append(record.id)
+    }
+
+    // Fence, then a deletion, then a late reopen: notes stay refused.
+    let deleted = ids[0]
+    let staleToken = try #require(documents.fenceEmptyForRemoval(deleted))
+    documents.forget(deleted)
+    documents.reopen(deleted, token: staleToken)
+    documents.setNotes(deleted, "after deletion")
+    #expect(documents.entries[deleted] == nil)
+
+    // Fence, then reopen with its own token: notes are accepted again.
+    let kept = ids[1]
+    let token = try #require(documents.fenceEmptyForRemoval(kept))
+    documents.setNotes(kept, "refused while fenced")
+    #expect(documents.entries[kept] == nil)
+    documents.reopen(kept, token: token)
+    documents.setNotes(kept, "accepted again")
+    #expect(documents.notes(kept) == "accepted again")
+  }
 }

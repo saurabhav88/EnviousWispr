@@ -670,7 +670,7 @@ final class MeetingCoordinator {
           return
         case .none:
           // Notes arrived since the check: decide again on what is saved now.
-          guard documents.fenceEmptyForRemoval(meetingID) else { continue }
+          guard let fence = documents.fenceEmptyForRemoval(meetingID) else { continue }
           endAttempt(current, outcome: .startFailed)
           do {
             try await writer.run { try $0.deleteFolder(meeting: meetingID) }
@@ -679,8 +679,11 @@ final class MeetingCoordinator {
             publish()
           } catch {
             deps.log("meeting start cleanup failed error=\(type(of: error))")
-            documents.reopen(meetingID)
-            guard var failed = live[meetingID] else { return }
+            // A quit or a deletion meanwhile owns the meeting now.
+            guard !quitting, !deleting.contains(meetingID), var failed = live[meetingID],
+              !failed.deletionRequested
+            else { return }
+            documents.reopen(meetingID, token: fence)
             failed.state = .failed
             failed.failureCode = "microphone_unavailable"
             await persist(failed)

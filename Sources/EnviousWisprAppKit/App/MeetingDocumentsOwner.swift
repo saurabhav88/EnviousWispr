@@ -69,6 +69,9 @@ final class MeetingDocumentsOwner {
   /// Meetings deleted this session: nothing creates an entry for them again (ids are never
   /// reused), so a Stop or a late caller after the deletion does nothing.
   private var forgotten: Set<UUID> = []
+  /// Fences `fenceEmptyForRemoval` set and `reopen` may still undo, by token. A deletion
+  /// (`forget`) removes the token, so a late `reopen` never undoes it (Codex C7 r3).
+  private var temporaryFences: [UUID: UUID] = [:]
   private var debounceTasks: [UUID: Task<Void, Never>] = [:]
   private var loadTasks: [UUID: Task<Void, Never>] = [:]
   /// Reads and saves on their way, per meeting.
@@ -198,10 +201,13 @@ final class MeetingDocumentsOwner {
     guard !forgotten.contains(meetingID) else { return .unknown }
     let durable = await flush(meetingID)
     guard let entry = entries[meetingID] else { return .unknown }
+    // A failed save comes first: `.none` means confirmed, saved emptiness (Codex C7 r3), so an
+    // emptied draft that could not be saved is `.failed`, never `.none`.
+    guard durable else { return .failed }
     if entry.notes.isEmpty {
       return entry.load == .loaded ? .none : .unknown
     }
-    return durable ? .saved : .failed
+    return .saved
   }
 
   /// Queues one save behind the meeting's previous one, and waits for it.
@@ -285,18 +291,23 @@ final class MeetingDocumentsOwner {
   /// For removing a meeting that recorded nothing (failed Start): true only when its notes are
   /// read, empty, unchanged and nothing is on its way, and then, in the same main-actor step,
   /// no further edit is accepted (Codex C7 r2). False means notes may exist: keep the folder.
-  /// `reopen` undoes the fence if the removal then fails.
-  func fenceEmptyForRemoval(_ meetingID: UUID) -> Bool {
+  /// The returned token lets `reopen` undo this fence, and only this one, if the removal fails.
+  func fenceEmptyForRemoval(_ meetingID: UUID) -> UUID? {
     guard let entry = entries[meetingID], entry.load == .loaded, entry.notes.isEmpty,
       entry.unsavedEdits == 0, debounceTasks[meetingID] == nil, loadTasks[meetingID] == nil,
       saveChains[meetingID] == nil, (operations[meetingID] ?? 0) == 0
-    else { return false }
+    else { return nil }
     forget(meetingID)
-    return true
+    let token = UUID()
+    temporaryFences[meetingID] = token
+    return token
   }
 
-  /// The removal `fenceEmptyForRemoval` allowed did not happen: the meeting accepts notes again.
-  func reopen(_ meetingID: UUID) {
+  /// The removal `fenceEmptyForRemoval` allowed did not happen: the meeting accepts notes
+  /// again, unless a deletion fenced it since (its token is then gone).
+  func reopen(_ meetingID: UUID, token: UUID) {
+    guard temporaryFences[meetingID] == token else { return }
+    temporaryFences[meetingID] = nil
     forgotten.remove(meetingID)
   }
 
@@ -305,6 +316,8 @@ final class MeetingDocumentsOwner {
   func forget(_ meetingID: UUID) {
     generations[meetingID] = generation(meetingID) + 1
     forgotten.insert(meetingID)
+    // Permanent from here: no earlier temporary fence may be undone.
+    temporaryFences[meetingID] = nil
     debounceTasks.removeValue(forKey: meetingID)?.cancel()
     loadTasks.removeValue(forKey: meetingID)
     saveChains.removeValue(forKey: meetingID)
