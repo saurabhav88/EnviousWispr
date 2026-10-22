@@ -468,4 +468,24 @@ struct MeetingHistoryPresentationTests {
         == "3 recordings were saved by a newer version of EnviousWispr. Update the app to open them."
     )
   }
+
+  @Test("a meeting marked for deletion delivers nothing while its row is still held")
+  func markedMeetingDeliversNothing() async throws {
+    let rig = Rig()
+    var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    record.state = .ready
+    let row = MeetingHistoryPresentationTests.meetingRow(
+      id: record.transcriptID, meetingID: record.id)
+    try await rig.coordinator.saveAndShowDurably(row)
+    // History's facts come from the shared gate, as in the app (`MeetingWiring.historyInfo`).
+    var current = record
+    rig.coordinator.meetingInfo = { _ in MeetingHistoryInfo.paired(with: current) }
+    #expect(rig.coordinator.textForDelivery(row) != nil, "a ready meeting delivers its lines")
+
+    // The mark is durable; the row's removal has not happened (held or failed).
+    current.deletionRequested = true
+    #expect(MeetingHistoryInfo.paired(with: current) == nil)
+    #expect(rig.coordinator.textForDelivery(row) == nil)
+    #expect(rig.coordinator.currentRow(id: row.id) != nil, "the row is still in the store")
+  }
 }

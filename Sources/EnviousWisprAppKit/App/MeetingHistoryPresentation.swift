@@ -15,9 +15,10 @@ struct MeetingHistoryInfo: Equatable, Sendable {
   /// pass writes the new row first and the ready record after it, and Retry writes queued
   /// before its new row, so in any other state the row and the echo IDs may come from
   /// different passes. Pass the durable copy (`MeetingCoordinator.record(id:)`), never the
-  /// latest intent.
+  /// latest intent. A meeting marked for deletion is nil too: nothing of it may be shown,
+  /// copied, shared or pasted while its deletion runs, stalls or failed (Codex C8 r2).
   static func paired(with record: MeetingRecord?) -> MeetingHistoryInfo? {
-    guard let record, record.state == .ready else { return nil }
+    guard let record, record.state == .ready, !record.deletionRequested else { return nil }
     return MeetingHistoryInfo(record: record)
   }
 
