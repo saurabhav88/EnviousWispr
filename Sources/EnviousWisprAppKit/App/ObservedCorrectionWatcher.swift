@@ -193,6 +193,10 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
     /// next strong settle saves each one whose pair is still in the text (other
     /// words may have been edited since), with no new judge call.
     var weakHeld: [HeldCorrection] = []
+    /// #3975: pairs the judge refused on weak evidence. The next strong settle
+    /// remembers each refusal whose pair is still in the text, as a refusal
+    /// on a finished edit.
+    var weakRefusedKeys: Set<String> = []
     /// #3101: strong evidence that arrived for text a weak settle is still
     /// being judged on; a judge answer for that region and revision that
     /// arrives later is treated as strong.
@@ -438,7 +442,9 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
       // in this text; for text already judged it is also remembered, so an
       // answer still on its way counts as strong.
       if evidence == .strong {
-        if !w.weakHeld.isEmpty { releaseWeakHeld(presentIn: region, generation: gen) }
+        if !w.weakHeld.isEmpty || !w.weakRefusedKeys.isEmpty {
+          releaseWeakHeld(presentIn: region, generation: gen)
+        }
         if w.settledSnapshots.contains(region) {
           watch?.strongRegion = region
           watch?.strongRevision = w.revision
@@ -629,10 +635,13 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
     // the weak-to-strong promotion above) is remembered so the same fix in a
     // later dictation can be learned without asking again. Bypasses, weak
     // answers and accepted pairs record nothing.
-    if evidence == .strong {
-      for decision in decisions where !Self.accepts(decision, evidence: .strong) {
-        guard let f = prepared.byID[decision.id], case .candidate = f.disposition else { continue }
-        deps.memory.recordJudgeRefusal(f.pairKey)
+    // A refusal on weak evidence waits for the next strong settle
+    // (`releaseWeakHeld`), which remembers it only if the pair is still there.
+    for decision in decisions where !decision.verdict.vocabularyCorrection {
+      guard let f = prepared.byID[decision.id], case .candidate = f.disposition else { continue }
+      switch evidence {
+      case .strong: deps.memory.recordJudgeRefusal(f.pairKey)
+      case .weak: watch?.weakRefusedKeys.insert(f.pairKey)
       }
     }
     #if DEBUG
@@ -725,6 +734,7 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
   /// #3101: save the corrections weak evidence held back whose pair is still
   /// in `region`, now that the text ended in a strong way. Each is saved once;
   /// a held pair the text no longer contains (the user undid it) is dropped.
+  /// #3975: weak refusals still in `region` are remembered here too.
   private func releaseWeakHeld(presentIn region: String, generation gen: UInt64) {
     guard let w = watch, w.generation == gen, let target = w.target else { return }
     let alignment = EditAlignment.align(pasted: target.pastedText, edited: region)
@@ -762,6 +772,12 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
       countBlocked(h.pairKey, generation: gen)
     }
     current = current.filter { !blocked.contains($0.key) }
+    // #3975: the text ended in a strong way, so a weak refusal whose pair is
+    // still here was a refusal of a finished edit.
+    for key in w.weakRefusedKeys where current[key] != nil {
+      deps.memory.recordJudgeRefusal(key)
+    }
+    watch?.weakRefusedKeys = []
     let held = w.weakHeld.compactMap { h in current[h.pairKey].map { (h, $0) } }.filter { h, run in
       h.via == .judge
         || RepeatShapeGuard.passes(

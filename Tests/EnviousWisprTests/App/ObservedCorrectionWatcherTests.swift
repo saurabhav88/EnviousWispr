@@ -1195,6 +1195,48 @@ struct ObservedCorrectionWatcherTests {
     #expect(memory.entry(Self.cenitKey) == nil)
   }
 
+  @Test(
+    "a weak refusal is remembered once a strong settle confirms the same text, whichever arrives first; a text changed before the send records nothing"
+  )
+  func weakRefusalConfirmedByStrongSettle() async {
+    judge.answer = { _ in false }
+    // The answer arrives first, then the send.
+    let answerFirst = makeWatcher()
+    await watchedPaste(answerFirst, starts: 1)
+    observer.fire(.settled(region: "Ask CENIT today", evidence: .weak))
+    #expect(await waitForEvents(telemetry, count: 1))
+    #expect(memory.entry(Self.cenitKey) == nil, "not yet: the edit may be unfinished")
+    observer.fire(.settled(region: "Ask CENIT today", evidence: .strong))
+    #expect(await waitUntil { memory.entry(Self.cenitKey)?.judgeRefusals == 1 })
+    observer.fire(.ended(.focusChanged))
+    #expect(await waitUntil { !answerFirst.isWatching })
+    memory.forgetAll()
+
+    // The send arrives while the judge is still thinking.
+    judge.holdAnswers = true
+    let sendFirst = makeWatcher()
+    await watchedPaste(sendFirst, starts: 2)
+    observer.fire(.settled(region: "Ask CENIT today", evidence: .weak))
+    #expect(await waitUntil { judge.requests.count == 2 })
+    observer.fire(.settled(region: "Ask CENIT today", evidence: .strong))
+    judge.release()
+    #expect(await waitUntil { memory.entry(Self.cenitKey)?.judgeRefusals == 1 })
+    observer.fire(.ended(.focusChanged))
+    #expect(await waitUntil { !sendFirst.isWatching })
+    memory.forgetAll()
+    judge.holdAnswers = false
+
+    // The user retyped before sending: the refused pair is gone, nothing is remembered.
+    let changed = makeWatcher()
+    await watchedPaste(changed, starts: 3)
+    observer.fire(.settled(region: "Ask CENIT today", evidence: .weak))
+    #expect(await waitUntil { judge.requests.count == 3 })
+    observer.fire(.changed(region: "Ask senate today"))
+    observer.fire(.settled(region: "Ask senate today", evidence: .strong))
+    for _ in 0..<5 { await Task.yield() }
+    #expect(memory.entry(Self.cenitKey) == nil)
+  }
+
   @Test("a repeated lowercase rewrite is never learned by repeat: it is judged again as today")
   func lowercaseRepeatIsStillJudged() async {
     judge.answer = { _ in false }

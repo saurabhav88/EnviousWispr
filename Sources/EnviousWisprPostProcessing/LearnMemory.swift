@@ -277,6 +277,13 @@ package final class LearnMemory {
   /// after it: a commit from another instance in between makes the read
   /// stale, so it is read again (a few times, then left for the next call).
   private func refreshIfChanged() {
+    // An unchanged file is not re-read, so an entry that aged past its
+    // lifetime since the last read is dropped here: every read answers as a
+    // fresh launch would.
+    let cutoff = now().addingTimeInterval(-Self.unblockedLifetime)
+    if pairs.values.contains(where: { !$0.blocked && $0.lastSeen < cutoff }) {
+      pairs = pairs.filter { $0.value.blocked || $0.value.lastSeen >= cutoff }
+    }
     for _ in 0..<3 {
       let before = currentStamp()
       guard before != stamp else { return }

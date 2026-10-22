@@ -100,6 +100,11 @@ struct LearnMemoryTests {
     let later = Self.memory(dir, clock: clock)
     #expect(later.isRepeat(Self.sify) == false)
     #expect(later.isBlocked(Self.cenit))
+    // The SAME instance, with the file unchanged since it read it, answers
+    // exactly as a fresh launch does once the deadline passes.
+    #expect(memory.isRepeat(Self.sify) == false)
+    #expect(memory.entry(Self.sify) == nil)
+    #expect(memory.isBlocked(Self.cenit))
   }
 
   @Test("past the unblocked cap the oldest unblocked entries go first; blocks stay")
