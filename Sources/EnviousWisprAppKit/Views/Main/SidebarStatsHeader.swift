@@ -60,6 +60,15 @@ struct SidebarStatsHeader: View {
       // #3972 R34: the in-app place to start a meeting, under the Recordings filter only.
       if transcriptCoordinator.historyFilter == .recordings {
         recordingControl
+        // Meetings a newer EnviousWispr saved stay on disk, untouched; this build cannot open
+        // them, so they are counted here rather than listed (#3972 §4).
+        if let line = Self.newerFormatLine(meetings.newerFormatMeetings.count) {
+          Text(line)
+            .font(.caption)
+            .foregroundStyle(.stTextSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
       }
 
       // Model status bar
@@ -78,6 +87,24 @@ struct SidebarStatsHeader: View {
     .padding(.horizontal, 8)
     .padding(.vertical, 8)
     .animation(.easeInOut(duration: 0.3), value: isRecording)
+  }
+
+  /// One whole sentence per count (#3142), or nil when every meeting opens.
+  static func newerFormatLine(_ count: Int) -> String? {
+    guard count > 0 else { return nil }
+    guard count != 1 else {
+      return String(
+        localized:
+          "A recording was saved by a newer version of EnviousWispr. Update the app to open it.",
+        comment:
+          "History, Recordings: one meeting this version cannot open (a newer version saved it).")
+    }
+    return String(
+      localized:
+        "\(String(count)) recordings were saved by a newer version of EnviousWispr. Update the app to open them.",
+      comment:
+        "History, Recordings: how many meetings this version cannot open because a newer version saved them. Never 1."
+    )
   }
 
   /// Start Recording when nothing records (the explainer first when it is due for this Start);

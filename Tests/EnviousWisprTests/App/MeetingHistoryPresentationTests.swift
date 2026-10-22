@@ -416,4 +416,15 @@ struct MeetingHistoryPresentationTests {
     #expect(harness.saved.last?.text == "hello again")
     #expect(MeetingWiring.historyInfo(coordinator, meetingID: meetingID)?.echoTurnIDs == ["mic-9"])
   }
+
+  @Test("Recordings says how many meetings a newer version saved, one sentence per count")
+  func newerFormatLine() {
+    #expect(SidebarStatsHeader.newerFormatLine(0) == nil)
+    #expect(
+      SidebarStatsHeader.newerFormatLine(1)
+        == "A recording was saved by a newer version of EnviousWispr. Update the app to open it.")
+    #expect(
+      SidebarStatsHeader.newerFormatLine(3)
+        == "3 recordings were saved by a newer version of EnviousWispr. Update the app to open them.")
+  }
 }
