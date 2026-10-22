@@ -46,4 +46,19 @@ import Testing
     #expect(!RepeatShapeGuard.isSentenceStart(tokenIndex: 99, in: text))
     #expect(RepeatShapeGuard.isSentenceStart(tokenIndex: 0, in: "  leading space"))
   }
+
+  @Test("a sentence ending inside quotes or brackets, or with an ellipsis, still starts the next one")
+  func terminatorBeforeClosingMarks() {
+    for text in [
+      "He said \"fine.\" Got the file", "He said “fine.” Got the file", "(done.) Got the file",
+      "It said 'ok!' Got the file", "Wait… Got the file", "Really?!) Got the file",
+    ] {
+      let index = InverseTextNormalizer.splitWords(text).firstIndex(of: "Got")!
+      #expect(RepeatShapeGuard.isSentenceStart(tokenIndex: index, in: text), "\(text)")
+      #expect(!passes("Got", at: index, in: text), "\(text): a sentence-start capital only")
+    }
+    // A closing mark with no terminator before it is not a sentence end.
+    #expect(!RepeatShapeGuard.isSentenceStart(tokenIndex: 2, in: "He said \"fine\" Got it"))
+    #expect(!RepeatShapeGuard.isSentenceStart(tokenIndex: 1, in: "(aside) Got it"))
+  }
 }

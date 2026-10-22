@@ -31,9 +31,15 @@ package enum RepeatShapeGuard {
     return false
   }
 
+  /// Sentence terminators, including the ellipsis character.
+  static let terminators: Set<Character> = [".", "!", "?", "…"]
+  /// Closing quotes and brackets that may follow a terminator.
+  static let closingMarks: Set<Character> = ["\"", "'", "”", "’", "»", ")", "]", "}"]
+
   /// The token at `tokenIndex` (whitespace-split, as `EditAlignment` splits)
-  /// is the first token of `text`, or follows a token ending in `.`, `!` or
-  /// `?`, or follows a newline. An index past the end is not a sentence start.
+  /// is the first token of `text`, or follows a token ending in `.`, `!`,
+  /// `?` or `…` (closing quotes and brackets after it allowed), or follows a
+  /// newline. An index past the end is not a sentence start.
   package static func isSentenceStart(tokenIndex: Int, in text: String) -> Bool {
     var index = 0
     var previous: Substring?
@@ -49,7 +55,10 @@ package enum RepeatShapeGuard {
       while i < text.endIndex, !text[i].isWhitespace { i = text.index(after: i) }
       if index == tokenIndex {
         guard let previous else { return true }
-        return sawNewline || previous.last.map { ".!?".contains($0) } ?? false
+        // A sentence can end inside quotes or brackets (`said "fine." Got`):
+        // look past closing marks to the terminator.
+        let end = previous.reversed().first { !Self.closingMarks.contains($0) }
+        return sawNewline || end.map { Self.terminators.contains($0) } ?? false
       }
       previous = text[start..<i]
       sawNewline = false
