@@ -58,7 +58,7 @@ import Testing
       #expect(!passes("Got", at: index, in: text), "\(text): a sentence-start capital only")
     }
     // A closing mark with no terminator before it is not a sentence end.
-    #expect(!RepeatShapeGuard.isSentenceStart(tokenIndex: 2, in: "He said \"fine\" Got it"))
+    #expect(!RepeatShapeGuard.isSentenceStart(tokenIndex: 3, in: "He said \"fine\" Got it"))
     #expect(!RepeatShapeGuard.isSentenceStart(tokenIndex: 1, in: "(aside) Got it"))
   }
 }
