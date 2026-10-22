@@ -32,6 +32,8 @@ EXPECTED_TOOLS = {
     "ew_words_remove", "ew_history_list", "ew_history_get", "ew_dictation_start",
     "ew_dictation_stop", "ew_dictation_cancel", "ew_dictation_receipt", "ew_dictation_wait",
     "ew_models_download", "ew_models_cancel", "ew_file_transcribe",
+    "ew_meeting_start", "ew_meeting_stop", "ew_meeting_status", "ew_meeting_list",
+    "ew_meeting_get", "ew_meeting_retry", "ew_meeting_delete_audio", "ew_meeting_delete",
 }
 RECEIPT = {"launch": "0b7c2a1e-0000-4000-8000-000000000001", "backend": "parakeet",
            "take": "5f1d7a3c-0000-4000-8000-000000000002"}
@@ -221,6 +223,25 @@ async def run_cases(r, base):
             reply, text, calls = await call("ew_history_list", {"limit": 199})
             r.check("a CLI that does not answer times out once, with no retry",
                     reply.is_error and "timedOut" in text and len(calls) == 1, f"{text} {calls}")
+
+            reply, text, calls = await call(
+                "ew_meeting_start", {"entry_point": "page", "call_sound": False})
+            r.check("meeting start passes the entry point and this request's call-sound flag",
+                    not reply.is_error and calls and calls[0]["argv"][2:] == [
+                        "meeting", "start", "--entry-point", "page", "--no-call-sound"],
+                    f"{calls}")
+
+            reply, text, calls = await call(
+                "ew_meeting_get", {"id": "-m", "turn_limit": 5, "include_text": True})
+            r.check("meeting get passes paging flags and the id after --",
+                    not reply.is_error and calls and calls[0]["argv"][2:] == [
+                        "meeting", "get", "--turn-limit", "5", "--include-text", "--", "-m"],
+                    f"{calls}")
+
+            reply, text, calls = await call("ew_meeting_delete_audio", {"id": "m1"})
+            r.check("meeting delete-audio maps to the CLI's delete-audio verb",
+                    not reply.is_error and calls and calls[0]["argv"][2:] == [
+                        "meeting", "delete-audio", "--", "m1"], f"{calls}")
 
             reply, text, calls = await call("ew_models_download", {"backend": "whisper"})
             r.check("models download maps to the CLI's models command",

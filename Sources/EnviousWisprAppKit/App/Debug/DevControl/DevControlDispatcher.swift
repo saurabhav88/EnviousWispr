@@ -40,6 +40,14 @@
       case dictationStop = "dictation.stop"
       case dictationCancel = "dictation.cancel"
       case dictationReceipt = "dictation.receipt"
+      case meetingStart = "meeting.start"
+      case meetingStop = "meeting.stop"
+      case meetingStatus = "meeting.status"
+      case meetingList = "meeting.list"
+      case meetingGet = "meeting.get"
+      case meetingRetry = "meeting.retry"
+      case meetingDeleteAudio = "meeting.deleteAudio"
+      case meetingDelete = "meeting.delete"
     }
 
     enum ErrorCode: String, CaseIterable {
@@ -70,6 +78,10 @@
       case receiptExpired
       /// The key store refused the save or clear; what is stored is now unknown.
       case storeFailed
+      /// An owner the command needs was never handed to the door (a wiring fault).
+      case notWired
+      /// The answer would be larger than one reply may carry; the reply says how to page it.
+      case tooLarge
     }
 
     enum Result {
@@ -145,13 +157,16 @@
     var launchID: UUID { dictation.launchID }
     /// The same coordinator Your Words calls; every word command goes through it.
     private let words: CustomWordsCoordinator
+    /// EnviousMeet commands, through the owners the page and the menu use (#3972 C6a).
+    private let meetings: DevControlMeetings
 
     init(
       settings: SettingsManager, writeContext: DevControlSettings.WriteContext,
       status: StatusSources, history: HistorySource, models: ModelActions,
       dictation: DevControlDictation, credentials: CredentialWriter,
-      words: CustomWordsCoordinator
+      words: CustomWordsCoordinator, meetings: DevControlMeetings
     ) {
+      self.meetings = meetings
       self.dictation = dictation
       self.credentials = credentials
       self.settings = settings
@@ -218,6 +233,22 @@
         return await dictation.cancel(args)
       case .dictationReceipt:
         return dictation.receipt(args)
+      case .meetingStart:
+        return await meetings.start(args)
+      case .meetingStop:
+        return await meetings.stop(args)
+      case .meetingStatus:
+        return meetings.status(args)
+      case .meetingList:
+        return meetings.list(args)
+      case .meetingGet:
+        return meetings.get(args)
+      case .meetingRetry:
+        return await meetings.retry(args)
+      case .meetingDeleteAudio:
+        return await meetings.deleteAudio(args)
+      case .meetingDelete:
+        return await meetings.delete(args)
       }
     }
 
@@ -609,7 +640,7 @@
       [
         "id": row.id.uuidString,
         "createdAt": row.createdAt.formatted(timestamp),
-        "kind": row.isImported ? "import" : "dictation",
+        "kind": row.isMeeting ? "meeting" : row.isImported ? "import" : "dictation",
         "pending": row.escapeRecoveredAt != nil,
         "backend": row.backendType.rawValue,
         "duration": finite(row.duration),

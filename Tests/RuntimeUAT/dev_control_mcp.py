@@ -274,6 +274,59 @@ def build_server():
                     "--timeout", repr(float(timeout)), timeout=CALL_SECONDS + float(timeout))
 
     @server.tool()
+    def ew_meeting_start(entry_point: Literal["page", "menu"] = "menu",
+                         call_sound: bool | None = None) -> CallToolResult:
+        """Ask the EnviousMeet Start the menu and page use; call_sound overrides this request
+        only. waitingForExplainer means a person must answer the page's explainer."""
+        args = ["meeting", "start", "--entry-point", entry_point]
+        if call_sound is not None:
+            args.append("--call-sound" if call_sound else "--no-call-sound")
+        return call(*args, mutation=True)
+
+    @server.tool()
+    def ew_meeting_stop(id: str) -> CallToolResult:
+        """Stop the meeting recording with that id."""
+        return call("meeting", "stop", "--", id, mutation=True)
+
+    @server.tool()
+    def ew_meeting_status() -> CallToolResult:
+        """EnviousMeet's live state: phase, processing stage, notice, pending Start steps."""
+        return call("meeting", "status")
+
+    @server.tool()
+    def ew_meeting_list(limit: int | None = None) -> CallToolResult:
+        """Saved meetings, newest first (records, no text)."""
+        return call("meeting", "list", *([] if limit is None else ["--limit", str(limit)]))
+
+    @server.tool()
+    def ew_meeting_get(id: str, turn_offset: int | None = None, turn_limit: int | None = None,
+                       include_text: bool = False) -> CallToolResult:
+        """One meeting with its History row's turns (echo flagged) and visible projection."""
+        args = ["meeting", "get"]
+        if turn_offset is not None:
+            args += ["--turn-offset", str(turn_offset)]
+        if turn_limit is not None:
+            args += ["--turn-limit", str(turn_limit)]
+        if include_text:
+            args.append("--include-text")
+        return call(*args, "--", id)
+
+    @server.tool()
+    def ew_meeting_retry(id: str) -> CallToolResult:
+        """Transcribe a finished, failed or interrupted meeting again."""
+        return call("meeting", "retry", "--", id, mutation=True)
+
+    @server.tool()
+    def ew_meeting_delete_audio(id: str) -> CallToolResult:
+        """Delete a meeting's audio, keeping its transcript."""
+        return call("meeting", "delete-audio", "--", id, mutation=True)
+
+    @server.tool()
+    def ew_meeting_delete(id: str) -> CallToolResult:
+        """Delete a meeting: audio, record and History row."""
+        return call("meeting", "delete", "--", id, mutation=True)
+
+    @server.tool()
     def ew_models_download(backend: Literal["parakeet", "whisper"]) -> CallToolResult:
         """Press the model's Download (Whisper) or Resume (Parakeet)."""
         return call("models", "download", backend, mutation=True)

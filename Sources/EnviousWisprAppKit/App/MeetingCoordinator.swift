@@ -344,6 +344,22 @@ final class MeetingCoordinator {
       || writer.pendingCount > 0
   }
 
+  /// Live facts of the running pass for diagnostics (#3972 C6a, DEBUG dev control), or nil when
+  /// no pass runs. Read-only views of the job's own state; nothing here is a second copy.
+  struct PassDiagnostics: Equatable {
+    let isUnitInFlight: Bool
+    let isEngineResident: Bool
+  }
+
+  var passDiagnostics: PassDiagnostics? {
+    job.map {
+      PassDiagnostics(isUnitInFlight: $0.isUnitInFlight, isEngineResident: $0.isEngineResident)
+    }
+  }
+
+  /// Whether a timed-out close still owns this meeting's files until the next launch.
+  func isCloseOwned(_ meetingID: UUID) -> Bool { closeOwned.contains(meetingID) }
+
   /// Meeting file operations asked for and not yet finished (read-only; a test waits on it).
   nonisolated var queuedFileOperations: Int { writer.pendingCount }
 
@@ -468,19 +484,24 @@ final class MeetingCoordinator {
   /// (`MeetingStartFlow` decides the explainer on it); nil reads the setting now. Either way it
   /// is frozen here, before any wait, so a switch flipped during the start never changes this
   /// recording (#3972 C5b review r1).
-  func start(from entryPoint: MeetingEntryPoint, captureCallSound: Bool? = nil) async {
-    guard phase == .idle, !quitting else { return }
+  /// The result names what this Start did, and the meeting it created when it created one, so a
+  /// caller never infers it from the newest meeting.
+  @discardableResult
+  func start(from entryPoint: MeetingEntryPoint, captureCallSound: Bool? = nil) async
+    -> StartOutcome
+  {
+    guard phase == .idle, !quitting else { return .notIdle }
     let captureCall = captureCallSound ?? deps.captureCallSound()
     notice = nil
     guard deps.microphoneAuthorized() else {
       notice = .microphoneDenied
       emitStartFailed(entryPoint, microphone: .denied)
-      return
+      return .refused(.microphoneDenied)
     }
     if let free = deps.freeDiskBytes(), free < Self.diskFloorBytes {
       notice = .lowDisk
       emitStartFailed(entryPoint, microphone: .off)
-      return
+      return .refused(.lowDisk)
     }
     startGeneration += 1
     let generation = startGeneration
@@ -488,14 +509,14 @@ final class MeetingCoordinator {
     workChanged()
     guard await deps.settleDictationHold() else {
       // A Stop or quit while waiting already owns the outcome.
-      guard isCurrentStart(generation) else { return }
+      guard isCurrentStart(generation) else { return .superseded(meetingID: nil) }
       phase = .idle
       notice = .finishDictationFirst
       emitStartFailed(entryPoint, microphone: .off)
       workChanged()
-      return
+      return .refused(.finishDictationFirst)
     }
-    guard isCurrentStart(generation) else { return }
+    guard isCurrentStart(generation) else { return .superseded(meetingID: nil) }
     var record = MeetingRecord(
       engine: .parakeet,
       trackStatus: [.microphone: .captured, .callSound: captureCall ? .captured : .off])
@@ -504,12 +525,12 @@ final class MeetingCoordinator {
       let created = record
       try await writer.run { try $0.create(created) }
     } catch {
-      guard isCurrentStart(generation) else { return }
+      guard isCurrentStart(generation) else { return .superseded(meetingID: nil) }
       phase = .idle
       notice = .recordingStoppedFileError
       emitStartFailed(entryPoint, microphone: .off)
       workChanged()
-      return
+      return .refused(.recordingStoppedFileError)
     }
     guard isCurrentStart(generation) else {
       // Stopped while the folder was created: nothing was recorded into it.
@@ -519,7 +540,7 @@ final class MeetingCoordinator {
         // An empty folder left behind; launch recovery lists it as an empty meeting.
         deps.log("meeting start cleanup failed error=\(type(of: error))")
       }
-      return
+      return .superseded(meetingID: nil)
     }
     // Created durably above. The attempt begins: its facts are frozen here, so a later Start
     // never changes them.
@@ -549,7 +570,7 @@ final class MeetingCoordinator {
       result = try await recorder.start()
     } catch {
       // A stop or quit that took over owns the recorder and the record.
-      guard isCurrentStart(generation) else { return }
+      guard isCurrentStart(generation) else { return .superseded(meetingID: meetingID) }
       deps.log("meeting start failed error=\(String(describing: error).prefix(80))")
       // The current state ends now; the old meeting's files are dealt with apart from it, so a
       // new Start during the inspection below is never touched by it.
@@ -561,11 +582,11 @@ final class MeetingCoordinator {
       // Its row is decided by what reached disk: `start_failed` when nothing did, else the
       // attempt goes on to the terminal of the audio it kept.
       await cleanUpFailedStart(meetingID)
-      return
+      return .failed(meetingID: meetingID)
     }
     guard isCurrentStart(generation) else {
       // A stop or quit took over while starting; it owns the recorder and the record.
-      return
+      return .superseded(meetingID: meetingID)
     }
     record = live[meetingID] ?? record
     record.trackStatus[.callSound] = result.callSound
@@ -577,6 +598,21 @@ final class MeetingCoordinator {
     if let token = deps.beginActivity() { activity = token }
     phase = .recording(meetingID: meetingID, startedAt: record.createdAt)
     await persist(record)
+    return .recording(meetingID: meetingID)
+  }
+
+  /// What one `start` did.
+  enum StartOutcome: Equatable {
+    /// Recording `meetingID`, which this Start created.
+    case recording(meetingID: UUID)
+    /// Refused before recording; the notice says why.
+    case refused(Notice)
+    /// A Stop or quit took over while it started; `meetingID` when a meeting was created.
+    case superseded(meetingID: UUID?)
+    /// The recorder did not start; whatever reached disk for `meetingID` is kept.
+    case failed(meetingID: UUID)
+    /// A meeting was already starting, recording or stopping, or the app is quitting.
+    case notIdle
   }
 
   private func isCurrentStart(_ generation: Int) -> Bool {

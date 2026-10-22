@@ -35,7 +35,7 @@
         models: DevControlFixtures.ModelFake().actions,
         dictation: DevControlFixtures.inertDictation(),
         credentials: DevControlFixtures.isolatedCredentials(),
-        words: DevControlFixtures.unwrittenWords())
+        words: DevControlFixtures.unwrittenWords(), meetings: .unwired())
       return (settings, dispatcher)
     }
 
@@ -141,7 +141,7 @@
         models: DevControlFixtures.ModelFake().actions,
         dictation: DevControlFixtures.inertDictation(),
         credentials: DevControlFixtures.isolatedCredentials(),
-        words: DevControlFixtures.unwrittenWords())
+        words: DevControlFixtures.unwrittenWords(), meetings: .unwired())
       let reply = try #require(payload(await dispatcher.handle(
         .channelSet, args: ["deviceUID": "mic-a", "channel": NSNumber(value: 2)])))
       #expect(reply["deviceUID"] as? String == "mic-a")
@@ -337,7 +337,7 @@
         models: models.actions,
         dictation: DevControlFixtures.inertDictation(),
         credentials: DevControlFixtures.isolatedCredentials(),
-        words: DevControlFixtures.unwrittenWords())
+        words: DevControlFixtures.unwrittenWords(), meetings: .unwired())
       return (settings, dispatcher)
     }
 
@@ -677,7 +677,7 @@ private static func make(words: CustomWordsCoordinator) -> (SettingsManager, Dev
     models: DevControlFixtures.ModelFake().actions,
     dictation: DevControlFixtures.inertDictation(),
     credentials: DevControlFixtures.isolatedCredentials(),
-    words: words)
+    words: words, meetings: .unwired())
   return (settings, dispatcher)
 }
 

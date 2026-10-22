@@ -21,6 +21,7 @@ struct MeetingStartFlowTests {
     var pageShown = 0
     var settings: SettingsManager?
     var startedWithCallSound: [Bool] = []
+    let startedMeetingID = UUID()
     var microphoneUnasked = false
     var microphoneRequests = 0
     /// Runs while the macOS microphone prompt would be up.
@@ -38,6 +39,7 @@ struct MeetingStartFlowTests {
           starts.append(entry)
           startedWithCallSound.append(callSound)
           idle = false
+          return .recording(meetingID: startedMeetingID)
         },
         microphoneNeedsAsking: { [unowned self] in microphoneUnasked },
         requestMicrophone: { [unowned self] in

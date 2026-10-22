@@ -2376,7 +2376,12 @@ package final class WisprBootstrapper {
           credentials: CredentialWriter(
             keychainManager: keychainManager, presence: savedKeyPresence,
             discovery: llmDiscovery),
-          words: customWordsCoordinator))
+          words: customWordsCoordinator,
+          meetings: DevControlMeetings(
+            sources: DevControlMeetings.Sources(
+              coordinator: { [meetingBox] in meetingBox.coordinator },
+              startFlow: { [meetingBox] in meetingBox.startFlow },
+              transcripts: { [transcriptCoordinator] in transcriptCoordinator }))))
     #endif
     // #3972 C4a: EnviousMeet, bootstrapped here so it lives independently of any view.
     let meetingWakes = MeetingWakeSignal()
@@ -2411,7 +2416,8 @@ package final class WisprBootstrapper {
         markExplained: { [settings] in settings.meetingCallSoundExplained = true },
         canStart: { [weak meetingCoordinator] in meetingCoordinator?.phase == .idle },
         start: { [weak meetingCoordinator] entryPoint, captureCallSound in
-          await meetingCoordinator?.start(from: entryPoint, captureCallSound: captureCallSound)
+          guard let meetingCoordinator else { return .notIdle }
+          return await meetingCoordinator.start(from: entryPoint, captureCallSound: captureCallSound)
         },
         microphoneNeedsAsking: { [permissions] in permissions.microphoneNeedsAsking },
         requestMicrophone: { [permissions] in await permissions.requestMicrophoneAccessOrOpenSettings() },

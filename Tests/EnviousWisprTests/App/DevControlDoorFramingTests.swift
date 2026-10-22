@@ -80,7 +80,7 @@
         models: models.actions,
         dictation: dictation,
         credentials: credentials,
-        words: words)
+        words: words, meetings: .unwired())
     }
 
     /// The Python source for a child that has imported `Tests/RuntimeUAT/dev_control.py`
