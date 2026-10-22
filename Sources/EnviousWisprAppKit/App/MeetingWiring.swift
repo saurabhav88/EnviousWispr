@@ -83,6 +83,9 @@ enum MeetingWiring {
     inputs.transcriptCoordinator.deleteMeeting = { [weak coordinator] meetingID in
       Task { await coordinator?.delete(meetingID: meetingID) }
     }
+    inputs.transcriptCoordinator.meetingRecords = { [weak coordinator] in
+      coordinator?.meetings ?? []
+    }
     inputs.transcriptCoordinator.meetingInfo = { [weak coordinator] meetingID in
       historyInfo(coordinator, meetingID: meetingID)
     }

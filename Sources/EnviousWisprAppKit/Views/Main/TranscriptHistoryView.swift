@@ -20,18 +20,21 @@ struct TranscriptHistoryView: View {
 
       Divider()
 
-      List(
-        transcriptCoordinator.filteredTranscripts,
-        selection: $tc.selectedTranscriptID
-      ) { transcript in
-        TranscriptRowView(transcript: transcript)
-          .tag(transcript.id)
-          // Paint the row background with the page colour so macOS's default
-          // grey selection highlight is replaced — our card's accent ring is the
-          // only selection signal.
-          .listRowBackground(Color.stPageBg)
-          .listRowSeparator(.hidden)
-          .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
+      // #3972 R45: one list of typed items; a meeting is one item from Start to deletion.
+      List(transcriptCoordinator.listedItems, selection: $tc.selectedItemID) { item in
+        Group {
+          switch item {
+          case .transcript(let transcript): TranscriptRowView(transcript: transcript)
+          case .meeting(let meeting): MeetingRowView(meeting: meeting)
+          }
+        }
+        .tag(item.id)
+        // Paint the row background with the page colour so macOS's default
+        // grey selection highlight is replaced — our card's accent ring is the
+        // only selection signal.
+        .listRowBackground(Color.stPageBg)
+        .listRowSeparator(.hidden)
+        .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
       }
       .listStyle(.plain)
       .scrollContentBackground(.hidden)
@@ -46,7 +49,7 @@ struct TranscriptHistoryView: View {
         }
       }
 
-      if !transcriptCoordinator.visibleTranscripts.isEmpty {
+      if transcriptCoordinator.deletableCount > 0 {
         Divider()
         Button(role: .destructive) {
           showDeleteAllConfirmation = true
@@ -89,7 +92,7 @@ struct HistoryEmptyView: View {
       ContentUnavailableView(
         "Nothing here yet",
         systemImage: "doc.text",
-        description: Text("Your dictations, transcripts and meetings will appear here.")
+        description: Text("Your dictations, transcripts and recordings will appear here.")
       )
     case .noDictations:
       ContentUnavailableView(
@@ -101,7 +104,13 @@ struct HistoryEmptyView: View {
       ContentUnavailableView(
         "No transcripts yet",
         systemImage: "doc.text",
-        description: Text("Use Transcribe a File, or record a meeting, to add one.")
+        description: Text("Use Transcribe a File to add one.")
+      )
+    case .noRecordings:
+      ContentUnavailableView(
+        "No recordings yet",
+        systemImage: "person.2.wave.2",
+        description: Text("Start a recording from the menu bar.")
       )
     case .noMatches:
       ContentUnavailableView(
@@ -121,7 +130,7 @@ struct TranscriptRowView: View {
   @Environment(TranscriptCoordinator.self) private var transcriptCoordinator
 
   private var isSelected: Bool {
-    transcriptCoordinator.selectedTranscriptID == transcript.id
+    transcriptCoordinator.selectedItemID == .transcript(transcript.id)
   }
 
   /// Reading `expiryPulse` is what re-renders the countdown (#2087). Observation
@@ -147,13 +156,7 @@ struct TranscriptRowView: View {
           .foregroundStyle(.stTextSecondary)
       }
 
-      // #3972 R19: a meeting previews its visible lines only, never hidden echo.
-      Text(
-        transcript.isMeeting
-          ? MeetingHistoryPresentation.previewText(
-            transcriptCoordinator.meetingProjection(of: transcript))
-          : transcript.displayText
-      )
+      Text(transcript.displayText)
         .lineLimit(3)
         .font(.body)
         .foregroundStyle(.stTextPrimary)
@@ -205,10 +208,8 @@ struct TranscriptRowView: View {
         // came from Transcribe a File. Read from `isImported`, the row's only kind. Icon plus
         // text, never colour alone, like every other badge in this row.
         HStack(spacing: 2) {
-          Image(
-            systemName: transcript.isMeeting
-              ? "person.2.wave.2" : (transcript.isImported ? "doc.text" : "mic"))
-          Text(transcript.isMeeting ? "Meeting" : (transcript.isImported ? "Transcript" : "Dictation"))
+          Image(systemName: transcript.isImported ? "doc.text" : "mic")
+          Text(transcript.isImported ? "Transcript" : "Dictation")
         }
         .font(.caption2)
         .padding(.horizontal, 5)
@@ -310,30 +311,39 @@ struct TranscriptRowView: View {
           .foregroundStyle(.stTextSecondary)
       }
     }
-    .padding(12)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background {
-      // Opaque base so nothing bleeds through, plus a faint accent wash when
-      // selected (matches the mockup's subtly purple-tinted active card).
-      ZStack {
-        RoundedRectangle(cornerRadius: 12).fill(Color.stSectionBg)
-        if isSelected {
-          RoundedRectangle(cornerRadius: 12).fill(Color.stAccent.opacity(0.12))
+    .historyRowCard(isSelected: isSelected)
+  }
+}
+
+extension View {
+  /// The bordered card every History row is drawn in: the selected card carries an accent ring
+  /// and a faint wash (mockup #27).
+  func historyRowCard(isSelected: Bool) -> some View {
+    self
+      .padding(12)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background {
+        // Opaque base so nothing bleeds through, plus a faint accent wash when
+        // selected (matches the mockup's subtly purple-tinted active card).
+        ZStack {
+          RoundedRectangle(cornerRadius: 12).fill(Color.stSectionBg)
+          if isSelected {
+            RoundedRectangle(cornerRadius: 12).fill(Color.stAccent.opacity(0.12))
+          }
         }
       }
-    }
-    .overlay(
-      RoundedRectangle(cornerRadius: 12)
-        .strokeBorder(
-          isSelected ? Color.stAccent : Color.stDivider,
-          lineWidth: isSelected ? 2 : 1)
-    )
-    // The `List` row's own selection highlight is deliberately painted over
-    // (see `.listRowBackground` in `TranscriptHistoryView`), and painting it out
-    // took the system's hover with it -- so History, which is the first page the
-    // app opens on and a list whose whole purpose is picking one of many rows,
-    // had no pointer feedback at all.
-    .settingsHoverCard(cornerRadius: 12, isSelected: isSelected)
-    .contentShape(RoundedRectangle(cornerRadius: 12))
+      .overlay(
+        RoundedRectangle(cornerRadius: 12)
+          .strokeBorder(
+            isSelected ? Color.stAccent : Color.stDivider,
+            lineWidth: isSelected ? 2 : 1)
+      )
+      // The `List` row's own selection highlight is deliberately painted over
+      // (see `.listRowBackground` in `TranscriptHistoryView`), and painting it out
+      // took the system's hover with it -- so History, which is the first page the
+      // app opens on and a list whose whole purpose is picking one of many rows,
+      // had no pointer feedback at all.
+      .settingsHoverCard(cornerRadius: 12, isSelected: isSelected)
+      .contentShape(RoundedRectangle(cornerRadius: 12))
   }
 }

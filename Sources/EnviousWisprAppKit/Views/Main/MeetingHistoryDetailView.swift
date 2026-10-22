@@ -3,14 +3,16 @@ import EnviousWisprServices
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// One meeting on the EnviousMeet page (#3972 §3.8): its name, status, kept audio and actions,
-/// and its transcript through History's own paths (`TranscriptCoordinator.meetingProjection`,
-/// `textForDelivery`, `renameSpeaker`), so the page and History can never show or deliver a
-/// meeting differently. Every action re-reads the meeting by `meetingID` when it runs; a
-/// confirmation belongs to this meeting only (the page rebuilds this view per meeting).
-struct MeetingDetailView: View {
-  let meetingID: UUID
-  let onClose: () -> Void
+/// One meeting in History (#3972 R36, R45, founder F17): its name, status, kept audio and
+/// actions, then three tabs. Transcript shows what the meeting is doing now (recording, the
+/// after-recording work, a failure) and, once ready, the transcript through History's own paths
+/// (`TranscriptCoordinator.meetingProjection`, `textForDelivery`, `renameSpeaker`). Notes is the
+/// user's own text (`MeetingDocumentsOwner`). Summary is written after the meeting. Every action
+/// re-reads the meeting by `meetingID` when it runs; a confirmation belongs to this meeting only
+/// (History rebuilds this view per meeting).
+struct MeetingHistoryDetailView: View {
+  let meeting: HistoryMeetingItem
+  private var meetingID: UUID { meeting.meetingID }
 
   @Environment(MeetingCoordinator.self) private var meetings
   @Environment(TranscriptCoordinator.self) private var transcripts
@@ -33,20 +35,36 @@ struct MeetingDetailView: View {
     case deleteMeeting
   }
 
+  enum Tab: Hashable {
+    case transcript
+    case notes
+    case summary
+  }
+
+  @State private var tab: Tab = .transcript
+
   var body: some View {
     if let record = meetings.record(id: meetingID) {
-      BrandedSection(verbatimHeader: MeetingsPresentation.title(record)) {
+      ScrollView {
         VStack(alignment: .leading, spacing: 14) {
+          Text(MeetingsPresentation.title(record))
+            .font(.system(size: 22, weight: .semibold))
+            .foregroundStyle(.stTextPrimary)
           header(record)
           actions(record)
           if let confirming { confirmation(confirming, record: record) }
           if let player { playback(player) }
-          transcript(record)
+          tabPicker
+          switch tab {
+          case .transcript: transcriptTab(record)
+          case .notes: MeetingNotesEditor(meetingID: meetingID)
+          case .summary: summaryTab(record)
+          }
         }
-        .padding(14)
-      } footer: {
-        EmptyView()
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
       }
+      .background(Color.stPageBg)
       .task(id: AudioSizeKey(audioKept: record.audioKept, state: record.state)) {
         audioSize = .measuring
         audioSize = await meetings.audioSize(meetingID: meetingID)
@@ -54,7 +72,11 @@ struct MeetingDetailView: View {
       .task(id: meetings.playbackSource(meetingID: meetingID)) {
         reconcilePlayer()
       }
-      .onAppear { titleDraft = record.title ?? "" }
+      .onAppear {
+        titleDraft = record.title ?? ""
+        // A meeting that recorded nothing has only notes to show.
+        if record.state == .notesOnly { tab = .notes }
+      }
       .onDisappear { dropPlayer() }
       .alert(
         Text("The transcript could not be saved", comment: "EnviousMeet: Save failed."),
@@ -64,6 +86,21 @@ struct MeetingDetailView: View {
       } message: {
         Text(saveError ?? "")
       }
+    } else if let row = meeting.row {
+      // A meeting row whose meeting EnviousMeet does not hold: its transcript only.
+      ScrollView {
+        VStack(alignment: .leading, spacing: 14) {
+          Text(
+            "Meeting", comment: "History: the title of a meeting whose details are not available."
+          )
+          .font(.system(size: 22, weight: .semibold))
+          .foregroundStyle(.stTextPrimary)
+          transcript(row: row, record: nil)
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+      }
+      .background(Color.stPageBg)
     }
   }
 
@@ -118,14 +155,6 @@ struct MeetingDetailView: View {
           Text("Rename", comment: "EnviousMeet: saves the meeting's new name.")
         }
         .disabled(titleDraft == (record.title ?? "") || !record.isWritableByThisBuild)
-        Spacer(minLength: 0)
-        Button {
-          onClose()
-        } label: {
-          Image(systemName: "xmark")
-        }
-        .buttonStyle(.borderless)
-        .accessibilityLabel(Text("Close", comment: "EnviousMeet: closes the meeting detail."))
       }
       let status = MeetingsPresentation.status(
         record, processingID: meetings.processing?.meetingID)
@@ -304,10 +333,87 @@ struct MeetingDetailView: View {
     }
   }
 
+  // MARK: - Tabs
+
+  private var tabPicker: some View {
+    Picker(
+      String(localized: "Show", comment: "History, a meeting: which part of it is shown."),
+      selection: $tab
+    ) {
+      Text("Transcript", comment: "History, a meeting: the tab with the meeting's transcript.")
+        .tag(Tab.transcript)
+      Text("Notes", comment: "History, a meeting: the tab with the user's own notes.")
+        .tag(Tab.notes)
+      Text("Summary", comment: "History, a meeting: the tab with the meeting's summary.")
+        .tag(Tab.summary)
+    }
+    .pickerStyle(.segmented)
+    .labelsHidden()
+  }
+
+  /// What the meeting is doing now, then its transcript once one exists (R36). The state comes
+  /// from the meeting record, never from whether a History row exists: a retry keeps the old
+  /// row, and a new row lands before the meeting is ready.
+  @ViewBuilder private func transcriptTab(_ record: MeetingRecord) -> some View {
+    switch meetings.phase {
+    case .recording(let id, let startedAt) where id == meetingID:
+      MeetingLivePanel(startedAt: startedAt)
+      Text(
+        "The transcript, with who said what, is written when you stop the recording.",
+        comment: "History, a recording meeting: what the Transcript tab will show."
+      )
+      .font(.stHelper)
+      .foregroundStyle(.stTextSecondary)
+    case .stopping(let id) where id == meetingID:
+      busyLine(
+        String(
+          localized: "Saving the recording",
+          comment: "EnviousMeet: the meeting recording is being closed and saved."))
+    default:
+      if let processing = meetings.processing, processing.meetingID == meetingID {
+        MeetingProcessingPanel(processing: processing)
+      } else if record.state == .queued {
+        busyLine(
+          String(
+            localized: "Waiting to be transcribed",
+            comment: "History, a meeting: it waits for another meeting's transcript first."))
+      }
+      if record.state == .ready, let row = transcripts.currentRow(id: record.transcriptID) {
+        transcript(row: row, record: record)
+      } else if record.state == .notesOnly {
+        Text(
+          "Nothing was recorded for this meeting. Your notes are in Notes.",
+          comment: "History, a meeting that recorded nothing: where its notes are."
+        )
+        .font(.stBody)
+        .foregroundStyle(.stTextSecondary)
+      }
+    }
+  }
+
+  @ViewBuilder private func summaryTab(_ record: MeetingRecord) -> some View {
+    Text(
+      "A summary is written after the meeting is transcribed.",
+      comment: "History, a meeting: the Summary tab before a summary exists."
+    )
+    .font(.stBody)
+    .foregroundStyle(.stTextSecondary)
+  }
+
+  private func busyLine(_ text: String) -> some View {
+    HStack(spacing: 8) {
+      ProgressView().controlSize(.small)
+      Text(text)
+        .font(.stBody)
+        .foregroundStyle(.stTextPrimary)
+    }
+    .accessibilityElement(children: .combine)
+  }
+
   // MARK: - Transcript
 
-  @ViewBuilder private func transcript(_ record: MeetingRecord) -> some View {
-    if let row = transcripts.currentRow(id: record.transcriptID) {
+  @ViewBuilder private func transcript(row: Transcript, record: MeetingRecord?) -> some View {
+    Group {
       let projection = transcripts.meetingProjection(of: row)
       // Copy and Save deliver only visible turns; the text itself is built on press.
       let canDeliver: Bool = {
@@ -316,7 +422,7 @@ struct MeetingDetailView: View {
       }()
       VStack(alignment: .leading, spacing: 10) {
         HStack(spacing: 10) {
-          if !record.echoTurnIDs.isEmpty, record.state == .ready {
+          if let record, !record.echoTurnIDs.isEmpty, record.state == .ready {
             Toggle(
               isOn: Binding(
                 get: { transcripts.isShowingEcho(rowID: row.id) },
@@ -384,10 +490,12 @@ struct MeetingDetailView: View {
   }
 
   /// The text is read AFTER the panel closes, so a meeting deleted meanwhile saves nothing.
-  private func save(_ row: Transcript, record: MeetingRecord) {
+  private func save(_ row: Transcript, record: MeetingRecord?) {
     let panel = NSSavePanel()
     panel.allowedContentTypes = [.plainText]
-    panel.nameFieldStringValue = MeetingsPresentation.title(record)
+    panel.nameFieldStringValue =
+      record.map(MeetingsPresentation.title)
+      ?? String(localized: "Meeting", comment: "History: a meeting's default file name.")
     guard panel.runModal() == .OK, let url = panel.url else { return }
     guard let live = transcripts.currentRow(id: row.id),
       let text = transcripts.textForDelivery(live)

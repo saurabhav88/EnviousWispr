@@ -53,17 +53,17 @@ struct MeetingStartFlowTests {
   @Test("the first call-sound Start waits for the explainer; Continue starts it once")
   func explainerThenStart() async {
     let rig = Rig()
-    await rig.flow.requestStart(from: .page)
+    await rig.flow.requestStart(from: .history)
     #expect(rig.starts.isEmpty)
-    #expect(rig.flow.pendingExplainer == .page)
+    #expect(rig.flow.pendingExplainer == .history)
     #expect(rig.pageShown == 0)
     await rig.flow.continueAfterExplainer()
-    #expect(rig.starts == [.page])
+    #expect(rig.starts == [.history])
     #expect(rig.explained)
     #expect(rig.flow.pendingExplainer == nil)
     // A second Continue (a double click) starts nothing more.
     await rig.flow.continueAfterExplainer()
-    #expect(rig.starts == [.page])
+    #expect(rig.starts == [.history])
   }
 
   @Test("once explained, or with the call sound off, a Start goes straight through")
@@ -76,8 +76,8 @@ struct MeetingStartFlowTests {
 
     let micOnly = Rig()
     micOnly.callSound = false
-    await micOnly.flow.requestStart(from: .page)
-    #expect(micOnly.starts == [.page])
+    await micOnly.flow.requestStart(from: .history)
+    #expect(micOnly.starts == [.history])
     #expect(micOnly.explained == false, "a microphone-only Start explained nothing")
   }
 
@@ -88,7 +88,7 @@ struct MeetingStartFlowTests {
     #expect(rig.pageShown == 1)
     #expect(rig.starts.isEmpty)
     // The page's own Start while the explainer shows does not replace the menu's request.
-    await rig.flow.requestStart(from: .page)
+    await rig.flow.requestStart(from: .history)
     #expect(rig.flow.pendingExplainer == .menu)
     await rig.flow.continueAfterExplainer()
     #expect(rig.starts == [.menu])
@@ -97,14 +97,14 @@ struct MeetingStartFlowTests {
   @Test("cancel shows the explainer again next time; a meeting started meanwhile wins")
   func cancelAndSupersede() async {
     let rig = Rig()
-    await rig.flow.requestStart(from: .page)
+    await rig.flow.requestStart(from: .history)
     rig.flow.cancelExplainer()
     #expect(rig.flow.pendingExplainer == nil)
     #expect(rig.explained == false)
     await rig.flow.continueAfterExplainer()
     #expect(rig.starts.isEmpty)
 
-    await rig.flow.requestStart(from: .page)
+    await rig.flow.requestStart(from: .history)
     rig.idle = false  // another route started a meeting while the explainer showed
     await rig.flow.continueAfterExplainer()
     #expect(rig.starts.isEmpty)
@@ -114,10 +114,10 @@ struct MeetingStartFlowTests {
   @Test("call sound switched off while the explainer shows: a microphone-only Start")
   func callSoundTurnedOffMeanwhile() async {
     let rig = Rig()
-    await rig.flow.requestStart(from: .page)
+    await rig.flow.requestStart(from: .history)
     rig.callSound = false
     await rig.flow.continueAfterExplainer()
-    #expect(rig.starts == [.page])
+    #expect(rig.starts == [.history])
     #expect(rig.explained == false)
   }
 
@@ -128,13 +128,13 @@ struct MeetingStartFlowTests {
       await rig.flow.requestStart(from: .menu)
       #expect(rig.flow.pendingExplainer == .menu)
       if change == "callSoundOff" { rig.callSound = false } else { rig.explained = true }
-      await rig.flow.requestStart(from: .page)
-      #expect(rig.starts == [.page], "\(change)")
+      await rig.flow.requestStart(from: .history)
+      #expect(rig.starts == [.history], "\(change)")
       #expect(rig.flow.pendingExplainer == nil, "\(change)")
       // That meeting ends; the old explainer's Continue must not start another.
       rig.idle = true
       await rig.flow.continueAfterExplainer()
-      #expect(rig.starts == [.page], "\(change)")
+      #expect(rig.starts == [.history], "\(change)")
     }
   }
 
@@ -142,17 +142,17 @@ struct MeetingStartFlowTests {
   func startCarriesTheAdmittedChoice() async {
     let micOnly = Rig()
     micOnly.callSound = false
-    await micOnly.flow.requestStart(from: .page)
+    await micOnly.flow.requestStart(from: .history)
     #expect(micOnly.startedWithCallSound == [false])
 
     let explained = Rig()
     explained.explained = true
-    await explained.flow.requestStart(from: .page)
+    await explained.flow.requestStart(from: .history)
     #expect(explained.startedWithCallSound == [true])
 
     // Switched off while the explainer showed: Continue starts microphone-only.
     let switched = Rig()
-    await switched.flow.requestStart(from: .page)
+    await switched.flow.requestStart(from: .history)
     switched.callSound = false
     await switched.flow.continueAfterExplainer()
     #expect(switched.startedWithCallSound == [false])
@@ -163,15 +163,15 @@ struct MeetingStartFlowTests {
     let rig = Rig()
     rig.explained = true
     rig.microphoneUnasked = true
-    await rig.flow.requestStart(from: .page)
+    await rig.flow.requestStart(from: .history)
     #expect(rig.microphoneRequests == 1)
-    #expect(rig.starts == [.page])
+    #expect(rig.starts == [.history])
 
     let asked = Rig()
     asked.explained = true
-    await asked.flow.requestStart(from: .page)
+    await asked.flow.requestStart(from: .history)
     #expect(asked.microphoneRequests == 0, "an answered microphone is never asked again")
-    #expect(asked.starts == [.page])
+    #expect(asked.starts == [.history])
 
     let superseded = Rig()
     superseded.explained = true
@@ -199,7 +199,7 @@ struct MeetingStartFlowTests {
       let menu = Task { await rig.flow.requestStart(from: .menu) }
       await MeetingCoordinatorTests.eventually("prompt up") { prompt.parked }
       #expect(rig.flow.waitingForMicrophone == .menu)
-      await rig.flow.requestStart(from: .page)
+      await rig.flow.requestStart(from: .history)
       #expect(rig.microphoneRequests == 1, "macOS is asked once")
       prompt.open()
       await menu.value
@@ -218,7 +218,7 @@ struct MeetingStartFlowTests {
     rig.microphoneUnasked = true
     let prompt = MeetingCoordinatorTests.Gate()
     rig.onMicrophoneRequest = { if rig.microphoneRequests == 1 { await prompt.wait() } }
-    let start = Task { await rig.flow.requestStart(from: .page) }
+    let start = Task { await rig.flow.requestStart(from: .history) }
     await MeetingCoordinatorTests.eventually("prompt up") { prompt.parked }
     rig.flow.cancelExplainer()
     prompt.open()
@@ -246,9 +246,9 @@ struct MeetingStartFlowTests {
     #expect(settings.meetingCallSoundExplained == false)
     let rig = Rig()
     rig.settings = settings
-    await rig.flow.requestStart(from: .page)
+    await rig.flow.requestStart(from: .history)
     await rig.flow.continueAfterExplainer()
-    #expect(rig.starts == [.page])
+    #expect(rig.starts == [.history])
     #expect(SettingsManager(defaults: defaults).meetingCallSoundExplained == true)
   }
 }

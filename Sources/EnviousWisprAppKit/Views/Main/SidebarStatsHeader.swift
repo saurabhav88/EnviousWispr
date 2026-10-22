@@ -8,6 +8,8 @@ struct SidebarStatsHeader: View {
   @Environment(LiveRecordingState.self) private var liveRecordingState
   @Environment(BackendMetadata.self) private var backendMetadata
   @Environment(EngineCoordinator.self) private var engineCoordinator: EngineCoordinator?
+  @Environment(MeetingCoordinator.self) private var meetings
+  @Environment(MeetingStartFlow.self) private var startFlow
 
   /// Force-unwrapped: `EnviousWisprApp` always injects a real instance into the
   /// environment (see `AppEnvironmentKeys.swift`).
@@ -55,6 +57,11 @@ struct SidebarStatsHeader: View {
       .accessibilityLabel("Show")
       .opacity(isRecording ? 0.4 : 1.0)
 
+      // #3972 R34: the in-app place to start a meeting, under the Recordings filter only.
+      if transcriptCoordinator.historyFilter == .recordings {
+        recordingControl
+      }
+
       // Model status bar
       ModelStatusBar(
         modelName: backendMetadata.modelLabel,
@@ -71,6 +78,47 @@ struct SidebarStatsHeader: View {
     .padding(.horizontal, 8)
     .padding(.vertical, 8)
     .animation(.easeInOut(duration: 0.3), value: isRecording)
+  }
+
+  /// Start Recording when nothing records (the explainer first when it is due for this Start);
+  /// while a meeting records, a way to its live detail. Stop lives in that detail and the menu.
+  @ViewBuilder private var recordingControl: some View {
+    if startFlow.pendingExplainer == .history {
+      MeetingCallSoundExplainer()
+    } else {
+      switch meetings.phase {
+      case .idle:
+        SettingsActionButton(
+          title: MeetingsCopy.startRecording, isEnabled: startFlow.waitingForMicrophone == nil,
+          emphasis: .filled, systemImage: "record.circle"
+        ) {
+          Task {
+            let outcome = await startFlow.requestStart(from: .history)
+            if case .started(.recording(let meetingID)) = outcome {
+              transcriptCoordinator.showRecordings(meetingID: meetingID)
+            }
+          }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityIdentifier("history.meeting.start")
+      case .starting, .stopping:
+        ProgressView().controlSize(.small)
+          .frame(maxWidth: .infinity, alignment: .leading)
+      case .recording(let meetingID, _):
+        Button {
+          transcriptCoordinator.showRecordings(meetingID: meetingID)
+        } label: {
+          Label(
+            String(
+              localized: "Show the recording",
+              comment: "History, Recordings: selects the meeting that is recording now."),
+            systemImage: "record.circle")
+        }
+        .buttonStyle(.link)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityIdentifier("history.meeting.showLive")
+      }
+    }
   }
 }
 

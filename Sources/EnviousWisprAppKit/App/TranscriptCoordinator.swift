@@ -17,7 +17,7 @@ final class TranscriptCoordinator {
   /// Guarding it was tried and is not enough: a scanner over the source can
   /// match a name, not a type, so it flags an unrelated `transcripts` elsewhere
   /// and misses a bare access from an extension. The compiler makes the mistake
-  /// unavailable instead. Read `visibleTranscripts` or `filteredTranscripts`.
+  /// unavailable instead. Read `visibleTranscripts`, `listedItems` or `filteredTranscripts`.
   private var transcripts: [Transcript] = []
   var searchQuery: String = "" {
     didSet { reconcileSelectionWithDisplayedSet() }
@@ -32,10 +32,14 @@ final class TranscriptCoordinator {
   /// tell a user's deselect from a row vanishing under the list's binding, so both arm it —
   /// the cost is a status view where the live transcript used to be, which is the same thing
   /// the user sees after deleting a row.
-  var selectedTranscriptID: UUID? {
+  ///
+  /// #3972 R45: typed, because a meeting is one item from Start to deletion under its MEETING
+  /// id (its History row, when it has one, has a different id), and a dictation or an import
+  /// is its row's id.
+  var selectedItemID: HistoryItemID? {
     didSet {
-      if let selected = selectedTranscriptID {
-        if filteredTranscripts.contains(where: { $0.id == selected }) {
+      if let selected = selectedItemID {
+        if isListed(selected) {
           liveFallbackSuppressed = false
         }
       } else if oldValue != nil {
@@ -43,6 +47,12 @@ final class TranscriptCoordinator {
       }
     }
   }
+
+  /// #3972 R45: EnviousMeet's meetings, newest first, as its coordinator holds them durably
+  /// (`MeetingCoordinator.meetings`, observable there). Every meeting is listed under
+  /// Recordings from Start to deletion, with its History row when it has one. Nil (tests, or
+  /// before wiring) lists meeting rows only.
+  @ObservationIgnored var meetingRecords: (@MainActor () -> [MeetingRecord])?
 
   /// Which kind of History row is listed (#2807). View state: never persisted, so a relaunch
   /// starts at All.
@@ -156,43 +166,112 @@ final class TranscriptCoordinator {
     return transcripts.filter { Self.isVisible($0, at: now) }
   }
 
-  /// The rows History lists: visible rows, inside the kind filter, then inside the search.
+  /// What History lists: visible rows and every meeting, inside the kind filter, then inside
+  /// the search, newest first.
   ///
-  /// #2807: the kind filter runs FIRST and reads `isImported`, which is the row's only kind.
-  /// A pending Escape-recovery row is a dictation that was cancelled, so it stays under All
-  /// and Dictations exactly as it did before the filter existed, and is absent under
-  /// Transcripts. The search then keeps its own rule below.
-  var filteredTranscripts: [Transcript] {
+  /// #2807: the kind filter runs FIRST. A pending Escape-recovery row is a dictation that was
+  /// cancelled, so it stays under All and Dictations exactly as it did before the filter
+  /// existed. #3972 R45: a meeting is one item (`.meeting`) whether or not its History row
+  /// exists yet; it is listed under All and Recordings, never under Dictations or Transcripts.
+  /// A meeting marked for deletion is not listed. The search then keeps its own rule below.
+  var listedItems: [HistoryListItem] {
     let visible = visibleTranscripts
-    let listed: [Transcript]
-    switch historyFilter {
-    case .all: listed = visible
-    // #3972 R5: a meeting is a Transcript (a recording turned into a document), never a
-    // Dictation.
-    case .dictations: listed = visible.filter { !$0.isImported && !$0.isMeeting }
-    case .transcripts: listed = visible.filter { $0.isImported || $0.isMeeting }
+    var rowsByMeeting: [UUID: Transcript] = [:]
+    var items: [HistoryListItem] = []
+    for row in visible {
+      if let meetingID = row.meetingID {
+        rowsByMeeting[meetingID] = row
+      } else {
+        items.append(.transcript(row))
+      }
+    }
+    var meetings: [HistoryMeetingItem] = []
+    for record in meetingRecords?() ?? [] where !record.deletionRequested {
+      meetings.append(
+        HistoryMeetingItem(
+          meetingID: record.id, record: record, row: rowsByMeeting.removeValue(forKey: record.id)))
+    }
+    // A meeting row whose meeting EnviousMeet does not hold (its folder is gone or unreadable)
+    // is still a meeting, listed by its meeting id.
+    for (meetingID, row) in rowsByMeeting {
+      meetings.append(HistoryMeetingItem(meetingID: meetingID, record: nil, row: row))
+    }
+    let merged = Self.mergeMeetings(meetings, into: items)
+    let listed = merged.filter { item in
+      switch (historyFilter, item) {
+      case (.all, _): return true
+      case (.dictations, .transcript(let row)): return !row.isImported
+      case (.transcripts, .transcript(let row)): return row.isImported
+      case (.recordings, .meeting): return true
+      case (.dictations, .meeting), (.transcripts, .meeting), (.recordings, .transcript):
+        return false
+      }
     }
     guard !searchQuery.isEmpty else { return listed }
+    return listed.filter { item in
+      switch item {
+      case .transcript(let row): return matchesSearch(row)
+      // A meeting is searched by its row's words and title; one without a row yet (recording,
+      // transcribing, failed) by its title only (R35: search covers finished rows).
+      case .meeting(let meeting):
+        if let row = meeting.row { return matchesSearch(row) }
+        return meeting.record?.title?.localizedCaseInsensitiveContains(searchQuery) ?? false
+      }
+    }
+  }
+
+  /// The History rows `listedItems` shows: every listed dictation and import, and each listed
+  /// meeting's row when it has one.
+  var filteredTranscripts: [Transcript] {
+    listedItems.compactMap(\.row)
+  }
+
+  private func matchesSearch(_ row: Transcript) -> Bool {
     // Pending rows are excluded from search DELIBERATELY: an accidental Escape
     // would otherwise pollute results for 24 hours, and the row is reachable
     // the whole time by scrolling History, which is where the user left it.
-    return listed.filter {
-      // #2772: the imported file's name is on the row, and it is the thing a person looking
-      // for a meeting they transcribed types, so it is searchable. Searching "marketing" for
-      // `marketing_sync.wav` removed the row while its badge said the word. Found by the
-      // cloud review of PR #2786.
-      // #2811, phase 4 of #2807: a renamed speaker's name does not enter `displayText` — the
-      // epic's own "find the row with 'Zach, Ariana' on it" walkthrough needs an explicit
-      // match against the speaker names themselves, a genuinely new gap this phase closes
-      // (plan §6 downstream consumer matrix).
-      $0.escapeRecoveredAt == nil
-        && (searchableText(of: $0).localizedCaseInsensitiveContains(searchQuery)
-          || ($0.importedFileName?.localizedCaseInsensitiveContains(searchQuery) ?? false)
-          || (meetingTitle(of: $0)?.localizedCaseInsensitiveContains(searchQuery) ?? false)
-          || ($0.speakerNames?.values.contains {
-            $0.localizedCaseInsensitiveContains(searchQuery)
-          } ?? false))
+    // #2772: the imported file's name is on the row, and it is the thing a person looking
+    // for a meeting they transcribed types, so it is searchable. Searching "marketing" for
+    // `marketing_sync.wav` removed the row while its badge said the word. Found by the
+    // cloud review of PR #2786.
+    // #2811, phase 4 of #2807: a renamed speaker's name does not enter `displayText` — the
+    // epic's own "find the row with 'Zach, Ariana' on it" walkthrough needs an explicit
+    // match against the speaker names themselves, a genuinely new gap this phase closes
+    // (plan §6 downstream consumer matrix).
+    row.escapeRecoveredAt == nil
+      && (searchableText(of: row).localizedCaseInsensitiveContains(searchQuery)
+        || (row.importedFileName?.localizedCaseInsensitiveContains(searchQuery) ?? false)
+        || (meetingTitle(of: row)?.localizedCaseInsensitiveContains(searchQuery) ?? false)
+        || (row.speakerNames?.values.contains {
+          $0.localizedCaseInsensitiveContains(searchQuery)
+        } ?? false))
+  }
+
+  /// Whether `id` is among the items listed now.
+  private func isListed(_ id: HistoryItemID) -> Bool {
+    listedItems.contains { $0.id == id }
+  }
+
+  /// Meetings merged into the newest-first transcript list by start time, without reordering
+  /// either list; on a tie the dictation or import goes first.
+  private static func mergeMeetings(
+    _ meetings: [HistoryMeetingItem], into items: [HistoryListItem]
+  ) -> [HistoryListItem] {
+    let sortedMeetings = meetings.enumerated().sorted {
+      ($0.element.createdAt, -$0.offset) > ($1.element.createdAt, -$1.offset)
+    }.map(\.element)
+    var result: [HistoryListItem] = []
+    result.reserveCapacity(items.count + meetings.count)
+    var m = 0
+    for item in items {
+      while m < sortedMeetings.count, sortedMeetings[m].createdAt > item.createdAt {
+        result.append(.meeting(sortedMeetings[m]))
+        m += 1
+      }
+      result.append(item)
     }
+    result.append(contentsOf: sortedMeetings[m...].map { .meeting($0) })
+    return result
   }
 
   /// Completed rows. A held recovery is an OFFER, not a dictation the
@@ -216,7 +295,7 @@ final class TranscriptCoordinator {
   /// from `transcriptCount`, because a Transcript is now a file import and this counts every
   /// kind.
   var listedCount: Int {
-    filteredTranscripts.filter { $0.escapeRecoveredAt == nil }.count
+    listedItems.filter { $0.row?.escapeRecoveredAt == nil }.count
   }
 
   /// How many dictations exist: every completed row that is not an import, whatever the
@@ -239,7 +318,16 @@ final class TranscriptCoordinator {
   /// and wrong for a destructive confirmation: with only held rows on screen it
   /// reads zero, so the dialog would offer to delete "all 0 transcripts" and
   /// then delete them. A confirmation must count what it is about to destroy.
-  var deletableCount: Int { visibleTranscripts.count }
+  ///
+  /// #3972 R45: a meeting that has no History row yet (recording, transcribing, failed) is
+  /// deleted by Delete All too, so it is counted.
+  var deletableCount: Int {
+    visibleTranscripts.count
+      + (meetingRecords?() ?? []).filter { record in
+        !record.deletionRequested
+          && !visibleTranscripts.contains { $0.meetingID == record.id }
+      }.count
+  }
 
   /// The Delete All confirmation, assembled HERE rather than in the view.
   ///
@@ -286,14 +374,16 @@ final class TranscriptCoordinator {
   /// recorded; nothing of the chosen kind; nothing matches the search. Answered here so the
   /// view cannot pick the global "nothing yet" for a list that a filter emptied.
   var emptyState: HistoryEmptyState? {
-    guard !visibleTranscripts.isEmpty else { return .nothingYet }
-    guard filteredTranscripts.isEmpty else { return nil }
+    let hasMeetings = (meetingRecords?() ?? []).contains { !$0.deletionRequested }
+    guard !visibleTranscripts.isEmpty || hasMeetings else { return .nothingYet }
+    guard listedItems.isEmpty else { return nil }
     guard searchQuery.isEmpty else { return .noMatches }
     switch historyFilter {
     // Unreachable: with no search, All lists every visible row, and there is at least one.
     case .all: return .nothingYet
     case .dictations: return .noDictations
     case .transcripts: return .noTranscripts
+    case .recordings: return .noRecordings
     }
   }
 
@@ -304,23 +394,24 @@ final class TranscriptCoordinator {
   /// of the list with a transcript from another time. With nothing selected the live fallback
   /// stands unless something cleared a selection out from under the user.
   var detail: HistoryDetail {
-    guard let selected = selectedTranscriptID else {
+    guard let selected = selectedItemID else {
       // ONE source for the just-finished dictation: its History row, never the live
       // pipeline's copy beside it. The row is what the list shows, so the pane cannot
       // show a text the list does not; a row this object has not seen yet, or that
       // the list stopped showing, is nothing rather than the live transcript.
       if let fallbackRow = liveFallbackRowID {
         guard !liveFallbackSuppressed,
-          let row = filteredTranscripts.first(where: { $0.id == fallbackRow })
+          let row = filteredTranscripts.first(where: { $0.id == fallbackRow && !$0.isMeeting })
         else { return .empty }
         return .row(row)
       }
       return liveFallbackSuppressed ? .empty : .liveFallback
     }
-    if let match = filteredTranscripts.first(where: { $0.id == selected }) {
-      return .row(match)
+    switch listedItems.first(where: { $0.id == selected }) {
+    case .transcript(let row)?: return .row(row)
+    case .meeting(let meeting)?: return .meeting(meeting)
+    case nil: return .empty
     }
-    return .empty
   }
 
   /// The detail pane follows the list (#2807). Called when the filter or the search changes,
@@ -335,16 +426,16 @@ final class TranscriptCoordinator {
   /// is among the rows on screen. Widening the list later does not bring either back; only a
   /// selection, or the next completed dictation, does.
   private func reconcileSelectionWithDisplayedSet() {
-    let displayed = filteredTranscripts
-    if let selected = selectedTranscriptID {
+    let displayed = listedItems
+    if let selected = selectedItemID {
       guard !displayed.contains(where: { $0.id == selected }) else { return }
-      selectedTranscriptID = nil
+      selectedItemID = nil
       return
     }
     guard !liveFallbackSuppressed else { return }
     let fallbackRowIsListed: Bool
     if let fallbackRow = liveFallbackRowID {
-      fallbackRowIsListed = displayed.contains(where: { $0.id == fallbackRow })
+      fallbackRowIsListed = displayed.contains(where: { $0.id == .transcript(fallbackRow) })
     } else {
       fallbackRowIsListed = historyFilter == .all && searchQuery.isEmpty
     }
@@ -784,16 +875,14 @@ final class TranscriptCoordinator {
       // A selection that no longer resolves is no selection: the row expired between
       // renders or was swept, and read-time expiry hides it without a state change. Left
       // in place it would hide this completion behind an empty pane. Cloud review of PR #2815.
-      if let selected = selectedTranscriptID,
-        !filteredTranscripts.contains(where: { $0.id == selected })
-      {
-        selectedTranscriptID = nil
+      if let selected = selectedItemID, !isListed(selected) {
+        selectedItemID = nil
       }
-      if selectedTranscriptID == nil {
+      if selectedItemID == nil {
         // The pane follows the list in BOTH directions: a completion the list shows lets
         // the fallback show again, and one the list does not show (a search or a filter
         // that excludes it) suppresses a fallback that was showing the previous dictation.
-        liveFallbackSuppressed = !filteredTranscripts.contains(where: { $0.id == transcript.id })
+        liveFallbackSuppressed = !isListed(.transcript(transcript.id))
       }
     }
     // A held row appended at runtime is the production route once the feature
@@ -1003,14 +1092,46 @@ final class TranscriptCoordinator {
   private var historyWriteRevision = 0
   private var writtenAtRevision: [UUID: Int] = [:]
 
+  /// Lists Recordings with no search and selects `meetingID` when given (#3972 R45): the menu's
+  /// "Show Live Transcript" and "Show in History", and the EnviousMeet page's "Show
+  /// recordings". The caller brings History forward.
+  func showRecordings(meetingID: UUID? = nil) {
+    searchQuery = ""
+    historyFilter = .recordings
+    if let meetingID { selectedItemID = .meeting(meetingID) }
+  }
+
+  /// History's delete of one listed item. A meeting goes to EnviousMeet, the deletion
+  /// authority of its row and its files (#3972 R12); the selection moves to the item beside it
+  /// at once, because the meeting leaves the list only when EnviousMeet has removed it.
+  func delete(_ item: HistoryListItem) {
+    switch item {
+    case .transcript(let row):
+      delete(row)
+    case .meeting(let meeting):
+      if selectedItemID == item.id {
+        selectedItemID = Self.neighbour(of: item.id, in: listedItems)
+      }
+      if let deleteMeeting {
+        deleteMeeting(meeting.meetingID)
+      } else if let row = meeting.row {
+        removeRowAnnouncing(row.id)
+      }
+    }
+  }
+
   func delete(_ transcript: Transcript) {
     if let meetingID = transcript.meetingID, let deleteMeeting {
       deleteMeeting(meetingID)
       return
     }
+    removeRowAnnouncing(transcript.id)
+  }
+
+  private func removeRowAnnouncing(_ id: UUID) {
     do {
-      try removeRow(id: transcript.id)
-      onRowDeleted?(transcript.id)
+      try removeRow(id: id)
+      onRowDeleted?(id)
     } catch {
       Task {
         await AppLogger.shared.log(
@@ -1264,15 +1385,17 @@ final class TranscriptCoordinator {
   func removeRow(id: UUID) throws {
     // #2807: the displayed set BEFORE the removal, so the neighbour is the row the user
     // saw beside the one they deleted.
-    let displayed = filteredTranscripts
+    let displayed = listedItems
     try store.delete(id: id)
     transcripts.removeAll { $0.id == id }
     echoShownRowIDs.remove(id)
-    if selectedTranscriptID == id {
+    // A meeting's row leaving does not remove the meeting's item (its meeting is still held);
+    // only a dictation or an import selection moves.
+    if selectedItemID == .transcript(id) {
       // The next row in the same filter, else the previous one, else nothing — and
       // nothing means the status view, never the live fallback (the setter arms that).
-      selectedTranscriptID = Self.neighbour(of: id, in: displayed)
-    } else if selectedTranscriptID == nil, id == liveFallbackRowID {
+      selectedItemID = Self.neighbour(of: .transcript(id), in: displayed)
+    } else if selectedItemID == nil, id == liveFallbackRowID {
       // The pane was showing this row's text through the fallback; the row is gone.
       liveFallbackSuppressed = true
     }
@@ -1281,7 +1404,11 @@ final class TranscriptCoordinator {
   }
 
   func deleteAll() {
-    let meetingIDs = transcripts.compactMap(\.meetingID)
+    // #3972 R45: every meeting goes too, also one with no History row yet.
+    var meetingIDs = transcripts.compactMap(\.meetingID)
+    for record in meetingRecords?() ?? [] where !meetingIDs.contains(record.id) {
+      meetingIDs.append(record.id)
+    }
     if !meetingIDs.isEmpty, meetingsWillBeDeletedWithAll?(meetingIDs) == false {
       Task {
         await AppLogger.shared.log(
@@ -1298,7 +1425,7 @@ final class TranscriptCoordinator {
       // The same announcement `delete(_:)` makes, per row, after the list is already empty
       // (found by cloud review, round 3: this route bypassed it).
       for id in removedIDs { onRowDeleted?(id) }
-      selectedTranscriptID = nil
+      selectedItemID = nil
       // #2807: an empty History shows nothing, whatever the live pipeline last produced.
       liveFallbackSuppressed = true
       liveFallbackRowID = nil
@@ -1315,7 +1442,9 @@ final class TranscriptCoordinator {
 
   /// The row to select after `id` is deleted from `displayed`: the one after it, else the one
   /// before it, else nil (#2807). Pure, so the choice is unit-drivable.
-  private static func neighbour(of id: UUID, in displayed: [Transcript]) -> UUID? {
+  private static func neighbour(of id: HistoryItemID, in displayed: [HistoryListItem])
+    -> HistoryItemID?
+  {
     guard let index = displayed.firstIndex(where: { $0.id == id }) else { return nil }
     if index + 1 < displayed.count { return displayed[index + 1].id }
     if index > 0 { return displayed[index - 1].id }
@@ -1572,16 +1701,17 @@ final class TranscriptCoordinator {
   }
 }
 
-/// Which kind of History row the list shows (#2807).
+/// Which kind of History item the list shows (#2807).
 ///
-/// Two words, by meaning: a **Dictation** is a take made with the hotkey, a **Transcript** is
-/// a file put through Transcribe a File or a recorded meeting (#3972 R5), and History is the
-/// collection of both. The kind is read from `Transcript.isImported` and `isMeeting`; nothing
-/// stores a second flag.
+/// By meaning: a **Dictation** is a take made with the hotkey, a **Transcript** is a file put
+/// through Transcribe a File, a **Recording** is an EnviousMeet meeting (#3972 R34, founder
+/// F17), and History is the collection of all three. The kind is read from
+/// `Transcript.isImported` and the item kind; nothing stores a second flag.
 enum HistoryFilter: String, CaseIterable, Sendable {
   case all
   case dictations
   case transcripts
+  case recordings
 
   /// The word on the control.
   var title: String {
@@ -1594,7 +1724,11 @@ enum HistoryFilter: String, CaseIterable, Sendable {
     case .transcripts:
       return String(
         localized: "Transcripts",
-        comment: "History filter: rows made with Transcribe a File, and recorded meetings.")
+        comment: "History filter: rows made with Transcribe a File.")
+    case .recordings:
+      return String(
+        localized: "Recordings",
+        comment: "History filter: meetings recorded with EnviousMeet, finished or still recording.")
     }
   }
 }
@@ -1606,8 +1740,10 @@ enum HistoryEmptyState: Equatable, Sendable {
   case nothingYet
   /// Rows exist, none of them a dictation.
   case noDictations
-  /// Rows exist, none of them a transcript or a meeting.
+  /// Rows exist, none of them a Transcribe a File transcript.
   case noTranscripts
+  /// Rows exist, no meeting (#3972 R34).
+  case noRecordings
   /// Rows exist, none matching the search.
   case noMatches
 }
@@ -1616,9 +1752,57 @@ enum HistoryEmptyState: Equatable, Sendable {
 enum HistoryDetail {
   /// A row the list displays: the selected one, or the just-finished dictation's own row.
   case row(Transcript)
+  /// The selected meeting, in whatever state it is (#3972 R45).
+  case meeting(HistoryMeetingItem)
   /// Nothing is selected, no completed dictation has landed in this session, and nothing has
   /// narrowed the list: the live pipeline's transcript, if any.
   case liveFallback
   /// Nothing to show, and the live transcript must not stand in.
   case empty
+}
+
+/// One History list item's identity (#3972 R45): a dictation or an import by its row's id, a
+/// meeting by its MEETING id, from Start to deletion (its row, when it exists, has another id).
+enum HistoryItemID: Hashable, Sendable {
+  case transcript(UUID)
+  case meeting(UUID)
+}
+
+/// A meeting as History lists it: EnviousMeet's record, and its History row once one exists.
+/// Either can be missing: a meeting still recording has no row, a row whose meeting folder is
+/// gone has no record.
+struct HistoryMeetingItem {
+  let meetingID: UUID
+  let record: MeetingRecord?
+  let row: Transcript?
+
+  var createdAt: Date { record?.createdAt ?? row?.createdAt ?? .distantPast }
+}
+
+/// One item of the History list (#3972 R45).
+enum HistoryListItem: Identifiable {
+  case transcript(Transcript)
+  case meeting(HistoryMeetingItem)
+
+  var id: HistoryItemID {
+    switch self {
+    case .transcript(let row): return .transcript(row.id)
+    case .meeting(let meeting): return .meeting(meeting.meetingID)
+    }
+  }
+
+  var createdAt: Date {
+    switch self {
+    case .transcript(let row): return row.createdAt
+    case .meeting(let meeting): return meeting.createdAt
+    }
+  }
+
+  /// The History row behind the item, if it has one.
+  var row: Transcript? {
+    switch self {
+    case .transcript(let row): return row
+    case .meeting(let meeting): return meeting.row
+    }
+  }
 }

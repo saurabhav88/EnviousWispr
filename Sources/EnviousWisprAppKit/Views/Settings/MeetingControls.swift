@@ -2,67 +2,17 @@ import EnviousWisprCore
 import EnviousWisprServices
 import SwiftUI
 
-/// The EnviousMeet recorder panel (#3972 §3.8): Start, the call-sound explainer (coverage C5),
-/// the recording itself and Stop. Every Start goes through `MeetingStartFlow`, the same route
-/// the menu bar uses; Stop goes straight to `MeetingCoordinator`.
-struct MeetingRecordingControls: View {
-  @Environment(MeetingCoordinator.self) private var meetings
+/// EnviousMeet's shared controls (#3972 §3.8, R34): the call-sound explainer (coverage C5), the
+/// live recording panel, the after-recording progress, the notice banner and the call-sound
+/// switch. The EnviousMeet page (settings) and History's Recordings use the same views, so the
+/// two can never say a recording differently. Every Start goes through `MeetingStartFlow`, the
+/// route the menu bar uses; Stop goes straight to `MeetingCoordinator`.
+
+/// Shown before the first Start that records the call sound, before macOS asks.
+struct MeetingCallSoundExplainer: View {
   @Environment(MeetingStartFlow.self) private var startFlow
-  @Environment(SettingsManager.self) private var settings
-  @Environment(PermissionsService.self) private var permissions
 
   var body: some View {
-    BrandedPanel(
-      icon: "person.2.wave.2", header: "EnviousMeet", description: MeetingsCopy.pageDescription
-    ) {
-      VStack(alignment: .leading, spacing: 14) {
-        switch MeetingsPresentation.recorder(meetings.phase) {
-        case .idle:
-          if startFlow.pendingExplainer != nil {
-            explainer
-          } else {
-            startButton
-          }
-        case .starting:
-          busyLine(
-            String(
-              localized: "Starting the recording",
-              comment: "EnviousMeet: a meeting recording is starting."))
-        case .recording(let startedAt):
-          recording(startedAt: startedAt)
-        case .stopping:
-          busyLine(
-            String(
-              localized: "Saving the recording",
-              comment: "EnviousMeet: the meeting recording is being closed and saved."))
-        }
-        callSoundRow
-      }
-    } footnote: {
-      Text(
-        "Works with any headphones. Nothing leaves your Mac.",
-        comment: "EnviousMeet page: under the recorder. Audio and transcripts stay on the Mac."
-      )
-      .font(.stHelper)
-      .foregroundStyle(.stTextSecondary)
-    }
-    .settingsMapRegistration(.meetingsRecorder)
-  }
-
-  // MARK: - Idle
-
-  private var startButton: some View {
-    SettingsActionButton(
-      title: MeetingsCopy.startRecording, isEnabled: true, emphasis: .filled,
-      size: .large, systemImage: "record.circle"
-    ) {
-      Task { await startFlow.requestStart(from: .page) }
-    }
-    .accessibilityIdentifier("meetings.start")
-  }
-
-  /// Shown before the first Start that records the call sound, before macOS asks.
-  private var explainer: some View {
     VStack(alignment: .leading, spacing: 10) {
       Text(
         "macOS will ask to let EnviousWispr record the sound your Mac plays. Only the sound is recorded, never your screen.",
@@ -96,20 +46,19 @@ struct MeetingRecordingControls: View {
     .padding(12)
     .background(Color.stAccentLight, in: RoundedRectangle(cornerRadius: 10))
   }
+}
 
-  private func busyLine(_ text: String) -> some View {
-    HStack(spacing: 8) {
-      ProgressView().controlSize(.small)
-      Text(text)
-        .font(.stBody)
-        .foregroundStyle(.stTextPrimary)
-    }
-    .accessibilityElement(children: .combine)
-  }
+/// The recording as it happens: elapsed time, Stop, a level meter per track and the
+/// call-sound line. Shown in History's live meeting.
+struct MeetingLivePanel: View {
+  let startedAt: Date
+  @Environment(MeetingCoordinator.self) private var meetings
+  @Environment(PermissionsService.self) private var permissions
+  /// One shared 10-per-second timeline for both meters, only while recording; reduced motion
+  /// slows it to once a second.
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-  // MARK: - Recording
-
-  private func recording(startedAt: Date) -> some View {
+  var body: some View {
     VStack(alignment: .leading, spacing: 12) {
       HStack(spacing: 10) {
         Image(systemName: "record.circle.fill")
@@ -164,11 +113,9 @@ struct MeetingRecordingControls: View {
       .font(.stHelper)
       .foregroundStyle(.stTextSecondary)
     }
+    .padding(14)
+    .background(Color.stSectionBg, in: RoundedRectangle(cornerRadius: 12))
   }
-
-  /// One shared 10-per-second timeline for both meters, only while recording; reduced motion
-  /// slows it to once a second.
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   private var meters: some View {
     TimelineView(.periodic(from: .now, by: reduceMotion ? 1 : 0.1)) { _ in
@@ -208,13 +155,87 @@ struct MeetingRecordingControls: View {
     .accessibilityLabel(Text(label))
     .accessibilityValue(Text(fraction, format: .percent.precision(.fractionLength(0))))
   }
+}
 
-  // MARK: - Call sound choice
+/// The after-recording work, the way Transcribe a File shows its own (#3972 R36, R40): the
+/// stage, a progress bar, and why it waits when a dictation is running.
+struct MeetingProcessingPanel: View {
+  let processing: MeetingCoordinator.Processing
 
-  /// Always shown, so search can always land on it; read when the next meeting starts.
-  private var callSoundRow: some View {
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Text(MeetingsPresentation.stage(processing))
+        .font(.stRowTitle)
+        .foregroundStyle(.stTextPrimary)
+      if let fraction = MeetingsPresentation.progress(processing) {
+        ProgressView(value: fraction)
+      } else {
+        ProgressView().progressViewStyle(.linear)
+      }
+      Text(
+        "Meeting work never slows your dictation: it waits while you dictate.",
+        comment: "EnviousMeet: under the transcript progress bar."
+      )
+      .font(.stHelper)
+      .foregroundStyle(.stTextSecondary)
+    }
+    .padding(14)
+    .background(Color.stSectionBg, in: RoundedRectangle(cornerRadius: 12))
+    .accessibilityElement(children: .combine)
+  }
+}
+
+/// Why the last Start or recording needs attention, with its fix where one exists.
+struct MeetingNoticeBanner: View {
+  let notice: MeetingCoordinator.Notice
+  @Environment(MeetingCoordinator.self) private var meetings
+  @Environment(MeetingStartFlow.self) private var startFlow
+
+  var body: some View {
+    HStack(alignment: .top, spacing: 10) {
+      Image(systemName: "exclamationmark.circle")
+        .foregroundStyle(.stWarning)
+        .accessibilityHidden(true)
+      Text(MeetingsPresentation.notice(notice))
+        .font(.stBody)
+        .foregroundStyle(.stTextPrimary)
+        .fixedSize(horizontal: false, vertical: true)
+      Spacer(minLength: 0)
+      if MeetingsPresentation.offersMicrophoneFix(notice) {
+        Button {
+          Task { await startFlow.fixMicrophone() }
+        } label: {
+          Text(
+            "Allow Microphone",
+            comment:
+              "EnviousMeet: asks macOS for microphone access, or opens System Settings if it was refused."
+          )
+        }
+        .accessibilityIdentifier("meetings.allowMicrophone")
+      }
+      Button {
+        meetings.dismissNotice()
+      } label: {
+        Image(systemName: "xmark")
+      }
+      .buttonStyle(.borderless)
+      .accessibilityLabel(
+        Text("Dismiss", comment: "EnviousMeet: closes a notice about the last recording."))
+    }
+    .padding(12)
+    .background(Color.stWarning.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+    .accessibilityElement(children: .contain)
+  }
+}
+
+/// "Also record the call sound": always shown on the EnviousMeet page, so search can always land
+/// on it; read when the next meeting starts.
+struct MeetingCallSoundRow: View {
+  @Environment(SettingsManager.self) private var settings
+
+  var body: some View {
     @Bindable var settings = settings
-    return SettingsRow(
+    SettingsRow(
       map: .id(.meetingCaptureCallSound), icon: "speaker.wave.2",
       help: MeetingsCopy.callSoundHelp
     ) {

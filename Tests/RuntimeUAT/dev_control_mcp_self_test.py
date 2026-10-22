@@ -225,10 +225,10 @@ async def run_cases(r, base):
                     reply.is_error and "timedOut" in text and len(calls) == 1, f"{text} {calls}")
 
             reply, text, calls = await call(
-                "ew_meeting_start", {"entry_point": "page", "call_sound": False})
+                "ew_meeting_start", {"entry_point": "history", "call_sound": False})
             r.check("meeting start passes the entry point and this request's call-sound flag",
                     not reply.is_error and calls and calls[0]["argv"][2:] == [
-                        "meeting", "start", "--entry-point", "page", "--no-call-sound"],
+                        "meeting", "start", "--entry-point", "history", "--no-call-sound"],
                     f"{calls}")
 
             reply, text, calls = await call(

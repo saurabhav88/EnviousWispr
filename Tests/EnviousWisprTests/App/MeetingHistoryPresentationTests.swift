@@ -52,7 +52,11 @@ struct MeetingHistoryPresentationTests {
         emitTurnsDisplayedTelemetry: { box.displayed += 1 })
       events = box
       coordinator.meetingInfo = { [unowned self] in infos[$0] }
+      coordinator.meetingRecords = { [unowned self] in records }
     }
+
+    /// EnviousMeet's meetings as History reads them (`MeetingCoordinator.meetings`).
+    var records: [MeetingRecord] = []
 
     let events: EventBox
 
@@ -72,20 +76,116 @@ struct MeetingHistoryPresentationTests {
     }
   }
 
-  @Test("a meeting is a Transcript, never a Dictation, and never counts as one")
+  @Test("a meeting is a Recording, never a Dictation or a Transcript, and never a dictation")
   func kindAndCounts() async throws {
     let rig = Rig()
     let dictation = Transcript(text: "a dictation", backendType: .parakeet)
     try rig.coordinator.saveAndShow(dictation)
     let meeting = try await rig.addMeeting()
+    let meetingID = try #require(meeting.meetingID)
 
     rig.coordinator.historyFilter = .dictations
-    #expect(rig.coordinator.filteredTranscripts.map(\.id) == [dictation.id])
+    #expect(rig.coordinator.listedItems.map(\.id) == [.transcript(dictation.id)])
     rig.coordinator.historyFilter = .transcripts
-    #expect(rig.coordinator.filteredTranscripts.map(\.id) == [meeting.id])
+    #expect(rig.coordinator.listedItems.isEmpty)
+    #expect(rig.coordinator.emptyState == .noTranscripts)
+    rig.coordinator.historyFilter = .recordings
+    #expect(rig.coordinator.listedItems.map(\.id) == [.meeting(meetingID)])
     rig.coordinator.historyFilter = .all
     #expect(rig.coordinator.listedCount == 2)
     #expect(rig.coordinator.dictationCount == 1)
+  }
+
+  @Test("a meeting with no History row yet is one Recordings item, kept when its row lands")
+  func meetingItemFromStartToRow() async throws {
+    let rig = Rig()
+    var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    record.title = "Board review"
+    rig.records = [record]
+    rig.coordinator.historyFilter = .recordings
+    #expect(rig.coordinator.listedItems.map(\.id) == [.meeting(record.id)])
+    #expect(rig.coordinator.emptyState == nil)
+    rig.coordinator.selectedItemID = .meeting(record.id)
+    guard case .meeting(let shown) = rig.coordinator.detail else {
+      Issue.record("the selected meeting is not the detail")
+      return
+    }
+    #expect(shown.row == nil)
+
+    // Its row lands under the same meeting id: still one item, still selected.
+    let row = MeetingHistoryPresentationTests.meetingRow(
+      id: record.transcriptID, meetingID: record.id)
+    try await rig.coordinator.saveAndShowDurably(row)
+    #expect(rig.coordinator.listedItems.map(\.id) == [.meeting(record.id)])
+    #expect(rig.coordinator.selectedItemID == .meeting(record.id))
+    #expect(rig.coordinator.listedItems.first?.row?.id == record.transcriptID)
+
+    // Dictations never list it; the selection leaves with it.
+    rig.coordinator.historyFilter = .dictations
+    #expect(rig.coordinator.selectedItemID == nil)
+  }
+
+  @Test("History lists only meetings when its rows are all gone, and counts them for Delete All")
+  func rowlessMeetingsCountAndDelete() async throws {
+    let rig = Rig()
+    var marked: [UUID] = []
+    rig.coordinator.meetingsWillBeDeletedWithAll = { ids in
+      marked = ids
+      return true
+    }
+    var recording = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    recording.title = "Standup"
+    var deleting = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    deleting.deletionRequested = true
+    rig.records = [recording, deleting]
+    #expect(rig.coordinator.emptyState == nil, "a meeting still recording is not nothing")
+    #expect(rig.coordinator.listedItems.map(\.id) == [.meeting(recording.id)])
+    #expect(rig.coordinator.deletableCount == 1)
+
+    // Search: a meeting with no row is found by its title only.
+    rig.coordinator.searchQuery = "stand"
+    #expect(rig.coordinator.listedItems.map(\.id) == [.meeting(recording.id)])
+    rig.coordinator.searchQuery = "words"
+    #expect(rig.coordinator.listedItems.isEmpty)
+    rig.coordinator.searchQuery = ""
+
+    rig.coordinator.deleteAll()
+    #expect(Set(marked) == [recording.id, deleting.id])
+  }
+
+  @Test("deleting a meeting item asks EnviousMeet and moves the selection beside it")
+  func deleteMeetingItem() async throws {
+    let rig = Rig()
+    var asked: [UUID] = []
+    rig.coordinator.deleteMeeting = { asked.append($0) }
+    let dictation = Transcript(
+      text: "older", backendType: .parakeet, createdAt: Date(timeIntervalSinceNow: -60))
+    try rig.coordinator.saveAndShow(dictation)
+    let record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    rig.records = [record]
+    let item = try #require(rig.coordinator.listedItems.first)
+    #expect(item.id == .meeting(record.id))
+    rig.coordinator.selectedItemID = item.id
+    rig.coordinator.delete(item)
+    #expect(asked == [record.id])
+    #expect(rig.coordinator.selectedItemID == .transcript(dictation.id))
+  }
+
+  @Test("Show recordings lists Recordings with no search and selects the meeting")
+  func showRecordings() async throws {
+    let rig = Rig()
+    let record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    rig.records = [record]
+    rig.coordinator.searchQuery = "nothing matches"
+    rig.coordinator.showRecordings(meetingID: record.id)
+    #expect(rig.coordinator.historyFilter == .recordings)
+    #expect(rig.coordinator.searchQuery.isEmpty)
+    #expect(rig.coordinator.selectedItemID == .meeting(record.id))
+    rig.records = []
+    #expect(rig.coordinator.emptyState == .nothingYet)
+    let dictation = Transcript(text: "a dictation", backendType: .parakeet)
+    try rig.coordinator.saveAndShow(dictation)
+    #expect(rig.coordinator.emptyState == .noRecordings)
   }
 
   @Test("a meeting is never the last dictation to paste or copy again")
@@ -248,7 +348,7 @@ struct MeetingHistoryPresentationTests {
     let save = MeetingCoordinatorTests.Gate()
     harness.saveGate = save
     let coordinator = harness.coordinator
-    await coordinator.start(from: .page)
+    await coordinator.start(from: .history)
     let meetingID = try #require(harness.recorders.first).configuration.meetingID
     await coordinator.stop()
     await eventually("history save parked") { save.parked }
@@ -272,7 +372,7 @@ struct MeetingHistoryPresentationTests {
     let harness = try Harness()
     harness.writeGate.failWrites(inState: .ready)
     let coordinator = harness.coordinator
-    await coordinator.start(from: .page)
+    await coordinator.start(from: .history)
     let meetingID = try #require(harness.recorders.first).configuration.meetingID
     await coordinator.stop()
     await eventually("pass over") { harness.saved.count == 1 && coordinator.processing == nil }
@@ -284,7 +384,7 @@ struct MeetingHistoryPresentationTests {
   func retryFactsFollowTheNewRow() async throws {
     let harness = try Harness()
     let coordinator = harness.coordinator
-    await coordinator.start(from: .page)
+    await coordinator.start(from: .history)
     let meetingID = try #require(harness.recorders.first).configuration.meetingID
     await coordinator.stop()
     // Retry is refused while the first pass is still clearing its progress: wait for both.

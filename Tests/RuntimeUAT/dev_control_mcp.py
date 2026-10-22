@@ -274,7 +274,7 @@ def build_server():
                     "--timeout", repr(float(timeout)), timeout=CALL_SECONDS + float(timeout))
 
     @server.tool()
-    def ew_meeting_start(entry_point: Literal["page", "menu"] = "menu",
+    def ew_meeting_start(entry_point: Literal["history", "menu"] = "menu",
                          call_sound: bool | None = None) -> CallToolResult:
         """Ask the EnviousMeet Start the menu and page use; call_sound overrides this request
         only. waitingForExplainer means a person must answer the page's explainer."""

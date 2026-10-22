@@ -72,7 +72,7 @@ import Testing
       #expect(row.boolProps["disk_stopped"] == nil)
       #expect(row.doubleProps["rtf"] == 0)
       let infinite = MeetingEndedTelemetry(
-        outcome: .failed, entryPoint: .page, durationSeconds: 0, microphoneTrack: .failed,
+        outcome: .failed, entryPoint: .history, durationSeconds: 0, microphoneTrack: .failed,
         callSoundTrack: .off, speakerCount: 0, processingSeconds: .infinity, audioSeconds: 1,
         yieldCount: 0, gapCount: 0, echoHiddenCount: 0, diskStopped: false)
       #expect(infinite.realTimeFactor == 0)

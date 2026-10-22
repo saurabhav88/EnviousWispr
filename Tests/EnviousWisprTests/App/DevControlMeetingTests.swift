@@ -132,7 +132,7 @@
       #expect(phase["name"] as? String == "recording")
       #expect(phase["meetingID"] as? String == meetingID)
 
-      let again = try #require(Self.ok(await rig.call("meeting.start", ["entryPoint": "page"])))
+      let again = try #require(Self.ok(await rig.call("meeting.start", ["entryPoint": "history"])))
       #expect(again["outcome"] as? String == "notIdle")
       #expect(rig.harness.recorders.count == 1)
 

@@ -18,7 +18,7 @@ struct MeetingCoordinatorTelemetryTests {
     await MeetingCoordinatorTests.eventually(label, condition)
   }
 
-  private func recordAndFinish(_ harness: Harness, from entry: MeetingEntryPoint = .page)
+  private func recordAndFinish(_ harness: Harness, from entry: MeetingEntryPoint = .history)
     async throws -> UUID
   {
     let coordinator = harness.coordinator
@@ -106,7 +106,7 @@ struct MeetingCoordinatorTelemetryTests {
     let save = MeetingCoordinatorTests.Gate()
     harness.saveGate = save
     let coordinator = harness.coordinator
-    await coordinator.start(from: .page)
+    await coordinator.start(from: .history)
     let meetingID = try #require(harness.recorders.first).configuration.meetingID
     await coordinator.stop()
     await eventually("history save parked") { save.parked }
@@ -143,7 +143,7 @@ struct MeetingCoordinatorTelemetryTests {
   @Test("an attempt interrupted by a quit ends once, after the relaunch, as interrupted_ready")
   func interruptedAfterRelaunch() async throws {
     let harness = try Harness()
-    await harness.coordinator.start(from: .page)
+    await harness.coordinator.start(from: .history)
     harness.coordinator.prepareForTermination()
     #expect(harness.ended.isEmpty)
     let relaunched = MeetingCoordinator(dependencies: harness.dependencies())
@@ -160,9 +160,9 @@ struct MeetingCoordinatorTelemetryTests {
     await harness.coordinator.start(from: .menu)
     harness.freeBytes = 50_000_000_000
     harness.settles = false
-    await harness.coordinator.start(from: .page)
+    await harness.coordinator.start(from: .history)
     #expect(harness.ended.map(\.outcome) == [.startFailed, .startFailed])
-    #expect(harness.ended.map(\.entryPoint) == [.menu, .page])
+    #expect(harness.ended.map(\.entryPoint) == [.menu, .history])
     #expect(harness.ended.allSatisfy { $0.realTimeFactor == 0 })
   }
 
@@ -170,7 +170,7 @@ struct MeetingCoordinatorTelemetryTests {
   func startupFailures() async throws {
     let empty = try Harness()
     empty.recorderStart = .failEmpty
-    await empty.coordinator.start(from: .page)
+    await empty.coordinator.start(from: .history)
     await eventually("empty ended") { empty.ended.count == 1 }
     #expect(empty.ended.first?.outcome == .startFailed)
     #expect(empty.ended.first?.microphoneTrack == .failed)
@@ -195,7 +195,7 @@ struct MeetingCoordinatorTelemetryTests {
     }
     harness.removeError = CocoaError(.fileWriteNoPermission)
     let coordinator = harness.coordinator
-    await coordinator.start(from: .page)
+    await coordinator.start(from: .history)
     let meetingID = try #require(harness.recorders.first).configuration.meetingID
     await coordinator.stop()
     await eventually("pass parked") { gate.parked }
@@ -248,12 +248,12 @@ struct MeetingCoordinatorTelemetryTests {
     #expect(harness.ended.isEmpty)
     // A second meeting starts from the page while the first is still queued.
     harness.freeBytes = 50_000_000_000
-    await coordinator.start(from: .page)
+    await coordinator.start(from: .history)
     #expect(coordinator.isRecording)
     await coordinator.stop()
     await eventually("both ended") { harness.ended.count == 2 && coordinator.processing == nil }
     // The queue takes the older meeting first.
-    #expect(harness.ended.map(\.entryPoint) == [.menu, .page])
+    #expect(harness.ended.map(\.entryPoint) == [.menu, .history])
     #expect(harness.ended.map(\.diskStopped) == [true, false])
   }
 }

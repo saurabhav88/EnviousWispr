@@ -2,29 +2,12 @@ import EnviousWisprCore
 import EnviousWisprPipeline
 import Foundation
 
-/// What the EnviousMeet page and the menu bar show, from `MeetingCoordinator`'s state (#3972
+/// What EnviousMeet's views and the menu bar show, from `MeetingCoordinator`'s state (#3972
 /// §3.8, R20). Pure: every decision the views make about copy, status and which action is
 /// offered lives here, so it is tested without a window. Copy rules: no accuracy claims, and
 /// "call sound" is described as what the Mac plays.
 enum MeetingsPresentation {
   // MARK: - Recorder
-
-  /// The recorder panel's state. `starting` is never an enabled Start.
-  enum Recorder: Equatable {
-    case idle
-    case starting
-    case recording(startedAt: Date)
-    case stopping
-  }
-
-  static func recorder(_ phase: MeetingCoordinator.Phase) -> Recorder {
-    switch phase {
-    case .idle: return .idle
-    case .starting: return .starting
-    case .recording(_, let startedAt): return .recording(startedAt: startedAt)
-    case .stopping: return .stopping
-    }
-  }
 
   /// `m:ss`, or `h:mm:ss` from an hour. A clock that went backwards reads 0:00.
   static func elapsed(from start: Date, to now: Date) -> String {

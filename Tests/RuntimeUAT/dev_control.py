@@ -322,7 +322,7 @@ MODEL_BACKENDS = ("parakeet", "whisper")
 SHORTCUT_ROLES = ("record", "cancel", "quickAdd", "pasteLast", "copyLast")
 MODEL_ACTIONS = ("download", "cancel")
 # MeetingEntryPoint raw values; the door refuses anything else.
-MEETING_ENTRY_POINTS = ("page", "menu")
+MEETING_ENTRY_POINTS = ("history", "menu")
 # CLI verb -> door command for the meeting commands that take only a meeting id; all change
 # the app.
 MEETING_ID_ACTIONS = {"stop": "meeting.stop", "retry": "meeting.retry",

@@ -59,15 +59,11 @@ struct TranscriptDetailView: View {
 
   /// #2807: what this row IS, by name. A Dictation was made with the keybind; a Transcript
   /// came from Transcribe a File. Read from `isImported`, the row's only kind.
+  ///
+  /// #3972 R45: a meeting never reaches this view; History shows it in
+  /// `MeetingHistoryDetailView`.
   private var kindWord: String {
-    if transcript.isMeeting {
-      return String(
-        localized: "Meeting",
-        comment:
-          "History detail title for a meeting recorded with EnviousMeet. Also the default file name when saving it."
-      )
-    }
-    return transcript.isImported
+    transcript.isImported
       ? String(
         localized: "Transcript",
         comment:
@@ -89,13 +85,7 @@ struct TranscriptDetailView: View {
         VStack(alignment: .leading, spacing: 20) {
           header
 
-          if let meetingNotice {
-            transcriptSection(kindWord, icon: "person.2.wave.2") {
-              Text(meetingNotice)
-                .font(.system(size: 15))
-                .foregroundStyle(.stTextSecondary)
-            }
-          } else if let renderedTurns {
+          if let renderedTurns {
             transcriptSection(kindWord, icon: "doc.text") {
               // `fallback` is genuinely unreachable here — `renderedTurns` is already known
               // non-nil — so it carries no risk of the double-card nesting a reachable
@@ -236,8 +226,6 @@ struct TranscriptDetailView: View {
       } label: {
         Label(exportButtonLabels.copy, systemImage: "doc.on.doc")
       }
-      // #3972 R19: a meeting with every line hidden, or not available, has nothing to copy.
-      .disabled(transcript.isMeeting && exportText == nil)
       .help("Copy to clipboard")
 
       // #2811, phase 4: History gains Save and Share, which did not exist before this phase
@@ -308,11 +296,7 @@ struct TranscriptDetailView: View {
       .buttonStyle(.borderless)
       .foregroundStyle(.stTextSecondary)
       .accessibilityLabel(
-        transcript.isMeeting
-          ? String(
-            localized: "Delete meeting",
-            comment: "VoiceOver label of the History delete button for a meeting.")
-          : transcript.isImported
+        transcript.isImported
           ? String(
             localized: "Delete transcript",
             comment: "VoiceOver label of the History delete button for a transcript.")
@@ -374,9 +358,7 @@ struct TranscriptDetailView: View {
         // is a real, reachable state (`TurnAssembler.assemble` can return it) that must
         // collapse to "nothing to show" exactly like `nil`, or these controls appear with
         // nothing for them to control.
-        if transcript.isMeeting {
-          meetingControls
-        } else if hasRenderableTurns {
+        if hasRenderableTurns {
           HStack(spacing: 10) {
             Picker(
               "View", selection: $documentView
@@ -501,84 +483,26 @@ struct TranscriptDetailView: View {
 
   /// `TurnAssembler.assemble` can return `[]` — collapses to the SAME "nothing to render"
   /// outcome as `nil` everywhere this view branches on turns, never just `!= nil`.
-  /// A meeting row's header controls (#3972 C5). A meeting has no polish, so its cleaned and
-  /// original words are the same and the view picker is not shown (`documentView` stays
-  /// `.cleaned`). "Show probable echo" appears only when the pass hid echo lines, and only
-  /// while the meeting's facts are known (`MeetingHistoryInfo.paired(with:)`).
-  @ViewBuilder private var meetingControls: some View {
-    let echoCount =
-      transcript.meetingID.flatMap { transcriptCoordinator.meetingInfo?($0)?.echoTurnIDs.count }
-      ?? 0
-    if hasRenderableTurns || echoCount > 0 {
-      HStack(spacing: 10) {
-        if echoCount > 0 {
-          Toggle(
-            isOn: Binding(
-              get: { transcriptCoordinator.isShowingEcho(rowID: transcript.id) },
-              set: { transcriptCoordinator.setShowEcho($0, rowID: transcript.id) })
-          ) {
-            Text(
-              "Show probable echo",
-              comment:
-                "History, a meeting: shows the lines hidden because they repeat the call sound picked up by the microphone.")
-          }
-          .controlSize(.small)
-          .toggleStyle(.switch)
-          .accessibilityIdentifier("history.meeting.showEcho")
-        }
-        if hasRenderableTurns {
-          Toggle("Times", isOn: $timesOn)
-            .controlSize(.small)
-            .toggleStyle(.switch)
-        }
-      }
-    }
-  }
-
   private var hasRenderableTurns: Bool {
     guard let turns = displayTurns else { return false }
     return !turns.isEmpty
   }
 
   private var kindIcon: String {
-    transcript.isMeeting ? "person.2.wave.2" : (transcript.isImported ? "doc.text" : "mic")
+    transcript.isImported ? "doc.text" : "mic"
   }
 
-  /// #3972 R19: a meeting shows only its visible turns, from the shared projection. Every
-  /// other row shows its stored turns, unchanged.
-  private var meetingProjection: MeetingHistoryPresentation.Projection? {
-    transcript.isMeeting ? transcriptCoordinator.meetingProjection(of: transcript) : nil
-  }
-
-  private var displayTurns: [Turn]? {
-    guard let meetingProjection else { return transcript.turns }
-    if case .visible(let turns, _) = meetingProjection { return turns }
-    return nil
-  }
-
-  /// What a meeting shows instead of its turns: every line hidden (R19), or not available.
-  /// Never the stored text, which holds the hidden lines.
-  private var meetingNotice: String? {
-    switch meetingProjection {
-    case .everythingHidden: return MeetingHistoryPresentation.everythingHiddenMessage
-    case .unavailable: return MeetingHistoryPresentation.unavailableMessage
-    case .visible(let turns, _) where turns.isEmpty:
-      return MeetingHistoryPresentation.unavailableMessage
-    case .visible, nil: return nil
-    }
-  }
+  private var displayTurns: [Turn]? { transcript.turns }
 
   private var renderedTurns: [TranscriptDocumentPresenter.RenderedTurn]? {
     let diffs = turnDiffs
-    let rendered = TranscriptDocumentPresenter.render(
+    return TranscriptDocumentPresenter.render(
       turns: displayTurns, rawText: transcript.text,
       speakerNames: transcript.speakerNames ?? [:], mode: documentView, timesOn: timesOn,
       // Finished unless the file import is still cleaning THIS row (#2851 §3 D, cloud
       // review of PR #2871): a turn the cleanup has not reached yet is not "unpolished".
       documentFinished: !(transcriptCoordinator.isImportInProgress?(transcript.id) ?? false),
       diffLookup: { diffs?[$0.id] })
-    // #3972: a meeting's gap markers in the interface language, after slicing.
-    return transcript.isMeeting ? MeetingGapPresentation.localized(rendered) : rendered
   }
 
   /// Mirrors `FileImportCoordinator.turnDiffInput`, reusing its own `TurnDiffPair`/
@@ -654,12 +578,6 @@ struct TranscriptDetailView: View {
   /// recording the user was told is gone.
   private var exportText: String? {
     guard let live = transcriptCoordinator.currentRow(id: transcript.id) else { return nil }
-    if live.isMeeting {
-      // #3972 R19: the visible turns only, re-read now (the row, its meeting facts and the
-      // echo choice); never the stored text, which holds hidden lines.
-      return MeetingHistoryPresentation.deliveryText(
-        live, projection: transcriptCoordinator.meetingProjection(of: live), timesOn: timesOn)
-    }
     guard let base = transcriptCoordinator.textForDelivery(live) else { return nil }
     if let turns = live.turns,
       let result = TranscriptDocumentPresenter.exportText(
@@ -671,15 +589,7 @@ struct TranscriptDetailView: View {
     return base
   }
 
-  /// A meeting saves under its title when it has one (#3972), else under its kind word.
-  private var defaultFileName: String {
-    if let meetingID = transcript.meetingID,
-      let title = transcriptCoordinator.meetingInfo?(meetingID)?.title, !title.isEmpty
-    {
-      return title
-    }
-    return kindWord
-  }
+  private var defaultFileName: String { kindWord }
 
   /// Copy/Save/Share titles — the SAME general export rule as the wizard (plan §2.1), never
   /// scoped to turn-labeled documents.

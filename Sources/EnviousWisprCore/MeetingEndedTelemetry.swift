@@ -1,8 +1,11 @@
 import Foundation
 
-/// Where a meeting was started from (telemetry `entry_point`).
+/// Where a meeting was started from (telemetry `entry_point`): History's Recordings header or
+/// the menu bar (#3972 R34). Rows sent by earlier development builds may say `page` (the
+/// EnviousMeet page started meetings before it became settings only); that value is history,
+/// never a Start this build makes.
 public enum MeetingEntryPoint: String, Sendable, Equatable {
-  case page
+  case history
   case menu
 }
 

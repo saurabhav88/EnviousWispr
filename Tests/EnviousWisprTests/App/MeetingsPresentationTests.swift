@@ -16,15 +16,10 @@ import Testing
 struct MeetingsPresentationTests {
   typealias P = MeetingsPresentation
 
-  @Test("starting is never an enabled Start, in the page or the menu")
+  @Test("starting is never an enabled Start in the menu")
   func phases() {
     let id = UUID()
     let started = Date(timeIntervalSince1970: 0)
-    #expect(P.recorder(.idle) == .idle)
-    #expect(P.recorder(.starting) == .starting)
-    #expect(
-      P.recorder(.recording(meetingID: id, startedAt: started)) == .recording(startedAt: started))
-    #expect(P.recorder(.stopping(meetingID: id)) == .stopping)
     #expect(P.menuItem(.idle, now: started).action == .start)
     #expect(
       P.menuItem(.starting, now: started)
@@ -205,7 +200,7 @@ struct MeetingsPresentationTests {
       let settle = MeetingCoordinatorTests.Gate()
       harness.settleGate = settle
       let coordinator = harness.coordinator
-      let start = Task { await coordinator.start(from: .page, captureCallSound: admitted) }
+      let start = Task { await coordinator.start(from: .history, captureCallSound: admitted) }
       await MeetingCoordinatorTests.eventually("settle parked") { settle.parked }
       // The switch flips while the start waits for dictation to settle.
       harness.callSound = flipTo
@@ -237,7 +232,7 @@ struct MeetingsPresentationTests {
       return MeetingCoordinatorTests.result()
     }
     let coordinator = harness.coordinator
-    await coordinator.start(from: .page)
+    await coordinator.start(from: .history)
     await coordinator.stop()
     await MeetingCoordinatorTests.eventually("pass parked") { gate.parked }
     let job = try #require(harness.jobs.last)

@@ -801,7 +801,7 @@ struct SettingsMapRenderingTests {
       emitRenameTelemetry: { _ in }, emitTurnsDisplayedTelemetry: {})
     let view = MeetingsView()
       .environment(harness.coordinator).environment(flow).environment(transcripts)
-      .environment(PermissionsService())
+      .environment(PermissionsService()).environment(NavigationCoordinator())
     let list = try await registrations(home.polish(view))
     return Rendered(list: list, destination: .meetings, alwaysOnThisPage: [])
   }
