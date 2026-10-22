@@ -644,40 +644,50 @@ final class MeetingCoordinator {
       report.problems.isEmpty && report.segments.values.allSatisfy { $0.isEmpty }
     if wroteNothing {
       // Notes typed while it started are saved first; the state then follows what is durable
-      // (R53, R56; Codex C7 r1). The meeting is read again after that await.
-      let notes = await documents.ensureNotesDurable(meetingID)
-      guard !quitting, var current = live[meetingID] else { return }
-      current.trackStatus[.microphone] = .failed
-      switch notes {
-      case .saved:
-        current.endedAt = Date()
-        current.failureCode = "microphone_unavailable"
-        current.markNotesOnly()
-        if await persist(current) { endAttempt(current, outcome: .startFailed) }
-      case .failed, .unknown:
-        // Notes may exist and are not proven saved: the folder is kept.
-        if notes == .failed { notice = .storageFailed }
-        current.endedAt = Date()
-        current.state = .failed
-        current.failureCode = "microphone_unavailable"
-        if await persist(current) { endAttempt(current, outcome: .startFailed) }
-      case .none:
-        endAttempt(current, outcome: .startFailed)
-        do {
-          try await writer.run { try $0.deleteFolder(meeting: meetingID) }
-          live.removeValue(forKey: meetingID)
-          records.removeValue(forKey: meetingID)
-          documents.forget(meetingID)
-          publish()
-        } catch {
-          deps.log("meeting start cleanup failed error=\(type(of: error))")
-          guard var failed = live[meetingID] else { return }
-          failed.state = .failed
-          failed.failureCode = "microphone_unavailable"
-          await persist(failed)
+      // (R53, R56; Codex C7 r1). The meeting is read again after every await, and the folder is
+      // removed only once the notes owner fenced it empty in the same step (Codex C7 r2), so a
+      // note typed during the removal is never dropped.
+      while true {
+        let notes = await documents.ensureNotesDurable(meetingID)
+        guard !quitting, !deleting.contains(meetingID), var current = live[meetingID],
+          !current.deletionRequested
+        else { return }
+        current.trackStatus[.microphone] = .failed
+        switch notes {
+        case .saved:
+          current.endedAt = Date()
+          current.failureCode = "microphone_unavailable"
+          current.markNotesOnly()
+          if await persist(current) { endAttempt(current, outcome: .startFailed) }
+          return
+        case .failed, .unknown:
+          // Notes may exist and are not proven saved: the folder is kept.
+          if notes == .failed { notice = .storageFailed }
+          current.endedAt = Date()
+          current.state = .failed
+          current.failureCode = "microphone_unavailable"
+          if await persist(current) { endAttempt(current, outcome: .startFailed) }
+          return
+        case .none:
+          // Notes arrived since the check: decide again on what is saved now.
+          guard documents.fenceEmptyForRemoval(meetingID) else { continue }
+          endAttempt(current, outcome: .startFailed)
+          do {
+            try await writer.run { try $0.deleteFolder(meeting: meetingID) }
+            live.removeValue(forKey: meetingID)
+            records.removeValue(forKey: meetingID)
+            publish()
+          } catch {
+            deps.log("meeting start cleanup failed error=\(type(of: error))")
+            documents.reopen(meetingID)
+            guard var failed = live[meetingID] else { return }
+            failed.state = .failed
+            failed.failureCode = "microphone_unavailable"
+            await persist(failed)
+          }
+          return
         }
       }
-      return
     }
     // What was captured is processed like any interrupted meeting.
     record.trackStatus[.microphone] = .failed

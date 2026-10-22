@@ -59,8 +59,10 @@ public struct SummaryInputs: Sendable, Equatable, Codable {
   public var providerID: String
   /// SHA-256 of the canonical provider configuration the summary was written with (model,
   /// endpoint, generation options; never key bytes), so a model or option change makes the
-  /// summary out of date (Codex C7 r1). Built by the summary seam (C12).
-  public var configurationSHA256: String
+  /// summary out of date (Codex C7 r1). Built by the summary seam (C12). Nil in a manifest
+  /// written before this field existed: the configuration is unknown, so that summary is out
+  /// of date (it never equals a current fingerprint).
+  public var configurationSHA256: String?
 
   public init(
     transcriptSHA256: String, notesRevision: Int, speakerNamesSHA256: String, promptVersion: Int,

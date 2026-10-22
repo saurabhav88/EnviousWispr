@@ -91,9 +91,11 @@ final class MeetingDocumentsOwner {
   /// Notes typed and not yet saved.
   func hasUnsavedNotes(_ meetingID: UUID) -> Bool { (entries[meetingID]?.unsavedEdits ?? 0) > 0 }
 
-  /// A change waits for its debounce, or a read or save is on its way: a relaunch must wait.
+  /// Typed notes are not yet saved, or a read or save is on its way: a relaunch must wait. A
+  /// draft whose save failed keeps it waiting until a save succeeds (Codex C7 r2).
   var hasPendingWork: Bool {
-    !debounceTasks.isEmpty || !loadTasks.isEmpty || !saveChains.isEmpty
+    entries.values.contains { $0.unsavedEdits > 0 } || !debounceTasks.isEmpty || !loadTasks.isEmpty
+      || !saveChains.isEmpty
       || operations.values.contains { $0 > 0 }
   }
 
@@ -219,16 +221,18 @@ final class MeetingDocumentsOwner {
     let text = entry.notes
     let edits = entry.unsavedEdits
     let gen = generation(meetingID)
-    let result: Result<MeetingDocumentsManifest, Error>
+    /// The manifest the save wrote, and the documents as read when the save read them first.
+    let result: Result<(MeetingDocumentsManifest, MeetingStore.LoadedDocuments?), Error>
     switch entry.load {
     case .loaded:
       let revision = (entry.manifest.notes?.revision ?? 0) + edits
       result = await perform(meetingID) {
-        try $0.saveNotes(text, revision: revision, meeting: meetingID)
+        (try $0.saveNotes(text, revision: revision, meeting: meetingID), nil)
       }
     case .failed, .notLoaded:
       result = await perform(meetingID) {
-        try $0.saveDraftNotes(text, edits: edits, meeting: meetingID)
+        let saved = try $0.saveDraftNotes(text, edits: edits, meeting: meetingID)
+        return (saved.manifest, saved)
       }
     case .loading:
       return
@@ -237,14 +241,17 @@ final class MeetingDocumentsOwner {
     switch result {
     case .failure(let error):
       deps.log("meeting notes save failed error=\(type(of: error))")
-    case .success(let written):
-      current.manifest.notes = written.notes
+    case .success(let (manifest, read)):
+      if let read {
+        // The save read the documents: the entry is now fully loaded from that read.
+        current.manifest = manifest
+        current.summary = read.summary
+        current.load = .loaded
+      } else {
+        current.manifest.notes = manifest.notes
+      }
       // Typing during the save stays unsaved.
       current.unsavedEdits = max(0, current.unsavedEdits - edits)
-      if current.load == .failed || current.load == .notLoaded {
-        // The save read the notes; a later save may build on its revision.
-        current.load = .loaded
-      }
       entries[meetingID] = current
     }
   }
@@ -273,6 +280,24 @@ final class MeetingDocumentsOwner {
         deps.log("meeting notes quit save failed error=\(type(of: error))")
       }
     }
+  }
+
+  /// For removing a meeting that recorded nothing (failed Start): true only when its notes are
+  /// read, empty, unchanged and nothing is on its way, and then, in the same main-actor step,
+  /// no further edit is accepted (Codex C7 r2). False means notes may exist: keep the folder.
+  /// `reopen` undoes the fence if the removal then fails.
+  func fenceEmptyForRemoval(_ meetingID: UUID) -> Bool {
+    guard let entry = entries[meetingID], entry.load == .loaded, entry.notes.isEmpty,
+      entry.unsavedEdits == 0, debounceTasks[meetingID] == nil, loadTasks[meetingID] == nil,
+      saveChains[meetingID] == nil, (operations[meetingID] ?? 0) == 0
+    else { return false }
+    forget(meetingID)
+    return true
+  }
+
+  /// The removal `fenceEmptyForRemoval` allowed did not happen: the meeting accepts notes again.
+  func reopen(_ meetingID: UUID) {
+    forgotten.remove(meetingID)
   }
 
   /// The meeting was deleted: its drafts and pending work go with it, and nothing on its way

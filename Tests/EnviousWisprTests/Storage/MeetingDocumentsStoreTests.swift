@@ -124,4 +124,41 @@ struct MeetingDocumentsStoreTests {
     #expect(record.state == .notesOnly)
     #expect(record.formatVersion == 2)
   }
+
+  @Test("a manifest written before the configuration fingerprint still loads, and saves notes")
+  func manifestWithoutConfigurationFingerprint() throws {
+    let (store, record) = try makeMeeting()
+    // documents.json as commit fa076081 wrote it: summary inputs with no configurationSHA256.
+    let old = """
+      {"formatVersion":1,"notes":{"revision":1,"sha256":"\(MeetingDocumentHash.sha256("n"))"},
+       "summary":{"origin":"generated","sha256":"\(MeetingDocumentHash.sha256("S"))",
+       "inputs":{"notesRevision":1,"promptVersion":1,"providerID":"openAI",
+       "speakerNamesSHA256":"s","transcriptSHA256":"t"}}}
+      """
+    try Data("n".utf8).write(to: store.notesURL(for: record.id))
+    try Data("S".utf8).write(to: store.summaryURL(for: record.id))
+    try Data(old.utf8).write(to: store.documentsURL(for: record.id))
+
+    let loaded = try store.loadDocuments(meeting: record.id)
+    #expect(loaded.summary == "S")
+    #expect(loaded.manifest.summary?.inputs?.configurationSHA256 == nil, "unknown, so out of date")
+    _ = try store.saveNotes("n2", revision: 2, meeting: record.id)
+    #expect(try store.loadDocuments(meeting: record.id).notes == "n2")
+  }
+
+  @Test("a draft saved after a failed read keeps the read's summary reconciliation")
+  func draftSaveKeepsSummaryReconciliation() throws {
+    let (store, record) = try makeMeeting()
+    _ = try store.saveSummary("Generated", origin: .generated, inputs: nil, meeting: record.id)
+    try Data("Edited outside".utf8).write(to: store.summaryURL(for: record.id))
+
+    let saved = try store.saveDraftNotes("draft", edits: 2, meeting: record.id)
+    #expect(saved.summary == "Edited outside")
+    #expect(saved.manifest.summary?.origin == .userEdited)
+    let reread = try store.loadDocuments(meeting: record.id)
+    #expect(reread.manifest.summary?.origin == .userEdited)
+    #expect(reread.repaired == false, "the draft save wrote the reconciled manifest")
+    #expect(reread.notes == "draft")
+    #expect(reread.manifest.notes?.revision == 2)
+  }
 }

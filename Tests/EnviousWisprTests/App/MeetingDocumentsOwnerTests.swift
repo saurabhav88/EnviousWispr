@@ -376,4 +376,64 @@ struct MeetingDocumentsOwnerTests {
     #expect(Self.notesOnDisk(harness, meetingID) == "Typed while it started")
     #expect(harness.ended.last?.outcome == .startFailed)
   }
+
+  @Test("unsaved notes hold a relaunch at once, and still after a failed save has drained")
+  func relaunchWaitsAfterFailedSave() async throws {
+    let harness = try Harness()
+    var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    record.state = .failed
+    try harness.store.create(record)
+    try Self.breakNotesWrites(harness, record.id)
+    let coordinator = Self.coordinator(harness)
+    coordinator.launch()
+    await MeetingCoordinatorTests.eventually("listed") { coordinator.record(id: record.id) != nil }
+    #expect(coordinator.isWorkInFlight == false)
+
+    coordinator.documents.setNotes(record.id, "cannot be written")
+    #expect(coordinator.isWorkInFlight, "held from the first keystroke")
+    #expect(await coordinator.documents.flush(record.id) == false)
+    await MeetingCoordinatorTests.eventually("save attempts drained") {
+      harness.logs.contains { $0.hasPrefix("meeting notes save failed") }
+    }
+    #expect(coordinator.documents.hasUnsavedNotes(record.id))
+    #expect(coordinator.isWorkInFlight, "the unsaved draft still holds the relaunch")
+  }
+
+  @Test("a failed Start whose cleanup is reading the notes keeps notes typed meanwhile")
+  func failedStartNotesDuringCleanupRead() async throws {
+    let harness = try Harness()
+    harness.recorderStart = .failEmpty
+    harness.recoveryHold = DispatchSemaphore(value: 0)
+    let coordinator = Self.coordinator(harness)
+    let start = Task { await coordinator.start(from: .menu) }
+    await MeetingCoordinatorTests.eventually("meeting created") { !coordinator.meetings.isEmpty }
+    let meetingID = try #require(coordinator.meetings.first?.id)
+
+    // The cleanup's notes read is held on the file queue; the user types during it.
+    let hold = Self.holdFileQueue()
+    harness.recoveryHold?.signal()
+    await MeetingWorkAdmission.waitUntil {
+      coordinator.documents.loadState(meetingID) == .loading
+    }
+    coordinator.documents.setNotes(meetingID, "typed during cleanup")
+    hold.signal()
+    _ = await start.value
+    await MeetingCoordinatorTests.eventually("notes only") {
+      coordinator.record(id: meetingID)?.state == .notesOnly
+    }
+    #expect(Self.notesOnDisk(harness, meetingID) == "typed during cleanup")
+  }
+
+  @Test("once a failed Start's empty folder is being removed, no note is accepted for it")
+  func failedStartFenceRefusesLateNotes() async throws {
+    let harness = try Harness()
+    harness.recorderStart = .failEmpty
+    let coordinator = Self.coordinator(harness)
+    _ = await coordinator.start(from: .menu)
+    #expect(coordinator.meetings.isEmpty)
+    let folders = try FileManager.default.contentsOfDirectory(atPath: harness.root.path)
+      .filter { UUID(uuidString: $0) != nil }
+    #expect(folders.isEmpty)
+    #expect(coordinator.documents.entries.isEmpty)
+  }
 }

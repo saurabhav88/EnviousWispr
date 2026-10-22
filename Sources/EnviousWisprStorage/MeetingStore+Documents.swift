@@ -99,7 +99,15 @@ extension MeetingStore {
     -> MeetingDocumentsManifest
   {
     try refuseDocumentWrite(id)
-    var next = try currentManifest(id)
+    return try writeNotes(text, revision: revision, base: try currentManifest(id), meeting: id)
+  }
+
+  /// The notes file, then the manifest built on `base`.
+  private func writeNotes(
+    _ text: String, revision: Int, base: MeetingDocumentsManifest, meeting id: UUID
+  ) throws -> MeetingDocumentsManifest {
+    try refuseDocumentWrite(id)
+    var next = base
     next.notes = MeetingDocumentsManifest.Notes(
       revision: revision, sha256: MeetingDocumentHash.sha256(text))
     if text.isEmpty {
@@ -115,13 +123,18 @@ extension MeetingStore {
 
   /// Saves notes typed before this session read the meeting's notes (the quit path, or a read
   /// that failed earlier): reads and reconciles first, then saves the draft as `edits` changes
-  /// after what was on disk. One file-queue operation, so the revision is never guessed.
+  /// after what was on disk. One file-queue operation, so the revision is never guessed. The
+  /// manifest it writes keeps the read's reconciliation (a summary changed outside counts as
+  /// the user's), and the result carries the documents as now saved, summary included.
   public func saveDraftNotes(_ text: String, edits: Int, meeting id: UUID) throws
-    -> MeetingDocumentsManifest
+    -> LoadedDocuments
   {
     let loaded = try readDocuments(meeting: id)
-    return try saveNotes(
-      text, revision: (loaded.manifest.notes?.revision ?? 0) + max(1, edits), meeting: id)
+    let manifest = try writeNotes(
+      text, revision: (loaded.manifest.notes?.revision ?? 0) + max(1, edits),
+      base: loaded.manifest, meeting: id)
+    return LoadedDocuments(
+      notes: text, summary: loaded.summary, manifest: manifest, repaired: loaded.repaired)
   }
 
   /// Saves the summary text with its origin and inputs, then the manifest (its notes entry read
