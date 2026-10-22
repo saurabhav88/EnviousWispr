@@ -343,13 +343,13 @@ final class MeetingCoordinator {
   /// stays off for that whole interval).
   var isCapturing: Bool { phase != .idle }
 
-  /// True while capture, a physical pass unit, file reads, a checkpoint write, a commit or a
-  /// deletion is in progress: a relaunch must wait (R4, R19). A queued meeting alone resumes
+  /// True while capture, a physical pass unit, file reads, a checkpoint write, a commit, a
+  /// deletion or typed notes not yet saved is in progress: a relaunch must wait (R4, R19, R46). A queued meeting alone resumes
   /// after a relaunch.
   var isWorkInFlight: Bool {
     isCapturing || (job?.isUnitInFlight ?? false) || committing || !deleting.isEmpty
       || fileWorkInFlight > 0 || checkpointWrites.withLock { $0 } > 0
-      || writer.pendingCount > 0
+      || writer.pendingCount > 0 || documents.hasPendingWork
   }
 
   /// Live facts of the running pass for diagnostics (#3972 C6a, DEBUG dev control), or nil when
@@ -642,31 +642,40 @@ final class MeetingCoordinator {
     guard !quitting, var record = live[meetingID] else { return }
     let wroteNothing =
       report.problems.isEmpty && report.segments.values.allSatisfy { $0.isEmpty }
-    if wroteNothing, await documents.notesExist(meetingID) {
-      // Nothing captured, but the user's notes are kept (R53, R56).
-      guard !quitting, var notesOnly = live[meetingID] else { return }
-      notesOnly.trackStatus[.microphone] = .failed
-      notesOnly.endedAt = Date()
-      notesOnly.failureCode = "microphone_unavailable"
-      notesOnly.markNotesOnly()
-      if await persist(notesOnly) { endAttempt(notesOnly, outcome: .startFailed) }
-      return
-    }
     if wroteNothing {
-      var refused = record
-      refused.trackStatus[.microphone] = .failed
-      endAttempt(refused, outcome: .startFailed)
-      do {
-        try await writer.run { try $0.deleteFolder(meeting: meetingID) }
-        live.removeValue(forKey: meetingID)
-        records.removeValue(forKey: meetingID)
-        publish()
-      } catch {
-        deps.log("meeting start cleanup failed error=\(type(of: error))")
-        guard var current = live[meetingID] else { return }
+      // Notes typed while it started are saved first; the state then follows what is durable
+      // (R53, R56; Codex C7 r1). The meeting is read again after that await.
+      let notes = await documents.ensureNotesDurable(meetingID)
+      guard !quitting, var current = live[meetingID] else { return }
+      current.trackStatus[.microphone] = .failed
+      switch notes {
+      case .saved:
+        current.endedAt = Date()
+        current.failureCode = "microphone_unavailable"
+        current.markNotesOnly()
+        if await persist(current) { endAttempt(current, outcome: .startFailed) }
+      case .failed, .unknown:
+        // Notes may exist and are not proven saved: the folder is kept.
+        if notes == .failed { notice = .storageFailed }
+        current.endedAt = Date()
         current.state = .failed
         current.failureCode = "microphone_unavailable"
-        await persist(current)
+        if await persist(current) { endAttempt(current, outcome: .startFailed) }
+      case .none:
+        endAttempt(current, outcome: .startFailed)
+        do {
+          try await writer.run { try $0.deleteFolder(meeting: meetingID) }
+          live.removeValue(forKey: meetingID)
+          records.removeValue(forKey: meetingID)
+          documents.forget(meetingID)
+          publish()
+        } catch {
+          deps.log("meeting start cleanup failed error=\(type(of: error))")
+          guard var failed = live[meetingID] else { return }
+          failed.state = .failed
+          failed.failureCode = "microphone_unavailable"
+          await persist(failed)
+        }
       }
       return
     }
@@ -865,19 +874,22 @@ final class MeetingCoordinator {
     for kind in MeetingTrackKind.allCases { current.segments[kind] = report.segments[kind] }
     guard !tracks.isEmpty else {
       let noAudio = report.problems.isEmpty && damaged.isEmpty
-      current.failureCode = noAudio ? "no_audio" : "audio_unreadable"
-      // Only confirmed absence with notes is notes-only (R56): unreadable audio may come back,
-      // so it stays failed and keeps Retry.
-      if noAudio, await documents.notesExist(meetingID) {
-        guard isStillOwned(meetingID), let latest = live[meetingID] else { return }
-        current = latest
-        current.failureCode = "no_audio"
-        current.markNotesOnly()
+      // Only confirmed absence with SAVED notes is notes-only (R56; Codex C7 r1): unreadable
+      // audio may come back, so it stays failed and keeps Retry.
+      let notes: MeetingDocumentsOwner.Durability =
+        noAudio ? await documents.ensureNotesDurable(meetingID) : .none
+      // Read again after the await: a rename or a deletion mark meanwhile stays.
+      guard isStillOwned(meetingID), var failed = live[meetingID] else { return }
+      for kind in MeetingTrackKind.allCases { failed.segments[kind] = report.segments[kind] }
+      failed.failureCode = noAudio ? "no_audio" : "audio_unreadable"
+      if notes == .saved {
+        failed.markNotesOnly()
       } else {
-        current.state = .failed
+        if notes == .failed { notice = .storageFailed }
+        failed.state = .failed
       }
-      if await persist(current) {
-        endAttempt(current, outcome: .failed, gapCount: Self.markerCount(missingAudio))
+      if await persist(failed) {
+        endAttempt(failed, outcome: .failed, gapCount: Self.markerCount(missingAudio))
       }
       return
     }

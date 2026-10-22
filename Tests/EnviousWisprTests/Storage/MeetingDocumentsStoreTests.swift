@@ -56,7 +56,7 @@ struct MeetingDocumentsStoreTests {
     _ = try store.saveNotes("first", revision: 1, meeting: record.id)
     let inputs = SummaryInputs(
       transcriptSHA256: "t", notesRevision: 1, speakerNamesSHA256: "s", promptVersion: 1,
-      providerID: "openAI")
+      providerID: "openAI", configurationSHA256: "c")
     _ = try store.saveSummary("A summary", origin: .generated, inputs: inputs, meeting: record.id)
     // A crash after notes.md and before documents.json: only the file changed.
     try Data("second".utf8).write(to: store.notesURL(for: record.id))

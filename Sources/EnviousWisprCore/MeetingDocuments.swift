@@ -57,16 +57,21 @@ public struct SummaryInputs: Sendable, Equatable, Codable {
   public var speakerNamesSHA256: String
   public var promptVersion: Int
   public var providerID: String
+  /// SHA-256 of the canonical provider configuration the summary was written with (model,
+  /// endpoint, generation options; never key bytes), so a model or option change makes the
+  /// summary out of date (Codex C7 r1). Built by the summary seam (C12).
+  public var configurationSHA256: String
 
   public init(
     transcriptSHA256: String, notesRevision: Int, speakerNamesSHA256: String, promptVersion: Int,
-    providerID: String
+    providerID: String, configurationSHA256: String
   ) {
     self.transcriptSHA256 = transcriptSHA256
     self.notesRevision = notesRevision
     self.speakerNamesSHA256 = speakerNamesSHA256
     self.promptVersion = promptVersion
     self.providerID = providerID
+    self.configurationSHA256 = configurationSHA256
   }
 }
 

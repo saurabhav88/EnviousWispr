@@ -24,7 +24,8 @@ extension MeetingStore {
   }
 
   /// What is on disk, settled: the Markdown files as written, and a manifest that agrees with
-  /// them. `repaired` is true when the manifest had to change to agree; the caller saves it.
+  /// them. `repaired` is true when the manifest had to change to agree; `loadDocuments` has
+  /// then already written it, in the same call.
   public struct LoadedDocuments: Sendable, Equatable {
     public var notes: String
     public var summary: String?
@@ -47,7 +48,22 @@ extension MeetingStore {
   /// Reads the documents and reconciles them (#3972 R53). Notes whose hash disagrees with the
   /// manifest are the newest notes: their revision goes up, which makes a summary written from
   /// older notes out of date. A summary whose hash disagrees counts as the user's own text.
+  /// A repaired manifest is written in this same call (one file-queue operation), so no other
+  /// document write can land between the read and the repair. A meeting that refuses writes
+  /// (deleting, gone, newer) is returned as read, unrepaired on disk.
   public func loadDocuments(meeting id: UUID) throws -> LoadedDocuments {
+    var loaded = try readDocuments(meeting: id)
+    if loaded.repaired {
+      do {
+        try writeManifest(loaded.manifest, meeting: id)
+      } catch let error as DocumentError where error != .newerFormat {
+        loaded.repaired = false
+      }
+    }
+    return loaded
+  }
+
+  private func readDocuments(meeting id: UUID) throws -> LoadedDocuments {
     var manifest = try currentManifest(id)
     let notes = try Self.readText(notesURL(for: id)) ?? ""
     let summary = try Self.readText(summaryURL(for: id))
@@ -93,8 +109,19 @@ extension MeetingStore {
     } else {
       try Self.atomicWrite(Data(text.utf8), to: notesURL(for: id))
     }
-    try saveManifest(next, meeting: id)
+    try writeManifest(next, meeting: id)
     return next
+  }
+
+  /// Saves notes typed before this session read the meeting's notes (the quit path, or a read
+  /// that failed earlier): reads and reconciles first, then saves the draft as `edits` changes
+  /// after what was on disk. One file-queue operation, so the revision is never guessed.
+  public func saveDraftNotes(_ text: String, edits: Int, meeting id: UUID) throws
+    -> MeetingDocumentsManifest
+  {
+    let loaded = try readDocuments(meeting: id)
+    return try saveNotes(
+      text, revision: (loaded.manifest.notes?.revision ?? 0) + max(1, edits), meeting: id)
   }
 
   /// Saves the summary text with its origin and inputs, then the manifest (its notes entry read
@@ -108,7 +135,7 @@ extension MeetingStore {
     next.summary = MeetingDocumentsManifest.Summary(
       sha256: MeetingDocumentHash.sha256(text), origin: origin, inputs: inputs)
     try Self.atomicWrite(Data(text.utf8), to: summaryURL(for: id))
-    try saveManifest(next, meeting: id)
+    try writeManifest(next, meeting: id)
     return next
   }
 
@@ -125,9 +152,11 @@ extension MeetingStore {
     return manifest
   }
 
-  /// Writes a manifest `loadDocuments` repaired.
-  public func saveManifest(_ manifest: MeetingDocumentsManifest, meeting id: UUID) throws {
+  /// Every manifest write: refuses a meeting that is gone, deleting or newer, and a
+  /// `documents.json` a newer build wrote.
+  private func writeManifest(_ manifest: MeetingDocumentsManifest, meeting id: UUID) throws {
     try refuseDocumentWrite(id)
+    _ = try currentManifest(id)
     try Self.atomicWrite(try Self.encoder.encode(manifest), to: documentsURL(for: id))
   }
 
