@@ -1923,9 +1923,11 @@ private struct PermissionsPhaseView: View {
 /// availability report yields an actionable notice; it never gates Continue.
 /// `.enableInSettings` is an accent card with a one-tap jump to System Settings
 /// (Apple Intelligence switched off on a macOS-26 Mac); `.updateMacOS` is a
-/// neutral, button-less informational card (pre-macOS-26). The "incompatible
-/// hardware" case is impossible here — we ship Apple-Silicon-only, so an
-/// ineligible Mac never launches us, and the classifier returns nil for it.
+/// neutral, button-less informational card (pre-macOS-26). For deviceNotEligible
+/// the classifier returns nil: Apple reported deviceNotEligible, the underlying
+/// cause is unknown (do not infer hardware, region, language, or management
+/// restrictions from this enum; #1454 counted 7 production users on Apple
+/// Silicon), and it is not actionable from the app.
 private struct AIPolishNoticeSection: View {
   let notice: AppleIntelligenceAvailabilityReport.OnboardingPolishNotice
   let onOpenSettings: () -> Void

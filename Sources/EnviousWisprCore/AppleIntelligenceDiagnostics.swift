@@ -109,6 +109,22 @@ public struct AIGateSet: Sendable, Codable {
   }
 }
 
+// MARK: - Live Availability
+
+/// The typed answer of one synchronous `SystemLanguageModel.default.availability` read, kept
+/// apart from the snapshot's Booleans so a caller can tell switched off from still downloading
+/// from ready (#3897). `isEnabled` alone collapses those.
+public enum AppleIntelligenceLiveAvailability: String, Sendable, Equatable {
+  case available
+  case disabled
+  case modelNotReady
+  case notEligible
+  /// Not compiled in or below macOS 26: the model was never asked.
+  case unsupported
+  /// A reason this build does not know.
+  case unknown
+}
+
 // MARK: - Launch Availability Snapshot
 
 /// Synchronous launch-time Apple Intelligence facts for the `app.launched`
@@ -143,12 +159,18 @@ public struct LaunchAvailabilitySnapshot: Sendable {
   public let isCapable: Bool
   /// `SystemLanguageModel.default.availability == .available`: eligible + enabled + model-ready right now.
   public let isEnabled: Bool
+  /// The same eligibility read, typed (#3897). `isEnabled == (liveAvailability == .available)`.
+  public let liveAvailability: AppleIntelligenceLiveAvailability
 
-  public init(hardwareClass: String, deviceModel: String, isCapable: Bool, isEnabled: Bool) {
+  public init(
+    hardwareClass: String, deviceModel: String, isCapable: Bool, isEnabled: Bool,
+    liveAvailability: AppleIntelligenceLiveAvailability
+  ) {
     self.hardwareClass = hardwareClass
     self.deviceModel = deviceModel
     self.isCapable = isCapable
     self.isEnabled = isEnabled
+    self.liveAvailability = liveAvailability
   }
 }
 
@@ -189,13 +211,27 @@ public struct AppleIntelligenceAvailabilityReport: Sendable, Codable {
 
   // MARK: - Derived Presentation Fields
 
-  /// User-facing message derived from failure reasons. NOT stored, always computed.
+  /// User-facing message derived from the overall status, then the failure reasons. NOT stored,
+  /// always computed. "Ready" is said ONLY for `.available`: a timed-out gate leaves a
+  /// non-available report with no reasons (#3899).
   public var userVisibleMessage: String {
-    if failureReasons.isEmpty {
+    switch overallStatus {
+    case .available:
       return String(
         localized: "Apple Intelligence is available and ready to use.",
         comment:
           "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac.")
+    case .degraded where failureReasons.isEmpty:
+      // A timed-out model-access or probe gate carries no reason (AppleIntelligenceDiagnosticsService
+      // Stage 4/5 `.timedOut`). The model may still work; dictation checks it live.
+      return String(
+        localized:
+          "The Apple Intelligence check did not finish in time. It may still work; check again.",
+        comment:
+          "AI Polish, Apple Intelligence: the availability check timed out. A re-check button sits beside this line."
+      )
+    case .degraded, .unavailable, .unknown:
+      break
     }
     if failureReasons.contains(.notCompiledIn) {
       return String(
@@ -212,10 +248,10 @@ public struct AppleIntelligenceAvailabilityReport: Sendable, Codable {
     if failureReasons.contains(.unsupportedHardware) || failureReasons.contains(.deviceNotEligible)
     {
       return String(
-        localized:
-          "This Mac does not support Apple Intelligence. Requires Apple Silicon (M1 or later).",
+        localized: "Apple Intelligence isn't available on this Mac.",
         comment:
-          "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac.")
+          "AI Polish, Apple Intelligence: Apple reports the Mac as not eligible. The cause is unknown; never name hardware, region, language or management (#3899, #1454)."
+      )
     }
     if failureReasons.contains(.appleIntelligenceDisabled) {
       return String(
@@ -261,8 +297,10 @@ public struct AppleIntelligenceAvailabilityReport: Sendable, Codable {
   /// `.enableInSettings` (switched off → Open Settings) or `.updateMacOS`
   /// (pre-macOS-26 → informational). Every other reason and status returns nil:
   /// transient ones (modelNotReady, modelAccessFailed, generationFailed),
-  /// the unreachable hardware case (deviceNotEligible/unsupportedHardware — we
-  /// ship Apple-Silicon-only, so an ineligible Mac never launches us), and any
+  /// deviceNotEligible/unsupportedHardware (Apple reported deviceNotEligible. The
+  /// underlying cause is unknown; do not infer hardware, region, language, or
+  /// management restrictions from this enum. #1454 counted 7 production users on
+  /// Apple Silicon. It is not actionable from the app.), and any
   /// available/degraded/unknown status. Pure function of `overallStatus` +
   /// `failureReasons`; not stored.
   public var onboardingPolishNotice: OnboardingPolishNotice? {

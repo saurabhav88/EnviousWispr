@@ -105,5 +105,27 @@ struct LaunchAvailabilitySnapshotTests {
     let b = AppleIntelligenceDiagnosticsService.launchSnapshot()
     #expect(a.isCapable == b.isCapable)
     #expect(a.isEnabled == b.isEnabled)
+    #expect(a.liveAvailability == b.liveAvailability)
+  }
+
+  /// #3897: the activation repair tells switched off from still downloading from ready, which
+  /// the Booleans collapse. The typed answer and `isEnabled` come from the same read.
+  @Test("the typed live answer agrees with isEnabled")
+  func typedAnswerAgreesWithIsEnabled() {
+    let snap = AppleIntelligenceDiagnosticsService.launchSnapshot()
+    #expect(snap.isEnabled == (snap.liveAvailability == .available))
+  }
+
+  @Test("each eligibility answer maps to its typed live answer")
+  func eligibilityMapsToTypedAnswer() {
+    func live(_ gate: AIGateResult?) -> AppleIntelligenceLiveAvailability {
+      AppleIntelligenceDiagnosticsService.liveAvailability(eligibility: gate)
+    }
+    #expect(live(nil) == .unsupported)
+    #expect(live(.passed(summary: "s")) == .available)
+    #expect(live(.failed(reasons: [.appleIntelligenceDisabled], summary: "s")) == .disabled)
+    #expect(live(.failed(reasons: [.modelNotReady], summary: "s")) == .modelNotReady)
+    #expect(live(.failed(reasons: [.deviceNotEligible], summary: "s")) == .notEligible)
+    #expect(live(.failed(reasons: [.unknownError], summary: "s")) == .unknown)
   }
 }

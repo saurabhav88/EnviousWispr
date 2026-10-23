@@ -999,3 +999,53 @@ extension PolishSetupMonitorTests {
     #expect(monitor.readiness(for: .ollama) == .unknown)
   }
 }
+
+// MARK: - Apple Intelligence repair input (#3897)
+
+extension PolishSetupMonitorTests {
+
+  /// #3897: a dictation Apple Intelligence polished is the proof a hands-free user gives that
+  /// they fixed it; the monitor passes every such take on, whatever the warnings say, and the
+  /// availability coordinator decides. When this is wrong, "turned off" outlives the fix.
+  @Test("every accepted Apple take that polished is passed on, and nothing else is")
+  func applePolishedTakesArePassedOn() {
+    let world = World()
+    let apple = PolishSetupConfiguration(
+      provider: .appleIntelligence, model: "apple", credentialRevision: nil)
+    world.configuration = apple
+    world.facts = Self.facts(appleStatus: .available)
+    var calls = 0
+    let monitor = PolishSetupMonitor(
+      readInputs: { world.inputs }, appleRefresh: { calls += 1 })
+    world.onTransition = { [weak monitor] in monitor?.configurationOrEligibilityChanged() }
+    monitor.start()
+    defer { monitor.stop() }
+
+    func take(_ id: String, _ result: PolishTakeResult) -> PolishTakeOutcome {
+      PolishTakeOutcome(
+        takeID: id, context: monitor.freezeTakeContext(), result: result, evidence: nil,
+        setupProblem: nil, observedAt: .now)
+    }
+    // Facts already say available: still passed on (no readiness filter here).
+    monitor.ingest(take("a1", .polished))
+    #expect(calls == 1)
+    // The same take delivered twice is taken in once.
+    monitor.ingest(take("a1", .polished))
+    #expect(calls == 1)
+    world.facts = Self.facts(
+      appleStatus: .unavailable, appleFailureReasons: [.appleIntelligenceDisabled])
+    monitor.ingest(take("a2", .polished))
+    #expect(calls == 2)
+    // A take that asked no model proves nothing.
+    monitor.ingest(take("a3", .bypassed))
+    monitor.ingest(take("a4", .skippedWithNotice))
+    #expect(calls == 2)
+
+    // Other providers' polished takes are not Apple's.
+    world.configuration = Self.ollama
+    monitor.ingest(take("o1", .polished))
+    world.configuration = Self.egOne
+    monitor.ingest(take("e1", .polished))
+    #expect(calls == 2)
+  }
+}

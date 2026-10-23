@@ -13,7 +13,7 @@ Apple Intelligence polish needs macOS 26 or later, on a Mac that supports Apple 
 
 ### How do I find out why Apple Intelligence is unavailable?
 
-Open **Settings** > **AI Polish** and select **Apple Intelligence**. EnviousWispr names the exact reason the option is unavailable on your Mac.
+Open **Settings** > **AI Polish** and select **Apple Intelligence**. EnviousWispr shows the status Apple reports for your Mac. For some statuses, Apple does not say the underlying cause.
 
 ### What are the common reasons?
 

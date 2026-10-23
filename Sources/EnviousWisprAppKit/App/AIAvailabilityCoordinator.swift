@@ -6,7 +6,9 @@ import Foundation
 
 /// Coordinates Apple Intelligence availability checks for the Settings UI.
 /// Owns: UI state, stale-result protection, persistence, telemetry emission,
-/// first-launch re-check, rolling history, and support export.
+/// first-launch re-check, rolling history, support export, and the automatic repair of a
+/// stale negative report after the user fixes Apple Intelligence (#3897: app activation and
+/// successful Apple polish takes; eligibility, freshness and the retry budget live here).
 /// The diagnostics service is pure computation — this coordinator owns the side effects.
 @MainActor @Observable
 final class AIAvailabilityCoordinator {
@@ -63,7 +65,29 @@ final class AIAvailabilityCoordinator {
   private var currentRequestToken: UInt = 0
 
   /// Debounce work item for re-check requests.
-  private var debounceTask: Task<Void, Never>?
+  private(set) var debounceTask: Task<Void, Never>?
+
+  /// The trigger of the debounced check waiting to start, or nil. An automatic repair never
+  /// replaces a pending check, so it can never cancel a manual re-check.
+  private var pendingDebounceTrigger: String?
+
+  /// Moves every time a check stores a report. Automatic repair work captures it and is
+  /// discarded when a newer report landed first (#3897).
+  private(set) var reportGeneration: UInt64 = 0
+
+  /// Diagnostics starts made by the automatic repairs in this recovery epoch (#3897). Shared by
+  /// both triggers, capped by `AppleAvailabilityRepair.maxAutomaticStartsPerEpoch`. A new
+  /// report never resets it; only a changed live sample or an available report does.
+  private(set) var automaticStartsThisEpoch = 0
+
+  /// The last live availability read on activation; the first one is the baseline.
+  private var lastLiveSample: AppleIntelligenceLiveAvailability?
+
+  /// The one in-flight activation read; later activations coalesce into it.
+  private(set) var liveReadTask: Task<Void, Never>?
+
+  private let repairDependencies: AppleAvailabilityRepairDependencies
+  private let defaults: UserDefaults
 
   /// Configurable delayed re-check interval for first launch (seconds).
   private static let delayedRecheckSeconds: TimeInterval = 30
@@ -78,7 +102,16 @@ final class AIAvailabilityCoordinator {
 
   // MARK: - Initialization
 
-  init() {
+  /// - Parameters:
+  ///   - repairDependencies: what the automatic repair reads and runs (#3897). The default
+  ///     never repairs automatically; the composition root passes the live eligibility.
+  ///   - defaults: where the report and history persist.
+  init(
+    repairDependencies: AppleAvailabilityRepairDependencies = .init(),
+    defaults: UserDefaults = .standard
+  ) {
+    self.repairDependencies = repairDependencies
+    self.defaults = defaults
     loadCachedReport()
     loadCachedHistory()
   }
@@ -92,29 +125,96 @@ final class AIAvailabilityCoordinator {
     let myToken = currentRequestToken
     isChecking = true
 
-    let report = await AppleIntelligenceDiagnosticsService.runDiagnostics()
+    let report = await repairDependencies.runDiagnostics()
 
     // Discard if a newer check was started while we were running
     guard myToken == currentRequestToken else { return }
 
     latestReport = report
+    reportGeneration &+= 1
     isChecking = false
+    // A confirmed available report ends the recovery epoch (#3897).
+    if report.overallStatus == .available { automaticStartsThisEpoch = 0 }
 
     // Side effects: persist, history, Sentry, PostHog
     persistReport(report)
     appendHistory(report: report, trigger: trigger)
-    SentryBreadcrumb.attachAIDiagnostics(report)
-    emitPerGateBreadcrumbs(report: report, trigger: trigger)
-    TelemetryService.shared.aiDiagnosticsRunCompleted(report: report, trigger: trigger)
+    repairDependencies.reportCompleted(report, trigger)
   }
 
   /// Debounced re-check — waits 500ms before starting. Cancels any pending debounce.
-  func debouncedCheck() {
+  /// - Parameters:
+  ///   - trigger: what caused this check (for telemetry).
+  ///   - admit: the automatic repairs' revalidation, run immediately before diagnostics
+  ///     start; false drops the check. Nil (manual) always starts.
+  func debouncedCheck(
+    trigger: String = "manual_refresh", admit: (@MainActor () -> Bool)? = nil
+  ) {
     debounceTask?.cancel()
+    pendingDebounceTrigger = trigger
+    let delay = repairDependencies.debounce
     debounceTask = Task {
-      try? await Task.sleep(for: .milliseconds(500))
+      try? await Task.sleep(for: delay)
       guard !Task.isCancelled else { return }
-      await checkAvailability(trigger: "manual_refresh")
+      pendingDebounceTrigger = nil
+      if let admit, !admit() { return }
+      await checkAvailability(trigger: trigger)
+    }
+  }
+
+  // MARK: - Automatic repair (#3897)
+
+  /// App activation, forwarded on every activation. When the stored report says Apple
+  /// Intelligence is switched off or still downloading, reads the live answer off the main
+  /// thread and re-checks only when it disagrees, within the retry budget.
+  func applicationDidBecomeActive() {
+    guard repairDependencies.isRepairEligible(), let report = latestReport,
+      AppleAvailabilityRepair.activationClaim(of: report) != nil,
+      liveReadTask == nil
+    else { return }
+    let generation = reportGeneration
+    let read = repairDependencies.readLiveAvailability
+    liveReadTask = Task { [weak self] in
+      let live = await read()
+      self?.acceptActivationSample(live, capturedGeneration: generation)
+    }
+  }
+
+  /// A dictation was polished by Apple Intelligence, forwarded for every accepted successful
+  /// Apple take. A report that is not available is re-checked, within the retry budget.
+  func appleIntelligencePolishSucceeded() {
+    guard repairDependencies.isRepairEligible(), let report = latestReport,
+      AppleAvailabilityRepair.polishedTakeWantsCheck(report: report)
+    else { return }
+    scheduleAutomaticRepair(trigger: "polished_take", capturedGeneration: reportGeneration)
+  }
+
+  private func acceptActivationSample(
+    _ live: AppleIntelligenceLiveAvailability, capturedGeneration: UInt64
+  ) {
+    liveReadTask = nil
+    if AppleAvailabilityRepair.isTransition(from: lastLiveSample, to: live) {
+      automaticStartsThisEpoch = 0
+    }
+    lastLiveSample = live
+    guard repairDependencies.isRepairEligible(), capturedGeneration == reportGeneration,
+      !isChecking, let report = latestReport,
+      AppleAvailabilityRepair.activationWantsCheck(report: report, live: live)
+    else { return }
+    scheduleAutomaticRepair(trigger: "app_active", capturedGeneration: capturedGeneration)
+  }
+
+  private func scheduleAutomaticRepair(trigger: String, capturedGeneration: UInt64) {
+    guard pendingDebounceTrigger == nil,
+      AppleAvailabilityRepair.budgetAdmits(startsThisEpoch: automaticStartsThisEpoch)
+    else { return }
+    debouncedCheck(trigger: trigger) { [weak self] in
+      guard let self, self.repairDependencies.isRepairEligible(),
+        capturedGeneration == self.reportGeneration, !self.isChecking,
+        AppleAvailabilityRepair.budgetAdmits(startsThisEpoch: self.automaticStartsThisEpoch)
+      else { return false }
+      self.automaticStartsThisEpoch += 1
+      return true
     }
   }
 
@@ -203,11 +303,11 @@ final class AIAvailabilityCoordinator {
 
   private func persistReport(_ report: AppleIntelligenceAvailabilityReport) {
     guard let data = try? JSONEncoder().encode(report) else { return }
-    UserDefaults.standard.set(data, forKey: Self.snapshotKey)
+    defaults.set(data, forKey: Self.snapshotKey)
   }
 
   private func loadCachedReport() {
-    guard let data = UserDefaults.standard.data(forKey: Self.snapshotKey) else { return }
+    guard let data = defaults.data(forKey: Self.snapshotKey) else { return }
     latestReport = try? JSONDecoder().decode(AppleIntelligenceAvailabilityReport.self, from: data)
   }
 
@@ -216,11 +316,11 @@ final class AIAvailabilityCoordinator {
     // UI display of history is gated to debug mode in Settings.
     let toPersist = Array(history.suffix(Self.maxHistoryPersisted))
     guard let data = try? JSONEncoder().encode(toPersist) else { return }
-    UserDefaults.standard.set(data, forKey: Self.historyKey)
+    defaults.set(data, forKey: Self.historyKey)
   }
 
   private func loadCachedHistory() {
-    guard let data = UserDefaults.standard.data(forKey: Self.historyKey) else { return }
+    guard let data = defaults.data(forKey: Self.historyKey) else { return }
     history =
       (try? JSONDecoder().decode(
         [AppleIntelligenceAvailabilityReport.HistoryEntry].self, from: data)) ?? []
@@ -228,8 +328,17 @@ final class AIAvailabilityCoordinator {
 
   // MARK: - Telemetry
 
-  private func emitPerGateBreadcrumbs(report: AppleIntelligenceAvailabilityReport, trigger: String)
-  {
+  fileprivate static func recordCompleted(
+    _ report: AppleIntelligenceAvailabilityReport, trigger: String
+  ) {
+    SentryBreadcrumb.attachAIDiagnostics(report)
+    emitPerGateBreadcrumbs(report: report, trigger: trigger)
+    TelemetryService.shared.aiDiagnosticsRunCompleted(report: report, trigger: trigger)
+  }
+
+  private static func emitPerGateBreadcrumbs(
+    report: AppleIntelligenceAvailabilityReport, trigger: String
+  ) {
     for (name, result) in report.gates.allGates {
       var data: [String: Any] = [
         "status": result.status.rawValue,
@@ -244,5 +353,74 @@ final class AIAvailabilityCoordinator {
         data: data
       )
     }
+  }
+}
+
+/// What the coordinator's checks and automatic repair read and run (#3897). Production uses
+/// the defaults; tests replace them to count diagnostics starts.
+struct AppleAvailabilityRepairDependencies {
+  /// Whether automatic repair may run now: the dictation provider is Apple Intelligence, or
+  /// onboarding is not finished (its card reads the report). Default: never.
+  var isRepairEligible: @MainActor () -> Bool = { false }
+  /// The typed live answer, read off the main thread (the eligibility read's cold cost on the
+  /// main thread is not provable-safe; see `AppLifecycleCoordinator.runDidFinishLaunching`).
+  var readLiveAvailability: @Sendable () async -> AppleIntelligenceLiveAvailability = {
+    await Task.detached(priority: .utility) {
+      AppleIntelligenceDiagnosticsService.launchSnapshot().liveAvailability
+    }.value
+  }
+  var runDiagnostics: @Sendable () async -> AppleIntelligenceAvailabilityReport = {
+    await AppleIntelligenceDiagnosticsService.runDiagnostics()
+  }
+  var reportCompleted: @MainActor (AppleIntelligenceAvailabilityReport, String) -> Void = {
+    AIAvailabilityCoordinator.recordCompleted($0, trigger: $1)
+  }
+  var debounce: Duration = .milliseconds(500)
+}
+
+/// The automatic repair's pure policy (#3897). The coordinator owns the state; these answer.
+enum AppleAvailabilityRepair {
+  /// Automatic diagnostics starts allowed per recovery epoch, across both triggers.
+  static let maxAutomaticStartsPerEpoch = 2
+
+  /// What a stored report claims about the live answer, when it is a claim activation can
+  /// test: switched off, or still downloading. Nil for every other report.
+  static func activationClaim(
+    of report: AppleIntelligenceAvailabilityReport
+  ) -> AppleIntelligenceLiveAvailability? {
+    guard report.overallStatus == .unavailable else { return nil }
+    if report.failureReasons.contains(.appleIntelligenceDisabled) { return .disabled }
+    if report.failureReasons.contains(.modelNotReady) { return .modelNotReady }
+    return nil
+  }
+
+  /// Activation re-checks when the live answer is one of the three the report can be about
+  /// and differs from the report's claim (including switched off -> still downloading).
+  static func activationWantsCheck(
+    report: AppleIntelligenceAvailabilityReport, live: AppleIntelligenceLiveAvailability
+  ) -> Bool {
+    guard let claim = activationClaim(of: report) else { return false }
+    switch live {
+    case .available, .disabled, .modelNotReady: return live != claim
+    case .notEligible, .unsupported, .unknown: return false
+    }
+  }
+
+  /// A successful Apple take proves the model answers; any report that is not available is
+  /// then worth a re-check.
+  static func polishedTakeWantsCheck(report: AppleIntelligenceAvailabilityReport) -> Bool {
+    report.overallStatus != .available
+  }
+
+  /// A changed live answer starts a new recovery epoch; the first answer is only a baseline.
+  static func isTransition(
+    from previous: AppleIntelligenceLiveAvailability?, to current: AppleIntelligenceLiveAvailability
+  ) -> Bool {
+    guard let previous else { return false }
+    return previous != current
+  }
+
+  static func budgetAdmits(startsThisEpoch: Int) -> Bool {
+    startsThisEpoch < maxAutomaticStartsPerEpoch
   }
 }

@@ -11,7 +11,8 @@ import Testing
 /// 2. The validated System Settings deep-link string does not drift.
 ///
 /// Matcher-set adversarial coverage (per workflow RULE): every failure reason
-/// is exercised, including the unreachable hardware case and the status guard,
+/// is exercised, including deviceNotEligible (cause unknown, not actionable,
+/// reached by real users per #1454) and the status guard,
 /// so a future-added reason defaults to silent rather than surfacing a notice.
 @Suite("Onboarding polish availability notice (#1080)")
 struct AppleIntelligencePolishNoticeTests {

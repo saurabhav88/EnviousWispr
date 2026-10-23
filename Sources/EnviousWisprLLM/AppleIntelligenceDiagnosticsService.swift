@@ -135,7 +135,22 @@ public enum AppleIntelligenceDiagnosticsService {
     let isEnabled = eligibility?.status == .passed
     return LaunchAvailabilitySnapshot(
       hardwareClass: hardwareClass, deviceModel: currentDeviceModel(),
-      isCapable: isCapable, isEnabled: isEnabled)
+      isCapable: isCapable, isEnabled: isEnabled,
+      liveAvailability: liveAvailability(eligibility: eligibility))
+  }
+
+  /// The eligibility gate's answer, typed (#3897). Nil means the gate was not run (no
+  /// framework, or below macOS 26).
+  static func liveAvailability(eligibility: AIGateResult?) -> AppleIntelligenceLiveAvailability {
+    guard let eligibility else { return .unsupported }
+    if eligibility.status == .passed { return .available }
+    let reasons = eligibility.reasons
+    if reasons.contains(.deviceNotEligible) || reasons.contains(.unsupportedHardware) {
+      return .notEligible
+    }
+    if reasons.contains(.appleIntelligenceDisabled) { return .disabled }
+    if reasons.contains(.modelNotReady) { return .modelNotReady }
+    return .unknown
   }
 
   // MARK: - Timeout Helpers

@@ -3315,6 +3315,17 @@
         }
       }
     },
+    "Apple Intelligence isn't available on this Mac." : {
+      "comment" : "AI Polish, Apple Intelligence: Apple reports the Mac as not eligible. The cause is unknown; never name hardware, region, language or management (#3899, #1454).",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Intelligence ist auf diesem Mac nicht verfügbar."
+          }
+        }
+      }
+    },
     "Apple Intelligence isn't ready yet" : {
       "comment" : "AI Polish, notice when leaving the page. Apple Intelligence is a product name.",
       "localizations" : {
@@ -18424,6 +18435,17 @@
         }
       }
     },
+    "The Apple Intelligence check did not finish in time. It may still work; check again." : {
+      "comment" : "AI Polish, Apple Intelligence: the availability check timed out. A re-check button sits beside this line.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Prüfung von Apple Intelligence wurde nicht rechtzeitig abgeschlossen. Möglicherweise funktioniert Apple Intelligence trotzdem; prüfe die Verfügbarkeit erneut."
+          }
+        }
+      }
+    },
     "The Universal engine is being prepared." : {
       "comment" : "Live Preview settings: status getting ready detail. Universal is the name of the other preview engine.",
       "localizations" : {
@@ -19259,17 +19281,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dieser Mac unterstützt Apple Intelligence nicht."
-          }
-        }
-      }
-    },
-    "This Mac does not support Apple Intelligence. Requires Apple Silicon (M1 or later)." : {
-      "comment" : "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dieser Mac unterstützt Apple Intelligence nicht. Erfordert Apple Silicon (M1 oder neuer)."
           }
         }
       }

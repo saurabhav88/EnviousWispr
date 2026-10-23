@@ -3818,7 +3818,9 @@ public final class TelemetryService {
   // MARK: - AI Diagnostics
 
   /// One summary event per diagnostics check run.
-  /// Trigger: "app_launch", "delayed_recheck", "manual_refresh", "provider_switch"
+  /// Trigger: "app_launch", "delayed_recheck", "manual_refresh", "provider_switch",
+  /// "settings_open", "import_door", and the automatic repairs "app_active", "polished_take"
+  /// (#3897, at most two per recovery epoch).
   public func aiDiagnosticsRunCompleted(
     report: AppleIntelligenceAvailabilityReport, trigger: String
   ) {

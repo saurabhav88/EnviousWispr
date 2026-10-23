@@ -440,6 +440,10 @@ final class AppLifecycleCoordinator {
     menuBarController.updateIcon()
 
     setup.applicationDidBecomeActive()
+    // #3897: a stored "turned off" / "not ready" report is re-checked when the live answer
+    // changed while the app was away (the user fixed it in System Settings). Every activation
+    // is forwarded; the coordinator owns eligibility and the retry budget.
+    aiAvailability.applicationDidBecomeActive()
   }
 
   func runWillTerminate() {
