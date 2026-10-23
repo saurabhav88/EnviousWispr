@@ -1088,10 +1088,11 @@ final class MeetingCoordinator {
     // before the meeting is ready: a quit right after the barrier never loses it (the relaunch
     // finishes it). Written either way, so an older mark never outlives a decision not to.
     let summaryPlan = summaries?.decide() ?? .off
-    // Whether the owed mark is on disk. If it could not be written, a scheduled attempt is
-    // started as not owed: it writes the mark itself or settles at once with its own row. If an
-    // older mark could not be cleared, that earlier attempt is still owed and a relaunch
-    // settles it (one row); the new decision is still the one `meeting.ended` reports.
+    // Whether the owed mark is on disk. If it could not be written, nothing durable would let a
+    // quit-interrupted attempt resume, so none starts: the failure is settled in the same turn as
+    // `meeting.ended` (one `failed` row) and the Summary tab offers Write again. If an older mark
+    // could not be cleared, that earlier attempt is still owed and a relaunch settles it (one
+    // row); the new decision is still the one `meeting.ended` reports.
     var owedOnDisk = false
     if summaries != nil {
       let wrote = await documents.setSummaryPending(meetingID, summaryPlan == .scheduled)
@@ -1122,7 +1123,7 @@ final class MeetingCoordinator {
       if owedOnDisk {
         summaries?.startOwed(meetingID)
       } else {
-        summaries?.startUnowed(meetingID)
+        summaries?.settleUnwritableMark(meetingID)
       }
     }
 

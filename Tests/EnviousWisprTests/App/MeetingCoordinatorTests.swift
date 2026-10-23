@@ -1124,7 +1124,11 @@ struct MeetingCoordinatorTests {
     #expect(coordinator.isRecording)
     await Self.drainMeetingFiles()
     #expect(try harness.store.load(id: meetingID).segments[.microphone]?.count == 1)
-    #expect(coordinator.record(id: meetingID)?.segments[.microphone]?.count == 1)
+    // The live copy updates when the write's answer reaches the main actor, which can be just
+    // after the queue drained.
+    await Self.eventually("published") {
+      coordinator.record(id: meetingID)?.segments[.microphone]?.count == 1
+    }
     await coordinator.stop()
   }
 

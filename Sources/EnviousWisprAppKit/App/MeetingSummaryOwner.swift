@@ -150,10 +150,16 @@ final class MeetingSummaryOwner {
     start(meetingID, approvedUserEdit: nil, owedAlready: true)
   }
 
-  /// Starts an attempt whose owed mark could not be written: it writes the mark itself, or
-  /// settles at once with its own row.
-  func startUnowed(_ meetingID: UUID) {
-    start(meetingID, approvedUserEdit: nil, owedAlready: false)
+  /// The owed mark of a scheduled summary could not be written at ready: no attempt starts
+  /// (a quit could lose it), and the failure is settled now with its one row; the Summary tab
+  /// offers Write again.
+  func settleUnwritableMark(_ meetingID: UUID) {
+    let kind = Self.providerKind(deps.selection().provider)
+    deps.emitFinished(
+      MeetingSummaryFinishedTelemetry(
+        outcome: kind == .none ? .noProvider : .failed, providerKind: kind))
+    deps.log("meeting summary not started; owed mark unwritable")
+    activity[meetingID] = .failed(.storageFailed)
   }
 
   /// "Write again": a new attempt. `replacing` is the SHA-256 of the user's own summary the
@@ -256,6 +262,9 @@ final class MeetingSummaryOwner {
       // The mark goes with the attempt; if it cannot, the attempt stays owed and unsettled, so
       // a later run settles it and sends its one row (never two).
       settled = await documents.setSummaryPending(meetingID, false)
+      // Replaced during that wait: the newer attempt owns the mark now and settles it, so this
+      // attempt is settled whatever its own clear did.
+      if !settled, currentAttempt[meetingID] != attempt { settled = true }
     }
     // Read after that wait: a newer attempt may have replaced this one meanwhile.
     finish(

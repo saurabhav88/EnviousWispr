@@ -546,16 +546,22 @@ struct MeetingSummaryOwnerTests {
     let harness = try MeetingCoordinatorTests.Harness()
     let rig = try Rig()
     let coordinator = harness.coordinator
-    coordinator.summaries = rig.makeOwner(documents: coordinator.documents)
+    let owner = rig.makeOwner(documents: coordinator.documents)
+    coordinator.summaries = owner
     await coordinator.start(from: .history)
     let meetingID = try #require(coordinator.meetings.first?.id)
     let url = harness.store.documentsURL(for: meetingID)
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
+    // Settled in the same turn as the ready row: read at that moment.
+    var rowsAtEnd: [MeetingSummaryFinishedTelemetry]?
+    harness.onEnded = { _ in rowsAtEnd = rig.world.finished }
     await coordinator.stop()
     await Self.eventually("ready") { coordinator.record(id: meetingID)?.state == .ready }
     #expect(harness.ended.last?.summaryPlan == .scheduled)
-    await Self.eventually("settled") { rig.world.finished.count == 1 }
-    #expect(rig.world.finished == [Self.row(.failed, .hosted)])
+    #expect(rowsAtEnd == [], "nothing settled before the ready row")
+    #expect(rig.world.finished == [Self.row(.failed, .hosted)], "settled at once, no attempt to lose")
+    #expect(owner.isWriting(meetingID) == false, "no attempt was started")
+    #expect(owner.activity[meetingID] == .failed(.storageFailed))
     #expect(rig.world.calls.isEmpty, "nothing is written without its mark")
     try FileManager.default.removeItem(at: url)
   }
@@ -666,5 +672,27 @@ struct MeetingSummaryOwnerTests {
     await Self.eventually("listed") { coordinator.record(id: record.id) != nil }
     await Self.eventually("queue stopped") { !coordinator.hasFinalPassWork }
     #expect(coordinator.record(id: record.id)?.state == .queued)
+  }
+
+  @Test("an attempt replaced while its failing clear waits still settles once; nothing stays owed")
+  func replacedDuringFailedClear() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    rig.world.unavailable = .notReady
+    // A ends at once (not ready); its clear is parked behind a held file queue, held right
+    // after A starts and before its task runs.
+    await rig.documents.setSummaryPending(id, true)
+    rig.owner.startOwed(id)
+    let hold = MeetingDocumentsOwnerTests.holdFileQueue()
+    await MeetingWorkAdmission.waitUntil { rig.documents.hasPendingWork }
+    // A's clear will fail; the manifest is restored right after it, before B's own writes.
+    let undo = try Self.breakManifest(rig, id)
+    MeetingFileWriter.queue.async { try? undo() }
+    rig.owner.writeAgain(id, replacing: nil)
+    hold.signal()
+    await Self.eventually("both settled") { rig.world.finished.count == 2 }
+    #expect(rig.world.finished == [Self.row(.unsupported, .hosted), Self.row(.unsupported, .hosted)])
+    #expect(try rig.manifest(id).summaryPending == nil, "no owed work is left")
+    #expect(rig.owner.isWriting(id) == false)
   }
 }
