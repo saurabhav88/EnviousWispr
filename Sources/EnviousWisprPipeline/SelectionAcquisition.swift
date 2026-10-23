@@ -457,15 +457,6 @@ public enum SelectionAcquisition {
       return refusing(refusal)
     }
 
-    // Resolved once, before anything is posted, so a layout we cannot read refuses instead of
-    // pressing whatever key happens to sit at position 8 on an ANSI board.
-    guard let copyKey = environment.copyKeyCode() else {
-      await log(
-        context: context, acquired: .nothing, refusal: .copyRefused, ms: elapsedMs(),
-        restore: .notTouched)
-      return refusing(.copyRefused)
-    }
-
     // STEP 2 — wait for the user's own chord to come up. Still nothing touched.
     let release = await awaitModifierRelease(environment)
     guard let releasedAfter = modifierReleaseMilliseconds(release) else {
@@ -494,9 +485,10 @@ public enum SelectionAcquisition {
     // **Cancellation is checked first, on both branches:** the log line above suspends, and a
     // cancelled invocation must reach neither the activation nor the chord. It maps like an expired
     // activation wait: target gone if it is gone, otherwise a refused copy.
+    // `bringBack` stays nil: the step did not run, and `timed_out` would claim a wait that never
+    // happened.
     if Task.isCancelled {
       let gone = !environment.targetStillPresent(context)
-      bringBack = gone ? .targetGone : .timedOut
       let refusal: SelectionReader.Refusal = gone ? .targetApplicationGone : .copyRefused
       await logStep("2a", refusal: refusal)
       return refusing(refusal)
@@ -516,9 +508,15 @@ public enum SelectionAcquisition {
       {
       case .met:
         bringBack = .front
-      case .expired, .cancelled:
+      case .expired:
         let gone = !environment.targetStillPresent(context)
         bringBack = gone ? .targetGone : .timedOut
+        let refusal: SelectionReader.Refusal = gone ? .targetApplicationGone : .copyRefused
+        await logStep("2a", refusal: refusal)
+        return refusing(refusal)
+      case .cancelled:
+        // Not a timeout: the wait was abandoned, so the measurement stays absent.
+        let gone = !environment.targetStillPresent(context)
         let refusal: SelectionReader.Refusal = gone ? .targetApplicationGone : .copyRefused
         await logStep("2a", refusal: refusal)
         return refusing(refusal)
@@ -671,6 +669,16 @@ public enum SelectionAcquisition {
     // a modifier again, during the takeover. A Copy under a held modifier reaches the app as a
     // different shortcut; one at an app that left the front does nothing. Nothing awaits between a
     // passing check and the post. A cancelled invocation never posts.
+    //
+    // **The copy key is resolved HERE, not before the waits:** the shortcut wait and the
+    // bring-back can take two seconds, long enough for the user to switch keyboard layout, and a
+    // key resolved under the old layout would press a different Command shortcut under the new
+    // one. A layout we cannot read refuses instead of pressing whatever sits at position 8 on an
+    // ANSI board.
+    guard let copyKey = environment.copyKeyCode() else {
+      await logStep("3c", refusal: .copyRefused)
+      return await concluding(.refused(.copyRefused), acquired: .nothing)
+    }
     if Task.isCancelled || environment.frontmostPID() != pid {
       await logStep("3c", refusal: .copyRefused)
       return await concluding(.refused(.copyRefused), acquired: .nothing)

@@ -18,7 +18,7 @@ import Testing
 @MainActor
 @Suite(
   "Quick Add copy ladder, entered at the door, every guard in order (#3986)",
-  .tags(.productOutcome), .serialized)
+  .tags(.productOutcome), .serialized, .clipboardCleanupExclusive)
 struct SelectionAcquisitionLadderTests {
 
   static let target: pid_t = 501
@@ -51,6 +51,8 @@ struct SelectionAcquisitionLadderTests {
     var postingAuthorised = true
     var targetPresent = Replay([true])
     var copyKey: CGKeyCode? = 8
+    /// The key the layout reports once the target has been activated (a layout switch meanwhile).
+    var copyKeyAfterActivation: CGKeyCode?
     /// Frontmost before any activation; `frontAfterActivation` takes over once `activate` runs.
     var front = Replay<pid_t?>([SelectionAcquisitionLadderTests.target])
     var frontAfterActivation: (@MainActor (Duration) -> pid_t?)?
@@ -79,7 +81,10 @@ struct SelectionAcquisitionLadderTests {
         secureFocusProbe: { _ in self.focusProbe },
         postingAuthorised: { self.postingAuthorised },
         targetStillPresent: { _ in self.targetPresent.next() },
-        copyKeyCode: { self.copyKey },
+        copyKeyCode: {
+          if self.activatedAt != nil, let later = self.copyKeyAfterActivation { return later }
+          return self.copyKey
+        },
         frontmostPID: {
           if let activatedAt = self.activatedAt, let after = self.frontAfterActivation {
             if self.cancelDuringActivationWait { withUnsafeCurrentTask { $0?.cancel() } }
@@ -285,7 +290,7 @@ struct SelectionAcquisitionLadderTests {
     #expect(rig.activations.isEmpty)
     #expect(boardUntouched(rig, from: before))
     #expect(outcome.modifierReleaseMs == 0)
-    #expect(outcome.bringBack == .timedOut)
+    #expect(outcome.bringBack == nil, "a cancellation is not a timeout")
   }
 
   @Test("Cancelled after the keys came up, target behind: no activation, nothing posted")
@@ -313,7 +318,7 @@ struct SelectionAcquisitionLadderTests {
     #expect(rig.activations == [Self.target])
     #expect(rig.posts == 0)
     #expect(boardUntouched(rig, from: before))
-    #expect(outcome.bringBack == .timedOut)
+    #expect(outcome.bringBack == nil, "a cancellation is not a timeout")
   }
 
   // MARK: A dictation claims the clipboard during the copy
@@ -350,15 +355,30 @@ struct SelectionAcquisitionLadderTests {
     #expect(outcome.modifierReleaseMs == nil)
   }
 
-  @Test("A layout with no copy key refuses before the wait")
+  @Test("A layout with no copy key refuses at the last check, after the takeover, posting nothing")
   func noCopyKeyRefuses() async {
     let rig = Rig()
     rig.copyKey = nil
-    let (outcome, _) = await run(rig)
+    let before = rig.board.changeCount
+    let (outcome, heldAfter) = await run(rig)
     #expect(refusal(outcome) == .copyRefused)
     #expect(rig.posts == 0)
-    #expect(outcome.modifierReleaseMs == nil)
-    #expect(outcome.bringBack == nil)
+    #expect(heldAfter == false)
+    #expect(boardUntouched(rig, from: before))
+    #expect(outcome.modifierReleaseMs == 0)
+    #expect(outcome.bringBack == .notNeeded)
+  }
+
+  @Test("The copy key is read right before the chord, so a layout switch meanwhile is honoured")
+  func copyKeyIsReadLate() async {
+    let rig = Rig()
+    rig.front = Replay([Self.stranger])
+    rig.frontAfterActivation = { _ in Self.target }
+    rig.copyKeyAfterActivation = 9
+    let (outcome, _) = await run(rig)
+    #expect(rig.postedKeys == [9], "the key resolved under the old layout must not be pressed")
+    #expect(rig.postedPIDs == [Self.target])
+    #expect(outcome.bringBack == .front)
   }
 
   // MARK: The shortcut-key reading survives every later exit
