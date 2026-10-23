@@ -136,6 +136,11 @@ final class AIAvailabilityCoordinator {
     // A confirmed available report ends the recovery epoch (#3897).
     if report.overallStatus == .available { automaticStartsThisEpoch = 0 }
 
+    Self.log(
+      "check done trigger=\(trigger) status=\(report.overallStatus.rawValue) "
+        + "reasons=\(report.failureReasons.map(\.rawValue)) generation=\(reportGeneration) "
+        + "automatic_starts=\(automaticStartsThisEpoch)")
+
     // Side effects: persist, history, Sentry, PostHog
     persistReport(report)
     appendHistory(report: report, trigger: trigger)
@@ -199,14 +204,20 @@ final class AIAvailabilityCoordinator {
     _ live: AppleIntelligenceLiveAvailability, capturedGeneration: UInt64, capturedToken: UInt
   ) {
     liveReadTask = nil
-    guard isCurrent(generation: capturedGeneration, token: capturedToken) else { return }
-    if AppleAvailabilityRepair.isTransition(from: lastLiveSample, to: live) {
-      automaticStartsThisEpoch = 0
+    guard isCurrent(generation: capturedGeneration, token: capturedToken) else {
+      Self.log("activation live=\(live.rawValue) dropped: stale")
+      return
     }
+    let transition = AppleAvailabilityRepair.isTransition(from: lastLiveSample, to: live)
+    if transition { automaticStartsThisEpoch = 0 }
     lastLiveSample = live
-    guard let report = latestReport,
-      AppleAvailabilityRepair.activationWantsCheck(report: report, live: live)
-    else { return }
+    let wants = latestReport.map {
+      AppleAvailabilityRepair.activationWantsCheck(report: $0, live: live)
+    } ?? false
+    Self.log(
+      "activation live=\(live.rawValue) report=\(latestReport?.overallStatus.rawValue ?? "nil") "
+        + "new_epoch=\(transition) wants_check=\(wants)")
+    guard wants else { return }
     scheduleAutomaticRepair(
       trigger: "app_active", capturedGeneration: capturedGeneration, capturedToken: capturedToken)
   }
@@ -235,13 +246,22 @@ final class AIAvailabilityCoordinator {
     // now (a manual re-check past its wait): cancelling it would cut that check short.
     guard pendingDebounceTrigger == nil, !isChecking,
       AppleAvailabilityRepair.budgetAdmits(startsThisEpoch: automaticStartsThisEpoch)
-    else { return }
+    else {
+      Self.log(
+        "repair \(trigger) not scheduled: pending=\(pendingDebounceTrigger ?? "none") "
+          + "checking=\(isChecking) automatic_starts=\(automaticStartsThisEpoch)")
+      return
+    }
     debouncedCheck(trigger: trigger) { [weak self] in
       guard let self, self.isCurrent(generation: capturedGeneration, token: capturedToken),
         self.stillWanted(trigger),
         AppleAvailabilityRepair.budgetAdmits(startsThisEpoch: self.automaticStartsThisEpoch)
-      else { return false }
+      else {
+        Self.log("repair \(trigger) dropped before start")
+        return false
+      }
       self.automaticStartsThisEpoch += 1
+      Self.log("repair \(trigger) starts automatic_starts=\(self.automaticStartsThisEpoch)")
       return true
     }
   }
@@ -355,6 +375,11 @@ final class AIAvailabilityCoordinator {
   }
 
   // MARK: - Telemetry
+
+  /// Metadata only (statuses, reasons, counters); never user content.
+  private static func log(_ message: String) {
+    Task { await AppLogger.shared.log(message, level: .info, category: "AIAvailability") }
+  }
 
   fileprivate static func recordCompleted(
     _ report: AppleIntelligenceAvailabilityReport, trigger: String
