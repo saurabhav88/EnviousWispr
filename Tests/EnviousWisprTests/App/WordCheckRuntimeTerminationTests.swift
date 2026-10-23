@@ -371,13 +371,82 @@ struct WordCheckRuntimeTerminationTests {
     // deadline-fallback: a hung child fails by name instead of running out the time limit
     DispatchQueue.global().asyncAfter(deadline: .now() + 60) { childFail("watchdog") }
     guard let runtime = try? await makeRuntime(in: URL(filePath: root)) else { childFail("fixture") }
+    registerBusyExit()
+    runtime.releaseForTermination()
+    exit(0)
+  }
+
+  /// Registers the busy exit steps; a step that cannot register fails the child, so a short
+  /// finalization can never pass for the long one.
+  nonisolated private static func registerBusyExit() {
     for step in 0..<busyExitSteps {
       guard registerExitStep(busyExitStep, nil, nil) == 0 else {
         childFail("busy-exit registration \(step)")
       }
     }
+  }
+
+  nonisolated static let mlxUsedQuitRuns = Array(0..<20)
+  nonisolated static let realModelQuitRuns = Array(0..<10)
+
+  /// Lifetime control: MLX was used before production quit cleanup under the same busy exit.
+  /// Checks sampled clean exits; the separate Bool checks verify the cleanup branch.
+  @Test(
+    "a quit after MLX was used exits cleanly while exit() finalizes",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/3987", "quit cleanup was MLX's first use"),
+    .timeLimit(.minutes(2)), arguments: mlxUsedQuitRuns)
+  func quitAfterMLXUsedExitsCleanly(run: Int) async {
+    let temp = Self.makeTempRoot()
+    defer { try? FileManager.default.removeItem(at: temp) }
+    let path = temp.path
+    await #expect(processExitsWith: .success) { [path = path as String] in
+      await Self.usedMLXQuitChild(root: path)
+    }
+  }
+
+  private static func usedMLXQuitChild(root: String) async {
+    // deadline-fallback: a hung child fails by name instead of running out the time limit
+    DispatchQueue.global().asyncAfter(deadline: .now() + 60) { childFail("watchdog") }
+    guard let runtime = try? await makeRuntime(in: URL(filePath: root)) else { childFail("fixture") }
+    _ = KevWordCheckModel.memorySnapshotForLog()
+    registerBusyExit()
     runtime.releaseForTermination()
     exit(0)
+  }
+
+  /// Control: the real model loaded and answered one question, the take let go of it, then the app
+  /// quits under the same long finalization. Skipped where the model is not downloaded.
+  @Test(
+    "a quit after the real model answered exits cleanly while exit() finalizes",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/3987", "quit cleanup was MLX's first use"),
+    .enabled(if: realModelPresent), .tags(.realBoundary), .timeLimit(.minutes(2)),
+    arguments: realModelQuitRuns)
+  func quitAfterRealModelExitsCleanly(run: Int) async {
+    let temp = Self.makeTempRoot()
+    defer { try? FileManager.default.removeItem(at: temp) }
+    let path = temp.path
+    await #expect(processExitsWith: .success) { [path = path as String] in
+      await Self.realModelQuitChild(root: path)
+    }
+  }
+
+  private static func realModelQuitChild(root: String) async {
+    // deadline-fallback: a hung child fails by name instead of running out the time limit
+    DispatchQueue.global().asyncAfter(deadline: .now() + 60) { childFail("watchdog") }
+    guard let runtime = try? await makeRuntime(in: URL(filePath: root), realModel: true) else {
+      childFail("fixture")
+    }
+    await answerOneQuestion(runtime)
+    registerBusyExit()
+    runtime.releaseForTermination()
+    exit(0)
+  }
+
+  /// One take's check, its checker released when this returns, so only the runtime holds the model
+  /// at quit.
+  private static func answerOneQuestion(_ runtime: WordCheckRuntime) async {
+    guard let checker = await runtime.selection().checker else { childFail("load") }
+    guard (try? await checker.decide([question(id: 1)]))?.count == 1 else { childFail("inference") }
   }
 
   /// The cleanup's own answer, each in a fresh process (MLX state is process-wide): it skips MLX
