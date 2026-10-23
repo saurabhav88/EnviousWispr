@@ -193,6 +193,30 @@ struct MeetingSummaryOwnerTests {
     #expect(rig.world.finished.isEmpty, "no attempt, no row")
   }
 
+  @Test("turning the setting off does not stop a summary already started, nor one owed at relaunch")
+  func offAfterStart() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    rig.world.holdCalls = true
+    #expect(await Self.schedule(rig, id) == .scheduled)
+    await Self.eventually("calling") { rig.world.callsWaiting == 1 }
+    rig.world.enabled = false
+    rig.world.releaseCall()
+    await Self.eventually("finished") { rig.world.finished.count == 1 }
+    #expect(rig.world.finished == [Self.row(.written, .hosted)])
+    #expect(rig.summaryOnDisk(id) == "## Overview\nShip Friday.")
+
+    // An owed summary found at relaunch with the setting off is still written.
+    let owed = try rig.readyMeeting()
+    rig.world.holdCalls = false
+    await rig.documents.setSummaryPending(owed, true)
+    let relaunched = rig.makeOwner(documents: Rig.documents(rig.store))
+    await relaunched.resumeOwed(readyMeetingIDs: [owed])
+    await Self.eventually("owed finished") { rig.world.finished.count == 2 }
+    #expect(rig.summaryOnDisk(owed) == "## Overview\nShip Friday.")
+    #expect(try rig.manifest(owed).summaryPending == nil)
+  }
+
   @Test("a scheduled summary is written from what History shows, with its inputs, once")
   func written() async throws {
     let rig = try Rig()

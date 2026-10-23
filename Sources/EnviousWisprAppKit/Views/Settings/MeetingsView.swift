@@ -1,5 +1,6 @@
 import AVFoundation
 import EnviousWisprCore
+import EnviousWisprLLM
 import EnviousWisprServices
 import SwiftUI
 
@@ -13,6 +14,7 @@ struct MeetingsView: View {
   @Environment(TranscriptCoordinator.self) private var transcripts
   @Environment(NavigationCoordinator.self) private var navigation
   @Environment(PermissionsService.self) private var permissions
+  @Environment(SettingsManager.self) private var settings
 
   var body: some View {
     SettingsContentView {
@@ -28,6 +30,7 @@ struct MeetingsView: View {
           }
           MeetingCallSoundRow()
           MeetingWriteSummaryRow()
+          summaryWriterRow
           microphonePermissionRow
           callSoundPermissionRow
           Text(MeetingsCopy.keptUntilDeleted)
@@ -51,12 +54,13 @@ struct MeetingsView: View {
           }
         }
       } footnote: {
-        // R48: true for every provider. Audio never leaves the Mac; a summary by a cloud AI
-        // Polish provider sends that provider the transcript and notes.
+        // R48: true for every provider. Audio never leaves the Mac; a summary by a cloud model
+        // (OpenAI, Gemini, Claude, or an Ollama hosted model) sends its provider the transcript
+        // and notes.
         Text(
-          "Works with any headphones. Recordings stay on your Mac. A summary written by a cloud AI Polish provider sends it the transcript and your notes.",
+          "Works with any headphones. Recordings stay on your Mac. A summary written by a cloud model sends the transcript and your notes to its provider.",
           comment:
-            "EnviousMeet page: the footnote. Recordings are kept on the Mac; a cloud summary provider receives the text."
+            "EnviousMeet page: the footnote. Recordings are kept on the Mac; a cloud model's provider receives the text of a summary."
         )
         .font(.stHelper)
         .foregroundStyle(.stTextSecondary)
@@ -90,6 +94,65 @@ extension MeetingsView {
         }
         .accessibilityIdentifier("meetings.settings.allowMicrophone")
       }
+    }
+  }
+
+  /// Who writes the summaries (R34), from the AI Polish provider and model, with the AI Polish
+  /// settings link when none can. A status line, not a setting: search does not land on it.
+  fileprivate var summaryWriterRow: some View {
+    let status = Self.summaryWriter(settings.llmProvider, model: settings.effectiveLLMModel)
+    return SettingsRow(
+      notInSettingsMap: .statusLine, icon: "sparkles",
+      title: LocalizedStringResource(
+        "Summaries", comment: "EnviousMeet page: the row that says who writes meeting summaries."),
+      short: Self.summaryWriterLine(status),
+      help: LocalizedStringResource(
+        "Summaries use the AI Polish provider and model chosen in AI Polish settings.",
+        comment: "EnviousMeet page: help for the row that says who writes meeting summaries.")
+    ) {
+      if case .problem = status {
+        Button {
+          navigation.request(.aiPolish)
+        } label: {
+          Text(
+            "Open AI Polish settings",
+            comment: "Link button that opens the AI Polish settings page.")
+        }
+        .buttonStyle(.link)
+        .accessibilityIdentifier("meetings.settings.openAIPolish")
+      }
+    }
+  }
+
+  enum SummaryWriter: Equatable {
+    /// This provider can write summaries (whether it is ready is known only when one is written).
+    case provider(LLMProvider)
+    /// No summary can be written: no provider, or a cleanup model.
+    case problem(MeetingSummaryOwner.Problem)
+  }
+
+  static func summaryWriter(_ provider: LLMProvider, model: String) -> SummaryWriter {
+    switch MeetingSummary.capability(provider, model: model, ollamaModelIsRemote: nil) {
+    case .noProvider: return .problem(.noProvider)
+    case .notForSummaries: return .problem(.notForSummaries)
+    case .supported: return .provider(provider)
+    }
+  }
+
+  static func summaryWriterLine(_ status: SummaryWriter) -> LocalizedStringResource {
+    switch status {
+    case .provider(let provider):
+      return LocalizedStringResource(
+        "Written by \(provider.displayName).",
+        comment: "EnviousMeet page: the AI Polish provider that writes meeting summaries, e.g. Ollama.")
+    case .problem(.noProvider):
+      return LocalizedStringResource(
+        "No AI Polish provider is chosen, so no summary is written.",
+        comment: "EnviousMeet page: no AI Polish provider is selected, so meetings get no summary.")
+    case .problem:
+      return LocalizedStringResource(
+        "The selected AI Polish model can't write summaries.",
+        comment: "EnviousMeet page: the selected cleanup model (EG-1, S1-mini) cannot summarize.")
     }
   }
 
@@ -167,7 +230,7 @@ enum MeetingsCopy {
     "Your AI Polish provider writes a summary of each meeting.",
     comment: "EnviousMeet page: the short line under Write a summary when a meeting ends.")
   static let writeSummaryHelp = LocalizedStringResource(
-    "The summary is written from the transcript and your notes by the AI Polish provider you chose. A cloud provider receives them under your key; Apple Intelligence and Ollama on this Mac keep them on your Mac. In History you can write a summary for any meeting.",
+    "The summary is written from the transcript and your notes by your AI Polish provider. OpenAI, Gemini and Claude receive them under your key. An Ollama hosted model sends them to Ollama's servers. Apple Intelligence and Ollama models on this Mac keep them on your Mac. Turning this off does not stop a summary that has already started. In History you can write a summary for any meeting that has a transcript.",
     comment: "EnviousMeet page: help for Write a summary when a meeting ends.")
   static let callSoundHelp = LocalizedStringResource(
     "With headphones, your microphone hears only you, and the call comes from the sound your Mac plays. Without headphones, your microphone also hears the call; EnviousMeet hides those repeated lines as probable echo. The choice applies to the next meeting you start.",

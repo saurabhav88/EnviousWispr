@@ -74,6 +74,7 @@
  "MeetingControls.swift | SettingsRow | map .id(.meetingWriteSummary)",
  "MeetingsView.swift | SettingsRow | exempt .statusLine",
  "MeetingsView.swift | SettingsRow | exempt .statusLine",
+ "MeetingsView.swift | SettingsRow | exempt .statusLine",
  "OpenSourceLicensesView.swift | SettingsRow | map .id(.licenseGpl)",
  "OpenSourceLicensesView.swift | SettingsRow | map .id(.licenseNotices)",
  "OpenSourceLicensesView.swift | SettingsSectionHeading | map .id(.sectionAbout)",

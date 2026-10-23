@@ -965,7 +965,7 @@
  },
  "meetings": {
   "exempt": {
-   "statusLine": 2
+   "statusLine": 3
   },
   "mapped": [
    "meetingCaptureCallSound",

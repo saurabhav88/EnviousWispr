@@ -468,6 +468,17 @@ import Testing
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/MeetingWiring.swift", matcher: "unload",
       text: "unloadEngine: { await engine.unload() },", classification: .structurallySafe),
+    // #3972 C13a: the meeting SUMMARY provider set-up (keychain read, Ollama version check,
+    // connector choice). An AI Polish text model, not the ASR engine; it holds no adapter and no
+    // audio. Matched only by method-name coincidence.
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/MeetingWiring.swift", matcher: "prepare",
+      text: "await MeetingSummaryProviders.prepare(provider: provider, model: model, keychain: keychain)",
+      classification: .unrelatedDomain),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/MeetingSummaryOwner.swift", matcher: "prepare",
+      text: "let preparation = await deps.prepare(selection.provider, selection.model)",
+      classification: .unrelatedDomain),
     // MARK: ActiveEngineOperation — the one door for crash-recovery + the
     // Diagnostics benchmark. Not itself gated. `load` is called from BOTH
     // `RecoverySpoolReplayer` (under `recoveryEngineClaim`) and

@@ -471,7 +471,7 @@
       #expect((plain["error"] as? [String: Any])?["code"] as? String == "checkFailed", "Record's key")
       let got = try #require(reply["got"] as? [String: Any])
       #expect((got["result"] as? [String: Any])?["value"] as? Int == 4321)
-      #expect(reply["count"] as? Int == 72)
+      #expect(reply["count"] as? Int == 73)
 
       try #require(outcomes.count == 4, "outcomes: \(outcomes)")
       #expect(outcomes[0].contains("cmd=settings.set ok=true forced=true code=none"))

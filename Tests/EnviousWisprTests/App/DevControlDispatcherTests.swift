@@ -54,12 +54,12 @@
       return nil
     }
 
-    @Test("settings.list returns all 72 rows; settings.get returns one, and refuses bad keys")
+    @Test("settings.list returns all 73 rows; settings.get returns one, and refuses bad keys")
     func listAndGet() async throws {
       let (settings, dispatcher) = Self.make()
       let listed = try #require(payload(await dispatcher.handle(.settingsList, args: [:])))
       let rows = try #require(listed["settings"] as? [[String: Any]])
-      #expect(rows.count == 72)
+      #expect(rows.count == 73)
 
       settings.fillerRemovalEnabled = false
       let got = try #require(

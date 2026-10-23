@@ -11650,6 +11650,17 @@
         }
       }
     },
+    "No AI Polish provider is chosen, so no summary is written." : {
+      "comment" : "EnviousMeet page: no AI Polish provider is selected, so meetings get no summary.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Anbieter für KI-Nachbearbeitung ausgewählt, daher wird keine Zusammenfassung erstellt."
+          }
+        }
+      }
+    },
     "No AI polish" : {
       "comment" : "Transcribe a File, Done step: chip: no cleanup engine was chosen.",
       "localizations" : {
@@ -13102,7 +13113,7 @@
       }
     },
     "Open AI Polish settings" : {
-      "comment" : "History, a meeting: opens the AI Polish settings to fix the summary provider.",
+      "comment" : "History, a meeting: opens the AI Polish settings to fix the summary provider.\nLink button that opens the AI Polish settings page.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -17478,6 +17489,17 @@
         }
       }
     },
+    "Summaries" : {
+      "comment" : "EnviousMeet page: the row that says who writes meeting summaries.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zusammenfassungen"
+          }
+        }
+      }
+    },
     "Summaries are off. You can still write one for this meeting." : {
       "comment" : "History, a meeting: automatic summaries are turned off in settings.",
       "localizations" : {
@@ -17485,6 +17507,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Zusammenfassungen sind deaktiviert. Du kannst trotzdem eine für dieses Meeting erstellen."
+          }
+        }
+      }
+    },
+    "Summaries use the AI Polish provider and model chosen in AI Polish settings." : {
+      "comment" : "EnviousMeet page: help for the row that says who writes meeting summaries.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zusammenfassungen verwenden den Anbieter für KI-Nachbearbeitung und das Modell aus den Einstellungen für KI-Nachbearbeitung."
           }
         }
       }
@@ -18817,6 +18850,17 @@
         }
       }
     },
+    "The selected AI Polish model can't write summaries." : {
+      "comment" : "EnviousMeet page: the selected cleanup model (EG-1, S1-mini) cannot summarize.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das ausgewählte Modell für KI-Nachbearbeitung kann keine Zusammenfassungen erstellen."
+          }
+        }
+      }
+    },
     "The selected AI Polish model can't write summaries. Choose another model." : {
       "comment" : "History, a meeting: the cleanup models (EG-1, S1-mini) cannot summarize.",
       "localizations" : {
@@ -18877,13 +18921,13 @@
         }
       }
     },
-    "The summary is written from the transcript and your notes by the AI Polish provider you chose. A cloud provider receives them under your key; Apple Intelligence and Ollama on this Mac keep them on your Mac. In History you can write a summary for any meeting." : {
+    "The summary is written from the transcript and your notes by your AI Polish provider. OpenAI, Gemini and Claude receive them under your key. An Ollama hosted model sends them to Ollama's servers. Apple Intelligence and Ollama models on this Mac keep them on your Mac. Turning this off does not stop a summary that has already started. In History you can write a summary for any meeting that has a transcript." : {
       "comment" : "EnviousMeet page: help for Write a summary when a meeting ends.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Der gewählte Anbieter für KI-Nachbearbeitung erstellt die Zusammenfassung aus dem Transkript und deinen Notizen. Ein Cloud-Anbieter erhält beides mit deinem Schlüssel; bei Apple Intelligence und Ollama auf diesem Mac bleibt beides auf deinem Mac. Im Verlauf kannst du für jedes Meeting eine Zusammenfassung erstellen."
+            "value" : "Dein Anbieter für KI-Nachbearbeitung erstellt die Zusammenfassung aus dem Transkript und deinen Notizen. OpenAI, Gemini und Claude erhalten beides über deinen eigenen API-Schlüssel. Ein gehostetes Ollama-Modell sendet beides an die Server von Ollama. Apple Intelligence und Ollama-Modelle auf diesem Mac behalten beides auf deinem Mac. Wenn du diese Option ausschaltest, wird eine bereits begonnene Zusammenfassung nicht gestoppt. Im Verlauf kannst du für jedes Meeting mit einem Transkript eine Zusammenfassung erstellen."
           }
         }
       }
@@ -21546,13 +21590,13 @@
         }
       }
     },
-    "Works with any headphones. Recordings stay on your Mac. A summary written by a cloud AI Polish provider sends it the transcript and your notes." : {
-      "comment" : "EnviousMeet page: the footnote. Recordings are kept on the Mac; a cloud summary provider receives the text.",
+    "Works with any headphones. Recordings stay on your Mac. A summary written by a cloud model sends the transcript and your notes to its provider." : {
+      "comment" : "EnviousMeet page: the footnote. Recordings are kept on the Mac; a cloud model's provider receives the text of a summary.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Funktioniert mit allen Kopfhörern. Aufnahmen bleiben auf deinem Mac. Erstellt ein Cloud-Anbieter für KI-Nachbearbeitung eine Zusammenfassung, erhält er das Transkript und deine Notizen."
+            "value" : "Funktioniert mit allen Kopfhörern. Aufnahmen bleiben auf deinem Mac. Erstellt ein Cloud-Modell eine Zusammenfassung, sendet es das Transkript und deine Notizen an seinen Anbieter."
           }
         }
       }
@@ -21630,6 +21674,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das Transkript wird erstellt"
+          }
+        }
+      }
+    },
+    "Written by %@." : {
+      "comment" : "EnviousMeet page: the AI Polish provider that writes meeting summaries, e.g. Ollama.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erstellt von %@."
           }
         }
       }
