@@ -49,6 +49,9 @@ final class MeetingDocumentsOwner {
     var unsavedEdits = 0
     /// Changes typed into the summary since it was last read or saved.
     var unsavedSummaryEdits = 0
+    /// Counts every summary change the user typed this session, never reset: a generated
+    /// result started before the newest typing never replaces it, saved or not.
+    var summaryEditRevision = 0
     var load = LoadState.notLoaded
   }
 
@@ -292,6 +295,7 @@ final class MeetingDocumentsOwner {
     else { return }
     entry.summary = text
     entry.unsavedSummaryEdits += 1
+    entry.summaryEditRevision += 1
     entries[meetingID] = entry
     summaryDebounceTasks[meetingID]?.cancel()
     let debounce = deps.debounce
@@ -364,6 +368,8 @@ final class MeetingDocumentsOwner {
     if hasUnsavedSummary(meetingID) {
       guard await flushSummary(meetingID) else { return nil }
     }
+    // The typing this result may follow; anything typed after this is newer than it.
+    let editRevision = entries[meetingID]?.summaryEditRevision ?? 0
     let gen = generation(meetingID)
     let result = await perform(meetingID) {
       try $0.saveGeneratedSummary(
@@ -379,9 +385,12 @@ final class MeetingDocumentsOwner {
         switch outcome {
         case .saved(let manifest):
           entry.manifest.summary = manifest.summary
-          // Typing that arrived during the write stays on screen; its own save (already
-          // scheduled) then writes it over the generated text as the user's.
-          if entry.unsavedSummaryEdits == 0 { entry.summary = text }
+          // Typing that arrived during the write stays on screen, saved or not; its own save
+          // writes (or wrote) it over the generated text as the user's. Redundant by design
+          // for typing already saved: the store keeps a saved edit (`.userEditKept`), so this
+          // `.saved` branch is not reached then, and a mutation removing the revision check is
+          // not observable in `olderResultAfterSavedEdit` (Codex C13b-1 r2).
+          if entry.summaryEditRevision == editRevision { entry.summary = text }
           entry.manifest.summaryPending = manifest.summaryPending
         case .userEditKept(let manifest), .notesChanged(let manifest):
           entry.manifest.summaryPending = manifest.summaryPending

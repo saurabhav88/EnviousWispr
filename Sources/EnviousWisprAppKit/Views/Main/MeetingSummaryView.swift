@@ -59,10 +59,10 @@ struct MeetingSummaryView: View {
           String(
             localized: "Writing the summary.",
             comment: "History, a meeting: the summary is being written."))
-      case .failed(let problem):
-        problemView(problem)
-      case nil:
-        if let configurationProblem { problemView(configurationProblem) }
+      case .failed, nil:
+        if let shown = Self.shownProblem(activity: activity, configuration: configurationProblem) {
+          problemView(shown)
+        }
       }
 
       if let text = documents.summary(meetingID) {
@@ -193,6 +193,16 @@ struct MeetingSummaryView: View {
         .buttonStyle(.link)
       }
     }
+  }
+
+  /// The problem the tab explains: the current setting first (an older failure is obsolete once
+  /// the provider or model changed to one that cannot summarize), else the last failure.
+  static func shownProblem(
+    activity: MeetingSummaryOwner.Activity?, configuration: MeetingSummaryOwner.Problem?
+  ) -> MeetingSummaryOwner.Problem? {
+    if let configuration { return configuration }
+    if case .failed(let problem) = activity { return problem }
+    return nil
   }
 
   static func opensAIPolish(_ problem: MeetingSummaryOwner.Problem) -> Bool {

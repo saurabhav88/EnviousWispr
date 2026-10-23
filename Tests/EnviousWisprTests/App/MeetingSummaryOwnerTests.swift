@@ -911,4 +911,41 @@ struct MeetingSummaryOwnerTests {
     rig.world.model = "gpt-4o-mini"
     #expect(rig.owner.configurationProblem() == nil)
   }
+
+  @Test("an older result held while newer typing is fully saved never replaces it")
+  func olderResultAfterSavedEdit() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("first") { rig.world.finished.count == 1 }
+    #expect(await rig.documents.load(id))
+    rig.world.holdCalls = true
+    rig.owner.writeAgain(id, replacing: nil)
+    await Self.eventually("held") { rig.world.callsWaiting == 1 }
+    rig.documents.setSummary(id, "Newer, saved")
+    #expect(await rig.documents.flushSummary(id))
+    rig.world.releaseCall()
+    await Self.eventually("second") { rig.world.finished.count == 2 }
+    #expect(rig.documents.summary(id) == "Newer, saved")
+    #expect(rig.summaryOnDisk(id) == "Newer, saved")
+    let manifest = try rig.manifest(id)
+    #expect(manifest.summary?.origin == .userEdited)
+    #expect(manifest.summary?.sha256 == MeetingDocumentHash.sha256("Newer, saved"))
+    #expect(rig.documents.manifest(id)?.summary?.sha256 == MeetingDocumentHash.sha256("Newer, saved"))
+  }
+
+  @Test("the current setting's problem is shown ahead of an older failure")
+  func currentProblemFirst() {
+    #expect(
+      MeetingSummaryView.shownProblem(activity: .failed(.providerFailed), configuration: .noProvider)
+        == .noProvider)
+    #expect(
+      MeetingSummaryView.shownProblem(
+        activity: .failed(.providerFailed), configuration: .notForSummaries) == .notForSummaries)
+    #expect(
+      MeetingSummaryView.shownProblem(activity: .failed(.providerFailed), configuration: nil)
+        == .providerFailed)
+    #expect(MeetingSummaryView.shownProblem(activity: nil, configuration: .noProvider) == .noProvider)
+    #expect(MeetingSummaryView.shownProblem(activity: nil, configuration: nil) == nil)
+  }
 }
