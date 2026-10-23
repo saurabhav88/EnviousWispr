@@ -2517,14 +2517,19 @@ def main():
     if unknown:
         print(f"unknown phase(s) {unknown}; choose from {', '.join(PHASES)}")
         return 2
+    from silent_audio import AudioRoute
+    try:
+        # #3990: before any device moves: the dev-app lock, the app's microphone read through
+        # the door and proven restorable. A refusal here leaves nothing to put back.
+        route = AudioRoute()
+    except Exception as e:
+        print(f"ABORT: {e!r}")
+        return 2
     sink = AlertSink()
     if not sink.apply():
         print(f"ABORT: alert and output devices did not switch to BlackHole (restored: {sink.restore()})")
         return 2
-    from silent_audio import AudioRoute
-    route = None
     try:
-        route = AudioRoute()  # inside the try: a failed Settings read must still restore the sink
         route.install_restore_handlers()
         route.apply()
         RUN_ROUTE["route"] = route

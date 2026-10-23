@@ -28,7 +28,7 @@ import dev_control
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CATEGORIES = ("routes", "valueSyntax", "lock", "instances", "identity", "framing", "output",
-              "import", "dictation", "keys")
+              "import", "dictation", "keys", "client")
 _DOORS = []
 
 
@@ -1272,6 +1272,94 @@ def key_cases(r, tree):
             and "KeyError" in out.getvalue(), out.getvalue())
 
 
+def client_cases(r, tree):
+    """#3990: `DoorClient`, the in-process client the UAT rig uses for many calls minutes
+    apart. Identity is pinned across calls and checked BEFORE a change is sent."""
+    exe = tree.dev(tree.wt)
+    door = FakeDoor(111, exe)
+    door.results["settings.list"] = {"settings": [
+        {"key": "playRecordingSounds", "value": True},
+        {"key": "otherAudioWhileDictating", "value": "turnDown"}]}
+
+    def sets():
+        return [q for q in door.received if q.get("cmd") == "settings.set"]
+
+    try:
+        boundaries = FakeBoundaries({"111": exe, "222": tree.dev(tree.sibling)}, door=door,
+                                    toplevel=tree.wt)
+        client = dev_control.DoorClient(111, boundaries, timeout=1.0)
+        with contextlib.redirect_stderr(io.StringIO()):
+            got = client.values("playRecordingSounds", "otherAudioWhileDictating")
+            client.set("otherAudioWhileDictating", "nothing")
+            client.set("selectedInputDeviceUID", "X", force=True)
+        r.check("client", "values come from ONE settings list; a sibling worktree's app is ignored",
+                got == {"playRecordingSounds": True, "otherAudioWhileDictating": "turnDown"}
+                and door.commands().count("settings.list") == 1, f"{got} {door.commands()}")
+        r.check("client", "a set sends the JSON value, and --force as force",
+                [q["args"] for q in sets()] == [
+                    {"key": "otherAudioWhileDictating", "value": "nothing"},
+                    {"key": "selectedInputDeviceUID", "value": "X", "force": True}],
+                str(sets()))
+        r.check("client", "the first reply pins the launch", client.launch == door.launch,
+                str(client.launch))
+
+        door.launch = str(uuid.uuid4())  # the app was relaunched between calls
+        door.received.clear()
+        try:
+            with contextlib.redirect_stderr(io.StringIO()):
+                client.set("playRecordingSounds", False)
+            code = None
+        except dev_control.DoorRefused as error:
+            code = error.code
+        r.check("client", "a relaunched app receives no change",
+                code == "identityChanged" and not sets(), f"{code} {door.commands()}")
+
+        door.received.clear()
+        locked = FakeBoundaries({"111": exe}, door=door, toplevel=tree.wt,
+                                lock=FakeLock(session=AGENT, status=3))
+        try:
+            with contextlib.redirect_stderr(io.StringIO()):
+                dev_control.DoorClient(111, locked, timeout=1.0).set("playRecordingSounds", False)
+            code = None
+        except dev_control.DoorRefused as error:
+            code = error.code
+        r.check("client", "without the dev-app lock a change is refused before connecting",
+                code == "lockNotHeld" and door.received == [], f"{code} {door.commands()}")
+        try:
+            with contextlib.redirect_stderr(io.StringIO()):
+                dev_control.check_owner(locked)
+            code = None
+        except dev_control.DoorRefused as error:
+            code = error.code
+        r.check("client", "check_owner refuses without the lock", code == "lockNotHeld", str(code))
+
+        fresh = FakeBoundaries({"111": exe}, door=door, toplevel=tree.wt)
+        door.respond = lambda q: (door.reply_ok(q) if q["cmd"] == "ping" else [door.frame(
+            door.envelope(q, ok=False, result=None,
+                          error={"code": "checkFailed", "message": "not connected"}))])
+        try:
+            with contextlib.redirect_stderr(io.StringIO()):
+                dev_control.DoorClient(111, fresh, timeout=1.0).set("selectedInputDeviceUID", "Y")
+            code = None
+        except dev_control.DoorRefused as error:
+            code = error.code
+        r.check("client", "a door refusal raises with the door's code", code == "checkFailed",
+                str(code))
+
+        for label, instances, toplevel, want in (
+                ("a pid that is not running", {"222": exe}, tree.wt, "noInstance"),
+                ("a Release host", {"111": tree.release(tree.wt)}, tree.wt, "notDevBuild"),
+                ("an app outside any checkout", {"111": exe}, None, "worktreeUnresolved")):
+            try:
+                dev_control.DoorClient(111, FakeBoundaries(instances, door=door, toplevel=toplevel))
+                code = None
+            except dev_control.DoorRefused as error:
+                code = error.code
+            r.check("client", f"{label} is refused at construction", code == want, str(code))
+    finally:
+        door.stop()
+
+
 def run_self_test():
     """(exit status, document): 0 only when every category ran and nothing failed."""
     r = _Results()
@@ -1287,6 +1375,7 @@ def run_self_test():
         import_cases(r, tree)
         dictation_cases(r, tree)
         key_cases(r, tree)
+        client_cases(r, tree)
         output_cases(r, tree)
     finally:
         tree.clean()

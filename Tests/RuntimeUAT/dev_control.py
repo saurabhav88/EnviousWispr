@@ -908,6 +908,115 @@ def run(argv, boundaries, timeout=10.0):
         return error.exit_status, error.document()
 
 
+# MARK: - In-process client
+
+
+class DoorRefused(Exception):
+    """A CLI call that did not succeed: `code` and `message` come from its JSON document."""
+
+    def __init__(self, code, message, exit_status=EXIT_FAILED, document=None):
+        super().__init__(f"{code}: {message}")
+        self.code = code
+        self.message = message
+        self.exit_status = exit_status
+        self.document = document
+
+
+class DoorClient:
+    """One running dev app, driven through the CLI's own `run` for many calls (#3990).
+
+    Each `run` opens its own session, and a session pins the door only for its own
+    requests. A rig makes calls minutes apart (setup, proof, restore), so this pins the
+    app ACROSS them: the pid it was made for, and the launch and executable the first
+    reply names. A relaunch or another app answering raises `identityChanged`."""
+
+    def __init__(self, pid, boundaries=None, timeout=10.0):
+        self.boundaries = boundaries if boundaries is not None else Boundaries()
+        self.timeout = timeout
+        self.pid = int(pid)
+        self.executable = {int(p): exe for p, exe in self.boundaries.instances().items()}.get(
+            self.pid)
+        if self.executable is None:
+            raise DoorRefused("noInstance", f"pid {self.pid} is not a running EnviousWispr",
+                              EXIT_USAGE)
+        if not self.executable.endswith(DEV_EXECUTABLE_SUFFIX):
+            raise DoorRefused("notDevBuild", f"pid {self.pid} runs {self.executable}, which is "
+                              "not a dev build", EXIT_USAGE)
+        self.worktree = self.boundaries.git_toplevel(os.path.dirname(self.executable))
+        if self.worktree is None:
+            raise DoorRefused("worktreeUnresolved",
+                              f"{self.executable} is not inside a git checkout", EXIT_USAGE)
+        self.launch = None
+
+    def call(self, argv):
+        """The `result` object of one socket command, routed, owner-checked and dispatched
+        exactly as `run` does, except that the session's pid, executable and launch are
+        compared with this client's BEFORE the request is sent: a relaunched or different
+        app never receives a change. Anything but success raises DoorRefused."""
+        try:
+            try:
+                args = build_parser().parse_args(argv)
+            except _ParserExit as done:
+                raise CliError("usage", f"parser exited ({done.status})", EXIT_USAGE)
+            socket_route = route(args)
+            if socket_route is None or socket_route[0] == "keys.set":
+                raise CliError("usage", "DoorClient sends plain socket commands only", EXIT_USAGE)
+            cmd, wire, mutation = socket_route
+            if mutation:
+                require_mutation_ownership(self.boundaries)
+            session = _open_session(self.worktree, self.boundaries, self.timeout)
+            try:
+                if session.pid != self.pid or session.executable != self.executable:
+                    raise CliError("identityChanged",
+                                   f"pid {session.pid} ({session.executable}) answered; "
+                                   f"expected pid {self.pid}", EXIT_USAGE)
+                if self.launch is None:
+                    self.launch = session.launch
+                elif session.launch != self.launch:
+                    raise CliError("identityChanged", "the app was relaunched since the first "
+                                   "call", EXIT_USAGE)
+                status, reply = _door_call(session, cmd, wire, mutation)
+            finally:
+                session.connection.close()
+        except CliError as error:
+            raise DoorRefused(error.code, error.message, error.exit_status,
+                              error.document()) from error
+        if status != EXIT_OK:
+            error = reply.get("error") or {}
+            raise DoorRefused(error.get("code", "failed"), error.get("message", ""), status, reply)
+        return reply["result"]
+
+    def values(self, *keys):
+        """{key: value} for `keys`, all from ONE `settings list` reply (one snapshot)."""
+        rows = self.call(["settings", "list"]).get("settings")
+        found = {row.get("key"): row.get("value") for row in rows or []
+                 if isinstance(row, dict)}
+        missing = [key for key in keys if key not in found]
+        if missing:
+            raise DoorRefused("unknownKey", f"settings list has no {missing}")
+        return {key: found[key] for key in keys}
+
+    def set(self, key, value, force=False):
+        argv = ["settings", "set", key, json.dumps(value)]
+        return self.call(argv + ["--force"] if force else argv)
+
+    def status(self):
+        return self.call(["status"])
+
+    def check_owner(self):
+        return check_owner(self.boundaries)
+
+
+def check_owner(boundaries=None):
+    """Refuse before a rig changes anything unless this caller may change the shared dev app:
+    the decision every door mutation makes (`require_mutation_ownership`), taken BEFORE the
+    first system device moves, so a refused caller leaves nothing to restore (#3990)."""
+    try:
+        return require_mutation_ownership(boundaries if boundaries is not None else Boundaries())
+    except CliError as error:
+        raise DoorRefused(error.code, error.message, error.exit_status) from error
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     try:

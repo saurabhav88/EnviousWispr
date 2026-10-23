@@ -1955,19 +1955,32 @@ _BACKEND_LABELS = {
 }
 
 
-def switch_backend(name, wait=3.0):
-    """Switch the active ASR engine via the Settings UI.
+def door():
+    """The #3765 dev control door of the app `connect()` drives, pinned to that pid, its
+    launch and executable (`dev_control.DoorClient`). Changes need the dev-app lock."""
+    import dev_control
+    connect()
+    return dev_control.DoorClient(_pid)
+
+
+_SWITCH_POLL_SECONDS = 0.25
+
+
+def switch_backend(name, wait=30.0, client=None):
+    """Switch the active ASR engine through the dev control door and wait for the switch.
 
     Args:
         name: "parakeet" or "whisper".
-        wait: seconds to let the model load after switching.
+        wait: seconds to wait for the coordinator to converge on it.
 
-    #3385: Dictation Settings > Engine shows the current engine as a summary; "Change speech
-    engine" opens the two cards (Fast -> Parakeet, All Languages -> Whisper). This opens
-    THAT Change (not the preview engine's or the language's), presses the card, and requires
-    the choices to close with the summary naming it (`settings_nav.choose_engine`). A card
-    press only selects; it starts no download. The UI landing is not proof that a deferred
-    runtime switch finished: recording oracles still decide that.
+    #3990: writes `selectedBackend` as the Engine card does (`settings.selectedBackend =`,
+    `SpeechEngineSettingsView`), with no Settings window, then polls `status` until the
+    coordinator has converged: selected == active == name, switchPhase idle, not switching.
+    That is the switch, not readiness: a cold engine may still load on the first press, and
+    the recording oracles decide that. `not_installed` and `failed` raise at once; a switch
+    held by a take, a recovery or a load (`pipeline_active`, `recovery`, `loading`) is waited
+    out up to `wait`. To test the Engine screen itself use `choose_engine`. Returns the last
+    status.
 
     Usage:
         switch_backend("whisper")
@@ -1975,14 +1988,30 @@ def switch_backend(name, wait=3.0):
     """
     if name not in _BACKEND_LABELS:
         raise ValueError(f"Unknown backend '{name}'. Use one of: {list(_BACKEND_LABELS)}")
-    connect()
-    if not nav("Dictation Settings", "Engine"):
-        raise RuntimeError("Could not navigate to Dictation Settings > Engine")
-    label = _BACKEND_LABELS[name]
-    choose_engine(label)
-    print(f"Switched backend to {name} ({label}); waiting {wait:.0f}s for model load...")
-    time.sleep(wait)  # settle: unchanged model-load allowance; recording oracles decide success
-    return True
+    client = client or door()
+    before = client.values("selectedBackend")["selectedBackend"]
+    client.set("selectedBackend", name)
+    deadline = time.monotonic() + wait
+    while True:
+        status = client.status()
+        engine = status.get("engine") or {}
+        if engine.get("switchPhase") == "failed":
+            raise RuntimeError(f"switch to {name} failed: {engine.get('switchFailure')}")
+        if engine.get("blockedReason") == "not_installed":
+            # Put the choice back: a selection the coordinator will never apply leaves
+            # selected and active apart for every later take.
+            client.set("selectedBackend", before)
+            raise RuntimeError(f"{name} is not downloaded (selection put back to {before}); "
+                               f"run `dev_control.py models download {name}` first")
+        if (engine.get("selected") == name and engine.get("active") == name
+                and engine.get("switchPhase") == "idle" and not engine.get("isSwitching")):
+            print(f"Switched backend to {name} (readiness {engine.get('activeReadiness')})")
+            return status
+        if time.monotonic() >= deadline:
+            raise RuntimeError(f"switch to {name} did not finish in {wait:g}s (blocked: "
+                               f"{engine.get('blockedReason')}, last status engine={engine})")
+        # settle: interval between `status` reads; the door has no completion event to await
+        time.sleep(_SWITCH_POLL_SECONDS)
 
 
 def choose_engine(label):
@@ -4179,10 +4208,50 @@ def _self_test():
         _sn.restore_input = (lambda ax, root_of, read_uid, choice, timeout=5.0, cancel=None:
                              route_calls.append(("restore", choice, cancel is not None)))
         time.sleep = lambda s: None
-        switch_backend("whisper", wait=0)
-        cycle_rows.append(("switch_backend routes to Dictation Settings > Engine and picks All Languages",
-                           route_calls[-2:], [("nav", "Dictation Settings", "Engine"),
-                                              ("engine", "All Languages")]))
+        class _Door:
+            """A fake door: `statuses` are the engine objects `status` returns in turn."""
+
+            def __init__(self, *statuses, selected="parakeet"):
+                self.statuses, self.selected, self.writes = list(statuses), selected, []
+
+            def values(self, *keys):
+                return {"selectedBackend": self.selected}
+
+            def set(self, key, value, force=False):
+                self.writes.append((key, value))
+
+            def status(self):
+                engine = self.statuses.pop(0) if len(self.statuses) > 1 else self.statuses[0]
+                return {"engine": engine}
+
+        def _engine(selected, active, phase="idle", blocked=None, switching=False):
+            return {"selected": selected, "active": active, "switchPhase": phase,
+                    "blockedReason": blocked, "isSwitching": switching}
+
+        fake = _Door(_engine("whisper", "parakeet", "switching", switching=True),
+                     _engine("whisper", "whisper"))
+        before = len(route_calls)
+        switch_backend("whisper", wait=5, client=fake)
+        cycle_rows.append(("#3990 switch_backend writes selectedBackend through the door, waits "
+                           "for convergence and never opens Settings",
+                           (fake.writes, fake.statuses, len(route_calls) - before),
+                           ([("selectedBackend", "whisper")], [_engine("whisper", "whisper")], 0)))
+        for why, status, want in (
+                ("a model that is not downloaded raises and puts the choice back",
+                 _engine("whisper", "parakeet", blocked="not_installed"),
+                 [("selectedBackend", "whisper"), ("selectedBackend", "parakeet")]),
+                ("a failed switch raises", _engine("whisper", "whisper", phase="failed"),
+                 [("selectedBackend", "whisper")]),
+                ("a switch held past the deadline raises",
+                 _engine("whisper", "parakeet", blocked="pipeline_active"),
+                 [("selectedBackend", "whisper")])):
+            fake = _Door(status)
+            try:
+                switch_backend("whisper", wait=0, client=fake)
+                got = "returned"
+            except RuntimeError:
+                got = "raised"
+            cycle_rows.append((f"#3990 {why}", (got, fake.writes), ("raised", want)))
         select_input_choice(auto=True)
         cycle_rows.append(("select_input_choice routes to Microphone and asks for Auto",
                            route_calls[-2:], [("nav", "Dictation Settings", "Microphone"),
