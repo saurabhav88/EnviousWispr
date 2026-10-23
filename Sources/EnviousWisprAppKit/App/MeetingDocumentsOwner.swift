@@ -193,15 +193,41 @@ final class MeetingDocumentsOwner {
   }
 
   private func scheduleSave(_ meetingID: UUID) {
-    debounceTasks[meetingID]?.cancel()
+    debounce(meetingID, in: \.debounceTasks) { owner in await owner.saveNotes(meetingID) }
+  }
+
+  /// Runs `save` one debounce interval after the last call for this meeting, replacing any
+  /// wait still pending in `tasks`; nothing runs once the meeting's generation moved on (it
+  /// was forgotten or reloaded). Notes and the summary each keep their own task table.
+  private func debounce(
+    _ meetingID: UUID,
+    in tasks: ReferenceWritableKeyPath<MeetingDocumentsOwner, [UUID: Task<Void, Never>]>,
+    then save: @escaping @MainActor (MeetingDocumentsOwner) async -> Void
+  ) {
+    self[keyPath: tasks][meetingID]?.cancel()
     let debounce = deps.debounce
     let gen = generation(meetingID)
-    debounceTasks[meetingID] = Task { [weak self] in
+    self[keyPath: tasks][meetingID] = Task { [weak self] in
       await debounce()
       guard let self, !Task.isCancelled, self.generation(meetingID) == gen else { return }
-      self.debounceTasks[meetingID] = nil
-      await self.saveNotes(meetingID)
+      self[keyPath: tasks][meetingID] = nil
+      await save(self)
     }
+  }
+
+  /// Queues `save` behind the meeting's previous save (notes or summary), and waits for it.
+  private func enqueueSave(
+    _ meetingID: UUID, _ save: @escaping @MainActor (MeetingDocumentsOwner) async -> Void
+  ) async {
+    let previous = saveChains[meetingID]
+    let task = Task { [weak self] in
+      await previous?.value
+      guard let self else { return }
+      await save(self)
+    }
+    saveChains[meetingID] = task
+    await task.value
+    if saveChains[meetingID] == task { saveChains[meetingID] = nil }
   }
 
   /// Saves the notes now (Stop, leaving the detail view). True when the notes are durable.
@@ -237,14 +263,7 @@ final class MeetingDocumentsOwner {
 
   /// Queues one save behind the meeting's previous one, and waits for it.
   private func saveNotes(_ meetingID: UUID) async {
-    let previous = saveChains[meetingID]
-    let task = Task { [weak self] in
-      await previous?.value
-      await self?.saveOnce(meetingID)
-    }
-    saveChains[meetingID] = task
-    await task.value
-    if saveChains[meetingID] == task { saveChains[meetingID] = nil }
+    await enqueueSave(meetingID) { owner in await owner.saveOnce(meetingID) }
   }
 
   private func saveOnce(_ meetingID: UUID) async {
@@ -300,14 +319,8 @@ final class MeetingDocumentsOwner {
     entry.unsavedSummaryEdits += 1
     entry.summaryEditRevision += 1
     entries[meetingID] = entry
-    summaryDebounceTasks[meetingID]?.cancel()
-    let debounce = deps.debounce
-    let gen = generation(meetingID)
-    summaryDebounceTasks[meetingID] = Task { [weak self] in
-      await debounce()
-      guard let self, !Task.isCancelled, self.generation(meetingID) == gen else { return }
-      self.summaryDebounceTasks[meetingID] = nil
-      await self.saveSummaryEdit(meetingID)
+    debounce(meetingID, in: \.summaryDebounceTasks) { owner in
+      await owner.saveSummaryEdit(meetingID)
     }
   }
 
@@ -323,14 +336,7 @@ final class MeetingDocumentsOwner {
 
   /// Queues one summary save behind the meeting's previous save (notes or summary), and waits.
   private func saveSummaryEdit(_ meetingID: UUID) async {
-    let previous = saveChains[meetingID]
-    let task = Task { [weak self] in
-      await previous?.value
-      await self?.saveSummaryOnce(meetingID)
-    }
-    saveChains[meetingID] = task
-    await task.value
-    if saveChains[meetingID] == task { saveChains[meetingID] = nil }
+    await enqueueSave(meetingID) { owner in await owner.saveSummaryOnce(meetingID) }
   }
 
   private func saveSummaryOnce(_ meetingID: UUID) async {
