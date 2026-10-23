@@ -357,13 +357,18 @@ struct WordCheckRuntimeTerminationTests {
     "a quit with MLX never used exits cleanly while exit() finalizes",
     .bug("https://github.com/saurabhav88/EnviousWispr/issues/3987", "quit cleanup was MLX's first use"),
     .timeLimit(.minutes(2)), arguments: quitRuns)
-  func quitWithMLXUnusedExitsCleanly(run: Int) async {
+  func quitWithMLXUnusedExitsCleanly(run: Int) async throws {
     let temp = Self.makeTempRoot()
     defer { try? FileManager.default.removeItem(at: temp) }
     let path = temp.path
-    await #expect(processExitsWith: .success) { [path = path as String] in
+    let result = await #expect(
+      processExitsWith: .success, observing: [\.standardOutputContent]
+    ) { [path = path as String] in
       await Self.unusedMLXQuitChild(root: path)
     }
+    // The cleanup ran before the process ended; a clean exit alone could hide one that never ran.
+    let output = try #require(result).standardOutputContent
+    #expect(Self.childLines(output) == ["kev-quit-cleanup-complete"])
   }
 
   /// Child body: no model, no MLX call before the production quit release.
@@ -372,6 +377,9 @@ struct WordCheckRuntimeTerminationTests {
     DispatchQueue.global().asyncAfter(deadline: .now() + 60) { childFail("watchdog") }
     guard let runtime = try? await makeRuntime(in: URL(filePath: root)) else { childFail("fixture") }
     registerBusyExit()
+    runtime.onTerminationCleanupForTests = {
+      FileHandle.standardOutput.write(Data("kev-quit-cleanup-complete\n".utf8))
+    }
     runtime.releaseForTermination()
     exit(0)
   }
@@ -395,13 +403,18 @@ struct WordCheckRuntimeTerminationTests {
     "a quit after MLX was used exits cleanly while exit() finalizes",
     .bug("https://github.com/saurabhav88/EnviousWispr/issues/3987", "quit cleanup was MLX's first use"),
     .timeLimit(.minutes(2)), arguments: mlxUsedQuitRuns)
-  func quitAfterMLXUsedExitsCleanly(run: Int) async {
+  func quitAfterMLXUsedExitsCleanly(run: Int) async throws {
     let temp = Self.makeTempRoot()
     defer { try? FileManager.default.removeItem(at: temp) }
     let path = temp.path
-    await #expect(processExitsWith: .success) { [path = path as String] in
+    let result = await #expect(
+      processExitsWith: .success, observing: [\.standardOutputContent]
+    ) { [path = path as String] in
       await Self.usedMLXQuitChild(root: path)
     }
+    // The cleanup ran before the process ended; a clean exit alone could hide one that never ran.
+    let output = try #require(result).standardOutputContent
+    #expect(Self.childLines(output) == ["kev-quit-cleanup-complete"])
   }
 
   private static func usedMLXQuitChild(root: String) async {
@@ -410,6 +423,9 @@ struct WordCheckRuntimeTerminationTests {
     guard let runtime = try? await makeRuntime(in: URL(filePath: root)) else { childFail("fixture") }
     _ = KevWordCheckModel.memorySnapshotForLog()
     registerBusyExit()
+    runtime.onTerminationCleanupForTests = {
+      FileHandle.standardOutput.write(Data("kev-quit-cleanup-complete\n".utf8))
+    }
     runtime.releaseForTermination()
     exit(0)
   }
@@ -421,13 +437,18 @@ struct WordCheckRuntimeTerminationTests {
     .bug("https://github.com/saurabhav88/EnviousWispr/issues/3987", "quit cleanup was MLX's first use"),
     .enabled(if: realModelPresent), .tags(.realBoundary), .timeLimit(.minutes(2)),
     arguments: realModelQuitRuns)
-  func quitAfterRealModelExitsCleanly(run: Int) async {
+  func quitAfterRealModelExitsCleanly(run: Int) async throws {
     let temp = Self.makeTempRoot()
     defer { try? FileManager.default.removeItem(at: temp) }
     let path = temp.path
-    await #expect(processExitsWith: .success) { [path = path as String] in
+    let result = await #expect(
+      processExitsWith: .success, observing: [\.standardOutputContent]
+    ) { [path = path as String] in
       await Self.realModelQuitChild(root: path)
     }
+    // The cleanup ran before the process ended; a clean exit alone could hide one that never ran.
+    let output = try #require(result).standardOutputContent
+    #expect(Self.childLines(output) == ["kev-quit-cleanup-complete"])
   }
 
   private static func realModelQuitChild(root: String) async {
@@ -438,6 +459,9 @@ struct WordCheckRuntimeTerminationTests {
     }
     await answerOneQuestion(runtime)
     registerBusyExit()
+    runtime.onTerminationCleanupForTests = {
+      FileHandle.standardOutput.write(Data("kev-quit-cleanup-complete\n".utf8))
+    }
     runtime.releaseForTermination()
     exit(0)
   }
