@@ -13,7 +13,8 @@ struct MeetingSummaryView: View {
   @Environment(MeetingCoordinator.self) private var meetings
   @Environment(SettingsManager.self) private var settings
   @Environment(NavigationCoordinator.self) private var navigation
-  @State private var confirmingReplace = false
+  /// The SHA-256 of the user's own summary awaiting the replace confirmation.
+  @State private var confirmingReplace: String?
 
   var body: some View {
     if let record = meetings.record(id: meetingID) {
@@ -42,6 +43,10 @@ struct MeetingSummaryView: View {
     let summaries = meetings.summaries
     let activity = summaries?.activity[meetingID]
     let writing = summaries?.isWriting(meetingID) ?? false
+    let requesting = summaries?.requesting.contains(meetingID) ?? false
+    // From the current setting, whatever any attempt did (R39): no provider, or one that
+    // cannot summarize, is explained with the way to fix it.
+    let configurationProblem = summaries?.configurationProblem()
     VStack(alignment: .leading, spacing: 10) {
       switch activity {
       case .waiting:
@@ -57,7 +62,7 @@ struct MeetingSummaryView: View {
       case .failed(let problem):
         problemView(problem)
       case nil:
-        EmptyView()
+        if let configurationProblem { problemView(configurationProblem) }
       }
 
       if let text = documents.summary(meetingID) {
@@ -85,7 +90,7 @@ struct MeetingSummaryView: View {
         .disabled(!documents.canEdit(meetingID))
         .accessibilityLabel(Text("Summary", comment: "History, a meeting: the summary box."))
         .accessibilityIdentifier("history.meeting.summary")
-      } else if activity == nil {
+      } else if activity == nil, configurationProblem == nil {
         Text(
           settings.meetingWriteSummary
             ? String(
@@ -110,7 +115,7 @@ struct MeetingSummaryView: View {
               : String(
                 localized: "Write again", comment: "History, a meeting: writes its summary again."))
         }
-        .disabled(writing || settings.llmProvider == .none)
+        .disabled(writing || requesting || configurationProblem != nil)
         .accessibilityIdentifier("history.meeting.writeSummary")
         if let text = documents.summary(meetingID), !text.isEmpty {
           Button {
@@ -134,14 +139,18 @@ struct MeetingSummaryView: View {
       Text(
         "Replace your edited summary?",
         comment: "History, a meeting: confirms writing the summary again over the user's edits."),
-      isPresented: $confirmingReplace
+      isPresented: Binding(
+        get: { confirmingReplace != nil }, set: { if !$0 { confirmingReplace = nil } })
     ) {
       Button(
         String(localized: "Replace", comment: "History, a meeting: replaces the edited summary."),
         role: .destructive
       ) {
-        meetings.summaries?.writeAgain(
-          meetingID, replacing: documents.manifest(meetingID)?.summary?.sha256)
+        // Exactly the text the user confirmed: an edit made after this is kept.
+        if let approved = confirmingReplace {
+          meetings.summaries?.writeAgain(meetingID, replacing: approved)
+        }
+        confirmingReplace = nil
       }
       Button(
         String(localized: "Cancel", comment: "History, a meeting: keeps the edited summary."),
@@ -154,15 +163,13 @@ struct MeetingSummaryView: View {
     }
   }
 
-  /// Saves any typing first, then asks before replacing the user's own text.
+  /// One press: the owner reads and saves the documents first, then starts the attempt or asks
+  /// before replacing the user's own text (`MeetingSummaryOwner.requestWrite`).
   private func write() {
-    let documents = meetings.documents
+    guard let summaries = meetings.summaries else { return }
     Task {
-      await documents.flushSummary(meetingID)
-      if documents.manifest(meetingID)?.summary?.origin == .userEdited {
-        confirmingReplace = true
-      } else {
-        meetings.summaries?.writeAgain(meetingID, replacing: nil)
+      if case .needsConfirmation(let approved) = await summaries.requestWrite(meetingID) {
+        confirmingReplace = approved
       }
     }
   }

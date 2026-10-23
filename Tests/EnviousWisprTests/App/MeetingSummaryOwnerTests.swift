@@ -48,6 +48,8 @@ struct MeetingSummaryOwnerTests {
       heldPrepare = nil
     }
     var transcript = "You: we ship Friday"
+    /// False: History cannot show the meeting now (its facts are not available).
+    var visible = true
     var speakerNames = ["mic:you": "You"]
     var localTurn = true
     var finished: [MeetingSummaryFinishedTelemetry] = []
@@ -133,7 +135,7 @@ struct MeetingSummaryOwnerTests {
                 complete: { @MainActor _, prompt in await world.call(prompt) }))
           },
           visibleTranscript: { _ in
-            .init(text: world.transcript, speakerNames: world.speakerNames)
+            world.visible ? .init(text: world.transcript, speakerNames: world.speakerNames) : nil
           },
           isLocalTurn: { world.localTurn },
           wakes: nil,
@@ -802,5 +804,111 @@ struct MeetingSummaryOwnerTests {
     #expect(
       problems.filter(MeetingSummaryView.opensAIPolish)
         == [.noProvider, .notForSummaries, .notReady, .ollamaTooOld])
+  }
+
+  // MARK: - Summary tab review fixes (Codex C13b-1 r1)
+
+  @Test("typing during a held generated save stays on screen and ends on disk as the user's")
+  func typingDuringGeneratedSave() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("first") { rig.world.finished.count == 1 }
+    #expect(await rig.documents.load(id))
+    var release: DispatchSemaphore?
+    rig.world.duringCall = { release = MeetingDocumentsOwnerTests.holdFileQueue() }
+    rig.owner.writeAgain(id, replacing: nil)
+    await MeetingWorkAdmission.waitUntil {
+      rig.world.calls.count == 2 && rig.documents.hasPendingWork
+    }
+    // The generated save is parked; the user types now.
+    rig.documents.setSummary(id, "Typed while it saved")
+    try #require(release).signal()
+    await Self.eventually("second") { rig.world.finished.count == 2 }
+    #expect(rig.documents.summary(id) == "Typed while it saved", "the typing stays on screen")
+    #expect(await rig.documents.flushSummary(id))
+    #expect(rig.summaryOnDisk(id) == "Typed while it saved")
+    #expect(try rig.manifest(id).summary?.origin == .userEdited)
+  }
+
+  @Test("unsaved notes and unreadable meeting facts both show a summary as out of date")
+  func outOfDateWhileUnsure() async throws {
+    let base = try Rig()
+    let gate = MeetingDocumentsOwnerTests.DebounceGate()
+    defer { gate.open() }
+    let rig = try Rig(sharing: base, documents: Rig.documents(base.store, debounce: { await gate.wait() }))
+    let id = try rig.readyMeeting()
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("written") { rig.world.finished.count == 1 }
+    #expect(await rig.documents.load(id))
+    #expect(rig.owner.isOutOfDate(id) == false)
+    rig.documents.setNotes(id, "A new note")
+    #expect(rig.owner.isOutOfDate(id), "notes typed and not yet saved")
+    gate.open()
+    #expect(await rig.documents.flush(id))
+    #expect(rig.owner.isOutOfDate(id), "saved notes: a newer revision")
+
+    let other = try Rig()
+    let meeting = try other.readyMeeting()
+    _ = await Self.schedule(other, meeting)
+    await Self.eventually("written") { other.world.finished.count == 1 }
+    #expect(await other.documents.load(meeting))
+    other.world.visible = false
+    #expect(other.owner.isOutOfDate(meeting), "facts that cannot be read are never current")
+  }
+
+  @Test("two presses during a held save start one attempt; a failed save starts none")
+  func writeRequests() async throws {
+    let base = try Rig()
+    // The edit's own debounced save is held, so only the press's flush saves it.
+    let gate = MeetingDocumentsOwnerTests.DebounceGate()
+    defer { gate.open() }
+    let rig = try Rig(sharing: base, documents: Rig.documents(base.store, debounce: { await gate.wait() }))
+    let id = try rig.readyMeeting()
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("first") { rig.world.finished.count == 1 }
+    #expect(await rig.documents.load(id))
+    rig.documents.setSummary(id, "Edited")
+    let hold = MeetingDocumentsOwnerTests.holdFileQueue()
+    let first = Task { await rig.owner.requestWrite(id) }
+    await MeetingWorkAdmission.waitUntil { rig.owner.requesting.contains(id) }
+    #expect(await rig.owner.requestWrite(id) == .refused, "a second press does nothing")
+    hold.signal()
+    let answer = await first.value
+    #expect(answer == .needsConfirmation(MeetingDocumentHash.sha256("Edited")))
+    #expect(rig.world.calls.count == 1, "nothing starts before the confirmation")
+
+    let broken = try Rig()
+    let meeting = try broken.readyMeeting()
+    #expect(await broken.documents.load(meeting))
+    // A summary must exist to be edited; then every save of it fails (documents.json).
+    _ = try broken.store.saveSummary("Generated", origin: .generated, inputs: nil, meeting: meeting)
+    _ = await broken.documents.load(meeting)
+    let freshDocuments = Rig.documents(broken.store)
+    let brokenRig = try Rig(sharing: broken, documents: freshDocuments)
+    #expect(await freshDocuments.load(meeting))
+    let undo = try Self.breakManifest(brokenRig, meeting)
+    defer { try? undo() }
+    freshDocuments.setSummary(meeting, "Mine")
+    _ = await freshDocuments.flushSummary(meeting)
+    #expect(await brokenRig.owner.requestWrite(meeting) == .refused)
+    #expect(brokenRig.owner.activity[meeting] == .failed(.storageFailed))
+    #expect(brokenRig.world.calls.isEmpty)
+    #expect(freshDocuments.summary(meeting) == "Mine", "the typing is kept")
+  }
+
+  @Test("the Summary tab's guidance follows the current setting, whatever any attempt did")
+  func configurationGuidance() throws {
+    let rig = try Rig()
+    rig.world.provider = .none
+    #expect(rig.owner.configurationProblem() == .noProvider)
+    rig.world.provider = .egOne
+    #expect(rig.owner.configurationProblem() == .notForSummaries)
+    rig.world.provider = .ollama
+    rig.world.model = "eg-1:q4"
+    #expect(rig.owner.configurationProblem() == .notForSummaries)
+    rig.world.provider = .openAI
+    rig.world.model = "gpt-4o-mini"
+    #expect(rig.owner.configurationProblem() == nil)
   }
 }

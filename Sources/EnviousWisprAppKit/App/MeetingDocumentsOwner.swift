@@ -157,7 +157,7 @@ final class MeetingDocumentsOwner {
       entries[meetingID] = entry
     case .success(let loaded):
       entry.manifest = loaded.manifest
-      entry.summary = loaded.summary
+      if entry.unsavedSummaryEdits == 0 { entry.summary = loaded.summary }
       if entry.unsavedEdits == 0 { entry.notes = loaded.notes }
       entry.load = .loaded
       entries[meetingID] = entry
@@ -270,7 +270,7 @@ final class MeetingDocumentsOwner {
       if let read {
         // The save read the documents: the entry is now fully loaded from that read.
         current.manifest = manifest
-        current.summary = read.summary
+        if current.unsavedSummaryEdits == 0 { current.summary = read.summary }
         current.load = .loaded
       } else {
         current.manifest.notes = manifest.notes
@@ -360,7 +360,10 @@ final class MeetingDocumentsOwner {
     guard !forgotten.contains(meetingID) else { return nil }
     // Typing in the summary not yet saved is saved first: it is the user's text, so the
     // checked write below keeps it.
-    if hasUnsavedSummary(meetingID) { await flushSummary(meetingID) }
+    // If that save fails, nothing is published: the typing stays the newest text.
+    if hasUnsavedSummary(meetingID) {
+      guard await flushSummary(meetingID) else { return nil }
+    }
     let gen = generation(meetingID)
     let result = await perform(meetingID) {
       try $0.saveGeneratedSummary(
@@ -376,7 +379,9 @@ final class MeetingDocumentsOwner {
         switch outcome {
         case .saved(let manifest):
           entry.manifest.summary = manifest.summary
-          entry.summary = text
+          // Typing that arrived during the write stays on screen; its own save (already
+          // scheduled) then writes it over the generated text as the user's.
+          if entry.unsavedSummaryEdits == 0 { entry.summary = text }
           entry.manifest.summaryPending = manifest.summaryPending
         case .userEditKept(let manifest), .notesChanged(let manifest):
           entry.manifest.summaryPending = manifest.summaryPending

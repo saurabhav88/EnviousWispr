@@ -460,11 +460,62 @@ final class MeetingSummaryOwner {
   /// The meeting's summary was written from inputs that differ from the meeting now (a rename,
   /// new notes, a Retry, another model or prompt): it is shown as out of date, never as current
   /// (R60). False when there is no summary or it records no inputs (the user wrote it).
+  /// Typed notes not yet saved count as changed notes, and a meeting whose current facts cannot
+  /// be read counts as changed, never as current.
   func isOutOfDate(_ meetingID: UUID) -> Bool {
-    guard let recorded = documents.manifest(meetingID)?.summary?.inputs,
-      let current = currentInputs(meetingID, selection: deps.selection())
-    else { return false }
-    return recorded != current.summaryInputs
+    guard let recorded = documents.manifest(meetingID)?.summary?.inputs else { return false }
+    guard let current = currentInputs(meetingID, selection: deps.selection()) else { return true }
+    return recorded != current.summaryInputs || documents.hasUnsavedNotes(meetingID)
+  }
+
+  /// Why no summary can be written with the current setting, whatever any attempt did: no
+  /// provider, or a provider or model that cannot summarize. Nil when one can be tried.
+  func configurationProblem() -> Problem? {
+    let selection = deps.selection()
+    switch MeetingSummary.capability(
+      selection.provider, model: selection.model, ollamaModelIsRemote: nil)
+    {
+    case .noProvider: return .noProvider
+    case .notForSummaries: return .notForSummaries
+    case .supported: return nil
+    }
+  }
+
+  /// What a Write summary or Write again press found (`requestWrite`).
+  enum WriteRequest: Equatable {
+    case started
+    /// The summary is the user's own text: confirm, then `writeAgain(replacing:)` with this
+    /// SHA-256.
+    case needsConfirmation(String)
+    /// Nothing started: a press is already being handled, an attempt runs, or the documents
+    /// could not be read or saved (shown as the meeting's activity).
+    case refused
+  }
+
+  /// Meetings whose Write press is being handled: a second press does nothing.
+  private(set) var requesting: Set<UUID> = []
+
+  /// A Write summary or Write again press: the documents read, typing saved, then either an
+  /// attempt or a confirmation. Reserved before any wait, so two presses start one attempt.
+  func requestWrite(_ meetingID: UUID) async -> WriteRequest {
+    guard !requesting.contains(meetingID), currentAttempt[meetingID] == nil else {
+      return .refused
+    }
+    requesting.insert(meetingID)
+    defer { requesting.remove(meetingID) }
+    guard await documents.load(meetingID) else {
+      activity[meetingID] = .failed(.notesUnreadable)
+      return .refused
+    }
+    guard await documents.flushSummary(meetingID) else {
+      activity[meetingID] = .failed(.storageFailed)
+      return .refused
+    }
+    if let summary = documents.manifest(meetingID)?.summary, summary.origin == .userEdited {
+      return .needsConfirmation(summary.sha256)
+    }
+    writeAgain(meetingID, replacing: nil)
+    return .started
   }
 
   static func providerKind(_ provider: LLMProvider) -> MeetingSummaryFinishedTelemetry.ProviderKind
