@@ -43,8 +43,8 @@ struct SyntheticKeyHoldTests {
     let h = try #require(kinds.firstIndex(of: .hold), "\(function): no direct hold statement")
     let u = try #require(kinds.firstIndex(of: .keyUpPost), "\(function): no key-up post")
     #expect(d < h && h < u, "\(function): order must be key-down post, hold, key-up post")
-    // The pid chord's Command is machine-wide: released before the hold, or a key typed in the wait
-    // becomes a Command shortcut (#3978 cloud review).
+    // The pid chord exposes Command to the target app: release it before the hold so
+    // the app does not retain an unmatched Command-down during the wait (#3978 cloud review).
     let commandUp = kinds.firstIndex(of: .commandUpPost)
     #expect(function != "post" || commandUp.map { $0 < h } == true, "\(function): release Command first")
   }
