@@ -488,4 +488,22 @@ struct MeetingHistoryPresentationTests {
     #expect(rig.coordinator.textForDelivery(row) == nil)
     #expect(rig.coordinator.currentRow(id: row.id) != nil, "the row is still in the store")
   }
+
+  @Test("a finished meeting is also found by its notes; an unfinished one is not")
+  func searchByNotes() async throws {
+    let rig = Rig()
+    var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    let row = MeetingHistoryPresentationTests.meetingRow(
+      id: record.transcriptID, meetingID: record.id)
+    rig.infos[record.id] = MeetingHistoryInfo(echoTurnIDs: [], title: nil)
+    try await rig.coordinator.saveAndShowDurably(row)
+    record.state = .ready
+    rig.records = [record]
+    rig.coordinator.meetingNotes = { $0 == record.id ? "Ask Priya about the budget" : nil }
+    rig.coordinator.searchQuery = "priya"
+    #expect(rig.coordinator.listedItems.map(\.id) == [.meeting(record.id)])
+    record.state = .processing
+    rig.records = [record]
+    #expect(rig.coordinator.listedItems.isEmpty, "finished meetings only, notes included")
+  }
 }

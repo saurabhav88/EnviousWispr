@@ -567,8 +567,12 @@ struct MeetingHistoryDetailView: View {
     guard let live = transcripts.currentRow(id: row.id),
       let text = transcripts.textForDelivery(live)
     else { return }
+    // R38: the export carries the user's notes as their own section, read now.
+    let notes = meetings.documents.notes(meetingID).trimmingCharacters(
+      in: .whitespacesAndNewlines)
+    let document = MeetingsPresentation.exportDocument(transcript: text, notes: notes)
     do {
-      try text.write(to: url, atomically: true, encoding: .utf8)
+      try document.write(to: url, atomically: true, encoding: .utf8)
     } catch {
       saveError = error.localizedDescription
     }

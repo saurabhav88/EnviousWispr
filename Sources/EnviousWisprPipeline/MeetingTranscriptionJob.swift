@@ -548,13 +548,16 @@ package final class MeetingTranscriptionJob {
   /// coordinator's scheduler also keeps it away from every other meeting model unit. The
   /// result is shown while the meeting records and is never read by the after-recording pass.
   /// The engine stays loaded afterwards; `releaseIdle` frees it.
-  /// Returns the window's words; an empty or unreadable file is no words.
-  package func preview(audio: MeetingTrackAudio) async throws -> String {
+  /// Returns the window's words (empty for decoded silence), or nil when the file cannot be
+  /// read whole: nothing was decoded, so the caller never advances its freshness for it.
+  package func preview(audio: MeetingTrackAudio) async throws -> String? {
     guard !running else { throw JobError.alreadyRunning }
     running = true
     defer { running = false }
     try checkCancelled()
-    guard let run = audio.runs.first, audio.runs.count == 1 else { return "" }
+    guard audio.problems.isEmpty, let run = audio.runs.first, audio.runs.count == 1,
+      run.sampleCount > 0
+    else { return nil }
     try await prepareModelUnit()
     return try await unit {
       try self.requireModelSource()
@@ -569,6 +572,9 @@ package final class MeetingTranscriptionJob {
   /// loaded.
   package func releaseIdle() async {
     guard !unitInFlight, !running else { return }
+    // Reserved for the whole teardown, so no preview starts while the engine unloads.
+    running = true
+    defer { running = false }
     if engineLoaded {
       await releaseEngine()
     } else if engineResident {

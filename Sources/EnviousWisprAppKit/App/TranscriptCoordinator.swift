@@ -53,6 +53,9 @@ final class TranscriptCoordinator {
   /// Recordings from Start to deletion, with its History row when it has one. Nil (tests, or
   /// before wiring) lists meeting rows only.
   @ObservationIgnored var meetingRecords: (@MainActor () -> [MeetingRecord])?
+  /// #3972 R38: a meeting's notes as EnviousMeet holds them (`MeetingDocumentsOwner`,
+  /// observable there), searched with its finished transcript. Nil searches no notes.
+  @ObservationIgnored var meetingNotes: (@MainActor (UUID) -> String?)?
 
   /// Which kind of History row is listed (#2807). View state: never persisted, so a relaunch
   /// starts at All.
@@ -221,6 +224,8 @@ final class TranscriptCoordinator {
           return false
         }
         return matchesSearch(row)
+          || (meetingNotes?(meeting.meetingID)?.localizedCaseInsensitiveContains(searchQuery)
+            ?? false)
       }
     }
   }

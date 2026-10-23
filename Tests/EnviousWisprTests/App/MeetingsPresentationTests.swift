@@ -243,4 +243,12 @@ struct MeetingsPresentationTests {
     gate.open()
     await MeetingCoordinatorTests.eventually("done") { coordinator.processing == nil }
   }
+
+  @Test("a saved meeting carries the notes under their own heading, and nothing without notes")
+  func exportCarriesNotes() {
+    #expect(P.exportDocument(transcript: "You: hello", notes: "") == "You: hello")
+    #expect(
+      P.exportDocument(transcript: "You: hello", notes: "Follow up Friday")
+        == "You: hello\n\nNotes\n\nFollow up Friday\n")
+  }
 }

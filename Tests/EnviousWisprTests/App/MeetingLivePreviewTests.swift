@@ -5,6 +5,7 @@ import Testing
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprAudio
 @testable import EnviousWisprCore
+@testable import EnviousWisprPipeline
 
 /// #3972 R42, R43, R50, R52 (build chunks C9/C10): when these fail, the live words of a meeting
 /// stop appearing, show a minute twice or out of order, keep a speech engine loaded for the
@@ -23,13 +24,30 @@ struct MeetingLivePreviewTests {
     var isEngineResident = false
     var isUnitInFlight = false
     var onWaitingForDictation: (@MainActor (Bool) -> Void)?
-    /// When set, every preview unit waits on it (a unit still running).
+    /// When set, every preview unit waits on it while decoding (physical work: a cancel does
+    /// not stop it).
     @ObservationIgnored var hold: Gate?
+    /// When true, the next preview waits for admission (like a dictation wait) until
+    /// `admit()`; a cancel ends that wait and the preview throws `cancelled`.
+    @ObservationIgnored var holdAdmission = false
+    private(set) var waitingForAdmission = false
+    @ObservationIgnored private var admission: CheckedContinuation<Bool, Never>?
     /// Shared order of events across the preview and the final pass.
     @ObservationIgnored var log: [String] = []
 
-    func preview(audio: MeetingTrackAudio) async throws -> String {
+    func preview(audio: MeetingTrackAudio) async throws -> String? {
       let name = audio.segments.first?.url.lastPathComponent ?? "none"
+      if holdAdmission {
+        holdAdmission = false
+        waitingForAdmission = true
+        let admitted = await withCheckedContinuation { admission = $0 }
+        waitingForAdmission = false
+        guard admitted else {
+          log.append("withdrawn \(name)")
+          throw MeetingTranscriptionJob.JobError.cancelled
+        }
+      }
+      guard audio.problems.isEmpty, !audio.isEmpty else { return nil }
       isUnitInFlight = true
       isEngineResident = true
       calls.append(name)
@@ -39,6 +57,11 @@ struct MeetingLivePreviewTests {
       return "words of \(name)"
     }
 
+    func admit() {
+      admission?.resume(returning: true)
+      admission = nil
+    }
+
     func releaseIdle() async {
       guard isEngineResident, !isUnitInFlight else { return }
       releases += 1
@@ -46,7 +69,10 @@ struct MeetingLivePreviewTests {
       isEngineResident = false
     }
 
-    func cancel() {}
+    func cancel() {
+      admission?.resume(returning: false)
+      admission = nil
+    }
   }
 
   struct Rig {
@@ -231,7 +257,8 @@ struct MeetingLivePreviewTests {
     #expect(
       MeetingsPresentation.liveStatusLines(live, callSoundRecorded: true)
         == [
-          "Live words, usually about a minute behind.", "Words up to 12:34.", "Catching up.",
+          "Live words, usually about a minute behind.", "Words up to 12:34.",
+          "Catching up: 2 recorded minutes are waiting.",
           "Echo is hidden when the meeting ends.",
         ])
     live.waitingForDictation = true
@@ -240,6 +267,161 @@ struct MeetingLivePreviewTests {
         "Waiting for your dictation to finish."))
     #expect(
       !MeetingsPresentation.liveStatusLines(live, callSoundRecorded: false).contains(
-        "Catching up."), "waiting for dictation is the reason shown, not the backlog")
+        "Catching up: 2 recorded minutes are waiting."),
+      "waiting for dictation is the reason shown, not the backlog")
+    live.waitingForDictation = false
+    live.queued = 1
+    #expect(
+      MeetingsPresentation.liveStatusLines(live, callSoundRecorded: false).contains(
+        "Catching up: 1 recorded minute is waiting."))
+  }
+
+  @Test("with both tracks waiting, previews alternate between them, oldest first in each")
+  func roundRobin() async throws {
+    let rig = try Self.rig()
+    let hold = Gate()
+    rig.preview.hold = hold
+    defer {
+      hold.open()
+      rig.idle.open()
+    }
+    await rig.coordinator.start(from: .menu)
+    let meetingID = try #require(rig.coordinator.meetings.first?.id)
+    let m1 = try Self.closeFile(
+      rig, meetingID: meetingID, track: .microphone, index: 2, startMs: 60_000)
+    await MeetingCoordinatorTests.eventually("first running") { hold.waiting == 1 }
+    let m2 = try Self.closeFile(
+      rig, meetingID: meetingID, track: .microphone, index: 3, startMs: 120_000)
+    let m3 = try Self.closeFile(
+      rig, meetingID: meetingID, track: .microphone, index: 4, startMs: 180_000)
+    let c1 = try Self.closeFile(rig, meetingID: meetingID, track: .callSound, index: 1, startMs: 0)
+    await MeetingCoordinatorTests.eventually("queued") {
+      rig.coordinator.liveTranscript?.queued == 3
+    }
+    hold.open()
+    await MeetingCoordinatorTests.eventually("drained") { rig.preview.calls.count == 4 }
+    #expect(rig.preview.calls == [m1, c1, m2, m3], "the call track is not starved by the mic")
+    await rig.coordinator.stop()
+  }
+
+  @Test("a missing file is skipped and never moves the freshness time")
+  func unreadableSkipped() async throws {
+    let rig = try Self.rig()
+    defer { rig.idle.open() }
+    await rig.coordinator.start(from: .menu)
+    let meetingID = try #require(rig.coordinator.meetings.first?.id)
+    let recorder = try #require(rig.harness.recorders.last)
+    recorder.onSegment(
+      .microphone,
+      MeetingSegmentInfo(
+        index: 2, fileName: "mic-00002-s000060000.caf", startMs: 60_000, frameCount: 16_000))
+    await MeetingCoordinatorTests.eventually("skipped") {
+      rig.coordinator.liveTranscript?.skipped == 1
+    }
+    #expect(rig.coordinator.liveTranscript?.wordsUpToMs == nil)
+    #expect(rig.coordinator.liveTranscript?.lines.isEmpty == true)
+    await rig.coordinator.stop()
+  }
+
+  @Test("a preview still waiting for admission yields to a final pass, then runs after it")
+  func waitingPreviewYields() async throws {
+    let rig = try Self.rig()
+    defer { rig.idle.open() }
+    rig.harness.jobBehavior = { [preview = rig.preview] _ in
+      preview.log.append("final pass")
+      return MeetingCoordinatorTests.result()
+    }
+    // An earlier meeting waits in the queue to be transcribed after this recording starts.
+    var earlier = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    try rig.harness.store.create(earlier)
+    _ = try MeetingAudioFixture.writeSegment(
+      in: rig.harness.store.folder(for: earlier.id), index: 1, startMs: 0, frames: 16_000)
+    earlier.state = .failed
+    try rig.harness.store.save(earlier)
+    rig.coordinator.launch()
+    await MeetingCoordinatorTests.eventually("listed") {
+      rig.coordinator.record(id: earlier.id) != nil
+    }
+    await rig.coordinator.start(from: .menu)
+    let meetingID = try #require(
+      rig.coordinator.meetings.first { $0.id != earlier.id }?.id)
+    rig.preview.holdAdmission = true
+    let file = try Self.closeFile(
+      rig, meetingID: meetingID, track: .microphone, index: 2, startMs: 60_000)
+    await MeetingCoordinatorTests.eventually("preview waiting") { rig.preview.waitingForAdmission }
+
+    // Transcribe the earlier meeting again: its final pass comes first.
+    await rig.coordinator.retry(meetingID: earlier.id)
+    await MeetingCoordinatorTests.eventually("earlier ready") {
+      rig.coordinator.record(id: earlier.id)?.state == .ready
+    }
+    await MeetingCoordinatorTests.eventually("previewed after") {
+      rig.preview.calls == [file]
+    }
+    #expect(rig.preview.log == ["withdrawn \(file)", "final pass", "preview \(file)"])
+    await rig.coordinator.stop()
+  }
+
+  @Test("deleting the recording meeting keeps its folder until a running decode finished")
+  func deleteWaitsForDecode() async throws {
+    let rig = try Self.rig()
+    let hold = Gate()
+    rig.preview.hold = hold
+    defer {
+      hold.open()
+      rig.idle.open()
+    }
+    await rig.coordinator.start(from: .menu)
+    let meetingID = try #require(rig.coordinator.meetings.first?.id)
+    _ = try Self.closeFile(rig, meetingID: meetingID, track: .microphone, index: 2, startMs: 60_000)
+    await MeetingCoordinatorTests.eventually("decoding") { hold.waiting == 1 }
+    let deletion = Task { await rig.coordinator.delete(meetingID: meetingID) }
+    await MeetingCoordinatorTests.eventually("stopped") { rig.coordinator.phase == .idle }
+    #expect(
+      FileManager.default.fileExists(atPath: rig.harness.store.folder(for: meetingID).path),
+      "the decode still reads the meeting's audio")
+    hold.open()
+    await deletion.value
+    #expect(!FileManager.default.fileExists(atPath: rig.harness.store.folder(for: meetingID).path))
+    #expect(rig.preview.releases == 1, "the cancelled preview job unloaded before the removal")
+  }
+
+  @Test("the production job: a preview offered while the idle unload runs is refused, not run")
+  func productionUnloadExcludesPreview() async throws {
+    let unloading = Gate()
+    var transcribed = 0
+    let job = MeetingTranscriptionJob(
+      dependencies: .init(
+        isDictationIdle: { true }, waitUntilDictationIdle: {}, beginModelUse: {}, endModelUse: {},
+        loadEngine: {},
+        transcribe: { _ in
+          transcribed += 1
+          return ASRResult(
+            text: "hello", language: nil, duration: 1, processingTime: 0, backendType: .parakeet)
+        },
+        unloadEngine: { await unloading.wait() },
+        analyzeSpeakers: { _ in MeetingSpeakerAnalysis(outcome: .single, segments: []) }))
+    let dir = FileManager.default.temporaryDirectory
+      .appendingPathComponent("preview-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let url = try MeetingAudioFixture.writeSegment(in: dir, index: 1, startMs: 0, frames: 16_000)
+    let audio = MeetingTrackAudio(files: [(url: url, startMs: 0)])
+    #expect(try await job.preview(audio: audio) == "hello")
+    #expect(job.isEngineResident)
+
+    let release = Task { await job.releaseIdle() }
+    await MeetingWorkAdmission.waitUntil { unloading.waiting == 1 }
+    await #expect(throws: MeetingTranscriptionJob.JobError.alreadyRunning) {
+      _ = try await job.preview(audio: audio)
+    }
+    unloading.open()
+    await release.value
+    #expect(job.isEngineResident == false)
+    #expect(transcribed == 1)
+    // Unreadable audio is no words, never an empty success.
+    let missing = MeetingTrackAudio(files: [
+      (url: dir.appendingPathComponent("gone.caf"), startMs: 0)
+    ])
+    #expect(try await job.preview(audio: missing) == nil)
   }
 }

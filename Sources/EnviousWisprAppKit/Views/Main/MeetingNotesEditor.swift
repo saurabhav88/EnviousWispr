@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprServices
 import SwiftUI
 
 /// A meeting's Notes tab (#3972 R38, R46): the user's own text, typed during or after the
@@ -45,6 +46,16 @@ struct MeetingNotesEditor: View {
         }
       }
       .accessibilityLabel(Text("Notes", comment: "History, a meeting: the notes box."))
+      if editable, !documents.notes(meetingID).isEmpty {
+        Button {
+          PasteService.copyToClipboard(documents.notes(meetingID), kind: .kept)
+        } label: {
+          Label(
+            String(localized: "Copy", comment: "EnviousMeet: copies the visible transcript."),
+            systemImage: "doc.on.doc")
+        }
+        .accessibilityIdentifier("history.meeting.copyNotes")
+      }
       if documents.loadState(meetingID) == .failed {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
           Text(

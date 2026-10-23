@@ -9,6 +9,17 @@ import Foundation
 enum MeetingsPresentation {
   // MARK: - Recorder
 
+  // MARK: - Export (R38)
+
+  /// A saved meeting: its visible transcript, then the user's notes under their own heading
+  /// when there are any.
+  static func exportDocument(transcript: String, notes: String) -> String {
+    guard !notes.isEmpty else { return transcript }
+    let heading = String(
+      localized: "Notes", comment: "History, a meeting: the tab with the user's own notes.")
+    return transcript + "\n\n" + heading + "\n\n" + notes + "\n"
+  }
+
   // MARK: - Live words (R42, R52)
 
   /// The live words' label: the microphone is the user, the call track is the call.
@@ -45,11 +56,18 @@ enum MeetingsPresentation {
         String(
           localized: "Waiting for your dictation to finish.",
           comment: "History, a recording meeting: live words pause while the user dictates."))
-    } else if live.queued > 0 {
+    } else if live.queued == 1 {
       lines.append(
         String(
-          localized: "Catching up.",
-          comment: "History, a recording meeting: recorded minutes are waiting to become live words."))
+          localized: "Catching up: 1 recorded minute is waiting.",
+          comment: "History, a recording meeting: one recorded minute waits to become live words."))
+    } else if live.queued > 1 {
+      lines.append(
+        String(
+          localized: "Catching up: \(String(live.queued)) recorded minutes are waiting.",
+          comment:
+            "History, a recording meeting: how many recorded minutes wait to become live words. Never 1."
+        ))
     }
     if live.skipped > 0 {
       lines.append(

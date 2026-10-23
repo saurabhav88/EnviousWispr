@@ -98,12 +98,13 @@ final class MeetingDocumentsOwner {
   /// Notes typed and not yet saved.
   func hasUnsavedNotes(_ meetingID: UUID) -> Bool { (entries[meetingID]?.unsavedEdits ?? 0) > 0 }
 
-  /// Typed notes are not yet saved, or a read or save is on its way: a relaunch must wait. A
-  /// draft whose save failed keeps it waiting until a save succeeds (Codex C7 r2).
+  /// Typed notes are not yet saved, or a save is on its way: a relaunch must wait. A draft
+  /// whose save failed keeps it waiting until a save succeeds (Codex C7 r2); a draft typed
+  /// before its first read counts from the keystroke. A plain read with nothing typed (the
+  /// launch read for notes search) does not hold a relaunch: losing it loses nothing.
   var hasPendingWork: Bool {
-    entries.values.contains { $0.unsavedEdits > 0 } || !debounceTasks.isEmpty || !loadTasks.isEmpty
-      || !saveChains.isEmpty
-      || operations.values.contains { $0 > 0 }
+    entries.values.contains { $0.unsavedEdits > 0 } || !debounceTasks.isEmpty
+      || !saveChains.isEmpty || operations.values.contains { $0 > 0 }
   }
 
   private func generation(_ meetingID: UUID) -> Int { generations[meetingID] ?? 0 }
@@ -133,7 +134,9 @@ final class MeetingDocumentsOwner {
   }
 
   private func readFromDisk(_ meetingID: UUID, generation gen: Int) async {
-    let result = await perform(meetingID) { try $0.loadDocuments(meeting: meetingID) }
+    let result = await perform(meetingID, counted: false) {
+      try $0.loadDocuments(meeting: meetingID)
+    }
     guard generation(meetingID) == gen, var entry = entries[meetingID] else { return }
     switch result {
     case .failure(let error):
@@ -330,12 +333,15 @@ final class MeetingDocumentsOwner {
 
   /// One file operation, counted in `hasPendingWork` until it answered.
   private func perform<T: Sendable>(
-    _ meetingID: UUID, _ work: @escaping @Sendable (MeetingStore) throws -> T
+    _ meetingID: UUID, counted: Bool = true,
+    _ work: @escaping @Sendable (MeetingStore) throws -> T
   ) async -> Result<T, Error> {
-    operations[meetingID, default: 0] += 1
+    if counted { operations[meetingID, default: 0] += 1 }
     defer {
-      operations[meetingID, default: 1] -= 1
-      if operations[meetingID] == 0 { operations[meetingID] = nil }
+      if counted {
+        operations[meetingID, default: 1] -= 1
+        if operations[meetingID] == 0 { operations[meetingID] = nil }
+      }
     }
     do {
       return .success(try await writer.run(work))
