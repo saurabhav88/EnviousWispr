@@ -299,13 +299,18 @@ def main():
     except u.Aborted as e:
         print(f"ABORT: {e}")
         return 2
-    rows, unstaged, sink, route = [], [], AlertSink(), None
+    try:
+        # #3990: before any device moves: the dev-app lock, the app's microphone read through
+        # the door and proven restorable. A refusal here leaves nothing to put back.
+        route = AudioRoute()
+    except Exception as e:
+        print(f"ABORT: {e!r}")
+        return 2
+    rows, unstaged, sink = [], [], AlertSink()
     try:
         if not sink.apply():
             raise u.Aborted("the alert and output devices did not switch to BlackHole")
-        # Once, before any app is staged: switching the microphone opens and closes our Settings,
-        # which must not happen between an app's staging and its take.
-        route = AudioRoute()
+        # Once, before any app is staged: the microphone is pinned for the whole run.
         route.apply()
         ROUTE["route"] = route
         for app in requested:
