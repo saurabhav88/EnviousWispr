@@ -112,7 +112,8 @@ import Testing
     releaseDuringRecoveryArm: Bool = false,
     isRecovering: Bool = false,
     recoveringDuringArm: Bool = false,
-    micStatus: AVAuthorizationStatus = .authorized
+    micStatus: AVAuthorizationStatus = .authorized,
+    micPrompt: MicPromptStub? = nil
   ) -> Fixture {
     // The overlay used to post an `NSAccessibility` notification against
     // `NSApp.mainWindow` on every `.recording` push, and `NSApp` is an
@@ -139,7 +140,14 @@ import Testing
     let settings = SettingsManager(
       defaults: TestDefaults.suite("ew-test-\(UUID().uuidString)")!)
     let (overlay, overlayHost) = OverlayTestDouble.headlessDirectorWithHost()
-    let permissions = PermissionsService(microphoneReader: { micStatus })
+    let permissions: PermissionsService
+    if let micPrompt {
+      permissions = PermissionsService(
+        microphoneReader: { micPrompt.status },
+        microphoneRequester: { await micPrompt.request() })
+    } else {
+      permissions = PermissionsService(microphoneReader: { micStatus })
+    }
     let lockBox = TestRecordingLockedBox()
     let lockAccess = DictationLifecycleCoordinator.RecordingLockedAccess(
       get: { lockBox.isLocked },
@@ -648,6 +656,174 @@ import Testing
     #expect(outcome == .noRecording)
   }
 
+
+  // MARK: - #3960 a microphone macOS never asked about
+
+  /// The microphone status and the macOS prompt, both under the test's control.
+  /// `request()` waits for the test's answer the way the real prompt waits for
+  /// the user; an answer given before the request arrives is kept, so no test
+  /// depends on when the ask task first runs. The fixture's permission closures
+  /// are not actor-isolated, hence the lock.
+  final class MicPromptStub: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _status: AVAuthorizationStatus
+    private var _requestCount = 0
+    private var pending: CheckedContinuation<Bool, Never>?
+    private var queuedAnswer: Bool?
+
+    init(status: AVAuthorizationStatus) { _status = status }
+
+    var status: AVAuthorizationStatus {
+      get { lock.withLock { _status } }
+      set { lock.withLock { _status = newValue } }
+    }
+    var requestCount: Int { lock.withLock { _requestCount } }
+
+    func request() async -> Bool {
+      await withCheckedContinuation { continuation in
+        let answer: Bool? = lock.withLock {
+          _requestCount += 1
+          if let queuedAnswer {
+            self.queuedAnswer = nil
+            return queuedAnswer
+          }
+          pending = continuation
+          return nil
+        }
+        if let answer { continuation.resume(returning: answer) }
+      }
+    }
+
+    /// Answers the prompt the way macOS does: the status changes, then the
+    /// request returns.
+    func answer(allow: Bool) {
+      let continuation: CheckedContinuation<Bool, Never>? = lock.withLock {
+        _status = allow ? .authorized : .denied
+        guard let pending else {
+          queuedAnswer = allow
+          return nil
+        }
+        self.pending = nil
+        return pending
+      }
+      continuation?.resume(returning: allow)
+    }
+  }
+
+  @Test("a press with the microphone never asked asks and records nothing")
+  func neverAskedPressAsksAndMintsNothing() async {
+    let prompt = MicPromptStub(status: .notDetermined)
+    let fx = Self.makeFixture(micPrompt: prompt)
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = true
+
+    let outcome = await fx.starter.start()
+
+    #expect(outcome == .noRecording)
+    #expect(fx.starter.microphoneAskTask != nil, "the press asked macOS")
+    #expect(fx.kernelDriver.state == .idle, "no session while macOS is asking")
+    #expect(!Self.showsRecording(fx.overlay), "no recording pill under the prompt")
+    #expect(fx.lockBox.isLocked == false)
+    guard case .granted(let token) = fx.engineLease.admit(.fileImport) else {
+      Issue.record("the press held the engine claim across the prompt")
+      return
+    }
+    fx.engineLease.release(token)
+    prompt.answer(allow: true)
+    await fx.starter.microphoneAskTask?.value
+    #expect(prompt.requestCount == 1)
+  }
+
+  @Test("a toggle start with the microphone never asked asks and records nothing")
+  func neverAskedToggleAsksAndMintsNothing() async {
+    let prompt = MicPromptStub(status: .notDetermined)
+    let fx = Self.makeFixture(micPrompt: prompt)
+    fx.asr.activeBackendType = .whisper
+    fx.asr.isModelLoaded = true
+
+    await fx.starter.toggle(source: .toolbar)
+
+    #expect(fx.starter.microphoneAskTask != nil, "the toggle asked macOS")
+    #expect(fx.whisperKernelDriver.state == .idle)
+    #expect(!Self.showsRecording(fx.overlay))
+    prompt.answer(allow: true)
+    await fx.starter.microphoneAskTask?.value
+    #expect(prompt.requestCount == 1)
+  }
+
+  @Test("presses while the prompt is up neither ask again nor record")
+  func pressesWhilePromptIsUpAreIgnored() async {
+    let prompt = MicPromptStub(status: .notDetermined)
+    let fx = Self.makeFixture(micPrompt: prompt)
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = true
+
+    _ = await fx.starter.start()
+    let second = await fx.starter.start()
+    await fx.starter.toggle(source: .toolbar)
+    // A status change while the prompt is still up must not open a way past it.
+    prompt.status = .authorized
+    let third = await fx.starter.start()
+
+    #expect(second == .noRecording)
+    #expect(third == .noRecording)
+    #expect(fx.kernelDriver.state == .idle)
+    prompt.answer(allow: true)
+    await fx.starter.microphoneAskTask?.value
+    #expect(prompt.requestCount == 1, "one prompt for every press made while it was up")
+  }
+
+  @Test(
+    "Don't Allow shows the access-off notice on the selected engine",
+    arguments: [ASRBackendType.parakeet, .whisper])
+  func refusalShowsAccessOffNotice(backend: ASRBackendType) async {
+    let prompt = MicPromptStub(status: .notDetermined)
+    let fx = Self.makeFixture(micPrompt: prompt)
+    fx.asr.activeBackendType = backend
+    fx.asr.isModelLoaded = true
+    let selected = backend == .whisper ? fx.whisperKernelDriver : fx.kernelDriver
+
+    _ = await fx.starter.start()
+    prompt.answer(allow: false)
+    await fx.starter.microphoneAskTask?.value
+
+    #expect(selected.state == .error(.permissionDenied))
+  }
+
+  @Test("Allow shows nothing, and the next press goes past the ask")
+  func allowShowsNothingAndNextPressProceeds() async {
+    let prompt = MicPromptStub(status: .notDetermined)
+    let fx = Self.makeFixture(micPrompt: prompt)
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = true
+
+    _ = await fx.starter.start()
+    prompt.answer(allow: true)
+    await fx.starter.microphoneAskTask?.value
+    #expect(fx.kernelDriver.state == .idle, "Allow publishes nothing")
+
+    // The next press reaches the engine: a prewarm failure is the observable
+    // proof that it went past the ask.
+    fx.audio.preWarmError = NSError(domain: "SomeGenericCapture", code: 99)
+    _ = await fx.starter.start()
+    #expect(prompt.requestCount == 1, "an answered microphone is not asked again")
+    #expect(fx.kernelDriver.state == .error(.micWouldNotOpen))
+  }
+
+  @Test("an authorized microphone is never asked")
+  func authorizedMicrophoneIsNeverAsked() async {
+    let prompt = MicPromptStub(status: .authorized)
+    let fx = Self.makeFixture(micPrompt: prompt)
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = true
+    fx.audio.preWarmError = NSError(domain: "SomeGenericCapture", code: 99)
+
+    _ = await fx.starter.start()
+
+    #expect(prompt.requestCount == 0)
+    #expect(fx.starter.microphoneAskTask == nil)
+    #expect(fx.kernelDriver.state == .error(.micWouldNotOpen))
+  }
 
   // MARK: - #2648 shared-resource admission
 

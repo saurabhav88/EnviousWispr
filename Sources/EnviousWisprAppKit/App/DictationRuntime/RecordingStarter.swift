@@ -32,6 +32,20 @@ final class RecordingStarter {
   /// denied-permission start surfaces "Microphone access is off." Bound in init.
   let micPermissionDenied: @MainActor () -> Bool
 
+  /// #3960 — live "macOS has never asked" read and the prompt itself. A press
+  /// while never asked asks instead of recording: starting capture first makes
+  /// macOS prompt mid-take, the take records exact zeros and ends blaming the
+  /// hardware. Bound in init.
+  let micNeedsAsking: @MainActor () -> Bool
+  let requestMicrophone: @MainActor () async -> Bool
+
+  /// #3960 — true while the microphone prompt from a press is on screen, so a
+  /// second press neither asks again nor records.
+  private var isAskingForMicrophone = false
+  /// #3960 — the latest ask, kept so a test can await the answer being handled
+  /// instead of guessing when it was.
+  private(set) var microphoneAskTask: Task<Void, Never>?
+
   /// Arms the crash-recovery limb for a recording about to start, returning the
   /// Everything this start path needs from the crash-recovery limb, in ONE slot.
   ///
@@ -293,6 +307,34 @@ final class RecordingStarter {
         if !perms.hasAccessibilityPermission { perms.restartMonitoringIfNeeded() }
       }
     self.micPermissionDenied = { perms.microphonePermissionIsDenied }
+    self.micNeedsAsking = { perms.microphoneNeedsAsking }
+    self.requestMicrophone = { await perms.requestMicrophoneAccess() }
+  }
+
+  /// #3960 — the press-time microphone ask, shared by `start()` and the start
+  /// branch of `toggle(source:)`. Returns true when this press only asks (the
+  /// caller mints nothing). The press is not kept: with push-to-talk the key is
+  /// usually up by the time the user answers, so after Allow the next press
+  /// records (the Meetings `fixMicrophone` precedent). A refusal shows the
+  /// "Microphone access is off." notice on whichever engine is selected once
+  /// the answer arrives, unless a session started meanwhile.
+  private func askForMicrophoneIfNeeded() -> Bool {
+    // The pending flag first: a status change while the prompt is up must not
+    // let a press past the request still on screen.
+    if isAskingForMicrophone { return true }
+    guard micNeedsAsking() else { return false }
+    isAskingForMicrophone = true
+    let requestMicrophone = self.requestMicrophone
+    microphoneAskTask = Task { @MainActor [weak self] in
+      let granted = await requestMicrophone()
+      guard let self else { return }
+      self.isAskingForMicrophone = false
+      guard !granted, self.micPermissionDenied(),
+        !self.kernelDriver.state.isActive, !self.whisperKernelDriver.state.isActive
+      else { return }
+      self.activeDriver.setTerminalReason(.permissionDenied)
+    }
+    return true
   }
 
   /// Hotkey PTT start path. Mirrors the former root-state file (pre-PR10):
@@ -326,6 +368,9 @@ final class RecordingStarter {
       handleRecoveryPressRefused(backend: backend)
       return .noRecording
     }
+    // #3960 — a microphone macOS never asked about is asked about now, before
+    // the engine claim, so the claim is never held across the prompt.
+    if askForMicrophoneIfNeeded() { return .noRecording }
     // #2648 — the shared ASR-and-polish resource. Claimed HERE, before any
     // engine work: a refusal must reach the user as a pill at press time, not
     // after a pre-warm they cannot see the point of. Recovery is refused one
@@ -613,6 +658,8 @@ final class RecordingStarter {
         handleRecoveryPressRefused(backend: backend)
         return
       }
+      // #3960 — same microphone ask as the PTT path, in the same position.
+      if askForMicrophoneIfNeeded() { return }
       // #2648 — the shared-resource claim, same as the PTT path and in the same
       // position: after recovery, before any engine work. A STOP toggle never
       // reaches here (guarded by `isStartingFromIdle`), so stopping a recording

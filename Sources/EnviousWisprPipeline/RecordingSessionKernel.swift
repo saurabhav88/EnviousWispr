@@ -2354,7 +2354,12 @@ final class RecordingSessionKernel {
       // #1890 producer 1 of 2. Frozen HERE, where the route snapshot and the bind
       // label still describe this take.
       freezeSignalAttribution(samples: captureResult.samples, peak: rawPeakAudioLevel)
-      finishTerminal(.failed(.zeroSignal), sid: sid)
+      // #3960: exact zeros from the first buffer are also what a microphone
+      // with access turned off delivers. When the live read says so, the user
+      // gets the access notice with Open Settings, not "check your hardware".
+      finishTerminal(
+        microphonePermissionIsDenied() ? .failed(.permissionDenied) : .failed(.zeroSignal),
+        sid: sid)
       return
     }
     // `.becameZeroMidCapture` / `nil`: fall through. On mid-capture the non-zero
