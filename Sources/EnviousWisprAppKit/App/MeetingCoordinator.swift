@@ -380,7 +380,7 @@ final class MeetingCoordinator {
   /// on it, one after another, so an unload never overlaps a unit and a caller can await the
   /// lane's end. `previewLaneOps` counts operations queued or running on it.
   private var previewLane: Task<Void, Never>?
-  private var previewLaneOps = 0
+  private(set) var previewLaneOps = 0
   /// The file the running preview operation decodes, and the track decoded last (round robin).
   private var currentPreviewItem: PreviewItem?
   private var lastPreviewTrack: MeetingTrackKind?
@@ -806,8 +806,16 @@ final class MeetingCoordinator {
     }
     startGeneration += 1
     phase = .stopping(meetingID: meetingID)
-    // The after-recording pass makes the real words; queued previews are not needed (R42).
+    // The after-recording pass makes the real words; queued previews are not needed (R42), and
+    // one still waiting for admission is called off (a decode already running finishes).
+    // Redundant by design with the pass's own `yieldPreviewEngine` and the lane's admission
+    // check (the pass sets `processing` before it yields); kept so a Stop never depends on the
+    // pass starting. A mutation removing it alone changes nothing a test can see (C10 r4).
     dropQueuedPreviews(of: meetingID)
+    if currentPreviewItem?.meetingID == meetingID {
+      previewJob?.cancel()
+      previewJobCancelled = true
+    }
     // Stays reachable until the files are closed, so a quit meanwhile takes it over.
     let recorder = self.recorder
     let report = await recorder?.stop()
@@ -1443,6 +1451,8 @@ final class MeetingCoordinator {
       case .skipped:
         // Unreadable or failed audio never moves the freshness time (Codex C10 r1).
         transcript.skipped += 1
+      case .dropped:
+        continue
       case .interrupted:
         // A final pass came first while it waited; it is decoded after that pass.
         liveTranscript = transcript
@@ -1456,40 +1466,55 @@ final class MeetingCoordinator {
     }
   }
 
-  private enum PreviewOutcome {
+  private enum PreviewOutcome: Equatable {
     case words(String)
     case skipped
     case interrupted
+    /// The recording ended, the meeting is being deleted or the app quits: nothing to show.
+    case dropped
+  }
+
+  /// One preview unit, on the lane: the file read, then the job's admission and decode.
+  /// Whether `item` may start model work now (Codex C10 r3): its meeting still records, the
+  /// app is not quitting, the meeting is not being deleted, and no final pass or commit waits.
+  /// Asked when the lane starts the item and again after each wait before model work; work
+  /// already running natively may finish.
+  private func previewAdmission(_ item: PreviewItem) -> PreviewOutcome? {
+    guard !quitting, !deleting.contains(item.meetingID),
+      liveTranscript?.meetingID == item.meetingID, isRecording,
+      activeMeetingID == item.meetingID
+    else { return .dropped }
+    if processing != nil || committing { return .interrupted }
+    return nil
   }
 
   /// One preview unit, on the lane: the file read, then the job's admission and decode.
   private func decodePreview(_ item: PreviewItem) async -> PreviewOutcome {
-    guard liveTranscript?.meetingID == item.meetingID, !deleting.contains(item.meetingID) else {
-      return .skipped
-    }
-    // Priority is checked again on the lane (Codex C10 r2): a final pass that arrived while
-    // this preview queued behind another lane operation comes first.
-    if processing != nil || committing { return .interrupted }
+    if let refused = previewAdmission(item) { return refused }
     if previewJobCancelled {
       await previewJob?.releaseIdle()
       previewJob = nil
       previewJobCancelled = false
+      if let refused = previewAdmission(item) { return refused }
     }
-    let job = previewJob ?? makePreviewJob()
-    currentPreviewItem = item
-    previewJobMeetingID = item.meetingID
-    defer { currentPreviewItem = nil }
     let url = deps.store.folder(for: item.meetingID).appendingPathComponent(item.info.fileName)
     // Detached, not `Task {}`: this type is @MainActor and a plain Task inherits it; this is
     // a synchronous header and frame-count read of the file. Awaited at once.
     let audio = await Task.detached(priority: .utility) {
       MeetingTrackAudio(files: [(url: url, startMs: item.info.startMs)])
     }.value
+    // Asked again after the read and before any job or engine exists for it.
+    if let refused = previewAdmission(item) { return refused }
+    let job = previewJob ?? makePreviewJob()
+    currentPreviewItem = item
+    previewJobMeetingID = item.meetingID
+    defer { currentPreviewItem = nil }
     do {
       guard let words = try await job.preview(audio: audio) else { return .skipped }
       return .words(words.trimmingCharacters(in: .whitespacesAndNewlines))
     } catch MeetingTranscriptionJob.JobError.cancelled {
-      return .interrupted
+      // Called off while it waited: a final pass came first, or the recording ended.
+      return previewAdmission(item) == .dropped ? .dropped : .interrupted
     } catch {
       return .skipped
     }

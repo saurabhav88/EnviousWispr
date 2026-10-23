@@ -565,4 +565,74 @@ struct MeetingLivePreviewTests {
         meetingID: other.id, rowID: row.id, documents: coordinator.documents,
         transcripts: rig.coordinator) == .notesUnreadable)
   }
+
+  /// A meeting with one decoded minute, its idle unload held on the lane, and a second minute
+  /// queued behind that unload.
+  static func previewQueuedBehindUnload(_ rig: Rig, unloading: Gate) async throws -> (
+    meetingID: UUID, first: String
+  ) {
+    rig.preview.unloadHold = unloading
+    await rig.coordinator.start(from: .menu)
+    let meetingID = try #require(rig.coordinator.meetings.first?.id)
+    let first = try closeFile(
+      rig, meetingID: meetingID, track: .microphone, index: 2, startMs: 60_000)
+    await MeetingCoordinatorTests.eventually("idle wait") { rig.idle.waiting == 1 }
+    rig.idle.open()
+    await MeetingCoordinatorTests.eventually("unload held") { unloading.waiting == 1 }
+    _ = try closeFile(rig, meetingID: meetingID, track: .microphone, index: 3, startMs: 120_000)
+    // The second minute has left the queue and waits on the lane behind the held unload.
+    await MeetingWorkAdmission.waitUntil {
+      rig.coordinator.previewLaneOps == 2 && rig.coordinator.liveTranscript?.queued == 0
+    }
+    return (meetingID, first)
+  }
+
+  @Test("Stop while a minute waits on the lane: it never decodes")
+  func stopBeforeLaneAdmission() async throws {
+    let rig = try Self.rig()
+    let unloading = Gate()
+    defer {
+      unloading.open()
+      rig.idle.open()
+    }
+    let (_, first) = try await Self.previewQueuedBehindUnload(rig, unloading: unloading)
+    await rig.coordinator.stop()
+    unloading.open()
+    await MeetingCoordinatorTests.eventually("lane idle") { !rig.coordinator.isWorkInFlight }
+    #expect(rig.preview.calls == [first], "no decode started after Stop")
+  }
+
+  @Test("quit while a minute waits on the lane: it never decodes")
+  func quitBeforeLaneAdmission() async throws {
+    let rig = try Self.rig()
+    let unloading = Gate()
+    defer {
+      unloading.open()
+      rig.idle.open()
+    }
+    let (_, first) = try await Self.previewQueuedBehindUnload(rig, unloading: unloading)
+    rig.coordinator.prepareForTermination(deadline: .now() + 2)
+    unloading.open()
+    // Until the lane has run everything queued on it, the minute could still start.
+    await MeetingCoordinatorTests.eventually("lane idle") { !rig.coordinator.isWorkInFlight }
+    #expect(rig.preview.releases == 1)
+    #expect(rig.preview.calls == [first], "no decode started after quit")
+  }
+
+  @Test("Stop calls off a minute still waiting for admission; nothing decodes")
+  func stopCallsOffWaitingAdmission() async throws {
+    let rig = try Self.rig()
+    defer { rig.idle.open() }
+    await rig.coordinator.start(from: .menu)
+    let meetingID = try #require(rig.coordinator.meetings.first?.id)
+    rig.preview.holdAdmission = true
+    let file = try Self.closeFile(
+      rig, meetingID: meetingID, track: .microphone, index: 2, startMs: 60_000)
+    await MeetingCoordinatorTests.eventually("waiting") { rig.preview.waitingForAdmission }
+    await rig.coordinator.stop()
+    await MeetingCoordinatorTests.eventually("withdrawn") {
+      rig.preview.log.contains("withdrawn \(file)")
+    }
+    #expect(rig.preview.calls.isEmpty)
+  }
 }
