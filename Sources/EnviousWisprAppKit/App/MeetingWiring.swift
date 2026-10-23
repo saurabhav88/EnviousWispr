@@ -83,6 +83,9 @@ enum MeetingWiring {
         removeTranscriptRow: { [transcriptCoordinator = inputs.transcriptCoordinator] id in
           try transcriptCoordinator.removeRow(id: id)
         },
+        meetingRowIDs: { [transcriptCoordinator = inputs.transcriptCoordinator] meetingID in
+          transcriptCoordinator.rowIDs(ofMeeting: meetingID)
+        },
         emitEnded: { [log = inputs.log, emit = inputs.emitMeetingEnded] event in
           log("meeting ended outcome=\(event.outcome.rawValue)")
           emit(event)

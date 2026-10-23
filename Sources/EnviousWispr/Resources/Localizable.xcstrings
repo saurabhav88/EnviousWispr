@@ -19543,6 +19543,17 @@
         }
       }
     },
+    "This meeting's files are still on this Mac but can't be read, so it can't be deleted here." : {
+      "comment" : "History: Delete was refused for a meeting whose folder exists but cannot be read.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Dateien dieses Meetings sind noch auf diesem Mac, lassen sich aber nicht lesen. Deshalb kann das Meeting hier nicht gelöscht werden."
+          }
+        }
+      }
+    },
     "This model did not pass any of our cleanup tests." : {
       "localizations" : {
         "de" : {
@@ -21009,6 +21020,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Warten, bis eine Meeting-Zusammenfassung fertig ist."
+          }
+        }
+      }
+    },
+    "Waiting for free disk space. Free up space, then choose Transcribe again." : {
+      "comment" : "History, a meeting: the transcript waits because the Mac is almost full.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wartet auf freien Speicherplatz. Gib Speicherplatz frei und wähle dann „Erneut transkribieren“."
           }
         }
       }

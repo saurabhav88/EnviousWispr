@@ -254,7 +254,10 @@
     /// `{meetingID}`: Transcribe again. Refused when the meeting's state does not allow it.
     func retry(_ args: [String: Any]) async -> Result {
       await change(args, name: "retry") { coordinator, record in
-        guard record.audioKept, [.failed, .ready, .interrupted].contains(record.state) else {
+        let waitsForSpace = record.state == .queued && coordinator.queueWaitsForSpace
+        guard record.audioKept,
+          waitsForSpace || [.failed, .ready, .interrupted].contains(record.state)
+        else {
           return "the meeting has no audio, or is not finished"
         }
         return nil

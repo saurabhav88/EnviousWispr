@@ -1119,6 +1119,11 @@ final class TranscriptCoordinator {
     if let meetingID { selectedItemID = .meeting(meetingID) }
   }
 
+  /// The rows that name this meeting (normally one; an orphan's when its record is gone).
+  func rowIDs(ofMeeting meetingID: UUID) -> [UUID] {
+    transcripts.filter { $0.meetingID == meetingID }.map(\.id)
+  }
+
   /// History's delete of one listed item. A meeting goes to EnviousMeet, the deletion
   /// authority of its row and its files (#3972 R12); the selection moves to the item beside it
   /// at once, because the meeting leaves the list only when EnviousMeet has removed it.

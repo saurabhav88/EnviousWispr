@@ -322,10 +322,16 @@ enum MeetingsPresentation {
     let delete: Bool
   }
 
-  static func actions(_ record: MeetingRecord, isActive: Bool) -> Actions {
+  /// `queueWaitsForSpace`: the queue stopped on a full disk, so a queued meeting offers
+  /// Transcribe again to start it after space is freed.
+  static func actions(_ record: MeetingRecord, isActive: Bool, queueWaitsForSpace: Bool = false)
+    -> Actions
+  {
     let settled = [.failed, .ready, .interrupted].contains(record.state)
+    let waitsForSpace = record.state == .queued && queueWaitsForSpace
     return Actions(
-      transcribeAgain: record.audioKept && settled && !isActive && record.isWritableByThisBuild,
+      transcribeAgain: record.audioKept && (settled || waitsForSpace) && !isActive
+        && record.isWritableByThisBuild,
       // A notes-only meeting has no audio to delete, and never says it was deleted (R53).
       deleteAudio: record.audioKept && record.state != .notesOnly && !isActive
         && record.isWritableByThisBuild,

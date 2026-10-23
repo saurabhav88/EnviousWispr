@@ -192,6 +192,15 @@ final class MeetingSummaryOwner {
     for running in mine { await running.task.value }
   }
 
+  /// A newer transcript of the meeting is ready: every attempt over the old one is cancelled
+  /// and this returns once each has physically ended and settled (mark cleared, one row sent),
+  /// so the new transcript's owed mark is written after them and none of them can clear it.
+  func settleBeforeNewTranscript(_ meetingID: UUID) async {
+    let mine = attempts.values.filter { $0.meetingID == meetingID }
+    for running in mine { running.task.cancel() }
+    for running in mine { await running.task.value }
+  }
+
   /// The app quits: every attempt stops and stays owed, so a relaunch finishes it and sends
   /// its one row.
   func prepareForTermination() {

@@ -26,6 +26,8 @@ struct MeetingHistoryDetailView: View {
   @State private var titleDraft = ""
   @State private var confirming: Confirmation?
   @State private var actionInFlight = false
+  /// The orphan row's Delete was refused: its folder is still on this Mac.
+  @State private var orphanRefused = false
   @State private var audioSize: MeetingsPresentation.AudioSize = .measuring
   @State private var saveError: String?
   /// This meeting's player, made when its audio is available; stopped and dropped when the
@@ -109,12 +111,45 @@ struct MeetingHistoryDetailView: View {
           )
           .font(.system(size: 22, weight: .semibold))
           .foregroundStyle(.stTextPrimary)
+          orphanDelete
           transcript(row: row, record: nil)
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
       }
       .background(Color.stPageBg)
+    }
+  }
+
+  /// A row whose meeting record is gone can still be deleted on its own: EnviousMeet removes it
+  /// only when the meeting's folder is confirmed absent, and says so when it is not.
+  private var orphanDelete: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      HStack {
+        Spacer(minLength: 0)
+        SettingsActionButton(
+          title: LocalizedStringResource(
+            "Delete meeting",
+            comment: "EnviousMeet: removes the meeting, its audio and its transcript."),
+          isEnabled: !actionInFlight, emphasis: .destructive
+        ) {
+          actionInFlight = true
+          Task {
+            orphanRefused = !(await meetings.deleteOrphan(meetingID: meetingID))
+            actionInFlight = false
+          }
+        }
+        .accessibilityIdentifier("meetings.detail.deleteOrphan")
+      }
+      if orphanRefused {
+        Text(
+          "This meeting's files are still on this Mac but can't be read, so it can't be deleted here.",
+          comment: "History: Delete was refused for a meeting whose folder exists but cannot be read."
+        )
+        .font(.stHelper)
+        .foregroundStyle(.stError)
+        .fixedSize(horizontal: false, vertical: true)
+      }
     }
   }
 
@@ -198,7 +233,8 @@ struct MeetingHistoryDetailView: View {
   // MARK: - Actions
 
   private func actions(_ record: MeetingRecord) -> some View {
-    let offered = MeetingsPresentation.actions(record, isActive: isActive(record))
+    let offered = MeetingsPresentation.actions(
+      record, isActive: isActive(record), queueWaitsForSpace: meetings.queueWaitsForSpace)
     return HStack(spacing: 10) {
       SettingsActionButton(
         title: LocalizedStringResource(
@@ -401,6 +437,11 @@ struct MeetingHistoryDetailView: View {
             transcript: live, callSoundRecorded: record.trackStatus[.callSound] == .captured,
             superseded: true)
         }
+      } else if record.state == .queued, meetings.queueWaitsForSpace {
+        busyLine(
+          String(
+            localized: "Waiting for free disk space. Free up space, then choose Transcribe again.",
+            comment: "History, a meeting: the transcript waits because the Mac is almost full."))
       } else if record.state == .queued {
         busyLine(
           String(

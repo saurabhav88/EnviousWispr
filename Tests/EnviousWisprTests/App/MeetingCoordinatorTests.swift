@@ -234,6 +234,8 @@ struct MeetingCoordinatorTests {
     let checkpointEntered = DispatchSemaphore(value: 0)
     let writeGate = WriteGate()
     var removedRows: [UUID] = []
+    /// What `meetingRowIDs` answers per meeting.
+    var meetingRows: [UUID: [UUID]] = [:]
     var removeError: Error?
     /// Every `meeting.ended` row the coordinator sent, in order.
     var ended: [MeetingEndedTelemetry] = []
@@ -296,6 +298,7 @@ struct MeetingCoordinatorTests {
           if let removeError { throw removeError }
           removedRows.append(id)
         },
+        meetingRowIDs: { [self] id in meetingRows[id] ?? [] },
         emitEnded: { [self] event in
           ended.append(event)
           onEnded?(event)
@@ -1523,5 +1526,64 @@ struct MeetingCoordinatorTests {
     #expect(coordinator.record(id: record.id)?.state == .queued)
     #expect(coordinator.isWorkInFlight == false)
     #expect(coordinator.notice == .lowDisk)
+  }
+
+  @Test("a queue stopped by a full disk resumes from Transcribe again once space is free")
+  func lowDiskResume() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    await coordinator.start(from: .history)
+    let meetingID = try #require(coordinator.meetings.first?.id)
+    // The disk fills during the recording: after Stop the meeting is queued and waits.
+    harness.freeBytes = 10
+    await coordinator.stop()
+    await Self.eventually("waits for space") { coordinator.queueWaitsForSpace }
+    let queued = try #require(coordinator.record(id: meetingID))
+    #expect(queued.state == .queued)
+    #expect(
+      MeetingsPresentation.actions(queued, isActive: false, queueWaitsForSpace: true)
+        .transcribeAgain, "the detail offers Transcribe again")
+    #expect(
+      !MeetingsPresentation.actions(queued, isActive: false).transcribeAgain,
+      "a queue that is running offers nothing")
+
+    // Still full: Transcribe again checks the disk again and keeps waiting.
+    await coordinator.retry(meetingID: meetingID)
+    await Self.eventually("checked again") { coordinator.queueWaitsForSpace }
+    #expect(coordinator.record(id: meetingID)?.state == .queued)
+
+    harness.freeBytes = 50_000_000_000
+    await coordinator.retry(meetingID: meetingID)
+    await Self.eventually("ready") { coordinator.record(id: meetingID)?.state == .ready }
+    #expect(coordinator.queueWaitsForSpace == false)
+  }
+
+  @Test("a History row whose meeting is gone is deleted alone; a folder still on disk is kept")
+  func orphanRowDeletion() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    var other = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    try harness.store.create(other)
+    other.state = .ready
+    try harness.store.save(other)
+    coordinator.launch()
+    await Self.eventually("listed") { coordinator.record(id: other.id) != nil }
+
+    let orphan = UUID()
+    let orphanRow = UUID()
+    harness.meetingRows[orphan] = [orphanRow]
+    harness.meetingRows[other.id] = [other.transcriptID]
+    await coordinator.delete(meetingID: orphan)
+    #expect(harness.removedRows == [orphanRow], "only the orphan's own row")
+    #expect(coordinator.record(id: other.id) != nil, "the other meeting is untouched")
+
+    // A folder that is still there (unreadable, no record) is never removed from History.
+    let kept = UUID()
+    harness.meetingRows[kept] = [UUID()]
+    try FileManager.default.createDirectory(
+      at: harness.store.folder(for: kept), withIntermediateDirectories: true)
+    #expect(await coordinator.deleteOrphan(meetingID: kept) == false)
+    #expect(harness.removedRows == [orphanRow])
+    #expect(FileManager.default.fileExists(atPath: harness.store.folder(for: kept).path))
   }
 }

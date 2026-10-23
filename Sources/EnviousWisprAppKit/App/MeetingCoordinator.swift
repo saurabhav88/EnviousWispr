@@ -218,6 +218,8 @@ final class MeetingCoordinator {
     /// it could not.
     var saveTranscript: @MainActor (Transcript) async throws -> Void
     var removeTranscriptRow: @MainActor (UUID) throws -> Void
+    /// The History rows that name this meeting, for a row whose meeting record is gone.
+    var meetingRowIDs: @MainActor (UUID) -> [UUID] = { _ in [] }
     var emitEnded: @MainActor (MeetingEndedTelemetry) -> Void
     var log: @MainActor (String) -> Void
     /// Called whenever recording or processing work starts or ends, so admission elsewhere
@@ -308,6 +310,9 @@ final class MeetingCoordinator {
   private(set) var meetings: [MeetingRecord] = []
   private(set) var newerFormatMeetings: [MeetingRecord.Header] = []
   private(set) var processing: Processing?
+  /// The queue stopped because the disk was almost full: queued meetings wait for space, and
+  /// Transcribe again restarts the queue once the user freed some (whole-diff review r1 F3).
+  private(set) var queueWaitsForSpace = false
   private(set) var notice: Notice?
   private(set) var callSoundStatus: MeetingTrackStatus?
   /// The microphone the current recording actually bound.
@@ -941,6 +946,7 @@ final class MeetingCoordinator {
     // Each meeting at most once per drain, so a meeting whose state could not be saved never
     // makes the queue run it again.
     var attempted: Set<UUID> = []
+    queueWaitsForSpace = false
     while !quitting,
       let next = meetings.last(where: {
         $0.state == .queued && !$0.deletionRequested && !deleting.contains($0.id)
@@ -949,8 +955,10 @@ final class MeetingCoordinator {
     {
       attempted.insert(next.id)
       if let free = deps.freeDiskBytes(), free < Self.diskFloorBytes {
-        // Stays queued; a later launch or Retry tries again.
+        // Stays queued; Transcribe again (offered while the queue waits for space), a later
+        // launch or a new Stop tries again, each through this same disk check.
         notice = .lowDisk
+        queueWaitsForSpace = true
         return
       }
       await process(next.id)
@@ -1102,6 +1110,10 @@ final class MeetingCoordinator {
     // before the meeting is ready: a quit right after the barrier never loses it (the relaunch
     // finishes it). Written either way, so an older mark never outlives a decision not to.
     let summaryPlan = summaries?.decide() ?? .off
+    // A summary still being written over the previous transcript (Transcribe again) ends and
+    // settles first: it clears its own owed mark and sends its one row before the new decision
+    // writes the new mark, so it can never clear the new one (whole-diff review r1 F1).
+    await summaries?.settleBeforeNewTranscript(meetingID)
     // Whether the owed mark is on disk. If it could not be written, nothing durable would let a
     // quit-interrupted attempt resume, so none starts: the failure is settled in the same turn as
     // `meeting.ended` (one `failed` row) and the Summary tab offers Write again. If an older mark
@@ -1247,6 +1259,13 @@ final class MeetingCoordinator {
   // MARK: - User actions on a meeting
 
   func retry(meetingID: UUID) async {
+    // A meeting left queued by a full disk: the queue starts again (and checks the disk again).
+    if let queued = live[meetingID], queued.state == .queued, queueWaitsForSpace,
+      !isActive(meetingID), !closeOwned.contains(meetingID)
+    {
+      startQueueIfNeeded()
+      return
+    }
     guard var record = live[meetingID], record.audioKept,
       [.failed, .ready, .interrupted].contains(record.state), !isActive(meetingID),
       !closeOwned.contains(meetingID)
@@ -1293,6 +1312,10 @@ final class MeetingCoordinator {
   func delete(meetingID: UUID) async {
     // History can ask before the launch listing finished; the meeting is known after it.
     if live[meetingID] == nil, let launchTask { await launchTask.value }
+    guard live[meetingID] != nil else {
+      await deleteOrphan(meetingID: meetingID)
+      return
+    }
     guard !deleting.contains(meetingID), var record = live[meetingID] else { return }
     deleting.insert(meetingID)
     workChanged()
@@ -1366,6 +1389,37 @@ final class MeetingCoordinator {
 
   /// Cancels the meeting's pass, awaits its end (so no checkpoint save is in flight), then
   /// removes the History row and the folder.
+  /// A History row whose meeting has no record (its folder is gone): the row is removed only
+  /// when the folder is confirmed absent. A folder that is still there but unreadable, or one a
+  /// newer EnviousWispr saved, is never touched; false says the row stays (whole-diff review r1
+  /// F2).
+  @discardableResult
+  func deleteOrphan(meetingID: UUID) async -> Bool {
+    if live[meetingID] == nil, let launchTask { await launchTask.value }
+    guard live[meetingID] == nil, !newerFormatMeetings.contains(where: { $0.id == meetingID })
+    else { return false }
+    let folderExists: Bool
+    do {
+      folderExists = try await writer.run { store in
+        FileManager.default.fileExists(atPath: store.folder(for: meetingID).path)
+      }
+    } catch {
+      deps.log("meeting orphan delete refused reason=unreadable")
+      return false
+    }
+    guard !folderExists else {
+      deps.log("meeting orphan delete refused reason=folder_present")
+      return false
+    }
+    do {
+      for rowID in deps.meetingRowIDs(meetingID) { try deps.removeTranscriptRow(rowID) }
+    } catch {
+      deps.log("meeting orphan delete failed error=\(type(of: error))")
+      return false
+    }
+    return true
+  }
+
   private func finishDeletion(_ record: MeetingRecord) async {
     if processing?.meetingID == record.id { job?.cancel() }
     await waitUntilNotProcessing(record.id)

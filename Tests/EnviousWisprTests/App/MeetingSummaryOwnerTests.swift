@@ -413,6 +413,42 @@ struct MeetingSummaryOwnerTests {
     #expect(rig.world.calls.first?.contains("Ask Priya") == true, "the saved notes reach the call")
   }
 
+  @Test("Transcribe again: the old summary settles before the new mark is written, so the new one stays owed")
+  func retryKeepsTheNewMark() async throws {
+    let harness = try MeetingCoordinatorTests.Harness()
+    let rig = try Rig()
+    let coordinator = harness.coordinator
+    coordinator.summaries = rig.makeOwner(documents: coordinator.documents)
+    rig.world.holdCalls = true
+    await coordinator.start(from: .history)
+    let meetingID = try #require(coordinator.meetings.first?.id)
+    await coordinator.stop()
+    await Self.eventually("old call") { rig.world.callsWaiting == 1 }
+
+    // Transcribe again; its History save parks, then is let go while the old call still runs.
+    let save = MeetingCoordinatorTests.Gate()
+    harness.saveGate = save
+    await coordinator.retry(meetingID: meetingID)
+    await Self.eventually("save parked") { save.parked }
+    save.open()
+    // The new transcript waits for the old summary: it is not ready while that call runs.
+    try await Task.sleep(for: .milliseconds(200))  // deadline-fallback: proves nothing moves
+    #expect(coordinator.record(id: meetingID)?.state == .processing)
+    #expect(rig.world.finished.isEmpty)
+
+    rig.world.releaseCall()
+    await Self.eventually("old settled") { rig.world.finished.count == 1 }
+    #expect(rig.world.finished == [Self.row(.cancelled, .hosted)])
+    await Self.eventually("new call") { rig.world.callsWaiting == 1 }
+    #expect(coordinator.record(id: meetingID)?.state == .ready)
+    #expect(
+      try harness.store.loadDocuments(meeting: meetingID).manifest.summaryPending == true,
+      "the new attempt is owed on disk while it runs")
+    rig.world.releaseCall()
+    await Self.eventually("new written") { rig.world.finished.count == 2 }
+    #expect(rig.world.finished.last == Self.row(.written, .hosted))
+  }
+
   @Test("with the setting off, meeting.ended says off and nothing is written")
   func coordinatorOff() async throws {
     let harness = try MeetingCoordinatorTests.Harness()
