@@ -3,6 +3,7 @@ import EnviousWisprCore
 import EnviousWisprLLM
 import EnviousWisprStorage
 import Foundation
+import os
 import Observation
 
 /// Writes each meeting's summary after its transcript is ready (#3972 R39, R44, R46, R50, R54),
@@ -320,20 +321,66 @@ final class MeetingSummaryOwner {
     }
     lane.summaryQueued()
     defer { lane.summaryFinished() }
-    // This attempt's whole write runs after the previous local attempt's whole write.
+    // This attempt's whole write runs after the previous local attempt's whole write. A
+    // cancelled attempt stops waiting at once (a final pass may be waiting for it to settle,
+    // whole-diff review r2 F1), but the chain link it leaves still waits for the previous
+    // attempt too, so the next attempt is never ordered behind anything but the real owner.
     let previous = localChain
     let body = Task { @MainActor [weak self] () -> Ending in
-      await previous?.value
+      if let previous, !(await Self.waitUnlessCancelled(previous)) {
+        return Ending(end: .cancelled)
+      }
       guard let self else { return Ending(end: .cancelled) }
       return await self.write(
         meetingID, attempt: attempt, selection: selection, prepared: prepared,
         approvedUserEdit: approvedUserEdit)
     }
-    localChain = Task { _ = await body.value }
+    localChain = Task {
+      await previous?.value
+      _ = await body.value
+    }
     return await withTaskCancellationHandler {
       await body.value
     } onCancel: {
       body.cancel()
+    }
+  }
+
+  /// True once `task` has finished; false as soon as the waiting task is cancelled.
+  static func waitUnlessCancelled(_ task: Task<Void, Never>) async -> Bool {
+    let shot = OneShot()
+    Task { await task.value; shot.resolve(true) }
+    return await withTaskCancellationHandler {
+      await shot.wait()
+    } onCancel: {
+      shot.resolve(false)
+    }
+  }
+
+  /// One answer, from whichever side gives it first; safe from any thread.
+  final class OneShot: Sendable {
+    private let state = OSAllocatedUnfairLock<(waiter: CheckedContinuation<Bool, Never>?, value: Bool?)>(
+      initialState: (nil, nil))
+
+    func wait() async -> Bool {
+      await withCheckedContinuation { continuation in
+        let ready = state.withLock { state -> Bool? in
+          if let value = state.value { return value }
+          state.waiter = continuation
+          return nil
+        }
+        if let ready { continuation.resume(returning: ready) }
+      }
+    }
+
+    func resolve(_ value: Bool) {
+      let waiter = state.withLock { state -> CheckedContinuation<Bool, Never>? in
+        guard state.value == nil else { return nil }
+        state.value = value
+        defer { state.waiter = nil }
+        return state.waiter
+      }
+      waiter?.resume(returning: value)
     }
   }
 

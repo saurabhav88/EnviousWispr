@@ -52,6 +52,8 @@ struct MeetingSummaryOwnerTests {
     var visible = true
     var speakerNames = ["mic:you": "You"]
     var localTurn = true
+    /// When set, replaces `localTurn` (production also waits for final-pass work).
+    @ObservationIgnored var localTurnCheck: (@MainActor () -> Bool)?
     var finished: [MeetingSummaryFinishedTelemetry] = []
     var calls: [String] = []
     /// When set, every call waits for `releaseCall()`.
@@ -139,7 +141,7 @@ struct MeetingSummaryOwnerTests {
           visibleTranscript: { _ in
             world.visible ? .init(text: world.transcript, speakerNames: world.speakerNames) : nil
           },
-          isLocalTurn: { world.localTurn },
+          isLocalTurn: { world.localTurnCheck?() ?? world.localTurn },
           wakes: nil,
           emitFinished: { world.finished.append($0) },
           log: { _ in }),
@@ -447,6 +449,51 @@ struct MeetingSummaryOwnerTests {
     rig.world.releaseCall()
     await Self.eventually("new written") { rig.world.finished.count == 2 }
     #expect(rig.world.finished.last == Self.row(.written, .hosted))
+  }
+
+  @Test("Transcribe again on a meeting whose local summary waits behind another never deadlocks")
+  func retryBehindAWaitingLocalSummary() async throws {
+    let harness = try MeetingCoordinatorTests.Harness()
+    let rig = try Rig()
+    let coordinator = harness.coordinator
+    coordinator.summaries = rig.makeOwner(documents: coordinator.documents)
+    rig.world.execution = .local
+    // As production: a local call waits for dictation and for any final-pass work (R50).
+    rig.world.localTurn = false
+    rig.world.localTurnCheck = { [world = rig.world] in
+      world.localTurn && !coordinator.hasFinalPassWork
+    }
+    await coordinator.start(from: .history)
+    let first = try #require(coordinator.meetings.first?.id)
+    await coordinator.stop()
+    await Self.eventually("first ready") { coordinator.record(id: first)?.state == .ready }
+    await coordinator.start(from: .history)
+    let second = try #require(coordinator.meetings.first(where: { $0.id != first })?.id)
+    await coordinator.stop()
+    await Self.eventually("second ready") { coordinator.record(id: second)?.state == .ready }
+    await Self.eventually("both waiting") { rig.lane.summaryWaiting == 2 }
+
+    // Transcribe again on the second: its waiting summary is cancelled and settles at once,
+    // so the final pass is not held behind the first meeting's summary.
+    await coordinator.retry(meetingID: second)
+    await Self.eventually("retry ready") {
+      coordinator.record(id: second)?.state == .ready && coordinator.processing == nil
+    }
+    #expect(rig.world.finished.contains(Self.row(.cancelled, .local)))
+
+    // Dictation ends: the summaries run one local call at a time, and both meetings get one.
+    var concurrent = 0
+    var most = 0
+    rig.world.duringCall = { [lane = rig.lane] in
+      concurrent = lane.summaryCallRunning ? 1 : 0
+      most = max(most, concurrent)
+    }
+    rig.world.localTurn = true
+    await Self.eventually("summaries written") {
+      rig.world.finished.filter { $0 == Self.row(.written, .local) }.count == 2
+    }
+    #expect(most == 1, "each call held the lane alone")
+    #expect(rig.world.finished.count == 3, "one cancelled and two written, nothing else")
   }
 
   @Test("with the setting off, meeting.ended says off and nothing is written")

@@ -1585,5 +1585,22 @@ struct MeetingCoordinatorTests {
     #expect(await coordinator.deleteOrphan(meetingID: kept) == false)
     #expect(harness.removedRows == [orphanRow])
     #expect(FileManager.default.fileExists(atPath: harness.store.folder(for: kept).path))
+
+    // A folder whose parent cannot be read is not "absent": refused, the row stays.
+    let hidden = UUID()
+    harness.meetingRows[hidden] = [UUID()]
+    let locked = harness.root.appendingPathComponent("locked", isDirectory: true)
+    try FileManager.default.createDirectory(
+      at: locked.appendingPathComponent(hidden.uuidString), withIntermediateDirectories: true)
+    try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: locked.path)
+    defer {
+      try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: locked.path)
+    }
+    #expect(
+      MeetingCoordinator.confirmedAbsent(locked.appendingPathComponent(hidden.uuidString)) == false,
+      "an unreadable path is never confirmed absent")
+    #expect(
+      MeetingCoordinator.confirmedAbsent(harness.root.appendingPathComponent("nothing-here")))
+    #expect(harness.removedRows == [orphanRow])
   }
 }

@@ -1398,17 +1398,16 @@ final class MeetingCoordinator {
     if live[meetingID] == nil, let launchTask { await launchTask.value }
     guard live[meetingID] == nil, !newerFormatMeetings.contains(where: { $0.id == meetingID })
     else { return false }
-    let folderExists: Bool
+    // Only a confirmed absence (lstat says ENOENT) removes the row; a folder that is there, or
+    // a path whose state cannot be read (permission, I/O), is refused (whole-diff review r2 F2).
+    let absent: Bool
     do {
-      folderExists = try await writer.run { store in
-        FileManager.default.fileExists(atPath: store.folder(for: meetingID).path)
-      }
+      absent = try await writer.run { store in Self.confirmedAbsent(store.folder(for: meetingID)) }
     } catch {
-      deps.log("meeting orphan delete refused reason=unreadable")
-      return false
+      absent = false
     }
-    guard !folderExists else {
-      deps.log("meeting orphan delete refused reason=folder_present")
+    guard absent else {
+      deps.log("meeting orphan delete refused reason=folder_present_or_unreadable")
       return false
     }
     do {
@@ -1418,6 +1417,14 @@ final class MeetingCoordinator {
       return false
     }
     return true
+  }
+
+  /// True only when the path is confirmed not to exist; any other answer, or an error reading
+  /// it, is false.
+  nonisolated static func confirmedAbsent(_ url: URL) -> Bool {
+    var info = stat()
+    if lstat(url.path, &info) == 0 { return false }
+    return errno == ENOENT
   }
 
   private func finishDeletion(_ record: MeetingRecord) async {
