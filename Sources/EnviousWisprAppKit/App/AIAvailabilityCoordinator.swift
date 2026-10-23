@@ -152,9 +152,9 @@ final class AIAvailabilityCoordinator {
   ) {
     debounceTask?.cancel()
     pendingDebounceTrigger = trigger
-    let delay = repairDependencies.debounce
+    let wait = repairDependencies.debounceWait
     debounceTask = Task {
-      try? await Task.sleep(for: delay)
+      await wait()
       guard !Task.isCancelled else { return }
       pendingDebounceTrigger = nil
       if let admit, !admit() { return }
@@ -400,7 +400,10 @@ struct AppleAvailabilityRepairDependencies {
   var reportCompleted: @MainActor (AppleIntelligenceAvailabilityReport, String) -> Void = {
     AIAvailabilityCoordinator.recordCompleted($0, trigger: $1)
   }
-  var debounce: Duration = .milliseconds(500)
+  /// The debounce before a re-check starts.
+  var debounceWait: @Sendable () async -> Void = {
+    try? await Task.sleep(for: .milliseconds(500))
+  }
 }
 
 /// The automatic repair's pure policy (#3897). The coordinator owns the state; these answer.

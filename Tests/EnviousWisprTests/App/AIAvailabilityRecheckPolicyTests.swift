@@ -48,6 +48,19 @@ struct AIAvailabilityRecheckPolicyTests {
     var readGate: CheckedContinuation<Void, Never>?
     var holdReads = false
 
+    /// Held open until released, to keep a debounced check waiting.
+    var debounceGate: CheckedContinuation<Void, Never>?
+    var holdDebounce = false
+
+    func debounceWaitPoint() async {
+      if holdDebounce { await withCheckedContinuation { debounceGate = $0 } }
+    }
+
+    func releaseDebounce() {
+      debounceGate?.resume()
+      debounceGate = nil
+    }
+
     func liveValue() async -> AppleIntelligenceLiveAvailability {
       liveReads += 1
       if holdReads { await withCheckedContinuation { readGate = $0 } }
@@ -64,7 +77,7 @@ struct AIAvailabilityRecheckPolicyTests {
   /// A coordinator on its own defaults domain, whose stored report starts as `seed` the way a
   /// relaunch restores the previous session's report.
   private static func coordinator(
-    _ script: Script, seed: AppleIntelligenceAvailabilityReport?, debounce: Duration = .zero
+    _ script: Script, seed: AppleIntelligenceAvailabilityReport?
   ) throws -> AIAvailabilityCoordinator {
     let suite = "AIAvailabilityRecheckPolicyTests.\(UUID().uuidString)"
     let defaults = try #require(UserDefaults(suiteName: suite))
@@ -78,7 +91,7 @@ struct AIAvailabilityRecheckPolicyTests {
         readLiveAvailability: { await script.liveValue() },
         runDiagnostics: { await script.nextReport() },
         reportCompleted: { _, trigger in script.triggers.append(trigger) },
-        debounce: debounce),
+        debounceWait: { await script.debounceWaitPoint() }),
       defaults: defaults)
   }
 
@@ -334,13 +347,21 @@ struct AIAvailabilityRecheckPolicyTests {
     #expect(c.automaticStartsThisEpoch == 2, "a stale answer never renews the budget")
   }
 
+  /// Holds the debounce until `script.releaseDebounce()`, so a test acts inside the wait.
+  private static func waitForHeldDebounce(_ script: Script) async {
+    while script.debounceGate == nil { await Task.yield() }
+  }
+
   @Test("a check that starts during the wait drops the waiting repair")
   func checkStartedDuringDebounce() async throws {
     let script = Script()
     script.reports = [Self.disabled]
-    let c = try Self.coordinator(script, seed: Self.report(.degraded), debounce: .milliseconds(200))
+    script.holdDebounce = true
+    let c = try Self.coordinator(script, seed: Self.report(.degraded))
     c.appleIntelligencePolishSucceeded()
+    await Self.waitForHeldDebounce(script)
     await c.checkAvailability(trigger: "provider_switch")
+    script.releaseDebounce()
     await Self.settle(c)
     #expect(script.starts == 1)
     #expect(script.triggers == ["provider_switch"])
@@ -350,12 +371,14 @@ struct AIAvailabilityRecheckPolicyTests {
   @Test("a newer live answer that agrees with the report cancels the waiting repair")
   func newerAgreeingSampleCancels() async throws {
     let script = Script()
-    let c = try Self.coordinator(script, seed: Self.disabled, debounce: .milliseconds(200))
+    script.holdDebounce = true
+    let c = try Self.coordinator(script, seed: Self.disabled)
     c.applicationDidBecomeActive()  // live available: a repair waits
-    await c.liveReadTask?.value
+    await Self.waitForHeldDebounce(script)
     script.live = .disabled  // switched back off before it started
     c.applicationDidBecomeActive()
     await c.liveReadTask?.value
+    script.releaseDebounce()
     await Self.settle(c)
     #expect(script.liveReads == 2)
     #expect(script.starts == 0)
@@ -365,9 +388,12 @@ struct AIAvailabilityRecheckPolicyTests {
   @Test("losing eligibility during the wait drops the repair")
   func eligibilityLostBeforeStart() async throws {
     let script = Script()
-    let c = try Self.coordinator(script, seed: Self.report(.degraded), debounce: .milliseconds(200))
+    script.holdDebounce = true
+    let c = try Self.coordinator(script, seed: Self.report(.degraded))
     c.appleIntelligencePolishSucceeded()
+    await Self.waitForHeldDebounce(script)
     script.eligible = false  // switched to another provider after onboarding
+    script.releaseDebounce()
     await Self.settle(c)
     #expect(script.starts == 0)
     #expect(c.automaticStartsThisEpoch == 0)
