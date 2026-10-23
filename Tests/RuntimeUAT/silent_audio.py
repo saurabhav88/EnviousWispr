@@ -165,8 +165,15 @@ class AudioRoute:
         self.applied = False
 
     def install_restore_handlers(self):
+        """An interrupt UNWINDS (SystemExit 130); it never restores here. Every caller restores
+        in its own `finally`, and only after it proved the take stopped (`end_take_then_restore`,
+        `TAKE_STUCK`), so the founder's microphone is never handed to a take that may still be
+        recording (#3991). This handler used to restore first, ahead of that proof."""
+        def _unwind(*_):
+            raise SystemExit(130)
+
         for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
-            signal.signal(sig, lambda *_: (self.restore(), sys.exit(130)))
+            signal.signal(sig, _unwind)
 
     def apply(self):
         with open(RESTORE_FILE, "w") as fh:
@@ -384,21 +391,70 @@ def _app_client():
         return None
 
 
-def recover():
+def player_running():
+    """Whether a test sound may still be playing: any `afplay`. A rig plays its clips with it,
+    and a killed run can leave one playing into BlackHole."""
+    return subprocess.run(["pgrep", "-x", "afplay"], capture_output=True).returncode == 0
+
+
+# The app's driver states that cannot be capturing (`DevControlDispatcher.project`). Anything
+# else (recording, a model loading for a start, transcribing right after one) counts as maybe
+# listening, so a recovery waits rather than hand it the founder's microphone.
+_AT_REST = {"idle", "complete", "error", "advisory"}
+
+
+def app_may_be_listening(client):
+    """True unless the app is proven not to be capturing: no dev app running at all, or the
+    door says its driver is at rest. An app that runs but cannot be asked counts as listening."""
+    if client is None:
+        import dev_control
+        # Dev builds only: the shipped app never had its microphone pinned by a rig.
+        return any(exe.endswith(dev_control.DEV_EXECUTABLE_SUFFIX)
+                   for exe in w.running_enviouswispr_instances().values())
+    try:
+        state = (client.status().get("activeDriver") or {}).get("state")
+    except Exception as exc:
+        print(f"RESTORE WARNING: could not ask the app whether it is recording: {exc!r}",
+              flush=True)
+        return True
+    return state not in _AT_REST
+
+
+def recover(player=None, listening=None):
     """Replay every journal a killed run left. Ownership first, before any device or journal
     changes; each journal is replayed whatever happened to the others and is removed only once
-    its own part verified."""
+    its own part verified.
+
+    A killed run's take registration died with it, so idleness is proven here, independently
+    (#3991), with the same policy as `AudioRig._restore_all`: a test sound still playing keeps
+    every device on BlackHole; an app that may still be recording gets its speakers and alert
+    sounds back while the system input and its own microphone stay on BlackHole, so it can only
+    hear silence. Both leave their journals for the next run of this command. `player` and
+    `listening` are self-test seams."""
     import dev_control
     dev_control.check_owner()
     ok = True
     client = None
     if os.path.exists(RESTORE_FILE) or os.path.exists(AppSounds.FILE):
         client = _app_client()
-    if os.path.exists(RESTORE_FILE):
+    player = player_running() if player is None else player
+    if player:
+        print("RESTORE HELD: a test sound (`afplay`) is still playing; every device stays on "
+              "BlackHole. Stop it, then run this again.", flush=True)
+        ok = False
+    listening = (not player and app_may_be_listening(client)) if listening is None else listening
+    if os.path.exists(RESTORE_FILE) and not player:
         with open(RESTORE_FILE) as fh:
             saved = json.load(fh)
-        app = AppMic.from_json(saved.get("app_device"))
-        ok = _restore(saved["output"], saved["input"], app, client) and ok
+        if listening:
+            subprocess.run([SWITCH, "-s", saved["output"], "-t", "output"], capture_output=True)
+            print(f"RESTORE HELD: the app may still be recording; speakers back to "
+                  f"{_current('output')!r}, the input and the app's microphone stay on BlackHole. "
+                  "Stop the recording, then run this again.", flush=True)
+            ok = False
+        else:
+            app = AppMic.from_json(saved.get("app_device"))
+            ok = _restore(saved["output"], saved["input"], app, client) and ok
     if os.path.exists(AppSounds.FILE):
         with open(AppSounds.FILE) as fh:
             sounds = json.load(fh)
@@ -407,7 +463,7 @@ def recover():
             ok = False
         else:
             ok = _restore_sounds(sounds, client) and ok
-    if os.path.exists(AlertSink.FILE):
+    if os.path.exists(AlertSink.FILE) and not player:
         with open(AlertSink.FILE) as fh:
             ok = _restore_alert(json.load(fh)) and ok
     return ok
@@ -527,8 +583,112 @@ def _self_test():
         for name in os.listdir(folder):
             os.remove(os.path.join(folder, name))
         os.rmdir(folder)
+    _recover_cases(expect)
+
+    route = object.__new__(AudioRoute)  # no device or app is read: only the handler is tested
+    restored = []
+    route.restore = lambda: restored.append(True)
+    old = {sig: signal.getsignal(sig) for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)}
+    try:
+        route.install_restore_handlers()
+        try:
+            os.kill(os.getpid(), signal.SIGTERM)
+            time.sleep(0.1)  # settle: the handler runs at the next bytecode boundary
+            code = None
+        except SystemExit as exc:
+            code = exc.code
+    finally:
+        for sig, handler in old.items():
+            signal.signal(sig, handler)
+    expect("#3991 an interrupt unwinds to the caller's proven restore and restores nothing itself",
+           code == 130 and restored == [])
     print("PASS" if ok else "FAIL")
     return ok
+
+
+def _recover_cases(expect):
+    """#3991: recovery in a new process proves idleness itself. Every outside effect is
+    replaced: the lock owner, the app, the device switcher and the three journals."""
+    import tempfile
+    import dev_control
+    g = globals()
+    names = ("_app_client", "_restore", "_restore_sounds", "_restore_alert", "_current",
+             "RESTORE_FILE")
+    saved = {n: g[n] for n in names}
+    saved_files = (AppSounds.FILE, AlertSink.FILE)
+    saved_owner, saved_run = dev_control.check_owner, subprocess.run
+    folder = tempfile.mkdtemp(prefix="ew-recover-selftest-")
+    try:
+        dev_control.check_owner = lambda boundaries=None: "owned"
+        g["_app_client"] = lambda: None
+        g["_current"] = lambda kind: "BlackHole 2ch"
+        g["RESTORE_FILE"] = os.path.join(folder, "route.json")
+        AppSounds.FILE = os.path.join(folder, "sounds.json")
+        AlertSink.FILE = os.path.join(folder, "alerts.json")
+        for label, player, listening, want in (
+                ("nothing playing and the app at rest: every journal is replayed",
+                 False, False, {"route", "alerts"}),
+                ("a test sound still playing: nothing is touched",
+                 True, False, set()),
+                ("the app may still be recording: only the speakers and the alert sounds",
+                 False, True, {"speakers", "alerts"})):
+            calls = set()
+            with open(RESTORE_FILE, "w") as fh:
+                json.dump({"output": "MacBook Pro Speakers", "input": "MacBook Pro Microphone",
+                           "app_device": {"override": "", "selected": ""}}, fh)
+            with open(AlertSink.FILE, "w") as fh:
+                json.dump({"output": "MacBook Pro Speakers", "system": "MacBook Pro Speakers"}, fh)
+            # As the real one does: a verified restore removes its journal.
+            g["_restore"] = lambda *a: (calls.add("route"), os.remove(RESTORE_FILE), True)[2]
+            g["_restore_alert"] = lambda *a: (calls.add("alerts"), True)[1]
+
+            def run(argv, **kw):
+                if argv[:1] == [SWITCH] and argv[-1] == "output":
+                    calls.add("speakers")
+                return subprocess.CompletedProcess(argv, 0, "", "")
+            subprocess.run = run
+            result = recover(player=player, listening=listening)
+            kept = os.path.exists(RESTORE_FILE)
+            expect(f"#3991 recovery: {label}",
+                   calls == want and result == (want == {"route", "alerts"})
+                   and kept == (want != {"route", "alerts"}))
+            for path in (RESTORE_FILE, AlertSink.FILE):
+                if os.path.exists(path):
+                    os.remove(path)
+        subprocess.run = saved_run
+        saved_instances = w.running_enviouswispr_instances
+        try:
+            w.running_enviouswispr_instances = lambda: {"9": "/Applications/EnviousWispr.app/Contents/MacOS/EnviousWispr"}
+            shipped = app_may_be_listening(None)
+            w.running_enviouswispr_instances = lambda: {"9": "/x/build/EnviousWispr Local.app/Contents/MacOS/EnviousWispr"}
+            dev = app_may_be_listening(None)
+        finally:
+            w.running_enviouswispr_instances = saved_instances
+
+        class Door:
+            def __init__(self, state=None, boom=False):
+                self.state, self.boom = state, boom
+
+            def status(self):
+                if self.boom:
+                    raise RuntimeError("door gone")
+                return {"activeDriver": {"state": self.state}}
+        expect("#3991 an unreachable dev app counts as listening; the shipped app does not",
+               dev is True and shipped is False)
+        expect("#3991 a door that says idle, complete, error or advisory is at rest",
+               not any(app_may_be_listening(Door(s)) for s in ("idle", "complete", "error",
+                                                               "advisory")))
+        expect("#3991 recording, loading or transcribing, or a door that fails, counts as listening",
+               all(app_may_be_listening(Door(s)) for s in ("recording", "loadingModel",
+                                                           "transcribing"))
+               and app_may_be_listening(Door(boom=True)))
+    finally:
+        g.update(saved)
+        AppSounds.FILE, AlertSink.FILE = saved_files
+        dev_control.check_owner, subprocess.run = saved_owner, saved_run
+        for name in os.listdir(folder):
+            os.remove(os.path.join(folder, name))
+        os.rmdir(folder)
 
 
 if __name__ == "__main__" and sys.argv[1:] == ["restore"]:
