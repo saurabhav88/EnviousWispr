@@ -44,6 +44,15 @@ struct AIAvailabilityRecheckPolicyTests {
     /// Held open until released, to keep a full check in flight.
     var gate: CheckedContinuation<Void, Never>?
     var holdChecks = false
+    /// Held open until released, to keep a live read in flight.
+    var readGate: CheckedContinuation<Void, Never>?
+    var holdReads = false
+
+    func liveValue() async -> AppleIntelligenceLiveAvailability {
+      liveReads += 1
+      if holdReads { await withCheckedContinuation { readGate = $0 } }
+      return live
+    }
 
     func nextReport() async -> AppleIntelligenceAvailabilityReport {
       starts += 1
@@ -55,7 +64,7 @@ struct AIAvailabilityRecheckPolicyTests {
   /// A coordinator on its own defaults domain, whose stored report starts as `seed` the way a
   /// relaunch restores the previous session's report.
   private static func coordinator(
-    _ script: Script, seed: AppleIntelligenceAvailabilityReport?
+    _ script: Script, seed: AppleIntelligenceAvailabilityReport?, debounce: Duration = .zero
   ) throws -> AIAvailabilityCoordinator {
     let suite = "AIAvailabilityRecheckPolicyTests.\(UUID().uuidString)"
     let defaults = try #require(UserDefaults(suiteName: suite))
@@ -66,15 +75,10 @@ struct AIAvailabilityRecheckPolicyTests {
     return AIAvailabilityCoordinator(
       repairDependencies: AppleAvailabilityRepairDependencies(
         isRepairEligible: { script.eligible },
-        readLiveAvailability: {
-          await MainActor.run {
-            script.liveReads += 1
-            return script.live
-          }
-        },
+        readLiveAvailability: { await script.liveValue() },
         runDiagnostics: { await script.nextReport() },
         reportCompleted: { _, trigger in script.triggers.append(trigger) },
-        debounce: .zero),
+        debounce: debounce),
       defaults: defaults)
   }
 
@@ -292,5 +296,80 @@ struct AIAvailabilityRecheckPolicyTests {
     c.appleIntelligencePolishSucceeded()
     await Self.settle(c)
     #expect(script.triggers == ["manual_refresh"])
+  }
+
+  // MARK: - Work that went stale before it started (#3897 review)
+
+  @Test("eligible only for Apple Intelligence, or while onboarding is open")
+  func eligibility() {
+    typealias R = AppleAvailabilityRepair
+    #expect(R.isEligible(provider: .appleIntelligence, onboardingComplete: true))
+    #expect(R.isEligible(provider: .appleIntelligence, onboardingComplete: false))
+    #expect(R.isEligible(provider: .openAI, onboardingComplete: false))
+    #expect(R.isEligible(provider: .openAI, onboardingComplete: true) == false)
+    #expect(R.isEligible(provider: .none, onboardingComplete: true) == false)
+  }
+
+  @Test("a live answer read while another check ran moves nothing and renews nothing")
+  func staleLiveSampleIsDropped() async throws {
+    let script = Script()
+    script.reports = [Self.disabled, Self.disabled, Self.disabled]
+    let c = try Self.coordinator(script, seed: Self.disabled)
+    // Spend the epoch: two automatic checks that still say switched off.
+    c.applicationDidBecomeActive()
+    await Self.settle(c)
+    c.appleIntelligencePolishSucceeded()
+    await Self.settle(c)
+    #expect(c.automaticStartsThisEpoch == 2)
+    // A changed live answer is being read when a provider-switch check lands a new report.
+    script.live = .modelNotReady
+    script.holdReads = true
+    c.applicationDidBecomeActive()
+    while script.readGate == nil { await Task.yield() }
+    await c.checkAvailability(trigger: "provider_switch")
+    script.readGate?.resume()
+    await Self.settle(c)
+    #expect(script.starts == 3, "only the provider-switch check ran")
+    #expect(script.triggers == ["app_active", "polished_take", "provider_switch"])
+    #expect(c.automaticStartsThisEpoch == 2, "a stale answer never renews the budget")
+  }
+
+  @Test("a check that starts during the wait drops the waiting repair")
+  func checkStartedDuringDebounce() async throws {
+    let script = Script()
+    script.reports = [Self.disabled]
+    let c = try Self.coordinator(script, seed: Self.report(.degraded), debounce: .milliseconds(200))
+    c.appleIntelligencePolishSucceeded()
+    await c.checkAvailability(trigger: "provider_switch")
+    await Self.settle(c)
+    #expect(script.starts == 1)
+    #expect(script.triggers == ["provider_switch"])
+    #expect(c.automaticStartsThisEpoch == 0, "a dropped repair spends nothing")
+  }
+
+  @Test("a newer live answer that agrees with the report cancels the waiting repair")
+  func newerAgreeingSampleCancels() async throws {
+    let script = Script()
+    let c = try Self.coordinator(script, seed: Self.disabled, debounce: .milliseconds(200))
+    c.applicationDidBecomeActive()  // live available: a repair waits
+    await c.liveReadTask?.value
+    script.live = .disabled  // switched back off before it started
+    c.applicationDidBecomeActive()
+    await c.liveReadTask?.value
+    await Self.settle(c)
+    #expect(script.liveReads == 2)
+    #expect(script.starts == 0)
+    #expect(c.automaticStartsThisEpoch == 0)
+  }
+
+  @Test("losing eligibility during the wait drops the repair")
+  func eligibilityLostBeforeStart() async throws {
+    let script = Script()
+    let c = try Self.coordinator(script, seed: Self.report(.degraded), debounce: .milliseconds(200))
+    c.appleIntelligencePolishSucceeded()
+    script.eligible = false  // switched to another provider after onboarding
+    await Self.settle(c)
+    #expect(script.starts == 0)
+    #expect(c.automaticStartsThisEpoch == 0)
   }
 }

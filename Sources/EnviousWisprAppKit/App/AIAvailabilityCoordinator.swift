@@ -173,10 +173,11 @@ final class AIAvailabilityCoordinator {
       liveReadTask == nil
     else { return }
     let generation = reportGeneration
+    let token = currentRequestToken
     let read = repairDependencies.readLiveAvailability
     liveReadTask = Task { [weak self] in
       let live = await read()
-      self?.acceptActivationSample(live, capturedGeneration: generation)
+      self?.acceptActivationSample(live, capturedGeneration: generation, capturedToken: token)
     }
   }
 
@@ -186,31 +187,55 @@ final class AIAvailabilityCoordinator {
     guard repairDependencies.isRepairEligible(), let report = latestReport,
       AppleAvailabilityRepair.polishedTakeWantsCheck(report: report)
     else { return }
-    scheduleAutomaticRepair(trigger: "polished_take", capturedGeneration: reportGeneration)
+    scheduleAutomaticRepair(
+      trigger: "polished_take", capturedGeneration: reportGeneration,
+      capturedToken: currentRequestToken)
   }
 
+  /// Takes a live answer in only when nothing moved while it was read: a stale answer neither
+  /// moves the baseline nor renews the budget.
   private func acceptActivationSample(
-    _ live: AppleIntelligenceLiveAvailability, capturedGeneration: UInt64
+    _ live: AppleIntelligenceLiveAvailability, capturedGeneration: UInt64, capturedToken: UInt
   ) {
     liveReadTask = nil
+    guard isCurrent(generation: capturedGeneration, token: capturedToken) else { return }
     if AppleAvailabilityRepair.isTransition(from: lastLiveSample, to: live) {
       automaticStartsThisEpoch = 0
     }
     lastLiveSample = live
-    guard repairDependencies.isRepairEligible(), capturedGeneration == reportGeneration,
-      !isChecking, let report = latestReport,
+    guard let report = latestReport,
       AppleAvailabilityRepair.activationWantsCheck(report: report, live: live)
     else { return }
-    scheduleAutomaticRepair(trigger: "app_active", capturedGeneration: capturedGeneration)
+    scheduleAutomaticRepair(
+      trigger: "app_active", capturedGeneration: capturedGeneration, capturedToken: capturedToken)
   }
 
-  private func scheduleAutomaticRepair(trigger: String, capturedGeneration: UInt64) {
+  /// Still eligible, no report landed and no check started since the work captured these.
+  private func isCurrent(generation: UInt64, token: UInt) -> Bool {
+    repairDependencies.isRepairEligible() && generation == reportGeneration
+      && token == currentRequestToken && !isChecking
+  }
+
+  /// Whether the trigger's reason still holds against the current report and the newest
+  /// accepted live answer, so a repair a newer sample contradicts never starts.
+  private func stillWanted(_ trigger: String) -> Bool {
+    guard let report = latestReport else { return false }
+    if trigger == "app_active" {
+      guard let live = lastLiveSample else { return false }
+      return AppleAvailabilityRepair.activationWantsCheck(report: report, live: live)
+    }
+    return AppleAvailabilityRepair.polishedTakeWantsCheck(report: report)
+  }
+
+  private func scheduleAutomaticRepair(
+    trigger: String, capturedGeneration: UInt64, capturedToken: UInt
+  ) {
     guard pendingDebounceTrigger == nil,
       AppleAvailabilityRepair.budgetAdmits(startsThisEpoch: automaticStartsThisEpoch)
     else { return }
     debouncedCheck(trigger: trigger) { [weak self] in
-      guard let self, self.repairDependencies.isRepairEligible(),
-        capturedGeneration == self.reportGeneration, !self.isChecking,
+      guard let self, self.isCurrent(generation: capturedGeneration, token: capturedToken),
+        self.stillWanted(trigger),
         AppleAvailabilityRepair.budgetAdmits(startsThisEpoch: self.automaticStartsThisEpoch)
       else { return false }
       self.automaticStartsThisEpoch += 1
@@ -382,6 +407,12 @@ struct AppleAvailabilityRepairDependencies {
 enum AppleAvailabilityRepair {
   /// Automatic diagnostics starts allowed per recovery epoch, across both triggers.
   static let maxAutomaticStartsPerEpoch = 2
+
+  /// Automatic repair runs only while a reader can show the report: dictation's provider is
+  /// Apple Intelligence, or onboarding (whose card reads it) is not finished.
+  static func isEligible(provider: LLMProvider, onboardingComplete: Bool) -> Bool {
+    provider == .appleIntelligence || !onboardingComplete
+  }
 
   /// What a stored report claims about the live answer, when it is a claim activation can
   /// test: switched off, or still downloading. Nil for every other report.

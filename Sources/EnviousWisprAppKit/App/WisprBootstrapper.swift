@@ -256,7 +256,9 @@ package final class WisprBootstrapper {
     let aiAvailability = AIAvailabilityCoordinator(
       repairDependencies: AppleAvailabilityRepairDependencies(
         isRepairEligible: { [settings] in
-          settings.llmProvider == .appleIntelligence || settings.onboardingState != .completed
+          AppleAvailabilityRepair.isEligible(
+            provider: settings.llmProvider,
+            onboardingComplete: settings.onboardingState == .completed)
         }))
 
     // Audio capture runs in-process (#1543, D-028 — the separate XPC audio
