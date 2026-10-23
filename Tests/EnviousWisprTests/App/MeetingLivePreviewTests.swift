@@ -116,13 +116,27 @@ struct MeetingLivePreviewTests {
   @Test("each closed minute becomes one live line, in timeline order, labelled by track")
   func linesInOrder() async throws {
     let rig = try Self.rig()
-    defer { rig.idle.open() }
+    let hold = Gate()
+    rig.preview.hold = hold
+    defer {
+      hold.open()
+      rig.idle.open()
+    }
     await rig.coordinator.start(from: .menu)
     let meetingID = try #require(rig.coordinator.meetings.first?.id)
     let first = try Self.closeFile(
       rig, meetingID: meetingID, track: .microphone, index: 2, startMs: 60_000)
+    // #4002: the second file closes only once the first unit is running. Two files closed
+    // together may reach the queue in either order (each after its own record save), and the
+    // queue then decodes them in timeline order, so without this wait the decode order below
+    // depended on scheduling. Same seam as `roundRobin`.
+    await MeetingCoordinatorTests.eventually("first running") { hold.waiting == 1 }
     let call = try Self.closeFile(
       rig, meetingID: meetingID, track: .callSound, index: 1, startMs: 0)
+    await MeetingCoordinatorTests.eventually("queued") {
+      rig.coordinator.liveTranscript?.queued == 1
+    }
+    hold.open()
     await MeetingCoordinatorTests.eventually("two lines") {
       rig.coordinator.liveTranscript?.lines.count == 2
     }
