@@ -1346,6 +1346,28 @@ def client_cases(r, tree):
         r.check("client", "a door refusal raises with the door's code", code == "checkFailed",
                 str(code))
 
+        door.respond = door.reply_ok
+        moved = FakeBoundaries({"111": exe}, door=door, toplevel=tree.wt)
+        client = dev_control.DoorClient(111, moved, timeout=1.0)
+        moved._instances = {"333": exe}  # the same build relaunched on purpose
+        door.pid, door.launch = 333, str(uuid.uuid4())
+        door.received.clear()
+        with contextlib.redirect_stderr(io.StringIO()):
+            followed = client.follow_relaunch()
+            client.set("playRecordingSounds", True)
+        r.check("client", "a restore follows the same build after an intentional relaunch",
+                followed and client.pid == 333 and len(sets()) == 1,
+                f"{followed} {client.pid} {door.commands()}")
+        moved._instances = {"444": tree.dev(tree.sibling)}
+        try:
+            client.follow_relaunch()
+            code = None
+        except dev_control.DoorRefused as error:
+            code = error.code
+        r.check("client", "a restore never follows another build", code == "identityChanged",
+                str(code))
+        door.pid = 111
+
         for label, instances, toplevel, want in (
                 ("a pid that is not running", {"222": exe}, tree.wt, "noInstance"),
                 ("a Release host", {"111": tree.release(tree.wt)}, tree.wt, "notDevBuild"),

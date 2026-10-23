@@ -209,6 +209,7 @@ def _restore(output, input_, app_device, client):
               f"back to {app_device!r}", flush=True)
     else:
         try:
+            client.follow_relaunch()  # a driver may have restarted the same build on purpose
             app_device.restore(client)
         except Exception as exc:  # the system devices are put back even if the app is not
             print(f"RESTORE WARNING: app microphone not restored: {exc!r}", flush=True)
@@ -270,6 +271,11 @@ class AppSounds:
 
 def _restore_sounds(original, client):
     ok = True
+    try:
+        client.follow_relaunch()  # a driver may have restarted the same build on purpose
+    except Exception as exc:
+        print(f"RESTORE WARNING: app sounds not restored: {exc!r}", flush=True)
+        return False
     for key, value in original.items():
         try:
             client.set(key, value)
@@ -425,6 +431,9 @@ def _self_test():
 
         def values(self, *keys):
             return {k: self.store[k] for k in keys}
+
+        def follow_relaunch(self):
+            return False
 
         def set(self, key, value, force=False):
             self.writes.append((key, value, force))

@@ -986,6 +986,25 @@ class DoorClient:
             raise DoorRefused(error.get("code", "failed"), error.get("message", ""), status, reply)
         return reply["result"]
 
+    def follow_relaunch(self):
+        """For a RESTORE: re-pin to the same executable after a relaunch. Some drivers restart
+        the app on purpose mid-run (`paste_landing_uat.with_warmup_suppressed`,
+        `last_dictation_uat.end_take_then_restore`), and the founder's settings must still go
+        back. Only the SAME executable (same build, same checkout) is followed; another app is
+        still refused. True when it re-pinned."""
+        running = {int(p): exe for p, exe in self.boundaries.instances().items()}
+        same = [pid for pid, exe in running.items() if exe == self.executable]
+        if len(same) != 1:
+            raise DoorRefused("identityChanged",
+                              f"{len(same)} running apps are {self.executable}; cannot tell "
+                              "which one to restore", EXIT_USAGE)
+        if same[0] == self.pid:
+            # Same pid: a relaunch is not possible without a new pid; `call` still compares
+            # the launch.
+            return False
+        self.pid, self.launch = same[0], None
+        return True
+
     def values(self, *keys):
         """{key: value} for `keys`, all from ONE `settings list` reply (one snapshot)."""
         rows = self.call(["settings", "list"]).get("settings")
