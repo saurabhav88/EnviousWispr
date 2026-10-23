@@ -52,6 +52,8 @@ public struct MeetingStore: Sendable {
     case newerFormat
     case syncFailed(Int32)
     case privacySetupFailed
+    /// A listed audio file's size could not be read (gone since the listing, or not a file).
+    case unmeasurableAudio
   }
 
   /// One folder found under the root.
@@ -180,10 +182,13 @@ public struct MeetingStore: Sendable {
     try segmentFiles(meeting: id).filter { $0.track == track }.map(\.index).max() ?? 0
   }
 
-  /// Bytes used by the meeting's audio files.
+  /// Bytes used by the meeting's audio files. Throws when any listed file cannot be measured,
+  /// so a failed read is never shown as a size.
   public func audioBytes(meeting id: UUID) throws -> Int64 {
     try segmentFiles(meeting: id).reduce(0) { total, file in
-      let size = (try? file.url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+      guard let size = try file.url.resourceValues(forKeys: [.fileSizeKey]).fileSize else {
+        throw StoreError.unmeasurableAudio
+      }
       return total + Int64(size)
     }
   }

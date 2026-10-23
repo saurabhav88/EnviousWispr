@@ -37,6 +37,25 @@ struct MeetingStoreTests {
     #expect(try store.load(id: record.id).title == "Kickoff")
   }
 
+  @Test("audio size counts every file, and a file that cannot be measured is an error, not zero")
+  func audioBytesNeverHidesAFailedRead() throws {
+    let (store, _) = try makeStore()
+    let record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    try store.create(record)
+    let folder = store.folder(for: record.id)
+    try touch(folder.appendingPathComponent(
+      MeetingSegmentNaming.fileName(track: .microphone, index: 1, startMs: 0, partial: false)))
+    #expect(try store.audioBytes(meeting: record.id) == 4)
+    // A listed segment name that is not a measurable file (here a directory).
+    try FileManager.default.createDirectory(
+      at: folder.appendingPathComponent(
+        MeetingSegmentNaming.fileName(track: .microphone, index: 2, startMs: 60_000, partial: false)),
+      withIntermediateDirectories: false)
+    #expect(throws: MeetingStore.StoreError.unmeasurableAudio) {
+      try store.audioBytes(meeting: record.id)
+    }
+  }
+
   @Test("a create whose first save fails leaves no empty folder behind")
   func failedCreateRemovesItsFolder() throws {
     let (store, _) = try makeStore()
