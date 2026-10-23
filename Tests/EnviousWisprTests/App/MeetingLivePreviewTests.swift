@@ -62,8 +62,12 @@ struct MeetingLivePreviewTests {
       admission = nil
     }
 
+    /// When set, an unload waits on it (a held idle unload).
+    @ObservationIgnored var unloadHold: Gate?
+
     func releaseIdle() async {
       guard isEngineResident, !isUnitInFlight else { return }
+      await unloadHold?.wait()
       releases += 1
       log.append("release")
       isEngineResident = false
@@ -258,7 +262,7 @@ struct MeetingLivePreviewTests {
       MeetingsPresentation.liveStatusLines(live, callSoundRecorded: true)
         == [
           "Live words, usually about a minute behind.", "Words up to 12:34.",
-          "Catching up: 2 recorded minutes are waiting.",
+          "Catching up: 2 recorded stretches are waiting.",
           "Echo is hidden when the meeting ends.",
         ])
     live.waitingForDictation = true
@@ -267,13 +271,13 @@ struct MeetingLivePreviewTests {
         "Waiting for your dictation to finish."))
     #expect(
       !MeetingsPresentation.liveStatusLines(live, callSoundRecorded: false).contains(
-        "Catching up: 2 recorded minutes are waiting."),
+        "Catching up: 2 recorded stretches are waiting."),
       "waiting for dictation is the reason shown, not the backlog")
     live.waitingForDictation = false
     live.queued = 1
     #expect(
       MeetingsPresentation.liveStatusLines(live, callSoundRecorded: false).contains(
-        "Catching up: 1 recorded minute is waiting."))
+        "Catching up: 1 recorded stretch is waiting."))
   }
 
   @Test("with both tracks waiting, previews alternate between them, oldest first in each")
@@ -423,5 +427,142 @@ struct MeetingLivePreviewTests {
       (url: dir.appendingPathComponent("gone.caf"), startMs: 0)
     ])
     #expect(try await job.preview(audio: missing) == nil)
+  }
+
+  /// An earlier meeting queued for Transcribe again, ready to be retried while this test's
+  /// meeting records.
+  static func earlierMeeting(_ rig: Rig) async throws -> MeetingRecord {
+    var earlier = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    try rig.harness.store.create(earlier)
+    _ = try MeetingAudioFixture.writeSegment(
+      in: rig.harness.store.folder(for: earlier.id), index: 1, startMs: 0, frames: 16_000)
+    earlier.state = .failed
+    try rig.harness.store.save(earlier)
+    rig.coordinator.launch()
+    await MeetingCoordinatorTests.eventually("listed") {
+      rig.coordinator.record(id: earlier.id) != nil
+    }
+    return earlier
+  }
+
+  @Test("a preview queued behind a held idle unload still yields to a final pass that came after")
+  func lanePriorityRechecked() async throws {
+    let rig = try Self.rig()
+    let unloading = Gate()
+    rig.preview.unloadHold = unloading
+    defer {
+      unloading.open()
+      rig.idle.open()
+    }
+    rig.harness.jobBehavior = { [preview = rig.preview] _ in
+      preview.log.append("final pass")
+      return MeetingCoordinatorTests.result()
+    }
+    let earlier = try await Self.earlierMeeting(rig)
+    await rig.coordinator.start(from: .menu)
+    let meetingID = try #require(rig.coordinator.meetings.first { $0.id != earlier.id }?.id)
+    let first = try Self.closeFile(
+      rig, meetingID: meetingID, track: .microphone, index: 2, startMs: 60_000)
+    await MeetingCoordinatorTests.eventually("idle wait") { rig.idle.waiting == 1 }
+    rig.idle.open()  // the idle unload starts and is held on the lane
+    await MeetingCoordinatorTests.eventually("unload held") { unloading.waiting == 1 }
+    let second = try Self.closeFile(
+      rig, meetingID: meetingID, track: .microphone, index: 3, startMs: 120_000)
+    await rig.coordinator.retry(meetingID: earlier.id)
+    await MeetingCoordinatorTests.eventually("final pass waiting") {
+      rig.coordinator.processing?.meetingID == earlier.id
+    }
+    unloading.open()
+    await MeetingCoordinatorTests.eventually("earlier ready") {
+      rig.coordinator.record(id: earlier.id)?.state == .ready
+    }
+    await MeetingCoordinatorTests.eventually("second previewed") {
+      rig.preview.calls == [first, second]
+    }
+    let finalIndex = try #require(rig.preview.log.firstIndex(of: "final pass"))
+    let secondIndex = try #require(rig.preview.log.firstIndex(of: "preview \(second)"))
+    #expect(finalIndex < secondIndex, "the final pass came first: \(rig.preview.log)")
+    await rig.coordinator.stop()
+  }
+
+  @Test("a preview a final pass called off goes back under the same newest-three limit")
+  func requeueKeepsCap() async throws {
+    let rig = try Self.rig()
+    defer { rig.idle.open() }
+    let earlier = try await Self.earlierMeeting(rig)
+    await rig.coordinator.start(from: .menu)
+    let meetingID = try #require(rig.coordinator.meetings.first { $0.id != earlier.id }?.id)
+    rig.preview.holdAdmission = true
+    let oldest = try Self.closeFile(
+      rig, meetingID: meetingID, track: .microphone, index: 2, startMs: 60_000)
+    await MeetingCoordinatorTests.eventually("waiting") { rig.preview.waitingForAdmission }
+    var newer: [String] = []
+    for index in 3...5 {
+      newer.append(
+        try Self.closeFile(
+          rig, meetingID: meetingID, track: .microphone, index: index, startMs: index * 60_000))
+    }
+    await MeetingCoordinatorTests.eventually("three queued") {
+      rig.coordinator.liveTranscript?.queued == 3
+    }
+    await rig.coordinator.retry(meetingID: earlier.id)
+    await MeetingCoordinatorTests.eventually("drained") { rig.preview.calls.count == 3 }
+    #expect(
+      rig.preview.calls == newer, "the called-off oldest file was dropped, not queued as a fourth")
+    #expect(rig.coordinator.liveTranscript?.skipped == 1)
+    #expect(!rig.preview.calls.contains(oldest))
+    await rig.coordinator.stop()
+  }
+
+  @Test("deleting a meeting while its preview engine is idle unloads it at once")
+  func deleteIdleUnloads() async throws {
+    let rig = try Self.rig()
+    defer { rig.idle.open() }  // the idle timer stays held through the deletion
+    await rig.coordinator.start(from: .menu)
+    let meetingID = try #require(rig.coordinator.meetings.first?.id)
+    _ = try Self.closeFile(rig, meetingID: meetingID, track: .microphone, index: 2, startMs: 60_000)
+    await MeetingCoordinatorTests.eventually("idle wait") { rig.idle.waiting == 1 }
+    #expect(rig.preview.isEngineResident)
+    await rig.coordinator.delete(meetingID: meetingID)
+    #expect(rig.preview.releases == 1)
+    #expect(rig.preview.isEngineResident == false)
+  }
+
+  @Test("Save waits for the notes, and says so when they cannot be read")
+  func exportReadsNotesFirst() async throws {
+    let harness = try Harness()
+    let rig = MeetingHistoryPresentationTests.Rig()
+    var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    record.state = .ready
+    try harness.store.create(record)
+    _ = try harness.store.saveNotes("Budget owner: Priya", revision: 1, meeting: record.id)
+    let row = MeetingHistoryPresentationTests.meetingRow(
+      id: record.transcriptID, meetingID: record.id)
+    rig.infos[record.id] = MeetingHistoryInfo(echoTurnIDs: [], title: nil)
+    try await rig.coordinator.saveAndShowDurably(row)
+    let coordinator = MeetingDocumentsOwnerTests.coordinator(harness)
+
+    // Notes not read yet, the read held: Save waits for it and carries the notes.
+    let hold = MeetingDocumentsOwnerTests.holdFileQueue()
+    let export = Task {
+      await MeetingExport.document(
+        meetingID: record.id, rowID: row.id, documents: coordinator.documents,
+        transcripts: rig.coordinator)
+    }
+    hold.signal()
+    guard case .document(let text) = await export.value else {
+      Issue.record("Save wrote nothing")
+      return
+    }
+    #expect(text.hasSuffix("Notes\n\nBudget owner: Priya\n"))
+
+    // Unreadable notes: nothing is written, and Save says why.
+    let other = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    try harness.store.create(other)
+    try Data("not json".utf8).write(to: harness.store.documentsURL(for: other.id))
+    #expect(
+      await MeetingExport.document(
+        meetingID: other.id, rowID: row.id, documents: coordinator.documents,
+        transcripts: rig.coordinator) == .notesUnreadable)
   }
 }

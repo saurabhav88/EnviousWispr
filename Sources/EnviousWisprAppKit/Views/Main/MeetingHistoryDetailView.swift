@@ -564,17 +564,25 @@ struct MeetingHistoryDetailView: View {
       record.map(MeetingsPresentation.title)
       ?? String(localized: "Meeting", comment: "History: a meeting's default file name.")
     guard panel.runModal() == .OK, let url = panel.url else { return }
-    guard let live = transcripts.currentRow(id: row.id),
-      let text = transcripts.textForDelivery(live)
-    else { return }
-    // R38: the export carries the user's notes as their own section, read now.
-    let notes = meetings.documents.notes(meetingID).trimmingCharacters(
-      in: .whitespacesAndNewlines)
-    let document = MeetingsPresentation.exportDocument(transcript: text, notes: notes)
-    do {
-      try document.write(to: url, atomically: true, encoding: .utf8)
-    } catch {
-      saveError = error.localizedDescription
+    Task {
+      switch await MeetingExport.document(
+        meetingID: meetingID, rowID: row.id, documents: meetings.documents,
+        transcripts: transcripts)
+      {
+      case .document(let document):
+        do {
+          try document.write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+          saveError = error.localizedDescription
+        }
+      case .notesUnreadable:
+        saveError = String(
+          localized: "Your notes could not be read, so nothing was saved. Try again.",
+          comment:
+            "History, a meeting: Save stopped because the meeting's notes file could not be read.")
+      case .nothingToDeliver:
+        break
+      }
     }
   }
 }

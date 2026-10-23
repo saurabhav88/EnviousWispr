@@ -59,14 +59,16 @@ enum MeetingsPresentation {
     } else if live.queued == 1 {
       lines.append(
         String(
-          localized: "Catching up: 1 recorded minute is waiting.",
-          comment: "History, a recording meeting: one recorded minute waits to become live words."))
+          localized: "Catching up: 1 recorded stretch is waiting.",
+          comment:
+            "History, a recording meeting: one closed stretch of recorded audio (up to a minute) waits to become live words."
+        ))
     } else if live.queued > 1 {
       lines.append(
         String(
-          localized: "Catching up: \(String(live.queued)) recorded minutes are waiting.",
+          localized: "Catching up: \(String(live.queued)) recorded stretches are waiting.",
           comment:
-            "History, a recording meeting: how many recorded minutes wait to become live words. Never 1."
+            "History, a recording meeting: how many closed stretches of recorded audio (each up to a minute) wait to become live words. Never 1."
         ))
     }
     if live.skipped > 0 {
@@ -424,5 +426,33 @@ enum MeetingsPresentation {
           comment: "Menu bar menu: the meeting recording is being saved (not clickable)."),
         action: .none, isEnabled: false)
     }
+  }
+}
+
+/// What a meeting's Save writes (#3972 R38, Codex C10 r2): the visible transcript and the
+/// user's notes, the notes read first so unknown notes are never written as no notes, and both
+/// read again after that wait so a deletion or a new projection meanwhile wins.
+@MainActor
+enum MeetingExport {
+  enum Outcome: Equatable {
+    case document(String)
+    case notesUnreadable
+    /// The meeting is gone, deleting, or has nothing visible.
+    case nothingToDeliver
+  }
+
+  static func document(
+    meetingID: UUID, rowID: UUID, documents: MeetingDocumentsOwner,
+    transcripts: TranscriptCoordinator
+  ) async -> Outcome {
+    guard await documents.load(meetingID) else {
+      // A failed read is reported; a meeting deleted meanwhile simply delivers nothing.
+      return documents.loadState(meetingID) == .failed ? .notesUnreadable : .nothingToDeliver
+    }
+    guard let live = transcripts.currentRow(id: rowID),
+      let text = transcripts.textForDelivery(live)
+    else { return .nothingToDeliver }
+    let notes = documents.notes(meetingID).trimmingCharacters(in: .whitespacesAndNewlines)
+    return .document(MeetingsPresentation.exportDocument(transcript: text, notes: notes))
   }
 }

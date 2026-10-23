@@ -384,6 +384,9 @@ final class MeetingCoordinator {
   /// The file the running preview operation decodes, and the track decoded last (round robin).
   private var currentPreviewItem: PreviewItem?
   private var lastPreviewTrack: MeetingTrackKind?
+  /// The meeting whose audio the preview job decoded last: deleting it unloads the job even
+  /// when idle (Codex C10 r2).
+  private var previewJobMeetingID: UUID?
   /// At most this many queued preview files per track (R52); the oldest drops first.
   static let previewQueueCapPerTrack = 3
   /// Checkpoint writes running off the main actor right now.
@@ -1345,13 +1348,7 @@ final class MeetingCoordinator {
   private func enqueuePreview(_ meetingID: UUID, track: MeetingTrackKind, _ info: MeetingSegmentInfo) {
     guard deps.makePreviewJob != nil, liveTranscript?.meetingID == meetingID else { return }
     previewQueue.append(PreviewItem(meetingID: meetingID, track: track, info: info))
-    while previewQueue.filter({ $0.track == track }).count > Self.previewQueueCapPerTrack,
-      let oldest = previewQueue.firstIndex(where: { $0.track == track })
-    {
-      previewQueue.remove(at: oldest)
-      liveTranscript?.skipped += 1
-    }
-    liveTranscript?.queued = previewQueue.count
+    trimPreviewQueue(track: track)
     // Ends an idle wait at once. Redundant by design: the queue's end schedules the wait again
     // (cancelling this one), and the unload itself refuses while a unit runs or a file waits;
     // a mutation removing this line alone therefore changes nothing a user sees (C10).
@@ -1363,6 +1360,20 @@ final class MeetingCoordinator {
       self?.previewTask = nil
       self?.schedulePreviewIdleUnload()
     }
+  }
+
+  /// Keeps the newest `previewQueueCapPerTrack` files of `track`, oldest first out, counting
+  /// each dropped file as skipped. Every insertion goes through here (Codex C10 r2).
+  private func trimPreviewQueue(track: MeetingTrackKind) {
+    while previewQueue.filter({ $0.track == track }).count > Self.previewQueueCapPerTrack,
+      let oldest = previewQueue.indices.filter({ previewQueue[$0].track == track }).min(by: {
+        previewQueue[$0].info.startMs < previewQueue[$1].info.startMs
+      })
+    {
+      previewQueue.remove(at: oldest)
+      liveTranscript?.skipped += 1
+    }
+    liveTranscript?.queued = previewQueue.count
   }
 
   private func dropQueuedPreviews(of meetingID: UUID) {
@@ -1434,10 +1445,12 @@ final class MeetingCoordinator {
         transcript.skipped += 1
       case .interrupted:
         // A final pass came first while it waited; it is decoded after that pass.
+        liveTranscript = transcript
         if isRecording, activeMeetingID == item.meetingID {
           previewQueue.insert(item, at: 0)
-          transcript.queued = previewQueue.count
+          trimPreviewQueue(track: item.track)
         }
+        continue
       }
       liveTranscript = transcript
     }
@@ -1454,6 +1467,9 @@ final class MeetingCoordinator {
     guard liveTranscript?.meetingID == item.meetingID, !deleting.contains(item.meetingID) else {
       return .skipped
     }
+    // Priority is checked again on the lane (Codex C10 r2): a final pass that arrived while
+    // this preview queued behind another lane operation comes first.
+    if processing != nil || committing { return .interrupted }
     if previewJobCancelled {
       await previewJob?.releaseIdle()
       previewJob = nil
@@ -1461,6 +1477,7 @@ final class MeetingCoordinator {
     }
     let job = previewJob ?? makePreviewJob()
     currentPreviewItem = item
+    previewJobMeetingID = item.meetingID
     defer { currentPreviewItem = nil }
     let url = deps.store.folder(for: item.meetingID).appendingPathComponent(item.info.fileName)
     // Detached, not `Task {}`: this type is @MainActor and a plain Task inherits it; this is
@@ -1536,10 +1553,17 @@ final class MeetingCoordinator {
       previewJobCancelled = true
     }
     await onPreviewLane { [weak self] in
-      guard let self, self.previewJobCancelled else { return }
+      // Its job is unloaded when it was cancelled, or when it holds this meeting's engine idle;
+      // another meeting's preview is left alone.
+      guard let self, self.previewJobCancelled || self.previewJobMeetingID == meetingID else {
+        return
+      }
       await self.previewJob?.releaseIdle()
-      self.previewJob = nil
-      self.previewJobCancelled = false
+      if self.previewJobCancelled {
+        self.previewJob = nil
+        self.previewJobCancelled = false
+      }
+      self.previewJobMeetingID = nil
     }
     if liveTranscript?.meetingID == meetingID { liveTranscript = nil }
   }
