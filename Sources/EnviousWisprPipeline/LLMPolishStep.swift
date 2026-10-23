@@ -1772,7 +1772,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// key, exactly as pre-#1914 `main` did for every model, so a daemon without
   /// the undocumented field cannot receive a dialect it may not understand.
   private static func ollamaThinking(thinks: Bool?) -> ResolvedThinking? {
-    thinks == true ? .level("low") : nil
+    .ollama(thinks: thinks)
   }
 
   /// Carry the per-model capability value onto the wire (#1770; #1831 removed
@@ -1791,11 +1791,6 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   private static func resolveThinking(
     control: LLMModelCapabilities.ThinkingControl
   ) -> ResolvedThinking? {
-    switch control {
-    case .unsupported: return nil
-    case .budget(let v): return .budget(v)
-    case .level(let v): return .level(v)
-    case .effort(let v): return .effort(v)
-    }
+    control.resolved
   }
 }

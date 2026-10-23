@@ -354,3 +354,28 @@ extension LLMModelCapabilities {
     }
   }
 }
+
+extension LLMModelCapabilities.ThinkingControl {
+  /// The thinking value a request sends for this control: the dialect and its value as the
+  /// table holds them, nil for `.unsupported`. The one mapping, shared by polish
+  /// (`LLMPolishStep.resolveThinking`, whose comment holds the reasons) and the meeting
+  /// summary (#3972).
+  public var resolved: ResolvedThinking? {
+    switch self {
+    case .unsupported: return nil
+    case .budget(let v): return .budget(v)
+    case .level(let v): return .level(v)
+    case .effort(let v): return .effort(v)
+    }
+  }
+}
+
+extension ResolvedThinking {
+  /// Ollama's thinking value from the daemon's own report for the model: `"low"` only for a
+  /// reported thinking model, never `think: false`, nothing when unknown. The one rule, shared
+  /// by polish (`LLMPolishStep.ollamaThinking`, whose comment holds the measurements) and the
+  /// meeting summary (#3972).
+  public static func ollama(thinks: Bool?) -> ResolvedThinking? {
+    thinks == true ? .level("low") : nil
+  }
+}

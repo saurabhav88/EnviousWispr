@@ -264,6 +264,15 @@ public struct LLMProviderConfig: Codable, Sendable {
   /// Consumed by providers that gate or condition behavior on input language
   /// (currently: Apple Intelligence preflight + language-aware prompting).
   public let detectedLanguage: String?
+  /// Transient-failure retries the connector makes itself. Nil keeps the connector's default
+  /// (`LLMRetryPolicy.defaultMaxRetries`), which every polish uses. The meeting summary sets 0:
+  /// it owns its retries so it can count every attempt and wait for dictation before each one
+  /// (#3972 R44).
+  public let maxRetries: Int?
+  /// Ollama only: the context window to run the model with (`num_ctx`). Nil sends none, so the
+  /// daemon keeps its own default, as every polish does. The meeting summary sets the window
+  /// it planned its parts against, so a long part is never silently cut (#3972 R44).
+  public let contextTokens: Int?
 
   public init(
     model: String,
@@ -271,7 +280,9 @@ public struct LLMProviderConfig: Codable, Sendable {
     outputTokens: OutputTokenPolicy,
     temperature: Double,
     thinking: ResolvedThinking?,
-    detectedLanguage: String? = nil
+    detectedLanguage: String? = nil,
+    maxRetries: Int? = nil,
+    contextTokens: Int? = nil
   ) {
     self.model = model
     self.apiKeyKeychainId = apiKeyKeychainId
@@ -279,6 +290,8 @@ public struct LLMProviderConfig: Codable, Sendable {
     self.temperature = temperature
     self.thinking = thinking
     self.detectedLanguage = detectedLanguage
+    self.maxRetries = maxRetries
+    self.contextTokens = contextTokens
   }
 }
 

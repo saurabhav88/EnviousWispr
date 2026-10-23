@@ -7,71 +7,87 @@ import Foundation
 /// summary, and nothing here changes how dictation is polished. Text goes only to the provider
 /// the user chose, under their key.
 ///
-/// A long meeting is summarized in parts (map) and the parts are joined (reduce), each part
-/// sized to the provider's context window, with a bounded number of calls. Only retryable
-/// failures (network, rate limits) are tried again, at most twice.
+/// A long meeting is summarized in parts (map) and the part answers are combined (reduce), each
+/// call sized in tokens to the window the provider runs with, with a bounded number of
+/// attempts. This is the one retry owner for summary calls: connectors are told not to retry
+/// (`LLMProviderConfig.maxRetries`), and only retryable failures (network, rate limits) are
+/// tried again here, at most twice per call, each attempt admitted on its own.
 public enum MeetingSummary {
   /// Bumped whenever the prompt or the plan changes what a summary says; part of each summary's
   /// inputs, so an older summary shows as out of date.
   public static let promptVersion = 1
 
-  /// Whether the selected provider can write a summary, and why not (R44 capability matrix).
+  /// Whether the selected provider and model can write a summary, and why not (R44 capability
+  /// matrix).
   public enum Capability: Equatable, Sendable {
     case supported(Execution)
     /// No AI Polish provider is selected.
     case noProvider
-    /// The provider is a small model trained to clean up dictation; it cannot summarize.
+    /// The model is a small model trained to clean up dictation; it cannot summarize.
     case notForSummaries
   }
 
-  /// Where the provider runs: a local model competes with dictation for the Mac, a hosted one
-  /// does not (R44: by execution location, never by name alone).
+  /// Where the model runs: a local model competes with dictation for the Mac, a hosted one does
+  /// not (R44: by execution location, never by name alone).
   public enum Execution: String, Equatable, Sendable {
     case local
     case hosted
   }
 
   /// `ollamaModelIsRemote`: the daemon's own fact for the selected Ollama model (a cloud model
-  /// runs elsewhere); unknown counts as hosted, like Transcribe a File's classification.
-  public static func capability(_ provider: LLMProvider, ollamaModelIsRemote: Bool?)
-    -> Capability
-  {
+  /// runs elsewhere). Unknown counts as LOCAL here, the opposite of Transcribe a File's privacy
+  /// default, because the mistakes differ: treating a hosted model as local only makes the
+  /// summary wait for dictation, while treating a local model as hosted would run it beside
+  /// dictation. EG-1 and S1-mini are refused under any provider, including a tagged Ollama
+  /// reference, by the same identity helpers the connector routes on.
+  public static func capability(
+    _ provider: LLMProvider, model: String, ollamaModelIsRemote: Bool?
+  ) -> Capability {
     switch provider {
     case .openAI, .gemini, .claude: return .supported(.hosted)
-    case .ollama: return .supported((ollamaModelIsRemote ?? true) ? .hosted : .local)
+    case .ollama:
+      if OllamaSetupService.isFirstPartyModel(model) || OllamaSetupService.isS1MiniModel(model) {
+        return .notForSummaries
+      }
+      return .supported(ollamaModelIsRemote == true ? .hosted : .local)
     case .appleIntelligence: return .supported(.local)
     case .egOne, .s1Mini: return .notForSummaries
     case .none: return .noProvider
     }
   }
 
-  /// The context window a request is planned against, in tokens. Hosted models have far larger
-  /// windows; these are conservative floors for the models users pick. Apple Intelligence
-  /// reports its own (`SystemLanguageModel.contextSize`), passed in by the caller.
-  public static func contextTokens(_ provider: LLMProvider, appleContextTokens: Int?) -> Int {
-    switch provider {
-    case .openAI: return 100_000
-    case .gemini: return 200_000
-    case .claude: return 150_000
-    case .ollama: return 6_000
-    case .appleIntelligence: return appleContextTokens ?? 4_096
-    case .egOne, .s1Mini, .none: return 0
+  /// The window one call runs in: the model's context in tokens, and the tokens kept free for
+  /// its answer (visible text plus any thinking the provider counts against it).
+  public struct Window: Equatable, Sendable {
+    public let contextTokens: Int
+    public let outputReserveTokens: Int
+
+    public init(contextTokens: Int, outputReserveTokens: Int) {
+      self.contextTokens = contextTokens
+      self.outputReserveTokens = outputReserveTokens
     }
   }
 
-  /// Output tokens one call may use.
+  /// Visible output tokens one call asks for.
   public static let outputTokens = 1_500
-  /// Characters per token assumed when sizing parts: low, so a part never overflows a window.
-  static let charactersPerToken = 3
-  /// Tokens kept for instructions and framing.
-  static let promptOverheadTokens = 700
-  /// The most model calls one summary may make (parts plus the joins).
+  /// Tokens kept beside the estimated instructions and framing: the framing words this file
+  /// adds around a part, and a margin like the Apple Intelligence preflight's.
+  static let framingTokens = 200
+  static let safetyMarginTokens = 128
+  /// A window with fewer tokens than this for transcript and notes is refused, never enlarged.
+  static let minimumInputTokens = 1_000
+  /// The most calls a plan may need when every answer is as long as it may be.
   public static let maxCalls = 64
+  /// The most attempts one summary may make, retries included.
+  public static let maxAttempts = 80
 
   public enum Failure: Error, Equatable {
-    /// The meeting needs more calls than `maxCalls` on this provider's window.
+    /// The meeting needs more calls than `maxCalls` on this window, or the model said its
+    /// window was exceeded.
     case tooLong
-    /// Every retry failed, or the failure was not retryable.
+    /// The window leaves too little room for any transcript.
+    case windowTooSmall
+    /// Every retry failed, the failure was not retryable, or the attempt limit was reached.
     case providerFailed
     /// The provider answered with nothing.
     case empty
@@ -96,39 +112,97 @@ public enum MeetingSummary {
     ## Action items (bullets; name the owner when someone said they would do it)
     """
 
-  /// Characters of transcript, notes or part answers one call may carry on a window of
-  /// `contextTokens` (the instructions and framing are covered by `promptOverheadTokens`).
-  static func promptBudget(_ contextTokens: Int) -> Int {
-    max(2_000, (contextTokens - outputTokens - promptOverheadTokens) * charactersPerToken)
+  // MARK: - Token estimate
+
+  /// A token count no real tokenizer is expected to exceed, for any script: one token per
+  /// scalar outside Latin (CJK, Cyrillic, Devanagari and combining marks alike), one per two
+  /// accented Latin scalars, one per ASCII digit (some tokenizers split numbers digit by
+  /// digit), and one per three other ASCII scalars (English averages about four).
+  static func estimatedTokens(_ text: String) -> Int {
+    var tally = Tally()
+    for scalar in text.unicodeScalars { tally.add(scalar) }
+    return tally.tokens
   }
 
-  /// The most characters kept from one part answer. A quarter of the budget, so every combine
-  /// call holds at least three answers and each round of combining shrinks the list.
+  struct Tally {
+    var ascii = 0
+    var digits = 0
+    var latin = 0
+    var other = 0
+
+    mutating func add(_ scalar: Unicode.Scalar) {
+      switch scalar.value {
+      case 0x30...0x39: digits += 1
+      case 0..<0x80: ascii += 1
+      case 0x80..<0x250: latin += 1
+      default: other += 1
+      }
+    }
+
+    var tokens: Int { (ascii + 2) / 3 + digits + (latin + 1) / 2 + other }
+  }
+
+  /// The longest head of `text` whose estimate fits `tokens`, never splitting a character.
+  static func prefix(_ text: String, tokens: Int) -> String {
+    var tally = Tally()
+    var end = text.startIndex
+    for index in text.indices {
+      var next = tally
+      for scalar in text[index].unicodeScalars { next.add(scalar) }
+      guard next.tokens <= tokens else { break }
+      tally = next
+      end = text.index(after: index)
+    }
+    return String(text[..<end])
+  }
+
+  // MARK: - Plan
+
+  /// Tokens of transcript, notes or part answers one call may carry in `window`, beside the
+  /// estimated instructions, the final shape, framing and margin. Refused, never enlarged,
+  /// when too small.
+  static func inputBudget(_ window: Window) throws -> Int {
+    let budget =
+      window.contextTokens - window.outputReserveTokens - estimatedTokens(instructions)
+      - estimatedTokens(finalShape) - framingTokens - safetyMarginTokens
+    guard budget >= minimumInputTokens else { throw Failure.windowTooSmall }
+    return budget
+  }
+
+  /// The most tokens kept from one part answer: a quarter of the budget, so every combine call
+  /// holds at least three answers and each round of combining shrinks the list.
   static func partialCap(_ budget: Int) -> Int { budget / 4 }
+
+  /// Tokens `joined` adds around each answer ("Part 12:" and the blank line), rounded up.
+  static let answerHeaderTokens = 8
 
   /// The parts of `text` for one call, cut at line ends where possible.
   static func parts(of text: String, budget: Int) -> [String] {
-    guard text.count > budget else { return [text] }
+    guard estimatedTokens(text) > budget else { return [text] }
     var parts: [String] = []
     var current = ""
+    var currentTokens = 0
+    func flush() {
+      if !current.isEmpty { parts.append(current) }
+      current = ""
+      currentTokens = 0
+    }
     for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
       var line = String(line)
       // A line longer than a part is split on its own.
-      while line.count > budget {
-        if !current.isEmpty {
-          parts.append(current)
-          current = ""
-        }
-        parts.append(String(line.prefix(budget)))
-        line = String(line.dropFirst(budget))
+      while estimatedTokens(line) > budget {
+        flush()
+        let head = prefix(line, tokens: budget)
+        parts.append(head)
+        line = String(line.dropFirst(head.count))
       }
-      if current.count + line.count + 1 > budget, !current.isEmpty {
-        parts.append(current)
-        current = ""
-      }
+      // Per-line estimates round up and count the newline, so their sum bounds the part's.
+      let lineTokens = estimatedTokens(line) + 1
+      if currentTokens + lineTokens > budget { flush() }
       current += current.isEmpty ? line : "\n" + line
+      currentTokens += lineTokens
     }
-    if !current.isEmpty { parts.append(current) }
+    flush()
     return parts
   }
 
@@ -143,34 +217,35 @@ public enum MeetingSummary {
     let text: String
   }
 
-  /// How a summary is written on one window.
+  /// How a summary is written in one window.
   struct Plan: Equatable {
     /// Nil: the meeting fits one call with its notes.
     let pieces: [Piece]?
     /// Notes that go whole into the final call ("" when none, or when they are in `pieces`).
     let inlineNotes: String
-    /// Characters of part answers the final call may carry beside `inlineNotes`.
+    /// Tokens of part answers the final call may carry beside `inlineNotes`.
     let finalBudget: Int
-    /// Characters of part answers one combine call may carry.
+    /// Tokens of part answers one combine call may carry.
     let budget: Int
     /// The most calls the plan can make when every answer is as long as it may be.
     let worstCaseCalls: Int
   }
 
-  static func plan(transcript: String, notes: String, contextTokens: Int) throws -> Plan {
-    let budget = promptBudget(contextTokens)
-    if transcript.count + notes.count <= budget {
+  static func plan(transcript: String, notes: String, window: Window) throws -> Plan {
+    let budget = try inputBudget(window)
+    let notesTokens = estimatedTokens(notes)
+    if estimatedTokens(transcript) + notesTokens <= budget {
       return Plan(
         pieces: nil, inlineNotes: notes, finalBudget: budget, budget: budget, worstCaseCalls: 1)
     }
     // Notes up to half the budget go whole into the final call; longer notes are summarized
     // in parts like the transcript, so the final call always has room for part answers.
-    let inlineNotes = notes.count <= budget / 2 ? notes : ""
+    let inlineNotes = notesTokens <= budget / 2 ? notes : ""
     var pieces = parts(of: transcript, budget: budget).map { Piece(source: .transcript, text: $0) }
     if inlineNotes.isEmpty, !notes.isEmpty {
       pieces += parts(of: notes, budget: budget).map { Piece(source: .notes, text: $0) }
     }
-    let finalBudget = budget - inlineNotes.count
+    let finalBudget = budget - estimatedTokens(inlineNotes)
     let worst = worstCaseCalls(pieces: pieces.count, budget: budget, finalBudget: finalBudget)
     guard worst <= maxCalls else { throw Failure.tooLong }
     return Plan(
@@ -179,9 +254,10 @@ public enum MeetingSummary {
   }
 
   /// Calls made when every part answer is `partialCap` long: the map, each round of combining,
-  /// and the final call.
+  /// and the final call. The run below combines while `answerTokens` exceeds the final budget,
+  /// and its greedy groups hold at least `perGroup` answers, so it never makes more.
   static func worstCaseCalls(pieces: Int, budget: Int, finalBudget: Int) -> Int {
-    let answer = partialCap(budget) + answerHeader
+    let answer = partialCap(budget) + answerHeaderTokens
     let perGroup = max(2, budget / answer)
     var calls = pieces
     var count = pieces
@@ -192,19 +268,23 @@ public enum MeetingSummary {
     return calls + 1
   }
 
-  /// Characters `joined` adds before each answer ("Part 12:\n" plus the blank line).
-  static let answerHeader = 16
-
   static func joined(_ answers: [String]) -> String {
     answers.enumerated().map { "Part \($0.offset + 1):\n\($0.element)" }
       .joined(separator: "\n\n")
   }
 
-  /// `answer` cut to `cap` characters, at a line end where one is near.
+  /// A bound on `estimatedTokens(joined(answers))`: each answer plus its header.
+  static func answerTokens(_ answers: [String]) -> Int {
+    answers.reduce(0) { $0 + estimatedTokens($1) + answerHeaderTokens }
+  }
+
+  /// `answer` cut to `cap` tokens, at a line end where one is near.
   static func capped(_ answer: String, _ cap: Int) -> String {
-    guard answer.count > cap else { return answer }
-    let head = String(answer.prefix(cap))
-    if let cut = head.lastIndex(of: "\n"), head.distance(from: head.startIndex, to: cut) > cap / 2 {
+    guard estimatedTokens(answer) > cap else { return answer }
+    let head = prefix(answer, tokens: cap)
+    if let cut = head.lastIndex(of: "\n"),
+      head.distance(from: head.startIndex, to: cut) > head.count / 2
+    {
       return String(head[..<cut])
     }
     return head
@@ -218,7 +298,7 @@ public enum MeetingSummary {
   }
 
   /// Whether a failure is worth one more try: the network or a rate limit, never a bad key, a
-  /// missing model or a refusal.
+  /// missing model, a refusal or a cancelled request.
   public static func isRetryable(_ error: Error) -> Bool {
     if let error = error as? LLMError {
       switch error {
@@ -233,34 +313,42 @@ public enum MeetingSummary {
     return false
   }
 
+  /// Whether `error` is a cancellation, from the task or from the transport.
+  static func isCancellation(_ error: Error) -> Bool {
+    if error is CancellationError { return true }
+    if let error = error as? URLError, error.code == .cancelled { return true }
+    return false
+  }
+
+  // MARK: - Run
+
   /// One model call: the system instructions and the user prompt in, the answer out.
   public typealias Complete = @Sendable (_ instructions: String, _ prompt: String) async throws
     -> String
-  /// Runs before every call; a local provider waits here for dictation to be idle (R44).
+  /// Runs before every attempt; a local model waits here for dictation to be idle (R44).
   public typealias Admit = @Sendable () async throws -> Void
 
   /// Writes the summary, one call after another (each finished before the next): one call for
   /// a meeting that fits; otherwise a call per part, rounds that combine the answers until they
-  /// fit, and the final call. Refused before any call when the worst case needs more than
-  /// `maxCalls`.
+  /// fit, and the final call. Refused before any call when the window is too small or the worst
+  /// case needs more than `maxCalls`.
   public static func write(
-    transcript: String, notes: String, contextTokens: Int, callTimeoutSeconds: Double,
+    transcript: String, notes: String, window: Window, callTimeoutSeconds: Double,
     admit: Admit, complete: @escaping Complete
   ) async throws -> String {
-    let plan = try plan(transcript: transcript, notes: notes, contextTokens: contextTokens)
-    var calls = 0
+    let plan = try plan(transcript: transcript, notes: notes, window: window)
+    let attempts = AttemptCounter()
     func ask(_ prompt: String) async throws -> String {
-      calls += 1
-      // The worst case bounds every run; this holds if an estimate above is ever wrong.
-      guard calls <= maxCalls else { throw Failure.tooLong }
-      return try await call(
-        prompt, timeoutSeconds: callTimeoutSeconds, admit: admit, complete: complete)
+      try await call(
+        prompt, timeoutSeconds: callTimeoutSeconds, attempts: attempts, admit: admit,
+        complete: complete)
     }
     guard let pieces = plan.pieces else {
       return try await ask(finalPrompt(notes: notes, body: "Transcript:\n\(transcript)"))
     }
     let cap = partialCap(plan.budget)
-    let words = cap / 8
+    // About three-quarters of a word per token in English; `capped` below is the bound.
+    let words = cap * 3 / 4
     var answers: [String] = []
     for (index, piece) in pieces.enumerated() {
       let what = piece.source == .transcript ? "a meeting transcript" : "the user's own notes"
@@ -274,11 +362,11 @@ public enum MeetingSummary {
         """)
       answers.append(capped(answer, cap))
     }
-    while joined(answers).count > plan.finalBudget {
+    while answerTokens(answers) > plan.finalBudget {
       var groups: [[String]] = [[]]
       for answer in answers {
         if !groups[groups.count - 1].isEmpty,
-          joined(groups[groups.count - 1] + [answer]).count > plan.budget
+          answerTokens(groups[groups.count - 1] + [answer]) > plan.budget
         {
           groups.append([])
         }
@@ -313,32 +401,44 @@ public enum MeetingSummary {
     return "\(finalShape)\(notesBlock)\n\n\(body)"
   }
 
-  /// One call with its retries. The time limit covers the model call only, never the wait in
-  /// `admit`. It cancels the call and waits for it to end (`withThrowingTimeout`), so a local
-  /// model still finishes one call before the next starts (R44); a call that ignores
-  /// cancellation can run past the limit.
+  /// Attempts made by one summary, retries included. Touched only by the summary's own calls,
+  /// which run one after another.
+  final class AttemptCounter: @unchecked Sendable {
+    var count = 0
+  }
+
+  /// One call with its retries. Each attempt counts against `maxAttempts` and is admitted on
+  /// its own, and cancellation is checked after the wait for admission and after the answer.
+  /// The time limit covers the model call only, never the wait in `admit`. It cancels the call
+  /// and waits for it to end (`withThrowingTimeout`), so a local model still finishes one call
+  /// before the next starts (R44); a call that ignores cancellation can run past the limit.
   private static func call(
-    _ prompt: String, timeoutSeconds: Double, admit: Admit, complete: @escaping Complete
+    _ prompt: String, timeoutSeconds: Double, attempts: AttemptCounter, admit: Admit,
+    complete: @escaping Complete
   ) async throws -> String {
-    var attempt = 0
+    var retries = 0
     while true {
       do {
         try Task.checkCancellation()
         try await admit()
+        try Task.checkCancellation()
+        attempts.count += 1
+        guard attempts.count <= maxAttempts else { throw Failure.providerFailed }
         let answer = try await withThrowingTimeout(seconds: timeoutSeconds) {
           try await complete(instructions, prompt)
         }.trimmingCharacters(in: .whitespacesAndNewlines)
+        try Task.checkCancellation()
         guard !answer.isEmpty else { throw Failure.empty }
         return answer
-      } catch is TimeoutError {
-        throw Failure.timedOut
-      } catch is CancellationError {
-        throw Failure.cancelled
       } catch let failure as Failure {
         throw failure
+      } catch is TimeoutError {
+        throw Failure.timedOut
+      } catch let error where isCancellation(error) {
+        throw Failure.cancelled
       } catch {
-        attempt += 1
-        guard attempt <= 2, isRetryable(error) else { throw Failure.providerFailed }
+        retries += 1
+        guard retries <= 2, isRetryable(error) else { throw Failure.providerFailed }
       }
     }
   }

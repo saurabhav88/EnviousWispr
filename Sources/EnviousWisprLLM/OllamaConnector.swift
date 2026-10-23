@@ -193,7 +193,8 @@ public struct OllamaConnector: TranscriptPolisher {
       messages: messages,
       maxTokens: maxTokens,
       temperature: config.temperature,
-      thinking: config.thinking
+      thinking: config.thinking,
+      contextTokens: config.contextTokens
     )
 
     var request = URLRequest(url: url)
@@ -286,7 +287,8 @@ public struct OllamaConnector: TranscriptPolisher {
         messages: messages,
         maxTokens: maxTokens,
         temperature: config.temperature,
-        thinking: config.thinking
+        thinking: config.thinking,
+        contextTokens: config.contextTokens
       )
 
     var request = URLRequest(url: url)
@@ -671,17 +673,21 @@ public struct OllamaConnector: TranscriptPolisher {
     messages: [[String: String]],
     maxTokens: Int,
     temperature: Double,
-    thinking: ResolvedThinking?
+    thinking: ResolvedThinking?,
+    contextTokens: Int? = nil
   ) -> [String: Any] {
+    var options: [String: Any] = [
+      "num_predict": maxTokens,
+      "temperature": temperature,
+    ]
+    // #3972: only the meeting summary sets a window; polish sends none and keeps the daemon's.
+    if let contextTokens { options["num_ctx"] = contextTokens }
     var body: [String: Any] = [
       "model": model,
       "messages": messages,
       "stream": false,
       "keep_alive": "60m",
-      "options": [
-        "num_predict": maxTokens,
-        "temperature": temperature,
-      ],
+      "options": options,
     ]
     // #1914: `think` is a TOP-LEVEL key on /api/chat, not an `options` entry.
     // Only the level dialect is emitted; a budget or effort value would be a
@@ -701,12 +707,15 @@ public struct OllamaConnector: TranscriptPolisher {
   private func performWithRetry(
     request: URLRequest,
     config: LLMProviderConfig,
-    maxRetries: Int = LLMRetryPolicy.defaultMaxRetries,
+    maxRetries defaultRetries: Int = LLMRetryPolicy.defaultMaxRetries,
     delays: [UInt64] = LLMRetryPolicy.defaultDelays
   ) async throws -> (Data, HTTPURLResponse, LLMRetryPolicy.RetryReceipt?) {
     var lastError: Error?
     // #2641: what this attempt waited, so its outcome row can say so.
     var sleptBeforeAttempt: UInt64 = 0
+    // #3972: a caller that owns its own retries (the meeting summary) sets
+    // `config.maxRetries`; nil keeps the default every polish uses.
+    let maxRetries = config.maxRetries ?? defaultRetries
     for attempt in 0...maxRetries {
       if attempt > 0 {
         let delay = delays[min(attempt - 1, delays.count - 1)]

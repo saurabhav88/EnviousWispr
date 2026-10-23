@@ -155,7 +155,7 @@ public struct OpenAIConnector: TranscriptPolisher {
     apiKey: String,
     messages: [[String: String]],
     config: LLMProviderConfig,
-    maxRetries: Int = LLMRetryPolicy.defaultMaxRetries,
+    maxRetries defaultRetries: Int = LLMRetryPolicy.defaultMaxRetries,
     delays: [UInt64] = LLMRetryPolicy.defaultDelays
   ) async throws -> LLMResult {
     // Allocate the call number once per logical polish. Transient retries
@@ -166,6 +166,9 @@ public struct OpenAIConnector: TranscriptPolisher {
     var lastError: Error?
     // #2641: what this attempt waited, so its outcome row can say so.
     var sleptBeforeAttempt: UInt64 = 0
+    // #3972: a caller that owns its own retries (the meeting summary) sets
+    // `config.maxRetries`; nil keeps the default every polish uses.
+    let maxRetries = config.maxRetries ?? defaultRetries
     for attempt in 0...maxRetries {
       if attempt > 0 {
         let delay = delays[min(attempt - 1, delays.count - 1)]
