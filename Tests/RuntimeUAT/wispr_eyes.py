@@ -1995,9 +1995,13 @@ def switch_backend(name, wait=30.0, client=None):
     while True:
         status = client.status()
         engine = status.get("engine") or {}
-        if engine.get("switchPhase") == "failed":
+        # The coordinator's snapshot can lag the setting (`status` reports both), so its
+        # errors are read only once it names THIS request: a failure or a missing model of
+        # the previous selection says nothing about this switch.
+        about_this = engine.get("selected") == name
+        if about_this and engine.get("active") == name and engine.get("switchPhase") == "failed":
             raise RuntimeError(f"switch to {name} failed: {engine.get('switchFailure')}")
-        if engine.get("blockedReason") == "not_installed":
+        if about_this and engine.get("blockedReason") == "not_installed":
             # Put the choice back: a selection the coordinator will never apply leaves
             # selected and active apart for every later take.
             client.set("selectedBackend", before)
@@ -4236,6 +4240,13 @@ def _self_test():
                            "for convergence and never opens Settings",
                            (fake.writes, fake.statuses, len(route_calls) - before),
                            ([("selectedBackend", "whisper")], [_engine("whisper", "whisper")], 0)))
+        fake = _Door(_engine("parakeet", "parakeet", blocked="not_installed"),
+                     _engine("parakeet", "parakeet", phase="failed"),
+                     _engine("whisper", "whisper"))
+        switch_backend("whisper", wait=5, client=fake)
+        cycle_rows.append(("#3990 a lagging snapshot's errors about the previous selection are "
+                           "not read as this switch's", fake.writes,
+                           [("selectedBackend", "whisper")]))
         for why, status, want in (
                 ("a model that is not downloaded raises and puts the choice back",
                  _engine("whisper", "parakeet", blocked="not_installed"),
