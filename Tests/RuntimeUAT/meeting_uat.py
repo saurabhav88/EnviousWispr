@@ -279,12 +279,36 @@ def make_conversation(directory):
     return out, " ".join(line for _, line in CONVERSATION), frames / SAMPLE_RATE
 
 
+class PlaybackNotStopped(Exception):
+    """An owned player group may still be playing: the speakers must not come back."""
+
+
+# Where `main` writes the receipt; `Players` writes it too when it must exit at once.
+RECEIPT = {"path": None, "scenario": None}
+
+
+def group_alive(pgid):
+    """Whether any process (leader or child) of that process group still exists."""
+    try:
+        os.killpg(pgid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
 class Players:
-    """Every audio player this run starts, each in its own process group so a looping shell's
-    afplay child dies with it. `stop_all` kills and reaps them; used before the rig exits."""
+    """Every audio player this run starts, each the leader of its own process group, so a
+    looping shell's afplay child is in that group too. `stop`/`stop_all` SIGKILL each owned
+    GROUP whether or not its leader already exited, reap the leader, and prove the group is
+    empty. If that cannot be proved, `__exit__` writes the receipt and exits the process at
+    once (`os._exit`), so the enclosing AudioRig never restores the speakers while playback is
+    possible; the route stays on BlackHole and the message names the manual restore."""
 
     def __init__(self):
         self.procs = []
+        self.killpg, self.alive = os.killpg, group_alive
 
     def start(self, argv):
         proc = subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -296,31 +320,56 @@ class Players:
         return self.start(["afplay", path])
 
     def loop(self, path):
-        return self.start(["bash", "-c", f'while true; do afplay "$0"; done', path])
+        return self.start(["bash", "-c", 'while true; do afplay "$0"; done', path])
 
     def finish(self, proc):
         """Waits for the player's own exit, with a deadline in case afplay hangs."""
         proc.wait(timeout=PLAYER_SECONDS)  # deadline-fallback: around the process-exit signal
 
+    def stop(self, proc):
+        try:
+            self.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        try:
+            proc.wait(timeout=10)  # deadline-fallback: reaping a SIGKILLed leader
+        except subprocess.TimeoutExpired:
+            pass
+        empty = wait_for("player group gone", lambda: not self.alive(proc.pid), 5, 0.1)
+        if not empty:
+            raise PlaybackNotStopped(f"player group {proc.pid} still has processes")
+
     def stop_all(self):
+        failures = []
         for proc in self.procs:
-            if proc.poll() is None:
-                try:
-                    os.killpg(proc.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-        for proc in self.procs:
-            proc.wait(timeout=10)  # deadline-fallback: reaping a SIGKILLed group
-        leftover = [p.pid for p in self.procs if p.poll() is None]
-        if leftover:
-            raise Setup(f"audio players still running: {leftover}")
+            try:
+                self.stop(proc)
+            except PlaybackNotStopped as error:
+                failures.append(str(error))
+        if failures:
+            raise PlaybackNotStopped("; ".join(failures))
 
     def __enter__(self):
         return self
 
     def __exit__(self, *exc):
-        self.stop_all()
+        try:
+            self.stop_all()
+        except PlaybackNotStopped as error:
+            unsafe_exit(error)
         return False
+
+
+def unsafe_exit(error, exit=os._exit):
+    """Playback may continue: record it and leave WITHOUT unwinding into the rig's restore."""
+    message = (f"SETUP FAILED: {error}. The audio route stays on BlackHole: kill the player, "
+               f"then run `python3 Tests/RuntimeUAT/silent_audio.py restore`.")
+    print(message, flush=True)
+    if RECEIPT["path"]:
+        with open(RECEIPT["path"], "w") as f:
+            json.dump({"scenario": RECEIPT["scenario"], "exit": EXIT_SETUP,
+                       "rows": [{"setup": message}]}, f, indent=1)
+    exit(EXIT_SETUP)
 
 
 def start_meeting(call_sound=True):
@@ -359,7 +408,7 @@ class Checks:
         print(f"  SKIP  {name}  {reason}")
 
     def status(self):
-        if any(r["ok"] is False for r in self.rows):
+        if any(r.get("ok") is False for r in self.rows):
             return EXIT_FAIL
         return EXIT_UNSURE if self.unsure else EXIT_PASS
 
@@ -467,12 +516,22 @@ def asr_seconds(sentence):
     return float(match.group(1)) if match else None
 
 
-def timed_takes(count, sentence, still=lambda: True):
-    """ASR seconds of up to `count` takes, stopping when `still()` turns false."""
+BETWEEN_TAKES_SECONDS = 8
+
+
+def timed_takes(count, sentence, players=None, audio=None, still=lambda: True):
+    """ASR seconds of up to `count` takes, stopping when `still()` turns false. With `audio`,
+    the call plays for BETWEEN_TAKES_SECONDS before each take and is stopped before the take
+    starts, so every take hears only its own TTS whatever the arm (R51 compares like with
+    like); the gaps keep a recording meeting's live words busy."""
     values = []
     for _ in range(count):
         if not still():
             break
+        if audio:
+            player = players.play(audio)
+            time.sleep(BETWEEN_TAKES_SECONDS)  # deadline-fallback: a fixed call interval
+            players.stop(player)
         value = asr_seconds(sentence)
         if value is not None:
             values.append(value)
@@ -486,18 +545,18 @@ def scenario_latency(run_dir, made, checks, takes):
     work = tempfile.mkdtemp(prefix="meeting-latency-", dir=run_dir)
     audio, _, _ = make_conversation(work)
     with audio_rig.AudioRig(), Players() as players:
-        baseline = timed_takes(takes, sentence)
+        baseline = timed_takes(takes, sentence, players, audio)
         meeting_id = start_meeting(call_sound=True)
         made.append(meeting_id)
-        players.loop(audio)
+        players.finish(players.play(audio))
         preview = wait_for("live words", live_lines, 150, 5.0)
-        recording = timed_takes(takes, sentence)
+        recording = timed_takes(takes, sentence, players, audio)
         preview_after = live_lines()
-        players.stop_all()
         door_ok("meeting", "stop", meeting_id)
         in_pass = wait_for("pass", lambda: door_ok("meeting", "status")["processing"], 60, 0.5)
         during_pass = timed_takes(
-            takes, sentence, still=lambda: bool(door_ok("meeting", "status")["processing"])
+            takes, sentence, players, audio,
+            still=lambda: bool(door_ok("meeting", "status")["processing"])
         ) if in_pass else []
     if len(baseline) < takes:
         c.cannot_tell("the no-meeting baseline", f"{len(baseline)}/{takes} timed takes")
@@ -595,17 +654,25 @@ def scenario_memory(run_dir, made, checks, minutes):
         c.check(name, status == EXIT_PASS, detail)
 
 
-def cleanup(made):
+def cleanup(made, delete=None):
+    """[(meeting id, deleted, detail)] for every meeting this run made."""
+    delete = delete or (lambda meeting_id: door("meeting", "delete", meeting_id))
+    results = []
     for meeting_id in made:
         try:
-            status, reply = door("meeting", "delete", meeting_id)
+            status, reply = delete(meeting_id)
+            deleted = status == 0 and bool(reply.get("ok"))
+            detail = "deleted" if deleted else json.dumps(reply)[:300]
         except (Setup, subprocess.SubprocessError, OSError) as error:
-            status, reply = 1, str(error)
-        print(f"  cleanup: delete {meeting_id}: {'ok' if status == 0 else reply}")
+            deleted, detail = False, f"{type(error).__name__}: {error}"
+        print(f"  cleanup: {meeting_id}: {detail}")
+        results.append({"meetingID": meeting_id, "deleted": deleted, "detail": detail})
+    return results
 
 
-def run_scenario(args):
-    """(exit status, rows). Every harness error maps to its declared exit code."""
+def run_scenario(args, delete=None):
+    """(exit status, rows). Every harness error maps to its declared exit code; a meeting left
+    behind is SETUP FAILED, never PASS."""
     import take_gate as tg
     made, checks = [], Checks()
     status = None
@@ -629,8 +696,10 @@ def run_scenario(args):
     except Exception as error:  # a harness defect is never an app result
         checks.cannot_tell("the run", f"harness error {type(error).__name__}: {error}")
     finally:
-        if made:
-            cleanup(made)
+        left = [r for r in cleanup(made, delete) if not r["deleted"]] if made else []
+    if left:
+        checks.rows.append({"cleanup": left})
+        status = EXIT_SETUP if status is None and checks.status() != EXIT_FAIL else status
     return (checks.status() if status is None else status), checks.rows
 
 
@@ -685,43 +754,74 @@ def self_test():
            wer("Good morning everyone.", "good morning everyone") == 0.0)
 
     class FakeProc:
-        def __init__(self):
-            self.pid, self.alive = -1, True
-
-        def poll(self):
-            return None if self.alive else 0
+        def __init__(self, pid):
+            self.pid = pid
 
         def wait(self, timeout=None):
             return 0
 
+    # A leader that already exited with a child still playing: its group is killed anyway.
+    groups = {-7: True}
     players = Players()
-    stuck = FakeProc()
-    players.procs.append(stuck)
-    original = os.killpg
-    killed = []
-    os.killpg = lambda pid, sig: (killed.append(pid), setattr(stuck, "alive", False))
+    players.procs.append(FakeProc(-7))
+    players.killpg = lambda pgid, sig: groups.__setitem__(pgid, False)
+    players.alive = lambda pgid: groups[pgid]
+    players.stop_all()
+    expect("an exited leader's surviving child is still killed", groups[-7] is False)
+
+    # A group that cannot be emptied never lets the rig restore the speakers.
+    exits, restored = [], []
+    players = Players()
+    players.procs.append(FakeProc(-8))
+    players.killpg = lambda pgid, sig: None
+    players.alive = lambda pgid: True
+
+    class Rig:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            restored.append(True)
+
+    class Exit(BaseException):
+        pass
+
+    def fake_exit(code):
+        exits.append(code)
+        raise Exit()
+
+    original = globals()["unsafe_exit"]
+    globals()["unsafe_exit"] = lambda error: original(error, exit=fake_exit)
     try:
-        try:
-            with players:
-                raise RuntimeError("playback failed")
-        except RuntimeError:
+        with Rig(), players:
             pass
+    except Exit:
+        pass
     finally:
-        os.killpg = original
-    expect("a failure during playback still kills every player", killed == [-1] and
-           not stuck.alive)
-    survivor = FakeProc()
-    players = Players()
-    players.procs.append(survivor)
-    os.killpg = lambda pid, sig: None
+        globals()["unsafe_exit"] = original
+    # `os._exit` never unwinds; the fake raises a BaseException the rig does not see as a
+    # normal exit only for this test, so it checks that the exit was asked for first.
+    expect("a player that cannot be stopped exits SETUP FAILED", exits == [EXIT_SETUP])
+
+    # The latency arms hear the same thing: the call stops before every take.
+    events = []
+
+    class Recorder(Players):
+        def play(self, path):
+            events.append("play")
+            return FakeProc(-9)
+
+        def stop(self, proc):
+            events.append("stop")
+
+    saved = globals()["asr_seconds"], time.sleep
+    globals()["asr_seconds"] = lambda sentence: events.append("take") or 1.0
+    time.sleep = lambda seconds: None
     try:
-        try:
-            players.stop_all()
-            expect("a player that survives is SETUP FAILED", False)
-        except Setup:
-            expect("a player that survives is SETUP FAILED", True)
+        timed_takes(3, "x", Recorder(), "/call.wav")
     finally:
-        os.killpg = original
+        globals()["asr_seconds"], time.sleep = saved
+    expect("the call is stopped before every take", events == ["play", "stop", "take"] * 3)
 
     import types
     for error, want in ((Setup("x"), EXIT_SETUP), (subprocess.TimeoutExpired("x", 1), EXIT_SETUP),
@@ -735,6 +835,23 @@ def self_test():
         finally:
             globals()["scenario_feature"], globals()["this_build_pid"] = saved
         expect(f"{type(error).__name__} maps to {VERDICTS[want]}", status == want and rows)
+
+    def passing(_run_dir, made, checks):
+        made.append("m1")
+        checks.check("fine", True)
+
+    for label, delete in (("refused", lambda _id: (1, {"ok": False})),
+                          ("timed out", lambda _id: (_ for _ in ()).throw(
+                              subprocess.TimeoutExpired("delete", 60)))):
+        saved = globals()["scenario_feature"], globals()["this_build_pid"]
+        globals()["scenario_feature"], globals()["this_build_pid"] = passing, lambda: 1
+        try:
+            status, rows = run_scenario(
+                types.SimpleNamespace(scenario="feature", run_dir="/tmp"), delete=delete)
+        finally:
+            globals()["scenario_feature"], globals()["this_build_pid"] = saved
+        expect(f"a {label} deletion after a passing run is not PASS",
+               status == EXIT_SETUP and any("cleanup" in r for r in rows))
     print(f"meeting_uat self-test: {len(failures)} failed")
     return EXIT_PASS if not failures else EXIT_FAIL
 
@@ -751,8 +868,9 @@ def main():
         return self_test()
     if not args.scenario or not args.run_dir or not os.path.isdir(args.run_dir):
         parser.error("a scenario and an existing --run-dir are required")
-    status, rows = run_scenario(args)
     receipt = os.path.join(args.run_dir, f"meeting-{args.scenario}.json")
+    RECEIPT["path"], RECEIPT["scenario"] = receipt, args.scenario
+    status, rows = run_scenario(args)
     with open(receipt, "w") as f:
         json.dump({"scenario": args.scenario, "exit": status, "rows": rows}, f, indent=1)
     print(f"verdict: {VERDICTS[status]} ({receipt})")
