@@ -4178,6 +4178,17 @@
         }
       }
     },
+    "Call" : {
+      "comment" : "History, live words of a recording meeting: words heard in the sound the Mac plays.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anruf"
+          }
+        }
+      }
+    },
     "Call sound" : {
       "comment" : "EnviousMeet: the level meter for the sound the Mac plays.",
       "localizations" : {
@@ -4346,6 +4357,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Katalanisch"
+          }
+        }
+      }
+    },
+    "Catching up: %@ recorded stretches are waiting." : {
+      "comment" : "History, a recording meeting: how many closed stretches of recorded audio (each up to a minute) wait to become live words. Never 1.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Holt auf: %@ aufgenommene Abschnitte warten."
+          }
+        }
+      }
+    },
+    "Catching up: 1 recorded stretch is waiting." : {
+      "comment" : "History, a recording meeting: one closed stretch of recorded audio (up to a minute) waits to become live words.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Holt auf: 1 aufgenommener Abschnitt wartet."
           }
         }
       }
@@ -7072,6 +7105,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Audiodaten jeder Aufnahme bleiben gespeichert, bis du sie löschst. Lösche nur die Audioaufnahme, um das Transkript zu behalten."
+          }
+        }
+      }
+    },
+    "Echo is hidden when the meeting ends." : {
+      "comment" : "History, a recording meeting: repeated call lines are hidden only in the final transcript.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Echo wird erst nach dem Meeting ausgeblendet."
           }
         }
       }
@@ -10377,6 +10421,17 @@
         }
       }
     },
+    "Live words, usually about a minute behind." : {
+      "comment" : "History, a recording meeting: what the live words are.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live-Transkript, meist etwa eine Minute verzögert."
+          }
+        }
+      }
+    },
     "Loaded" : {
       "comment" : "Main window sidebar: the speech model is in memory.",
       "localizations" : {
@@ -12026,6 +12081,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Noch keine Wörter. Füge mit der Schaltfläche oben eines hinzu."
+          }
+        }
+      }
+    },
+    "No words yet. The first minute shows when it has been recorded." : {
+      "comment" : "History, a recording meeting: no live words have been decoded yet.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch kein Text. Die erste Minute erscheint, sobald sie aufgenommen wurde."
           }
         }
       }
@@ -16801,6 +16867,17 @@
         }
       }
     },
+    "Some stretches were skipped here. The full transcript comes after the meeting." : {
+      "comment" : "History, a recording meeting: some recorded minutes were not shown as live words.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hier wurden einige Abschnitte übersprungen. Das vollständige Transkript folgt nach dem Meeting."
+          }
+        }
+      }
+    },
     "Something needs attention. Try the refresh button." : {
       "comment" : "AI Polish, local model card: the reason under the health status.",
       "localizations" : {
@@ -20595,6 +20672,17 @@
         }
       }
     },
+    "Waiting for your dictation to finish." : {
+      "comment" : "History, a recording meeting: live words pause while the user dictates.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wartet, bis dein Diktat beendet ist."
+          }
+        }
+      }
+    },
     "Waiting to be transcribed" : {
       "comment" : "History, a meeting: it waits for another meeting's transcript first.",
       "localizations" : {
@@ -21126,6 +21214,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wörter zum Importieren"
+          }
+        }
+      }
+    },
+    "Words up to %@." : {
+      "comment" : "History, a recording meeting: the live words reach this point of the meeting, like 12:04.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkript bis %@."
           }
         }
       }
@@ -21771,6 +21870,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Deine Modelle, lokal oder gehostet."
+          }
+        }
+      }
+    },
+    "Your notes could not be read, so nothing was saved. Try again." : {
+      "comment" : "History, a meeting: Save stopped because the meeting's notes file could not be read.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Notizen konnten nicht gelesen werden, daher wurde nichts gespeichert. Versuche es erneut."
           }
         }
       }
