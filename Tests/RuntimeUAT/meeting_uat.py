@@ -13,28 +13,33 @@ door, never the clipboard).
 
 The call is a scripted two-person conversation made with two TTS voices, so its reference
 words are known exactly. No real meeting recording (AMI) is on this Mac and none is
-downloaded; the WER here is against that script, not the AMI number of the plan.
+downloaded, and no bake-off number exists: the WER here is against that script and is NOT
+the plan's "within 3 points of the AMI bake-off" check, which stays open.
 
 Audio stays silent: `audio_rig.AudioRig` routes output and the app's microphone to BlackHole.
 The call-sound tap hears every process, so the call track carries the conversation and each
 dictation's TTS; the microphone (BlackHole) hears the same audio, which is the no-headphones
-case: the mic copies of call lines are probable echo and hidden by default (R7 rig C).
+case: the mic copies of call lines are probable echo and hidden by default (R7 rig C). Every
+player this script starts is its own process group, killed and reaped before the rig restores
+the speakers, also on an error.
 
-- feature: Start (call sound on), live words appear, notes saved, five dictations land in
-  TextEdit while the meeting records, Stop, the transcript is ready with call-track WER
-  against the script, at least two call-track speakers, echo hidden, audio on disk, a summary
-  when an AI Polish provider can write one, Delete audio removes the files, Delete meeting.
+- feature: Start (call sound on), notes saved, the conversation plays alone (its call-track
+  turns are scored against the script), then five dictations land while the meeting still
+  records, live words appear, Stop, the transcript is ready, at least two call-track speakers
+  in the conversation, echo hidden, audio on disk, a summary when an AI Polish provider can
+  write one, Delete audio removes the files.
 - crash: Start, play 40 s, SIGKILL the verified dev PID, relaunch, the meeting is recovered
   as interrupted and transcribed.
-- latency: `--takes` dictations with no meeting, then the same during a meeting's
-  after-recording pass; median within +10 %, p90 within +20 % (R51).
+- latency: `--takes` dictations with no meeting; `--takes` while a meeting records with live
+  words proven active; `--takes` during a meeting's after-recording pass where the pass lasts.
+  Median within +10 %, p90 within +20 % (R51); p95 reported. Missing takes: COULD NOT TELL.
 - memory: `footprint` peak of the app process sampled every 1 s over `--minutes` of
-  dictation-only work, then the same with a meeting recording and live words; at most
-  1.2 GB added (R51, R58).
+  dictation-only work, then the same with a meeting recording and live words proven active;
+  at most 1.2 GB added (R51, R58). Under 90 % sample coverage in an arm: COULD NOT TELL.
 
-Exit: 0 PASS, 1 FAIL (an app result), 2 COULD NOT TELL, 3 SETUP FAILED. Receipts:
-<run dir>/meeting-<scenario>.json and the console. Every meeting this run made is deleted at
-the end; no other meeting is touched.
+Exit: 0 PASS, 1 FAIL (an app result), 2 COULD NOT TELL, 3 SETUP FAILED. Receipt:
+<run dir>/meeting-<scenario>.json, written after cleanup on every path. Every meeting this
+run made is deleted at the end; no other meeting is touched.
 """
 import argparse
 import glob
@@ -58,9 +63,9 @@ DEV_APP = os.path.join(ROOT, "build", "EnviousWispr Local.app")
 EXECUTABLE_RE = re.compile(r"^\s*(\d+) (/.*Local\.app/Contents/MacOS/EnviousWispr)$")
 
 EXIT_PASS, EXIT_FAIL, EXIT_UNSURE, EXIT_SETUP = 0, 1, 2, 3
+VERDICTS = ["PASS", "FAIL", "COULD NOT TELL", "SETUP FAILED"]
 
-# The call: two people, alternating, with known words. Short turns with pauses between them,
-# about three minutes when spoken.
+# The call: two people, alternating, with known words. Short turns with pauses between them.
 CONVERSATION = [
     ("onyx", "Good morning everyone. Let's start with the launch plan for the new release."),
     ("nova", "Thanks. The build is ready and the testers signed off yesterday afternoon."),
@@ -84,10 +89,14 @@ DICTATIONS = [
     "Send the updated contract to the legal team today.",
 ]
 GAP_SECONDS = 1.2
-# No bake-off number exists for this script; the plan's "within 3 points of the bake-off"
-# cannot be applied. A clean TTS conversation transcribed by Parakeet should stay far below this.
+SAMPLE_RATE = 24000
+# A clean two-voice TTS call transcribed by Parakeet; a stated acceptance policy, not a
+# measured product claim.
 MAX_CALL_WER = 0.15
 PLAYER_SECONDS = 600
+# Turns starting this long after the conversation's last word are not part of it.
+WINDOW_SLACK_MS = 2000
+MIN_SAMPLE_COVERAGE = 0.9
 
 
 # ---------- pure helpers (self-tested) ----------
@@ -125,7 +134,7 @@ def latency_verdict(baseline, during):
     ok = d_med <= b_med * 1.10 and d_p90 <= b_p90 * 1.20
     return ok, {"baselineMedian": b_med, "duringMedian": d_med, "baselineP90": b_p90,
                 "duringP90": d_p90, "baselineP95": percentile(baseline, 0.95),
-                "duringP95": percentile(during, 0.95)}
+                "duringP95": percentile(during, 0.95), "takes": [len(baseline), len(during)]}
 
 
 def parse_footprint(text):
@@ -137,26 +146,45 @@ def parse_footprint(text):
     return int(float(match.group(1)) * scale)
 
 
-def call_track_text(meeting):
-    """The call track's visible words from a `meeting get --include-text` reply."""
+def memory_verdict(baseline, during, expected_samples):
+    """(exit status, detail). Each arm is (peak bytes, samples taken)."""
+    (b_peak, b_count), (d_peak, d_count) = baseline, during
+    need = int(expected_samples * MIN_SAMPLE_COVERAGE)
+    if b_count < need or d_count < need or b_peak <= 0 or d_peak <= 0:
+        return EXIT_UNSURE, f"samples {b_count}/{d_count}, need {need} in each arm"
+    added = d_peak - b_peak
+    detail = (f"baseline {b_peak / 1e9:.2f} GB, during {d_peak / 1e9:.2f} GB, "
+              f"added {added / 1e9:.2f} GB")
+    return (EXIT_PASS if added <= 1.2 * 1024 ** 3 else EXIT_FAIL), detail
+
+
+def call_track_text(meeting, window_end_ms=None):
+    """The call track's visible words from a `meeting get --include-text` reply, only turns
+    that start before `window_end_ms` when it is given."""
     transcript = meeting.get("transcript") or {}
     visible = set((transcript.get("projection") or {}).get("visibleTurnIDs") or [])
-    names = transcript.get("speakerNames") or {}
     lines, speakers = [], set()
     for turn in transcript.get("turns") or []:
         speaker = turn.get("speakerId") or ""
         # Track speaker prefixes: `mic:` and `sys:` (MeetingTrackKind.speakerPrefix).
         if not speaker.startswith("sys:") or (visible and turn.get("id") not in visible):
             continue
+        start = turn.get("startMs")
+        if window_end_ms is not None and (start is None or start > window_end_ms):
+            continue
         lines.append(turn.get("text") or "")
         speakers.add(speaker)
-    return " ".join(lines), speakers, names
+    return " ".join(lines), speakers
 
 
 # ---------- the app ----------
 
 class Setup(Exception):
     """The run could not be set up: not an app result."""
+
+
+class Unsure(Exception):
+    """The run cannot tell: not an app result."""
 
 
 def door(*argv, timeout=60):
@@ -207,6 +235,10 @@ def meeting_get(meeting_id, include_text=False):
     return door_ok(*argv)
 
 
+def live_lines():
+    return (door_ok("meeting", "live")["live"] or {}).get("lines") or []
+
+
 def meeting_folder(meeting_id):
     found = glob.glob(os.path.expanduser(
         f"~/Library/Application Support/*/Meetings/{meeting_id}"))
@@ -222,36 +254,73 @@ def audio_files(meeting_id):
 
 
 def make_conversation(directory):
-    """A WAV of the conversation (TTS turns joined by pauses) and its reference text."""
+    """(WAV path, reference text, seconds) of the conversation: TTS turns joined by pauses."""
     import wispr_eyes as w
     parts = []
     for index, (voice, line) in enumerate(CONVERSATION):
         mp3 = w.tts(line, voice=voice)
         wav = os.path.join(directory, f"turn-{index:02d}.wav")
-        subprocess.run(["afconvert", "-f", "WAVE", "-d", "LEI16@24000", "-c", "1", mp3, wav],
-                       check=True, capture_output=True)
+        subprocess.run(
+            ["afconvert", "-f", "WAVE", "-d", f"LEI16@{SAMPLE_RATE}", "-c", "1", mp3, wav],
+            check=True, capture_output=True)
         parts.append(wav)
     out = os.path.join(directory, "conversation.wav")
+    frames = 0
     with wave.open(out, "wb") as dst:
         dst.setnchannels(1)
         dst.setsampwidth(2)
-        dst.setframerate(24000)
-        silence = b"\0\0" * int(24000 * GAP_SECONDS)
+        dst.setframerate(SAMPLE_RATE)
+        silence = b"\0\0" * int(SAMPLE_RATE * GAP_SECONDS)
         for part in parts:
             with wave.open(part, "rb") as src:
-                dst.writeframes(src.readframes(src.getnframes()))
-            dst.writeframes(silence)
-    return out, " ".join(line for _, line in CONVERSATION)
+                data = src.readframes(src.getnframes())
+            dst.writeframes(data + silence)
+            frames += len(data) // 2 + len(silence) // 2
+    return out, " ".join(line for _, line in CONVERSATION), frames / SAMPLE_RATE
 
 
-def play(path):
-    return subprocess.Popen(["afplay", path], stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL)
+class Players:
+    """Every audio player this run starts, each in its own process group so a looping shell's
+    afplay child dies with it. `stop_all` kills and reaps them; used before the rig exits."""
 
+    def __init__(self):
+        self.procs = []
 
-def finish(player):
-    """Waits for the player's exit (its signal), with a deadline in case afplay hangs."""
-    player.wait(timeout=PLAYER_SECONDS)  # deadline-fallback: around the process-exit signal
+    def start(self, argv):
+        proc = subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                start_new_session=True)
+        self.procs.append(proc)
+        return proc
+
+    def play(self, path):
+        return self.start(["afplay", path])
+
+    def loop(self, path):
+        return self.start(["bash", "-c", f'while true; do afplay "$0"; done', path])
+
+    def finish(self, proc):
+        """Waits for the player's own exit, with a deadline in case afplay hangs."""
+        proc.wait(timeout=PLAYER_SECONDS)  # deadline-fallback: around the process-exit signal
+
+    def stop_all(self):
+        for proc in self.procs:
+            if proc.poll() is None:
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+        for proc in self.procs:
+            proc.wait(timeout=10)  # deadline-fallback: reaping a SIGKILLed group
+        leftover = [p.pid for p in self.procs if p.poll() is None]
+        if leftover:
+            raise Setup(f"audio players still running: {leftover}")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.stop_all()
+        return False
 
 
 def start_meeting(call_sound=True):
@@ -280,6 +349,11 @@ class Checks:
         self.rows.append({"check": name, "ok": bool(ok), "detail": detail})
         print(f"  {'PASS' if ok else 'FAIL'}  {name}  {detail}")
 
+    def cannot_tell(self, name, reason):
+        self.unsure = True
+        self.rows.append({"check": name, "ok": None, "couldNotTell": reason})
+        print(f"  COULD NOT TELL  {name}  {reason}")
+
     def skip(self, name, reason):
         self.rows.append({"check": name, "ok": None, "skipped": reason})
         print(f"  SKIP  {name}  {reason}")
@@ -292,45 +366,48 @@ class Checks:
 
 # ---------- scenarios ----------
 
-def scenario_feature(run_dir, made):
+def scenario_feature(run_dir, made, checks):
     import audio_rig
     import wispr_eyes as w
-    c = Checks()
+    c = checks
     work = tempfile.mkdtemp(prefix="meeting-uat-", dir=run_dir)
-    audio, reference = make_conversation(work)
-    with audio_rig.AudioRig():
+    audio, reference, seconds = make_conversation(work)
+    with audio_rig.AudioRig(), Players() as players:
         meeting_id = start_meeting(call_sound=True)
+        started = time.monotonic()
         made.append(meeting_id)
         status = door_ok("meeting", "status")
         c.check("the meeting records with the call sound", status["phase"]["name"] == "recording"
                 and status["callSoundStatus"] == "captured", f"{status['callSoundStatus']}")
-        notes = door_ok("meeting", "notes-set", meeting_id, "--text", "Ask Maria about screenshots")
+        notes = door_ok("meeting", "notes-set", meeting_id, "--text",
+                        "Ask Maria about screenshots")
         c.check("notes typed during the recording are saved", notes.get("saved") is True)
-        player = play(audio)
+        # The conversation alone: its call-track turns are scored against the script.
+        offset_ms = int((time.monotonic() - started) * 1000)
+        players.finish(players.play(audio))
+        window_end_ms = offset_ms + int(seconds * 1000) + WINDOW_SLACK_MS
+        time.sleep(WINDOW_SLACK_MS / 1000 + 1)  # deadline-fallback: dictations start after it
         landed = 0
         for sentence in DICTATIONS:
-            time.sleep(12)  # deadline-fallback: spaces the dictations through the call
             result = w.record_tts(sentence, voice="echo", focus_app="TextEdit")
             landed += bool(result.get("success"))
         c.check("every dictation during the meeting is transcribed", landed == len(DICTATIONS),
                 f"{landed}/{len(DICTATIONS)}")
-        live = wait_for("live words", lambda: (door_ok("meeting", "live")["live"] or {})
-                        .get("lines"), 150, 5.0)
+        live = wait_for("live words", live_lines, 150, 5.0)
         c.check("live words appear while the meeting records", bool(live),
                 f"{len(live or [])} lines")
-        finish(player)
         ready = stop_and_wait_ready(meeting_id)
     if not ready:
         c.check("the transcript is ready after Stop", False, "timed out")
-        return c
+        return
     record = ready["meeting"]
     c.check("the transcript is ready after Stop", record["state"] == "ready", record["state"])
-    full = meeting_get(meeting_id, include_text=True)
-    text, speakers, _ = call_track_text(full)
+    text, speakers = call_track_text(meeting_get(meeting_id, include_text=True), window_end_ms)
     score = wer(reference, text) if text else 1.0
-    c.check("call-track words match the conversation", score <= MAX_CALL_WER,
-            f"WER {score:.3f} (limit {MAX_CALL_WER}; the call track also carries the dictations)")
-    c.check("at least two speakers on the call track", len(speakers) >= 2, f"{sorted(speakers)}")
+    c.check("the conversation's call-track words match the script", score <= MAX_CALL_WER,
+            f"WER {score:.3f} (limit {MAX_CALL_WER}; turns before {window_end_ms} ms)")
+    c.check("at least two speakers in the conversation", len(speakers) >= 2,
+            f"{sorted(speakers)}")
     c.check("probable echo is hidden from the mic track", record["echoTurnCount"] > 0,
             f"{record['echoTurnCount']} echo turns")
     files = audio_files(meeting_id)
@@ -350,22 +427,21 @@ def scenario_feature(run_dir, made):
     door_ok("meeting", "delete-audio", meeting_id)
     c.check("Delete audio removes the files", not audio_files(meeting_id)
             and meeting_get(meeting_id)["meeting"]["audioKept"] is False)
-    return c
 
 
-def scenario_crash(run_dir, made):
+def scenario_crash(run_dir, made, checks):
     import audio_rig
-    c = Checks()
+    c = checks
     work = tempfile.mkdtemp(prefix="meeting-crash-", dir=run_dir)
-    audio, _ = make_conversation(work)
-    with audio_rig.AudioRig():
+    audio, _, _ = make_conversation(work)
+    with audio_rig.AudioRig(), Players() as players:
         meeting_id = start_meeting(call_sound=True)
         made.append(meeting_id)
-        player = play(audio)
+        players.play(audio)
         time.sleep(40)  # deadline-fallback: 40 s of recording before the crash
         pid = this_build_pid()
         os.kill(pid, signal.SIGKILL)
-        player.terminate()
+        players.stop_all()
         gone = wait_for("exit", lambda: not any(p == pid for p, _ in dev_pids()), 10, 0.2)
         c.check("the app is gone after SIGKILL", bool(gone))
         subprocess.run(["open", DEV_APP], check=True)
@@ -382,7 +458,6 @@ def scenario_crash(run_dir, made):
     c.check("the interrupted meeting is recovered and transcribed", bool(record),
             (record or {}).get("state", "not ready"))
     c.check("it is marked as interrupted", bool(record) and record.get("wasInterrupted") is True)
-    return c
 
 
 def asr_seconds(sentence):
@@ -392,111 +467,171 @@ def asr_seconds(sentence):
     return float(match.group(1)) if match else None
 
 
-def scenario_latency(run_dir, made, takes):
+def timed_takes(count, sentence, still=lambda: True):
+    """ASR seconds of up to `count` takes, stopping when `still()` turns false."""
+    values = []
+    for _ in range(count):
+        if not still():
+            break
+        value = asr_seconds(sentence)
+        if value is not None:
+            values.append(value)
+    return values
+
+
+def scenario_latency(run_dir, made, checks, takes):
     import audio_rig
-    c = Checks()
+    c = checks
     sentence = "Please schedule the design review for next Tuesday afternoon."
-    with audio_rig.AudioRig():
-        baseline = [s for s in (asr_seconds(sentence) for _ in range(takes)) if s is not None]
-        work = tempfile.mkdtemp(prefix="meeting-latency-", dir=run_dir)
-        audio, _ = make_conversation(work)
+    work = tempfile.mkdtemp(prefix="meeting-latency-", dir=run_dir)
+    audio, _, _ = make_conversation(work)
+    with audio_rig.AudioRig(), Players() as players:
+        baseline = timed_takes(takes, sentence)
         meeting_id = start_meeting(call_sound=True)
         made.append(meeting_id)
-        finish(play(audio))
+        players.loop(audio)
+        preview = wait_for("live words", live_lines, 150, 5.0)
+        recording = timed_takes(takes, sentence)
+        preview_after = live_lines()
+        players.stop_all()
         door_ok("meeting", "stop", meeting_id)
-        if not wait_for("pass", lambda: door_ok("meeting", "status")["processing"], 60, 0.5):
-            c.unsure = True
-            c.skip("dictation during the after-recording pass", "the pass ended before a take")
-            return c
-        during = []
-        for _ in range(takes):
-            if not door_ok("meeting", "status")["processing"]:
-                break
-            seconds = asr_seconds(sentence)
-            if seconds is not None:
-                during.append(seconds)
-    if len(baseline) < takes or len(during) < max(5, takes // 2):
-        c.unsure = True
-        c.skip("ASR time during a meeting pass",
-               f"baseline {len(baseline)}, during {len(during)}")
-        return c
-    ok, numbers = latency_verdict(baseline, during)
-    c.check("ASR time during a meeting pass stays in the bound", ok, json.dumps(numbers))
-    return c
+        in_pass = wait_for("pass", lambda: door_ok("meeting", "status")["processing"], 60, 0.5)
+        during_pass = timed_takes(
+            takes, sentence, still=lambda: bool(door_ok("meeting", "status")["processing"])
+        ) if in_pass else []
+    if len(baseline) < takes:
+        c.cannot_tell("the no-meeting baseline", f"{len(baseline)}/{takes} timed takes")
+        return
+    if not preview or len(preview_after) <= len(preview):
+        c.cannot_tell("ASR time while a meeting records with live words",
+                      "live words were not shown to be active through the takes")
+    elif len(recording) < takes:
+        c.cannot_tell("ASR time while a meeting records with live words",
+                      f"{len(recording)}/{takes} timed takes")
+    else:
+        ok, numbers = latency_verdict(baseline, recording)
+        c.check("ASR time while a meeting records with live words stays in the bound", ok,
+                json.dumps(numbers))
+    if len(during_pass) < takes:
+        c.cannot_tell("ASR time during the after-recording pass",
+                      f"{len(during_pass)}/{takes} timed takes while the pass ran")
+    else:
+        ok, numbers = latency_verdict(baseline, during_pass)
+        c.check("ASR time during the after-recording pass stays in the bound", ok,
+                json.dumps(numbers))
 
 
 def footprint_bytes(pid):
-    out = subprocess.run(["footprint", "-p", str(pid)], capture_output=True, text=True).stdout
+    out = subprocess.run(["footprint", "-p", str(pid)], capture_output=True, text=True,
+                         timeout=10).stdout
     return parse_footprint(out)
 
 
 def sampled_peak(pid, seconds, work):
-    """Peak footprint sampled every 1 s while `work()` runs, over a fixed window."""
-    peak, stop = [0], threading.Event()
+    """(peak bytes, samples taken) every 1 s while `work()` runs, over a fixed window."""
+    peak, count, stop = [0], [0], threading.Event()
 
     def sample():
         while not stop.is_set():
-            value = footprint_bytes(pid)
+            try:
+                value = footprint_bytes(pid)
+            except subprocess.TimeoutExpired:
+                value = None
             if value:
                 peak[0] = max(peak[0], value)
+                count[0] += 1
             stop.wait(1.0)  # deadline-fallback: the 1 s sampling period (R58), ended by stop
 
     thread = threading.Thread(target=sample, daemon=True)
     thread.start()
     started = time.monotonic()
-    work()
-    remaining = seconds - (time.monotonic() - started)
-    if remaining > 0:
-        time.sleep(remaining)  # deadline-fallback: the measured window has a fixed length
-    stop.set()
-    thread.join()
-    return peak[0]
+    try:
+        work()
+        remaining = seconds - (time.monotonic() - started)
+        if remaining > 0:
+            time.sleep(remaining)  # deadline-fallback: the measured window has a fixed length
+    finally:
+        stop.set()
+        thread.join()
+    return peak[0], count[0]
 
 
-def scenario_memory(run_dir, made, minutes):
+def scenario_memory(run_dir, made, checks, minutes):
     import audio_rig
     import wispr_eyes as w
-    c = Checks()
+    c = checks
     seconds = minutes * 60
     pid = this_build_pid()
     work_dir = tempfile.mkdtemp(prefix="meeting-memory-", dir=run_dir)
-    audio, _ = make_conversation(work_dir)
+    audio, _, _ = make_conversation(work_dir)
 
     def dictations():
         for sentence in DICTATIONS:
             w.record_tts(sentence, voice="echo", focus_app="TextEdit")
 
-    with audio_rig.AudioRig():
+    previews = []
+    with audio_rig.AudioRig(), Players() as players:
         baseline = sampled_peak(pid, seconds, dictations)
         meeting_id = start_meeting(call_sound=True)
         made.append(meeting_id)
 
         def meeting_work():
-            player = subprocess.Popen(
-                ["bash", "-c", f"while true; do afplay '{audio}'; done"],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            try:
-                dictations()
-                left = seconds - 120
-                if left > 0:
-                    time.sleep(left)  # deadline-fallback: keep the call playing for the window
-            finally:
-                player.terminate()
+            players.loop(audio)
+            dictations()
+            previews.append(len(live_lines()))
 
         during = sampled_peak(pid, seconds, meeting_work)
+        previews.append(len(live_lines()))
+        players.stop_all()
         door_ok("meeting", "stop", meeting_id)
-    added = during - baseline
-    c.check("a recording meeting with live words adds at most 1.2 GB",
-            baseline > 0 and added <= 1.2 * 1024 ** 3,
-            f"baseline {baseline / 1e9:.2f} GB, during {during / 1e9:.2f} GB, "
-            f"added {added / 1e9:.2f} GB")
-    return c
+    name = "a recording meeting with live words adds at most 1.2 GB"
+    if not previews or previews[-1] == 0 or previews[-1] <= previews[0]:
+        c.cannot_tell(name, f"live words were not shown to be active: {previews}")
+        return
+    status, detail = memory_verdict(baseline, during, int(seconds))
+    if status == EXIT_UNSURE:
+        c.cannot_tell(name, detail)
+    else:
+        c.check(name, status == EXIT_PASS, detail)
 
 
 def cleanup(made):
     for meeting_id in made:
-        status, reply = door("meeting", "delete", meeting_id)
+        try:
+            status, reply = door("meeting", "delete", meeting_id)
+        except (Setup, subprocess.SubprocessError, OSError) as error:
+            status, reply = 1, str(error)
         print(f"  cleanup: delete {meeting_id}: {'ok' if status == 0 else reply}")
+
+
+def run_scenario(args):
+    """(exit status, rows). Every harness error maps to its declared exit code."""
+    import take_gate as tg
+    made, checks = [], Checks()
+    status = None
+    try:
+        this_build_pid()
+        print(f"== meeting {args.scenario}")
+        if args.scenario == "feature":
+            scenario_feature(args.run_dir, made, checks)
+        elif args.scenario == "crash":
+            scenario_crash(args.run_dir, made, checks)
+        elif args.scenario == "latency":
+            scenario_latency(args.run_dir, made, checks, args.takes)
+        else:
+            scenario_memory(args.run_dir, made, checks, args.minutes)
+    except (Setup, tg.SetupFailed, subprocess.SubprocessError, OSError) as error:
+        print(f"SETUP FAILED: {type(error).__name__}: {error}")
+        checks.rows.append({"setup": f"{type(error).__name__}: {error}"})
+        status = EXIT_SETUP
+    except (Unsure, tg.CouldNotTell) as error:
+        checks.cannot_tell("the run", f"{type(error).__name__}: {error}")
+    except Exception as error:  # a harness defect is never an app result
+        checks.cannot_tell("the run", f"harness error {type(error).__name__}: {error}")
+    finally:
+        if made:
+            cleanup(made)
+    return (checks.status() if status is None else status), checks.rows
 
 
 def self_test():
@@ -525,15 +660,81 @@ def self_test():
     expect("footprint MB", parse_footprint("phys_footprint: 512 MB") == 512 * 1024 ** 2)
     expect("footprint GB", parse_footprint("  phys_footprint: 1.5 GB\n") == int(1.5 * 1024 ** 3))
     expect("no footprint line", parse_footprint("nothing") is None)
+    gb = 1024 ** 3
+    expect("memory within budget passes",
+           memory_verdict((gb, 600), (2 * gb, 600), 600)[0] == EXIT_PASS)
+    expect("memory over budget fails",
+           memory_verdict((gb, 600), (int(2.3 * gb), 600), 600)[0] == EXIT_FAIL)
+    expect("no during samples cannot tell",
+           memory_verdict((gb, 600), (0, 0), 600)[0] == EXIT_UNSURE)
+    expect("interrupted sampling cannot tell",
+           memory_verdict((gb, 600), (gb, 300), 600)[0] == EXIT_UNSURE)
     reply = {"transcript": {
-        "projection": {"visibleTurnIDs": ["t1", "t3"]},
-        "turns": [{"id": "t1", "speakerId": "sys:S1", "text": "hello"},
-                  {"id": "t2", "speakerId": "sys:S2", "text": "hidden"},
-                  {"id": "t3", "speakerId": "sys:S2", "text": "there"},
-                  {"id": "t4", "speakerId": "mic:you", "text": "mine"}]}}
-    text, speakers, _ = call_track_text(reply)
-    expect("only visible call turns, in order", text == "hello there")
-    expect("call speakers counted", speakers == {"sys:S1", "sys:S2"})
+        "projection": {"visibleTurnIDs": ["t1", "t3", "t5"]},
+        "turns": [{"id": "t1", "speakerId": "sys:S1", "startMs": 0, "text": "hello"},
+                  {"id": "t2", "speakerId": "sys:S2", "startMs": 10, "text": "hidden"},
+                  {"id": "t3", "speakerId": "sys:S2", "startMs": 20, "text": "there"},
+                  {"id": "t4", "speakerId": "mic:you", "startMs": 30, "text": "mine"},
+                  {"id": "t5", "speakerId": "sys:S1", "startMs": 9000, "text": "dictated"}]}}
+    text, speakers = call_track_text(reply)
+    expect("only visible call turns, in order", text == "hello there dictated")
+    text, speakers = call_track_text(reply, window_end_ms=100)
+    expect("the conversation window drops later turns", text == "hello there")
+    expect("call speakers counted in the window", speakers == {"sys:S1", "sys:S2"})
+    expect("a correct transcript of the played call passes its reference",
+           wer("Good morning everyone.", "good morning everyone") == 0.0)
+
+    class FakeProc:
+        def __init__(self):
+            self.pid, self.alive = -1, True
+
+        def poll(self):
+            return None if self.alive else 0
+
+        def wait(self, timeout=None):
+            return 0
+
+    players = Players()
+    stuck = FakeProc()
+    players.procs.append(stuck)
+    original = os.killpg
+    killed = []
+    os.killpg = lambda pid, sig: (killed.append(pid), setattr(stuck, "alive", False))
+    try:
+        try:
+            with players:
+                raise RuntimeError("playback failed")
+        except RuntimeError:
+            pass
+    finally:
+        os.killpg = original
+    expect("a failure during playback still kills every player", killed == [-1] and
+           not stuck.alive)
+    survivor = FakeProc()
+    players = Players()
+    players.procs.append(survivor)
+    os.killpg = lambda pid, sig: None
+    try:
+        try:
+            players.stop_all()
+            expect("a player that survives is SETUP FAILED", False)
+        except Setup:
+            expect("a player that survives is SETUP FAILED", True)
+    finally:
+        os.killpg = original
+
+    import types
+    for error, want in ((Setup("x"), EXIT_SETUP), (subprocess.TimeoutExpired("x", 1), EXIT_SETUP),
+                        (Unsure("x"), EXIT_UNSURE), (KeyError("x"), EXIT_UNSURE)):
+        def boom(*_a, _error=error):
+            raise _error
+        saved = globals()["scenario_feature"], globals()["this_build_pid"]
+        globals()["scenario_feature"], globals()["this_build_pid"] = boom, lambda: 1
+        try:
+            status, rows = run_scenario(types.SimpleNamespace(scenario="feature", run_dir="/tmp"))
+        finally:
+            globals()["scenario_feature"], globals()["this_build_pid"] = saved
+        expect(f"{type(error).__name__} maps to {VERDICTS[want]}", status == want and rows)
     print(f"meeting_uat self-test: {len(failures)} failed")
     return EXIT_PASS if not failures else EXIT_FAIL
 
@@ -550,33 +751,11 @@ def main():
         return self_test()
     if not args.scenario or not args.run_dir or not os.path.isdir(args.run_dir):
         parser.error("a scenario and an existing --run-dir are required")
-    made = []
-    status, rows = EXIT_SETUP, []
-    try:
-        this_build_pid()
-        print(f"== meeting {args.scenario}")
-        if args.scenario == "feature":
-            checks = scenario_feature(args.run_dir, made)
-        elif args.scenario == "crash":
-            checks = scenario_crash(args.run_dir, made)
-        elif args.scenario == "latency":
-            checks = scenario_latency(args.run_dir, made, args.takes)
-        else:
-            checks = scenario_memory(args.run_dir, made, args.minutes)
-        status, rows = checks.status(), checks.rows
-    except Setup as error:
-        print(f"SETUP FAILED: {error}")
-        rows = [{"setup": str(error)}]
-    finally:
-        if made:
-            try:
-                cleanup(made)
-            except Setup as error:
-                print(f"cleanup could not finish: {error}")
+    status, rows = run_scenario(args)
     receipt = os.path.join(args.run_dir, f"meeting-{args.scenario}.json")
     with open(receipt, "w") as f:
         json.dump({"scenario": args.scenario, "exit": status, "rows": rows}, f, indent=1)
-    print(f"verdict: {['PASS', 'FAIL', 'COULD NOT TELL', 'SETUP FAILED'][status]} ({receipt})")
+    print(f"verdict: {VERDICTS[status]} ({receipt})")
     return status
 
 
