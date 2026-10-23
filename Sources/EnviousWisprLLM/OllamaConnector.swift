@@ -235,7 +235,8 @@ public struct OllamaConnector: TranscriptPolisher {
     accepted = true
     return LLMResult(
       polishedText: content.trimmingCharacters(in: .whitespacesAndNewlines)
-        .strippingLLMPreamble()
+        .strippingLLMPreamble(),
+      stoppedEarly: Self.stoppedEarly(json)
     )
   }
 
@@ -363,8 +364,17 @@ public struct OllamaConnector: TranscriptPolisher {
     accepted = true
     return LLMResult(
       polishedText: content.trimmingCharacters(in: .whitespacesAndNewlines)
-        .strippingLLMPreamble(stripTranscriptTags: sentTranscriptTags)
+        .strippingLLMPreamble(stripTranscriptTags: sentTranscriptTags),
+      stoppedEarly: Self.stoppedEarly(json)
     )
+  }
+
+  /// #3972: whether the reply says generation stopped for a reason other than finishing
+  /// (`done_reason` other than `stop`, such as `length`). Reported on the result, never thrown:
+  /// polish keeps accepting such text as it always has.
+  static func stoppedEarly(_ json: [String: Any]?) -> Bool {
+    guard let doneReason = json?["done_reason"] as? String else { return false }
+    return doneReason != "stop"
   }
 
   // MARK: - Readiness Preflight (#1305)

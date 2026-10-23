@@ -212,10 +212,17 @@ public struct PolishMetadata: Codable, Sendable, Equatable {
 public struct LLMResult: Sendable {
   public let polishedText: String
   public let polishMetadata: PolishMetadata?
+  /// The model stopped before finishing (its output cap), and the connector returned the text
+  /// anyway. Only Ollama's chat path sets it, where a user's own model and budget are accepted
+  /// as they are; polish ignores it. The meeting summary refuses such an answer (#3972).
+  public let stoppedEarly: Bool
 
-  public init(polishedText: String, polishMetadata: PolishMetadata? = nil) {
+  public init(
+    polishedText: String, polishMetadata: PolishMetadata? = nil, stoppedEarly: Bool = false
+  ) {
     self.polishedText = polishedText
     self.polishMetadata = polishMetadata
+    self.stoppedEarly = stoppedEarly
   }
 }
 
