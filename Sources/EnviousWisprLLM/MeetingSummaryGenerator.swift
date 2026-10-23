@@ -9,10 +9,11 @@ import Foundation
 ///
 /// A long meeting is summarized in parts (map) and the part answers are combined (reduce), each
 /// call sized in tokens to the window the provider runs with, with a bounded number of
-/// attempts. No call silently loses words: a model that cuts an overlong prompt without saying
-/// so (Ollama) is planned with the byte bound, which holds for every tokenizer; a model that
-/// reports an overflow is planned with a cheaper estimate first and re-planned once with the
-/// byte bound if it reports one. This is the one retry owner for summary calls: connectors are
+/// attempts. No call silently loses words: every provider is asked to report a prompt too long
+/// for its window rather than cut it (Ollama through `truncate: false`; the others always do),
+/// so a plan is made with an estimate, re-made once with the stricter byte count when a model
+/// reports an overflow, and refused as too long if the model reports one again. This is the
+/// one retry owner for summary calls: connectors are
 /// told not to retry (`LLMProviderConfig.maxRetries`), and failures the shared policy calls
 /// retryable (`LLMRetryPolicy.isRetryable`) are tried again here, at most twice per call, each
 /// attempt admitted on its own.
@@ -67,14 +68,10 @@ public enum MeetingSummary {
     /// Tokens kept free for the answer: visible text plus any thinking counted against it.
     /// Where a cap is sent, it is this value.
     public let outputReserveTokens: Int
-    /// Whether the model reports a prompt too long for its window (an error) rather than
-    /// silently dropping part of it.
-    public let reportsOverflow: Bool
 
-    public init(contextTokens: Int, outputReserveTokens: Int, reportsOverflow: Bool) {
+    public init(contextTokens: Int, outputReserveTokens: Int) {
       self.contextTokens = contextTokens
       self.outputReserveTokens = outputReserveTokens
-      self.reportsOverflow = reportsOverflow
     }
   }
 
@@ -94,7 +91,7 @@ public enum MeetingSummary {
 
   public enum Failure: Error, Equatable {
     /// The meeting needs more calls than `maxCalls` on this window, or the model still said
-    /// its window was exceeded when planned with the byte bound.
+    /// its window was exceeded when planned with the byte count.
     case tooLong
     /// The window leaves too little room for any transcript.
     case windowTooSmall
@@ -110,7 +107,7 @@ public enum MeetingSummary {
   }
 
   /// Thrown by a call whose prompt the model said was too long for its window; never leaves
-  /// `write`, which re-plans with the byte bound or reports `.tooLong`.
+  /// `write`, which re-plans with the byte count or reports `.tooLong`.
   struct ContextExceeded: Error {}
 
   /// The instructions every call carries.
@@ -131,14 +128,16 @@ public enum MeetingSummary {
 
   // MARK: - Counting
 
-  /// How a plan counts tokens.
+  /// How a plan counts tokens. Neither is a proof that a call fits: a tokenizer can expand a
+  /// character on normalization (U+FDFA is 3 bytes and 4 tokens in one), and a chat template
+  /// adds its own text. What keeps words from being lost is that every provider reports an
+  /// overflow; the counts only decide how often that happens.
   enum Counting: Equatable {
-    /// A per-script planning estimate (`Tally.estimate`). Used only where the model reports an
-    /// overflow, so an estimate that is too low costs one re-plan, never lost words.
+    /// A per-script planning estimate (`Tally.estimate`), the first plan.
     case estimate
-    /// UTF-8 bytes: an upper bound for every tokenizer, because every token encodes at least
-    /// one byte of the text (byte-level BPE, byte-fallback SentencePiece, WordPiece and an
-    /// unknown-token alike). Special tokens a chat template adds are in `framingTokens`.
+    /// UTF-8 bytes, the plan after a reported overflow: never below the estimate for any
+    /// scalar, and at or above the real count for byte-level and byte-fallback tokenizers on
+    /// text they do not expand.
     case bytes
   }
 
@@ -382,9 +381,7 @@ public enum MeetingSummary {
         transcript: transcript, timeoutSeconds: callTimeoutSeconds, attempts: attempts, admit: admit,
         complete: complete)
     }
-    if window.reportsOverflow {
-      do { return try await run(.estimate) } catch is ContextExceeded {}
-    }
+    do { return try await run(.estimate) } catch is ContextExceeded {}
     do { return try await run(.bytes) } catch is ContextExceeded { throw Failure.tooLong }
   }
 

@@ -27,17 +27,14 @@ struct MeetingSummaryTests {
 
   /// Apple Intelligence's window today.
   static let small = MeetingSummary.Window(
-    contextTokens: 4_096, outputReserveTokens: MeetingSummary.outputTokens,
-    reportsOverflow: true)
-  /// Ollama's summary window: silent overflow, so planned with the byte bound.
-  static let silent = MeetingSummary.Window(
-    contextTokens: 8_192, outputReserveTokens: 3_548, reportsOverflow: false)
+    contextTokens: 4_096, outputReserveTokens: MeetingSummary.outputTokens)
+  /// Ollama's summary window for a thinking model.
+  static let ollama = MeetingSummary.Window(contextTokens: 8_192, outputReserveTokens: 3_548)
   static let large = MeetingSummary.Window(
-    contextTokens: 128_000, outputReserveTokens: 9_500, reportsOverflow: true)
+    contextTokens: 128_000, outputReserveTokens: 9_500)
 
-  /// Whether a call's prompt, with the instructions beside it, fits `window` when counted as
-  /// UTF-8 bytes, a count no tokenizer's token count exceeds. Independent of the planner's
-  /// estimate.
+  /// Whether a call's prompt, with the instructions beside it, fits `window` counted in UTF-8
+  /// bytes (independent of the planner's own counter).
   static func fitsInBytes(_ prompt: String, _ window: MeetingSummary.Window) -> Bool {
     prompt.utf8.count + MeetingSummary.instructions.utf8.count
       <= window.contextTokens - window.outputReserveTokens - MeetingSummary.safetyMarginTokens
@@ -161,29 +158,6 @@ struct MeetingSummaryTests {
   ]
 
   @Test(
-    "a window that drops words silently is planned with the byte bound, in any script",
-    arguments: lines)
-  func silentWindowUsesBytes(line: String) async throws {
-    // 120 lines: about 22,000 bytes of English or 66,000 of Japanese, under the 64-call limit
-    // in bytes on Ollama's window (`tooLong` covers a meeting over it).
-    let transcript = Array(repeating: line, count: 120).joined(separator: "\n")
-    let long = Calls()
-    long.answers = Array(
-      repeating: .success(String(repeating: line + "\n", count: 40)), count: 200)
-    let summary = try await Self.write(
-      long, transcript: transcript, notes: "Ask Priya", window: Self.silent)
-    #expect(!summary.isEmpty)
-    #expect(
-      long.prompts.allSatisfy { Self.fitsInBytes($0, Self.silent) },
-      "every call fits the window counted in bytes, a bound for every tokenizer")
-    #expect(long.prompts.last?.contains("Ask Priya") == true, "notes reach the final call")
-    #expect(long.prompts.dropLast().allSatisfy { !$0.contains("Ask Priya") })
-    let plan = try MeetingSummary.plan(
-      transcript: transcript, notes: "Ask Priya", window: Self.silent, counting: .bytes)
-    #expect(long.prompts.count <= plan.worstCaseCalls)
-  }
-
-  @Test(
     "on a small window, long answers are combined in rounds and every call fits, in any script",
     arguments: lines)
   func smallWindowRounds(line: String) async throws {
@@ -262,14 +236,14 @@ struct MeetingSummaryTests {
       _ = try await Self.write(
         calls, transcript: "t",
         window: MeetingSummary.Window(
-          contextTokens: 2_048, outputReserveTokens: 1_500, reportsOverflow: true))
+          contextTokens: 2_048, outputReserveTokens: 1_500))
     }
     #expect(calls.prompts.isEmpty)
   }
 
   @Test("a meeting needing more than the call limit is refused before any call")
   func tooLong() async throws {
-    for window in [Self.small, Self.silent] {
+    for window in [Self.small, Self.ollama] {
       let calls = Calls()
       let transcript = String(repeating: "会", count: 4_000 * (MeetingSummary.maxCalls + 2))
       await #expect(throws: MeetingSummary.Failure.tooLong) {
@@ -377,16 +351,29 @@ struct MeetingSummaryTests {
       backend: .legacyFiles, legacyStore: FileLegacyKeyStore(storageDirectory: folder))
   }
 
-  /// Counts readiness probes and network requests, and answers each request from `replies`
-  /// (text and Ollama's `done_reason`).
+  /// Counts readiness and version probes and network requests, and answers each request from
+  /// `replies`.
   final class Ollama: @unchecked Sendable {
+    enum Reply {
+      /// A chat answer and its `done_reason`.
+      case chat(String, String)
+      /// An HTTP error status and body.
+      case http(Int, String)
+      case fail(Error)
+    }
+
     // Test-only recorder; the summary's calls run one after another.
     var probes = 0
+    var versionAsks = 0
     var requests: [[String: Any]] = []
-    var replies: [Result<(String, String), Error>] = []
+    var replies: [Reply] = []
     let facts: OllamaModelFacts?
+    let version: String?
 
-    init(facts: OllamaModelFacts?) { self.facts = facts }
+    init(facts: OllamaModelFacts?, version: String? = "0.12.6") {
+      self.facts = facts
+      self.version = version
+    }
 
     func readiness(_ model: String) async -> OllamaReadiness {
       probes += 1
@@ -394,20 +381,33 @@ struct MeetingSummaryTests {
       return .ready(facts: facts)
     }
 
+    func serverVersion() async -> String? {
+      versionAsks += 1
+      return version
+    }
+
     func execute(_ request: URLRequest) async throws -> (Data, URLResponse) {
       // swift-patterns RULE: fake-executor-must-yield-before-throw.
       await Task.yield()
       let body = try JSONSerialization.jsonObject(with: request.httpBody ?? Data())
       requests.append(body as? [String: Any] ?? [:])
-      let (text, done) = try
-        (replies.isEmpty ? .success(("summary", "stop")) : replies.removeFirst())
-        .get()
-      let reply = try JSONSerialization.data(withJSONObject: [
-        "message": ["role": "assistant", "content": text], "done": true, "done_reason": done,
-      ])
+      let reply = replies.isEmpty ? .chat("summary", "stop") : replies.removeFirst()
+      let (code, data): (Int, Data)
+      switch reply {
+      case .chat(let text, let done):
+        code = 200
+        data = try JSONSerialization.data(withJSONObject: [
+          "message": ["role": "assistant", "content": text], "done": true, "done_reason": done,
+        ])
+      case .http(let status, let text):
+        code = status
+        data = Data(text.utf8)
+      case .fail(let error):
+        throw error
+      }
       let response = HTTPURLResponse(
-        url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
-      return (reply, response)
+        url: request.url!, statusCode: code, httpVersion: nil, headerFields: nil)!
+      return (data, response)
     }
   }
 
@@ -417,6 +417,7 @@ struct MeetingSummaryTests {
     await MeetingSummaryProviders.prepare(
       provider: provider, model: model, keychain: keychain(),
       ollamaReadiness: { await ollama.readiness($0) },
+      ollamaVersion: { await ollama.serverVersion() },
       ollamaExecutor: { try await ollama.execute($0) })
   }
 
@@ -447,10 +448,9 @@ struct MeetingSummaryTests {
     let prepared = try #require(await Self.prepare(.ollama, "qwen3", local).successValue)
     #expect(prepared.execution == .local)
     #expect(prepared.window.contextTokens == MeetingSummaryProviders.ollamaContextTokens)
-    #expect(prepared.window.reportsOverflow == false)
     // Every request fails: the summary's own one call and two retries are the only requests,
     // so a connector that also retried would multiply them.
-    local.replies = Array(repeating: .failure(URLError(.timedOut)), count: 20)
+    local.replies = Array(repeating: .fail(URLError(.timedOut)), count: 20)
     await #expect(throws: MeetingSummary.Failure.providerFailed) {
       _ = try await MeetingSummary.write(
         transcript: "t", notes: "", window: prepared.window, callTimeoutSeconds: 60, admit: {},
@@ -461,6 +461,8 @@ struct MeetingSummaryTests {
     #expect(options["num_ctx"] as? Int == MeetingSummaryProviders.ollamaContextTokens)
     #expect(options["num_predict"] as? Int == prepared.window.outputReserveTokens)
     #expect(local.requests.first?["think"] as? String == "low", "the same thinking rule as polish")
+    #expect(local.requests.first?["truncate"] as? Bool == false, "the daemon must not cut the prompt")
+    #expect(local.requests.first?["shift"] as? Bool == false, "nor drop text while answering")
 
     local.replies = []
     let summary = try await MeetingSummary.write(
@@ -479,7 +481,7 @@ struct MeetingSummaryTests {
   func ollamaTruncation() async throws {
     let local = Ollama(facts: OllamaModelFacts(isRemote: false, thinks: false))
     let prepared = try #require(await Self.prepare(.ollama, "llama3.2", local).successValue)
-    local.replies = [.success(("## Overview\nThe team agreed to", "length"))]
+    local.replies = [.chat("## Overview\nThe team agreed to", "length")]
     await #expect(throws: MeetingSummary.Failure.truncated) {
       _ = try await MeetingSummary.write(
         transcript: "t", notes: "", window: prepared.window, callTimeoutSeconds: 60, admit: {},
@@ -495,6 +497,7 @@ struct MeetingSummaryTests {
     let options = body["options"] as? [String: Any]
     #expect(options?["num_ctx"] == nil)
     #expect(options?.count == 2)
+    #expect(body["truncate"] == nil && body["shift"] == nil, "polish keeps the daemon's cutting")
   }
 
   @Test("each hosted profile sends the output cap it reserves; unknown models are planned small")
@@ -522,7 +525,6 @@ struct MeetingSummaryTests {
       let config = MeetingSummaryProviders.hostedConfig(provider, model: model, keyID: "k")
       #expect(config.outputTokens == .capped(prepared.window.outputReserveTokens), "\(model)")
       #expect(config.maxRetries == 0)
-      #expect(prepared.window.reportsOverflow)
     }
     #expect(MeetingSummaryProviders.hostedOutputTokens(.openAI, model: "o3") == 9_500)
     #expect(MeetingSummaryProviders.hostedOutputTokens(.openAI, model: "gpt-4o-mini") == 1_500)
@@ -532,8 +534,7 @@ struct MeetingSummaryTests {
     let gemini10 = MeetingSummary.Window(
       contextTokens: window(.gemini, "gemini-1.0-pro"),
       outputReserveTokens: MeetingSummaryProviders.hostedOutputTokens(
-        .gemini, model: "gemini-1.0-pro"),
-      reportsOverflow: true)
+        .gemini, model: "gemini-1.0-pro"))
     let calls = Calls()
     await #expect(throws: MeetingSummary.Failure.windowTooSmall) {
       _ = try await Self.write(calls, transcript: "t", window: gemini10)
@@ -541,9 +542,70 @@ struct MeetingSummaryTests {
     #expect(calls.prompts.isEmpty)
     let gpt4 = MeetingSummary.Window(
       contextTokens: window(.openAI, "gpt-4"),
-      outputReserveTokens: MeetingSummaryProviders.hostedOutputTokens(.openAI, model: "gpt-4"),
-      reportsOverflow: true)
+      outputReserveTokens: MeetingSummaryProviders.hostedOutputTokens(.openAI, model: "gpt-4"))
     #expect(try await Self.write(Calls(), transcript: "t", window: gpt4) == "summary 1")
+  }
+
+  @Test("an Ollama app older than 0.12.6, or of unknown version, is refused before any call")
+  func ollamaVersionGate() async throws {
+    for (version, supported) in [
+      ("0.12.5", false), ("0.11.10", false), ("0.0.0", false), ("garbage", false),
+      ("0.12.6", true), ("0.12.10", true), ("0.13.0-rc1", true), ("1.0", true),
+    ] {
+      #expect(OllamaConnector.supportsNoTruncation(version: version) == supported, "\(version)")
+    }
+    #expect(OllamaConnector.supportsNoTruncation(version: nil) == false)
+
+    for version in ["0.12.5", nil] as [String?] {
+      let old = Ollama(facts: OllamaModelFacts(isRemote: false, thinks: false), version: version)
+      #expect(await Self.prepare(.ollama, "llama3.2", old).failureValue == .ollamaTooOld)
+      #expect(old.versionAsks == 1)
+      #expect(old.requests.isEmpty)
+    }
+  }
+
+  @Test(
+    "Ollama's own too-long errors re-plan with the byte count, then fail as too long",
+    arguments: [
+      "the input length exceeds the context length",
+      "the prompt is longer than the context length currently available to the model; shorten the prompt",
+    ])
+  func ollamaOverflow(message: String) async throws {
+    let error = #"{"error": "\#(message)"}"#
+    let once = Ollama(facts: OllamaModelFacts(isRemote: false, thinks: false))
+    let prepared = try #require(await Self.prepare(.ollama, "llama3.2", once).successValue)
+    once.replies = [.http(400, error)]
+    let summary = try await MeetingSummary.write(
+      transcript: "t", notes: "", window: prepared.window, callTimeoutSeconds: 60, admit: {},
+      complete: prepared.complete)
+    #expect(summary == "summary")
+    #expect(once.requests.count == 2, "the overflow is not retried; the byte plan runs once")
+
+    // A template or a normalizing tokenizer can still overflow the byte plan: reported, never
+    // a summary written from part of the meeting.
+    let always = Ollama(facts: OllamaModelFacts(isRemote: false, thinks: false))
+    let again = try #require(await Self.prepare(.ollama, "llama3.2", always).successValue)
+    always.replies = [.http(400, error), .http(400, error), .chat("late", "stop")]
+    await #expect(throws: MeetingSummary.Failure.tooLong) {
+      _ = try await MeetingSummary.write(
+        transcript: "t", notes: "", window: again.window, callTimeoutSeconds: 60, admit: {},
+        complete: again.complete)
+    }
+    #expect(always.requests.count == 2)
+  }
+
+  @Test("Ollama's error mapping: only a context message is too long; other 400s stay bad requests")
+  func ollamaClassification() {
+    #expect(
+      OllamaConnector.classify(
+        statusCode: 400, bodyString: #"{"error":"the input length exceeds the context length"}"#)
+        == .inputTooLong)
+    #expect(
+      OllamaConnector.classify(
+        statusCode: 413, bodyString: "the request exceeds the available context size") == .inputTooLong)
+    #expect(OllamaConnector.classify(statusCode: 400, bodyString: #"{"error":"invalid"}"#) == .badRequest)
+    #expect(OllamaConnector.classify(statusCode: 413, bodyString: "too big") == .badRequest)
+    #expect(OllamaConnector.classify(statusCode: 404, bodyString: "") == .modelUnavailable)
   }
 
   // MARK: - The real OpenAI connector

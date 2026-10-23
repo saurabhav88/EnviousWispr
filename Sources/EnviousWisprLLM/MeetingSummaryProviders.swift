@@ -32,10 +32,14 @@ public enum MeetingSummaryProviders {
     case notForSummaries
     /// Ollama is not running or lacks the model, or Apple Intelligence is not available.
     case notReady
+    /// The Ollama app is older than 0.12.6, which cannot be asked to report a prompt that does
+    /// not fit instead of cutting it.
+    case ollamaTooOld
   }
 
-  /// The window Ollama runs a summary call with, sent as `num_ctx`: polish sends none and keeps
-  /// the daemon's default, which is smaller and silently drops the start of a longer prompt.
+  /// The window Ollama runs a summary call with, sent as `num_ctx` with `truncate` and `shift`
+  /// off, so the daemon reports a prompt or answer that does not fit. Polish sends none of these
+  /// and keeps the daemon's default window, which silently drops the start of a longer prompt.
   static let ollamaContextTokens = 8_192
 
   /// Planning windows for hosted models, which publish no window in their APIs. Each named
@@ -45,7 +49,7 @@ public enum MeetingSummaryProviders {
   /// can list (the original GPT-4, GPT-3.5, Gemini 1.0) is planned at 8,000, the smallest of
   /// those, so an unknown model is planned small rather than overflowed. A plan that does not
   /// fit is refused before any call (`Failure.windowTooSmall`); a model whose real window is
-  /// smaller still reports the overflow, and the summary re-plans with the byte bound.
+  /// smaller still reports the overflow, and the summary re-plans with the byte count.
   static func hostedContextTokens(_ provider: LLMProvider, model: String) -> Int {
     let id = model.lowercased()
     switch provider {
@@ -100,12 +104,14 @@ public enum MeetingSummaryProviders {
   }
 
   /// The call for `provider` and `model`, or why there is none. Ollama is asked first for its
-  /// own facts about the model (where it runs, whether it thinks), as polish does per attempt.
+  /// own facts about the model (where it runs, whether it thinks), as polish does per attempt,
+  /// and for its version: one that cannot be told not to cut a prompt is refused.
   public static func prepare(
     provider: LLMProvider, model: String, keychain: KeychainManager,
     ollamaReadiness: @Sendable (String) async -> OllamaReadiness = {
       await OllamaConnector().preflightReadiness(model: $0)
     },
+    ollamaVersion: @Sendable () async -> String? = { await OllamaConnector().serverVersion() },
     ollamaExecutor: (@Sendable (URLRequest) async throws -> (Data, URLResponse))? = nil
   ) async -> Result<Prepared, Unavailable> {
     switch MeetingSummary.capability(provider, model: model, ollamaModelIsRemote: nil) {
@@ -128,11 +134,14 @@ public enum MeetingSummaryProviders {
           execution: .hosted,
           window: MeetingSummary.Window(
             contextTokens: hostedContextTokens(provider, model: model),
-            outputReserveTokens: output, reportsOverflow: true),
+            outputReserveTokens: output),
           complete: envelope(connector, config)))
     case .ollama:
       guard case .ready(let facts) = await ollamaReadiness(model) else {
         return .failure(.notReady)
+      }
+      guard OllamaConnector.supportsNoTruncation(version: await ollamaVersion()) else {
+        return .failure(.ollamaTooOld)
       }
       guard
         case .supported(let execution) = MeetingSummary.capability(
@@ -154,10 +163,8 @@ public enum MeetingSummaryProviders {
       return .success(
         Prepared(
           execution: execution,
-          // Ollama drops the start of an overlong prompt without an error.
           window: MeetingSummary.Window(
-            contextTokens: ollamaContextTokens, outputReserveTokens: output,
-            reportsOverflow: false),
+            contextTokens: ollamaContextTokens, outputReserveTokens: output),
           complete: envelope(connector, config)))
     case .appleIntelligence:
       guard let context = appleContextTokens() else { return .failure(.notReady) }
@@ -165,8 +172,7 @@ public enum MeetingSummaryProviders {
         Prepared(
           execution: .local,
           window: MeetingSummary.Window(
-            contextTokens: context, outputReserveTokens: MeetingSummary.outputTokens,
-            reportsOverflow: true),
+            contextTokens: context, outputReserveTokens: MeetingSummary.outputTokens),
           complete: { instructions, prompt in
             try await apple(instructions: instructions, prompt: prompt)
           }))

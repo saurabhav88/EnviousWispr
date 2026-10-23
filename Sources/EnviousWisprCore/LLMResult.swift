@@ -276,9 +276,11 @@ public struct LLMProviderConfig: Codable, Sendable {
   /// it owns its retries so it can count every attempt and wait for dictation before each one
   /// (#3972 R44).
   public let maxRetries: Int?
-  /// Ollama only: the context window to run the model with (`num_ctx`). Nil sends none, so the
-  /// daemon keeps its own default, as every polish does. The meeting summary sets the window
-  /// it planned its parts against, so a long part is never silently cut (#3972 R44).
+  /// Ollama only: the context window to run the model with (`num_ctx`), and a request that the
+  /// daemon report a prompt or answer that does not fit instead of cutting it (`truncate` and
+  /// `shift` false, Ollama 0.12.6 and later). Nil sends none of these, so the daemon keeps its
+  /// own window and its cutting, as every polish does. The meeting summary sets the window it
+  /// planned its parts against, so a long part is never silently cut (#3972 R44).
   public let contextTokens: Int?
 
   public init(
