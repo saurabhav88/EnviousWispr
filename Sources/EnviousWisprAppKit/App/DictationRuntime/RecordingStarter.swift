@@ -329,7 +329,9 @@ final class RecordingStarter {
       let granted = await requestMicrophone()
       guard let self else { return }
       self.isAskingForMicrophone = false
-      guard !granted, self.micPermissionDenied(),
+      // The request's answer decides, not a fresh status read: on macOS 27.2 a
+      // running app's status read can lag the answer (#3960 Live UAT).
+      guard !granted,
         !self.kernelDriver.state.isActive, !self.whisperKernelDriver.state.isActive
       else { return }
       self.activeDriver.setTerminalReason(.permissionDenied)
