@@ -20,7 +20,8 @@ import Foundation
 public enum MeetingSummary {
   /// Bumped whenever the prompt or the plan changes what a summary says; part of each summary's
   /// inputs, so an older summary shows as out of date.
-  public static let promptVersion = 1
+  /// 2 (#3999): a long part answer is shortened by the model, never clipped.
+  public static let promptVersion = 2
 
   /// Whether the selected provider and model can write a summary, and why not (R44 capability
   /// matrix).
@@ -99,7 +100,8 @@ public enum MeetingSummary {
     case providerFailed
     /// The provider answered with nothing.
     case empty
-    /// The provider stopped before the answer was finished.
+    /// The provider stopped before the answer was finished, or a part answer stayed longer
+    /// than its share of the final call even after one request to shorten it (#3999).
     case truncated
     case cancelled
     /// One call took longer than its time limit; not tried again.
@@ -332,18 +334,6 @@ public enum MeetingSummary {
     answers.reduce(0) { $0 + tokens($1, counting) + answerHeaderTokens }
   }
 
-  /// `answer` cut to `cap` tokens, at a line end where one is near.
-  static func capped(_ answer: String, _ cap: Int, _ counting: Counting) -> String {
-    guard tokens(answer, counting) > cap else { return answer }
-    let head = prefix(answer, tokens: cap, counting)
-    if let cut = head.lastIndex(of: "\n"),
-      head.distance(from: head.startIndex, to: cut) > head.count / 2
-    {
-      return String(head[..<cut])
-    }
-    return head
-  }
-
   /// SHA-256 of what decides a summary besides its inputs: provider, model, output cap and
   /// prompt version (never a key), so a model change makes an older summary out of date.
   public static func configurationFingerprint(provider: LLMProvider, model: String) -> String {
@@ -400,8 +390,31 @@ public enum MeetingSummary {
       return try await ask(finalPrompt(notes: plan.inlineNotes, body: "Transcript:\n\(transcript)"))
     }
     let cap = partialCap(plan.budget)
-    // About three-quarters of a word per estimated token; `capped` below is the bound.
+    // About three-quarters of a word per estimated token; `fitted` below is the bound.
     let words = cap * 3 / 4
+    // Calls the plan leaves unused when every answer is as long as it may be: the only room
+    // for a shortening request, so `worstCaseCalls` stays the bound (#3999).
+    var headroom = maxCalls - plan.worstCaseCalls
+    /// A part answer within `cap` as written. A longer one is never clipped (that silently
+    /// dropped its later decisions and action items, #3999): the model is asked once to
+    /// shorten it, and an answer that still does not fit, or no room to ask, fails the
+    /// summary as `.truncated`.
+    func fitted(_ answer: String) async throws -> String {
+      guard tokens(answer, counting) > cap else { return answer }
+      let request = """
+        Shorten these bullets to at most \(words) words. Keep every decision and action item, \
+        with its owner when stated.
+
+        \(answer)
+        """
+      guard headroom > 0, tokens(request, counting) <= plan.budget else {
+        throw Failure.truncated
+      }
+      headroom -= 1
+      let shorter = try await ask(request)
+      guard tokens(shorter, counting) <= cap else { throw Failure.truncated }
+      return shorter
+    }
     var answers: [String] = []
     for (index, piece) in pieces.enumerated() {
       let what = piece.source == .transcript ? "a meeting transcript" : "the user's own notes"
@@ -413,7 +426,7 @@ public enum MeetingSummary {
         Part:
         \(piece.text)
         """)
-      answers.append(capped(answer, cap, counting))
+      answers.append(try await fitted(answer))
     }
     while answerTokens(answers, counting) > plan.finalBudget {
       var groups: [[String]] = [[]]
@@ -434,7 +447,7 @@ public enum MeetingSummary {
 
           \(joined(group))
           """)
-        combined.append(capped(answer, cap, counting))
+        combined.append(try await fitted(answer))
       }
       answers = combined
     }
