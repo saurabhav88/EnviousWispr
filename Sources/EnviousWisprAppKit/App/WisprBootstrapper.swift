@@ -2406,7 +2406,8 @@ package final class WisprBootstrapper {
         workChanged: { [weak engineCoordinator] in engineCoordinator?.poke(.parakeetUpgradeOwed) },
         log: { line in
           Task { await AppLogger.shared.log(line, level: .info, category: "Meetings") }
-        }))
+        },
+        keychain: keychainManager))
     meetingBox.coordinator = meetingCoordinator
     self.meetingCoordinator = meetingCoordinator
     let meetingStartFlow = MeetingStartFlow(

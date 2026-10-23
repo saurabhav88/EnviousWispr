@@ -152,6 +152,54 @@ extension MeetingStore {
     return next
   }
 
+  /// What `saveGeneratedSummary` did.
+  public enum GeneratedSummarySave: Sendable, Equatable {
+    /// The summary is saved and no longer owed.
+    case saved(MeetingDocumentsManifest)
+    /// The summary on disk is the user's (edited, or changed outside the app): kept.
+    case userEditKept(MeetingDocumentsManifest)
+    /// The notes changed since the summary's inputs were read: not saved.
+    case notesChanged(MeetingDocumentsManifest)
+  }
+
+  /// Saves a generated summary only if it may replace what is there, checked in the same file
+  /// operation as the write (#3972 R46): never over the user's own summary unless
+  /// `replacingUserEdit` (the "Write again" confirmation), never from notes older than those
+  /// on disk. Every outcome clears `summaryPending`: the attempt is over. The files are
+  /// reconciled first, as a load does, so a summary or notes changed outside the app count.
+  public func saveGeneratedSummary(
+    _ text: String, inputs: SummaryInputs, replacingUserEdit: Bool, meeting id: UUID
+  ) throws -> GeneratedSummarySave {
+    try refuseDocumentWrite(id)
+    var manifest = try readDocuments(meeting: id).manifest
+    manifest.summaryPending = nil
+    if manifest.summary?.origin == .userEdited, !replacingUserEdit {
+      try writeManifest(manifest, meeting: id)
+      return .userEditKept(manifest)
+    }
+    if (manifest.notes?.revision ?? 0) != inputs.notesRevision {
+      try writeManifest(manifest, meeting: id)
+      return .notesChanged(manifest)
+    }
+    manifest.summary = MeetingDocumentsManifest.Summary(
+      sha256: MeetingDocumentHash.sha256(text), origin: .generated, inputs: inputs)
+    try Self.atomicWrite(Data(text.utf8), to: summaryURL(for: id))
+    try writeManifest(manifest, meeting: id)
+    return .saved(manifest)
+  }
+
+  /// Marks a summary as owed, or no longer owed (#3972 R50), keeping the rest of the manifest
+  /// as on disk.
+  public func setSummaryPending(_ pending: Bool, meeting id: UUID) throws
+    -> MeetingDocumentsManifest
+  {
+    try refuseDocumentWrite(id)
+    var next = try currentManifest(id)
+    next.summaryPending = pending ? true : nil
+    try writeManifest(next, meeting: id)
+    return next
+  }
+
   /// `documents.json` as on disk, or an empty manifest when there is none.
   private func currentManifest(_ id: UUID) throws -> MeetingDocumentsManifest {
     guard FileManager.default.fileExists(atPath: documentsURL(for: id).path) else {

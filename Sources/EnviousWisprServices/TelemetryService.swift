@@ -4080,10 +4080,32 @@ public final class TelemetryService {
       "yield_count": event.yieldCount,
       "gap_count": event.gapCount,
       "echo_hidden_count_bucket": meetingEchoHiddenBucket(event.echoHiddenCount),
+      "summary_plan": event.summaryPlan.rawValue,
+      "has_notes": event.hasNotes,
     ]
     if let entryPoint = event.entryPoint { props["entry_point"] = entryPoint.rawValue }
     if let diskStopped = event.diskStopped { props["disk_stopped"] = diskStopped }
     return props
+  }
+
+  /// #3972 R48, R54: one `meeting.summary_finished` row per summary attempt, at its end. Two
+  /// enum strings only (`outcome`, `provider_kind`): never text, models or ids.
+  public func trackMeetingSummaryFinished(_ event: MeetingSummaryFinishedTelemetry) {
+    let props = Self.meetingSummaryFinishedProperties(event)
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "meeting.summary_finished",
+          stringProps: props.compactMapValues { $0 as? String },
+          intProps: [:], doubleProps: [:], boolProps: [:]))
+    #endif
+    PostHogSDK.shared.capture("meeting.summary_finished", properties: props)
+  }
+
+  static func meetingSummaryFinishedProperties(_ event: MeetingSummaryFinishedTelemetry)
+    -> [String: Any]
+  {
+    ["outcome": event.outcome.rawValue, "provider_kind": event.providerKind.rawValue]
   }
 
   /// Speakers across both tracks: `0` (no turns), `1`, `2`, `3-4`, `5+` (the file-import scale

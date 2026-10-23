@@ -269,6 +269,62 @@ final class MeetingDocumentsOwner {
     }
   }
 
+  // MARK: - Summary
+
+  /// Saves a generated summary through the store's checked write (#3972 R46): never over the
+  /// user's own summary unless `replacingUserEdit`, never from older notes, and it ends the
+  /// owed mark. Nil when the meeting was deleted or the write failed.
+  func publishGeneratedSummary(
+    _ meetingID: UUID, text: String, inputs: SummaryInputs, replacingUserEdit: Bool
+  ) async -> MeetingStore.GeneratedSummarySave? {
+    guard !forgotten.contains(meetingID) else { return nil }
+    let gen = generation(meetingID)
+    let result = await perform(meetingID) {
+      try $0.saveGeneratedSummary(
+        text, inputs: inputs, replacingUserEdit: replacingUserEdit, meeting: meetingID)
+    }
+    guard generation(meetingID) == gen else { return nil }
+    switch result {
+    case .failure(let error):
+      deps.log("meeting summary save failed error=\(type(of: error))")
+      return nil
+    case .success(let outcome):
+      if var entry = entries[meetingID], entry.load == .loaded {
+        switch outcome {
+        case .saved(let manifest):
+          entry.manifest.summary = manifest.summary
+          entry.summary = text
+          entry.manifest.summaryPending = manifest.summaryPending
+        case .userEditKept(let manifest), .notesChanged(let manifest):
+          entry.manifest.summaryPending = manifest.summaryPending
+        }
+        entries[meetingID] = entry
+      }
+      return outcome
+    }
+  }
+
+  /// Marks a summary as owed or no longer owed (#3972 R50). False when the meeting was deleted
+  /// or the write failed.
+  @discardableResult
+  func setSummaryPending(_ meetingID: UUID, _ pending: Bool) async -> Bool {
+    guard !forgotten.contains(meetingID) else { return false }
+    let gen = generation(meetingID)
+    let result = await perform(meetingID) { try $0.setSummaryPending(pending, meeting: meetingID) }
+    guard generation(meetingID) == gen else { return false }
+    switch result {
+    case .failure(let error):
+      deps.log("meeting summary mark failed error=\(type(of: error))")
+      return false
+    case .success(let manifest):
+      if var entry = entries[meetingID], entry.load == .loaded {
+        entry.manifest.summaryPending = manifest.summaryPending
+        entries[meetingID] = entry
+      }
+      return true
+    }
+  }
+
   /// The quit path: every unsaved draft is written behind the queued file work, no later than
   /// `deadline`. Best effort within that deadline; a write still running finishes on its own.
   func flushForQuit(deadline: DispatchTime) {

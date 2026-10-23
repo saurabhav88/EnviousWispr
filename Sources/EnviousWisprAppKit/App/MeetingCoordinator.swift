@@ -319,6 +319,13 @@ final class MeetingCoordinator {
   private let writer: MeetingFileWriter
   /// Each meeting's notes and summary (#3972 R46): drafts, debounce and their file writes.
   let documents: MeetingDocumentsOwner
+  /// Writes each ready meeting's summary (#3972 R39). Set by `MeetingWiring`; nil writes none.
+  var summaries: MeetingSummaryOwner?
+
+  /// A final pass runs or waits to run: a local summary call waits for it (R50: final first).
+  var hasFinalPassWork: Bool {
+    processing != nil || live.values.contains { $0.state == .queued || $0.state == .processing }
+  }
   /// Each meeting as last written successfully: what `meetings` and `record(id:)` show, so a
   /// lifecycle step is visible only once it is durable.
   private var records: [UUID: MeetingRecord] = [:]
@@ -531,8 +538,11 @@ final class MeetingCoordinator {
     // Notes are searched with their meeting's transcript (R38): read every meeting's notes
     // once, behind the listing, on the file queue.
     let toRead = loaded
+    let ready = loaded.filter { live[$0]?.state == .ready && live[$0]?.deletionRequested != true }
     Task { [weak self] in
       for meetingID in toRead { await self?.documents.load(meetingID) }
+      // A summary a quit interrupted is finished now (R50), after the notes are read.
+      await self?.summaries?.resumeOwed(readyMeetingIDs: ready)
     }
     for meetingID in loaded {
       guard !quitting, var record = live[meetingID], meetingID != activeMeetingID else {
@@ -1087,10 +1097,13 @@ final class MeetingCoordinator {
       ready.wasInterrupted == true
       ? .interruptedReady
       : (result.failedPieces > 0 || !missingAudio.isEmpty ? .readyWithGaps : .ready)
+    // The summary decision, in the same turn as the ready barrier (R48): `meeting.ended` says
+    // what was decided, and a scheduled summary starts in the background.
+    let summaryPlan = summaries?.plan(for: meetingID) ?? .off
     endAttempt(
       ready, outcome: outcome, result: result,
       gapCount: result.failedPieces + Self.markerCount(missingAudio),
-      processingSeconds: Date().timeIntervalSince(started))
+      processingSeconds: Date().timeIntervalSince(started), summaryPlan: summaryPlan)
 
     do {
       try await writer.run { _ in try checkpoints.clear() }
@@ -1255,6 +1268,7 @@ final class MeetingCoordinator {
     guard await persist(record) else { return }
     // Marked: no draft may be written any more (the store also refuses).
     documents.forget(meetingID)
+    summaries?.cancel(meetingID)
     dropQueuedPreviews(of: meetingID)
     if liveTranscript?.meetingID == meetingID { liveTranscript = nil }
     switch phase {
@@ -1600,6 +1614,7 @@ final class MeetingCoordinator {
   /// not finish in time stays owned by its queued close; launch recovery handles it.
   func prepareForTermination(deadline: DispatchTime = .now() + 1) {
     quitting = true
+    summaries?.prepareForTermination()
     queueTask?.cancel()
     job?.cancel()
     previewJob?.cancel()
@@ -1748,7 +1763,8 @@ final class MeetingCoordinator {
   private func endAttempt(
     _ record: MeetingRecord, outcome: MeetingEndedTelemetry.Outcome,
     result: MeetingTranscriptionJob.Result? = nil, gapCount: Int = 0,
-    processingSeconds: Double = 0
+    processingSeconds: Double = 0,
+    summaryPlan: MeetingEndedTelemetry.SummaryPlan = .notApplicable
   ) {
     guard let facts = openAttempts.removeValue(forKey: record.id) else { return }
     lastAttemptFacts[record.id] = facts
@@ -1765,6 +1781,10 @@ final class MeetingCoordinator {
         yieldCount: result?.yieldCount ?? 0,
         gapCount: gapCount,
         echoHiddenCount: result?.composition.echoTurnIDs.count ?? 0,
-        diskStopped: facts.diskStopped))
+        diskStopped: facts.diskStopped,
+        summaryPlan: summaryPlan,
+        // The notes this session knows (typed, or read at launch); a meeting without a folder
+        // has none (R54).
+        hasNotes: !documents.notes(record.id).isEmpty))
   }
 }

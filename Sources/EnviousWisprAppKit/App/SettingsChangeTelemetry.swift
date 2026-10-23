@@ -154,6 +154,9 @@ enum SettingsProjection {
     case .meetingCaptureCallSound: return []
     // #3972: a one-time acknowledgement, not a preference.
     case .meetingCallSoundExplained: return []
+    // #3972 R48: no settings delta. `meeting.ended` carries `summary_plan=off` for every meeting
+    // that ends with it off, which is the question this choice answers.
+    case .meetingWriteSummary: return []
     case .hotkeyEnabled: return [.hotkeyEnabled]
     case .vadAutoStop: return [.vadAutoStop]
     case .vadSilenceTimeout: return [.vadSilenceTimeout]

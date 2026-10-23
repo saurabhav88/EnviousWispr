@@ -209,8 +209,13 @@ struct TelemetryEmitterRegistryTests {
   /// #3972 R11: one per_user_action meeting.ended site (`trackMeetingEnded`), keep whole; one
   /// row per meeting attempt at its terminal, shape only (outcome, buckets, track statuses,
   /// counts, RTF). Reader: founder adoption and quality query at the first release review.
+  /// #3972 R48, R54: one per_user_action meeting.summary_finished site
+  /// (`trackMeetingSummaryFinished`), keep whole; one row per summary attempt at its end, two
+  /// closed enums (outcome, provider_kind), no text, model or id. meeting.ended cannot carry it:
+  /// the summary ends after the transcript-ready row. Reader: founder summary query at the first
+  /// release review.
   static let sitesFingerprint =
-    "2f36c6f9ae2397dfa2c12485c8245f89205aff4361367b5dc9a0e5efb5118fd2"
+    "18effa07414612542ee18dbafb353d35846e98e1a0f4c42ea4b000ef78ffd34c"
   static let ungradedFingerprint =
     "8c5e46c2f2f7fb59004bb2eb5ea1ac210ef32dbb79fdcb68b3eff70a28cc133f"
 

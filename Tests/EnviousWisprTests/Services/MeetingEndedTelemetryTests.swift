@@ -20,7 +20,7 @@ import Testing
     static let approvedKeys: Set<String> = [
       "outcome", "duration_bucket", "mic_track", "system_track", "engine", "speaker_count_bucket",
       "processing_seconds", "rtf", "yield_count", "gap_count", "echo_hidden_count_bucket",
-      "entry_point", "disk_stopped",
+      "entry_point", "disk_stopped", "summary_plan", "has_notes",
     ]
 
     private func capture(_ event: MeetingEndedTelemetry) -> CapturedTelemetryEvent? {
@@ -44,7 +44,8 @@ import Testing
       MeetingEndedTelemetry(
         outcome: outcome, entryPoint: entry, durationSeconds: duration, microphoneTrack: .captured,
         callSoundTrack: .unsupported, speakerCount: speakers, processingSeconds: processing,
-        audioSeconds: audio, yieldCount: 4, gapCount: 2, echoHiddenCount: echo, diskStopped: disk)
+        audioSeconds: audio, yieldCount: 4, gapCount: 2, echoHiddenCount: echo, diskStopped: disk,
+        summaryPlan: .scheduled, hasNotes: true)
     }
 
     @Test("every approved field, with its type; nothing else")
@@ -54,11 +55,11 @@ import Testing
         row.stringProps == [
           "outcome": "ready", "duration_bucket": "30-60min", "mic_track": "captured",
           "system_track": "unsupported", "engine": "parakeet", "speaker_count_bucket": "3-4",
-          "echo_hidden_count_bucket": "6-20", "entry_point": "menu",
+          "echo_hidden_count_bucket": "6-20", "entry_point": "menu", "summary_plan": "scheduled",
         ])
       #expect(row.intProps == ["yield_count": 4, "gap_count": 2])
       #expect(row.doubleProps == ["processing_seconds": 90, "rtf": 0.05])
-      #expect(row.boolProps == ["disk_stopped": false])
+      #expect(row.boolProps == ["disk_stopped": false, "has_notes": true])
       let keys = Set(row.stringProps.keys).union(row.intProps.keys).union(row.doubleProps.keys)
         .union(row.boolProps.keys)
       #expect(keys == Self.approvedKeys)
@@ -74,7 +75,8 @@ import Testing
       let infinite = MeetingEndedTelemetry(
         outcome: .failed, entryPoint: .history, durationSeconds: 0, microphoneTrack: .failed,
         callSoundTrack: .off, speakerCount: 0, processingSeconds: .infinity, audioSeconds: 1,
-        yieldCount: 0, gapCount: 0, echoHiddenCount: 0, diskStopped: false)
+        yieldCount: 0, gapCount: 0, echoHiddenCount: 0, diskStopped: false,
+        summaryPlan: .notApplicable, hasNotes: false)
       #expect(infinite.realTimeFactor == 0)
     }
 
@@ -85,6 +87,44 @@ import Testing
           "ready", "ready_with_gaps", "failed", "start_failed", "interrupted_ready",
           "deleted_before_ready",
         ])
+    }
+
+    @Test("summary plans and finished outcomes are closed values (R48, R54, R57)")
+    func summaryValues() {
+      #expect(
+        MeetingEndedTelemetry.SummaryPlan.allCases.map(\.rawValue) == [
+          "scheduled", "off", "no_provider", "unsupported", "not_applicable",
+        ])
+      #expect(
+        MeetingSummaryFinishedTelemetry.Outcome.allCases.map(\.rawValue) == [
+          "written", "unsupported", "no_provider", "failed", "cancelled", "stale",
+        ])
+      #expect(
+        MeetingSummaryFinishedTelemetry.ProviderKind.allCases.map(\.rawValue) == [
+          "local", "hosted", "none",
+        ])
+      let start = MeetingEndedTelemetry.startFailed(
+        entryPoint: .menu, microphone: .failed, callSound: .off)
+      #expect(start.summaryPlan == .notApplicable)
+      #expect(start.hasNotes == false)
+    }
+
+    @Test("meeting.summary_finished carries the outcome and provider kind, nothing else")
+    func summaryFinishedPayload() {
+      let box = Box()
+      let service = TelemetryService.shared
+      let previous = service.testEventHook
+      service.testEventHook = { captured in
+        if captured.name == "meeting.summary_finished" { box.events.append(captured) }
+      }
+      defer { service.testEventHook = previous }
+      service.trackMeetingSummaryFinished(
+        MeetingSummaryFinishedTelemetry(outcome: .noProvider, providerKind: .none))
+      #expect(box.events.count == 1)
+      #expect(box.events.first?.stringProps == ["outcome": "no_provider", "provider_kind": "none"])
+      #expect(
+        TelemetryService.meetingSummaryFinishedProperties(
+          MeetingSummaryFinishedTelemetry(outcome: .written, providerKind: .local)).count == 2)
     }
 
     @Test("bucket boundaries")

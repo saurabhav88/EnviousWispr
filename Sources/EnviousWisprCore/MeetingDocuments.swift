@@ -11,11 +11,16 @@ public struct MeetingDocumentsManifest: Sendable, Equatable, Codable {
   public var formatVersion: Int
   public var notes: Notes?
   public var summary: Summary?
+  /// A summary the app owes this meeting (#3972 R50): set when one is scheduled, cleared when
+  /// its attempt ends, so a relaunch finishes a summary a quit interrupted. Nil and false mean
+  /// none is owed. Optional, so a manifest written before this field decodes unchanged.
+  public var summaryPending: Bool?
 
-  public init(notes: Notes? = nil, summary: Summary? = nil) {
+  public init(notes: Notes? = nil, summary: Summary? = nil, summaryPending: Bool? = nil) {
     formatVersion = Self.currentFormatVersion
     self.notes = notes
     self.summary = summary
+    self.summaryPending = summaryPending
   }
 
   public struct Notes: Sendable, Equatable, Codable {

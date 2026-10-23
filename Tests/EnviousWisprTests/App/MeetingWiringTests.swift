@@ -6,6 +6,7 @@ import Testing
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprAudio
 @testable import EnviousWisprCore
+@testable import EnviousWisprLLM
 @testable import EnviousWisprPipeline
 @testable import EnviousWisprServices
 @testable import EnviousWisprStorage
@@ -195,7 +196,12 @@ struct MeetingWiringTests {
           engineMutationScope: .alwaysAllowedForTesting,
           parakeetSelection: ParakeetSelectionProvider()),
         meetingSelection: { box.selection }, modelUseGate: gate, isDeliveryEnabled: { true },
-        workChanged: { changes.count += 1 }, log: { _ in })
+        workChanged: { changes.count += 1 }, log: { _ in },
+        // An isolated key folder: never the real Keychain or key files.
+        keychain: KeychainManager(
+          backend: .legacyFiles,
+          legacyStore: FileLegacyKeyStore(
+            storageDirectory: root.appendingPathComponent("keys"))))
     }
 
     let selectionBox: SelectionBox
@@ -277,11 +283,31 @@ struct MeetingWiringTests {
     #expect(coordinator.meetings.count == 1)
   }
 
+  @Test("the lane's order: dictation first, final pass over local summary over preview (R50)")
+  func laneOrder() {
+    let lane = MeetingLocalModelLane()
+    var dictating = false
+    let final = MeetingWiring.admission(.finalPass, lane: lane, dictationIdle: { !dictating })
+    let preview = MeetingWiring.admission(.preview, lane: lane, dictationIdle: { !dictating })
+    #expect(final() && preview())
+    dictating = true
+    #expect(!final() && !preview(), "nothing starts while the user dictates")
+    dictating = false
+    lane.summaryQueued()
+    #expect(final(), "a final pass goes before a waiting summary")
+    #expect(!preview(), "a preview gives way to a waiting summary")
+    lane.beginSummaryCall()
+    #expect(!final(), "a running summary call is never joined by a final pass unit")
+    lane.endSummaryCall()
+    lane.summaryFinished()
+    #expect(final() && preview())
+  }
+
   @Test("the real job fails cleanly when no model is installed, and holds no model claim")
   func realJobWithoutModel() async throws {
     let rig = try Rig()
     rig.selectionBox.selection = nil
-    let job = MeetingWiring.makeJob(rig.inputs)
+    let job = MeetingWiring.makeJob(rig.inputs, lane: MeetingLocalModelLane(), kind: .finalPass)
     let folder = try MeetingAudioFixture.folder("meeting-wiring-job")
     let url = try MeetingAudioFixture.writeSegment(in: folder, index: 1, startMs: 0, frames: 32_000)
     let audio = MeetingTrackAudio(files: [(url: url, startMs: 0)])
@@ -299,7 +325,7 @@ struct MeetingWiringTests {
     // claim must be released on that failure.
     let missing = Self.selection("missing-\(UUID().uuidString)")
     rig.selectionBox.selection = missing
-    let job = MeetingWiring.makeJob(rig.inputs)
+    let job = MeetingWiring.makeJob(rig.inputs, lane: MeetingLocalModelLane(), kind: .finalPass)
     let folder = try MeetingAudioFixture.folder("meeting-wiring-claim")
     let url = try MeetingAudioFixture.writeSegment(in: folder, index: 1, startMs: 0, frames: 32_000)
     let audio = MeetingTrackAudio(files: [(url: url, startMs: 0)])

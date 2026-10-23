@@ -27,6 +27,8 @@ public final class SettingsManager {
     /// #3972: the user has read EnviousMeet's explainer before macOS first asks to record the
     /// sound the Mac plays.
     case meetingCallSoundExplained
+    /// #3972: "Write a summary when a meeting ends".
+    case meetingWriteSummary
     case hotkeyEnabled
     case vadAutoStop
     case vadSilenceTimeout
@@ -127,7 +129,7 @@ public final class SettingsManager {
   public nonisolated static let unifiedDefaultsKeys: [String] = [
     "selectedBackend", "recordingMode", "llmProvider", "lastLLMProvider", "llmModel", "ollamaModel",
     "s1MiniStyling", "s1MiniStructure", "s1MiniContext",
-    "autoCopyToClipboard", "meetingCaptureCallSound", "meetingCallSoundExplained", "hotkeyEnabled", "vadAutoStop", "vadSilenceTimeout",
+    "autoCopyToClipboard", "meetingCaptureCallSound", "meetingCallSoundExplained", "meetingWriteSummary", "hotkeyEnabled", "vadAutoStop", "vadSilenceTimeout",
     "vadSensitivity", "vadEnergyGate", "onboardingState", "hasCompletedOnboarding",
     "cancelKeyCode", "cancelModifiersRaw", "toggleKeyCode", "toggleModifiersRaw",
     "quickAddKeyCode", "quickAddModifiersRaw",
@@ -501,6 +503,16 @@ public final class SettingsManager {
     didSet {
       defaults.set(meetingCallSoundExplained, forKey: "meetingCallSoundExplained")
       onChange?(.meetingCallSoundExplained)
+    }
+  }
+
+  /// #3972 R39: whether EnviousMeet writes a summary with the AI Polish provider when a
+  /// meeting's transcript is ready. Read when each meeting becomes ready; turning it off never
+  /// stops a summary already being written.
+  public var meetingWriteSummary: Bool {
+    didSet {
+      defaults.set(meetingWriteSummary, forKey: "meetingWriteSummary")
+      onChange?(.meetingWriteSummary)
     }
   }
 
@@ -1351,6 +1363,9 @@ public final class SettingsManager {
     meetingCallSoundExplained =
       defaults.object(forKey: "meetingCallSoundExplained") as? Bool
       ?? SettingsDefaultValues.meetingCallSoundExplained
+    meetingWriteSummary =
+      defaults.object(forKey: "meetingWriteSummary") as? Bool
+      ?? SettingsDefaultValues.meetingWriteSummary
     hotkeyEnabled = SettingsDefaultValues.hotkeyEnabled  // toggle removed; always enabled
     vadAutoStop =
       defaults.object(forKey: "vadAutoStop") as? Bool ?? SettingsDefaultValues.vadAutoStop

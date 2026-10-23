@@ -1,6 +1,7 @@
 import EnviousWisprASR
 import EnviousWisprAudio
 import EnviousWisprCore
+import EnviousWisprLLM
 import EnviousWisprModelDelivery
 import EnviousWisprPipeline
 import EnviousWisprServices
@@ -41,22 +42,29 @@ enum MeetingWiring {
     /// activation again.
     let workChanged: @MainActor () -> Void
     let log: @MainActor (String) -> Void
+    /// The AI Polish keys, for meeting summaries (#3972 R44).
+    let keychain: KeychainManager
     /// The `meeting.ended` emitter (`TelemetryService.trackMeetingEnded` in production).
     var emitMeetingEnded: @MainActor (MeetingEndedTelemetry) -> Void = {
       TelemetryService.shared.trackMeetingEnded($0)
+    }
+    /// The `meeting.summary_finished` emitter.
+    var emitSummaryFinished: @MainActor (MeetingSummaryFinishedTelemetry) -> Void = {
+      TelemetryService.shared.trackMeetingSummaryFinished($0)
     }
   }
 
   static func make(_ inputs: Inputs) -> MeetingCoordinator {
     let store = inputs.store
+    let lane = MeetingLocalModelLane()
     let coordinator = MeetingCoordinator(
       dependencies: MeetingCoordinator.Dependencies(
         store: store,
         makeRecorder: { configuration, onSegment, onFailure in
           MeetingRecorder(configuration: configuration, onSegment: onSegment, onFailure: onFailure)
         },
-        makeJob: { makeJob(inputs) },
-        makePreviewJob: { makeJob(inputs) },
+        makeJob: { makeJob(inputs, lane: lane, kind: .finalPass) },
+        makePreviewJob: { makeJob(inputs, lane: lane, kind: .preview) },
         microphoneSelection: { [settings = inputs.settings] in
           let chosen = settings.preferredInputDeviceIDOverride
           return (chosen.isEmpty ? nil : chosen, settings.inputChannelByDeviceUID)
@@ -100,7 +108,59 @@ enum MeetingWiring {
       // No coordinator means no meeting can be marked: History then deletes nothing.
       coordinator?.deleteForHistoryDeleteAll(meetingIDs: ids) ?? false
     }
+    coordinator.summaries = makeSummaries(inputs, coordinator: coordinator, lane: lane)
     return coordinator
+  }
+
+  /// The summary owner (#3972 R39, R44, R50): the user's AI Polish provider and key, what
+  /// History shows (echo hidden), and local calls only on the shared lane's turn.
+  static func makeSummaries(
+    _ inputs: Inputs, coordinator: MeetingCoordinator, lane: MeetingLocalModelLane
+  ) -> MeetingSummaryOwner {
+    let settings = inputs.settings
+    let keychain = inputs.keychain
+    let isIdle = inputs.isDictationIdle
+    return MeetingSummaryOwner(
+      dependencies: .init(
+        isEnabled: { settings.meetingWriteSummary },
+        selection: { (settings.llmProvider, settings.effectiveLLMModel) },
+        prepare: { provider, model in
+          await MeetingSummaryProviders.prepare(provider: provider, model: model, keychain: keychain)
+        },
+        visibleTranscript: {
+          [weak coordinator, transcriptCoordinator = inputs.transcriptCoordinator] meetingID in
+          guard let record = coordinator?.record(id: meetingID),
+            let row = transcriptCoordinator.currentRow(id: record.transcriptID),
+            case .visible(_, let text) = MeetingHistoryPresentation.project(
+              row, info: historyInfo(coordinator, meetingID: meetingID), showEcho: false),
+            !text.isEmpty
+          else { return nil }
+          return .init(text: text, speakerNames: row.speakerNames ?? [:])
+        },
+        isLocalTurn: { [weak coordinator] in
+          isIdle() && lane.asrUnits == 0 && !(coordinator?.hasFinalPassWork ?? false)
+        },
+        wakes: inputs.dictationWakes,
+        emitFinished: inputs.emitSummaryFinished,
+        log: inputs.log),
+      documents: coordinator.documents, lane: lane)
+  }
+
+  /// Which work a job does, for the lane (R50): a final pass yields only to a running local
+  /// summary call; a preview also to a local summary waiting for its turn.
+  enum JobKind {
+    case finalPass
+    case preview
+  }
+
+  /// When a job's unit may start: dictation first, then the lane's order (R50).
+  static func admission(
+    _ kind: JobKind, lane: MeetingLocalModelLane, dictationIdle: @escaping @MainActor () -> Bool
+  ) -> @MainActor () -> Bool {
+    switch kind {
+    case .finalPass: return { dictationIdle() && !lane.summaryCallRunning }
+    case .preview: return { dictationIdle() && !lane.summaryActive }
+    }
   }
 
   /// History's meeting facts, from the coordinator's in-memory durable copy (observable), and
@@ -112,12 +172,14 @@ enum MeetingWiring {
   }
 
   /// One pass's job, with its own engine and its own model claim.
-  static func makeJob(_ inputs: Inputs) -> MeetingTranscriptionJob {
+  static func makeJob(
+    _ inputs: Inputs, lane: MeetingLocalModelLane, kind: JobKind
+  ) -> MeetingTranscriptionJob {
     let isDeliveryEnabled = inputs.isDeliveryEnabled
     let engine = MeetingParakeetEngine(
       offlineModeAdmission: inputs.offlineModeAdmission, isModelSourceUsable: isDeliveryEnabled)
     let claim = MeetingModelClaim(gate: inputs.modelUseGate, resolve: inputs.meetingSelection)
-    let isIdle = inputs.isDictationIdle
+    let isIdle = admission(kind, lane: lane, dictationIdle: inputs.isDictationIdle)
     let wakes = inputs.dictationWakes
     let pressure = inputs.memoryPressure
     let workChanged = inputs.workChanged
@@ -132,14 +194,28 @@ enum MeetingWiring {
         },
         loadEngine: {
           guard let selection = claim.selection else { throw MeetingWiringError.noModelClaim }
+          lane.asrBegan()
+          defer { lane.asrEnded() }
           try await engine.load(selection: selection)
         },
-        transcribe: { samples in try await engine.transcribe(samples: samples, language: nil) },
-        unloadEngine: { await engine.unload() },
+        transcribe: { samples in
+          lane.asrBegan()
+          defer { lane.asrEnded() }
+          return try await engine.transcribe(samples: samples, language: nil)
+        },
+        unloadEngine: {
+          lane.asrBegan()
+          defer { lane.asrEnded() }
+          await engine.unload()
+        },
         analyzeSpeakers: { audio in
+          await MainActor.run { lane.asrBegan() }
           let analysis = await MeetingSpeakerAnalyzer.analyze(audio)
           // The speaker unit was an activation blocker; it has ended.
-          await MainActor.run { workChanged() }
+          await MainActor.run {
+            lane.asrEnded()
+            workChanged()
+          }
           return analysis
         },
         isTemporaryEngineContention: { MeetingParakeetEngine.isTemporaryContention($0) },
