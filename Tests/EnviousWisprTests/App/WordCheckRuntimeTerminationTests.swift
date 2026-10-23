@@ -380,6 +380,36 @@ struct WordCheckRuntimeTerminationTests {
     exit(0)
   }
 
+  /// The cleanup's own answer, each in a fresh process (MLX state is process-wide): it skips MLX
+  /// while nothing in the process has used MLX, and clears once something has (#3987).
+  @Test(
+    "the cache clear skips MLX until this process has used it, then clears",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/3987", "quit cleanup was MLX's first use"),
+    .timeLimit(.minutes(2)))
+  func cacheClearSkipsUntilMLXUsed() async throws {
+    let unused = await #expect(processExitsWith: .success, observing: [\.standardOutputContent]) {
+      // deadline-fallback: a hung child fails instead of stranding the branch check
+      DispatchQueue.global().asyncAfter(deadline: .now() + 60) {
+        childFail("watchdog")
+      }
+      let cleared = KevWordCheckModel.releaseCachedBuffers()
+      FileHandle.standardOutput.write(Data("kev-clear \(cleared ? "cleared" : "skipped")\n".utf8))
+      exit(0)
+    }
+    #expect(Self.childLines(try #require(unused).standardOutputContent) == ["kev-clear skipped"])
+    let used = await #expect(processExitsWith: .success, observing: [\.standardOutputContent]) {
+      // deadline-fallback: a hung child fails instead of stranding the branch check
+      DispatchQueue.global().asyncAfter(deadline: .now() + 60) {
+        childFail("watchdog")
+      }
+      _ = KevWordCheckModel.memorySnapshotForLog()
+      let cleared = KevWordCheckModel.releaseCachedBuffers()
+      FileHandle.standardOutput.write(Data("kev-clear \(cleared ? "cleared" : "skipped")\n".utf8))
+      exit(0)
+    }
+    #expect(Self.childLines(try #require(used).standardOutputContent) == ["kev-clear cleared"])
+  }
+
   /// Clears MLX's cache in a loop on its own thread. `Memory.clearCache()` takes MLX's evaluation
   /// lock, so a clear that stays blocked means an evaluation holds that lock right now.
   private final class EvalLockProbe: @unchecked Sendable {

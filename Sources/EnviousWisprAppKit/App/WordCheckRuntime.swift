@@ -329,9 +329,16 @@ final class WordCheckRuntime {
     // the deinit (and its cache clear) then runs off the main thread.
     let held = TerminationHold(model: loaded?.model)
     loaded = nil
+    let logger = Self.quitLogger
     terminationCleanupForTests = Task.detached(priority: .utility) {
       held.drop()
-      KevWordCheckModel.releaseCachedBuffers()
+      // A process that never used MLX has nothing to clear; cleanup must not start MLX (#3987).
+      // Log synchronously if cleanup reaches its outcome. A missing notice means outcome unobserved.
+      if KevWordCheckModel.releaseCachedBuffers() {
+        logger.notice("word check cache cleared reason=app_quit")
+      } else {
+        logger.notice("word check cache clear skipped reason=mlx_unused")
+      }
     }
     // os.Logger, not AppLogger: written synchronously, so the line survives the exit that follows.
     Self.quitLogger.notice("word check holder dropped reason=app_quit")
