@@ -22,8 +22,9 @@ package enum SyntheticKeyboardEventMarker {
 /// than the hold still receives both events together, so this fixes the ordinary case, not that one.
 ///
 /// Synchronous on purpose: the release must follow on every path, and a sleep here cannot fail or
-/// return early, so the chord's posting stays unconditional. Synthetic key-downs do not auto-repeat
-/// (measured: a 3 s hold pasted once), so a hold stretched by a busy Mac is harmless.
+/// return early, so the chord's posting stays unconditional. A synthetic key-down did not auto-repeat
+/// when held: a 2 s letter hold typed once and a 3 s Cmd+V hold pasted once (#3978); longer stalls
+/// are not measured.
 package enum SyntheticKeyHold {
   package static let milliseconds = 20
 
