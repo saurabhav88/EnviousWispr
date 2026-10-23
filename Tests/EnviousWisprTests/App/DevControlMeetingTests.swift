@@ -228,8 +228,10 @@
       let busy = await rig.call("meeting.deleteAudio", ["meetingID": meetingID])
       #expect(Self.code(busy) == "busy")
       await coordinator.stop()
+      // Ready is published a moment before the pass ends; the door refuses while it runs.
       await MeetingCoordinatorTests.eventually("ready") {
         coordinator.record(id: UUID(uuidString: meetingID)!)?.state == .ready
+          && coordinator.processing == nil
       }
 
       let audio = try #require(
