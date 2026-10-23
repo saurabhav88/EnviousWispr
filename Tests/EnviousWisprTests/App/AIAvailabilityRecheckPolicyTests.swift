@@ -171,9 +171,9 @@ struct AIAvailabilityRecheckPolicyTests {
     #expect(script.triggers.isEmpty)
   }
 
-  @Test("no report, an available report, or a report activation cannot test: no live read")
+  @Test("no report or an available report: no live read")
   func nothingToRepairReadsNothing() async throws {
-    for seed in [nil, Self.available, Self.report(.unavailable, [.unsupportedOS])] {
+    for seed in [nil, Self.available] {
       let script = Script()
       let c = try Self.coordinator(script, seed: seed)
       c.applicationDidBecomeActive()
@@ -383,6 +383,49 @@ struct AIAvailabilityRecheckPolicyTests {
     #expect(script.liveReads == 2)
     #expect(script.starts == 0)
     #expect(c.automaticStartsThisEpoch == 0)
+  }
+
+  @Test("a report stuck degraded after the budget recovers after Apple Intelligence goes off and on")
+  func exhaustedBudgetRecoversOnLiveChange() async throws {
+    let script = Script()
+    // Two repairs time out (degraded), then the third check, after the off/on, passes.
+    script.reports = [Self.report(.degraded), Self.report(.degraded), Self.available]
+    let c = try Self.coordinator(script, seed: Self.disabled)
+    c.applicationDidBecomeActive()  // live available vs disabled: repair 1, degraded
+    await Self.settle(c)
+    c.appleIntelligencePolishSucceeded()  // repair 2, degraded
+    await Self.settle(c)
+    c.appleIntelligencePolishSucceeded()  // budget spent
+    await Self.settle(c)
+    #expect(script.starts == 2)
+    // Activation still reads while degraded, but never starts a check for it.
+    c.applicationDidBecomeActive()
+    await Self.settle(c)
+    #expect(script.liveReads == 2)
+    #expect(script.starts == 2)
+    // Turned off, then on again in System Settings: each changed answer starts a new epoch.
+    script.live = .disabled
+    c.applicationDidBecomeActive()
+    await Self.settle(c)
+    script.live = .available
+    c.applicationDidBecomeActive()
+    await Self.settle(c)
+    #expect(c.automaticStartsThisEpoch == 0)
+    c.appleIntelligencePolishSucceeded()
+    await Self.settle(c)
+    #expect(script.starts == 3)
+    #expect(c.latestReport?.overallStatus == .available)
+  }
+
+  @Test("below macOS 26: activation reads, never checks")
+  func unsupportedReadsButNeverChecks() async throws {
+    let script = Script()
+    script.live = .unsupported
+    let c = try Self.coordinator(script, seed: Self.report(.unavailable, [.unsupportedOS]))
+    c.applicationDidBecomeActive()
+    await Self.settle(c)
+    #expect(script.liveReads == 1)
+    #expect(script.starts == 0)
   }
 
   @Test("losing eligibility during the wait drops the repair")

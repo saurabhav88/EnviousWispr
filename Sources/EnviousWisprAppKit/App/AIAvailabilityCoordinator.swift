@@ -164,12 +164,13 @@ final class AIAvailabilityCoordinator {
 
   // MARK: - Automatic repair (#3897)
 
-  /// App activation, forwarded on every activation. When the stored report says Apple
-  /// Intelligence is switched off or still downloading, reads the live answer off the main
-  /// thread and re-checks only when it disagrees, within the retry budget.
+  /// App activation, forwarded on every activation. While the stored report is not available,
+  /// reads the live answer off the main thread: a changed answer starts a new recovery epoch
+  /// (so a report the budget gave up on can recover after an off/on), and a re-check starts
+  /// only when the report says switched off or still downloading and the answer disagrees.
   func applicationDidBecomeActive() {
     guard repairDependencies.isRepairEligible(), let report = latestReport,
-      AppleAvailabilityRepair.activationClaim(of: report) != nil,
+      AppleAvailabilityRepair.activationSamples(report: report),
       liveReadTask == nil
     else { return }
     let generation = reportGeneration
@@ -415,6 +416,12 @@ enum AppleAvailabilityRepair {
   /// Apple Intelligence, or onboarding (whose card reads it) is not finished.
   static func isEligible(provider: LLMProvider, onboardingComplete: Bool) -> Bool {
     provider == .appleIntelligence || !onboardingComplete
+  }
+
+  /// Activation reads the live answer while the report is not available: the read is the
+  /// only way a changed answer can renew an exhausted budget (a report stuck degraded).
+  static func activationSamples(report: AppleIntelligenceAvailabilityReport) -> Bool {
+    report.overallStatus != .available
   }
 
   /// What a stored report claims about the live answer, when it is a claim activation can
