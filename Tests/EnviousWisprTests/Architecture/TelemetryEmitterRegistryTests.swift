@@ -221,8 +221,13 @@ struct TelemetryEmitterRegistryTests {
   /// per committed user "no", closed source/result, no text) and `custom_words.learn_blocked_seen`
   /// in `learnBlockedSeen` (per_take, keep; once per distinct blocked pair per watched paste,
   /// only `take_id`, in TAKE_KEYED_EVENTS). Readers: the #3975 plan §3a release review.
+  /// #2481, #3986: `quickAddOpened` gains `modifierReleaseMilliseconds:` and `bringBack:`
+  /// (properties `modifier_release_ms` Int and `bring_back` closed string, both omitted when the
+  /// step did not run), which changes that one site's enclosing-function identity. Same event, same
+  /// single site, same per_user_action cadence, no content; the event's row stays unchanged.
+  /// Reader: the #3986 plan §3a release review.
   static let sitesFingerprint =
-    "9ab9b292ab6387d51922742ad18449bd570db909e51b7be619ef8141c990a975"
+    "2380b9d4d73a6b02e81ce08f9db41551cab1121bd2601f6d0c31f0cf9732c77a"
   static let ungradedFingerprint =
     "8c5e46c2f2f7fb59004bb2eb5ea1ac210ef32dbb79fdcb68b3eff70a28cc133f"
 
