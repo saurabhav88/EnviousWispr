@@ -2582,19 +2582,13 @@ package final class LivePastedRegionAXOperations: PastedRegionAXOperations {
     return SelectionReader.resolveSubrole(error: error, value: ref)
   }
 
-  static let manualAccessibilityAttribute = "AXManualAccessibility" as CFString
-
+  // The Electron opt-in has one owner (#3986); this adapter keeps the seam its tests fake.
   package func supportsManualAccessibility(_ application: AXUIElement) -> Bool? {
-    var names: CFArray?
-    guard AXUIElementCopyAttributeNames(application, &names) == .success,
-      let list = names as? [String]
-    else { return nil }
-    return list.contains(Self.manualAccessibilityAttribute as String)
+    AccessibilityWake.supportsManualAccessibility(application)
   }
 
   package func enableManualAccessibility(_ application: AXUIElement) -> Bool {
-    AXUIElementSetAttributeValue(
-      application, Self.manualAccessibilityAttribute, kCFBooleanTrue) == .success
+    AccessibilityWake.enableManualAccessibility(application)
   }
 
   package func selectedRange(of element: AXUIElement) -> PastedRegionSelectedRange {

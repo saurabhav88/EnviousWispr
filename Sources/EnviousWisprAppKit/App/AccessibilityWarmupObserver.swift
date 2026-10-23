@@ -137,7 +137,7 @@ final class AccessibilityWarmupObserver {
   private static func primeAccessibility(pid: pid_t) async {
     // The role read is the wake (#3802); it must come before the focus read,
     // which alone leaves a sleeping Chrome asleep.
-    let roleError = PasteService.requestAccessibilityRole(
+    let roleError = AccessibilityWake.requestRole(
       ofAppWithPID: pid, messagingTimeout: PasteService.axMessagingTimeoutSeconds)
     let found =
       PasteService.focusedElement(
