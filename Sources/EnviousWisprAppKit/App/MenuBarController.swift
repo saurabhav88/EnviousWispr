@@ -1101,12 +1101,14 @@ extension MenuBarController: NSMenuDelegate {
         // All three outcomes are carried. A refusal is NOT an empty selection — collapsing them is
         // what made a missing Accessibility permission look identical to having selected nothing.
         //
-        // **`readForAcquisition` rather than `read` (#2465), and it is still side-effect free.** It
+        // **`readForAcquisition` rather than `read` (#2465): it touches no clipboard and posts no
+        // key.** Its one write is the target's accessibility wake (`AccessibilityWake`, #3986). It
         // is the same read; it additionally hands back which application answered, taken from the
-        // sample the read itself used. The click path needs that and cannot take its own, because
-        // by then the frontmost application is us. On the fallback-eligible outcomes it costs one
-        // more Accessibility operation on a handle already bounded by the timeout above; a
-        // successful read pays nothing.
+        // sample the read itself used. The click path needs that and must not take its own: a
+        // later sample is a later moment (in the measured cases a status-item click kept the user's
+        // app in front, 2026-10-23, #3986). Every read pays the bounded wake operations; on the
+        // fallback-eligible outcomes it also costs one more Accessibility operation on a handle
+        // already bounded by the timeout above.
         let (readResult, readContext) = SelectionReader.readForAcquisition(
           timeout: Self.quickAddReadTimeout,
           sampleSubrole: settings.quickAddClipboardFallback)
@@ -1259,8 +1261,8 @@ struct MenuBarViewState: Equatable {
   /// The application the Quick Add read was taken from, from that same sample (#2465).
   ///
   /// On the state for the same reason the selection is: `renderMenu` is pure over this value, and
-  /// re-deriving it inside would end that — and re-deriving is also the specific defect, because by
-  /// click time the frontmost application is us.
+  /// re-deriving it inside would end that — and re-deriving is also the specific defect, because a
+  /// later sample can describe a different app from the one the row was drawn for.
   let quickAddContext: SelectionReader.AcquisitionContext
 
   /// Whether the clipboard fallback may run, which decides whether an empty read is OFFERED or

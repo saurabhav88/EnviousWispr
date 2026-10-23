@@ -30,7 +30,9 @@ enum QuickAddEvent: Equatable, Sendable {
     clipboardRestore: SelectionAcquisition.ClipboardRestore,
     /// How long the shortcut keys took to come up in the fallback's wait (#2481), nil when no wait
     /// cleared. The number the next change to that cap will be tuned on.
-    modifierReleaseMs: Int?)
+    modifierReleaseMs: Int?,
+    /// What the copy fallback's bring-back step found (#3986), nil when the ladder ended before it.
+    bringBack: SelectionAcquisition.BringBack?)
 
   /// The panel closed, one way or another.
   case resolved(
@@ -151,9 +153,9 @@ final class QuickAddCoordinator {
     //
     // **The bundle id comes off the same outcome since #2465, and that is a fix rather than
     // tidying.** It used to be a live `frontmostBundleID()` read taken here. For the menu door that
-    // is reliably WRONG — the comments two files over establish that EnviousWispr is frontmost by
-    // click time, so every menu-route acquisition was attributed to us — and after the shortcut
-    // door's asynchronous wait it can be wrong too. An acquisition already knows which application
+    // can be WRONG — a later read samples a later moment, and the comments here once said the
+    // frontmost app at click time was us (measured false for Chrome and Finder, 2026-10-23, #3986) — and
+    // after the shortcut door's asynchronous wait it can be wrong too. An acquisition already knows which application
     // answered, from the sample its own read used, so it carries it. Found by local Codex review,
     // round 2.
     var selection = outcome.result
@@ -226,7 +228,8 @@ final class QuickAddCoordinator {
         acquired: outcome.acquired,
         acquisitionMs: outcome.acquisitionMs,
         clipboardRestore: outcome.clipboardRestore,
-        modifierReleaseMs: outcome.modifierReleaseMs)
+        modifierReleaseMs: outcome.modifierReleaseMs,
+        bringBack: outcome.bringBack)
 
     self.startedAt = startedAt
     return model

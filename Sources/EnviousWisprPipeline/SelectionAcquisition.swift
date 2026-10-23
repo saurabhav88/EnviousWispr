@@ -158,16 +158,19 @@ public enum SelectionAcquisition {
     /// the wait, or the keys were still held at the cap. Not the whole key hold: the wait starts a
     /// few milliseconds after the press.
     public let modifierReleaseMs: Int?
+    /// What the bring-back step found (#3986). Nil when the ladder ended before that step.
+    public let bringBack: BringBack?
 
-    /// `modifierReleaseMs` defaults to nil only for constructors outside the ladder (tests, the
-    /// panel's own doors); every `Outcome` the ladder builds passes it explicitly.
+    /// `modifierReleaseMs` and `bringBack` default to nil only for constructors outside the ladder
+    /// (tests, the panel's own doors); every `Outcome` the ladder builds passes both explicitly.
     public init(
       result: SelectionReader.Result,
       context: SelectionReader.AcquisitionContext,
       acquired: Acquired,
       acquisitionMs: Int?,
       clipboardRestore: ClipboardRestore,
-      modifierReleaseMs: Int? = nil
+      modifierReleaseMs: Int? = nil,
+      bringBack: BringBack? = nil
     ) {
       self.result = result
       self.context = context
@@ -175,7 +178,26 @@ public enum SelectionAcquisition {
       self.acquisitionMs = acquisitionMs
       self.clipboardRestore = clipboardRestore
       self.modifierReleaseMs = modifierReleaseMs
+      self.bringBack = bringBack
     }
+  }
+
+  /// What the bring-back step (STEP 2a) found, as `quick_add.opened` `bring_back` (#3986).
+  ///
+  /// A pid-targeted Copy does nothing in an app that is not in front (measured 2026-10-23: Chrome,
+  /// Safari and TextEdit behind Finder copied nothing), so the step brings the sampled app back
+  /// first. Measured on Chrome and Finder (2026-10-23), a status-item click keeps the user's app
+  /// in front, so the menu door usually answers `not_needed`; with one of our own windows open it is
+  /// not yet measured.
+  public enum BringBack: String, Sendable, CaseIterable {
+    /// The target was already frontmost; nothing was activated.
+    case notNeeded = "not_needed"
+    /// The target was brought back and observed frontmost within the deadline.
+    case front
+    /// The target did not come to the front within the deadline.
+    case timedOut = "timed_out"
+    /// The target quit, or its pid now names another application.
+    case targetGone = "target_gone"
   }
 
   /// The live readings the ladder waits on, injected so tests drive time and keys by hand (#3986).
@@ -190,15 +212,50 @@ public enum SelectionAcquisition {
     public var sleep: @MainActor @Sendable (Duration) async -> Void
     /// Whether any of Command, Shift, Option or Control is down, read from the HID state.
     public var modifiersHeld: @MainActor @Sendable () -> Bool
+    /// Process-wide secure keyboard entry (`IsSecureEventInputEnabled`).
+    var secureInputActive: @MainActor @Sendable () -> Bool
+    /// The live subrole probe of a pid's focused element (`SelectionReader.secureFocusProbe`). The
+    /// ladder decides with `SelectionReader.isSecureField`, which treats `.unreadable` as secure.
+    var secureFocusProbe: @MainActor @Sendable (pid_t) -> SelectionReader.SubroleOutcome
+    /// The event-posting grant (`CGPreflightPostEventAccess`).
+    var postingAuthorised: @MainActor @Sendable () -> Bool
+    /// Whether the sampled pid is still the application it was sampled as.
+    var targetStillPresent: @MainActor @Sendable (SelectionReader.AcquisitionContext) -> Bool
+    /// The virtual key for "c" on the active layout, nil when it cannot be read.
+    var copyKeyCode: @MainActor @Sendable () -> CGKeyCode?
+    /// The frontmost application's pid.
+    var frontmostPID: @MainActor @Sendable () -> pid_t?
+    /// Ask macOS to bring a pid to the front. Fire and forget; the poll is the oracle.
+    var activate: @MainActor @Sendable (pid_t) -> Void
+    /// Post one Copy chord at a pid. The live form is `SyntheticCopyChord.post`.
+    var postCopy: @MainActor @Sendable (pid_t, CGKeyCode) -> SyntheticCopyChord.PostResult
 
-    public init(
+    /// The full injected form, for tests. Every reading is injected and every guard still runs on
+    /// it; nothing here can supply a decision.
+    init(
       now: @escaping @MainActor @Sendable () -> ContinuousClock.Instant,
       sleep: @escaping @MainActor @Sendable (Duration) async -> Void,
-      modifiersHeld: @escaping @MainActor @Sendable () -> Bool
+      modifiersHeld: @escaping @MainActor @Sendable () -> Bool,
+      secureInputActive: @escaping @MainActor @Sendable () -> Bool,
+      secureFocusProbe: @escaping @MainActor @Sendable (pid_t) -> SelectionReader.SubroleOutcome,
+      postingAuthorised: @escaping @MainActor @Sendable () -> Bool,
+      targetStillPresent: @escaping @MainActor @Sendable (SelectionReader.AcquisitionContext) -> Bool,
+      copyKeyCode: @escaping @MainActor @Sendable () -> CGKeyCode?,
+      frontmostPID: @escaping @MainActor @Sendable () -> pid_t?,
+      activate: @escaping @MainActor @Sendable (pid_t) -> Void,
+      postCopy: @escaping @MainActor @Sendable (pid_t, CGKeyCode) -> SyntheticCopyChord.PostResult
     ) {
       self.now = now
       self.sleep = sleep
       self.modifiersHeld = modifiersHeld
+      self.secureInputActive = secureInputActive
+      self.secureFocusProbe = secureFocusProbe
+      self.postingAuthorised = postingAuthorised
+      self.targetStillPresent = targetStillPresent
+      self.copyKeyCode = copyKeyCode
+      self.frontmostPID = frontmostPID
+      self.activate = activate
+      self.postCopy = postCopy
     }
 
     /// The production readings.
@@ -209,14 +266,38 @@ public enum SelectionAcquisition {
     public static let live = Environment(
       now: { ContinuousClock.now },
       sleep: { duration in
-        // `do/catch`, never `try?`, for `pause`'s reason; the poll checks cancellation after it.
+        // A cancelled sleep returns early and every caller checks `Task.isCancelled` right after
+        // it, so the cancellation is never spent as "time passed": a `try?` here followed by work
+        // with no such check is the trap `ClipboardCleanup` documents, and here it would post a
+        // keystroke into a cancelled invocation.
         do { try await Task.sleep(for: duration) } catch {}
       },
       modifiersHeld: {
         !CGEventSource.flagsState(.hidSystemState).isDisjoint(
           with: [.maskCommand, .maskShift, .maskAlternate, .maskControl])
-      })
+      },
+      secureInputActive: { IsSecureEventInputEnabled() },
+      secureFocusProbe: { pid in
+        SelectionReader.secureFocusProbe(pid: pid, timeout: secureProbeTimeout)
+      },
+      postingAuthorised: { CGPreflightPostEventAccess() },
+      targetStillPresent: { SelectionAcquisition.liveTargetStillPresent($0) },
+      copyKeyCode: { SyntheticCopyChord.copyKeyCode() },
+      frontmostPID: { NSWorkspace.shared.frontmostApplication?.processIdentifier },
+      // The AX route first, as Paste Last Dictation does: macOS 14+ refuses a background process
+      // the foreground through `activate()` alone, so that is only the fallback.
+      activate: { pid in
+        if !PasteService.forceActivateApp(pid: pid) {
+          NSRunningApplication(processIdentifier: pid)?.activate()
+        }
+      },
+      postCopy: { pid, key in SyntheticCopyChord.post(at: pid, copyKeyCode: key) })
   }
+
+  /// How long the bring-back step waits for the target to be observed in front, and how often it
+  /// looks. The same values Paste Last Dictation uses for the same wait.
+  static let activationDeadline: Duration = .milliseconds(500)
+  static let activationPollInterval: Duration = .milliseconds(10)
 
   // MARK: - Budgets
   //
@@ -295,14 +376,14 @@ public enum SelectionAcquisition {
   ///
   /// **The menu cannot do the read here and must not redo it.** `menuNeedsUpdate` has to be
   /// synchronous, so the row is drawn from a bounded read taken while the user's own application was
-  /// still frontmost. By click time the frontmost application is us — which is why #2412 stopped
-  /// re-reading — so the sample this is handed is the only one that is about the user's document.
+  /// still frontmost, and the sample this is handed is that read's (#2412 stopped re-reading).
   ///
-  /// **That the fallback works from here at all was measured, not assumed.** A word highlighted in
-  /// WhatsApp, Finder brought to the front, the chord aimed at WhatsApp's remembered pid: the word
-  /// came back, two-way controlled, with a screenshot confirming the highlight survived the app
-  /// switch. A backgrounded application answers a chord aimed at its pid, and the plan said the
-  /// opposite until somebody asked why.
+  /// **What the click leaves in front was measured, twice, with different answers.** On 2026-08-26
+  /// a word highlighted in WhatsApp with Finder brought to the front came back from a chord at
+  /// WhatsApp's pid. On 2026-10-23 (#3986), real clicks on the status item and its row left the
+  /// user's app (Chrome, Finder) frontmost throughout, and Chrome, Safari and TextEdit put behind
+  /// another app copied nothing. So the ordinary case needs no activation, and step 2a brings the
+  /// target back for the case that does.
   public static func acquire(
     following result: SelectionReader.Result,
     context: SelectionReader.AcquisitionContext,
@@ -320,7 +401,7 @@ public enum SelectionAcquisition {
         acquisitionMs: nil,
         clipboardRestore: .notTouched,
         // Neither step ran: the fallback was never attempted.
-        modifierReleaseMs: nil)
+        modifierReleaseMs: nil, bringBack: nil)
     }
     return await attemptCopyFallback(
       context: context, fallbackEnabled: fallbackEnabled, environment: environment, board: board)
@@ -341,11 +422,13 @@ public enum SelectionAcquisition {
     // Set once the shortcut-key wait clears (#2481); nil before it and when it did not. Captured by
     // reference by every exit below, so a later refusal still reports how long the keys took.
     var modifierReleaseMs: Int? = nil
+    // Set by STEP 2a; nil before it. Captured the same way.
+    var bringBack: BringBack? = nil
     func refusing(_ why: SelectionReader.Refusal) -> Outcome {
       Outcome(
         result: .refused(why), context: context, acquired: .nothing,
         acquisitionMs: elapsedMs(), clipboardRestore: .notTouched,
-        modifierReleaseMs: modifierReleaseMs)
+        modifierReleaseMs: modifierReleaseMs, bringBack: bringBack)
     }
 
     // STEP 1 — the policy questions, all of them, in a declared order. Nothing has been touched.
@@ -367,7 +450,7 @@ public enum SelectionAcquisition {
         restore: .notTouched)
       return refusing(.noFrontmostApplication)
     }
-    if let refusal = liveRefusal(pid: pid, context: context, fallbackEnabled: fallbackEnabled) {
+    if let refusal = liveRefusal(pid: pid, context: context, fallbackEnabled: fallbackEnabled, environment) {
       await log(
         context: context, acquired: .nothing, refusal: refusal, ms: elapsedMs(),
         restore: .notTouched)
@@ -376,7 +459,7 @@ public enum SelectionAcquisition {
 
     // Resolved once, before anything is posted, so a layout we cannot read refuses instead of
     // pressing whatever key happens to sit at position 8 on an ANSI board.
-    guard let copyKey = SyntheticCopyChord.copyKeyCode() else {
+    guard let copyKey = environment.copyKeyCode() else {
       await log(
         context: context, acquired: .nothing, refusal: .copyRefused, ms: elapsedMs(),
         restore: .notTouched)
@@ -395,6 +478,53 @@ public enum SelectionAcquisition {
     await AppLogger.shared.log(
       "modifiers clear release_ms=\(releasedAfter)", level: .info, category: "QuickAdd")
 
+    // STEP 2a — bring the sampled app back to the front if it is not there (#3986). Still nothing
+    // touched.
+    //
+    // A pid-targeted Copy does nothing in an app that is not in front (measured 2026-10-23), and
+    // posting it anyway would spend the 400 ms answer wait and a clipboard takeover on a known
+    // no-op. A status-item click kept the user's app in front in the measured cases (Chrome, Finder,
+    // 2026-10-23); this is the guard for the cases that do not, which are not yet measured.
+    //
+    // **Identity is re-checked BEFORE activating**, because step 2 can take 1.5 s, long enough for
+    // the target to quit and its pid to be reissued: bringing a stranger forward is a visible side
+    // effect of its own. Steps 2b and 3b then re-ask every safety question AFTER the app came
+    // forward, which is when a password field could become focused.
+    //
+    // **Cancellation is checked first, on both branches:** the log line above suspends, and a
+    // cancelled invocation must reach neither the activation nor the chord. It maps like an expired
+    // activation wait: target gone if it is gone, otherwise a refused copy.
+    if Task.isCancelled {
+      let gone = !environment.targetStillPresent(context)
+      bringBack = gone ? .targetGone : .timedOut
+      let refusal: SelectionReader.Refusal = gone ? .targetApplicationGone : .copyRefused
+      await logStep("2a", refusal: refusal)
+      return refusing(refusal)
+    }
+    if environment.frontmostPID() == pid {
+      bringBack = .notNeeded
+    } else {
+      guard environment.targetStillPresent(context) else {
+        bringBack = .targetGone
+        await logStep("2a", refusal: .targetApplicationGone)
+        return refusing(.targetApplicationGone)
+      }
+      environment.activate(pid)
+      switch await DeadlinePoll.wait(
+        within: activationDeadline, every: activationPollInterval, now: environment.now,
+        sleep: environment.sleep, { environment.frontmostPID() == pid })
+      {
+      case .met:
+        bringBack = .front
+      case .expired, .cancelled:
+        let gone = !environment.targetStillPresent(context)
+        bringBack = gone ? .targetGone : .timedOut
+        let refusal: SelectionReader.Refusal = gone ? .targetApplicationGone : .copyRefused
+        await logStep("2a", refusal: refusal)
+        return refusing(refusal)
+      }
+    }
+
     // STEP 2b — RE-ASK the policy questions, because step 2 can have taken up to 1.5 seconds.
     //
     // **The LIFETIME axis, and it is the one a first reading of this ladder does not see.** Step 1's
@@ -412,7 +542,7 @@ public enum SelectionAcquisition {
     // mode is a secret on the clipboard was the one still answering from memory, inside a block
     // whose own comment said it was live. `secureFocusProbe` asks the SAME pid, right now, and
     // `isSecureField` answers TRUE when it cannot tell.
-    if let refusal = liveRefusal(pid: pid, context: context, fallbackEnabled: fallbackEnabled) {
+    if let refusal = liveRefusal(pid: pid, context: context, fallbackEnabled: fallbackEnabled, environment) {
       await log(
         context: context, acquired: .nothing, refusal: refusal, ms: elapsedMs(),
         restore: .notTouched)
@@ -474,7 +604,7 @@ public enum SelectionAcquisition {
         return Outcome(
           result: .refused(.copyRefused), context: context, acquired: .nothing,
           acquisitionMs: elapsedMs(), clipboardRestore: .supersededByDelivery,
-          modifierReleaseMs: modifierReleaseMs)
+          modifierReleaseMs: modifierReleaseMs, bringBack: bringBack)
       }
       ClipboardCleanup.endTakeover(token)
 
@@ -496,7 +626,7 @@ public enum SelectionAcquisition {
         return Outcome(
           result: result, context: context, acquired: acquired,
           acquisitionMs: elapsedMs(), clipboardRestore: .notTouched,
-          modifierReleaseMs: modifierReleaseMs)
+          modifierReleaseMs: modifierReleaseMs, bringBack: bringBack)
       }
 
       // The user's clipboard after we copied THEIR selection, not a dictation: no marker added.
@@ -509,7 +639,7 @@ public enum SelectionAcquisition {
       return Outcome(
         result: result, context: context, acquired: acquired,
         acquisitionMs: elapsedMs(), clipboardRestore: restore,
-        modifierReleaseMs: modifierReleaseMs)
+        modifierReleaseMs: modifierReleaseMs, bringBack: bringBack)
     }
 
     // STEP 3b — the LAST live check of every policy question, immediately before the chord.
@@ -532,13 +662,27 @@ public enum SelectionAcquisition {
     // Past the takeover, so a refusal returns through `concluding` and honours the restore
     // obligation — and because nothing has been posted, the board is unchanged and the no-write
     // path leaves the user's clipboard alone.
-    if let refusal = liveRefusal(pid: pid, context: context, fallbackEnabled: fallbackEnabled) {
+    if let refusal = liveRefusal(pid: pid, context: context, fallbackEnabled: fallbackEnabled, environment) {
       return await concluding(.refused(refusal), acquired: .nothing)
+    }
+
+    // STEP 3c — the last two readings before the chord, with no wait (#3986). Ported from Paste
+    // Last Dictation, which re-checks after its own activation: the user can switch apps, or press
+    // a modifier again, during the takeover. A Copy under a held modifier reaches the app as a
+    // different shortcut; one at an app that left the front does nothing. Nothing awaits between a
+    // passing check and the post. A cancelled invocation never posts.
+    if Task.isCancelled || environment.frontmostPID() != pid {
+      await logStep("3c", refusal: .copyRefused)
+      return await concluding(.refused(.copyRefused), acquired: .nothing)
+    }
+    if environment.modifiersHeld() {
+      await logStep("3c", refusal: .modifiersHeld)
+      return await concluding(.refused(.modifiersHeld), acquired: .nothing)
     }
 
     // STEP 4 — one chord, never retried. A copy can have side effects in an app that binds it to
     // something else, and a retry doubles them.
-    switch SyntheticCopyChord.post(at: pid, copyKeyCode: copyKey) {
+    switch environment.postCopy(pid, copyKey) {
     case .notPosted:
       return await concluding(.refused(.copyRefused), acquired: .nothing)
     case .clearFailed:
@@ -589,7 +733,9 @@ public enum SelectionAcquisition {
     // The 400 ms cap is not shortened to narrow the window either. It is sized for the slowest
     // SUPPORTED Mac, not for this one, and trading the feature's reliability everywhere against a
     // rare race is the wrong direction.
-    guard let settled = await settledChangeCountAfterCopy(board: board, from: ownedChangeCount)
+    guard
+      let settled = await settledChangeCountAfterCopy(
+        board: board, from: ownedChangeCount, environment: environment)
     else {
       return await concluding(.refused(.copyRefused), acquired: .nothing)
     }
@@ -725,17 +871,21 @@ public enum SelectionAcquisition {
   ///
   /// The SAMPLED context goes in unchanged: this re-asks the live questions and never re-samples
   /// the application, which is the defect the type doc's third numbered point is about.
+  ///
+  /// The readings come from `environment` (#3986): `.live` in production, injected in tests. The
+  /// decision is always `mayAttempt`, so a test can choose what is observed, never what is decided.
+  @MainActor
   private static func liveRefusal(
     pid: pid_t,
     context: SelectionReader.AcquisitionContext,
-    fallbackEnabled: Bool
+    fallbackEnabled: Bool,
+    _ environment: Environment
   ) -> SelectionReader.Refusal? {
     mayAttempt(
-      secureInputActive: IsSecureEventInputEnabled(),
-      focusedElementIsSecure: SelectionReader.isSecureField(
-        SelectionReader.secureFocusProbe(pid: pid, timeout: secureProbeTimeout)),
-      postingAuthorised: CGPreflightPostEventAccess(),
-      targetStillPresent: targetStillPresent(context),
+      secureInputActive: environment.secureInputActive(),
+      focusedElementIsSecure: SelectionReader.isSecureField(environment.secureFocusProbe(pid)),
+      postingAuthorised: environment.postingAuthorised(),
+      targetStillPresent: environment.targetStillPresent(context),
       fallbackEnabled: fallbackEnabled,
       context: context)
   }
@@ -744,7 +894,7 @@ public enum SelectionAcquisition {
   ///
   /// **Resolves a remembered identity rather than asking who is frontmost.** That distinction is the
   /// whole point: `NSWorkspace.shared.frontmostApplication` would answer about a different
-  /// application, and by the time the menu-bar door reaches here the answer would be us. A pid is a
+  /// application whenever the user has moved on, and step 2a may itself have changed it. A pid is a
   /// reusable handle, and a menu can sit open long enough for one to be recycled.
   ///
   /// **A context with no bundle identifier to compare gets a WEAKER check, and that is the second
@@ -753,7 +903,7 @@ public enum SelectionAcquisition {
   /// unbundled application to close a window that requires the target to quit AND its pid to be
   /// reissued AND the user to still be looking at a menu, so the check is weakened rather than the
   /// feature. What it must not do is pretend to be the same check, which is why this says so.
-  private static func targetStillPresent(_ context: SelectionReader.AcquisitionContext) -> Bool {
+  static func liveTargetStillPresent(_ context: SelectionReader.AcquisitionContext) -> Bool {
     guard let pid = context.pid, pid > 0,
       let running = NSRunningApplication(processIdentifier: pid)
     else { return false }
@@ -793,12 +943,14 @@ public enum SelectionAcquisition {
   /// an empty string.
   private static func settledChangeCountAfterCopy(
     board: NSPasteboard,
-    from baseline: Int
+    from baseline: Int,
+    environment: Environment
   ) async -> Int? {
     var waited = 0
 
     while waited < copyAnswerCapMs {
-      guard await pause(milliseconds: copyPollIntervalMs) else { return nil }
+      await environment.sleep(.milliseconds(copyPollIntervalMs))
+      if Task.isCancelled { return nil }
       waited += copyPollIntervalMs
 
       let moved = board.changeCount
@@ -809,7 +961,8 @@ public enum SelectionAcquisition {
       // rich copy comes back as an empty string.
       var settled = moved
       while waited < copyAnswerCapMs {
-        guard await pause(milliseconds: copySettleMs) else { return nil }
+        await environment.sleep(.milliseconds(copySettleMs))
+        if Task.isCancelled { return nil }
         waited += copySettleMs
         let after = board.changeCount
         if after == settled { return settled }
@@ -831,18 +984,12 @@ public enum SelectionAcquisition {
     return nil
   }
 
-  /// A cancellation-aware sleep. False means the task was cancelled and the caller must abandon.
-  ///
-  /// **`do/catch`, never `try?`.** `try? await Task.sleep` swallows the cancellation and falls
-  /// straight through to the next statement, performing the work early — the same trap
-  /// `ClipboardCleanup` documents, and here it would post a keystroke into a cancelled invocation.
-  private static func pause(milliseconds: Int) async -> Bool {
-    do {
-      try await Task.sleep(for: .milliseconds(milliseconds))
-      return true
-    } catch {
-      return false
-    }
+  /// Which step refused, for the two steps whose refusal shares a reason with an earlier step
+  /// (#3986): Live UAT reads it to tell the last check from the first.
+  private static func logStep(_ step: String, refusal: SelectionReader.Refusal) async {
+    await AppLogger.shared.log(
+      "Quick Add acquisition: refused at step=\(step) reason=\(refusal.rawValue)",
+      level: .info, category: "QuickAdd")
   }
 
   /// One support line per invocation. Never the word, on any path, including under Debug Mode.

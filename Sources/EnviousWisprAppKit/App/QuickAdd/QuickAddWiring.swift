@@ -141,13 +141,13 @@ final class QuickAddWiring {
   /// **Takes the reading rather than reading it here, and that is the whole point of the door.** The
   /// menu is rendered while the user's own application is still frontmost — measured, twice — so the
   /// read happens there, at the one moment the answer is about their document. Reading it from this
-  /// side would run after the click, by which time the menu has closed and the answer is ours.
+  /// side would run after the click, a later moment than the row the user chose was drawn from.
   ///
   /// **Since #2465 it may also fall back, and the plan said this was impossible until it was
-  /// measured.** The synchronous constraint binds the menu's RENDER, not its click; and the reason
-  /// a live read here would be about us does not bind a chord aimed at a remembered pid. Measured:
-  /// a word highlighted in WhatsApp, Finder brought to the front, the chord posted at WhatsApp's
-  /// pid — the word came back. So the two doors now give the same answer through the same
+  /// measured.** The synchronous constraint binds the menu's RENDER, not its click, and the chord is
+  /// aimed at the remembered pid. In the measured cases a status-item click kept the user's app in
+  /// front (Chrome, Finder, 2026-10-23, #3986); when it is not in front, the ladder's step 2a brings it back, because a
+  /// background app copies nothing. So the two doors give the same answer through the same
   /// mechanism, rather than needing copy to explain why they differ.
   func beginFromMenuBar(
     selection: SelectionReader.Result,

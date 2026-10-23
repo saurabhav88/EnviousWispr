@@ -1,3 +1,4 @@
+import EnviousWisprPipeline
 import EnviousWisprServices
 import Foundation
 import Testing
@@ -58,7 +59,7 @@ import Testing
           preselected: true, topScore: 0.8631, sourceBundleID: "com.apple.TextEdit",
           heardLength: Self.secret.unicodeScalars.count,
           acquired: "copy", acquisitionMilliseconds: 41, clipboardRestore: "restored",
-          modifierReleaseMilliseconds: nil)
+          modifierReleaseMilliseconds: nil, bringBack: nil)
       }
 
       let event = try #require(events.first { $0.name == "quick_add.opened" })
@@ -93,7 +94,7 @@ import Testing
           door: "hotkey", hadSelection: true, refuseReason: nil, candidateCount: 1,
           preselected: false, topScore: 0.4, sourceBundleID: "com.apple.TextEdit", heardLength: 6,
           acquired: "copy", acquisitionMilliseconds: 41, clipboardRestore: "restored",
-          modifierReleaseMilliseconds: nil)
+          modifierReleaseMilliseconds: nil, bringBack: nil)
       }
 
       let event = try #require(events.first)
@@ -109,7 +110,7 @@ import Testing
           door: "hotkey", hadSelection: false, refuseReason: "selection_unavailable",
           candidateCount: 0, preselected: false, topScore: nil, sourceBundleID: nil, heardLength: 0,
           acquired: "copy", acquisitionMilliseconds: 41, clipboardRestore: "restored",
-          modifierReleaseMilliseconds: nil)
+          modifierReleaseMilliseconds: nil, bringBack: nil)
       }
 
       let event = try #require(events.first)
@@ -125,7 +126,7 @@ import Testing
           door: "hotkey", hadSelection: true, refuseReason: nil, candidateCount: 2,
           preselected: true, topScore: 0.9, sourceBundleID: "com.apple.TextEdit", heardLength: 6,
           acquired: "copy", acquisitionMilliseconds: 41, clipboardRestore: "restored",
-          modifierReleaseMilliseconds: nil)
+          modifierReleaseMilliseconds: nil, bringBack: nil)
       }
 
       #expect(try #require(events.first).stringProps["refuse_reason"] == "none")
@@ -141,12 +142,30 @@ import Testing
             door: "hotkey", hadSelection: true, refuseReason: nil, candidateCount: 1,
             preselected: false, topScore: 0.5, sourceBundleID: "com.google.Chrome", heardLength: 6,
             acquired: "copy", acquisitionMilliseconds: 600, clipboardRestore: "restored",
-            modifierReleaseMilliseconds: release)
+            modifierReleaseMilliseconds: release, bringBack: nil)
         }
       }
       #expect(try #require(opened(420).first).intProps["modifier_release_ms"] == 420)
       #expect(try #require(opened(0).first).intProps["modifier_release_ms"] == 0)
       #expect(try #require(opened(nil).first).intProps["modifier_release_ms"] == nil)
+    }
+
+    @Test("bring_back ships its closed value when the step ran, and is absent when it did not")
+    func bringBackIsPresentOrAbsent() throws {
+      // #3986. Every value of the closed set reaches PostHog verbatim; nil leaves the key out.
+      func opened(_ value: String?) -> [CapturedTelemetryEvent] {
+        captureEvents {
+          TelemetryService.shared.quickAddOpened(
+            door: "menuBar", hadSelection: true, refuseReason: nil, candidateCount: 1,
+            preselected: false, topScore: 0.5, sourceBundleID: "com.google.Chrome", heardLength: 6,
+            acquired: "copy", acquisitionMilliseconds: 80, clipboardRestore: "restored",
+            modifierReleaseMilliseconds: 0, bringBack: value)
+        }
+      }
+      for value in SelectionAcquisition.BringBack.allCases.map(\.rawValue) {
+        #expect(try #require(opened(value).first).stringProps["bring_back"] == value)
+      }
+      #expect(try #require(opened(nil).first).stringProps["bring_back"] == nil)
     }
 
     @Test("The score ships as a real number, rounded but not bucketed")
@@ -159,7 +178,7 @@ import Testing
           door: "hotkey", hadSelection: true, refuseReason: nil, candidateCount: 3,
           preselected: true, topScore: 0.8631, sourceBundleID: "com.apple.TextEdit", heardLength: 6,
           acquired: "copy", acquisitionMilliseconds: 41, clipboardRestore: "restored",
-          modifierReleaseMilliseconds: nil)
+          modifierReleaseMilliseconds: nil, bringBack: nil)
       }
 
       #expect(try #require(events.first).doubleProps["top_score"] == 0.86)

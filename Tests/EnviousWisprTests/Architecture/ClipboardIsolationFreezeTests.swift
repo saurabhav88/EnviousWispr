@@ -129,10 +129,10 @@ struct ClipboardIsolationFreezeTests {
   ///                                                            general read gated on a fired clipboard snippet
   ///   PasteService.boundedSaveClipboard(from:)         READ    #2465; defaulted board, so it is in
   ///                                                            `clipboardFunctions` below
-  ///   SelectionAcquisition.acquire(board:)             WRITE   #2465; boarded. No test calls it at
-  ///                                                            all: it posts a real key event, so
-  ///                                                            Live UAT is its proof and only its
-  ///                                                            pure decisions are unit-tested
+  ///   SelectionAcquisition.acquire(board:)             WRITE   #2465; boarded. Since #3986 only
+  ///                                                            `SelectionAcquisitionLadderTests`
+  ///                                                            calls it, always with an isolated
+  ///                                                            named board and a fake chord
   ///
   /// Re-derive with `grep -rn "NSPasteboard\.general" Sources/` and classify each hit write/read and
   /// reachable/not. Two entries here arrived as separate review findings before the enumeration was

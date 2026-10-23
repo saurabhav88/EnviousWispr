@@ -287,30 +287,9 @@ struct SelectionAcquisitionTests {
 
   // MARK: Structural properties, which no run can observe
 
-  /// **The one property with no runtime assertion available, so it is asserted structurally.**
-  /// `SelectionReader.Frontmost` exists because taking the pid in one place and the identity one
-  /// call later described two different applications, found by cloud review on PR #2428. A ladder
-  /// that re-asks the workspace for a pid recreates that defect one layer up and posts a keystroke
-  /// at whatever came forward in between.
-  ///
-  /// A behavioural test cannot see this: both the correct and the incorrect version answer
-  /// identically whenever nothing switched during the run, which is every run on a test machine.
-  /// So the check is on the SOURCE, and it fails the moment somebody adds the call.
-  @Test("The acquisition ladder never samples the frontmost application")
-  func theLadderNeverResamplesTheWorkspace() throws {
-    let code = try Self.executableLines(of: "SelectionAcquisition.swift")
-
-    // **Positive control first, or an empty match set is indistinguishable from a broken reader.**
-    // If the comment stripping or the file path is wrong, `code` is empty and every absence check
-    // below passes while looking at nothing.
-    #expect(
-      code.contains(where: { $0.contains("SelectionReader.readForAcquisition") }),
-      "the source reader could not see a call it is known to contain")
-
-    #expect(
-      !code.contains(where: { $0.contains("NSWorkspace.shared.frontmostApplication") }),
-      "a second sample: the pid must come from the read's own sample")
-  }
+  // The "never re-samples the frontmost application" guard moved to
+  // `SelectionAcquisitionTargetGuardTests` (#3986), which checks the parsed tree: since #3986 the
+  // ladder must read who is in front, so the property is now "posts only at the sampled pid".
 
   /// The subject's source, minus comment lines, so prose ABOUT a call is not read as the call.
   private static func executableLines(of file: String) throws -> [Substring] {
@@ -369,7 +348,15 @@ struct SelectionAcquisitionTests {
           self.elapsed += requested
           if self.cancelOnFirstSleep { withUnsafeCurrentTask { $0?.cancel() } }
         },
-        modifiersHeld: { self.releaseAt.map { self.elapsed < $0 } ?? true })
+        modifiersHeld: { self.releaseAt.map { self.elapsed < $0 } ?? true },
+        // Only the wait runs here; the rest of the ladder is covered by the ladder suite.
+        secureInputActive: { false }, secureFocusProbe: { _ in .subrole(nil) },
+        postingAuthorised: { true }, targetStillPresent: { _ in true }, copyKeyCode: { 8 },
+        frontmostPID: { nil }, activate: { _ in },
+        postCopy: { _, _ in
+          Issue.record("the wait tests never post")
+          return .notPosted
+        })
     }
   }
 

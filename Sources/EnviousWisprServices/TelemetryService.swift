@@ -1067,7 +1067,7 @@ public final class TelemetryService {
     door: String, hadSelection: Bool, refuseReason: String?, candidateCount: Int,
     preselected: Bool, topScore: Double?, sourceBundleID: String?, heardLength: Int,
     acquired: String, acquisitionMilliseconds: Int?, clipboardRestore: String,
-    modifierReleaseMilliseconds: Int?
+    modifierReleaseMilliseconds: Int?, bringBack: String?
   ) {
     var props: [String: Any] = [
       "door": door, "had_selection": hadSelection, "candidate_count": candidateCount,
@@ -1083,6 +1083,9 @@ public final class TelemetryService {
     // #2481: how long the shortcut keys took to come up in the copy fallback's wait. Absent, not
     // zero, when no wait cleared; zero is a real reading (the keys were already up).
     if let modifierReleaseMilliseconds { props["modifier_release_ms"] = modifierReleaseMilliseconds }
+    // #3986: what the copy fallback's bring-back step found (not_needed, front, timed_out,
+    // target_gone). Absent when the ladder ended before that step.
+    if let bringBack { props["bring_back"] = bringBack }
     if let topScore { props["top_score"] = (topScore * 100).rounded() / 100 }
     #if DEBUG
       // DERIVED from `props`, never re-listed — the #1987 lesson. A projection built independently
