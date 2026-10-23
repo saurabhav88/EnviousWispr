@@ -38,17 +38,18 @@ struct SyntheticKeyHoldTests {
     // Direct statements of the body only: a hold inside an `if` or a closure would not run on
     // every chord, so it does not count.
     let kinds = body.statements.map { Self.kind(of: $0.item) }
-    let down = kinds.firstIndex(of: .keyDownPost)
-    let hold = kinds.firstIndex(of: .hold)
-    let up = kinds.firstIndex(of: .keyUpPost)
     #expect(kinds.filter { $0 == .hold }.count == 1, "\(function): expected exactly one hold")
-    let d = try #require(down, "\(function): no key-down post statement")
-    let h = try #require(hold, "\(function): no direct SyntheticKeyHold.beforeRelease() statement")
-    let u = try #require(up, "\(function): no key-up post statement")
+    let d = try #require(kinds.firstIndex(of: .keyDownPost), "\(function): no key-down post")
+    let h = try #require(kinds.firstIndex(of: .hold), "\(function): no direct hold statement")
+    let u = try #require(kinds.firstIndex(of: .keyUpPost), "\(function): no key-up post")
     #expect(d < h && h < u, "\(function): order must be key-down post, hold, key-up post")
+    // The pid chord's Command is machine-wide: released before the hold, or a key typed in the wait
+    // becomes a Command shortcut (#3978 cloud review).
+    let commandUp = kinds.firstIndex(of: .commandUpPost)
+    #expect(function != "post" || commandUp.map { $0 < h } == true, "\(function): release Command first")
   }
 
-  private enum Kind: Equatable { case keyDownPost, hold, keyUpPost, other }
+  private enum Kind: Equatable { case keyDownPost, hold, keyUpPost, commandUpPost, other }
 
   /// `keyDown.post…(…)`, `SyntheticKeyHold.beforeRelease()` or `keyUp.post…(…)` as a whole
   /// statement; anything else is `other`.
@@ -66,6 +67,7 @@ struct SyntheticKeyHoldTests {
     switch receiver {
     case "keyDown": return .keyDownPost
     case "keyUp": return .keyUpPost
+    case "commandUp": return .commandUpPost
     default: return .other
     }
   }

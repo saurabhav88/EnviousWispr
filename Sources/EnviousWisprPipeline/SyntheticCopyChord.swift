@@ -96,10 +96,17 @@ enum SyntheticCopyChord {
     commandDown.postToPid(pid)
     keyDown.flags = .maskCommand
     keyDown.postToPid(pid)
-    SyntheticKeyHold.beforeRelease()
-    keyUp.flags = .maskCommand
-    keyUp.postToPid(pid)
+    // Command is released BEFORE the key hold (#3978 cloud review): until `commandUp`, the target
+    // app has seen Command go down and not come up, so a key the user types into it during the
+    // wait could arrive as a Command shortcut (Cmd+W, Cmd+Q). Measured on #3978: this postToPid
+    // pair leaves the global HID and session modifier tables unchanged (a HID-tap post of the same
+    // pair flips both), so the exposure is that one app, not the whole machine. The chord fires on
+    // the key-down, and a key-up after Command's release is an order people also type; in the
+    // #3978 TinyMCE rig this order with the hold pasted once in 10 of 10.
     commandUp.postToPid(pid)
+    SyntheticKeyHold.beforeRelease()
+    keyUp.flags = []
+    keyUp.postToPid(pid)
 
     // **`clearFailed` is now unreachable from this function and the case stays**, because the state
     // it names is still real: a release we posted can be lost by the window server, and a future
