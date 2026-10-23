@@ -88,12 +88,22 @@ struct MeetingRecorderTests {
     func stopNow() { stopCount += 1 }
   }
 
-  final class FakeCallSound: MeetingCallSoundSource {
+  final class FakeCallSound: MeetingCallSoundSource, @unchecked Sendable {
     var startError: Error?
     var stopCount = 0
+    /// Whether `start` ran on the main thread (it must not: macOS's prompt blocks it).
+    private(set) var startedOnMainThread: Bool?
+    /// When set, `start` waits for it (the macOS prompt still open), at most 10 s.
+    var startHold: DispatchSemaphore?
+    let startEntered = DispatchSemaphore(value: 0)
     let handler: CallSoundPipeline.SampleHandler
     init(handler: @escaping CallSoundPipeline.SampleHandler) { self.handler = handler }
-    func start() throws { if let startError { throw startError } }
+    func start() throws {
+      startedOnMainThread = Thread.isMainThread
+      startEntered.signal()
+      _ = startHold?.wait(timeout: .now() + 10)  // deadline-fallback: around the test's release
+      if let startError { throw startError }
+    }
     func stop() { stopCount += 1 }
     var currentLevel: Float { 0 }
   }
@@ -136,7 +146,8 @@ struct MeetingRecorderTests {
 
   private func rig(
     microphones count: Int = 1, callSound: Bool = true, callSupported: Bool = true,
-    callStartError: Error? = nil, folder existing: URL? = nil
+    callStartError: Error? = nil, callStartHold: DispatchSemaphore? = nil,
+    folder existing: URL? = nil
   ) throws -> Rig {
     let folder = try existing ?? MeetingAudioFixture.folder("MeetingRecorderTests")
     let microphones = (0..<count).map { _ in FakeMicrophone() }
@@ -156,6 +167,7 @@ struct MeetingRecorderTests {
         guard callSupported else { return nil }
         let fake = FakeCallSound(handler: handler)
         fake.startError = callStartError
+        fake.startHold = callStartHold
         callBox.value.append(fake)
         return fake
       },
@@ -185,6 +197,36 @@ struct MeetingRecorderTests {
   }
 
   // MARK: - Start and stop
+
+  @Test("the call-sound tap starts off the main thread, so a macOS prompt never freezes the app")
+  func callSoundStartsOffMain() async throws {
+    let rig = try rig()
+    let result = try await rig.recorder.start()
+    #expect(result.callSound == .captured)
+    #expect(rig.calls().first?.startedOnMainThread == false)
+    await rig.recorder.stop()
+  }
+
+  @Test("a stop while the call-sound tap waits on macOS ends the start and stops the late tap")
+  func stopWhileCallSoundStarts() async throws {
+    // The tap's start is held, as macOS holds it while its prompt is open.
+    let hold = DispatchSemaphore(value: 0)
+    let rig = try rig(callStartHold: hold)
+    let start = Task { @MainActor in try await rig.recorder.start() }
+    await MeetingCoordinatorTests.eventually("tap created") { !rig.calls().isEmpty }
+    let call = try #require(rig.calls().first)
+    let entered = await withCheckedContinuation { continuation in
+      DispatchQueue.global().async {
+        continuation.resume(returning: call.startEntered.wait(timeout: .now() + 10))  // deadline-fallback: around the start signal
+      }
+    }
+    #expect(entered == .success)
+    // The main actor is free while the tap waits: the stop runs now.
+    await rig.recorder.stop()
+    hold.signal()
+    await #expect(throws: (any Error).self) { try await start.value }
+    #expect(call.stopCount == 1, "the tap that started after the stop is stopped")
+  }
 
   @Test("start then stop records both tracks to finished files and reports both finalized")
   func startStopRecordsBothTracks() async throws {

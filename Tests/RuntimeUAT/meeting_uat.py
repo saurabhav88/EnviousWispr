@@ -11,7 +11,7 @@ key through CGEvent), holding the shared dev-app lock, with ONE debug instance o
 worktree's build running and Debug Mode on (verdicts come from app.log and the dev-control
 door, never the clipboard).
 
-The call is a scripted two-person conversation made with two TTS voices, so its reference
+The call is a scripted two-person conversation made with two built-in macOS voices, so its reference
 words are known exactly. No real meeting recording (AMI) is on this Mac and none is
 downloaded, and no bake-off number exists: the WER here is against that script and is NOT
 the plan's "within 3 points of the AMI bake-off" check, which stays open.
@@ -253,15 +253,22 @@ def audio_files(meeting_id):
             if os.path.isfile(p) and p.endswith((".caf", ".wav", ".m4a"))]
 
 
+# The two people: built-in macOS voices, so the call has two clearly different speakers on
+# every Mac (the OpenAI voice key is optional; without it `wispr_eyes.tts` falls back to one
+# voice for every line, which cannot test speaker labels).
+CALL_VOICES = {"onyx": "Samantha", "nova": "Daniel"}
+
+
 def make_conversation(directory):
-    """(WAV path, reference text, seconds) of the conversation: TTS turns joined by pauses."""
-    import wispr_eyes as w
+    """(WAV path, reference text, seconds) of the conversation: `say` turns joined by pauses."""
     parts = []
     for index, (voice, line) in enumerate(CONVERSATION):
-        mp3 = w.tts(line, voice=voice)
+        aiff = os.path.join(directory, f"turn-{index:02d}.aiff")
         wav = os.path.join(directory, f"turn-{index:02d}.wav")
+        subprocess.run(["say", "-v", CALL_VOICES[voice], "-o", aiff, line], check=True,
+                       timeout=60)
         subprocess.run(
-            ["afconvert", "-f", "WAVE", "-d", f"LEI16@{SAMPLE_RATE}", "-c", "1", mp3, wav],
+            ["afconvert", "-f", "WAVE", "-d", f"LEI16@{SAMPLE_RATE}", "-c", "1", aiff, wav],
             check=True, capture_output=True)
         parts.append(wav)
     out = os.path.join(directory, "conversation.wav")

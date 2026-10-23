@@ -232,12 +232,15 @@ public final class MeetingRecorder {
           }
         })
       if let source {
-        do {
-          try source.start()
+        // Off the main actor: building the tap waits inside Core Audio until the user answers
+        // macOS's first system-audio prompt, and the app must keep working meanwhile (dictation,
+        // menu, window). Found by Live UAT: the whole app froze while the prompt was open.
+        switch await Self.startOffMain(source) {
+        case .success:
           callSound = source
           callWriter = writer
           callStatus = .captured
-        } catch {
+        case .failure:
           // Never "denied": a tap error does not say macOS refused permission.
           callStatus = .failed
           _ = await writer.finish()
@@ -246,8 +249,9 @@ public final class MeetingRecorder {
         callStatus = .unsupported
       }
     }
-    // The call-sound start does not suspend, but the writer finish above can let a stop or a
-    // microphone loss in. A stop owns teardown; a loss during start fails the start here.
+    // The call-sound start suspends (it runs off the main actor), and so can the writer finish
+    // above: a stop or a microphone loss can come in meanwhile. A stop owns teardown of what it
+    // saw; a source that started after it is stopped here; a loss during start fails the start.
     if lifecycle != .starting {
       callSound?.stop()
       throw RecorderError.stoppedDuringStart
@@ -260,6 +264,27 @@ public final class MeetingRecorder {
     }
     lifecycle = .running
     return StartResult(microphone: .captured, callSound: callStatus)
+  }
+
+  /// Starts the call-sound source on a background thread and resumes with its result. The
+  /// source is safe to start from any thread (`SystemAudioTap` serializes on its own queue).
+  private static func startOffMain(_ source: MeetingCallSoundSource) async -> Result<Void, Error> {
+    let box = UncheckedSource(source)
+    return await withCheckedContinuation { continuation in
+      DispatchQueue.global(qos: .userInitiated).async {
+        do {
+          try box.source.start()
+          continuation.resume(returning: .success(()))
+        } catch {
+          continuation.resume(returning: .failure(error))
+        }
+      }
+    }
+  }
+
+  private struct UncheckedSource: @unchecked Sendable {
+    let source: MeetingCallSoundSource
+    init(_ source: MeetingCallSoundSource) { self.source = source }
   }
 
   /// Opens a microphone source and admits its samples, re-checking after every await that
