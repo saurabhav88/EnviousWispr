@@ -1,0 +1,11 @@
+{
+  "language": "hu",
+  "title": "összefoglaló készítése a megbeszélés végén",
+  "words": [
+    "összegzés"
+  ],
+  "phrases": [
+    "megbeszélés automatikus összefoglalása",
+    "készíts összefoglalót a megbeszélés után"
+  ]
+}

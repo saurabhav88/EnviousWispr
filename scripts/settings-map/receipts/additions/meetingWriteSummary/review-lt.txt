@@ -1,0 +1,11 @@
+{
+  "language": "lt",
+  "title": "kurti santrauką pasibaigus susitikimui",
+  "words": [
+    "apibendrinimas"
+  ],
+  "phrases": [
+    "apibendrinti susitikimą jam pasibaigus",
+    "automatinė susitikimo santrauka"
+  ]
+}

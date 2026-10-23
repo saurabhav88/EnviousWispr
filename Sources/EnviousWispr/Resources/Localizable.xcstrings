@@ -4245,7 +4245,7 @@
       }
     },
     "Cancel" : {
-      "comment" : "EnviousMeet: closes the call-sound explanation without recording.\nEnviousMeet: keeps the meeting as it is.\nLive Preview settings, Universal engine card: button. It stops the download.\nSettings > AI Polish, local model row: button that stops the download.\nYour Words, Learn from: the self-learning dictionary row: button that stops the download.",
+      "comment" : "EnviousMeet: closes the call-sound explanation without recording.\nEnviousMeet: keeps the meeting as it is.\nHistory, a meeting: keeps the edited summary.\nLive Preview settings, Universal engine card: button. It stops the download.\nSettings > AI Polish, local model row: button that stops the download.\nYour Words, Learn from: the self-learning dictionary row: button that stops the download.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4821,6 +4821,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Textbaustein-Datei auswählen"
+          }
+        }
+      }
+    },
+    "Choose an AI Polish provider to write summaries." : {
+      "comment" : "History, a meeting: no AI Polish provider is selected, so no summary.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle einen Anbieter für KI-Nachbearbeitung, um Zusammenfassungen zu erstellen."
           }
         }
       }
@@ -12001,6 +12012,17 @@
         }
       }
     },
+    "No summary yet." : {
+      "comment" : "History, a meeting: it has no summary and none is being written.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch keine Zusammenfassung."
+          }
+        }
+      }
+    },
     "No supported dictation apps found on this Mac. EnviousWispr can read %@." : {
       "localizations" : {
         "de" : {
@@ -13079,6 +13101,17 @@
         }
       }
     },
+    "Open AI Polish settings" : {
+      "comment" : "History, a meeting: opens the AI Polish settings to fix the summary provider.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen für KI-Nachbearbeitung öffnen"
+          }
+        }
+      }
+    },
     "Open Settings" : {
       "comment" : "Pill button: opens the macOS microphone privacy settings.",
       "localizations" : {
@@ -13666,6 +13699,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Pausiert, solange „Schnellere Transkription“ während der Aufnahme transkribiert"
+          }
+        }
+      }
+    },
+    "Paused while a meeting summary is written" : {
+      "comment" : "EnviousMeet: the transcript waits until a summary on this Mac is finished.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pausiert, während eine Meeting-Zusammenfassung erstellt wird"
           }
         }
       }
@@ -15179,6 +15223,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wiederholte oder erfundene Wörter"
+          }
+        }
+      }
+    },
+    "Replace" : {
+      "comment" : "History, a meeting: replaces the edited summary.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ersetzen"
+          }
+        }
+      }
+    },
+    "Replace your edited summary?" : {
+      "comment" : "History, a meeting: confirms writing the summary again over the user's edits.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bearbeitete Zusammenfassung ersetzen?"
           }
         }
       }
@@ -17412,8 +17478,19 @@
         }
       }
     },
+    "Summaries are off. You can still write one for this meeting." : {
+      "comment" : "History, a meeting: automatic summaries are turned off in settings.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zusammenfassungen sind deaktiviert. Du kannst trotzdem eine für dieses Meeting erstellen."
+          }
+        }
+      }
+    },
     "Summary" : {
-      "comment" : "History, a meeting: the tab with the meeting's summary.",
+      "comment" : "History, a meeting: the summary box.\nHistory, a meeting: the tab with the meeting's summary.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -18183,6 +18260,17 @@
         }
       }
     },
+    "The AI Polish provider isn't ready. Check it in AI Polish settings, then try again." : {
+      "comment" : "History, a meeting: Ollama is not running or Apple Intelligence is not available.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Anbieter für KI-Nachbearbeitung ist nicht bereit. Prüfe ihn in den Einstellungen für KI-Nachbearbeitung und versuche es erneut."
+          }
+        }
+      }
+    },
     "The ASR model will be unloaded from RAM after the selected idle period. The next recording will reload it (~2-5 s)." : {
       "localizations" : {
         "de" : {
@@ -18555,6 +18643,17 @@
         }
       }
     },
+    "The meeting changed after this summary was written. It may be out of date." : {
+      "comment" : "History, a meeting: the summary was written from an older transcript, names or notes.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Meeting wurde geändert, nachdem diese Zusammenfassung erstellt wurde. Sie ist möglicherweise nicht mehr aktuell."
+          }
+        }
+      }
+    },
     "The microphone could not start. Check your microphone and try again." : {
       "comment" : "EnviousMeet: the microphone did not start.",
       "localizations" : {
@@ -18718,6 +18817,17 @@
         }
       }
     },
+    "The selected AI Polish model can't write summaries. Choose another model." : {
+      "comment" : "History, a meeting: the cleanup models (EG-1, S1-mini) cannot summarize.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das ausgewählte Modell für KI-Nachbearbeitung kann keine Zusammenfassungen erstellen. Wähle ein anderes Modell."
+          }
+        }
+      }
+    },
     "The speech engine did not finish waking up." : {
       "localizations" : {
         "de" : {
@@ -18741,6 +18851,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Schreibweise „%1$@“ kann nicht hinzugefügt werden, weil %2$@ sie bereits verwendet."
+          }
+        }
+      }
+    },
+    "The summary could not be saved. Try again." : {
+      "comment" : "History, a meeting: the meeting's files could not be written.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Zusammenfassung konnte nicht gespeichert werden. Versuche es erneut."
+          }
+        }
+      }
+    },
+    "The summary could not be written. Try again." : {
+      "comment" : "History, a meeting: the provider failed, timed out or answered with nothing.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Zusammenfassung konnte nicht erstellt werden. Versuche es erneut."
+          }
+        }
+      }
+    },
+    "The summary is written from the transcript and your notes by the AI Polish provider you chose. A cloud provider receives them under your key; Apple Intelligence and Ollama on this Mac keep them on your Mac. In History you can write a summary for any meeting." : {
+      "comment" : "EnviousMeet page: help for Write a summary when a meeting ends.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der gewählte Anbieter für KI-Nachbearbeitung erstellt die Zusammenfassung aus dem Transkript und deinen Notizen. Ein Cloud-Anbieter erhält beides mit deinem Schlüssel; bei Apple Intelligence und Ollama auf diesem Mac bleibt beides auf deinem Mac. Im Verlauf kannst du für jedes Meeting eine Zusammenfassung erstellen."
           }
         }
       }
@@ -19209,6 +19352,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Beim ersten Start kann das einen Moment dauern."
+          }
+        }
+      }
+    },
+    "This meeting has no transcript, so it has no summary." : {
+      "comment" : "History, a meeting with no transcript: its Summary tab.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Meeting hat kein Transkript und daher keine Zusammenfassung."
+          }
+        }
+      }
+    },
+    "This meeting is too long for the selected model to summarize." : {
+      "comment" : "History, a meeting: the meeting needs more calls than a summary may make.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Meeting ist zu lang, um vom ausgewählten Modell zusammengefasst zu werden."
           }
         }
       }
@@ -20134,6 +20299,17 @@
         }
       }
     },
+    "Update Ollama to version 0.12.6 or later to write summaries with it." : {
+      "comment" : "History, a meeting: the Ollama app is too old for meeting summaries.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktualisiere Ollama auf Version 0.12.6 oder neuer, um damit Zusammenfassungen zu erstellen."
+          }
+        }
+      }
+    },
     "Update alert in menu bar" : {
       "localizations" : {
         "de" : {
@@ -20668,6 +20844,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wartet"
+          }
+        }
+      }
+    },
+    "Waiting for a meeting summary to finish." : {
+      "comment" : "History, a recording meeting: live words pause while a summary is written on this Mac.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Warten, bis eine Meeting-Zusammenfassung fertig ist."
+          }
+        }
+      }
+    },
+    "Waiting for your dictation and other meeting work to finish." : {
+      "comment" : "History, a meeting: the summary waits before a model on this Mac is used.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Warten, bis dein Diktat und andere Meeting-Aufgaben abgeschlossen sind."
           }
         }
       }
@@ -21348,13 +21546,13 @@
         }
       }
     },
-    "Works with any headphones. Audio and transcripts stay on your Mac." : {
-      "comment" : "EnviousMeet page: the footnote. Recordings and their transcripts are kept on the Mac.",
+    "Works with any headphones. Recordings stay on your Mac. A summary written by a cloud AI Polish provider sends it the transcript and your notes." : {
+      "comment" : "EnviousMeet page: the footnote. Recordings are kept on the Mac; a cloud summary provider receives the text.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Funktioniert mit allen Kopfhörern. Audiodaten und Transkripte bleiben auf deinem Mac."
+            "value" : "Funktioniert mit allen Kopfhörern. Aufnahmen bleiben auf deinem Mac. Erstellt ein Cloud-Anbieter für KI-Nachbearbeitung eine Zusammenfassung, erhält er das Transkript und deine Notizen."
           }
         }
       }
@@ -21370,6 +21568,39 @@
         }
       }
     },
+    "Write a summary when a meeting ends" : {
+      "comment" : "EnviousMeet page: switch that writes a summary of each meeting automatically.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zusammenfassung erstellen, wenn ein Meeting endet"
+          }
+        }
+      }
+    },
+    "Write again" : {
+      "comment" : "History, a meeting: writes its summary again.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erneut erstellen"
+          }
+        }
+      }
+    },
+    "Write summary" : {
+      "comment" : "History, a meeting: writes its summary.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zusammenfassung erstellen"
+          }
+        }
+      }
+    },
     "Writes down what was said." : {
       "comment" : "Transcribe a File, Review step: the transcription engine's card in the processing path.",
       "localizations" : {
@@ -21377,6 +21608,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Schreibt auf, was gesagt wurde."
+          }
+        }
+      }
+    },
+    "Writing the summary." : {
+      "comment" : "History, a meeting: the summary is being written.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zusammenfassung wird erstellt."
           }
         }
       }
@@ -21523,6 +21765,17 @@
         }
       }
     },
+    "You changed this summary. Writing it again replaces your changes." : {
+      "comment" : "History, a meeting: explains what Replace does to the edited summary.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du hast diese Zusammenfassung geändert. Wenn du sie erneut erstellst, werden deine Änderungen ersetzt."
+          }
+        }
+      }
+    },
     "You deleted this from History, so it is not saved there. Copy or save it before you leave." : {
       "comment" : "Transcribe a File: the user deleted this transcript from History.",
       "localizations" : {
@@ -21609,6 +21862,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dein %@-Schlüssel ist noch nicht gespeichert."
+          }
+        }
+      }
+    },
+    "Your AI Polish provider writes a summary of each meeting." : {
+      "comment" : "EnviousMeet page: the short line under Write a summary when a meeting ends.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein Anbieter für KI-Nachbearbeitung erstellt eine Zusammenfassung für jedes Meeting."
           }
         }
       }
@@ -21870,6 +22134,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Deine Modelle, lokal oder gehostet."
+          }
+        }
+      }
+    },
+    "Your notes could not be read, so no summary was written." : {
+      "comment" : "History, a meeting: the notes file could not be read before the summary.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Notizen konnten nicht gelesen werden, daher wurde keine Zusammenfassung erstellt."
           }
         }
       }

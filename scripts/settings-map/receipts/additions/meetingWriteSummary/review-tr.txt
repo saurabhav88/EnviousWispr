@@ -1,0 +1,1 @@
+{"language":"tr","title":"toplantı bittiğinde özet oluştur","words":["toplantı özeti"],"phrases":["toplantı bitince otomatik özet oluştur","yapay zekâyla toplantı özeti"]}

@@ -1,0 +1,11 @@
+{
+  "language": "pl",
+  "title": "utwórz podsumowanie po zakończeniu spotkania",
+  "words": [
+    "streszczenie"
+  ],
+  "phrases": [
+    "podsumuj spotkanie po jego zakończeniu",
+    "automatyczne streszczenie spotkania"
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "run_id": "run-1792741618-00dbf10d",
+  "run_dir": "/Users/m4pro_sv/.local/state/council/runs/run-1792741618-00dbf10d",
+  "providers": {
+    "openai": {
+      "content": "1. OK. Die Begriffe f\u00fchren passend zum Schalter f\u00fcr automatische Zusammenfassungen nach Meetings.",
+      "latest_response_id": "resp_07099ad25d4536f6006adb10f2401c819496f9970e22a4d10a",
+      "model": "gpt-6-sol",
+      "provider": "openai",
+      "session": "enviousmeet-vocab-de-c13-2026-10-23-gpt",
+      "status": "ok",
+      "usage": {
+        "completion_tokens": 153,
+        "cost_usd": 0.000872,
+        "latency_ms": 2745,
+        "prompt_tokens": 260,
+        "reasoning_tokens": 127,
+        "total_tokens": 413
+      }
+    },
+    "gemini": {
+      "content": "1. OK",
+      "latest_interaction_id": "v1_Chc4aERiYXVhTUdiZUp3YlVQb3ZDTWdBbxIXOGhEYmF1YU1HYmVKd2JVUG92Q01nQW8",
+      "model": "gemini-3.8-flash",
+      "provider": "gemini",
+      "session": "enviousmeet-vocab-de-c13-2026-10-23-gemini",
+      "status": "ok",
+      "usage": {
+        "prompt_tokens": 259,
+        "completion_tokens": 3,
+        "reasoning_tokens": 380,
+        "total_tokens": 642,
+        "cost_usd": 0.003261,
+        "latency_ms": 5050
+      }
+    }
+  }
+}

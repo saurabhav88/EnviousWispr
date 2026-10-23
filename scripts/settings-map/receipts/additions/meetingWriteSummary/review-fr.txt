@@ -1,0 +1,1 @@
+{"language":"fr","title":"créer un résumé à la fin de la réunion","words":["synthèse","récapitulatif"],"phrases":["résumer la réunion une fois terminée","résumé automatique des réunions"]}

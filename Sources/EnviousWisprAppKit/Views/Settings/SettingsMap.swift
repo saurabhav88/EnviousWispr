@@ -654,6 +654,13 @@ enum SettingsMap {
       description: .resource(MeetingsCopy.callSoundShort),
       parent: .pageMeetings, destination: .meetings, dictionaryTab: nil,
       visibility: .always, target: .meetingCaptureCallSound, fallbacks: []),
+    // #3972 R39: the automatic-summary switch, always on the page.
+    SettingsMapNode(
+      id: .meetingWriteSummary, structure: .item, item: .setting,
+      title: .resource(MeetingsCopy.writeSummaryTitle),
+      description: .resource(MeetingsCopy.writeSummaryShort),
+      parent: .pageMeetings, destination: .meetings, dictionaryTab: nil,
+      visibility: .always, target: .meetingWriteSummary, fallbacks: []),
     SettingsMapNode(
       id: .enableAIPolish, structure: .item, item: .setting,
       title: .resource(SettingsItemCopy.AIPolish.enable),

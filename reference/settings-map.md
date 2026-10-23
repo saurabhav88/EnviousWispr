@@ -12,9 +12,9 @@ Generated from the compiled Settings Map and the validated search vocabulary. Do
 
 The interface ships in English and German. The other 30 languages (ar, bg, cs, da, el, es, et, fi, fr, hi, hr, hu, it, ja, ko, lt, lv, mt, nl, pl, pt, ro, ru, sk, sl, sv, tr, uk, vi, zh) are search metadata only: words and titles people may type, matched against the same places. Titles below read English / German.
 
-276 nodes, 249 searchable, 7968 vocabulary blocks.
+277 nodes, 250 searchable, 8000 vocabulary blocks.
 
-Fingerprints: mapSHA256 `b651439de9a9bd7a2eefe9e7efa70b4cf9b458c786774ecc350a4c804189e4c7`, uiCatalogSHA256 `aac12dbbe602ac51ceffa1290b7e13731d543a49812b8454fec4857702fd9b58`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `fb88b3e14e90edb19f0f74f5a288783ff0218ce135f6fa7bb9fe196d68f39798`
+Fingerprints: mapSHA256 `527c2f6e54df975a169fc422c90cde79ca9de3c2a81bcf749ad6fe6319ba455d`, uiCatalogSHA256 `053d198dd444da1e5475e47e2c3d9ae58df9a1ab5391a70dc86a2f4500998a25`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `990db436b7ecc7db6fd49882b7c426693ad6d1b94497356307d92ca8426359fd`
 
 ## Structure
 
@@ -282,6 +282,7 @@ Fingerprints: mapSHA256 `b651439de9a9bd7a2eefe9e7efa70b4cf9b458c786774ecc350a4c8
       - [Copy last dictation / Letztes Diktat kopieren](#node-copyLastKeybind) `copyLastKeybind` (setting)
   - [EnviousMeet / EnviousMeet](#node-page-meetings) `page.meetings` (page)
     - [Also record the call sound / Auch den Ton vom Mac aufnehmen](#node-meetingCaptureCallSound) `meetingCaptureCallSound` (setting)
+    - [Write a summary when a meeting ends / Zusammenfassung erstellen, wenn ein Meeting endet](#node-meetingWriteSummary) `meetingWriteSummary` (setting)
   - [Snippets / Textbausteine](#node-page-snippets) `page.snippets` (page)
     - [Paste the text you type over and over, by voice / Füge Text, den du oft tippst, per Stimme ein](#node-snippets) `snippets` (feature)
     - [Keyword / Schlüsselwort](#node-snippetKeyword) `snippetKeyword` (setting)
@@ -2497,6 +2498,28 @@ Fingerprints: mapSHA256 `b651439de9a9bd7a2eefe9e7efa70b4cf9b458c786774ecc350a4c8
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: system audio, computer audio, other participants<br>phrases: record what my Mac plays; capture the other people on the call |
 | Search (de) | words: Systemaudio, Systemton, Computerton, Gesprächspartner<br>phrases: nimm den Ton vom Mac mit auf; nimm die anderen im Anruf mit auf; zeichne den Systemton auf |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-meetingWriteSummary"></a>
+
+### Write a summary when a meeting ends / Zusammenfassung erstellen, wenn ein Meeting endet (`meetingWriteSummary`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | setting |
+| Parent | [`page.meetings`](#node-page-meetings) |
+| Title source | catalog key `Write a summary when a meeting ends` |
+| Description | Your AI Polish provider writes a summary of each meeting. / Dein Anbieter für KI-Nachbearbeitung erstellt eine Zusammenfassung für jedes Meeting. |
+| Description source | catalog key `Your AI Polish provider writes a summary of each meeting.` |
+| Destination | `meetings` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`meetingWriteSummary`](#node-meetingWriteSummary) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | words: recap, summarize, summarise<br>phrases: automatically summarize meetings; AI meeting recap |
+| Search (de) | words: Meetingzusammenfassung, Besprechungszusammenfassung, Kurzfassung<br>phrases: fass mein Meeting zusammen; erstelle nach dem Meeting automatisch eine Zusammenfassung |
 | Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-enableAIPolish"></a>

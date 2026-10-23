@@ -1,0 +1,1 @@
+{"language":"sl","title":"ustvari povzetek ob koncu sestanka","words":["povzetek sestanka"],"phrases":["povzemi sestanek, ko se konča","samodejni povzetek sestanka"]}

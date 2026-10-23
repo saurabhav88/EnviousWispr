@@ -250,6 +250,25 @@ struct MeetingCallSoundRow: View {
   }
 }
 
+/// "Write a summary when a meeting ends" (#3972 R39): read when each meeting becomes ready.
+struct MeetingWriteSummaryRow: View {
+  @Environment(SettingsManager.self) private var settings
+
+  var body: some View {
+    @Bindable var settings = settings
+    SettingsRow(
+      map: .id(.meetingWriteSummary), icon: "list.bullet.rectangle",
+      help: MeetingsCopy.writeSummaryHelp
+    ) {
+      Toggle("", isOn: $settings.meetingWriteSummary)
+        .labelsHidden()
+        .toggleStyle(BrandedToggleStyle())
+        .fixedSize()
+        .accessibilityLabel(Text(MeetingsCopy.writeSummaryTitle))
+    }
+  }
+}
+
 /// The recording meeting's live words (#3972 R42, R52): provisional, about a minute behind,
 /// one line per closed minute of each track, labelled by track. The status line says how fresh
 /// they are from the last decoded stretch, and why they lag (dictation, a backlog, skipped

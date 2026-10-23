@@ -2301,6 +2301,23 @@
    }
   },
   {
+   "id": "meetingWriteSummary",
+   "kind": "setting",
+   "destination": {
+    "page": "meetings"
+   },
+   "disposition": "mapped",
+   "parent": "page.meetings",
+   "target": "meetingWriteSummary",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Your AI Polish provider writes a summary of each meeting."
+   }
+  },
+  {
    "id": "transcribeFile.chooseFile",
    "kind": "action",
    "destination": {

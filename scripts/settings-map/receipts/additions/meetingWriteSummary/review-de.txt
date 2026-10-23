@@ -1,0 +1,12 @@
+{
+  "language": "de",
+  "words": [
+    "Meetingzusammenfassung",
+    "Besprechungszusammenfassung",
+    "Kurzfassung"
+  ],
+  "phrases": [
+    "fass mein Meeting zusammen",
+    "erstelle nach dem Meeting automatisch eine Zusammenfassung"
+  ]
+}

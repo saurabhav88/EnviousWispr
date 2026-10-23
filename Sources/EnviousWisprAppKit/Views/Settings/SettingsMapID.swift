@@ -156,6 +156,7 @@ enum SettingsMapID: String, CaseIterable, Hashable, Sendable {
   case keybindResetToDefault = "keybind.resetToDefault"
   case transcribeFileSteps = "transcribeFile.steps"
   case meetingCaptureCallSound = "meetingCaptureCallSound"
+  case meetingWriteSummary = "meetingWriteSummary"
   case enableAIPolish = "enableAIPolish"
   case aiPolishProvider = "aiPolishProvider"
   case aiPolishProviderEgOne = "aiPolishProvider.egOne"

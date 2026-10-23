@@ -1,0 +1,12 @@
+{
+  "language": "cs",
+  "title": "vytvořit shrnutí po skončení schůzky",
+  "words": [
+    "souhrn",
+    "rekapitulace"
+  ],
+  "phrases": [
+    "shrnout schůzku po jejím skončení",
+    "shrnutí schůzky pomocí AI"
+  ]
+}

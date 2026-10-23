@@ -1,0 +1,1 @@
+{"language":"sk","title":"vytvoriť zhrnutie po skončení stretnutia","words":["súhrn","rekapitulácia"],"phrases":["zhrnúť stretnutie po jeho skončení","automatický súhrn stretnutia"]}

@@ -71,6 +71,7 @@
  "LocalEngineStatusCard.swift | settingsMapRegistration | .localModelTryAgain",
  "LocalEngineStatusCard.swift | settingsMapRegistration | action.id",
  "MeetingControls.swift | SettingsRow | map .id(.meetingCaptureCallSound)",
+ "MeetingControls.swift | SettingsRow | map .id(.meetingWriteSummary)",
  "MeetingsView.swift | SettingsRow | exempt .statusLine",
  "MeetingsView.swift | SettingsRow | exempt .statusLine",
  "OpenSourceLicensesView.swift | SettingsRow | map .id(.licenseGpl)",

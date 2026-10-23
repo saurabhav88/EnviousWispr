@@ -27,6 +27,7 @@ struct MeetingsView: View {
             MeetingNoticeBanner(notice: notice)
           }
           MeetingCallSoundRow()
+          MeetingWriteSummaryRow()
           microphonePermissionRow
           callSoundPermissionRow
           Text(MeetingsCopy.keptUntilDeleted)
@@ -50,10 +51,12 @@ struct MeetingsView: View {
           }
         }
       } footnote: {
+        // R48: true for every provider. Audio never leaves the Mac; a summary by a cloud AI
+        // Polish provider sends that provider the transcript and notes.
         Text(
-          "Works with any headphones. Audio and transcripts stay on your Mac.",
+          "Works with any headphones. Recordings stay on your Mac. A summary written by a cloud AI Polish provider sends it the transcript and your notes.",
           comment:
-            "EnviousMeet page: the footnote. Recordings and their transcripts are kept on the Mac."
+            "EnviousMeet page: the footnote. Recordings are kept on the Mac; a cloud summary provider receives the text."
         )
         .font(.stHelper)
         .foregroundStyle(.stTextSecondary)
@@ -157,6 +160,15 @@ enum MeetingsCopy {
   static let callSoundShort = LocalizedStringResource(
     "Records what your Mac plays, like the other people on a call.",
     comment: "EnviousMeet page: the short line under Also record the call sound.")
+  static let writeSummaryTitle = LocalizedStringResource(
+    "Write a summary when a meeting ends",
+    comment: "EnviousMeet page: switch that writes a summary of each meeting automatically.")
+  static let writeSummaryShort = LocalizedStringResource(
+    "Your AI Polish provider writes a summary of each meeting.",
+    comment: "EnviousMeet page: the short line under Write a summary when a meeting ends.")
+  static let writeSummaryHelp = LocalizedStringResource(
+    "The summary is written from the transcript and your notes by the AI Polish provider you chose. A cloud provider receives them under your key; Apple Intelligence and Ollama on this Mac keep them on your Mac. In History you can write a summary for any meeting.",
+    comment: "EnviousMeet page: help for Write a summary when a meeting ends.")
   static let callSoundHelp = LocalizedStringResource(
     "With headphones, your microphone hears only you, and the call comes from the sound your Mac plays. Without headphones, your microphone also hears the call; EnviousMeet hides those repeated lines as probable echo. The choice applies to the next meeting you start.",
     comment: "EnviousMeet page: help for Also record the call sound.")

@@ -1,0 +1,1 @@
+{"language":"lv","title":"izveidot kopsavilkumu pēc sapulces beigām","words":["rezumējums"],"phrases":["automātiski apkopot sapulcē pārrunāto","sapulces kopsavilkums ar mākslīgo intelektu"]}

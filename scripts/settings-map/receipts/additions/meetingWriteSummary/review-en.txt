@@ -1,0 +1,1 @@
+{"language":"en","words":["recap","summarize","summarise"],"phrases":["automatically summarize meetings","AI meeting recap"]}

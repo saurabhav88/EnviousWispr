@@ -968,7 +968,8 @@
    "statusLine": 2
   },
   "mapped": [
-   "meetingCaptureCallSound"
+   "meetingCaptureCallSound",
+   "meetingWriteSummary"
   ]
  }
 }

@@ -16,13 +16,18 @@
    "id": "meetingCaptureCallSound",
    "review": "additions/meetingCaptureCallSound.json",
    "reviewSHA256": "2bea4ff80448b182c1725419619f49fef7a9c95ba075a7c63ca86333a89df961"
+  },
+  {
+   "id": "meetingWriteSummary",
+   "review": "additions/meetingWriteSummary.json",
+   "reviewSHA256": "510c77cddf0912f1ddbe9ac83c74a61fd1c24be111f62a0ecedb11898952682a"
   }
  ],
  "retiredIDs": [],
  "resource": {
   "path": "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json",
-  "sha256": "fb88b3e14e90edb19f0f74f5a288783ff0218ce135f6fa7bb9fe196d68f39798",
-  "bytes": 1613414
+  "sha256": "990db436b7ecc7db6fd49882b7c426693ad6d1b94497356307d92ca8426359fd",
+  "bytes": 1619996
  },
  "sources": [
   {
@@ -306,7 +311,7 @@
  "languages": [
   {
    "language": "ar",
-   "contentSHA256": "ab083255076f2718e8c9c1435898ddc84ffaed3a579299073d0ca7c9d25564ce",
+   "contentSHA256": "f70e2d5a4513ba28a9b7924308484260a852278a02f3fc6424af1f9b93e97220",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -464,13 +469,32 @@
       "sha256": "b0c21e625c59dfec363b6605692fde1a71bacd6a4f887a73c2aed42b4cd300a5"
      },
      "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingWriteSummary",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Enable AI Polish and the AI Polish provider); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-23",
+     "draft": {
+      "path": "additions/meetingWriteSummary/draft.json",
+      "sha256": "ff26815db4cb792092d3782bf5e36b12fd8349af2dbb39f2e32183f25ccd8c7d"
+     },
+     "prompt": {
+      "path": "additions/meetingWriteSummary/review-driver.py.txt",
+      "sha256": "2116fbe5bb1ca01e988450c0ee736a2e3f6fdd3154863ad3c1295a3ea43cd1a5"
+     },
+     "output": {
+      "path": "additions/meetingWriteSummary/review-ar.txt",
+      "sha256": "94c7941655595c32d2a8fa82bedf88b393e65a1d1da9d8d9d4ff18a1cf2fe542"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingWriteSummary.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "bg",
-   "contentSHA256": "60ccaea7d3364cd801adc6d806d6db127813a7a886b4c8dd00bf56561cfe1e26",
+   "contentSHA256": "97e4c98516b4474195890c10c788d5b6c7e795646dc659dd62b9eb9baf45d87b",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -619,13 +643,32 @@
       "sha256": "b94b4c87fe7821aaa2a746f4ee5f1f121ad750ac3a6f9af672fa98341c515607"
      },
      "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingWriteSummary",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Enable AI Polish and the AI Polish provider); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-23",
+     "draft": {
+      "path": "additions/meetingWriteSummary/draft.json",
+      "sha256": "ff26815db4cb792092d3782bf5e36b12fd8349af2dbb39f2e32183f25ccd8c7d"
+     },
+     "prompt": {
+      "path": "additions/meetingWriteSummary/review-driver.py.txt",
+      "sha256": "2116fbe5bb1ca01e988450c0ee736a2e3f6fdd3154863ad3c1295a3ea43cd1a5"
+     },
+     "output": {
+      "path": "additions/meetingWriteSummary/review-bg.txt",
+      "sha256": "f7fe017267e13fd5b9a5068461f31669b415e007ac71fb3eca4e91e9c72a91fa"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingWriteSummary.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "cs",
-   "contentSHA256": "d2c7e5ef0c74e5b69848dadd52732389ff1df17f5f2ce417a070d9ba3276f091",
+   "contentSHA256": "ce1e52d3c947dcde69d0e8d9fe9fb1dcd9bde2edfb69c0bbcaa90ec54a56face",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -774,13 +817,32 @@
       "sha256": "4ec64cb357a0bb19f8cca7f2733dbde8cae0b9ca9f597057039d4c2bdd036312"
      },
      "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingWriteSummary",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Enable AI Polish and the AI Polish provider); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-23",
+     "draft": {
+      "path": "additions/meetingWriteSummary/draft.json",
+      "sha256": "ff26815db4cb792092d3782bf5e36b12fd8349af2dbb39f2e32183f25ccd8c7d"
+     },
+     "prompt": {
+      "path": "additions/meetingWriteSummary/review-driver.py.txt",
+      "sha256": "2116fbe5bb1ca01e988450c0ee736a2e3f6fdd3154863ad3c1295a3ea43cd1a5"
+     },
+     "output": {
+      "path": "additions/meetingWriteSummary/review-cs.txt",
+      "sha256": "a385d51fbf1a5e2714937ca625a9db9bc424ba22e933c811075c68b283ea3ff1"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingWriteSummary.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "da",
-   "contentSHA256": "5e14ea28968c57a187669d81832ad84f2347580c95c40e58a17532e9ebdc4370",
+   "contentSHA256": "7cb04a2b9516f2d96b2c3b9e180ef49254adb6f840341a1ccb7e8422b0a707e4",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -929,13 +991,32 @@
       "sha256": "7a3f67322463cc4d5f641603188ecc96256d2216d356c38feb83e65a1daa4143"
      },
      "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingWriteSummary",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Enable AI Polish and the AI Polish provider); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-23",
+     "draft": {
+      "path": "additions/meetingWriteSummary/draft.json",
+      "sha256": "ff26815db4cb792092d3782bf5e36b12fd8349af2dbb39f2e32183f25ccd8c7d"
+     },
+     "prompt": {
+      "path": "additions/meetingWriteSummary/review-driver.py.txt",
+      "sha256": "2116fbe5bb1ca01e988450c0ee736a2e3f6fdd3154863ad3c1295a3ea43cd1a5"
+     },
+     "output": {
+      "path": "additions/meetingWriteSummary/review-da.txt",
+      "sha256": "56c77895f79dfb3b1bfab6b08aa3ae17f49d65e6e79e6eac2233632e690b4f02"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingWriteSummary.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "de",
-   "contentSHA256": "4d29df7bd84038360b621c5b8b539ddce8c1caaefe998515f63fabe954920b57",
+   "contentSHA256": "e4a742602606b77540f64e8ede8c52695ccbfc6a8d2d267831e5ff780e35aedc",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1113,13 +1194,36 @@
       "path": "additions/meetingCaptureCallSound/council-de.json",
       "sha256": "3403b17d545ee5dc9c2e51a77a09161d1a2772233f37b9c66d8c381b61b3d825"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingWriteSummary",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Enable AI Polish and the AI Polish provider); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-23",
+     "draft": {
+      "path": "additions/meetingWriteSummary/draft.json",
+      "sha256": "ff26815db4cb792092d3782bf5e36b12fd8349af2dbb39f2e32183f25ccd8c7d"
+     },
+     "prompt": {
+      "path": "additions/meetingWriteSummary/review-driver.py.txt",
+      "sha256": "2116fbe5bb1ca01e988450c0ee736a2e3f6fdd3154863ad3c1295a3ea43cd1a5"
+     },
+     "output": {
+      "path": "additions/meetingWriteSummary/review-de.txt",
+      "sha256": "37d213b69c771e6bc8d31d4a2d272df77ef280c051122b1943a6fdff68d958c9"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingWriteSummary.json); the German council (GPT and Gemini) returned OK",
+     "council": {
+      "path": "additions/meetingWriteSummary/council-de.json",
+      "sha256": "2bb833ab733c6a96eaa4b4e3906eb85268baecae13d456112343e21c3156dd01"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "el",
-   "contentSHA256": "a70c79587cde90ce1ef6f5cc531615c76e17f27e7845ba026c92793a1032ecd7",
+   "contentSHA256": "6cbe2962be2fcbcda89df02af56d1c464e54c5c3d484385342a8e4505d10e4d6",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1277,13 +1381,32 @@
       "sha256": "4729805584907539d494419602e91e19beae351db26927a412251ae8587c6bee"
      },
      "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingWriteSummary",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Enable AI Polish and the AI Polish provider); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-23",
+     "draft": {
+      "path": "additions/meetingWriteSummary/draft.json",
+      "sha256": "ff26815db4cb792092d3782bf5e36b12fd8349af2dbb39f2e32183f25ccd8c7d"
+     },
+     "prompt": {
+      "path": "additions/meetingWriteSummary/review-driver.py.txt",
+      "sha256": "2116fbe5bb1ca01e988450c0ee736a2e3f6fdd3154863ad3c1295a3ea43cd1a5"
+     },
+     "output": {
+      "path": "additions/meetingWriteSummary/review-el.txt",
+      "sha256": "96ae7cbdc3fb740f818fec9974ddd02cca5860cbf56f9831dd9a78e8e718e49b"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingWriteSummary.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "en",
-   "contentSHA256": "8f72a4a8bf6fc1f24b706c0cb2149cfed2e0ba1ce3ab51be241844a6ee05b353",
+   "contentSHA256": "2346e5d4a85d5ba442c83a4b4c8f44411ae0a420bce73975b0346a01cdec2877",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1447,13 +1570,32 @@
       "sha256": "afac185967c044aca81703b460714aa2e61bbfd44114bcaf973ed828dc725c97"
      },
      "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingWriteSummary",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Enable AI Polish and the AI Polish provider); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-23",
+     "draft": {
+      "path": "additions/meetingWriteSummary/draft.json",
+      "sha256": "ff26815db4cb792092d3782bf5e36b12fd8349af2dbb39f2e32183f25ccd8c7d"
+     },
+     "prompt": {
+      "path": "additions/meetingWriteSummary/review-driver.py.txt",
+      "sha256": "2116fbe5bb1ca01e988450c0ee736a2e3f6fdd3154863ad3c1295a3ea43cd1a5"
+     },
+     "output": {
+      "path": "additions/meetingWriteSummary/review-en.txt",
+      "sha256": "ec5cc46e870f24c22660b97c17158181249d143e38abe8c1761c3c42e8251c89"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingWriteSummary.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "es",
-   "contentSHA256": "49d42b04c2ac6de377a909c28a2dfbfc3d635426c303bf939b43c2527a5c1ec6",
+   "contentSHA256": "8161efcf95326fb1260579d09640a4af17ca72d819bb6102204d47ee2c238a2f",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1611,13 +1753,32 @@
       "sha256": "d8baec768dd775347e861288a565786443cb20476be69da3f3e9727ccda730fd"
      },
      "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingWriteSummary",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Enable AI Polish and the AI Polish provider); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-23",
+     "draft": {
+      "path": "additions/meetingWriteSummary/draft.json",
+      "sha256": "ff26815db4cb792092d3782bf5e36b12fd8349af2dbb39f2e32183f25ccd8c7d"
+     },
+     "prompt": {
+      "path": "additions/meetingWriteSummary/review-driver.py.txt",
+      "sha256": "2116fbe5bb1ca01e988450c0ee736a2e3f6fdd3154863ad3c1295a3ea43cd1a5"
+     },
+     "output": {
+      "path": "additions/meetingWriteSummary/review-es.txt",
+      "sha256": "30ffd7314b2d193ec724050b1019bea2b4ca4e2fa4bd8b49ec415a9ae415be13"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingWriteSummary.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "et",
-   "contentSHA256": "97cb587c41add8f8ccbcc158643cf0a7b3c01471e56978b7e948b03ed236c220",
+   "contentSHA256": "36fbe7b5e5a61eac7865fede54f34662e87fdf022255ec14209df8a438fad246",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1766,13 +1927,32 @@
       "sha256": "c909c6ff967c75871a0a31e7c048c940638d20bffefb0046a8950977555ca3b7"
      },
      "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingWriteSummary",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Enable AI Polish and the AI Polish provider); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-23",
+     "draft": {
+      "path": "additions/meetingWriteSummary/draft.json",
+      "sha256": "ff26815db4cb792092d3782bf5e36b12fd8349af2dbb39f2e32183f25ccd8c7d"
+     },
+     "prompt": {
+      "path": "additions/meetingWriteSummary/review-driver.py.txt",
+      "sha256": "2116fbe5bb1ca01e988450c0ee736a2e3f6fdd3154863ad3c1295a3ea43cd1a5"
+     },
+     "output": {
+      "path": "additions/meetingWriteSummary/review-et.txt",
+      "sha256": "077587708ab4d37d6d4136faca44176386ebec80a0a4da98c91b22fd7b14cb36"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingWriteSummary.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fi",
-   "contentSHA256": "7f72c52479afcd923ada350a4173c1e587bd2891e9bc8a41ae35ae5af29b20a7",
+   "contentSHA256": "80dcc87224098cbb55299acdd3b44995cd5d3aa5a0a7feb43d90b08286500439",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1921,13 +2101,32 @@
       "sha256": "83a0e68b2a8b70f9cf55b3f4bab34ca19817079df7e09fe4cf90f30abe45ad98"
      },
      "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingWriteSummary",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Enable AI Polish and the AI Polish provider); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-23",
+     "draft": {
+      "path": "additions/meetingWriteSummary/draft.json",
+      "sha256": "ff26815db4cb792092d3782bf5e36b12fd8349af2dbb39f2e32183f25ccd8c7d"
+     },
+     "prompt": {
+      "path": "additions/meetingWriteSummary/review-driver.py.txt",
+      "sha256": "2116fbe5bb1ca01e988450c0ee736a2e3f6fdd3154863ad3c1295a3ea43cd1a5"
+     },
+     "output": {
+      "path": "additions/meetingWriteSummary/review-fi.txt",
+      "sha256": "6fe794dee34f07649ad0e39fdbf2cc739b1970c688edbd091a89b74669b2f184"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingWriteSummary.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fr",
-   "contentSHA256": "32126eb2ac09ef0c944e05c3c76a9fc053ea31fb6910bd63a8de2984538041ca",
+   "contentSHA256": "9e93b570cee9cf60e0d55dde6717bbccee31685da8b1163b16123a186f7d47a7",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2076,13 +2275,32 @@
       "sha256": "ecacf27647f172f6ee6313c5d4a1aa6cecf7fc853e52eea011bbca32416e2caa"
      },
      "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingWriteSummary",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Enable AI Polish and the AI Polish provider); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-23",
+     "draft": {
+      "path": "additions/meetingWriteSummary/draft.json",
+      "sha256": "ff26815db4cb792092d3782bf5e36b12fd8349af2dbb39f2e32183f25ccd8c7d"
+     },
+     "prompt": {
+      "path": "additions/meetingWriteSummary/review-driver.py.txt",
+      "sha256": "2116fbe5bb1ca01e988450c0ee736a2e3f6fdd3154863ad3c1295a3ea43cd1a5"
+     },
+     "output": {
+      "path": "additions/meetingWriteSummary/review-fr.txt",
+      "sha256": "06abbd11af7bdd21078168c50e08c4a1a2f2348bfaffb8c816150f8673282543"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingWriteSummary.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hi",
-   "contentSHA256": "bc753db50d87150bb10540d516be348160632d5c1ecef3156ee5d437c47ffa89",
+   "contentSHA256": "05f7237840dfc53f9894fcd886be5aa4d3d3a48bffa5cba7da52ed32143f8e22",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2231,13 +2449,32 @@
       "sha256": "46e8577931dc46a97d93f4500af4ec37765787c3ba243e97406f401e9f6118e7"
      },
      "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingWriteSummary",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Enable AI Polish and the AI Polish provider); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-23",
+     "draft": {
+      "path": "additions/meetingWriteSummary/draft.json",
+      "sha256": "ff26815db4cb792092d3782bf5e36b12fd8349af2dbb39f2e32183f25ccd8c7d"
+     },
+     "prompt": {
+      "path": "additions/meetingWriteSummary/review-driver.py.txt",
+      "sha256": "2116fbe5bb1ca01e988450c0ee736a2e3f6fdd3154863ad3c1295a3ea43cd1a5"
+     },
+     "output": {
+      "path": "additions/meetingWriteSummary/review-hi.txt",
+      "sha256": "47dcb9f59dfeb0891fe4ddf17685db9ec6479baf412977bff062e62f7cd79a14"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingWriteSummary.json); the review changed the draft"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hr",
-   "contentSHA256": "40333dfa7c88d3a2db2b986f8a60defbe2d70019bef985417d025013a04044d3",
+   "contentSHA256": "912f42c78bad409734a52cfb4d53e43d3ea2925728e427e3c1c1d48028b79172",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2386,13 +2623,32 @@
       "sha256": "0bba6594edca72ecec4d26e3a2e58ca2edf0128b3e2939b6bc97843d555d8f7a"
      },
      "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingWriteSummary",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Enable AI Polish and the AI Polish provider); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-23",
+     "draft": {
+      "path": "additions/meetingWriteSummary/draft.json",
+      "sha256": "ff26815db4cb792092d3782bf5e36b12fd8349af2dbb39f2e32183f25ccd8c7d"
+     },
+     "prompt": {
+      "path": "additions/meetingWriteSummary/review-driver.py.txt",
+      "sha256": "2116fbe5bb1ca01e988450c0ee736a2e3f6fdd3154863ad3c1295a3ea43cd1a5"
+     },
+     "output": {
+      "path": "additions/meetingWriteSummary/review-hr.txt",
+      "sha256": "43228dd3f2faab71de33f88ea43e6346cab6507bc0279b99b8a2afe107c2c66a"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingWriteSummary.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hu",
-   "contentSHA256": "68c6921795092bed8e5b3ef80437ff2cb6c360a40a00c4f02276907b954788c1",
+   "contentSHA256": "d185b334f65e53d4fb11e162c4d2fc518da218ca2d810f791c1b4f4e5e5119fe",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2541,13 +2797,32 @@
       "sha256": "db62ef783ea24f2b57d5d74e19ac133ece50ff10f2f0f972374181464ee1e856"
      },
      "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingWriteSummary",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Enable AI Polish and the AI Polish provider); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-23",
+     "draft": {
+      "path": "additions/meetingWriteSummary/draft.json",
+      "sha256": "ff26815db4cb792092d3782bf5e36b12fd8349af2dbb39f2e32183f25ccd8c7d"
+     },
+     "prompt": {
+      "path": "additions/meetingWriteSummary/review-driver.py.txt",
+      "sha256": "2116fbe5bb1ca01e988450c0ee736a2e3f6fdd3154863ad3c1295a3ea43cd1a5"
+     },
+     "output": {
+      "path": "additions/meetingWriteSummary/review-hu.txt",
+      "sha256": "01f2ed39db1c61ac94f8aa9671c1e637a070d03e1c402eda016707ac42e662f3"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingWriteSummary.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "it",
-   "contentSHA256": "4a491bb1648cd0938f1400c8841c8be744779a5a3d039a1b80d321ff4ec3625b",
+   "contentSHA256": "4292b70198379f49d2e058ae5cfe916d1bf16198b1b31bf3ff4e2ca103b21273",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2705,13 +2980,32 @@
       "sha256": "85f3f9152a5de5dfb6d34375e90dd5ce171f1455e220973cf5ac7bb53cbc1266"
      },
      "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingWriteSummary",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Enable AI Polish and the AI Polish provider); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-23",
+     "draft": {
+      "path": "additions/meetingWriteSummary/draft.json",
+      "sha256": "ff26815db4cb792092d3782bf5e36b12fd8349af2dbb39f2e32183f25ccd8c7d"
+     },
+     "prompt": {
+      "path": "additions/meetingWriteSummary/review-driver.py.txt",
+      "sha256": "2116fbe5bb1ca01e988450c0ee736a2e3f6fdd3154863ad3c1295a3ea43cd1a5"
+     },
+     "output": {
+      "path": "additions/meetingWriteSummary/review-it.txt",
+      "sha256": "3baf279429797f72e577edf9be6ff3a5c16825dc03b627cfb1b4487ca80f9aec"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingWriteSummary.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ja",
-   "contentSHA256": "d5d65da0ae7cd384656986637275921d6c28af78ba9919841da5b5d37f0c3ad6",
+   "contentSHA256": "cc36f8f66fdcff20499148c687df02a3968b4791e800719e707ee4f9a633e80e",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2860,13 +3154,32 @@
       "sha256": "ba2d604a1759c612b6e89e11393aca2408f1ca7553bf4a5955ebede6c4f8ae5b"
      },
      "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingWriteSummary",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Enable AI Polish and the AI Polish provider); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-23",
+     "draft": {
+      "path": "additions/meetingWriteSummary/draft.json",
+      "sha256": "ff26815db4cb792092d3782bf5e36b12fd8349af2dbb39f2e32183f25ccd8c7d"
+     },
+     "prompt": {
+      "path": "additions/meetingWriteSummary/review-driver.py.txt",
+      "sha256": "2116fbe5bb1ca01e988450c0ee736a2e3f6fdd3154863ad3c1295a3ea43cd1a5"
+     },
+     "output": {
+      "path": "additions/meetingWriteSummary/review-ja.txt",
+      "sha256": "ca5ce0cd1026dac4aa1c91b876e2f7ecc0d53bc7f5d76d33f0217493790a0395"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingWriteSummary.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ko",
-   "contentSHA256": "be164247cfdd3de9a16f7be091938ce494da0597169d99c8217723e052aef661",
+   "contentSHA256": "9e154ab2d185772b51e578ab2f20b9754ee21ea6cac84c019795bf26c18029de",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3015,13 +3328,32 @@
       "sha256": "655b471ae86f747ecee7faafc4896ad6725d089e3609cf5f7e936caf1cd8a70f"
      },
      "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingWriteSummary",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Enable AI Polish and the AI Polish provider); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-23",
+     "draft": {
+      "path": "additions/meetingWriteSummary/draft.json",
+      "sha256": "ff26815db4cb792092d3782bf5e36b12fd8349af2dbb39f2e32183f25ccd8c7d"
+     },
+     "prompt": {
+      "path": "additions/meetingWriteSummary/review-driver.py.txt",
+      "sha256": "2116fbe5bb1ca01e988450c0ee736a2e3f6fdd3154863ad3c1295a3ea43cd1a5"
+     },
+     "output": {
+      "path": "additions/meetingWriteSummary/review-ko.txt",
+      "sha256": "58d8ff3173202add8631d1439ecf008b3c73ae73e0bacdc787c714dad98a0d48"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingWriteSummary.json); the review changed the draft"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lt",
-   "contentSHA256": "d268eae14bf4cdd0250ea53f34d897803d7cfa94a7a0931907b8b5f4477257c2",
+   "contentSHA256": "a17f355dcfae6499593353c1afdb13f973f5241eec2f1512c3606161664c373c",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3179,13 +3511,32 @@
       "sha256": "13b8930aa1a861ee10e6a8fbd3443c812e9d6352ff8c4e7ee38f6d188066cc7a"
      },
      "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingWriteSummary",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Enable AI Polish and the AI Polish provider); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-23",
+     "draft": {
+      "path": "additions/meetingWriteSummary/draft.json",
+      "sha256": "ff26815db4cb792092d3782bf5e36b12fd8349af2dbb39f2e32183f25ccd8c7d"
+     },
+     "prompt": {
+      "path": "additions/meetingWriteSummary/review-driver.py.txt",
+      "sha256": "2116fbe5bb1ca01e988450c0ee736a2e3f6fdd3154863ad3c1295a3ea43cd1a5"
+     },
+     "output": {
+      "path": "additions/meetingWriteSummary/review-lt.txt",
+      "sha256": "f894c0f7921682e2e1a9487ca637c1994db6f43b0087c0c5d267607d529cc23c"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingWriteSummary.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lv",
-   "contentSHA256": "f30a98ced981c4c0e83c51bb42445e52a479fc405e185d9412849b4c63a1337b",
+   "contentSHA256": "4e12e048b44e481b74424bcc16e3ec8985e5cd32517dfd658469759d84a42230",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3334,13 +3685,32 @@
       "sha256": "4b6341f98de70b7be3de377ac98b176fb5a07b6465d0ff477de10ee32ce62f8e"
      },
      "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingWriteSummary",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Enable AI Polish and the AI Polish provider); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-23",
+     "draft": {
+      "path": "additions/meetingWriteSummary/draft.json",
+      "sha256": "ff26815db4cb792092d3782bf5e36b12fd8349af2dbb39f2e32183f25ccd8c7d"
+     },
+     "prompt": {
+      "path": "additions/meetingWriteSummary/review-driver.py.txt",
+      "sha256": "2116fbe5bb1ca01e988450c0ee736a2e3f6fdd3154863ad3c1295a3ea43cd1a5"
+     },
+     "output": {
+      "path": "additions/meetingWriteSummary/review-lv.txt",
+      "sha256": "f230bd8f3f4bf668ea92fa91f8a886f0f52b6a377815ca5826eb570b39477452"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingWriteSummary.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "mt",
-   "contentSHA256": "69967a10b7c7ee0f007ae18894b30f7ca08c242b98ad1d306ba4d7243715c1f5",
+   "contentSHA256": "1a6190e4942838e2a32e3a8da92c0a5fbc951eba5dfc18fc3cf41391e7bd0ce4",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3498,13 +3868,32 @@
       "sha256": "be0cc9caa10480f7567d6a65a48c9781a1d41e792a8f532607c98bcc09c974e3"
      },
      "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingWriteSummary",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Enable AI Polish and the AI Polish provider); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-23",
+     "draft": {
+      "path": "additions/meetingWriteSummary/draft.json",
+      "sha256": "ff26815db4cb792092d3782bf5e36b12fd8349af2dbb39f2e32183f25ccd8c7d"
+     },
+     "prompt": {
+      "path": "additions/meetingWriteSummary/review-driver.py.txt",
+      "sha256": "2116fbe5bb1ca01e988450c0ee736a2e3f6fdd3154863ad3c1295a3ea43cd1a5"
+     },
+     "output": {
+      "path": "additions/meetingWriteSummary/review-mt.txt",
+      "sha256": "d16b081765ddcb9e36a65c566ab4a6a8b8d476e3f331b2d07bcdbe8db7e03a5a"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingWriteSummary.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "nl",
-   "contentSHA256": "b7b957177b977150c96957a9875b09058339e12a45e01e99a1d0d27b9961f38b",
+   "contentSHA256": "d3540d1f3d1494f87720e1545fd3464e71c6a52b078b03497aa808e5ba63eb99",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3653,13 +4042,32 @@
       "sha256": "3422d14bf21853e9d2280131812779d9ef0231a35d3139c1fdf670b3d183b273"
      },
      "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingWriteSummary",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Enable AI Polish and the AI Polish provider); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-23",
+     "draft": {
+      "path": "additions/meetingWriteSummary/draft.json",
+      "sha256": "ff26815db4cb792092d3782bf5e36b12fd8349af2dbb39f2e32183f25ccd8c7d"
+     },
+     "prompt": {
+      "path": "additions/meetingWriteSummary/review-driver.py.txt",
+      "sha256": "2116fbe5bb1ca01e988450c0ee736a2e3f6fdd3154863ad3c1295a3ea43cd1a5"
+     },
+     "output": {
+      "path": "additions/meetingWriteSummary/review-nl.txt",
+      "sha256": "db6b90730fb132bd694650a3113a4833116d670c90bf0001e35c57c3dac5e952"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingWriteSummary.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pl",
-   "contentSHA256": "1637a59f2ddd429845a2f0b98127361e73189a00f7a07187a723e92098023739",
+   "contentSHA256": "2a5114fcf6b3a4bd9e3e1e2f71c0867ea829e3a767ed85ed7598822c4188c369",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3808,13 +4216,32 @@
       "sha256": "6501e875264ee3def2b29616920eb6a22c9123f29ddf3ae13a0b8df352cdfe33"
      },
      "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingWriteSummary",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Enable AI Polish and the AI Polish provider); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-23",
+     "draft": {
+      "path": "additions/meetingWriteSummary/draft.json",
+      "sha256": "ff26815db4cb792092d3782bf5e36b12fd8349af2dbb39f2e32183f25ccd8c7d"
+     },
+     "prompt": {
+      "path": "additions/meetingWriteSummary/review-driver.py.txt",
+      "sha256": "2116fbe5bb1ca01e988450c0ee736a2e3f6fdd3154863ad3c1295a3ea43cd1a5"
+     },
+     "output": {
+      "path": "additions/meetingWriteSummary/review-pl.txt",
+      "sha256": "759e5d6827652300a8af7b5f081e2144f54a07ad1b66bebf421aca6145c25efb"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingWriteSummary.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pt",
-   "contentSHA256": "6808cdc0b4f8130c5fa601978fd876344684dfc97d0143bbe8f72a2a52e55ab1",
+   "contentSHA256": "8c575bc125eb9f53c025cb02e3942453ea4390db1a553e79e349e25ecb2282a3",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3971,13 +4398,32 @@
       "sha256": "8d2d66cb39fae0017647204b4f8c3633e7a973d73bf2a592f60262996129811e"
      },
      "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingWriteSummary",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Enable AI Polish and the AI Polish provider); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-23",
+     "draft": {
+      "path": "additions/meetingWriteSummary/draft.json",
+      "sha256": "ff26815db4cb792092d3782bf5e36b12fd8349af2dbb39f2e32183f25ccd8c7d"
+     },
+     "prompt": {
+      "path": "additions/meetingWriteSummary/review-driver.py.txt",
+      "sha256": "2116fbe5bb1ca01e988450c0ee736a2e3f6fdd3154863ad3c1295a3ea43cd1a5"
+     },
+     "output": {
+      "path": "additions/meetingWriteSummary/review-pt.txt",
+      "sha256": "0ed8c830ab3acceb44c9308faf827099f8b4b39cc82faf9adbe30d070b8d2231"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingWriteSummary.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ro",
-   "contentSHA256": "fe9724ac1a600fab10744e29e0d1cd922f31bbab36588acd1a2dd3a42a969f7a",
+   "contentSHA256": "a283e8b8a8c8dcd246bbe6e1c6edf44dd44c0e946b72bdee23366bb4c86bed2e",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4126,13 +4572,32 @@
       "sha256": "240825a78e2dce991cdd5e2da14ab39f22aa8b8b18f2582c6a6bcab3e66bc086"
      },
      "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingWriteSummary",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Enable AI Polish and the AI Polish provider); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-23",
+     "draft": {
+      "path": "additions/meetingWriteSummary/draft.json",
+      "sha256": "ff26815db4cb792092d3782bf5e36b12fd8349af2dbb39f2e32183f25ccd8c7d"
+     },
+     "prompt": {
+      "path": "additions/meetingWriteSummary/review-driver.py.txt",
+      "sha256": "2116fbe5bb1ca01e988450c0ee736a2e3f6fdd3154863ad3c1295a3ea43cd1a5"
+     },
+     "output": {
+      "path": "additions/meetingWriteSummary/review-ro.txt",
+      "sha256": "58690f814403c6b408622e12a8e7afedc8d3853065085cb1c92bf88ffc595521"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingWriteSummary.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ru",
-   "contentSHA256": "35a7aaf24fe28eb4bd1f1c31835664d2ca0c96b6228f1c477b7ee8263383cf8f",
+   "contentSHA256": "bdfad08dd06c91adea6d068be7b7a0848a840f593af352287f7b1c1b26cd6acc",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4281,13 +4746,32 @@
       "sha256": "b141aff4fa6d6abb9c530cb2688f80a57cb9582121594a33dfee4bfd4d587475"
      },
      "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingWriteSummary",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Enable AI Polish and the AI Polish provider); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-23",
+     "draft": {
+      "path": "additions/meetingWriteSummary/draft.json",
+      "sha256": "ff26815db4cb792092d3782bf5e36b12fd8349af2dbb39f2e32183f25ccd8c7d"
+     },
+     "prompt": {
+      "path": "additions/meetingWriteSummary/review-driver.py.txt",
+      "sha256": "2116fbe5bb1ca01e988450c0ee736a2e3f6fdd3154863ad3c1295a3ea43cd1a5"
+     },
+     "output": {
+      "path": "additions/meetingWriteSummary/review-ru.txt",
+      "sha256": "db2136f91e6c2e49028eb0f74b38d25bf2053a9f1e6fc3d4176f19248713baa7"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingWriteSummary.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sk",
-   "contentSHA256": "d470dc8660c3ca7137cde73020f0e5e98d2ccc3bd54d008eb82dcadaef798827",
+   "contentSHA256": "e1da0d6bffa975dd9428fe5b1ffd3ac842b48d402f0aa09d46a2ef32f1eb0ea1",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4436,13 +4920,32 @@
       "sha256": "1873ecdf5544fcd99d7f2c7222b71cce5e39d4346c6c63b677db5a89c028eff0"
      },
      "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingWriteSummary",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Enable AI Polish and the AI Polish provider); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-23",
+     "draft": {
+      "path": "additions/meetingWriteSummary/draft.json",
+      "sha256": "ff26815db4cb792092d3782bf5e36b12fd8349af2dbb39f2e32183f25ccd8c7d"
+     },
+     "prompt": {
+      "path": "additions/meetingWriteSummary/review-driver.py.txt",
+      "sha256": "2116fbe5bb1ca01e988450c0ee736a2e3f6fdd3154863ad3c1295a3ea43cd1a5"
+     },
+     "output": {
+      "path": "additions/meetingWriteSummary/review-sk.txt",
+      "sha256": "8926eafaa3c517482e34e29299b7b4d875d6a305350d9feecb0424de97e71e03"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingWriteSummary.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sl",
-   "contentSHA256": "393c8ce37a791b364d39910490e02412fed7e8b2927531bc9354c84059a8e65e",
+   "contentSHA256": "c69627b5bf81edac5056054003bd043968ede9927edf6b5bbcd7e71c2ec55525",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4600,13 +5103,32 @@
       "sha256": "2faa4de411de7a3cd4a5938393e345f1de1cdb709f9dac3b373d85a6784b7439"
      },
      "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingWriteSummary",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Enable AI Polish and the AI Polish provider); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-23",
+     "draft": {
+      "path": "additions/meetingWriteSummary/draft.json",
+      "sha256": "ff26815db4cb792092d3782bf5e36b12fd8349af2dbb39f2e32183f25ccd8c7d"
+     },
+     "prompt": {
+      "path": "additions/meetingWriteSummary/review-driver.py.txt",
+      "sha256": "2116fbe5bb1ca01e988450c0ee736a2e3f6fdd3154863ad3c1295a3ea43cd1a5"
+     },
+     "output": {
+      "path": "additions/meetingWriteSummary/review-sl.txt",
+      "sha256": "352e5f7b3b02500d7db7e11ebe1c4cd2f589aa4e610e8d4bbd2a331a0b56d0e9"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingWriteSummary.json); the review changed the draft"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sv",
-   "contentSHA256": "a0654181a4149252ebcdc46d0df1047845cf226f6fac3f2ec45193e26324d1f8",
+   "contentSHA256": "14966a99d70db61d1dd7c8a0c773246339236109a71d8d8293b83f054e2bcf8b",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4755,13 +5277,32 @@
       "sha256": "9dae107913299b53250467be046b7f2a24095653efa8bf1ae1ee9e9b52fc2775"
      },
      "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingWriteSummary",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Enable AI Polish and the AI Polish provider); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-23",
+     "draft": {
+      "path": "additions/meetingWriteSummary/draft.json",
+      "sha256": "ff26815db4cb792092d3782bf5e36b12fd8349af2dbb39f2e32183f25ccd8c7d"
+     },
+     "prompt": {
+      "path": "additions/meetingWriteSummary/review-driver.py.txt",
+      "sha256": "2116fbe5bb1ca01e988450c0ee736a2e3f6fdd3154863ad3c1295a3ea43cd1a5"
+     },
+     "output": {
+      "path": "additions/meetingWriteSummary/review-sv.txt",
+      "sha256": "a6934b72721c3feb21393830b27a72477afd480626d993421521c90843959c7b"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingWriteSummary.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "tr",
-   "contentSHA256": "7c3f30d417be1235ed52a0478beeeab3f1373fb3e0dc298caa0a8aa493e02f87",
+   "contentSHA256": "cff9424ad1be533dacb448eaa3a7d162fe3cf1f9628a2fc2b854533feb7241e5",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4910,13 +5451,32 @@
       "sha256": "6a8fc31c71f704d667afb858638bbc072358e4783242ec6b98deef4c473db697"
      },
      "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingWriteSummary",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Enable AI Polish and the AI Polish provider); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-23",
+     "draft": {
+      "path": "additions/meetingWriteSummary/draft.json",
+      "sha256": "ff26815db4cb792092d3782bf5e36b12fd8349af2dbb39f2e32183f25ccd8c7d"
+     },
+     "prompt": {
+      "path": "additions/meetingWriteSummary/review-driver.py.txt",
+      "sha256": "2116fbe5bb1ca01e988450c0ee736a2e3f6fdd3154863ad3c1295a3ea43cd1a5"
+     },
+     "output": {
+      "path": "additions/meetingWriteSummary/review-tr.txt",
+      "sha256": "ee7b05176d8847c3789ba31b3c92a92867c14b97fa171322519dd39950617004"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingWriteSummary.json); the review changed the draft"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "uk",
-   "contentSHA256": "94466c6d35d05fca129fc869dfe7487bc452ea3d320bda3a8a48a2322a8edd99",
+   "contentSHA256": "747432b1a72feeb55753c68c796847928c5d5530b4536a206506efc37926971c",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5074,13 +5634,32 @@
       "sha256": "e7046f20e510d3c827c596f86baaed118716c82d41b146b239fe8a18f6a6e144"
      },
      "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingWriteSummary",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Enable AI Polish and the AI Polish provider); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-23",
+     "draft": {
+      "path": "additions/meetingWriteSummary/draft.json",
+      "sha256": "ff26815db4cb792092d3782bf5e36b12fd8349af2dbb39f2e32183f25ccd8c7d"
+     },
+     "prompt": {
+      "path": "additions/meetingWriteSummary/review-driver.py.txt",
+      "sha256": "2116fbe5bb1ca01e988450c0ee736a2e3f6fdd3154863ad3c1295a3ea43cd1a5"
+     },
+     "output": {
+      "path": "additions/meetingWriteSummary/review-uk.txt",
+      "sha256": "706a5e92c22b1fba8024e829faf143f95a651b149f1d977a0f1240e895fc7ff1"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingWriteSummary.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "vi",
-   "contentSHA256": "6647607b6daccbcf58acdb862027cfde42c7a6be62c01c4ecf4136eaaacf7b4d",
+   "contentSHA256": "a30cb92c2cd1fdf9edd65ef1439ddf0bc3639d90ff3516ab1bb3c53b43267ade",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5229,13 +5808,32 @@
       "sha256": "b371fefb61e0d1e3e3579555cced453dd0d0bea1aad5dff85c3248c6eeb1d72c"
      },
      "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingWriteSummary",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Enable AI Polish and the AI Polish provider); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-23",
+     "draft": {
+      "path": "additions/meetingWriteSummary/draft.json",
+      "sha256": "ff26815db4cb792092d3782bf5e36b12fd8349af2dbb39f2e32183f25ccd8c7d"
+     },
+     "prompt": {
+      "path": "additions/meetingWriteSummary/review-driver.py.txt",
+      "sha256": "2116fbe5bb1ca01e988450c0ee736a2e3f6fdd3154863ad3c1295a3ea43cd1a5"
+     },
+     "output": {
+      "path": "additions/meetingWriteSummary/review-vi.txt",
+      "sha256": "c764b9f0e51dee94e70241a535ffec7923215181a1dfcafba47f362bce0513da"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingWriteSummary.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "zh",
-   "contentSHA256": "3be114a1b8f36fced192432b946553766f15f6abaa754ed21399a41d4399fcdc",
+   "contentSHA256": "b47bbe8010ce0a182b770307591ed85ab91f634be1e542688bed8790ce161d94",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5384,6 +5982,25 @@
       "sha256": "0fc87f8501ef699ec4a72e4a55b9eb33317ba704b3e100cb2edc6103c05b5964"
      },
      "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingWriteSummary",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound switch, Enable AI Polish and the AI Polish provider); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-23",
+     "draft": {
+      "path": "additions/meetingWriteSummary/draft.json",
+      "sha256": "ff26815db4cb792092d3782bf5e36b12fd8349af2dbb39f2e32183f25ccd8c7d"
+     },
+     "prompt": {
+      "path": "additions/meetingWriteSummary/review-driver.py.txt",
+      "sha256": "2116fbe5bb1ca01e988450c0ee736a2e3f6fdd3154863ad3c1295a3ea43cd1a5"
+     },
+     "output": {
+      "path": "additions/meetingWriteSummary/review-zh.txt",
+      "sha256": "eefc39d7362474b1f3e26132788acc334e952dcb548da5554d5a3c5cef100363"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingWriteSummary.json)"
     }
    ],
    "phraseExemptions": []
@@ -5487,6 +6104,7 @@
   "mediaDuringDictation.mute": "61261da87a72f323e1b6155942feab4029e1fa0616b1a692784408f2ffcfbc21",
   "mediaDuringDictation.pause": "1c2af924f376aed17cb6889b9607e4da0671f99c506481509e2ec708850a1323",
   "meetingCaptureCallSound": "d2a8d22a6e4f35310ec662e5a8bc64e876fb6f0be3760911affa986af88d313c",
+  "meetingWriteSummary": "7431099b2d00fae72d81030f90319b211195ee5035eb83bc342350f4b4353af8",
   "micReadiness": "bf8b4b6cae2085a1dff902e99abf148a5adb4f508c89ef195283d205992f0472",
   "micReadiness.10s": "0d73303cda6cd2ac7f0a6bb3fdaefe248a5c8598d6d9a17a54656bae7504919d",
   "micReadiness.30s": "03d945b51c78cadcbfd1a4d6bd83aeec1e24bb5a293ef69f43dfe68c49147d49",

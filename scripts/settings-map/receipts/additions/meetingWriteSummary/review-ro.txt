@@ -1,0 +1,12 @@
+{
+  "language": "ro",
+  "title": "creează un rezumat la încheierea întâlnirii",
+  "words": [
+    "sinteză",
+    "sumar"
+  ],
+  "phrases": [
+    "rezumă întâlnirea când se termină",
+    "rezumat automat al ședinței"
+  ]
+}

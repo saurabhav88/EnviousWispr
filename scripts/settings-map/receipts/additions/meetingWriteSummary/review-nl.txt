@@ -1,0 +1,1 @@
+{"language":"nl","title":"maak een samenvatting als de vergadering eindigt","words":["vergaderoverzicht"],"phrases":["vergadering automatisch samenvatten","samenvatting na afloop van de vergadering"]}

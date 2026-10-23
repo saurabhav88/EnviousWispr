@@ -1,0 +1,11 @@
+{
+  "language": "hr",
+  "title": "izradi sažetak nakon završetka sastanka",
+  "words": [
+    "rezime"
+  ],
+  "phrases": [
+    "sažmi sastanak kad završi",
+    "automatski sažetak sastanka"
+  ]
+}

@@ -1,0 +1,1 @@
+{"language":"da","title":"lav et resumé, når mødet slutter","words":["opsummering"],"phrases":["opsummer mødet bagefter","automatisk resumé af mødet"]}
