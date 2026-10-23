@@ -144,6 +144,37 @@ struct MeetingTranscriptionJobTests {
     #expect(result.failedPieces == 0)
   }
 
+  @Test("every engine call runs inside a unit the lane is told about, teardown included (R50)")
+  func unitsReportToTheLane() async throws {
+    let dir = try folder()
+    let files = [try segment(in: dir, index: 1, startMs: 0, seconds: 10)]
+    let engine = FakeEngine()
+    var open = 0
+    var started = 0
+    var outsideUnit: [String] = []
+    func inUnit(_ name: String) { if open != 1 { outsideUnit.append(name) } }
+    let job = MeetingTranscriptionJob(
+      dependencies: .init(
+        isDictationIdle: { true }, waitUntilDictationIdle: {}, beginModelUse: {},
+        endModelUse: {},
+        loadEngine: { inUnit("load") },
+        transcribe: {
+          inUnit("transcribe")
+          return engine.transcribe($0)
+        },
+        unloadEngine: { inUnit("unload") },
+        analyzeSpeakers: { _ in MeetingSpeakerAnalysis(outcome: .single, segments: []) },
+        unitStarted: {
+          open += 1
+          started += 1
+        },
+        unitEnded: { open -= 1 }))
+    _ = try await job.run(tracks: [.microphone: MeetingTrackAudio(files: files)]) { _ in }
+    #expect(outsideUnit.isEmpty, "engine work outside a reported unit: \(outsideUnit)")
+    #expect(open == 0, "every unit that started has ended")
+    #expect(started >= 3, "load, decode and unload each report")
+  }
+
   @Test("no unit starts while dictation is active; the job waits and counts the yield")
   func waitsForDictation() async throws {
     let dir = try folder()

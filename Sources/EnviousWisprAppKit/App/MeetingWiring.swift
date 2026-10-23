@@ -194,28 +194,14 @@ enum MeetingWiring {
         },
         loadEngine: {
           guard let selection = claim.selection else { throw MeetingWiringError.noModelClaim }
-          lane.asrBegan()
-          defer { lane.asrEnded() }
           try await engine.load(selection: selection)
         },
-        transcribe: { samples in
-          lane.asrBegan()
-          defer { lane.asrEnded() }
-          return try await engine.transcribe(samples: samples, language: nil)
-        },
-        unloadEngine: {
-          lane.asrBegan()
-          defer { lane.asrEnded() }
-          await engine.unload()
-        },
+        transcribe: { samples in try await engine.transcribe(samples: samples, language: nil) },
+        unloadEngine: { await engine.unload() },
         analyzeSpeakers: { audio in
-          await MainActor.run { lane.asrBegan() }
           let analysis = await MeetingSpeakerAnalyzer.analyze(audio)
           // The speaker unit was an activation blocker; it has ended.
-          await MainActor.run {
-            lane.asrEnded()
-            workChanged()
-          }
+          await MainActor.run { workChanged() }
           return analysis
         },
         isTemporaryEngineContention: { MeetingParakeetEngine.isTemporaryContention($0) },
@@ -223,7 +209,10 @@ enum MeetingWiring {
         isModelSourceUsable: isDeliveryEnabled,
         engineIdentity: { claim.engineIdentity },
         isMemoryPressureElevated: { pressure.isElevated },
-        waitUntilMemoryNormal: { await pressure.waitUntilNormal() }))
+        waitUntilMemoryNormal: { await pressure.waitUntilNormal() },
+        // Every unit, teardown included, holds the lane from its admission to its physical end.
+        unitStarted: { lane.asrBegan() },
+        unitEnded: { lane.asrEnded() }))
   }
 }
 

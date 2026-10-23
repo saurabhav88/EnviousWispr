@@ -322,10 +322,11 @@ final class MeetingCoordinator {
   /// Writes each ready meeting's summary (#3972 R39). Set by `MeetingWiring`; nil writes none.
   var summaries: MeetingSummaryOwner?
 
-  /// A final pass runs or waits to run: a local summary call waits for it (R50: final first).
-  var hasFinalPassWork: Bool {
-    processing != nil || live.values.contains { $0.state == .queued || $0.state == .processing }
-  }
+  /// A final pass runs, or the queue is draining runnable meetings: a local summary call waits
+  /// for it (R50: final first). Derived from the queue itself, which skips meetings marked for
+  /// deletion, being deleted or still closing and stops on low disk, so a meeting the queue
+  /// cannot run never holds summaries back.
+  var hasFinalPassWork: Bool { processing != nil || queueTask != nil }
   /// Each meeting as last written successfully: what `meetings` and `record(id:)` show, so a
   /// lifecycle step is visible only once it is durable.
   private var records: [UUID: MeetingRecord] = [:]
@@ -431,6 +432,7 @@ final class MeetingCoordinator {
       || !deleting.isEmpty
       || fileWorkInFlight > 0 || checkpointWrites.withLock { $0 } > 0
       || writer.pendingCount > 0 || documents.hasPendingWork
+      || (summaries?.hasWorkInFlight ?? false)
   }
 
   /// Live facts of the running pass for diagnostics (#3972 C6a, DEBUG dev control), or nil when
@@ -1082,6 +1084,14 @@ final class MeetingCoordinator {
       }
       return
     }
+    // The summary decision (R48), taken before the ready barrier so an owed summary is durable
+    // before the meeting is ready: a quit right after the barrier never loses it (the relaunch
+    // finishes it). Written either way, so an older mark never outlives a decision not to.
+    let summaryPlan = summaries?.decide() ?? .off
+    if summaries != nil {
+      await documents.setSummaryPending(meetingID, summaryPlan == .scheduled)
+    }
+    // Read after that wait: a deletion mark or a rename during it stays.
     guard isStillOwned(meetingID), var ready = live[meetingID] else { return }
     ready.state = .ready
     ready.speakerOutcomes = result.speakerOutcomes
@@ -1097,13 +1107,11 @@ final class MeetingCoordinator {
       ready.wasInterrupted == true
       ? .interruptedReady
       : (result.failedPieces > 0 || !missingAudio.isEmpty ? .readyWithGaps : .ready)
-    // The summary decision, in the same turn as the ready barrier (R48): `meeting.ended` says
-    // what was decided, and a scheduled summary starts in the background.
-    let summaryPlan = summaries?.plan(for: meetingID) ?? .off
     endAttempt(
       ready, outcome: outcome, result: result,
       gapCount: result.failedPieces + Self.markerCount(missingAudio),
       processingSeconds: Date().timeIntervalSince(started), summaryPlan: summaryPlan)
+    if summaryPlan == .scheduled { summaries?.startOwed(meetingID) }
 
     do {
       try await writer.run { _ in try checkpoints.clear() }
@@ -1266,9 +1274,12 @@ final class MeetingCoordinator {
     }
     record.deletionRequested = true
     guard await persist(record) else { return }
+    // The notes this session knows, read before they are forgotten (R54 `has_notes`).
+    let hadNotes = !documents.notes(meetingID).isEmpty
     // Marked: no draft may be written any more (the store also refuses).
     documents.forget(meetingID)
-    summaries?.cancel(meetingID)
+    // A summary being written ends, and has physically ended before the folder is removed.
+    await summaries?.cancelAndWait(meetingID)
     dropQueuedPreviews(of: meetingID)
     if liveTranscript?.meetingID == meetingID { liveTranscript = nil }
     switch phase {
@@ -1285,7 +1296,7 @@ final class MeetingCoordinator {
     await drainPreview(of: meetingID)
     // Ends an attempt still open (recording, queued, processing); a finished one already
     // sent its row.
-    endAttempt(record, outcome: .deletedBeforeReady)
+    endAttempt(record, outcome: .deletedBeforeReady, hasNotes: hadNotes)
     await finishDeletion(record)
   }
 
@@ -1369,8 +1380,7 @@ final class MeetingCoordinator {
   /// `previewQueueCapPerTrack` wait; the oldest of that track drops first and is counted.
   private func enqueuePreview(_ meetingID: UUID, track: MeetingTrackKind, _ info: MeetingSegmentInfo) {
     guard deps.makePreviewJob != nil, liveTranscript?.meetingID == meetingID else { return }
-    previewQueue.append(PreviewItem(meetingID: meetingID, track: track, info: info))
-    trimPreviewQueue(track: track)
+    queuePreview(PreviewItem(meetingID: meetingID, track: track, info: info))
     // Ends an idle wait at once. Redundant by design: the queue's end schedules the wait again
     // (cancelling this one), and the unload itself refuses while a unit runs or a file waits;
     // a mutation removing this line alone therefore changes nothing a user sees (C10).
@@ -1382,6 +1392,16 @@ final class MeetingCoordinator {
       self?.previewTask = nil
       self?.schedulePreviewIdleUnload()
     }
+  }
+
+  /// Adds a file in timeline order, whatever order the files arrived in (each arrives after its
+  /// own record save, and saves of files closed together may finish in any order), then applies
+  /// the per-track limit.
+  private func queuePreview(_ item: PreviewItem) {
+    let index =
+      previewQueue.firstIndex { $0.info.startMs > item.info.startMs } ?? previewQueue.endIndex
+    previewQueue.insert(item, at: index)
+    trimPreviewQueue(track: item.track)
   }
 
   /// Keeps the newest `previewQueueCapPerTrack` files of `track`, oldest first out, counting
@@ -1471,8 +1491,7 @@ final class MeetingCoordinator {
         // A final pass came first while it waited; it is decoded after that pass.
         liveTranscript = transcript
         if isRecording, activeMeetingID == item.meetingID {
-          previewQueue.insert(item, at: 0)
-          trimPreviewQueue(track: item.track)
+          queuePreview(item)
         }
         continue
       }
@@ -1764,7 +1783,7 @@ final class MeetingCoordinator {
     _ record: MeetingRecord, outcome: MeetingEndedTelemetry.Outcome,
     result: MeetingTranscriptionJob.Result? = nil, gapCount: Int = 0,
     processingSeconds: Double = 0,
-    summaryPlan: MeetingEndedTelemetry.SummaryPlan = .notApplicable
+    summaryPlan: MeetingEndedTelemetry.SummaryPlan = .notApplicable, hasNotes: Bool? = nil
   ) {
     guard let facts = openAttempts.removeValue(forKey: record.id) else { return }
     lastAttemptFacts[record.id] = facts
@@ -1784,7 +1803,7 @@ final class MeetingCoordinator {
         diskStopped: facts.diskStopped,
         summaryPlan: summaryPlan,
         // The notes this session knows (typed, or read at launch); a meeting without a folder
-        // has none (R54).
-        hasNotes: !documents.notes(record.id).isEmpty))
+        // has none (R54). A deletion passes what it read before forgetting them.
+        hasNotes: hasNotes ?? !documents.notes(record.id).isEmpty))
   }
 }

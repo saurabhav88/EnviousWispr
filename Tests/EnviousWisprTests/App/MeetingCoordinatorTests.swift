@@ -237,6 +237,8 @@ struct MeetingCoordinatorTests {
     var removeError: Error?
     /// Every `meeting.ended` row the coordinator sent, in order.
     var ended: [MeetingEndedTelemetry] = []
+    /// Runs as each row is sent, to read state at that exact moment.
+    var onEnded: (@MainActor (MeetingEndedTelemetry) -> Void)?
     var settles = true
     /// The "Also record the call sound" setting as the coordinator reads it.
     var callSound = false
@@ -294,7 +296,10 @@ struct MeetingCoordinatorTests {
           if let removeError { throw removeError }
           removedRows.append(id)
         },
-        emitEnded: { [self] event in ended.append(event) },
+        emitEnded: { [self] event in
+          ended.append(event)
+          onEnded?(event)
+        },
         log: { [self] line in logs.append(line) },
         workChanged: { [self] in workChanges += 1 },
         beginActivity: { [self] in

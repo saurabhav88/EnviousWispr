@@ -109,6 +109,9 @@ final class MeetingDocumentsOwner {
 
   private func generation(_ meetingID: UUID) -> Int { generations[meetingID] ?? 0 }
 
+  /// The meeting was deleted this session.
+  func isForgotten(_ meetingID: UUID) -> Bool { forgotten.contains(meetingID) }
+
   // MARK: - Load
 
   /// Reads and reconciles the meeting's documents once per session; true when loaded. A draft
@@ -272,16 +275,17 @@ final class MeetingDocumentsOwner {
   // MARK: - Summary
 
   /// Saves a generated summary through the store's checked write (#3972 R46): never over the
-  /// user's own summary unless `replacingUserEdit`, never from older notes, and it ends the
-  /// owed mark. Nil when the meeting was deleted or the write failed.
+  /// user's own summary unless it is exactly the text the user approved replacing
+  /// (`approvedUserEdit`, its SHA-256), never from older notes, and it ends the owed mark. Nil
+  /// when the meeting was deleted or the write failed.
   func publishGeneratedSummary(
-    _ meetingID: UUID, text: String, inputs: SummaryInputs, replacingUserEdit: Bool
+    _ meetingID: UUID, text: String, inputs: SummaryInputs, approvedUserEdit: String?
   ) async -> MeetingStore.GeneratedSummarySave? {
     guard !forgotten.contains(meetingID) else { return nil }
     let gen = generation(meetingID)
     let result = await perform(meetingID) {
       try $0.saveGeneratedSummary(
-        text, inputs: inputs, replacingUserEdit: replacingUserEdit, meeting: meetingID)
+        text, inputs: inputs, approvedUserEdit: approvedUserEdit, meeting: meetingID)
     }
     guard generation(meetingID) == gen else { return nil }
     switch result {

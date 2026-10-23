@@ -8,20 +8,23 @@ import Observation
 /// Writes each meeting's summary after its transcript is ready (#3972 R39, R44, R46, R50, R54),
 /// with the user's own AI Polish provider and key, held by `MeetingCoordinator`.
 ///
-/// - **When.** `plan(for:)` decides in the same main-actor turn the meeting becomes ready, so
-///   `meeting.ended` carries the decision, and starts the attempt in the background. The
-///   meeting's `documents.json` marks the summary as owed until the attempt ends, so a relaunch
-///   finishes one a quit interrupted (`resumeOwed`).
+/// - **When.** The coordinator asks `decide()` before the ready barrier, writes the owed mark
+///   (`documents.json` `summaryPending`) before the meeting is ready, sends `meeting.ended` with
+///   the decision, then calls `startOwed`. The mark stays until the attempt is settled, so a quit
+///   at any point leaves the summary owed and a relaunch finishes it (`resumeOwed`).
 /// - **Dictation and meeting work first.** A local model (Ollama on this Mac, Apple
 ///   Intelligence) is called one call at a time, each admitted only when dictation is idle, no
-///   meeting engine unit runs and no final pass is due (`MeetingLocalModelLane`); local
-///   summaries run one after another. A hosted model is called at once.
+///   meeting engine unit runs and no final pass is due (`MeetingLocalModelLane`); local attempts
+///   run one after another. A hosted model is called at once.
 /// - **Never stale, never over the user.** The inputs are read from what History shows (echo
-///   hidden), the saved notes and the speaker names. An answer is saved only if they still
-///   match when it arrives, and the store refuses to replace the user's own summary unless
-///   "Write again" was confirmed (`replacingUserEdit`).
-/// - **One telemetry row per attempt** (`meeting.summary_finished`), except an attempt a quit
-///   interrupted: it stays owed and its row is sent when the relaunch finishes it.
+///   hidden), the saved notes and the speaker names, and checked again before and after the
+///   save; the store refuses to replace the user's own summary unless the user confirmed
+///   replacing exactly that text ("Write again").
+/// - **One telemetry row per settled attempt** (`meeting.summary_finished`). An attempt a quit
+///   stopped, or whose owed mark could not be cleared, is not settled: it stays owed and its one
+///   row is sent when a later run settles it.
+/// - **Drains.** A deletion waits until its attempt has physically ended; an attempt calling a
+///   model or saving holds a relaunch (`hasWorkInFlight`); one only waiting for its turn does not.
 @MainActor
 @Observable
 final class MeetingSummaryOwner {
@@ -88,6 +91,8 @@ final class MeetingSummaryOwner {
     case providerFailed
     /// The notes could not be read, so the summary would leave them out.
     case notesUnreadable
+    /// The meeting's files could not be written; the summary stays owed.
+    case storageFailed
   }
 
   private(set) var activity: [UUID: Activity] = [:]
@@ -95,12 +100,14 @@ final class MeetingSummaryOwner {
   private let deps: Dependencies
   private let documents: MeetingDocumentsOwner
   private let lane: MeetingLocalModelLane
-  /// The attempt running for each meeting.
+  /// The attempt running for each meeting, kept until it has physically ended.
   private struct Running {
     let attempt: UUID
     let task: Task<Void, Never>
   }
   private var tasks: [UUID: Running] = [:]
+  /// Attempts (by attempt id) calling a model or saving: a relaunch waits for them.
+  private var busy: Set<UUID> = []
   /// Local attempts run one after another: each waits for the one before it.
   private var localChain: Task<Void, Never>?
   private var terminating = false
@@ -111,14 +118,18 @@ final class MeetingSummaryOwner {
     self.lane = lane
   }
 
-  /// A summary is being written for the meeting (waiting or calling).
+  /// A summary is being written for the meeting (waiting, calling or saving).
   func isWriting(_ meetingID: UUID) -> Bool { tasks[meetingID] != nil }
+
+  /// An attempt is calling a model or saving: a relaunch must wait. One waiting for its turn
+  /// does not hold it (it is owed on disk and resumes).
+  var hasWorkInFlight: Bool { !busy.isEmpty }
 
   // MARK: - Starting attempts
 
-  /// The decision when a meeting becomes ready, taken now from the setting and the selected
-  /// provider and model; a scheduled attempt starts in the background.
-  func plan(for meetingID: UUID) -> MeetingEndedTelemetry.SummaryPlan {
+  /// The decision when a meeting becomes ready, from the setting and the selected provider and
+  /// model. No side effects: the coordinator makes it durable, then calls `startOwed`.
+  func decide() -> MeetingEndedTelemetry.SummaryPlan {
     guard deps.isEnabled() else { return .off }
     let selection = deps.selection()
     switch MeetingSummary.capability(
@@ -126,51 +137,58 @@ final class MeetingSummaryOwner {
     {
     case .noProvider: return .noProvider
     case .notForSummaries: return .unsupported
-    case .supported:
-      start(meetingID, replacingUserEdit: false, owedAlready: false)
-      return .scheduled
+    case .supported: return .scheduled
     }
   }
 
-  /// "Write again": a new attempt, replacing the user's own summary only when confirmed.
-  func writeAgain(_ meetingID: UUID, replacingUserEdit: Bool) {
-    start(meetingID, replacingUserEdit: replacingUserEdit, owedAlready: false)
+  /// Starts the attempt for a meeting whose owed mark is written.
+  func startOwed(_ meetingID: UUID) {
+    start(meetingID, approvedUserEdit: nil, owedAlready: true)
   }
 
-  /// At launch: finishes the summaries a quit interrupted, for these ready meetings.
+  /// "Write again": a new attempt. `replacing` is the SHA-256 of the user's own summary the
+  /// user confirmed replacing; nil keeps any user-edited summary.
+  func writeAgain(_ meetingID: UUID, replacing approvedUserEdit: String?) {
+    start(meetingID, approvedUserEdit: approvedUserEdit, owedAlready: false)
+  }
+
+  /// At launch: finishes the summaries still owed, for these ready meetings.
   func resumeOwed(readyMeetingIDs: [UUID]) async {
     for meetingID in readyMeetingIDs {
       guard await documents.load(meetingID),
         documents.manifest(meetingID)?.summaryPending == true, tasks[meetingID] == nil
       else { continue }
-      start(meetingID, replacingUserEdit: false, owedAlready: true)
+      startOwed(meetingID)
     }
   }
 
-  /// The meeting was deleted: its attempt ends, and nothing it does later writes.
-  func cancel(_ meetingID: UUID) {
-    tasks.removeValue(forKey: meetingID)?.task.cancel()
+  /// The meeting is being deleted: its attempt ends, and this returns once it has physically
+  /// ended, so nothing it does later touches the meeting's files.
+  func cancelAndWait(_ meetingID: UUID) async {
     activity[meetingID] = nil
+    guard let running = tasks[meetingID] else { return }
+    running.task.cancel()
+    await running.task.value
   }
 
-  /// The app quits: every attempt stops and stays owed, so the relaunch finishes it and sends
+  /// The app quits: every attempt stops and stays owed, so a relaunch finishes it and sends
   /// its one row.
   func prepareForTermination() {
     terminating = true
     for entry in tasks.values { entry.task.cancel() }
   }
 
-  private func start(_ meetingID: UUID, replacingUserEdit: Bool, owedAlready: Bool) {
+  private func start(_ meetingID: UUID, approvedUserEdit: String?, owedAlready: Bool) {
     guard !terminating else { return }
     // A newer attempt replaces one still running (a Retry made a new transcript, or Write
     // again); the old one ends as cancelled.
-    tasks.removeValue(forKey: meetingID)?.task.cancel()
+    tasks[meetingID]?.task.cancel()
     let attempt = UUID()
     activity[meetingID] = .waiting
     let task = Task { [weak self] () -> Void in
       guard let self else { return }
       await self.run(
-        meetingID, attempt: attempt, replacingUserEdit: replacingUserEdit,
+        meetingID, attempt: attempt, approvedUserEdit: approvedUserEdit,
         owedAlready: owedAlready)
     }
     tasks[meetingID] = Running(attempt: attempt, task: task)
@@ -191,40 +209,57 @@ final class MeetingSummaryOwner {
     case problem(Problem)
   }
 
-  /// How an attempt ended, and whether its save already cleared the owed mark.
+  /// How an attempt ended, and whether no owed mark is left to clear (the save cleared it, or
+  /// none was written).
   private struct Ending {
     let end: End
     var savedMark = false
   }
 
   private func run(
-    _ meetingID: UUID, attempt: UUID, replacingUserEdit: Bool, owedAlready: Bool
+    _ meetingID: UUID, attempt: UUID, approvedUserEdit: String?, owedAlready: Bool
   ) async {
-    var kind: MeetingSummaryFinishedTelemetry.ProviderKind = .none
-    let ending = await attemptOnce(
-      meetingID, replacingUserEdit: replacingUserEdit, owedAlready: owedAlready, kind: &kind)
-    // The attempt is over: the mark goes, unless a quit stopped it (the relaunch finishes it),
-    // the save already cleared it, or a newer attempt owns it now.
-    let quit = terminating && ending.end == .cancelled
-    if !quit, !ending.savedMark, tasks[meetingID]?.attempt == attempt {
-      await documents.setSummaryPending(meetingID, false)
+    // Where the model runs is known from the selection before anything can fail, so every row
+    // pairs `none` with `noProvider` only (R57). No provider ends the attempt at once.
+    let selection = deps.selection()
+    var kind = Self.providerKind(selection.provider)
+    let ending: Ending
+    if selection.provider == .none {
+      ending = Ending(end: .problem(.noProvider))
+    } else {
+      ending = await attemptOnce(
+        meetingID, attempt: attempt, selection: selection, approvedUserEdit: approvedUserEdit,
+        owedAlready: owedAlready, kind: &kind)
     }
-    finish(meetingID, attempt: attempt, end: ending.end, kind: kind, quit: quit)
+    defer { busy.remove(attempt) }
+    let current = tasks[meetingID]?.attempt == attempt
+    // A quit leaves the attempt owed and unsettled: the relaunch finishes it.
+    let quit = terminating && ending.end == .cancelled
+    var settled = !quit
+    if settled, !ending.savedMark, current, !documents.isForgotten(meetingID) {
+      // The mark goes with the attempt; if it cannot, the attempt stays owed and unsettled, so
+      // a later run settles it and sends its one row (never two).
+      settled = await documents.setSummaryPending(meetingID, false)
+    }
+    finish(
+      meetingID, attempt: attempt, end: settled ? ending.end : .problem(.storageFailed),
+      kind: kind, settled: settled, current: current)
   }
 
   private func attemptOnce(
-    _ meetingID: UUID, replacingUserEdit: Bool, owedAlready: Bool,
+    _ meetingID: UUID, attempt: UUID, selection: (provider: LLMProvider, model: String),
+    approvedUserEdit: String?, owedAlready: Bool,
     kind: inout MeetingSummaryFinishedTelemetry.ProviderKind
   ) async -> Ending {
     if !owedAlready {
+      // No mark was written, so there is none to clear: the attempt settles at once.
       guard await documents.setSummaryPending(meetingID, true) else {
-        return Ending(end: .cancelled)
+        return Ending(
+          end: documents.isForgotten(meetingID) || Task.isCancelled
+            ? .cancelled : .problem(.storageFailed),
+          savedMark: true)
       }
     }
-    let selection = deps.selection()
-    // Known before the provider answers, so every row says where the model runs (R57: `none`
-    // only with `noProvider`); Ollama counts as local until the daemon says otherwise.
-    kind = Self.providerKind(selection.provider)
     let prepared: MeetingSummaryProviders.Prepared
     switch await deps.prepare(selection.provider, selection.model) {
     case .failure(.noProvider): return Ending(end: .problem(.noProvider))
@@ -236,32 +271,33 @@ final class MeetingSummaryOwner {
     kind = prepared.execution == .local ? .local : .hosted
     if Task.isCancelled { return Ending(end: .cancelled) }
 
-    if prepared.execution == .local {
-      lane.summaryQueued()
-      defer { lane.summaryFinished() }
-      // This attempt's whole write runs after the previous local attempt's whole write.
-      let previous = localChain
-      let body = Task { @MainActor [weak self] () -> Ending in
-        await previous?.value
-        guard let self else { return Ending(end: .cancelled) }
-        return await self.write(
-          meetingID, selection: selection, prepared: prepared,
-          replacingUserEdit: replacingUserEdit)
-      }
-      localChain = Task { _ = await body.value }
-      return await withTaskCancellationHandler {
-        await body.value
-      } onCancel: {
-        body.cancel()
-      }
+    guard prepared.execution == .local else {
+      return await write(
+        meetingID, attempt: attempt, selection: selection, prepared: prepared,
+        approvedUserEdit: approvedUserEdit)
     }
-    return await write(
-      meetingID, selection: selection, prepared: prepared, replacingUserEdit: replacingUserEdit)
+    lane.summaryQueued()
+    defer { lane.summaryFinished() }
+    // This attempt's whole write runs after the previous local attempt's whole write.
+    let previous = localChain
+    let body = Task { @MainActor [weak self] () -> Ending in
+      await previous?.value
+      guard let self else { return Ending(end: .cancelled) }
+      return await self.write(
+        meetingID, attempt: attempt, selection: selection, prepared: prepared,
+        approvedUserEdit: approvedUserEdit)
+    }
+    localChain = Task { _ = await body.value }
+    return await withTaskCancellationHandler {
+      await body.value
+    } onCancel: {
+      body.cancel()
+    }
   }
 
   private func write(
-    _ meetingID: UUID, selection: (provider: LLMProvider, model: String),
-    prepared: MeetingSummaryProviders.Prepared, replacingUserEdit: Bool
+    _ meetingID: UUID, attempt: UUID, selection: (provider: LLMProvider, model: String),
+    prepared: MeetingSummaryProviders.Prepared, approvedUserEdit: String?
   ) async -> Ending {
     if Task.isCancelled { return Ending(end: .cancelled) }
     // Notes are saved first, so the summary names the revision it read.
@@ -280,7 +316,9 @@ final class MeetingSummaryOwner {
     let admit: MeetingSummary.Admit
     let complete: MeetingSummary.Complete
     if local {
-      admit = { @MainActor [weak self] in try await self?.admitLocalCall(meetingID) }
+      admit = { @MainActor [weak self] in
+        try await self?.admitLocalCall(meetingID, attempt: attempt)
+      }
       let lane = self.lane
       let call = prepared.complete
       complete = { instructions, prompt in
@@ -297,6 +335,7 @@ final class MeetingSummaryOwner {
     } else {
       admit = { @MainActor [weak self] in
         try Task.checkCancellation()
+        self?.busy.insert(attempt)
         self?.activity[meetingID] = .writing
       }
       complete = prepared.complete
@@ -330,22 +369,31 @@ final class MeetingSummaryOwner {
     }
     // Every answer of the checked save also ends the owed mark.
     switch await documents.publishGeneratedSummary(
-      meetingID, text: text, inputs: inputs.summaryInputs, replacingUserEdit: replacingUserEdit)
+      meetingID, text: text, inputs: inputs.summaryInputs, approvedUserEdit: approvedUserEdit)
     {
-    case .saved: return Ending(end: .written, savedMark: true)
-    case .userEditKept, .notesChanged: return Ending(end: .stale, savedMark: true)
-    case nil: return Ending(end: .cancelled)
+    case .saved:
+      // Checked once more after the save: a change during the write makes the saved summary
+      // show as out of date (its recorded inputs differ), and the attempt counts as stale.
+      let unchanged = currentInputs(meetingID, selection: deps.selection()) == inputs
+      return Ending(end: unchanged ? .written : .stale, savedMark: true)
+    case .userEditKept, .notesChanged:
+      return Ending(end: .stale, savedMark: true)
+    case nil:
+      return Ending(
+        end: documents.isForgotten(meetingID) || Task.isCancelled
+          ? .cancelled : .problem(.storageFailed))
     }
   }
 
   /// Waits until a local call may start, then takes the lane in the same main-actor step.
-  private func admitLocalCall(_ meetingID: UUID) async throws {
+  private func admitLocalCall(_ meetingID: UUID, attempt: UUID) async throws {
     activity[meetingID] = .waiting
     while true {
       await MeetingWorkAdmission.waitUntil(deps.isLocalTurn, wakes: deps.wakes)
       try Task.checkCancellation()
       if deps.isLocalTurn(), !lane.summaryCallRunning {
         lane.beginSummaryCall()
+        busy.insert(attempt)
         activity[meetingID] = .writing
         return
       }
@@ -369,7 +417,8 @@ final class MeetingSummaryOwner {
           provider: selection.provider, model: selection.model)))
   }
 
-  static func providerKind(_ provider: LLMProvider) -> MeetingSummaryFinishedTelemetry.ProviderKind {
+  static func providerKind(_ provider: LLMProvider) -> MeetingSummaryFinishedTelemetry.ProviderKind
+  {
     switch provider {
     case .openAI, .gemini, .claude: return .hosted
     case .ollama, .appleIntelligence, .egOne, .s1Mini: return .local
@@ -388,28 +437,32 @@ final class MeetingSummaryOwner {
 
   private func finish(
     _ meetingID: UUID, attempt: UUID, end: End,
-    kind: MeetingSummaryFinishedTelemetry.ProviderKind, quit: Bool
+    kind: MeetingSummaryFinishedTelemetry.ProviderKind, settled: Bool, current: Bool
   ) {
-    let current = tasks[meetingID]?.attempt == attempt
     if current { tasks[meetingID] = nil }
-    // A quit leaves the summary owed and sends nothing: the relaunch finishes this attempt.
-    if quit { return }
-    let outcome: MeetingSummaryFinishedTelemetry.Outcome
-    switch end {
-    case .written: outcome = .written
-    case .stale: outcome = .stale
-    case .cancelled: outcome = .cancelled
-    case .problem(.noProvider): outcome = .noProvider
-    case .problem(.notForSummaries), .problem(.notReady), .problem(.ollamaTooOld),
-      .problem(.tooLong):
-      outcome = .unsupported
-    case .problem(.providerFailed), .problem(.notesUnreadable): outcome = .failed
+    if settled {
+      let outcome: MeetingSummaryFinishedTelemetry.Outcome
+      switch end {
+      case .written: outcome = .written
+      case .stale: outcome = .stale
+      case .cancelled: outcome = .cancelled
+      case .problem(.noProvider): outcome = .noProvider
+      case .problem(.notForSummaries), .problem(.notReady), .problem(.ollamaTooOld),
+        .problem(.tooLong):
+        outcome = .unsupported
+      case .problem(.providerFailed), .problem(.notesUnreadable), .problem(.storageFailed):
+        outcome = .failed
+      }
+      // R57, enforced here for every path: `none` exactly with `noProvider`. A provider other
+      // than none never yields `none` (`providerKind`), and none always ends as `noProvider`.
+      deps.emitFinished(
+        MeetingSummaryFinishedTelemetry(
+          outcome: outcome, providerKind: outcome == .noProvider ? .none : kind))
+      deps.log("meeting summary finished outcome=\(outcome.rawValue) provider=\(kind.rawValue)")
+    } else {
+      deps.log("meeting summary unsettled; stays owed")
     }
-    deps.emitFinished(
-      MeetingSummaryFinishedTelemetry(
-        outcome: outcome, providerKind: outcome == .noProvider ? .none : kind))
-    deps.log("meeting summary finished outcome=\(outcome.rawValue) provider=\(kind.rawValue)")
-    guard current else { return }
+    guard current, !terminating else { return }
     switch end {
     case .problem(let problem): activity[meetingID] = .failed(problem)
     case .written, .stale, .cancelled: activity[meetingID] = nil

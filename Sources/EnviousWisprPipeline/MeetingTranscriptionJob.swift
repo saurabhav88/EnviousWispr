@@ -50,6 +50,11 @@ package final class MeetingTranscriptionJob {
     package var waitUntilMemoryNormal: @MainActor () async -> Void
     /// A plain wait, injectable so the prolonged-pause rule is testable without a real minute.
     package var sleep: @Sendable (Duration) async -> Void
+    /// Told when a unit (normal or teardown) starts, in the same main-actor step as its
+    /// admission check, and when it has physically ended (#3972 R50: the shared local-model
+    /// lane, so no other local model work is admitted in between).
+    package var unitStarted: @MainActor () -> Void
+    package var unitEnded: @MainActor () -> Void
 
     package init(
       isDictationIdle: @escaping @MainActor () -> Bool,
@@ -66,7 +71,9 @@ package final class MeetingTranscriptionJob {
       engineIdentity: @escaping @MainActor () -> String? = { nil },
       isMemoryPressureElevated: @escaping @MainActor () -> Bool = { false },
       waitUntilMemoryNormal: @escaping @MainActor () async -> Void = {},
-      sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
+      sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) },
+      unitStarted: @escaping @MainActor () -> Void = {},
+      unitEnded: @escaping @MainActor () -> Void = {}
     ) {
       self.isDictationIdle = isDictationIdle
       self.waitUntilDictationIdle = waitUntilDictationIdle
@@ -83,6 +90,8 @@ package final class MeetingTranscriptionJob {
       self.isMemoryPressureElevated = isMemoryPressureElevated
       self.waitUntilMemoryNormal = waitUntilMemoryNormal
       self.sleep = sleep
+      self.unitStarted = unitStarted
+      self.unitEnded = unitEnded
     }
   }
 
@@ -894,9 +903,12 @@ package final class MeetingTranscriptionJob {
     try checkCancelled()
     precondition(!unitInFlight, "MeetingTranscriptionJob runs one unit at a time")
     unitInFlight = true
+    // Same main-actor step as the admission check above: nothing is admitted in between.
+    dependencies.unitStarted()
     let task = Task { @MainActor in try await work() }
     let result = await task.result
     unitInFlight = false
+    dependencies.unitEnded()
     return try result.get()
   }
 
@@ -925,8 +937,10 @@ package final class MeetingTranscriptionJob {
   /// cancelled or deleted job gives its resources back without waiting.
   private func unitIgnoringCancel(_ work: @escaping @MainActor () async -> Void) async {
     unitInFlight = true
+    dependencies.unitStarted()
     await Task { @MainActor in await work() }.value
     unitInFlight = false
+    dependencies.unitEnded()
   }
 
   /// Model work stops once the installed model may no longer be read (delivery turned off).

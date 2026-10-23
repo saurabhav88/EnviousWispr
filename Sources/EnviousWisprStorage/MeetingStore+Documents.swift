@@ -163,17 +163,19 @@ extension MeetingStore {
   }
 
   /// Saves a generated summary only if it may replace what is there, checked in the same file
-  /// operation as the write (#3972 R46): never over the user's own summary unless
-  /// `replacingUserEdit` (the "Write again" confirmation), never from notes older than those
-  /// on disk. Every outcome clears `summaryPending`: the attempt is over. The files are
+  /// operation as the write (#3972 R46): never over the user's own summary unless it is exactly
+  /// the text the user confirmed replacing ("Write again": `approvedUserEdit` is its SHA-256, so
+  /// an edit made after the confirmation is kept), never from notes older than those on disk. Every outcome clears `summaryPending`: the attempt is over. The files are
   /// reconciled first, as a load does, so a summary or notes changed outside the app count.
   public func saveGeneratedSummary(
-    _ text: String, inputs: SummaryInputs, replacingUserEdit: Bool, meeting id: UUID
+    _ text: String, inputs: SummaryInputs, approvedUserEdit: String?, meeting id: UUID
   ) throws -> GeneratedSummarySave {
     try refuseDocumentWrite(id)
     var manifest = try readDocuments(meeting: id).manifest
     manifest.summaryPending = nil
-    if manifest.summary?.origin == .userEdited, !replacingUserEdit {
+    if let current = manifest.summary, current.origin == .userEdited,
+      current.sha256 != approvedUserEdit
+    {
       try writeManifest(manifest, meeting: id)
       return .userEditKept(manifest)
     }

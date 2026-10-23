@@ -134,20 +134,31 @@ struct MeetingSummaryOwnerTests {
     MeetingSummaryFinishedTelemetry(outcome: outcome, providerKind: kind)
   }
 
+  /// What the coordinator does at the ready barrier: decide, make an owed summary durable, then
+  /// start it.
+  static func schedule(_ rig: Rig, _ id: UUID) async -> MeetingEndedTelemetry.SummaryPlan {
+    let plan = rig.owner.decide()
+    if plan == .scheduled {
+      await rig.documents.setSummaryPending(id, true)
+      rig.owner.startOwed(id)
+    }
+    return plan
+  }
+
   @Test("the decision at ready: off, no provider and cleanup models start nothing")
   func plans() throws {
     let rig = try Rig()
     let id = try rig.readyMeeting()
     rig.world.enabled = false
-    #expect(rig.owner.plan(for: id) == .off)
+    #expect(rig.owner.decide() == .off)
     rig.world.enabled = true
     rig.world.provider = .none
-    #expect(rig.owner.plan(for: id) == .noProvider)
+    #expect(rig.owner.decide() == .noProvider)
     rig.world.provider = .egOne
-    #expect(rig.owner.plan(for: id) == .unsupported)
+    #expect(rig.owner.decide() == .unsupported)
     rig.world.provider = .ollama
     rig.world.model = "eg-1:q4"
-    #expect(rig.owner.plan(for: id) == .unsupported)
+    #expect(rig.owner.decide() == .unsupported)
     #expect(rig.owner.isWriting(id) == false)
     #expect(rig.world.finished.isEmpty, "no attempt, no row")
   }
@@ -156,7 +167,7 @@ struct MeetingSummaryOwnerTests {
   func written() async throws {
     let rig = try Rig()
     let id = try rig.readyMeeting()
-    #expect(rig.owner.plan(for: id) == .scheduled)
+    #expect(await Self.schedule(rig, id) == .scheduled)
     await Self.eventually("finished") { rig.world.finished.count == 1 }
     #expect(rig.world.finished == [Self.row(.written, .hosted)])
     #expect(rig.summaryOnDisk(id) == "## Overview\nShip Friday.")
@@ -179,17 +190,17 @@ struct MeetingSummaryOwnerTests {
     let rig = try Rig()
     let id = try rig.readyMeeting()
     _ = try rig.store.saveSummary("My own words", origin: .userEdited, inputs: nil, meeting: id)
-    _ = rig.owner.plan(for: id)
+    _ = await Self.schedule(rig, id)
     await Self.eventually("finished") { rig.world.finished.count == 1 }
     #expect(rig.world.finished == [Self.row(.stale, .hosted)])
     #expect(rig.summaryOnDisk(id) == "My own words")
     #expect(try rig.manifest(id).summaryPending == nil)
 
-    rig.owner.writeAgain(id, replacingUserEdit: false)
+    rig.owner.writeAgain(id, replacing: nil)
     await Self.eventually("second") { rig.world.finished.count == 2 }
     #expect(rig.summaryOnDisk(id) == "My own words", "an unconfirmed Write again keeps it")
 
-    rig.owner.writeAgain(id, replacingUserEdit: true)
+    rig.owner.writeAgain(id, replacing: MeetingDocumentHash.sha256("My own words"))
     await Self.eventually("third") { rig.world.finished.count == 3 }
     #expect(rig.world.finished.last == Self.row(.written, .hosted))
     #expect(rig.summaryOnDisk(id) == "## Overview\nShip Friday.")
@@ -200,7 +211,7 @@ struct MeetingSummaryOwnerTests {
     let rig = try Rig()
     let id = try rig.readyMeeting()
     rig.world.duringCall = { rig.world.speakerNames = ["mic:you": "Priya"] }
-    _ = rig.owner.plan(for: id)
+    _ = await Self.schedule(rig, id)
     await Self.eventually("finished") { rig.world.finished.count == 1 }
     #expect(rig.world.finished == [Self.row(.stale, .hosted)])
     #expect(rig.summaryOnDisk(id) == nil)
@@ -214,7 +225,7 @@ struct MeetingSummaryOwnerTests {
     rig.world.execution = .local
     rig.world.localTurn = false
     rig.world.holdCalls = true
-    _ = rig.owner.plan(for: id)
+    _ = await Self.schedule(rig, id)
     await Self.eventually("waiting") { rig.lane.summaryWaiting == 1 }
     #expect(rig.owner.activity[id] == .waiting)
     #expect(rig.world.calls.isEmpty, "no call while dictation or meeting work has the turn")
@@ -239,8 +250,8 @@ struct MeetingSummaryOwnerTests {
     let second = try rig.readyMeeting()
     rig.world.execution = .local
     rig.world.holdCalls = true
-    _ = rig.owner.plan(for: first)
-    _ = rig.owner.plan(for: second)
+    _ = await Self.schedule(rig, first)
+    _ = await Self.schedule(rig, second)
     await Self.eventually("first calling") { rig.world.callsWaiting == 1 }
     #expect(rig.world.calls.count == 1, "the second waits for the whole first summary")
     #expect(rig.lane.summaryWaiting == 2)
@@ -259,10 +270,10 @@ struct MeetingSummaryOwnerTests {
     let id = try rig.readyMeeting()
     rig.world.execution = .local
     rig.world.localTurn = false
-    _ = rig.owner.plan(for: id)
+    _ = await Self.schedule(rig, id)
     await Self.eventually("waiting") { rig.lane.summaryWaiting == 1 }
     rig.documents.forget(id)
-    rig.owner.cancel(id)
+    await rig.owner.cancelAndWait(id)
     await Self.eventually("finished") { rig.world.finished.count == 1 }
     #expect(rig.world.finished == [Self.row(.cancelled, .local)])
     #expect(rig.world.calls.isEmpty)
@@ -276,7 +287,7 @@ struct MeetingSummaryOwnerTests {
     let id = try rig.readyMeeting()
     rig.world.execution = .local
     rig.world.localTurn = false
-    _ = rig.owner.plan(for: id)
+    _ = await Self.schedule(rig, id)
     await Self.eventually("waiting") { rig.lane.summaryWaiting == 1 }
     #expect(try rig.manifest(id).summaryPending == true)
     rig.owner.prepareForTermination()
@@ -309,7 +320,7 @@ struct MeetingSummaryOwnerTests {
       let rig = try Rig()
       let id = try rig.readyMeeting()
       rig.world.unavailable = unavailable
-      _ = rig.owner.plan(for: id)
+      _ = await Self.schedule(rig, id)
       await Self.eventually("finished") { rig.world.finished.count == 1 }
       #expect(
         rig.world.finished == [Self.row(outcome, outcome == .noProvider ? .none : .hosted)],
@@ -327,6 +338,13 @@ struct MeetingSummaryOwnerTests {
     let rig = try Rig()
     let coordinator = harness.coordinator
     coordinator.summaries = rig.makeOwner(documents: coordinator.documents)
+    // The owed mark is durable by the time the meeting is ready and its row is sent, so a quit
+    // right then never loses the summary.
+    var owedAtEnd: Bool?
+    harness.onEnded = { _ in
+      let id = coordinator.meetings.first?.id
+      owedAtEnd = id.flatMap { try? harness.store.loadDocuments(meeting: $0).manifest.summaryPending }
+    }
     await coordinator.start(from: .history)
     let meetingID = try #require(coordinator.meetings.first?.id)
     coordinator.documents.setNotes(meetingID, "Ask Priya")
@@ -335,6 +353,7 @@ struct MeetingSummaryOwnerTests {
     let ended = try #require(harness.ended.last)
     #expect(ended.summaryPlan == .scheduled)
     #expect(ended.hasNotes)
+    #expect(owedAtEnd == true, "owed on disk before the ready row")
     await Self.eventually("written") { rig.world.finished.count == 1 }
     #expect(rig.world.finished == [Self.row(.written, .hosted)])
     #expect(rig.world.calls.first?.contains("Ask Priya") == true, "the saved notes reach the call")
@@ -372,5 +391,167 @@ struct MeetingSummaryOwnerTests {
     await Self.eventually("cancelled") { rig.world.finished.count == 1 }
     #expect(rig.world.finished == [Self.row(.cancelled, .local)])
     #expect(rig.world.calls.isEmpty)
+  }
+
+  // MARK: - Drains, settling and fences (Codex C13a r1)
+
+  /// Makes every `documents.json` write fail: the file is a directory, so the atomic replace
+  /// throws. Returns the undo.
+  static func breakManifest(_ rig: Rig, _ id: UUID) throws -> () throws -> Void {
+    let url = rig.store.documentsURL(for: id)
+    let saved = try? Data(contentsOf: url)
+    try? FileManager.default.removeItem(at: url)
+    try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
+    return {
+      try FileManager.default.removeItem(at: url)
+      if let saved { try saved.write(to: url) }
+    }
+  }
+
+  @Test("a call in flight holds a relaunch; a deletion returns only once the call has ended")
+  func drains() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    rig.world.holdCalls = true
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("calling") { rig.world.callsWaiting == 1 }
+    #expect(rig.owner.hasWorkInFlight, "a relaunch waits for a hosted call")
+    rig.documents.forget(id)
+    let deletion = Task { await rig.owner.cancelAndWait(id) }
+    // The held call ignores cancellation, as a slow provider may: the deletion waits for it.
+    await Task.yield()
+    #expect(rig.owner.isWriting(id), "still draining")
+    rig.world.releaseCall()
+    await deletion.value
+    #expect(rig.owner.isWriting(id) == false)
+    #expect(rig.owner.hasWorkInFlight == false)
+    #expect(rig.summaryOnDisk(id) == nil, "nothing is saved for a deleted meeting")
+    #expect(rig.world.finished == [Self.row(.cancelled, .hosted)])
+  }
+
+  @Test("a local summary waiting for its turn does not hold a relaunch")
+  func waitingDoesNotHoldRelaunch() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    rig.world.execution = .local
+    rig.world.localTurn = false
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("waiting") { rig.lane.summaryWaiting == 1 }
+    #expect(rig.owner.hasWorkInFlight == false, "it is owed on disk and resumes")
+    rig.owner.prepareForTermination()
+  }
+
+  @Test("a quit right after the start sends nothing and leaves the summary owed")
+  func quitBeforeTheTaskRuns() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    await rig.documents.setSummaryPending(id, true)
+    rig.owner.startOwed(id)
+    rig.owner.prepareForTermination()
+    await Self.eventually("stopped") { !rig.owner.isWriting(id) }
+    #expect(rig.world.finished.isEmpty)
+    #expect(try rig.manifest(id).summaryPending == true)
+  }
+
+  @Test("a mark that cannot be cleared leaves the attempt owed and silent; a relaunch settles it once")
+  func unsettledAttempt() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    rig.world.unavailable = .notReady
+    _ = await Self.schedule(rig, id)
+    let undo = try Self.breakManifest(rig, id)
+    await Self.eventually("failed") { rig.owner.activity[id] == .failed(.storageFailed) }
+    #expect(rig.world.finished.isEmpty, "not settled, so no row yet")
+
+    try undo()
+    #expect(try rig.manifest(id).summaryPending == true)
+    let relaunched = rig.makeOwner(documents: Rig.documents(rig.store))
+    await relaunched.resumeOwed(readyMeetingIDs: [id])
+    await Self.eventually("settled") { rig.world.finished.count == 1 }
+    #expect(rig.world.finished == [Self.row(.unsupported, .hosted)])
+    #expect(try rig.manifest(id).summaryPending == nil)
+  }
+
+  @Test("Write again with no mark written ends at once with one failed row")
+  func writeAgainWithoutMark() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    let undo = try Self.breakManifest(rig, id)
+    rig.owner.writeAgain(id, replacing: nil)
+    await Self.eventually("finished") { rig.world.finished.count == 1 }
+    #expect(rig.world.finished == [Self.row(.failed, .hosted)], "R57: a hosted kind, never none")
+    #expect(rig.world.calls.isEmpty)
+    try undo()
+  }
+
+  @Test("an edit made after confirming Write again is kept")
+  func editAfterConfirmationKept() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    _ = try rig.store.saveSummary("My own words", origin: .userEdited, inputs: nil, meeting: id)
+    rig.world.holdCalls = true
+    rig.owner.writeAgain(id, replacing: MeetingDocumentHash.sha256("My own words"))
+    await Self.eventually("calling") { rig.world.callsWaiting == 1 }
+    _ = try rig.store.saveSummary("Newer words", origin: .userEdited, inputs: nil, meeting: id)
+    rig.world.releaseCall()
+    await Self.eventually("finished") { rig.world.finished.count == 1 }
+    #expect(rig.world.finished == [Self.row(.stale, .hosted)])
+    #expect(rig.summaryOnDisk(id) == "Newer words")
+  }
+
+  @Test("a meeting renamed while the summary is saved counts as stale, and shows out of date")
+  func changeDuringSave() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    rig.world.duringCall = {
+      // Holds the file queue so the save is in flight while the names change.
+      let release = MeetingDocumentsOwnerTests.holdFileQueue()
+      Task { @MainActor in
+        rig.world.speakerNames = ["mic:you": "Priya"]
+        release.signal()
+      }
+    }
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("finished") { rig.world.finished.count == 1 }
+    let row = try #require(rig.world.finished.first)
+    // The names changed either before the save's check (nothing saved) or during the save
+    // (saved, then counted stale): never a written summary that looks current.
+    #expect(row == Self.row(.stale, .hosted))
+    if let inputs = try rig.manifest(id).summary?.inputs {
+      #expect(
+        inputs.speakerNamesSHA256 != MeetingSummaryOwner.speakerNamesSHA256(["mic:you": "Priya"]),
+        "a saved summary records the names it was written from, so it shows out of date")
+    }
+  }
+
+  @Test("deleting a recording with notes reports has_notes")
+  func deletionKeepsNotesFact() async throws {
+    let harness = try MeetingCoordinatorTests.Harness()
+    let rig = try Rig()
+    let coordinator = harness.coordinator
+    coordinator.summaries = rig.makeOwner(documents: coordinator.documents)
+    await coordinator.start(from: .history)
+    let meetingID = try #require(coordinator.meetings.first?.id)
+    coordinator.documents.setNotes(meetingID, "Ask Priya")
+    await coordinator.delete(meetingID: meetingID)
+    let ended = try #require(harness.ended.last)
+    #expect(ended.outcome == .deletedBeforeReady)
+    #expect(ended.hasNotes)
+  }
+
+  @Test("a queued meeting the queue cannot run never holds summaries back")
+  func unrunnableQueueDoesNotBlock() async throws {
+    let harness = try MeetingCoordinatorTests.Harness()
+    var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    try harness.store.create(record)
+    record.state = .queued
+    try harness.store.save(record)
+    // Too little disk: the queue stops and leaves the meeting queued.
+    harness.freeBytes = 10_000_000
+    let coordinator = harness.coordinator
+    coordinator.launch()
+    await Self.eventually("listed") { coordinator.record(id: record.id) != nil }
+    await Self.eventually("queue stopped") { !coordinator.hasFinalPassWork }
+    #expect(coordinator.record(id: record.id)?.state == .queued)
   }
 }
