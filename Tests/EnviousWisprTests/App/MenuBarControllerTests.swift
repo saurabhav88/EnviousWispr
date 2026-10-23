@@ -1040,6 +1040,34 @@ struct MenuBarControllerTests {
     #expect(changed.count == 1)
   }
 
+  @Test("a tick never puts another meeting's work above the Show item of the first")
+  func meetingLinesStayPaired() {
+    let spy = ActionSpy()
+    let controller = makeController(spy: spy)
+    let first = UUID()
+    let second = UUID()
+    func facts(_ id: UUID, _ fraction: Double) -> MeetingsPresentation.MenuFacts {
+      .init(
+        phase: .idle,
+        processing: .init(meetingID: id, stage: .transcribing(track: .microphone, fraction: fraction)))
+    }
+    var state = fixture(pipelineState: .idle)
+    state.meetingItems = MeetingsPresentation.menuItems(facts(first, 0.2), now: Date())
+    let menu = NSMenu()
+    controller.renderMenu(into: menu, state: state)
+
+    spy.meetingMenuFacts = facts(first, 0.3)
+    controller.refreshMeetingLines(in: menu)
+    #expect(item(menu, id: MenuBarItemID.meetingProcessing)?.title == "Writing the transcript (30%)")
+
+    // The first pass ends and another starts while the menu stays open.
+    spy.meetingMenuFacts = facts(second, 0.9)
+    controller.refreshMeetingLines(in: menu)
+    #expect(item(menu, id: MenuBarItemID.meetingProcessing)?.title == "Writing the transcript (30%)")
+    perform(item(menu, id: MenuBarItemID.meetingShowInHistory))
+    #expect(spy.shownMeetings == [first], "the line and the click are about the same meeting")
+  }
+
   @Test("a click reads the meeting's phase again: Start, Stop, or nothing while it settles")
   func meetingItemActsOnTheCurrentPhase() async {
     let spy = ActionSpy()

@@ -974,12 +974,21 @@ final class MenuBarController: NSObject {
   }
 
   /// #3972 R34: while the menu is open, the recording time and the pass's percent move. Only the
-  /// titles of items already shown change; a phase change shows at the next open.
+  /// titles of items already shown change, and only while they are still about the meeting their
+  /// Show item opens; any other change shows at the next open.
   func refreshMeetingLines(in menu: NSMenu, now: Date = Date()) {
     guard let facts = actions.meetingMenuFacts() else { return }
-    for line in MeetingsPresentation.menuItems(facts, now: now)
-    where line.kind == .elapsed || line.kind == .processing {
-      menu.items.first { $0.identifier == Self.meetingItemID(line.kind) }?.title = line.title
+    let fresh = MeetingsPresentation.menuItems(facts, now: now)
+    let pairs: [(MeetingsPresentation.MenuItem.Kind, MeetingsPresentation.MenuItem.Kind)] = [
+      (.elapsed, .showLive), (.processing, .showInHistory),
+    ]
+    for (lineKind, showKind) in pairs {
+      guard let line = fresh.first(where: { $0.kind == lineKind }),
+        case .show(let freshID)? = fresh.first(where: { $0.kind == showKind })?.action,
+        let shown = menu.items.first(where: { $0.identifier == Self.meetingItemID(showKind) }),
+        shown.representedObject as? UUID == freshID
+      else { continue }
+      menu.items.first { $0.identifier == Self.meetingItemID(lineKind) }?.title = line.title
     }
   }
 
