@@ -490,6 +490,34 @@ struct MeetingRecorderTests {
     #expect(r.microphones[1].stopCount == 1)
   }
 
+  @Test("a microphone back within 1.5 s keeps its gap: the reopened audio starts where it arrived")
+  func quickReopenKeepsTheGap() async throws {
+    let r = try rig(microphones: 2, callSound: false)
+    _ = try await r.recorder.start()
+    speak(r.microphones[0], r.clock, seconds: 1)
+    r.microphones[0].onInterrupted?(.deviceRemoved)
+    defer { r.reopenGate.open() }
+    #expect(await r.reopenGate.waitUntilParked(), "the reopen never paused")
+    // Back half a second later: under the writer's 1.5 s jitter allowance, so only the
+    // recorder knows this audio does not continue the first stretch. The new device's
+    // pre-roll arrives before admission and is refused; it must not use up the run break.
+    r.microphones[1].preRoll = [Float](repeating: 0.1, count: 800)
+    r.clock.advance(seconds: 0.5)
+    r.reopenGate.open()
+    await r.recorder.reopenTaskForTesting?.value
+    speak(r.microphones[1], r.clock, seconds: 1)
+    speak(r.microphones[1], r.clock, seconds: 1)
+    await r.recorder.stop()
+    let segments = r.segments.of(.microphone)
+    #expect(segments.count == 2)
+    #expect(segments.first?.startMs == 0)
+    // Dropped stretch 1,000..<1,500 ms stays a gap; the second run is not pulled back to 1 s.
+    #expect(abs((segments.last?.startMs ?? 0) - 1_500) <= 1, "\(segments.map(\.startMs))")
+    #expect(segments.last?.frameCount == 32_000, "the run break is taken once, not per buffer")
+    #expect(r.recorder.microphoneHealth?.gaps == 1)
+    #expect(r.recorder.microphoneSourceHealth.framesNotAdmitted == 800, "the pre-roll was refused")
+  }
+
   @Test("a microphone that stops delivering while recording is replaced and the stall counted")
   func stallWhileRecordingReopens() async throws {
     let r = try rig(microphones: 2, callSound: false)

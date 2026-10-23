@@ -293,8 +293,14 @@ public final class MeetingRecorder {
 
   /// Opens a microphone source and admits its samples, re-checking after every await that
   /// `generation` is still current; otherwise the source it opened is released.
+  ///
+  /// `startsNewRun`: a reopen after a lost microphone (#3998). Its first admitted
+  /// buffer does not continue the audio before the loss, so the writer starts a new segment
+  /// at its arrival time; without this a reopen inside the writer's 1.5 s jitter allowance
+  /// joined the two stretches and pulled the microphone timeline earlier than the call track.
   private func openMicrophone(
-    targetUID: String?, writer: MeetingTrackWriter, generation openGeneration: Int
+    targetUID: String?, writer: MeetingTrackWriter, generation openGeneration: Int,
+    startsNewRun: Bool = false
   ) async throws {
     lostDuringStart = nil
     let source = sources.makeMicrophone()
@@ -302,6 +308,8 @@ public final class MeetingRecorder {
     let admission = micAdmission
     let health = micHealthBox
     let hostTime = sources.hostTime
+    // Read and cleared by the first admitted buffer only (audio thread; no allocation).
+    let pendingRunBreak = OSAllocatedUnfairLock(initialState: startsNewRun)
     source.onSamples = { samples, audioLevel in
       guard !samples.isEmpty else { return }
       guard admission.withLock({ $0 }) == openGeneration else {
@@ -310,7 +318,13 @@ public final class MeetingRecorder {
       }
       let duration = Double(samples.count) / MeetingAudioFormat.sampleRate
       let firstSampleHost = hostTime() &- MeetingRecorder.hostTicks(forSeconds: duration)
-      writer.append(samples, hostTime: firstSampleHost)
+      let runBreak = pendingRunBreak.withLock { pending -> Bool in
+        defer { pending = false }
+        return pending
+      }
+      samples.withUnsafeBufferPointer {
+        writer.append($0, hostTime: firstSampleHost, startsNewRun: runBreak)
+      }
       level.withLock { $0 = audioLevel }
     }
     source.onInterrupted = { [weak self] cause in
@@ -378,7 +392,8 @@ public final class MeetingRecorder {
         self.generation == reopenGeneration
       else { return }
       do {
-        try await self.openMicrophone(targetUID: nil, writer: writer, generation: reopenGeneration)
+        try await self.openMicrophone(
+          targetUID: nil, writer: writer, generation: reopenGeneration, startsNewRun: true)
         self.micHealthBox.withLock { $0.reopens += 1 }
       } catch RecorderError.stoppedDuringStart {
         return
