@@ -79,6 +79,9 @@ final class WordCheckRuntime {
   package private(set) var loadAttemptsForTests = 0
   /// The off-main cleanup `releaseForTermination` handed off, for tests to await (#3853).
   package private(set) var terminationCleanupForTests: Task<Void, Never>?
+  /// Fires when the quit cleanup's detached task finishes: the subject's own completion signal, so
+  /// an exit test can tell a cleanup that ran from one that never got the chance (#3987).
+  package var onTerminationCleanupForTests: @Sendable () -> Void = {}
   /// Fires as a load starts reading the model, past its generation check: the subject's signal
   /// that a load is truly in flight (#3853).
   package var onLoadReadingForTests: () -> Void = {}
@@ -329,9 +332,18 @@ final class WordCheckRuntime {
     // the deinit (and its cache clear) then runs off the main thread.
     let held = TerminationHold(model: loaded?.model)
     loaded = nil
+    let logger = Self.quitLogger
+    let completed = onTerminationCleanupForTests
     terminationCleanupForTests = Task.detached(priority: .utility) {
       held.drop()
-      KevWordCheckModel.releaseCachedBuffers()
+      // A process that never used MLX has nothing to clear; cleanup must not start MLX (#3987).
+      // Log synchronously if cleanup reaches its outcome. A missing notice means outcome unobserved.
+      if KevWordCheckModel.releaseCachedBuffers() {
+        logger.notice("word check cache cleared reason=app_quit")
+      } else {
+        logger.notice("word check cache clear skipped reason=mlx_unused")
+      }
+      completed()
     }
     // os.Logger, not AppLogger: written synchronously, so the line survives the exit that follows.
     Self.quitLogger.notice("word check holder dropped reason=app_quit")

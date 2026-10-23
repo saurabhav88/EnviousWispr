@@ -7,6 +7,7 @@ internal import MLX
 internal import MLXLLM
 internal import MLXLMCommon
 internal import MLXNN
+import os
 
 /// The loaded Kev checkpoint (#3242): Qwen3.5-0.8B with its LoRA merged and the backbone
 /// quantized, read through mlx-swift-lm's Qwen3.5 implementation, plus Kev's pointer head.
@@ -39,6 +40,16 @@ public actor KevWordCheckModel {
   /// the 0.8B's working set is far smaller.
   static let cacheLimitBytes = 128 << 20
 
+  /// Set once, just before this process's first MLX call (#3987). Until then MLX holds no memory,
+  /// and a cache clear would be MLX's first use: at quit, that built MLX's allocator while `exit()`
+  /// was destroying the static map the allocator reads (ENVIOUSWISPR-7W). It means "a tracked MLX
+  /// entry has begun", not "MLX finished initializing" and not "exit is safe": a load that starts
+  /// as the app quits can still race `exit()` (#3939). Kev is the only MLX user in the app.
+  private static let mlxUsed = OSAllocatedUnfairLock(initialState: false)
+
+  /// Every entry that can be this process's first MLX call marks it first (#3987).
+  private static func beginMLXUse() { mlxUsed.withLock { $0 = true } }
+
   public enum LoadError: Error, Equatable {
     case quantizationMissing
     case headTensorMissing(String)
@@ -64,6 +75,7 @@ public actor KevWordCheckModel {
       let quantization = try JSONDecoder().decode(BaseConfiguration.self, from: configData)
         .perLayerQuantization
     else { throw LoadError.quantizationMissing }
+    Self.beginMLXUse()
     Memory.cacheLimit = Self.cacheLimitBytes
     let model = Qwen35Model(configuration)
     try await loadWeights(modelDirectory: folder, model: model, perLayerQuantization: quantization)
@@ -116,13 +128,21 @@ public actor KevWordCheckModel {
 
   /// A load that throws after reading weights never produces an instance, so no deinit runs; its
   /// arrays are freed as the initializer unwinds and their buffers wait in MLX's cache. The runtime
-  /// calls this in its load failure path (#3289).
-  public static func releaseCachedBuffers() {
+  /// calls this in its load failure path (#3289) and at quit (#3853).
+  ///
+  /// Returns false, without calling MLX, while no MLX entry has begun in this process: there is
+  /// nothing to free, and the clear would be MLX's first use (#3987). Otherwise clears and returns
+  /// true.
+  @discardableResult
+  public static func releaseCachedBuffers() -> Bool {
+    guard mlxUsed.withLock({ $0 }) else { return false }
     Memory.clearCache()
+    return true
   }
 
   /// MLX's active and cached bytes, numbers only, for DEBUG log lines.
   public static func memorySnapshotForLog() -> (active: Int, cache: Int) {
+    beginMLXUse()  // reading MLX's memory builds its allocator (#3987)
     let snapshot = Memory.snapshot()
     return (snapshot.activeMemory, snapshot.cacheMemory)
   }
