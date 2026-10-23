@@ -152,8 +152,7 @@ EnviousWispr.app/
 !Sources/EnviousWispr/Resources/SettingsSearchMeaning/
 !Sources/EnviousWispr/Resources/SettingsSearchMeaning/**
 
-# Dolt database files (added by bd init)
-.dolt/
+# Local databases
 *.db
 .notebooklm/
 
@@ -450,7 +449,6 @@ scripts/freeze-suite/compare-output.json
 scripts/freeze-suite/variance-log.jsonl
 docs/
 Brand Assets/
-.beads/
 workers/weekly-digest/.wrangler/
 routine-session-logs/
 routine-session-logs-*/
