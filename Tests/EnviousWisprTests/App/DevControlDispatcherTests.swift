@@ -35,7 +35,7 @@
         models: DevControlFixtures.ModelFake().actions,
         dictation: DevControlFixtures.inertDictation(),
         credentials: DevControlFixtures.isolatedCredentials(),
-        words: DevControlFixtures.unwrittenWords())
+        words: DevControlFixtures.unwrittenWords(), meetings: .unwired())
       return (settings, dispatcher)
     }
 
@@ -54,12 +54,12 @@
       return nil
     }
 
-    @Test("settings.list returns all 70 rows; settings.get returns one, and refuses bad keys")
+    @Test("settings.list returns all 73 rows; settings.get returns one, and refuses bad keys")
     func listAndGet() async throws {
       let (settings, dispatcher) = Self.make()
       let listed = try #require(payload(await dispatcher.handle(.settingsList, args: [:])))
       let rows = try #require(listed["settings"] as? [[String: Any]])
-      #expect(rows.count == 70)
+      #expect(rows.count == 73)
 
       settings.fillerRemovalEnabled = false
       let got = try #require(
@@ -141,7 +141,7 @@
         models: DevControlFixtures.ModelFake().actions,
         dictation: DevControlFixtures.inertDictation(),
         credentials: DevControlFixtures.isolatedCredentials(),
-        words: DevControlFixtures.unwrittenWords())
+        words: DevControlFixtures.unwrittenWords(), meetings: .unwired())
       let reply = try #require(payload(await dispatcher.handle(
         .channelSet, args: ["deviceUID": "mic-a", "channel": NSNumber(value: 2)])))
       #expect(reply["deviceUID"] as? String == "mic-a")
@@ -337,7 +337,7 @@
         models: models.actions,
         dictation: DevControlFixtures.inertDictation(),
         credentials: DevControlFixtures.isolatedCredentials(),
-        words: DevControlFixtures.unwrittenWords())
+        words: DevControlFixtures.unwrittenWords(), meetings: .unwired())
       return (settings, dispatcher)
     }
 
@@ -677,7 +677,7 @@ private static func make(words: CustomWordsCoordinator) -> (SettingsManager, Dev
     models: DevControlFixtures.ModelFake().actions,
     dictation: DevControlFixtures.inertDictation(),
     credentials: DevControlFixtures.isolatedCredentials(),
-    words: words)
+    words: words, meetings: .unwired())
   return (settings, dispatcher)
 }
 

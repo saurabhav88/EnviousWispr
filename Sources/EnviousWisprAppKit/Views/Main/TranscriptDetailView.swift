@@ -59,6 +59,9 @@ struct TranscriptDetailView: View {
 
   /// #2807: what this row IS, by name. A Dictation was made with the keybind; a Transcript
   /// came from Transcribe a File. Read from `isImported`, the row's only kind.
+  ///
+  /// #3972 R45: a meeting never reaches this view; History shows it in
+  /// `MeetingHistoryDetailView`.
   private var kindWord: String {
     transcript.isImported
       ? String(
@@ -91,10 +94,15 @@ struct TranscriptDetailView: View {
                 turns: renderedTurns,
                 onRename: { id, name in
                   transcriptCoordinator.renameSpeaker(
-                    id: transcript.id, speakerId: id, name: name)
+                    id: transcript.id, speakerId: id, name: name, isMeeting: transcript.isMeeting)
                 },
-                onRenameCancelled: { transcriptCoordinator.noteRenameCancelled() },
-                onTurnsDisplayed: { transcriptCoordinator.noteTurnsDisplayed(id: transcript.id) },
+                onRenameCancelled: {
+                  transcriptCoordinator.noteRenameCancelled(isMeeting: transcript.isMeeting)
+                },
+                onTurnsDisplayed: {
+                  transcriptCoordinator.noteTurnsDisplayed(
+                    id: transcript.id, isMeeting: transcript.isMeeting)
+                },
                 fallback: { EmptyView() }
               )
             }
@@ -150,48 +158,16 @@ struct TranscriptDetailView: View {
   /// history" hold here too. It used to write the board as a kept copy and post Cmd+V,
   /// which left the dictation on the clipboard in place of whatever the user had there.
   private func pasteFromHistory() {
-    guard pasteAllowed else { return }
-    NSApp.hide(nil)
-    Task {
-      try? await Task.sleep(for: .milliseconds(TimingConstants.appHideBeforePasteDelayMs))
-      // Checked after the wait, the one read of the text by id: a dictation can start, a held
-      // row can lapse and Accessibility can be turned off while History is hidden.
-      // The live read: the cached flag stops updating once both permissions are granted.
-      guard pasteAllowed, permissions.accessibilityGrantedLive,
-        let text = transcriptCoordinator.textForDelivery(transcript)
-      else {
-        // Nothing was written or pasted; bring History back rather than leave the app hidden
-        // (cloud review of PR #3945). The row's own state now explains why Paste stood down.
-        showHistory()
-        return
-      }
-      let result = ClipboardCleanup.manualPaste(
-        text: text, restore: settings.restoreClipboardAfterPaste,
-        markTransient: settings.keepDictationsOutOfClipboardHistory, on: .general,
-        dispatch: { PasteService.postPasteKeystroke() })
-      switch result {
-      case .dispatched:
-        // #2087: the OTHER door back to a held recovery. The pill reports its
-        // restores; without this one the funnel counted only the users who
-        // caught a three-second offer. No-op for an ordinary row. Reported only
-        // once Cmd+V was posted: an attempt, never a confirmed arrival.
-        transcriptCoordinator.reportRestoredFromHistory(transcript)
-      case .dispatchFailed:
-        // The text is on the clipboard and no restore is scheduled.
-        showPasteNotice(
-          String(
-            localized: "Copied. Paste it yourself.",
-            comment: "History: Paste could not press Command-V; the text is on the clipboard."))
-      case .clipboardBusy, .writeFailed:
-        showPasteNotice(
-          String(
-            localized: "Couldn't paste. Your text is still in History.",
-            comment: "History: Paste could not use the clipboard, so nothing was pasted."))
-      case .copied:
-        // `manualPaste` never answers `.copied`; that is `manualCopy`'s result.
-        break
-      }
-    }
+    HistoryPaste.paste(
+      allowed: { pasteAllowed },
+      text: { transcriptCoordinator.textForDelivery(transcript) },
+      settings: settings, permissions: permissions,
+      showHistory: { showHistory() },
+      showNotice: { showPasteNotice($0) },
+      // #2087: the OTHER door back to a held recovery. The pill reports its restores; without
+      // this one the funnel counted only the users who caught a three-second offer. No-op for
+      // an ordinary row. Reported only once Cmd+V was posted: an attempt, never an arrival.
+      dispatched: { transcriptCoordinator.reportRestoredFromHistory(transcript) })
   }
 
   private func showPasteNotice(_ notice: String) {
@@ -307,7 +283,7 @@ struct TranscriptDetailView: View {
 
   private var header: some View {
     HStack(alignment: .top, spacing: 14) {
-      Image(systemName: transcript.isImported ? "doc.text" : "mic")
+      Image(systemName: kindIcon)
         .font(.system(size: 20, weight: .medium))
         .foregroundStyle(.stAccent)
         .frame(width: 46, height: 46)
@@ -476,14 +452,20 @@ struct TranscriptDetailView: View {
   /// `TurnAssembler.assemble` can return `[]` — collapses to the SAME "nothing to render"
   /// outcome as `nil` everywhere this view branches on turns, never just `!= nil`.
   private var hasRenderableTurns: Bool {
-    guard let turns = transcript.turns else { return false }
+    guard let turns = displayTurns else { return false }
     return !turns.isEmpty
   }
+
+  private var kindIcon: String {
+    transcript.isImported ? "doc.text" : "mic"
+  }
+
+  private var displayTurns: [Turn]? { transcript.turns }
 
   private var renderedTurns: [TranscriptDocumentPresenter.RenderedTurn]? {
     let diffs = turnDiffs
     return TranscriptDocumentPresenter.render(
-      turns: transcript.turns, rawText: transcript.text,
+      turns: displayTurns, rawText: transcript.text,
       speakerNames: transcript.speakerNames ?? [:], mode: documentView, timesOn: timesOn,
       // Finished unless the file import is still cleaning THIS row (#2851 §3 D, cloud
       // review of PR #2871): a turn the cleanup has not reached yet is not "unpolished".
@@ -496,7 +478,7 @@ struct TranscriptDetailView: View {
   /// second) — the wizard and History prepare the same per-turn diff shape from different
   /// live/persisted sources.
   private var turnDiffInput: FileImportCoordinator.TurnDiffInput {
-    guard let turns = transcript.turns else {
+    guard let turns = displayTurns else {
       return FileImportCoordinator.TurnDiffInput(pairs: [], language: transcript.language)
     }
     let text = transcript.text
@@ -563,9 +545,8 @@ struct TranscriptDetailView: View {
   /// being deleted. `nil` for a row that no longer exists, so nothing is delivered for a
   /// recording the user was told is gone.
   private var exportText: String? {
-    guard let live = transcriptCoordinator.currentRow(id: transcript.id),
-      let base = transcriptCoordinator.textForDelivery(live)
-    else { return nil }
+    guard let live = transcriptCoordinator.currentRow(id: transcript.id) else { return nil }
+    guard let base = transcriptCoordinator.textForDelivery(live) else { return nil }
     if let turns = live.turns,
       let result = TranscriptDocumentPresenter.exportText(
         turns: turns, rawText: live.text, speakerNames: live.speakerNames ?? [:],
@@ -575,6 +556,8 @@ struct TranscriptDetailView: View {
     }
     return base
   }
+
+  private var defaultFileName: String { kindWord }
 
   /// Copy/Save/Share titles — the SAME general export rule as the wizard (plan §2.1), never
   /// scoped to turn-labeled documents.
@@ -589,7 +572,7 @@ struct TranscriptDetailView: View {
   private func saveDocument() {
     let panel = NSSavePanel()
     panel.allowedContentTypes = [.plainText]
-    panel.nameFieldStringValue = kindWord
+    panel.nameFieldStringValue = defaultFileName
     guard panel.runModal() == .OK, let url = panel.url else { return }
     guard let text = exportText else { return }
     do {

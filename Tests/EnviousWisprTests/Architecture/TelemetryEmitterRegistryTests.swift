@@ -206,6 +206,14 @@ struct TelemetryEmitterRegistryTests {
   /// #3292: one rare_failure feedback.report_refused site, keep whole; status/count and
   /// closed kind/size only, no take key or content. Reader: founder release review, then on request;
   /// metrics-off observations are absent, duplicates/losses prevent unique-report/rate claims.
+  /// #3972 R11: one per_user_action meeting.ended site (`trackMeetingEnded`), keep whole; one
+  /// row per meeting attempt at its terminal, shape only (outcome, buckets, track statuses,
+  /// counts, RTF). Reader: founder adoption and quality query at the first release review.
+  /// #3972 R48, R54: one per_user_action meeting.summary_finished site
+  /// (`trackMeetingSummaryFinished`), keep whole; one row per summary attempt at its end, two
+  /// closed enums (outcome, provider_kind), no text, model or id. meeting.ended cannot carry it:
+  /// the summary ends after the transcript-ready row. Reader: founder summary query at the first
+  /// release review.
   /// #3975: `learnAdded` gains `via:` and `learnUndone` gains `via:`/`memory:`, which changes the
   /// enclosing-function identity of those two existing sites (same events, same cadences; closed
   /// string fields, `memory` omitted unless a committed "no"). Two NEW sites:
@@ -214,7 +222,7 @@ struct TelemetryEmitterRegistryTests {
   /// in `learnBlockedSeen` (per_take, keep; once per distinct blocked pair per watched paste,
   /// only `take_id`, in TAKE_KEYED_EVENTS). Readers: the #3975 plan §3a release review.
   static let sitesFingerprint =
-    "e6ffcc9cee7c7cd9317dfd465db3ac7a82c473a298188c203d18925778be1abd"
+    "9ab9b292ab6387d51922742ad18449bd570db909e51b7be619ef8141c990a975"
   static let ungradedFingerprint =
     "8c5e46c2f2f7fb59004bb2eb5ea1ac210ef32dbb79fdcb68b3eff70a28cc133f"
 

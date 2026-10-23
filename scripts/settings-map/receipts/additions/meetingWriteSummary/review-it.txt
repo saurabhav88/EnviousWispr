@@ -1,0 +1,12 @@
+{
+  "language": "it",
+  "title": "crea un riepilogo al termine della riunione",
+  "words": [
+    "riassunto",
+    "sintesi"
+  ],
+  "phrases": [
+    "riassumi la riunione quando finisce",
+    "riepilogo automatico delle riunioni"
+  ]
+}

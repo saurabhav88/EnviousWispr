@@ -1,0 +1,1 @@
+{"language":"et","title":"loo koosoleku lõpus kokkuvõte","words":["ülevaade"],"phrases":["tee pärast koosolekut kokkuvõte","automaatne koosoleku kokkuvõte"]}

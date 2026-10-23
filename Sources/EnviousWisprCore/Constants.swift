@@ -12,6 +12,9 @@ public enum AppConstants {
   }()
   public static let appSupportDir = "EnviousWispr"
   public static let transcriptsDir = "transcripts"
+  /// EnviousMeet recordings (#3972): one folder per meeting holding `meeting.json` and the
+  /// track segment files. Never scanned by crash recovery, which reads `audio_recovery/` only.
+  public static let meetingsDir = "Meetings"
   /// Child of `transcriptsDir` holding Escape Recovery rows that are not yet
   /// permanent (#2087). Deliberately a SUBDIRECTORY: `TranscriptStore.loadAll()`
   /// is non-recursive and filters on a `.json` path extension, so a pending row

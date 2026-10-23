@@ -394,6 +394,91 @@ import Testing
   // vocabulary doc comment above).
 
   private static let expected: [CallSite] = [
+    // #3972 EnviousMeet: `MeetingParakeetEngine` owns its OWN `ParakeetBackend` instance, built
+    // and freed per meeting pass. It never reaches dictation's backend, `ASRManager`'s backend
+    // or crash recovery's engine, so no recovery claim can conflict with these calls whatever
+    // the timing (structurallySafe (c): the callee is a different engine instance). The job
+    // lines are the injected-closure stores and their calls, which reach only that instance.
+    // `MeetingSpeechBackend` conformance on `ParakeetBackend`: `prepare`/`transcribe` here run
+    // on `self`, the backend instance the meeting engine constructed for itself (`makeBackend`
+    // is `{ ParakeetBackend() }` and nothing else creates one for it).
+    CallSite(
+      file: "Sources/EnviousWisprASR/MeetingParakeetEngine.swift", matcher: "prepare",
+      text: "try await prepare(selection: selection, progressCallback: nil)",
+      classification: .structurallySafe),
+    CallSite(
+      file: "Sources/EnviousWisprASR/MeetingParakeetEngine.swift", matcher: "transcribe",
+      text: "return try await transcribe(audioSamples: samples, options: options)",
+      classification: .structurallySafe),
+    // The engine's own unloads: the published instance (`unloadNow`) and a fresh instance whose
+    // prepare failed (released before it is ever published). Neither is dictation's backend.
+    CallSite(
+      file: "Sources/EnviousWisprASR/MeetingParakeetEngine.swift", matcher: "unload",
+      text: "await backend.unload()", classification: .structurallySafe),
+    CallSite(
+      file: "Sources/EnviousWisprASR/MeetingParakeetEngine.swift", matcher: "unload",
+      text: "await fresh.unload()", classification: .structurallySafe),
+    CallSite(
+      file: "Sources/EnviousWisprPipeline/MeetingTranscriptionJob.swift", matcher: "transcribe",
+      text: "self.transcribe = transcribe", classification: .structurallySafe),
+    CallSite(
+      file: "Sources/EnviousWisprPipeline/MeetingTranscriptionJob.swift", matcher: "transcribe",
+      text: "self.transcribe = transcribe", classification: .structurallySafe),
+    CallSite(
+      file: "Sources/EnviousWisprPipeline/MeetingTranscriptionJob.swift", matcher: "unloadEngine",
+      text: "self.unloadEngine = unloadEngine", classification: .structurallySafe),
+    CallSite(
+      file: "Sources/EnviousWisprPipeline/MeetingTranscriptionJob.swift", matcher: "unloadEngine",
+      text: "self.unloadEngine = unloadEngine", classification: .structurallySafe),
+    CallSite(
+      file: "Sources/EnviousWisprPipeline/MeetingTranscriptionJob.swift", matcher: "unloadEngine",
+      text: "await unitIgnoringCancel { await self.dependencies.unloadEngine() }",
+      classification: .structurallySafe),
+    CallSite(
+      file: "Sources/EnviousWisprPipeline/MeetingTranscriptionJob.swift", matcher: "unloadEngine",
+      text: "await unitIgnoringCancel { await self.dependencies.unloadEngine() }",
+      classification: .structurallySafe),
+    // Three unload sites: the ordinary end of a pass, the teardown on cancel, pressure, pause or
+    // R32, and a prolonged pause. All unload the meeting's own engine, never dictation's.
+    CallSite(
+      file: "Sources/EnviousWisprPipeline/MeetingTranscriptionJob.swift", matcher: "unloadEngine",
+      text: "await unitIgnoringCancel { await self.dependencies.unloadEngine() }",
+      classification: .structurallySafe),
+    CallSite(
+      file: "Sources/EnviousWisprPipeline/MeetingTranscriptionJob.swift", matcher: "transcribe",
+      text: "let result = try await self.dependencies.transcribe(samples)",
+      classification: .structurallySafe),
+    // #3972 C10: a live-words preview unit decodes one closed capture file with the same
+    // injected meeting engine, inside the same dictation-idle `unit`. Never dictation's backend.
+    CallSite(
+      file: "Sources/EnviousWisprPipeline/MeetingTranscriptionJob.swift", matcher: "transcribe",
+      text: "return try await self.dependencies.transcribe(samples).text",
+      classification: .structurallySafe),
+    // The checkpoint's SHA-256 digest (`CryptoKit`), not an engine finalize.
+    CallSite(
+      file: "Sources/EnviousWisprPipeline/MeetingTranscriptionJob.swift", matcher: "finalize",
+      text: "let hex = hasher.finalize().map { String(format: \"%02x\", $0) }.joined()",
+      classification: .structurallySafe),
+    // #3972 C4a: the job's injected engine calls, bound to a `MeetingParakeetEngine` the wiring
+    // builds for that one pass. Never dictation's backend; never `EngineLease`.
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/MeetingWiring.swift", matcher: "transcribe",
+      text: "transcribe: { samples in try await engine.transcribe(samples: samples, language: nil) },",
+      classification: .structurallySafe),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/MeetingWiring.swift", matcher: "unload",
+      text: "unloadEngine: { await engine.unload() },", classification: .structurallySafe),
+    // #3972 C13a: the meeting SUMMARY provider set-up (keychain read, Ollama version check,
+    // connector choice). An AI Polish text model, not the ASR engine; it holds no adapter and no
+    // audio. Matched only by method-name coincidence.
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/MeetingWiring.swift", matcher: "prepare",
+      text: "await MeetingSummaryProviders.prepare(provider: provider, model: model, keychain: keychain)",
+      classification: .unrelatedDomain),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/MeetingSummaryOwner.swift", matcher: "prepare",
+      text: "let preparation = await deps.prepare(selection.provider, selection.model)",
+      classification: .unrelatedDomain),
     // MARK: ActiveEngineOperation — the one door for crash-recovery + the
     // Diagnostics benchmark. Not itself gated. `load` is called from BOTH
     // `RecoverySpoolReplayer` (under `recoveryEngineClaim`) and

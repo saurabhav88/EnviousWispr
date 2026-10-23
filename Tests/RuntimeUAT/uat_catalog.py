@@ -77,6 +77,20 @@ RECIPES = {
         "needs": "one debug instance of THIS worktree's build with Debug Mode on (the arrival line is DEBUG-only); "
                  "Settings window reachable; Accessibility",
     },
+    "meeting": {
+        # Script-backed (#3972 plan section 11.1): EnviousMeet through the dev-control door.
+        "script": "meeting_uat.py",
+        "purpose": "EnviousMeet on the real Debug app, one scenario per run (feature, crash, latency, memory): a "
+                   "scripted two-voice call with dictations during it, live words, notes, the ready transcript "
+                   "(call-track WER, speakers, echo), audio, summary and Delete audio; SIGKILL recovery; ASR time "
+                   "during a meeting pass; footprint peak with a meeting recording.",
+        "verdict": "the dev-control door's meeting replies plus record_tts's app.log reading per dictation; exit 0 "
+                   "PASS, 1 FAIL, 2 COULD NOT TELL, 3 SETUP FAILED; receipt <run dir>/meeting-<scenario>.json",
+        "audio": True,
+        "needs": "one debug instance of THIS worktree's build with Debug Mode on; the dev-app lock; BlackHole 2ch + "
+                 "SwitchAudioSource; the call-sound permission for the dev build; push-to-talk mode; "
+                 "run_in_background",
+    },
     "quality": {
         "function": "record_tts",
         "purpose": "One dictation whose raw ASR and polished output are read from the log. For transcription/polish quality questions.",
@@ -299,6 +313,7 @@ def _self_test():
     check("only learn-from-edits needs --export",
           [rid for rid, r in RECIPES.items() if r.get("export")] == ["learn-from-edits"])
     check("settings-search is script-backed", RECIPES["settings-search"].get("script") == "settings_search_uat.py")
+    check("meeting is script-backed", RECIPES["meeting"].get("script") == "meeting_uat.py")
     check("recipe ids are shell-safe", all(re.fullmatch(r"[a-z][a-z0-9-]*", rid) for rid in RECIPES))
     check("test_hands_free is broken (#2409)", HARNESS_STATUS["test_hands_free"]["status"] == "broken")
 

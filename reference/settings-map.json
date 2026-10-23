@@ -1,14 +1,14 @@
 {
   "counts" : {
-    "nodes" : 275,
-    "searchable" : 249,
-    "vocabularyBlocks" : 7968
+    "nodes" : 278,
+    "searchable" : 251,
+    "vocabularyBlocks" : 8032
   },
   "fingerprints" : {
-    "mapSHA256" : "a593b83434079e0dd0d135d0ccf587a32ba5c8f403f82e0fdd183bfb8d30a04e",
-    "uiCatalogSHA256" : "39586e2e1e72616a898bc4fbde9e1b5332cd67d23ec1f3b4e161264a55757852",
+    "mapSHA256" : "dfb02ce9535f382888daba212854d30fc4013c1b2a05f1a618a48199bf2f1990",
+    "uiCatalogSHA256" : "9a5d4f62af79b7dfe206cf07524c16b9fee2283b176423798659e1adbe2f87f3",
     "vocabularyCanonicalization" : "length-prefixed-v1",
-    "vocabularySHA256" : "18327f8ad1003a889d284150528da6faa32064a99e12fee2b7c22cee4378838b"
+    "vocabularySHA256" : "f72979fcb42d8d5af6b66456ee79145393838fa2355b42a66fee7f421dbe9c2d"
   },
   "interfaceLanguages" : [
     "en",
@@ -7143,6 +7143,35 @@
         "de" : "Tastenkürzel",
         "en" : "Keybinds",
         "key" : "Keybinds",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "always"
+    },
+    {
+      "context" : [
+        "window.settings"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : null,
+      "destination" : {
+        "page" : "meetings"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "page.meetings",
+      "kind" : null,
+      "parent" : "window.settings",
+      "searchable" : false,
+      "structure" : "page",
+      "target" : null,
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "EnviousMeet",
+        "en" : "EnviousMeet",
+        "key" : "EnviousMeet",
         "source" : "resource",
         "table" : "Localizable"
       },
@@ -36853,6 +36882,775 @@
             "文件转写进度",
             "转写步骤",
             "处理阶段"
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.meetings"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Nimmt auf, was dein Mac abspielt, zum Beispiel die Stimmen anderer Personen bei einem Anruf.",
+        "en" : "Records what your Mac plays, like the other people on a call.",
+        "key" : "Records what your Mac plays, like the other people on a call.",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "destination" : {
+        "page" : "meetings"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "meetingCaptureCallSound",
+      "kind" : "setting",
+      "parent" : "page.meetings",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "meetingCaptureCallSound",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Auch den Ton vom Mac aufnehmen",
+        "en" : "Also record the call sound",
+        "key" : "Also record the call sound",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "تسجيل الصوت الذي يشغله Mac",
+            "تسجيل أصوات الآخرين في المكالمة"
+          ],
+          "title" : "تسجيل صوت المكالمة أيضًا",
+          "words" : [
+            "صوت النظام",
+            "صوت الكمبيوتر"
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "запис на звука от Mac",
+            "записвай гласовете на другите участници"
+          ],
+          "title" : "записвай и звука от разговора",
+          "words" : [
+            "системен звук",
+            "звук от Mac"
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "nahrávat zvuk, který přehrává Mac",
+            "nahrávat hlasy ostatních v hovoru"
+          ],
+          "title" : "nahrávat i zvuk hovoru",
+          "words" : [
+            "systémový zvuk",
+            "zvuk počítače"
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "optag lyden fra min Mac",
+            "optag de andre i opkaldet"
+          ],
+          "title" : "optag også lyden fra opkaldet",
+          "words" : [
+            "systemlyd",
+            "computerlyd"
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "nimm den Ton vom Mac mit auf",
+            "nimm die anderen im Anruf mit auf",
+            "zeichne den Systemton auf"
+          ],
+          "words" : [
+            "Systemaudio",
+            "Systemton",
+            "Computerton",
+            "Gesprächspartner"
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "να γράφει τον ήχο από το Mac",
+            "καταγραφή των φωνών των άλλων στην κλήση"
+          ],
+          "title" : "εγγραφή και του ήχου της κλήσης",
+          "words" : [
+            "ήχος συστήματος",
+            "ήχος υπολογιστή"
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "record what my Mac plays",
+            "capture the other people on the call"
+          ],
+          "words" : [
+            "system audio",
+            "computer audio",
+            "other participants"
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "grabar lo que suena en el Mac",
+            "grabar las voces de los demás en la llamada"
+          ],
+          "title" : "grabar también el audio de la llamada",
+          "words" : [
+            "sonido del sistema",
+            "audio del ordenador",
+            "audio de la computadora"
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "salvesta koosolekul ka arvuti heli",
+            "salvesta kõne teiste osalejate hääled"
+          ],
+          "title" : "salvesta ka arvuti heli",
+          "words" : [
+            "süsteemiheli",
+            "arvuti heli"
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "tallenna Macin toistama ääni",
+            "tallenna muiden puhe puhelussa"
+          ],
+          "title" : "tallenna myös puhelun ääni",
+          "words" : [
+            "järjestelmä-äänet",
+            "tietokoneen äänet"
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "enregistrer le son du Mac",
+            "enregistrer la voix des autres pendant l’appel"
+          ],
+          "title" : "enregistrer aussi le son de l’appel",
+          "words" : [
+            "audio système",
+            "son de l’ordinateur"
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "Mac पर चल रही आवाज़ रिकॉर्ड करना",
+            "कॉल में दूसरे लोगों की आवाज़ रिकॉर्ड करना"
+          ],
+          "title" : "कॉल की आवाज़ भी रिकॉर्ड करें",
+          "words" : [
+            "सिस्टम ऑडियो",
+            "कंप्यूटर की आवाज़"
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "snimaj zvuk koji Mac reproducira",
+            "snimaj glasove drugih u pozivu"
+          ],
+          "title" : "snimaj i zvuk poziva",
+          "words" : [
+            "zvuk sustava",
+            "zvuk računala"
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "a Mac által lejátszott hang felvétele",
+            "a többiek hangjának rögzítése hívás közben"
+          ],
+          "title" : "a hívás hangjának rögzítése is",
+          "words" : [
+            "rendszerhang",
+            "számítógép hangja"
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "registrare il suono del Mac",
+            "registrare le voci degli altri nella chiamata"
+          ],
+          "title" : "registra anche l’audio della chiamata",
+          "words" : [
+            "audio di sistema",
+            "suono del computer"
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "Macで流れる音を録音したい",
+            "通話相手の声も録音したい"
+          ],
+          "title" : "通話の音声も録音",
+          "words" : [
+            "システム音声",
+            "パソコンの音"
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "Mac에서 재생되는 소리 녹음",
+            "통화 상대방 목소리도 녹음하기"
+          ],
+          "title" : "통화 소리도 녹음",
+          "words" : [
+            "시스템 오디오",
+            "컴퓨터 소리"
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "įrašyti Mac leidžiamą garsą",
+            "įrašyti kitų pokalbio dalyvių balsus"
+          ],
+          "title" : "įrašyti ir skambučio garsą",
+          "words" : [
+            "sistemos garsas",
+            "kompiuterio garsas"
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "ierakstīt Mac atskaņoto skaņu",
+            "ierakstīt citu sarunas dalībnieku balsis"
+          ],
+          "title" : "ierakstīt arī zvana skaņu",
+          "words" : [
+            "sistēmas audio",
+            "datora skaņa"
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "irreġistra l-ħoss tal-Mac waqt laqgħa",
+            "irreġistra l-vuċijiet tal-oħrajn fis-sejħa"
+          ],
+          "title" : "irreġistra wkoll il-ħoss tas-sejħa",
+          "words" : [
+            "awdjo tas-sistema",
+            "ħoss tal-Mac"
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "geluid van mijn Mac opnemen",
+            "de stemmen van anderen in het gesprek opnemen"
+          ],
+          "title" : "ook het gespreksgeluid opnemen",
+          "words" : [
+            "systeemaudio",
+            "computergeluid"
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "nagrywaj dźwięk odtwarzany przez komputer Mac",
+            "nagrywaj głosy innych osób w rozmowie"
+          ],
+          "title" : "nagrywaj też dźwięk rozmowy",
+          "words" : [
+            "dźwięk systemowy",
+            "audio z komputera"
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "gravar o som do Mac",
+            "gravar as vozes das outras pessoas na chamada"
+          ],
+          "title" : "gravar também o áudio da chamada",
+          "words" : [
+            "som do sistema",
+            "som do computador"
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "înregistrează ce se aude pe Mac",
+            "înregistrează vocile celorlalți din apel"
+          ],
+          "title" : "înregistrează și sunetul apelului",
+          "words" : [
+            "audio de sistem",
+            "sunetul calculatorului"
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "записывать звук с Mac",
+            "записывать голоса собеседников"
+          ],
+          "title" : "также записывать звук звонка",
+          "words" : [
+            "системный звук",
+            "звук компьютера"
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "nahrávať systémový zvuk v EnviousMeet",
+            "zaznamenať hlasy ostatných v hovore"
+          ],
+          "title" : "nahrávať aj zvuk hovoru",
+          "words" : [
+            "systémový zvuk",
+            "zvuk počítača"
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "snemaj zvok, ki ga predvaja Mac",
+            "snemaj glasove drugih v klicu"
+          ],
+          "title" : "snemaj tudi zvok klica",
+          "words" : [
+            "sistemski zvok",
+            "zvok računalnika"
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "spela in ljudet från min Mac",
+            "spela in de andras röster i samtalet"
+          ],
+          "title" : "spela även in samtalsljudet",
+          "words" : [
+            "systemljud",
+            "datorljud"
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "Mac'te çalan sesi kaydet",
+            "görüşmedeki diğer kişilerin sesini kaydet"
+          ],
+          "title" : "görüşme sesini de kaydet",
+          "words" : [
+            "sistem sesi",
+            "bilgisayar sesi"
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "записувати звук із Mac",
+            "записувати голоси співрозмовників"
+          ],
+          "title" : "записувати також звук дзвінка",
+          "words" : [
+            "системний звук",
+            "звук комп’ютера"
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "ghi âm thanh đang phát trên Mac",
+            "ghi giọng của người khác trong cuộc gọi"
+          ],
+          "title" : "ghi cả âm thanh cuộc gọi",
+          "words" : [
+            "âm thanh hệ thống",
+            "tiếng máy tính"
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "录下 Mac 播放的声音",
+            "把通话对方的声音也录下来"
+          ],
+          "title" : "同时录制通话声音",
+          "words" : [
+            "系统音频",
+            "电脑声音",
+            "内录"
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.meetings"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Dein Anbieter für KI-Nachbearbeitung erstellt eine Zusammenfassung für jedes Meeting.",
+        "en" : "Your AI Polish provider writes a summary of each meeting.",
+        "key" : "Your AI Polish provider writes a summary of each meeting.",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "destination" : {
+        "page" : "meetings"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "meetingWriteSummary",
+      "kind" : "setting",
+      "parent" : "page.meetings",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "meetingWriteSummary",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Zusammenfassung erstellen, wenn ein Meeting endet",
+        "en" : "Write a summary when a meeting ends",
+        "key" : "Write a summary when a meeting ends",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "لخص الاجتماع بعد انتهائه",
+            "ملخص الاجتماع بالذكاء الاصطناعي"
+          ],
+          "title" : "إنشاء ملخص عند انتهاء الاجتماع",
+          "words" : [
+            "تلخيص",
+            "موجز"
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "обобщи срещата, когато приключи",
+            "резюме на срещата с изкуствен интелект"
+          ],
+          "title" : "създаване на обобщение след края на срещата",
+          "words" : [
+            "резюме"
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "shrnout schůzku po jejím skončení",
+            "shrnutí schůzky pomocí AI"
+          ],
+          "title" : "vytvořit shrnutí po skončení schůzky",
+          "words" : [
+            "souhrn",
+            "rekapitulace"
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "opsummer mødet bagefter",
+            "automatisk resumé af mødet"
+          ],
+          "title" : "lav et resumé, når mødet slutter",
+          "words" : [
+            "opsummering"
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "fass mein Meeting zusammen",
+            "erstelle nach dem Meeting automatisch eine Zusammenfassung"
+          ],
+          "words" : [
+            "Meetingzusammenfassung",
+            "Besprechungszusammenfassung",
+            "Kurzfassung"
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "σύνοψη μετά το τέλος της συνάντησης",
+            "περίληψη συνάντησης με τεχνητή νοημοσύνη"
+          ],
+          "title" : "δημιουργία σύνοψης όταν τελειώνει η συνάντηση",
+          "words" : [
+            "περίληψη"
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "automatically summarize meetings",
+            "AI meeting recap"
+          ],
+          "words" : [
+            "recap",
+            "summarize",
+            "summarise"
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "resumir la reunión al acabar",
+            "resumen automático de reuniones"
+          ],
+          "title" : "crear un resumen al terminar la reunión",
+          "words" : [
+            "síntesis"
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "tee pärast koosolekut kokkuvõte",
+            "automaatne koosoleku kokkuvõte"
+          ],
+          "title" : "loo koosoleku lõpus kokkuvõte",
+          "words" : [
+            "ülevaade"
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "tee kokouksesta yhteenveto",
+            "automaattinen kokouksen tiivistelmä"
+          ],
+          "title" : "luo yhteenveto kokouksen päätyttyä",
+          "words" : [
+            "tiivistelmä",
+            "kooste"
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "résumer la réunion une fois terminée",
+            "résumé automatique des réunions"
+          ],
+          "title" : "créer un résumé à la fin de la réunion",
+          "words" : [
+            "synthèse",
+            "récapitulatif"
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "मीटिंग के बाद अपने आप सारांश बनाना",
+            "मीटिंग का सारांश अपने आप बनाना बंद करें"
+          ],
+          "title" : "मीटिंग खत्म होने पर सारांश बनाएँ",
+          "words" : [
+            "सारांश",
+            "संक्षेप"
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "sažmi sastanak kad završi",
+            "automatski sažetak sastanka"
+          ],
+          "title" : "izradi sažetak nakon završetka sastanka",
+          "words" : [
+            "rezime"
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "megbeszélés automatikus összefoglalása",
+            "készíts összefoglalót a megbeszélés után"
+          ],
+          "title" : "összefoglaló készítése a megbeszélés végén",
+          "words" : [
+            "összegzés"
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "riassumi la riunione quando finisce",
+            "riepilogo automatico delle riunioni"
+          ],
+          "title" : "crea un riepilogo al termine della riunione",
+          "words" : [
+            "riassunto",
+            "sintesi"
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "会議が終わったら自動でまとめる",
+            "AIで会議を要約"
+          ],
+          "title" : "会議終了時に要約を作成",
+          "words" : [
+            "まとめ",
+            "サマリー"
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "회의 끝나고 자동으로 요약하기",
+            "회의 요약 자동으로 만들기"
+          ],
+          "title" : "회의가 끝나면 요약 작성",
+          "words" : [
+            "회의 요약",
+            "자동 요약"
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "apibendrinti susitikimą jam pasibaigus",
+            "automatinė susitikimo santrauka"
+          ],
+          "title" : "kurti santrauką pasibaigus susitikimui",
+          "words" : [
+            "apibendrinimas"
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "automātiski apkopot sapulcē pārrunāto",
+            "sapulces kopsavilkums ar mākslīgo intelektu"
+          ],
+          "title" : "izveidot kopsavilkumu pēc sapulces beigām",
+          "words" : [
+            "rezumējums"
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "agħmel sommarju wara l-laqgħa",
+            "sommarju awtomatiku tal-laqgħa"
+          ],
+          "title" : "oħloq sommarju meta tintemm il-laqgħa",
+          "words" : [
+            "ġabra fil-qosor"
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "vergadering automatisch samenvatten",
+            "samenvatting na afloop van de vergadering"
+          ],
+          "title" : "maak een samenvatting als de vergadering eindigt",
+          "words" : [
+            "vergaderoverzicht"
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "podsumuj spotkanie po jego zakończeniu",
+            "automatyczne streszczenie spotkania"
+          ],
+          "title" : "utwórz podsumowanie po zakończeniu spotkania",
+          "words" : [
+            "streszczenie"
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "resumir a reunião quando acabar",
+            "resumo automático de reuniões"
+          ],
+          "title" : "criar um resumo ao terminar a reunião",
+          "words" : [
+            "síntese"
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "rezumă întâlnirea când se termină",
+            "rezumat automat al ședinței"
+          ],
+          "title" : "creează un rezumat la încheierea întâlnirii",
+          "words" : [
+            "sinteză",
+            "sumar"
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "подвести итоги встречи автоматически",
+            "краткое содержание встречи с помощью ИИ"
+          ],
+          "title" : "создавать сводку после завершения встречи",
+          "words" : [
+            "резюме",
+            "итоги"
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "zhrnúť stretnutie po jeho skončení",
+            "automatický súhrn stretnutia"
+          ],
+          "title" : "vytvoriť zhrnutie po skončení stretnutia",
+          "words" : [
+            "súhrn",
+            "rekapitulácia"
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "povzemi sestanek, ko se konča",
+            "samodejni povzetek sestanka"
+          ],
+          "title" : "ustvari povzetek ob koncu sestanka",
+          "words" : [
+            "povzetek sestanka"
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "sammanfatta mötet automatiskt",
+            "sammanfattning efter mötet"
+          ],
+          "title" : "skapa en sammanfattning när mötet slutar",
+          "words" : [
+            "summering"
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "toplantı bitince otomatik özet oluştur",
+            "yapay zekâyla toplantı özeti"
+          ],
+          "title" : "toplantı bittiğinde özet oluştur",
+          "words" : [
+            "toplantı özeti"
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "автоматично підбити підсумки зустрічі",
+            "стислий виклад зустрічі за допомогою ШІ"
+          ],
+          "title" : "створювати підсумок після завершення зустрічі",
+          "words" : [
+            "резюме",
+            "узагальнення"
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "tự động tóm tắt sau cuộc họp",
+            "tóm tắt cuộc họp bằng AI"
+          ],
+          "title" : "tạo bản tóm tắt khi cuộc họp kết thúc",
+          "words" : [
+            "tổng kết"
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "开完会自动总结",
+            "用AI总结会议内容"
+          ],
+          "title" : "会议结束时生成摘要",
+          "words" : [
+            "总结",
+            "小结"
           ]
         }
       }

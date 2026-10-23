@@ -1,0 +1,1 @@
+{"language":"sv","title":"spela även in samtalsljudet","words":["systemljud","datorljud"],"phrases":["spela in ljudet från min Mac","spela in de andras röster i samtalet"]}

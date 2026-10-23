@@ -390,6 +390,8 @@ final class PipelineSettingsSync {
       audioCapture.inputChannelByDeviceUID = settings.inputChannelByDeviceUID
     case .warmEnginePolicy:
       audioCapture.warmEnginePolicy = settings.warmEnginePolicy
+    case .meetingCaptureCallSound, .meetingCallSoundExplained, .meetingWriteSummary:
+      break  // #3972: read by EnviousMeet when a meeting starts or ends; not by the pipeline.
     case .autoCopyToClipboard, .vadAutoStop, .vadSilenceTimeout, .vadSensitivity,
       .vadEnergyGate, .restoreClipboardAfterPaste, .keepDictationsOutOfClipboardHistory,
       .smartInsertion, .languageMode, .englishSpelling, .useStreamingASR:

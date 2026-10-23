@@ -1,0 +1,1 @@
+{"language":"da","title":"optag også lyden fra opkaldet","words":["systemlyd","computerlyd"],"phrases":["optag lyden fra min Mac","optag de andre i opkaldet"]}

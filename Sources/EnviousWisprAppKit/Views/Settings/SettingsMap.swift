@@ -52,6 +52,12 @@ enum SettingsMap {
       parent: .windowSettings, destination: .keybinds, dictionaryTab: nil,
       visibility: .always, target: nil, fallbacks: []),
     SettingsMapNode(
+      id: .pageMeetings, structure: .page, item: nil,
+      title: .resource(SettingsPage.meetings.labelResource!),
+      description: nil,
+      parent: .windowSettings, destination: .meetings, dictionaryTab: nil,
+      visibility: .always, target: nil, fallbacks: []),
+    SettingsMapNode(
       id: .pageSnippets, structure: .page, item: nil,
       title: .resource(SettingsPage.snippets.labelResource!),
       description: nil,
@@ -639,6 +645,22 @@ enum SettingsMap {
       description: nil,
       parent: .pageTranscribeFile, destination: .transcribeFile, dictionaryTab: nil,
       visibility: .always, target: .transcribeFileSteps, fallbacks: []),
+    // #3972: EnviousMeet's call-sound switch, always on the page. The page is settings only
+    // (R34): recording is started from the menu bar and History, never searched to. Meetings
+    // themselves are user content, never indexed.
+    SettingsMapNode(
+      id: .meetingCaptureCallSound, structure: .item, item: .setting,
+      title: .resource(MeetingsCopy.callSoundTitle),
+      description: .resource(MeetingsCopy.callSoundShort),
+      parent: .pageMeetings, destination: .meetings, dictionaryTab: nil,
+      visibility: .always, target: .meetingCaptureCallSound, fallbacks: []),
+    // #3972 R39: the automatic-summary switch, always on the page.
+    SettingsMapNode(
+      id: .meetingWriteSummary, structure: .item, item: .setting,
+      title: .resource(MeetingsCopy.writeSummaryTitle),
+      description: .resource(MeetingsCopy.writeSummaryShort),
+      parent: .pageMeetings, destination: .meetings, dictionaryTab: nil,
+      visibility: .always, target: .meetingWriteSummary, fallbacks: []),
     SettingsMapNode(
       id: .enableAIPolish, structure: .item, item: .setting,
       title: .resource(SettingsItemCopy.AIPolish.enable),
@@ -1433,6 +1455,7 @@ extension SettingsMap {
     case .dictionary: dictionaryTab?.mapID ?? .sectionDictionary
     case .keybinds: .sectionKeybindsRecording
     case .transcribeFile: .transcribeFileSteps
+    case .meetings: .meetingCaptureCallSound
     case .aiPolish: .enableAIPolish
     case .snippets: .snippets
     case .history: nil

@@ -55,6 +55,7 @@ struct SettingsMapTests {
     case "dictation": .dictation(try #require(DictationTab(rawValue: d.tab ?? "")))
     case "appSettings": .appSettings(try #require(AppSettingsTab(rawValue: d.tab ?? "")))
     case "keybinds": .keybinds
+    case "meetings": .meetings
     case "transcribeFile": .transcribeFile
     case "aiPolish": .aiPolish
     case "dictionary": .dictionary

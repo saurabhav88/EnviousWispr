@@ -888,8 +888,8 @@ def committed_release_only(strings):
 
 
 dev_case("Dev: a valid receipt and a clean tree pass", 0, ["receipt ok", "catalog in sync"])
-dev_case("Dev: the 43 listed keys absent from this extraction are warned about", 0,
-         ["WARNING: 43 DEV_ONLY_KEYS member(s) not extracted by this Dev build"])
+dev_case("Dev: the 42 listed keys absent from this extraction are warned about", 0,
+         ["WARNING: 42 DEV_ONLY_KEYS member(s) not extracted by this Dev build"])
 dev_case("Dev: no receipt is could-not-run", 2, ["could not verify the Dev build receipt", "no receipt"], receipt="none")
 dev_case("Dev: a malformed receipt is could-not-run", 2, ["could not verify the Dev build receipt", "malformed"], receipt="malformed")
 dev_case("Dev: a receipt for other code is could-not-run", 2, ["not of the pushed code"], expect="f" * 64)
@@ -899,7 +899,7 @@ dev_case("Dev: an extraction changed after the receipt is could-not-run", 2, ["e
              stringsdata([entry("EnviousWisprCore plain copy"), entry("rebuilt")])))
 dev_case("Dev: --expect-inputs is required", 2, ["needs --expect-inputs"], expect="omit")
 dev_case("Dev: a listed Dev-only key (DEBUG-only literal) is ignored", 0,
-         ["Dev-only keys ignored: 1 of 43", "catalog in sync"], extra_keys=[DEV_ONLY_SAMPLE])
+         ["Dev-only keys ignored: 1 of 42", "catalog in sync"], extra_keys=[DEV_ONLY_SAMPLE])
 dev_case("Dev: an unlisted new key is drift", 1, ["added: 'a key nobody listed'"], extra_keys=["a key nobody listed"])
 dev_case("Dev: a configuration-dependent English default is drift", 1, ["changed: 'fixture.value.key'"],
          edit_committed=edit_translated_default)
@@ -983,9 +983,9 @@ def release_with_dev(name, want_code, want_texts, *, dev_keys=(), receipt=True, 
 
 
 release_with_dev("Release + Dev evidence: listed keys found in neither are warned about", 0,
-                 ["WARNING: 43 DEV_ONLY_KEYS member(s) found in neither", "catalog in sync"])
+                 ["WARNING: 42 DEV_ONLY_KEYS member(s) found in neither", "catalog in sync"])
 release_with_dev("Release + Dev evidence: a key the Dev build extracts is not in the warning", 0,
-                 ["WARNING: 42 DEV_ONLY_KEYS member(s) found in neither"], dev_keys=[DEV_ONLY_SAMPLE])
+                 ["WARNING: 41 DEV_ONLY_KEYS member(s) found in neither"], dev_keys=[DEV_ONLY_SAMPLE])
 release_with_dev("Release + Dev evidence: Dev evidence without a matching receipt is could-not-run", 2,
                  ["could not verify the Dev build receipt"], receipt=False)
 release_with_dev("Release + Dev evidence: --expect-inputs is required", 2, ["--dev-derived-data goes with"], expect="omit")
@@ -1097,7 +1097,7 @@ dbg("debug-only: malformed nesting: blocks", 1, f"#if DEBUG\nlet y = {L}\n#endif
 dbg("debug-only: a raw string in the file: blocks (unsupported)", 1,
     f'#if DEBUG\nlet r = #"raw"#\nlet y = {L}\n#endif\n', [3])
 dbg("debug-only: a line past the end of the file: blocks", 1, f"#if DEBUG\nlet y = {L}\n#endif\n", [40])
-dev_case("debug-only: a LISTED key is unaffected (still ignored, no warning)", 0, ["Dev-only keys ignored: 1 of 43"],
+dev_case("debug-only: a LISTED key is unaffected (still ignored, no warning)", 0, ["Dev-only keys ignored: 1 of 42"],
          absent_texts=["judged as Dev-only"], extra_keys=[DEV_ONLY_SAMPLE])
 
 

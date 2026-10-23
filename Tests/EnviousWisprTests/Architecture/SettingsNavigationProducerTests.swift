@@ -17,7 +17,7 @@ struct SettingsNavigationProducerTests {
   static let app = "Sources/EnviousWisprAppKit/App/"
   static let views = "Sources/EnviousWisprAppKit/Views/"
 
-  /// The nine logical routes (inventory 01). Route 4, Paste Last with Accessibility denied,
+  /// The ten logical routes (inventory 01, plus #3972's EnviousMeet route). Route 4, Paste Last with Accessibility denied,
   /// reaches Settings through route 3's shared callback; `sharedPermissionCallbackHasBothUsers`
   /// pins that.
   static let routes: [Route] = [
@@ -47,6 +47,11 @@ struct SettingsNavigationProducerTests {
       "9 Configure Live Preview", file: views + "Settings/RecordingPillAppearancePanel.swift",
       callee: "navigate", owner: "if:Self.selected(in: model).canHoldWords",
       argument: ".dictation(.livePreview)"),
+    // #3972 coverage C5: a menu Start that needs the call-sound explainer opens EnviousMeet.
+    Route(
+      "10 menu Start Meeting Recording before the explainer",
+      file: app + "WisprBootstrapper.swift", callee: "request", owner: "label:showMeetingPage",
+      argument: ".meetings"),
   ]
 
   @Test("every producer route opens its planned destination", arguments: routes)

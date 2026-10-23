@@ -973,5 +973,14 @@
    "section.livePreview",
    "section.previewEngine"
   ]
+ },
+ "meetings": {
+  "exempt": {
+   "statusLine": 3
+  },
+  "mapped": [
+   "meetingCaptureCallSound",
+   "meetingWriteSummary"
+  ]
  }
 }

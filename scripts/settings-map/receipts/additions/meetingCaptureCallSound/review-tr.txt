@@ -1,0 +1,1 @@
+{"language":"tr","title":"görüşme sesini de kaydet","words":["sistem sesi","bilgisayar sesi"],"phrases":["Mac'te çalan sesi kaydet","görüşmedeki diğer kişilerin sesini kaydet"]}

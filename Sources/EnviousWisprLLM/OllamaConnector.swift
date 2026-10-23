@@ -193,7 +193,8 @@ public struct OllamaConnector: TranscriptPolisher {
       messages: messages,
       maxTokens: maxTokens,
       temperature: config.temperature,
-      thinking: config.thinking
+      thinking: config.thinking,
+      contextTokens: config.contextTokens
     )
 
     var request = URLRequest(url: url)
@@ -234,7 +235,8 @@ public struct OllamaConnector: TranscriptPolisher {
     accepted = true
     return LLMResult(
       polishedText: content.trimmingCharacters(in: .whitespacesAndNewlines)
-        .strippingLLMPreamble()
+        .strippingLLMPreamble(),
+      stoppedEarly: Self.stoppedEarly(json)
     )
   }
 
@@ -286,7 +288,8 @@ public struct OllamaConnector: TranscriptPolisher {
         messages: messages,
         maxTokens: maxTokens,
         temperature: config.temperature,
-        thinking: config.thinking
+        thinking: config.thinking,
+        contextTokens: config.contextTokens
       )
 
     var request = URLRequest(url: url)
@@ -361,8 +364,60 @@ public struct OllamaConnector: TranscriptPolisher {
     accepted = true
     return LLMResult(
       polishedText: content.trimmingCharacters(in: .whitespacesAndNewlines)
-        .strippingLLMPreamble(stripTranscriptTags: sentTranscriptTags)
+        .strippingLLMPreamble(stripTranscriptTags: sentTranscriptTags),
+      stoppedEarly: Self.stoppedEarly(json)
     )
+  }
+
+  /// #3972: whether the reply says generation stopped for a reason other than finishing
+  /// (`done_reason` other than `stop`, such as `length`). Reported on the result, never thrown:
+  /// polish keeps accepting such text as it always has.
+  static func stoppedEarly(_ json: [String: Any]?) -> Bool {
+    guard let doneReason = json?["done_reason"] as? String else { return false }
+    return doneReason != "stop"
+  }
+
+  /// #3972: the daemon's words for a prompt longer than the window, from its runners
+  /// ("the input length exceeds the context length", 0.12.6 and later), its llama-server path
+  /// ("the prompt is longer than the context length currently available to the model") and
+  /// llama.cpp's server ("exceeds the available context size").
+  static func isContextOverflow(_ body: String) -> Bool {
+    let lower = body.lowercased()
+    return lower.contains("exceeds the context length")
+      || lower.contains("longer than the context length")
+      || lower.contains("exceeds the available context")
+  }
+
+  /// #3972: the daemon's version (`GET /api/version`), or nil when it does not answer within
+  /// the readiness probe's ceiling or the reply has no version. Same session and deadline as
+  /// `preflightReadiness`.
+  public func serverVersion(
+    executor: (@Sendable (URLRequest) async throws -> (Data, URLResponse))? = nil,
+    deadlineSeconds: Double = 1.0
+  ) async -> String? {
+    guard let url = URL(string: "\(baseURL)/api/version") else { return nil }
+    let request = URLRequest(url: url)
+    let transport = executor ?? { try await Self.readinessSession.data(for: $0) }
+    let version = await withDeadline(seconds: deadlineSeconds) { () -> String? in
+      guard let (data, response) = try? await transport(request),
+        (response as? HTTPURLResponse)?.statusCode == 200,
+        let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+      else { return nil }
+      return json["version"] as? String
+    }
+    return version ?? nil
+  }
+
+  /// #3972: whether this daemon honours `truncate` and `shift` (added in Ollama 0.12.6). Fails
+  /// closed: an unknown or unparseable version, or a development build reporting 0.0.0, does
+  /// not.
+  public static func supportsNoTruncation(version: String?) -> Bool {
+    guard let version else { return false }
+    let core = version.split(whereSeparator: { $0 == "-" || $0 == "+" }).first ?? ""
+    let parts = core.split(separator: ".").map { Int($0) }
+    guard parts.count >= 2, !parts.contains(nil) else { return false }
+    let numbers = parts.compactMap { $0 } + [0, 0]
+    return (numbers[0], numbers[1], numbers[2]) >= (0, 12, 6)
   }
 
   // MARK: - Readiness Preflight (#1305)
@@ -671,18 +726,30 @@ public struct OllamaConnector: TranscriptPolisher {
     messages: [[String: String]],
     maxTokens: Int,
     temperature: Double,
-    thinking: ResolvedThinking?
+    thinking: ResolvedThinking?,
+    contextTokens: Int? = nil
   ) -> [String: Any] {
+    var options: [String: Any] = [
+      "num_predict": maxTokens,
+      "temperature": temperature,
+    ]
+    // #3972: only the meeting summary sets a window; polish sends none and keeps the daemon's.
+    if let contextTokens { options["num_ctx"] = contextTokens }
     var body: [String: Any] = [
       "model": model,
       "messages": messages,
       "stream": false,
       "keep_alive": "60m",
-      "options": [
-        "num_predict": maxTokens,
-        "temperature": temperature,
-      ],
+      "options": options,
     ]
+    // #3972: with its own window the summary also asks the daemon to fail rather than drop the
+    // start of a prompt that does not fit (`truncate`) or of an answer that outgrows the window
+    // (`shift`). Both default to true in the daemon; polish sends neither. Ollama before 0.12.6
+    // ignores both, so the summary refuses those versions (`supportsNoTruncation`).
+    if contextTokens != nil {
+      body["truncate"] = false
+      body["shift"] = false
+    }
     // #1914: `think` is a TOP-LEVEL key on /api/chat, not an `options` entry.
     // Only the level dialect is emitted; a budget or effort value would be a
     // different provider's dialect reaching the wrong wire format, so it is
@@ -701,12 +768,15 @@ public struct OllamaConnector: TranscriptPolisher {
   private func performWithRetry(
     request: URLRequest,
     config: LLMProviderConfig,
-    maxRetries: Int = LLMRetryPolicy.defaultMaxRetries,
+    maxRetries defaultRetries: Int = LLMRetryPolicy.defaultMaxRetries,
     delays: [UInt64] = LLMRetryPolicy.defaultDelays
   ) async throws -> (Data, HTTPURLResponse, LLMRetryPolicy.RetryReceipt?) {
     var lastError: Error?
     // #2641: what this attempt waited, so its outcome row can say so.
     var sleptBeforeAttempt: UInt64 = 0
+    // #3972: a caller that owns its own retries (the meeting summary) sets
+    // `config.maxRetries`; nil keeps the default every polish uses.
+    let maxRetries = config.maxRetries ?? defaultRetries
     for attempt in 0...maxRetries {
       if attempt > 0 {
         let delay = delays[min(attempt - 1, delays.count - 1)]
@@ -799,6 +869,10 @@ public struct OllamaConnector: TranscriptPolisher {
   /// evidence for each status. Do not re-derive it here.
   static func classify(statusCode: Int, bodyString: String) -> PolishFailureReason {
     switch statusCode {
+    case 400 where isContextOverflow(bodyString), 413 where isContextOverflow(bodyString):
+      // #3972: only a request with `truncate: false` (the meeting summary) can receive this;
+      // with the daemon's default the prompt is cut instead.
+      return .inputTooLong
     case 401:
       return .apiKeyRejected
     case 402:

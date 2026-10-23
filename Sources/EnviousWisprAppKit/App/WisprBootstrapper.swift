@@ -35,6 +35,12 @@ package final class WisprBootstrapper {
   let sparkleUpdateController: SparkleUpdateController
   let updateTriggerCoordinator: UpdateTriggerCoordinator
   let transcriptCoordinator: TranscriptCoordinator
+  /// #3972 — EnviousMeet's one owner of meetings: recording, the processing queue, recovery,
+  /// deletion and quit.
+  let meetingCoordinator: MeetingCoordinator
+  /// #3972 C5: the one route to a meeting Start, shared by the EnviousMeet page and the menu bar.
+  let meetingStartFlow: MeetingStartFlow
+  let meetingMemoryPressure: MeetingMemoryPressure
   /// #2648 — Transcribe a File's state machine, held here so the run survives
   /// the page being closed.
   let fileImportCoordinator: FileImportCoordinator
@@ -332,8 +338,13 @@ package final class WisprBootstrapper {
     // to the Parakeet adapter through `ParakeetInputs` below, so every load
     // reads the request the adapter's warm-up wrote.
     let parakeetSelection = ParakeetSelectionProvider()
-    let asrManager: any ASRManagerInterface = ASRManager(
+    // #3972: kept concrete as well, for EnviousMeet's offline-mode admission.
+    let concreteASRManager = ASRManager(
       engineMutationScope: engineMutationScope, parakeetSelection: parakeetSelection)
+    let asrManager: any ASRManagerInterface = concreteASRManager
+    // #3972 C4a: EnviousMeet's one coordinator is built after the dictation runtime; owners
+    // built before it (the engine switch, the output hold) read it through this box.
+    let meetingBox = MeetingCoordinatorBox()
     // #2787: owns the engine AFTER a session ends with its decode still running.
     let abandonedDecodeHold = AbandonedDecodeHold(
       lease: engineLease, occupancy: asrManager.vendorDecodeOccupancy)
@@ -1431,6 +1442,9 @@ package final class WisprBootstrapper {
         // switch admitted in that window unloads the backend underneath it.
         isFileImportRunning: { fileImportCoordinatorForGates?.isEngineHeld ?? false },
         isEngineHeld: { [engineLease] in engineLease.isBusy },
+        isMeetingEngineResident: { [meetingBox] in
+          meetingBox.coordinator?.isMeetingModelWorkActive ?? false
+        },
         isInstalled: { [setup] backend in
           backend == .parakeet ? true : setup.whisperSetup.setupState == .ready
         },
@@ -1604,7 +1618,8 @@ package final class WisprBootstrapper {
           let path = String(
             decoding: buffer[..<Int(written)].map { UInt8(bitPattern: $0) }, as: UTF8.self)
           return path.hasSuffix("/EnviousWispr")
-        }))
+        },
+        isMeetingCapturing: { [meetingBox] in meetingBox.coordinator?.isCapturing ?? false }))
     let dictationLifecycleCoordinator = DictationLifecycleCoordinator(
       kernelDriver: kernelDriver,
       whisperKernelDriver: whisperKernelDriver,
@@ -1775,6 +1790,23 @@ package final class WisprBootstrapper {
           appWindowCoordinator.showWindow()
         },
         toggleRecording: { await dictationRuntime.toggleRecording(source: .menuBar) },
+        meetingPhase: { [meetingBox] in meetingBox.coordinator?.phase },
+        requestMeetingStart: { [meetingBox] in
+          await meetingBox.startFlow?.requestStart(from: .menu)
+        },
+        stopMeeting: { [meetingBox] in await meetingBox.coordinator?.stop() },
+        meetingMenuFacts: { [meetingBox] in
+          guard let coordinator = meetingBox.coordinator else { return nil }
+          return MeetingsPresentation.MenuFacts(
+            phase: coordinator.phase, processing: coordinator.processing,
+            callSound: coordinator.callSoundStatus,
+            waitingOnSummary: coordinator.passWaitsOnSummary)
+        },
+        showMeeting: { [weak transcriptCoordinator] meetingID in
+          transcriptCoordinator?.showRecordings(meetingID: meetingID)
+          navigationCoordinator.request(.history)
+          appWindowCoordinator.showWindow()
+        },
         quit: { NSApp.terminate(nil) },
         lastDictation: { [weak transcriptCoordinator] in
           transcriptCoordinator?.lastPasteableDictation()
@@ -2356,8 +2388,59 @@ package final class WisprBootstrapper {
           credentials: CredentialWriter(
             keychainManager: keychainManager, presence: savedKeyPresence,
             discovery: llmDiscovery),
-          words: customWordsCoordinator))
+          words: customWordsCoordinator,
+          meetings: DevControlMeetings(
+            sources: DevControlMeetings.Sources(
+              coordinator: { [meetingBox] in meetingBox.coordinator },
+              startFlow: { [meetingBox] in meetingBox.startFlow },
+              transcripts: { [transcriptCoordinator] in transcriptCoordinator }))))
     #endif
+    // #3972 C4a: EnviousMeet, bootstrapped here so it lives independently of any view.
+    let meetingWakes = MeetingWakeSignal()
+    engineCoordinator.onMintingEnded = { [meetingWakes] in meetingWakes.poke() }
+    let meetingMemoryPressure = MeetingMemoryPressure()
+    let meetingCoordinator = MeetingWiring.make(
+      MeetingWiring.Inputs(
+        store: MeetingStore(),
+        settings: settings, permissions: permissions, otherAudioHold: otherAudioHold,
+        transcriptCoordinator: transcriptCoordinator,
+        isDictationIdle: { [liveRecordingState, engineCoordinator] in
+          // Paste runs inside `.polishing`, so `isDictationActive` covers it; the clipboard
+          // restore after it is a pasteboard write, not compute, and is not waited for.
+          !liveRecordingState.isDictationActive && !engineCoordinator.isMintingAnySession
+        },
+        dictationWakes: meetingWakes,
+        memoryPressure: meetingMemoryPressure,
+        offlineModeAdmission: concreteASRManager,
+        meetingSelection: { [parakeetUpgrade] in await parakeetUpgrade.meetingSelection() },
+        modelUseGate: modelDelivery.controller.meetingModelUseGate,
+        isDeliveryEnabled: { [modelDelivery] in modelDelivery.parakeetHandle?.isEnabled() ?? false },
+        workChanged: { [weak engineCoordinator] in engineCoordinator?.poke(.parakeetUpgradeOwed) },
+        log: { line in
+          Task { await AppLogger.shared.log(line, level: .info, category: "Meetings") }
+        },
+        keychain: keychainManager))
+    meetingBox.coordinator = meetingCoordinator
+    self.meetingCoordinator = meetingCoordinator
+    let meetingStartFlow = MeetingStartFlow(
+      dependencies: .init(
+        captureCallSound: { [settings] in settings.meetingCaptureCallSound },
+        isExplained: { [settings] in settings.meetingCallSoundExplained },
+        markExplained: { [settings] in settings.meetingCallSoundExplained = true },
+        canStart: { [weak meetingCoordinator] in meetingCoordinator?.phase == .idle },
+        start: { [weak meetingCoordinator] entryPoint, captureCallSound in
+          guard let meetingCoordinator else { return .notIdle }
+          return await meetingCoordinator.start(from: entryPoint, captureCallSound: captureCallSound)
+        },
+        microphoneNeedsAsking: { [permissions] in permissions.microphoneNeedsAsking },
+        requestMicrophone: { [permissions] in await permissions.requestMicrophoneAccessOrOpenSettings() },
+        showMeetingPage: { [navigationCoordinator, appWindowCoordinator] in
+          navigationCoordinator.request(.meetings)
+          appWindowCoordinator.showWindow()
+        }))
+    meetingBox.startFlow = meetingStartFlow
+    self.meetingStartFlow = meetingStartFlow
+    self.meetingMemoryPressure = meetingMemoryPressure
     self.transcriptCoordinator = transcriptCoordinator
     self.liveRecordingState = liveRecordingState
     self.lastRecordingResult = lastRecordingResult
@@ -2598,10 +2681,10 @@ package final class WisprBootstrapper {
       .clipboardCleanupPendingProvider = { ClipboardCleanup.hasPending }
     // #3142 5B: the language relaunch also refuses mid recovery replay or recording start (why:
     // its own doc).
-    AppRelauncher.backgroundWorkInFlight = { [weak self] in
-      guard let self else { return false }
-      return recoveryCoordinator.isRecovering || engineCoordinator.isMintingAnySession
-    }
+    AppRelauncher.backgroundWorkInFlight = AppRelauncher.backgroundWork(
+      isRecovering: { [weak self] in self?.recoveryCoordinator.isRecovering ?? false },
+      isMinting: { [weak self] in self?.engineCoordinator.isMintingAnySession ?? false },
+      meetings: meetingCoordinator)
     AppLanguagePreference.live.forgetUnshippedOverride()
     // #1029: install the notification tap delegate eagerly at launch (decoupled
     // from posting) so a tap on an already-delivered "update ready" notification —
@@ -2619,6 +2702,9 @@ package final class WisprBootstrapper {
     // dictation hotkey (`AppLifecycleCoordinator.swift` → `startHotkeyServiceIfEnabled`):
     // a Mac left lowered by a dead process is put back before any take can start.
     dictationRuntime.otherAudioHold.adoptOrphans()
+    // #3972 R3/R15: meetings recover after the orphaned hold is restored, before any take.
+    meetingMemoryPressure.start()
+    meetingCoordinator.launch()
     appLifecycleCoordinator.runDidFinishLaunching()
     // #2480: bring the launch window to the front.
     appWindowCoordinator.finishLaunch()
@@ -2684,6 +2770,10 @@ package final class WisprBootstrapper {
     // a Cocoa quit concludes no take, so this is the only path that restores
     // the volume for a quit mid-dictation.
     dictationRuntime.otherAudioHold.finishForTermination()
+    // #3972 R18: close meeting admission, cancel its pass, stop capture and close both files
+    // against one shared one-second deadline.
+    meetingCoordinator.prepareForTermination(deadline: .now() + 1)
+    meetingMemoryPressure.stop()
     // #3438: stop observing before the owners it reads are torn down.
     polishSetup.card.stop()
     polishSetup.monitor.stop()
@@ -2796,6 +2886,8 @@ private struct MainWindowRoot: View {
       .environment(\.settingsKeyMonitor, b.settingsKeyMonitor)
       .environment(b.transcriptCoordinator)
       .environment(b.fileImportCoordinator)
+      .environment(b.meetingCoordinator)
+      .environment(b.meetingStartFlow)
       .environment(b.liveRecordingState)
       .environment(b.lastRecordingResult)
       .environment(b.backendMetadata)
@@ -2999,4 +3091,11 @@ struct OutputClassifierEmissionPolicy: Equatable {
         attemptedRealLoad: true)
     }
   }
+}
+
+/// Lets owners built before EnviousMeet's coordinator read it (#3972 C4a). Set once.
+@MainActor
+final class MeetingCoordinatorBox {
+  weak var coordinator: MeetingCoordinator?
+  weak var startFlow: MeetingStartFlow?
 }

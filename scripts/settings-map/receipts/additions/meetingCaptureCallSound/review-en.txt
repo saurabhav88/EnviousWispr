@@ -1,0 +1,12 @@
+{
+  "language": "en",
+  "words": [
+    "system audio",
+    "computer audio",
+    "other participants"
+  ],
+  "phrases": [
+    "record what my Mac plays",
+    "capture the other people on the call"
+  ]
+}

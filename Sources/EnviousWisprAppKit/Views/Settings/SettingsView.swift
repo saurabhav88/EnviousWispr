@@ -344,6 +344,8 @@ struct UnifiedWindowView: View {
     case .history:
       // History owns its own list/detail split layout, no page header.
       HistoryContentView()
+    case .meetings:
+      page(.meetings) { MeetingsView() }
     case .dictation:
       page(.dictation) {
         DictationSettingsView(selection: $navigationState.dictationTab, packs: livePreviewPacks)
@@ -436,8 +438,11 @@ struct UnifiedWindowView: View {
   /// thing is running, so the dot and its spoken value come from this one answer. Before,
   /// the Dictionary dot was announced as "Importing in progress". File import reads
   /// `isRunning`, which Stop clears at the press, never the engine claim it still holds.
+
   private func sidebarActivity(_ section: SettingsPage) -> SettingsShellCopy.SidebarActivity {
     if section == .transcribeFile && fileImportCoordinator.isRunning { return .fileImport }
+    // #3972 R47: no dot for EnviousMeet. The menu bar glow and the live Recordings row in
+    // History are the only signs of a meeting recording.
     if section == .aiPolish && polishSetupMonitor.shows(.sidebarTag) { return .polishNeedsSetup }
     if yourWordsEnrichmentBadgeVisible(for: section) { return .dictionaryEnrichment }
     return .none

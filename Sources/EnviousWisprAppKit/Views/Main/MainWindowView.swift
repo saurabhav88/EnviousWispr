@@ -383,6 +383,8 @@ struct StatusBadge: View {
       // #1891: advisory is a resting terminal like idle/complete/error, so the
       // toolbar badge stays empty. The sentence is carried by the overlay and
       // the main-window body, not duplicated in the toolbar.
+      // #3972 R47: a meeting recording shows no badge here (stealth, founder F14); the menu
+      // bar glow and the live Recordings row in History are its only signs.
       case .idle, .complete, .error, .advisory:
         EmptyView()
       }

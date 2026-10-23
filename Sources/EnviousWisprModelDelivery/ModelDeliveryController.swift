@@ -188,6 +188,34 @@ public actor ModelDeliveryController {
     self.availableDiskBytes = availableDiskBytes
   }
 
+  // MARK: - EnviousMeet model-use gate (#3972 R26)
+
+  /// The gate EnviousMeet's own Parakeet engine holds for a whole after-recording pass. Every
+  /// place this controller deletes or replaces a Parakeet install (validation removal,
+  /// promotion, legacy migration, retirement, Remove) takes it as a MUTATION first, so a model
+  /// file can never change under a meeting load or decode. Other families are not gated.
+  /// Owned here from construction, so no mutation can run before the gate exists; the
+  /// composition root hands the same instance to EnviousMeet's engine.
+  public nonisolated let meetingModelUseGate = MeetingModelUseGate()
+
+  /// Acquires the meeting gate for one mutation of `registration`'s install; nil when no gate
+  /// applies (not Parakeet). Keyed by install directory, so a meeting reading one model never
+  /// delays a change to another. Throws `CancellationError` when the caller is cancelled while
+  /// a meeting holds the model. Acquiring is an await, so every caller re-checks cancellation,
+  /// generation and terminal-winner conditions after it, before mutating. The caller releases
+  /// with an awaited `endInstallMutation` after the mutation (never across a network fetch).
+  private func beginInstallMutation(_ registration: DeliveryRegistration) async throws -> String? {
+    guard registration.manifest.identity.family == .parakeet else { return nil }
+    let key = MeetingModelUseGate.key(forInstallDirectory: registration.installDirectory)
+    try await meetingModelUseGate.beginMutation(key)
+    return key
+  }
+
+  private func endInstallMutation(_ key: String?) async {
+    guard let key else { return }
+    await meetingModelUseGate.endMutation(key)
+  }
+
   // MARK: - Observation (one stream, two renderers — D6)
 
   /// Attach-time replay: observers register from `Task`s after init, so a
@@ -282,8 +310,32 @@ public actor ModelDeliveryController {
     // path, and the machinery it needed is deleted rather than fixed a fourth
     // time.
     if let existing = migrationsInFlight[identity] { return await existing.value }
+    let meetingGate = meetingModelUseGate
+    // #3972 R26: only a migration that may still publish into the install takes the gate. One
+    // already recorded, or over an admitted install, returns before writing any install byte
+    // (`LegacyDonorMigration.migrate`'s early returns), so warm-up never waits behind a meeting
+    // for nothing.
+    let gateKey: String? =
+      identity.family == .parakeet
+        && LegacyDonorMigration.recordedState(
+          metadataDirectory: registration.metadataDirectory, manifest: registration.manifest) == nil
+        && !admission(for: registration).isAdmitted()
+      ? MeetingModelUseGate.key(forInstallDirectory: registration.installDirectory) : nil
+    // The gate is taken INSIDE the task, before the migration writes, so no copy into the
+    // install can start while a meeting uses it, and joiners share the same single flight. A
+    // drain that cancels the task while it waits ends it with nothing done.
     let task = Task {
-      await LegacyDonorMigration.migrate(registration: registration, onProgress: onProgress)
+      if let gateKey {
+        do {
+          try await meetingGate.beginMutation(gateKey)
+        } catch {
+          return LegacyDonorMigration.Outcome.none
+        }
+      }
+      let outcome = await LegacyDonorMigration.migrate(
+        registration: registration, onProgress: onProgress)
+      if let gateKey { await meetingGate.endMutation(gateKey) }
+      return outcome
     }
     migrationsInFlight[identity] = task
     let outcome = await task.value
@@ -536,6 +588,23 @@ public actor ModelDeliveryController {
   package func retireOwnedInstall(
     _ registration: DeliveryRegistration, ownedModelsRoot: URL
   ) async -> Bool {
+    guard !Task.isCancelled else { return false }
+    // #3972 R26: taken before the drain. Mutations never exclude each other, so an attempt the
+    // drain waits on can still take the gate for its own promote.
+    let gateKey: String?
+    do {
+      gateKey = try await beginInstallMutation(registration)
+    } catch {
+      return false  // cancelled while a meeting held the model: deletes nothing
+    }
+    let retired = await retireOwnedInstallUnderGate(registration, ownedModelsRoot: ownedModelsRoot)
+    await endInstallMutation(gateKey)
+    return retired
+  }
+
+  private func retireOwnedInstallUnderGate(
+    _ registration: DeliveryRegistration, ownedModelsRoot: URL
+  ) async -> Bool {
     let identity = registration.manifest.identity
     guard !Task.isCancelled else { return false }
     await drainForDeletion(identity)
@@ -628,6 +697,19 @@ public actor ModelDeliveryController {
   }
 
   public func remove(_ registration: DeliveryRegistration) async -> RemoveOutcome {
+    // #3972 R26: taken before the drain, as in `retireOwnedInstall`.
+    let gateKey: String?
+    do {
+      gateKey = try await beginInstallMutation(registration)
+    } catch {
+      return .failed(DeliveryFailure(reason: .cancelled, detail: "remove:cancelled"))
+    }
+    let outcome = await removeUnderGate(registration)
+    await endInstallMutation(gateKey)
+    return outcome
+  }
+
+  private func removeUnderGate(_ registration: DeliveryRegistration) async -> RemoveOutcome {
     let identity = registration.manifest.identity
     // Drain any live attempt first (reuses the cancel drain barrier); a
     // nothing-in-flight cancel is a no-op.
@@ -667,6 +749,10 @@ public actor ModelDeliveryController {
       live.cancel()
       _ = await live.value
       migrationsInFlight[identity] = nil
+    }
+    // #3972: the drains above are awaits; a caller cancelled during them deletes nothing.
+    guard !Task.isCancelled else {
+      return .failed(DeliveryFailure(reason: .cancelled, detail: "remove:cancelled"))
     }
     do {
       // (1) Marker first: the admission truth. After this isAdmitted() is false.
@@ -809,6 +895,18 @@ public actor ModelDeliveryController {
     // Everything already valid in place → admit without any fetch (legacy
     // migration path). No attempt events: no fetch sequence existed (D3).
     if componentsToFetch.isEmpty {
+      // #3972 R26: the gate is released with an await before returning, in order.
+      var gateKey: String?
+      let result: DeliveryOutcome = await { () async -> DeliveryOutcome in
+      do {
+        gateKey = try await beginInstallMutation(registration)
+      } catch {
+        return .cancelled(resumable: true)
+      }
+      // The gate wait is a new await: a cancel or a newer attempt that arrived during it wins.
+      guard entries[identity]?.generation == generation, !Task.isCancelled else {
+        return .cancelled(resumable: true)
+      }
       do {
         try admission.promoteAndAdmit(
           stagedComponents: [], stagingDirectory: stagingDirectory(for: registration),
@@ -859,6 +957,9 @@ public actor ModelDeliveryController {
       emitAdmittedWithoutFetch(identity, reason: .adoptedInPlace)
       setState(identity, .admitted, ifGeneration: generation)
       return .admitted
+      }()
+      await endInstallMutation(gateKey)
+      return result
     }
 
     // No-fetch adopt path (grounded r4 P2): components are missing/incomplete
@@ -872,8 +973,22 @@ public actor ModelDeliveryController {
     }
 
     // Repair prep: failed components leave the install dir before re-fetch.
-    for component in validation.failedComponents {
-      admission.removeComponent(component)
+    if !validation.failedComponents.isEmpty {
+      let gateKey: String?
+      do {
+        gateKey = try await beginInstallMutation(registration)
+      } catch {
+        return .cancelled(resumable: true)
+      }
+      // The gate wait is a new await: a cancel or a newer attempt that arrived during it wins.
+      guard entries[identity]?.generation == generation, !Task.isCancelled else {
+        await endInstallMutation(gateKey)
+        return .cancelled(resumable: true)
+      }
+      for component in validation.failedComponents {
+        admission.removeComponent(component)
+      }
+      await endInstallMutation(gateKey)
     }
 
     // Disk preflight against the reservation ledger (D4 §2) — BEFORE any
@@ -1069,8 +1184,15 @@ public actor ModelDeliveryController {
     if let assemblyWriteForTesting { fetchTask.assemblyWrite = assemblyWriteForTesting }
     if let backoffSleepForTesting { fetchTask.backoffSleep = backoffSleepForTesting }
 
+    // #3972 R26: the gate is released with an await after the attempt's terminal outcome, in
+    // order, on every exit (a cancelled gate wait is caught as `CancellationError` below).
+    var gateKey: String?
+    let result: DeliveryOutcome = await { () async -> DeliveryOutcome in
     do {
       let outcome = try await fetchTask.run()
+      // #3972 R26: the meeting gate is taken BEFORE the terminal-winner check, so the check and
+      // the promote below remain one synchronous slice after the only new await.
+      gateKey = try await beginInstallMutation(registration)
       // Terminal-winner gate (exhaustive r7 P1): from here through the
       // completed emit there is NO await, so this is one synchronous actor
       // slice — a racing cancel() either bumped the generation BEFORE this
@@ -1119,6 +1241,9 @@ public actor ModelDeliveryController {
       let failure = ManifestFetchTask.classifyTransportError(error, sourceID: nil)
       return await finishFailed(identity, failure, generation: generation)
     }
+    }()
+    await endInstallMutation(gateKey)
+    return result
   }
 
   /// The ONE terminal-failure exit: state, event, and the app.log line move

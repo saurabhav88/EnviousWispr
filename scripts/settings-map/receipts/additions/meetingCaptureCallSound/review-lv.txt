@@ -1,0 +1,12 @@
+{
+  "language": "lv",
+  "title": "ierakstīt arī zvana skaņu",
+  "words": [
+    "sistēmas audio",
+    "datora skaņa"
+  ],
+  "phrases": [
+    "ierakstīt Mac atskaņoto skaņu",
+    "ierakstīt citu sarunas dalībnieku balsis"
+  ]
+}

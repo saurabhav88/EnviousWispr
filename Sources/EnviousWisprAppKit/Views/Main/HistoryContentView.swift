@@ -16,6 +16,7 @@ struct HistoryContentView: View {
   @Environment(TranscriptCoordinator.self) private var transcriptCoordinator
   // PR7 of #763: live-recording fallback transcript comes from LiveRecordingState.
   @Environment(LiveRecordingState.self) private var liveRecordingState
+  @Environment(MeetingCoordinator.self) private var meetings
 
   /// User's preferred list width from divider drags; the effective width shown
   /// is this value re-clamped to the live container (see `effectiveListWidth`).
@@ -35,7 +36,7 @@ struct HistoryContentView: View {
     switch transcriptCoordinator.detail {
     case .row(let row): return row
     case .liveFallback: return liveRecordingState.currentTranscript
-    case .empty: return nil
+    case .meeting, .empty: return nil
     }
   }
 
@@ -46,6 +47,12 @@ struct HistoryContentView: View {
       }
       // #3438: beside the Accessibility banner, outside the transcript split; both can show.
       PolishSetupBanner()
+      // #3972 R34: why the last meeting Start or recording needs attention, inside the app only.
+      if let notice = meetings.notice {
+        MeetingNoticeBanner(notice: notice)
+          .padding(.horizontal, 12)
+          .padding(.top, 8)
+      }
 
       GeometryReader { geo in
         let listWidth = HistorySplitMetrics.effectiveListWidth(
@@ -59,7 +66,10 @@ struct HistoryContentView: View {
             preferredListWidth: $preferredListWidth, currentListWidth: listWidth)
 
           Group {
-            if let transcript = displayedTranscript {
+            if case .meeting(let meeting) = transcriptCoordinator.detail {
+              MeetingHistoryDetailView(meeting: meeting)
+                .id(meeting.meetingID)
+            } else if let transcript = displayedTranscript {
               TranscriptDetailView(transcript: transcript)
             } else {
               StatusView()

@@ -50,8 +50,8 @@
     static let allKeys: [Key] = [
       .selectedBackend, .recordingMode, .llmProvider, .llmModel, .ollamaModel,
       .fileImportLLMProvider, .fileImportLLMModel, .fileImportOllamaModel,
-      .s1MiniStyling, .s1MiniStructure, .s1MiniContext, .autoCopyToClipboard, .hotkeyEnabled,
-      .vadAutoStop, .vadSilenceTimeout, .vadSensitivity, .vadEnergyGate, .onboardingState,
+      .s1MiniStyling, .s1MiniStructure, .s1MiniContext, .autoCopyToClipboard,
+      .meetingCaptureCallSound, .meetingCallSoundExplained, .meetingWriteSummary, .hotkeyEnabled, .vadAutoStop, .vadSilenceTimeout, .vadSensitivity, .vadEnergyGate, .onboardingState,
       .hasCompletedOnboarding, .cancelKeyCode, .cancelModifiers, .quickAddKeyCode,
       .quickAddModifiers, .pasteLastKeyCode, .pasteLastModifiers, .copyLastKeyCode,
       .copyLastModifiers, .toggleKeyCode, .toggleModifiers, .pushToTalkKeyCode,
@@ -83,7 +83,8 @@
       }
       switch key {
       case .selectedBackend, .recordingMode, .llmProvider, .llmModel, .s1MiniStyling,
-        .s1MiniStructure, .s1MiniContext, .autoCopyToClipboard, .vadAutoStop, .modelUnloadPolicy,
+        .s1MiniStructure, .s1MiniContext, .autoCopyToClipboard, .meetingCaptureCallSound,
+        .meetingCallSoundExplained, .meetingWriteSummary, .vadAutoStop, .modelUnloadPolicy,
         .restoreClipboardAfterPaste, .keepDictationsOutOfClipboardHistory,
         .quickAddClipboardFallback, .smartInsertion, .escapeRecoveryEnabled,
         .wordCorrectionEnabled, .fillerRemovalEnabled, .emojiFormatterEnabled,
@@ -128,6 +129,9 @@
       case .s1MiniStructure: return settings.s1MiniStructure.rawValue
       case .s1MiniContext: return settings.s1MiniContext.rawValue
       case .autoCopyToClipboard: return settings.autoCopyToClipboard
+      case .meetingCaptureCallSound: return settings.meetingCaptureCallSound
+      case .meetingCallSoundExplained: return settings.meetingCallSoundExplained
+      case .meetingWriteSummary: return settings.meetingWriteSummary
       case .hotkeyEnabled: return settings.hotkeyEnabled
       case .vadAutoStop: return settings.vadAutoStop
       case .vadSilenceTimeout: return settings.vadSilenceTimeout
@@ -260,6 +264,12 @@
         return set(Codec.raw(value, S1Context.self)) { settings.s1MiniContext = $0 }
       case .autoCopyToClipboard:
         return set(Codec.bool(value)) { settings.autoCopyToClipboard = $0 }
+      case .meetingCaptureCallSound:
+        return set(Codec.bool(value)) { settings.meetingCaptureCallSound = $0 }
+      case .meetingCallSoundExplained:
+        return set(Codec.bool(value)) { settings.meetingCallSoundExplained = $0 }
+      case .meetingWriteSummary:
+        return set(Codec.bool(value)) { settings.meetingWriteSummary = $0 }
       case .hotkeyEnabled:
         return set(Codec.bool(value)) { settings.hotkeyEnabled = $0 }
       case .vadAutoStop:
@@ -505,7 +515,9 @@
         .toggleKeyCode, .toggleModifiers:
         return .shortcutField
       case .selectedBackend, .recordingMode, .llmProvider, .s1MiniStyling, .s1MiniStructure,
-        .s1MiniContext, .autoCopyToClipboard, .hotkeyEnabled, .vadAutoStop, .vadSensitivity,
+        .s1MiniContext, .autoCopyToClipboard, .meetingCaptureCallSound, .meetingCallSoundExplained,
+        .meetingWriteSummary, .hotkeyEnabled,
+        .vadAutoStop, .vadSensitivity,
         .vadEnergyGate, .onboardingState, .hasCompletedOnboarding, .pushToTalkKeyCode,
         .pushToTalkModifiers, .modelUnloadPolicy, .restoreClipboardAfterPaste,
         .keepDictationsOutOfClipboardHistory, .quickAddClipboardFallback, .smartInsertion,

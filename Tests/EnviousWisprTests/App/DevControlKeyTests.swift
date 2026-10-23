@@ -53,7 +53,7 @@
         credentials: DevControlFixtures.isolatedCredentials(
           presence: presence, storage: failing ? FailingStorage() : nil,
           emit: { events.seen.append([$0, $1, $2]) }),
-        words: DevControlFixtures.unwrittenWords())
+        words: DevControlFixtures.unwrittenWords(), meetings: .unwired())
       return Fixture(dispatcher: dispatcher, presence: presence, events: events)
     }
 

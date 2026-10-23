@@ -1,0 +1,1 @@
+{"language":"vi","title":"ghi cả âm thanh cuộc gọi","words":["âm thanh hệ thống","tiếng máy tính"],"phrases":["ghi âm thanh đang phát trên Mac","ghi giọng của người khác trong cuộc gọi"]}

@@ -37,6 +37,11 @@
    "parent": "window.settings"
   },
   {
+   "id": "page.meetings",
+   "kind": "page",
+   "parent": "window.settings"
+  },
+  {
    "id": "page.snippets",
    "kind": "page",
    "parent": "window.settings"
@@ -2277,6 +2282,40 @@
    "fallbacks": [],
    "dynamicTitle": true,
    "seedParent": null
+  },
+  {
+   "id": "meetingCaptureCallSound",
+   "kind": "setting",
+   "destination": {
+    "page": "meetings"
+   },
+   "disposition": "mapped",
+   "parent": "page.meetings",
+   "target": "meetingCaptureCallSound",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Records what your Mac plays, like the other people on a call."
+   }
+  },
+  {
+   "id": "meetingWriteSummary",
+   "kind": "setting",
+   "destination": {
+    "page": "meetings"
+   },
+   "disposition": "mapped",
+   "parent": "page.meetings",
+   "target": "meetingWriteSummary",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Your AI Polish provider writes a summary of each meeting."
+   }
   },
   {
    "id": "transcribeFile.chooseFile",

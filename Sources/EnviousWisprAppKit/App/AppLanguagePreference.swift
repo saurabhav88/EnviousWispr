@@ -125,6 +125,16 @@ enum AppRelauncher {
   /// at the click like the clipboard restore. Wired once by `WisprBootstrapper`.
   @MainActor static var backgroundWorkInFlight: @MainActor () -> Bool = { false }
 
+  /// The production `backgroundWorkInFlight` (#3142 5B, #3972 C4a): a recovery replay, a
+  /// recording start, or EnviousMeet work a relaunch would lose (capture, a running pass unit,
+  /// file reads or a checkpoint write, a commit, a deletion). A queued meeting alone resumes.
+  @MainActor static func backgroundWork(
+    isRecovering: @escaping @MainActor () -> Bool, isMinting: @escaping @MainActor () -> Bool,
+    meetings: MeetingCoordinator
+  ) -> @MainActor () -> Bool {
+    { [weak meetings] in isRecovering() || isMinting() || (meetings?.isWorkInFlight ?? false) }
+  }
+
   /// Relaunches once the clipboard restore that follows a dictation has finished
   /// (`ClipboardCleanup.hasPending`, the window the update installer also refuses; about 200 ms),
   /// waiting up to 2 seconds. Does nothing if `stillBusy` turns true, `backgroundWorkInFlight` is

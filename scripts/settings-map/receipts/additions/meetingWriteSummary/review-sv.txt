@@ -1,0 +1,1 @@
+{"language":"sv","title":"skapa en sammanfattning när mötet slutar","words":["summering"],"phrases":["sammanfatta mötet automatiskt","sammanfattning efter mötet"]}

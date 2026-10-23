@@ -1,0 +1,1 @@
+{"language":"cs","title":"nahrávat i zvuk hovoru","words":["systémový zvuk","zvuk počítače"],"phrases":["nahrávat zvuk, který přehrává Mac","nahrávat hlasy ostatních v hovoru"]}

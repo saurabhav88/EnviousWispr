@@ -1,0 +1,1 @@
+{"language":"sl","title":"snemaj tudi zvok klica","words":["sistemski zvok","zvok računalnika"],"phrases":["snemaj zvok, ki ga predvaja Mac","snemaj glasove drugih v klicu"]}

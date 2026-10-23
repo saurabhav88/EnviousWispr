@@ -243,17 +243,17 @@ struct TranscriptCoordinatorFilterTests {
     try coordinator.saveAndShow(d)
     try coordinator.saveAndShow(t)
 
-    coordinator.selectedTranscriptID = d.id
+    coordinator.selectedItemID = .transcript(d.id)
     #expect(isRow(coordinator.detail, d.id))
 
     coordinator.historyFilter = .transcripts
-    #expect(coordinator.selectedTranscriptID == nil, "the selection left the displayed set")
+    #expect(coordinator.selectedItemID == nil, "the selection left the displayed set")
     #expect(isEmpty(coordinator.detail), "and the live transcript must not stand in for it")
 
     coordinator.historyFilter = .all
     #expect(isEmpty(coordinator.detail), "widening the filter does not bring the fallback back")
 
-    coordinator.selectedTranscriptID = t.id
+    coordinator.selectedItemID = .transcript(t.id)
     #expect(isRow(coordinator.detail, t.id), "picking a row is what shows something again")
   }
 
@@ -264,9 +264,9 @@ struct TranscriptCoordinatorFilterTests {
     try coordinator.saveAndShow(d)
     try coordinator.saveAndShow(dictation("pears"))
 
-    coordinator.selectedTranscriptID = d.id
+    coordinator.selectedItemID = .transcript(d.id)
     coordinator.searchQuery = "pears"
-    #expect(coordinator.selectedTranscriptID == nil)
+    #expect(coordinator.selectedItemID == nil)
     #expect(isEmpty(coordinator.detail))
 
     coordinator.searchQuery = ""
@@ -278,11 +278,11 @@ struct TranscriptCoordinatorFilterTests {
     let (coordinator, _) = makeCoordinator()
     let d = dictation("a dictation")
     try coordinator.saveAndShow(d)
-    coordinator.selectedTranscriptID = d.id
+    coordinator.selectedItemID = .transcript(d.id)
 
     // Selected ids that no longer resolve arrive from outside this object: a row that expired
     // between renders, or the list's binding carrying an id from before a reload.
-    coordinator.selectedTranscriptID = UUID()
+    coordinator.selectedItemID = .transcript(UUID())
     #expect(isEmpty(coordinator.detail))
   }
 
@@ -292,8 +292,8 @@ struct TranscriptCoordinatorFilterTests {
     let d = dictation("a dictation")
     try coordinator.saveAndShow(d)
 
-    coordinator.selectedTranscriptID = d.id
-    coordinator.selectedTranscriptID = nil
+    coordinator.selectedItemID = .transcript(d.id)
+    coordinator.selectedItemID = nil
     #expect(isEmpty(coordinator.detail))
   }
 
@@ -308,18 +308,18 @@ struct TranscriptCoordinatorFilterTests {
 
     coordinator.historyFilter = .dictations
     // Displayed order is newest first: d3, d2, d1. Delete the middle one.
-    coordinator.selectedTranscriptID = d2.id
+    coordinator.selectedItemID = .transcript(d2.id)
     coordinator.delete(d2)
-    #expect(coordinator.selectedTranscriptID == d1.id, "the row after it in the same filter")
+    #expect(coordinator.selectedItemID == .transcript(d1.id), "the row after it in the same filter")
     #expect(isRow(coordinator.detail, d1.id))
 
     // Delete the last row: nothing after it, so the one before it.
     coordinator.delete(d1)
-    #expect(coordinator.selectedTranscriptID == d3.id)
+    #expect(coordinator.selectedItemID == .transcript(d3.id))
 
     // Delete the only remaining dictation: nothing to select, and no fallback.
     coordinator.delete(d3)
-    #expect(coordinator.selectedTranscriptID == nil)
+    #expect(coordinator.selectedItemID == nil)
     #expect(isEmpty(coordinator.detail))
     #expect(coordinator.emptyState == .noDictations)
 
@@ -335,9 +335,9 @@ struct TranscriptCoordinatorFilterTests {
     try coordinator.saveAndShow(d1)
     try coordinator.saveAndShow(d2)
 
-    coordinator.selectedTranscriptID = d1.id
+    coordinator.selectedItemID = .transcript(d1.id)
     coordinator.delete(d2)
-    #expect(coordinator.selectedTranscriptID == d1.id)
+    #expect(coordinator.selectedItemID == .transcript(d1.id))
     #expect(isRow(coordinator.detail, d1.id))
   }
 
@@ -355,7 +355,7 @@ struct TranscriptCoordinatorFilterTests {
     let (coordinator, _) = makeCoordinator()
     let d = dictation("a dictation")
     try coordinator.saveAndShow(d)
-    coordinator.selectedTranscriptID = d.id
+    coordinator.selectedItemID = .transcript(d.id)
     coordinator.delete(d)
     #expect(isEmpty(coordinator.detail), "the deletion suppressed the fallback")
 
@@ -456,14 +456,14 @@ struct TranscriptCoordinatorFilterTests {
     let raw = transcript("um so the plan is", file: "plan.m4a")
     try coordinator.saveAndShow(raw)
     coordinator.searchQuery = "um"
-    coordinator.selectedTranscriptID = raw.id
+    coordinator.selectedItemID = .transcript(raw.id)
     #expect(isRow(coordinator.detail, raw.id))
 
     let cleaned = Transcript(
       id: raw.id, text: raw.text, polishedText: "So the plan is.", language: "en", duration: 61,
       backendType: .parakeet, createdAt: raw.createdAt, importedFileName: "plan.m4a")
     try coordinator.updateExistingRow(cleaned)
-    #expect(coordinator.selectedTranscriptID == nil, "the row left the displayed set")
+    #expect(coordinator.selectedItemID == nil, "the row left the displayed set")
     #expect(isEmpty(coordinator.detail))
 
     coordinator.searchQuery = ""
@@ -475,7 +475,7 @@ struct TranscriptCoordinatorFilterTests {
     let (coordinator, _) = makeCoordinator()
     let d = dictation("a dictation")
     try coordinator.saveAndShow(d)
-    coordinator.selectedTranscriptID = d.id
+    coordinator.selectedItemID = .transcript(d.id)
     coordinator.delete(d)
 
     coordinator.append(held("cancelled", age: 1))
@@ -487,7 +487,7 @@ struct TranscriptCoordinatorFilterTests {
     let (coordinator, _) = makeCoordinator()
     let t = transcript("a file", file: "file.m4a")
     try coordinator.saveAndShow(t)
-    coordinator.selectedTranscriptID = t.id
+    coordinator.selectedItemID = .transcript(t.id)
     coordinator.historyFilter = .dictations
     #expect(isEmpty(coordinator.detail))
 
@@ -501,7 +501,7 @@ struct TranscriptCoordinatorFilterTests {
     let (coordinator, _) = makeCoordinator()
     let d = dictation("a dictation")
     try coordinator.saveAndShow(d)
-    coordinator.selectedTranscriptID = d.id
+    coordinator.selectedItemID = .transcript(d.id)
     coordinator.delete(d)
 
     let raw = transcript("raw words", file: "file.m4a")
@@ -580,7 +580,7 @@ struct TranscriptCoordinatorFilterTests {
       let (coordinator, _) = makeCoordinator()
       let live = held("cancelled", age: 60)
       coordinator.setTranscriptsForTesting([live])
-      coordinator.selectedTranscriptID = live.id
+      coordinator.selectedItemID = .transcript(live.id)
       #expect(isRow(coordinator.detail, live.id))
 
       // The same row, past its window: what read-time expiry sees on the next render.
@@ -600,7 +600,7 @@ struct TranscriptCoordinatorFilterTests {
       let (coordinator, _) = makeCoordinator()
       let live = held("cancelled", age: 60)
       coordinator.setTranscriptsForTesting([live])
-      coordinator.selectedTranscriptID = live.id
+      coordinator.selectedItemID = .transcript(live.id)
 
       let expired = Transcript(
         id: live.id, text: live.text, createdAt: live.createdAt,
@@ -610,7 +610,7 @@ struct TranscriptCoordinatorFilterTests {
 
       // Door one: the sweep evicts the lapsed row and clears the selection with it.
       await coordinator.sweepExpiredPending()
-      #expect(coordinator.selectedTranscriptID == nil, "the expiry cleared the selection")
+      #expect(coordinator.selectedItemID == nil, "the expiry cleared the selection")
       #expect(isEmpty(coordinator.detail))
 
       let finished = dictation("just finished")
@@ -623,7 +623,7 @@ struct TranscriptCoordinatorFilterTests {
       let (coordinator, _) = makeCoordinator()
       let live = held("cancelled", age: 60)
       coordinator.setTranscriptsForTesting([live])
-      coordinator.selectedTranscriptID = live.id
+      coordinator.selectedItemID = .transcript(live.id)
       let expired = Transcript(
         id: live.id, text: live.text, createdAt: live.createdAt,
         escapeRecoveredAt: Date().addingTimeInterval(-AppConstants.pendingTranscriptRetention - 60),
@@ -633,7 +633,7 @@ struct TranscriptCoordinatorFilterTests {
 
       let finished = dictation("just finished")
       coordinator.append(finished)
-      #expect(coordinator.selectedTranscriptID == nil)
+      #expect(coordinator.selectedItemID == nil)
       #expect(isRow(coordinator.detail, finished.id))
     }
   #endif

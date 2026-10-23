@@ -1,0 +1,13 @@
+{
+  "language": "es",
+  "title": "grabar también el audio de la llamada",
+  "words": [
+    "sonido del sistema",
+    "audio del ordenador",
+    "audio de la computadora"
+  ],
+  "phrases": [
+    "grabar lo que suena en el Mac",
+    "grabar las voces de los demás en la llamada"
+  ]
+}

@@ -308,6 +308,14 @@ front after the take starts, the take is cancelled and the error still carries i
 dictation wait polls that receipt every 250 ms and returns its own result and, when it
 saved one, that exact History row; a timeout stops watching, never the take. If a start,
 stop or cancel reply is lost, its outcome is unknown: read the receipt before retrying.
+meeting start asks the same Start the menu and page use; --call-sound/--no-call-sound set
+this request only, never the saved setting. waitingForExplainer means the page shows the
+call-sound explainer: a person answers it. meeting get returns stored turns (echo flagged)
+and the visible projection; --include-text adds the stored text up to 256 KB.
+meeting notes-set types and saves a meeting's notes (--text) as the Notes tab does;
+notes-get reads them back. summary-write is the Summary tab's Write summary / Write again
+(--replace confirms replacing an edited summary); it returns at the start, so poll
+summary-get. meeting live prints the recording meeting's live words (memory only).
 Changes need the shared dev-app lock (dev-app-lock.py claim) unless run by hand.
 """
 
@@ -317,6 +325,12 @@ MODEL_BACKENDS = ("parakeet", "whisper")
 # ShortcutRole raw values; the door refuses anything else.
 SHORTCUT_ROLES = ("record", "cancel", "quickAdd", "pasteLast", "copyLast")
 MODEL_ACTIONS = ("download", "cancel")
+# MeetingEntryPoint raw values; the door refuses anything else.
+MEETING_ENTRY_POINTS = ("history", "menu")
+# CLI verb -> door command for the meeting commands that take only a meeting id; all change
+# the app.
+MEETING_ID_ACTIONS = {"stop": "meeting.stop", "retry": "meeting.retry",
+                      "delete-audio": "meeting.deleteAudio", "delete": "meeting.delete"}
 
 
 def build_parser():
@@ -402,6 +416,33 @@ def build_parser():
         if verb == "wait":
             sub_.add_argument("--timeout", type=float, default=120.0)
     dictation.add_parser("cancel")
+
+    meeting = sub.add_parser("meeting", help="EnviousMeet: start, stop, read").add_subparsers(
+        dest="action", required=True, metavar="ACTION")
+    meeting_start = meeting.add_parser("start")
+    meeting_start.add_argument("--entry-point", choices=MEETING_ENTRY_POINTS, default="menu")
+    call_sound = meeting_start.add_mutually_exclusive_group()
+    call_sound.add_argument("--call-sound", dest="call_sound", action="store_const", const=True)
+    call_sound.add_argument("--no-call-sound", dest="call_sound", action="store_const",
+                            const=False)
+    meeting.add_parser("status")
+    meeting.add_parser("list").add_argument("--limit", type=int)
+    meeting_get = meeting.add_parser("get")
+    meeting_get.add_argument("id")
+    meeting_get.add_argument("--turn-offset", type=int)
+    meeting_get.add_argument("--turn-limit", type=int)
+    meeting_get.add_argument("--include-text", action="store_true")
+    for verb in MEETING_ID_ACTIONS:
+        meeting.add_parser(verb).add_argument("id")
+    meeting.add_parser("notes-get").add_argument("id")
+    notes_set = meeting.add_parser("notes-set")
+    notes_set.add_argument("id")
+    notes_set.add_argument("--text", required=True)
+    meeting.add_parser("summary-get").add_argument("id")
+    summary_write = meeting.add_parser("summary-write")
+    summary_write.add_argument("id")
+    summary_write.add_argument("--replace", action="store_true")
+    meeting.add_parser("live")
 
     file_ = sub.add_parser("file", help="Transcribe a File").add_subparsers(
         dest="action", required=True, metavar="ACTION")
@@ -489,6 +530,39 @@ def route(args):
     if key == ("dictation", "wait"):
         # Many requests on one session, not one route: `run` handles it before routing.
         raise CliError("usage", "dictation wait is not a single door request", EXIT_USAGE)
+    if key == ("meeting", "start"):
+        wire = {"entryPoint": args.entry_point}
+        if args.call_sound is not None:
+            wire["callSound"] = args.call_sound
+        return "meeting.start", wire, True
+    if key == ("meeting", "status"):
+        return "meeting.status", None, False
+    if key == ("meeting", "list"):
+        return "meeting.list", ({} if args.limit is None else {"limit": args.limit}), False
+    if key == ("meeting", "get"):
+        wire = {"meetingID": args.id}
+        if args.turn_offset is not None:
+            wire["turnOffset"] = args.turn_offset
+        if args.turn_limit is not None:
+            wire["turnLimit"] = args.turn_limit
+        if args.include_text:
+            wire["includeText"] = True
+        return "meeting.get", wire, False
+    if key == ("meeting", "notes-get"):
+        return "meeting.notes.get", {"meetingID": args.id}, False
+    if key == ("meeting", "notes-set"):
+        return "meeting.notes.set", {"meetingID": args.id, "notes": args.text}, True
+    if key == ("meeting", "summary-get"):
+        return "meeting.summary.get", {"meetingID": args.id}, False
+    if key == ("meeting", "summary-write"):
+        wire = {"meetingID": args.id}
+        if args.replace:
+            wire["replace"] = True
+        return "meeting.summary.write", wire, True
+    if key == ("meeting", "live"):
+        return "meeting.live", {}, False
+    if args.group == "meeting" and args.action in MEETING_ID_ACTIONS:
+        return MEETING_ID_ACTIONS[args.action], {"meetingID": args.id}, True
     if key == ("history", "list"):
         return "history.list", ({} if args.limit is None else {"limit": args.limit}), False
     if key == ("history", "get"):

@@ -38,6 +38,9 @@ enum TranscriptDocumentPresenter {
     /// being cleaned (a turn the cleanup has not reached yet is not a problem), and never
     /// true for a document the user chose not to have polished (`Turn.wasPolished`).
     let isUncleaned: Bool
+    /// Where the turn starts on its recording's timeline, when known (#3972: EnviousMeet's
+    /// "play from here"). Display never reads it.
+    var startMs: Int? = nil
 
     enum Content: Equatable, Sendable {
       case plain(String)
@@ -82,7 +85,8 @@ enum TranscriptDocumentPresenter {
         speakerName: displayName(for: turn.speakerId, in: speakerNames),
         timeLabel: timesOn ? timeLabel(for: turn) : nil,
         content: content,
-        isUncleaned: documentFinished && !turn.wasPolished)
+        isUncleaned: documentFinished && !turn.wasPolished,
+        startMs: turn.startMs)
     }
   }
 

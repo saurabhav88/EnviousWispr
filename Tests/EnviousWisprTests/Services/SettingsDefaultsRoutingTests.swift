@@ -38,6 +38,9 @@ struct SettingsDefaultsRoutingTests {
     #expect(settings.wordCorrectionEnabled == true)
     #expect(settings.fillerRemovalEnabled == true)
     #expect(settings.autoCopyToClipboard == true)
+    #expect(settings.meetingCaptureCallSound == true)
+    #expect(settings.meetingCallSoundExplained == false)
+    #expect(settings.meetingWriteSummary == true)
     #expect(settings.restoreClipboardAfterPaste == true)
     // Smart insertion ships ON: the repair only fires where it is positively
     // safe, and an unrecognised word keeps today's behaviour, so the default

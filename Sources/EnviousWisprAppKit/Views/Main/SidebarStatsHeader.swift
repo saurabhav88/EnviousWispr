@@ -8,6 +8,8 @@ struct SidebarStatsHeader: View {
   @Environment(LiveRecordingState.self) private var liveRecordingState
   @Environment(BackendMetadata.self) private var backendMetadata
   @Environment(EngineCoordinator.self) private var engineCoordinator: EngineCoordinator?
+  @Environment(MeetingCoordinator.self) private var meetings
+  @Environment(MeetingStartFlow.self) private var startFlow
 
   /// Force-unwrapped: `EnviousWisprApp` always injects a real instance into the
   /// environment (see `AppEnvironmentKeys.swift`).
@@ -55,6 +57,20 @@ struct SidebarStatsHeader: View {
       .accessibilityLabel("Show")
       .opacity(isRecording ? 0.4 : 1.0)
 
+      // #3972 R34: the in-app place to start a meeting, under the Recordings filter only.
+      if transcriptCoordinator.historyFilter == .recordings {
+        recordingControl
+        // Meetings a newer EnviousWispr saved stay on disk, untouched; this build cannot open
+        // them, so they are counted here rather than listed (#3972 §4).
+        if let line = Self.newerFormatLine(meetings.newerFormatMeetings.count) {
+          Text(line)
+            .font(.caption)
+            .foregroundStyle(.stTextSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+      }
+
       // Model status bar
       ModelStatusBar(
         modelName: backendMetadata.modelLabel,
@@ -71,6 +87,65 @@ struct SidebarStatsHeader: View {
     .padding(.horizontal, 8)
     .padding(.vertical, 8)
     .animation(.easeInOut(duration: 0.3), value: isRecording)
+  }
+
+  /// One whole sentence per count (#3142), or nil when every meeting opens.
+  static func newerFormatLine(_ count: Int) -> String? {
+    guard count > 0 else { return nil }
+    guard count != 1 else {
+      return String(
+        localized:
+          "A recording was saved by a newer version of EnviousWispr. Update the app to open it.",
+        comment:
+          "History, Recordings: one meeting this version cannot open (a newer version saved it).")
+    }
+    return String(
+      localized:
+        "\(String(count)) recordings were saved by a newer version of EnviousWispr. Update the app to open them.",
+      comment:
+        "History, Recordings: how many meetings this version cannot open because a newer version saved them. Never 1."
+    )
+  }
+
+  /// Start Recording when nothing records (the explainer first when it is due for this Start);
+  /// while a meeting records, a way to its live detail. Stop lives in that detail and the menu.
+  @ViewBuilder private var recordingControl: some View {
+    if startFlow.pendingExplainer == .history {
+      MeetingCallSoundExplainer()
+    } else {
+      switch meetings.phase {
+      case .idle:
+        SettingsActionButton(
+          title: MeetingsCopy.startRecording, isEnabled: startFlow.waitingForMicrophone == nil,
+          emphasis: .filled, systemImage: "record.circle"
+        ) {
+          Task {
+            let outcome = await startFlow.requestStart(from: .history)
+            if case .started(.recording(let meetingID)) = outcome {
+              transcriptCoordinator.showRecordings(meetingID: meetingID)
+            }
+          }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityIdentifier("history.meeting.start")
+      case .starting, .stopping:
+        ProgressView().controlSize(.small)
+          .frame(maxWidth: .infinity, alignment: .leading)
+      case .recording(let meetingID, _):
+        Button {
+          transcriptCoordinator.showRecordings(meetingID: meetingID)
+        } label: {
+          Label(
+            String(
+              localized: "Show the recording",
+              comment: "History, Recordings: selects the meeting that is recording now."),
+            systemImage: "record.circle")
+        }
+        .buttonStyle(.link)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityIdentifier("history.meeting.showLive")
+      }
+    }
   }
 }
 

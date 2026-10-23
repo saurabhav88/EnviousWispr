@@ -1,0 +1,1 @@
+{"language":"fi","title":"tallenna myös puhelun ääni","words":["järjestelmä-äänet","tietokoneen äänet"],"phrases":["tallenna Macin toistama ääni","tallenna muiden puhe puhelussa"]}

@@ -212,10 +212,17 @@ public struct PolishMetadata: Codable, Sendable, Equatable {
 public struct LLMResult: Sendable {
   public let polishedText: String
   public let polishMetadata: PolishMetadata?
+  /// The model stopped before finishing (its output cap), and the connector returned the text
+  /// anyway. Only Ollama's chat path sets it, where a user's own model and budget are accepted
+  /// as they are; polish ignores it. The meeting summary refuses such an answer (#3972).
+  public let stoppedEarly: Bool
 
-  public init(polishedText: String, polishMetadata: PolishMetadata? = nil) {
+  public init(
+    polishedText: String, polishMetadata: PolishMetadata? = nil, stoppedEarly: Bool = false
+  ) {
     self.polishedText = polishedText
     self.polishMetadata = polishMetadata
+    self.stoppedEarly = stoppedEarly
   }
 }
 
@@ -264,6 +271,17 @@ public struct LLMProviderConfig: Codable, Sendable {
   /// Consumed by providers that gate or condition behavior on input language
   /// (currently: Apple Intelligence preflight + language-aware prompting).
   public let detectedLanguage: String?
+  /// Transient-failure retries the connector makes itself. Nil keeps the connector's default
+  /// (`LLMRetryPolicy.defaultMaxRetries`), which every polish uses. The meeting summary sets 0:
+  /// it owns its retries so it can count every attempt and wait for dictation before each one
+  /// (#3972 R44).
+  public let maxRetries: Int?
+  /// Ollama only: the context window to run the model with (`num_ctx`), and a request that the
+  /// daemon report a prompt or answer that does not fit instead of cutting it (`truncate` and
+  /// `shift` false, Ollama 0.12.6 and later). Nil sends none of these, so the daemon keeps its
+  /// own window and its cutting, as every polish does. The meeting summary sets the window it
+  /// planned its parts against, so a long part is never silently cut (#3972 R44).
+  public let contextTokens: Int?
 
   public init(
     model: String,
@@ -271,7 +289,9 @@ public struct LLMProviderConfig: Codable, Sendable {
     outputTokens: OutputTokenPolicy,
     temperature: Double,
     thinking: ResolvedThinking?,
-    detectedLanguage: String? = nil
+    detectedLanguage: String? = nil,
+    maxRetries: Int? = nil,
+    contextTokens: Int? = nil
   ) {
     self.model = model
     self.apiKeyKeychainId = apiKeyKeychainId
@@ -279,6 +299,8 @@ public struct LLMProviderConfig: Codable, Sendable {
     self.temperature = temperature
     self.thinking = thinking
     self.detectedLanguage = detectedLanguage
+    self.maxRetries = maxRetries
+    self.contextTokens = contextTokens
   }
 }
 

@@ -62,10 +62,22 @@ public struct SpeakerLabeler: Sendable {
     // pass review.
     guard !Task.isCancelled else { return .failed(.cancelled) }
 
+    return await run(analysisTask: makeAnalysisTask(samples), durationSeconds: durationSeconds)
+  }
+
+  /// The same deadline, cancellation forwarding and worker join over an analysis task the
+  /// caller built (#3972: EnviousMeet analyses a track read lazily from its segment files, not
+  /// a sample array). Never returns while `analysisTask` is alive, on any exit path.
+  package func run(
+    analysisTask: Task<[SpeakerSegment], Error>, durationSeconds: Double
+  ) async -> SpeakerAnalysis {
+    guard !Task.isCancelled else {
+      analysisTask.cancel()
+      _ = try? await analysisTask.value
+      return .failed(.cancelled)
+    }
     let deadlineSeconds =
       deadlineSecondsOverride ?? Self.deadlineSeconds(forDurationSeconds: durationSeconds)
-
-    let analysisTask = makeAnalysisTask(samples)
 
     return await withTaskCancellationHandler {
       do {

@@ -261,3 +261,139 @@ struct TranscriptCoordinatorTests {
     #expect(onDisk.isEmpty)
   }
 }
+
+/// #3972 R12, R19: when these fail, deleting a meeting in History leaves its audio on disk, a
+/// meeting's row survives Delete All, or a meeting shows ready with a row a power cut can lose.
+@MainActor
+@Suite("TranscriptCoordinator with EnviousMeet", .tags(.productOutcome))
+struct TranscriptCoordinatorMeetingTests {
+  private static func makeTempDir() -> URL {
+    let url = FileManager.default.temporaryDirectory
+      .appendingPathComponent("meeting-rows-\(UUID().uuidString)", isDirectory: true)
+    try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    return url
+  }
+
+  @Test("deleting a meeting row hands it to EnviousMeet, which removes the row itself")
+  func meetingDeleteRoutes() async throws {
+    let dir = Self.makeTempDir()
+    let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
+    let meetingID = UUID()
+    let meetingRow = Transcript(text: "standup", backendType: .parakeet, meetingID: meetingID)
+    let dictation = Transcript(text: "a dictation", backendType: .parakeet)
+    try await coordinator.saveAndShowDurably(meetingRow)
+    try coordinator.saveAndShow(dictation)
+    var announced: [UUID] = []
+    coordinator.onRowDeleted = { announced.append($0) }
+    var handed: [UUID] = []
+    coordinator.deleteMeeting = { handed.append($0) }
+
+    coordinator.delete(meetingRow)
+    #expect(handed == [meetingID])
+    #expect(coordinator.hasRow(id: meetingRow.id), "EnviousMeet removes it, in its own order")
+
+    try coordinator.removeRow(id: meetingRow.id)
+    #expect(coordinator.hasRow(id: meetingRow.id) == false)
+    #expect(FileManager.default.fileExists(
+      atPath: dir.appendingPathComponent("\(meetingRow.id.uuidString).json").path) == false)
+    // A row already gone (Delete All ran first) is not an error.
+    try coordinator.removeRow(id: meetingRow.id)
+    #expect(announced.isEmpty)
+
+    // Ordinary rows keep the ordinary delete.
+    coordinator.delete(dictation)
+    #expect(coordinator.hasRow(id: dictation.id) == false)
+    #expect(announced == [dictation.id])
+  }
+
+  @Test("Delete All marks every meeting before it empties the store")
+  func deleteAllMarksMeetingsFirst() async throws {
+    let dir = Self.makeTempDir()
+    let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
+    let meetingID = UUID()
+    let row = Transcript(text: "standup", backendType: .parakeet, meetingID: meetingID)
+    try await coordinator.saveAndShowDurably(row)
+    try coordinator.saveAndShow(Transcript(text: "a dictation", backendType: .parakeet))
+    let rowURL = dir.appendingPathComponent("\(row.id.uuidString).json")
+    var rowExistedWhenMarked: Bool?
+    var allowed = false
+    coordinator.meetingsWillBeDeletedWithAll = { ids in
+      #expect(ids == [meetingID])
+      rowExistedWhenMarked = FileManager.default.fileExists(atPath: rowURL.path)
+      return allowed
+    }
+    // A meeting that could not be marked: nothing is deleted.
+    coordinator.deleteAll()
+    #expect(rowExistedWhenMarked == true)
+    #expect(coordinator.listedCount == 2)
+    #expect(FileManager.default.fileExists(atPath: rowURL.path))
+    allowed = true
+    coordinator.deleteAll()
+    #expect(coordinator.listedCount == 0)
+  }
+
+  #if DEBUG
+    @Test("a rename while the row's durable write is held is refused; disk and list then match")
+    func renameRefusedDuringDurableWrite() async throws {
+      let dir = Self.makeTempDir()
+      let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
+      let id = UUID()
+      let turn = Turn(
+        id: "t1", speakerId: "mic:1", startMs: 0, endMs: 900, originalTextRange: 0..<5)
+      func row(_ text: String) -> Transcript {
+        Transcript(
+          id: id, text: text, backendType: .parakeet, speakerAnalysis: .labeled(count: 1),
+          speakerNames: [:], turns: [turn], meetingID: UUID())
+      }
+      try await coordinator.saveAndShowDurably(row("first"))
+      let entered = DispatchSemaphore(value: 0)
+      let release = DispatchSemaphore(value: 0)
+      coordinator.durableWriteWillStartForTesting = {
+        entered.signal()
+        _ = release.wait(timeout: .now() + 10)
+      }
+      let write = Task { @MainActor in try await coordinator.saveAndShowDurably(row("second")) }
+      #expect(await Task.detached { Self.waitBlocking(entered) }.value == .success)
+      // Held and registered in flight: the rename is refused, the list is unchanged.
+      let failure = coordinator.renameSpeaker(
+        id: id, speakerId: "mic:1", name: "Ana", isMeeting: true)
+      #expect(failure != nil)
+      #expect(coordinator.currentRow(id: id)?.text == "first")
+      release.signal()
+      try await write.value
+      coordinator.durableWriteWillStartForTesting = nil
+      let url = dir.appendingPathComponent("\(id.uuidString).json")
+      let onDisk = try JSONDecoder().decode(Transcript.self, from: Data(contentsOf: url))
+      let listed = try #require(coordinator.currentRow(id: id))
+      #expect(onDisk.text == "second")
+      #expect(listed.text == "second")
+      #expect(onDisk.speakerNames == listed.speakerNames)
+      #expect(
+        try FileManager.default.contentsOfDirectory(atPath: dir.path)
+          .filter { $0.hasSuffix(".tmp") }.isEmpty)
+      // Afterwards ordinary edits work again.
+      #expect(
+        coordinator.renameSpeaker(id: id, speakerId: "mic:1", name: "Ana", isMeeting: true) == nil)
+    }
+  #endif
+
+  nonisolated static func waitBlocking(_ semaphore: DispatchSemaphore) -> DispatchTimeoutResult {
+    semaphore.wait(timeout: .now() + 10)
+  }
+
+  @Test("a durable save writes the same row a plain save does, then shows it")
+  func durableSaveRoundTrips() async throws {
+    let dir = Self.makeTempDir()
+    let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
+    let row = Transcript(text: "standup notes", backendType: .parakeet, meetingID: UUID())
+    try await coordinator.saveAndShowDurably(row)
+    #expect(coordinator.hasRow(id: row.id))
+    let data = try Data(contentsOf: dir.appendingPathComponent("\(row.id.uuidString).json"))
+    let decoded = try JSONDecoder().decode(Transcript.self, from: data)
+    #expect(decoded.id == row.id)
+    #expect(decoded.meetingID == row.meetingID)
+    #expect(decoded.text == "standup notes")
+    #expect(try FileManager.default.contentsOfDirectory(atPath: dir.path)
+      .filter { $0.hasSuffix(".tmp") }.isEmpty)
+  }
+}

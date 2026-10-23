@@ -42,6 +42,8 @@ extension EnvironmentValues {
 /// The final sidebar pages. History is ungrouped; Diagnostics is development only.
 enum SettingsPage: String, CaseIterable, Identifiable {
   case history
+  /// #3972: EnviousMeet. Declared before Dictation Settings: it is first in RECORD.
+  case meetings
   case dictation
   case keybinds
   case transcribeFile
@@ -60,6 +62,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
   var labelResource: LocalizedStringResource? {
     switch self {
     case .history: "History"
+    case .meetings: "EnviousMeet"
     case .dictation: "Dictation Settings"
     case .keybinds: "Keybinds"
     case .transcribeFile: "Transcribe a File"
@@ -80,6 +83,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
   var icon: String {
     switch self {
     case .history: "clock.arrow.circlepath"
+    case .meetings: "person.2.wave.2"
     case .dictation: "waveform"
     case .keybinds: "keyboard"
     case .transcribeFile: "waveform.badge.plus"
@@ -98,7 +102,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
   var group: SettingsGroup? {
     switch self {
     case .history: nil
-    case .dictation, .keybinds, .transcribeFile: .record
+    case .meetings, .dictation, .keybinds, .transcribeFile: .record
     case .aiPolish, .dictionary, .snippets: .process
     case .appSettings: .system
     #if DEBUG
@@ -189,6 +193,7 @@ enum DictationTab: String, CaseIterable, Hashable, Identifiable {
 /// "Check for Updates" is an action, never a place, so it has no case.
 enum SettingsDestination: Equatable {
   case history
+  case meetings
   case dictation(DictationTab)
   case keybinds
   case transcribeFile
@@ -203,6 +208,7 @@ enum SettingsDestination: Equatable {
   var page: SettingsPage {
     switch self {
     case .history: .history
+    case .meetings: .meetings
     case .dictation: .dictation
     case .keybinds: .keybinds
     case .transcribeFile: .transcribeFile
@@ -305,7 +311,7 @@ struct SettingsNavigationState: Equatable {
     switch destination {
     case .dictation(let tab): dictationTab = tab
     case .appSettings(let tab): appSettingsTab = tab
-    case .history, .keybinds, .transcribeFile, .aiPolish, .dictionary, .snippets: break
+    case .history, .meetings, .keybinds, .transcribeFile, .aiPolish, .dictionary, .snippets: break
     #if DEBUG
       case .diagnostics: break
     #endif

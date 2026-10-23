@@ -1,0 +1,12 @@
+{
+  "language": "ro",
+  "title": "înregistrează și sunetul apelului",
+  "words": [
+    "audio de sistem",
+    "sunetul calculatorului"
+  ],
+  "phrases": [
+    "înregistrează ce se aude pe Mac",
+    "înregistrează vocile celorlalți din apel"
+  ]
+}

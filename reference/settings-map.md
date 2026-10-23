@@ -12,9 +12,9 @@ Generated from the compiled Settings Map and the validated search vocabulary. Do
 
 The interface ships in English and German. The other 30 languages (ar, bg, cs, da, el, es, et, fi, fr, hi, hr, hu, it, ja, ko, lt, lv, mt, nl, pl, pt, ro, ru, sk, sl, sv, tr, uk, vi, zh) are search metadata only: words and titles people may type, matched against the same places. Titles below read English / German.
 
-275 nodes, 249 searchable, 7968 vocabulary blocks.
+278 nodes, 251 searchable, 8032 vocabulary blocks.
 
-Fingerprints: mapSHA256 `a593b83434079e0dd0d135d0ccf587a32ba5c8f403f82e0fdd183bfb8d30a04e`, uiCatalogSHA256 `39586e2e1e72616a898bc4fbde9e1b5332cd67d23ec1f3b4e161264a55757852`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `18327f8ad1003a889d284150528da6faa32064a99e12fee2b7c22cee4378838b`
+Fingerprints: mapSHA256 `dfb02ce9535f382888daba212854d30fc4013c1b2a05f1a618a48199bf2f1990`, uiCatalogSHA256 `9a5d4f62af79b7dfe206cf07524c16b9fee2283b176423798659e1adbe2f87f3`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `f72979fcb42d8d5af6b66456ee79145393838fa2355b42a66fee7f421dbe9c2d`
 
 ## Structure
 
@@ -281,6 +281,9 @@ Fingerprints: mapSHA256 `a593b83434079e0dd0d135d0ccf587a32ba5c8f403f82e0fdd183bf
       - [Add selected word to Dictionary / Markiertes Wort zum Wörterbuch hinzufügen](#node-quickAddKeybind) `quickAddKeybind` (setting)
       - [Paste last dictation / Letztes Diktat einfügen](#node-pasteLastKeybind) `pasteLastKeybind` (setting)
       - [Copy last dictation / Letztes Diktat kopieren](#node-copyLastKeybind) `copyLastKeybind` (setting)
+  - [EnviousMeet / EnviousMeet](#node-page-meetings) `page.meetings` (page)
+    - [Also record the call sound / Auch den Ton vom Mac aufnehmen](#node-meetingCaptureCallSound) `meetingCaptureCallSound` (setting)
+    - [Write a summary when a meeting ends / Zusammenfassung erstellen, wenn ein Meeting endet](#node-meetingWriteSummary) `meetingWriteSummary` (setting)
   - [Snippets / Textbausteine](#node-page-snippets) `page.snippets` (page)
     - [Paste the text you type over and over, by voice / Füge Text, den du oft tippst, per Stimme ein](#node-snippets) `snippets` (feature)
     - [Keyword / Schlüsselwort](#node-snippetKeyword) `snippetKeyword` (setting)
@@ -416,6 +419,24 @@ Fingerprints: mapSHA256 `a593b83434079e0dd0d135d0ccf587a32ba5c8f403f82e0fdd183bf
 | Title source | catalog key `Keybinds` |
 | Description | none |
 | Destination | `keybinds` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | none |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+
+<a id="node-page-meetings"></a>
+
+### EnviousMeet / EnviousMeet (`page.meetings`)
+
+| Field | Value |
+|---|---|
+| Structure | page |
+| Kind | structure only, not searchable |
+| Parent | [`window.settings`](#node-window-settings) |
+| Title source | catalog key `EnviousMeet` |
+| Description | none |
+| Destination | `meetings` |
 | Dictionary tab | none |
 | Shown when | `always` |
 | Arrival target | none |
@@ -2456,6 +2477,50 @@ Fingerprints: mapSHA256 `a593b83434079e0dd0d135d0ccf587a32ba5c8f403f82e0fdd183bf
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: stages, steps, progress<br>phrases: show the steps from uploading a file to the finished transcript; show which stage my file transcription is at |
 | Search (de) | words: Schritte, Ablauf, Fortschritt<br>phrases: zeig mir die Schritte von der Datei bis zum fertigen Text; zeig mir, bei welchem Schritt die Dateitranskription gerade ist |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-meetingCaptureCallSound"></a>
+
+### Also record the call sound / Auch den Ton vom Mac aufnehmen (`meetingCaptureCallSound`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | setting |
+| Parent | [`page.meetings`](#node-page-meetings) |
+| Title source | catalog key `Also record the call sound` |
+| Description | Records what your Mac plays, like the other people on a call. / Nimmt auf, was dein Mac abspielt, zum Beispiel die Stimmen anderer Personen bei einem Anruf. |
+| Description source | catalog key `Records what your Mac plays, like the other people on a call.` |
+| Destination | `meetings` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`meetingCaptureCallSound`](#node-meetingCaptureCallSound) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | words: system audio, computer audio, other participants<br>phrases: record what my Mac plays; capture the other people on the call |
+| Search (de) | words: Systemaudio, Systemton, Computerton, Gesprächspartner<br>phrases: nimm den Ton vom Mac mit auf; nimm die anderen im Anruf mit auf; zeichne den Systemton auf |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-meetingWriteSummary"></a>
+
+### Write a summary when a meeting ends / Zusammenfassung erstellen, wenn ein Meeting endet (`meetingWriteSummary`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | setting |
+| Parent | [`page.meetings`](#node-page-meetings) |
+| Title source | catalog key `Write a summary when a meeting ends` |
+| Description | Your AI Polish provider writes a summary of each meeting. / Dein Anbieter für KI-Nachbearbeitung erstellt eine Zusammenfassung für jedes Meeting. |
+| Description source | catalog key `Your AI Polish provider writes a summary of each meeting.` |
+| Destination | `meetings` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`meetingWriteSummary`](#node-meetingWriteSummary) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | words: recap, summarize, summarise<br>phrases: automatically summarize meetings; AI meeting recap |
+| Search (de) | words: Meetingzusammenfassung, Besprechungszusammenfassung, Kurzfassung<br>phrases: fass mein Meeting zusammen; erstelle nach dem Meeting automatisch eine Zusammenfassung |
 | Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-enableAIPolish"></a>

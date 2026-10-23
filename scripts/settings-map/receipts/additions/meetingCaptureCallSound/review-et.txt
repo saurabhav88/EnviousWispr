@@ -1,0 +1,1 @@
+{"language":"et","title":"salvesta ka arvuti heli","words":["süsteemiheli","arvuti heli"],"phrases":["salvesta koosolekul ka arvuti heli","salvesta kõne teiste osalejate hääled"]}
