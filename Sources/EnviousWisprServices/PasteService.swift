@@ -1350,24 +1350,6 @@ public enum PasteService {
     focusedElementQuery(pid: pid, messagingTimeout: messagingTimeout)
   }
 
-  /// Ask an application element for its role and discard the answer. The read is the point:
-  /// Chromium turns its accessibility tree on from its NSApplication's `accessibilityRole`, so a
-  /// Chrome no other client has woken (focused element `-25212` with a text box focused) starts
-  /// exposing its focus. A focused-element read does not do this (#3802: founder's work laptop,
-  /// 2026-10-15, focus readable 104 ms after one role read and still readable afterwards).
-  ///
-  /// Returns the read's error so the caller can log it; it says nothing about focus or paste.
-  package static func requestAccessibilityRole(
-    ofAppWithPID pid: pid_t,
-    messagingTimeout: Double = axMessagingTimeoutSeconds
-  ) -> AXError {
-    guard AXIsProcessTrusted(), pid > 0 else { return .cannotComplete }
-    let application = AXUIElementCreateApplication(pid)
-    AXUIElementSetMessagingTimeout(application, Float(messagingTimeout))
-    var roleRef: CFTypeRef?
-    return AXUIElementCopyAttributeValue(application, kAXRoleAttribute as CFString, &roleRef)
-  }
-
   /// Whether the field is still EXACTLY as it was when a contextual candidate
   /// was computed: same focused element, same selection, and the same text on
   /// either side of it.

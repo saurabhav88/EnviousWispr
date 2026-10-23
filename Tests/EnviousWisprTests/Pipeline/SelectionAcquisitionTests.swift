@@ -287,30 +287,9 @@ struct SelectionAcquisitionTests {
 
   // MARK: Structural properties, which no run can observe
 
-  /// **The one property with no runtime assertion available, so it is asserted structurally.**
-  /// `SelectionReader.Frontmost` exists because taking the pid in one place and the identity one
-  /// call later described two different applications, found by cloud review on PR #2428. A ladder
-  /// that re-asks the workspace for a pid recreates that defect one layer up and posts a keystroke
-  /// at whatever came forward in between.
-  ///
-  /// A behavioural test cannot see this: both the correct and the incorrect version answer
-  /// identically whenever nothing switched during the run, which is every run on a test machine.
-  /// So the check is on the SOURCE, and it fails the moment somebody adds the call.
-  @Test("The acquisition ladder never samples the frontmost application")
-  func theLadderNeverResamplesTheWorkspace() throws {
-    let code = try Self.executableLines(of: "SelectionAcquisition.swift")
-
-    // **Positive control first, or an empty match set is indistinguishable from a broken reader.**
-    // If the comment stripping or the file path is wrong, `code` is empty and every absence check
-    // below passes while looking at nothing.
-    #expect(
-      code.contains(where: { $0.contains("SelectionReader.readForAcquisition") }),
-      "the source reader could not see a call it is known to contain")
-
-    #expect(
-      !code.contains(where: { $0.contains("NSWorkspace.shared.frontmostApplication") }),
-      "a second sample: the pid must come from the read's own sample")
-  }
+  // The "never re-samples the frontmost application" guard moved to
+  // `SelectionAcquisitionTargetGuardTests` (#3986), which checks the parsed tree: since #3986 the
+  // ladder must read who is in front, so the property is now "posts only at the sampled pid".
 
   /// The subject's source, minus comment lines, so prose ABOUT a call is not read as the call.
   private static func executableLines(of file: String) throws -> [Substring] {
@@ -351,4 +330,91 @@ struct SelectionAcquisitionTests {
       calls.count == 1,
       "a second restore site is a second chance to skip one; every exit goes through `concluding`")
   }
+
+  // MARK: The shortcut-key wait (#2481)
+
+  /// Keys held until `releaseAt` on a manual clock; each fake sleep advances it by what was asked.
+  @MainActor private final class KeyRig {
+    let origin = ContinuousClock.now
+    var elapsed: Duration = .zero
+    var releaseAt: Duration?
+    var cancelOnFirstSleep = false
+
+    var environment: SelectionAcquisition.Environment {
+      SelectionAcquisition.Environment(
+        now: { self.origin + self.elapsed },
+        // settle: not a wait; the fake advances the manual clock and returns at once
+        sleep: { requested in
+          self.elapsed += requested
+          if self.cancelOnFirstSleep { withUnsafeCurrentTask { $0?.cancel() } }
+        },
+        modifiersHeld: { self.releaseAt.map { self.elapsed < $0 } ?? true },
+        // Only the wait runs here; the rest of the ladder is covered by the ladder suite.
+        secureInputActive: { false }, secureFocusProbe: { _ in .subrole(nil) },
+        postingAuthorised: { true }, targetStillPresent: { _ in true }, copyKeyCode: { 8 },
+        frontmostPID: { nil }, activate: { _ in },
+        postCopy: { _, _ in
+          Issue.record("the wait tests never post")
+          return .notPosted
+        },
+        readSelection: { _, _, _ in nil })
+    }
+  }
+
+  private func releaseMs(_ rig: KeyRig) async -> Int? {
+    SelectionAcquisition.modifierReleaseMilliseconds(
+      await SelectionAcquisition.awaitModifierRelease(rig.environment))
+  }
+
+  /// The founder's own press (2026-08-27) and the production cluster (289 to 318 ms) sat just past
+  /// the old 250 ms cap; this release must now continue, carrying its time.
+  @Test("Keys that come up at 400 ms continue with 400 ms, where the old 250 ms cap refused")
+  func aDeliberatePressAt400msContinues() async {
+    let rig = KeyRig()
+    rig.releaseAt = .milliseconds(400)
+    #expect(await releaseMs(rig) == 400)
+  }
+
+  @Test("Keys already up continue at once with zero, which is a reading and not an absence")
+  func keysAlreadyUpReadZero() async {
+    let rig = KeyRig()
+    rig.releaseAt = .zero
+    #expect(await releaseMs(rig) == 0)
+  }
+
+  @Test("Keys still held through the 1.5 s cap refuse as held")
+  func keysHeldPastTheCapRefuse() async {
+    let rig = KeyRig()
+    #expect(await releaseMs(rig) == nil)
+    #expect(rig.elapsed == SelectionAcquisition.modifierReleaseCap + .milliseconds(4))
+  }
+
+  /// The 8 ms poll lands on 1496 and then 1504: a release seen at the last poll before the cap
+  /// counts, one first seen at or after the cap expires (`DeadlinePoll`'s order).
+  @Test("At the cap boundary, the last poll before it counts and a release at the cap expires")
+  func capBoundary() async {
+    let justBefore = KeyRig()
+    justBefore.releaseAt = .milliseconds(1496)
+    #expect(await releaseMs(justBefore) == 1496)
+    let atCap = KeyRig()
+    atCap.releaseAt = .milliseconds(1500)
+    #expect(await releaseMs(atCap) == nil)
+  }
+
+  @Test("A wait cancelled mid-sleep refuses as held and never continues")
+  func aCancelledWaitRefuses() async {
+    let rig = KeyRig()
+    rig.releaseAt = .milliseconds(8)
+    rig.cancelOnFirstSleep = true
+    let task = Task { @MainActor in await self.releaseMs(rig) }
+    #expect(await task.value == nil)
+  }
+
+  @Test("The mapping: met carries whole milliseconds; expired and cancelled refuse")
+  func waitMapping() {
+    #expect(SelectionAcquisition.modifierReleaseMilliseconds(.met(elapsed: .milliseconds(37))) == 37)
+    #expect(SelectionAcquisition.modifierReleaseMilliseconds(.expired) == nil)
+    #expect(SelectionAcquisition.modifierReleaseMilliseconds(.cancelled) == nil)
+  }
+
 }

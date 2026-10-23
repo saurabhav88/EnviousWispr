@@ -130,7 +130,9 @@ private func finished(
 
 /// Product Outcome: when these fail, a paste that went nowhere loses the user's words, or a paste
 /// that landed loses the user's own clipboard.
-@Suite("Clipboard cleanup keeps a missed paste (#3106 PR B)", .tags(.productOutcome), .serialized)
+@Suite(
+  "Clipboard cleanup keeps a missed paste (#3106 PR B)", .tags(.productOutcome), .serialized,
+  .clipboardCleanupExclusive)
 @MainActor
 struct ClipboardCleanupLandingTests {
 

@@ -506,4 +506,32 @@ struct SelectionReaderTests {
       SelectionReader.refusalForFocusedElement(.none)
         != SelectionReader.refusalForFocusedElement(.queryFailed(.cannotComplete)))
   }
+
+  // MARK: The recovery's identity rule (#3986)
+
+  /// When this fails, Quick Add's no-focus recovery reads whatever app came to the front instead
+  /// of the one the user selected in.
+  @Test("A fresh sample matches only the same pid AND the same bundle id")
+  func recoverySampleMatchesOnlyTheSameApp() {
+    let expected = SelectionReader.AcquisitionContext(
+      pid: 501, bundleIdentifier: "com.microsoft.VSCode", focusedSubrole: nil)
+    #expect(
+      SelectionReader.sampleMatches(
+        .init(pid: 501, bundleIdentifier: "com.microsoft.VSCode"), expected: expected))
+    #expect(
+      SelectionReader.sampleMatches(
+        .init(pid: 502, bundleIdentifier: "com.microsoft.VSCode"), expected: expected) == false,
+      "another process of the same app")
+    #expect(
+      SelectionReader.sampleMatches(
+        .init(pid: 501, bundleIdentifier: "com.google.Chrome"), expected: expected) == false,
+      "a recycled pid now naming another app")
+    #expect(
+      SelectionReader.sampleMatches(
+        .init(pid: 501, bundleIdentifier: "com.microsoft.VSCode"),
+        expected: .init(pid: nil, bundleIdentifier: "com.microsoft.VSCode", focusedSubrole: nil))
+        == false,
+      "no sampled pid to compare")
+  }
+
 }

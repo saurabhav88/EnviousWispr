@@ -54,10 +54,11 @@ enum SyntheticCopyChord {
   /// - Parameter copyKeyCode: the virtual key that means "c" on the ACTIVE layout. See
   ///   `copyKeyCode()`; passing a constant is the defect that resolver exists to prevent.
   ///
-  /// **Aimed at the pid rather than the session tap.** Measured 2026-08-26: a backgrounded
-  /// application answers a pid-targeted chord, which is what lets the menu-bar door use this at all
-  /// (by click time the frontmost application is us). A session-tap post would go to whoever is in
-  /// front, which after a menu click is the wrong process.
+  /// **Aimed at the pid rather than the session tap**, so the chord can only reach the application
+  /// the read sampled, never whatever came forward since. **The target must be frontmost to
+  /// answer:** measured 2026-10-23 (#3986), Chrome, Safari and TextEdit behind Finder copied nothing
+  /// from a pid-targeted Cmd+C (WhatsApp answered from the background on 2026-08-26, which is not
+  /// the rule). `SelectionAcquisition` step 2a brings the target back first.
   @MainActor
   static func post(at pid: pid_t, copyKeyCode: CGKeyCode) -> PostResult {
     // `.hidSystemState` rather than `.combinedSessionState`: the flags we are about to set and clear

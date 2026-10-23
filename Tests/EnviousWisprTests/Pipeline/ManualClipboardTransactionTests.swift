@@ -14,7 +14,7 @@ import Testing
 /// the wrong text into a dictation that is still landing, or pastes nothing while reporting success.
 @Suite(
   "Paste and Copy Last Dictation: the clipboard transaction (#3106)", .tags(.productOutcome),
-  .serialized)
+  .serialized, .clipboardCleanupExclusive)
 @MainActor
 struct ManualClipboardTransactionTests {
 

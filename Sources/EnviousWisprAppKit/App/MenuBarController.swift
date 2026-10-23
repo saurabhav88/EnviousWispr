@@ -226,7 +226,9 @@ final class MenuBarController: NSObject {
       // **Enabled, and that is the point.** A refused read is not an empty selection: the user has
       // selected something and we could not read it, usually because Accessibility is off. A greyed
       // row tells them nothing, so this one opens the panel, which exists to state the reason. The
-      // door that is meant to be the reliable one must not fail silently.
+      // door that is meant to be the reliable one must not fail silently. One refusal gets more
+      // than a reason: `noFocusedElement` is re-read downstream, bounded and from the same app only,
+      // because Electron apps hide their focus while this menu is open (#3986).
       return (Self.addToDictionaryTitle, true)
     case .ready(let selection):
       // **A `.ready` carrying only whitespace is the empty case wearing the wrong label.** The
@@ -865,8 +867,9 @@ final class MenuBarController: NSObject {
   // MARK: - Menu actions
 
   /// **Reads nothing. The selection was captured when the menu was RENDERED**, while the user's own
-  /// application was still frontmost; by the time this fires the menu has closed and a read would be
-  /// about us. That ordering is the whole reason this door works.
+  /// application was still frontmost; a read now would describe a later moment than the row chosen.
+  /// That ordering is the whole reason this door works. One exception, owned downstream: a
+  /// `noFocusedElement` refusal is re-read by `SelectionAcquisition`, same app only (#3986).
   @objc private func addSelectedWordAction(_ sender: NSMenuItem) {
     // A row we rendered always carries its outcome AND the sample it came from. The fallback is not
     // a real case — it exists so a menu item built by something other than `renderMenu` cannot
@@ -1101,12 +1104,14 @@ extension MenuBarController: NSMenuDelegate {
         // All three outcomes are carried. A refusal is NOT an empty selection — collapsing them is
         // what made a missing Accessibility permission look identical to having selected nothing.
         //
-        // **`readForAcquisition` rather than `read` (#2465), and it is still side-effect free.** It
+        // **`readForAcquisition` rather than `read` (#2465): it touches no clipboard and posts no
+        // key.** Its one write is the target's accessibility wake (`AccessibilityWake`, #3986). It
         // is the same read; it additionally hands back which application answered, taken from the
-        // sample the read itself used. The click path needs that and cannot take its own, because
-        // by then the frontmost application is us. On the fallback-eligible outcomes it costs one
-        // more Accessibility operation on a handle already bounded by the timeout above; a
-        // successful read pays nothing.
+        // sample the read itself used. The click path needs that and must not take its own: a
+        // later sample is a later moment (in the measured cases a status-item click kept the user's
+        // app in front, 2026-10-23, #3986). Every read pays the bounded wake operations; on the
+        // fallback-eligible outcomes it also costs one more Accessibility operation on a handle
+        // already bounded by the timeout above.
         let (readResult, readContext) = SelectionReader.readForAcquisition(
           timeout: Self.quickAddReadTimeout,
           sampleSubrole: settings.quickAddClipboardFallback)
@@ -1226,7 +1231,8 @@ enum QuickAddMenuState: Equatable {
   ///
   /// **Dropping the refusal is what made the re-read necessary.** With only "blocked", the click
   /// path had to ask again, without the menu's cap, so a stalled Accessibility provider stalled the
-  /// panel instead of the menu and the bound bought nothing. Cloud review, PR #2427.
+  /// panel instead of the menu and the bound bought nothing. Cloud review, PR #2427. Since #3986 a
+  /// carried `noFocusedElement` alone is re-read, with that same cap, from the same app only.
   ///
   /// It changes no display: every refusal renders the same row. Information kept, not shown.
   case blocked(SelectionReader.Refusal)
@@ -1259,8 +1265,8 @@ struct MenuBarViewState: Equatable {
   /// The application the Quick Add read was taken from, from that same sample (#2465).
   ///
   /// On the state for the same reason the selection is: `renderMenu` is pure over this value, and
-  /// re-deriving it inside would end that — and re-deriving is also the specific defect, because by
-  /// click time the frontmost application is us.
+  /// re-deriving it inside would end that — and re-deriving is also the specific defect, because a
+  /// later sample can describe a different app from the one the row was drawn for.
   let quickAddContext: SelectionReader.AcquisitionContext
 
   /// Whether the clipboard fallback may run, which decides whether an empty read is OFFERED or

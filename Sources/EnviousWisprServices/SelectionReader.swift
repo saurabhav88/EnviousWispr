@@ -5,9 +5,12 @@ import Foundation
 
 /// Reads the text the user has selected in whatever app is in front (#2381).
 ///
-/// **One Accessibility round trip, on an explicit user gesture, and nothing else.** It does not
-/// observe, poll, cache, or write. The string it returns is held in memory by its caller, shown to
-/// the user, and either saved to the local word library or discarded — it is never logged and never
+/// **Performs a selection read on an explicit user gesture.** Before querying focus, it wakes the
+/// sampled application's accessibility support. It does not observe, poll or cache. Its one write
+/// is the on-demand Electron opt-in `AccessibilityWake` makes before the read (#3986): the same
+/// write the learning observer makes on every capture, never released by the app, measured with no
+/// visible change in VS Code. The string it returns is held in memory by its caller, shown to the
+/// user, and either saved to the local word library or discarded — it is never logged and never
 /// leaves the machine.
 ///
 /// The decision is split in two on purpose. `resolve` is pure and carries every branch, so the
@@ -211,20 +214,23 @@ public enum SelectionReader {
 
   /// The same read, handing back the sample it was taken from (#2465).
   ///
-  /// **Side-effect free, exactly like `read`.** It touches no clipboard, posts no event and makes no
-  /// decision about a fallback. The only thing it adds is that the caller learns WHICH application
-  /// answered, from the sample the read itself used, so a ladder one layer up never has to ask the
-  /// workspace a second time. See `AcquisitionContext`.
+  /// **No clipboard or keyboard side effects, exactly like `read`.** It touches no clipboard, posts
+  /// no event and makes no decision about a fallback; like `read`, it wakes the target's
+  /// accessibility first (`AccessibilityWake`). The only thing it adds is that the caller learns
+  /// WHICH application answered, from the sample the read itself used, so a ladder one layer up
+  /// never has to ask the workspace a second time. See `AcquisitionContext`.
   ///
-  /// **Three Accessibility operations in the fallback-eligible cases, two otherwise.** The subrole
-  /// is read off the focused handle this call already holds and already bounded, and only where
-  /// something is about to act on it.
+  /// **After the wake, selection acquisition performs two Accessibility reads, plus a subrole read
+  /// when fallback eligibility requires it.** The wake adds up to three bounded operations. Subrole
+  /// sampling uses the focused handle already obtained, and only where something is about to act
+  /// on it.
   ///
   /// **`sampleSubrole` has no default, and passing `false` when the fallback cannot run is not an
-  /// optimisation.** The subrole read is a third Accessibility operation, and if it FAILS the whole
-  /// read becomes `.unreadable` — so a user who has switched the clipboard fallback off would see
-  /// their menu row change from inert to clickable and their shortcut report an error, both caused
-  /// entirely by work done for a feature they opted out of. Found by the confirming review round.
+  /// optimisation.** The subrole read is an additional Accessibility operation, and if it FAILS the
+  /// whole read becomes `.unreadable` — so a user who has switched the clipboard fallback off would
+  /// see their menu row change from inert to clickable and their shortcut report an error, both
+  /// caused entirely by work done for a feature they opted out of. Found by the confirming review
+  /// round.
   ///
   /// The per-app denylist still pays one probe, and that is unavoidable rather than an oversight:
   /// which application this is comes from the very sample being taken.
@@ -233,7 +239,36 @@ public enum SelectionReader {
     timeout: Float? = nil,
     sampleSubrole: Bool
   ) -> (result: Result, context: AcquisitionContext) {
-    performRead(timeout: timeout, subrole: sampleSubrole ? .whenFallbackEligible : .skip)
+    performRead(
+      frontmost: Frontmost.current(), timeout: timeout,
+      subrole: sampleSubrole ? .whenFallbackEligible : .skip)
+  }
+
+  /// The same read, but only of the application an earlier read sampled (#3986), or nil.
+  ///
+  /// For the copy ladder's no-focus recovery: it re-reads after the menu closes or a just-woken app
+  /// exposes its focus. **The identity check comes BEFORE any Accessibility operation:** the
+  /// frontmost application is sampled once, and when its pid or bundle id differs from `expected`
+  /// this returns nil without waking or reading it, so a recovery can never read another app.
+  /// That one sample is then the one the read uses, as `readForAcquisition` does.
+  @MainActor
+  public static func readForAcquisition(
+    expecting expected: AcquisitionContext,
+    timeout: Float,
+    sampleSubrole: Bool
+  ) -> (result: Result, context: AcquisitionContext)? {
+    let frontmost = Frontmost.current()
+    guard sampleMatches(frontmost, expected: expected) else { return nil }
+    return performRead(
+      frontmost: frontmost, timeout: timeout,
+      subrole: sampleSubrole ? .whenFallbackEligible : .skip)
+  }
+
+  /// Whether a fresh frontmost sample is the same application an earlier read sampled: same pid
+  /// AND same bundle id. Pure, so the recovery's identity rule is unit-tested.
+  static func sampleMatches(_ frontmost: Frontmost, expected: AcquisitionContext) -> Bool {
+    guard let pid = expected.pid, pid > 0 else { return false }
+    return frontmost.pid == pid && frontmost.bundleIdentifier == expected.bundleIdentifier
   }
 
   /// The one live read both entry points share.
@@ -243,15 +278,15 @@ public enum SelectionReader {
   /// — which is the class `classify` was extracted to close one level down.
   @MainActor
   private static func performRead(
+    frontmost: Frontmost,
     timeout: Float?,
     subrole: SubroleSampling
   ) -> (result: Result, context: AcquisitionContext) {
     precondition(timeout.map { $0 > 0 } ?? true, "a zero or negative AX timeout removes the bound")
-    // Frontmost is read here rather than inside the check because it is the LIVE half. Current
+    // `frontmost` is the LIVE half, sampled once by the caller (`Frontmost.current()`). Current
     // because this runs on the main run loop from a hotkey or a Service, with events flowing;
     // `NSWorkspace.frontmostApplication` is stale only where nothing is pumping the run loop, which
     // is not a state this entry point can be called from.
-    let frontmost = Frontmost.current()
 
     // Built once, from that one sample, and carried by EVERY return below including the refusals.
     // A caller that only learns the application on success cannot re-check it later without taking
@@ -266,6 +301,22 @@ public enum SelectionReader {
     // the element read is the SAME sample the guard judged, so the refusal and the read can never
     // describe two different applications.
     guard let pid = frontmost.pid else { return (.refused(.noFocusedElement), sampled) }
+
+    // **Wake the SAME sampled pid before asking for its focus (#3986).** Chromium and Electron
+    // hosts answer no focused element until an assistive client asks, so a wake after the focus
+    // query would never run for them; this is the order `PastedRegionObserver.readFocusedField`
+    // keeps for the same reason. A role read that used its full timeout exhausts this wake's
+    // allowance: refuse as unreadable without further AX reads. This elapsed-time cutoff does not
+    // diagnose the provider. A fast error continues exactly as before.
+    let wakeTimeout = timeout.map(Double.init) ?? PasteService.axMessagingTimeoutSeconds
+    let wake = AccessibilityWake.wake(pid: pid, messagingTimeout: wakeTimeout)
+    Task {
+      await AppLogger.shared.log(
+        "wake role=\(wake.roleError.rawValue) manual=\(wake.manual.map(String.init) ?? "unknown") "
+          + "pid=\(pid) exhausted=\(wake.roleReadExhausted) enabled=\(wake.manualEnabled)",
+        level: .info, category: "QuickAdd")
+    }
+    if wake.roleReadExhausted { return (.refused(.unreadable), sampled) }
 
     // **Handed to the query rather than set here.** `focusedElement` creates its OWN application
     // element, so a timeout set on a handle made here reaches nothing — it did not, and the line
@@ -371,8 +422,8 @@ public enum SelectionReader {
   ///
   /// **A live probe, and it exists because a sampled answer to this question goes stale in the one
   /// window that matters.** The acquisition ladder waits for the user's own shortcut modifiers to
-  /// come up, capped at a quarter of a second, and a quarter of a second is long enough to click
-  /// into a password field. A guard whose answer was correct when it was taken and is stale when it
+  /// come up, capped at 1.5 seconds (#2481), and that is long enough to click into a password
+  /// field. A guard whose answer was correct when it was taken and is stale when it
   /// matters is not a guard, and this one's failure mode is a secret on the clipboard.
   ///
   /// **Takes the pid rather than re-sampling the frontmost application**, so it asks about the SAME

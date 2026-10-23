@@ -128,7 +128,7 @@ final class QuickAddWiring {
       guard let self else { return }
       defer { self.isAcquiring = false }
       let outcome = await SelectionAcquisition.acquire(
-        fallbackEnabled: self.settings.quickAddClipboardFallback)
+        fallbackEnabled: self.settings.quickAddClipboardFallback, environment: .live)
       // Re-asked after the await: the user may have opened the panel another way while we waited.
       guard self.notAlreadyOpen() else { return }
       self.present(self.coordinator.begin(door: .hotkey, selection: outcome))
@@ -141,13 +141,13 @@ final class QuickAddWiring {
   /// **Takes the reading rather than reading it here, and that is the whole point of the door.** The
   /// menu is rendered while the user's own application is still frontmost — measured, twice — so the
   /// read happens there, at the one moment the answer is about their document. Reading it from this
-  /// side would run after the click, by which time the menu has closed and the answer is ours.
+  /// side would run after the click, a later moment than the row the user chose was drawn from.
   ///
   /// **Since #2465 it may also fall back, and the plan said this was impossible until it was
-  /// measured.** The synchronous constraint binds the menu's RENDER, not its click; and the reason
-  /// a live read here would be about us does not bind a chord aimed at a remembered pid. Measured:
-  /// a word highlighted in WhatsApp, Finder brought to the front, the chord posted at WhatsApp's
-  /// pid — the word came back. So the two doors now give the same answer through the same
+  /// measured.** The synchronous constraint binds the menu's RENDER, not its click, and the chord is
+  /// aimed at the remembered pid. In the measured cases a status-item click kept the user's app in
+  /// front (Chrome, Finder, 2026-10-23, #3986); when it is not in front, the ladder's step 2a brings it back, because a
+  /// background app copies nothing. So the two doors give the same answer through the same
   /// mechanism, rather than needing copy to explain why they differ.
   func beginFromMenuBar(
     selection: SelectionReader.Result,
@@ -163,15 +163,18 @@ final class QuickAddWiring {
     // stalled Accessibility provider stalled the panel instead of the menu, and the bound that let
     // the menu open bought nothing. Cloud review, PR #2427.
     //
-    // Re-reading is also wrong on its own terms here: by the time this runs the menu has closed, so
-    // a live read can answer about US rather than about the document the user was looking at.
+    // Re-reading is also wrong on its own terms here: a live read after the click samples a later
+    // moment than the row the user chose. The carried outcome stays authoritative; the one
+    // exception is a `noFocusedElement` refusal, which `SelectionAcquisition` re-reads bounded by
+    // the same per-operation cap and only from the same sampled app (#3986: Electron apps hide
+    // their focus while any status-item menu is open).
     isAcquiring = true
     Task { @MainActor [weak self] in
       guard let self else { return }
       defer { self.isAcquiring = false }
       let outcome = await SelectionAcquisition.acquire(
         following: selection, context: context,
-        fallbackEnabled: self.settings.quickAddClipboardFallback)
+        fallbackEnabled: self.settings.quickAddClipboardFallback, environment: .live)
       guard self.notAlreadyOpen() else { return }
       self.present(self.coordinator.begin(door: .menuBar, selection: outcome))
     }

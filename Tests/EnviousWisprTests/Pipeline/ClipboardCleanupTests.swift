@@ -18,7 +18,9 @@ import Testing
 
 /// Product Outcome: when these fail, the user's clipboard is not returned, or is
 /// replaced with the wrong thing.
-@Suite("Clipboard cleanup scheduling (#2197)", .tags(.productOutcome), .serialized)
+@Suite(
+  "Clipboard cleanup scheduling (#2197)", .tags(.productOutcome), .serialized,
+  .clipboardCleanupExclusive)
 @MainActor
 struct ClipboardCleanupTests {
 

@@ -305,7 +305,10 @@ struct SnippetChainPlacementTests {
   /// of the clipboard per SAVED clipboard snippet.
   @Test(
     "Measure the clipboard read and the two-pass step",
-    .enabled(if: ProcessInfo.processInfo.environment["EW_SNIPPET_FILLIN_BENCH"] != nil))
+    .enabled(if: ProcessInfo.processInfo.environment["EW_SNIPPET_FILLIN_BENCH"] != nil),
+    // Reads `ClipboardCleanup`'s shared takeover state (`userPlainText`), so it waits for the
+    // suites that mutate it (#3986).
+    .clipboardCleanupExclusive)
   @MainActor
   func measureTheTwoPassCost() async throws {
     let reportPath = try #require(ProcessInfo.processInfo.environment["EW_SNIPPET_FILLIN_BENCH"])
