@@ -448,6 +448,12 @@ import Testing
       file: "Sources/EnviousWisprPipeline/MeetingTranscriptionJob.swift", matcher: "transcribe",
       text: "let result = try await self.dependencies.transcribe(samples)",
       classification: .structurallySafe),
+    // #3972 C10: a live-words preview unit decodes one closed capture file with the same
+    // injected meeting engine, inside the same dictation-idle `unit`. Never dictation's backend.
+    CallSite(
+      file: "Sources/EnviousWisprPipeline/MeetingTranscriptionJob.swift", matcher: "transcribe",
+      text: "return try await self.dependencies.transcribe(samples).text",
+      classification: .structurallySafe),
     // The checkpoint's SHA-256 digest (`CryptoKit`), not an engine finalize.
     CallSite(
       file: "Sources/EnviousWisprPipeline/MeetingTranscriptionJob.swift", matcher: "finalize",

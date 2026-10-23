@@ -27,6 +27,8 @@ struct EscapeRecoveryRowConnectorTests {
     "Sources/EnviousWisprAppKit/Views/Main/TranscriptDetailView.swift"
   private static let historyPath =
     "Sources/EnviousWisprAppKit/Views/Main/TranscriptHistoryView.swift"
+  /// #3972: History's Paste transaction, shared by the transcript and meeting details.
+  private static let pastePath = "Sources/EnviousWisprAppKit/Views/Main/HistoryPaste.swift"
 
   private func source(_ path: String) throws -> String {
     try String(contentsOf: RepoRoot.sourceURL(path), encoding: .utf8)
@@ -127,8 +129,15 @@ struct EscapeRecoveryRowConnectorTests {
 
     // Exact expressions, so an inverted modifier is a source change this test
     // sees rather than a substring it still matches.
+    // #3972 moved the press-time and after-hide checks into `HistoryPaste`, which the
+    // meeting detail shares; the row hands it exactly this policy.
     #expect(
-      source.contains("guard pasteAllowed,"), "Paste must stand down at press time")
+      source.contains("allowed: { pasteAllowed },"), "Paste hands the policy to History's paste")
+    let paste = try self.source(Self.pastePath)
+    #expect(paste.contains("guard allowed() else { return }"), "Paste must stand down at press time")
+    #expect(
+      paste.contains("guard allowed(), permissions.accessibilityGrantedLive,"),
+      "and again after History is hidden")
     #expect(
       source.contains("guard keepAllowed else { return }"),
       "and so must Keep")
