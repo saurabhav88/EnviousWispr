@@ -104,11 +104,13 @@ struct MeetingSummaryOwnerTests {
     }
 
     static func documents(
-      _ store: MeetingStore, debounce: @escaping @Sendable () async -> Void = {}
+      _ store: MeetingStore, debounce: @escaping @Sendable () async -> Void = {},
+      afterGeneratedWrite: @escaping @MainActor () async -> Void = {}
     ) -> MeetingDocumentsOwner {
       MeetingDocumentsOwner(
         writer: MeetingFileWriter(store: store, writeRecord: { try $0.save($1) }),
-        dependencies: .init(debounce: debounce, log: { _ in }))
+        dependencies: .init(
+          debounce: debounce, log: { _ in }, afterGeneratedWrite: afterGeneratedWrite))
     }
 
     /// A ready meeting on disk.
@@ -947,5 +949,40 @@ struct MeetingSummaryOwnerTests {
         == .providerFailed)
     #expect(MeetingSummaryView.shownProblem(activity: nil, configuration: .noProvider) == .noProvider)
     #expect(MeetingSummaryView.shownProblem(activity: nil, configuration: nil) == nil)
+  }
+
+  @Test("a result applied after a newer edit's save keeps the user's text, hash and origin")
+  func resultAppliedAfterNewerSave() async throws {
+    let base = try Rig()
+    // Parks each generated result after its store write, before it is applied here.
+    let gate = MeetingDocumentsOwnerTests.DebounceGate()
+    defer { gate.open() }
+    let documents = Rig.documents(base.store, afterGeneratedWrite: { await gate.wait() })
+    let rig = try Rig(sharing: base, documents: documents)
+    let id = try rig.readyMeeting()
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("first written to disk") { gate.waiting == 1 }
+    gate.open()
+    await Self.eventually("first") { rig.world.finished.count == 1 }
+    #expect(await documents.load(id))
+
+    let second = MeetingDocumentsOwnerTests.DebounceGate()
+    defer { second.open() }
+    let late = Rig.documents(base.store, afterGeneratedWrite: { await second.wait() })
+    let lateRig = try Rig(sharing: base, documents: late)
+    #expect(await late.load(id))
+    lateRig.owner.writeAgain(id, replacing: nil)
+    // The generated write has landed on disk; its result waits to be applied.
+    await Self.eventually("parked after the write") { second.waiting == 1 }
+    late.setSummary(id, "Newer, saved after the write")
+    #expect(await late.flushSummary(id))
+    second.open()
+    await Self.eventually("applied") { lateRig.world.finished.count == 1 }
+    let user = MeetingDocumentHash.sha256("Newer, saved after the write")
+    #expect(late.summary(id) == "Newer, saved after the write")
+    #expect(late.manifest(id)?.summary?.sha256 == user)
+    #expect(late.manifest(id)?.summary?.origin == .userEdited)
+    #expect(lateRig.summaryOnDisk(id) == "Newer, saved after the write")
+    #expect(try lateRig.manifest(id).summary?.origin == .userEdited)
   }
 }

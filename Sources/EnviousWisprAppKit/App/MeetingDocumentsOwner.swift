@@ -28,6 +28,9 @@ final class MeetingDocumentsOwner {
       try? await Task.sleep(for: .seconds(1))
     }
     var log: @MainActor (String) -> Void
+    /// Runs after a generated summary's store write and before its result is applied here.
+    /// Nothing in the app; a test parks it to order a newer edit's save in between.
+    var afterGeneratedWrite: @MainActor () async -> Void = {}
   }
 
   enum LoadState: Equatable {
@@ -375,6 +378,7 @@ final class MeetingDocumentsOwner {
       try $0.saveGeneratedSummary(
         text, inputs: inputs, approvedUserEdit: approvedUserEdit, meeting: meetingID)
     }
+    await deps.afterGeneratedWrite()
     guard generation(meetingID) == gen else { return nil }
     switch result {
     case .failure(let error):
@@ -384,13 +388,15 @@ final class MeetingDocumentsOwner {
       if var entry = entries[meetingID], entry.load == .loaded {
         switch outcome {
         case .saved(let manifest):
-          entry.manifest.summary = manifest.summary
-          // Typing that arrived during the write stays on screen, saved or not; its own save
-          // writes (or wrote) it over the generated text as the user's. Redundant by design
-          // for typing already saved: the store keeps a saved edit (`.userEditKept`), so this
-          // `.saved` branch is not reached then, and a mutation removing the revision check is
-          // not observable in `olderResultAfterSavedEdit` (Codex C13b-1 r2).
-          if entry.summaryEditRevision == editRevision { entry.summary = text }
+          // Typing newer than this result (typed after it started, saved or not) keeps both
+          // its text and its summary metadata: its own save writes, or already wrote, it over
+          // the generated text as the user's, and that save sets the metadata. This matters
+          // when the generated write lands first and its result is applied only after the
+          // newer edit's save (Codex C13b-1 r3).
+          if entry.summaryEditRevision == editRevision {
+            entry.manifest.summary = manifest.summary
+            entry.summary = text
+          }
           entry.manifest.summaryPending = manifest.summaryPending
         case .userEditKept(let manifest), .notesChanged(let manifest):
           entry.manifest.summaryPending = manifest.summaryPending
