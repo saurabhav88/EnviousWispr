@@ -223,6 +223,9 @@ final class MeetingCoordinator {
     /// Called whenever recording or processing work starts or ends, so admission elsewhere
     /// (dictation's Ultra activation) is offered again.
     var workChanged: @MainActor () -> Void = {}
+    /// Dictation is idle (the same fact meeting work admits on), so a wait can be told apart
+    /// from a wait for a meeting summary.
+    var isDictationIdle: @MainActor () -> Bool = { true }
     var beginActivity: @MainActor () -> NSObjectProtocol? = {
       ProcessInfo.processInfo.beginActivity(
         options: [.idleSystemSleepDisabled, .userInitiated], reason: "Recording a meeting")
@@ -321,6 +324,17 @@ final class MeetingCoordinator {
   let documents: MeetingDocumentsOwner
   /// Writes each ready meeting's summary (#3972 R39). Set by `MeetingWiring`; nil writes none.
   var summaries: MeetingSummaryOwner?
+
+  /// Live words wait for a meeting summary, not for dictation: dictation is idle and a local
+  /// summary waits for its turn or calls (R50: summary before preview).
+  var liveWaitsOnSummary: Bool {
+    (summaries?.localSummaryActive ?? false) && deps.isDictationIdle()
+  }
+
+  /// The final pass waits for a meeting summary call, not for dictation (R50).
+  var passWaitsOnSummary: Bool {
+    (summaries?.localSummaryCallRunning ?? false) && deps.isDictationIdle()
+  }
 
   /// A final pass runs, or the queue is draining runnable meetings: a local summary call waits
   /// for it (R50: final first). Derived from the queue itself, which skips meetings marked for

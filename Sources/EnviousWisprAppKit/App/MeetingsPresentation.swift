@@ -36,9 +36,12 @@ enum MeetingsPresentation {
 
   /// How fresh the live words are and why they lag, one sentence each (R52). Freshness is the
   /// end of the newest decoded stretch, never a promised delay.
-  static func liveStatusLines(_ live: MeetingCoordinator.LiveTranscript, callSoundRecorded: Bool)
-    -> [String]
-  {
+  /// `waitingOnSummary`: dictation is idle and a meeting summary on this Mac holds the turn, so
+  /// a wait is for the summary, not for dictation (R50).
+  static func liveStatusLines(
+    _ live: MeetingCoordinator.LiveTranscript, callSoundRecorded: Bool,
+    waitingOnSummary: Bool = false
+  ) -> [String] {
     var lines = [
       String(
         localized: "Live words, usually about a minute behind.",
@@ -51,7 +54,12 @@ enum MeetingsPresentation {
           localized: "Words up to \(clock).",
           comment: "History, a recording meeting: the live words reach this point of the meeting, like 12:04."))
     }
-    if live.waitingForDictation {
+    if live.waitingForDictation, waitingOnSummary {
+      lines.append(
+        String(
+          localized: "Waiting for a meeting summary to finish.",
+          comment: "History, a recording meeting: live words pause while a summary is written on this Mac."))
+    } else if live.waitingForDictation {
       lines.append(
         String(
           localized: "Waiting for your dictation to finish.",
@@ -148,7 +156,16 @@ enum MeetingsPresentation {
 
   // MARK: - Processing
 
-  static func stage(_ processing: MeetingCoordinator.Processing) -> String {
+  /// `waitingOnSummary`: dictation is idle and a meeting summary call runs on this Mac, so a
+  /// wait is for the summary (R50).
+  static func stage(_ processing: MeetingCoordinator.Processing, waitingOnSummary: Bool = false)
+    -> String
+  {
+    if processing.waitingForDictation, waitingOnSummary {
+      return String(
+        localized: "Paused while a meeting summary is written",
+        comment: "EnviousMeet: the transcript waits until a summary on this Mac is finished.")
+    }
     if processing.waitingForDictation {
       return String(
         localized: "Paused while you dictate",

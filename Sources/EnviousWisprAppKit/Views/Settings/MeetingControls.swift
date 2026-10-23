@@ -161,10 +161,12 @@ struct MeetingLivePanel: View {
 /// stage, a progress bar, and why it waits when a dictation is running.
 struct MeetingProcessingPanel: View {
   let processing: MeetingCoordinator.Processing
+  @Environment(MeetingCoordinator.self) private var meetings
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
-      Text(MeetingsPresentation.stage(processing))
+      Text(
+        MeetingsPresentation.stage(processing, waitingOnSummary: meetings.passWaitsOnSummary))
         .font(.stRowTitle)
         .foregroundStyle(.stTextPrimary)
       if let fraction = MeetingsPresentation.progress(processing) {
@@ -258,11 +260,14 @@ struct MeetingLiveWordsView: View {
   let callSoundRecorded: Bool
   /// Greyed while the after-recording pass makes the real transcript.
   var superseded = false
+  @Environment(MeetingCoordinator.self) private var meetings
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
       ForEach(
-        MeetingsPresentation.liveStatusLines(transcript, callSoundRecorded: callSoundRecorded),
+        MeetingsPresentation.liveStatusLines(
+          transcript, callSoundRecorded: callSoundRecorded,
+          waitingOnSummary: meetings.liveWaitsOnSummary),
         id: \.self
       ) {
         line in

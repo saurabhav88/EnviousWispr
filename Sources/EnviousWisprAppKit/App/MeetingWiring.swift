@@ -88,7 +88,8 @@ enum MeetingWiring {
           emit(event)
         },
         log: inputs.log,
-        workChanged: inputs.workChanged))
+        workChanged: inputs.workChanged,
+        isDictationIdle: inputs.isDictationIdle))
     inputs.transcriptCoordinator.deleteMeeting = { [weak coordinator] meetingID in
       Task { await coordinator?.delete(meetingID: meetingID) }
     }

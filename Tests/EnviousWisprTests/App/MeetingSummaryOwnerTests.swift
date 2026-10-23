@@ -94,10 +94,19 @@ struct MeetingSummaryOwnerTests {
       documents = Self.documents(store)
     }
 
-    static func documents(_ store: MeetingStore) -> MeetingDocumentsOwner {
+    /// The same store, with other documents (a test's own debounce).
+    init(sharing other: Rig, documents: MeetingDocumentsOwner) throws {
+      root = other.root
+      store = other.store
+      self.documents = documents
+    }
+
+    static func documents(
+      _ store: MeetingStore, debounce: @escaping @Sendable () async -> Void = {}
+    ) -> MeetingDocumentsOwner {
       MeetingDocumentsOwner(
         writer: MeetingFileWriter(store: store, writeRecord: { try $0.save($1) }),
-        dependencies: .init(debounce: {}, log: { _ in }))
+        dependencies: .init(debounce: debounce, log: { _ in }))
     }
 
     /// A ready meeting on disk.
@@ -694,5 +703,104 @@ struct MeetingSummaryOwnerTests {
     #expect(rig.world.finished == [Self.row(.unsupported, .hosted), Self.row(.unsupported, .hosted)])
     #expect(try rig.manifest(id).summaryPending == nil, "no owed work is left")
     #expect(rig.owner.isWriting(id) == false)
+  }
+
+  // MARK: - The Summary tab's owners (C13b)
+
+  @Test("an edit makes the summary the user's own, keeps its inputs, and holds a relaunch until saved")
+  func summaryEdit() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("written") { rig.world.finished.count == 1 }
+    #expect(await rig.documents.load(id))
+    let generatedInputs = try rig.manifest(id).summary?.inputs
+    rig.documents.setSummary(id, "## Overview\nShip Friday. Priya owns it.")
+    #expect(rig.documents.hasPendingWork, "an unsaved edit holds a relaunch")
+    #expect(await rig.documents.flushSummary(id))
+    #expect(rig.summaryOnDisk(id) == "## Overview\nShip Friday. Priya owns it.")
+    let manifest = try rig.manifest(id)
+    #expect(manifest.summary?.origin == .userEdited)
+    #expect(manifest.summary?.inputs == generatedInputs, "still shows out of date if the meeting changes")
+  }
+
+  @Test("a generated summary that arrives while the user types keeps the typing")
+  func generatedDuringTyping() async throws {
+    let base = try Rig()
+    // The edit's own debounced save never runs here: only the owner can save the typing.
+    let gate = MeetingDocumentsOwnerTests.DebounceGate()
+    defer { gate.open() }
+    let documents = Rig.documents(base.store, debounce: { await gate.wait() })
+    let rig = try Rig(sharing: base, documents: documents)
+    let id = try rig.readyMeeting()
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("first") { rig.world.finished.count == 1 }
+    #expect(await rig.documents.load(id))
+    rig.world.holdCalls = true
+    rig.owner.writeAgain(id, replacing: nil)
+    await Self.eventually("calling") { rig.world.callsWaiting == 1 }
+    // Typed, not yet saved (the debounce has not run), when the answer arrives.
+    rig.documents.setSummary(id, "My own words")
+    rig.world.releaseCall()
+    await Self.eventually("second") { rig.world.finished.count == 2 }
+    #expect(rig.world.finished.last == Self.row(.stale, .hosted))
+    #expect(rig.summaryOnDisk(id) == "My own words")
+    #expect(rig.documents.summary(id) == "My own words")
+  }
+
+  @Test("out of date exactly when the recorded inputs differ; a summary with no inputs never is")
+  func outOfDate() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    #expect(rig.owner.isOutOfDate(id) == false, "no summary")
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("written") { rig.world.finished.count == 1 }
+    #expect(await rig.documents.load(id))
+    #expect(rig.owner.isOutOfDate(id) == false)
+    rig.world.speakerNames = ["mic:you": "Priya"]
+    #expect(rig.owner.isOutOfDate(id), "a rename")
+    rig.world.speakerNames = ["mic:you": "You"]
+    rig.world.model = "gpt-4.1"
+    #expect(rig.owner.isOutOfDate(id), "another model")
+
+    let other = try Rig()
+    let written = try other.readyMeeting()
+    _ = try other.store.saveSummary("Mine", origin: .userEdited, inputs: nil, meeting: written)
+    #expect(await other.documents.load(written))
+    other.world.speakerNames = ["mic:you": "Priya"]
+    #expect(other.owner.isOutOfDate(written) == false, "the user's own summary records no inputs")
+  }
+
+  @Test("a wait names its real reason: dictation, or a meeting summary on this Mac")
+  func waitReasons() {
+    var live = MeetingCoordinator.LiveTranscript(meetingID: UUID())
+    live.waitingForDictation = true
+    let dictation = MeetingsPresentation.liveStatusLines(
+      live, callSoundRecorded: false, waitingOnSummary: false)
+    let summary = MeetingsPresentation.liveStatusLines(
+      live, callSoundRecorded: false, waitingOnSummary: true)
+    #expect(dictation.contains("Waiting for your dictation to finish."))
+    #expect(summary.contains("Waiting for a meeting summary to finish."))
+    #expect(!summary.contains("Waiting for your dictation to finish."))
+    var processing = MeetingCoordinator.Processing(meetingID: UUID(), stage: nil)
+    processing.waitingForDictation = true
+    #expect(MeetingsPresentation.stage(processing, waitingOnSummary: false) == "Paused while you dictate")
+    #expect(
+      MeetingsPresentation.stage(processing, waitingOnSummary: true)
+        == "Paused while a meeting summary is written")
+  }
+
+  @Test("every summary problem has its own message, and the provider ones open AI Polish")
+  func problemCopy() {
+    let problems: [MeetingSummaryOwner.Problem] = [
+      .noProvider, .notForSummaries, .notReady, .ollamaTooOld, .tooLong, .providerFailed,
+      .notesUnreadable, .storageFailed,
+    ]
+    let messages = problems.map(MeetingSummaryView.message)
+    #expect(Set(messages).count == problems.count)
+    #expect(messages.allSatisfy { !$0.isEmpty })
+    #expect(
+      problems.filter(MeetingSummaryView.opensAIPolish)
+        == [.noProvider, .notForSummaries, .notReady, .ollamaTooOld])
   }
 }

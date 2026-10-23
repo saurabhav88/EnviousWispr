@@ -125,6 +125,11 @@ final class MeetingSummaryOwner {
   /// A summary is being written for the meeting (waiting, calling or saving).
   func isWriting(_ meetingID: UUID) -> Bool { currentAttempt[meetingID] != nil }
 
+  /// A local summary waits for its turn or calls (previews give way to it).
+  var localSummaryActive: Bool { lane.summaryActive }
+  /// A local summary call runs (a final pass unit waits for it).
+  var localSummaryCallRunning: Bool { lane.summaryCallRunning }
+
   /// An attempt is calling a model or saving: a relaunch must wait. One waiting for its turn
   /// does not hold it (it is owed on disk and resumes).
   var hasWorkInFlight: Bool { !busy.isEmpty }
@@ -450,6 +455,16 @@ final class MeetingSummaryOwner {
         providerID: selection.provider.rawValue,
         configurationSHA256: MeetingSummary.configurationFingerprint(
           provider: selection.provider, model: selection.model)))
+  }
+
+  /// The meeting's summary was written from inputs that differ from the meeting now (a rename,
+  /// new notes, a Retry, another model or prompt): it is shown as out of date, never as current
+  /// (R60). False when there is no summary or it records no inputs (the user wrote it).
+  func isOutOfDate(_ meetingID: UUID) -> Bool {
+    guard let recorded = documents.manifest(meetingID)?.summary?.inputs,
+      let current = currentInputs(meetingID, selection: deps.selection())
+    else { return false }
+    return recorded != current.summaryInputs
   }
 
   static func providerKind(_ provider: LLMProvider) -> MeetingSummaryFinishedTelemetry.ProviderKind

@@ -64,7 +64,7 @@ struct MeetingHistoryDetailView: View {
           switch tab {
           case .transcript: transcriptTab(record)
           case .notes: MeetingNotesEditor(meetingID: meetingID)
-          case .summary: summaryTab(record)
+          case .summary: MeetingSummaryView(meetingID: meetingID)
           }
         }
         .padding(20)
@@ -418,15 +418,6 @@ struct MeetingHistoryDetailView: View {
         .foregroundStyle(.stTextSecondary)
       }
     }
-  }
-
-  @ViewBuilder private func summaryTab(_ record: MeetingRecord) -> some View {
-    Text(
-      "A summary is written after the meeting is transcribed.",
-      comment: "History, a meeting: the Summary tab before a summary exists."
-    )
-    .font(.stBody)
-    .foregroundStyle(.stTextSecondary)
   }
 
   private func busyLine(_ text: String) -> some View {
