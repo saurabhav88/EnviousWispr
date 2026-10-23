@@ -145,15 +145,21 @@ struct MeetingsPresentationTests {
   func statuses() {
     let expected: [(MeetingState, P.Status)] = [
       (.recording, .recording), (.stopping, .saving), (.interrupted, .interrupted),
-      (.queued, .waiting), (.processing, .transcribing), (.ready, .ready),
-      (.failed, .needsAttention),
+      (.queued, .waiting), (.ready, .ready), (.failed, .needsAttention),
+      // Saved as processing with no pass running: its end could not be saved (#4008).
+      (.processing, .needsAttention),
     ]
     for (state, status) in expected {
       #expect(P.status(Self.record(state), processingID: nil) == status, "\(state)")
     }
     let queued = Self.record(.queued)
     #expect(P.status(queued, processingID: queued.id) == .transcribing)
-    #expect(Set(expected.map { P.statusLabel($0.1) }).count == expected.count)
+    let processing = Self.record(.processing)
+    #expect(P.status(processing, processingID: processing.id) == .transcribing)
+    #expect(P.status(processing, processingID: UUID()) == .needsAttention, "another meeting's pass")
+    // Each distinct status has its own label.
+    let statuses = Set(expected.map(\.1))
+    #expect(Set(statuses.map { P.statusLabel($0) }).count == statuses.count)
   }
 
   @Test("titles, durations, speaker counts and failure reasons")
@@ -179,19 +185,21 @@ struct MeetingsPresentationTests {
   func actionEligibility() {
     let ready = Self.record(.ready)
     #expect(
-      P.actions(ready, isActive: false)
+      P.actions(ready, isActive: false, canTranscribeAgain: true)
         == .init(transcribeAgain: true, deleteAudio: true, delete: true))
     #expect(
-      P.actions(ready, isActive: true)
+      P.actions(ready, isActive: true, canTranscribeAgain: false)
         == .init(transcribeAgain: false, deleteAudio: false, delete: true))
     let noAudio = Self.record(.ready, audioKept: false)
     #expect(
-      P.actions(noAudio, isActive: false)
+      P.actions(noAudio, isActive: false, canTranscribeAgain: false)
         == .init(transcribeAgain: false, deleteAudio: false, delete: true))
-    #expect(P.actions(Self.record(.queued), isActive: false).transcribeAgain == false)
+    // Transcribe again is the coordinator's answer, never re-derived here (#4008).
+    #expect(P.actions(Self.record(.queued), isActive: false, canTranscribeAgain: false).transcribeAgain == false)
+    #expect(P.actions(Self.record(.processing), isActive: false, canTranscribeAgain: true).transcribeAgain)
     var marked = ready
     marked.deletionRequested = true
-    #expect(P.actions(marked, isActive: false).delete == false)
+    #expect(P.actions(marked, isActive: false, canTranscribeAgain: false).delete == false)
   }
 
   @Test("the audio size line never shows a failed read as zero")

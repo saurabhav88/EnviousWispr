@@ -277,13 +277,14 @@ struct MeetingDocumentsOwnerTests {
     #expect(notesOnly.formatVersion == MeetingRecord.notesOnlyFormatVersion)
     #expect(notesOnly.failureCode == "no_audio")
     #expect(Self.notesOnDisk(harness, empty.id) == "Kept")
-    let notesOnlyActions = MeetingsPresentation.actions(notesOnly, isActive: false)
+    let notesOnlyActions = MeetingsPresentation.actions(
+      notesOnly, isActive: false, canTranscribeAgain: coordinator.canTranscribeAgain(empty.id))
     #expect(notesOnlyActions.transcribeAgain == false)
     #expect(notesOnlyActions.deleteAudio == false)
 
     let failed = try harness.store.load(id: damaged.id)
     #expect(failed.failureCode == "audio_unreadable")
-    #expect(MeetingsPresentation.actions(failed, isActive: false).transcribeAgain)
+    #expect(coordinator.canTranscribeAgain(damaged.id))
     #expect(Self.notesOnDisk(harness, damaged.id) == "Also kept")
     #expect(harness.jobs.isEmpty)
 

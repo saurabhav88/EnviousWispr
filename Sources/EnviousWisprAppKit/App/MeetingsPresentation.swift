@@ -220,7 +220,9 @@ enum MeetingsPresentation {
     case .stopping: return .saving
     case .interrupted: return .interrupted
     case .queued: return .waiting
-    case .processing: return .transcribing
+    // No pass owns it (the first line above): its end could not be saved, and Transcribe
+    // again recovers it (#4008).
+    case .processing: return .needsAttention
     case .ready: return .ready
     case .failed: return .needsAttention
     case .notesOnly: return .notesOnly
@@ -322,16 +324,13 @@ enum MeetingsPresentation {
     let delete: Bool
   }
 
-  /// `queueWaitsForSpace`: the queue stopped on a full disk, so a queued meeting offers
-  /// Transcribe again to start it after space is freed.
-  static func actions(_ record: MeetingRecord, isActive: Bool, queueWaitsForSpace: Bool = false)
+  /// `canTranscribeAgain` is the coordinator's answer (`MeetingCoordinator.canTranscribeAgain`,
+  /// #4008), never re-derived here.
+  static func actions(_ record: MeetingRecord, isActive: Bool, canTranscribeAgain: Bool)
     -> Actions
   {
-    let settled = [.failed, .ready, .interrupted].contains(record.state)
-    let waitsForSpace = record.state == .queued && queueWaitsForSpace
-    return Actions(
-      transcribeAgain: record.audioKept && (settled || waitsForSpace) && !isActive
-        && record.isWritableByThisBuild,
+    Actions(
+      transcribeAgain: canTranscribeAgain,
       // A notes-only meeting has no audio to delete, and never says it was deleted (R53).
       deleteAudio: record.audioKept && record.state != .notesOnly && !isActive
         && record.isWritableByThisBuild,
