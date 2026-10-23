@@ -288,6 +288,27 @@ struct MeetingSummaryTests {
     #expect(calls.prompts.dropFirst(2).allSatisfy { Self.fitsInBytes($0, Self.small) })
   }
 
+  @Test("on the byte plan, an answer within the word limit but over the byte share is shortened by share")
+  func bytePlanShortensByShare() async throws {
+    let meeting = try Self.longMeeting()
+    let bytes = try MeetingSummary.plan(
+      transcript: meeting.transcript, notes: "", window: Self.small, counting: .bytes)
+    let cap = MeetingSummary.partialCap(bytes.budget)
+    // Few words, just over the byte share: it kept any word limit and is still too long.
+    var answer = "-"
+    while answer.utf8.count <= cap { answer += " word" }
+    let calls = Calls()
+    calls.answers = [
+      .failure(LLMError.classified(.inputTooLong)), .success(answer), .success("- short"),
+    ]
+    _ = try await Self.write(calls, transcript: meeting.transcript, window: Self.small)
+    let request = try #require(calls.prompts.first { $0.hasPrefix("Shorten these bullets") })
+    let percent = cap * 80 / answer.utf8.count
+    #expect(request.hasPrefix("Shorten these bullets to at most \(percent)% of their length"))
+    #expect(percent < 100, "the target is smaller than the answer as written")
+    #expect(calls.prompts.contains { $0.contains("Part 1:\n- short") }, "the shortened answer is used")
+  }
+
   @Test("an answer still too long after shortening fails the summary as truncated")
   func stillTooLongIsTruncated() async throws {
     let meeting = try Self.longMeeting()

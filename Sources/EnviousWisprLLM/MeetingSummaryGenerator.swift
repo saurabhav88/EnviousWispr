@@ -390,8 +390,9 @@ public enum MeetingSummary {
       return try await ask(finalPrompt(notes: plan.inlineNotes, body: "Transcript:\n\(transcript)"))
     }
     let cap = partialCap(plan.budget)
-    // About three-quarters of a word per estimated token; `fitted` below is the bound.
-    let words = cap * 3 / 4
+    // About three-quarters of a word per estimated token, or one word per six bytes when the
+    // plan counts bytes (an English word and its space); `fitted` below is the bound.
+    let words = counting == .bytes ? cap / 6 : cap * 3 / 4
     // Calls the plan leaves unused when every answer is as long as it may be: the only room
     // for a shortening request, so `worstCaseCalls` stays the bound (#3999).
     var headroom = maxCalls - plan.worstCaseCalls
@@ -400,10 +401,14 @@ public enum MeetingSummary {
     /// shorten it, and an answer that still does not fit, or no room to ask, fails the
     /// summary as `.truncated`.
     func fitted(_ answer: String) async throws -> String {
-      guard tokens(answer, counting) > cap else { return answer }
+      let size = tokens(answer, counting)
+      guard size > cap else { return answer }
+      // A target measured from this answer, so an answer that already kept the word limit is
+      // still asked for less; a share of its length holds in every script (#3999).
+      let percent = max(1, cap * 80 / size)
       let request = """
-        Shorten these bullets to at most \(words) words. Keep every decision and action item, \
-        with its owner when stated.
+        Shorten these bullets to at most \(percent)% of their length. Keep every decision and \
+        action item, with its owner when stated.
 
         \(answer)
         """
