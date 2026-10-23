@@ -239,7 +239,36 @@ public enum SelectionReader {
     timeout: Float? = nil,
     sampleSubrole: Bool
   ) -> (result: Result, context: AcquisitionContext) {
-    performRead(timeout: timeout, subrole: sampleSubrole ? .whenFallbackEligible : .skip)
+    performRead(
+      frontmost: Frontmost.current(), timeout: timeout,
+      subrole: sampleSubrole ? .whenFallbackEligible : .skip)
+  }
+
+  /// The same read, but only of the application an earlier read sampled (#3986), or nil.
+  ///
+  /// For the copy ladder's no-focus recovery: it re-reads after the menu closes or a just-woken app
+  /// exposes its focus. **The identity check comes BEFORE any Accessibility operation:** the
+  /// frontmost application is sampled once, and when its pid or bundle id differs from `expected`
+  /// this returns nil without waking or reading it, so a recovery can never read another app.
+  /// That one sample is then the one the read uses, as `readForAcquisition` does.
+  @MainActor
+  public static func readForAcquisition(
+    expecting expected: AcquisitionContext,
+    timeout: Float,
+    sampleSubrole: Bool
+  ) -> (result: Result, context: AcquisitionContext)? {
+    let frontmost = Frontmost.current()
+    guard sampleMatches(frontmost, expected: expected) else { return nil }
+    return performRead(
+      frontmost: frontmost, timeout: timeout,
+      subrole: sampleSubrole ? .whenFallbackEligible : .skip)
+  }
+
+  /// Whether a fresh frontmost sample is the same application an earlier read sampled: same pid
+  /// AND same bundle id. Pure, so the recovery's identity rule is unit-tested.
+  static func sampleMatches(_ frontmost: Frontmost, expected: AcquisitionContext) -> Bool {
+    guard let pid = expected.pid, pid > 0 else { return false }
+    return frontmost.pid == pid && frontmost.bundleIdentifier == expected.bundleIdentifier
   }
 
   /// The one live read both entry points share.
@@ -249,15 +278,15 @@ public enum SelectionReader {
   /// — which is the class `classify` was extracted to close one level down.
   @MainActor
   private static func performRead(
+    frontmost: Frontmost,
     timeout: Float?,
     subrole: SubroleSampling
   ) -> (result: Result, context: AcquisitionContext) {
     precondition(timeout.map { $0 > 0 } ?? true, "a zero or negative AX timeout removes the bound")
-    // Frontmost is read here rather than inside the check because it is the LIVE half. Current
+    // `frontmost` is the LIVE half, sampled once by the caller (`Frontmost.current()`). Current
     // because this runs on the main run loop from a hotkey or a Service, with events flowing;
     // `NSWorkspace.frontmostApplication` is stale only where nothing is pumping the run loop, which
     // is not a state this entry point can be called from.
-    let frontmost = Frontmost.current()
 
     // Built once, from that one sample, and carried by EVERY return below including the refusals.
     // A caller that only learns the application on success cannot re-check it later without taking

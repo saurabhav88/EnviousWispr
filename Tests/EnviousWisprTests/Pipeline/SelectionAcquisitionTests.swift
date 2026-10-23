@@ -356,7 +356,8 @@ struct SelectionAcquisitionTests {
         postCopy: { _, _ in
           Issue.record("the wait tests never post")
           return .notPosted
-        })
+        },
+        readSelection: { _, _, _ in nil })
     }
   }
 

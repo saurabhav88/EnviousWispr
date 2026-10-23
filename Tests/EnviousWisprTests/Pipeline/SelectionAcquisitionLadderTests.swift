@@ -48,6 +48,16 @@ struct SelectionAcquisitionLadderTests {
     var cancelDuringActivationWait = false
     /// From inside the fake Copy: let a dictation claim the board and write its own payload.
     var deliveryClaimsDuringCopy = false
+    /// The no-focus recovery's fresh reads, replayed in order; nil is "the frontmost app is not the
+    /// sampled one" (the live reader answers nil before any AX operation).
+    typealias Read = (result: SelectionReader.Result, context: SelectionReader.AcquisitionContext)
+    var rereads = Replay<Read?>([nil])
+    var rereadCount = 0
+    var rereadTimeouts: [Float] = []
+    /// How far each fresh read moves the clock (a slow provider).
+    var readTakes: Duration = .zero
+    /// Cancel the running task from inside the first fresh read.
+    var cancelDuringRead = false
     var postingAuthorised = true
     var targetPresent = Replay([true])
     var copyKey: CGKeyCode? = 8
@@ -110,6 +120,13 @@ struct SelectionAcquisitionLadderTests {
             self.board.setString(text, forType: .string)
           }
           return self.postResult
+        },
+        readSelection: { _, timeout, _ in
+          self.rereadCount += 1
+          self.rereadTimeouts.append(timeout)
+          self.elapsed += self.readTakes
+          if self.cancelDuringRead { withUnsafeCurrentTask { $0?.cancel() } }
+          return self.rereads.next()
         })
     }
 
@@ -121,11 +138,13 @@ struct SelectionAcquisitionLadderTests {
 
   /// The outcome, and whether a takeover was still held when the ladder returned, read BEFORE the
   /// teardown reset so the cleanup assertion observes production, not the fixture.
-  private func run(_ rig: Rig) async -> (SelectionAcquisition.Outcome, heldAfter: Bool) {
+  private func run(
+    _ rig: Rig, first: SelectionReader.Result = .noSelection
+  ) async -> (SelectionAcquisition.Outcome, heldAfter: Bool) {
     ClipboardCleanup.resetPendingForTests()
     defer { ClipboardCleanup.resetPendingForTests() }
     let outcome = await SelectionAcquisition.acquire(
-      following: .noSelection,
+      following: first,
       context: .init(
         pid: Self.target, bundleIdentifier: "com.example.target", focusedSubrole: nil),
       fallbackEnabled: true, environment: rig.environment, board: rig.board)
@@ -430,4 +449,148 @@ struct SelectionAcquisitionLadderTests {
     #expect(outcome.modifierReleaseMs == 0)
     #expect(outcome.bringBack == .notNeeded)
   }
+
+  // MARK: No-focus recovery (#3986): Electron hides its focus while a status-item menu is open
+
+  private static let sampled = SelectionReader.AcquisitionContext(
+    pid: target, bundleIdentifier: "com.example.target", focusedSubrole: nil)
+  private static let noFocus: Rig.Read = (.refused(.noFocusedElement), sampled)
+
+  @Test("No focus, then the same app's text 250 ms later: the word is read, nothing copied")
+  func recoversToText() async {
+    let rig = Rig()
+    // Same app, but a context the original did not have: proves the RECOVERED context is used.
+    let recovered = SelectionReader.AcquisitionContext(
+      pid: Self.target, bundleIdentifier: "com.example.target", focusedSubrole: "AXTextArea")
+    rig.rereads = Replay(
+      Array(repeating: Self.noFocus, count: 10) + [(.text("keybinds"), recovered)])
+    let (outcome, heldAfter) = await run(rig, first: .refused(.noFocusedElement))
+    #expect(outcome.result == .text("keybinds"))
+    #expect(outcome.context == recovered)
+    #expect(outcome.acquired == .accessibility)
+    #expect(outcome.clipboardRestore == .notTouched)
+    #expect(outcome.modifierReleaseMs == nil)
+    #expect(outcome.bringBack == nil)
+    #expect(rig.rereadCount == 11)
+    #expect(rig.elapsed == .milliseconds(250))
+    #expect(rig.posts == 0)
+    #expect(heldAfter == false)
+    #expect(rig.rereadTimeouts.allSatisfy { $0 > 0 && $0 <= 0.25 })
+  }
+
+  @Test("No focus, then an app that hides its selection: the copy step runs through every guard")
+  func recoversToCopy() async {
+    let rig = Rig()
+    rig.rereads = Replay([Self.noFocus, (.noSelection, Self.sampled)])
+    let (outcome, _) = await run(rig, first: .refused(.noFocusedElement))
+    #expect(outcome.result == .text("keybinds"))
+    #expect(outcome.acquired == .clipboardCopy)
+    #expect(rig.postedPIDs == [Self.target])
+    #expect(outcome.bringBack == .notNeeded)
+  }
+
+  @Test("Still no focus at the deadline: the original refusal stands and nothing is copied")
+  func persistentNoFocusExpires() async {
+    let rig = Rig()
+    rig.rereads = Replay([Self.noFocus])
+    let before = rig.board.changeCount
+    let (outcome, _) = await run(rig, first: .refused(.noFocusedElement))
+    #expect(refusal(outcome) == .noFocusedElement)
+    #expect(outcome.context == Self.sampled)
+    #expect(rig.rereadCount == 40, "reads at 0, 25, ... 975 ms; the poll at 1 s expires unread")
+    #expect(rig.posts == 0)
+    #expect(boardUntouched(rig, from: before))
+  }
+
+  @Test("Another app came to the front: recovery stops at once and keeps the original refusal")
+  func mismatchKeepsOriginal() async {
+    let rig = Rig()
+    rig.rereads = Replay([nil])
+    let (outcome, _) = await run(rig, first: .refused(.noFocusedElement))
+    #expect(refusal(outcome) == .noFocusedElement)
+    #expect(outcome.context == Self.sampled)
+    #expect(rig.rereadCount == 1)
+    #expect(rig.posts == 0)
+  }
+
+  @Test("A read that finishes past the deadline is discarded, even with text")
+  func lateReadDiscarded() async {
+    let rig = Rig()
+    rig.readTakes = .milliseconds(1200)
+    rig.rereads = Replay([(.text("keybinds"), Self.sampled)])
+    let (outcome, _) = await run(rig, first: .refused(.noFocusedElement))
+    #expect(refusal(outcome) == .noFocusedElement)
+    #expect(rig.rereadCount == 1)
+    #expect(rig.posts == 0)
+  }
+
+  @Test("A cancellation during a read discards its answer and copies nothing")
+  func cancelledDuringRead() async {
+    let rig = Rig()
+    rig.cancelDuringRead = true
+    rig.rereads = Replay([(.noSelection, Self.sampled)])
+    let task = Task { @MainActor in await self.run(rig, first: .refused(.noFocusedElement)) }
+    let (outcome, _) = await task.value
+    #expect(refusal(outcome) == .noFocusedElement)
+    #expect(rig.posts == 0)
+  }
+
+  @Test("Reads near the deadline are handed a positive timeout, never zero or negative")
+  func timeoutsStayPositiveNearExpiry() async {
+    let rig = Rig()
+    rig.readTakes = .milliseconds(30)
+    rig.rereads = Replay([Self.noFocus])
+    let (outcome, _) = await run(rig, first: .refused(.noFocusedElement))
+    #expect(refusal(outcome) == .noFocusedElement)
+    #expect(rig.rereadTimeouts.isEmpty == false)
+    #expect(rig.rereadTimeouts.allSatisfy { $0 > 0 && $0 <= 0.25 })
+    #expect(
+      rig.rereadTimeouts.last.map { $0 < 0.25 } == true, "the last read had under 0.25 s left")
+  }
+
+  @Test("A mismatch read that finishes late, or under cancellation, still keeps the original")
+  func lateOrCancelledMismatchKeepsOriginal() async {
+    let late = Rig()
+    late.readTakes = .milliseconds(1200)
+    late.rereads = Replay([nil])
+    let (lateOutcome, _) = await run(late, first: .refused(.noFocusedElement))
+    #expect(refusal(lateOutcome) == .noFocusedElement)
+    #expect(lateOutcome.context == Self.sampled)
+    #expect(late.posts == 0)
+
+    let cancelled = Rig()
+    cancelled.cancelDuringRead = true
+    cancelled.rereads = Replay([nil])
+    let task = Task { @MainActor in await self.run(cancelled, first: .refused(.noFocusedElement)) }
+    let (cancelledOutcome, _) = await task.value
+    #expect(refusal(cancelledOutcome) == .noFocusedElement)
+    #expect(cancelledOutcome.context == Self.sampled)
+    #expect(cancelled.posts == 0)
+  }
+
+  @Test("A cancelled acquisition never re-reads")
+  func cancelledBeforeRecovery() async {
+    let rig = Rig()
+    rig.rereads = Replay([(.text("keybinds"), Self.sampled)])
+    let task = Task { @MainActor in await self.run(rig, first: .refused(.noFocusedElement)) }
+    task.cancel()
+    let (outcome, _) = await task.value
+    #expect(refusal(outcome) == .noFocusedElement)
+    #expect(rig.rereadCount == 0)
+  }
+
+  @Test(
+    "Refusals other than no focus are never re-read",
+    arguments: [
+      SelectionReader.Refusal.accessibilityNotTrusted, .ownApplication, .unreadable,
+      .secureInputActive,
+    ])
+  func otherRefusalsDoNotReread(why: SelectionReader.Refusal) async {
+    let rig = Rig()
+    rig.rereads = Replay([(.text("keybinds"), Self.sampled)])
+    let (outcome, _) = await run(rig, first: .refused(why))
+    #expect(refusal(outcome) == why)
+    #expect(rig.rereadCount == 0)
+  }
+
 }

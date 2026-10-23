@@ -163,8 +163,11 @@ final class QuickAddWiring {
     // stalled Accessibility provider stalled the panel instead of the menu, and the bound that let
     // the menu open bought nothing. Cloud review, PR #2427.
     //
-    // Re-reading is also wrong on its own terms here: by the time this runs the menu has closed, so
-    // a live read can answer about US rather than about the document the user was looking at.
+    // Re-reading is also wrong on its own terms here: a live read after the click samples a later
+    // moment than the row the user chose. The carried outcome stays authoritative; the one
+    // exception is a `noFocusedElement` refusal, which `SelectionAcquisition` re-reads bounded by
+    // the same per-operation cap and only from the same sampled app (#3986: Electron apps hide
+    // their focus while any status-item menu is open).
     isAcquiring = true
     Task { @MainActor [weak self] in
       guard let self else { return }

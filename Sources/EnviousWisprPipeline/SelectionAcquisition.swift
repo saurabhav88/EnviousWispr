@@ -229,6 +229,12 @@ public enum SelectionAcquisition {
     var activate: @MainActor @Sendable (pid_t) -> Void
     /// Post one Copy chord at a pid. The live form is `SyntheticCopyChord.post`.
     var postCopy: @MainActor @Sendable (pid_t, CGKeyCode) -> SyntheticCopyChord.PostResult
+    /// Read the selection again, only if the frontmost app is still the expected one; nil when it
+    /// is not (`SelectionReader.readForAcquisition(expecting:timeout:sampleSubrole:)`).
+    var readSelection:
+      @MainActor @Sendable (SelectionReader.AcquisitionContext, Float, Bool) -> (
+        result: SelectionReader.Result, context: SelectionReader.AcquisitionContext
+      )?
 
     /// The full injected form, for tests. Every reading is injected and every guard still runs on
     /// it; nothing here can supply a decision.
@@ -243,7 +249,11 @@ public enum SelectionAcquisition {
       copyKeyCode: @escaping @MainActor @Sendable () -> CGKeyCode?,
       frontmostPID: @escaping @MainActor @Sendable () -> pid_t?,
       activate: @escaping @MainActor @Sendable (pid_t) -> Void,
-      postCopy: @escaping @MainActor @Sendable (pid_t, CGKeyCode) -> SyntheticCopyChord.PostResult
+      postCopy: @escaping @MainActor @Sendable (pid_t, CGKeyCode) -> SyntheticCopyChord.PostResult,
+      readSelection:
+        @escaping @MainActor @Sendable (SelectionReader.AcquisitionContext, Float, Bool) -> (
+          result: SelectionReader.Result, context: SelectionReader.AcquisitionContext
+        )?
     ) {
       self.now = now
       self.sleep = sleep
@@ -256,6 +266,7 @@ public enum SelectionAcquisition {
       self.frontmostPID = frontmostPID
       self.activate = activate
       self.postCopy = postCopy
+      self.readSelection = readSelection
     }
 
     /// The production readings.
@@ -291,8 +302,22 @@ public enum SelectionAcquisition {
           NSRunningApplication(processIdentifier: pid)?.activate()
         }
       },
-      postCopy: { pid, key in SyntheticCopyChord.post(at: pid, copyKeyCode: key) })
+      postCopy: { pid, key in SyntheticCopyChord.post(at: pid, copyKeyCode: key) },
+      readSelection: { expected, timeout, sampleSubrole in
+        SelectionReader.readForAcquisition(
+          expecting: expected, timeout: timeout, sampleSubrole: sampleSubrole)
+      })
   }
+
+  /// The no-focus recovery's polling deadline and interval (#3986). **Provisional:** 11 samples on
+  /// the founder's Mac put Electron's focus back 243-257 ms after a status-item menu closes; 1 s is
+  /// four times that for slower supported Macs. A deadline on polling, not on return time: one
+  /// synchronous read can overrun it, and its late result is discarded.
+  static let focusRereadDeadline: Duration = .seconds(1)
+  static let focusRereadInterval: Duration = .milliseconds(25)
+  /// Each re-read's per-operation bound: the menu's own (`MenuBarController.quickAddReadTimeout`),
+  /// so a stalled provider cannot stall the panel (PR #2427).
+  static let focusRereadOperationTimeout: Float = 0.25
 
   /// How long the bring-back step waits for the target to be observed in front, and how often it
   /// looks. The same values Paste Last Dictation uses for the same wait.
@@ -374,9 +399,13 @@ public enum SelectionAcquisition {
 
   /// The menu-bar door's CLICK path: a read already happened, against a context it remembered.
   ///
-  /// **The menu cannot do the read here and must not redo it.** `menuNeedsUpdate` has to be
-  /// synchronous, so the row is drawn from a bounded read taken while the user's own application was
-  /// still frontmost, and the sample this is handed is that read's (#2412 stopped re-reading).
+  /// **The menu cannot do the read here and must not redo it, with ONE exception.** `menuNeedsUpdate`
+  /// has to be synchronous, so the row is drawn from a bounded read taken while the user's own
+  /// application was still frontmost, and the sample this is handed is that read's (#2412 stopped
+  /// re-reading). That carried outcome stays authoritative, except a `noFocusedElement` refusal:
+  /// Electron apps report no focus while any status-item menu is open (measured 2026-10-23, #3986)
+  /// and a just-woken Chrome takes about 100 ms to expose it, so that one refusal is re-read,
+  /// bounded and only from the same sampled app (`recoverFocus`).
   ///
   /// **What the click leaves in front was measured, twice, with different answers.** On 2026-08-26
   /// a word highlighted in WhatsApp with Finder brought to the front came back from a chord at
@@ -391,6 +420,13 @@ public enum SelectionAcquisition {
     environment: Environment,
     board: NSPasteboard = .general
   ) async -> Outcome {
+    // The effective result and context: the carried ones, or a same-app re-read of a no-focus
+    // refusal. Every use below takes these, never the originals.
+    var (result, context) = (result, context)
+    if case .refused(.noFocusedElement) = result, let pid = context.pid, pid > 0 {
+      (result, context) = await recoverFocus(
+        original: (result, context), fallbackEnabled: fallbackEnabled, environment: environment)
+    }
     guard SelectionReader.isFallbackEligible(result) else {
       // Either the read worked, or it failed in a way a second attempt cannot change. Both are
       // terminal and neither touches the clipboard.
@@ -405,6 +441,87 @@ public enum SelectionAcquisition {
     }
     return await attemptCopyFallback(
       context: context, fallbackEnabled: fallbackEnabled, environment: environment, board: board)
+  }
+
+  /// Re-read a `noFocusedElement` refusal until the same app exposes its focus, or give up (#3986).
+  ///
+  /// **Never reads another app:** the injected read checks the pid and bundle id BEFORE any
+  /// Accessibility operation and answers nil on a mismatch, which ends the recovery. **Never lets a
+  /// stale answer through:** cancellation and the absolute deadline are checked immediately before
+  /// and after each read, and a read that finishes past either is discarded. Every way out except a
+  /// fresh, same-app, in-time answer returns the ORIGINAL result and context unchanged.
+  @MainActor
+  private static func recoverFocus(
+    original: (result: SelectionReader.Result, context: SelectionReader.AcquisitionContext),
+    fallbackEnabled: Bool,
+    environment: Environment
+  ) async -> (SelectionReader.Result, SelectionReader.AcquisitionContext) {
+    let start = environment.now()
+    let end = start + focusRereadDeadline
+    var attempts = 0
+    var found: (result: SelectionReader.Result, context: SelectionReader.AcquisitionContext)?
+    var stop: String?
+    let wait = await DeadlinePoll.wait(
+      within: focusRereadDeadline, every: focusRereadInterval, now: environment.now,
+      sleep: environment.sleep,
+      {
+        if Task.isCancelled {
+          stop = "cancelled"
+          return true
+        }
+        // One clock reading for both the check and the allowance, so the reader can never be
+        // handed a zero or negative timeout (`performRead`'s precondition).
+        let beforeRead = environment.now()
+        guard beforeRead < end else {
+          stop = "expired"
+          return true
+        }
+        let remaining = Float((end - beforeRead) / .seconds(1))
+        attempts += 1
+        let fresh = environment.readSelection(
+          original.context, min(focusRereadOperationTimeout, remaining), fallbackEnabled)
+        // Every completed read, including a nil one, is checked for cancellation and lateness
+        // BEFORE it is interpreted.
+        if Task.isCancelled {
+          stop = "cancelled"
+          return true
+        }
+        if environment.now() >= end {
+          stop = "late"
+          return true
+        }
+        guard let read = fresh else {
+          stop = "mismatch"
+          return true
+        }
+        if case .refused(.noFocusedElement) = read.result { return false }
+        found = read
+        return true
+      })
+    let outcome: String
+    let effective: (SelectionReader.Result, SelectionReader.AcquisitionContext)
+    switch wait {
+    case .met:
+      if let found, stop == nil {
+        outcome = "found"
+        effective = (found.result, found.context)
+      } else {
+        outcome = stop ?? "expired"
+        effective = (original.result, original.context)
+      }
+    case .expired:
+      outcome = "expired"
+      effective = (original.result, original.context)
+    case .cancelled:
+      outcome = "cancelled"
+      effective = (original.result, original.context)
+    }
+    let elapsed = Int((environment.now() - start) / .milliseconds(1))
+    await AppLogger.shared.log(
+      "reread attempts=\(attempts) ms=\(elapsed) outcome=\(outcome) "
+        + "pid=\(original.context.pid.map(String.init) ?? "none")",
+      level: .info, category: "QuickAdd")
+    return effective
   }
 
   // MARK: - The ladder
