@@ -758,6 +758,57 @@ struct MeetingCoordinatorTests {
     #expect(harness.jobs.count == 1)
   }
 
+  @Test("Delete audio saves the decision before any file goes, and a launch finishes a cut-short removal")
+  func deleteAudioIsDurableFirst() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    await coordinator.stop()
+    await Self.eventually("ready") {
+      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
+    }
+    #expect(try !harness.store.segmentFiles(meeting: meetingID).isEmpty)
+
+    // The record write is held: no file has been removed before the decision is on disk.
+    harness.writeGate.arm()
+    let removing = Task { await coordinator.deleteAudio(meetingID: meetingID) }
+    let gate = harness.writeGate
+    let entered = await withCheckedContinuation { continuation in
+      DispatchQueue.global().async {
+        continuation.resume(returning: gate.entered.wait(timeout: .now() + 10))  // deadline-fallback: around the write signal
+      }
+    }
+    #expect(entered == .success)
+    #expect(try !harness.store.segmentFiles(meeting: meetingID).isEmpty, "files stay until then")
+    gate.release.signal()
+    await removing.value
+    #expect(try harness.store.load(id: meetingID).audioKept == false)
+    #expect(try harness.store.segmentFiles(meeting: meetingID).isEmpty)
+
+    // An exit after the decision and before the files went: the next launch removes them.
+    var cut = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    try harness.store.create(cut)
+    try MeetingAudioFixture.writeSegment(
+      in: harness.store.folder(for: cut.id), track: .microphone, index: 1, startMs: 0,
+      frames: 16_000)
+    cut.state = .ready
+    cut.audioKept = false
+    try harness.store.save(cut)
+    #expect(try !harness.store.segmentFiles(meeting: cut.id).isEmpty)
+    let relaunched = MeetingCoordinator(dependencies: harness.dependencies())
+    relaunched.launch()
+    await Self.eventually("listed") { relaunched.record(id: cut.id) != nil }
+    // The files are not observable state: polled, with a deadline.
+    var gone = false
+    for _ in 0..<50 where !gone {
+      gone = (try? harness.store.segmentFiles(meeting: cut.id).isEmpty) == true
+      if !gone { try await Task.sleep(for: .milliseconds(100)) }  // deadline-fallback: disk is not observable
+    }
+    #expect(gone, "the launch removed the audio the record says is deleted")
+    #expect(try harness.store.load(id: cut.id).audioKept == false)
+  }
+
   // MARK: - Launch recovery
 
   @Test(

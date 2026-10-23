@@ -37,6 +37,22 @@ struct MeetingStoreTests {
     #expect(try store.load(id: record.id).title == "Kickoff")
   }
 
+  @Test("a create whose first save fails leaves no empty folder behind")
+  func failedCreateRemovesItsFolder() throws {
+    let (store, _) = try makeStore()
+    // A record from a newer format: `save` refuses it after the folder is made.
+    let current = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    var object = try #require(
+      JSONSerialization.jsonObject(with: JSONEncoder().encode(current)) as? [String: Any])
+    object["formatVersion"] = MeetingRecord.currentFormatVersion + 1
+    let record = try JSONDecoder().decode(
+      MeetingRecord.self, from: JSONSerialization.data(withJSONObject: object))
+    #expect(!record.isWritableByThisBuild)
+    #expect(throws: MeetingStore.StoreError.newerFormat) { try store.create(record) }
+    #expect(!FileManager.default.fileExists(atPath: store.folder(for: record.id).path))
+    #expect(try store.loadAll().isEmpty, "nothing is listed as unreadable later")
+  }
+
   @Test("a meeting written by a newer build is listed read-only and never rewritten or deleted")
   func newerFormatIsReadOnly() throws {
     let (store, _) = try makeStore()

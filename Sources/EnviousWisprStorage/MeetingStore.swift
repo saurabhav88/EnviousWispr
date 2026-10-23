@@ -91,7 +91,14 @@ public struct MeetingStore: Sendable {
     } catch CocoaError.fileWriteFileExists {
       throw StoreError.alreadyExists
     }
-    try save(record)
+    do {
+      try save(record)
+    } catch {
+      // The claim failed to become a meeting: the empty folder this call made goes, so a later
+      // launch never lists it as unreadable. Best effort; the save's error is the one reported.
+      try? FileManager.default.removeItem(at: dir)
+      throw error
+    }
   }
 
   /// Replaces `meeting.json` atomically (temp file at 0600, full sync, replace). A failed

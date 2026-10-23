@@ -574,6 +574,11 @@ final class MeetingCoordinator {
         Task { await delete(meetingID: meetingID) }
         continue
       }
+      // An audio deletion an exit or a failure cut short is finished (its record already says
+      // the audio is gone).
+      if !record.audioKept, record.isWritableByThisBuild {
+        await finishAudioDeletion(meetingID)
+      }
       if ![.ready, .failed, .notesOnly].contains(record.state) {
         // Unfinished: the same attempt, its start facts unknown after the relaunch.
         openAttempts[meetingID] = openAttempts[meetingID] ?? AttemptFacts()
@@ -1286,9 +1291,23 @@ final class MeetingCoordinator {
   }
 
   func deleteAudio(meetingID: UUID) async {
-    guard live[meetingID] != nil, !isActive(meetingID), !closeOwned.contains(meetingID) else {
-      return
+    guard var record = live[meetingID], !isActive(meetingID), !closeOwned.contains(meetingID)
+    else { return }
+    // The decision is durable before any file goes: `audioKept == false` is the marker, so an
+    // exit or a failed removal part-way never leaves a record that still offers the audio, and
+    // the next launch finishes the removal (`finishAudioDeletion`).
+    record.audioKept = false
+    if record.state == .queued || record.state == .interrupted {
+      record.state = .failed
+      record.failureCode = "audio_deleted"
     }
+    guard await persist(record) else { return }
+    await finishAudioDeletion(meetingID)
+  }
+
+  /// Removes the audio of a meeting whose record says it is deleted. Repeatable: a launch runs
+  /// it for every such meeting, and with no files left it does nothing.
+  private func finishAudioDeletion(_ meetingID: UUID) async {
     do {
       try await writer.run { store in
         try store.deleteAudio(meeting: meetingID)
@@ -1297,15 +1316,7 @@ final class MeetingCoordinator {
     } catch {
       deps.log("meeting delete audio failed error=\(type(of: error))")
       notice = .storageFailed
-      return
     }
-    guard var record = live[meetingID] else { return }
-    record.audioKept = false
-    if record.state == .queued || record.state == .interrupted {
-      record.state = .failed
-      record.failureCode = "audio_deleted"
-    }
-    await persist(record)
   }
 
   /// The one deletion authority (R12, R19): History's delete of a meeting row comes here too.
