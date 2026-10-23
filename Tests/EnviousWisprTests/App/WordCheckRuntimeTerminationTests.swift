@@ -342,6 +342,40 @@ struct WordCheckRuntimeTerminationTests {
     }
   }
 
+  // MARK: - #3987: the quit cleanup must never be MLX's first use
+
+  /// The app's `exit()` runs C++ static destructors for a long time; a bare test process's does
+  /// not. Busy steps registered with `__cxa_atexit` stand in for that, so the quit cleanup's
+  /// detached task runs while `exit()` is still finalizing (#3987, ENVIOUSWISPR-7W).
+  nonisolated static let busyExitSteps = 2_000_000
+  nonisolated static let quitRuns = Array(0..<20)
+
+  /// A process that never used MLX quits: the production quit release, then `exit()` under a
+  /// long finalization. When the quit cleanup was MLX's first use, MLX built its allocator while
+  /// `exit()` destroyed the device-info map it reads, and the child died by SIGSEGV.
+  @Test(
+    "a quit with MLX never used exits cleanly while exit() finalizes",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/3987", "quit cleanup was MLX's first use"),
+    .timeLimit(.minutes(2)), arguments: quitRuns)
+  func quitWithMLXUnusedExitsCleanly(run: Int) async {
+    let temp = Self.makeTempRoot()
+    defer { try? FileManager.default.removeItem(at: temp) }
+    let path = temp.path
+    await #expect(processExitsWith: .success) { [path = path as String] in
+      await Self.unusedMLXQuitChild(root: path)
+    }
+  }
+
+  /// Child body: no model, no MLX call before the production quit release.
+  private static func unusedMLXQuitChild(root: String) async {
+    // deadline-fallback: a hung child fails by name instead of running out the time limit
+    DispatchQueue.global().asyncAfter(deadline: .now() + 60) { childFail("watchdog") }
+    guard let runtime = try? await makeRuntime(in: URL(filePath: root)) else { childFail("fixture") }
+    for _ in 0..<busyExitSteps { _ = registerExitStep(busyExitStep, nil, nil) }
+    runtime.releaseForTermination()
+    exit(0)
+  }
+
   /// Clears MLX's cache in a loop on its own thread. `Memory.clearCache()` takes MLX's evaluation
   /// lock, so a clear that stays blocked means an evaluation holds that lock right now.
   private final class EvalLockProbe: @unchecked Sendable {
@@ -364,6 +398,21 @@ struct WordCheckRuntimeTerminationTests {
       lock.withLock { enteredAt.map { WordCheckRuntimeTerminationTests.milliseconds(.now - $0) } ?? 0 }
     }
   }
+}
+
+/// `__cxa_atexit` directly: `atexit()` looks up the caller's image (`dladdr`) on every call, which
+/// makes two million registrations take hours (#3987).
+@_silgen_name("__cxa_atexit")
+private func registerExitStep(
+  _ step: @convention(c) (UnsafeMutableRawPointer?) -> Void, _ argument: UnsafeMutableRawPointer?,
+  _ image: UnsafeMutableRawPointer?
+) -> Int32
+
+/// One shutdown step of about 200 ns that never sleeps: a sleeping step lets the cleanup thread
+/// pass the microsecond window the crash needs.
+private let busyExitStep: @convention(c) (UnsafeMutableRawPointer?) -> Void = { _ in
+  let end = mach_absolute_time() &+ 5  // test-fixture-timer: 5 ticks of the 24 MHz clock
+  while mach_absolute_time() < end {}
 }
 
 /// A child-process check failed: names the step on stderr and ends with status 1, so the
