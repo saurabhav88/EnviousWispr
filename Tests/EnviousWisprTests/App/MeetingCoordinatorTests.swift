@@ -1472,6 +1472,33 @@ struct MeetingCoordinatorTests {
     #expect(harness.ended.count == 2)
   }
 
+  @Test("a meeting left queued by a failed first save is offered and recovered by Transcribe again")
+  func queuedAfterFailedClaimRecovers() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    let writes = OSAllocatedUnfairLock(initialState: 0)
+    harness.writeGate.failWrites { record in
+      guard record.state == .processing else { return false }
+      return writes.withLock {
+        $0 += 1
+        return $0 == 1
+      }
+    }
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    await coordinator.stop()
+    await Self.eventually("queue ended without it") {
+      coordinator.processing == nil && !coordinator.hasFinalPassWork
+    }
+    #expect(coordinator.record(id: meetingID)?.state == .queued)
+    #expect(coordinator.queueWaitsForSpace == false)
+    #expect(coordinator.canTranscribeAgain(meetingID), "no queue will take it: offered")
+    #expect(await coordinator.retry(meetingID: meetingID))
+    await Self.eventually("ready") {
+      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
+    }
+  }
+
   @Test("a stalled meeting marked by Delete All is not offered and Transcribe again refuses it")
   func deleteAllMarkRefusesRetry() async throws {
     let harness = try Harness()

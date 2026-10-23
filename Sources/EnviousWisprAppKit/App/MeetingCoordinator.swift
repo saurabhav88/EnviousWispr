@@ -1220,14 +1220,15 @@ final class MeetingCoordinator {
   /// Whether Transcribe again may run for this meeting now (#4008): the one answer the detail
   /// view and dev control show. Reads only observable state, so the button follows it. A
   /// `.processing` meeting no pass owns (its end could not be saved) is offered: no running
-  /// pass, no deletion, no launch recovery still to run. A meeting queued while the disk is
-  /// full is offered too (the queue starts again and checks the disk again).
+  /// pass, no deletion, no launch recovery still to run. A queued meeting is offered when no
+  /// queue will take it: the disk was full (the queue starts again and checks the disk again),
+  /// or the queue ended without it (its pass's first save failed).
   func canTranscribeAgain(_ meetingID: UUID) -> Bool {
     guard launchTask == nil, !quitting, let record = live[meetingID],
       record.isWritableByThisBuild, record.audioKept, !record.deletionRequested,
       !isActive(meetingID), !closeOwned.contains(meetingID)
     else { return false }
-    if record.state == .queued { return queueWaitsForSpace }
+    if record.state == .queued { return queueWaitsForSpace || queueTask == nil }
     return [.failed, .ready, .interrupted, .processing].contains(record.state)
   }
 
@@ -1239,7 +1240,8 @@ final class MeetingCoordinator {
     if let launchTask { await launchTask.value }
     guard canTranscribeAgain(meetingID), var record = live[meetingID] else { return false }
     if record.state == .queued {
-      // Left queued by a full disk: nothing to save, the queue checks the disk again.
+      // Left queued (a full disk, or a pass whose first save failed): nothing to save, the
+      // queue starts again and checks the disk again.
       startQueueIfNeeded()
       return true
     }
