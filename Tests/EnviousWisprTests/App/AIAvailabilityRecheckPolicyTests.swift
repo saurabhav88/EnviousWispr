@@ -70,6 +70,8 @@ struct AIAvailabilityRecheckPolicyTests {
     func nextReport() async -> AppleIntelligenceAvailabilityReport {
       starts += 1
       if holdChecks { await withCheckedContinuation { gate = $0 } }
+      // A real probe that is cancelled times out into a degraded report.
+      if Task.isCancelled { return AIAvailabilityRecheckPolicyTests.report(.degraded) }
       return reports.isEmpty ? AIAvailabilityRecheckPolicyTests.disabled : reports.removeFirst()
     }
   }
@@ -426,6 +428,22 @@ struct AIAvailabilityRecheckPolicyTests {
     await Self.settle(c)
     #expect(script.liveReads == 1)
     #expect(script.starts == 0)
+  }
+
+  @Test("a dictation during a running re-check leaves that re-check alone")
+  func repairNeverCancelsRunningManualCheck() async throws {
+    let script = Script()
+    script.holdChecks = true
+    script.reports = [Self.available]
+    let c = try Self.coordinator(script, seed: Self.disabled)
+    c.debouncedCheck()  // the re-check button; past its wait it runs diagnostics
+    while script.gate == nil { await Task.yield() }
+    c.appleIntelligencePolishSucceeded()
+    script.gate?.resume()
+    await Self.settle(c)
+    #expect(script.starts == 1)
+    #expect(script.triggers == ["manual_refresh"])
+    #expect(c.latestReport?.overallStatus == .available, "the re-check finished, uncancelled")
   }
 
   @Test("losing eligibility during the wait drops the repair")

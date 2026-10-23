@@ -231,7 +231,9 @@ final class AIAvailabilityCoordinator {
   private func scheduleAutomaticRepair(
     trigger: String, capturedGeneration: UInt64, capturedToken: UInt
   ) {
-    guard pendingDebounceTrigger == nil,
+    // `debouncedCheck` cancels the debounce task, which may be the one running a check right
+    // now (a manual re-check past its wait): cancelling it would cut that check short.
+    guard pendingDebounceTrigger == nil, !isChecking,
       AppleAvailabilityRepair.budgetAdmits(startsThisEpoch: automaticStartsThisEpoch)
     else { return }
     debouncedCheck(trigger: trigger) { [weak self] in
