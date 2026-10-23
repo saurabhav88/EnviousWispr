@@ -41,7 +41,7 @@
       }
     },
     "%@ (%@)" : {
-      "comment" : "Speech engine settings: the locked language, as in \"Deutsch (German)\". The first %@ is its name in its own language, the second its name in the interface language.",
+      "comment" : "Menu bar menu: a stopped meeting's transcript work and how far it is, e.g. Writing the transcript (42%).\nSpeech engine settings: the locked language, as in \"Deutsch (German)\". The first %@ is its name in its own language, the second its name in the interface language.",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -4207,6 +4207,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Um den Ton vom Mac aufzunehmen, ist macOS 14.2 oder neuer nötig. Nur dein Mikrofon wird aufgenommen."
+          }
+        }
+      }
+    },
+    "Call sound not recorded" : {
+      "comment" : "Menu bar menu, while a meeting records: the call sound could not be recorded.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ton vom Mac wird nicht aufgenommen"
           }
         }
       }
@@ -10940,17 +10951,6 @@
         }
       }
     },
-    "Meeting in progress" : {
-      "comment" : "Settings sidebar, VoiceOver: EnviousMeet is recording or making a transcript.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Meeting läuft"
-          }
-        }
-      }
-    },
     "Meeting name" : {
       "comment" : "EnviousMeet: the rename field's placeholder.",
       "localizations" : {
@@ -14790,7 +14790,7 @@
       }
     },
     "Recording a meeting" : {
-      "comment" : "Window toolbar: EnviousMeet is recording a meeting.",
+      "comment" : "Menu bar, VoiceOver: the menu bar icon while EnviousMeet records a meeting.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -14823,7 +14823,7 @@
       }
     },
     "Recording for %@" : {
-      "comment" : "EnviousMeet, VoiceOver: how long the meeting has been recording.",
+      "comment" : "EnviousMeet, VoiceOver: how long the meeting has been recording.\nMenu bar menu: how long the meeting has been recording, e.g. 12:34.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -14919,6 +14919,17 @@
         }
       }
     },
+    "Recording the call sound" : {
+      "comment" : "Menu bar menu, while a meeting records: the sound the Mac plays is recorded.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ton vom Mac wird aufgenommen"
+          }
+        }
+      }
+    },
     "Recording the call sound." : {
       "comment" : "EnviousMeet, while recording: the sound the Mac plays is being recorded.",
       "localizations" : {
@@ -14926,6 +14937,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der Ton vom Mac wird aufgenommen."
+          }
+        }
+      }
+    },
+    "Recording your microphone only" : {
+      "comment" : "Menu bar menu, while a meeting records: the call sound is switched off.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur dein Mikrofon wird aufgenommen"
           }
         }
       }
@@ -16509,6 +16531,17 @@
         }
       }
     },
+    "Show Live Transcript" : {
+      "comment" : "Menu bar menu: opens History on the meeting that is recording now.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live-Transkript anzeigen"
+          }
+        }
+      }
+    },
     "Show app in Dock" : {
       "localizations" : {
         "de" : {
@@ -16536,6 +16569,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Im Finder anzeigen"
+          }
+        }
+      }
+    },
+    "Show in History" : {
+      "comment" : "Menu bar menu: opens History on the meeting whose transcript is being made.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Im Verlauf anzeigen"
           }
         }
       }
@@ -17383,13 +17427,13 @@
         }
       }
     },
-    "Stop Meeting Recording (%@)" : {
-      "comment" : "Menu bar menu: stops the meeting recording; the value is how long it ran.",
+    "Stop Meeting Recording" : {
+      "comment" : "Menu bar menu: stops the meeting recording.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Meeting-Aufnahme beenden (%@)"
+            "value" : "Meeting-Aufnahme beenden"
           }
         }
       }

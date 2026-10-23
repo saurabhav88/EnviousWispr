@@ -1795,6 +1795,18 @@ package final class WisprBootstrapper {
           await meetingBox.startFlow?.requestStart(from: .menu)
         },
         stopMeeting: { [meetingBox] in await meetingBox.coordinator?.stop() },
+        meetingMenuFacts: { [meetingBox] in
+          guard let coordinator = meetingBox.coordinator else { return nil }
+          return MeetingsPresentation.MenuFacts(
+            phase: coordinator.phase, processing: coordinator.processing,
+            callSound: coordinator.callSoundStatus,
+            waitingOnSummary: coordinator.passWaitsOnSummary)
+        },
+        showMeeting: { [weak transcriptCoordinator] meetingID in
+          transcriptCoordinator?.showRecordings(meetingID: meetingID)
+          navigationCoordinator.request(.history)
+          appWindowCoordinator.showWindow()
+        },
         quit: { NSApp.terminate(nil) },
         lastDictation: { [weak transcriptCoordinator] in
           transcriptCoordinator?.lastPasteableDictation()

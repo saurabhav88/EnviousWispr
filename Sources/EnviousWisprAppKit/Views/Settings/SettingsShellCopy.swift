@@ -25,8 +25,6 @@ enum SettingsShellCopy {
     case none
     case dictionaryEnrichment
     case fileImport
-    /// #3972: a meeting is recording, or its transcript is being made.
-    case meeting
     /// #3438: the chosen AI polish model is not set up. Drawn as a "Set up" text tag rather than
     /// the in-progress dot: it asks for something, it is not something running.
     case polishNeedsSetup
@@ -37,9 +35,6 @@ enum SettingsShellCopy {
     comment: "Settings sidebar, VoiceOver: Dictionary is still looking up words added in bulk.")
   static let fileImport = LocalizedStringResource(
     "Importing in progress", comment: "Settings sidebar: file import is running.")
-  static let meeting = LocalizedStringResource(
-    "Meeting in progress",
-    comment: "Settings sidebar, VoiceOver: EnviousMeet is recording or making a transcript.")
 
   /// A sidebar row's accessibility value: "Selected" or "Not selected", then the activity.
   static func sidebarValue(isSelected: Bool, activity: SidebarActivity) -> String {
@@ -49,7 +44,6 @@ enum SettingsShellCopy {
     case .none: return selection
     case .dictionaryEnrichment: detail = String(localized: dictionaryEnrichment)
     case .fileImport: detail = String(localized: fileImport)
-    case .meeting: detail = String(localized: meeting)
     case .polishNeedsSetup: detail = PolishSetupSurfaceCopy.sidebarTagSpoken
     }
     return String(

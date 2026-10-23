@@ -36,6 +36,8 @@ final class MenuBarController: NSObject {
 
   /// The status item. `var` Optional — created in `installStatusItem()`.
   private var statusItem: NSStatusItem?
+  /// #3972 R34: ticks the meeting block's time and percent while the menu is open.
+  private var meetingTicker: Timer?
 
   init(
     liveRecordingState: LiveRecordingState,
@@ -107,14 +109,26 @@ final class MenuBarController: NSObject {
   /// Update the status item icon for the current pipeline / permission state.
   func updateIcon() {
     let state = currentViewState()
-    iconAnimator.transition(to: Self.iconState(state))
-    // #1019: non-color accessibility affordance for the gold-wave cue; #3441: only while the
-    // cue is on.
-    statusItem?.button?.setAccessibilityValue(
-      Self.iconState(state) == .updatePending
-        ? String(
-          localized: "Update available",
-          comment: "Menu bar menu, VoiceOver: the menu bar icon when an update is waiting.") : nil)
+    let icon = Self.iconState(state)
+    iconAnimator.transition(to: icon)
+    statusItem?.button?.setAccessibilityValue(Self.iconAccessibilityValue(icon))
+  }
+
+  /// What VoiceOver adds to the icon for a cue drawn without words. #1019: the gold-wave cue
+  /// (#3441: only while the cue is on); #3972 R34: the meeting glow.
+  static func iconAccessibilityValue(_ icon: MenuBarIconAnimator.IconState) -> String? {
+    switch icon {
+    case .updatePending:
+      return String(
+        localized: "Update available",
+        comment: "Menu bar menu, VoiceOver: the menu bar icon when an update is waiting.")
+    case .meeting:
+      return String(
+        localized: "Recording a meeting",
+        comment: "Menu bar, VoiceOver: the menu bar icon while EnviousMeet records a meeting.")
+    case .idle, .recording, .processing, .error:
+      return nil
+    }
   }
 
   /// Pure icon-state mapping, ported from the pre-PR-B.3
@@ -144,9 +158,9 @@ final class MenuBarController: NSObject {
     {
       return .processing
     } else if state.meetingCapturing {
-      // #3972 §3.8: a meeting recording shows the recording icon, below every dictation state
-      // and warning, and above the update cue.
-      return .recording
+      // #3972 R47: a meeting recording shows the glowing lips, below every dictation state and
+      // warning, and above the update cue.
+      return .meeting
     } else {
       // #1019: idle-with-update variant. Chosen ONLY here, after onboarding /
       // warning / error / recording / processing — so the update cue never
@@ -489,20 +503,11 @@ final class MenuBarController: NSObject {
     transcribeFileItem.identifier = MenuBarItemID.transcribeFile
     menu.addItem(transcribeFileItem)
 
-    // #3972 §3.8: Start or Stop a meeting, after Transcribe a File. The click reads the
-    // meeting's phase again (`meetingAction`), so a menu left open never acts on a stale title.
-    if let meeting = state.meetingItem {
-      let meetingItem = NSMenuItem(
-        title: meeting.title, action: #selector(meetingAction), keyEquivalent: "")
-      meetingItem.image = NSImage(
-        systemSymbolName: meeting.action == .stop ? "stop.circle" : "person.2.wave.2",
-        accessibilityDescription: String(
-          localized: "EnviousMeet",
-          comment: "Menu bar menu, VoiceOver: the icon beside the meeting recording item."))
-      meetingItem.target = self
-      meetingItem.identifier = MenuBarItemID.meeting
-      meetingItem.isEnabled = meeting.isEnabled
-      menu.addItem(meetingItem)
+    // #3972 R34: the meeting block, after Transcribe a File: Start or Stop, then what the
+    // recording is doing and the after-recording pass. Start/Stop reads the phase again when
+    // clicked (`meetingAction`), so a menu left open never acts on a stale title.
+    for meeting in state.meetingItems {
+      menu.addItem(meetingMenuItem(meeting))
     }
 
     // Auto-stop on silence indicator
@@ -850,7 +855,9 @@ final class MenuBarController: NSObject {
       },
       microphoneChoices: actions.microphoneChoices(),
       microphoneSelection: settings.preferredInputDeviceIDOverride,
-      meetingItem: actions.meetingPhase().map { MeetingsPresentation.menuItem($0, now: Date()) },
+      meetingItems: actions.meetingMenuFacts().map {
+        MeetingsPresentation.menuItems($0, now: Date())
+      } ?? [],
       meetingCapturing: actions.meetingPhase().map { $0 != .idle } ?? false
     )
   }
@@ -916,10 +923,63 @@ final class MenuBarController: NSObject {
   /// #3972: Start (through the shared Start flow) or Stop, decided by the phase NOW.
   @objc private func meetingAction() {
     guard let phase = actions.meetingPhase() else { return }
-    switch MeetingsPresentation.menuItem(phase, now: Date()).action {
+    switch MeetingsPresentation.control(phase).action {
     case .start: Task { await actions.requestMeetingStart() }
     case .stop: Task { await actions.stopMeeting() }
-    case .none: return
+    case .show, .none: return
+    }
+  }
+
+  /// #3972 R34: Show Live Transcript / Show in History open History on that meeting.
+  @objc private func showMeetingAction(_ sender: NSMenuItem) {
+    guard let meetingID = sender.representedObject as? UUID else { return }
+    actions.showMeeting(meetingID)
+  }
+
+  static func meetingItemID(_ kind: MeetingsPresentation.MenuItem.Kind) -> NSUserInterfaceItemIdentifier {
+    switch kind {
+    case .control: return MenuBarItemID.meeting
+    case .elapsed: return MenuBarItemID.meetingElapsed
+    case .callSound: return MenuBarItemID.meetingCallSound
+    case .showLive: return MenuBarItemID.meetingShowLive
+    case .processing: return MenuBarItemID.meetingProcessing
+    case .showInHistory: return MenuBarItemID.meetingShowInHistory
+    }
+  }
+
+  private func meetingMenuItem(_ meeting: MeetingsPresentation.MenuItem) -> NSMenuItem {
+    let item = NSMenuItem(title: meeting.title, action: nil, keyEquivalent: "")
+    item.identifier = Self.meetingItemID(meeting.kind)
+    item.isEnabled = meeting.isEnabled
+    switch meeting.action {
+    case .start, .stop:
+      item.action = #selector(meetingAction)
+      item.target = self
+    case .show(let meetingID):
+      item.action = #selector(showMeetingAction(_:))
+      item.target = self
+      item.representedObject = meetingID
+    case .none:
+      // The Start/Stop item keeps its place while it cannot be clicked; status lines sit under it.
+      if meeting.kind != .control { item.indentationLevel = 1 }
+    }
+    if meeting.kind == .control {
+      item.image = NSImage(
+        systemSymbolName: meeting.action == .stop ? "stop.circle" : "person.2.wave.2",
+        accessibilityDescription: String(
+          localized: "EnviousMeet",
+          comment: "Menu bar menu, VoiceOver: the icon beside the meeting recording item."))
+    }
+    return item
+  }
+
+  /// #3972 R34: while the menu is open, the recording time and the pass's percent move. Only the
+  /// titles of items already shown change; a phase change shows at the next open.
+  func refreshMeetingLines(in menu: NSMenu, now: Date = Date()) {
+    guard let facts = actions.meetingMenuFacts() else { return }
+    for line in MeetingsPresentation.menuItems(facts, now: now)
+    where line.kind == .elapsed || line.kind == .processing {
+      menu.items.first { $0.identifier == Self.meetingItemID(line.kind) }?.title = line.title
     }
   }
 
@@ -958,6 +1018,29 @@ final class MenuBarController: NSObject {
 // MARK: - NSMenuDelegate
 
 extension MenuBarController: NSMenuDelegate {
+  /// #3972 R34: a one-second tick while the menu is open, in the menu's own tracking mode (the
+  /// default mode does not run while a menu tracks).
+  nonisolated func menuWillOpen(_ menu: NSMenu) {
+    MainActor.assumeIsolated {
+      meetingTicker?.invalidate()
+      let ticker = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+        MainActor.assumeIsolated {
+          guard let self, let open = self.statusItem?.menu else { return }
+          self.refreshMeetingLines(in: open)
+        }
+      }
+      RunLoop.main.add(ticker, forMode: .eventTracking)
+      meetingTicker = ticker
+    }
+  }
+
+  nonisolated func menuDidClose(_ menu: NSMenu) {
+    MainActor.assumeIsolated {
+      meetingTicker?.invalidate()
+      meetingTicker = nil
+    }
+  }
+
   /// Repopulate menu items each time the menu opens so state is fresh.
   /// `NSMenu` delegate methods are always called on the main thread.
   ///
@@ -1071,6 +1154,10 @@ struct MenuBarActions: Sendable {
   /// #3972: a Start from the menu, through `MeetingStartFlow` (which may open the page first).
   let requestMeetingStart: @MainActor () async -> Void
   let stopMeeting: @MainActor () async -> Void
+  /// #3972 R34: what the meeting block shows now, or nil before EnviousMeet exists.
+  let meetingMenuFacts: @MainActor () -> MeetingsPresentation.MenuFacts?
+  /// #3972 R34: open History on this meeting (live or being transcribed).
+  let showMeeting: @MainActor (UUID) -> Void
   let quit: @MainActor () -> Void
   /// The newest reusable dictation, for the Paste Last row (#3106). A snapshot for rendering.
   let lastDictation: @MainActor () -> (id: UUID, text: String)?
@@ -1215,8 +1302,8 @@ struct MenuBarViewState: Equatable {
   /// #3454: the saved choice (`preferredInputDeviceIDOverride`), "" for Auto; it decides the
   /// checkmark, as it does in Settings.
   var microphoneSelection: String = ""
-  /// #3972: the meeting item, or nil when EnviousMeet is not there yet.
-  var meetingItem: MeetingsPresentation.MenuItem? = nil
+  /// #3972 R34: the meeting block, empty when EnviousMeet is not there yet.
+  var meetingItems: [MeetingsPresentation.MenuItem] = []
   /// #3972: a meeting is starting, recording or stopping; read by `iconState`.
   var meetingCapturing: Bool = false
 }

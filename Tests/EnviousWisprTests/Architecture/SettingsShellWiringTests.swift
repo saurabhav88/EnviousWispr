@@ -269,8 +269,7 @@ struct SettingsShellWiringTests {
     #expect(
       wiring.activity == [
         "section == .transcribeFile && fileImportCoordinator.isRunning -> .fileImport",
-        // #3972: EnviousMeet's dot reads only EnviousMeet.
-        "section == .meetings && meetingWorkVisible -> .meeting",
+        // #3972 R47: EnviousMeet has no dot (stealth); nothing reads it here.
         // #3438: the setup tag reads only the warning monitor.
         "section == .aiPolish && polishSetupMonitor.shows(.sidebarTag) -> .polishNeedsSetup",
         "yourWordsEnrichmentBadgeVisible(for: section) -> .dictionaryEnrichment",

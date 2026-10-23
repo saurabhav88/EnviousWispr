@@ -408,41 +408,129 @@ enum MeetingsPresentation {
 
   // MARK: - Menu bar
 
-  /// The menu bar's meeting item, read when the menu is built.
+  /// What the menu bar's meeting block is built from (R34): the recorder is managed here and in
+  /// History, never in a window of its own (F14).
+  struct MenuFacts: Equatable {
+    var phase: MeetingCoordinator.Phase
+    var processing: MeetingCoordinator.Processing? = nil
+    var callSound: MeetingTrackStatus? = nil
+    /// The final pass waits for a meeting summary on this Mac, not for dictation (R50).
+    var waitingOnSummary = false
+  }
+
+  /// One item of the meeting block. `.none` with `isEnabled` false is a status line.
   struct MenuItem: Equatable {
-    enum Action: Equatable { case start, stop, none }
+    enum Kind: Equatable { case control, elapsed, callSound, showLive, processing, showInHistory }
+    enum Action: Equatable { case start, stop, show(UUID), none }
+    let kind: Kind
     let title: String
     let action: Action
     let isEnabled: Bool
   }
 
-  static func menuItem(_ phase: MeetingCoordinator.Phase, now: Date) -> MenuItem {
+  /// The block, in order: Start or Stop first (it stays under Transcribe a File), then what the
+  /// recording is doing, then the after-recording pass of a stopped meeting.
+  static func menuItems(_ facts: MenuFacts, now: Date) -> [MenuItem] {
+    var items = [control(facts.phase)]
+    if case .recording(let meetingID, let startedAt) = facts.phase {
+      items.append(
+        MenuItem(
+          kind: .elapsed,
+          title: String(
+            localized: "Recording for \(elapsed(from: startedAt, to: now))",
+            comment: "Menu bar menu: how long the meeting has been recording, e.g. 12:34."),
+          action: .none, isEnabled: false))
+      if let line = menuCallSoundLine(facts.callSound) {
+        items.append(MenuItem(kind: .callSound, title: line, action: .none, isEnabled: false))
+      }
+      items.append(
+        MenuItem(
+          kind: .showLive,
+          title: String(
+            localized: "Show Live Transcript",
+            comment: "Menu bar menu: opens History on the meeting that is recording now."),
+          action: .show(meetingID), isEnabled: true))
+    }
+    if let processing = facts.processing {
+      items.append(
+        MenuItem(
+          kind: .processing, title: processingLine(processing, waitingOnSummary: facts.waitingOnSummary),
+          action: .none, isEnabled: false))
+      items.append(
+        MenuItem(
+          kind: .showInHistory,
+          title: String(
+            localized: "Show in History",
+            comment: "Menu bar menu: opens History on the meeting whose transcript is being made."),
+          action: .show(processing.meetingID), isEnabled: true))
+    }
+    return items
+  }
+
+  /// Start or Stop, decided by the phase. A click decides again from the phase then.
+  static func control(_ phase: MeetingCoordinator.Phase) -> MenuItem {
     switch phase {
     case .idle:
       return MenuItem(
+        kind: .control,
         title: String(
           localized: "Start Meeting Recording",
           comment: "Menu bar menu: starts recording a meeting with EnviousMeet."),
         action: .start, isEnabled: true)
     case .starting:
       return MenuItem(
+        kind: .control,
         title: String(
           localized: "Starting Meeting Recording",
           comment: "Menu bar menu: a meeting recording is starting (not clickable)."),
         action: .none, isEnabled: false)
-    case .recording(_, let startedAt):
+    case .recording:
       return MenuItem(
+        kind: .control,
         title: String(
-          localized: "Stop Meeting Recording (\(elapsed(from: startedAt, to: now)))",
-          comment: "Menu bar menu: stops the meeting recording; the value is how long it ran."),
+          localized: "Stop Meeting Recording",
+          comment: "Menu bar menu: stops the meeting recording."),
         action: .stop, isEnabled: true)
     case .stopping:
       return MenuItem(
+        kind: .control,
         title: String(
           localized: "Saving Meeting Recording",
           comment: "Menu bar menu: the meeting recording is being saved (not clickable)."),
         action: .none, isEnabled: false)
     }
+  }
+
+  /// A short call-sound line for the menu; History shows the full sentence with its fix.
+  static func menuCallSoundLine(_ status: MeetingTrackStatus?) -> String? {
+    switch status {
+    case .captured?:
+      return String(
+        localized: "Recording the call sound",
+        comment: "Menu bar menu, while a meeting records: the sound the Mac plays is recorded.")
+    case .off?:
+      return String(
+        localized: "Recording your microphone only",
+        comment: "Menu bar menu, while a meeting records: the call sound is switched off.")
+    case .unsupported?, .denied?, .failed?:
+      return String(
+        localized: "Call sound not recorded",
+        comment: "Menu bar menu, while a meeting records: the call sound could not be recorded.")
+    case nil:
+      return nil
+    }
+  }
+
+  /// The pass's stage, with its percent while the words are written.
+  static func processingLine(_ processing: MeetingCoordinator.Processing, waitingOnSummary: Bool)
+    -> String
+  {
+    let stage = stage(processing, waitingOnSummary: waitingOnSummary)
+    guard let fraction = progress(processing) else { return stage }
+    let percent = fraction.formatted(.percent.precision(.fractionLength(0)))
+    return String(
+      localized: "\(stage) (\(percent))",
+      comment: "Menu bar menu: a stopped meeting's transcript work and how far it is, e.g. Writing the transcript (42%).")
   }
 }
 

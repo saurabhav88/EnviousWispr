@@ -11,6 +11,12 @@ enum MenuBarItemID {
   static let transcribeFile = NSUserInterfaceItemIdentifier("menu.transcribeFile")
   /// #3972: Start or Stop Meeting Recording.
   static let meeting = NSUserInterfaceItemIdentifier("menu.meeting")
+  /// #3972 R34: the meeting block's lines and its ways into History.
+  static let meetingElapsed = NSUserInterfaceItemIdentifier("menu.meeting.elapsed")
+  static let meetingCallSound = NSUserInterfaceItemIdentifier("menu.meeting.callSound")
+  static let meetingShowLive = NSUserInterfaceItemIdentifier("menu.meeting.showLive")
+  static let meetingProcessing = NSUserInterfaceItemIdentifier("menu.meeting.processing")
+  static let meetingShowInHistory = NSUserInterfaceItemIdentifier("menu.meeting.showInHistory")
   static let accessibilityWarning = NSUserInterfaceItemIdentifier("menu.accessibilityWarning")
   static let microphoneWarning = NSUserInterfaceItemIdentifier("menu.microphoneWarning")
   static let microphone = NSUserInterfaceItemIdentifier("menu.microphone")

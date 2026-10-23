@@ -5,7 +5,8 @@ import AppKit
 /// Five states: idle (static grey lips), recording (static rainbow lips),
 /// processing (rotating rainbow spectrum wheel), error (static red lips),
 /// updatePending (grey lips with a gold wave travelling outward — the
-/// "update waiting" cue, #1019). Recording is static, not audio-reactive —
+/// "update waiting" cue, #1019), meeting (#3972 R47: the grey lips with a soft glow that
+/// slowly breathes; static under Reduce Motion). Recording is static, not audio-reactive —
 /// the on-screen recording overlay already shows a legible audio-reactive
 /// meter; at menu-bar-icon size that reactivity only read as the icon
 /// randomly looking smaller.
@@ -22,6 +23,9 @@ final class MenuBarIconAnimator {
     /// the idle branch of its icon-state mapping, so it never overrides
     /// recording / processing / error / warning.
     case updatePending
+    /// #3972 R47: a meeting is recording. The only always-visible sign of it: monochrome like
+    /// idle (a template image, so it follows the menu bar), never red, no pill or window.
+    case meeting
   }
 
   private weak var button: NSStatusBarButton?
@@ -36,6 +40,8 @@ final class MenuBarIconAnimator {
 
   // #1019: update-pending gold-wave phase (0…1 per loop).
   private var wavePhase: Double = 0
+  // #3972: meeting glow phase (0…1 per breath).
+  private var glowPhase: Double = 0
   private var reduceMotionObserver: NSObjectProtocol?
 
   /// #ffd700 — the "pending" semantic gold.
@@ -61,8 +67,14 @@ final class MenuBarIconAnimator {
       object: nil, queue: .main
     ) { [weak self] _ in
       MainActor.assumeIsolated {
-        guard let self, self.currentState == .updatePending else { return }
-        self.restartUpdatePendingForReduceMotionChange()
+        guard let self else { return }
+        switch self.currentState {
+        case .updatePending: self.restartUpdatePendingForReduceMotionChange()
+        case .meeting:
+          self.stopTimer()
+          self.startMeetingGlow()
+        case .idle, .recording, .processing, .error: return
+        }
       }
     }
   }
@@ -88,6 +100,9 @@ final class MenuBarIconAnimator {
     case .updatePending:
       wavePhase = 0
       startUpdatePendingAnimation()
+    case .meeting:
+      glowPhase = 0
+      startMeetingGlow()
     }
   }
 
@@ -145,6 +160,61 @@ final class MenuBarIconAnimator {
         button.image = self.renderUpdatePendingLips(phase: self.wavePhase)
       }
     }
+  }
+
+  // MARK: - Meeting glow (#3972 R47, ~10fps, one breath every 3 s)
+
+  /// The glow's strength through one breath: never fully off, so a glance always finds it.
+  static func meetingGlowIntensity(phase: Double) -> CGFloat {
+    CGFloat(0.35 + 0.45 * (0.5 - 0.5 * cos(2 * .pi * phase)))
+  }
+
+  /// Reduce Motion: one steady glow.
+  static let meetingStaticGlow: CGFloat = 0.6
+
+  private func startMeetingGlow() {
+    guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
+      button?.image = Self.renderMeetingLips(glow: Self.meetingStaticGlow)
+      return
+    }
+    button?.image = Self.renderMeetingLips(glow: Self.meetingGlowIntensity(phase: glowPhase))
+    animationTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 10.0, repeats: true) {
+      [weak self] _ in
+      MainActor.assumeIsolated {
+        guard let self, let button = self.button else { return }
+        self.glowPhase += 1.0 / 30.0
+        if self.glowPhase >= 1.0 { self.glowPhase -= 1.0 }
+        button.image = Self.renderMeetingLips(glow: Self.meetingGlowIntensity(phase: self.glowPhase))
+      }
+    }
+  }
+
+  /// The idle lips, a little stronger, inside a soft halo whose strength is `glow`. A template
+  /// image: only alpha is drawn, so light and dark menu bars colour it as they colour idle.
+  static func renderMeetingLips(glow: CGFloat) -> NSImage {
+    let size = NSSize(width: 22, height: 22)
+    let image = NSImage(size: size, flipped: true) { rect in
+      guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
+      let scale = rect.width / 64.0
+      let barWidth: CGFloat = 4.5 * scale
+      let cornerRadius: CGFloat = 1.5 * scale
+      ctx.translateBy(x: 0, y: Self.lipsVerticalCenteringOffset * scale)
+      ctx.setShadow(
+        offset: .zero, blur: 2.5, color: CGColor(red: 0, green: 0, blue: 0, alpha: glow))
+      ctx.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 0.85))
+      for bar in Self.upperLipBars + Self.lowerLipBars {
+        let barRect = CGRect(
+          x: bar.x * scale, y: bar.y * scale, width: barWidth, height: bar.h * scale)
+        ctx.addPath(
+          CGPath(
+            roundedRect: barRect, cornerWidth: cornerRadius, cornerHeight: cornerRadius,
+            transform: nil))
+        ctx.fillPath()
+      }
+      return true
+    }
+    image.isTemplate = true
+    return image
   }
 
   // MARK: - Core Graphics Rendering

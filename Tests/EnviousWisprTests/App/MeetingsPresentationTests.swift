@@ -20,16 +20,61 @@ struct MeetingsPresentationTests {
   func phases() {
     let id = UUID()
     let started = Date(timeIntervalSince1970: 0)
-    #expect(P.menuItem(.idle, now: started).action == .start)
+    #expect(P.control(.idle).action == .start)
     #expect(
-      P.menuItem(.starting, now: started)
-        == .init(
-          title: "Starting Meeting Recording", action: .none, isEnabled: false))
-    #expect(P.menuItem(.stopping(meetingID: id), now: started).isEnabled == false)
-    let recording = P.menuItem(
-      .recording(meetingID: id, startedAt: started), now: started.addingTimeInterval(3_725))
+      P.control(.starting)
+        == .init(kind: .control, title: "Starting Meeting Recording", action: .none, isEnabled: false))
+    #expect(P.control(.stopping(meetingID: id)).isEnabled == false)
     #expect(
-      recording == .init(title: "Stop Meeting Recording (1:02:05)", action: .stop, isEnabled: true))
+      P.control(.recording(meetingID: id, startedAt: started))
+        == .init(kind: .control, title: "Stop Meeting Recording", action: .stop, isEnabled: true))
+  }
+
+  @Test("the menu block: the recording's time, call sound and live words, then a stopped meeting's work")
+  func menuBlock() {
+    let id = UUID()
+    let other = UUID()
+    let started = Date(timeIntervalSince1970: 0)
+    let recording = P.menuItems(
+      .init(phase: .recording(meetingID: id, startedAt: started), callSound: .off),
+      now: started.addingTimeInterval(3_725))
+    #expect(recording.map(\.kind) == [.control, .elapsed, .callSound, .showLive])
+    #expect(recording[1].title == "Recording for 1:02:05")
+    #expect(recording[2].title == "Recording your microphone only")
+    #expect(recording[3].action == .show(id))
+    #expect(recording.filter { $0.action == .none }.allSatisfy { !$0.isEnabled })
+
+    // No call-sound line before the recorder reports it; every failure reads the same.
+    let noReport = P.menuItems(
+      .init(phase: .recording(meetingID: id, startedAt: started)), now: started)
+    #expect(noReport.map(\.kind) == [.control, .elapsed, .showLive])
+    for status: MeetingTrackStatus in [.unsupported, .denied, .failed] {
+      #expect(P.menuCallSoundLine(status) == "Call sound not recorded")
+    }
+    #expect(P.menuCallSoundLine(.captured) == "Recording the call sound")
+
+    // A stopped meeting's pass shows beside a new recording, and opens that meeting.
+    let both = P.menuItems(
+      .init(
+        phase: .recording(meetingID: id, startedAt: started),
+        processing: .init(meetingID: other, stage: .findingSpeakers(track: .microphone))),
+      now: started)
+    #expect(both.suffix(2).map(\.kind) == [.processing, .showInHistory])
+    #expect(both.last?.action == .show(other))
+    #expect(both[both.count - 2].title == "Finding the speakers")
+
+    // Idle with a pass: Start, then the pass. A wait names what it waits for, with no percent.
+    let waiting = P.menuItems(
+      .init(
+        phase: .idle,
+        processing: .init(
+          meetingID: other, stage: .transcribing(track: .microphone, fraction: 0.5),
+          waitingForDictation: true),
+        waitingOnSummary: true),
+      now: started)
+    #expect(waiting.map(\.kind) == [.control, .processing, .showInHistory])
+    #expect(waiting[1].title == "Paused while a meeting summary is written")
+    #expect(P.menuItems(.init(phase: .idle), now: started).map(\.kind) == [.control])
   }
 
   @Test("elapsed time and meters stay sane at the edges")

@@ -358,8 +358,6 @@ struct StatusBadge: View {
   var textOverride: String? = nil
   // PR7 of #763: live phase resolves through LiveRecordingState.
   @Environment(LiveRecordingState.self) private var liveRecordingState
-  /// #3972: optional, so a harness without EnviousMeet still renders the badge.
-  @Environment(MeetingCoordinator.self) private var meetings: MeetingCoordinator?
 
   var body: some View {
     Group {
@@ -385,21 +383,10 @@ struct StatusBadge: View {
       // #1891: advisory is a resting terminal like idle/complete/error, so the
       // toolbar badge stays empty. The sentence is carried by the overlay and
       // the main-window body, not duplicated in the toolbar.
+      // #3972 R47: a meeting recording shows no badge here (stealth, founder F14); the menu
+      // bar glow and the live Recordings row in History are its only signs.
       case .idle, .complete, .error, .advisory:
-        // #3972 §3.8: a meeting recording shows here when no dictation is running; a running
-        // dictation keeps the badge, as it keeps the menu bar icon.
-        if meetings?.isCapturing == true {
-          pill {
-            Image(systemName: "record.circle.fill")
-              .foregroundStyle(.stError)
-            Text(
-              "Recording a meeting",
-              comment: "Window toolbar: EnviousMeet is recording a meeting.")
-              .foregroundStyle(.secondary)
-          }
-        } else {
-          EmptyView()
-        }
+        EmptyView()
       }
     }
     .animation(.easeInOut(duration: 0.2), value: liveRecordingState.pipelineState)
