@@ -232,17 +232,21 @@ public final class MeetingRecorder {
           }
         })
       if let source {
+        // The writer is the recorder's before the wait: a stop or quit during it closes the
+        // file and its admission, so audio the late tap delivers (its start or its stop tail)
+        // is refused, never written after Stop.
+        callWriter = writer
         // Off the main actor: building the tap waits inside Core Audio until the user answers
         // macOS's first system-audio prompt, and the app must keep working meanwhile (dictation,
         // menu, window). Found by Live UAT: the whole app froze while the prompt was open.
         switch await Self.startOffMain(source) {
         case .success:
           callSound = source
-          callWriter = writer
           callStatus = .captured
         case .failure:
           // Never "denied": a tap error does not say macOS refused permission.
           callStatus = .failed
+          if lifecycle == .starting { callWriter = nil }
           _ = await writer.finish()
         }
       } else {

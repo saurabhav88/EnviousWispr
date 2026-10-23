@@ -96,6 +96,9 @@ struct MeetingRecorderTests {
     /// When set, `start` waits for it (the macOS prompt still open), at most 10 s.
     var startHold: DispatchSemaphore?
     let startEntered = DispatchSemaphore(value: 0)
+    /// Audio the tap hands over as its start returns, and again inside `stop`.
+    var emitOnStart: [Float] = []
+    var emitOnStop: [Float] = []
     let handler: CallSoundPipeline.SampleHandler
     init(handler: @escaping CallSoundPipeline.SampleHandler) { self.handler = handler }
     func start() throws {
@@ -103,8 +106,16 @@ struct MeetingRecorderTests {
       startEntered.signal()
       _ = startHold?.wait(timeout: .now() + 10)  // deadline-fallback: around the test's release
       if let startError { throw startError }
+      emit(emitOnStart)
     }
-    func stop() { stopCount += 1 }
+    func stop() {
+      stopCount += 1
+      emit(emitOnStop)
+    }
+    private func emit(_ samples: [Float]) {
+      guard !samples.isEmpty else { return }
+      samples.withUnsafeBufferPointer { handler($0, 1_000_000_000, false) }
+    }
     var currentLevel: Float { 0 }
   }
 
@@ -221,11 +232,40 @@ struct MeetingRecorderTests {
       }
     }
     #expect(entered == .success)
-    // The main actor is free while the tap waits: the stop runs now.
-    await rig.recorder.stop()
+    call.emitOnStart = [Float](repeating: 0.2, count: 16_000)
+    call.emitOnStop = [Float](repeating: 0.2, count: 16_000)
+    // The main actor is free while the tap waits: the stop runs now, and closes the call file.
+    let report = await rig.recorder.stop()
+    #expect(report.callSound != nil, "Stop owns the pending call-sound file")
     hold.signal()
     await #expect(throws: (any Error).self) { try await start.value }
     #expect(call.stopCount == 1, "the tap that started after the stop is stopped")
+    #expect(rig.segments.of(.callSound).allSatisfy { $0.frameCount == 0 },
+      "no audio the late tap delivered is written after Stop")
+    #expect(rig.segments.of(.callSound).reduce(0) { $0 + $1.frameCount } == 0)
+  }
+
+  @Test("a quit while the call-sound tap waits on macOS closes the pending file and drops late audio")
+  func quitWhileCallSoundStarts() async throws {
+    let hold = DispatchSemaphore(value: 0)
+    let rig = try rig(callStartHold: hold)
+    let start = Task { @MainActor in try await rig.recorder.start() }
+    await MeetingCoordinatorTests.eventually("tap created") { !rig.calls().isEmpty }
+    let call = try #require(rig.calls().first)
+    let entered = await withCheckedContinuation { continuation in
+      DispatchQueue.global().async {
+        continuation.resume(returning: call.startEntered.wait(timeout: .now() + 10))  // deadline-fallback: around the start signal
+      }
+    }
+    #expect(entered == .success)
+    call.emitOnStart = [Float](repeating: 0.2, count: 16_000)
+    call.emitOnStop = [Float](repeating: 0.2, count: 16_000)
+    let report = rig.recorder.stopForQuit(deadline: .now() + 2)
+    #expect(report.callSound == .finalized, "the quit closes the pending call-sound file")
+    hold.signal()
+    await #expect(throws: (any Error).self) { try await start.value }
+    #expect(call.stopCount == 1)
+    #expect(rig.segments.of(.callSound).reduce(0) { $0 + $1.frameCount } == 0)
   }
 
   @Test("start then stop records both tracks to finished files and reports both finalized")
