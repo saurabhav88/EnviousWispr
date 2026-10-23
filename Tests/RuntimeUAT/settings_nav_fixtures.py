@@ -1469,9 +1469,11 @@ def coverage_cases():
 
 def _capture_before_routing():
     """Problems with the callers' order, read from their source: `AudioRoute.__init__` must
-    capture the app's choice (`read_input_choice`, which refuses an unrestorable original) and
-    switch nothing; the switching happens in `apply`. The #1946 helper lives in the main
-    checkout and is checked when present."""
+    capture the app's choice and switch nothing; the switching happens in `apply`. Since #3990
+    the tracked `silent_audio.AudioRoute` captures through the door (`check_owner`,
+    `AppMic.read`, `check_restorable`, which refuses an unrestorable original); the #1946
+    helper lives in the main checkout, still captures through the picker
+    (`read_input_choice`), and is checked when present."""
     import ast
     import os
     here = os.path.dirname(os.path.abspath(__file__))
@@ -1490,9 +1492,12 @@ def _capture_before_routing():
             continue
         methods = {f.name: ast.unparse(f) for f in cls.body if isinstance(f, ast.FunctionDef)}
         init, apply_ = methods.get("__init__", ""), methods.get("apply", "")
-        if "read_input_choice" not in init:
+        tracked = path == paths[0]
+        captures = (("check_owner", "AppMic.read", "check_restorable") if tracked
+                    else ("read_input_choice",))
+        if not all(token in init for token in captures):
             problems.append(f"{os.path.basename(path)}: __init__ does not capture the choice")
-        if "'-s'" in init or "select_input" in init:
+        if "'-s'" in init or "select_input" in init or ".set(" in init:
             problems.append(f"{os.path.basename(path)}: __init__ switches audio")
         if "'-s'" not in apply_:
             problems.append(f"{os.path.basename(path)}: apply does not do the switching")

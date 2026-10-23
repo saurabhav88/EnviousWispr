@@ -7,8 +7,11 @@
 
 Entering the rig:
 1. routes system output, input and alert sounds to BlackHole and pins the app's microphone to it
-   (silent_audio.AudioRoute / AlertSink, restore file on disk first);
+   (silent_audio.AudioRoute / AlertSink, restore file on disk first); the microphone and the
+   app's sounds go through the #3765 dev control door, never a Settings click (#3990);
 2. READS BACK all four and refuses (`take_gate.SetupFailed`) unless each is BlackHole;
+   with `quiet_app` (default) it also turns the app's start/stop sounds and "other audio"
+   ducking off for the takes (`silent_audio.AppSounds`) and puts them back;
 3. prepares the paste target, proves it is frontmost and names it to `take_gate`, which
    re-checks it before every take and checks the take's own app.log lines afterwards.
 Leaving it restores the devices and the app's microphone and verifies them; a failed restore is
@@ -27,7 +30,7 @@ import silent_audio as sa
 import take_gate as tg
 import wispr_eyes as w
 
-BLACKHOLE_UID = "BlackHole2ch_UID"
+BLACKHOLE_UID = sa.BLACKHOLE_UID
 TEXTEDIT = "com.apple.TextEdit"
 
 
@@ -122,13 +125,17 @@ class TextEditTarget(AppTarget):
 class AudioRig:
     """`route=False` keeps the real microphone and speaker (only for a take that must hear the
     room, such as the silent probe): the target is still proven, and the BlackHole check is
-    skipped through `EW_UAT_SPEAKER_REASON`, which the caller must set."""
+    skipped through `EW_UAT_SPEAKER_REASON`, which the caller must set. `quiet_app=False` keeps
+    the app's sounds as they are, for a take whose subject is those sounds; a `route=False`
+    rig never touches them."""
 
-    def __init__(self, target=None, route=True):
+    def __init__(self, target=None, route=True, quiet_app=True):
         self.target = target or TextEditTarget()
         self.use_route = route
+        self.quiet_app = quiet_app
         self.route = None
         self.alerts = None
+        self.sounds = None
         self.restored = None
         self._old_handlers = {}
 
@@ -140,6 +147,7 @@ class AudioRig:
                                  "no nested rigs; leave the outer one or clear_target() first")
         try:
             if self.use_route:
+                # Before any device moves: the dev-app lock and a restorable microphone (#3990).
                 self.route = sa.AudioRoute()
                 self._install_restore_handlers()
                 self.alerts = sa.AlertSink()
@@ -147,6 +155,9 @@ class AudioRig:
                     raise tg.SetupFailed("audio-route", "alert sounds did not move to BlackHole")
                 self.route.apply()
                 self._prove_route()
+                if self.quiet_app:
+                    self.sounds = sa.AppSounds(self.route.client)
+                    self.sounds.apply()
             elif not tg.speaker_reason():
                 raise tg.SetupFailed("audio-route", "route=False needs EW_UAT_SPEAKER_REASON")
             self.target.ready()
@@ -176,10 +187,12 @@ class AudioRig:
             now = sa._current(kind)
             if now != tg.SILENT_DEVICE:
                 raise tg.SetupFailed("audio-route", f"{kind} device is {now!r}, not {tg.SILENT_DEVICE!r}")
-        choice = w.read_input_choice()
-        if choice.uid != BLACKHOLE_UID:
+        # Read from the RUNNING app through the door, both keys in one snapshot. take_gate's
+        # per-take `transport=virtual` stays the proof of what the take captured.
+        mic = sa.AppMic.read(self.route.client)
+        if mic != sa.AppMic(BLACKHOLE_UID, BLACKHOLE_UID):
             raise tg.SetupFailed("app-microphone",
-                                 f"the app's stored microphone is {choice!r}, not {BLACKHOLE_UID}")
+                                 f"the app's stored microphone is {mic!r}, not {BLACKHOLE_UID}")
 
     def _restore_all(self):
         """Every step runs even if another fails; True only when all verified. A take still
@@ -191,7 +204,9 @@ class AudioRig:
         except Exception as close_exc:  # a leftover test document never blocks the restore
             print(f"RIG: could not close the test document: {close_exc!r}", flush=True)
         ok = player_gone and take_idle
-        parts = (self.route, self.alerts)
+        # The app's sounds first: the founder's chime setting comes back even if a device
+        # restore then fails.
+        parts = (self.sounds, self.route, self.alerts)
         if not player_gone:
             # A test sound may still be playing: every device stays on BlackHole (nothing audible,
             # nothing captured). The on-disk restore files finish the job once it is stopped.
@@ -207,7 +222,7 @@ class AudioRig:
                 print(f"RIG: speakers not put back: {exc!r}", flush=True)
             print("RIG: a take could not be proven stopped; the app's microphone stays on BlackHole. "
                   "Stop the recording, then run `python3 Tests/RuntimeUAT/silent_audio.py restore`", flush=True)
-            parts = (self.alerts,)
+            parts = (self.sounds, self.alerts)  # quiet sounds back is harmless to a live take
         for part in parts:
             if part is None:
                 continue
@@ -216,7 +231,7 @@ class AudioRig:
             except (Exception, SystemExit) as restore_exc:  # wispr_eyes.connect() exits if the app went
                 print(f"RIG: restore step failed: {restore_exc!r}", flush=True)
                 ok = False
-        self.route = self.alerts = None
+        self.route = self.alerts = self.sounds = None
         for sig, old in self._old_handlers.items():
             signal.signal(sig, old)
         self._old_handlers = {}
@@ -440,6 +455,61 @@ def _self_test():
         expect("an exit during setup becomes SETUP FAILED", exc.step == "rig")
     finally:
         os_reason.pop("EW_UAT_SPEAKER_REASON", None)
+
+    # #3990: the app's sounds are restored first, and follow the two safety branches.
+    order = []
+
+    class Named(Fake):
+        def __init__(self, name):
+            super().__init__()
+            self.name = name
+
+        def restore(self):
+            order.append(self.name)
+            return super().restore()
+    tg._take = None
+    rig = AudioRig(target=FakeTarget())
+    rig.sounds, rig.route, rig.alerts = Named("sounds"), Named("route"), Named("alerts")
+    rig.__exit__(None, None, None)
+    expect("#3990 app sounds are restored before the route and the alerts",
+           order == ["sounds", "route", "alerts"] and rig.restored and rig.sounds is None)
+
+    rig = AudioRig(target=FakeTarget())
+    sounds, route, alerts = Fake(boom=True), Fake(), Fake()
+    rig.sounds, rig.route, rig.alerts = sounds, route, alerts
+    try:
+        rig.__exit__(None, None, None)
+    except tg.SetupFailed:
+        pass
+    expect("#3990 a sounds restore that raises still restores the route and the alerts",
+           route.calls == 1 and alerts.calls == 1 and rig.restored is False)
+
+    tg._take = None
+    tg.take_started(lambda: None, lambda: True)
+    tg.take_player(Stuck())
+    rig = AudioRig(target=FakeTarget())
+    sounds = Fake()
+    rig.sounds, rig.route, rig.alerts = sounds, Fake(), Fake()
+    try:
+        rig.__exit__(None, None, None)
+    except tg.SetupFailed:
+        pass
+    expect("#3990 an unkillable player leaves the app sounds untouched too", sounds.calls == 0)
+
+    tg._take = None
+    tg.take_started(lambda: None, lambda: False)
+    rig = AudioRig(target=FakeTarget())
+    rig._speakers_back = lambda device: None
+    sounds, route, alerts = Fake(), Fake(), Fake()
+    route.original_output = "MacBook Pro Speakers"
+    rig.sounds, rig.route, rig.alerts = sounds, route, alerts
+    try:
+        rig.__exit__(None, None, None)
+    except tg.SetupFailed:
+        pass
+    expect("#3990 an unproven take restores sounds and alerts and leaves the microphone pinned",
+           sounds.calls == 1 and alerts.calls == 1 and route.calls == 0)
+    tg._take = None
 
     tg.declare_target("com.example.Outer")
     try:

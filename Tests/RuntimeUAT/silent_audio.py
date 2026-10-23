@@ -3,7 +3,7 @@ RULE: silent-uat-via-blackhole-and-select-the-mic-in-the-UI).
 
 Ported, not re-derived, from the #1946 artifact
 `docs/feature-requests/issue-1946-artifacts/2026-09-08-live-uat-background-band.py`
-(`select_input_device`, `AudioRoute`), so a tracked driver can use it.
+(`AudioRoute`), so a tracked driver can use it.
 
     route = AudioRoute()
     route.install_restore_handlers()
@@ -11,8 +11,10 @@ Ported, not re-derived, from the #1946 artifact
     try: ... finally: route.restore()
 
 Three things the rule requires and this does:
-- The app's microphone is chosen through the Settings UI: a `defaults write` never reaches a running
-  app and the take silently captures silence. A virtual mic only counts when PINNED, never on Auto.
+- The app's microphone is pinned through the #3765 dev control door (`AppMic`, #3990), which runs
+  the app's own `chooseInputDevice` inside the running app: a `defaults write` never reaches a
+  running app and the take silently captures silence, and the Settings route opened the
+  Microphone list about 8 times per rig. A virtual mic only counts when PINNED, never on Auto.
 - The originals are written to an on-disk restore file before anything changes, because a restore
   living only in this process cannot survive SIGKILL: `python3 silent_audio.py restore` replays it.
 - Every restore reads the devices back instead of assuming the write landed.
@@ -37,36 +39,97 @@ RESTORE_FILE = os.path.expanduser("~/.ew-uat-audio-restore.json")
 LOG = os.path.expanduser("~/Library/Logs/EnviousWispr/app.log")
 
 
-def input_picker():
-    """The Microphone tab's "Input device" control, or None. #3385: found by its
-    label in the content (`settings_nav.input_control`), never "the first popup"."""
-    try:
-        return w._sn.input_control(w._ax(), w._app)
-    except w.NavigationError:
+BLACKHOLE_UID = "BlackHole2ch_UID"
+OVERRIDE, SELECTED = "preferredInputDeviceIDOverride", "selectedInputDeviceUID"
+
+
+def connected_input_uids():
+    """The UIDs of every input device the system lists now (`SwitchAudioSource`, one JSON
+    object per line). Raises rather than returning an empty list: BlackHole is always there."""
+    out = subprocess.run([SWITCH, "-a", "-t", "input", "-f", "json"], capture_output=True,
+                         text=True)
+    uids = [json.loads(line)["uid"] for line in out.stdout.splitlines() if line.strip()]
+    if out.returncode != 0 or not uids:
+        raise RuntimeError(f"could not list input devices: {out.stderr.strip() or 'none listed'}")
+    return uids
+
+
+class AppMic:
+    """The app's stored microphone choice: both keys `SettingsManager.chooseInputDevice`
+    writes (#3990). Read and written through the dev control door, inside the running app,
+    so no Settings click is needed (the Microphone list used to open about 8 times per rig).
+
+    The reconciler (`InputDevicePreferencePolicy`) keeps three shapes stable: (X, X) with X
+    connected, ("", "") for Auto, and ("", Y) with Y away (a pinned device that left; Y is
+    pinned again when it returns). Those are the shapes this captures; anything else refuses
+    before a device moves."""
+
+    def __init__(self, override, selected):
+        self.override, self.selected = override, selected
+
+    def __eq__(self, other):
+        return (isinstance(other, AppMic)
+                and (self.override, self.selected) == (other.override, other.selected))
+
+    def __repr__(self):
+        return f"AppMic(override={self.override!r}, selected={self.selected!r})"
+
+    @classmethod
+    def read(cls, client):
+        """Both keys from ONE `settings list` reply, so they are one snapshot."""
+        values = client.values(OVERRIDE, SELECTED)
+        if not all(isinstance(values[k], str) for k in (OVERRIDE, SELECTED)):
+            raise RuntimeError(f"the app's microphone keys are not strings: {values}")
+        return cls(values[OVERRIDE], values[SELECTED])
+
+    def to_json(self):
+        return {"override": self.override, "selected": self.selected}
+
+    @classmethod
+    def from_json(cls, data):
+        """A journal entry, or the pre-#3990 `InputChoice` shape (`{"uid", "shown"}`, restored
+        by the picker, which wrote both keys to that UID)."""
+        if isinstance(data, dict) and {"override", "selected"} <= set(data):
+            return cls(data["override"], data["selected"])
+        if isinstance(data, dict) and isinstance(data.get("uid"), str):
+            return cls(data["uid"], data["uid"])
         return None
 
+    def check_restorable(self, connected):
+        """Refuse a capture that could not be put back exactly. Read-only: the same rule as
+        `MicrophoneChoiceValidation.isSelectable` (Auto, or a connected device)."""
+        if self.override and self.selected != self.override:
+            raise RuntimeError(f"{self!r} is not a shape the app keeps; refusing before any "
+                               "device moves")
+        if self.override and self.override not in connected:
+            raise RuntimeError(f"the app's microphone {self.override!r} is not connected, so it "
+                               "could not be chosen again; refusing before any device moves")
 
-def select_input_device(name):
-    """Choose `name` in Dictation Settings > Microphone and PROVE the control took it.
+    def restore(self, client):
+        """The owner write (both keys), then, for ("", Y) only, the remembered device: the
+        reconciler's own stable state, which the owner cannot express. The override is never
+        forced: a missing device pinned that way would silently record from another (#3479)."""
+        client.set(OVERRIDE, self.override)
+        if not self.override and self.selected:
+            client.set(SELECTED, self.selected, force=True)
 
-    Delegates to `wispr_eyes.select_input_choice` (`settings_nav.select_input`): it walks the
-    control's OWN menu (a whole-app menu-item scan returns every menu on the system), accepts
-    a transport-decorated item ("Studio Mic · USB") by its device name, refuses two matches,
-    and cancels a stale menu through AX.
-
-    **No Escape key.** The #1946 original pressed Escape through System Events to clear a stale
-    menu, and a key goes to whatever app is FRONT: TextEdit answered it with the alert beep the
-    founder heard through every run (measured 2026-09-23 with `BeepMeter`: -20.8 dB for that one
-    key press, -91 dB without it). A stale menu is cancelled on the picker itself instead, and only
-    when one is open.
-    """
-    w.select_input_choice(auto=False, name=name)
+    def restored_by(self, now, connected):
+        """Whether `now` is this choice put back. For ("", Y) the reconciler may already have
+        pinned Y if it came back meanwhile; (Y, Y) then counts, and says so."""
+        if now == self:
+            return True, "exact"
+        if not self.override and self.selected in connected and now == AppMic(self.selected,
+                                                                                self.selected):
+            return True, f"{self.selected!r} came back and the app pinned it again"
+        return False, "differs"
 
 
-def select_input_choice(choice):
-    """Put back a captured `settings_nav.InputChoice`: Auto as Auto, a device by its name, and
-    prove the stored UID is the captured one."""
-    w.restore_input_choice(choice)
+def refuse_stale_journal(path):
+    """Refuse a setup while a previous run's restore file exists: overwriting it would replace
+    the founder's real devices or settings with this run's BlackHole values (#3990)."""
+    if os.path.exists(path):
+        raise RuntimeError(f"{path} is left from an earlier run that was not put back; run "
+                           "`python3 Tests/RuntimeUAT/silent_audio.py restore` first")
 
 
 def _current(kind):
@@ -86,15 +149,19 @@ def take_was_virtual(log_offset):
 class AudioRoute:
     """Make the drill inaudible, and put everything back even when interrupted."""
 
-    def __init__(self):
+    def __init__(self, client=None):
+        """`client`: a `dev_control.DoorClient` for the app under test; default the one
+        `wispr_eyes.connect()` drives. Refuses, before anything moves, when this caller may
+        not change the shared dev app or the app's microphone could not be put back."""
         if not os.path.exists(SWITCH):
             raise RuntimeError(f"{SWITCH} is missing; cannot route audio silently")
+        refuse_stale_journal(RESTORE_FILE)
+        self.client = client if client is not None else w.door()
+        self.client.check_owner()
         self.original_output = _current("output")
         self.original_input = _current("input")
-        # #3385: the STORED choice (its UID, "" for Auto) with the name the control shows for
-        # it, never the display text alone. Unreadable or ambiguous refuses here, before any
-        # device is switched.
-        self.original_app_device = w.read_input_choice()
+        self.original_app_device = AppMic.read(self.client)
+        self.original_app_device.check_restorable(connected_input_uids())
         self.applied = False
 
     def install_restore_handlers(self):
@@ -110,46 +177,120 @@ class AudioRoute:
         self.applied = True
         for kind in ("output", "input"):
             subprocess.run([SWITCH, "-s", SILENT_DEVICE, "-t", kind], capture_output=True)
-        select_input_device(SILENT_DEVICE)
+        # The app's own owner (`chooseInputDevice`) through the door, inside the running app:
+        # a virtual mic counts only when PINNED, never on Auto. take_gate still proves each
+        # take captured from it (`transport=virtual`).
+        self.client.set(OVERRIDE, BLACKHOLE_UID)
         print(f"SILENT    output={_current('output')!r} input={_current('input')!r} "
-              f"app_device={w.read_input_choice()!r}", flush=True)
+              f"app_device={AppMic.read(self.client)!r}", flush=True)
 
     def restore(self):
         """True when all three devices are verified back. Safe after a PARTIAL `apply`."""
         if not self.applied:
             return True
         self.applied = False
-        return _restore(self.original_output, self.original_input, self.original_app_device)
+        return _restore(self.original_output, self.original_input, self.original_app_device,
+                        self.client)
 
 
-def _restore(output, input_, app_device):
-    """`app_device` is the captured `settings_nav.InputChoice`, or None when a restore file
-    holds no usable one (an older run kept only the display text, which cannot say which
-    device a named choice was): then the app device is reported unrestored for a human."""
+def _restore(output, input_, app_device, client):
+    """Put back the system output and input, then the app's microphone. Each is attempted
+    whatever happened to the others, and all are verified. `app_device` is None when a restore
+    file holds no usable choice; `client` is None when the app could not be reached: either
+    way the app's microphone is reported unrestored and the file is kept."""
     subprocess.run([SWITCH, "-s", output, "-t", "output"], capture_output=True)
     subprocess.run([SWITCH, "-s", input_, "-t", "input"], capture_output=True)
+    app_ok, how, app_now = False, "not attempted", None
     if app_device is None:
-        print("RESTORE WARNING: no captured app device choice; choose it again by hand in "
+        print("RESTORE WARNING: no captured app microphone; choose it again by hand in "
               "Dictation Settings > Microphone", flush=True)
+    elif client is None:
+        print("RESTORE WARNING: the app could not be reached; its microphone was not put "
+              f"back to {app_device!r}", flush=True)
     else:
         try:
-            select_input_choice(app_device)
-        except Exception as exc:  # the system devices are put back even if the picker is not
-            print(f"RESTORE WARNING: app device not restored: {exc!r}", flush=True)
-    try:
-        app_now = w.read_input_choice()
-    except Exception as exc:
-        app_now = None
-        print(f"RESTORE WARNING: app device unreadable: {exc!r}", flush=True)
-    # All THREE are verified: a failed picker restore would otherwise leave the founder's app
-    # listening to BlackHole behind a "verified" line. The app device is verified by its stored
-    # UID ("" for Auto; the device Auto resolves to follows the system input just restored).
-    app_ok = app_now is not None and app_device is not None and app_now.same_choice(app_device)
+            client.follow_relaunch()  # a driver may have restarted the same build on purpose
+            app_device.restore(client)
+        except Exception as exc:  # the system devices are put back even if the app is not
+            print(f"RESTORE WARNING: app microphone not restored: {exc!r}", flush=True)
+        try:
+            app_now = AppMic.read(client)
+            app_ok, how = app_device.restored_by(app_now, connected_input_uids())
+        except Exception as exc:
+            print(f"RESTORE WARNING: app microphone unreadable: {exc!r}", flush=True)
+    # All THREE are verified: a failed app restore would otherwise leave the founder's app
+    # listening to BlackHole behind a "verified" line.
     ok = _current("output") == output and _current("input") == input_ and app_ok
     print(f"RESTORED  output={_current('output')!r} input={_current('input')!r} "
-          f"app_device={app_now!r} verified={ok}", flush=True)
+          f"app_device={app_now!r} ({how}) verified={ok}", flush=True)
     if ok and os.path.exists(RESTORE_FILE):
         os.remove(RESTORE_FILE)
+    return ok
+
+
+class AppSounds:
+    """Quiet the app for a rig's takes, through the door, and put it back (#3990).
+
+    On BlackHole the start and stop sounds land on the loopback the take records, and
+    "Turn down other audio" lowers the clip the rig plays through it; the harness's own
+    input-warning chime lands there too (uat-testing.md, #3834 gotchas row). The originals
+    are journaled before the first change, so `python3 silent_audio.py restore` can undo a
+    killed run."""
+
+    QUIET = {"playRecordingSounds": False, "otherAudioWhileDictating": "nothing"}
+    FILE = os.path.expanduser("~/.ew-uat-app-sounds-restore.json")
+
+    def __init__(self, client):
+        self.client = client
+        self.original = None
+        self.input_warn = None
+
+    def apply(self):
+        refuse_stale_journal(self.FILE)
+        original = self.client.values(*self.QUIET)
+        with open(self.FILE, "w") as fh:
+            json.dump(original, fh)
+        self.original, self.input_warn = original, w._INPUT_WARN
+        w._INPUT_WARN = False
+        for key, value in self.QUIET.items():
+            self.client.set(key, value)
+        now = self.client.values(*self.QUIET)
+        if now != self.QUIET:
+            raise RuntimeError(f"the app's sounds read {now}, not {self.QUIET}")
+        print(f"QUIET     app sounds {original} -> {now}", flush=True)
+
+    def restore(self):
+        """True when the originals are verified back, or nothing was changed."""
+        if self.original is None:
+            return True
+        if self.input_warn is not None:
+            w._INPUT_WARN = self.input_warn
+        original, self.original = self.original, None
+        return _restore_sounds(original, self.client)
+
+
+def _restore_sounds(original, client):
+    ok = True
+    try:
+        client.follow_relaunch()  # a driver may have restarted the same build on purpose
+    except Exception as exc:
+        print(f"RESTORE WARNING: app sounds not restored: {exc!r}", flush=True)
+        return False
+    for key, value in original.items():
+        try:
+            client.set(key, value)
+        except Exception as exc:  # each setting is attempted whatever happened to the other
+            print(f"RESTORE WARNING: {key} not restored: {exc!r}", flush=True)
+            ok = False
+    try:
+        now = client.values(*original)
+    except Exception as exc:
+        now = None
+        print(f"RESTORE WARNING: app sounds unreadable: {exc!r}", flush=True)
+    ok = ok and now == original
+    print(f"SOUNDS    {now} verified={ok}", flush=True)
+    if ok and os.path.exists(AppSounds.FILE):
+        os.remove(AppSounds.FILE)
     return ok
 
 
@@ -162,11 +303,14 @@ class AlertSink:
 
     def __init__(self):
         self.original = {kind: _current(kind) for kind in ("output", "system")}
+        self.applied = False
 
     FILE = os.path.expanduser("~/.ew-uat-alert-restore.json")
 
     def apply(self):
+        refuse_stale_journal(self.FILE)
         # On disk first, so a SIGKILLed run can be undone: `python3 silent_audio.py restore`.
+        self.applied = True
         with open(self.FILE, "w") as fh:
             json.dump(self.original, fh)
         for kind in self.original:
@@ -175,6 +319,11 @@ class AlertSink:
         return all(_current(kind) == SILENT_DEVICE for kind in self.original)
 
     def restore(self):
+        """True when restored and verified, or never applied (an unapplied sink must not
+        replay its readings over a journal it refused to overwrite)."""
+        if not self.applied:
+            return True
+        self.applied = False
         return _restore_alert(self.original)
 
 
@@ -225,18 +374,164 @@ class BeepMeter:
         return None
 
 
-if __name__ == "__main__" and sys.argv[1:] == ["restore"]:
+def _app_client():
+    """The door of the running dev app for recovery, or None (reported) when it cannot be
+    reached: the system devices are put back either way."""
+    try:
+        return w.door()
+    except BaseException as exc:  # wispr_eyes.connect() exits when the app is not running
+        print(f"RESTORE WARNING: the dev app's control door is unreachable: {exc!r}", flush=True)
+        return None
+
+
+def recover():
+    """Replay every journal a killed run left. Ownership first, before any device or journal
+    changes; each journal is replayed whatever happened to the others and is removed only once
+    its own part verified."""
+    import dev_control
+    dev_control.check_owner()
     ok = True
+    client = None
+    if os.path.exists(RESTORE_FILE) or os.path.exists(AppSounds.FILE):
+        client = _app_client()
     if os.path.exists(RESTORE_FILE):
         with open(RESTORE_FILE) as fh:
             saved = json.load(fh)
-        try:
-            app = w._sn.InputChoice.from_json(saved["app_device"])
-        except w._sn.PreferenceError as exc:
-            print(f"RESTORE WARNING: {exc}", flush=True)
-            app = None
-        ok = _restore(saved["output"], saved["input"], app) and ok
+        app = AppMic.from_json(saved.get("app_device"))
+        ok = _restore(saved["output"], saved["input"], app, client) and ok
+    if os.path.exists(AppSounds.FILE):
+        with open(AppSounds.FILE) as fh:
+            sounds = json.load(fh)
+        if client is None:
+            print(f"RESTORE WARNING: app sounds not put back to {sounds}", flush=True)
+            ok = False
+        else:
+            ok = _restore_sounds(sounds, client) and ok
     if os.path.exists(AlertSink.FILE):
         with open(AlertSink.FILE) as fh:
             ok = _restore_alert(json.load(fh)) and ok
-    sys.exit(0 if ok else 1)
+    return ok
+
+
+def _self_test():
+    """Offline (#3990): the app's microphone and sounds against a fake door that applies the
+    owner's rule (`chooseInputDevice` writes both keys; a non-forced device must be connected).
+    No real device, journal or app is touched."""
+    import tempfile
+    ok = True
+
+    def expect(name, cond):
+        nonlocal ok
+        ok &= bool(cond)
+        print(f"  {'PASS' if cond else 'FAIL'}  {name}")
+
+    class FakeClient:
+        def __init__(self, store, connected, refuse=()):
+            self.store, self.connected, self.refuse, self.writes = dict(store), connected, refuse, []
+
+        def values(self, *keys):
+            return {k: self.store[k] for k in keys}
+
+        def follow_relaunch(self):
+            return False
+
+        def set(self, key, value, force=False):
+            self.writes.append((key, value, force))
+            if key in self.refuse:
+                raise RuntimeError(f"refused {key}")
+            if key in (OVERRIDE, SELECTED) and not force:
+                if value and value not in self.connected:
+                    raise RuntimeError("that input device is not connected")
+                self.store[OVERRIDE] = self.store[SELECTED] = value
+            else:
+                self.store[key] = value
+
+    def mic_store(override, selected):
+        return {OVERRIDE: override, SELECTED: selected}
+
+    print("silent_audio --self-test")
+    connected = ["BuiltInMicrophoneDevice", BLACKHOLE_UID]
+    for label, override, selected, refused in (
+            ("a pinned connected device", "BuiltInMicrophoneDevice", "BuiltInMicrophoneDevice", False),
+            ("Auto", "", "", False),
+            ("Auto with a remembered device that is away", "", "AirPodsUID", False),
+            ("a pinned device that is not connected", "AirPodsUID", "AirPodsUID", True),
+            ("a pair the app never keeps", "BuiltInMicrophoneDevice", "AirPodsUID", True)):
+        try:
+            AppMic(override, selected).check_restorable(connected)
+            got = False
+        except RuntimeError:
+            got = True
+        expect(f"capture of {label} is {'refused' if refused else 'accepted'} before anything moves",
+               got == refused)
+
+    for label, captured in (("a pinned device", AppMic("BuiltInMicrophoneDevice", "BuiltInMicrophoneDevice")),
+                            ("Auto", AppMic("", "")),
+                            ("Auto with a remembered device that is away", AppMic("", "AirPodsUID"))):
+        client = FakeClient(mic_store(BLACKHOLE_UID, BLACKHOLE_UID), connected)
+        captured.restore(client)
+        now = AppMic.read(client)
+        verified, _ = captured.restored_by(now, connected)
+        expect(f"{label} is put back exactly and verified", now == captured and verified)
+        expect(f"{label}: the override is never forced",
+               all(not force for key, _, force in client.writes if key == OVERRIDE))
+
+    away = AppMic("", "AirPodsUID")
+    expect("a remembered device that came back and was pinned again counts as restored",
+           away.restored_by(AppMic("AirPodsUID", "AirPodsUID"), connected + ["AirPodsUID"])[0])
+    expect("a microphone left on BlackHole never counts as restored",
+           not away.restored_by(AppMic(BLACKHOLE_UID, BLACKHOLE_UID), connected)[0])
+    expect("a pre-#3990 journal entry restores the picker's both-keys choice",
+           AppMic.from_json({"uid": "BuiltInMicrophoneDevice", "shown": "MacBook Pro Microphone"})
+           == AppMic("BuiltInMicrophoneDevice", "BuiltInMicrophoneDevice")
+           and AppMic.from_json({"uid": "", "shown": None}) == AppMic("", "")
+           and AppMic.from_json({"shown": "x"}) is None)
+
+    folder = tempfile.mkdtemp(prefix="ew-silent-audio-selftest-")
+    saved_file, saved_warn = AppSounds.FILE, w._INPUT_WARN
+    try:
+        AppSounds.FILE = os.path.join(folder, "sounds.json")
+        original = {"playRecordingSounds": True, "otherAudioWhileDictating": "turnDown"}
+        client = FakeClient(original, connected)
+        sounds = AppSounds(client)
+        w._INPUT_WARN = True
+        sounds.apply()
+        expect("app sounds are journaled, then quieted, with the harness chime off",
+               json.load(open(AppSounds.FILE)) == original and client.values(*AppSounds.QUIET)
+               == AppSounds.QUIET and w._INPUT_WARN is False)
+        try:
+            AppSounds(client).apply()
+            expect("a second setup over an unrestored journal is refused", False)
+        except RuntimeError:
+            expect("a second setup over an unrestored journal is refused",
+                   json.load(open(AppSounds.FILE)) == original)
+        expect("app sounds and the chime come back and the journal is removed",
+               sounds.restore() and client.values(*original) == original and w._INPUT_WARN is True
+               and not os.path.exists(AppSounds.FILE))
+
+        client = FakeClient(original, connected, refuse=("otherAudioWhileDictating",))
+        sounds = AppSounds(client)
+        try:
+            sounds.apply()
+        except RuntimeError:
+            pass
+        partial = client.values(*original)
+        restored = sounds.restore()
+        expect("a half-applied quiet is put back as far as it went, and the journal is kept",
+               partial["playRecordingSounds"] is False and not restored
+               and client.store["playRecordingSounds"] is True and os.path.exists(AppSounds.FILE))
+        os.remove(AppSounds.FILE)
+        expect("an unapplied AppSounds restores nothing", AppSounds(client).restore())
+    finally:
+        AppSounds.FILE, w._INPUT_WARN = saved_file, saved_warn
+        for name in os.listdir(folder):
+            os.remove(os.path.join(folder, name))
+        os.rmdir(folder)
+    print("PASS" if ok else "FAIL")
+    return ok
+
+
+if __name__ == "__main__" and sys.argv[1:] == ["restore"]:
+    sys.exit(0 if recover() else 1)
+if __name__ == "__main__" and sys.argv[1:] == ["--self-test"]:
+    sys.exit(0 if _self_test() else 1)
