@@ -393,8 +393,8 @@ public enum SelectionReader {
   ///
   /// **A live probe, and it exists because a sampled answer to this question goes stale in the one
   /// window that matters.** The acquisition ladder waits for the user's own shortcut modifiers to
-  /// come up, capped at a quarter of a second, and a quarter of a second is long enough to click
-  /// into a password field. A guard whose answer was correct when it was taken and is stale when it
+  /// come up, capped at 1.5 seconds (#2481), and that is long enough to click into a password
+  /// field. A guard whose answer was correct when it was taken and is stale when it
   /// matters is not a guard, and this one's failure mode is a secret on the clipboard.
   ///
   /// **Takes the pid rather than re-sampling the frontmost application**, so it asks about the SAME

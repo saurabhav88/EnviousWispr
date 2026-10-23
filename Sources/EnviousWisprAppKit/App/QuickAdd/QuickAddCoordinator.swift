@@ -27,7 +27,10 @@ enum QuickAddEvent: Equatable, Sendable {
     /// show a slow one.
     acquisitionMs: Int?,
     /// What became of the user's clipboard. A declined restore is the one outcome they would feel.
-    clipboardRestore: SelectionAcquisition.ClipboardRestore)
+    clipboardRestore: SelectionAcquisition.ClipboardRestore,
+    /// How long the shortcut keys took to come up in the fallback's wait (#2481), nil when no wait
+    /// cleared. The number the next change to that cap will be tuned on.
+    modifierReleaseMs: Int?)
 
   /// The panel closed, one way or another.
   case resolved(
@@ -222,7 +225,8 @@ final class QuickAddCoordinator {
         topScore: model.ranking.topScore,
         acquired: outcome.acquired,
         acquisitionMs: outcome.acquisitionMs,
-        clipboardRestore: outcome.clipboardRestore)
+        clipboardRestore: outcome.clipboardRestore,
+        modifierReleaseMs: outcome.modifierReleaseMs)
 
     self.startedAt = startedAt
     return model

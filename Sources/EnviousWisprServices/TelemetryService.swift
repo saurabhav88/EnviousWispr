@@ -1066,7 +1066,8 @@ public final class TelemetryService {
   public func quickAddOpened(
     door: String, hadSelection: Bool, refuseReason: String?, candidateCount: Int,
     preselected: Bool, topScore: Double?, sourceBundleID: String?, heardLength: Int,
-    acquired: String, acquisitionMilliseconds: Int?, clipboardRestore: String
+    acquired: String, acquisitionMilliseconds: Int?, clipboardRestore: String,
+    modifierReleaseMilliseconds: Int?
   ) {
     var props: [String: Any] = [
       "door": door, "had_selection": hadSelection, "candidate_count": candidateCount,
@@ -1079,6 +1080,9 @@ public final class TelemetryService {
     // Absent rather than zero when no fallback ran: a zero would be a real measurement of something
     // that did not happen, and it would drag every average toward it.
     if let acquisitionMilliseconds { props["acquisition_ms"] = acquisitionMilliseconds }
+    // #2481: how long the shortcut keys took to come up in the copy fallback's wait. Absent, not
+    // zero, when no wait cleared; zero is a real reading (the keys were already up).
+    if let modifierReleaseMilliseconds { props["modifier_release_ms"] = modifierReleaseMilliseconds }
     if let topScore { props["top_score"] = (topScore * 100).rounded() / 100 }
     #if DEBUG
       // DERIVED from `props`, never re-listed — the #1987 lesson. A projection built independently

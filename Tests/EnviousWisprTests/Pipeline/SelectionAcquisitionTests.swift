@@ -351,4 +351,82 @@ struct SelectionAcquisitionTests {
       calls.count == 1,
       "a second restore site is a second chance to skip one; every exit goes through `concluding`")
   }
+
+  // MARK: The shortcut-key wait (#2481)
+
+  /// Keys held until `releaseAt` on a manual clock; each fake sleep advances it by what was asked.
+  @MainActor private final class KeyRig {
+    let origin = ContinuousClock.now
+    var elapsed: Duration = .zero
+    var releaseAt: Duration?
+    var cancelOnFirstSleep = false
+
+    var environment: SelectionAcquisition.Environment {
+      SelectionAcquisition.Environment(
+        now: { self.origin + self.elapsed },
+        // settle: not a wait; the fake advances the manual clock and returns at once
+        sleep: { requested in
+          self.elapsed += requested
+          if self.cancelOnFirstSleep { withUnsafeCurrentTask { $0?.cancel() } }
+        },
+        modifiersHeld: { self.releaseAt.map { self.elapsed < $0 } ?? true })
+    }
+  }
+
+  private func releaseMs(_ rig: KeyRig) async -> Int? {
+    SelectionAcquisition.modifierReleaseMilliseconds(
+      await SelectionAcquisition.awaitModifierRelease(rig.environment))
+  }
+
+  /// The founder's own press (2026-08-27) and the production cluster (289 to 318 ms) sat just past
+  /// the old 250 ms cap; this release must now continue, carrying its time.
+  @Test("Keys that come up at 400 ms continue with 400 ms, where the old 250 ms cap refused")
+  func aDeliberatePressAt400msContinues() async {
+    let rig = KeyRig()
+    rig.releaseAt = .milliseconds(400)
+    #expect(await releaseMs(rig) == 400)
+  }
+
+  @Test("Keys already up continue at once with zero, which is a reading and not an absence")
+  func keysAlreadyUpReadZero() async {
+    let rig = KeyRig()
+    rig.releaseAt = .zero
+    #expect(await releaseMs(rig) == 0)
+  }
+
+  @Test("Keys still held through the 1.5 s cap refuse as held")
+  func keysHeldPastTheCapRefuse() async {
+    let rig = KeyRig()
+    #expect(await releaseMs(rig) == nil)
+    #expect(rig.elapsed == SelectionAcquisition.modifierReleaseCap + .milliseconds(4))
+  }
+
+  /// The 8 ms poll lands on 1496 and then 1504: a release seen at the last poll before the cap
+  /// counts, one first seen at or after the cap expires (`DeadlinePoll`'s order).
+  @Test("At the cap boundary, the last poll before it counts and a release at the cap expires")
+  func capBoundary() async {
+    let justBefore = KeyRig()
+    justBefore.releaseAt = .milliseconds(1496)
+    #expect(await releaseMs(justBefore) == 1496)
+    let atCap = KeyRig()
+    atCap.releaseAt = .milliseconds(1500)
+    #expect(await releaseMs(atCap) == nil)
+  }
+
+  @Test("A wait cancelled mid-sleep refuses as held and never continues")
+  func aCancelledWaitRefuses() async {
+    let rig = KeyRig()
+    rig.releaseAt = .milliseconds(8)
+    rig.cancelOnFirstSleep = true
+    let task = Task { @MainActor in await self.releaseMs(rig) }
+    #expect(await task.value == nil)
+  }
+
+  @Test("The mapping: met carries whole milliseconds; expired and cancelled refuse")
+  func waitMapping() {
+    #expect(SelectionAcquisition.modifierReleaseMilliseconds(.met(elapsed: .milliseconds(37))) == 37)
+    #expect(SelectionAcquisition.modifierReleaseMilliseconds(.expired) == nil)
+    #expect(SelectionAcquisition.modifierReleaseMilliseconds(.cancelled) == nil)
+  }
+
 }

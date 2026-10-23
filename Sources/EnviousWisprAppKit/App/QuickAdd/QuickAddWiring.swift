@@ -128,7 +128,7 @@ final class QuickAddWiring {
       guard let self else { return }
       defer { self.isAcquiring = false }
       let outcome = await SelectionAcquisition.acquire(
-        fallbackEnabled: self.settings.quickAddClipboardFallback)
+        fallbackEnabled: self.settings.quickAddClipboardFallback, environment: .live)
       // Re-asked after the await: the user may have opened the panel another way while we waited.
       guard self.notAlreadyOpen() else { return }
       self.present(self.coordinator.begin(door: .hotkey, selection: outcome))
@@ -171,7 +171,7 @@ final class QuickAddWiring {
       defer { self.isAcquiring = false }
       let outcome = await SelectionAcquisition.acquire(
         following: selection, context: context,
-        fallbackEnabled: self.settings.quickAddClipboardFallback)
+        fallbackEnabled: self.settings.quickAddClipboardFallback, environment: .live)
       guard self.notAlreadyOpen() else { return }
       self.present(self.coordinator.begin(door: .menuBar, selection: outcome))
     }

@@ -35,7 +35,8 @@ enum QuickAddTelemetryBridge {
       switch event {
       case .opened(
         let door, let refusal, let bundleID, let heardScalarCount, let candidateCount,
-        let preselected, let topScore, let acquired, let acquisitionMs, let clipboardRestore):
+        let preselected, let topScore, let acquired, let acquisitionMs, let clipboardRestore,
+        let modifierReleaseMs):
         TelemetryService.shared.quickAddOpened(
           door: door.rawValue,
           hadSelection: refusal == nil,
@@ -47,7 +48,8 @@ enum QuickAddTelemetryBridge {
           heardLength: heardScalarCount,
           acquired: acquired.rawValue,
           acquisitionMilliseconds: acquisitionMs,
-          clipboardRestore: clipboardRestore.rawValue)
+          clipboardRestore: clipboardRestore.rawValue,
+          modifierReleaseMilliseconds: modifierReleaseMs)
         // §3e: "Breadcrumbs on open and resolve so a crash inside the panel arrives with the door,
         // the candidate count, and the outcome attached." Only `failed` was leaving a breadcrumb, so
         // a crash while the panel was up arrived with no trail of how it got there.
@@ -73,6 +75,7 @@ enum QuickAddTelemetryBridge {
             + "selection=\(refusal == nil ? "yes" : "no") reason=\(refusal?.rawValue ?? "none") "
             + "acquired=\(acquired.rawValue) "
             + "acq_ms=\(acquisitionMs.map(String.init) ?? "none") "
+            + "release_ms=\(modifierReleaseMs.map(String.init) ?? "none") "
             + "clipboard=\(clipboardRestore.rawValue) "
             + "len=\(heardScalarCount) candidates=\(candidateCount) "
             + "top=\(topScore.map { String(format: "%.2f", $0) } ?? "none") "

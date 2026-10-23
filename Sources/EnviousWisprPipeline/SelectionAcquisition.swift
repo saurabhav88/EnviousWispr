@@ -153,20 +153,69 @@ public enum SelectionAcquisition {
     /// Wall-clock cost of the whole ladder, nil when no fallback was attempted.
     public let acquisitionMs: Int?
     public let clipboardRestore: ClipboardRestore
+    /// How long the user's shortcut keys took to come up after the fallback started waiting for
+    /// them (#2481), in whole milliseconds. Nil when no wait cleared: the fallback never reached
+    /// the wait, or the keys were still held at the cap. Not the whole key hold: the wait starts a
+    /// few milliseconds after the press.
+    public let modifierReleaseMs: Int?
 
+    /// `modifierReleaseMs` defaults to nil only for constructors outside the ladder (tests, the
+    /// panel's own doors); every `Outcome` the ladder builds passes it explicitly.
     public init(
       result: SelectionReader.Result,
       context: SelectionReader.AcquisitionContext,
       acquired: Acquired,
       acquisitionMs: Int?,
-      clipboardRestore: ClipboardRestore
+      clipboardRestore: ClipboardRestore,
+      modifierReleaseMs: Int? = nil
     ) {
       self.result = result
       self.context = context
       self.acquired = acquired
       self.acquisitionMs = acquisitionMs
       self.clipboardRestore = clipboardRestore
+      self.modifierReleaseMs = modifierReleaseMs
     }
+  }
+
+  /// The live readings the ladder waits on, injected so tests drive time and keys by hand (#3986).
+  ///
+  /// Readings and time only, never a decision: every guard still runs on what these return.
+  public struct Environment: Sendable {
+    /// A monotonic reading. Waits end when THIS says the deadline passed, not after a count of
+    /// sleeps: a loaded main actor makes each sleep longer than asked.
+    public var now: @MainActor @Sendable () -> ContinuousClock.Instant
+    /// A cancellation-aware sleep. A cancelled sleep returns early; the poll then sees
+    /// `Task.isCancelled` and abandons.
+    public var sleep: @MainActor @Sendable (Duration) async -> Void
+    /// Whether any of Command, Shift, Option or Control is down, read from the HID state.
+    public var modifiersHeld: @MainActor @Sendable () -> Bool
+
+    public init(
+      now: @escaping @MainActor @Sendable () -> ContinuousClock.Instant,
+      sleep: @escaping @MainActor @Sendable (Duration) async -> Void,
+      modifiersHeld: @escaping @MainActor @Sendable () -> Bool
+    ) {
+      self.now = now
+      self.sleep = sleep
+      self.modifiersHeld = modifiersHeld
+    }
+
+    /// The production readings.
+    ///
+    /// **`.hidSystemState`, not `.combinedSessionState`:** the chord this ladder posts sets and
+    /// clears flags in the HID state (`SyntheticCopyChord.post`), and reading one state while the
+    /// other is written is how a clear looks like it never happened.
+    public static let live = Environment(
+      now: { ContinuousClock.now },
+      sleep: { duration in
+        // `do/catch`, never `try?`, for `pause`'s reason; the poll checks cancellation after it.
+        do { try await Task.sleep(for: duration) } catch {}
+      },
+      modifiersHeld: {
+        !CGEventSource.flagsState(.hidSystemState).isDisjoint(
+          with: [.maskCommand, .maskShift, .maskAlternate, .maskControl])
+      })
   }
 
   // MARK: - Budgets
@@ -187,7 +236,14 @@ public enum SelectionAcquisition {
   /// **Not a theoretical state.** Quick Add fires on key DOWN, so at the moment this runs the user's
   /// chord is still physically held, and a Copy posted underneath it reaches the app as their chord
   /// plus C rather than as Command plus C.
-  static let modifierReleaseCapMs = 250
+  ///
+  /// **1.5 s, argued rather than measured (#2481, CTO decision 2026-10-04).** Two populations: a
+  /// deliberate three-key press lifts in a few hundred milliseconds, a stuck key stays down for
+  /// seconds or more. The old 250 ms cap split the first group: the founder hit it in ordinary use
+  /// (2026-08-27), and production refusals clustered at 289 to 318 ms. The wait ends the moment the
+  /// keys come up, so a longer cap costs a normal press nothing. Reopen it from the
+  /// `modifier_release_ms` distribution on `quick_add.opened` and the `modifiers_held` share.
+  static let modifierReleaseCap: Duration = .milliseconds(1500)
   static let modifierPollIntervalMs = 8
 
   /// How long to give the app to answer the Copy.
@@ -221,6 +277,7 @@ public enum SelectionAcquisition {
   /// thing this whole type is built to prevent.
   public static func acquire(
     fallbackEnabled: Bool,
+    environment: Environment,
     timeout: Float? = nil,
     board: NSPasteboard = .general
   ) async -> Outcome {
@@ -230,7 +287,8 @@ public enum SelectionAcquisition {
     let (result, context) = SelectionReader.readForAcquisition(
       timeout: timeout, sampleSubrole: fallbackEnabled)
     return await acquire(
-      following: result, context: context, fallbackEnabled: fallbackEnabled, board: board)
+      following: result, context: context, fallbackEnabled: fallbackEnabled,
+      environment: environment, board: board)
   }
 
   /// The menu-bar door's CLICK path: a read already happened, against a context it remembered.
@@ -249,6 +307,7 @@ public enum SelectionAcquisition {
     following result: SelectionReader.Result,
     context: SelectionReader.AcquisitionContext,
     fallbackEnabled: Bool,
+    environment: Environment,
     board: NSPasteboard = .general
   ) async -> Outcome {
     guard SelectionReader.isFallbackEligible(result) else {
@@ -259,10 +318,12 @@ public enum SelectionAcquisition {
         context: context,
         acquired: { if case .text = result { return .accessibility } else { return .nothing } }(),
         acquisitionMs: nil,
-        clipboardRestore: .notTouched)
+        clipboardRestore: .notTouched,
+        // Neither step ran: the fallback was never attempted.
+        modifierReleaseMs: nil)
     }
     return await attemptCopyFallback(
-      context: context, fallbackEnabled: fallbackEnabled, board: board)
+      context: context, fallbackEnabled: fallbackEnabled, environment: environment, board: board)
   }
 
   // MARK: - The ladder
@@ -270,16 +331,21 @@ public enum SelectionAcquisition {
   private static func attemptCopyFallback(
     context: SelectionReader.AcquisitionContext,
     fallbackEnabled: Bool,
+    environment: Environment,
     board: NSPasteboard
   ) async -> Outcome {
     let started = ContinuousClock.now
     func elapsedMs() -> Int {
       Int(started.duration(to: .now) / .milliseconds(1))
     }
+    // Set once the shortcut-key wait clears (#2481); nil before it and when it did not. Captured by
+    // reference by every exit below, so a later refusal still reports how long the keys took.
+    var modifierReleaseMs: Int? = nil
     func refusing(_ why: SelectionReader.Refusal) -> Outcome {
       Outcome(
         result: .refused(why), context: context, acquired: .nothing,
-        acquisitionMs: elapsedMs(), clipboardRestore: .notTouched)
+        acquisitionMs: elapsedMs(), clipboardRestore: .notTouched,
+        modifierReleaseMs: modifierReleaseMs)
     }
 
     // STEP 1 — the policy questions, all of them, in a declared order. Nothing has been touched.
@@ -318,14 +384,18 @@ public enum SelectionAcquisition {
     }
 
     // STEP 2 — wait for the user's own chord to come up. Still nothing touched.
-    guard await modifiersCleared() else {
+    let release = await awaitModifierRelease(environment)
+    guard let releasedAfter = modifierReleaseMilliseconds(release) else {
       await log(
         context: context, acquired: .nothing, refusal: .modifiersHeld, ms: elapsedMs(),
         restore: .notTouched)
       return refusing(.modifiersHeld)
     }
+    modifierReleaseMs = releasedAfter
+    await AppLogger.shared.log(
+      "modifiers clear release_ms=\(releasedAfter)", level: .info, category: "QuickAdd")
 
-    // STEP 2b — RE-ASK the policy questions, because step 2 can have taken a quarter of a second.
+    // STEP 2b — RE-ASK the policy questions, because step 2 can have taken up to 1.5 seconds.
     //
     // **The LIFETIME axis, and it is the one a first reading of this ladder does not see.** Step 1's
     // answers were correct when they were taken and are used much later: secure input is a mode the
@@ -403,7 +473,8 @@ public enum SelectionAcquisition {
           restore: .supersededByDelivery)
         return Outcome(
           result: .refused(.copyRefused), context: context, acquired: .nothing,
-          acquisitionMs: elapsedMs(), clipboardRestore: .supersededByDelivery)
+          acquisitionMs: elapsedMs(), clipboardRestore: .supersededByDelivery,
+          modifierReleaseMs: modifierReleaseMs)
       }
       ClipboardCleanup.endTakeover(token)
 
@@ -424,7 +495,8 @@ public enum SelectionAcquisition {
           restore: .notTouched)
         return Outcome(
           result: result, context: context, acquired: acquired,
-          acquisitionMs: elapsedMs(), clipboardRestore: .notTouched)
+          acquisitionMs: elapsedMs(), clipboardRestore: .notTouched,
+          modifierReleaseMs: modifierReleaseMs)
       }
 
       // The user's clipboard after we copied THEIR selection, not a dictation: no marker added.
@@ -436,7 +508,8 @@ public enum SelectionAcquisition {
         context: context, acquired: acquired, refusal: refusal, ms: elapsedMs(), restore: restore)
       return Outcome(
         result: result, context: context, acquired: acquired,
-        acquisitionMs: elapsedMs(), clipboardRestore: restore)
+        acquisitionMs: elapsedMs(), clipboardRestore: restore,
+        modifierReleaseMs: modifierReleaseMs)
     }
 
     // STEP 3b — the LAST live check of every policy question, immediately before the chord.
@@ -688,20 +761,27 @@ public enum SelectionAcquisition {
     return running.bundleIdentifier == sampled
   }
 
-  /// Wait for the four modifier flags to be clear, or give up.
+  /// Wait for the four modifier flags to be clear, up to `modifierReleaseCap`, on `environment`'s
+  /// clock (#2481).
   ///
-  /// Returns false on the cap and on cancellation. A cancelled wait means ABANDON, never fall
+  /// Through `DeadlinePoll`, so the order is Paste Last Dictation's: a release first observed at
+  /// or past the cap expires rather than counts, and a cancelled wait means ABANDON, never fall
   /// through and post anyway.
-  private static func modifiersCleared() async -> Bool {
-    let interesting: CGEventFlags = [.maskCommand, .maskShift, .maskAlternate, .maskControl]
-    var waited = 0
-    while waited < modifierReleaseCapMs {
-      if CGEventSource.flagsState(.hidSystemState).isDisjoint(with: interesting) { return true }
-      guard await pause(milliseconds: modifierPollIntervalMs) else { return false }
-      waited += modifierPollIntervalMs
+  @MainActor
+  static func awaitModifierRelease(_ environment: Environment) async -> DeadlinePoll.Result {
+    await DeadlinePoll.wait(
+      within: modifierReleaseCap, every: .milliseconds(modifierPollIntervalMs),
+      now: environment.now, sleep: environment.sleep, { !environment.modifiersHeld() })
+  }
+
+  /// The wait's answer as whole milliseconds to continue with, or nil to refuse `.modifiersHeld`.
+  ///
+  /// Cancellation refuses the same way the cap does, as before: nothing is posted either way.
+  static func modifierReleaseMilliseconds(_ result: DeadlinePoll.Result) -> Int? {
+    switch result {
+    case .met(let elapsed): return Int(elapsed / .milliseconds(1))
+    case .expired, .cancelled: return nil
     }
-    // One last read, so a release landing in the final interval is not reported as a hold.
-    return CGEventSource.flagsState(.hidSystemState).isDisjoint(with: interesting)
   }
 
   /// Poll for the board to move, then for it to stop moving, and return the count we then own.

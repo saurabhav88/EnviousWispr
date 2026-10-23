@@ -123,7 +123,7 @@ struct QuickAddCoordinatorTests {
     coordinator.didOpen()
 
     guard
-      case .opened(_, _, let bundle, _, _, _, _, let acquired, let ms, let restore) =
+      case .opened(_, _, let bundle, _, _, _, _, let acquired, let ms, let restore, _) =
         try #require(recorder.opened)
     else {
       Issue.record("not an opened event")
@@ -133,6 +133,42 @@ struct QuickAddCoordinatorTests {
     #expect(acquired == .clipboardCopy)
     #expect(ms == 41)
     #expect(restore == .restored)
+  }
+
+  /// #2481: the shortcut-key wait's reading reaches the opened event, including when a LATER step
+  /// refused. A refusal after the wait is exactly the case the reading must survive: it is how a
+  /// slow release is told apart from an app that never answered the copy.
+  @Test("The modifier release time is carried to the opened event, on success and after a refusal")
+  func modifierReleaseIsCarriedToOpened() throws {
+    for (result, expected) in [
+      (SelectionReader.Result.text("codecs"), 420), (.refused(.copyRefused), 380),
+    ] {
+      let (coordinator, recorder) = makeCoordinator()
+      _ = coordinator.begin(
+        door: .hotkey,
+        selection: SelectionAcquisition.Outcome(
+          result: result,
+          context: .init(pid: 501, bundleIdentifier: "com.google.Chrome", focusedSubrole: nil),
+          acquired: { if case .text = result { return .clipboardCopy } else { return .nothing } }(),
+          acquisitionMs: 600, clipboardRestore: .notTouched, modifierReleaseMs: expected))
+      coordinator.didOpen()
+      guard case .opened(_, _, _, _, _, _, _, _, _, _, let release) = try #require(recorder.opened)
+      else {
+        Issue.record("not an opened event")
+        return
+      }
+      #expect(release == expected)
+    }
+    // And absent when no wait cleared.
+    let (coordinator, recorder) = makeCoordinator()
+    _ = coordinator.begin(door: .hotkey, selection: outcome(.refused(.modifiersHeld)))
+    coordinator.didOpen()
+    guard case .opened(_, _, _, _, _, _, _, _, _, _, let release) = try #require(recorder.opened)
+    else {
+      Issue.record("not an opened event")
+      return
+    }
+    #expect(release == nil)
   }
 
   /// Build an acquisition outcome for a test, with the fields no row here is about left neutral.
@@ -243,7 +279,7 @@ struct QuickAddCoordinatorTests {
     _ = beginAndShow(coordinator)
     let opened = try #require(recorder.opened)
 
-    guard case .opened(let door, let refusal, let bundle, let count, _, _, _, _, _, _) = opened
+    guard case .opened(let door, let refusal, let bundle, let count, _, _, _, _, _, _, _) = opened
     else {
       Issue.record("not an opened event")
       return
@@ -691,7 +727,7 @@ struct QuickAddCoordinatorTests {
     let (coordinator, recorder) = makeCoordinator()
 
     _ = beginAndShow(coordinator, door: .hotkey, selectionOverride: "codecs")
-    guard case .opened(let door, _, _, _, _, _, _, _, _, _) = try #require(recorder.opened) else {
+    guard case .opened(let door, _, _, _, _, _, _, _, _, _, _) = try #require(recorder.opened) else {
       return
     }
 
