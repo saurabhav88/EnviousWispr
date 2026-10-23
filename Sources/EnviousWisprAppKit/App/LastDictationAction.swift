@@ -205,8 +205,9 @@ final class LastDictationAction {
 
     // The user's fingers may still be on the chord's modifiers when its key comes up. Wait for them
     // to be OBSERVED up, not for a guessed interval.
-    switch await waitUntil(
-      within: Self.modifierReleaseDeadline, { !self.environment.modifiersHeld() })
+    switch await DeadlinePoll.wait(
+      within: Self.modifierReleaseDeadline, every: Self.pollInterval, now: environment.now,
+      sleep: environment.sleep, { !self.environment.modifiersHeld() })
     {
     case .met: break
     case .expired: return .keysHeld
@@ -226,7 +227,10 @@ final class LastDictationAction {
     // When it is not, bring it back and wait for that to be observed.
     if !isFrontmost(target) {
       _ = environment.activate(target)
-      switch await waitUntil(within: Self.activationDeadline, { self.isFrontmost(target) }) {
+      switch await DeadlinePoll.wait(
+        within: Self.activationDeadline, every: Self.pollInterval, now: environment.now,
+        sleep: environment.sleep, { self.isFrontmost(target) })
+      {
       case .met: break
       case .expired: return environment.isTerminated(target) ? .targetGone : .focusLost
       case .cancelled: return .cancelled
@@ -281,12 +285,13 @@ final class LastDictationAction {
   /// refused there exactly as before.
   private func waitForClipboard() async -> Outcome? {
     // Before the free-board return: a task cancelled before it began (a newer Copy pressed first)
-    // must not write just because the board happens to be free; `waitUntil` is not reached then.
+    // must not write just because the board happens to be free; `DeadlinePoll` is not reached then.
     if Task.isCancelled { return .cancelled }
     guard environment.clipboardHeld() else { return nil }
     let started = environment.now()
-    let result = await waitUntil(
-      within: ClipboardCleanup.manualWriteWaitBound, { !self.environment.clipboardHeld() })
+    let result = await DeadlinePoll.wait(
+      within: ClipboardCleanup.manualWriteWaitBound, every: Self.pollInterval,
+      now: environment.now, sleep: environment.sleep, { !self.environment.clipboardHeld() })
     environment.clipboardWaited(environment.now() - started)
     switch result {
     case .met: return nil
@@ -297,30 +302,6 @@ final class LastDictationAction {
 
   private func isFrontmost(_ application: NSRunningApplication) -> Bool {
     environment.frontmost()?.processIdentifier == application.processIdentifier
-  }
-
-  private enum WaitResult { case met, expired, cancelled }
-
-  /// Polls `condition` until it holds or `deadline` has passed on `now`.
-  ///
-  /// **Cancellation is checked BEFORE the condition, on entry and after every sleep, and after a
-  /// sleep expiry is checked before it too.** A poll that
-  /// resumes late, past the deadline, must not accept a release it only now observes: the paste
-  /// would land long after the user stopped expecting it. Likewise a cancelled task never pastes.
-  private func waitUntil(within deadline: Duration, _ condition: @MainActor () -> Bool) async
-    -> WaitResult
-  {
-    let end = environment.now() + deadline
-    // Even the first look: a task cancelled before it began must not paste on a condition that
-    // happens to hold already.
-    if Task.isCancelled { return .cancelled }
-    if condition() { return .met }
-    while true {
-      await environment.sleep(Self.pollInterval)
-      if Task.isCancelled { return .cancelled }
-      if environment.now() >= end { return .expired }
-      if condition() { return .met }
-    }
   }
 
   private func finish(_ action: Action, _ source: Source, _ outcome: Outcome) {
