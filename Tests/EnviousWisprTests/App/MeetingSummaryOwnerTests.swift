@@ -30,6 +30,23 @@ struct MeetingSummaryOwnerTests {
     var model = "gpt-4o-mini"
     var execution: MeetingSummary.Execution = .hosted
     var unavailable: MeetingSummaryProviders.Unavailable?
+    var window = MeetingSummary.Window(contextTokens: 128_000, outputReserveTokens: 1_500)
+    /// When set, preparation waits for `releasePrepare()`.
+    var holdPrepare = false
+    @ObservationIgnored private var heldPrepare: CheckedContinuation<Void, Never>?
+    private(set) var preparing = false
+
+    func prepare() async {
+      guard holdPrepare else { return }
+      preparing = true
+      await withCheckedContinuation { heldPrepare = $0 }
+      preparing = false
+    }
+
+    func releasePrepare() {
+      heldPrepare?.resume()
+      heldPrepare = nil
+    }
     var transcript = "You: we ship Friday"
     var speakerNames = ["mic:you": "You"]
     var localTurn = true
@@ -99,11 +116,11 @@ struct MeetingSummaryOwnerTests {
           isEnabled: { world.enabled },
           selection: { (world.provider, world.model) },
           prepare: { _, _ in
+            await world.prepare()
             if let unavailable = world.unavailable { return .failure(unavailable) }
             return .success(
               MeetingSummaryProviders.Prepared(
-                execution: world.execution,
-                window: MeetingSummary.Window(contextTokens: 128_000, outputReserveTokens: 1_500),
+                execution: world.execution, window: world.window,
                 complete: { @MainActor _, prompt in await world.call(prompt) }))
           },
           visibleTranscript: { _ in
@@ -499,29 +516,125 @@ struct MeetingSummaryOwnerTests {
     #expect(rig.summaryOnDisk(id) == "Newer words")
   }
 
-  @Test("a meeting renamed while the summary is saved counts as stale, and shows out of date")
+  @Test("a rename while the save is parked after its check: saved with the old names, counted stale")
   func changeDuringSave() async throws {
     let rig = try Rig()
     let id = try rig.readyMeeting()
-    rig.world.duringCall = {
-      // Holds the file queue so the save is in flight while the names change.
-      let release = MeetingDocumentsOwnerTests.holdFileQueue()
-      Task { @MainActor in
-        rig.world.speakerNames = ["mic:you": "Priya"]
-        release.signal()
-      }
-    }
+    var release: DispatchSemaphore?
+    // The file queue is held from inside the call, so the save the owner queues after its
+    // pre-save check is parked behind it.
+    rig.world.duringCall = { release = MeetingDocumentsOwnerTests.holdFileQueue() }
     _ = await Self.schedule(rig, id)
-    await Self.eventually("finished") { rig.world.finished.count == 1 }
-    let row = try #require(rig.world.finished.first)
-    // The names changed either before the save's check (nothing saved) or during the save
-    // (saved, then counted stale): never a written summary that looks current.
-    #expect(row == Self.row(.stale, .hosted))
-    if let inputs = try rig.manifest(id).summary?.inputs {
-      #expect(
-        inputs.speakerNamesSHA256 != MeetingSummaryOwner.speakerNamesSHA256(["mic:you": "Priya"]),
-        "a saved summary records the names it was written from, so it shows out of date")
+    // The call has happened (the queue is held), and the save it queued is waiting behind it.
+    // The plain wait: `eventually` also drains the file queue, which the hold blocks.
+    await MeetingWorkAdmission.waitUntil {
+      rig.world.calls.count == 1 && rig.documents.hasPendingWork
     }
+    rig.world.speakerNames = ["mic:you": "Priya"]
+    try #require(release).signal()
+    await Self.eventually("finished") { rig.world.finished.count == 1 }
+    #expect(rig.world.finished == [Self.row(.stale, .hosted)], "the post-save check saw the rename")
+    #expect(rig.summaryOnDisk(id) == "## Overview\nShip Friday.", "the save itself went through")
+    let inputs = try #require(try rig.manifest(id).summary?.inputs)
+    #expect(
+      inputs.speakerNamesSHA256 == MeetingSummaryOwner.speakerNamesSHA256(["mic:you": "You"]),
+      "it records the names it was written from, so it shows out of date")
+  }
+
+  @Test("a mark that cannot be written at ready still ends with exactly one row")
+  func markWriteFailsAtReady() async throws {
+    let harness = try MeetingCoordinatorTests.Harness()
+    let rig = try Rig()
+    let coordinator = harness.coordinator
+    coordinator.summaries = rig.makeOwner(documents: coordinator.documents)
+    await coordinator.start(from: .history)
+    let meetingID = try #require(coordinator.meetings.first?.id)
+    let url = harness.store.documentsURL(for: meetingID)
+    try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
+    await coordinator.stop()
+    await Self.eventually("ready") { coordinator.record(id: meetingID)?.state == .ready }
+    #expect(harness.ended.last?.summaryPlan == .scheduled)
+    await Self.eventually("settled") { rig.world.finished.count == 1 }
+    #expect(rig.world.finished == [Self.row(.failed, .hosted)])
+    #expect(rig.world.calls.isEmpty, "nothing is written without its mark")
+    try FileManager.default.removeItem(at: url)
+  }
+
+  @Test("a replaced attempt never ends the new one, and a deletion waits for both")
+  func replacedAttempts() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    rig.world.holdCalls = true
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("A calling") { rig.world.callsWaiting == 1 }
+    rig.owner.writeAgain(id, replacing: nil)
+    await Self.eventually("B calling") { rig.world.callsWaiting == 2 }
+    // A's call ignores cancellation and ends first; B stays the current attempt.
+    rig.world.releaseCall()
+    await Self.eventually("A settled") { rig.world.finished.count == 1 }
+    #expect(rig.world.finished == [Self.row(.cancelled, .hosted)])
+    #expect(rig.owner.isWriting(id), "B is still the meeting's attempt")
+
+    // A third attempt C replaces B while B still runs; deleting waits for both B and C.
+    rig.owner.writeAgain(id, replacing: nil)
+    await Self.eventually("C calling") { rig.world.callsWaiting == 2 }
+    rig.documents.forget(id)
+    let deletion = Task { await rig.owner.cancelAndWait(id) }
+    rig.world.releaseCall()
+    await Task.yield()
+    #expect(rig.world.finished.count < 3, "the deletion is still draining C")
+    rig.world.releaseCall()
+    await deletion.value
+    #expect(rig.world.finished.count == 3)
+    #expect(rig.summaryOnDisk(id) == nil)
+  }
+
+  @Test("a quit during preparation keeps the summary owed and silent; a deletion is a cancel")
+  func cancelledDuringPreparation() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    rig.world.holdPrepare = true
+    rig.world.unavailable = .notReady
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("preparing") { rig.world.preparing }
+    rig.owner.prepareForTermination()
+    rig.world.releasePrepare()
+    await Self.eventually("stopped") { !rig.owner.isWriting(id) }
+    #expect(rig.world.finished.isEmpty)
+    #expect(try rig.manifest(id).summaryPending == true)
+
+    let other = try Rig()
+    let doomed = try other.readyMeeting()
+    other.world.holdPrepare = true
+    other.world.unavailable = .notReady
+    _ = await Self.schedule(other, doomed)
+    await Self.eventually("preparing") { other.world.preparing }
+    other.documents.forget(doomed)
+    let deletion = Task { await other.owner.cancelAndWait(doomed) }
+    await Task.yield()
+    other.world.releasePrepare()
+    await deletion.value
+    #expect(other.world.finished == [Self.row(.cancelled, .hosted)])
+  }
+
+  @Test("a summary paused for its turn between two calls does not hold a relaunch")
+  func pausedBetweenCalls() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    rig.world.execution = .local
+    rig.world.window = MeetingSummary.Window(contextTokens: 4_096, outputReserveTokens: 1_500)
+    rig.world.transcript = Array(repeating: "Speaker 1: " + String(repeating: "word ", count: 60), count: 120)
+      .joined(separator: "\n")
+    // After the first call, dictation takes the turn.
+    rig.world.duringCall = { rig.world.localTurn = false }
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("paused") { rig.world.calls.count == 1 && rig.owner.activity[id] == .waiting }
+    #expect(rig.owner.hasWorkInFlight == false, "owed on disk; a relaunch may go ahead")
+    #expect(rig.lane.summaryCallRunning == false)
+    rig.world.duringCall = nil
+    rig.world.localTurn = true
+    await Self.eventually("finished") { rig.world.finished.count == 1 }
+    #expect(rig.world.finished == [Self.row(.written, .local)])
   }
 
   @Test("deleting a recording with notes reports has_notes")

@@ -1088,8 +1088,15 @@ final class MeetingCoordinator {
     // before the meeting is ready: a quit right after the barrier never loses it (the relaunch
     // finishes it). Written either way, so an older mark never outlives a decision not to.
     let summaryPlan = summaries?.decide() ?? .off
+    // Whether the owed mark is on disk. If it could not be written, a scheduled attempt is
+    // started as not owed: it writes the mark itself or settles at once with its own row. If an
+    // older mark could not be cleared, that earlier attempt is still owed and a relaunch
+    // settles it (one row); the new decision is still the one `meeting.ended` reports.
+    var owedOnDisk = false
     if summaries != nil {
-      await documents.setSummaryPending(meetingID, summaryPlan == .scheduled)
+      let wrote = await documents.setSummaryPending(meetingID, summaryPlan == .scheduled)
+      owedOnDisk = wrote && summaryPlan == .scheduled
+      if !wrote { deps.log("meeting summary mark write failed plan=\(summaryPlan.rawValue)") }
     }
     // Read after that wait: a deletion mark or a rename during it stays.
     guard isStillOwned(meetingID), var ready = live[meetingID] else { return }
@@ -1111,7 +1118,13 @@ final class MeetingCoordinator {
       ready, outcome: outcome, result: result,
       gapCount: result.failedPieces + Self.markerCount(missingAudio),
       processingSeconds: Date().timeIntervalSince(started), summaryPlan: summaryPlan)
-    if summaryPlan == .scheduled { summaries?.startOwed(meetingID) }
+    if summaryPlan == .scheduled {
+      if owedOnDisk {
+        summaries?.startOwed(meetingID)
+      } else {
+        summaries?.startUnowed(meetingID)
+      }
+    }
 
     do {
       try await writer.run { _ in try checkpoints.clear() }

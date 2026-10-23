@@ -894,11 +894,18 @@ package final class MeetingTranscriptionJob {
     -> T
   {
     try checkCancelled()
-    if !dependencies.isDictationIdle() {
-      yieldCount += 1
+    // Checked again after every wait, and the unit starts in the same main-actor step as the
+    // last check: work that took the turn while this one resumed is waited for too (#3972 R50).
+    var yielded = false
+    while !dependencies.isDictationIdle() {
+      if !yielded {
+        yieldCount += 1
+        yielded = true
+      }
       try await reportingDictationWait {
         try await self.cancellableWait { await self.dependencies.waitUntilDictationIdle() }
       }
+      try checkCancelled()
     }
     try checkCancelled()
     precondition(!unitInFlight, "MeetingTranscriptionJob runs one unit at a time")

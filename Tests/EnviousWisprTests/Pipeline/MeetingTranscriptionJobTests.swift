@@ -175,6 +175,44 @@ struct MeetingTranscriptionJobTests {
     #expect(started >= 3, "load, decode and unload each report")
   }
 
+  @Test("a unit re-checks its admission after the wait: work that took the turn is waited for")
+  func admissionRecheckedAfterWait() async throws {
+    let dir = try folder()
+    let files = [try segment(in: dir, index: 1, startMs: 0, seconds: 10)]
+    let engine = FakeEngine()
+    var dictating = true
+    var laneTaken = false
+    var waits = 0
+    var workWhileTaken: [String] = []
+    let idle: @MainActor () -> Bool = { !dictating && !laneTaken }
+    func check(_ name: String) { if !idle() { workWhileTaken.append(name) } }
+    let job = MeetingTranscriptionJob(
+      dependencies: .init(
+        isDictationIdle: idle,
+        waitUntilDictationIdle: {
+          waits += 1
+          if waits == 1 {
+            // Dictation ended, but a local summary took the turn before the unit resumed.
+            dictating = false
+            laneTaken = true
+          } else {
+            laneTaken = false
+          }
+        },
+        beginModelUse: {}, endModelUse: {},
+        loadEngine: { check("load") },
+        transcribe: {
+          check("transcribe")
+          return engine.transcribe($0)
+        },
+        unloadEngine: {},
+        analyzeSpeakers: { _ in MeetingSpeakerAnalysis(outcome: .single, segments: []) }))
+    _ = try await job.run(tracks: [.microphone: MeetingTrackAudio(files: files)]) { _ in }
+    #expect(workWhileTaken.isEmpty, "engine work while the turn was taken: \(workWhileTaken)")
+    #expect(waits >= 2)
+    #expect(job.yieldCount == 1, "one yield, however many waits it took")
+  }
+
   @Test("no unit starts while dictation is active; the job waits and counts the yield")
   func waitsForDictation() async throws {
     let dir = try folder()
