@@ -234,7 +234,8 @@ struct MeetingHistoryDetailView: View {
 
   private func actions(_ record: MeetingRecord) -> some View {
     let offered = MeetingsPresentation.actions(
-      record, isActive: isActive(record), queueWaitsForSpace: meetings.queueWaitsForSpace)
+      record, isActive: isActive(record),
+      canTranscribeAgain: meetings.canTranscribeAgain(record.id))
     return HStack(spacing: 10) {
       SettingsActionButton(
         title: LocalizedStringResource(

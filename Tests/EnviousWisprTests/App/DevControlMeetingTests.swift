@@ -1,6 +1,7 @@
 #if DEBUG
   import Foundation
   import Testing
+  import os
 
   @testable import EnviousWisprAppKit
   @testable import EnviousWisprCore
@@ -259,6 +260,37 @@
         coordinator.record(id: meetingID)?.state == .ready
       }
       return meetingID
+    }
+
+    @Test("retry of a stalled meeting: a failed save is refused, the next retry is accepted")
+    func retryStalledMeeting() async throws {
+      let rig = try Rig()
+      let coordinator = rig.harness.coordinator
+      // The inventory save (second processing write) fails: the meeting stays processing.
+      let writes = OSAllocatedUnfairLock(initialState: 0)
+      rig.harness.writeGate.failWrites { record in
+        guard record.state == .processing else { return false }
+        return writes.withLock {
+          $0 += 1
+          return $0 == 2
+        }
+      }
+      await coordinator.start(from: .history)
+      let meetingID = try #require(coordinator.meetings.first?.id)
+      await coordinator.stop()
+      await MeetingCoordinatorTests.eventually("stalled") {
+        coordinator.processing == nil && !coordinator.hasFinalPassWork
+          && coordinator.record(id: meetingID)?.state == .processing
+      }
+      // The queued save fails: refused, though the record still reads processing (#4008).
+      rig.harness.writeGate.failNext(1)
+      #expect(Self.code(await rig.call("meeting.retry", ["meetingID": meetingID.uuidString])) == "rejected")
+      #expect(Self.ok(await rig.call("meeting.retry", ["meetingID": meetingID.uuidString])) != nil)
+      await MeetingCoordinatorTests.eventually("ready") {
+        coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
+      }
+      // Ready again, it is offered again.
+      #expect(coordinator.canTranscribeAgain(meetingID))
     }
 
     @Test("notes set saves them now, and notes get reads back exactly what is on disk")

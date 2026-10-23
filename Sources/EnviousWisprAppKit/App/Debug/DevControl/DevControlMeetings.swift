@@ -251,21 +251,16 @@
 
     // MARK: - Changes
 
-    /// `{meetingID}`: Transcribe again. Refused when the meeting's state does not allow it.
+    /// `{meetingID}`: Transcribe again. Refused when the coordinator does not offer it
+    /// (`canTranscribeAgain`, the same answer the detail view shows, #4008); succeeds only when
+    /// `retry` itself reports the meeting queued, never from the state read back.
     func retry(_ args: [String: Any]) async -> Result {
       await change(args, name: "retry") { coordinator, record in
-        let waitsForSpace = record.state == .queued && coordinator.queueWaitsForSpace
-        guard record.audioKept,
-          waitsForSpace || [.failed, .ready, .interrupted].contains(record.state)
-        else {
-          return "the meeting has no audio, or is not finished"
-        }
-        return nil
+        coordinator.canTranscribeAgain(record.id)
+          ? nil : "Transcribe again is not offered for this meeting now"
       } run: { coordinator, id in
         await coordinator.retry(meetingID: id)
-      } check: { record in
-        record.map { [.queued, .processing].contains($0.state) } ?? false
-      }
+      } check: { _ in true }
     }
 
     /// `{meetingID}`: Delete audio, keeping the transcript.
@@ -275,6 +270,7 @@
         return record.audioKept ? nil : "the meeting's audio is already deleted"
       } run: { coordinator, id in
         await coordinator.deleteAudio(meetingID: id)
+        return true
       } check: { record in
         record.map { !$0.audioKept } ?? false
       }
@@ -311,7 +307,7 @@
     private func change(
       _ args: [String: Any], name: String,
       refusal: (MeetingCoordinator, MeetingRecord) -> String?,
-      run: (MeetingCoordinator, UUID) async -> Void,
+      run: (MeetingCoordinator, UUID) async -> Bool,
       check: (MeetingRecord?) -> Bool
     ) async -> Result {
       let meetingID: UUID
@@ -332,9 +328,9 @@
       if let reason = refusal(coordinator, record) {
         return .failure(.rejected, reason)
       }
-      await run(coordinator, meetingID)
+      let accepted = await run(coordinator, meetingID)
       let after = coordinator.record(id: meetingID)
-      guard check(after) else {
+      guard accepted, check(after) else {
         return .failure(.rejected, "\(name) did not change the meeting")
       }
       return .ok([

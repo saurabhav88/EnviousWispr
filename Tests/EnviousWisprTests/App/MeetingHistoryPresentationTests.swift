@@ -38,6 +38,8 @@ struct MeetingHistoryPresentationTests {
 
   final class Rig {
     let coordinator: TranscriptCoordinator
+    /// Where the rig's History rows are saved.
+    let directory: URL
     var infos: [UUID: MeetingHistoryInfo] = [:]
 
     @MainActor
@@ -45,6 +47,7 @@ struct MeetingHistoryPresentationTests {
       let dir = FileManager.default.temporaryDirectory
         .appendingPathComponent("meeting-history-\(UUID().uuidString)", isDirectory: true)
       try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+      directory = dir
       let box = EventBox()
       coordinator = TranscriptCoordinator(
         store: TranscriptStore(directory: dir),
@@ -454,6 +457,56 @@ struct MeetingHistoryPresentationTests {
       coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
     }
     #expect(harness.saved.last?.text == "hello again")
+    #expect(MeetingWiring.historyInfo(coordinator, meetingID: meetingID)?.echoTurnIDs == ["mic-9"])
+  }
+
+  @Test("a meeting whose ready save failed is recovered by Transcribe again into one readable row")
+  func stalledReadyRecoversOneRow() async throws {
+    let harness = try Harness()
+    let history = Rig()
+    var deps = harness.dependencies()
+    // The real History owner and store, so a second save replaces the row, never adds one.
+    deps.saveTranscript = { row in try await history.coordinator.saveAndShowDurably(row) }
+    let coordinator = MeetingCoordinator(dependencies: deps)
+    history.coordinator.meetingRecords = { coordinator.meetings }
+    let gate = harness.writeGate
+    harness.jobBehavior = { _ in
+      gate.failNext(1)  // the ready write
+      return MeetingCoordinatorTests.result()
+    }
+    await coordinator.start(from: .history)
+    let meetingID = try #require(harness.recorders.first).configuration.meetingID
+    await coordinator.stop()
+    await eventually("stalled") {
+      coordinator.processing == nil && !coordinator.hasFinalPassWork
+        && coordinator.record(id: meetingID)?.state == .processing
+    }
+    let record = try #require(coordinator.record(id: meetingID))
+    #expect(MeetingWiring.historyInfo(coordinator, meetingID: meetingID) == nil, "hidden until ready")
+    func rows() async throws -> [Transcript] {
+      try await TranscriptStore(directory: history.directory).loadAll().filter {
+        $0.meetingID == meetingID
+      }
+    }
+    #expect(try await rows().map(\.id) == [record.transcriptID])
+
+    harness.jobBehavior = { _ in
+      let first = MeetingCoordinatorTests.result()
+      return MeetingTranscriptionJob.Result(
+        composition: MeetingComposition(
+          text: "hello again", turns: [], speakerNames: [:], echoTurnIDs: ["mic-9"],
+          speakerCount: 1),
+        speakerOutcomes: first.speakerOutcomes, forcedCuts: 0, failedPieces: 0,
+        failedRanges: [:], resumedPieces: 0, checkpointSaveFailures: 0, yieldCount: 0,
+        processingSeconds: 1, audioSeconds: 1)
+    }
+    #expect(await coordinator.retry(meetingID: meetingID))
+    await eventually("ready") {
+      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
+    }
+    let after = try await rows()
+    #expect(after.map(\.id) == [record.transcriptID], "one row, the original id")
+    #expect(after.first?.text == "hello again", "the retried result")
     #expect(MeetingWiring.historyInfo(coordinator, meetingID: meetingID)?.echoTurnIDs == ["mic-9"])
   }
 

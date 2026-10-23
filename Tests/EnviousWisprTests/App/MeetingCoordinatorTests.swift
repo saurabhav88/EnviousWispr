@@ -1385,6 +1385,227 @@ struct MeetingCoordinatorTests {
     #expect(after.title == "Kept")
     #expect(after.state == .processing)
     #expect(coordinator.record(id: meetingID) == after)
+
+    // No pass owns it any more (#4008): it needs attention and Transcribe again recovers it.
+    #expect(
+      MeetingsPresentation.status(after, processingID: coordinator.processing?.meetingID)
+        == .needsAttention)
+    #expect(coordinator.canTranscribeAgain(meetingID))
+    #expect(harness.ended.isEmpty, "the stalled attempt has not ended")
+    let resumed = CheckpointSeen()
+    harness.jobBehavior = { access in
+      resumed.meetingID = await access?.load()?.key.meetingID
+      return Self.result()
+    }
+    #expect(await coordinator.retry(meetingID: meetingID))
+    await Self.eventually("ready after Transcribe again") {
+      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
+    }
+    #expect(resumed.meetingID == meetingID, "the retained progress was loaded")
+    #expect(!FileManager.default.fileExists(atPath: harness.checkpointURL(meetingID).path))
+    #expect(harness.ended.count == 1, "one row for the attempt the stall interrupted")
+    #expect(harness.ended.first?.entryPoint == .history, "its start facts are kept")
+  }
+
+  @MainActor
+  final class CheckpointSeen {
+    var meetingID: UUID?
+  }
+
+  /// A meeting whose end could not be saved: the inventory save (the second `.processing`
+  /// write) fails, so the pass stops while the meeting is saved as processing.
+  private func stalledByInventorySave(_ harness: Harness) async throws -> UUID {
+    let writes = OSAllocatedUnfairLock(initialState: 0)
+    harness.writeGate.failWrites { record in
+      guard record.state == .processing else { return false }
+      return writes.withLock {
+        $0 += 1
+        return $0 == 2
+      }
+    }
+    let coordinator = harness.coordinator
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    await coordinator.stop()
+    await Self.eventually("stalled") {
+      coordinator.notice == .storageFailed && coordinator.processing == nil
+        && !coordinator.hasFinalPassWork
+    }
+    #expect(try harness.store.load(id: meetingID).state == .processing)
+    #expect(harness.jobs.isEmpty, "the pass stopped before its job")
+    return meetingID
+  }
+
+  @Test("a pass whose inventory save failed is recovered by Transcribe again")
+  func inventorySaveStallRecovers() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    let meetingID = try await stalledByInventorySave(harness)
+    #expect(coordinator.canTranscribeAgain(meetingID))
+    #expect(await coordinator.retry(meetingID: meetingID))
+    await Self.eventually("ready") {
+      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
+    }
+    #expect(harness.ended.count == 1)
+  }
+
+  @Test("a Transcribe again whose save fails is refused and still offered; the next one runs")
+  func failedRetrySaveStaysOffered() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    let meetingID = try await stalledByInventorySave(harness)
+    harness.writeGate.failNext(1)
+    #expect(await coordinator.retry(meetingID: meetingID) == false)
+    #expect(coordinator.record(id: meetingID)?.state == .processing)
+    #expect(coordinator.canTranscribeAgain(meetingID), "the live copy rolled back: still offered")
+    #expect(await coordinator.retry(meetingID: meetingID))
+    await Self.eventually("ready") {
+      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
+    }
+    #expect(harness.ended.count == 1, "still one attempt")
+    // An ended failure retried starts a new attempt (contrast): one more row.
+    harness.jobBehavior = { _ in throw MeetingTranscriptionJob.JobError.engineUnavailable("test") }
+    #expect(await coordinator.retry(meetingID: meetingID))
+    await Self.eventually("failed") {
+      coordinator.record(id: meetingID)?.state == .failed && coordinator.processing == nil
+    }
+    #expect(harness.ended.count == 2)
+  }
+
+  @Test("a meeting left queued by a failed first save is offered and recovered by Transcribe again")
+  func queuedAfterFailedClaimRecovers() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    let writes = OSAllocatedUnfairLock(initialState: 0)
+    harness.writeGate.failWrites { record in
+      guard record.state == .processing else { return false }
+      return writes.withLock {
+        $0 += 1
+        return $0 == 1
+      }
+    }
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    await coordinator.stop()
+    await Self.eventually("queue ended without it") {
+      coordinator.processing == nil && !coordinator.hasFinalPassWork
+    }
+    #expect(coordinator.record(id: meetingID)?.state == .queued)
+    #expect(coordinator.queueWaitsForSpace == false)
+    #expect(coordinator.canTranscribeAgain(meetingID), "no queue will take it: offered")
+    #expect(await coordinator.retry(meetingID: meetingID))
+    await Self.eventually("ready") {
+      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
+    }
+  }
+
+  @Test("a stalled meeting marked by Delete All is not offered and Transcribe again refuses it")
+  func deleteAllMarkRefusesRetry() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    let meetingID = try await stalledByInventorySave(harness)
+    #expect(coordinator.deleteForHistoryDeleteAll(meetingIDs: [meetingID]))
+    #expect(coordinator.canTranscribeAgain(meetingID) == false)
+    #expect(await coordinator.retry(meetingID: meetingID) == false)
+    await Self.eventually("deleted") { coordinator.record(id: meetingID) == nil }
+    #expect(harness.jobs.isEmpty)
+  }
+
+  @Test("Delete audio during Transcribe again's save wins: no pass, no reopened attempt")
+  func deleteAudioDuringRetrySave() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    let meetingID = try await stalledByInventorySave(harness)
+    let gate = harness.writeGate
+    gate.holdNext { $0.id == meetingID && $0.state == .queued }
+    let retrying = Task { await coordinator.retry(meetingID: meetingID) }
+    #expect(await Task.detached { Self.waitBlocking(gate.entered) }.value == .success)
+    let removing = Task { await coordinator.deleteAudio(meetingID: meetingID) }
+    await MeetingWorkAdmission.waitUntil { !coordinator.canTranscribeAgain(meetingID) }
+    gate.release.signal()
+    #expect(await retrying.value == false)
+    await removing.value
+    #expect(gate.timedOut.withLock { $0 } == false, "a held write waited out its bound")
+    let record = try harness.store.load(id: meetingID)
+    #expect(record.audioKept == false)
+    #expect(record.state == .failed)
+    #expect(harness.jobs.isEmpty)
+  }
+
+  @Test("Transcribe again during a running drain gets its turn in that drain")
+  func retryDuringDrainRunsInThatDrain() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    // Two meetings wait for space; A is older, so the drain takes it first.
+    await coordinator.start(from: .history)
+    let first = try onlyMeeting(harness).id
+    harness.freeBytes = 10
+    await coordinator.stop()
+    harness.freeBytes = 50_000_000_000
+    await coordinator.start(from: .history)
+    let second = try #require(coordinator.meetings.first { $0.id != first }?.id)
+    harness.freeBytes = 10
+    await coordinator.stop()
+    await Self.eventually("both wait") {
+      coordinator.queueWaitsForSpace && coordinator.record(id: second)?.state == .queued
+    }
+    // First pass: its ready write fails (stall). Second pass: parks. Third: runs normally.
+    let parked = Gate()
+    let runs = OSAllocatedUnfairLock(initialState: 0)
+    let gate = harness.writeGate
+    harness.jobBehavior = { _ in
+      switch runs.withLock({ value -> Int in
+        value += 1
+        return value
+      }) {
+      case 1: gate.failNext(1)
+      case 2: await parked.wait()
+      default: break
+      }
+      return Self.result()
+    }
+    harness.freeBytes = 50_000_000_000
+    #expect(await coordinator.retry(meetingID: first))
+    await Self.eventually("second parked, first stalled") {
+      parked.parked && coordinator.record(id: first)?.state == .processing
+        && coordinator.processing?.meetingID == second
+    }
+    #expect(coordinator.canTranscribeAgain(first))
+    #expect(await coordinator.retry(meetingID: first))
+    parked.open()
+    await Self.eventually("both ready") {
+      coordinator.record(id: first)?.state == .ready
+        && coordinator.record(id: second)?.state == .ready && !coordinator.hasFinalPassWork
+    }
+    #expect(runs.withLock { $0 } == 3)
+  }
+
+  @Test("Transcribe again during launch recovery waits for it and never runs a second pass")
+  func retryWaitsForLaunchRecovery() async throws {
+    let harness = try Harness()
+    var crashed = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    try harness.store.create(crashed)
+    try MeetingAudioFixture.writeSegment(
+      in: harness.store.folder(for: crashed.id), track: .microphone, index: 1, startMs: 0,
+      frames: 16_000)
+    crashed.state = .processing
+    try harness.store.save(crashed)
+    let crashedID = crashed.id
+    let gate = harness.writeGate
+    gate.holdNext { $0.id == crashedID && $0.state == .queued }
+    let coordinator = harness.coordinator
+    coordinator.launch()
+    #expect(await Task.detached { Self.waitBlocking(gate.entered) }.value == .success)
+    #expect(coordinator.canTranscribeAgain(crashed.id) == false, "not while launch recovery runs")
+    let retrying = Task { await coordinator.retry(meetingID: crashed.id) }
+    gate.release.signal()
+    let accepted = await retrying.value
+    #expect(gate.timedOut.withLock { $0 } == false, "a held write waited out its bound")
+    await Self.eventually("ready") {
+      coordinator.record(id: crashed.id)?.state == .ready && coordinator.processing == nil
+    }
+    #expect(accepted == false, "recovery had queued it already")
+    #expect(harness.jobs.count == 1, "one pass")
   }
 
   @Test("held rename, audio removal and processing writes all block a relaunch")
@@ -1734,15 +1955,12 @@ struct MeetingCoordinatorTests {
     await Self.eventually("waits for space") { coordinator.queueWaitsForSpace }
     let queued = try #require(coordinator.record(id: meetingID))
     #expect(queued.state == .queued)
-    #expect(
-      MeetingsPresentation.actions(queued, isActive: false, queueWaitsForSpace: true)
-        .transcribeAgain, "the detail offers Transcribe again")
-    #expect(
-      !MeetingsPresentation.actions(queued, isActive: false).transcribeAgain,
-      "a queue that is running offers nothing")
+    #expect(coordinator.canTranscribeAgain(meetingID), "the detail offers Transcribe again")
 
-    // Still full: Transcribe again checks the disk again and keeps waiting.
-    await coordinator.retry(meetingID: meetingID)
+    // Still full: Transcribe again checks the disk again and keeps waiting, writing nothing.
+    let writesBefore = harness.writeGate.written.withLock { $0.count }
+    #expect(await coordinator.retry(meetingID: meetingID))
+    #expect(harness.writeGate.written.withLock { $0.count } == writesBefore, "no record write")
     await Self.eventually("checked again") { coordinator.queueWaitsForSpace }
     #expect(coordinator.record(id: meetingID)?.state == .queued)
 

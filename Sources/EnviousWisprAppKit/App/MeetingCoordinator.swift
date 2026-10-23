@@ -375,6 +375,9 @@ final class MeetingCoordinator {
   /// claimed synchronously, so no pass can start on audio that is being removed.
   private var removingAudio: Set<UUID> = []
   private var startGeneration = 0
+  /// Meetings an explicit Transcribe again queued while a drain ran (#4008): each gets one more
+  /// opportunity in that drain. Emptied at every selection and when the drain starts and ends.
+  @ObservationIgnored private var retriedDuringDrain: Set<UUID> = []
   private var processEndWaiters: [CheckedContinuation<Void, Never>] = []
   /// Open meeting attempts and the facts frozen at their start (#3972 R11). An attempt is one
   /// Start whose meeting exists, one Retry, or a meeting this launch found unfinished; it ends
@@ -528,7 +531,11 @@ final class MeetingCoordinator {
   func launch() {
     guard !launched else { return }
     launched = true
-    launchTask = Task { await recoverAtLaunch() }
+    launchTask = Task { [weak self] in
+      await self?.recoverAtLaunch()
+      // Cleared on every way recovery ends: `canTranscribeAgain` reads it (#4008).
+      self?.launchTask = nil
+    }
   }
 
   private func recoverAtLaunch() async {
@@ -949,9 +956,15 @@ final class MeetingCoordinator {
     // Each meeting at most once per drain, so a meeting whose state could not be saved never
     // makes the queue run it again.
     var attempted: Set<UUID> = []
+    retriedDuringDrain = []
+    defer { retriedDuringDrain = [] }
     queueWaitsForSpace = false
-    while !quitting,
-      let next = meetings.last(where: {
+    while !quitting {
+      // A meeting the user asked to transcribe again during this drain gets one more turn; a
+      // failed pass never adds one (#4008).
+      attempted.subtract(retriedDuringDrain)
+      retriedDuringDrain = []
+      guard let next = meetings.last(where: {
         $0.state == .queued && !$0.deletionRequested && !deleting.contains($0.id)
           && !attempted.contains($0.id) && !closeOwned.contains($0.id)
           // The live copy decides (#3994): a Delete audio whose save is still on its way has
@@ -959,7 +972,7 @@ final class MeetingCoordinator {
           && live[$0.id]?.state == .queued && live[$0.id]?.audioKept == true
           && !removingAudio.contains($0.id)
       })
-    {
+      else { break }
       attempted.insert(next.id)
       if let free = deps.freeDiskBytes(), free < Self.diskFloorBytes {
         // Stays queued; Transcribe again (offered while the queue waits for space), a later
@@ -1204,24 +1217,47 @@ final class MeetingCoordinator {
 
   // MARK: - User actions on a meeting
 
-  func retry(meetingID: UUID) async {
-    // A meeting left queued by a full disk: the queue starts again (and checks the disk again).
-    if let queued = live[meetingID], queued.state == .queued, queueWaitsForSpace,
+  /// Whether Transcribe again may run for this meeting now (#4008): the one answer the detail
+  /// view and dev control show. Reads only observable state, so the button follows it. A
+  /// `.processing` meeting no pass owns (its end could not be saved) is offered: no running
+  /// pass, no deletion, no launch recovery still to run. A queued meeting is offered when no
+  /// queue will take it: the disk was full (the queue starts again and checks the disk again),
+  /// or the queue ended without it (its pass's first save failed).
+  func canTranscribeAgain(_ meetingID: UUID) -> Bool {
+    guard launchTask == nil, !quitting, let record = live[meetingID],
+      record.isWritableByThisBuild, record.audioKept, !record.deletionRequested,
       !isActive(meetingID), !closeOwned.contains(meetingID)
-    {
+    else { return false }
+    if record.state == .queued { return queueWaitsForSpace || queueTask == nil }
+    return [.failed, .ready, .interrupted, .processing].contains(record.state)
+  }
+
+  /// Transcribe again. True when the meeting was queued (or, waiting for space, the queue was
+  /// started again); false when it was refused or its queued state could not be saved.
+  @discardableResult
+  func retry(meetingID: UUID) async -> Bool {
+    // Launch recovery decides first what an unfinished meeting is (it requeues them itself).
+    if let launchTask { await launchTask.value }
+    guard canTranscribeAgain(meetingID), var record = live[meetingID] else { return false }
+    if record.state == .queued {
+      // Left queued (a full disk, or a pass whose first save failed): nothing to save, the
+      // queue starts again and checks the disk again.
       startQueueIfNeeded()
-      return
+      return true
     }
-    guard var record = live[meetingID], record.audioKept,
-      [.failed, .ready, .interrupted].contains(record.state), !isActive(meetingID),
-      !closeOwned.contains(meetingID)
-    else { return }
     record.state = .queued
-    guard await persist(record) else { return }
+    guard await persist(record) else { return false }
+    // Read again after the save: a Delete audio, a deletion or a quit meanwhile wins.
+    guard let current = live[meetingID], current.state == .queued, current.audioKept,
+      current.isWritableByThisBuild, isStillOwned(meetingID), !removingAudio.contains(meetingID),
+      !closeOwned.contains(meetingID)
+    else { return false }
     // A new attempt over the same audio: the recording's facts carry over when known.
     openAttempts[meetingID] =
       openAttempts[meetingID] ?? lastAttemptFacts[meetingID] ?? AttemptFacts()
+    if queueTask != nil { retriedDuringDrain.insert(meetingID) }
     startQueueIfNeeded()
+    return true
   }
 
   func rename(meetingID: UUID, title: String) async {
