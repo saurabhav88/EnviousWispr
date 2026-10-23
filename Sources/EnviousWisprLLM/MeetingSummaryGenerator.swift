@@ -76,6 +76,8 @@ public enum MeetingSummary {
     /// The provider answered with nothing.
     case empty
     case cancelled
+    /// One call took longer than its time limit; not tried again.
+    case timedOut
   }
 
   /// The instructions every call carries.
@@ -242,7 +244,8 @@ public enum MeetingSummary {
   /// fit, and the final call. Refused before any call when the worst case needs more than
   /// `maxCalls`.
   public static func write(
-    transcript: String, notes: String, contextTokens: Int, admit: Admit, complete: Complete
+    transcript: String, notes: String, contextTokens: Int, callTimeoutSeconds: Double,
+    admit: Admit, complete: @escaping Complete
   ) async throws -> String {
     let plan = try plan(transcript: transcript, notes: notes, contextTokens: contextTokens)
     var calls = 0
@@ -250,7 +253,8 @@ public enum MeetingSummary {
       calls += 1
       // The worst case bounds every run; this holds if an estimate above is ever wrong.
       guard calls <= maxCalls else { throw Failure.tooLong }
-      return try await call(prompt, admit: admit, complete: complete)
+      return try await call(
+        prompt, timeoutSeconds: callTimeoutSeconds, admit: admit, complete: complete)
     }
     guard let pieces = plan.pieces else {
       return try await ask(finalPrompt(notes: notes, body: "Transcript:\n\(transcript)"))
@@ -309,18 +313,25 @@ public enum MeetingSummary {
     return "\(finalShape)\(notesBlock)\n\n\(body)"
   }
 
-  private static func call(_ prompt: String, admit: Admit, complete: Complete) async throws
-    -> String
-  {
+  /// One call with its retries. The time limit covers the model call only, never the wait in
+  /// `admit`. It cancels the call and waits for it to end (`withThrowingTimeout`), so a local
+  /// model still finishes one call before the next starts (R44); a call that ignores
+  /// cancellation can run past the limit.
+  private static func call(
+    _ prompt: String, timeoutSeconds: Double, admit: Admit, complete: @escaping Complete
+  ) async throws -> String {
     var attempt = 0
     while true {
       do {
         try Task.checkCancellation()
         try await admit()
-        let answer = try await complete(instructions, prompt).trimmingCharacters(
-          in: .whitespacesAndNewlines)
+        let answer = try await withThrowingTimeout(seconds: timeoutSeconds) {
+          try await complete(instructions, prompt)
+        }.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !answer.isEmpty else { throw Failure.empty }
         return answer
+      } catch is TimeoutError {
+        throw Failure.timedOut
       } catch is CancellationError {
         throw Failure.cancelled
       } catch let failure as Failure {

@@ -50,6 +50,7 @@ struct MeetingSummaryTests {
     let short = Calls()
     let one = try await MeetingSummary.write(
       transcript: "You: we ship Friday", notes: "Ask Priya", contextTokens: 100_000,
+      callTimeoutSeconds: 60,
       admit: { short.admissions += 1 }, complete: short.complete)
     #expect(one == "summary 1")
     #expect(short.prompts.count == 1)
@@ -61,7 +62,8 @@ struct MeetingSummaryTests {
     let transcript = Array(repeating: "Speaker 1: \(line)", count: 150).joined(separator: "\n")
     let long = Calls()
     _ = try await MeetingSummary.write(
-      transcript: transcript, notes: "", contextTokens: 4_096, admit: { long.admissions += 1 },
+      transcript: transcript, notes: "", contextTokens: 4_096, callTimeoutSeconds: 60,
+      admit: { long.admissions += 1 },
       complete: long.complete)
     let budget = (4_096 - MeetingSummary.outputTokens - 700) * 3
     #expect(MeetingSummary.promptBudget(4_096) == budget)
@@ -89,7 +91,7 @@ struct MeetingSummaryTests {
     long.answers = Array(
       repeating: .success(String(repeating: "- point\n", count: 2_000)), count: 200)
     let summary = try await MeetingSummary.write(
-      transcript: transcript, notes: "Ask Priya", contextTokens: 4_096,
+      transcript: transcript, notes: "Ask Priya", contextTokens: 4_096, callTimeoutSeconds: 60,
       admit: { long.admissions += 1 }, complete: long.complete)
     #expect(!summary.isEmpty)
     #expect(long.prompts.count > pieces + 1, "the answers needed at least one combine round")
@@ -112,7 +114,7 @@ struct MeetingSummaryTests {
     let transcript = String(repeating: "t ", count: budget)
     let calls = Calls()
     _ = try await MeetingSummary.write(
-      transcript: transcript, notes: notes, contextTokens: 4_096, admit: {},
+      transcript: transcript, notes: notes, contextTokens: 4_096, callTimeoutSeconds: 60, admit: {},
       complete: calls.complete)
     #expect(
       calls.prompts.contains { $0.contains("the user's own notes") && $0.contains("my note") })
@@ -142,7 +144,7 @@ struct MeetingSummaryTests {
     let transcript = String(repeating: "x", count: 2_000 * (MeetingSummary.maxCalls + 2))
     await #expect(throws: MeetingSummary.Failure.tooLong) {
       _ = try await MeetingSummary.write(
-        transcript: transcript, notes: "", contextTokens: 1, admit: {},
+        transcript: transcript, notes: "", contextTokens: 1, callTimeoutSeconds: 60, admit: {},
         complete: calls.complete)
     }
     #expect(calls.prompts.isEmpty)
@@ -154,7 +156,8 @@ struct MeetingSummaryTests {
     flaky.answers = [.failure(LLMError.rateLimited), .failure(URLError(.timedOut)), .success("ok")]
     #expect(
       try await MeetingSummary.write(
-        transcript: "t", notes: "", contextTokens: 100_000, admit: {}, complete: flaky.complete)
+        transcript: "t", notes: "", contextTokens: 100_000, callTimeoutSeconds: 60, admit: {},
+        complete: flaky.complete)
         == "ok")
     #expect(flaky.prompts.count == 3)
 
@@ -162,7 +165,8 @@ struct MeetingSummaryTests {
     down.answers = Array(repeating: .failure(LLMError.rateLimited), count: 5)
     await #expect(throws: MeetingSummary.Failure.providerFailed) {
       _ = try await MeetingSummary.write(
-        transcript: "t", notes: "", contextTokens: 100_000, admit: {}, complete: down.complete)
+        transcript: "t", notes: "", contextTokens: 100_000, callTimeoutSeconds: 60, admit: {},
+        complete: down.complete)
     }
     #expect(down.prompts.count == 3, "one call and two retries, never more")
 
@@ -170,7 +174,8 @@ struct MeetingSummaryTests {
     badKey.answers = [.failure(LLMError.invalidAPIKey)]
     await #expect(throws: MeetingSummary.Failure.providerFailed) {
       _ = try await MeetingSummary.write(
-        transcript: "t", notes: "", contextTokens: 100_000, admit: {}, complete: badKey.complete)
+        transcript: "t", notes: "", contextTokens: 100_000, callTimeoutSeconds: 60, admit: {},
+        complete: badKey.complete)
     }
     #expect(badKey.prompts.count == 1)
 
@@ -178,8 +183,33 @@ struct MeetingSummaryTests {
     empty.answers = [.success("   ")]
     await #expect(throws: MeetingSummary.Failure.empty) {
       _ = try await MeetingSummary.write(
-        transcript: "t", notes: "", contextTokens: 100_000, admit: {}, complete: empty.complete)
+        transcript: "t", notes: "", contextTokens: 100_000, callTimeoutSeconds: 60, admit: {},
+        complete: empty.complete)
     }
+  }
+
+  @Test("a call past its time limit is stopped, ended and not tried again")
+  func timeLimit() async throws {
+    let calls = Calls()
+    let ended = Calls()
+    await #expect(throws: MeetingSummary.Failure.timedOut) {
+      _ = try await MeetingSummary.write(
+        transcript: "t", notes: "", contextTokens: 100_000, callTimeoutSeconds: 0.05,
+        admit: {},
+        complete: { instructions, prompt in
+          _ = try await calls.complete(instructions, prompt)
+          do {
+            // deadline-fallback: the model that never answers; only the time limit ends it.
+            try await Task.sleep(for: .seconds(3_600))
+          } catch {
+            ended.prompts.append("cancelled")
+            throw error
+          }
+          return "late"
+        })
+    }
+    #expect(calls.prompts.count == 1, "a timed-out call is not tried again")
+    #expect(ended.prompts == ["cancelled"], "the call ended before the writer returned")
   }
 
   @Test("the configuration fingerprint changes with the model and never carries a key")
