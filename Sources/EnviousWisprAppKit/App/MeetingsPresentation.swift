@@ -9,6 +9,63 @@ import Foundation
 enum MeetingsPresentation {
   // MARK: - Recorder
 
+  // MARK: - Live words (R42, R52)
+
+  /// The live words' label: the microphone is the user, the call track is the call.
+  static func liveSpeaker(_ track: MeetingTrackKind) -> String {
+    switch track {
+    case .microphone:
+      return String(localized: "You", comment: "EnviousMeet: the microphone level meter's label.")
+    case .callSound:
+      return String(
+        localized: "Call",
+        comment: "History, live words of a recording meeting: words heard in the sound the Mac plays.")
+    }
+  }
+
+  /// How fresh the live words are and why they lag, one sentence each (R52). Freshness is the
+  /// end of the newest decoded stretch, never a promised delay.
+  static func liveStatusLines(_ live: MeetingCoordinator.LiveTranscript, callSoundRecorded: Bool)
+    -> [String]
+  {
+    var lines = [
+      String(
+        localized: "Live words, usually about a minute behind.",
+        comment: "History, a recording meeting: what the live words are.")
+    ]
+    if let upTo = live.wordsUpToMs {
+      let clock = clock(ms: upTo)
+      lines.append(
+        String(
+          localized: "Words up to \(clock).",
+          comment: "History, a recording meeting: the live words reach this point of the meeting, like 12:04."))
+    }
+    if live.waitingForDictation {
+      lines.append(
+        String(
+          localized: "Waiting for your dictation to finish.",
+          comment: "History, a recording meeting: live words pause while the user dictates."))
+    } else if live.queued > 0 {
+      lines.append(
+        String(
+          localized: "Catching up.",
+          comment: "History, a recording meeting: recorded minutes are waiting to become live words."))
+    }
+    if live.skipped > 0 {
+      lines.append(
+        String(
+          localized: "Some stretches were skipped here. The full transcript comes after the meeting.",
+          comment: "History, a recording meeting: some recorded minutes were not shown as live words."))
+    }
+    if callSoundRecorded {
+      lines.append(
+        String(
+          localized: "Echo is hidden when the meeting ends.",
+          comment: "History, a recording meeting: repeated call lines are hidden only in the final transcript."))
+    }
+    return lines
+  }
+
   /// `m:ss`, or `h:mm:ss` from an hour. A clock that went backwards reads 0:00.
   static func elapsed(from start: Date, to now: Date) -> String {
     let seconds = max(0, Int(now.timeIntervalSince(start).rounded(.down)))

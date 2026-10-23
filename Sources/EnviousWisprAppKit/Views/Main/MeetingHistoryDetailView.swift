@@ -378,6 +378,10 @@ struct MeetingHistoryDetailView: View {
     switch meetings.phase {
     case .recording(let id, let startedAt) where id == meetingID:
       MeetingLivePanel(startedAt: startedAt)
+      if let live = meetings.liveTranscript, live.meetingID == meetingID {
+        MeetingLiveWordsView(
+          transcript: live, callSoundRecorded: record.trackStatus[.callSound] == .captured)
+      }
       Text(
         "The transcript, with who said what, is written when you stop the recording.",
         comment: "History, a recording meeting: what the Transcript tab will show."
@@ -392,6 +396,11 @@ struct MeetingHistoryDetailView: View {
     default:
       if let processing = meetings.processing, processing.meetingID == meetingID {
         MeetingProcessingPanel(processing: processing)
+        if let live = meetings.liveTranscript, live.meetingID == meetingID {
+          MeetingLiveWordsView(
+            transcript: live, callSoundRecorded: record.trackStatus[.callSound] == .captured,
+            superseded: true)
+        }
       } else if record.state == .queued {
         busyLine(
           String(

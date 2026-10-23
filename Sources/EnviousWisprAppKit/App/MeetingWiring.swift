@@ -56,6 +56,7 @@ enum MeetingWiring {
           MeetingRecorder(configuration: configuration, onSegment: onSegment, onFailure: onFailure)
         },
         makeJob: { makeJob(inputs) },
+        makePreviewJob: { makeJob(inputs) },
         microphoneSelection: { [settings = inputs.settings] in
           let chosen = settings.preferredInputDeviceIDOverride
           return (chosen.isEmpty ? nil : chosen, settings.inputChannelByDeviceUID)

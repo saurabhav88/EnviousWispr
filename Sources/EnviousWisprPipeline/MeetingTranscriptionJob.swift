@@ -540,6 +540,42 @@ package final class MeetingTranscriptionJob {
   private var transient: [MeetingTrackKind: [MeetingProcessingCheckpoint.Piece]] = [:]
 
   /// Model use, then the engine load, waiting through temporary contention (C3a).
+  // MARK: - Live preview (#3972 R42, R43, R50)
+
+  /// One provisional preview window: one closed capture file of the meeting still recording,
+  /// decoded whole, as one model unit with the same admission as a pass piece (dictation idle,
+  /// memory, model-use gate, model source). Never at the same time as `run` on this job; the
+  /// coordinator's scheduler also keeps it away from every other meeting model unit. The
+  /// result is shown while the meeting records and is never read by the after-recording pass.
+  /// The engine stays loaded afterwards; `releaseIdle` frees it.
+  /// Returns the window's words; an empty or unreadable file is no words.
+  package func preview(audio: MeetingTrackAudio) async throws -> String {
+    guard !running else { throw JobError.alreadyRunning }
+    running = true
+    defer { running = false }
+    try checkCancelled()
+    guard let run = audio.runs.first, audio.runs.count == 1 else { return "" }
+    try await prepareModelUnit()
+    return try await unit {
+      try self.requireModelSource()
+      let samples = try await self.readOffMain(
+        audio: audio, from: run.startSample, count: run.sampleCount)
+      return try await self.dependencies.transcribe(samples).text
+    }
+  }
+
+  /// Unloads an idle preview engine and gives its model use back (R43: 20 s with no queued
+  /// preview, or before a final pass needs the engine). No-op while a unit runs or nothing is
+  /// loaded.
+  package func releaseIdle() async {
+    guard !unitInFlight, !running else { return }
+    if engineLoaded {
+      await releaseEngine()
+    } else if engineResident {
+      await releaseModelUse()
+    }
+  }
+
   private func acquireAndLoadEngine() async throws {
     engineResident = true
     do {

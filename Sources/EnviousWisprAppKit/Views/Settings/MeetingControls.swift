@@ -247,3 +247,64 @@ struct MeetingCallSoundRow: View {
     }
   }
 }
+
+/// The recording meeting's live words (#3972 R42, R52): provisional, about a minute behind,
+/// one line per closed minute of each track, labelled by track. The status line says how fresh
+/// they are from the last decoded stretch, and why they lag (dictation, a backlog, skipped
+/// stretches). The full transcript, with speakers and echo hidden, comes after the meeting.
+struct MeetingLiveWordsView: View {
+  let transcript: MeetingCoordinator.LiveTranscript
+  /// The call sound is recorded: echo is hidden only in the final transcript.
+  let callSoundRecorded: Bool
+  /// Greyed while the after-recording pass makes the real transcript.
+  var superseded = false
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      ForEach(
+        MeetingsPresentation.liveStatusLines(transcript, callSoundRecorded: callSoundRecorded),
+        id: \.self
+      ) {
+        line in
+        Text(line)
+          .font(.stHelper)
+          .foregroundStyle(.stTextSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      if transcript.lines.isEmpty {
+        Text(
+          "No words yet. The first minute shows when it has been recorded.",
+          comment: "History, a recording meeting: no live words have been decoded yet."
+        )
+        .font(.stBody)
+        .foregroundStyle(.stTextSecondary)
+      } else {
+        ScrollView {
+          LazyVStack(alignment: .leading, spacing: 10) {
+            ForEach(transcript.lines) { line in
+              VStack(alignment: .leading, spacing: 2) {
+                Text(
+                  verbatim:
+                    "\(MeetingsPresentation.liveSpeaker(line.track)) · \(MeetingsPresentation.clock(ms: line.startMs))"
+                )
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.stTextSecondary)
+                Text(line.text)
+                  .font(.stBody)
+                  .foregroundStyle(superseded ? Color.stTextSecondary : Color.stTextPrimary)
+                  .textSelection(.enabled)
+              }
+              .id(line.id)
+            }
+          }
+          .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        // Follows the newest line as it arrives (R42).
+        .defaultScrollAnchor(.bottom)
+        .frame(minHeight: 160, maxHeight: 420)
+      }
+    }
+    .padding(14)
+    .background(Color.stSectionBg, in: RoundedRectangle(cornerRadius: 12))
+  }
+}
