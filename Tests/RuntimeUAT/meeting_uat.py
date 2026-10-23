@@ -340,12 +340,13 @@ class Players:
             raise PlaybackNotStopped(f"player group {proc.pid} still has processes")
 
     def stop_all(self):
+        """Tries every owned group; any error on any of them leaves shutdown unproved."""
         failures = []
         for proc in self.procs:
             try:
                 self.stop(proc)
-            except PlaybackNotStopped as error:
-                failures.append(str(error))
+            except Exception as error:
+                failures.append(f"{proc.pid}: {type(error).__name__}: {error}")
         if failures:
             raise PlaybackNotStopped("; ".join(failures))
 
@@ -355,21 +356,25 @@ class Players:
     def __exit__(self, *exc):
         try:
             self.stop_all()
-        except PlaybackNotStopped as error:
+        except BaseException as error:
             unsafe_exit(error)
         return False
 
 
 def unsafe_exit(error, exit=os._exit):
     """Playback may continue: record it and leave WITHOUT unwinding into the rig's restore."""
-    message = (f"SETUP FAILED: {error}. The audio route stays on BlackHole: kill the player, "
-               f"then run `python3 Tests/RuntimeUAT/silent_audio.py restore`.")
-    print(message, flush=True)
-    if RECEIPT["path"]:
-        with open(RECEIPT["path"], "w") as f:
-            json.dump({"scenario": RECEIPT["scenario"], "exit": EXIT_SETUP,
-                       "rows": [{"setup": message}]}, f, indent=1)
-    exit(EXIT_SETUP)
+    try:
+        message = (f"SETUP FAILED: {error}. The audio route stays on BlackHole: kill the "
+                   f"player, then run `python3 Tests/RuntimeUAT/silent_audio.py restore`.")
+        print(message, flush=True)
+        if RECEIPT["path"]:
+            with open(RECEIPT["path"], "w") as f:
+                json.dump({"scenario": RECEIPT["scenario"], "exit": EXIT_SETUP,
+                           "rows": [{"setup": message}]}, f, indent=1)
+    except BaseException:
+        pass  # diagnostics are best effort; the exit below is not
+    finally:
+        exit(EXIT_SETUP)
 
 
 def start_meeting(call_sound=True):
@@ -532,8 +537,11 @@ def timed_takes(count, sentence, players=None, audio=None, still=lambda: True):
             player = players.play(audio)
             time.sleep(BETWEEN_TAKES_SECONDS)  # deadline-fallback: a fixed call interval
             players.stop(player)
+        # The condition must hold at both take boundaries, or the take is not counted.
+        if not still():
+            break
         value = asr_seconds(sentence)
-        if value is not None:
+        if value is not None and still():
             values.append(value)
     return values
 
@@ -822,6 +830,49 @@ def self_test():
     finally:
         globals()["asr_seconds"], time.sleep = saved
     expect("the call is stopped before every take", events == ["play", "stop", "take"] * 3)
+
+    # The pass ends in the gap before the last take: that take is never counted.
+    checks_left = iter([True, True, True, True, True, True, True, False])
+    globals()["asr_seconds"] = lambda sentence: 1.0
+    time.sleep = lambda seconds: None
+    events.clear()
+    try:
+        counted = timed_takes(3, "x", Recorder(), "/call.wav", still=lambda: next(checks_left))
+    finally:
+        globals()["asr_seconds"], time.sleep = saved
+    expect("a pass that ends before the take boundary does not count", len(counted) == 2)
+    ending = iter([True, True, False])
+    globals()["asr_seconds"] = lambda sentence: 1.0
+    try:
+        counted = timed_takes(1, "x", still=lambda: next(ending))
+    finally:
+        globals()["asr_seconds"] = saved[0]
+    expect("a pass that ends during the take does not count", counted == [])
+
+    # Any shutdown error, and a failed receipt write, still request the exit first.
+    for label, kill, path in (("PermissionError", PermissionError("denied"), None),
+                              ("receipt OSError", None, "/nonexistent-dir/receipt.json")):
+        exits.clear()
+        players = Players()
+        players.procs.append(FakeProc(-10))
+
+        def raising_kill(pgid, sig, _kill=kill):
+            if _kill:
+                raise _kill
+
+        players.killpg = raising_kill
+        players.alive = lambda pgid, _kill=kill: _kill is None
+        RECEIPT["path"] = path
+        globals()["unsafe_exit"] = lambda error: original(error, exit=fake_exit)
+        try:
+            with players:
+                pass
+        except Exit:
+            pass
+        finally:
+            globals()["unsafe_exit"] = original
+            RECEIPT["path"] = None
+        expect(f"{label} during shutdown still requests the exit", exits == [EXIT_SETUP])
 
     import types
     for error, want in ((Setup("x"), EXIT_SETUP), (subprocess.TimeoutExpired("x", 1), EXIT_SETUP),
