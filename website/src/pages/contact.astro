@@ -3,6 +3,9 @@ import { ORG_REF } from '../data/entities.js';
 import BaseLayout from '../layouts/BaseLayout.astro';
 
 const siteUrl = 'https://enviouswispr.com';
+// Public Turnstile site key for the contact form; its secret is the Pages
+// secret TURNSTILE_SECRET_KEY read by functions/api/feedback.js.
+const turnstileSiteKey = 'PENDING_TURNSTILE_SITE_KEY';
 
 const contactPageJsonLd = JSON.stringify({
   "@context": "https://schema.org",
@@ -112,6 +115,8 @@ const helpTitles = Object.fromEntries((await getHelpArticles()).map((a) => [a.id
   </div>
 </section>
 
+<script is:inline src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+
 <script type="application/json" id="help-titles" set:html={JSON.stringify(helpTitles)}></script>
 
 <div class="contact-form-wrap">
@@ -124,6 +129,7 @@ const helpTitles = Object.fromEntries((await getHelpArticles()).map((a) => [a.id
       <label class="form-label" for="message">Message</label>
       <textarea class="form-textarea" id="message" name="message" placeholder="What's on your mind?" required></textarea>
     </div>
+    <div class="form-group cf-turnstile" data-sitekey={turnstileSiteKey} data-action="contact" data-size="flexible"></div>
     <button class="form-submit" type="submit">Send feedback</button>
     <div id="form-status" class="form-status"></div>
   </form>
@@ -152,6 +158,13 @@ const helpTitles = Object.fromEntries((await getHelpArticles()).map((a) => [a.id
     e.preventDefault();
     status.className = 'form-status';
     status.textContent = '';
+    // Turnstile puts its single-use token in this hidden field once the check passes.
+    const token = form.elements.namedItem('cf-turnstile-response')?.value || '';
+    if (!token) {
+      status.className = 'form-status error';
+      status.textContent = 'Please wait for the human check above the button to finish, then send again.';
+      return;
+    }
     btn.disabled = true;
     btn.textContent = 'Sending...';
 
@@ -162,6 +175,7 @@ const helpTitles = Object.fromEntries((await getHelpArticles()).map((a) => [a.id
         body: JSON.stringify({
           email: form.email.value,
           message: form.message.value,
+          turnstileToken: token,
         }),
       });
 
@@ -182,6 +196,8 @@ const helpTitles = Object.fromEntries((await getHelpArticles()).map((a) => [a.id
       status.textContent = 'Network error. Try emailing hello@enviouswispr.com instead.';
     }
 
+    // The server has used the token (or refused it), so get a fresh one.
+    window.turnstile?.reset();
     btn.disabled = false;
     btn.textContent = 'Send feedback';
   });
