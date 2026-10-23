@@ -54,7 +54,7 @@ export async function onRequestPost(context) {
 
   // Checked after the fields so a typo does not spend the single-use token.
   const token = typeof body.turnstileToken === "string" ? body.turnstileToken : "";
-  const verdict = await verifyTurnstile(token, request, origin, env.TURNSTILE_SECRET_KEY);
+  const verdict = await verifyTurnstile(token, request, env.TURNSTILE_SECRET_KEY);
   if (verdict === "unavailable") {
     return fail("Could not check the form right now. Please try again in a minute.", 503);
   }
@@ -92,7 +92,7 @@ export async function onRequestPost(context) {
 
 // "passed", "failed" or "unavailable" (Siteverify could not be asked). Every
 // outcome other than "passed" refuses the form.
-async function verifyTurnstile(token, request, origin, secret) {
+async function verifyTurnstile(token, request, secret) {
   if (!token || token.length > MAX_TOKEN) return "failed";
   const form = new FormData();
   form.append("secret", secret);
@@ -119,10 +119,11 @@ async function verifyTurnstile(token, request, origin, secret) {
     console.log(`feedback: Turnstile refused ${JSON.stringify(result?.["error-codes"] ?? [])}`);
     return "failed";
   }
-  // Local development uses Cloudflare's test keys, whose tokens carry another
-  // hostname and no action; a production token must come from this form.
-  if (origin === "https://enviouswispr.com" &&
-      (result.hostname !== "enviouswispr.com" || result.action !== TURNSTILE_ACTION)) {
+  // The request's own host decides, never the forgeable Origin: only a local
+  // `wrangler pages dev` server, run with Cloudflare's test keys (another
+  // hostname, no action), skips these checks.
+  const local = new URL(request.url).hostname === "localhost";
+  if (!local && (result.hostname !== "enviouswispr.com" || result.action !== TURNSTILE_ACTION)) {
     return "failed";
   }
   return "passed";

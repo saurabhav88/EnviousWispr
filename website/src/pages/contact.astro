@@ -3,8 +3,10 @@ import { ORG_REF } from '../data/entities.js';
 import BaseLayout from '../layouts/BaseLayout.astro';
 
 const siteUrl = 'https://enviouswispr.com';
-// Public Turnstile site key for the contact form; its secret is the Pages
-// secret TURNSTILE_SECRET_KEY read by functions/api/feedback.js.
+// Public Turnstile site key for the contact form (widget domain enviouswispr.com
+// only); its secret is the Pages secret TURNSTILE_SECRET_KEY read by
+// functions/api/feedback.js. To test locally, swap in Cloudflare's test site key
+// and use its test secret in .dev.vars.
 const turnstileSiteKey = 'PENDING_TURNSTILE_SITE_KEY';
 
 const contactPageJsonLd = JSON.stringify({

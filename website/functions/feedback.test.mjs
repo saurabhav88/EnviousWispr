@@ -157,12 +157,16 @@ test("a missing Turnstile secret refuses before any call", async () => {
   assert.equal(calls.length + calls.verify.length, 0);
 });
 
-test("a localhost test-key token (other hostname, no action) passes locally only", async () => {
+test("a test-key token (other hostname, no action) passes only on a local server", async () => {
   const testKey = { success: true, hostname: "example.com", action: "" };
+  const local = new Request("http://localhost:8788/api/feedback", post(ok, "http://localhost:4321"));
   let calls = fakeResend(200, '{"id":"x"}', testKey);
-  assert.equal((await onRequestPost({ request: post(ok, "http://localhost:4321"), env })).status, 200);
+  assert.equal((await onRequestPost({ request: local, env })).status, 200);
   assert.equal(calls.length, 1);
-  calls = fakeResend(200, '{"id":"x"}', testKey);
-  assert.equal((await onRequestPost({ request: post(ok), env })).status, 403);
-  assert.equal(calls.length, 0);
+  // A forged localhost Origin on the production host gets no exemption.
+  for (const origin of ["http://localhost:4321", SITE]) {
+    calls = fakeResend(200, '{"id":"x"}', testKey);
+    assert.equal((await onRequestPost({ request: post(ok, origin), env })).status, 403);
+    assert.equal(calls.length, 0);
+  }
 });
