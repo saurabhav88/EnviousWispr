@@ -80,7 +80,7 @@ struct AIAvailabilityRecheckPolicyTests {
     _ script: Script, seed: AppleIntelligenceAvailabilityReport?
   ) throws -> AIAvailabilityCoordinator {
     let suite = "AIAvailabilityRecheckPolicyTests.\(UUID().uuidString)"
-    let defaults = try #require(UserDefaults(suiteName: suite))
+    let defaults = try #require(TestDefaults.suite(suite))
     defaults.removePersistentDomain(forName: suite)
     if let seed {
       defaults.set(try JSONEncoder().encode(seed), forKey: "aiDiagnosticsLatestReport")
