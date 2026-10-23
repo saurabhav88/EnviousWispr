@@ -371,7 +371,11 @@ struct WordCheckRuntimeTerminationTests {
     // deadline-fallback: a hung child fails by name instead of running out the time limit
     DispatchQueue.global().asyncAfter(deadline: .now() + 60) { childFail("watchdog") }
     guard let runtime = try? await makeRuntime(in: URL(filePath: root)) else { childFail("fixture") }
-    for _ in 0..<busyExitSteps { _ = registerExitStep(busyExitStep, nil, nil) }
+    for step in 0..<busyExitSteps {
+      guard registerExitStep(busyExitStep, nil, nil) == 0 else {
+        childFail("busy-exit registration \(step)")
+      }
+    }
     runtime.releaseForTermination()
     exit(0)
   }
