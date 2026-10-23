@@ -122,6 +122,8 @@ struct SettingsMapRegistrationTests {
     ".pillStyleConfigureLivePreview", ".polishModelRefresh", ".previewEngineCompare",
     ".quickAddMenuBar", ".quickAddShortcut", ".quickAddStep1", ".quickAddStep2", ".quickAddStep3",
     ".recordingChime", ".selfLearningDictionary", ".selfLearningDictionaryLearnMore",
+    // #3975: the Forget learning memory button.
+    ".selfLearningDictionaryForgetMemory",
     ".sendCrashReportsRestart", ".snippetKeyword", ".snippets", ".snippetsAdd", ".snippetsAddFirst",
     ".snippetsClearSearch", ".snippetsExport", ".snippetsImport", ".snippetsSearch",
     ".startWordField", ".startWordReset", ".startWordSave", ".transcribeFileSteps",

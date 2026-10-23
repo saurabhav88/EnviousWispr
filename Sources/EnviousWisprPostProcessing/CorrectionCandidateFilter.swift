@@ -7,9 +7,9 @@ import Foundation
 // returns one disposition per aligned run. It never reads a store, never
 // mutates a word, and never decides whether an edit IS a correction: that is
 // the judge's question (step 7). The App coordinator saves the accepted
-// candidates at once (2026-09-21 plan §3.1 step 8). There is no rejection
-// memory: a pair the user undid may be learned again (founder 2026-09-21,
-// Wispr Flow's shape).
+// candidates at once (2026-09-21 plan §3.1 step 8). A pair the user refused
+// twice arrives as a value in `Inputs.blockedPairKeys` (#3975, `LearnMemory`);
+// one refusal alone never blocks, so a pair undone once may be learned again.
 
 /// What the corrected spelling resolves to among the live words: the
 /// candidate's payload, so the coordinator and telemetry name the same
@@ -41,13 +41,17 @@ package enum CorrectionCandidateFilter {
     /// The corrected phrase, or the original as a trigger, is owned by a
     /// DIFFERENT word than the resolved target.
     case aliasOwnedElsewhere
+    /// The user refused this pair twice (Undo or a removal from Settings),
+    /// so it is never judged or learned again until Forget (#3975).
+    case blockedByUser
   }
 
   /// Plan §3.1 step 6 dispositions. Precedence when several apply (highest
   /// first): `ineligible(.stopwordPhrase)`, `ineligible(.contractionEnding)`,
   /// `ineligible(.unfinishedEdit)`, `ineligible(.numberFormatting)`,
-  /// `alreadyCovered`, `ineligible(.aliasOwnedElsewhere)`, `candidate`. A
-  /// covered pair is never sent to the judge.
+  /// `ineligible(.blockedByUser)`, `alreadyCovered`,
+  /// `ineligible(.aliasOwnedElsewhere)`, `candidate`. A covered pair is never
+  /// sent to the judge.
   package enum Disposition: Sendable, Equatable {
     case ineligible(IneligibleReason)
     /// The intended live target already carries the original as its
@@ -57,15 +61,22 @@ package enum CorrectionCandidateFilter {
     case candidate(LearnTargetState)
   }
 
-  /// Everything step 6 reads, as values: the live words and nothing else.
+  /// Everything step 6 reads, as values: the live words and the user's
+  /// blocked pairs, nothing else.
   package struct Inputs: Sendable {
     package let userWords: [CustomWord]
     /// Terms of the ENABLED packs only (`source == .pack`).
     package let packTerms: [CustomWord]
+    /// `CorrectionPairKey` keys the user refused twice: a snapshot of
+    /// `LearnMemory.blockedKeys` taken by the caller (#3975).
+    package let blockedPairKeys: Set<String>
 
-    package init(userWords: [CustomWord], packTerms: [CustomWord]) {
+    package init(
+      userWords: [CustomWord], packTerms: [CustomWord], blockedPairKeys: Set<String> = []
+    ) {
       self.userWords = userWords
       self.packTerms = packTerms
+      self.blockedPairKeys = blockedPairKeys
     }
   }
 
@@ -106,7 +117,7 @@ package enum CorrectionCandidateFilter {
     let index = WordCorrector.buildExactTriggerIndex(words: inputs.userWords + inputs.packTerms)
     return runs.map { run in
       let key = CorrectionPairKey.make(original: run.coreOriginal, corrected: run.coreReplacement)
-      let disposition = dispose(run: run, inputs: inputs, index: index)
+      let disposition = dispose(run: run, pairKey: key, inputs: inputs, index: index)
       // Evidence is computed only where it can be used: an ineligible run
       // never pays for a character-level comparison.
       var evidence: Double? = nil
@@ -116,7 +127,8 @@ package enum CorrectionCandidateFilter {
   }
 
   private static func dispose(
-    run: EditAlignment.Run, inputs: Inputs, index: WordCorrector.ExactTriggerIndex
+    run: EditAlignment.Run, pairKey: String, inputs: Inputs,
+    index: WordCorrector.ExactTriggerIndex
   ) -> Disposition {
     let editedTokens = InverseTextNormalizer.splitWords(run.coreReplacement).map(normalisedToken)
     if !editedTokens.isEmpty, editedTokens.allSatisfy({ WordCorrector.stopwords.contains($0) }) {
@@ -127,6 +139,7 @@ package enum CorrectionCandidateFilter {
       return .ineligible(.unfinishedEdit)
     }
     if isNumberFormatting(run) { return .ineligible(.numberFormatting) }
+    if inputs.blockedPairKeys.contains(pairKey) { return .ineligible(.blockedByUser) }
 
     let target = resolveTarget(corrected: run.coreReplacement, inputs: inputs)
     if let target, covers(target, original: run.coreOriginal) { return .alreadyCovered }

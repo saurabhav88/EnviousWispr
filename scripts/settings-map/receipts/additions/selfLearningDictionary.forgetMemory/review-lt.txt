@@ -1,0 +1,1 @@
+{"language":"lt","title":"išvalyti mokymosi atmintį","words":["mokymosi atmintis","atmesti taisymai","užblokuoti žodžiai"],"phrases":["išvalyti atmestų taisymų atmintį","leisti vėl mokytis užblokuotų žodžių"]}

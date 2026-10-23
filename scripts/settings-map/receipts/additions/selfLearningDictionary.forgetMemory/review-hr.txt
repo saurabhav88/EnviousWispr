@@ -1,0 +1,13 @@
+{
+  "language": "hr",
+  "title": "izbriši memoriju učenja",
+  "words": [
+    "memorija učenja",
+    "blokirani ispravci",
+    "deblokiranje"
+  ],
+  "phrases": [
+    "zaboravi blokirane i odbijene ispravke",
+    "dopusti ponovno učenje blokiranih riječi"
+  ]
+}

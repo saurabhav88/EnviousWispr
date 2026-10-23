@@ -65,15 +65,18 @@ struct LearnedCorrectionVocabularyAccess {
   let classify: (String) -> WordCategory?
 }
 
-/// The three auto-learn rows plus the shared refusal row, typed like the
-/// `TelemetryService.learn*` emitters so a test spy records the same shape.
+/// The three auto-learn rows, the shared refusal row and the user-refusal
+/// row (#3975), typed like the `TelemetryService.learn*` emitters so a test
+/// spy records the same shape.
 @MainActor
 protocol LearnedCorrectionTelemetrySink: AnyObject {
   typealias T = TelemetryService.LearnFromEditsTelemetry
-  func learnAdded(state: T.AddedState)
+  func learnAdded(state: T.AddedState, via: T.LearnVia)
   func learnUndoShown()
-  func learnUndone(kind: T.UndoKind, outcome: T.UndoOutcome)
+  /// `memory` nil = not an `undone` outcome, or the memory write did not land.
+  func learnUndone(kind: T.UndoKind, outcome: T.UndoOutcome, via: T.LearnVia, memory: T.UndoMemory?)
   func learnSaveFailed(reason: T.SaveFailure)
+  func learnRefusedByUser(source: T.RefusalSource, result: T.UndoMemory)
 }
 
 /// The production sink is `TelemetryService`; `LearnFromEditsWiring` wraps it
@@ -150,6 +153,9 @@ final class LearnedCorrectionCoordinator {
     case alreadyCovered
     /// Refused before or at the write; the error pill was shown.
     case refused(T.SaveFailure)
+    /// The user refused this pair twice (#3975): nothing written, no pill,
+    /// no `learn_save_failed`. The watcher counts it as `learn_blocked_seen`.
+    case blocked
   }
 
   enum UndoOutcome: Equatable, Sendable {
@@ -181,11 +187,19 @@ final class LearnedCorrectionCoordinator {
     let preSave: CustomWord?
     let postSave: CustomWord
     let kind: T.UndoKind
+    /// The learned pair (`CorrectionPairKey`), so an Undo records the user's
+    /// "no" against exactly what was learned (#3975).
+    let pairKey: String
+    /// How the pair was learned; `learn_undone.via` copies it.
+    let via: T.LearnVia
     /// `learn_undo_shown` fires once, at the first admission.
     var admitted = false
   }
 
   private let vocabulary: LearnedCorrectionVocabularyAccess
+  /// Per-pair learning memory (#3975): the save-time block check and the
+  /// user's "no" on Undo.
+  private let memory: LearnMemory
   private let telemetry: any LearnedCorrectionTelemetrySink
   private let now: () -> Date
   private let makeID: () -> UUID
@@ -197,11 +211,13 @@ final class LearnedCorrectionCoordinator {
 
   init(
     vocabulary: LearnedCorrectionVocabularyAccess,
+    memory: LearnMemory,
     telemetry: any LearnedCorrectionTelemetrySink,
     now: @escaping () -> Date = Date.init,
     makeID: @escaping () -> UUID = UUID.init
   ) {
     self.vocabulary = vocabulary
+    self.memory = memory
     self.telemetry = telemetry
     self.now = now
     self.makeID = makeID
@@ -213,14 +229,24 @@ final class LearnedCorrectionCoordinator {
 
   // MARK: - Step 8: learn
 
-  /// Save a judged correction now. `original` is the misheard form the user
-  /// replaced, `corrected` what they typed, `expectedTarget` what the filter
-  /// saw at judge time. Returns after the write is proven (or refused) and the
-  /// pill offered.
+  /// Save a judged or repeated correction now. `original` is the misheard
+  /// form the user replaced, `corrected` what they typed, `expectedTarget`
+  /// what the filter saw at judge time, `via` how it was learned (telemetry
+  /// only; the save is identical). Returns after the write is proven (or
+  /// refused) and the pill offered.
   @discardableResult
-  func learn(original: String, corrected: String, expectedTarget: LearnTargetState) -> LearnOutcome {
+  func learn(
+    original: String, corrected: String, expectedTarget: LearnTargetState,
+    via: T.LearnVia = .judge
+  ) -> LearnOutcome {
     let corrected = corrected.trimmingCharacters(in: .whitespacesAndNewlines)
     let original = original.trimmingCharacters(in: .whitespacesAndNewlines)
+    let pairKey = CorrectionPairKey.make(original: original, corrected: corrected)
+
+    // 0. The single last door for a pair the user blocked (#3975): a judge
+    //    answer that arrives late, or a held fix released later, can never
+    //    save a pair blocked meanwhile.
+    if memory.isBlocked(pairKey) { return .blocked }
 
     // 1. Resolve the target against fresh values, user words before pack terms.
     let userWords = vocabulary.userWords()
@@ -344,8 +370,8 @@ final class LearnedCorrectionCoordinator {
       id: makeID(), wordID: wordID, canonical: postSave.canonical, kind: kind)
     undoRecord = UndoRecord(
       pillID: pill.id, wordID: wordID, operation: operation, preSave: preSave,
-      postSave: postSave, kind: kind == .added ? .added : .updated)
-    telemetry.learnAdded(state: state)
+      postSave: postSave, kind: kind == .added ? .added : .updated, pairKey: pairKey, via: via)
+    telemetry.learnAdded(state: state, via: via)
     presenter?.show(pill: pill)
     return .learned(pill)
   }
@@ -392,7 +418,8 @@ final class LearnedCorrectionCoordinator {
     // locked compare-and-write transaction would be a new manager contract.
     let live = vocabulary.userWords().first { $0.id == record.wordID }
     guard live == record.postSave else {
-      telemetry.learnUndone(kind: record.kind, outcome: .alreadyChanged)
+      telemetry.learnUndone(
+        kind: record.kind, outcome: .alreadyChanged, via: record.via, memory: nil)
       presenter?.close(pillID: pillID)
       return .alreadyChanged
     }
@@ -424,11 +451,20 @@ final class LearnedCorrectionCoordinator {
     case .updated: landed = after == record.preSave
     }
     guard refusal == nil, landed else {
-      telemetry.learnUndone(kind: record.kind, outcome: .failed)
+      telemetry.learnUndone(kind: record.kind, outcome: .failed, via: record.via, memory: nil)
       presenter?.showUndoError(LearnedCorrectionUndoError(pillID: pillID))
       return .failed
     }
-    telemetry.learnUndone(kind: record.kind, outcome: .undone)
+    // #3975: only a proven Undo is the user's "no". The memory key and the
+    // refusal row ride only when the memory write committed.
+    let memoryResult: T.UndoMemory?
+    switch memory.recordUndo(record.pairKey) {
+    case .committed(.watching): memoryResult = .watching
+    case .committed(.blocked): memoryResult = .blocked
+    case .notRemembered: memoryResult = nil
+    }
+    telemetry.learnUndone(kind: record.kind, outcome: .undone, via: record.via, memory: memoryResult)
+    if let memoryResult { telemetry.learnRefusedByUser(source: .undo, result: memoryResult) }
     presenter?.showUndone(pillID: pillID)
     return .undone
   }

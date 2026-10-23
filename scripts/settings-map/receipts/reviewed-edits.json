@@ -8887,6 +8887,399 @@
    },
    "review": "additions/meetingWriteSummary.json",
    "reviewSHA256": "510c77cddf0912f1ddbe9ac83c74a61fd1c24be111f62a0ecedb11898952682a"
+  },
+  "selfLearningDictionary.forgetMemory": {
+   "blocks": {
+    "ar": {
+     "title": "مسح ذاكرة التعلّم",
+     "words": [
+      "ذاكرة التصحيحات",
+      "التصحيحات المرفوضة",
+      "إلغاء الحظر"
+     ],
+     "phrases": [
+      "امسح ذاكرة التصحيحات المرفوضة",
+      "اسمح بتعلّم الكلمات المحظورة من جديد"
+     ]
+    },
+    "bg": {
+     "title": "изчистване на паметта за отхвърлени поправки",
+     "words": [
+      "забравяне",
+      "памет",
+      "блокирани поправки",
+      "отблокиране"
+     ],
+     "phrases": [
+      "изчисти паметта за отхвърлените поправки",
+      "позволи отново да се научават блокираните думи"
+     ]
+    },
+    "cs": {
+     "title": "vymazat paměť učení",
+     "words": [
+      "blokované opravy",
+      "odmítnuté opravy",
+      "odblokování"
+     ],
+     "phrases": [
+      "vymazat paměť odmítnutých oprav",
+      "znovu povolit učení blokovaných slov"
+     ]
+    },
+    "da": {
+     "title": "ryd læringshukommelsen",
+     "words": [
+      "læringshukommelse",
+      "blokerede ord",
+      "afviste rettelser"
+     ],
+     "phrases": [
+      "glem hvilke rettelser jeg har afvist",
+      "lad blokerede ord blive lært igen"
+     ]
+    },
+    "de": {
+     "words": [
+      "Lerngedächtnis",
+      "blockiert",
+      "entsperren",
+      "vergessen"
+     ],
+     "phrases": [
+      "Lerngedächtnis löschen",
+      "abgelehnte Korrekturen vergessen",
+      "blockierte Wörter wieder lernen lassen"
+     ]
+    },
+    "el": {
+     "title": "διαγραφή μνήμης εκμάθησης",
+     "words": [
+      "μνήμη εκμάθησης",
+      "μπλοκαρισμένες διορθώσεις",
+      "ξεμπλοκάρισμα"
+     ],
+     "phrases": [
+      "σβήσε τη μνήμη των διορθώσεων που απορρίφθηκαν",
+      "να μπορεί να μάθει ξανά τις μπλοκαρισμένες λέξεις"
+     ]
+    },
+    "en": {
+     "words": [
+      "forget",
+      "reset",
+      "blocked",
+      "unblock",
+      "memory"
+     ],
+     "phrases": [
+      "clear the memory of rejected corrections",
+      "let blocked words be learned again"
+     ]
+    },
+    "es": {
+     "title": "borrar la memoria de aprendizaje",
+     "words": [
+      "memoria",
+      "bloqueos",
+      "desbloquear"
+     ],
+     "phrases": [
+      "permitir que se vuelvan a aprender palabras bloqueadas",
+      "borrar la memoria de correcciones rechazadas"
+     ]
+    },
+    "et": {
+     "title": "tühjenda õppimismälu",
+     "words": [
+      "õppimismälu",
+      "blokeeritud sõnad",
+      "blokeeringute eemaldamine"
+     ],
+     "phrases": [
+      "kustuta blokeeritud paranduste mälu",
+      "luba blokeeritud sõnu uuesti õppida"
+     ]
+    },
+    "fi": {
+     "title": "tyhjennä oppimismuisti",
+     "words": [
+      "oppimismuisti",
+      "estetyt sanat",
+      "muistin tyhjennys"
+     ],
+     "phrases": [
+      "unohda hylätyt korjaukset",
+      "salli estettyjen sanojen oppiminen uudelleen"
+     ]
+    },
+    "fr": {
+     "title": "effacer la mémoire d’apprentissage",
+     "words": [
+      "oublier",
+      "mémoire",
+      "corrections refusées",
+      "mots bloqués",
+      "débloquer"
+     ],
+     "phrases": [
+      "effacer la mémoire des corrections refusées",
+      "permettre au dictionnaire d’apprendre les mots bloqués"
+     ]
+    },
+    "hi": {
+     "title": "सीखने की मेमोरी साफ़ करें",
+     "words": [
+      "मेमोरी रीसेट",
+      "ब्लॉक हटाएँ"
+     ],
+     "phrases": [
+      "जिन शब्दों को सीखने से रोका था, उन्हें फिर से सीखने दो",
+      "ठुकराए गए सुधारों की मेमोरी साफ़ करो"
+     ]
+    },
+    "hr": {
+     "title": "izbriši memoriju učenja",
+     "words": [
+      "memorija učenja",
+      "blokirani ispravci",
+      "deblokiranje"
+     ],
+     "phrases": [
+      "zaboravi blokirane i odbijene ispravke",
+      "dopusti ponovno učenje blokiranih riječi"
+     ]
+    },
+    "hu": {
+     "title": "tanulási memória törlése",
+     "words": [
+      "letiltott javítások",
+      "elutasított javítások",
+      "memória törlése"
+     ],
+     "phrases": [
+      "felejtsd el a korábban elutasított javításokat",
+      "tanulhassa meg újra a letiltott szavakat"
+     ]
+    },
+    "it": {
+     "title": "cancella la memoria di apprendimento",
+     "words": [
+      "memoria delle correzioni",
+      "parole bloccate",
+      "azzera memoria"
+     ],
+     "phrases": [
+      "cancella la memoria delle correzioni rifiutate",
+      "permetti di imparare di nuovo le parole bloccate"
+     ]
+    },
+    "ja": {
+     "title": "学習メモリを消去",
+     "words": [
+      "学習ブロック",
+      "ブロック解除",
+      "除外履歴"
+     ],
+     "phrases": [
+      "学習を拒否した記録を消去する",
+      "学習をブロックした単語をもう一度学習できるようにする"
+     ]
+    },
+    "ko": {
+     "title": "학습 기억 지우기",
+     "words": [
+      "학습 차단 해제",
+      "학습 기억 초기화",
+      "거부 기록 삭제"
+     ],
+     "phrases": [
+      "학습에서 제외된 수정 기록 지우기",
+      "차단된 단어를 다시 학습할 수 있게 하기"
+     ]
+    },
+    "lt": {
+     "title": "išvalyti mokymosi atmintį",
+     "words": [
+      "mokymosi atmintis",
+      "atmesti taisymai",
+      "užblokuoti žodžiai"
+     ],
+     "phrases": [
+      "išvalyti atmestų taisymų atmintį",
+      "leisti vėl mokytis užblokuotų žodžių"
+     ]
+    },
+    "lv": {
+     "title": "notīrīt mācīšanās atmiņu",
+     "words": [
+      "bloķētie vārdi",
+      "noraidītie labojumi",
+      "atmiņas notīrīšana"
+     ],
+     "phrases": [
+      "aizmirst noraidītos labojumus",
+      "ļaut atkal apgūt bloķētos vārdus"
+     ]
+    },
+    "mt": {
+     "title": "ħassar il-memorja tat-tagħlim",
+     "words": [
+      "memorja",
+      "korrezzjonijiet imblukkati",
+      "korrezzjonijiet irrifjutati",
+      "żblokka"
+     ],
+     "phrases": [
+      "ħassar il-memorja tal-korrezzjonijiet imblukkati",
+      "ħalli l-app terġa’ titgħallem kliem imblukkat"
+     ]
+    },
+    "nl": {
+     "title": "leergeheugen wissen",
+     "words": [
+      "geheugen wissen",
+      "geblokkeerde correcties",
+      "deblokkeren"
+     ],
+     "phrases": [
+      "wis het geheugen van afgewezen correcties",
+      "laat de app eerder geblokkeerde woorden opnieuw leren"
+     ]
+    },
+    "pl": {
+     "title": "wyczyść pamięć uczenia się",
+     "words": [
+      "odrzucone poprawki",
+      "zablokowane słowa",
+      "odblokowanie słów"
+     ],
+     "phrases": [
+      "wyczyść pamięć odrzuconych poprawek",
+      "pozwól aplikacji ponownie uczyć się zablokowanych słów"
+     ]
+    },
+    "pt": {
+     "title": "apagar a memória de aprendizagem",
+     "words": [
+      "memória",
+      "bloqueios",
+      "desbloquear"
+     ],
+     "phrases": [
+      "apagar a memória de correções rejeitadas",
+      "permitir que palavras bloqueadas sejam aprendidas novamente"
+     ]
+    },
+    "ro": {
+     "title": "șterge memoria de învățare",
+     "words": [
+      "resetare memorie",
+      "corecturi respinse",
+      "cuvinte blocate",
+      "deblocare"
+     ],
+     "phrases": [
+      "șterge memoria corecturilor respinse",
+      "permite învățarea din nou a cuvintelor blocate"
+     ]
+    },
+    "ru": {
+     "title": "очистить память обучения",
+     "words": [
+      "сброс памяти",
+      "отклонённые исправления",
+      "заблокированные слова"
+     ],
+     "phrases": [
+      "очистить память об отклонённых исправлениях",
+      "разрешить снова запоминать заблокированные слова"
+     ]
+    },
+    "sk": {
+     "title": "vymazať pamäť učenia",
+     "words": [
+      "odmietnuté opravy",
+      "zablokované slová",
+      "odblokovanie slov"
+     ],
+     "phrases": [
+      "vymazať pamäť odmietnutých opráv",
+      "znova povoliť učenie zablokovaných slov"
+     ]
+    },
+    "sl": {
+     "title": "pozabi zavrnjene popravke",
+     "words": [
+      "blokirane besede",
+      "odblokiranje"
+     ],
+     "phrases": [
+      "počisti spomin na zavrnjene popravke",
+      "dovoli ponovno učenje blokiranih besed"
+     ]
+    },
+    "sv": {
+     "title": "rensa inlärningsminnet",
+     "words": [
+      "inlärningsminne",
+      "blockerade ord",
+      "avblockera"
+     ],
+     "phrases": [
+      "rensa minnet av avvisade rättningar",
+      "låt appen lära sig blockerade ord igen"
+     ]
+    },
+    "tr": {
+     "title": "öğrenme belleğini temizle",
+     "words": [
+      "öğrenme belleği",
+      "engellenen kelimeler"
+     ],
+     "phrases": [
+      "öğrenme belleğini sıfırla",
+      "engellenen kelimeleri yeniden öğrenebilsin"
+     ]
+    },
+    "uk": {
+     "title": "очистити пам’ять навчання",
+     "words": [
+      "скидання пам’яті",
+      "заблоковані слова",
+      "відхилені виправлення"
+     ],
+     "phrases": [
+      "очистити пам’ять про відхилені виправлення",
+      "дозволити знову вивчати заблоковані слова"
+     ]
+    },
+    "vi": {
+     "title": "xóa bộ nhớ học từ",
+     "words": [
+      "bộ nhớ",
+      "bỏ chặn từ"
+     ],
+     "phrases": [
+      "xóa bộ nhớ về các chỉnh sửa bị từ chối",
+      "cho phép học lại các từ đã bị chặn"
+     ]
+    },
+    "zh": {
+     "title": "清除学习记忆",
+     "words": [
+      "学习记忆",
+      "清除记忆",
+      "解除屏蔽"
+     ],
+     "phrases": [
+      "清除学习记忆，允许重新学习之前屏蔽的词",
+      "忘掉我之前拒绝过的纠正"
+     ]
+    }
+   },
+   "review": "additions/selfLearningDictionary.forgetMemory.json",
+   "reviewSHA256": "68da6c005df7611c8afff987422337699397665f0be3392385fec780d49cb70c"
   }
  }
 }

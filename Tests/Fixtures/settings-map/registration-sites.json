@@ -43,6 +43,7 @@
  "LearningSection.swift | settingsMapRegistration | .importContacts",
  "LearningSection.swift | settingsMapRegistration | .learnFrom",
  "LearningSection.swift | settingsMapRegistration | .selfLearningDictionary",
+ "LearningSection.swift | settingsMapRegistration | .selfLearningDictionaryForgetMemory",
  "LearningSection.swift | settingsMapRegistration | .selfLearningDictionaryLearnMore",
  "LivePreviewSettingsView.swift | EngineCard | map .id(Self.mapID(for: choice))",
  "LivePreviewSettingsView.swift | SettingsRow | map .dynamic( .previewLanguagesInstall, .livePreviewPacks(loading: packs.state == .loading, failed: packs.state == .failed))",

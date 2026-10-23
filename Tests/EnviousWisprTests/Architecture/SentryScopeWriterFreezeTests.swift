@@ -51,8 +51,11 @@ struct SentryScopeWriterFreezeTests {
   /// REMOVES values, on the one event's scope copy: every tag outside its install allowlist,
   /// every context and every breadcrumb of the next launch, which do not describe the quit that
   /// timed out. It writes nothing.
+  /// #3975: `LearnMemoryDiagnostics.forward` (CustomWordsCoordinator.swift) adds one
+  /// metadata-only breadcrumb: fixed stage `learn_memory`, fixed message `learn_memory_reset`,
+  /// no data, when a corrupt learning-memory file was set aside. No pair text, no path.
   static let inventoryFingerprint =
-    "29684f0d2e2971606eb6eea6aa5d0f9e4cf358104aeb47a65148f627af9d44f3"
+    "fb389701e771c2042ad1849855cfab4dbe4d66913c09af5d68cae37d068eb23c"
 
   struct Site: Hashable, Comparable {
     let file: String

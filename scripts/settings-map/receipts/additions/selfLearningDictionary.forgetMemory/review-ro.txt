@@ -1,0 +1,14 @@
+{
+  "language": "ro",
+  "title": "șterge memoria de învățare",
+  "words": [
+    "resetare memorie",
+    "corecturi respinse",
+    "cuvinte blocate",
+    "deblocare"
+  ],
+  "phrases": [
+    "șterge memoria corecturilor respinse",
+    "permite învățarea din nou a cuvintelor blocate"
+  ]
+}

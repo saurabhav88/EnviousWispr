@@ -1,0 +1,259 @@
+{
+ "id": "selfLearningDictionary.forgetMemory",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "مسح ذاكرة التعلّم",
+   "words": [],
+   "phrases": [
+    "انسَ ما تعلّمته من تصحيحاتي"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "изчистване на паметта за наученото",
+   "words": [],
+   "phrases": [
+    "забрави наученото от поправките ми"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "vymazat paměť učení",
+   "words": [],
+   "phrases": [
+    "zapomenout naučené opravy"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "ryd læringshukommelsen",
+   "words": [],
+   "phrases": [
+    "glem det du har lært af mine rettelser"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [],
+   "phrases": [
+    "vergiss, was du aus meinen Korrekturen gelernt hast"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "διαγραφή μνήμης εκμάθησης",
+   "words": [],
+   "phrases": [
+    "ξέχνα όσα έμαθες από τις διορθώσεις μου"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [],
+   "phrases": [
+    "forget what you learned from my corrections"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "borrar la memoria de aprendizaje",
+   "words": [],
+   "phrases": [
+    "olvidar lo aprendido de mis correcciones"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "kustuta õppimismälu",
+   "words": [],
+   "phrases": [
+    "unusta minu parandustest õpitu"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "tyhjennä oppimismuisti",
+   "words": [],
+   "phrases": [
+    "unohda korjauksistani opitut asiat"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "effacer la mémoire d’apprentissage",
+   "words": [],
+   "phrases": [
+    "oublier ce qui a été appris de mes corrections"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "सीखने की मेमोरी मिटाएँ",
+   "words": [],
+   "phrases": [
+    "मेरे सुधारों से सीखी बातें भूल जाएँ"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "izbriši memoriju učenja",
+   "words": [],
+   "phrases": [
+    "zaboravi naučeno iz mojih ispravaka"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "tanulási memória törlése",
+   "words": [],
+   "phrases": [
+    "felejtsd el a javításaimból tanultakat"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "cancella la memoria di apprendimento",
+   "words": [],
+   "phrases": [
+    "dimentica quello che hai imparato dalle mie correzioni"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "学習履歴を消去",
+   "words": [],
+   "phrases": [
+    "修正から学習したことをリセット"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "학습 기억 지우기",
+   "words": [],
+   "phrases": [
+    "내가 수정한 내용에서 학습한 것 초기화"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "išvalyti mokymosi atmintį",
+   "words": [],
+   "phrases": [
+    "pamiršti tai, kas išmokta iš mano pataisymų"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "notīrīt mācīšanās atmiņu",
+   "words": [],
+   "phrases": [
+    "aizmirst no maniem labojumiem apgūto"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "ħassar il-memorja tat-tagħlim",
+   "words": [],
+   "phrases": [
+    "insa dak li tgħallimt mill-korrezzjonijiet tiegħi"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "leergeheugen wissen",
+   "words": [],
+   "phrases": [
+    "vergeet wat je van mijn correcties hebt geleerd"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "wyczyść pamięć uczenia",
+   "words": [],
+   "phrases": [
+    "zapomnij to, czego nauczyłeś się z moich poprawek"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "apagar a memória de aprendizagem",
+   "words": [],
+   "phrases": [
+    "esquecer o que aprendeu com as minhas correções"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "șterge memoria de învățare",
+   "words": [],
+   "phrases": [
+    "uită ce ai învățat din corecturile mele"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "очистить память обучения",
+   "words": [],
+   "phrases": [
+    "забыть всё, чему научился на моих исправлениях"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "vymazať pamäť učenia",
+   "words": [],
+   "phrases": [
+    "zabudnúť naučené opravy"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "počisti pomnilnik učenja",
+   "words": [],
+   "phrases": [
+    "pozabi naučeno iz mojih popravkov"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "rensa inlärningsminnet",
+   "words": [],
+   "phrases": [
+    "glöm det du lärt dig av mina rättelser"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "öğrenme belleğini temizle",
+   "words": [],
+   "phrases": [
+    "düzeltmelerimden öğrendiklerini unut"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "очистити пам’ять навчання",
+   "words": [],
+   "phrases": [
+    "забути все, чого навчився з моїх виправлень"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "xóa bộ nhớ học",
+   "words": [],
+   "phrases": [
+    "quên những gì đã học từ các chỉnh sửa của tôi"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "清除学习记忆",
+   "words": [],
+   "phrases": [
+    "忘记从我的修改中学到的内容"
+   ]
+  }
+ ]
+}

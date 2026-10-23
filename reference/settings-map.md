@@ -12,9 +12,9 @@ Generated from the compiled Settings Map and the validated search vocabulary. Do
 
 The interface ships in English and German. The other 30 languages (ar, bg, cs, da, el, es, et, fi, fr, hi, hr, hu, it, ja, ko, lt, lv, mt, nl, pl, pt, ro, ru, sk, sl, sv, tr, uk, vi, zh) are search metadata only: words and titles people may type, matched against the same places. Titles below read English / German.
 
-277 nodes, 250 searchable, 8000 vocabulary blocks.
+278 nodes, 251 searchable, 8032 vocabulary blocks.
 
-Fingerprints: mapSHA256 `527c2f6e54df975a169fc422c90cde79ca9de3c2a81bcf749ad6fe6319ba455d`, uiCatalogSHA256 `0b536495a4216b4b20b5e2b6f83d0525904bd6f10131f9ef39ac0455396a6acb`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `990db436b7ecc7db6fd49882b7c426693ad6d1b94497356307d92ca8426359fd`
+Fingerprints: mapSHA256 `dfb02ce9535f382888daba212854d30fc4013c1b2a05f1a618a48199bf2f1990`, uiCatalogSHA256 `c4d896429cd706124e99c6bb1d0fa02ebbce7eb34fac3f8979566adc3b4dde5f`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `f72979fcb42d8d5af6b66456ee79145393838fa2355b42a66fee7f421dbe9c2d`
 
 ## Structure
 
@@ -259,6 +259,7 @@ Fingerprints: mapSHA256 `527c2f6e54df975a169fc422c90cde79ca9de3c2a81bcf749ad6fe6
       - [Learn from... / Lernen aus...](#node-learnFrom) `learnFrom` (feature)
       - [Self-Learning Dictionary / Selbstlernendes Wörterbuch](#node-selfLearningDictionary) `selfLearningDictionary` (setting)
         - [Learn more / Mehr erfahren](#node-selfLearningDictionary-learnMore) `selfLearningDictionary.learnMore` (action)
+        - [Forget learning memory / Lerngedächtnis löschen](#node-selfLearningDictionary-forgetMemory) `selfLearningDictionary.forgetMemory` (action)
       - [Import from Contacts / Aus Kontakten importieren](#node-importContacts) `importContacts` (feature)
         - [Keep in sync on launch / Beim Start synchron halten](#node-contactsSyncOnLaunch) `contactsSyncOnLaunch` (setting)
     - [Quick Add / Schnell hinzufügen](#node-dictionary-tab-quickAdd) `dictionary.tab.quickAdd` (feature)
@@ -3794,6 +3795,27 @@ Fingerprints: mapSHA256 `527c2f6e54df975a169fc422c90cde79ca9de3c2a81bcf749ad6fe6
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: read how learning from dictation corrections works |
 | Search (de) | phrases: nachlesen, wie das Lernen aus Diktatkorrekturen funktioniert |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-selfLearningDictionary-forgetMemory"></a>
+
+### Forget learning memory / Lerngedächtnis löschen (`selfLearningDictionary.forgetMemory`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | action |
+| Parent | [`selfLearningDictionary`](#node-selfLearningDictionary) |
+| Title source | catalog key `Forget learning memory` |
+| Description | none |
+| Destination | `dictionary` |
+| Dictionary tab | `learnFrom` |
+| Shown when | `learnMemoryStored` |
+| Arrival target | [`selfLearningDictionary.forgetMemory`](#node-selfLearningDictionary-forgetMemory) |
+| Fallbacks, in order | [`selfLearningDictionary`](#node-selfLearningDictionary) |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | words: forget, reset, blocked, unblock, memory<br>phrases: clear the memory of rejected corrections; let blocked words be learned again |
+| Search (de) | words: Lerngedächtnis, blockiert, entsperren, vergessen<br>phrases: Lerngedächtnis löschen; abgelehnte Korrekturen vergessen; blockierte Wörter wieder lernen lassen |
 | Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-importContacts"></a>

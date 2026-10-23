@@ -695,7 +695,8 @@ struct LearnedCorrectionOverlayPresenterTests {
   private func fixture(host: LearnedOverlayHostFake = LearnedOverlayHostFake()) -> Fixture {
     let library = LearnedLibraryFake()
     let telemetry = LearnedTelemetrySpy()
-    let coordinator = LearnedCorrectionCoordinator(vocabulary: library.access, telemetry: telemetry)
+    let coordinator = LearnedCorrectionCoordinator(
+      vocabulary: library.access, memory: .forTests(), telemetry: telemetry)
     let presenter = LearnedCorrectionOverlayPresenter(host: host, coordinator: coordinator)
     coordinator.attach(presenter: presenter)
     return Fixture(
@@ -710,14 +711,14 @@ struct LearnedCorrectionOverlayPresenterTests {
     let f = fixture()
     f.coordinator.learn(original: "twist", corrected: "Tuist", expectedTarget: .newWord)
     #expect(f.host.requests.count == 1)
-    #expect(f.telemetry.events == [.added(.newWord), .undoShown])
+    #expect(f.telemetry.events == [.added(.newWord, .judge), .undoShown])
     #expect(f.coordinator.undoRecord != nil)
 
     let refusing = LearnedOverlayHostFake()
     refusing.admitAs = nil
     let g = fixture(host: refusing)
     g.coordinator.learn(original: "twist", corrected: "Tuist", expectedTarget: .newWord)
-    #expect(g.telemetry.events == [.added(.newWord)], "saved, no Undo offered")
+    #expect(g.telemetry.events == [.added(.newWord, .judge)], "saved, no Undo offered")
     #expect(g.coordinator.undoRecord == nil)
   }
 
@@ -731,7 +732,10 @@ struct LearnedCorrectionOverlayPresenterTests {
     let undo = try #require(f.host.undos.first)
     undo()
     #expect(f.library.userWords.isEmpty, "the word was removed")
-    #expect(f.telemetry.events.last == .undone(.added, .undone))
+    #expect(
+      f.telemetry.events.suffix(2) == [
+        .undone(.added, .undone, .judge, .watching), .refusedByUser(.undo, .watching),
+      ])
     let resolved = try #require(f.host.resolved.first)
     #expect(resolved.0 == pill.id && resolved.1 == f.host.admitAs && resolved.2 == .undone)
     #expect(f.host.closes.isEmpty)

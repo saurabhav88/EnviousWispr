@@ -1022,6 +1022,13 @@ enum SettingsMap {
       parent: .selfLearningDictionary, destination: .dictionary, dictionaryTab: .learnFrom,
       visibility: .always, target: .selfLearningDictionaryLearnMore, fallbacks: []),
     SettingsMapNode(
+      id: .selfLearningDictionaryForgetMemory, structure: .item, item: .action,
+      title: .resource(LearnFromEditsSettingsPresentation.forgetMemoryTitleResource),
+      description: nil,
+      parent: .selfLearningDictionary, destination: .dictionary, dictionaryTab: .learnFrom,
+      visibility: .learnMemoryStored, target: .selfLearningDictionaryForgetMemory,
+      fallbacks: [.selfLearningDictionary]),
+    SettingsMapNode(
       id: .importContacts, structure: .item, item: .feature,
       title: .resource(SettingsItemCopy.Dictionary.importContacts),
       description: .resource(SettingsItemCopy.Dictionary.importContactsShort),

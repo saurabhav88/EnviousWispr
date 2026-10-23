@@ -224,7 +224,7 @@ struct SettingsMapRenderingTests {
       "aiPolish.ollama.ready", "aiPolish.ollama.error", "aiPolish.ollama.pulling",
       "dictionary.yourWords.empty", "dictionary.yourWords.withWords",
       "dictionary.yourWords.searching", "dictionary.vocabularyPacks", "dictionary.learnFrom",
-      "dictionary.quickAdd",
+      "dictionary.learnFrom.memory", "dictionary.quickAdd",
       "snippets", "snippets.empty", "snippets.searching", "keybinds",
     ] + AppSettingsTab.allCases.map { "appSettings.\($0.rawValue)" } + [
       "appSettings.permissions.denied", "appSettings.privacy.restartNeeded",
@@ -585,10 +585,14 @@ struct SettingsMapRenderingTests {
     }
     // A third label part picks the Learn From row's picture: `dictionary.learnFrom.download` is the
     // state whose row offers an action button, which the default `.unwired` picture never shows.
+    // `dictionary.learnFrom.memory` is the state whose learning memory holds a
+    // blocked pair, so the Forget row shows (#3975).
     let presentation: LearnFromEditsSettingsPresentation =
       parts.count > 2 && parts[2] == "download"
       ? .init(selection: .unavailable(.noQualifiedArm), judge: .notInstalled) : .unwired
-    let list = try await dictionaryTab(tab, learnFromPresentation: presentation)
+    let list = try await dictionaryTab(
+      tab, learnFromPresentation: presentation,
+      learnMemoryStored: parts.count > 2 && parts[2] == "memory")
     let strays = mapped(list).filter {
       SettingsMap.node($0).dictionaryTab.map { $0 != tab } ?? false
     }
@@ -601,11 +605,17 @@ struct SettingsMapRenderingTests {
   /// The other three tabs, hosted as YourWordsView hosts them (its tab is private state).
   static func dictionaryTab(
     _ tab: DictionaryTab, searching: Bool = false,
-    learnFromPresentation: LearnFromEditsSettingsPresentation = .unwired
+    learnFromPresentation: LearnFromEditsSettingsPresentation = .unwired,
+    learnMemoryStored: Bool = false
   ) async throws -> [SettingsMapRegistration]
   {
     let (home, words) = try Self.dictionaryHome()
     if searching { try #require(words.add(CustomWord(canonical: "Envious")) == nil) }
+    if learnMemoryStored {
+      let key = CorrectionPairKey.make(original: "kumala", corrected: "Kwmala")
+      words.learnMemory.recordUndo(key)
+      words.learnMemory.recordUndo(key)
+    }
     let content: AnyView =
       switch tab {
       case .yourWords:
@@ -836,7 +846,7 @@ struct SettingsMapRenderingTests {
   /// (`wholePagePlaces`), never on anchors combined from two renders.
   static let tabContentOnlyStates: Set<String> = [
     "dictionary.yourWords.searching", "dictionary.vocabularyPacks", "dictionary.learnFrom",
-    "dictionary.quickAdd", "appSettings.privacy.restartNeeded",
+    "dictionary.learnFrom.memory", "dictionary.quickAdd", "appSettings.privacy.restartNeeded",
     "appSettings.appearance.languageChange",
   ]
 

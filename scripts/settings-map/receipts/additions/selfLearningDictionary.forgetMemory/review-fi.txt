@@ -1,0 +1,1 @@
+{"language":"fi","title":"tyhjennä oppimismuisti","words":["oppimismuisti","estetyt sanat","muistin tyhjennys"],"phrases":["unohda hylätyt korjaukset","salli estettyjen sanojen oppiminen uudelleen"]}

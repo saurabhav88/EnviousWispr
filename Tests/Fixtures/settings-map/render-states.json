@@ -833,6 +833,17 @@
    "selfLearningDictionary.learnMore"
   ]
  },
+ "dictionary.learnFrom.memory": {
+  "exempt": {},
+  "mapped": [
+   "contactsSyncOnLaunch",
+   "importContacts",
+   "learnFrom",
+   "selfLearningDictionary",
+   "selfLearningDictionary.forgetMemory",
+   "selfLearningDictionary.learnMore"
+  ]
+ },
  "dictionary.quickAdd": {
   "exempt": {},
   "mapped": [

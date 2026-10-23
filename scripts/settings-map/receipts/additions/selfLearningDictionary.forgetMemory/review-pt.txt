@@ -1,0 +1,1 @@
+{"language":"pt","title":"apagar a memória de aprendizagem","words":["memória","bloqueios","desbloquear"],"phrases":["apagar a memória de correções rejeitadas","permitir que palavras bloqueadas sejam aprendidas novamente"]}

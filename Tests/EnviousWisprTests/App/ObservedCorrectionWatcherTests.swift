@@ -285,6 +285,8 @@ struct ObservedCorrectionWatcherTests {
   let library = LearnedLibraryFake()
   let presenter = LearnedPresenterSpy()
   let telemetry = LearnTelemetrySpy()
+  /// #3975: the per-pair learning memory, on its own temporary file.
+  let memory = LearnMemory.forTests()
   let coordinator: LearnedCorrectionCoordinator
   let saira = CustomWord(canonical: "Saira")
 
@@ -303,7 +305,8 @@ struct ObservedCorrectionWatcherTests {
 
   init() {
     library.userWords = [saira]
-    coordinator = LearnedCorrectionCoordinator(vocabulary: library.access, telemetry: telemetry)
+    coordinator = LearnedCorrectionCoordinator(
+      vocabulary: library.access, memory: memory, telemetry: telemetry)
     coordinator.attach(presenter: presenter)
   }
 
@@ -338,6 +341,7 @@ struct ObservedCorrectionWatcherTests {
       userWords: { library.userWords },
       packTerms: { library.packTerms },
       coordinator: coordinator,
+      memory: memory,
       telemetry: telemetry)
     deps.judgeDeadlineSeconds = knobs.judgeDeadlineSeconds
     return ObservedCorrectionWatcher(dependencies: deps)
@@ -653,7 +657,7 @@ struct ObservedCorrectionWatcherTests {
       request.context == "Ask sarah today" && request.language == "en",
       "the judge's `Sentence:` is the PASTED text; the edit reaches it only as the pair")
     #expect(telemetry.events.contains(.judged(.rules, .verdict, 1, 1)))
-    #expect(telemetry.events.contains(.added(.existingWord)))
+    #expect(telemetry.events.contains(.added(.existingWord, .judge)))
     #expect(presenter.offers.count == 1 && presenter.offers.first?.canonical == "Saira")
     #expect(presenter.offers.first?.kind == .updated && presenter.offers.first?.wordID == saira.id)
     let live = try #require(learnedSaira())
@@ -1056,7 +1060,7 @@ struct ObservedCorrectionWatcherTests {
     #expect(observer.finishes == [.nextDictationStarted])
     #expect(telemetry.events.contains(.observationEnded(.nextDictationStarted, 1, .native)))
     #expect(
-      telemetry.events.filter { $0 == .added(.existingWord) || $0 == .added(.newWord) }.count == 2)
+      telemetry.events.filter { $0 == .added(.existingWord, .judge) || $0 == .added(.newWord, .judge) }.count == 2)
   }
 
   @Test("a bypass is reported as its own outcome, never as 'all false', and saves nothing")
@@ -1075,7 +1079,7 @@ struct ObservedCorrectionWatcherTests {
   }
 
   @Test(
-    "a pair the word already covers is filtered before the judge; a pair the user undid may be learned again (no rejection memory)"
+    "a pair the word already covers is filtered before the judge; a pair undone once is learned again, a second Undo blocks it (#3975)"
   )
   func coveredAndUndone() async throws {
     library.userWords = [CustomWord(canonical: "Saira", aliases: ["sarah"])]
@@ -1116,6 +1120,263 @@ struct ObservedCorrectionWatcherTests {
     observer.fire(.settled(region: "Ask Saira today"))
     #expect(await waitUntil { presenter.offers.count == 2 }, "learned again after Undo")
     #expect(learnedSaira()?.learnedAliases == ["sarah"])
+
+    // #3975: the second Undo blocks the pair; the next fix is not judged or saved.
+    let pill2 = try #require(presenter.offers.last)
+    #expect(coordinator.undo(pillID: pill2.id) == .undone)
+    observer.fire(.ended(.focusChanged))
+    #expect(await waitUntil { !watcher3.isWatching })
+    let requestsBefore = judge.requests.count
+    let watcher4 = makeWatcher()
+    edits.outcomes = [
+      .captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))
+    ]
+    watcher4.pasteCompleted(paste(takeID: "TAKE-4"))
+    #expect(await waitUntil { observer.starts == 4 })
+    observer.fire(.settled(region: "Ask Saira today"))
+    #expect(await waitUntil { telemetry.events.contains(.blockedSeen("TAKE-4")) })
+    #expect(judge.requests.count == requestsBefore && presenter.offers.count == 2)
+    #expect(learnedSaira()?.aliases.isEmpty == true)
+  }
+
+  // MARK: Repeat learn and blocks (#3975)
+
+  private static let cenitKey = CorrectionPairKey.make(original: "senate", corrected: "CENIT")
+
+  /// One watched paste of "Ask senate today", settled on `region` with `evidence`.
+  private func watchedPaste(
+    _ watcher: ObservedCorrectionWatcher, starts: Int, pasted: String = "Ask senate today",
+    takeID: String? = nil
+  ) async {
+    edits.outcomes = [.captured(ObserverFake.target(pasted: pasted, pastedAtMs: 0))]
+    watcher.pasteCompleted(paste(pasted, takeID: takeID))
+    #expect(await waitUntil { observer.starts == starts })
+  }
+
+  @Test(
+    "a strong refusal is remembered and the same fix in a later paste is learned with no judge call and via=repeat"
+  )
+  func strongRefusalThenRepeatLearns() async throws {
+    judge.answer = { _ in false }
+    let first = makeWatcher()
+    await watchedPaste(first, starts: 1)
+    observer.fire(.settled(region: "Ask CENIT today", evidence: .strong))
+    #expect(await waitForEvents(telemetry, count: 1))
+    #expect(memory.entry(Self.cenitKey)?.judgeRefusals == 1)
+    #expect(presenter.offers.isEmpty)
+    observer.fire(.ended(.focusChanged))
+    #expect(await waitUntil { !first.isWatching })
+
+    let second = makeWatcher()
+    await watchedPaste(second, starts: 2)
+    observer.fire(.settled(region: "Ask CENIT today", evidence: .strong))
+    #expect(await waitUntil { presenter.offers.count == 1 })
+    #expect(judge.requests.count == 1, "the repeat was not judged")
+    #expect(presenter.offers.first?.canonical == "CENIT")
+    #expect(telemetry.events.contains(.added(.newWord, .repeat)))
+  }
+
+  @Test("a refusal on weak evidence, or a judge bypass, is not remembered")
+  func weakRefusalOrBypassIsNotRemembered() async {
+    judge.answer = { _ in false }
+    let weak = makeWatcher()
+    await watchedPaste(weak, starts: 1)
+    observer.fire(.settled(region: "Ask CENIT today", evidence: .weak))
+    #expect(await waitForEvents(telemetry, count: 1))
+    #expect(memory.entry(Self.cenitKey) == nil)
+    observer.fire(.ended(.focusChanged))
+    #expect(await waitUntil { !weak.isWatching })
+
+    judge.bypass = .unavailable
+    let bypass = makeWatcher()
+    await watchedPaste(bypass, starts: 2)
+    observer.fire(.settled(region: "Ask CENIT today", evidence: .strong))
+    #expect(await waitForEvents(telemetry, count: 3))
+    #expect(memory.entry(Self.cenitKey) == nil)
+  }
+
+  @Test(
+    "a weak refusal is remembered once a strong settle confirms the same text, whichever arrives first; a text changed before the send records nothing"
+  )
+  func weakRefusalConfirmedByStrongSettle() async {
+    judge.answer = { _ in false }
+    // The answer arrives first, then the send.
+    let answerFirst = makeWatcher()
+    await watchedPaste(answerFirst, starts: 1)
+    observer.fire(.settled(region: "Ask CENIT today", evidence: .weak))
+    #expect(await waitForEvents(telemetry, count: 1))
+    #expect(memory.entry(Self.cenitKey) == nil, "not yet: the edit may be unfinished")
+    observer.fire(.settled(region: "Ask CENIT today", evidence: .strong))
+    #expect(await waitUntil { memory.entry(Self.cenitKey)?.judgeRefusals == 1 })
+    observer.fire(.ended(.focusChanged))
+    #expect(await waitUntil { !answerFirst.isWatching })
+    memory.forgetAll()
+
+    // The send arrives while the judge is still thinking.
+    judge.holdAnswers = true
+    let sendFirst = makeWatcher()
+    await watchedPaste(sendFirst, starts: 2)
+    observer.fire(.settled(region: "Ask CENIT today", evidence: .weak))
+    #expect(await waitUntil { judge.requests.count == 2 })
+    observer.fire(.settled(region: "Ask CENIT today", evidence: .strong))
+    judge.release()
+    #expect(await waitUntil { memory.entry(Self.cenitKey)?.judgeRefusals == 1 })
+    observer.fire(.ended(.focusChanged))
+    #expect(await waitUntil { !sendFirst.isWatching })
+    memory.forgetAll()
+    judge.holdAnswers = false
+
+    // The user retyped before sending: the refused pair is gone, nothing is remembered.
+    let changed = makeWatcher()
+    await watchedPaste(changed, starts: 3)
+    observer.fire(.settled(region: "Ask CENIT today", evidence: .weak))
+    // The weak refusal is held before the text changes (the answer is not dropped as stale).
+    #expect(
+      await waitUntil {
+        telemetry.events.filter { if case .judged = $0 { true } else { false } }.count == 3
+      })
+    observer.fire(.changed(region: "Ask senate today"))
+    observer.fire(.settled(region: "Ask senate today", evidence: .strong))
+    for _ in 0..<5 { await Task.yield() }
+    #expect(memory.entry(Self.cenitKey) == nil)
+  }
+
+  @Test("a repeated lowercase rewrite is never learned by repeat: it is judged again as today")
+  func lowercaseRepeatIsStillJudged() async {
+    judge.answer = { _ in false }
+    let first = makeWatcher()
+    await watchedPaste(first, starts: 1, pasted: "I got the file")
+    observer.fire(.settled(region: "I received the file", evidence: .strong))
+    #expect(await waitForEvents(telemetry, count: 1))
+    #expect(memory.isRepeat(CorrectionPairKey.make(original: "got", corrected: "received")))
+    observer.fire(.ended(.focusChanged))
+    #expect(await waitUntil { !first.isWatching })
+
+    let second = makeWatcher()
+    await watchedPaste(second, starts: 2, pasted: "I got the file")
+    observer.fire(.settled(region: "I received the file", evidence: .strong))
+    #expect(await waitUntil { judge.requests.count == 2 }, "judged again")
+    #expect(presenter.offers.isEmpty && library.saves.isEmpty)
+  }
+
+  @Test(
+    "a repeat on weak evidence is held with no judge call and saved by the next strong settle as via=repeat"
+  )
+  func weakRepeatIsHeldThenSaved() async {
+    memory.recordJudgeRefusal(Self.cenitKey)
+    let watcher = makeWatcher()
+    await watchedPaste(watcher, starts: 1)
+    observer.fire(.settled(region: "Ask CENIT today", evidence: .weak))
+    await Task.yield()
+    #expect(presenter.offers.isEmpty && judge.requests.isEmpty)
+    observer.fire(.settled(region: "Ask CENIT today", evidence: .strong))
+    #expect(await waitUntil { presenter.offers.count == 1 })
+    #expect(judge.requests.isEmpty)
+    #expect(telemetry.events.contains(.added(.newWord, .repeat)))
+  }
+
+  @Test(
+    "at release a held repeat is rechecked: retyped in lowercase it is not saved, and a pair blocked meanwhile is dropped and counted"
+  )
+  func heldRepeatRechecksAtRelease() async {
+    memory.recordJudgeRefusal(Self.cenitKey)
+    let casing = makeWatcher()
+    await watchedPaste(casing, starts: 1)
+    observer.fire(.settled(region: "Ask CENIT today", evidence: .weak))
+    await Task.yield()
+    observer.fire(.changed(region: "Ask cenit today"))
+    observer.fire(.settled(region: "Ask cenit today", evidence: .strong))
+    for _ in 0..<5 { await Task.yield() }
+    #expect(presenter.offers.isEmpty && library.saves.isEmpty && judge.requests.isEmpty)
+    observer.fire(.ended(.focusChanged))
+    #expect(await waitUntil { !casing.isWatching })
+
+    let blocked = makeWatcher()
+    await watchedPaste(blocked, starts: 2, takeID: "TAKE-B")
+    observer.fire(.settled(region: "Ask CENIT today", evidence: .weak))
+    await Task.yield()
+    memory.recordUndo(Self.cenitKey)
+    memory.recordUndo(Self.cenitKey)
+    observer.fire(.settled(region: "Ask CENIT today", evidence: .strong))
+    #expect(await waitUntil { telemetry.events.contains(.blockedSeen("TAKE-B")) })
+    #expect(presenter.offers.isEmpty && library.saves.isEmpty)
+  }
+
+  @Test(
+    "after two settled bursts an ordinary fix is not judged, but a repeat in the third burst is still learned"
+  )
+  func repeatAfterTwoBursts() async {
+    // Two punctuation-only bursts use the judge budget's two snapshots.
+    let ordinary = makeWatcher()
+    await watchedPaste(ordinary, starts: 1)
+    observer.fire(.settled(region: "Ask senate today.", evidence: .strong))
+    observer.fire(.settled(region: "Ask senate, today.", evidence: .strong))
+    observer.fire(.settled(region: "Ask CENIT today", evidence: .strong))
+    for _ in 0..<5 { await Task.yield() }
+    #expect(judge.requests.isEmpty && presenter.offers.isEmpty, "not a repeat: not judged")
+    observer.fire(.ended(.focusChanged))
+    #expect(await waitUntil { !ordinary.isWatching })
+    #expect(telemetry.events.last == .observationEnded(.focusChanged, 2, .native))
+
+    memory.recordJudgeRefusal(Self.cenitKey)
+    let repeated = makeWatcher()
+    await watchedPaste(repeated, starts: 2)
+    observer.fire(.settled(region: "Ask senate today.", evidence: .strong))
+    observer.fire(.settled(region: "Ask senate, today.", evidence: .strong))
+    observer.fire(.settled(region: "Ask CENIT today", evidence: .strong))
+    #expect(await waitUntil { presenter.offers.count == 1 })
+    #expect(judge.requests.isEmpty)
+  }
+
+  @Test("a repeat arriving after both judge calls were spent is still learned")
+  func repeatAfterTwoJudgeCalls() async {
+    memory.recordJudgeRefusal(Self.cenitKey)
+    judge.answer = { _ in false }
+    let watcher = makeWatcher()
+    await watchedPaste(watcher, starts: 1, pasted: "Ask sarah about the invoice and senate")
+    observer.fire(.settled(region: "Ask Saira about the invoice and senate", evidence: .strong))
+    #expect(await waitUntil { judge.requests.count == 1 })
+    observer.fire(
+      .settled(region: "Ask Saira about the invoyce and senate", evidence: .strong))
+    #expect(await waitUntil { judge.requests.count == 2 })
+    observer.fire(.settled(region: "Ask Saira about the invoyce and CENIT", evidence: .strong))
+    #expect(await waitUntil { presenter.offers.count == 1 })
+    #expect(judge.requests.count == 2)
+    #expect(presenter.offers.first?.canonical == "CENIT")
+  }
+
+  @Test(
+    "a blocked pair is filtered out and counted once per paste with its take, never judged"
+  )
+  func blockedPairCountedOncePerPaste() async {
+    memory.recordUndo(Self.cenitKey)
+    memory.recordUndo(Self.cenitKey)
+    let watcher = makeWatcher()
+    await watchedPaste(watcher, starts: 1, takeID: "TAKE-1")
+    observer.fire(.settled(region: "Ask CENIT today", evidence: .strong))
+    // A second, different snapshot holding the same pair (an extra space).
+    observer.fire(.settled(region: "Ask  CENIT today", evidence: .strong))
+    #expect(await waitUntil { telemetry.events.contains(.blockedSeen("TAKE-1")) })
+    for _ in 0..<5 { await Task.yield() }
+    #expect(telemetry.events.filter { $0 == .blockedSeen("TAKE-1") }.count == 1)
+    #expect(judge.requests.isEmpty && presenter.offers.isEmpty)
+  }
+
+  @Test(
+    "a judge answer that lands after the pair was blocked and the watch ended is refused and counted with the original take"
+  )
+  func lateAnswerForABlockedPair() async {
+    judge.holdAnswers = true
+    let watcher = makeWatcher()
+    await watchedPaste(watcher, starts: 1, takeID: "TAKE-L")
+    observer.fire(.settled(region: "Ask CENIT today", evidence: .strong))
+    #expect(await waitUntil { judge.requests.count == 1 })
+    observer.fire(.ended(.focusChanged))
+    memory.recordUndo(Self.cenitKey)
+    memory.recordUndo(Self.cenitKey)
+    judge.release()
+    #expect(await waitUntil { telemetry.events.contains(.blockedSeen("TAKE-L")) })
+    #expect(presenter.offers.isEmpty && library.saves.isEmpty)
   }
 
   @Test(

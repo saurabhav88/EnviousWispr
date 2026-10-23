@@ -73,6 +73,8 @@ enum SettingsMapVisibility: Sendable {
   case multiInputDevice
   case previewChoicesExpanded
   case pillShowsWords
+  /// The learning memory holds something Forget would delete (#3975).
+  case learnMemoryStored
   case universalSetupState
   case appleLanguagePacks
   case previewLanguageKnown

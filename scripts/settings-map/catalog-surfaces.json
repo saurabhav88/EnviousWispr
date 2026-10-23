@@ -468,6 +468,9 @@
   "mac-ctl-self-learning-learn-more": [
    "selfLearningDictionary.learnMore"
   ],
+  "mac-ctl-self-learning-forget-memory": [
+   "selfLearningDictionary.forgetMemory"
+  ],
   "mac-ctl-contacts-import": [
    "importContacts"
   ],
@@ -643,6 +646,11 @@
   ]
  },
  "newSurfaces": {
+  "mac-ctl-self-learning-forget-memory": {
+   "kind": "control",
+   "parent": "mac-sec-dict-learn-from",
+   "label": "Forget [Learning memory: N blocked; only while the learning memory holds something]"
+  },
   "mac-ctl-keybind-reset-default": {
    "kind": "control",
    "parent": "mac-sec-kb-recording",

@@ -1,0 +1,1 @@
+{"language":"cs","title":"vymazat paměť učení","words":["blokované opravy","odmítnuté opravy","odblokování"],"phrases":["vymazat paměť odmítnutých oprav","znovu povolit učení blokovaných slov"]}

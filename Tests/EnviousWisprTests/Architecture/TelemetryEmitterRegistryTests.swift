@@ -214,8 +214,15 @@ struct TelemetryEmitterRegistryTests {
   /// closed enums (outcome, provider_kind), no text, model or id. meeting.ended cannot carry it:
   /// the summary ends after the transcript-ready row. Reader: founder summary query at the first
   /// release review.
+  /// #3975: `learnAdded` gains `via:` and `learnUndone` gains `via:`/`memory:`, which changes the
+  /// enclosing-function identity of those two existing sites (same events, same cadences; closed
+  /// string fields, `memory` omitted unless a committed "no"). Two NEW sites:
+  /// `custom_words.learn_refused_by_user` in `learnRefusedByUser` (per_user_action, keep; one row
+  /// per committed user "no", closed source/result, no text) and `custom_words.learn_blocked_seen`
+  /// in `learnBlockedSeen` (per_take, keep; once per distinct blocked pair per watched paste,
+  /// only `take_id`, in TAKE_KEYED_EVENTS). Readers: the #3975 plan §3a release review.
   static let sitesFingerprint =
-    "18effa07414612542ee18dbafb353d35846e98e1a0f4c42ea4b000ef78ffd34c"
+    "9ab9b292ab6387d51922742ad18449bd570db909e51b7be619ef8141c990a975"
   static let ungradedFingerprint =
     "8c5e46c2f2f7fb59004bb2eb5ea1ac210ef32dbb79fdcb68b3eff70a28cc133f"
 

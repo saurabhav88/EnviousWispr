@@ -96,7 +96,10 @@ struct LearningSection: View {
   /// layer itself.
   @Environment(LearnFromEditsAvailability.self) private var availability
   @Environment(LearnedWordCheckerEligibility.self) private var checkerEligibility
+  /// #3975: owns the learning memory the Forget row reads and clears.
+  @Environment(CustomWordsCoordinator.self) private var customWords
   @State private var checkerStatus: LearnedCheckerSettingsStatus?
+  @State private var confirmingForget = false
 
   /// The status line does not vary by dictation language (#3105), so the
   /// refresh keys on the engine, the owner's revision and the Dictionary switch (a
@@ -121,6 +124,7 @@ struct LearningSection: View {
       }
     }
     .settingsMapRegistration(.learnFrom)
+    .onAppear { customWords.refreshLearnMemorySummary() }
     .sheet(isPresented: confirmSheetBinding) {
       if let preview = contactsImport.pendingPreview {
         ContactsImportConfirm(
@@ -205,6 +209,9 @@ struct LearningSection: View {
         .foregroundStyle(.stAccent)
         .settingsArrivalFocusControl()
         .settingsMapRegistration(.selfLearningDictionaryLearnMore)
+        if customWords.learnMemoryStored {
+          learnMemoryRow
+        }
         if let reason = learnFromEdits.secondaryLine {
           HStack(alignment: .center, spacing: 8) {
             Text(reason)
@@ -221,6 +228,38 @@ struct LearningSection: View {
           }
         }
       }
+    }
+  }
+
+  /// #3975 §3.4: what the app remembers about the user's fixes, and the one
+  /// control that clears it from the same place.
+  private var learnMemoryRow: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      HStack(alignment: .center, spacing: 8) {
+        Text(LearnFromEditsSettingsPresentation.memoryLine(blocked: customWords.learnMemoryBlockedCount))
+          .font(.stHelper)
+          .foregroundStyle(.stTextSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+        Spacer(minLength: 8)
+        SettingsActionButton(verbatimTitle: LearnFromEditsSettingsPresentation.forgetButton, isEnabled: true) {
+          confirmingForget = true
+        }
+        .settingsArrivalFocusControl()
+        .settingsMapRegistration(.selfLearningDictionaryForgetMemory)
+      }
+      if customWords.learnMemoryForgetFailed {
+        Text(LearnFromEditsSettingsPresentation.forgetFailed)
+          .font(.stHelper)
+          .foregroundStyle(.stTextSecondary)
+      }
+    }
+    .alert(LearnFromEditsSettingsPresentation.forgetAlertTitle, isPresented: $confirmingForget) {
+      Button(LearnFromEditsSettingsPresentation.forgetConfirm, role: .destructive) {
+        customWords.forgetLearnMemory()
+      }
+      Button(LearnFromEditsSettingsPresentation.cancelTitle, role: .cancel) {}
+    } message: {
+      Text(LearnFromEditsSettingsPresentation.forgetAlertMessage)
     }
   }
 

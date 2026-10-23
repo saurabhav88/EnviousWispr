@@ -1,0 +1,1 @@
+{"language":"et","title":"tühjenda õppimismälu","words":["õppimismälu","blokeeritud sõnad","blokeeringute eemaldamine"],"phrases":["kustuta blokeeritud paranduste mälu","luba blokeeritud sõnu uuesti õppida"]}
