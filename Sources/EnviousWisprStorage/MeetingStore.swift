@@ -257,11 +257,73 @@ public struct MeetingStore: Sendable {
     return decoder
   }()
 
-  static func atomicWrite(_ data: Data, to url: URL) throws {
+  /// The file system calls `atomicWrite` makes after the temp file is durable, and where it
+  /// reports a failed write. A test passes failing steps; production uses `.system`.
+  package struct WriteSteps: Sendable {
+    package var openDirectory: @Sendable (String) -> Int32
+    package var syncDirectory: @Sendable (Int32) -> Int32
+    /// Replaces `url` with `tmp`, keeping the previous file as the named backup beside it.
+    package var replace: @Sendable (_ url: URL, _ tmp: URL, _ backupName: String) throws -> Void
+    package var rename: @Sendable (_ from: String, _ to: String) -> Int32
+    package var unlink: @Sendable (String) -> Int32
+    /// Removes the backup after a confirmed write; a failure leaves an ignored dot-file.
+    package var removeBackup: @Sendable (URL) throws -> Void
+    /// One line per failed write: the stage, what the destination holds, whether that is
+    /// confirmed durable, and each error number. Never file content.
+    package var report: @Sendable (String) -> Void
+
+    package static let system = WriteSteps(
+      openDirectory: { Foundation.open($0, O_RDONLY) },
+      syncDirectory: { fsync($0) },
+      replace: { url, tmp, backupName in
+        _ = try FileManager.default.replaceItemAt(
+          url, withItemAt: tmp, backupItemName: backupName, options: .withoutDeletingBackupItem)
+      },
+      rename: { Foundation.rename($0, $1) },
+      unlink: { Foundation.unlink($0) },
+      removeBackup: { try FileManager.default.removeItem(at: $0) },
+      report: { line in
+        Task { await AppLogger.shared.log(line, level: .info, category: "MeetingStore") }
+      })
+  }
+
+  /// The user-info key `replaceItemAt` sets when it moved the original away and failed. The
+  /// SDK documents it as a string key (`NSFileManager.h`) with no Swift constant.
+  static let originalItemLocationKey = "NSFileOriginalItemLocationKey"
+
+  /// Writes `data` to `url` as one complete file: temp file, `F_FULLFSYNC`, replace, then a
+  /// directory sync, because the rename is durable only once its directory is (#3972 C4a): a
+  /// meeting marked ready clears its checkpoint right after this returns.
+  ///
+  /// What a throw means for `url` (#3996), so a caller that rolls back to its last saved copy
+  /// agrees with the disk. The errors are the ones callers always saw (`syncFailed`, a POSIX
+  /// error, Foundation's replacement error); what is established about `url` is in the
+  /// `report` line.
+  /// - The directory is opened BEFORE the replacement; a failure there (for example no free
+  ///   file descriptors) is a clean throw with `url` untouched.
+  /// - A failed directory sync after the replacement restores the previous file (or removes a
+  ///   new one) and syncs the directory again: `url` holds its previous content again.
+  /// - A failed replacement call puts a displaced original back where Foundation reports it
+  ///   moved it, then syncs the directory.
+  /// - Residual, not promised away and reported: the restore can fail (`url` may hold the NEW
+  ///   content, or nothing; the backup or temp file is kept as evidence), or the restore can
+  ///   land without a confirmed directory sync (previous content, durability unknown).
+  /// - One file per call: a caller that writes two files (notes then the documents manifest)
+  ///   is not rolled back as a whole when its second write fails.
+  /// A leftover `.<name>.<uuid>.bak` (a crash between replacement and cleanup) is ignored by
+  /// every meeting-folder reader (segment names are parsed; documents, records and the
+  /// checkpoint are read by exact path) and goes with the folder on Delete meeting.
+  static func atomicWrite(_ data: Data, to url: URL, steps: WriteSteps = .system) throws {
     let fm = FileManager.default
+    let directory = url.deletingLastPathComponent()
+    let name = url.lastPathComponent
+    func report(_ stage: String, holds: String, durable: String, _ numbers: String) {
+      steps.report(
+        "meeting file write failed file=\(name) stage=\(stage) holds=\(holds) "
+          + "durable=\(durable) \(numbers)")
+    }
     // A unique temp name per write (#3972 R46): two writers of one file never share a temp.
-    let tmp = url.deletingLastPathComponent().appendingPathComponent(
-      ".\(url.lastPathComponent).\(UUID().uuidString).tmp")
+    let tmp = directory.appendingPathComponent(".\(name).\(UUID().uuidString).tmp")
     let fd = Foundation.open(tmp.path, O_CREAT | O_WRONLY | O_TRUNC, 0o600)
     guard fd >= 0 else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno)) }
     let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: false)
@@ -274,21 +336,92 @@ public struct MeetingStore: Sendable {
       try? fm.removeItem(at: tmp)
       throw error
     }
+    let dirFD = steps.openDirectory(directory.path)
+    guard dirFD >= 0 else {
+      let openErrno = errno
+      try? fm.removeItem(at: tmp)
+      report("open_directory", holds: "unchanged", durable: "unchanged", "open=\(openErrno)")
+      throw StoreError.syncFailed(openErrno)
+    }
+    defer { Foundation.close(dirFD) }
+    let replacing = fm.fileExists(atPath: url.path)
+    let backupName = ".\(name).\(UUID().uuidString).bak"
+    let backup = directory.appendingPathComponent(backupName)
     do {
-      if fm.fileExists(atPath: url.path) {
-        _ = try fm.replaceItemAt(url, withItemAt: tmp)
+      if replacing {
+        try steps.replace(url, tmp, backupName)
       } else {
         try fm.moveItem(at: tmp, to: url)
       }
     } catch {
+      // What the failed call left at `url` is established only by what Foundation reports and
+      // what is there now (#3996): a reported original location is put back; otherwise the
+      // destination is read back. The temp file holds only the NEW content, which the caller
+      // still has, so it is kept only when nothing is left at `url` (the one copy on disk).
+      let failure = error as NSError
+      let detail = "error=\(failure.domain):\(failure.code)"
+      func leftAtDestination() -> String {
+        guard let now = fm.contents(atPath: url.path) else {
+          return fm.fileExists(atPath: url.path) ? "unverified" : "absent"
+        }
+        return now == data ? "new" : "unverified"
+      }
+      func dropTempUnlessAlone() {
+        if fm.fileExists(atPath: url.path) { try? fm.removeItem(at: tmp) }
+      }
+      guard replacing else {
+        // A new file that failed to move: nothing was there before and nothing is now.
+        try? fm.removeItem(at: tmp)
+        report("move", holds: "absent", durable: "unchanged", detail)
+        throw error
+      }
+      guard let moved = failure.userInfo[Self.originalItemLocationKey] as? URL else {
+        let holds = leftAtDestination()
+        dropTempUnlessAlone()
+        report("replace", holds: holds, durable: "unknown", detail + " original=unreported")
+        throw error
+      }
+      // Foundation moved the original to `moved` before failing: it goes back over whatever
+      // is at `url`, then the directory is synced.
+      guard steps.rename(moved.path, url.path) == 0 else {
+        let restoreErrno = errno
+        let holds = leftAtDestination()
+        dropTempUnlessAlone()
+        report(
+          "replace_restore", holds: holds, durable: "unknown", detail + " restore=\(restoreErrno)")
+        throw error
+      }
       try? fm.removeItem(at: tmp)
+      if steps.syncDirectory(dirFD) != 0 {
+        let syncErrno = errno
+        report(
+          "replace_restore_sync", holds: "previous", durable: "unknown",
+          detail + " restore_sync=\(syncErrno)")
+      } else {
+        report("replace_restore", holds: "previous", durable: "yes", detail)
+      }
       throw error
     }
-    // The rename is durable only once its directory is (#3972 C4a): a meeting marked ready
-    // clears its checkpoint right after this returns.
-    let dirFD = Foundation.open(url.deletingLastPathComponent().path, O_RDONLY)
-    guard dirFD >= 0 else { throw StoreError.syncFailed(errno) }
-    defer { Foundation.close(dirFD) }
-    if fsync(dirFD) != 0 { throw StoreError.syncFailed(errno) }
+    guard steps.syncDirectory(dirFD) != 0 else {
+      if replacing { try? steps.removeBackup(backup) }
+      return
+    }
+    let syncErrno = errno
+    guard (replacing ? steps.rename(backup.path, url.path) : steps.unlink(url.path)) == 0 else {
+      let undoErrno = errno
+      report(
+        "undo", holds: "new", durable: "unknown", "sync=\(syncErrno) undo=\(undoErrno)")
+      throw StoreError.syncFailed(syncErrno)
+    }
+    let previous = replacing ? "previous" : "absent"
+    guard steps.syncDirectory(dirFD) == 0 else {
+      let undoSyncErrno = errno
+      report(
+        "undo_sync", holds: previous, durable: "unknown",
+        "sync=\(syncErrno) undo_sync=\(undoSyncErrno)")
+      throw StoreError.syncFailed(syncErrno)
+    }
+    report("sync", holds: previous, durable: "yes", "sync=\(syncErrno)")
+    throw StoreError.syncFailed(syncErrno)
   }
 }

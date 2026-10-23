@@ -166,10 +166,13 @@ struct MeetingSummaryTests {
     let parts = MeetingSummary.parts(of: transcript, budget: budget, .estimate)
     #expect(parts.joined(separator: "\n") == transcript)
     let long = Calls()
+    // As long as a part answer may be, so the answers need combining without any shortening.
     long.answers = Array(
-      repeating: .success(String(repeating: line + "\n", count: 40)), count: 200)
+      repeating: .success(Self.answer(of: line, withinTokens: MeetingSummary.partialCap(budget))),
+      count: 200)
     let summary = try await Self.write(
       long, transcript: transcript, notes: "Ask Priya", window: Self.small)
+    #expect(!long.prompts.contains { $0.hasPrefix("Shorten") })
     #expect(!summary.isEmpty)
     #expect(long.prompts.count > parts.count + 1, "the answers needed at least one combine round")
     #expect(long.prompts.allSatisfy { Self.fitsInEstimate($0, Self.small) })
@@ -199,6 +202,167 @@ struct MeetingSummaryTests {
       _ = try await Self.write(always, transcript: transcript, window: Self.small)
     }
     #expect(always.prompts.count == 2, "one try per plan, never retried")
+  }
+
+  /// `line` repeated, one per line, as many times as fit in `cap` estimated tokens.
+  static func answer(of line: String, withinTokens cap: Int) -> String {
+    var text = ""
+    while MeetingSummary.estimatedTokens(text + line + "\n") <= cap { text += line + "\n" }
+    return text
+  }
+
+  /// A long meeting on the small window, its plan, and a part answer `factor` times too long
+  /// for its share of the final call, ending in an action item a clip would drop.
+  static func longMeeting(factor: Int = 2) throws -> (
+    transcript: String, plan: MeetingSummary.Plan, cap: Int, oversized: String
+  ) {
+    let line = "Speaker 1: " + String(repeating: "word ", count: 40)
+    let transcript = Array(repeating: line, count: 150).joined(separator: "\n")
+    let plan = try MeetingSummary.plan(
+      transcript: transcript, notes: "", window: small, counting: .estimate)
+    let cap = MeetingSummary.partialCap(plan.budget)
+    let oversized =
+      answer(of: "- point " + String(repeating: "x", count: 60), withinTokens: cap * factor)
+      + "- ACTION: Maria sends the screenshots"
+    return (transcript, plan, cap, oversized)
+  }
+
+  @Test("a part answer too long for the final call is shortened by the model, never clipped")
+  func longPartAnswerIsShortened() async throws {
+    let meeting = try Self.longMeeting()
+    let calls = Calls()
+    calls.answers = [.success(meeting.oversized), .success("- ACTION: Maria sends the screenshots")]
+    _ = try await Self.write(calls, transcript: meeting.transcript, window: Self.small)
+    #expect(calls.prompts[1].hasPrefix("Shorten these bullets"), "asked to shorten, once")
+    #expect(calls.prompts[1].contains("ACTION: Maria sends the screenshots"))
+    let join = try #require(calls.prompts.last)
+    #expect(join.contains("Part 1:\n- ACTION: Maria sends the screenshots"), "the shortened answer is used")
+    #expect(!join.contains("- point "), "no clipped copy of the long answer reaches the join")
+    #expect(calls.prompts.allSatisfy { Self.fitsInEstimate($0, Self.small) })
+  }
+
+  @Test("a combined answer too long for the final call is shortened too")
+  func longCombinedAnswerIsShortened() async throws {
+    let line = "Speaker 1: " + String(repeating: "word ", count: 40)
+    let transcript = Array(repeating: line, count: 300).joined(separator: "\n")
+    let plan = try MeetingSummary.plan(
+      transcript: transcript, notes: "", window: Self.small, counting: .estimate)
+    let pieces = try #require(plan.pieces).count
+    let cap = MeetingSummary.partialCap(plan.budget)
+    let calls = Calls()
+    // Full-length part answers force a combine round; its first answer is too long.
+    calls.answers =
+      Array(repeating: .success(Self.answer(of: line, withinTokens: cap)), count: pieces)
+      + [.success(Self.answer(of: line, withinTokens: cap * 2)), .success("- combined")]
+    _ = try await Self.write(calls, transcript: transcript, window: Self.small)
+    #expect(calls.prompts[pieces].hasPrefix("Below are the key points"), "a combine call")
+    #expect(calls.prompts[pieces + 1].hasPrefix("Shorten these bullets"))
+  }
+
+  @Test("a shortening request is retried and admitted like any other call")
+  func shorteningIsRetriedAndAdmitted() async throws {
+    let meeting = try Self.longMeeting()
+    let calls = Calls()
+    calls.answers = [
+      .success(meeting.oversized), .failure(LLMError.classified(.rateLimited)),
+      .success("- ACTION: Maria sends the screenshots"),
+    ]
+    _ = try await Self.write(calls, transcript: meeting.transcript, window: Self.small)
+    #expect(calls.prompts[1].hasPrefix("Shorten these bullets"))
+    #expect(calls.prompts[2] == calls.prompts[1], "the same request, tried again")
+    #expect(calls.admissions == calls.prompts.count, "every attempt admitted, the retry included")
+    let join = try #require(calls.prompts.last)
+    #expect(join.contains("- ACTION: Maria sends the screenshots"))
+  }
+
+  @Test("a shortening request the model calls too long re-plans with the byte bound")
+  func shorteningOverflowReplans() async throws {
+    let meeting = try Self.longMeeting()
+    let calls = Calls()
+    calls.answers = [.success(meeting.oversized), .failure(LLMError.classified(.inputTooLong))]
+    _ = try await Self.write(calls, transcript: meeting.transcript, window: Self.small)
+    let bytes = try MeetingSummary.plan(
+      transcript: meeting.transcript, notes: "", window: Self.small, counting: .bytes)
+    // The estimate plan's part and shortening request, then the whole byte plan.
+    #expect(calls.prompts.count == 2 + (bytes.pieces?.count ?? 0) + 1)
+    #expect(calls.prompts.dropFirst(2).allSatisfy { Self.fitsInBytes($0, Self.small) })
+  }
+
+  @Test("on the byte plan, an answer within the word limit but over the byte share is shortened by share")
+  func bytePlanShortensByShare() async throws {
+    let meeting = try Self.longMeeting()
+    let bytes = try MeetingSummary.plan(
+      transcript: meeting.transcript, notes: "", window: Self.small, counting: .bytes)
+    let cap = MeetingSummary.partialCap(bytes.budget)
+    // Few words, just over the byte share: it kept any word limit and is still too long.
+    var answer = "-"
+    while answer.utf8.count <= cap { answer += " word" }
+    let calls = Calls()
+    calls.answers = [
+      .failure(LLMError.classified(.inputTooLong)), .success(answer), .success("- short"),
+    ]
+    _ = try await Self.write(calls, transcript: meeting.transcript, window: Self.small)
+    let request = try #require(calls.prompts.first { $0.hasPrefix("Shorten these bullets") })
+    let percent = cap * 80 / answer.utf8.count
+    #expect(request.hasPrefix("Shorten these bullets to at most \(percent)% of their length"))
+    #expect(percent < 100, "the target is smaller than the answer as written")
+    #expect(calls.prompts.contains { $0.contains("Part 1:\n- short") }, "the shortened answer is used")
+  }
+
+  @Test("an answer still too long after shortening fails the summary as truncated")
+  func stillTooLongIsTruncated() async throws {
+    let meeting = try Self.longMeeting()
+    let calls = Calls()
+    calls.answers = [.success(meeting.oversized), .success(meeting.oversized)]
+    await #expect(throws: MeetingSummary.Failure.truncated) {
+      _ = try await Self.write(calls, transcript: meeting.transcript, window: Self.small)
+    }
+    #expect(calls.prompts.count == 2, "one part, one shortening request, nothing after")
+  }
+
+  @Test("an answer too long even to send back for shortening fails as truncated without a call")
+  func unsendableAnswerIsTruncated() async throws {
+    let meeting = try Self.longMeeting(factor: 5)
+    #expect(MeetingSummary.estimatedTokens(meeting.oversized) > meeting.plan.budget)
+    let calls = Calls()
+    calls.answers = [.success(meeting.oversized)]
+    await #expect(throws: MeetingSummary.Failure.truncated) {
+      _ = try await Self.write(calls, transcript: meeting.transcript, window: Self.small)
+    }
+    #expect(calls.prompts.count == 1)
+  }
+
+  @Test("shortening requests use only the calls the plan leaves unused; then the summary fails")
+  func shorteningStaysInsideTheCallLimit() async throws {
+    // The most parts the call limit allows on this window: the least room left over.
+    let line = "Speaker 1: " + String(repeating: "word ", count: 40)
+    var count = 150
+    var best: (transcript: String, plan: MeetingSummary.Plan)?
+    while true {
+      let transcript = Array(repeating: line, count: count).joined(separator: "\n")
+      guard
+        let plan = try? MeetingSummary.plan(
+          transcript: transcript, notes: "", window: Self.small, counting: .estimate)
+      else { break }
+      best = (transcript, plan)
+      count += 150
+    }
+    let meeting = try #require(best)
+    let headroom = MeetingSummary.maxCalls - meeting.plan.worstCaseCalls
+    let pieces = try #require(meeting.plan.pieces).count
+    #expect(headroom < pieces, "fewer spare calls than parts")
+    let cap = MeetingSummary.partialCap(meeting.plan.budget)
+    let oversized = Self.answer(of: line, withinTokens: cap * 2)
+    let calls = Calls()
+    // Every part answer is too long; every shortening answer fits.
+    calls.answers = (0..<(headroom + 1)).flatMap { _ in
+      [Result<String, Error>.success(oversized), .success("- short")]
+    }
+    await #expect(throws: MeetingSummary.Failure.truncated) {
+      _ = try await Self.write(calls, transcript: meeting.transcript, window: Self.small)
+    }
+    #expect(calls.prompts.filter { $0.hasPrefix("Shorten") }.count == headroom)
+    #expect(calls.prompts.count <= MeetingSummary.maxCalls)
   }
 
   @Test("notes too long for the final call are summarized in parts, not dropped or cut")

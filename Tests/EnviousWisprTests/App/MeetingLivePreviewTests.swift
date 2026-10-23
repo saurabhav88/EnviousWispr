@@ -145,7 +145,10 @@ struct MeetingLivePreviewTests {
     #expect(live.lines.map(\.text) == ["words of \(call)", "words of \(first)"])
     #expect(live.wordsUpToMs == 61_000)
     #expect(live.queued == 0)
-    #expect(rig.preview.calls == [first, call], "each file decoded once, oldest queued first")
+    // Each file decoded once. Not the decode ORDER: the two files reach the queue after their
+    // own record saves, which may finish in either order, so the decoder may see one before
+    // the other is queued (#4002). The line order above is what the user sees.
+    #expect(rig.preview.calls.sorted() == [first, call].sorted(), "each file decoded once")
     await rig.coordinator.stop()
   }
 
@@ -380,6 +383,86 @@ struct MeetingLivePreviewTests {
     await rig.coordinator.stop()
   }
 
+  @Test("a pass whose first save fails lets go: live words stay and a waiting preview runs")
+  func failedClaimSaveReleasesPreview() async throws {
+    let rig = try Self.rig()
+    let hold = Gate()
+    rig.preview.hold = hold
+    defer {
+      hold.open()
+      rig.idle.open()
+    }
+    // An earlier meeting that Transcribe again will queue while this one records.
+    var earlier = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    try rig.harness.store.create(earlier)
+    _ = try MeetingAudioFixture.writeSegment(
+      in: rig.harness.store.folder(for: earlier.id), index: 1, startMs: 0, frames: 16_000)
+    earlier.state = .failed
+    try rig.harness.store.save(earlier)
+    rig.coordinator.launch()
+    await MeetingCoordinatorTests.eventually("listed") {
+      rig.coordinator.record(id: earlier.id) != nil
+    }
+    await rig.coordinator.start(from: .menu)
+    let meetingID = try #require(rig.coordinator.meetings.first { $0.id != earlier.id }?.id)
+    // One minute decoding (held), a second one queued behind it.
+    let first = try Self.closeFile(
+      rig, meetingID: meetingID, track: .microphone, index: 1, startMs: 0)
+    await MeetingCoordinatorTests.eventually("decoding") { rig.preview.calls == [first] }
+    let second = try Self.closeFile(
+      rig, meetingID: meetingID, track: .microphone, index: 2, startMs: 60_000)
+    await MeetingCoordinatorTests.eventually("queued") {
+      rig.coordinator.liveTranscript?.queued == 1
+    }
+    // The earlier meeting's pass claims it and its first save is held, then fails.
+    let gate = rig.harness.writeGate
+    let earlierID = earlier.id
+    gate.holdNext { $0.id == earlierID && $0.state == .processing }
+    gate.failWrites { $0.id == earlierID && $0.state == .processing }
+    await rig.coordinator.retry(meetingID: earlier.id)
+    #expect(await Task.detached { MeetingCoordinatorTests.waitBlocking(gate.entered) }.value == .success)
+    #expect(rig.coordinator.processing?.meetingID == earlier.id)
+    // The running unit finishes; the queued minute now waits for the pass (its line is shown).
+    // Waited on directly: `eventually` would drain the file queue, which is held.
+    hold.open()
+    await MeetingWorkAdmission.waitUntil { rig.coordinator.liveTranscript?.lines.count == 1 }
+    #expect(rig.preview.calls == [first], "the queued minute waits while the pass owns its claim")
+    gate.release.signal()
+    #expect(gate.timedOut.withLock { $0 } == false, "a held write waited out its bound")
+    await MeetingCoordinatorTests.eventually("the waiting minute ran") {
+      rig.preview.calls == [first, second] && rig.coordinator.liveTranscript?.lines.count == 2
+    }
+    #expect(rig.coordinator.processing == nil)
+    #expect(rig.coordinator.record(id: earlier.id)?.state == .queued, "the failed claim kept it queued")
+    #expect(rig.harness.jobs.isEmpty, "no pass job was made")
+    #expect(rig.coordinator.liveTranscript?.meetingID == meetingID, "the live words stayed")
+    await rig.coordinator.stop()
+  }
+
+  @Test("a meeting whose pass could not start keeps its own live words")
+  func failedClaimSaveKeepsOwnLiveWords() async throws {
+    let rig = try Self.rig()
+    defer { rig.idle.open() }
+    await rig.coordinator.start(from: .menu)
+    let meetingID = try #require(rig.coordinator.meetings.first?.id)
+    let file = try Self.closeFile(
+      rig, meetingID: meetingID, track: .microphone, index: 1, startMs: 0)
+    await MeetingCoordinatorTests.eventually("one line") {
+      rig.coordinator.liveTranscript?.lines.count == 1
+    }
+    rig.harness.writeGate.failWrites { $0.id == meetingID && $0.state == .processing }
+    await rig.coordinator.stop()
+    await MeetingCoordinatorTests.eventually("queue stopped") {
+      rig.coordinator.processing == nil && !rig.coordinator.hasFinalPassWork
+    }
+    // The early release is not the pass's end: the words shown after Stop stay (R52).
+    let live = try #require(rig.coordinator.liveTranscript)
+    #expect(live.meetingID == meetingID)
+    #expect(live.lines.map(\.text) == ["words of \(file)"])
+    #expect(rig.coordinator.record(id: meetingID)?.state == .queued)
+    #expect(rig.harness.jobs.isEmpty)
+  }
+
   @Test("deleting the recording meeting keeps its folder until a running decode finished")
   func deleteWaitsForDecode() async throws {
     let rig = try Self.rig()
@@ -596,7 +679,7 @@ struct MeetingLivePreviewTests {
     _ = try closeFile(rig, meetingID: meetingID, track: .microphone, index: 3, startMs: 120_000)
     // The second minute has left the queue and waits on the lane behind the held unload.
     await MeetingWorkAdmission.waitUntil {
-      rig.coordinator.previewLaneOps == 2 && rig.coordinator.liveTranscript?.queued == 0
+      rig.coordinator.livePreview.laneOps == 2 && rig.coordinator.liveTranscript?.queued == 0
     }
     return (meetingID, first)
   }

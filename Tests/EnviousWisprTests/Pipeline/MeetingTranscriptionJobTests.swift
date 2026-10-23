@@ -34,6 +34,41 @@ enum FakeSpeech {
       text: text, language: nil, duration: Double(ms) / 1000, processingTime: 0,
       backendType: .parakeet, wordTimings: timings)
   }
+
+  /// Reads audio written by `slotted` segments: every 500 ms slot of the meeting is its own
+  /// word, `w<slot>`, timed at the slot's true start inside the piece. A slot's first
+  /// millisecond is negative (its start marker); the rest of it holds the slot number as a
+  /// level. Only a slot whose start marker and whole 400 ms word lie inside the piece is heard,
+  /// so a word is never invented from a slot the piece only partly holds.
+  static func transcribeSlots(_ samples: [Float]) -> ASRResult {
+    var text = ""
+    var timings: [ASRWordTiming] = []
+    for i in samples.indices where samples[i] < 0 && (i == 0 || samples[i - 1] >= 0) {
+      let startMs = i * 1000 / 16_000
+      guard i + 400 * 16 <= samples.count else { break }
+      let slot = Int((-samples[i] / slotLevelStep).rounded()) - 1
+      if !text.isEmpty { text += " " }
+      let lower = text.utf16.count
+      text += "w\(slot)"
+      timings.append(
+        ASRWordTiming(
+          word: "w\(slot)", range: lower..<text.utf16.count, startMs: startMs,
+          endMs: startMs + 400))
+    }
+    return ASRResult(
+      text: text, language: nil, duration: Double(samples.count) / 16_000, processingTime: 0,
+      backendType: .parakeet, wordTimings: timings)
+  }
+
+  /// One slot level step: slot `k` is written as `(k + 1) * step`, far above 16-bit rounding.
+  static let slotLevelStep: Float = 0.002
+
+  /// The sample at `absoluteSample` of a slotted meeting track.
+  static func slotSample(_ absoluteSample: Int) -> Float {
+    let slotSamples = 500 * 16
+    let level = Float(absoluteSample / slotSamples + 1) * slotLevelStep
+    return absoluteSample % slotSamples < 16 ? -level : level
+  }
 }
 
 /// #3972 R23, R25: when these fail, a meeting transcript loses or doubles words where pieces
@@ -45,7 +80,11 @@ struct MeetingTranscriptionJobTests {
   // MARK: - Fixtures
 
   /// Writes a 16 kHz mono CAF of `seconds` of tone at `startMs` and returns its file entry.
-  private func segment(in dir: URL, index: Int, startMs: Int, seconds: Double) throws -> (
+  /// `slotted`: the audio carries `FakeSpeech.slotSample` levels on the meeting timeline, so
+  /// `FakeSpeech.transcribeSlots` hears a distinct word for every 500 ms.
+  private func segment(
+    in dir: URL, index: Int, startMs: Int, seconds: Double, slotted: Bool = false
+  ) throws -> (
     url: URL, startMs: Int
   ) {
     let name = MeetingSegmentNaming.fileName(
@@ -62,7 +101,11 @@ struct MeetingTranscriptionJobTests {
     let frames = AVAudioFrameCount(seconds * 16_000)
     let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames)!
     buffer.frameLength = frames
-    for i in 0..<Int(frames) { buffer.floatChannelData![0][i] = sin(Float(i) * 0.05) * 0.3 }
+    let firstSample = startMs * 16
+    for i in 0..<Int(frames) {
+      buffer.floatChannelData![0][i] =
+        slotted ? FakeSpeech.slotSample(firstSample + i) : sin(Float(i) * 0.05) * 0.3
+    }
     try file.write(from: buffer)
     return (url, startMs)
   }
@@ -82,10 +125,13 @@ struct MeetingTranscriptionJobTests {
     var calls: [Int] = []  // sample counts per call
     var dictationActiveDuringCall = false
     var isDictationIdle: @MainActor () -> Bool = { true }
+    /// Hears `slotted` audio (`FakeSpeech.transcribeSlots`) instead of one word per 500 ms.
+    var hearsSlots = false
 
     func transcribe(_ samples: [Float]) -> ASRResult {
       calls.append(samples.count)
       if !isDictationIdle() { dictationActiveDuringCall = true }
+      if hearsSlots { return FakeSpeech.transcribeSlots(samples) }
       let ms = samples.count * 1000 / 16_000
       var text = ""
       var timings: [ASRWordTiming] = []
@@ -125,23 +171,51 @@ struct MeetingTranscriptionJobTests {
   // MARK: - Tests
 
   @Test(
-    "a 70 s track is transcribed in pieces and every word appears exactly once across the joins")
+    "a 70 s track is transcribed in pieces and every word appears exactly once, in order, across the joins")
   func seamsKeepEveryWordOnce() async throws {
     let dir = try folder()
     let files = [
-      try segment(in: dir, index: 1, startMs: 0, seconds: 60),
-      try segment(in: dir, index: 2, startMs: 60_000, seconds: 10),
+      try segment(in: dir, index: 1, startMs: 0, seconds: 60, slotted: true),
+      try segment(in: dir, index: 2, startMs: 60_000, seconds: 10, slotted: true),
     ]
     let engine = FakeEngine()
+    engine.hearsSlots = true
     let job = makeJob(engine: engine, idle: { true }, wait: {})
     let result = try await job.run(tracks: [.microphone: MeetingTrackAudio(files: files)]) { _ in }
 
     #expect(engine.calls.count >= 3)
-    // The fake emits a word every 500 ms over each PADDED piece; ownership by midpoint must
-    // leave one word per 500 ms of the whole 70 s track, no more and no fewer.
-    let wordCount = result.composition.text.split(whereSeparator: { $0 == " " || $0 == "\n" }).count
-    #expect(abs(wordCount - 140) <= 4, "words=\(wordCount)")
+    // Every padded piece hears the slots it fully holds, so slots near a seam are heard twice;
+    // ownership by midpoint must keep each of the 140 slots exactly once and in order.
+    let words = result.composition.text.split(whereSeparator: { $0 == " " || $0 == "\n" })
+      .map(String.init)
+    #expect(words == (0..<140).map { "w\($0)" })
     #expect(result.failedPieces == 0)
+  }
+
+  @Test("a word on the seam between two pieces belongs to exactly one of them")
+  func seamWordOwnedOnce() {
+    func piece(_ startMs: Int, _ endMs: Int) -> MeetingTrackPiece {
+      // Words whose midpoints sit 1 ms before, on and 1 ms after the shared seam at 10,000 ms.
+      let words = [("before", 9_999), ("on", 10_000), ("after", 10_001)]
+      var text = ""
+      var timings: [ASRWordTiming] = []
+      for (word, mid) in words {
+        if !text.isEmpty { text += " " }
+        let lower = text.utf16.count
+        text += word
+        // The padded piece starts at 0, so the timing is the meeting time.
+        timings.append(
+          ASRWordTiming(
+            word: word, range: lower..<text.utf16.count, startMs: mid - 100, endMs: mid + 100))
+      }
+      return MeetingTranscriptionJob.ownedPiece(
+        result: ASRResult(
+          text: text, language: nil, duration: 20, processingTime: 0, backendType: .parakeet,
+          wordTimings: timings),
+        paddedStartMs: 0, startMs: startMs, endMs: endMs)
+    }
+    #expect(piece(0, 10_000).text == "before")
+    #expect(piece(10_000, 20_000).text == "on after")
   }
 
   @Test("every engine call runs inside a unit the lane is told about, teardown included (R50)")

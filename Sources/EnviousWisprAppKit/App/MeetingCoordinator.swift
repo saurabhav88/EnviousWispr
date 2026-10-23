@@ -327,6 +327,8 @@ final class MeetingCoordinator {
   private let writer: MeetingFileWriter
   /// Each meeting's notes and summary (#3972 R46): drafts, debounce and their file writes.
   let documents: MeetingDocumentsOwner
+  /// Live words while a meeting records (#3972 R42): the preview queue, lane and engine.
+  let livePreview: MeetingLivePreviewScheduler
   /// Writes each ready meeting's summary (#3972 R39). Set by `MeetingWiring`; nil writes none.
   var summaries: MeetingSummaryOwner?
 
@@ -369,6 +371,9 @@ final class MeetingCoordinator {
   private var launchTask: Task<Void, Never>?
   private var committing = false
   private var deleting: Set<UUID> = []
+  /// Meetings whose Delete audio is under way, from its guard until its files are gone (#3994):
+  /// claimed synchronously, so no pass can start on audio that is being removed.
+  private var removingAudio: Set<UUID> = []
   private var startGeneration = 0
   private var processEndWaiters: [CheckedContinuation<Void, Never>] = []
   /// Open meeting attempts and the facts frozen at their start (#3972 R11). An attempt is one
@@ -390,32 +395,6 @@ final class MeetingCoordinator {
   private var closeOwned: Set<UUID> = []
   /// Listing, recovery and file reads in flight, on the main actor's books.
   private var fileWorkInFlight = 0
-  /// Closed capture files waiting for a preview unit, oldest first (R42, R43).
-  private var previewQueue: [PreviewItem] = []
-  private struct PreviewItem {
-    let meetingID: UUID
-    let track: MeetingTrackKind
-    let info: MeetingSegmentInfo
-  }
-  private var previewJob: MeetingPreviewing?
-  /// The preview job was cancelled (deletion, a final pass, quit): it is unloaded and replaced
-  /// before the next preview, never reused (its cancel is permanent).
-  private var previewJobCancelled = false
-  private var previewTask: Task<Void, Never>?
-  private var previewIdleTask: Task<Void, Never>?
-  /// The preview lane (Codex C10 r1): every preview unit, idle unload and hand-over unload runs
-  /// on it, one after another, so an unload never overlaps a unit and a caller can await the
-  /// lane's end. `previewLaneOps` counts operations queued or running on it.
-  private var previewLane: Task<Void, Never>?
-  private(set) var previewLaneOps = 0
-  /// The file the running preview operation decodes, and the track decoded last (round robin).
-  private var currentPreviewItem: PreviewItem?
-  private var lastPreviewTrack: MeetingTrackKind?
-  /// The meeting whose audio the preview job decoded last: deleting it unloads the job even
-  /// when idle (Codex C10 r2).
-  private var previewJobMeetingID: UUID?
-  /// At most this many queued preview files per track (R52); the oldest drops first.
-  static let previewQueueCapPerTrack = 3
   /// Checkpoint writes running off the main actor right now.
   @ObservationIgnored private let checkpointWrites = OSAllocatedUnfairLock(initialState: 0)
 
@@ -430,6 +409,29 @@ final class MeetingCoordinator {
     self.documents = MeetingDocumentsOwner(
       writer: writer,
       dependencies: .init(debounce: dependencies.notesDebounce, log: dependencies.log))
+    self.livePreview = MeetingLivePreviewScheduler(
+      makeJob: dependencies.makePreviewJob, idleWait: dependencies.previewIdleWait)
+    livePreview.host = .init(
+      isQuitting: { [weak self] in self?.quitting ?? true },
+      isDeleting: { [weak self] in self?.deleting.contains($0) ?? true },
+      isRecording: { [weak self] id in
+        guard let self else { return false }
+        return self.isRecording && self.activeMeetingID == id
+      },
+      finalPassBusy: { [weak self] in
+        guard let self else { return false }
+        return self.processing != nil || self.committing
+      },
+      waitForPassEnd: { [weak self] in
+        guard let self else { return }
+        await withCheckedContinuation { self.processEndWaiters.append($0) }
+      },
+      liveTranscript: { [weak self] in self?.liveTranscript },
+      setLiveTranscript: { [weak self] in self?.liveTranscript = $0 },
+      folder: { [weak self] in
+        self?.deps.store.folder(for: $0) ?? URL(fileURLWithPath: "/dev/null")
+      },
+      workChanged: { [weak self] in self?.workChanged() })
   }
 
   // MARK: - Queries
@@ -447,8 +449,8 @@ final class MeetingCoordinator {
   /// deletion or typed notes not yet saved is in progress: a relaunch must wait (R4, R19, R46). A queued meeting alone resumes
   /// after a relaunch.
   var isWorkInFlight: Bool {
-    isCapturing || (job?.isUnitInFlight ?? false) || previewLaneOps > 0 || committing
-      || !deleting.isEmpty
+    isCapturing || (job?.isUnitInFlight ?? false) || livePreview.laneOps > 0 || committing
+      || !deleting.isEmpty || !removingAudio.isEmpty
       || fileWorkInFlight > 0 || checkpointWrites.withLock { $0 } > 0
       || writer.pendingCount > 0 || documents.hasPendingWork
       || (summaries?.hasWorkInFlight ?? false)
@@ -477,7 +479,7 @@ final class MeetingCoordinator {
   /// activation waits (C3a, C4a).
   var isMeetingModelWorkActive: Bool {
     (job?.isEngineResident ?? false) || (job?.isUnitInFlight ?? false)
-      || (previewJob?.isEngineResident ?? false) || previewLaneOps > 0
+      || livePreview.isEngineResident || livePreview.laneOps > 0
   }
 
   var microphoneLevel: Float { recorder?.microphoneLevel ?? 0 }
@@ -844,14 +846,10 @@ final class MeetingCoordinator {
     phase = .stopping(meetingID: meetingID)
     // The after-recording pass makes the real words; queued previews are not needed (R42), and
     // one still waiting for admission is called off (a decode already running finishes).
-    // Redundant by design with the pass's own `yieldPreviewEngine` and the lane's admission
+    // Redundant by design with the pass's own `livePreview.yieldEngine()` and the lane's admission
     // check (the pass sets `processing` before it yields); kept so a Stop never depends on the
     // pass starting. A mutation removing it alone changes nothing a test can see (C10 r4).
-    dropQueuedPreviews(of: meetingID)
-    if currentPreviewItem?.meetingID == meetingID {
-      previewJob?.cancel()
-      previewJobCancelled = true
-    }
+    livePreview.stopRecording(of: meetingID)
     // Stays reachable until the files are closed, so a quit meanwhile takes it over.
     let recorder = self.recorder
     let report = await recorder?.stop()
@@ -908,7 +906,7 @@ final class MeetingCoordinator {
     guard !quitting, meetingID == activeMeetingID, var record = live[meetingID] else { return }
     record.segments[track, default: []].append(info)
     await persist(record)
-    if isRecording, meetingID == activeMeetingID { enqueuePreview(meetingID, track: track, info) }
+    if isRecording, meetingID == activeMeetingID { livePreview.enqueue(meetingID, track: track, info) }
     if let free = deps.freeDiskBytes(), free < Self.diskFloorBytes, isRecording,
       meetingID == activeMeetingID
     {
@@ -956,6 +954,10 @@ final class MeetingCoordinator {
       let next = meetings.last(where: {
         $0.state == .queued && !$0.deletionRequested && !deleting.contains($0.id)
           && !attempted.contains($0.id) && !closeOwned.contains($0.id)
+          // The live copy decides (#3994): a Delete audio whose save is still on its way has
+          // already changed it, while `meetings` still shows the meeting queued.
+          && live[$0.id]?.state == .queued && live[$0.id]?.audioKept == true
+          && !removingAudio.contains($0.id)
       })
     {
       attempted.insert(next.id)
@@ -971,14 +973,24 @@ final class MeetingCoordinator {
   }
 
   private func process(_ meetingID: UUID) async {
-    guard var record = live[meetingID] else { return }
-    record.state = .processing
-    guard await persist(record), isStillOwned(meetingID) else { return }
+    // The claim is synchronous and comes before the first await (#3994): from here no Delete
+    // audio, Retry or second pass can start on this meeting (`isActive`), and a meeting whose
+    // audio removal began is never claimed.
+    guard var record = live[meetingID], record.state == .queued, record.audioKept,
+      !isActive(meetingID), isStillOwned(meetingID)
+    else { return }
     processing = Processing(meetingID: meetingID, stage: nil)
     workChanged()
+    record.state = .processing
+    guard await persist(record), isStillOwned(meetingID) else {
+      // The pass never began: the claim is released without the pass's own ending (its live
+      // words stay, nothing was decoded). A deletion waiting on the claim goes on.
+      releaseProcessingClaim()
+      return
+    }
     // R50: a final pass comes first. A preview unit already running finishes (its compute
     // cannot stop), then the preview engine unloads before this pass loads its own.
-    await yieldPreviewEngine()
+    await livePreview.yieldEngine()
     defer {
       processing = nil
       job = nil
@@ -1000,7 +1012,8 @@ final class MeetingCoordinator {
     let report = await Task.detached(priority: .utility) { recover(folder) }.value
     for problem in report.problems { deps.log("meeting recovery problem \(problem)") }
     var tracks: [MeetingTrackKind: MeetingTrackAudio] = [:]
-    var damaged: Set<String> = Set(report.problems.compactMap(Self.damagedFileName))
+    var damaged: Set<String> = Set(
+      report.problems.compactMap(MeetingDamagedAudio.damagedFileName))
     for kind in MeetingTrackKind.allCases {
       let files = (report.segments[kind] ?? []).map {
         (url: folder.appendingPathComponent($0.fileName), startMs: $0.startMs)
@@ -1009,7 +1022,7 @@ final class MeetingCoordinator {
       // Detached for the same reason: a synchronous header and frame-count read of every file.
       let audio = await Task.detached(priority: .utility) { MeetingTrackAudio(files: files) }.value
       for problem in audio.problems { deps.log("meeting track problem \(problem)") }
-      damaged.formUnion(audio.problems.compactMap(Self.damagedFileName))
+      damaged.formUnion(audio.problems.compactMap(MeetingDamagedAudio.damagedFileName))
       if !audio.isEmpty { tracks[kind] = audio }
     }
     var onDisk: [MeetingStore.SegmentFile] = []
@@ -1022,7 +1035,8 @@ final class MeetingCoordinator {
     }
     fileWorkInFlight -= 1
     // Damaged files stay on disk; their stretch of the timeline becomes a visible gap (R3).
-    let missingAudio = Self.missingAudio(damaged: damaged, onDisk: onDisk, readable: tracks)
+    let missingAudio = MeetingDamagedAudio.missingAudio(
+      damaged: damaged, onDisk: onDisk, readable: tracks)
     let started = Date()
     guard isStillOwned(meetingID), var current = live[meetingID] else { return }
     for kind in MeetingTrackKind.allCases { current.segments[kind] = report.segments[kind] }
@@ -1043,7 +1057,7 @@ final class MeetingCoordinator {
         failed.state = .failed
       }
       if await persist(failed) {
-        endAttempt(failed, outcome: .failed, gapCount: Self.markerCount(missingAudio))
+        endAttempt(failed, outcome: .failed, gapCount: MeetingDamagedAudio.markerCount(missingAudio))
       }
       return
     }
@@ -1085,7 +1099,7 @@ final class MeetingCoordinator {
         ?? "pass_failed"
       if await persist(failed) {
         endAttempt(
-          failed, outcome: .failed, gapCount: Self.markerCount(missingAudio),
+          failed, outcome: .failed, gapCount: MeetingDamagedAudio.markerCount(missingAudio),
           processingSeconds: Date().timeIntervalSince(started))
       }
       return
@@ -1106,7 +1120,7 @@ final class MeetingCoordinator {
       if await persist(failed) {
         endAttempt(
           failed, outcome: .failed, result: result,
-          gapCount: result.failedPieces + Self.markerCount(missingAudio),
+          gapCount: result.failedPieces + MeetingDamagedAudio.markerCount(missingAudio),
           processingSeconds: Date().timeIntervalSince(started))
       }
       return
@@ -1148,7 +1162,7 @@ final class MeetingCoordinator {
       : (result.failedPieces > 0 || !missingAudio.isEmpty ? .readyWithGaps : .ready)
     endAttempt(
       ready, outcome: outcome, result: result,
-      gapCount: result.failedPieces + Self.markerCount(missingAudio),
+      gapCount: result.failedPieces + MeetingDamagedAudio.markerCount(missingAudio),
       processingSeconds: Date().timeIntervalSince(started), summaryPlan: summaryPlan)
     if summaryPlan == .scheduled {
       if owedOnDisk {
@@ -1163,79 +1177,6 @@ final class MeetingCoordinator {
     } catch {
       deps.log("meeting checkpoint clear failed error=\(type(of: error))")
     }
-  }
-
-  /// Damaged-audio markers in the transcript: one per missing stretch, on every track.
-  static func markerCount(
-    _ missingAudio: [MeetingTrackKind: [MeetingTranscriptionJob.MissingAudio]]
-  ) -> Int {
-    missingAudio.values.reduce(0) { $0 + $1.count }
-  }
-
-  /// The file a recovery problem is about, when the problem means its audio is lost. Empty
-  /// files and overlaps lose nothing a listener would hear.
-  static func damagedFileName(_ problem: MeetingTrackRecovery.Problem) -> String? {
-    switch problem {
-    case .unreadablePartial(let name), .unreadableFinal(let name), .incompatibleFinal(let name):
-      return name
-    case .folderUnreadable, .emptyPartial, .partialBesideFinal, .promotionFailed,
-      .directorySyncFailed, .emptyFinal, .duplicateIndex:
-      return nil
-    }
-  }
-
-  static func damagedFileName(_ problem: MeetingTrackAudio.Problem) -> String? {
-    switch problem {
-    case .unreadable(let name), .incompatibleFormat(let name):
-      return name
-    case .empty, .overlap:
-      return nil
-    }
-  }
-
-  /// Per track, the stretches only a damaged file claims (milliseconds). A damaged file's
-  /// claim runs from its own start to the next file's start on that track; with no next file
-  /// its end is unknown (nil), never a guess. Audio a readable file covers is removed from it.
-  static func missingAudio(
-    damaged: Set<String>, onDisk: [MeetingStore.SegmentFile],
-    readable: [MeetingTrackKind: MeetingTrackAudio]
-  ) -> [MeetingTrackKind: [MeetingTranscriptionJob.MissingAudio]] {
-    var result: [MeetingTrackKind: [MeetingTranscriptionJob.MissingAudio]] = [:]
-    let unbounded = Int.max
-    for kind in MeetingTrackKind.allCases {
-      let files = onDisk.filter { $0.track == kind }.sorted { $0.startMs < $1.startMs }
-      let covered = (readable[kind]?.segments ?? []).map {
-        ms($0.readStartSample)..<ms($0.endSample)
-      }.filter { !$0.isEmpty }.sorted { $0.lowerBound < $1.lowerBound }
-      for (i, file) in files.enumerated() where damaged.contains(file.url.lastPathComponent) {
-        let next = files[(i + 1)...].first { $0.startMs > file.startMs }?.startMs
-        var pieces = [file.startMs..<(next ?? unbounded)]
-        for cover in covered {
-          pieces = pieces.flatMap { piece -> [Range<Int>] in
-            guard cover.overlaps(piece) else { return [piece] }
-            var left: [Range<Int>] = []
-            if piece.lowerBound < cover.lowerBound {
-              left.append(piece.lowerBound..<cover.lowerBound)
-            }
-            if cover.upperBound < piece.upperBound {
-              left.append(cover.upperBound..<piece.upperBound)
-            }
-            return left
-          }
-        }
-        for piece in pieces {
-          result[kind, default: []].append(
-            .init(
-              startMs: piece.lowerBound,
-              endMs: piece.upperBound == unbounded ? nil : piece.upperBound))
-        }
-      }
-    }
-    return result
-  }
-
-  private static func ms(_ sample: Int) -> Int {
-    Int((Double(sample) * 1_000 / MeetingAudioFormat.sampleRate).rounded())
   }
 
   /// False once the meeting is being deleted (or marked for it) or the app is quitting: a late
@@ -1293,6 +1234,14 @@ final class MeetingCoordinator {
   func deleteAudio(meetingID: UUID) async {
     guard var record = live[meetingID], !isActive(meetingID), !closeOwned.contains(meetingID)
     else { return }
+    // Claimed in the same turn as the guard (#3994): a pass cannot start on this audio while
+    // its removal is saved and carried out.
+    removingAudio.insert(meetingID)
+    workChanged()
+    defer {
+      removingAudio.remove(meetingID)
+      workChanged()
+    }
     // The decision is durable before any file goes: `audioKept == false` is the marker, so an
     // exit or a failed removal part-way never leaves a record that still offers the audio, and
     // the next launch finishes the removal (`finishAudioDeletion`).
@@ -1342,7 +1291,7 @@ final class MeetingCoordinator {
     documents.forget(meetingID)
     // A summary being written ends, and has physically ended before the folder is removed.
     await summaries?.cancelAndWait(meetingID)
-    dropQueuedPreviews(of: meetingID)
+    livePreview.dropQueued(of: meetingID)
     if liveTranscript?.meetingID == meetingID { liveTranscript = nil }
     switch phase {
     case .recording(let id, _) where id == meetingID: await stop()
@@ -1355,7 +1304,7 @@ final class MeetingCoordinator {
     default: break
     }
     // The preview lane lets go of this meeting's files before they are removed.
-    await drainPreview(of: meetingID)
+    await livePreview.drain(of: meetingID)
     // Ends an attempt still open (recording, queued, processing); a finished one already
     // sent its row.
     endAttempt(record, outcome: .deletedBeforeReady, hasNotes: hadNotes)
@@ -1459,6 +1408,15 @@ final class MeetingCoordinator {
     }
   }
 
+  /// Ends a pass claim that never began its work: waiters resume, admission is offered again.
+  private func releaseProcessingClaim() {
+    processing = nil
+    let waiters = processEndWaiters
+    processEndWaiters.removeAll()
+    for waiter in waiters { waiter.resume() }
+    workChanged()
+  }
+
   private func waitUntilNotProcessing(_ meetingID: UUID) async {
     while processing?.meetingID == meetingID {
       await withCheckedContinuation { processEndWaiters.append($0) }
@@ -1466,264 +1424,16 @@ final class MeetingCoordinator {
   }
 
   private func isActive(_ meetingID: UUID) -> Bool {
-    if processing?.meetingID == meetingID || deleting.contains(meetingID) { return true }
+    if processing?.meetingID == meetingID || deleting.contains(meetingID)
+      || removingAudio.contains(meetingID)
+    {
+      return true
+    }
     switch phase {
     case .recording(let id, _), .stopping(let id): return id == meetingID
     case .starting: return activeMeetingID == meetingID
     case .idle: return false
     }
-  }
-
-  // MARK: - Live preview (R42, R43, R50, R52)
-
-  /// Queues one closed capture file of the recording meeting. Per track at most
-  /// `previewQueueCapPerTrack` wait; the oldest of that track drops first and is counted.
-  private func enqueuePreview(_ meetingID: UUID, track: MeetingTrackKind, _ info: MeetingSegmentInfo) {
-    guard deps.makePreviewJob != nil, liveTranscript?.meetingID == meetingID else { return }
-    queuePreview(PreviewItem(meetingID: meetingID, track: track, info: info))
-    // Ends an idle wait at once. Redundant by design: the queue's end schedules the wait again
-    // (cancelling this one), and the unload itself refuses while a unit runs or a file waits;
-    // a mutation removing this line alone therefore changes nothing a user sees (C10).
-    previewIdleTask?.cancel()
-    previewIdleTask = nil
-    guard previewTask == nil else { return }
-    previewTask = Task { [weak self] in
-      await self?.runPreviewQueue()
-      self?.previewTask = nil
-      self?.schedulePreviewIdleUnload()
-    }
-  }
-
-  /// Adds a file in timeline order, whatever order the files arrived in (each arrives after its
-  /// own record save, and saves of files closed together may finish in any order), then applies
-  /// the per-track limit.
-  private func queuePreview(_ item: PreviewItem) {
-    let index =
-      previewQueue.firstIndex { $0.info.startMs > item.info.startMs } ?? previewQueue.endIndex
-    previewQueue.insert(item, at: index)
-    trimPreviewQueue(track: item.track)
-  }
-
-  /// Keeps the newest `previewQueueCapPerTrack` files of `track`, oldest first out, counting
-  /// each dropped file as skipped. Every insertion goes through here (Codex C10 r2).
-  private func trimPreviewQueue(track: MeetingTrackKind) {
-    while previewQueue.filter({ $0.track == track }).count > Self.previewQueueCapPerTrack,
-      let oldest = previewQueue.indices.filter({ previewQueue[$0].track == track }).min(by: {
-        previewQueue[$0].info.startMs < previewQueue[$1].info.startMs
-      })
-    {
-      previewQueue.remove(at: oldest)
-      liveTranscript?.skipped += 1
-    }
-    liveTranscript?.queued = previewQueue.count
-  }
-
-  private func dropQueuedPreviews(of meetingID: UUID) {
-    previewQueue.removeAll { $0.meetingID == meetingID }
-    if liveTranscript?.meetingID == meetingID { liveTranscript?.queued = previewQueue.count }
-  }
-
-  /// Runs `op` on the preview lane after everything already on it, and waits for it.
-  private func onPreviewLane(_ op: @escaping @MainActor () async -> Void) async {
-    let previous = previewLane
-    previewLaneOps += 1
-    let task = Task { @MainActor in
-      await previous?.value
-      await op()
-    }
-    previewLane = task
-    await task.value
-    previewLaneOps -= 1
-    if previewLane == task { previewLane = nil }
-  }
-
-  /// The next queued file: round robin between the tracks when both wait (R52), oldest first
-  /// within a track.
-  private func nextPreviewItem() -> PreviewItem? {
-    if let last = lastPreviewTrack, let other = previewQueue.firstIndex(where: { $0.track != last })
-    {
-      return previewQueue.remove(at: other)
-    }
-    return previewQueue.isEmpty ? nil : previewQueue.removeFirst()
-  }
-
-  /// One preview unit at a time on the lane, and never while a final pass or its commit runs
-  /// (R50: final first). A unit a final pass interrupted while it still waited for admission
-  /// goes back to the front of the queue.
-  private func runPreviewQueue() async {
-    while !quitting, !previewQueue.isEmpty {
-      if processing != nil || committing {
-        await withCheckedContinuation { processEndWaiters.append($0) }
-        continue
-      }
-      guard let item = nextPreviewItem() else { break }
-      liveTranscript?.queued = previewQueue.count
-      guard liveTranscript?.meetingID == item.meetingID else { continue }
-      var outcome: PreviewOutcome = .skipped
-      await onPreviewLane { [weak self] in
-        guard let self else { return }
-        outcome = await self.decodePreview(item)
-      }
-      lastPreviewTrack = item.track
-      workChanged()
-      guard var transcript = liveTranscript, transcript.meetingID == item.meetingID else {
-        continue
-      }
-      let endMs = item.info.startMs + item.info.durationMs
-      switch outcome {
-      case .words(let words):
-        if !words.isEmpty {
-          transcript.lines.append(
-            LiveLine(
-              id: "\(item.track.rawValue)-\(item.info.index)", track: item.track,
-              startMs: item.info.startMs, endMs: endMs, text: words))
-          transcript.lines.sort {
-            ($0.startMs, $0.track.rawValue) < ($1.startMs, $1.track.rawValue)
-          }
-        }
-        transcript.wordsUpToMs = max(transcript.wordsUpToMs ?? 0, endMs)
-      case .skipped:
-        // Unreadable or failed audio never moves the freshness time (Codex C10 r1).
-        transcript.skipped += 1
-      case .dropped:
-        continue
-      case .interrupted:
-        // A final pass came first while it waited; it is decoded after that pass.
-        liveTranscript = transcript
-        if isRecording, activeMeetingID == item.meetingID {
-          queuePreview(item)
-        }
-        continue
-      }
-      liveTranscript = transcript
-    }
-  }
-
-  private enum PreviewOutcome: Equatable {
-    case words(String)
-    case skipped
-    case interrupted
-    /// The recording ended, the meeting is being deleted or the app quits: nothing to show.
-    case dropped
-  }
-
-  /// One preview unit, on the lane: the file read, then the job's admission and decode.
-  /// Whether `item` may start model work now (Codex C10 r3): its meeting still records, the
-  /// app is not quitting, the meeting is not being deleted, and no final pass or commit waits.
-  /// Asked when the lane starts the item and again after each wait before model work; work
-  /// already running natively may finish.
-  private func previewAdmission(_ item: PreviewItem) -> PreviewOutcome? {
-    guard !quitting, !deleting.contains(item.meetingID),
-      liveTranscript?.meetingID == item.meetingID, isRecording,
-      activeMeetingID == item.meetingID
-    else { return .dropped }
-    if processing != nil || committing { return .interrupted }
-    return nil
-  }
-
-  /// One preview unit, on the lane: the file read, then the job's admission and decode.
-  private func decodePreview(_ item: PreviewItem) async -> PreviewOutcome {
-    if let refused = previewAdmission(item) { return refused }
-    if previewJobCancelled {
-      await previewJob?.releaseIdle()
-      previewJob = nil
-      previewJobCancelled = false
-      if let refused = previewAdmission(item) { return refused }
-    }
-    let url = deps.store.folder(for: item.meetingID).appendingPathComponent(item.info.fileName)
-    // Detached, not `Task {}`: this type is @MainActor and a plain Task inherits it; this is
-    // a synchronous header and frame-count read of the file. Awaited at once.
-    let audio = await Task.detached(priority: .utility) {
-      MeetingTrackAudio(files: [(url: url, startMs: item.info.startMs)])
-    }.value
-    // Asked again after the read and before any job or engine exists for it.
-    if let refused = previewAdmission(item) { return refused }
-    let job = previewJob ?? makePreviewJob()
-    currentPreviewItem = item
-    previewJobMeetingID = item.meetingID
-    defer { currentPreviewItem = nil }
-    do {
-      guard let words = try await job.preview(audio: audio) else { return .skipped }
-      return .words(words.trimmingCharacters(in: .whitespacesAndNewlines))
-    } catch MeetingTranscriptionJob.JobError.cancelled {
-      // Called off while it waited: a final pass came first, or the recording ended.
-      return previewAdmission(item) == .dropped ? .dropped : .interrupted
-    } catch {
-      return .skipped
-    }
-  }
-
-  private func makePreviewJob() -> MeetingPreviewing {
-    let job = deps.makePreviewJob!()
-    job.onWaitingForDictation = { [weak self] waiting in
-      self?.liveTranscript?.waitingForDictation = waiting
-    }
-    previewJob = job
-    return job
-  }
-
-  /// R43: with nothing queued for `previewIdleWait`, the preview engine unloads on the lane and
-  /// gives its model use back. A new queued file cancels the wait.
-  private func schedulePreviewIdleUnload() {
-    guard !quitting, previewQueue.isEmpty, let previewJob, previewJob.isEngineResident else {
-      return
-    }
-    let wait = deps.previewIdleWait
-    previewIdleTask?.cancel()
-    previewIdleTask = Task { [weak self] in
-      await wait()
-      guard !Task.isCancelled, let self, self.previewQueue.isEmpty else { return }
-      await self.onPreviewLane { [weak self] in
-        guard let self, self.previewQueue.isEmpty else { return }
-        await self.previewJob?.releaseIdle()
-      }
-      self.workChanged()
-    }
-  }
-
-  /// Before a final pass loads its engine (R50): a preview still waiting for admission is
-  /// called off (its file goes back to the queue), one already decoding finishes, then the
-  /// preview engine unloads on the lane. Returns once that unload is done.
-  private func yieldPreviewEngine() async {
-    previewIdleTask?.cancel()
-    previewIdleTask = nil
-    if currentPreviewItem != nil {
-      previewJob?.cancel()
-      previewJobCancelled = true
-    }
-    await onPreviewLane { [weak self] in
-      guard let self else { return }
-      await self.previewJob?.releaseIdle()
-      if self.previewJobCancelled {
-        self.previewJob = nil
-        self.previewJobCancelled = false
-      }
-    }
-  }
-
-  /// Deletion's drain (Codex C10 r1): no new preview of `meetingID` starts, a running one is
-  /// called off (admission waits end; a decode already running finishes), and the lane's work
-  /// and the unload end before the meeting's files are removed.
-  private func drainPreview(of meetingID: UUID) async {
-    dropQueuedPreviews(of: meetingID)
-    if currentPreviewItem?.meetingID == meetingID {
-      previewJob?.cancel()
-      previewJobCancelled = true
-    }
-    await onPreviewLane { [weak self] in
-      // Its job is unloaded when it was cancelled, or when it holds this meeting's engine idle;
-      // another meeting's preview is left alone.
-      guard let self, self.previewJobCancelled || self.previewJobMeetingID == meetingID else {
-        return
-      }
-      await self.previewJob?.releaseIdle()
-      if self.previewJobCancelled {
-        self.previewJob = nil
-        self.previewJobCancelled = false
-      }
-      self.previewJobMeetingID = nil
-    }
-    if liveTranscript?.meetingID == meetingID { liveTranscript = nil }
   }
 
   // MARK: - Quit (R18)
@@ -1736,9 +1446,7 @@ final class MeetingCoordinator {
     summaries?.prepareForTermination()
     queueTask?.cancel()
     job?.cancel()
-    previewJob?.cancel()
-    previewTask?.cancel()
-    previewIdleTask?.cancel()
+    livePreview.cancelForQuit()
     guard let recorder, let meetingID = activeMeetingID, var record = live[meetingID] else {
       // Notes save whether or not anything records (R46), inside the same deadline.
       documents.flushForQuit(deadline: deadline)

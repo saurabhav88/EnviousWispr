@@ -175,6 +175,24 @@ struct MeetingCoordinatorTests {
       if fail { throw InjectedFailure() }
     }
 
+    private let holdPredicate = OSAllocatedUnfairLock<(@Sendable (MeetingRecord) -> Bool)?>(
+      initialState: nil)
+    /// Holds the first later write of a record matching `predicate`, like `arm()`.
+    func holdNext(where predicate: @escaping @Sendable (MeetingRecord) -> Bool) {
+      holdPredicate.withLock { $0 = predicate }
+    }
+
+    func passIfHeld(_ record: MeetingRecord) {
+      let hold = holdPredicate.withLock { predicate -> Bool in
+        guard let match = predicate, match(record) else { return false }
+        predicate = nil
+        return true
+      }
+      guard hold else { return }
+      entered.signal()
+      if release.wait(timeout: .now() + 10) == .timedOut { timedOut.withLock { $0 = true } }
+    }
+
     func passIfArmed() {
       let hold = armed.withLock { value -> Bool in
         defer { value = false }
@@ -323,6 +341,7 @@ struct MeetingCoordinatorTests {
         },
         writeRecord: { [writeGate] store, record in
           writeGate.passIfArmed()
+          writeGate.passIfHeld(record)
           try writeGate.failIfAsked()
           try writeGate.failIfInFailingState(record)
           try store.save(record)
@@ -756,6 +775,130 @@ struct MeetingCoordinatorTests {
     await coordinator.retry(meetingID: meetingID)
     #expect(try harness.store.load(id: meetingID).state == .ready)
     #expect(harness.jobs.count == 1)
+  }
+
+  @Test("Delete audio during the pass's first save is refused: the pass owns the meeting from its start")
+  func deleteAudioRefusedWhilePassClaims() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    let gate = harness.writeGate
+    gate.holdNext { $0.state == .processing }
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    // Stop ends by saving the notes, which queue behind the held save: it runs on its own.
+    let stopping = Task { await coordinator.stop() }
+    #expect(await Task.detached { Self.waitBlocking(gate.entered) }.value == .success)
+    // The `.processing` save is held: the pass already owns the meeting (#3994).
+    #expect(coordinator.processing?.meetingID == meetingID)
+    await coordinator.deleteAudio(meetingID: meetingID)
+    gate.release.signal()
+    await stopping.value
+    #expect(gate.timedOut.withLock { $0 } == false, "Delete audio waited behind the held save")
+    await Self.eventually("ready") {
+      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
+    }
+    let record = try harness.store.load(id: meetingID)
+    #expect(record.audioKept)
+    #expect(try !harness.store.segmentFiles(meeting: meetingID).isEmpty, "the pass's audio stays")
+  }
+
+  @Test("a queued meeting whose Delete audio is still saving is never picked up by the queue")
+  func queueSkipsAudioBeingRemoved() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    let gate = harness.writeGate
+    // The disk fills during each recording: after each Stop the meeting stays queued and the
+    // queue waits (a Start itself needs the space).
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    harness.freeBytes = 10
+    await coordinator.stop()
+    harness.freeBytes = 50_000_000_000
+    await coordinator.start(from: .history)
+    let otherID = try #require(coordinator.meetings.first { $0.id != meetingID }?.id)
+    harness.freeBytes = 10
+    await coordinator.stop()
+    await Self.eventually("waits for space") {
+      coordinator.queueWaitsForSpace && coordinator.record(id: otherID)?.state == .queued
+    }
+    gate.holdNext { $0.id == meetingID && !$0.audioKept }
+    let removing = Task { await coordinator.deleteAudio(meetingID: meetingID) }
+    #expect(await Task.detached { Self.waitBlocking(gate.entered) }.value == .success)
+    // Space is back and Transcribe again on the other meeting restarts the queue while the
+    // Delete audio save is held: the saved list still shows the first meeting queued.
+    harness.freeBytes = 50_000_000_000
+    await coordinator.retry(meetingID: otherID)
+    gate.release.signal()
+    await removing.value
+    #expect(gate.timedOut.withLock { $0 } == false, "a held write waited out its bound")
+    await Self.eventually("other ready") { coordinator.record(id: otherID)?.state == .ready }
+    let record = try harness.store.load(id: meetingID)
+    #expect(record.state == .failed)
+    #expect(record.failureCode == "audio_deleted")
+    let passWrites = harness.writeGate.written.withLock { $0 }
+      .filter { $0.id == meetingID && $0.state == .processing }
+    #expect(passWrites.isEmpty, "no pass ever started on the meeting whose audio was going")
+  }
+
+  @Test("a pass whose first save fails lets go of the meeting: it stays queued and can be deleted")
+  func failedClaimSaveReleases() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    harness.writeGate.failWrites(inState: .processing)
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    await coordinator.stop()
+    await Self.eventually("queue stopped") {
+      coordinator.processing == nil && !coordinator.hasFinalPassWork
+    }
+    #expect(coordinator.record(id: meetingID)?.state == .queued)
+    #expect(harness.jobs.isEmpty, "no pass job was made")
+    await coordinator.delete(meetingID: meetingID)
+    #expect(!FileManager.default.fileExists(atPath: harness.store.folder(for: meetingID).path))
+  }
+
+  @Test("deleting a meeting while its pass's first save is held waits for the claim, then removes it")
+  func deleteDuringHeldClaim() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    let gate = harness.writeGate
+    gate.holdNext { $0.state == .processing }
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    let stopping = Task { await coordinator.stop() }
+    #expect(await Task.detached { Self.waitBlocking(gate.entered) }.value == .success)
+    #expect(coordinator.playbackSource(meetingID: meetingID) != nil, "not yet being deleted")
+    let deleting = Task { await coordinator.delete(meetingID: meetingID) }
+    // The deletion has begun (it claims the meeting at once; its mark waits behind the held
+    // save). Waited on directly: `eventually` would drain the file queue, which is held.
+    await MeetingWorkAdmission.waitUntil { coordinator.playbackSource(meetingID: meetingID) == nil }
+    #expect(FileManager.default.fileExists(atPath: harness.store.folder(for: meetingID).path))
+    gate.release.signal()
+    await stopping.value
+    await deleting.value
+    #expect(harness.jobs.isEmpty, "no pass job for the meeting being deleted")
+    #expect(gate.timedOut.withLock { $0 } == false, "a held write waited out its bound")
+    #expect(coordinator.processing == nil)
+    #expect(!FileManager.default.fileExists(atPath: harness.store.folder(for: meetingID).path))
+  }
+
+  @Test("a quit while the pass's first save is held lets go of the claim and starts no pass")
+  func quitDuringHeldClaim() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    let gate = harness.writeGate
+    gate.holdNext { $0.state == .processing }
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    let stopping = Task { await coordinator.stop() }
+    #expect(await Task.detached { Self.waitBlocking(gate.entered) }.value == .success)
+    coordinator.prepareForTermination(deadline: .now() + 0.5)
+    gate.release.signal()
+    await stopping.value
+    #expect(gate.timedOut.withLock { $0 } == false, "a held write waited out its bound")
+    await Self.eventually("claim released") { coordinator.processing == nil }
+    #expect(harness.jobs.isEmpty, "no pass job after the quit")
+    #expect(try !harness.store.segmentFiles(meeting: meetingID).isEmpty, "the audio stays for the relaunch")
   }
 
   @Test("Delete audio saves the decision before any file goes, and a launch finishes a cut-short removal")
