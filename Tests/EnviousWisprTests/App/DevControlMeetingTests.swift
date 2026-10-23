@@ -87,10 +87,16 @@
       #expect(Self.code(await unwired.retry(["meetingID": id])) == "notWired")
       #expect(Self.code(await unwired.deleteAudio(["meetingID": id])) == "notWired")
       #expect(Self.code(await unwired.delete(["meetingID": id])) == "notWired")
+      #expect(Self.code(await unwired.notesGet(["meetingID": id])) == "notWired")
+      #expect(
+        Self.code(await unwired.notesSet(["meetingID": id, "notes": "x"])) == "notWired")
+      #expect(Self.code(await unwired.summaryGet(["meetingID": id])) == "notWired")
+      #expect(Self.code(await unwired.summaryWrite(["meetingID": id])) == "notWired")
+      #expect(Self.code(unwired.live([:])) == "notWired")
       let meetingCommands = DevControlDispatcher.Command.allCases.filter {
         $0.rawValue.hasPrefix("meeting.")
       }
-      #expect(meetingCommands.count == 8)
+      #expect(meetingCommands.count == 13)
     }
 
     @Test("malformed arguments are refused before any owner is called")
@@ -112,6 +118,12 @@
         ("meeting.get", ["meetingID": id, "turnLimit": DevControlMeetings.maxTurnLimit + 1]),
         ("meeting.get", ["meetingID": id, "turnOffset": -1]),
         ("meeting.get", ["meetingID": id, "includeText": 1]),
+        ("meeting.notes.get", ["meetingID": id, "x": 1]),
+        ("meeting.notes.set", ["meetingID": id]),
+        ("meeting.notes.set", ["meetingID": id, "notes": 3]),
+        ("meeting.summary.get", ["meetingID": "nope"]),
+        ("meeting.summary.write", ["meetingID": id, "replace": "yes"]),
+        ("meeting.live", ["meetingID": id]),
       ]
       for (name, args) in refusals {
         #expect(Self.code(await rig.call(name, args)) == "badArgs", "\(name) \(args)")
@@ -233,6 +245,115 @@
       #expect(coordinator.record(id: UUID(uuidString: meetingID)!) == nil)
       let gone = await rig.call("meeting.delete", ["meetingID": meetingID])
       #expect(Self.code(gone) == "notFound")
+    }
+
+    /// A ready meeting with its History row, through the coordinator like a real meeting.
+    static func readyMeeting(_ rig: Rig) async throws -> UUID {
+      let coordinator = rig.harness.coordinator
+      await coordinator.start(from: .menu)
+      let meetingID = try #require(coordinator.meetings.first?.id)
+      await coordinator.stop()
+      await MeetingCoordinatorTests.eventually("ready") {
+        coordinator.record(id: meetingID)?.state == .ready
+      }
+      return meetingID
+    }
+
+    @Test("notes set saves them now, and notes get reads back exactly what is on disk")
+    func notesRoundTrip() async throws {
+      let rig = try Rig()
+      let meetingID = try await Self.readyMeeting(rig)
+      let id = meetingID.uuidString
+      let set = try #require(
+        Self.ok(await rig.call("meeting.notes.set", ["meetingID": id, "notes": "Ask Priya"])))
+      #expect(set["saved"] as? Bool == true)
+      let onDisk = try rig.harness.store.loadDocuments(meeting: meetingID).notes
+      #expect(onDisk == "Ask Priya", "saved before the reply")
+      let get = try #require(Self.ok(await rig.call("meeting.notes.get", ["meetingID": id])))
+      #expect(get["notes"] as? String == "Ask Priya")
+      #expect(get["unsaved"] as? Bool == false)
+      #expect(get["loadState"] as? String == "loaded")
+      let missing = await rig.call("meeting.notes.get", ["meetingID": UUID().uuidString])
+      #expect(Self.code(missing) == "notFound")
+      let tooBig = String(repeating: "a", count: DevControlMeetings.maxTextBytes + 1)
+      #expect(
+        Self.code(await rig.call("meeting.notes.set", ["meetingID": id, "notes": tooBig]))
+          == "tooLarge")
+    }
+
+    @Test("summary write starts the owner's attempt; get reports it; an edit needs replace")
+    func summaryWriteAndGet() async throws {
+      let rig = try Rig()
+      let summaryRig = try MeetingSummaryOwnerTests.Rig()
+      summaryRig.world.enabled = false  // no automatic summary: the command writes it
+      let coordinator = rig.harness.coordinator
+      coordinator.summaries = summaryRig.makeOwner(documents: coordinator.documents)
+      let meetingID = try await Self.readyMeeting(rig)
+      rig.history.coordinator.meetingInfo = { id in
+        coordinator.record(id: id).map(MeetingHistoryInfo.init(record:))
+      }
+      summaryRig.world.transcript = "You: ship it"
+      let id = meetingID.uuidString
+
+      let before = try #require(Self.ok(await rig.call("meeting.summary.get", ["meetingID": id])))
+      #expect(before["summary"] is NSNull)
+      #expect(before["writing"] as? Bool == false)
+
+      let started = try #require(
+        Self.ok(await rig.call("meeting.summary.write", ["meetingID": id])))
+      #expect(started["outcome"] as? String == "started")
+      await MeetingCoordinatorTests.eventually("written") { summaryRig.world.finished.count == 1 }
+      let after = try #require(Self.ok(await rig.call("meeting.summary.get", ["meetingID": id])))
+      #expect(after["summary"] as? String == summaryRig.world.answer)
+      #expect(after["origin"] as? String == "generated")
+      #expect(after["outOfDate"] as? Bool == false)
+
+      // The user's own summary is replaced only when asked.
+      coordinator.documents.setSummary(meetingID, "My own words")
+      #expect(await coordinator.documents.flushSummary(meetingID))
+      let asks = try #require(Self.ok(await rig.call("meeting.summary.write", ["meetingID": id])))
+      #expect(asks["outcome"] as? String == "needsConfirmation")
+      #expect(summaryRig.world.finished.count == 1, "nothing started")
+      let replaced = try #require(
+        Self.ok(await rig.call("meeting.summary.write", ["meetingID": id, "replace": true])))
+      #expect(replaced["outcome"] as? String == "started")
+      await MeetingCoordinatorTests.eventually("rewritten") { summaryRig.world.finished.count == 2 }
+      let final = try #require(Self.ok(await rig.call("meeting.summary.get", ["meetingID": id])))
+      #expect(final["summary"] as? String == summaryRig.world.answer)
+
+      // With no provider nothing starts.
+      summaryRig.world.provider = .none
+      let refused = await rig.call("meeting.summary.write", ["meetingID": id])
+      #expect(Self.code(refused) == "rejected")
+      #expect(summaryRig.world.finished.count == 2)
+    }
+
+    @Test("live is null with nothing recording, and reads the live words while one records")
+    func live() async throws {
+      let rig = try Rig()
+      let idle = try #require(Self.ok(await rig.call("meeting.live")))
+      #expect(idle["live"] is NSNull)
+
+      let preview = try MeetingLivePreviewTests.rig()
+      defer { preview.idle.open() }
+      let meetings = DevControlMeetings(
+        sources: .init(
+          coordinator: { preview.coordinator }, startFlow: { nil }, transcripts: { nil }))
+      await preview.coordinator.start(from: .menu)
+      let meetingID = try #require(preview.coordinator.meetings.first?.id)
+      let file = try MeetingLivePreviewTests.closeFile(
+        preview, meetingID: meetingID, track: .microphone, index: 1, startMs: 0)
+      await MeetingCoordinatorTests.eventually("one line") {
+        preview.coordinator.liveTranscript?.lines.count == 1
+      }
+      let reply = try #require(Self.ok(meetings.live([:])))
+      let live = try #require(reply["live"] as? [String: Any])
+      #expect(live["meetingID"] as? String == meetingID.uuidString)
+      let lines = try #require(live["lines"] as? [[String: Any]])
+      #expect(lines.map { $0["text"] as? String } == ["words of \(file)"])
+      #expect(lines.first?["track"] as? String == "microphone")
+      #expect(live["waitingOnSummary"] as? Bool == false)
+      await preview.coordinator.stop()
     }
   }
 #endif

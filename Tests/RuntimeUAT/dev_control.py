@@ -312,6 +312,10 @@ meeting start asks the same Start the menu and page use; --call-sound/--no-call-
 this request only, never the saved setting. waitingForExplainer means the page shows the
 call-sound explainer: a person answers it. meeting get returns stored turns (echo flagged)
 and the visible projection; --include-text adds the stored text up to 256 KB.
+meeting notes-set types and saves a meeting's notes (--text) as the Notes tab does;
+notes-get reads them back. summary-write is the Summary tab's Write summary / Write again
+(--replace confirms replacing an edited summary); it returns at the start, so poll
+summary-get. meeting live prints the recording meeting's live words (memory only).
 Changes need the shared dev-app lock (dev-app-lock.py claim) unless run by hand.
 """
 
@@ -430,6 +434,15 @@ def build_parser():
     meeting_get.add_argument("--include-text", action="store_true")
     for verb in MEETING_ID_ACTIONS:
         meeting.add_parser(verb).add_argument("id")
+    meeting.add_parser("notes-get").add_argument("id")
+    notes_set = meeting.add_parser("notes-set")
+    notes_set.add_argument("id")
+    notes_set.add_argument("--text", required=True)
+    meeting.add_parser("summary-get").add_argument("id")
+    summary_write = meeting.add_parser("summary-write")
+    summary_write.add_argument("id")
+    summary_write.add_argument("--replace", action="store_true")
+    meeting.add_parser("live")
 
     file_ = sub.add_parser("file", help="Transcribe a File").add_subparsers(
         dest="action", required=True, metavar="ACTION")
@@ -535,6 +548,19 @@ def route(args):
         if args.include_text:
             wire["includeText"] = True
         return "meeting.get", wire, False
+    if key == ("meeting", "notes-get"):
+        return "meeting.notes.get", {"meetingID": args.id}, False
+    if key == ("meeting", "notes-set"):
+        return "meeting.notes.set", {"meetingID": args.id, "notes": args.text}, True
+    if key == ("meeting", "summary-get"):
+        return "meeting.summary.get", {"meetingID": args.id}, False
+    if key == ("meeting", "summary-write"):
+        wire = {"meetingID": args.id}
+        if args.replace:
+            wire["replace"] = True
+        return "meeting.summary.write", wire, True
+    if key == ("meeting", "live"):
+        return "meeting.live", {}, False
     if args.group == "meeting" and args.action in MEETING_ID_ACTIONS:
         return MEETING_ID_ACTIONS[args.action], {"meetingID": args.id}, True
     if key == ("history", "list"):

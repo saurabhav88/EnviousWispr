@@ -349,6 +349,196 @@
       }
     }
 
+    // MARK: - Notes, summary and live words (R55)
+
+    /// `{meetingID}`: the meeting's notes as the documents owner holds them, read from disk first.
+    func notesGet(_ args: [String: Any]) async -> Result {
+      let meetingID: UUID
+      switch Self.meetingID(args, allowed: ["meetingID"]) {
+      case .failure(let result): return result
+      case .success(let id): meetingID = id
+      }
+      guard let coordinator = sources.coordinator() else { return unwiredResult }
+      guard coordinator.record(id: meetingID) != nil else {
+        return .failure(.notFound, "no meeting has that id")
+      }
+      let documents = coordinator.documents
+      let loaded = await documents.load(meetingID)
+      let notes = documents.notes(meetingID)
+      guard notes.utf8.count <= Self.maxTextBytes else {
+        return .failure(.tooLarge, "the notes are \(notes.utf8.count) bytes")
+      }
+      return .ok([
+        "meetingID": meetingID.uuidString, "loaded": loaded,
+        "loadState": Self.name(documents.loadState(meetingID)),
+        "notes": notes, "unsaved": documents.hasUnsavedNotes(meetingID),
+      ])
+    }
+
+    /// `{meetingID, notes}`: types the notes as the Notes tab does, then saves them now. The
+    /// reply says whether the notes on disk are the ones sent.
+    func notesSet(_ args: [String: Any]) async -> Result {
+      let meetingID: UUID
+      switch Self.meetingID(args, allowed: ["meetingID", "notes"]) {
+      case .failure(let result): return result
+      case .success(let id): meetingID = id
+      }
+      guard let text = args["notes"] as? String else {
+        return .failure(.badArgs, "notes must be a string")
+      }
+      guard text.utf8.count <= Self.maxTextBytes else {
+        return .failure(.tooLarge, "notes may be at most \(Self.maxTextBytes) bytes")
+      }
+      guard let coordinator = sources.coordinator() else { return unwiredResult }
+      guard let record = coordinator.record(id: meetingID) else {
+        return .failure(.notFound, "no meeting has that id")
+      }
+      guard record.isWritableByThisBuild, !record.deletionRequested else {
+        return .failure(.rejected, "that meeting cannot be edited")
+      }
+      let documents = coordinator.documents
+      guard await documents.load(meetingID), documents.canEdit(meetingID) else {
+        return .failure(.rejected, "the meeting's notes could not be read")
+      }
+      documents.setNotes(meetingID, text)
+      let saved = await documents.flush(meetingID)
+      guard saved, documents.notes(meetingID) == text else {
+        return .failure(.rejected, "the notes were not saved")
+      }
+      return .ok(["meetingID": meetingID.uuidString, "saved": true, "bytes": text.utf8.count])
+    }
+
+    /// `{meetingID}`: the summary as the Summary tab shows it: its text and origin, whether it is
+    /// out of date or owed, and what the summary owner is doing.
+    func summaryGet(_ args: [String: Any]) async -> Result {
+      let meetingID: UUID
+      switch Self.meetingID(args, allowed: ["meetingID"]) {
+      case .failure(let result): return result
+      case .success(let id): meetingID = id
+      }
+      guard let coordinator = sources.coordinator(), let summaries = coordinator.summaries else {
+        return unwiredResult
+      }
+      guard coordinator.record(id: meetingID) != nil else {
+        return .failure(.notFound, "no meeting has that id")
+      }
+      let documents = coordinator.documents
+      let loaded = await documents.load(meetingID)
+      let text = documents.summary(meetingID)
+      if let text, text.utf8.count > Self.maxTextBytes {
+        return .failure(.tooLarge, "the summary is \(text.utf8.count) bytes")
+      }
+      let manifest = documents.manifest(meetingID)
+      return .ok([
+        "meetingID": meetingID.uuidString, "loaded": loaded,
+        "summary": text as Any? ?? NSNull(),
+        "origin": manifest?.summary.map { $0.origin.rawValue as Any } ?? NSNull(),
+        "pending": manifest?.summaryPending ?? false,
+        "outOfDate": summaries.isOutOfDate(meetingID),
+        "writing": summaries.isWriting(meetingID),
+        "activity": summaries.activity[meetingID].map { Self.name($0) as Any } ?? NSNull(),
+        "configurationProblem":
+          summaries.configurationProblem().map { Self.name($0) as Any } ?? NSNull(),
+      ])
+    }
+
+    /// `{meetingID, replace?}`: the Summary tab's Write summary / Write again. A summary the
+    /// user edited is replaced only with `replace: true` (the tab's confirmation). The reply is
+    /// the start, never the finished summary: poll `meeting.summary.get`.
+    func summaryWrite(_ args: [String: Any]) async -> Result {
+      let meetingID: UUID
+      switch Self.meetingID(args, allowed: ["meetingID", "replace"]) {
+      case .failure(let result): return result
+      case .success(let id): meetingID = id
+      }
+      var replace = false
+      if let raw = args["replace"] {
+        guard let flag = DevControlSettings.Codec.bool(raw) else {
+          return .failure(.badArgs, "replace must be a JSON boolean")
+        }
+        replace = flag
+      }
+      guard let coordinator = sources.coordinator(), let summaries = coordinator.summaries else {
+        return unwiredResult
+      }
+      guard let record = coordinator.record(id: meetingID) else {
+        return .failure(.notFound, "no meeting has that id")
+      }
+      guard record.isWritableByThisBuild, !record.deletionRequested else {
+        return .failure(.rejected, "that meeting cannot be changed")
+      }
+      if let problem = summaries.configurationProblem() {
+        return .failure(.rejected, "no summary can be written: \(Self.name(problem))")
+      }
+      switch await summaries.requestWrite(meetingID) {
+      case .started:
+        return .ok(["meetingID": meetingID.uuidString, "outcome": "started"])
+      case .needsConfirmation(let sha):
+        guard replace else {
+          return .ok(["meetingID": meetingID.uuidString, "outcome": "needsConfirmation"])
+        }
+        summaries.writeAgain(meetingID, replacing: sha)
+        return .ok(["meetingID": meetingID.uuidString, "outcome": "started", "replaced": true])
+      case .refused:
+        return .ok([
+          "meetingID": meetingID.uuidString, "outcome": "refused",
+          "activity": summaries.activity[meetingID].map { Self.name($0) as Any } ?? NSNull(),
+        ])
+      }
+    }
+
+    /// `{}`: the live words of the meeting recording now (memory only, R59), or null.
+    func live(_ args: [String: Any]) -> Result {
+      guard args.isEmpty else { return .failure(.badArgs, "meeting.live takes no arguments") }
+      guard let coordinator = sources.coordinator() else { return unwiredResult }
+      guard let live = coordinator.liveTranscript else { return .ok(["live": NSNull()]) }
+      return .ok([
+        "live": [
+          "meetingID": live.meetingID.uuidString,
+          "lines": live.lines.map { line -> [String: Any] in
+            [
+              "id": line.id, "track": line.track.rawValue, "startMs": line.startMs,
+              "endMs": line.endMs, "text": line.text,
+            ]
+          },
+          "wordsUpToMs": live.wordsUpToMs as Any? ?? NSNull(),
+          "queued": live.queued, "skipped": live.skipped,
+          "waitingForDictation": live.waitingForDictation,
+          "waitingOnSummary": coordinator.liveWaitsOnSummary,
+        ] as [String: Any]
+      ])
+    }
+
+    static func name(_ state: MeetingDocumentsOwner.LoadState) -> String {
+      switch state {
+      case .notLoaded: return "notLoaded"
+      case .loading: return "loading"
+      case .loaded: return "loaded"
+      case .failed: return "failed"
+      }
+    }
+
+    static func name(_ activity: MeetingSummaryOwner.Activity) -> String {
+      switch activity {
+      case .waiting: return "waiting"
+      case .writing: return "writing"
+      case .failed(let problem): return "failed:" + name(problem)
+      }
+    }
+
+    static func name(_ problem: MeetingSummaryOwner.Problem) -> String {
+      switch problem {
+      case .noProvider: return "noProvider"
+      case .notForSummaries: return "notForSummaries"
+      case .notReady: return "notReady"
+      case .ollamaTooOld: return "ollamaTooOld"
+      case .tooLong: return "tooLong"
+      case .providerFailed: return "providerFailed"
+      case .notesUnreadable: return "notesUnreadable"
+      case .storageFailed: return "storageFailed"
+      }
+    }
+
     // MARK: - Encoding
 
     private static let timestamp = Date.ISO8601FormatStyle(includingFractionalSeconds: true)

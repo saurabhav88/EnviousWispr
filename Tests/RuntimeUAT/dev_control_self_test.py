@@ -363,6 +363,14 @@ def routes_and_values(r, tree):
         (["meeting", "retry", word_id], "meeting.retry", {"meetingID": word_id}),
         (["meeting", "delete-audio", word_id], "meeting.deleteAudio", {"meetingID": word_id}),
         (["meeting", "delete", word_id], "meeting.delete", {"meetingID": word_id}),
+        (["meeting", "notes-get", word_id], "meeting.notes.get", {"meetingID": word_id}),
+        (["meeting", "notes-set", word_id, "--text=-Ask Priya"], "meeting.notes.set",
+         {"meetingID": word_id, "notes": "-Ask Priya"}),
+        (["meeting", "summary-get", word_id], "meeting.summary.get", {"meetingID": word_id}),
+        (["meeting", "summary-write", word_id], "meeting.summary.write", {"meetingID": word_id}),
+        (["meeting", "summary-write", word_id, "--replace"], "meeting.summary.write",
+         {"meetingID": word_id, "replace": True}),
+        (["meeting", "live"], "meeting.live", {}),
         (["models", "download", "parakeet"], "models.parakeet.download", None),
         (["models", "cancel", "parakeet"], "models.parakeet.cancel", None),
         (["models", "download", "whisper"], "models.whisper.download", None),
@@ -502,6 +510,8 @@ def lock_cases(r, tree):
         ["meeting", "retry", word_id],
         ["meeting", "delete-audio", word_id],
         ["meeting", "delete", word_id],
+        ["meeting", "notes-set", word_id, "--text", "x"],
+        ["meeting", "summary-write", word_id],
     ]
     try:
         for argv in mutations:
@@ -545,7 +555,9 @@ def lock_cases(r, tree):
                 and b.backend_loads == 0, f"status={status} doc={document}")
         reader_lock = FakeLock(find_error=AssertionError("a read must not ask the lock"))
         for argv in (["status"], ["settings", "list"], ["history", "list"], ["words", "list"],
-                     ["meeting", "status"], ["meeting", "list"], ["meeting", "get", word_id]):
+                     ["meeting", "status"], ["meeting", "list"], ["meeting", "get", word_id],
+                     ["meeting", "notes-get", word_id], ["meeting", "summary-get", word_id],
+                     ["meeting", "live"]):
             status, _, _, _ = _run(["--worktree", tree.wt] + argv,
                                    FakeBoundaries({"111": exe}, door=door, lock=reader_lock))
             r.check("lock", f"a read needs no ownership: {argv[0]}",

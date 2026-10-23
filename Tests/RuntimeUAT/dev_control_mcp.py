@@ -327,6 +327,33 @@ def build_server():
         return call("meeting", "delete", "--", id, mutation=True)
 
     @server.tool()
+    def ew_meeting_notes_get(id: str) -> CallToolResult:
+        """A meeting's notes as saved, read from disk first."""
+        return call("meeting", "notes-get", "--", id)
+
+    @server.tool()
+    def ew_meeting_notes_set(id: str, notes: str) -> CallToolResult:
+        """Type and save a meeting's notes, as the Notes tab does."""
+        return call("meeting", "notes-set", f"--text={notes}", "--", id, mutation=True)
+
+    @server.tool()
+    def ew_meeting_summary_get(id: str) -> CallToolResult:
+        """A meeting's summary: text, origin, out of date, owed, and what is writing it."""
+        return call("meeting", "summary-get", "--", id)
+
+    @server.tool()
+    def ew_meeting_summary_write(id: str, replace: bool = False) -> CallToolResult:
+        """Write summary / Write again; replace confirms replacing an edited summary. Returns at
+        the start: poll ew_meeting_summary_get."""
+        args = ["meeting", "summary-write"] + (["--replace"] if replace else [])
+        return call(*args, "--", id, mutation=True)
+
+    @server.tool()
+    def ew_meeting_live() -> CallToolResult:
+        """The recording meeting's live words (memory only), or null."""
+        return call("meeting", "live")
+
+    @server.tool()
     def ew_models_download(backend: Literal["parakeet", "whisper"]) -> CallToolResult:
         """Press the model's Download (Whisper) or Resume (Parakeet)."""
         return call("models", "download", backend, mutation=True)

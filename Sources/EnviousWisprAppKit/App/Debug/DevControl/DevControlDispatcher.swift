@@ -48,6 +48,11 @@
       case meetingRetry = "meeting.retry"
       case meetingDeleteAudio = "meeting.deleteAudio"
       case meetingDelete = "meeting.delete"
+      case meetingNotesGet = "meeting.notes.get"
+      case meetingNotesSet = "meeting.notes.set"
+      case meetingSummaryGet = "meeting.summary.get"
+      case meetingSummaryWrite = "meeting.summary.write"
+      case meetingLive = "meeting.live"
     }
 
     enum ErrorCode: String, CaseIterable {
@@ -249,6 +254,16 @@
         return await meetings.deleteAudio(args)
       case .meetingDelete:
         return await meetings.delete(args)
+      case .meetingNotesGet:
+        return await meetings.notesGet(args)
+      case .meetingNotesSet:
+        return await meetings.notesSet(args)
+      case .meetingSummaryGet:
+        return await meetings.summaryGet(args)
+      case .meetingSummaryWrite:
+        return await meetings.summaryWrite(args)
+      case .meetingLive:
+        return meetings.live(args)
       }
     }
 
