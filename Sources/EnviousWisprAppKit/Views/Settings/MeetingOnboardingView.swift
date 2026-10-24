@@ -89,7 +89,7 @@ private struct MeetingSetupWelcome: View {
       .multilineTextAlignment(.center)
       .padding(.bottom, 16)
 
-      MeetingWelcomeAnimation()
+      MeetingWelcomeMedia()
         .frame(height: 176)
         .padding(.bottom, 14)
 

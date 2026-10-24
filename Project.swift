@@ -568,6 +568,10 @@ let project = Project(
         // scripts/lib/l10n-catalog-sync.sh writes these from it, and they compile to
         // InfoPlist.strings (measured 2026-09-25).
         "Sources/EnviousWispr/Resources/InfoPlist.xcstrings",
+        // #4017 O7: EnviousMeet's welcome video, one muted loop per language, rendered by
+        // scripts/meeting-welcome-video/render.mjs; a language without one shows the animated scene.
+        "Sources/EnviousWispr/Resources/MeetingWelcome-en.mp4",
+        "Sources/EnviousWispr/Resources/MeetingWelcome-de.mp4",
         .folderReference(path: "Sources/EnviousWisprLLM/Resources/OutputClassifier.mlpackage"),
         .folderReference(path: "Sources/EnviousWisprLLM/Resources/OutputClassifierTokenizer"),
         // #1271: EG-1 native polish — the model manifest and the bundled
