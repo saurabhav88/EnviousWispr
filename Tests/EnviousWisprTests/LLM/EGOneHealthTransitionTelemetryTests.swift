@@ -173,7 +173,11 @@ import Testing
 
     // The silent set is exactly the launch shapes measured live; widening it
     // is a decision that needs its own measurement, not a code edit.
+    // #3988 added `ready_unchecked` without a new measurement, by equivalence:
+    // it takes over the stretch between ready and the probe that `starting`
+    // covered, so every activation still emits exactly the rows it did before.
     #expect(
-      EGOneRuntime.reasonsCountedElsewhere == Set(["download_required", "not_started", "starting"]))
+      EGOneRuntime.reasonsCountedElsewhere
+        == Set(["download_required", "not_started", "starting", "ready_unchecked"]))
   }
 }

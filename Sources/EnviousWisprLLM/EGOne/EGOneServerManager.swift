@@ -169,6 +169,9 @@ public actor EGOneServerManager {
   /// deliberate stops (`stop()`, memory-pressure pause).
   private var outsideStopGeneration: Int?
   var lifecycle: Lifecycle { Lifecycle(state: state, outsideStopGeneration: outsideStopGeneration) }
+  /// Bumped on every transition (#3988), so each published lifecycle carries
+  /// its place in emission order before any hop can reorder it.
+  private var revision = 0
   public private(set) var checkerFailureReason: CheckerFailureReason?
   /// Monotonic spawn token (#1271 matrix gap 1): `stop()` / memory-pressure
   /// pause / a newer spawn bump it, so a spawn whose readiness await resumes
@@ -186,7 +189,7 @@ public actor EGOneServerManager {
   private var processObservation: ChildProcessObservation?
   private var restartedOnceThisGeneration = false
   private var memoryPressureSource: (any DispatchSourceMemoryPressure)?
-  private var onStateChange: (@Sendable (Lifecycle) -> Void)?
+  private var onStateChange: (@Sendable (LocalPolishLifecycleEvent) -> Void)?
   private var onProcessFailure: (@Sendable (ChildProcessFailure) -> Void)?
   /// Mirror of `process` reachable WITHOUT actor isolation, exclusively for
   /// the synchronous app-quit path (#1271 Codex r1 P1): `Process` children
@@ -229,10 +232,14 @@ public actor EGOneServerManager {
   /// #2649: read the current state without registering, so the coordinator can
   /// seed a per-model observer without disturbing the single manager observer.
   public func currentLifecycle() -> Lifecycle { lifecycle }
+  /// The lifecycle and its revision, read in one turn.
+  public func currentEvent() -> LocalPolishLifecycleEvent {
+    LocalPolishLifecycleEvent(lifecycle: lifecycle, order: revision)
+  }
 
-  public func setStateObserver(_ observer: @escaping @Sendable (Lifecycle) -> Void) {
+  public func setStateObserver(_ observer: @escaping @Sendable (LocalPolishLifecycleEvent) -> Void) {
     onStateChange = observer
-    observer(lifecycle)
+    observer(currentEvent())
   }
 
   public func setProcessFailureObserver(
@@ -250,7 +257,8 @@ public actor EGOneServerManager {
       outsideStopGeneration = nil
     case .stopped, .pausedForMemoryPressure, .failed, .stoppedOutside: break
     }
-    onStateChange?(lifecycle)
+    revision += 1
+    onStateChange?(currentEvent())
   }
 
   /// Current endpoint iff ready. Fast, never boots the server — dictation
@@ -275,11 +283,15 @@ public actor EGOneServerManager {
     await spawn(configuration: configuration)
   }
 
-  public func stop() {
+  /// Returns the exact event this stop published (#3988), so a caller that
+  /// relays it cannot pair `.stopped` with a later transition's revision.
+  @discardableResult
+  public func stop() -> LocalPolishLifecycleEvent {
     launchGeneration += 1
     outsideStopGeneration = nil
     tearDownProcess()
     transition(to: .stopped)
+    return currentEvent()
   }
 
   /// Synchronous kill for `applicationWillTerminate` — actor state is left

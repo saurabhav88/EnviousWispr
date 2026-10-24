@@ -502,7 +502,7 @@ struct EGOneOutsideStopRecoveryTests {
     let manager = EGOneServerManager()
     let recorder = StateRecorder()
     defer { fixture.cleanup() }
-    await manager.setStateObserver { recorder.record($0) }
+    await manager.setStateObserver { recorder.record($0.lifecycle) }
 
     await manager.start(configuration: fixture.configuration())
     try #require(await manager.activeEndpoint() != nil, "fake server never became ready")
@@ -534,7 +534,7 @@ struct EGOneOutsideStopRecoveryTests {
     let manager = EGOneServerManager()
     let recorder = StateRecorder()
     defer { fixture.cleanup() }
-    await manager.setStateObserver { recorder.record($0) }
+    await manager.setStateObserver { recorder.record($0.lifecycle) }
     await manager.start(configuration: fixture.configuration())
     try #require(await manager.activeEndpoint() != nil, "fake server never became ready")
     #expect(try await end(fixture, with: .signal(SIGTERM), recorder: recorder) == Self.outsideStop(1))
@@ -565,7 +565,7 @@ struct EGOneOutsideStopRecoveryTests {
     let manager = EGOneServerManager()
     let recorder = StateRecorder()
     defer { fixture.cleanup() }
-    await manager.setStateObserver { recorder.record($0) }
+    await manager.setStateObserver { recorder.record($0.lifecycle) }
     await manager.start(configuration: fixture.configuration())
     try #require(await manager.activeEndpoint() != nil, "fake server never became ready")
     #expect(try await end(fixture, with: .signal(SIGKILL), recorder: recorder) == Self.outsideStop(1))
@@ -596,7 +596,7 @@ struct EGOneOutsideStopRecoveryTests {
     let manager = EGOneServerManager()
     let recorder = StateRecorder()
     defer { fixture.cleanup() }
-    await manager.setStateObserver { recorder.record($0) }
+    await manager.setStateObserver { recorder.record($0.lifecycle) }
 
     await manager.start(configuration: fixture.configuration())
     try #require(await manager.activeEndpoint() != nil, "fake server never became ready")
@@ -620,7 +620,7 @@ struct EGOneOutsideStopRecoveryTests {
     let manager = EGOneServerManager()
     let recorder = StateRecorder()
     defer { fixture.cleanup() }
-    await manager.setStateObserver { recorder.record($0) }
+    await manager.setStateObserver { recorder.record($0.lifecycle) }
 
     await manager.start(configuration: fixture.configuration())
     try #require(await manager.activeEndpoint() != nil, "fake server never became ready")
@@ -644,7 +644,7 @@ struct EGOneOutsideStopRecoveryTests {
     let manager = EGOneServerManager()
     let recorder = StateRecorder()
     defer { fixture.cleanup() }
-    await manager.setStateObserver { recorder.record($0) }
+    await manager.setStateObserver { recorder.record($0.lifecycle) }
     try Data().write(to: fixture.root.appendingPathComponent("exit_on_start"))
 
     await manager.start(configuration: fixture.configuration())
@@ -666,8 +666,8 @@ struct EGOneOutsideStopRecoveryTests {
     let egOne = StateRecorder()
     let s1Mini = StateRecorder()
     defer { fixture.cleanup() }
-    await coordinator.setStateObserver(for: .egOne) { egOne.record($0) }
-    await coordinator.setStateObserver(for: .s1Mini) { s1Mini.record($0) }
+    await coordinator.setStateObserver(for: .egOne) { egOne.record($0.lifecycle) }
+    await coordinator.setStateObserver(for: .s1Mini) { s1Mini.record($0.lifecycle) }
     let target = LocalPolishTarget(provider: .egOne, configuration: fixture.configuration())
 
     await coordinator.transition(to: .run(target), intent: coordinator.claimIntent())
@@ -714,5 +714,310 @@ struct EGOneOutsideStopRecoveryTests {
     #expect(EGOneServerManager.classify(record(.starting, .signal, SIGTERM)) == .crashPolicy)
     #expect(EGOneServerManager.classify(record(.ready, .exit, 0, role: .sweep)) == .crashPolicy)
     #expect(EGOneServerManager.classify(record(.ready, nil, nil)) == .crashPolicy)
+  }
+}
+
+/// #3988: the take's engine restarts when a recording starts after something
+/// outside the app stopped it. When this fails, the user's next dictations go
+/// out without AI polish until they restart the app or open Settings.
+@MainActor
+@Suite("Local polish restarts when a recording starts (#3988)", .serialized, .tags(.productOutcome))
+struct EGOneRecordingRecoveryTests {
+  fileprivate typealias Fixture = EGOneAdapterLifecycleTests.Fixture
+  typealias Lifecycle = EGOneServerManager.Lifecycle
+
+  /// Lifecycles the runtime has APPLIED, in order, from its own completion
+  /// signal. A waiter parks until a matching one lands, or gives up.
+  @MainActor
+  final class AppliedRecorder {
+    typealias Match = @MainActor (Lifecycle) -> Bool
+    private(set) var applied: [Lifecycle] = []
+    private var waiters: [UUID: (match: Match, resume: CheckedContinuation<Lifecycle?, Never>)] = [:]
+
+    func record(_ lifecycle: Lifecycle) {
+      applied.append(lifecycle)
+      for (id, waiter) in waiters where waiter.match(lifecycle) {
+        waiters[id] = nil
+        waiter.resume.resume(returning: lifecycle)
+      }
+    }
+
+    func first(
+      from index: Int, deadline: Duration = .seconds(20),
+      where match: @escaping Match
+    ) async -> Lifecycle? {
+      if let hit = applied.dropFirst(index).first(where: match) { return hit }
+      let id = UUID()
+      return await withCheckedContinuation { continuation in
+        waiters[id] = (match, continuation)
+        Task { @MainActor [weak self] in
+          // deadline-fallback: give up so the test fails by name instead of hanging
+          try? await Task.sleep(for: deadline)
+          self?.waiters.removeValue(forKey: id)?.resume.resume(returning: nil)
+        }
+      }
+    }
+  }
+
+  /// A runtime over the shared fake server with an admitted model, the same
+  /// rig as `EGOneAdapterLifecycleTests.adapterFaultSkipsBaseRepair`.
+  private struct Rig {
+    let fixture: Fixture
+    let runtime: EGOneRuntime
+    let coordinator: LocalPolishServerCoordinator
+    let recorder: AppliedRecorder
+    let cleanup: () -> Void
+  }
+
+  private func makeRig() async throws -> Rig {
+    let fixture = try Fixture()
+    let suite = "eg1-recording-recovery-\(UUID().uuidString)"
+    let store = try #require(TestDefaults.suite(suite))
+    let install = fixture.root.appendingPathComponent("base-install", isDirectory: true)
+    let metadata = fixture.root.appendingPathComponent("metadata", isDirectory: true)
+    try FileManager.default.createDirectory(at: install, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: metadata, withIntermediateDirectories: true)
+    let registration = try EGOneDeliveryAdapterMappingTests.shardedFixtureRegistration(
+      install: install, metadata: metadata)
+    try Data(count: 1000).write(to: install.appendingPathComponent("eg-1-00001-of-00002.gguf"))
+    try Data(count: 2000).write(to: install.appendingPathComponent("eg-1-00002-of-00002.gguf"))
+    let controller = ModelDeliveryController(defaults: TestDefaults.suite(suite)!)
+    let delivery = EGOneDeliveryAdapter(
+      controller: controller, registration: registration, version: nil, defaults: store)
+    try #require(await delivery.adoptIfPresent(), "fixture model was not admitted")
+    let manifest = EGOneManifest(
+      modelName: LLMProvider.egOneModelName, version: "v2-sharded",
+      contextTokens: 4096, promptTemplateID: "eg1-v1", minAppVersion: "0",
+      downloadURL: URL(string: "https://example.invalid/eg1.gguf")!)
+    let coordinator = LocalPolishServerCoordinator()
+    let runtime = EGOneRuntime(
+      manifest: manifest, serverBinaryURL: fixture.binary, delivery: delivery,
+      defaults: store, coordinator: coordinator)
+    let recorder = AppliedRecorder()
+    runtime.onLifecycleAppliedForTesting = { recorder.record($0) }
+    runtime.isActiveProvider = { true }
+    // A take holds the engine: activation boots, the inference probe is skipped.
+    runtime.isSharedEngineBusy = { true }
+    return Rig(
+      fixture: fixture, runtime: runtime, coordinator: coordinator, recorder: recorder,
+      cleanup: {
+        store.removePersistentDomain(forName: suite)
+        fixture.cleanup()
+      })
+  }
+
+  private static func isReady(_ lifecycle: Lifecycle) -> Bool {
+    if case .ready = lifecycle.state { return true }
+    return false
+  }
+
+  private func bringUp(_ rig: Rig) async throws {
+    let mark = rig.recorder.applied.count
+    let activation = try #require(rig.runtime.activateAndProbe())
+    await activation.value
+    try #require(await rig.recorder.first(from: mark, where: Self.isReady) != nil, "never ready")
+  }
+
+  private func stopFromOutside(_ rig: Rig) async throws -> Lifecycle? {
+    let mark = rig.recorder.applied.count
+    kill(try rig.fixture.lastPID(), SIGTERM)
+    return await rig.recorder.first(from: mark) { $0.state == .stoppedOutside }
+  }
+
+  @Test("a recording restarts only an engine stopped from outside, and the take's own engine only")
+  func recoversOnlyOutsideStop() async throws {
+    let rig = try await makeRig()
+    defer { rig.cleanup() }
+    var pressure: OutsideStopContext.MemoryPressure? = .warning
+    rig.runtime.memoryPressureLevel = { pressure }
+    try await bringUp(rig)
+    await rig.runtime.recordingStarted()?.value
+    #expect(try rig.fixture.launches().count == 1, "a ready engine needs no recovery")
+    #expect(rig.runtime.health == .yellow(reason: "ready_unchecked"))
+
+    #expect(try await stopFromOutside(rig) != nil)
+    #expect(
+      rig.runtime.unresolvedOutsideStop
+        == OutsideStopContext(provider: .egOne, generation: 1, memoryPressure: .warning))
+    #expect(rig.runtime.health == .yellow(reason: "stopped_outside"))
+
+    // Neither selected nor pinned by the take: a recording does not bring it back.
+    rig.runtime.isActiveProvider = { false }
+    #expect(rig.runtime.recordingStarted() == nil)
+    // The user switched engines mid-take, but this take pinned this engine.
+    rig.runtime.isPinnedInFlight = { true }
+
+    // Park the restart: the recording hook must return before it finishes.
+    try Data().write(to: rig.fixture.root.appendingPathComponent("hold_ready"))
+    pressure = .critical
+    let mark = rig.recorder.applied.count
+    let recovery = try #require(rig.runtime.recordingStarted())
+    let starting = await rig.recorder.first(from: mark) { $0.state == .starting }
+    #expect(starting?.outsideStopGeneration == 1)
+    #expect(
+      rig.runtime.unresolvedOutsideStop?.memoryPressure == .warning,
+      "one sample per stop: the recovery start must not resample")
+    try Data().write(to: rig.fixture.root.appendingPathComponent("release_ready"))
+    await recovery.value
+    _ = await rig.recorder.first(from: mark, where: Self.isReady)
+    #expect(rig.runtime.unresolvedOutsideStop == nil)
+    #expect(
+      rig.runtime.health == .yellow(reason: "ready_unchecked"),
+      "a probe skipped for a take must not leave Starting, nor claim a check passed")
+    #expect(try rig.fixture.launches().count == 2)
+
+    // The other engine's runtime is not resident and is not touched.
+    let s1Mini = EGOneRuntime(
+      manifest: nil, serverBinaryURL: nil, delivery: nil, coordinator: rig.coordinator,
+      provider: .s1Mini)
+    s1Mini.isActiveProvider = { true }
+    await s1Mini.recordingStarted()?.value
+    #expect(try rig.fixture.launches().count == 2)
+    #expect(await rig.coordinator.residentModelForTesting == .egOne)
+    await rig.coordinator.transition(to: .idle(.egOne), intent: rig.coordinator.claimIntent())
+  }
+
+  @Test("recovery reads the coordinator, not a display copy that has not caught up")
+  func recoveryReadsAuthoritativeLifecycle() async throws {
+    let rig = try await makeRig()
+    defer { rig.cleanup() }
+    try await bringUp(rig)
+    let readyEndpoint = try #require(await rig.runtime.activeEndpoint())
+    #expect(try await stopFromOutside(rig) != nil)
+    // Stage the window where the manager has stopped but the runtime's copy
+    // still says ready: the recording must still recover.
+    rig.runtime.applyServerStateForTesting(.ready(readyEndpoint))
+    let mark = rig.recorder.applied.count
+    await rig.runtime.recordingStarted()?.value
+    _ = await rig.recorder.first(from: mark, where: Self.isReady)
+    #expect(try rig.fixture.launches().count == 2)
+    await rig.coordinator.transition(to: .idle(.egOne), intent: rig.coordinator.claimIntent())
+  }
+
+  @Test("a recovery request made before a switch away does not boot the engine")
+  func staleRecoveryAfterDeactivation() async throws {
+    let rig = try await makeRig()
+    defer { rig.cleanup() }
+    try await bringUp(rig)
+    #expect(try await stopFromOutside(rig) != nil)
+    let recovery = try #require(rig.runtime.recordingStarted())
+    rig.runtime.deactivate()
+    await recovery.value
+    #expect(try rig.fixture.launches().count == 1)
+  }
+
+  @Test("an engine that loses the process is told so with the stop's own revision")
+  func evictionNoticeCarriesStopRevision() async throws {
+    let fixture = try Fixture()
+    let coordinator = LocalPolishServerCoordinator()
+    defer { fixture.cleanup() }
+    var s1Config = fixture.configuration()
+    s1Config.extraArguments = EGOneRuntime.engineArguments(for: .s1Mini)
+    let eventsBox = OSAllocatedUnfairLock(initialState: [LocalPolishLifecycleEvent]())
+    await coordinator.setStateObserver(for: .egOne) { event in
+      eventsBox.withLock { $0.append(event) }
+    }
+    await coordinator.transition(
+      to: .run(LocalPolishTarget(provider: .egOne, configuration: fixture.configuration())),
+      intent: coordinator.claimIntent())
+    await coordinator.transition(
+      to: .run(LocalPolishTarget(provider: .s1Mini, configuration: s1Config)),
+      intent: coordinator.claimIntent())
+    let events = eventsBox.withLock { $0 }
+    let lastStop = try #require(events.last { $0.lifecycle == .stopped })
+    let lastReady = try #require(events.last { if case .ready = $0.lifecycle.state { true } else { false } })
+    #expect(lastStop.order > lastReady.order, "the stop notice sorts after the ready it ended")
+    // Every revision this engine saw names exactly one lifecycle.
+    let byOrder = Dictionary(grouping: events, by: \.order)
+    #expect(byOrder.values.allSatisfy { group in group.allSatisfy { $0.lifecycle == group[0].lifecycle } })
+    await coordinator.transition(to: .idle(.s1Mini), intent: coordinator.claimIntent())
+  }
+
+  @Test("a probe verdict lands only on the server it measured")
+  func probeVerdictBoundToEndpoint() {
+    let manifest = EGOneManifest(
+      modelName: LLMProvider.egOneModelName, version: "v2-sharded",
+      contextTokens: 4096, promptTemplateID: "eg1-v1", minAppVersion: "0",
+      downloadURL: URL(string: "https://example.invalid/eg1.gguf")!)
+    let runtime = EGOneRuntime(manifest: manifest, serverBinaryURL: nil, delivery: nil)
+    #expect(runtime.activationBlockers.isEmpty, "manifest must not block health")
+    runtime.applyInstallStateForTesting(.installed(version: nil))
+    let first = EGOneEndpoint(port: 1, authToken: "a", contextTokens: 1)
+    let replacement = EGOneEndpoint(port: 2, authToken: "b", contextTokens: 1)
+    runtime.receive(LocalPolishLifecycleEvent(lifecycle: Lifecycle(state: .ready(first)), order: 1))
+    runtime.acceptProbeResult(.green, for: first)
+    #expect(runtime.health == .green)
+    // The replacement's ready arrives with its intermediate events skipped.
+    runtime.receive(
+      LocalPolishLifecycleEvent(lifecycle: Lifecycle(state: .ready(replacement)), order: 9))
+    #expect(runtime.health == .yellow(reason: "ready_unchecked"))
+    // The old probe finishing late must not mark the replacement green.
+    runtime.acceptProbeResult(.green, for: first)
+    #expect(runtime.health == .yellow(reason: "ready_unchecked"))
+  }
+
+  /// The runtime's own ordering and pressure decisions, delivered directly so
+  /// a late event can be staged. Both engines, one representative branch each.
+  @Test("late events never bring back a resolved stop, and each stop is sampled once", arguments: [LLMProvider.egOne, .s1Mini])
+  func lateEventsAndOneSamplePerStop(provider: LLMProvider) {
+    let runtime = EGOneRuntime(
+      manifest: nil, serverBinaryURL: nil, delivery: nil, provider: provider)
+    var samples = 0
+    var pressure: OutsideStopContext.MemoryPressure? = .normal
+    runtime.memoryPressureLevel = {
+      samples += 1
+      return pressure
+    }
+    let stop1 = Lifecycle(state: .stoppedOutside, outsideStopGeneration: 1)
+    let ready = Lifecycle(state: .ready(EGOneEndpoint(port: 1, authToken: "t", contextTokens: 1)))
+    runtime.receive(LocalPolishLifecycleEvent(lifecycle: stop1, order: 1))
+    runtime.receive(
+      LocalPolishLifecycleEvent(
+        lifecycle: Lifecycle(state: .starting, outsideStopGeneration: 1), order: 2))
+    #expect(runtime.unresolvedOutsideStop == OutsideStopContext(provider: provider, generation: 1, memoryPressure: .normal))
+    #expect(samples == 1)
+
+    runtime.receive(LocalPolishLifecycleEvent(lifecycle: ready, order: 3))
+    #expect(runtime.unresolvedOutsideStop == nil)
+    runtime.receive(LocalPolishLifecycleEvent(lifecycle: stop1, order: 1))
+    #expect(runtime.unresolvedOutsideStop == nil, "a late old stop must not resurrect it")
+
+    pressure = nil
+    runtime.receive(
+      LocalPolishLifecycleEvent(
+        lifecycle: Lifecycle(state: .stoppedOutside, outsideStopGeneration: 2), order: 5))
+    #expect(runtime.unresolvedOutsideStop?.memoryPressure == nil, "unknown stays unknown")
+    #expect(samples == 2)
+    runtime.receive(LocalPolishLifecycleEvent(lifecycle: stop1, order: 4))
+    #expect(runtime.unresolvedOutsideStop?.generation == 2, "an older stop never overwrites a newer one")
+
+    runtime.receive(
+      LocalPolishLifecycleEvent(
+        lifecycle: Lifecycle(state: .failed(reason: "server_never_became_ready"), outsideStopGeneration: 2),
+        order: 6))
+    #expect(runtime.unresolvedOutsideStop?.generation == 2, "a failed recovery keeps its diagnosis")
+    #expect(samples == 2)
+    runtime.receive(LocalPolishLifecycleEvent(lifecycle: .stopped, order: 7))
+    #expect(runtime.unresolvedOutsideStop == nil, "teardown clears live recovery")
+  }
+
+  @Test("each memory level is recorded as observed", arguments: [
+    OutsideStopContext.MemoryPressure.normal, .warning, .critical,
+  ])
+  func pressureLevels(level: OutsideStopContext.MemoryPressure) {
+    let runtime = EGOneRuntime(manifest: nil, serverBinaryURL: nil, delivery: nil)
+    runtime.memoryPressureLevel = { level }
+    runtime.receive(
+      LocalPolishLifecycleEvent(
+        lifecycle: Lifecycle(state: .stoppedOutside, outsideStopGeneration: 3), order: 1))
+    #expect(runtime.unresolvedOutsideStop?.memoryPressure == level)
+  }
+
+  @Test("the applied-lifecycle waiter gives up at its deadline")
+  func waiterDeadlineControl() async {
+    let recorder = AppliedRecorder()
+    recorder.record(.stopped)
+    let none = await recorder.first(from: 0, deadline: .milliseconds(200)) { _ in false }
+    #expect(none == nil)
   }
 }

@@ -154,6 +154,8 @@ public final class EGOneRuntime: EGOneLeaseProviding {
   /// that another event exists.
   static let reasonsCountedElsewhere: Set<String> = [
     "download_required", "not_started", "starting",
+    // #3988: every activation now passes through it between ready and probe.
+    "ready_unchecked",
   ]
   /// False until the install-state stream has delivered its first value
   /// (#2966). Set at the end of `applyInstallState`, AFTER that value's own
@@ -217,6 +219,17 @@ public final class EGOneRuntime: EGOneLeaseProviding {
   /// slot while the probe was in flight, whatever the instantaneous busy flag
   /// said at either end. See `EngineLease.admissionEpoch`.
   public var sharedEngineAdmissionEpoch: (@MainActor () -> Int)?
+
+  /// Memory pressure as the app sees it now, or nil when unknown (#3988). Set
+  /// by the composition root. Sampled once per outside stop, when the main
+  /// actor accepts that stop, and never read as a cause.
+  public var memoryPressureLevel: (@MainActor () -> OutsideStopContext.MemoryPressure?)?
+
+  /// The outside stop this engine has not yet recovered from (#3988), a
+  /// projection of the coordinator's lifecycle, never a second authority. Kept
+  /// through the recovery start and a failed recovery; cleared when the server
+  /// is ready again or the engine is torn down.
+  public private(set) var unresolvedOutsideStop: OutsideStopContext?
   private var removalPending = false
 
   public let manifest: EGOneManifest?
@@ -306,11 +319,12 @@ public final class EGOneRuntime: EGOneLeaseProviding {
     wireObservers()
   }
 
-  /// Last applied server-observer sequence number (#1271 enumeration pass):
-  /// the MainActor hops below are unstructured Tasks with NO ordering
-  /// guarantee. The install-state stream is ordered by the adapter itself; the
-  /// server stream is guarded here.
-  private var serverStateSeqApplied = 0
+  /// Last applied server-lifecycle order (#1271 enumeration pass, #3988): the
+  /// hops between the manager and here are unstructured Tasks with NO ordering
+  /// guarantee. The coordinator stamps each event in emission order before its
+  /// first hop, so a stale event is refused however late it lands. The
+  /// install-state stream is ordered by the adapter itself.
+  private var serverStateOrderApplied = 0
 
   private func wireObservers() {
     // Install-state stream from the shared delivery engine, mapped to the
@@ -323,17 +337,8 @@ public final class EGOneRuntime: EGOneLeaseProviding {
     Task { [weak self] in
       guard let self else { return }
       await self.registerProcessFailureObserver()
-      let seq = OSAllocatedUnfairLock(initialState: 0)
-      await self.server.setStateObserver(for: self.provider) { [weak self] state in
-        let mySeq = seq.withLock {
-          $0 += 1
-          return $0
-        }
-        Task { @MainActor [weak self] in
-          guard let self, mySeq > self.serverStateSeqApplied else { return }
-          self.serverStateSeqApplied = mySeq
-          self.applyServerState(state.state)
-        }
+      await self.server.setStateObserver(for: self.provider) { [weak self] event in
+        Task { @MainActor [weak self] in self?.receive(event) }
       }
     }
   }
@@ -354,8 +359,28 @@ public final class EGOneRuntime: EGOneLeaseProviding {
   /// Test seam for the server-lifecycle leg of `recomputeHealth` (#2966): a
   /// same-colour change into a runtime diagnosis is reachable only through
   /// the server state, and no delivery fixture produces one.
+  /// One delivered lifecycle event. Internal so tests can deliver events out
+  /// of order, which the real hops do only by scheduling luck.
+  func receive(_ event: LocalPolishLifecycleEvent) {
+    // `>=`: a coordinator notice repeats the revision of the manager's own
+    // stop, and both say the same thing.
+    guard event.order >= serverStateOrderApplied else { return }
+    serverStateOrderApplied = event.order
+    applyLifecycle(event.lifecycle)
+    onLifecycleAppliedForTesting?(event.lifecycle)
+  }
+
+  /// Fires after each applied lifecycle event: the subject's own completion
+  /// signal for tests that must wait for the main-actor projection.
+  var onLifecycleAppliedForTesting: (@MainActor (EGOneServerManager.Lifecycle) -> Void)?
+
   func applyServerStateForTesting(_ state: EGOneServerManager.ServerState) {
-    applyServerState(state)
+    applyLifecycle(EGOneServerManager.Lifecycle(state: state))
+  }
+
+  /// #3988: a whole lifecycle, as the coordinator delivers it.
+  func applyLifecycleForTesting(_ lifecycle: EGOneServerManager.Lifecycle) {
+    applyLifecycle(lifecycle)
   }
 
   /// Display version of an upgrade whose download is currently in flight, or
@@ -495,8 +520,24 @@ public final class EGOneRuntime: EGOneLeaseProviding {
   private let defaults: UserDefaults
 
   private var serverState: EGOneServerManager.ServerState = .stopped
-  private func applyServerState(_ state: EGOneServerManager.ServerState) {
-    serverState = state
+  /// The probe verdict and the endpoint it was measured on (#3988). Ordered
+  /// delivery may skip a replacement's intermediate events, so the verdict is
+  /// bound to the server it tested, never to "ready" in general.
+  private var readyProbeVerdict: (endpoint: EGOneEndpoint, health: EGOneHealth)?
+  private func applyLifecycle(_ lifecycle: EGOneServerManager.Lifecycle) {
+    serverState = lifecycle.state
+    var sameServer = false
+    if case .ready(let endpoint) = lifecycle.state { sameServer = readyProbeVerdict?.endpoint == endpoint }
+    if !sameServer { readyProbeVerdict = nil }
+    if let generation = lifecycle.outsideStopGeneration {
+      // One sample per stop: a repeat of the same stop keeps its context.
+      if unresolvedOutsideStop?.generation != generation {
+        unresolvedOutsideStop = OutsideStopContext(
+          provider: provider, generation: generation, memoryPressure: memoryPressureLevel?())
+      }
+    } else {
+      unresolvedOutsideStop = nil
+    }
     recomputeHealth()
   }
 
@@ -530,7 +571,10 @@ public final class EGOneRuntime: EGOneLeaseProviding {
       // #3988: yellow, not red. The next dictation starts it again.
       case .stoppedOutside: health = .yellow(reason: "stopped_outside")
       case .failed(let reason): health = .red(reason: reason)
-      case .ready: break  // keep last probe result (green or probe-derived yellow)
+      // The probe verdict for THIS ready server, or an honest "ready, not yet
+      // checked" (#3988): a probe skipped because a take holds the engine must
+      // not leave "Starting" on a running server, nor claim a check passed.
+      case .ready: health = readyProbeVerdict?.health ?? .yellow(reason: "ready_unchecked")
       }
     }
   }
@@ -691,6 +735,9 @@ public final class EGOneRuntime: EGOneLeaseProviding {
       // rounds of review each moved a sample; this reads a counter that cannot
       // miss a visit however brief. Found by cloud review.
       let epochBefore = self.sharedEngineAdmissionEpoch?()
+      // #3988: the server this probe will measure, so its verdict can never
+      // be pinned on a replacement that came up while it ran.
+      guard let probed = await self.server.endpoint(for: self.provider) else { return }
       let result = await self.server.probeHealth(
         self.provider, promptFamily: family, spec: self.probeSpec)
       // Probe verdict wins over the cheap projection while server is ready.
@@ -703,7 +750,39 @@ public final class EGOneRuntime: EGOneLeaseProviding {
       // dropping it does that. The next activation takes a fresh one.
       guard self.isSharedEngineBusy?() != true else { return }
       guard self.sharedEngineAdmissionEpoch?() == epochBefore else { return }
-      if case .ready = self.serverState { self.health = result }
+      self.acceptProbeResult(result, for: probed)
+    }
+  }
+
+  /// A probe verdict lands only on the server it measured (#3988).
+  func acceptProbeResult(_ result: EGOneHealth, for endpoint: EGOneEndpoint) {
+    guard case .ready(let current) = serverState, current == endpoint else { return }
+    readyProbeVerdict = (endpoint, result)
+    health = result
+  }
+
+  /// A recording started with this engine as the take's frozen provider
+  /// (#3988). If something outside the app stopped this engine's server, start
+  /// it again now, so the next dictation is polished. Fire and forget: the
+  /// recording never waits, and this take's own polish uses whatever is ready
+  /// when it gets there. Every other state is left alone: a crash give-up, a
+  /// memory pause and a deliberate stop keep their own owners.
+  ///
+  /// The take's engine may no longer be the selected one, so a take that
+  /// pinned it still counts (same rule as `adapterAvailabilityDidChange`). The
+  /// decision reads the coordinator's lifecycle, not this runtime's display
+  /// copy, which can still say ready when the stop has not reached it yet.
+  @discardableResult
+  public func recordingStarted() -> Task<Void, Never>? {
+    guard isActiveProvider?() == true || isPinnedInFlight?() == true else { return nil }
+    let generation = activationGeneration
+    return Task {
+      guard case .stoppedOutside = await self.server.lifecycle(for: self.provider).state else {
+        return
+      }
+      // A switch away while the lifecycle was read cancels the recovery.
+      guard generation == self.activationGeneration else { return }
+      await self.activateAndProbe()?.value
     }
   }
 

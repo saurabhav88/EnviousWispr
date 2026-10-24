@@ -92,6 +92,14 @@ public enum LocalPolishIntent: Sendable {
   case idle(LLMProvider)
 }
 
+/// A lifecycle as delivered to one engine (#3988), stamped by the manager with
+/// the revision that produced it, in the same actor turn, so a receiver can
+/// refuse a stale one that lands late after the unstructured hops.
+public struct LocalPolishLifecycleEvent: Sendable, Equatable {
+  public let lifecycle: EGOneServerManager.Lifecycle
+  public let order: Int
+}
+
 public actor LocalPolishServerCoordinator {
   /// The one manager. Deliberately not exposed: handing it out would restore
   /// exactly the two-owners situation this type exists to remove.
@@ -114,7 +122,7 @@ public actor LocalPolishServerCoordinator {
 
   /// One observer per model. See `setStateObserver(for:_:)` for why a single
   /// slot was a regression rather than merely a limitation.
-  private var observers: [LLMProvider: @Sendable (EGOneServerManager.Lifecycle) -> Void] = [:]
+  private var observers: [LLMProvider: @Sendable (LocalPolishLifecycleEvent) -> Void] = [:]
   private var failureObservers: [LLMProvider: @Sendable (ChildProcessFailure) -> Void] = [:]
   private var managerObserverInstalled = false
 
@@ -212,8 +220,10 @@ public actor LocalPolishServerCoordinator {
     }
     changing = true
     if resident == provider {
-      await manager.stop()
-      observers[provider]?(.stopped)
+      // The manager's own stop event, revision included (#3988). `changing`
+      // is held, so no other transition can run while this awaits.
+      let stopped = await manager.stop()
+      observers[provider]?(stopped)
       setResident(nil)
       residentTarget = nil
       residentAdapterFellBack = false
@@ -291,11 +301,12 @@ public actor LocalPolishServerCoordinator {
       // Stop the outgoing model BEFORE recording the new resident, so a start
       // that fails leaves the field honestly empty rather than naming a model
       // that is not running.
-      await manager.stop()
+      let stopped = await manager.stop()
       // Whoever actually lost the process is told so, rather than whichever
       // provider the caller named: its row must not keep showing a live server
-      // it no longer owns.
-      observers[resident]?(.stopped)
+      // it no longer owns. The manager's own stop event, revision included
+      // (#3988); `changing` is held, so no other transition ran meanwhile.
+      observers[resident]?(stopped)
       setResident(nil)
       residentTarget = nil
       residentAdapterFellBack = false
@@ -427,17 +438,20 @@ public actor LocalPolishServerCoordinator {
   /// told the process changed, because the change is not about it.
   public func setStateObserver(
     for provider: LLMProvider,
-    _ observer: @escaping @Sendable (EGOneServerManager.Lifecycle) -> Void
+    _ observer: @escaping @Sendable (LocalPolishLifecycleEvent) -> Void
   ) async {
     observers[provider] = observer
     // Seed with the caller's OWN truth rather than the manager's state: a model
     // that is not resident is stopped as far as it is concerned, whatever the
     // other one is doing.
-    let seed: EGOneServerManager.Lifecycle =
-      resident == provider ? await manager.currentLifecycle() : .stopped
+    // State and revision come from ONE manager turn, so the seed sorts
+    // correctly against any event emitted while this registration awaited.
+    let current = await manager.currentEvent()
     // Re-checked after the await for the same reason as the readers above: a
     // switch during registration would seed this model with the other's state.
-    observer(resident == provider ? seed : .stopped)
+    observer(
+      resident == provider
+        ? current : LocalPolishLifecycleEvent(lifecycle: .stopped, order: current.order))
     await installManagerObserverIfNeeded()
   }
 
@@ -463,7 +477,7 @@ public actor LocalPolishServerCoordinator {
     }
   }
 
-  private func publish(_ state: EGOneServerManager.Lifecycle, for provider: LLMProvider?) {
+  private func publish(_ state: LocalPolishLifecycleEvent, for provider: LLMProvider?) {
     // Both halves matter: the event must belong to a model, and that model must
     // STILL be resident when it lands. A stale event for a model that has since
     // been evicted is not news it can act on.
