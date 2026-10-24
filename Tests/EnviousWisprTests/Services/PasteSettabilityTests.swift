@@ -114,12 +114,13 @@ struct PasteDeclineReasonTests {
       (.unverifiable, "unverifiable"),
       (.chromiumOmniboxNavigationSeam, "not_attempted_chromium_omnibox_navigation_seam"),
       (.geckoDirectWriteUnconfirmable, "not_attempted_gecko_direct_write_unconfirmable"),
+      (.terminalDirectWriteUnconfirmable, "not_attempted_terminal_direct_write_unconfirmable"),
       (.recordedWindowKeyPasteOnly, "not_attempted_recorded_window_key_paste_only"),
     ]
     for (reason, rawValue) in expected {
       #expect(reason.rawValue == rawValue, "raw value drifted for \(reason)")
     }
-    #expect(expected.count == 17)
+    #expect(expected.count == 18)
   }
 
 }

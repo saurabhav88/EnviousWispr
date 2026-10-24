@@ -188,6 +188,22 @@ enum FileImportDocumentMath {
     let gaps: [String]
   }
 
+  /// Whether two turn lists are the same document layout: both absent, or the same turns (id,
+  /// speaker, source range, granularity) in the same order. #3903 keeps a completed cleanup
+  /// only for the layout it cleaned; a retry that assembled different turns has nothing to keep.
+  static func sameTurnLayout(_ a: [Turn]?, _ b: [Turn]?) -> Bool {
+    switch (a, b) {
+    case (nil, nil): return true
+    case (let a?, let b?):
+      return a.count == b.count
+        && zip(a, b).allSatisfy { x, y in
+          x.id == y.id && x.speakerId == y.speakerId
+            && x.originalTextRange == y.originalTextRange && x.granularity == y.granularity
+        }
+    default: return false
+    }
+  }
+
   /// The turns as the final write stores them: each turn's cleaned words are its own pieces
   /// joined in order, and it is polished only when every piece was (a piece the polisher
   /// declined for being too short is not a failure: `PartOutcome.isUnpolished`). A turn with no

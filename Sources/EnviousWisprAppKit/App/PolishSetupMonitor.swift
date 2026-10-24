@@ -57,6 +57,168 @@ struct PolishSetupInputs {
   let ollamaLastCommitAt: ContinuousClock.Instant?
 }
 
+/// Permission to present one earned outside-stop notice (#3988): the stop it is about, the
+/// configuration revision the take ran under, which offer of that stop it belongs to, and which
+/// notice it is (first, or the repeat within a day), decided when it was offered. Asking for
+/// one spends nothing.
+struct OutsideStopNoticeTicket: Hashable {
+  let stop: OutsideStopContext
+  let configurationRevision: UInt64
+  /// The take that owns this offer: only it may present it, and only its row reports it.
+  let takeID: String
+  /// Moves whenever a newer take re-earns the stop, so an older ticket never matches it.
+  let offer: Int
+  let variant: PolishSetupCardModel.NoticeVariant
+}
+
+/// Where the outside-stop notice policy keeps what must survive a relaunch (#3988): when each
+/// engine's first notice last appeared, and the end of the 24-hour quiet after a repeat notice.
+/// The APP's own defaults domain, never the unified settings suite: this is per-build memory
+/// (like `accessibilityWarningDismissed`), so the dev build and the shipped app never share it.
+/// Nil defaults keep it in memory, for tests that do not exercise a relaunch.
+@MainActor
+final class OutsideStopNoticeStore {
+  private let defaults: UserDefaults?
+  private var memory: [String: Date] = [:]
+
+  static let keyPrefix = "outsideStopNotice."
+  static let muteUntilKey = keyPrefix + "muteUntil"
+  static func firstShownKey(_ provider: LLMProvider) -> String {
+    keyPrefix + "firstShownAt." + provider.rawValue
+  }
+
+  init(defaults: UserDefaults?) { self.defaults = defaults }
+
+  func date(_ key: String) -> Date? {
+    guard let defaults else { return memory[key] }
+    return defaults.object(forKey: key) as? Date
+  }
+
+  func set(_ date: Date?, for key: String) {
+    guard let defaults else {
+      memory[key] = date
+      return
+    }
+    if let date { defaults.set(date, forKey: key) } else { defaults.removeObject(forKey: key) }
+  }
+}
+
+/// Outside-stop notices earned by takes (#3988), keyed by engine and stopped child, and kept
+/// apart from the setup episodes: the engine coming back ends the live recovery, never a notice
+/// a take already earned. A value, so its rules are tested without an app.
+struct OutsideStopNotices: Equatable {
+  struct Key: Hashable {
+    let provider: LLMProvider
+    let generation: Int
+  }
+  struct Earned: Equatable {
+    let key: Key
+    var stop: OutsideStopContext
+    var configurationRevision: UInt64
+    /// When the take missed polish, stamped at the miss on the wall clock.
+    var missedAt: Date
+    /// The take that owns the current offer, and every take that owned an earlier one: a
+    /// former owner can never take the stop back, however late it is delivered again.
+    var owner: String
+    var formerOwners: Set<String> = []
+    /// Which offer this is; a newer take re-earning the stop moves it.
+    var offer: Int
+    var presented = false
+    /// Refused by the 24-hour quiet. Final for this offer: only a NEW take missing polish for
+    /// this stop makes a new offer, never the clock.
+    var suppressed = false
+  }
+
+  /// Kept for the app's lifetime, never trimmed by age or count: an entry may hold a notice
+  /// still waiting to show, and a spent one is what stops its stop being told twice. One entry
+  /// per physical stop, so it grows only as often as something stops the engine.
+  private(set) var earned: [Earned] = []
+
+  /// The take `takeID` missed polish because of `stop` at `missedAt`, under
+  /// `configurationRevision`. The first take per stop earns. A notice already presented is never
+  /// earned again. A NEWER take that misses for an unshown stop makes a new offer it owns, with
+  /// its own frozen stop, revision and miss time; any earlier offer (refused by the overlay, by
+  /// the quiet, or another configuration's) is then dead. This is safe because a recording
+  /// starting clears any card still on screen or pending, so no earlier ticket is in flight.
+  /// The current owner or a former one re-delivered changes nothing.
+  @discardableResult
+  mutating func earn(
+    _ stop: OutsideStopContext, configurationRevision: UInt64, missedAt: Date, takeID: String
+  ) -> Bool {
+    let key = Key(provider: stop.provider, generation: stop.generation)
+    guard let index = earned.firstIndex(where: { $0.key == key }) else {
+      earned.append(
+        Earned(
+          key: key, stop: stop, configurationRevision: configurationRevision, missedAt: missedAt,
+          owner: takeID, offer: 1))
+      return true
+    }
+    guard !earned[index].presented, earned[index].owner != takeID,
+      !earned[index].formerOwners.contains(takeID)
+    else { return false }
+    earned[index].formerOwners.insert(earned[index].owner)
+    earned[index].owner = takeID
+    earned[index].stop = stop
+    earned[index].configurationRevision = configurationRevision
+    earned[index].missedAt = missedAt
+    earned[index].offer += 1
+    earned[index].suppressed = false
+    return true
+  }
+
+  /// The quiet refused the offer `takeID` owns. Anyone else's offer is untouched.
+  mutating func suppress(_ stop: OutsideStopContext, ownedBy takeID: String) {
+    let key = Key(provider: stop.provider, generation: stop.generation)
+    guard let index = earned.firstIndex(where: { $0.key == key }), !earned[index].presented,
+      earned[index].owner == takeID
+    else { return }
+    earned[index].suppressed = true
+  }
+
+  /// A quiet started: every offer still waiting, but `initiator`'s, is refused for good.
+  mutating func suppressAll(except initiator: Key) {
+    for index in earned.indices where earned[index].key != initiator && !earned[index].presented {
+      earned[index].suppressed = true
+    }
+  }
+
+  /// The usable offer for `stop` owned by `takeID`: unpresented and not refused.
+  func pending(for stop: OutsideStopContext, ownedBy takeID: String) -> Earned? {
+    let key = Key(provider: stop.provider, generation: stop.generation)
+    guard let notice = earned.first(where: { $0.key == key }), notice.owner == takeID,
+      !notice.presented, !notice.suppressed
+    else { return nil }
+    return notice
+  }
+
+  /// A ticket for the usable offer `takeID` owns for `stop`, as `variant`.
+  func ticket(
+    for stop: OutsideStopContext, ownedBy takeID: String,
+    variant: PolishSetupCardModel.NoticeVariant = .first
+  ) -> OutsideStopNoticeTicket? {
+    pending(for: stop, ownedBy: takeID).map {
+      OutsideStopNoticeTicket(
+        stop: $0.stop, configurationRevision: $0.configurationRevision, takeID: $0.owner,
+        offer: $0.offer, variant: variant)
+    }
+  }
+
+  /// The notice actually appeared: spends it once. Only a ticket for the CURRENT, unrefused offer
+  /// (same stop and context, revision and offer) spends it; a duplicate, refused, superseded or
+  /// unknown receipt answers false.
+  @discardableResult
+  mutating func presented(_ ticket: OutsideStopNoticeTicket) -> Bool {
+    let key = Key(provider: ticket.stop.provider, generation: ticket.stop.generation)
+    guard let index = earned.firstIndex(where: { $0.key == key }), !earned[index].presented,
+      !earned[index].suppressed, earned[index].owner == ticket.takeID,
+      earned[index].offer == ticket.offer, earned[index].stop == ticket.stop,
+      earned[index].configurationRevision == ticket.configurationRevision
+    else { return false }
+    earned[index].presented = true
+    return true
+  }
+}
+
 /// The episode state machine, as a value: pure, so its rules are tested without an app.
 struct PolishSetupEpisodes: Equatable {
   struct Episode: Equatable {
@@ -111,6 +273,8 @@ struct PolishSetupEpisodes: Equatable {
     guard let problem = eligibleProblem, let episode else { return false }
     switch surface {
     case .leaveDialog:
+      // #3988: an outside stop is told once after the take it cost, never on leaving.
+      if case .localEngineStoppedOutside = problem { return false }
       // Informational problems still get their OK-only notice on leaving.
       return !episode.acknowledged.contains(.leaveDialog)
     case .card:
@@ -197,6 +361,15 @@ final class PolishSetupMonitor {
   @ObservationIgnored private var configurationRevision: UInt64 = 0
   @ObservationIgnored private var lastConfiguration: PolishSetupConfiguration?
   @ObservationIgnored private var lastEligible = false
+  /// #3988: what an outside-stop notice's applicability reads, so a change to it reaches the
+  /// card owner in the same turn even when no setup episode moved.
+  private struct NoticeApplicability: Equatable {
+    let configurationRevision: UInt64
+    let onboardingComplete: Bool
+    let provider: LLMProvider
+    let restartFailed: Bool
+  }
+  @ObservationIgnored private var lastNoticeApplicability: NoticeApplicability?
   /// What takes said about the Ollama SERVER (not installed, not running, or running: any take
   /// that polished), and about each MODEL (missing or none chosen, or working), with WHEN they
   /// observed it. Kept apart because one server serves many models: a success with model B
@@ -210,6 +383,14 @@ final class PolishSetupMonitor {
   /// accepted (a take that polished). One per PROVIDER, each a fact about that key (its
   /// credential revision): it survives model and provider changes and another provider's
   /// takes, and stops counting when that key is replaced or cleared.
+  /// #3988: outside-stop notices earned by takes, independent of the episodes.
+  @ObservationIgnored private(set) var outsideStopNotices = OutsideStopNotices()
+  /// #3988: the notice policy's persisted history and its wall clock. Policy compares only
+  /// wall-clock dates: stored ones, now, and each take's miss time stamped at the miss.
+  @ObservationIgnored private let noticeStore: OutsideStopNoticeStore
+  @ObservationIgnored private let wallNow: @MainActor () -> Date
+  /// The repeat notice whose presentation started the current quiet; it stays usable inside it.
+  @ObservationIgnored private var muteInitiator: OutsideStopNotices.Key?
   @ObservationIgnored private var cloudKeyTakeObservations:
     [LLMProvider: (credentialRevision: UInt64, rejected: Bool, observedAt: ContinuousClock.Instant)] =
       [:]
@@ -220,13 +401,17 @@ final class PolishSetupMonitor {
     appleRefresh: (@MainActor () -> Void)? = nil,
     reportPrompt: @escaping @MainActor (PolishSetupPromptEvent) -> Void = { $0.send() },
     recordKeyEvidence: @escaping @MainActor (LLMProvider, SavedKeyState, ContinuousClock.Instant)
-      -> Void = { _, _, _ in }
+      -> Void = { _, _, _ in },
+    noticeStore: OutsideStopNoticeStore = OutsideStopNoticeStore(defaults: nil),
+    wallNow: @escaping @MainActor () -> Date = { Date() }
   ) {
     self.readInputs = readInputs
     self.ollamaRefresh = ollamaRefresh
     self.appleRefresh = appleRefresh
     self.reportPrompt = reportPrompt
     self.recordKeyEvidence = recordKeyEvidence
+    self.noticeStore = noticeStore
+    self.wallNow = wallNow
   }
 
   // MARK: - What surfaces read
@@ -272,10 +457,12 @@ final class PolishSetupMonitor {
   /// rebuilt from live settings: the person may have changed model since.
   func recordPrompt(
     _ surface: PolishSetupPromptEvent.Surface, _ action: PolishSetupPromptEvent.Action,
-    subject: PolishSetupPromptSubject, takeID: UUID? = nil
+    subject: PolishSetupPromptSubject, takeID: UUID? = nil,
+    variant: PolishSetupCardModel.NoticeVariant? = nil
   ) {
     reportPrompt(
-      PolishSetupPromptEvent(surface: surface, action: action, subject: subject, takeID: takeID))
+      PolishSetupPromptEvent(
+        surface: surface, action: action, subject: subject, takeID: takeID, variant: variant))
   }
 
   func cardTicket() -> PolishSetupCardTicket? {
@@ -388,8 +575,10 @@ final class PolishSetupMonitor {
       case .cloudKeyMissing, .cloudKeyRejected, .ollamaNotInstalled, .ollamaNotRunning,
         .ollamaNoModel, .ollamaModelNotInstalled, .localEngineNotDownloaded,
         .localEngineDownloadPaused, .localEngineUpdatePaused, .localEngineFailed,
-        .localEngineDownloading, .localEngineVerifying, .appleUnavailable, .appleModelNotReady:
-        // Downloading, verifying or another engine's state: not this take's setup problem.
+        .localEngineDownloading, .localEngineVerifying, .appleUnavailable, .appleModelNotReady,
+        .localEngineStoppedOutside:
+        // Downloading, verifying, stopped from outside (#3988: told by its own notice, never a
+        // setup problem) or another engine's state: not this take's setup problem.
         return nil
       }
     }
@@ -409,9 +598,30 @@ final class PolishSetupMonitor {
       let configuration = lastConfiguration,
       configuration.provider == take.provider, configuration.model == take.model
     else { return false }
-    if let episode = take.episode, episodes.episode?.token.rawValue != episode { return false }
+    let outsideStop = Self.outsideStopMissed(outcome)
+    // #3988: the engine coming back ends the stopped-outside episode the take started in; that
+    // must not reject the take whose notice it earned.
+    if outsideStop == nil, let episode = take.episode,
+      episodes.episode?.token.rawValue != episode
+    {
+      return false
+    }
     ingestedTakeIDs.append(outcome.takeID)
     if ingestedTakeIDs.count > 16 { ingestedTakeIDs.removeFirst() }
+    if let outsideStop, let missedAt = outcome.outsideStopMissedAt {
+      outsideStopNotices.earn(
+        outsideStop, configurationRevision: take.configurationRevision, missedAt: missedAt,
+        takeID: outcome.takeID)
+      // Missed inside the quiet: refused now, not when someone asks. Timed by the miss, so a
+      // take that concludes just after the quiet ends cannot replay a miss made inside it.
+      let missedDuringQuiet =
+        noticeStore.date(OutsideStopNoticeStore.muteUntilKey).map { deadline in
+          missedAt >= deadline.addingTimeInterval(-Self.quiet) && missedAt < deadline
+        } ?? false
+      if missedDuringQuiet || isMuted(except: nil) {
+        outsideStopNotices.suppress(outsideStop, ownedBy: outcome.takeID)
+      }
+    }
 
     // A bypassed (too short) or skipped take asked no model, so only `.polished` is repair.
     let polished = outcome.result == .polished
@@ -546,7 +756,6 @@ final class PolishSetupMonitor {
     return verdict.lastDefinitive?.decidedAt
   }
 
-
   /// Newer wins, for the same saved key only; a different key replaces it outright.
   private func recordCloudKeyTakeObservation(
     rejected: Bool, configuration: PolishSetupConfiguration, observedAt: ContinuousClock.Instant
@@ -559,6 +768,127 @@ final class PolishSetupMonitor {
     }
     cloudKeyTakeObservations[configuration.provider] = (credentialRevision, rejected, observedAt)
     reconcile()
+  }
+
+  // MARK: - Outside-stop notices (#3988)
+
+  /// The stop a concluded take missed polish because of, or nil. Only the frozen miss evidence
+  /// of a bundled engine's not-ready skip counts: recovery attribution alone, a polished take
+  /// and a bypass never do, and the stop must be the take's own engine's.
+  static func outsideStopMissed(_ outcome: PolishTakeOutcome) -> OutsideStopContext? {
+    guard let stop = outcome.outsideStopMiss, outcome.outsideStopMissedAt != nil,
+      outcome.evidence == .localEngineNotReady, stop.provider == outcome.context.provider
+    else { return nil }
+    switch stop.provider {
+    case .egOne, .s1Mini: break
+    case .openAI, .gemini, .claude, .ollama, .appleIntelligence, .none: return nil
+    }
+    switch outcome.result {
+    case .skippedSilently, .skippedWithNotice, .failed: return stop
+    case .notRequested, .polished, .bypassed, .cancelled: return nil
+    }
+  }
+
+  /// A ticket to present `outcome`'s notice now, or nil when it may not show: not earned,
+  /// already presented, onboarding not finished, another configuration, the restart failed
+  /// (its own red status takes over), or the 24-hour quiet is on. Asking spends nothing.
+  /// Which notice it is gets decided here, from when the take missed polish.
+  func outsideStopNoticeTicket(for outcome: PolishTakeOutcome) -> OutsideStopNoticeTicket? {
+    let inputs = reconcile()
+    guard let stop = Self.outsideStopMissed(outcome),
+      let earned = outsideStopNotices.pending(for: stop, ownedBy: outcome.takeID),
+      let ticket = outsideStopNotices.ticket(
+        for: stop, ownedBy: outcome.takeID, variant: noticeVariant(for: earned)),
+      outsideStopNoticeApplies(ticket, inputs: inputs)
+    else { return nil }
+    if isMuted(except: nil) {
+      // Not queued for after the quiet: a later miss is judged afresh.
+      outsideStopNotices.suppress(stop, ownedBy: outcome.takeID)
+      return nil
+    }
+    return ticket
+  }
+
+  /// The notice really appeared: spends it once, judged against the live state. False for a
+  /// stale, duplicate, muted or no-longer-applicable receipt, and the caller withdraws it. Only
+  /// here is history written: a first notice starts its engine's day, a repeat starts the quiet.
+  @discardableResult
+  func outsideStopNoticePresented(_ ticket: OutsideStopNoticeTicket) -> Bool {
+    let inputs = reconcile()
+    guard outsideStopNoticeApplies(ticket, inputs: inputs) else { return false }
+    if isMuted(except: nil) {
+      // Drawn inside the quiet: refused for good, this offer never comes back after it. Only
+      // if it is still this ticket's offer: a stale callback never touches a newer take's.
+      if outsideStopNotices.ticket(for: ticket.stop, ownedBy: ticket.takeID)?.offer == ticket.offer
+      {
+        outsideStopNotices.suppress(ticket.stop, ownedBy: ticket.takeID)
+      }
+      return false
+    }
+    guard outsideStopNotices.presented(ticket) else { return false }
+    let now = wallNow()
+    switch ticket.variant {
+    case .first:
+      noticeStore.set(now, for: OutsideStopNoticeStore.firstShownKey(ticket.stop.provider))
+    case .escalated:
+      noticeStore.set(now.addingTimeInterval(Self.quiet), for: OutsideStopNoticeStore.muteUntilKey)
+      let initiator = OutsideStopNotices.Key(
+        provider: ticket.stop.provider, generation: ticket.stop.generation)
+      muteInitiator = initiator
+      // Every other offer still waiting (a pending card, a take not yet offered) is refused.
+      outsideStopNotices.suppressAll(except: initiator)
+    }
+    return true
+  }
+
+  /// Whether a notice raised under `ticket` still describes the present. The engine being
+  /// ready again does not end it; a configuration change, onboarding reset, failed restart or
+  /// another notice's quiet does. The repeat notice that started the quiet stays usable in it.
+  func outsideStopNoticeStillApplies(_ ticket: OutsideStopNoticeTicket) -> Bool {
+    let key = OutsideStopNotices.Key(
+      provider: ticket.stop.provider, generation: ticket.stop.generation)
+    return outsideStopNoticeApplies(ticket, inputs: reconcile()) && !isMuted(except: key)
+  }
+
+  /// The 24-hour window and quiet (#3988, founder 2026-10-23).
+  static let quiet: TimeInterval = 24 * 60 * 60
+
+  /// A repeat within a day of the last first notice SHOWN for this engine, timed by when the
+  /// take missed polish: elapsed in [0, 24 h). Before the first notice, or a day or more after,
+  /// it is a first notice again. Every unshown entry is a different stop from any shown one,
+  /// because a stop's notice is never earned twice.
+  private func noticeVariant(
+    for earned: OutsideStopNotices.Earned
+  ) -> PolishSetupCardModel.NoticeVariant {
+    guard
+      let shown = noticeStore.date(OutsideStopNoticeStore.firstShownKey(earned.stop.provider))
+    else { return .first }
+    let elapsed = earned.missedAt.timeIntervalSince(shown)
+    return elapsed >= 0 && elapsed < Self.quiet ? .escalated : .first
+  }
+
+  /// Whether the 24-hour quiet is on, for any notice but `initiator`'s. A deadline further
+  /// out than a day from now (the clock was set back) is cut to a day from now and saved so,
+  /// so reading it again can never push it out. A clock set forward by hand may end it early:
+  /// an accepted limit (plan §3.3b).
+  private func isMuted(except initiator: OutsideStopNotices.Key?) -> Bool {
+    guard let deadline = noticeStore.date(OutsideStopNoticeStore.muteUntilKey) else {
+      return false
+    }
+    let now = wallNow()
+    let bounded = min(deadline, now.addingTimeInterval(Self.quiet))
+    if bounded != deadline { noticeStore.set(bounded, for: OutsideStopNoticeStore.muteUntilKey) }
+    guard bounded > now else { return false }
+    return initiator == nil || initiator != muteInitiator
+  }
+
+  private func outsideStopNoticeApplies(
+    _ ticket: OutsideStopNoticeTicket, inputs: PolishSetupInputs
+  ) -> Bool {
+    inputs.onboardingComplete
+      && ticket.configurationRevision == configurationRevision
+      && inputs.configuration.provider == ticket.stop.provider
+      && !inputs.facts.localRestartFailed(ticket.stop.provider)
   }
 
   private static func usesCloudKey(_ provider: LLMProvider) -> Bool {
@@ -575,7 +905,7 @@ final class PolishSetupMonitor {
     case .ollamaNoModel: return .ollamaNoModel
     case .ollamaModelNotInstalled: return .ollamaModelNotInstalled
     case .cloudKeyMissing, .cloudKeyRejected, .localNotDownloaded, .localDownloadPaused,
-      .localUpdatePaused, .localDownloadFailed:
+      .localUpdatePaused, .localDownloadFailed, .localStoppedOutside:
       return nil
     }
   }
@@ -610,7 +940,9 @@ final class PolishSetupMonitor {
     reconcile()
   }
 
-  private func recordOllamaServer(_ problem: PolishSetupProblem?, at observedAt: ContinuousClock.Instant) {
+  private func recordOllamaServer(
+    _ problem: PolishSetupProblem?, at observedAt: ContinuousClock.Instant
+  ) {
     if let current = ollamaServerObservation, current.observedAt >= observedAt { return }
     ollamaServerObservation = (problem, observedAt)
   }
@@ -682,10 +1014,15 @@ final class PolishSetupMonitor {
     var next = episodes
     next.reconcile(
       readiness: readiness, configuration: inputs.configuration, eligible: eligible)
-    if next != episodes {
-      episodes = next
-      onEpisodeChange?()
-    }
+    let applicability = NoticeApplicability(
+      configurationRevision: configurationRevision,
+      onboardingComplete: inputs.onboardingComplete, provider: inputs.configuration.provider,
+      restartFailed: inputs.facts.localRestartFailed(inputs.configuration.provider))
+    let noticeChanged = applicability != lastNoticeApplicability
+    lastNoticeApplicability = applicability
+    let episodeChanged = next != episodes
+    if episodeChanged { episodes = next }
+    if episodeChanged || noticeChanged { onEpisodeChange?() }
     return inputs
   }
 }

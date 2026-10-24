@@ -72,6 +72,68 @@ public actor EGOneServerManager {
     case pausedForMemoryPressure
     /// Spawn or crash-restart failed twice this session.
     case failed(reason: String)
+    /// #3988: a READY server was stopped from outside the app (clean exit or a
+    /// stop signal). Idle, not a failure: no automatic restart and no crash
+    /// budget spent; the next explicit activation starts it.
+    case stoppedOutside
+  }
+
+  /// #3988: state and the outstanding outside stop, read and published as ONE
+  /// value. The stop's identity cannot live in the state alone: recovery moves
+  /// the state to `.starting` at once, and a dictation that misses polish
+  /// during that start must still name the stop it missed because of.
+  public struct Lifecycle: Sendable, Equatable {
+    public let state: ServerState
+    /// Launch generation of the child stopped from outside, outstanding until
+    /// the server is ready again or deliberately stopped. A failed recovery
+    /// keeps it for diagnosis; `state` says the recovery failed.
+    public let outsideStopGeneration: Int?
+
+    public init(state: ServerState, outsideStopGeneration: Int? = nil) {
+      self.state = state
+      self.outsideStopGeneration = outsideStopGeneration
+    }
+
+    public static let stopped = Lifecycle(state: .stopped)
+  }
+
+  /// What a polish attempt meets, read in ONE manager turn (#3988), so the
+  /// endpoint and the stop evidence cannot describe two different moments.
+  public struct Availability: Sendable, Equatable {
+    public let endpoint: EGOneEndpoint?
+    /// The outside stop that leaves no endpoint, when that is why.
+    public let outstandingOutsideStop: Int?
+    /// The outside stop whose recovery take is the asking take: the first live
+    /// take to meet that stop, still outstanding or replaced by the ready
+    /// server. The same take asking again gets it again; any other take, and
+    /// any request without a take, gets nil.
+    public let recoveryOutsideStop: Int?
+
+    public static let unavailable = Availability(
+      endpoint: nil, outstandingOutsideStop: nil, recoveryOutsideStop: nil)
+  }
+
+  /// #3988: how an accepted termination is handled. Closed allowlist: only an
+  /// unexpected exit of a READY server with exit status 0 or a stop signal
+  /// (SIGHUP, SIGINT, SIGKILL, SIGTERM) is an outside stop. Everything else,
+  /// including any value this list does not name, keeps today's crash policy.
+  /// "Crash policy" names the handling, not a proven crash.
+  enum TerminationClass: Sendable, Equatable {
+    case outsideStop
+    case crashPolicy
+  }
+
+  /// The one classification. Lifecycle and telemetry both read it from the same
+  /// accepted record, so they cannot disagree about one exit.
+  static func classify(_ record: ChildProcessFailure) -> TerminationClass {
+    guard record.role == .server, record.phase == .ready,
+      let termination = record.termination, let status = record.status
+    else { return .crashPolicy }
+    switch termination {
+    case .exit: return status == 0 ? .outsideStop : .crashPolicy
+    case .signal:
+      return [SIGHUP, SIGINT, SIGKILL, SIGTERM].contains(status) ? .outsideStop : .crashPolicy
+    }
   }
 
   /// Filesystem + process seams, injectable so lifecycle tests can run a
@@ -118,6 +180,22 @@ public actor EGOneServerManager {
   }
 
   private(set) var state: ServerState = .stopped
+  /// The one authority for the outstanding outside stop (#3988). Set only by
+  /// `handleTermination`, cleared only by `transition(to: .ready)` and by the
+  /// deliberate stops (`stop()`, memory-pressure pause).
+  private var outsideStopGeneration: Int?
+  var lifecycle: Lifecycle { Lifecycle(state: state, outsideStopGeneration: outsideStopGeneration) }
+  /// Bumped on every transition (#3988), so each published lifecycle carries
+  /// its place in emission order before any hop can reorder it.
+  private var revision = 0
+  /// The outside stop the current ready server replaced (#3988); set when a
+  /// recovery reaches ready, cleared by any other ready and by deliberate stops.
+  private var recoveredOutsideStopGeneration: Int?
+  /// The stop most recently attributed, and the live take it belongs to (#3988).
+  private var recoveryTake: (generation: Int, takeID: String)?
+  /// The engine the current process was launched for (#3988). Evidence and
+  /// attribution are handed only to that engine, checked here at the authority.
+  private var owner: LLMProvider?
   public private(set) var checkerFailureReason: CheckerFailureReason?
   /// Monotonic spawn token (#1271 matrix gap 1): `stop()` / memory-pressure
   /// pause / a newer spawn bump it, so a spawn whose readiness await resumes
@@ -135,7 +213,7 @@ public actor EGOneServerManager {
   private var processObservation: ChildProcessObservation?
   private var restartedOnceThisGeneration = false
   private var memoryPressureSource: (any DispatchSourceMemoryPressure)?
-  private var onStateChange: (@Sendable (ServerState) -> Void)?
+  private var onStateChange: (@Sendable (LocalPolishLifecycleEvent) -> Void)?
   private var onProcessFailure: (@Sendable (ChildProcessFailure) -> Void)?
   /// Mirror of `process` reachable WITHOUT actor isolation, exclusively for
   /// the synchronous app-quit path (#1271 Codex r1 P1): `Process` children
@@ -177,14 +255,20 @@ public actor EGOneServerManager {
 
   /// #2649: read the current state without registering, so the coordinator can
   /// seed a per-model observer without disturbing the single manager observer.
-  public func currentState() -> ServerState { state }
-
-  public func setStateObserver(_ observer: @escaping @Sendable (ServerState) -> Void) {
-    onStateChange = observer
-    observer(state)
+  public func currentLifecycle() -> Lifecycle { lifecycle }
+  /// The lifecycle and its revision, read in one turn.
+  public func currentEvent() -> LocalPolishLifecycleEvent {
+    LocalPolishLifecycleEvent(lifecycle: lifecycle, order: revision)
   }
 
-  public func setProcessFailureObserver(_ observer: @escaping @Sendable (ChildProcessFailure) -> Void) {
+  public func setStateObserver(_ observer: @escaping @Sendable (LocalPolishLifecycleEvent) -> Void) {
+    onStateChange = observer
+    observer(currentEvent())
+  }
+
+  public func setProcessFailureObserver(
+    _ observer: @escaping @Sendable (ChildProcessFailure) -> Void
+  ) {
     onProcessFailure = observer
   }
 
@@ -192,10 +276,14 @@ public actor EGOneServerManager {
     state = newState
     switch newState {
     case .starting: processObservation?.publish(.starting)
-    case .ready: processObservation?.publish(.ready)
-    case .stopped, .pausedForMemoryPressure, .failed: break
+    case .ready:
+      processObservation?.publish(.ready)
+      recoveredOutsideStopGeneration = outsideStopGeneration
+      outsideStopGeneration = nil
+    case .stopped, .pausedForMemoryPressure, .failed, .stoppedOutside: break
     }
-    onStateChange?(newState)
+    revision += 1
+    onStateChange?(currentEvent())
   }
 
   /// Current endpoint iff ready. Fast, never boots the server — dictation
@@ -203,6 +291,30 @@ public actor EGOneServerManager {
   public func activeEndpoint() -> EGOneEndpoint? {
     if case .ready(let endpoint) = state { return endpoint }
     return nil
+  }
+
+  /// The endpoint and its outside-stop evidence for `provider`, from this one
+  /// turn (#3988). Never boots or waits, like `activeEndpoint()`. Only a live
+  /// take (`takeID`) can become a stop's recovery take; a file import, a
+  /// replay or another engine reads without using it up.
+  public func observeAvailability(
+    for provider: LLMProvider, claimingFor takeID: String?
+  ) -> Availability {
+    guard owner == provider else { return .unavailable }
+    let endpoint = activeEndpoint()
+    let met = endpoint == nil ? outsideStopGeneration : recoveredOutsideStopGeneration
+    var recovery: Int?
+    if let met, let takeID {
+      if let held = recoveryTake, held.generation == met {
+        recovery = held.takeID == takeID ? met : nil
+      } else {
+        recoveryTake = (met, takeID)
+        recovery = met
+      }
+    }
+    return Availability(
+      endpoint: endpoint, outstandingOutsideStop: endpoint == nil ? outsideStopGeneration : nil,
+      recoveryOutsideStop: recovery)
   }
 
   // MARK: - Lifecycle
@@ -213,17 +325,24 @@ public actor EGOneServerManager {
   public func start(configuration: Configuration) async {
     switch state {
     case .starting, .ready: return
-    case .stopped, .pausedForMemoryPressure, .failed: break
+    case .stopped, .pausedForMemoryPressure, .failed, .stoppedOutside: break
     }
     restartedOnceThisGeneration = false
     checkerFailureReason = nil
     await spawn(configuration: configuration)
   }
 
-  public func stop() {
+  /// Returns the exact event this stop published (#3988), so a caller that
+  /// relays it cannot pair `.stopped` with a later transition's revision.
+  @discardableResult
+  public func stop() -> LocalPolishLifecycleEvent {
     launchGeneration += 1
+    outsideStopGeneration = nil
+    recoveredOutsideStopGeneration = nil
+    owner = nil
     tearDownProcess()
     transition(to: .stopped)
+    return currentEvent()
   }
 
   /// Synchronous kill for `applicationWillTerminate` — actor state is left
@@ -248,7 +367,8 @@ public actor EGOneServerManager {
     report: (@Sendable (ChildProcessFailure) -> Void)? = nil
   ) {
     let sweep = Process()
-    runOrphanSweep(sweep, binaryPath: binaryPath, initiator: initiator, generation: generation, report: report)
+    runOrphanSweep(
+      sweep, binaryPath: binaryPath, initiator: initiator, generation: generation, report: report)
   }
 
   /// Separate facts from cleanup policy; failed observation never prevents a later server launch.
@@ -269,14 +389,16 @@ public actor EGOneServerManager {
     do {
       try launch(sweep)
     } catch {
-      report?(ChildProcessFailure(
-        role: .sweep, provider: initiator, generation: generation, phase: .cleanup,
-        launchErrorCode: (error as NSError).code))
+      report?(
+        ChildProcessFailure(
+          role: .sweep, provider: initiator, generation: generation, phase: .cleanup,
+          launchErrorCode: (error as NSError).code))
       return  // Foundation cannot wait for a Process that never launched.
     }
     sweep.waitUntilExit()
     if let failure = orphanSweepFailure(
-      reason: sweep.terminationReason, status: sweep.terminationStatus, pid: sweep.processIdentifier,
+      reason: sweep.terminationReason, status: sweep.terminationStatus,
+      pid: sweep.processIdentifier,
       initiator: initiator, generation: generation
     ) {
       report?(failure)
@@ -301,7 +423,7 @@ public actor EGOneServerManager {
   /// retires the r10 race class rather than patching another call site).
   func reapOrphansIfIdle(binaryPath: String, initiator: LLMProvider? = nil) {
     switch state {
-    case .stopped, .failed, .pausedForMemoryPressure:
+    case .stopped, .failed, .pausedForMemoryPressure, .stoppedOutside:
       Self.killStaleServers(
         binaryPath: binaryPath, initiator: initiator, generation: launchGeneration,
         report: onProcessFailure)
@@ -330,6 +452,7 @@ public actor EGOneServerManager {
   private func spawn(configuration: Configuration) async {
     launchGeneration += 1
     let generation = launchGeneration
+    owner = configuration.owningProvider
     transition(to: .starting)
 
     guard FileManager.default.fileExists(atPath: configuration.serverBinaryURL.path) else {
@@ -378,18 +501,20 @@ public actor EGOneServerManager {
     let observation = ChildProcessObservation(
       provider: configuration.owningProvider, generation: generation, report: onProcessFailure)
     proc.terminationHandler = { [weak self] terminated in
-      observation.recordTermination(terminated)
+      let record = observation.recordTermination(terminated)
       Task { [weak self] in
-        await self?.handleTermination(configuration: configuration, generation: generation)
+        await self?.handleTermination(
+          record: record, configuration: configuration, generation: generation)
       }
     }
 
     do {
       try proc.run()
     } catch {
-      onProcessFailure?(ChildProcessFailure(
-        role: .server, provider: configuration.owningProvider, generation: generation,
-        phase: .starting, launchErrorCode: (error as NSError).code))
+      onProcessFailure?(
+        ChildProcessFailure(
+          role: .server, provider: configuration.owningProvider, generation: generation,
+          phase: .starting, launchErrorCode: (error as NSError).code))
       transition(to: .failed(reason: "spawn_failed"))
       await AppLogger.shared.log(
         "Local polish server spawn failed: \(error.localizedDescription)",
@@ -445,7 +570,9 @@ public actor EGOneServerManager {
       "Local polish server ready on 127.0.0.1:\(port)", level: .info, category: "LLM")
   }
 
-  private func handleTermination(configuration: Configuration, generation: Int) async {
+  private func handleTermination(
+    record: ChildProcessFailure?, configuration: Configuration, generation: Int
+  ) async {
     // A callback QUEUED for an old child can land after stop()+start()
     // moved this manager to a fresh generation — it must not nil the new
     // process, mark the new launch crashed, or trigger a rogue restart
@@ -459,6 +586,22 @@ public actor EGOneServerManager {
       return
     }
     process = nil
+    // #3988: something outside the app stopped a working server (macOS under
+    // memory pressure, Activity Monitor, a `kill`). Treating that as a crash
+    // spent the restart, and a second stop gave up for the session with polish
+    // silently off. Stay idle instead; the next explicit activation starts it.
+    // A missing record (an intentional stop suppressed before acceptance)
+    // keeps today's handling.
+    if let record, Self.classify(record) == .outsideStop {
+      tearDownProcess()
+      outsideStopGeneration = generation
+      transition(to: .stoppedOutside)
+      await AppLogger.shared.log(
+        "Local polish server stopped from outside (\(record.termination?.rawValue ?? "unknown") "
+          + "\(record.status.map(String.init) ?? "unknown")) — idle until next activation",
+        level: .info, category: "LLM")
+      return
+    }
     if restartedOnceThisGeneration {
       transition(to: .failed(reason: "crashed_twice"))
       await AppLogger.shared.log(
@@ -502,9 +645,11 @@ public actor EGOneServerManager {
     // when the process dies, and its resume is generation-gated.
     switch state {
     case .ready, .starting: break
-    case .stopped, .pausedForMemoryPressure, .failed: return
+    case .stopped, .pausedForMemoryPressure, .failed, .stoppedOutside: return
     }
     launchGeneration += 1
+    outsideStopGeneration = nil
+    recoveredOutsideStopGeneration = nil
     tearDownProcess()
     transition(to: .pausedForMemoryPressure)
     await AppLogger.shared.log(
@@ -570,6 +715,8 @@ public actor EGOneServerManager {
       return .yellow(reason: "starting")
     case .pausedForMemoryPressure:
       return .yellow(reason: "paused_for_memory")
+    case .stoppedOutside:
+      return .yellow(reason: "stopped_outside")
     case .failed(let reason):
       return .red(reason: reason)
     case .ready(let endpoint):

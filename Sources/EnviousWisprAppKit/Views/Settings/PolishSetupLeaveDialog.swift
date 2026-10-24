@@ -150,6 +150,9 @@ struct PolishSetupLeaveDialogContent: Equatable {
       return Copy.notDownloaded(provider.displayName)
     case .appleUnavailable, .appleModelNotReady:
       return Copy.appleUnsupportedOSMessage
+    // #3988: the monitor never raises a leave dialog for it; its words have one owner.
+    case .localEngineStoppedOutside(_, let stop):
+      return PolishSetupSurfaceCopy.outsideStopNotice(stop)
     }
   }
 
@@ -158,6 +161,9 @@ struct PolishSetupLeaveDialogContent: Equatable {
     case .localEngineVerifying(let provider): return Copy.verifyingTitle(provider.displayName)
     case .appleModelNotReady: return Copy.appleNotReadyTitle
     case .localEngineDownloading(let provider): return Copy.downloadingTitle(provider.displayName)
+    // #3988: never raised on leaving (the monitor refuses it); one copy owner if it ever is.
+    case .localEngineStoppedOutside:
+      return PolishSetupSurfaceCopy.outsideStopTitle
     case .cloudKeyMissing, .cloudKeyRejected, .ollamaNotInstalled, .ollamaNotRunning,
       .ollamaNoModel, .ollamaModelNotInstalled, .localEngineNotDownloaded,
       .localEngineDownloadPaused, .localEngineUpdatePaused, .localEngineFailed, .appleUnavailable:
@@ -169,6 +175,7 @@ struct PolishSetupLeaveDialogContent: Equatable {
     switch problem {
     case .localEngineVerifying: return Copy.verifyingMessage
     case .appleModelNotReady: return Copy.appleNotReadyMessage
+    case .localEngineStoppedOutside(_, let stop): return PolishSetupSurfaceCopy.outsideStopNotice(stop)
     case .localEngineDownloading, .cloudKeyMissing, .cloudKeyRejected, .ollamaNotInstalled,
       .ollamaNotRunning, .ollamaNoModel, .ollamaModelNotInstalled, .localEngineNotDownloaded,
       .localEngineDownloadPaused, .localEngineUpdatePaused, .localEngineFailed, .appleUnavailable:

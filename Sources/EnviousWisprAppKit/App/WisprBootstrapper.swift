@@ -1915,10 +1915,12 @@ package final class WisprBootstrapper {
       whisperMemoryPressure: whisperMemoryPressure,
       // #996: each real transition into `.recording` cancels a live edit watch.
       // #3242: and pre-loads the word check so the take's check finds it ready.
+      // #3988: and restarts the take's local polish engine if something outside
+      // the app stopped it, so the next dictation is polished again.
       onRecordingStarted: {
         [
           weak learnFromEdits, weak checkerEligibility, weak kernelDriver,
-          weak whisperKernelDriver
+          weak whisperKernelDriver, localPolishRuntimes
         ] in
         learnFromEdits?.recordingStarted()
         // The take's frozen provider (set at arming), never the mutable setting.
@@ -1928,6 +1930,7 @@ package final class WisprBootstrapper {
         else { return }
         checkerEligibility?.wordCheck?.recordingStarted(
           needsWordCheckForRecording: LearnedWordCheckerEngine(provider: provider) == nil)
+        localPolishRuntimes.runtime(for: provider)?.recordingStarted()
       }
     )
 
@@ -2409,6 +2412,20 @@ package final class WisprBootstrapper {
     let meetingWakes = MeetingWakeSignal()
     engineCoordinator.onMintingEnded = { [meetingWakes] in meetingWakes.poke() }
     let meetingMemoryPressure = MeetingMemoryPressure()
+    // #3988: the pressure a local polish engine records when something outside
+    // the app stops it. Context for the notice, never a cause.
+    for runtime in [localPolishRuntimes.egOne, localPolishRuntimes.s1Mini] {
+      runtime.memoryPressureLevel = { [weak meetingMemoryPressure] in
+        meetingMemoryPressure.map { pressure in
+          // Exhaustive, so a new level must be mapped here, never defaulted.
+          switch pressure.level {
+          case .normal: OutsideStopContext.MemoryPressure.normal
+          case .warning: .warning
+          case .critical: .critical
+          }
+        }
+      }
+    }
     let meetingCoordinator = MeetingWiring.make(
       MeetingWiring.Inputs(
         store: MeetingStore(),
@@ -2516,7 +2533,10 @@ package final class WisprBootstrapper {
       // A take that found no key in the Keychain is that read's answer; no second read.
       recordKeyEvidence: { [savedKeyPresence] provider, state, readAt in
         savedKeyPresence.recordRead(state, for: provider, readAt: readAt)
-      })
+      },
+      // #3988: the notice history lives in THIS build's own defaults domain, never the unified
+      // settings suite, so the dev build and the shipped app never share a day or a quiet.
+      noticeStore: OutsideStopNoticeStore(defaults: .standard))
     polishSetupMonitorHolder.monitor = polishSetupMonitor
     menuBarControllerHolder.controller = menuBarController
     savedKeyPresence.onChange = { [weak polishSetupMonitor] in

@@ -11,8 +11,8 @@ import Foundation
 ///
 /// **Everything except `.current` is DEBUG-only, and release is a literal V0.** No user
 /// ever runs a non-baseline writer variant. The one release routing rule here is
-/// `skipsDirectWrite(bundleID:)` (#2652, 2026-09-24): verified Gecko browsers skip Tier 1
-/// in every policy; every other destination routes exactly as before this type existed.
+/// `directWriteSkip(bundleID:)`: verified Gecko browsers and cmux skip Tier 1
+/// in every policy. Unlisted destinations retain their existing routing.
 ///
 /// **The initializer validates rather than trusts.** A test seam on a delivery guard is
 /// a bypass unless it is logged AND unforgeable, and the specific way this one could
@@ -30,7 +30,7 @@ package struct PasteDeliveryPolicy: Sendable, Equatable {
   /// their raw values for an artifact scan to find.
   package enum WriterPolicy: String, Sendable, Equatable {
     /// Today's cascade. The baseline every measurement is relative to. It includes the one
-    /// shipping destination rule, `skipsDirectWrite(bundleID:)` (#2652), which every variant shares.
+    /// shipping destination rules, `directWriteSkip(bundleID:)`, which every variant shares.
     case current
 
     #if DEBUG
@@ -100,18 +100,33 @@ package struct PasteDeliveryPolicy: Sendable, Equatable {
   /// requires a live page-textarea receipt test (one dictation, landed once) before it ships. A fork not listed keeps today's routing: Floorp and
   /// Waterfox (IDs not verified) and LibreWolf (`org.mozilla.librewolf`; its build is unsigned and
   /// Gatekeeper refuses to launch it, so it could not be tested live).
-  package static let directWriteSkippedBundleIDs: Set<String> = [
-    "org.mozilla.firefox",
-    "org.mozilla.firefoxdeveloperedition",
-    "org.mozilla.nightly",
-    "app.zen-browser.zen",
+  ///
+  /// cmux (#3863, live 2026-10-23, cmux 0.65.2): its terminal accepts the direct write and the
+  /// text reaches the shell prompt, but the write cannot be verified (the selection reads
+  /// `{0,0}`), so Tier 1 stops the cascade unverified and the take ends clipboard-only with the
+  /// "Copied" notice although the text landed. Skipping Tier 1 sends it through Cmd+V, the route
+  /// every production cmux take already uses.
+  package static let directWriteSkips: [String: DirectWriteSkip] = [
+    "org.mozilla.firefox": .gecko,
+    "org.mozilla.firefoxdeveloperedition": .gecko,
+    "org.mozilla.nightly": .gecko,
+    "app.zen-browser.zen": .gecko,
+    "com.cmuxterm.app": .terminal,
   ]
 
-  /// Whether Tier 1 is skipped for this destination (#2652). Exact match only: a helper process
-  /// or an unlisted fork is not Gecko here.
-  package static func skipsDirectWrite(bundleID: String?) -> Bool {
-    guard let bundleID else { return false }
-    return directWriteSkippedBundleIDs.contains(bundleID)
+  /// Why a destination skips Tier 1; each maps to its own decline reason.
+  package enum DirectWriteSkip: Sendable, Equatable {
+    /// A Gecko browser: the write lands but the read-back lags, so Tier 2 would double it (#2652).
+    case gecko
+    /// A terminal whose write lands but cannot be verified, which ends in the Copied notice (#3863).
+    case terminal
+  }
+
+  /// Whether, and why, Tier 1 is skipped for this destination. Exact match only: a helper
+  /// process or an unlisted fork is not listed here.
+  package static func directWriteSkip(bundleID: String?) -> DirectWriteSkip? {
+    guard let bundleID else { return nil }
+    return directWriteSkips[bundleID]
   }
 
   /// The shipped policy. The only one a release build can construct.

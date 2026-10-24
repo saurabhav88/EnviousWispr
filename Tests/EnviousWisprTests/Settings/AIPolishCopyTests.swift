@@ -51,6 +51,9 @@ struct AIPolishCopyTests {
     #expect(chip(.egOne, install: .failed(.network)) == "Needs attention")
     #expect(chip(.egOne, health: .green) == "Installed")
     #expect(chip(.egOne, health: .yellow(reason: "starting")) == "Starting")
+    // #3988: a stop from outside and a running, unchecked engine each say what they are.
+    #expect(chip(.egOne, health: .yellow(reason: "stopped_outside")) == "Stopped")
+    #expect(chip(.egOne, health: .yellow(reason: "ready_unchecked")) == "Ready")
     #expect(chip(.egOne, health: .red(reason: "crashed_twice")) == "Not working")
     #expect(chip(.appleIntelligence, apple: .available) == "Available")
     #expect(chip(.appleIntelligence, apple: .degraded) == "Degraded")
@@ -192,11 +195,37 @@ struct AIPolishCopyTests {
       ),
       ("not_started", "Starting the model. This takes a few seconds."),
       ("download_paused", "Download paused. Resume anytime."),
+      ("stopped_outside", "Stopped. It starts again on your next dictation."),
+      ("ready_unchecked", "Ready. AI polish hasn't been checked yet."),
       ("something_new", "Something needs attention. Try the refresh button."),
     ]
     for (reason, expected) in yellow {
       #expect(LocalEngineHealthCopy.detail(for: .yellow(reason: reason)) == expected)
     }
+    // #3988: the engine's own recorded stop adds the memory sentence for warning or critical
+    // only; normal, unknown or none read the plain line, and no other reason ever carries it.
+    func stopped(_ pressure: OutsideStopContext.MemoryPressure?) -> String? {
+      LocalEngineHealthCopy.detail(
+        for: .yellow(reason: "stopped_outside"),
+        outsideStop: OutsideStopContext(provider: .egOne, generation: 1, memoryPressure: pressure))
+    }
+    for pressure in [OutsideStopContext.MemoryPressure.warning, .critical] {
+      #expect(
+        stopped(pressure)
+          == "Stopped. It starts again on your next dictation. Your Mac was low on memory at the time."
+      )
+    }
+    for pressure in [OutsideStopContext.MemoryPressure.normal, nil] {
+      #expect(stopped(pressure) == "Stopped. It starts again on your next dictation.")
+    }
+    let lowMemory = OutsideStopContext(provider: .egOne, generation: 1, memoryPressure: .critical)
+    #expect(
+      LocalEngineHealthCopy.detail(for: .red(reason: "crashed_twice"), outsideStop: lowMemory)
+        == "The model stopped twice in a row. Use the refresh button to try again.",
+      "a failure keeps its own words, whatever stop context remains")
+    #expect(
+      LocalEngineHealthCopy.detail(for: .yellow(reason: "paused_for_memory"), outsideStop: lowMemory)
+        == "Paused to free memory for other apps. Use the refresh button to restart it.")
     let red: [(String, String)] = [
       ("download_required", "Download the model to get started."),
       ("update_required", "This model needs a newer version of EnviousWispr."),

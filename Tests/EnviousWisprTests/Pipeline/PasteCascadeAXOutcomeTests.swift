@@ -58,7 +58,7 @@ struct PasteCascadeTier1DeclineReasonTests {
   func chromiumOmniboxDeclinesWithItsOwnReason() {
     let reason = tier1DeclineReason(
       axTrusted: true, classification: .textField, isChromiumOmnibox: true,
-      isGeckoDestination: false)
+      directWriteSkip: nil)
     #expect(reason == .chromiumOmniboxNavigationSeam)
   }
 
@@ -66,7 +66,7 @@ struct PasteCascadeTier1DeclineReasonTests {
   func ordinaryTextFieldRunsTier1() {
     let reason = tier1DeclineReason(
       axTrusted: true, classification: .textField, isChromiumOmnibox: false,
-      isGeckoDestination: false)
+      directWriteSkip: nil)
     #expect(reason == nil)
   }
 
@@ -77,7 +77,7 @@ struct PasteCascadeTier1DeclineReasonTests {
     // must win regardless of what is passed for it.
     let reason = tier1DeclineReason(
       axTrusted: false, classification: .textField, isChromiumOmnibox: true,
-      isGeckoDestination: false)
+      directWriteSkip: nil)
     #expect(reason == .accessibilityDenied)
   }
 
@@ -86,26 +86,26 @@ struct PasteCascadeTier1DeclineReasonTests {
     #expect(
       tier1DeclineReason(
         axTrusted: true, classification: .textField, isChromiumOmnibox: false,
-        isGeckoDestination: false, recordedWindowSession: true) == .recordedWindowKeyPasteOnly)
+        directWriteSkip: nil, recordedWindowSession: true) == .recordedWindowKeyPasteOnly)
     #expect(
       tier1DeclineReason(
         axTrusted: true, classification: .textField, isChromiumOmnibox: true,
-        isGeckoDestination: true, recordedWindowSession: true) == .recordedWindowKeyPasteOnly,
+        directWriteSkip: .gecko, recordedWindowSession: true) == .recordedWindowKeyPasteOnly,
       "the recorded window outranks the omnibox and Gecko declines")
     // Accessibility denied, missing focus and non-text focus keep their own reasons.
     #expect(
       tier1DeclineReason(
         axTrusted: false, classification: .textField, isChromiumOmnibox: false,
-        isGeckoDestination: false, recordedWindowSession: true) == .accessibilityDenied)
+        directWriteSkip: nil, recordedWindowSession: true) == .accessibilityDenied)
     #expect(
       tier1DeclineReason(
         axTrusted: true, classification: .missing, isChromiumOmnibox: false,
-        isGeckoDestination: false, recordedWindowSession: true) == .focusMissing)
+        directWriteSkip: nil, recordedWindowSession: true) == .focusMissing)
     // Control: without a recorded window a plain field still runs Tier 1.
     #expect(
       tier1DeclineReason(
         axTrusted: true, classification: .textField, isChromiumOmnibox: false,
-        isGeckoDestination: false) == nil)
+        directWriteSkip: nil) == nil)
   }
 
   @Test("A Gecko browser's text field declines Tier 1 with its own reason (#2652)")
@@ -113,37 +113,73 @@ struct PasteCascadeTier1DeclineReasonTests {
     #expect(
       tier1DeclineReason(
         axTrusted: true, classification: .textField, isChromiumOmnibox: false,
-        isGeckoDestination: true) == .geckoDirectWriteUnconfirmable)
+        directWriteSkip: .gecko) == .geckoDirectWriteUnconfirmable)
     // Accessibility denied, missing focus and non-text focus keep their own reasons.
     #expect(
       tier1DeclineReason(
         axTrusted: false, classification: .textField, isChromiumOmnibox: false,
-        isGeckoDestination: true) == .accessibilityDenied)
+        directWriteSkip: .gecko) == .accessibilityDenied)
     #expect(
       tier1DeclineReason(
         axTrusted: true, classification: .missing, isChromiumOmnibox: false,
-        isGeckoDestination: true) == .focusMissing)
+        directWriteSkip: .gecko) == .focusMissing)
     #expect(
       tier1DeclineReason(
         axTrusted: true, classification: .nonText, isChromiumOmnibox: false,
-        isGeckoDestination: true) == .focusNonText)
+        directWriteSkip: .gecko) == .focusNonText)
   }
 
-  @Test("Exactly the four verified Gecko bundle IDs skip the direct write; nothing else does")
+  @Test("cmux skips the direct write while existing decline precedence remains")
+  func cmuxDeclinePrecedence() {
+    let skip = PasteDeliveryPolicy.directWriteSkip(bundleID: "com.cmuxterm.app")
+    #expect(skip == .terminal)
+    #expect(PasteFocusClassification.textField.canAttemptKeyPaste)
+
+    let rows: [
+      (Bool, PasteFocusClassification, Bool, Bool, PasteService.AXDeclineReason)
+    ] = [
+      (true, .textField, false, false, .terminalDirectWriteUnconfirmable),
+      (false, .textField, false, false, .accessibilityDenied),
+      (true, .textField, true, false, .chromiumOmniboxNavigationSeam),
+      (true, .textField, true, true, .recordedWindowKeyPasteOnly),
+      (true, .missing, false, false, .focusMissing),
+      (true, .nonText, false, false, .focusNonText),
+    ]
+    for (trusted, classification, omnibox, recordedWindow, expected) in rows {
+      #expect(
+        tier1DeclineReason(
+          axTrusted: trusted, classification: classification,
+          isChromiumOmnibox: omnibox, directWriteSkip: skip,
+          recordedWindowSession: recordedWindow) == expected)
+    }
+
+    for id: String? in [
+      nil, "", "com.cmuxterm.app.helper", "COM.CMUXTERM.APP",
+      "com.stablyai.orca", "com.google.antigravity-ide",
+    ] {
+      #expect(PasteDeliveryPolicy.directWriteSkip(bundleID: id) == nil)
+    }
+  }
+
+  @Test("Exactly the four verified Gecko bundle IDs skip the direct write as Gecko; no other browser does")
   func geckoBundleIDsAreExact() {
     let gecko = [
       "org.mozilla.firefox", "org.mozilla.firefoxdeveloperedition", "org.mozilla.nightly",
       "app.zen-browser.zen",
     ]
-    for id in gecko { #expect(PasteDeliveryPolicy.skipsDirectWrite(bundleID: id), "\(id)") }
-    #expect(PasteDeliveryPolicy.directWriteSkippedBundleIDs.count == gecko.count)
+    for id in gecko {
+      #expect(PasteDeliveryPolicy.directWriteSkip(bundleID: id) == .gecko, "\(id)")
+    }
+    #expect(PasteDeliveryPolicy.directWriteSkips.filter { $0.value == .gecko }.count == gecko.count)
+    // The one other listed destination is cmux (#3863), with its own reason.
+    #expect(PasteDeliveryPolicy.directWriteSkips.count == gecko.count + 1)
     let others: [String?] = [
       nil, "", "com.apple.Safari", "com.google.Chrome", "com.brave.Browser",
       "com.microsoft.edgemac", "com.apple.TextEdit", "org.mozilla.firefox.helper",
       "ORG.MOZILLA.FIREFOX", "org.mozilla", "org.mozilla.librewolf",
     ]
     for id in others {
-      #expect(!PasteDeliveryPolicy.skipsDirectWrite(bundleID: id), "\(String(describing: id))")
+      #expect(PasteDeliveryPolicy.directWriteSkip(bundleID: id) == nil, "\(String(describing: id))")
     }
   }
 
@@ -151,11 +187,11 @@ struct PasteCascadeTier1DeclineReasonTests {
   func nonTextFieldClassificationsUnaffectedByChromiumFlag() {
     #expect(
       tier1DeclineReason(axTrusted: true, classification: .missing, isChromiumOmnibox: true,
-      isGeckoDestination: false)
+      directWriteSkip: nil)
         == .focusMissing)
     #expect(
       tier1DeclineReason(axTrusted: true, classification: .nonText, isChromiumOmnibox: true,
-      isGeckoDestination: false)
+      directWriteSkip: nil)
         == .focusNonText)
   }
 }

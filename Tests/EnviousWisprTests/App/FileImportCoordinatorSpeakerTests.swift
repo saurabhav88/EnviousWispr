@@ -128,6 +128,7 @@ struct FileImportCoordinatorSpeakerTests {
       UUID, TranscriptSpeakerAnalysis, [Turn]?, (speakerId: String, name: String)
     ) throws -> Bool = { _, _, _, _ in false },
     currentHistoryRow: @escaping @MainActor (UUID) -> Transcript? = { _ in nil },
+    historyRowExists: @escaping @MainActor (UUID) -> Bool = { _ in true },
     emitSpeakerTelemetry: @escaping @MainActor (
       SpeakerAnalysis, TimeInterval, Int, ASRWordTimingCoverage?
     ) -> Void = { _, _, _, _ in },
@@ -179,7 +180,7 @@ struct FileImportCoordinatorSpeakerTests {
       mergeSpeakerFields: mergeSpeakerFields,
       writeExplicitRename: writeExplicitRename,
       currentHistoryRow: currentHistoryRow,
-      historyRowExists: { _ in true },
+      historyRowExists: historyRowExists,
       processParts: processPartsOverride ?? serialFileImportTestProcessor(processPart))
   }
 
@@ -701,9 +702,12 @@ struct FileImportCoordinatorSpeakerTests {
     private(set) var rows: [UUID: Transcript] = [:]
     /// The 1-based merge call that throws, for a write that fails once mid-run.
     var throwOnMergeCall: Int?
+    /// A second 1-based merge call that throws, for two failed writes in one test (#3903).
+    var alsoThrowOnMergeCall: Int?
     private(set) var mergeCalls = 0
     struct MergeError: Error {}
     func save(_ row: Transcript) { rows[row.id] = row }
+    func delete(_ id: UUID) { rows[id] = nil }
     func update(_ row: Transcript) -> Bool {
       guard rows[row.id] != nil else { return false }
       rows[row.id] = row
@@ -713,7 +717,9 @@ struct FileImportCoordinatorSpeakerTests {
       throws -> Bool
     {
       mergeCalls += 1
-      if mergeCalls == throwOnMergeCall { throw MergeError() }
+      if mergeCalls == throwOnMergeCall || mergeCalls == alsoThrowOnMergeCall {
+        throw MergeError()
+      }
       guard let existing = rows[id] else { return false }
       rows[id] = existing.mergingSpeakerFields(analysis: analysis, turns: turns)
       return true
@@ -1517,6 +1523,356 @@ struct FileImportCoordinatorSpeakerTests {
     for _ in 0..<20 { await Task.yield() }
     #expect(coordinator.state == .stopped, "a late part cannot finish a stopped run")
     #expect(store.mergeCalls == 1)
+  }
+
+  /// What a completed first cleanup left everywhere the user can read it (#3903).
+  private struct CleanupSeen: Equatable {
+    let historyTurns: [String?]
+    let historyPolished: [Bool]?
+    let partTexts: [String]
+    let documentText: String
+    let exportText: String
+    let saved: Bool
+    let provider: LLMProvider?
+
+    @MainActor init(_ c: FileImportCoordinator, _ store: FakeHistoryStore, _ id: UUID) {
+      let row = store.current(id)
+      historyTurns = row?.turns?.map(\.processedText) ?? []
+      historyPolished = row?.turns?.map(\.wasPolished)
+      partTexts = c.parts.map(\.text)
+      documentText = c.documentText
+      exportText = c.exportText
+      saved = c.isSavedToHistory
+      provider = c.runConfiguration?.polishProvider
+    }
+  }
+
+  /// A labeled or single-voice import cleaned once ("first ..."), then Clean it again under a
+  /// different polisher ("second ..."), which `gateAt` holds at one of its parts.
+  @MainActor private final class ReRunScript {
+    var calls = 0
+    var firstRunCalls = 0
+    var gateAt: Int?
+    var rerun = false
+    var polisherReadyOnRerun = true
+    /// Presses Stop from inside the re-run's History turn write, the moment the merge lands.
+    var stopInsideRerunMerge = false
+    /// The re-run polishes to the SAME words as the first run, under a different provider.
+    var sameWordsOnRerun = false
+    /// How many document updates (`updateHistoryRow`) still fail.
+    var failingUpdates = 0
+    weak var coordinator: FileImportCoordinator?
+    let gate = ManualGate()
+  }
+
+  private func makeReRunCoordinator(
+    _ script: ReRunScript, store: FakeHistoryStore, labeled: Bool,
+    telemetry: TurnTelemetryRecorder
+  ) -> FileImportCoordinator {
+    let c = makeCoordinator(
+      lease: EngineLease(), transcribedText: "hello there friend",
+      wordTimings: labeled ? Self.twoSpeakerWordTimings() : nil,
+      speakerLabeler: { _, _ in
+        labeled ? .labeled(count: 2, segments: Self.twoSpeakerSegments) : .single(segments: [])
+      },
+      saveToHistory: { store.save($0) },
+      updateHistoryRow: { row in
+        if script.failingUpdates > 0 {
+          script.failingUpdates -= 1
+          throw FakeHistoryStore.MergeError()
+        }
+        return store.update(row)
+      },
+      mergeSpeakerFields: { id, analysis, turns in
+        let saved = try store.mergeSpeakerFields(id, analysis, turns)
+        if script.rerun, script.stopInsideRerunMerge {
+          script.stopInsideRerunMerge = false
+          script.coordinator?.stop()
+        }
+        return saved
+      },
+      writeExplicitRename: { store.rename($0, $1, $2, $3) },
+      currentHistoryRow: { store.current($0) },
+      historyRowExists: { store.current($0) != nil },
+      emitTurnTelemetry: { telemetry.record($0, $1, $2) },
+      prepareLocalPolish: { _ in script.rerun ? script.polisherReadyOnRerun : true },
+      processPart: { part, _ in
+        script.calls += 1
+        if script.calls == script.gateAt {
+          await script.gate.markArrived()
+          await script.gate.waitUntilOpen()
+        }
+        return FileImportRunner.PartOutcome(
+          text: part,
+          polishedText: (script.rerun && !script.sameWordsOnRerun ? "second " : "first ") + part)
+      },
+      beginRunOverride: {
+        FileImportCoordinator.RunConfiguration(
+          polishIsCloud: true, localPolishProvider: nil,
+          polishProvider: script.rerun ? .gemini : .openAI, ollamaModel: nil,
+          polishModel: script.rerun ? "second-model" : "first-model", backendType: .parakeet)
+      })
+    script.coordinator = c
+    return c
+  }
+
+  /// Runs the first cleanup to Done and returns what it left.
+  private func completeFirstCleanup(
+    _ c: FileImportCoordinator, _ store: FakeHistoryStore, _ script: ReRunScript
+  ) async -> (UUID, CleanupSeen)? {
+    c.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = c.state { return true } else { return false }
+    }
+    c.start()
+    guard await settleUntil({ c.state == .finished }), let id = c.historyID else {
+      Issue.record("the first cleanup never finished")
+      return nil
+    }
+    _ = await settleUntil { c.speakerStepState == .finished }
+    script.firstRunCalls = script.calls
+    script.rerun = true
+    return (id, CleanupSeen(c, store, id))
+  }
+
+  @Test(
+    "Stop during Clean it again keeps the completed cleanup everywhere: History turns, screen, Copy and Save, badge and header (#3903)",
+    // A single-voice document of this fixture is one section, so "one section finished" is
+    // a labeled (two-section) case only.
+    arguments: [(true, 0), (true, 1), (false, 0)])
+  func stopDuringCleanItAgainKeepsTheCompletedCleanup(labeled: Bool, finishedBeforeStop: Int)
+    async
+  {
+    let store = FakeHistoryStore()
+    let telemetry = TurnTelemetryRecorder()
+    let script = ReRunScript()
+    let c = makeReRunCoordinator(script, store: store, labeled: labeled, telemetry: telemetry)
+    guard let (id, first) = await completeFirstCleanup(c, store, script) else { return }
+    #expect(first.partTexts.allSatisfy { $0.hasPrefix("first ") }, "\(first.partTexts)")
+    #expect(first.saved)
+    if labeled {
+      #expect(first.historyTurns.allSatisfy { $0?.hasPrefix("first ") == true })
+    }
+    let eventsAfterFirst = telemetry.events.count
+    let mergesAfterFirst = store.mergeCalls
+    // Gate the replacement's first part (nothing replaced yet) or its second part (one
+    // replacement section already finished).
+    script.gateAt = script.firstRunCalls + 1 + finishedBeforeStop
+    if finishedBeforeStop == 1, first.partTexts.count < 2 {
+      Issue.record("the fixture needs at least two sections")
+      return
+    }
+    c.rePolish()
+    #expect(await script.gate.waitUntilArrived(), "the replacement run never reached its gate")
+    #expect(c.parts.count == finishedBeforeStop)
+    c.stop()
+    #expect(c.state == .stopped)
+    #expect(c.step == .done)
+    for _ in 0..<20 { await Task.yield() }
+    let after = CleanupSeen(c, store, id)
+    #expect(
+      after == first, "labeled \(labeled), finished \(finishedBeforeStop): \(after) vs \(first)")
+    #expect(!after.partTexts.contains { $0.hasPrefix("second ") }, "never two generations mixed")
+    #expect(store.mergeCalls == mergesAfterFirst, "no raw turns were written over the cleanup")
+    #expect(telemetry.events.count == eventsAfterFirst, "the first run already reported the turns")
+    await script.gate.open()
+    for _ in 0..<20 { await Task.yield() }
+    #expect(CleanupSeen(c, store, id) == first, "a late replacement part changes nothing")
+  }
+
+  @Test(
+    "a polisher that does not start for Clean it again keeps the completed cleanup (#3903)",
+    arguments: [true, false])
+  func refusedPolisherDuringCleanItAgainKeepsTheCompletedCleanup(labeled: Bool) async {
+    let store = FakeHistoryStore()
+    let telemetry = TurnTelemetryRecorder()
+    let script = ReRunScript()
+    let c = makeReRunCoordinator(script, store: store, labeled: labeled, telemetry: telemetry)
+    guard let (id, first) = await completeFirstCleanup(c, store, script) else { return }
+    let mergesAfterFirst = store.mergeCalls
+    script.polisherReadyOnRerun = false
+    c.rePolish()
+    #expect(await settleUntil { c.state == .rejected(.polisherNotReady) })
+    for _ in 0..<20 { await Task.yield() }
+    #expect(CleanupSeen(c, store, id) == first, "labeled \(labeled)")
+    #expect(store.mergeCalls == mergesAfterFirst, "no raw turns were written over the cleanup")
+  }
+
+  @Test(
+    "a Stop while a completed Clean it again writes its turns keeps that NEW cleanup (#3903, Codex)",
+    arguments: [true, false])
+  func stopDuringTheReRunsHistoryWriteKeepsTheNewCleanup(labeled: Bool) async {
+    let store = FakeHistoryStore()
+    let telemetry = TurnTelemetryRecorder()
+    let script = ReRunScript()
+    let c = makeReRunCoordinator(script, store: store, labeled: labeled, telemetry: telemetry)
+    guard let (id, _) = await completeFirstCleanup(c, store, script) else { return }
+    script.stopInsideRerunMerge = true
+    c.rePolish()
+    #expect(await settleUntil { c.state == .stopped }, "the Stop inside the write never landed")
+    for _ in 0..<20 { await Task.yield() }
+    let after = CleanupSeen(c, store, id)
+    #expect(after.partTexts.allSatisfy { $0.hasPrefix("second ") }, "\(after.partTexts)")
+    if labeled {
+      #expect(
+        after.historyTurns.allSatisfy { $0?.hasPrefix("second ") == true }, "\(after.historyTurns)")
+    }
+    #expect(after.provider == .gemini, "the header credits the cleanup on screen")
+    #expect(
+      store.current(id)?.displayText == c.documentText,
+      "History's text and the screen describe the same cleanup")
+    #expect(after.saved)
+  }
+
+  @Test(
+    "the same words under a new provider: a Stop during the re-run's write still saves the new credit (#3903)",
+    arguments: [true, false])
+  func stopDuringTheWriteSavesTheNewCreditForTheSameWords(labeled: Bool) async {
+    let store = FakeHistoryStore()
+    let telemetry = TurnTelemetryRecorder()
+    let script = ReRunScript()
+    script.sameWordsOnRerun = true
+    let c = makeReRunCoordinator(script, store: store, labeled: labeled, telemetry: telemetry)
+    guard let (id, first) = await completeFirstCleanup(c, store, script) else { return }
+    #expect(store.current(id)?.llmProvider == LLMProvider.openAI.rawValue)
+    script.stopInsideRerunMerge = true
+    c.rePolish()
+    #expect(await settleUntil { c.state == .stopped })
+    for _ in 0..<20 { await Task.yield() }
+    #expect(c.documentText == first.documentText, "the same words")
+    #expect(c.runConfiguration?.polishProvider == .gemini, "the screen credits the re-run")
+    #expect(
+      store.current(id)?.llmProvider == LLMProvider.gemini.rawValue,
+      "History credits the same cleanup the screen does")
+    #expect(store.current(id)?.llmModel == "second-model")
+  }
+
+  @Test(
+    "a row the user deleted and Clean it again wrote back gets the kept cleanup saved again on Stop (#3903, Codex)",
+    arguments: [true, false])
+  func stopAfterTheRowWasWrittenAgainSavesTheKeptCleanup(labeled: Bool) async {
+    let store = FakeHistoryStore()
+    let telemetry = TurnTelemetryRecorder()
+    let script = ReRunScript()
+    let c = makeReRunCoordinator(script, store: store, labeled: labeled, telemetry: telemetry)
+    guard let (id, first) = await completeFirstCleanup(c, store, script) else { return }
+    store.delete(id)
+    c.noteHistoryRowDeleted(id)
+    script.gateAt = script.firstRunCalls + 1
+    c.rePolish()
+    #expect(await script.gate.waitUntilArrived(), "the re-run never reached its first part")
+    #expect(store.current(id)?.text != nil, "Clean it again wrote the raw row back")
+    c.stop()
+    for _ in 0..<20 { await Task.yield() }
+    #expect(c.documentText == first.documentText, "the screen shows the kept cleanup")
+    #expect(
+      store.current(id)?.displayText == c.documentText,
+      "History holds the kept cleanup again, not the raw words")
+    #expect(store.current(id)?.llmProvider == LLMProvider.openAI.rawValue)
+    await script.gate.open()
+  }
+
+  @Test(
+    "a later cleanup whose turn save failed is the one restored, turns included, on the next Stop (#3903, Codex)"
+  )
+  func stopAfterACleanupWhoseTurnSaveFailedRestoresItsTurns() async {
+    let store = FakeHistoryStore()
+    let telemetry = TurnTelemetryRecorder()
+    let script = ReRunScript()
+    let c = makeReRunCoordinator(script, store: store, labeled: true, telemetry: telemetry)
+    guard let (id, _) = await completeFirstCleanup(c, store, script) else { return }
+    // Cleanup B completes, but its turn save fails: History keeps A's turns.
+    store.throwOnMergeCall = store.mergeCalls + 1
+    c.rePolish()
+    #expect(await settleUntil { c.state == .finished }, "cleanup B never finished")
+    #expect(turnTexts(store.current(id)).allSatisfy { $0?.hasPrefix("first ") == true })
+    let b = c.documentText
+    // Cleanup C is stopped before its first part: B is the kept cleanup.
+    script.gateAt = script.calls + 1
+    c.rePolish()
+    #expect(await script.gate.waitUntilArrived())
+    c.stop()
+    for _ in 0..<20 { await Task.yield() }
+    #expect(c.documentText == b, "the screen shows cleanup B")
+    #expect(
+      turnTexts(store.current(id)).allSatisfy { $0?.hasPrefix("second ") == true },
+      "History's turns are cleanup B's too: \(turnTexts(store.current(id)))")
+    #expect(c.turns?.map(\.processedText) == turnTexts(store.current(id)), "the screen reads them")
+    #expect(store.current(id)?.llmProvider == LLMProvider.gemini.rawValue)
+    await script.gate.open()
+  }
+
+  @Test("when restoring cannot write the turns either, the screen shows the kept turns, unsaved (#3903)")
+  func restoreWhoseTurnWriteFailsShowsTheKeptTurnsUnsaved() async {
+    let store = FakeHistoryStore()
+    let telemetry = TurnTelemetryRecorder()
+    let script = ReRunScript()
+    let c = makeReRunCoordinator(script, store: store, labeled: true, telemetry: telemetry)
+    guard let (id, _) = await completeFirstCleanup(c, store, script) else { return }
+    // B's turn save fails, and so does the restore's write on C's Stop.
+    store.throwOnMergeCall = store.mergeCalls + 1
+    store.alsoThrowOnMergeCall = store.mergeCalls + 2
+    c.rePolish()
+    #expect(await settleUntil { c.state == .finished })
+    let b = c.documentText
+    script.gateAt = script.calls + 1
+    c.rePolish()
+    #expect(await script.gate.waitUntilArrived())
+    c.stop()
+    for _ in 0..<20 { await Task.yield() }
+    #expect(c.documentText == b)
+    #expect(
+      c.turns?.allSatisfy { $0.processedText?.hasPrefix("second ") == true } == true,
+      "the screen and Copy show cleanup B's turns: \(c.turns?.map(\.processedText) as Any)")
+    #expect(turnTexts(store.current(id)).allSatisfy { $0?.hasPrefix("first ") == true })
+    #expect(!c.isSavedToHistory, "the badge does not claim History holds what is on screen")
+    await script.gate.open()
+  }
+
+  @Test("a restored cleanup whose document save fails again is not shown as saved (#3903, Codex)")
+  func restoredCleanupWhoseSaveFailsIsNotShownAsSaved() async {
+    let store = FakeHistoryStore()
+    let telemetry = TurnTelemetryRecorder()
+    let script = ReRunScript()
+    // The first cleanup's document update fails (its turns save), and so does the retry.
+    script.failingUpdates = 2
+    let c = makeReRunCoordinator(script, store: store, labeled: true, telemetry: telemetry)
+    guard let (id, first) = await completeFirstCleanup(c, store, script) else { return }
+    #expect(!first.saved, "the first cleanup's document never reached History")
+    script.gateAt = script.calls + 1
+    c.rePolish()
+    #expect(await script.gate.waitUntilArrived())
+    c.stop()
+    for _ in 0..<20 { await Task.yield() }
+    #expect(c.documentText == first.documentText, "the kept cleanup is on screen")
+    #expect(store.current(id)?.polishedText == nil, "History still lacks its text")
+    #expect(!c.isSavedToHistory, "the badge does not say Saved to History")
+    c.documentView = .original
+    #expect(c.isSavedToHistory, "the original words on screen ARE saved (Codex round 7)")
+    c.documentView = .cleaned
+    await script.gate.open()
+  }
+
+  @Test(
+    "a Stop during the first cleanup still writes the turns raw: there is nothing to keep (#3903)")
+  func stopDuringTheFirstCleanupHasNothingToKeep() async {
+    let store = FakeHistoryStore()
+    let telemetry = TurnTelemetryRecorder()
+    let script = ReRunScript()
+    script.gateAt = 2
+    let c = makeReRunCoordinator(script, store: store, labeled: true, telemetry: telemetry)
+    c.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = c.state { return true } else { return false }
+    }
+    c.start()
+    #expect(await script.gate.waitUntilArrived())
+    guard let id = c.historyID else { return }
+    c.stop()
+    #expect(await settleUntil { store.current(id)?.turns != nil })
+    #expect(turnTexts(store.current(id)) == [nil, nil], "the first run's Stop is unchanged")
+    #expect(telemetry.events.map(\.outcome) == [.stopped])
+    await script.gate.open()
   }
 
   @Test("Clean it again is refused while a retry's analysis is in flight, and the retry's re-clean still lands (#2851 follow-up)")

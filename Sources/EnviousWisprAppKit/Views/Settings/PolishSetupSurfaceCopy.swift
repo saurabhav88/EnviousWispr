@@ -67,11 +67,6 @@ enum PolishSetupSurfaceCopy {
       comment: "Card after a dictation: closes the card and leaves the setup for later.")
   }
 
-  /// What VoiceOver reads when the card appears.
-  static func cardAnnouncement(line: String) -> String {
-    "\(cardTitle). \(line)"
-  }
-
   /// The short reason: a fragment, no final punctuation, built from the problem itself (never
   /// from an error message).
   static func shortReason(_ problem: PolishSetupProblem) -> String {
@@ -149,6 +144,78 @@ enum PolishSetupSurfaceCopy {
       return String(
         localized: "Apple Intelligence isn't ready yet",
         comment: "AI Polish, notice when leaving the page. Apple Intelligence is a product name.")
+    case .localEngineStoppedOutside(let provider, _):
+      // Never shown by the setup surfaces (#3988 keeps this problem off them); here so the
+      // switch stays exhaustive and any defensive reader gets true words.
+      return String(
+        localized: "\(provider.displayName) stopped and starts again on your next dictation",
+        comment:
+          "Short reason, no full stop: a local AI model was stopped outside the app and restarts on the next dictation. %@ is a model name, such as EG-1."
+      )
+    }
+  }
+
+  // MARK: - A local model stopped outside the app (#3988)
+
+  /// The first notice's title: what happened to the dictation, in plain words. No engine
+  /// name; that is kept for the repeat notice.
+  static var outsideStopTitle: String {
+    String(
+      localized: "AI polish skipped",
+      comment:
+        "Notice after a dictation, title: the local AI model was stopped outside the app, so this dictation was pasted without AI polish."
+    )
+  }
+
+  /// The repeat notice's body (#3988, founder-approved 2026-10-23): it names the engine, keeps
+  /// the memory sentence to warning or critical, suggests no particular engine, and says the
+  /// notice is now quiet for 24 hours.
+  static func outsideStopEscalation(_ stop: OutsideStopContext) -> String {
+    let engine = stop.provider.displayName
+    switch stop.memoryPressure {
+    case .warning?, .critical?:
+      return String(
+        localized:
+          "\(engine) stopped again. Your Mac was low on memory at the time. A lighter polish engine, or turning polish off, may work better on this Mac. We won't show this again for 24 hours.",
+        comment:
+          "Notice after a dictation, when the local AI model was stopped outside the app again within a day, while memory was low. %@ is a model name, such as EG-1."
+      )
+    case .normal?, nil:
+      return String(
+        localized:
+          "\(engine) stopped again. A lighter polish engine, or turning polish off, may work better on this Mac. We won't show this again for 24 hours.",
+        comment:
+          "Notice after a dictation, when the local AI model was stopped outside the app again within a day. %@ is a model name, such as EG-1."
+      )
+    }
+  }
+
+  /// The repeat notice's button: opens AI Polish, where the person picks an engine.
+  static var chooseEngine: String {
+    String(
+      localized: "Choose engine",
+      comment: "Notice after a dictation, button: opens AI Polish settings to pick another engine."
+    )
+  }
+
+  /// The one owner of the stopped-from-outside notice body. The memory sentence appears only
+  /// when the app saw warning or critical memory pressure as it handled the stop: context,
+  /// never a claimed cause, and never shown when the level is normal or unknown.
+  static func outsideStopNotice(_ stop: OutsideStopContext) -> String {
+    switch stop.memoryPressure {
+    case .warning?, .critical?:
+      return String(
+        localized:
+          "This dictation was pasted without AI polish. Your Mac was low on memory at the time. We'll try again automatically.",
+        comment:
+          "Notice after a dictation: the local AI model was stopped outside the app while memory was low, so this dictation was not polished. The app restarts the model by itself."
+      )
+    case .normal?, nil:
+      return String(
+        localized: "This dictation was pasted without AI polish. We'll try again automatically.",
+        comment:
+          "Notice after a dictation: the local AI model was stopped outside the app, so this dictation was not polished. The app restarts the model by itself."
+      )
     }
   }
 }

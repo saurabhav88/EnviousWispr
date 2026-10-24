@@ -129,19 +129,23 @@ struct PolishSetupCardPresenterTests {
     { didSet { onTransition?() } }
     var openAIKeySaved: Bool? = false { didSet { onTransition?() } }
     var egOneInstall: EGOneInstallState = .notInstalled { didSet { onTransition?() } }
+    /// #3988: EG-1's unresolved outside stop and its health (red = the restart failed).
+    var egOneStop: OutsideStopContext? { didSet { onTransition?() } }
+    var egOneHealth: EGOneHealth = .green { didSet { onTransition?() } }
     @ObservationIgnored var onTransition: (() -> Void)?
 
     var inputs: PolishSetupInputs {
-      PolishSetupInputs(
-        onboardingComplete: onboardingComplete, configuration: configuration,
-        facts: PolishSetupFacts(
-          egOneInstall: egOneInstall, egOneHealth: .green,
-          s1MiniInstall: .installed(version: "1"), s1MiniHealth: .green,
-          appleStatus: .available, appleFailureReasons: [], appleIsChecking: false,
-          validationProvider: nil, cloudValidation: .idle,
-          credentialRevisions: [.openAI: 1], cloudVerdicts: [:],
-          openAIKeySaved: openAIKeySaved, geminiKeySaved: true, claudeKeySaved: true,
-          ollamaSetup: .ready, ollamaModel: .installed),
+      var facts = PolishSetupFacts(
+        egOneInstall: egOneInstall, egOneHealth: egOneHealth,
+        s1MiniInstall: .installed(version: "1"), s1MiniHealth: .green,
+        appleStatus: .available, appleFailureReasons: [], appleIsChecking: false,
+        validationProvider: nil, cloudValidation: .idle,
+        credentialRevisions: [.openAI: 1], cloudVerdicts: [:],
+        openAIKeySaved: openAIKeySaved, geminiKeySaved: true, claudeKeySaved: true,
+        ollamaSetup: .ready, ollamaModel: .installed)
+      facts.egOneOutsideStop = egOneStop
+      return PolishSetupInputs(
+        onboardingComplete: onboardingComplete, configuration: configuration, facts: facts,
         ollamaLastCommitAt: nil)
     }
   }
@@ -495,9 +499,258 @@ struct PolishSetupCardPresenterTests {
       PolishSetupCardModel(problem: .localEngineDownloadPaused(.s1Mini)).line
         == "The S1-mini download is paused. Pasted without AI polish.")
     #expect(
-      PolishSetupSurfaceCopy.cardAnnouncement(
-        line: "OpenAI needs an API key. Pasted without AI polish.")
+      PolishSetupCardModel(problem: .cloudKeyMissing(.openAI)).announcement
         == "Finish setting up AI polish. OpenAI needs an API key. Pasted without AI polish.")
+    let setup = PolishSetupCardModel(problem: .cloudKeyMissing(.openAI))
+    #expect(setup.primaryLabel == "Finish setup")
+    #expect(setup.dismissLabel == "Not now")
+    #expect(setup.variant == nil)
+  }
+
+  // MARK: - #3988: a local engine stopped outside the app
+
+  private static let egOneSetup = PolishSetupConfiguration(
+    provider: .egOne, model: "eg-1", credentialRevision: nil)
+
+  private static func stop(
+    _ generation: Int, _ pressure: OutsideStopContext.MemoryPressure? = .warning
+  ) -> OutsideStopContext {
+    OutsideStopContext(provider: .egOne, generation: generation, memoryPressure: pressure)
+  }
+
+  /// EG-1 installed, chosen, and stopped from outside as `stop`.
+  private static func stoppedFixture(_ stop: OutsideStopContext = Self.stop(1)) -> Fixture {
+    let fx = fixture()
+    fx.world.egOneInstall = .installed(version: "1.2")
+    fx.world.configuration = egOneSetup
+    fx.world.egOneStop = stop
+    return fx
+  }
+
+  /// A take that missed polish because of `stop`, taken in and offered as the app does.
+  @discardableResult
+  private static func concludeMiss(
+    _ fx: Fixture, stop: OutsideStopContext, takeID: UUID = UUID(),
+    dataLossDisclosure: Bool = false
+  ) -> UUID {
+    let outcome = PolishTakeOutcome(
+      takeID: takeID.uuidString, context: fx.monitor.freezeTakeContext(),
+      result: .skippedSilently, evidence: .localEngineNotReady, setupProblem: nil,
+      observedAt: .now, outsideStopMiss: stop, outsideStopMissedAt: Date(),
+      outsideStopRecovery: stop)
+    if fx.monitor.ingest(outcome) {
+      fx.card.offer(after: outcome, dataLossDisclosureScheduled: dataLossDisclosure)
+    }
+    return takeID
+  }
+
+  private static func subject(_ stop: OutsideStopContext) -> PolishSetupPromptSubject {
+    PolishSetupPromptSubject(problem: .localEngineStoppedOutside(.egOne, stop), provider: .egOne)
+  }
+
+  @Test("a take that missed polish shows the first notice once: its own title and words, OK only")
+  func firstNoticeShowsOnce() throws {
+    let fx = Self.stoppedFixture()
+    defer { fx.monitor.stop() }
+    let take = Self.concludeMiss(fx, stop: Self.stop(1))
+    let model = try #require(fx.overlay.shownModels.last)
+    #expect(model == PolishSetupCardModel(outsideStop: Self.stop(1), variant: .first))
+    #expect(model.title == "AI polish skipped")
+    #expect(
+      model.line
+        == "This dictation was pasted without AI polish. Your Mac was low on memory at the time. We'll try again automatically."
+    )
+    #expect(model.primaryLabel == nil, "no button that would open Settings")
+    #expect(model.dismissLabel == "OK")
+    #expect(model.variant == .first)
+    #expect(model.announcement == "\(model.title). \(model.line)")
+    #expect(
+      fx.log.rows
+        == [
+          PolishSetupPromptEvent(
+            surface: .card, action: .shown, subject: Self.subject(Self.stop(1)), takeID: take,
+            variant: .first)
+        ])
+    // Spent on appearing: another take for the same stop raises nothing.
+    fx.overlay.pressNotNow()
+    Self.concludeMiss(fx, stop: Self.stop(1))
+    #expect(fx.overlay.requests == 1)
+  }
+
+  @Test("normal or unknown memory reads the plain sentence")
+  func genericWords() {
+    for pressure in [OutsideStopContext.MemoryPressure.normal, nil] {
+      #expect(
+        PolishSetupCardModel(outsideStop: Self.stop(1, pressure), variant: .first).line
+          == "This dictation was pasted without AI polish. We'll try again automatically.")
+    }
+  }
+
+  @Test("OK closes the notice once, reports ok, and never opens Settings")
+  func okAnswer() throws {
+    let fx = Self.stoppedFixture()
+    defer { fx.monitor.stop() }
+    let take = Self.concludeMiss(fx, stop: Self.stop(1))
+    // The setup action has no button here; a stray one does nothing.
+    fx.overlay.pressFinish()
+    #expect(fx.overlay.cardIsShowing)
+    fx.overlay.pressNotNow()
+    fx.overlay.pressNotNow()
+    #expect(fx.overlay.cardIsShowing == false)
+    #expect(fx.log.opened == 0)
+    #expect(
+      fx.log.rows.map(\.action) == [.shown, .ok]
+        && fx.log.rows.last
+          == PolishSetupPromptEvent(
+            surface: .card, action: .ok, subject: Self.subject(Self.stop(1)), takeID: take,
+            variant: .first))
+  }
+
+  @Test("the engine coming back before the first render or while shown keeps the notice")
+  func readinessKeepsTheNotice() throws {
+    let fx = Self.stoppedFixture()
+    defer { fx.monitor.stop() }
+    fx.overlay.defersResult = true
+    Self.concludeMiss(fx, stop: Self.stop(1))
+    #expect(fx.card.isPendingForTesting)
+    fx.world.egOneStop = nil
+    #expect(fx.card.isPendingForTesting, "ready before the first render cancelled the notice")
+    fx.overlay.releaseDeferredResult()
+    #expect(fx.card.isShowingForTesting)
+    #expect(fx.overlay.shownModels.last?.line.contains("low on memory") == true, "frozen words")
+    fx.world.egOneHealth = .green
+    fx.card.reconcile()
+    #expect(fx.card.isShowingForTesting, "a shown notice left because the engine is back")
+  }
+
+  @Test("a refused, cancelled or replayed notice spends nothing; each new stop gets its own")
+  func spendingRules() throws {
+    let fx = Self.stoppedFixture()
+    defer { fx.monitor.stop() }
+    fx.overlay.slotIsFree = false
+    Self.concludeMiss(fx, stop: Self.stop(1))
+    #expect(fx.log.rows.isEmpty)
+    // A data-loss disclosure follows this dictation: not offered, still owed.
+    fx.overlay.slotIsFree = true
+    Self.concludeMiss(fx, stop: Self.stop(1), dataLossDisclosure: true)
+    #expect(fx.overlay.requests == 1)
+    // The allowance was kept: the next take for the same stop shows it, once.
+    let take = Self.concludeMiss(fx, stop: Self.stop(1))
+    #expect(fx.card.isShowingForTesting)
+    let receipt = try #require(fx.overlay.currentReceipt)
+    fx.overlay.replayPresented(receipt)
+    #expect(fx.log.rows.filter { $0.action == .shown }.count == 1)
+    #expect(fx.log.rows.last?.takeID == take)
+    fx.overlay.pressNotNow()
+
+    // A second physical stop the same day: its own notice, the repeat one.
+    fx.world.egOneStop = Self.stop(2, nil)
+    Self.concludeMiss(fx, stop: Self.stop(2, nil))
+    #expect(fx.card.isShowingForTesting)
+    #expect(fx.overlay.shownModels.last?.variant == .escalated)
+    #expect(
+      fx.overlay.shownModels.last?.line
+        == "EG-1 stopped again. A lighter polish engine, or turning polish off, may work better on this Mac. We won't show this again for 24 hours."
+    )
+  }
+
+  @Test("the repeat notice names the engine, offers Choose engine once, and OK never opens Settings")
+  func repeatNotice() throws {
+    let fx = Self.stoppedFixture()
+    defer { fx.monitor.stop() }
+    Self.concludeMiss(fx, stop: Self.stop(1))
+    fx.overlay.pressNotNow()
+    fx.world.egOneStop = Self.stop(2)
+    let take = Self.concludeMiss(fx, stop: Self.stop(2))
+    let model = try #require(fx.overlay.shownModels.last)
+    #expect(model == PolishSetupCardModel(outsideStop: Self.stop(2), variant: .escalated))
+    #expect(model.title == "AI polish skipped")
+    #expect(
+      model.line
+        == "EG-1 stopped again. Your Mac was low on memory at the time. A lighter polish engine, or turning polish off, may work better on this Mac. We won't show this again for 24 hours."
+    )
+    #expect(model.primaryLabel == "Choose engine")
+    #expect(model.dismissLabel == "OK")
+    #expect(model.announcement == "\(model.title). \(model.line)")
+    // Inside the quiet it started, the repeat notice is still up and its buttons work.
+    fx.card.reconcile()
+    #expect(fx.card.isShowingForTesting)
+    fx.overlay.pressFinish()
+    fx.overlay.pressFinish()
+    #expect(fx.log.opened == 1)
+    #expect(
+      fx.log.rows.last
+        == PolishSetupPromptEvent(
+          surface: .card, action: .chooseEngine, subject: Self.subject(Self.stop(2)),
+          takeID: take, variant: .escalated))
+    #expect(fx.log.rows.filter { $0.variant == .escalated }.map(\.action) == [.shown, .chooseEngine])
+
+    // OK on another repeat notice (a new fixture, so no quiet is on) closes it only.
+    let other = Self.stoppedFixture()
+    defer { other.monitor.stop() }
+    Self.concludeMiss(other, stop: Self.stop(1))
+    other.overlay.pressNotNow()
+    other.world.egOneStop = Self.stop(2, nil)
+    Self.concludeMiss(other, stop: Self.stop(2, nil))
+    #expect(
+      other.overlay.shownModels.last?.line
+        == "EG-1 stopped again. A lighter polish engine, or turning polish off, may work better on this Mac. We won't show this again for 24 hours."
+    )
+    other.overlay.pressNotNow()
+    #expect(other.log.opened == 0)
+    #expect(other.log.rows.last?.action == .ok)
+    #expect(other.log.rows.last?.variant == .escalated)
+  }
+
+  @Test("the quiet refuses a notice still waiting for its first render, without spending it")
+  func quietAtFirstRender() throws {
+    let fx = Self.stoppedFixture()
+    defer { fx.monitor.stop() }
+    // First notice for stop 1 shown and closed; stop 2's repeat waits for its first render.
+    Self.concludeMiss(fx, stop: Self.stop(1))
+    fx.overlay.pressNotNow()
+    fx.overlay.defersResult = true
+    fx.world.egOneStop = Self.stop(2)
+    Self.concludeMiss(fx, stop: Self.stop(2))
+    #expect(fx.card.isPendingForTesting)
+    // Meanwhile a repeat notice elsewhere started the quiet (stop 3, straight through the monitor).
+    let other = PolishTakeOutcome(
+      takeID: UUID().uuidString, context: fx.monitor.freezeTakeContext(),
+      result: .skippedSilently, evidence: .localEngineNotReady, setupProblem: nil,
+      observedAt: .now, outsideStopMiss: Self.stop(3), outsideStopMissedAt: Date())
+    fx.world.egOneStop = Self.stop(3)
+    #expect(fx.monitor.ingest(other))
+    let otherTicket = try #require(fx.monitor.outsideStopNoticeTicket(for: other))
+    #expect(fx.monitor.outsideStopNoticePresented(otherTicket))
+    fx.overlay.releaseDeferredResult()
+    #expect(fx.card.isShowingForTesting == false, "a notice drawn inside another's quiet was kept")
+    #expect(fx.log.rows.filter { $0.action == .shown }.count == 1, "the refused notice spent")
+  }
+
+  @Test("onboarding reset, another model or a failed restart withdraws the notice")
+  func withdrawal() throws {
+    let pending = Self.stoppedFixture()
+    defer { pending.monitor.stop() }
+    pending.overlay.defersResult = true
+    Self.concludeMiss(pending, stop: Self.stop(1))
+    pending.world.onboardingComplete = false
+    #expect(pending.card.isPendingForTesting == false)
+    pending.overlay.releaseDeferredResult()
+    #expect(pending.log.rows.isEmpty, "a cancelled notice spent the allowance")
+
+    let shown = Self.stoppedFixture()
+    defer { shown.monitor.stop() }
+    Self.concludeMiss(shown, stop: Self.stop(1))
+    #expect(shown.card.isShowingForTesting)
+    shown.world.egOneHealth = .red(reason: "crashed_twice")
+    #expect(shown.card.isShowingForTesting == false, "a failed restart has its own status")
+
+    let switched = Self.stoppedFixture()
+    defer { switched.monitor.stop() }
+    Self.concludeMiss(switched, stop: Self.stop(1))
+    switched.world.configuration = PolishSetupConfiguration(
+      provider: .s1Mini, model: "s1-mini", credentialRevision: nil)
+    #expect(switched.card.isShowingForTesting == false)
   }
 }
 
@@ -510,6 +763,7 @@ struct PolishSetupCardOverlayTests {
   private struct Fixture {
     let overlay: OverlayDirector
     let host: WindowlessOverlayHost
+    let world: PolishSetupCardPresenterTests.World
     let monitor: PolishSetupMonitor
     let card: PolishSetupCardPresenter
     let rows: () -> [PolishSetupPromptEvent.Action]
@@ -531,7 +785,8 @@ struct PolishSetupCardOverlayTests {
     monitor.onEpisodeChange = { [weak card] in card?.reconcile() }
     monitor.start()
     return Fixture(
-      overlay: overlay, host: host, monitor: monitor, card: card, rows: { rows.actions })
+      overlay: overlay, host: host, world: world, monitor: monitor, card: card,
+      rows: { rows.actions })
   }
 
   private static func conclude(_ fx: Fixture) {
@@ -547,6 +802,35 @@ struct PolishSetupCardOverlayTests {
   private static func showsCard(_ overlay: OverlayDirector) -> Bool {
     if case .polishSetupCard? = overlay.renderModel.state.presentation?.content { return true }
     return false
+  }
+
+  @Test("#3988: the first notice on the real overlay reads what it shows, and OK closes it")
+  func outsideStopNoticeOnTheRealOverlay() throws {
+    let fx = Self.fixture()
+    defer { fx.monitor.stop() }
+    let stop = OutsideStopContext(provider: .egOne, generation: 1, memoryPressure: .critical)
+    fx.world.egOneInstall = .installed(version: "1.2")
+    fx.world.configuration = PolishSetupConfiguration(
+      provider: .egOne, model: "eg-1", credentialRevision: nil)
+    fx.world.egOneStop = stop
+    let outcome = PolishTakeOutcome(
+      takeID: UUID().uuidString, context: fx.monitor.freezeTakeContext(),
+      result: .skippedSilently, evidence: .localEngineNotReady, setupProblem: nil,
+      observedAt: .now, outsideStopMiss: stop, outsideStopMissedAt: Date())
+    #expect(fx.monitor.ingest(outcome))
+    fx.card.offer(after: outcome, dataLossDisclosureScheduled: false)
+    guard case .polishSetupCard(let model)? = fx.overlay.renderModel.state.presentation?.content
+    else {
+      Issue.record("the notice was not admitted")
+      return
+    }
+    #expect(model == PolishSetupCardModel(outsideStop: stop, variant: .first))
+    #expect(
+      PillCatalog.announcement(for: .polishSetupCard(model)) == .medium(model.announcement),
+      "VoiceOver reads the notice's own title and words")
+    try fx.host.sendCurrentUserActionThroughRoot(.dismissPolishSetup)
+    #expect(fx.overlay.renderModel.state.presentation == nil)
+    #expect(fx.rows() == [.shown, .ok])
   }
 
   @Test("an idle overlay admits the card; Not now through the root view removes it")

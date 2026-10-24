@@ -1130,12 +1130,15 @@ public final class TelemetryService {
   /// a model name, an error message or any text. Reader: the "Polish setup prompts" funnel by
   /// surface and action per day, checked in the post-release review.
   public func polishSetupPrompt(
-    surface: String, action: String, problem: String, provider: String, takeID: String?
+    surface: String, action: String, problem: String, provider: String, takeID: String?,
+    variant: String? = nil
   ) {
     var props: [String: Any] = [
       "surface": surface, "action": action, "problem": problem, "provider": provider,
     ]
     if let takeID { props["take_id"] = takeID }
+    // #3988: which outside-stop notice the card was (`first` | `escalated`); setup prompts omit it.
+    if let variant { props["variant"] = variant }
     #if DEBUG
       testEventHook?(
         CapturedTelemetryEvent(
@@ -1877,6 +1880,7 @@ public final class TelemetryService {
         "learned_check_checker_status", "learned_check_absence_reason",
         "vad_stage_reached", "vad_backend", "vad_input_route", "polish_language_hint",
         "polish_setup_problem", "asr_model", "asr_model_revision", "asr_model_variant",
+        "outside_stop_engine", "outside_stop_memory_pressure", "outside_stop_polish_result",
       ] {
         if let value = props[key] as? String { stringProps[key] = value }
       }
@@ -1885,7 +1889,7 @@ public final class TelemetryService {
         "duration_ms", "capture_native_channel_count", "capture_input_channel",
         "vad_raw_sample_count", "vad_filtered_sample_count", "learned_check_flagged",
         "learned_check_approved", "learned_check_applied", "learned_check_contested",
-        "learned_check_latency_ms",
+        "learned_check_latency_ms", "outside_stop_generation",
       ] {
         if let value = props[key] as? Int { intProps[key] = value }
       }
@@ -2909,16 +2913,34 @@ public final class TelemetryService {
   }
 
   /// One rare row per accepted owned-process failure, independent of current provider selection.
-  public func childProcessFailed(_ failure: ChildProcessFailure) {
+  /// #3988: `stopKind` (`outside` | `crash`) and `memoryPressure` (`normal` | `warning` |
+  /// `critical` | `unknown`) ride on server rows only; older builds send neither, which a
+  /// reader treats as unknown, never as a crash.
+  public func childProcessFailed(
+    _ failure: ChildProcessFailure, stopKind: String? = nil, memoryPressure: String? = nil
+  ) {
     guard ObservabilityBootstrap.lifecycle.isPostHogRunning else { return }
-    var properties: [String: Any] = failure.stringProperties
+    let stringProperties = Self.childProcessFailedStrings(
+      failure, stopKind: stopKind, memoryPressure: memoryPressure)
+    var properties: [String: Any] = stringProperties
     for (key, value) in failure.integerProperties { properties[key] = value }
     #if DEBUG
       testEventHook?(CapturedTelemetryEvent(
-        name: "eg1.child_process_failed", stringProps: failure.stringProperties,
+        name: "eg1.child_process_failed", stringProps: stringProperties,
         intProps: failure.integerProperties))
     #endif
     PostHogSDK.shared.capture("eg1.child_process_failed", properties: properties)
+  }
+
+  /// The string half of `eg1.child_process_failed`: the failure's own facts plus the two
+  /// #3988 fields when given. One builder, so the row and its test read the same thing.
+  static func childProcessFailedStrings(
+    _ failure: ChildProcessFailure, stopKind: String?, memoryPressure: String?
+  ) -> [String: String] {
+    var strings = failure.stringProperties
+    if let stopKind { strings["stop_kind"] = stopKind }
+    if let memoryPressure { strings["memory_pressure"] = memoryPressure }
+    return strings
   }
 
   /// #2123: which preview engine ran, and how far it got.
@@ -5294,6 +5316,19 @@ public final class TelemetryService {
   /// provider-free vocabulary. Reader: setup-blocked takes per day by tag.
   public func recordPolishSetupProblem(takeID: String, tag: PolishSetupProblemTag) {
     takeStages.update(takeID: takeID) { $0.polishSetupProblem = tag.rawValue }
+  }
+
+  /// #3988: this take was the recovery take for an outside stop of `engine`'s server child
+  /// `generation`; folds onto the take's terminal row with the take's own polish result. Zero
+  /// new rows. A take with no open entry writes nothing.
+  public func recordOutsideStopRecovery(
+    takeID: String, engine: String, generation: Int, memoryPressure: String, polishResult: String
+  ) {
+    takeStages.update(takeID: takeID) {
+      $0.outsideStopRecovery = OutsideStopRecoveryTerminalFacts(
+        engine: engine, generation: generation, memoryPressure: memoryPressure,
+        polishResult: polishResult)
+    }
   }
 
   // MARK: - Record-start VAD stage markers (#1780, folded #2958)

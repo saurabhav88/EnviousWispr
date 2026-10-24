@@ -133,7 +133,7 @@ struct RecordStartFocusPolicyTests {
   @Test("no bundle-keyed paste or landing policy names a launcher, so substitution adds none")
   func noPolicyNamesALauncher() {
     let policyBundles =
-      PasteDeliveryPolicy.directWriteSkippedBundleIDs
+      Set(PasteDeliveryPolicy.directWriteSkips.keys)
       .union(PasteLandingPolicy.slowRevealDeadlinesMs.keys)
       .union(PasteLandingPolicy.excludedRoutes.map(\.bundleID))
     #expect(policyBundles.count >= 3, "the tables were read")

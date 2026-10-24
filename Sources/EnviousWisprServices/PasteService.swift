@@ -732,6 +732,11 @@ public enum PasteService {
     /// deliveries in `paste.copies_observed`. With this decline, Tier 2's Cmd+V alone delivered
     /// once in every valid live trial (Firefox 5/5, Zen 5/5, Developer Edition 5/5, Nightly 6/6).
     case geckoDirectWriteUnconfirmable = "not_attempted_gecko_direct_write_unconfirmable"
+    /// A terminal destination listed in `PasteDeliveryPolicy.directWriteSkips` (#3863), decided by
+    /// the CASCADE before Tier 1 runs. cmux applies the write and the text reaches the prompt, but
+    /// the write cannot be verified, so Tier 1 would stop unverified and show the Copied notice
+    /// after a delivered dictation. Tier 2's Cmd+V delivers it instead.
+    case terminalDirectWriteUnconfirmable = "not_attempted_terminal_direct_write_unconfirmable"
     /// A delivery protected by the window recorded at record start (#3304), decided by the CASCADE
     /// before Tier 1 runs. Such a session is key-paste only: Tier 1's unverifiable write can already
     /// have inserted and still end in the Copied notice, which that session must never show after a
