@@ -852,8 +852,8 @@ public final class TranscriptStore {
   /// 1. the folder becomes `.transcripts-handoff-<id>`. Failure throws with nothing changed;
   /// 2. a checked empty folder (0700, Spotlight marker) is made at the original path;
   /// 3. the handoff becomes `.transcripts-deleting-<id>`, which clears it for removal.
-  /// If step 2 or 3 fails, the handoff is renamed back when the original path is free, and the
-  /// first failure is thrown. When it cannot go back, it stays as a handoff folder, which nothing
+  /// If step 2 or 3 fails, an empty folder made in step 2 is taken away again (only while it
+  /// holds nothing but the marker), the handoff is renamed back, and the first failure is thrown. When it cannot go back, it stays as a handoff folder, which nothing
   /// removes automatically, so rows are never destroyed by a Delete All that reported failure.
   /// Returning certifies the empty folder, not that the old files are already gone.
   public func deleteAll() throws {
@@ -867,9 +867,13 @@ public final class TranscriptStore {
     try renameExclusive(directory, to: handoff, step: .handoff)
     do {
       try prepareReplacement()
+      #if DEBUG
+        deleteAllReplacementReadyForTesting?()
+      #endif
       try renameExclusive(handoff, to: deleting, step: .clearForRemoval)
     } catch {
       do {
+        removeEmptyReplacement()
         try renameExclusive(handoff, to: directory, step: .restore)
       } catch let restoreError {
         let kept = handoff.lastPathComponent
@@ -901,6 +905,8 @@ public final class TranscriptStore {
     /// Runs on a durable write's worker right after its temporary file is opened, so a test can
     /// hold the write there while Delete All moves the folder.
     var durableWriteDidOpenForTesting: (@Sendable () -> Void)?
+    /// Runs right after the empty folder is made, so a test can save a row into it.
+    var deleteAllReplacementReadyForTesting: (() -> Void)?
     /// The background removal the last Delete All started, so a test can await it.
     private(set) var deletionCleanupForTesting: Task<Void, Never>?
     /// The start-up cleanup a store made with `cleansLeftovers` scheduled.
@@ -942,6 +948,16 @@ public final class TranscriptStore {
     guard lstat(directory.path, &info) == 0, info.st_mode & S_IFMT == S_IFDIR,
       info.st_mode & 0o777 == 0o700
     else { throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: directory.path]) }
+  }
+
+  /// Takes away the folder `prepareReplacement` made, so a failed Delete All can put the rows
+  /// back. Never recursive: only the marker is removed by name, and `rmdir` refuses a folder that
+  /// holds anything else (a row saved in the meantime), which then keeps the handoff folder.
+  private func removeEmptyReplacement() {
+    let entries = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
+    guard entries.allSatisfy({ $0 == Self.spotlightMarkerName }) else { return }
+    unlink(directory.appendingPathComponent(Self.spotlightMarkerName).path)
+    rmdir(directory.path)
   }
 
   /// Removes a folder Delete All cleared for removal. A failure is logged; the next start tries

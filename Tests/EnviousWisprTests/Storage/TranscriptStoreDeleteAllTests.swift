@@ -155,18 +155,31 @@ struct TranscriptStoreDeleteAllTests {
       #expect(box.siblings().isEmpty, "no handoff left behind")
     }
 
-    @Test(
-      "clearing for removal failing keeps the rows in a handoff folder that start-up never removes"
-    )
-    func clearForRemovalFailureKeepsHandoff() async throws {
+    @Test("clearing for removal failing takes the empty folder away and puts the rows back")
+    func clearForRemovalFailureRestores() throws {
       let box = Sandbox()
       defer { box.remove() }
       let (store, names) = try seeded(box)
       store.deleteAllFaultsForTesting = [.clearForRemoval]
       #expect(throws: (any Error).self) { try store.deleteAll() }
+      #expect(box.jsonNames(in: box.directory) == names)
+      #expect(box.jsonNames(in: box.pending).count == 1)
+      #expect(box.siblings().isEmpty)
+    }
 
-      // The empty folder is already in place, so going back is refused without touching it.
-      #expect(box.jsonNames(in: box.directory).isEmpty)
+    @Test(
+      "when a row lands in the empty folder first, the old rows stay in a handoff folder start-up keeps"
+    )
+    func clearForRemovalFailureWithNewRowKeepsBoth() async throws {
+      let box = Sandbox()
+      defer { box.remove() }
+      let (store, names) = try seeded(box)
+      let newRow = Self.row("new")
+      store.deleteAllFaultsForTesting = [.clearForRemoval]
+      store.deleteAllReplacementReadyForTesting = { try? store.save(newRow) }
+      #expect(throws: (any Error).self) { try store.deleteAll() }
+
+      #expect(box.jsonNames(in: box.directory) == ["\(newRow.id.uuidString).json"])
       let handoffs = box.siblings().filter { $0.hasPrefix(AppConstants.transcriptsHandoffPrefix) }
       #expect(handoffs.count == 1)
       let handoff = box.parent.appendingPathComponent(handoffs[0], isDirectory: true)
