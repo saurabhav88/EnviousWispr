@@ -1316,7 +1316,7 @@ extension PolishSetupMonitorTests {
   /// A throwaway defaults domain, never the app's or the shared settings suite.
   private static func scratchDefaults() throws -> (UserDefaults, () -> Void) {
     let name = "ew-3988-notice-\(UUID().uuidString)"
-    let defaults = try #require(UserDefaults(suiteName: name))
+    let defaults = try #require(TestDefaults.suite(name))
     return (defaults, { defaults.removePersistentDomain(forName: name) })
   }
 
