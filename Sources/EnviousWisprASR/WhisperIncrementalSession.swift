@@ -12,7 +12,12 @@ import Foundation
 /// protocol are `package`-access, confined to `EnviousWisprASR`.
 package protocol WhisperIncrementalSession: Sendable {
   /// Begin background incremental decoding cycles. The provider closure is
-  /// called periodically to fetch the growing audio buffer.
+  /// called periodically to fetch the audio: `count` is the absolute number of
+  /// samples captured so far, and `samples` is the contiguous tail ending at
+  /// `count`, so its first element is absolute sample `count - samples.count`.
+  /// Returning the whole recording is the origin-zero case (the heart); the
+  /// Universal Live Preview's owner returns only what its session has not
+  /// released (#2117).
   func start(
     audioSamplesProvider: @Sendable @escaping () async -> (samples: [Float], count: Int)
   ) async

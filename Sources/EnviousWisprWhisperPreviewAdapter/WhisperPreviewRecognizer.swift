@@ -136,7 +136,9 @@ package actor WhisperPreviewRecognizer: LivePreviewEngine {
           // publishes anything. The word-boundary-aware trim still runs
           // downstream; this stops the ASR actor holding a long transcript at all.
           hypothesisRetentionLimit: LivePreviewTextBound.maxCharacters,
-          onHypothesis: handle.enqueue)
+          onHypothesis: handle.enqueue,
+          // The core's released audio: the handle keeps a rolling window, not the recording.
+          onAudioReleased: handle.releaseAudio(before:))
       } catch {
         // The handle already started its publisher task: end it, or a refused
         // open leaves that task waiting on a stream nothing will ever finish.

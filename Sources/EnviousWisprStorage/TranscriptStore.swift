@@ -594,14 +594,31 @@ public final class TranscriptStore {
   private nonisolated static func pendingCandidates(
     in directory: URL, now: Date, retention: TimeInterval
   ) -> [PendingCandidate]? {
+    pendingListing(in: directory, now: now, retention: retention)?.candidates
+  }
+
+  /// `pendingCandidates`, plus whether any file failed to READ (#4001 H9). Such a file is
+  /// `.invalid` like a malformed one, but its failure may pass with no entry change, so History
+  /// must not reuse a read that missed it. Recorded from this read, never from a later probe.
+  private nonisolated static func pendingListing(
+    in directory: URL, now: Date, retention: TimeInterval
+  ) -> (candidates: [PendingCandidate], readFailed: Bool)? {
     guard
       let files = try? FileManager.default.contentsOfDirectory(
         at: directory, includingPropertiesForKeys: nil)
     else { return nil }
-    return
+    var readFailed = false
+    let candidates =
       files
       .filter { $0.pathExtension == "json" }
-      .map { decodeCandidate(at: $0, now: now, retention: retention) }
+      .map { url -> PendingCandidate in
+        guard let data = try? Data(contentsOf: url) else {
+          readFailed = true
+          return .invalid(url: url)
+        }
+        return decodeCandidate(data: data, at: url, now: now, retention: retention)
+      }
+    return (candidates, readFailed)
   }
 
   /// Visibility callers, for whom an unreadable directory and an empty one mean
@@ -650,6 +667,12 @@ public final class TranscriptStore {
     // meant such a file was never offered and never swept, so it accumulated
     // forever while the retention contract claimed otherwise.
     guard let data = try? Data(contentsOf: url) else { return .invalid(url: url) }
+    return decodeCandidate(data: data, at: url, now: now, retention: retention)
+  }
+
+  private nonisolated static func decodeCandidate(
+    data: Data, at url: URL, now: Date, retention: TimeInterval
+  ) -> PendingCandidate {
     guard let transcript = try? JSONDecoder().decode(Transcript.self, from: data) else {
       return .invalid(url: url)
     }
@@ -759,33 +782,125 @@ public final class TranscriptStore {
   public func loadAll() async throws -> [Transcript] {
     let dir = directory
     guard FileManager.default.fileExists(atPath: dir.path) else { return [] }
-
-    // Move heavy IO to background thread
-    let transcripts: [Transcript] = try await Task.detached(priority: .userInitiated) {
-      let files = try FileManager.default.contentsOfDirectory(
-        at: dir,
-        includingPropertiesForKeys: nil
-      )
-
-      let decoder = JSONDecoder()
-      var result: [Transcript] = []
-      for url in files where url.pathExtension == "json" {
-        do {
-          let data = try Data(contentsOf: url)
-          let transcript = try decoder.decode(Transcript.self, from: data)
-          result.append(transcript)
-        } catch {
-          // Log errors but don't block — corrupt files are skipped
-          await AppLogger.shared.log(
-            "Skipping corrupt transcript \(url.lastPathComponent): \(error)",
-            level: .info, category: "TranscriptStore"
-          )
-        }
-      }
-      return result.sorted { $0.createdAt > $1.createdAt }
+    return try await Task.detached(priority: .userInitiated) {
+      try await Self.readPermanent(in: dir).rows
     }.value
+  }
 
-    return transcripts
+  /// History's read (#4001 H9): both namespaces, whether every row file could be read, and the
+  /// folder tokens that certify the result. One detached unit, so the tokens are taken around
+  /// exactly this read: `freshness` is non-nil only when both samples are known and equal and
+  /// nothing retryable was skipped. A changed token means some write overlapped the read, so the
+  /// read cannot vouch for the folder as it is now.
+  public func readHistory(now: Date = Date()) async throws -> TranscriptHistoryRead {
+    let dir = directory
+    let pendingDir = pendingDirectory
+    let retention = AppConstants.pendingTranscriptRetention
+    return try await Task.detached(priority: .userInitiated) {
+      let before = Self.freshness(directory: dir, pendingDirectory: pendingDir)
+      let permanent: (rows: [Transcript], complete: Bool) =
+        FileManager.default.fileExists(atPath: dir.path)
+        ? try await Self.readPermanent(in: dir) : ([], false)
+      // Same admission as `loadPending`. An unreadable folder reads as empty there; here it also
+      // withholds certification, and a confirmed-absent one is a real empty namespace.
+      let pendingAbsent = before?.pending == .absent
+      let listing =
+        pendingAbsent
+        ? ([], false) : Self.pendingListing(in: pendingDir, now: now, retention: retention)
+      let pending = (listing?.candidates ?? []).compactMap(\.liveTranscript).sorted {
+        $0.createdAt > $1.createdAt
+      }
+      let pendingComplete = listing.map { !$0.readFailed } ?? false
+      let after = Self.freshness(directory: dir, pendingDirectory: pendingDir)
+      let certified = permanent.complete && pendingComplete && before != nil && before == after
+      return TranscriptHistoryRead(
+        permanent: permanent.rows, pending: pending, freshness: certified ? before : nil)
+    }.value
+  }
+
+  /// The folder tokens as they are now, or nil when they cannot vouch for anything (#4001 H9).
+  /// Off the main actor, like the reads it lets History skip.
+  public func freshness() async -> TranscriptStoreFreshness? {
+    let dir = directory
+    let pendingDir = pendingDirectory
+    return await Task.detached(priority: .userInitiated) {
+      Self.freshness(directory: dir, pendingDirectory: pendingDir)
+    }.value
+  }
+
+  /// Every row file in the permanent folder. `complete` is false when a file that is there could
+  /// not be READ: that row is missing for a reason that may pass, so the result must not be
+  /// reused as the whole History. A file that reads but does not decode is excluded for good, as
+  /// before, and does not make the read incomplete.
+  private nonisolated static func readPermanent(
+    in dir: URL
+  ) async throws -> (rows: [Transcript], complete: Bool) {
+    let files = try FileManager.default.contentsOfDirectory(
+      at: dir, includingPropertiesForKeys: nil)
+    let decoder = JSONDecoder()
+    var result: [Transcript] = []
+    var complete = true
+    for url in files where url.pathExtension == "json" {
+      let data: Data
+      do {
+        data = try Data(contentsOf: url)
+      } catch {
+        complete = false
+        await AppLogger.shared.log(
+          "Could not read transcript \(url.lastPathComponent): \(error)",
+          level: .info, category: "TranscriptStore"
+        )
+        continue
+      }
+      do {
+        result.append(try decoder.decode(Transcript.self, from: data))
+      } catch {
+        // Log errors but don't block — corrupt files are skipped
+        await AppLogger.shared.log(
+          "Skipping corrupt transcript \(url.lastPathComponent): \(error)",
+          level: .info, category: "TranscriptStore"
+        )
+      }
+    }
+    return (result.sorted { $0.createdAt > $1.createdAt }, complete)
+  }
+
+  /// Both folders' tokens, or nil when either is unknown or the permanent folder is missing (a
+  /// missing permanent folder stays retryable, so it certifies nothing).
+  private nonisolated static func freshness(
+    directory: URL, pendingDirectory: URL
+  ) -> TranscriptStoreFreshness? {
+    guard case .some(.present(let identity, let generation)) = folderToken(directory),
+      let pending = folderToken(pendingDirectory)
+    else { return nil }
+    return TranscriptStoreFreshness(
+      permanent: .present(identity: identity, generation: generation), pending: pending)
+  }
+
+  /// One folder's identity and generation identifier, `.absent` only on a confirmed ENOENT, and
+  /// nil for anything else: a permission failure or an unsupported identifier is not knowledge.
+  /// The generation identifier changes when a direct child is added, removed or renamed, which is
+  /// every entry change this store makes (temporary create, rename or replace, removal). It does
+  /// not change for an in-place edit of a child's bytes, which no writer here performs. A new URL
+  /// each call, so no cached resource value is reused.
+  private nonisolated static func folderToken(_ url: URL) -> TranscriptStoreFreshness.Folder? {
+    var info = stat()
+    if lstat(url.path, &info) != 0 {
+      return errno == ENOENT ? .absent : nil
+    }
+    let fresh = URL(fileURLWithPath: url.path, isDirectory: true)
+    guard
+      let values = try? fresh.resourceValues(forKeys: [
+        .generationIdentifierKey, .fileResourceIdentifierKey,
+      ]),
+      let generation = values.generationIdentifier,
+      let identity = values.fileResourceIdentifier,
+      let generationData = try? NSKeyedArchiver.archivedData(
+        withRootObject: generation, requiringSecureCoding: true),
+      let identityData = try? NSKeyedArchiver.archivedData(
+        withRootObject: identity, requiringSecureCoding: true)
+    else { return nil }
+    return .present(identity: identityData, generation: generationData)
   }
 
   /// Delete a transcript by ID, from BOTH namespaces (#2087).
@@ -872,7 +987,7 @@ public struct PendingSweepResult: Sendable {
   /// DISK truth, deliberately, because the caller's own list is not a substitute
   /// and that is the defect this exists to close. `TranscriptCoordinator` arms
   /// its expiry pulse from `livePendingCount`, which reads `transcripts`, which
-  /// only `load()` populates — and `load()`'s sole production caller is the
+  /// only `load()` populates — and `load()` is reached only from the
   /// History view. So a row carried over from a PREVIOUS session was invisible
   /// to the countdown for the whole session: nothing deleted it at its moment,
   /// and it waited for a relaunch.
@@ -922,6 +1037,26 @@ public struct PendingSweepResult: Sendable {
     self.nextLiveDeadline = nextLiveDeadline
     self.clearedShadows = clearedShadows
   }
+}
+
+/// What History read from the store (#4001 H9). `freshness` is the accepted folder state the
+/// rows describe, or nil when this read cannot certify reuse.
+public struct TranscriptHistoryRead: Sendable {
+  public let permanent: [Transcript]
+  public let pending: [Transcript]
+  public let freshness: TranscriptStoreFreshness?
+}
+
+/// The permanent and pending folders' change tokens (#4001 H9). Equal tokens mean no entry was
+/// added, removed or renamed in either folder between the two samples.
+public struct TranscriptStoreFreshness: Sendable, Equatable {
+  public enum Folder: Sendable, Equatable {
+    case present(identity: Data, generation: Data)
+    /// Confirmed missing. Valid for `pending/`, which is created by the first held row.
+    case absent
+  }
+  let permanent: Folder
+  let pending: Folder
 }
 
 /// A pending Escape Recovery row that aged out un-restored (#2087).
