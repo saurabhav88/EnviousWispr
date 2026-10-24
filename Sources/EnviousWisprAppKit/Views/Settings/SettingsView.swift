@@ -69,6 +69,7 @@ struct UnifiedWindowView: View {
       .onChange(of: settings.shareUsageMetrics) { _, isOn in search.usageMetricsChanged(isOn: isOn) }
       .onChange(of: navigationState.appSettingsTab) { _, _ in navigationState.noteTabChange() }
       .onChange(of: navigationState.dictionaryTab) { _, _ in navigationState.noteTabChange() }
+      .onChange(of: navigationState.meetingsTab) { _, _ in navigationState.noteTabChange() }
       .focusedSceneValue(\.settingsFind) {
         search.reopenPanel()
         searchFocused = true
@@ -221,6 +222,7 @@ struct UnifiedWindowView: View {
     case .dictation: return navigationState.dictationTab.rawValue
     case .appSettings: return navigationState.appSettingsTab.rawValue
     case .dictionary: return navigationState.dictionaryTab.rawValue
+    case .meetings: return navigationState.meetingsTab.rawValue
     default: return nil
     }
   }
@@ -345,7 +347,7 @@ struct UnifiedWindowView: View {
       // History owns its own list/detail split layout, no page header.
       HistoryContentView()
     case .meetings:
-      page(.meetings) { MeetingsView() }
+      page(.meetings) { MeetingsView(selection: $navigationState.meetingsTab) }
     case .dictation:
       page(.dictation) {
         DictationSettingsView(selection: $navigationState.dictationTab, packs: livePreviewPacks)

@@ -1,0 +1,1 @@
+{"language":"fr","title":"applications d’appel","words":["applis d’appel"],"phrases":["paramètres des applications d’appel","liste des applications d’appel"]}

@@ -1,0 +1,1 @@
+{"language":"es","title":"detectar llamadas en aplicaciones","words":[],"phrases":["elegir en qué apps detectar llamadas","dejar de preguntar por las llamadas de esta app"]}

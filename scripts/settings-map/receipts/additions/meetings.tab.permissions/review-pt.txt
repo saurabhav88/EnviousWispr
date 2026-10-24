@@ -1,0 +1,1 @@
+{"language":"pt","title":"permissões","words":["permissões de gravação"],"phrases":["permissões do EnviousMeet","liberar microfone e áudio para gravar reuniões"]}

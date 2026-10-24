@@ -1,0 +1,382 @@
+{
+ "id": "meetings.tab.permissions",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "الأذونات",
+   "words": [
+    "صلاحيات",
+    "سماح"
+   ],
+   "phrases": [
+    "أذونات EnviousMeet",
+    "أذونات الاجتماعات"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "разрешения",
+   "words": [
+    "достъп"
+   ],
+   "phrases": [
+    "разрешения за EnviousMeet",
+    "разрешения за срещи"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "oprávnění",
+   "words": [
+    "přístup",
+    "povolení"
+   ],
+   "phrases": [
+    "oprávnění pro EnviousMeet",
+    "oprávnění pro schůzky"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "tilladelser",
+   "words": [
+    "adgang"
+   ],
+   "phrases": [
+    "tilladelser til EnviousMeet",
+    "tilladelser til møder"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [
+    "Zugriffsrechte",
+    "Erlaubnisse"
+   ],
+   "phrases": [
+    "Berechtigungen für EnviousMeet",
+    "welche Berechtigungen braucht EnviousMeet"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "δικαιώματα",
+   "words": [
+    "άδειες",
+    "πρόσβαση"
+   ],
+   "phrases": [
+    "δικαιώματα για το EnviousMeet",
+    "δικαιώματα για συναντήσεις"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [
+    "access",
+    "authorization"
+   ],
+   "phrases": [
+    "EnviousMeet permissions",
+    "permissions for meetings"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "permisos",
+   "words": [
+    "acceso",
+    "autorizaciones"
+   ],
+   "phrases": [
+    "permisos de EnviousMeet",
+    "permisos para reuniones"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "õigused",
+   "words": [
+    "load",
+    "ligipääs"
+   ],
+   "phrases": [
+    "EnviousMeet õigused",
+    "koosolekute õigused"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "käyttöoikeudet",
+   "words": [
+    "luvat"
+   ],
+   "phrases": [
+    "EnviousMeetin käyttöoikeudet",
+    "kokousten käyttöoikeudet"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "autorisations",
+   "words": [
+    "permissions",
+    "accès"
+   ],
+   "phrases": [
+    "autorisations pour EnviousMeet",
+    "permissions pour les réunions"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "अनुमतियाँ",
+   "words": [
+    "परमिशन",
+    "इजाज़त"
+   ],
+   "phrases": [
+    "EnviousMeet की अनुमतियाँ",
+    "मीटिंग के लिए अनुमतियाँ"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "dopuštenja",
+   "words": [
+    "dozvole",
+    "pristup"
+   ],
+   "phrases": [
+    "dopuštenja za EnviousMeet",
+    "dopuštenja za sastanke"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "engedélyek",
+   "words": [
+    "jogosultságok",
+    "hozzáférés"
+   ],
+   "phrases": [
+    "EnviousMeet engedélyei",
+    "engedélyek megbeszélésekhez"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "autorizzazioni",
+   "words": [
+    "permessi",
+    "accesso"
+   ],
+   "phrases": [
+    "autorizzazioni di EnviousMeet",
+    "permessi per le riunioni"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "アクセス権限",
+   "words": [
+    "許可"
+   ],
+   "phrases": [
+    "EnviousMeetの権限",
+    "会議に必要な権限"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "권한",
+   "words": [
+    "접근 허용"
+   ],
+   "phrases": [
+    "EnviousMeet 권한",
+    "회의에 필요한 권한"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "leidimai",
+   "words": [
+    "prieiga",
+    "teisės"
+   ],
+   "phrases": [
+    "EnviousMeet leidimai",
+    "leidimai susitikimams"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "atļaujas",
+   "words": [
+    "piekļuve",
+    "tiesības"
+   ],
+   "phrases": [
+    "EnviousMeet atļaujas",
+    "sapulču atļaujas"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "permessi",
+   "words": [
+    "aċċess",
+    "awtorizzazzjonijiet"
+   ],
+   "phrases": [
+    "permessi għal EnviousMeet",
+    "permessi għal-laqgħat"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "machtigingen",
+   "words": [
+    "toestemmingen",
+    "toegang"
+   ],
+   "phrases": [
+    "machtigingen voor EnviousMeet",
+    "toestemming voor vergaderingen"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "uprawnienia",
+   "words": [
+    "dostęp",
+    "pozwolenia"
+   ],
+   "phrases": [
+    "uprawnienia EnviousMeet",
+    "uprawnienia do spotkań"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "permissões",
+   "words": [
+    "acesso",
+    "autorizações"
+   ],
+   "phrases": [
+    "permissões do EnviousMeet",
+    "permissões para reuniões"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "permisiuni",
+   "words": [
+    "acces",
+    "autorizări"
+   ],
+   "phrases": [
+    "permisiuni pentru EnviousMeet",
+    "permisiuni pentru întâlniri"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "разрешения",
+   "words": [
+    "доступ",
+    "права"
+   ],
+   "phrases": [
+    "разрешения для EnviousMeet",
+    "разрешения для встреч"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "oprávnenia",
+   "words": [
+    "prístup",
+    "povolenia"
+   ],
+   "phrases": [
+    "oprávnenia pre EnviousMeet",
+    "oprávnenia pre schôdze"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "dovoljenja",
+   "words": [
+    "dostop",
+    "pravice"
+   ],
+   "phrases": [
+    "dovoljenja za EnviousMeet",
+    "dovoljenja za sestanke"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "behörigheter",
+   "words": [
+    "åtkomst",
+    "tillstånd"
+   ],
+   "phrases": [
+    "behörigheter för EnviousMeet",
+    "behörigheter för möten"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "izinler",
+   "words": [
+    "erişim",
+    "yetkiler"
+   ],
+   "phrases": [
+    "EnviousMeet izinleri",
+    "toplantı izinleri"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "дозволи",
+   "words": [
+    "доступ",
+    "права"
+   ],
+   "phrases": [
+    "дозволи для EnviousMeet",
+    "дозволи для зустрічей"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "quyền truy cập",
+   "words": [
+    "cấp quyền",
+    "cho phép"
+   ],
+   "phrases": [
+    "quyền của EnviousMeet",
+    "quyền truy cập cho cuộc họp"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "权限",
+   "words": [
+    "授权",
+    "访问许可"
+   ],
+   "phrases": [
+    "EnviousMeet的权限",
+    "会议需要哪些权限"
+   ]
+  }
+ ]
+}

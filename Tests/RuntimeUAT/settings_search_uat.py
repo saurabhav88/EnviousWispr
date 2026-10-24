@@ -28,7 +28,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-# The seven probes of plan section 11.1. `row_has` is extra text the result row must also show
+# The seven probes of plan section 11.1, plus three EnviousMeet tab probes (#4058). `row_has` is extra text the result row must also show
 # when the title alone is ambiguous. `landings` are the (rung, anchor id) pairs this probe
 # accepts, from the Settings Map: the result's own target (a choice's target is its parent
 # control), or for a row the current state can hide, its declared fallbacks and section.
@@ -65,6 +65,19 @@ PROBES = [
      "entry": "apiKey.save", "dest_page": "AI Polish", "dest_tab": None,
      "landings": {("target", "apiKey.save"), ("fallback", "aiPolishProvider"),
                   ("fallback", "enableAIPolish"), ("section", "aiPolish.providerSection")}},
+    # #4058: the EnviousMeet tabs. A row on another tab, and a tab node from another page.
+    {"name": "notice-calls-from-meet-general", "page": "EnviousMeet", "tab": "General",
+     "query": "notice calls", "title": "Notice calls in", "row_has": None,
+     "entry": "meetingCallApps", "dest_page": "EnviousMeet", "dest_tab": "Call Apps",
+     "landings": {("target", "meetingCallApps")}},
+    {"name": "only-my-voice-from-meet-call-apps", "page": "EnviousMeet", "tab": "Call Apps",
+     "query": "only my voice", "title": "Record only my voice", "row_has": None,
+     "entry": "meetingCaptureCallSound", "dest_page": "EnviousMeet", "dest_tab": "General",
+     "landings": {("target", "meetingCaptureCallSound")}},
+    {"name": "meet-permissions-tab-from-keybinds", "page": "Keybinds", "tab": None,
+     "query": "enviousmeet permissions", "title": "Permissions", "row_has": "EnviousMeet",
+     "entry": "meetings.tab.permissions", "dest_page": "EnviousMeet", "dest_tab": "Permissions",
+     "landings": {("target", "meetings.tab.permissions")}},
 ]
 
 ARRIVAL = re.compile(r"arrival landed=(\w+) entry=(\S+) at=(\S+)( upgrade=true)?")
@@ -253,7 +266,7 @@ def _self_test():
           verdict(save, True, [("section", "aiPolish.providerSection", False)], "AI Polish", None)[0] == "PASS")
     check("Save: an undeclared landing fails",
           verdict(save, True, [("landing", "page.aiPolish", False)], "AI Polish", None)[0] == "FAIL")
-    check("seven probes with unique names", len(PROBES) == 7 and len({p["name"] for p in PROBES}) == 7)
+    check("ten probes with unique names", len(PROBES) == 10 and len({p["name"] for p in PROBES}) == 10)
     print("self-test:", "FAIL" if failures else "PASS")
     return 1 if failures else 0
 

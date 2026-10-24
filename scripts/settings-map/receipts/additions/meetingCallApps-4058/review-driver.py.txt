@@ -1,0 +1,139 @@
+#!/usr/bin/env python3
+"""#4058 (driver modeled on #3861's): one fresh isolated Codex session per language and place reviews
+the drafted search block for the three EnviousMeet tabs and the two renamed EnviousMeet rows
+(accuracy, naturalness, collisions with sibling places). Mirrors scripts/settings-map/draft-vocabulary.sh
+isolation. Usage: review4058.py <worktree> <drafts-dir> <outdir>"""
+import concurrent.futures
+import glob
+import json
+import os
+import pathlib
+import subprocess
+import sys
+import tempfile
+
+wt = pathlib.Path(sys.argv[1])
+drafts = pathlib.Path(sys.argv[2])
+out = pathlib.Path(sys.argv[3])
+vocab = json.load(open(wt / "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json", encoding="utf-8"))
+by_id = {e["id"]: {b["language"]: b for b in e["blocks"]} for e in vocab["entries"]}
+
+PAGE = ("EnviousMeet is the app's meeting recorder: it records a call or meeting on the Mac (your microphone and, "
+        "if chosen, the sound the Mac plays) and makes a transcript with who said what, plus an optional summary. "
+        "Its settings page has three tabs: General, Call Apps, Permissions.")
+PLACES = {
+    "meetings.tab.general": dict(
+        en_title="General", de_title="Allgemein", desc="(none)",
+        does=("a TAB of the EnviousMeet page. It holds: what happens when a call starts (Off, Ask, Start by itself), "
+              "Record only my voice, Write a summary when a meeting ends, which AI writes summaries, and Name meetings "
+              "from my calendar, plus how long recordings are kept. It is NOT the app's general settings, NOT dictation "
+              "settings and NOT appearance."),
+        siblings=["meetings.tab.callApps", "meetings.tab.permissions", "meetingCallDetection", "meetingWriteSummary",
+                  "appSettings.tab.appearance"]),
+    "meetings.tab.callApps": dict(
+        en_title="Call Apps", de_title="Anruf-Apps", desc="(none)",
+        does=("a TAB of the EnviousMeet page with one switch per call app (Zoom, Microsoft Teams, FaceTime, Slack, "
+              "Webex, Meetings in a browser such as Google Meet) that EnviousMeet watches to notice when a call starts. "
+              "Turning an app off means EnviousMeet never asks about or starts recording that app's calls. It does NOT "
+              "install, open or connect to these apps and does NOT record them by itself."),
+        siblings=["meetingCallApps", "meetingCallDetection", "meetings.tab.general", "meetings.tab.permissions"]),
+    "meetings.tab.permissions": dict(
+        en_title="Permissions", de_title="Berechtigungen", desc="(none)",
+        does=("a TAB of the EnviousMeet page showing the macOS permissions EnviousMeet uses: Microphone, Call sound "
+              "(macOS permission to record the sound the Mac plays), Calendar (to name meetings) and Accessibility "
+              "(to notice a call window). Each row says whether it is allowed and offers a button to fix it. The "
+              "App Settings page has its OWN Permissions tab for the whole app (dictation microphone, Accessibility "
+              "for pasting); this one is specifically for meeting recording."),
+        siblings=["appSettings.tab.permissions", "meetings.tab.general", "meetings.tab.callApps",
+                  "meetingUseCalendarForNames"]),
+    "meetingCaptureCallSound": dict(
+        en_title="Record only my voice", de_title="Nur meine Stimme aufnehmen",
+        desc="Leaves out the sound your Mac plays, like the other people on a call.",
+        does=("a switch on the General tab, OFF by default. Off: a meeting records your microphone AND the sound the "
+              "Mac plays (the other people on a call). On: it records only your microphone, so the call's other "
+              "voices are left out (without headphones the microphone may still pick them up from the speakers). "
+              "It applies to the next meeting. It replaced a switch called \"Also record the call sound\", so people "
+              "may also search for call sound, system audio or other people's voices. It does NOT mute anyone, does "
+              "NOT change the microphone and has nothing to do with dictation."),
+        siblings=["meetingCallDetection", "meetingWriteSummary", "meetingUseCalendarForNames", "meetings.tab.permissions"]),
+    "meetingCallApps": dict(
+        en_title="Notice calls in", de_title="Anrufe erkennen in",
+        desc="Turn off an app to never be asked about its calls.",
+        does=("the list of call apps on the Call Apps tab, each with a switch (Zoom, Microsoft Teams, FaceTime, Slack, "
+              "Webex, Meetings in a browser). EnviousMeet notices a call starting in an app that is on; for an app "
+              "that is off it never asks to record. It was renamed from \"Ask to record calls in\"."),
+        siblings=["meetingCallDetection", "meetings.tab.callApps", "meetings.tab.general"]),
+}
+
+BRIEF = """You are reviewing a draft search vocabulary block for ONE place in the Settings search box of EnviousWispr, a macOS dictation app (press a key and speak, it types your words into any app). The language you review is "{lang}".
+
+Use ONLY this brief and the data below. Do not open, search or read any file, folder, repository or website. Do not run commands.
+
+{page}
+
+The place (English title and description are the source of truth; the page is EnviousMeet):
+- English title: {en_title}
+- German title: {de_title}
+- English description: {desc}
+- What it really is: {does}
+
+Review the draft block for language "{lang}" below:
+1. Accuracy: remove or rewrite anything the place does not do or hold.
+2. Collisions: the block must not fit the sibling places equally well. The siblings' current blocks in this language are listed below (a sibling may be missing when it is new).
+3. Naturalness: wording a native speaker of "{lang}" would really type or see in an app's settings. For the title: how an app in that language would label this. Keep product names unchanged. Lowercase except nouns the language capitalises. "words" 0 to 6 short terms; "phrases" 1 to 3 everyday searches, at least one. For en and de there is no title (the interface supplies it); for de use du-form.
+
+Draft block:
+{draft}
+
+Sibling blocks in "{lang}" (id -> block):
+{siblings}
+
+Output: one JSON object only, no commentary, no code fence, with the corrected block in exactly the draft's shape: {{"language": "{lang}", "title": "...", "words": [...], "phrases": [...]}} (omit "title" for en and de). If the draft is already right, return it unchanged. After the JSON add nothing.
+"""
+
+
+def draft_for(pid):
+    paths = sorted(glob.glob(str(drafts / f"{pid}-*" / "draft.json")))
+    assert len(paths) == 1, (pid, paths)
+    return json.load(open(paths[0], encoding="utf-8"))
+
+
+def run(job):
+    pid, lang, block = job
+    p = PLACES[pid]
+    prompt = BRIEF.format(
+        lang=lang, page=PAGE, en_title=p["en_title"], de_title=p["de_title"], desc=p["desc"], does=p["does"],
+        draft=json.dumps(block, ensure_ascii=False, indent=1),
+        siblings=json.dumps({i: by_id[i][lang] for i in p["siblings"] if lang in by_id.get(i, {})},
+                            ensure_ascii=False, indent=1))
+    dest = out / pid
+    dest.mkdir(parents=True, exist_ok=True)
+    if (dest / f"review-{lang}.txt").exists():
+        return pid, lang, 0
+    iso = pathlib.Path(tempfile.mkdtemp(prefix="ew-vocab-review."))
+    (iso / "work").mkdir()
+    (iso / "codex-home").mkdir()
+    os.symlink(os.path.expanduser("~/.codex/auth.json"), iso / "codex-home" / "auth.json")
+    answer = iso / "out.txt"
+    env = dict(os.environ, CODEX_HOME=str(iso / "codex-home"))
+    proc = subprocess.run(
+        [os.path.expanduser("~/.claude/bin/codex-run"), str(answer), "-c", "tools.web_search=false", "exec",
+         "--sandbox", "read-only", "--skip-git-repo-check", "--ignore-rules", "--ephemeral", "-C", str(iso / "work")],
+        input=prompt, text=True, env=env, cwd=str(iso / "work"), capture_output=True)
+    last = pathlib.Path(str(answer) + ".last")
+    if proc.returncode == 0 and last.exists():
+        (dest / f"review-{lang}.txt").write_text(last.read_text(encoding="utf-8"), encoding="utf-8")
+    else:
+        (dest / f"review-{lang}.FAILED").write_text(f"exit {proc.returncode}\n{proc.stderr[-2000:]}", encoding="utf-8")
+    return pid, lang, proc.returncode
+
+
+jobs = []
+for pid in PLACES:
+    d = draft_for(pid)
+    for b in d["blocks"]:
+        jobs.append((pid, b["language"], b))
+with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
+    for pid, lang, rc in pool.map(run, jobs):
+        print(f"{pid} {lang}: exit {rc}", flush=True)
+print("DONE", flush=True)

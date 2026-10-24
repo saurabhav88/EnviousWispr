@@ -1,0 +1,1 @@
+{"language":"tr","title":"yalnızca benim sesimi kaydet","words":[],"phrases":["bilgisayarın sesini kaydetme","görüşmedeki diğer kişilerin sesini kaydetme"]}

@@ -1,0 +1,1 @@
+{"language":"sl","title":"snemaj samo moj glas","words":[],"phrases":["ne snemaj zvoka računalnika","izpusti glasove drugih v klicu"]}

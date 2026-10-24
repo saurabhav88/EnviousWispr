@@ -1,0 +1,326 @@
+{
+ "id": "meetings.tab.callApps",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "تطبيقات المكالمات",
+   "words": [
+    "مكالمات الفيديو"
+   ],
+   "phrases": [
+    "تطبيقات إجراء المكالمات"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "приложения за разговори",
+   "words": [
+    "видеоразговори"
+   ],
+   "phrases": [
+    "приложения за обаждания"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "aplikace pro hovory",
+   "words": [
+    "videohovory"
+   ],
+   "phrases": [
+    "aplikace na volání"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "apps til opkald",
+   "words": [
+    "videoopkald"
+   ],
+   "phrases": [
+    "apps til at ringe med"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [
+    "Videotelefonie",
+    "Telefonie"
+   ],
+   "phrases": [
+    "zeig mir die Apps für Anrufe"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "εφαρμογές κλήσεων",
+   "words": [
+    "βιντεοκλήσεις"
+   ],
+   "phrases": [
+    "εφαρμογές για κλήσεις"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [
+    "calling",
+    "videoconferencing"
+   ],
+   "phrases": [
+    "apps for calls",
+    "video call apps"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "aplicaciones de llamadas",
+   "words": [
+    "videollamadas"
+   ],
+   "phrases": [
+    "apps para hacer llamadas"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "kõnerakendused",
+   "words": [
+    "videokõned"
+   ],
+   "phrases": [
+    "rakendused helistamiseks"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "puhelusovellukset",
+   "words": [
+    "videopuhelut"
+   ],
+   "phrases": [
+    "sovellukset soittamiseen"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "applications d’appel",
+   "words": [
+    "visioconférence"
+   ],
+   "phrases": [
+    "applis pour passer des appels"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "कॉल करने वाले ऐप्स",
+   "words": [
+    "वीडियो कॉल"
+   ],
+   "phrases": [
+    "कॉल करने के लिए ऐप्स"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "aplikacije za pozive",
+   "words": [
+    "videopozivi"
+   ],
+   "phrases": [
+    "aplikacije za telefoniranje"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "hívásalkalmazások",
+   "words": [
+    "videóhívás"
+   ],
+   "phrases": [
+    "alkalmazások telefonáláshoz"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "app per le chiamate",
+   "words": [
+    "videochiamate"
+   ],
+   "phrases": [
+    "app per telefonare"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "通話アプリ",
+   "words": [
+    "ビデオ通話"
+   ],
+   "phrases": [
+    "通話用のアプリ"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "통화 앱",
+   "words": [
+    "영상 통화"
+   ],
+   "phrases": [
+    "전화할 때 쓰는 앱"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "skambučių programėlės",
+   "words": [
+    "vaizdo skambučiai"
+   ],
+   "phrases": [
+    "programėlės skambinti"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "zvanu lietotnes",
+   "words": [
+    "videozvani"
+   ],
+   "phrases": [
+    "lietotnes zvanīšanai"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "apps għas-sejħiet",
+   "words": [
+    "sejħiet bil-vidjo"
+   ],
+   "phrases": [
+    "apps biex tagħmel telefonata"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "belapps",
+   "words": [
+    "videobellen"
+   ],
+   "phrases": [
+    "apps om mee te bellen"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "aplikacje do rozmów",
+   "words": [
+    "wideorozmowy"
+   ],
+   "phrases": [
+    "aplikacje do dzwonienia"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "aplicações de chamadas",
+   "words": [
+    "videochamadas"
+   ],
+   "phrases": [
+    "apps para fazer chamadas"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "aplicații pentru apeluri",
+   "words": [
+    "apeluri video"
+   ],
+   "phrases": [
+    "aplicații pentru sunat"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "приложения для звонков",
+   "words": [
+    "видеозвонки"
+   ],
+   "phrases": [
+    "приложения для созвонов"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "aplikácie na hovory",
+   "words": [
+    "videohovory"
+   ],
+   "phrases": [
+    "aplikácie na telefonovanie"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "aplikacije za klice",
+   "words": [
+    "videoklici"
+   ],
+   "phrases": [
+    "aplikacije za telefoniranje"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "samtalsappar",
+   "words": [
+    "videosamtal"
+   ],
+   "phrases": [
+    "appar att ringa med"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "arama uygulamaları",
+   "words": [
+    "görüntülü görüşme"
+   ],
+   "phrases": [
+    "telefon görüşmesi için uygulamalar"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "застосунки для дзвінків",
+   "words": [
+    "відеодзвінки"
+   ],
+   "phrases": [
+    "програми для дзвінків"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "ứng dụng gọi điện",
+   "words": [
+    "gọi video"
+   ],
+   "phrases": [
+    "app để gọi điện"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "通话应用",
+   "words": [
+    "视频通话"
+   ],
+   "phrases": [
+    "打电话用的应用"
+   ]
+  }
+ ]
+}

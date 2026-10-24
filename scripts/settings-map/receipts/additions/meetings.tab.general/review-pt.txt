@@ -1,0 +1,1 @@
+{"language":"pt","title":"geral","words":[],"phrases":["configurações gerais do EnviousMeet"]}

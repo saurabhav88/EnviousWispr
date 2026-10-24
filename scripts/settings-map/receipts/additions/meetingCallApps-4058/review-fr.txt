@@ -1,0 +1,9 @@
+{
+  "language": "fr",
+  "title": "détecter les appels dans les applications",
+  "words": [],
+  "phrases": [
+    "choisir les applis où détecter les appels",
+    "ne plus me proposer d’enregistrer les appels de cette appli"
+  ]
+}

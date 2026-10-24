@@ -1,0 +1,1 @@
+{"language":"pl","title":"uprawnienia","words":[],"phrases":["uprawnienia EnviousMeet","uprawnienia do nagrywania spotkań","dostęp EnviousMeet do mikrofonu i dźwięku systemowego"]}

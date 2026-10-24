@@ -1,0 +1,1 @@
+{"language":"sl","title":"dovoljenja","words":[],"phrases":["dovoljenja za EnviousMeet","dovoljenja za snemanje sestankov"]}

@@ -22,7 +22,8 @@ public final class SettingsManager {
     case s1MiniStructure
     case s1MiniContext
     case autoCopyToClipboard
-    /// #3972: EnviousMeet's "Also record the call sound" choice, remembered for the next meeting.
+    /// #3972: whether EnviousMeet records the call sound, remembered for the next meeting. Shown
+    /// inverted as "Record only my voice" (#4058).
     case meetingCaptureCallSound
     /// #3972: the user has read EnviousMeet's explainer before macOS first asks to record the
     /// sound the Mac plays.

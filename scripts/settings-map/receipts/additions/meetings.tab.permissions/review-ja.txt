@@ -1,0 +1,1 @@
+{"language":"ja","title":"アクセス権","words":["会議録音の権限"],"phrases":["EnviousMeetの権限","会議録音に必要なアクセス権を確認"]}

@@ -1,0 +1,1 @@
+{"language":"tr","title":"izinler","words":["toplantı izinleri","kayıt izinleri"],"phrases":["EnviousMeet izinleri","toplantı kaydı için Mac izinlerini kontrol et"]}
