@@ -399,18 +399,17 @@ public actor LocalPolishServerCoordinator {
   /// paired with evidence from a later moment. The manager checks the
   /// provider itself, so another engine's request cannot use up attribution.
   ///
-  /// A process change that finished while the snapshot was awaited can leave
-  /// it holding the outgoing server's endpoint. Once granted, the lease defers
-  /// every further process change, so the snapshot is read again under it and
-  /// the take talks to the server it holds. A refusal keeps the first snapshot.
+  /// The snapshot can go stale while it is awaited: a process change, an
+  /// outside stop or a recovery to ready. Once granted, the lease defers every
+  /// further process change, so a granted take always reads the snapshot again
+  /// under it and talks to the server it holds. A refusal keeps the first
+  /// snapshot. A stop after that second read fails the request like any other.
   public func admitPolish(
     for provider: LLMProvider, takeID: String?
   ) async -> (admission: LocalPolishLeaseAdmission, availability: EGOneServerManager.Availability) {
     let availability = await manager.observeAvailability(for: provider, claimingFor: takeID)
     let admission = acquireLease(for: provider)
-    guard case .granted = admission, availability.endpoint != nil else {
-      return (admission, availability)
-    }
+    guard case .granted = admission else { return (admission, availability) }
     // Endpoint and stop evidence are read again together: an outside stop can
     // still end the held server, and its skip must carry that stop. The same
     // take asking twice keeps its recovery claim.
