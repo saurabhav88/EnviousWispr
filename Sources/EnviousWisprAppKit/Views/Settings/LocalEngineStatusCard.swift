@@ -325,7 +325,11 @@ struct LocalEngineStatusCard<Middle: View>: View {
   }
 
   /// Plain-language reason line under the health pill (nil for green).
-  private var healthDetail: String? { LocalEngineHealthCopy.detail(for: runtime.health) }
+  /// #3988: this engine's own live outside-stop context, so a recorded low-memory moment can be
+  /// named; it clears when the engine is ready again.
+  private var healthDetail: String? {
+    LocalEngineHealthCopy.detail(for: runtime.health, outsideStop: runtime.unresolvedOutsideStop)
+  }
 
   private func failureCopy(_ failure: EGOneDownloadFailure) -> String {
     switch failure {
@@ -370,12 +374,40 @@ enum LocalEngineHealthCopy {
   /// PRODUCES and require copy for each. As an instance property reading
   /// `runtime` this was unreachable, which is how two produced reasons
   /// reached the alarming default branch unnoticed.
-  static func detail(for health: EGOneHealth) -> String? {
+  /// `outsideStop` is the engine's own recorded outside stop, if any (#3988). It only adds the
+  /// low-memory sentence to `stopped_outside`, and only for warning or critical pressure: never
+  /// to a failure, and never inferred from anything else.
+  static func detail(for health: EGOneHealth, outsideStop: OutsideStopContext? = nil) -> String? {
     switch health {
     case .green:
       return nil
     case .yellow(let reason):
       switch reason {
+      // #3988: something outside the app stopped the engine; the next dictation starts it.
+      case "stopped_outside":
+        switch outsideStop?.memoryPressure {
+        case .warning?, .critical?:
+          return String(
+            localized:
+              "Stopped. It starts again on your next dictation. Your Mac was low on memory at the time.",
+            comment:
+              "AI Polish, local model card: the model was stopped outside the app while memory was low; the app restarts it on the next dictation."
+          )
+        case .normal?, nil:
+          return String(
+            localized: "Stopped. It starts again on your next dictation.",
+            comment:
+              "AI Polish, local model card: the model was stopped outside the app; the app restarts it on the next dictation."
+          )
+        }
+      // #3988: the server answers, but no inference check has run on it yet (a dictation held
+      // the engine). Says only that; never that a check passed or will run soon.
+      case "ready_unchecked":
+        return String(
+          localized: "Ready. AI polish hasn't been checked yet.",
+          comment:
+            "AI Polish, local model card: the local model is running, but its quality check has not run yet."
+        )
       case "starting":
         return String(
           localized: "The model is starting up. This takes a few seconds.",

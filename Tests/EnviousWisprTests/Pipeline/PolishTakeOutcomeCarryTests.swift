@@ -7,6 +7,7 @@ import Testing
 
 @testable import EnviousWisprASR
 @testable import EnviousWisprPipeline
+@testable import EnviousWisprServices
 
 /// #3438 chunk 4. A take's AI polish setup is frozen when the take starts, carried through the
 /// real finalization step, and handed back once after the take concludes. When this fails, a
@@ -195,6 +196,160 @@ struct PolishTakeOutcomeCarryTests {
     #expect(
       KernelFinalizationWiring.polishSetupProbe(
         takeID: nil, context: Self.openAITake, hooks: log.hooks) == nil)
+  }
+
+  // MARK: - #3988: an engine stopped from outside the app
+
+  /// A bundled engine that is restarting after an outside stop: admission is
+  /// refused and its one observation names the stop.
+  @MainActor
+  final class RestartingEngine: EGOneLeaseProviding {
+    var missed: OutsideStopContext?
+    var recovery: OutsideStopContext?
+    private(set) var attempts: [String?] = []
+    init(missed: OutsideStopContext?, recovery: OutsideStopContext?) {
+      self.missed = missed
+      self.recovery = recovery
+    }
+    func activeEndpoint() async -> EGOneEndpoint? { nil }
+    func acquireLocalServerLease() async -> LocalPolishLeaseAdmission { .changing }
+    func releaseLocalServerLease(_ lease: LocalPolishServerLease) async {}
+    func beginPolishAttempt(takeID: String?) async -> LocalPolishAttempt {
+      attempts.append(takeID)
+      return LocalPolishAttempt(
+        admission: .changing, endpoint: nil, missedOutsideStop: missed,
+        recoveryOutsideStop: recovery)
+    }
+  }
+
+  private static let egOneTake = PolishSetupTakeContext(
+    provider: .egOne, model: LLMProvider.egOneModelName, configurationRevision: 9, episode: nil)
+  private static let stop = OutsideStopContext(provider: .egOne, generation: 4, memoryPressure: .warning)
+
+  private static func runEGOne(
+    _ engine: RestartingEngine, text: String
+  ) async throws -> PolishTakeOutcome? {
+    let step = LLMPolishStep(keychainManager: KeychainManager())
+    step.llmProvider = .egOne
+    step.llmModel = LLMProvider.egOneModelName
+    step.egOneRuntime = engine
+    let probe = PolishSetupTakeProbe(
+      takeID: "take-stopped", context: egOneTake, classify: { _ in nil },
+      recordTerminalProblem: { _, _ in }, now: { .now })
+    let runner = TextProcessingRunner(
+      telemetry: .init(
+        captureError: { _, _, _, _, _, _ in }, recordPolishFailed: { _, _, _, _, _ in },
+        recordPolishSkipped: { _, _, _ in }),
+      timeoutExecutor: FakeTimeoutExecutor(throwBelowSeconds: 0.0).run)
+    return try await runner.run(
+      rawText: text, evidence: .locked("en"), targetAppName: nil, steps: [step],
+      polishSetup: probe, takeID: "take-stopped"
+    ).polishTakeOutcome
+  }
+
+  @Test("a take refused while the engine restarts carries the stop it met, frozen at the miss")
+  func admissionMissCarriesTheStop() async throws {
+    let engine = RestartingEngine(missed: Self.stop, recovery: Self.stop)
+    let outcome = try #require(try await Self.runEGOne(engine, text: raw))
+    #expect(outcome.result == .skippedSilently)
+    #expect(outcome.evidence == .localEngineNotReady)
+    #expect(outcome.outsideStopMiss == Self.stop)
+    #expect(outcome.outsideStopRecovery == Self.stop)
+    #expect(engine.attempts == ["take-stopped"], "one decision, for the live take")
+  }
+
+  @Test("the miss keeps the wall-clock time it happened, even if the clock moves before settlement")
+  func missTimeIsStampedAtTheMiss() async throws {
+    let engine = RestartingEngine(missed: Self.stop, recovery: Self.stop)
+    let step = LLMPolishStep(keychainManager: KeychainManager())
+    step.llmProvider = .egOne
+    step.llmModel = LLMProvider.egOneModelName
+    step.egOneRuntime = engine
+    var wall = Date(timeIntervalSince1970: 1_800_000_000)
+    let missTime = wall
+    step.wallNow = { wall }
+    let runner = TextProcessingRunner(
+      telemetry: .init(
+        captureError: { _, _, _, _, _, _ in }, recordPolishFailed: { _, _, _, _, _ in },
+        recordPolishSkipped: { _, _, _ in }),
+      timeoutExecutor: { _, operation in
+        do {
+          return try await operation()
+        } catch {
+          // Between the miss and settlement, someone sets the clock an hour forward.
+          wall = wall.addingTimeInterval(3600)
+          throw error
+        }
+      })
+    let probe = PolishSetupTakeProbe(
+      takeID: "take-clock", context: Self.egOneTake, classify: { _ in nil },
+      recordTerminalProblem: { _, _ in }, now: { .now })
+    let outcome = try #require(
+      try await runner.run(
+        rawText: raw, evidence: .locked("en"), targetAppName: nil, steps: [step],
+        polishSetup: probe, takeID: "take-clock"
+      ).polishTakeOutcome)
+    #expect(outcome.outsideStopMiss == Self.stop)
+    #expect(outcome.outsideStopMissedAt == missTime)
+    #expect(wall != missTime)
+  }
+
+  @Test("#3988: the real finish step writes the recovery take's stop onto its terminal summary")
+  func recoveryReachesTheTerminalSummary() async throws {
+    let takeID = UUID().uuidString
+    let engine = RestartingEngine(missed: Self.stop, recovery: Self.stop)
+    let polish = LLMPolishStep(keychainManager: KeychainManager())
+    polish.llmProvider = .egOne
+    polish.llmModel = LLMProvider.egOneModelName
+    polish.egOneRuntime = engine
+    let log = HookLog()
+    let context = KernelSessionContext()
+    context.config = .testDefault(llmProvider: .egOne, llmModel: LLMProvider.egOneModelName)
+    context.polishSetupContext = Self.egOneTake
+    context.polishSetupHooks = log.hooks
+    let telemetry = KernelTelemetryState()
+    telemetry.resetForNewSession(takeID: takeID, polishEnabled: true)
+    let outcome = KernelFinalizationOutcome()
+    let wiring = KernelFinalizationWiring(
+      outcome: outcome, context: context,
+      adapter: FakeEngine(behavior: .batchSuccess(text: "hi"), clock: FakeClock()),
+      steps: Self.steps(polish: polish),
+      textProcessingRunner: TextProcessingRunner(
+        timeoutExecutor: FakeTimeoutExecutor(throwBelowSeconds: 0.0).run),
+      save: { _, _ in },
+      deliverPaste: { _ in
+        PasteDeliveryResult(
+          tier: .cgEvent, durationMs: 1, outcome: .delivered(tier: .cgEvent, durationMs: 1))
+      },
+      pasteCompletionRegistry: nil, telemetryState: telemetry, copyToClipboard: { _ in })
+    TelemetryService.shared.dictationStarted(takeID: takeID, backend: "parakeet", model: nil)
+    defer { _ = TelemetryService.shared.takeStages.close(takeID: takeID) }
+    _ = try await wiring.processText(raw) {}
+    #expect(outcome.polishTakeOutcome?.outsideStopRecovery == Self.stop)
+    let summary = try #require(TelemetryService.shared.takeStages.close(takeID: takeID))
+    #expect(
+      summary.outsideStopRecovery
+        == OutsideStopRecoveryTerminalFacts(
+          engine: "egOne", generation: 4, memoryPressure: "warning",
+          polishResult: "skippedSilently"))
+  }
+
+  @Test("an ordinary not-ready miss, or a too-short take, carries no stop")
+  func noStopWithoutOne() async throws {
+    let ordinary = RestartingEngine(missed: nil, recovery: nil)
+    let missed = try #require(try await Self.runEGOne(ordinary, text: raw))
+    #expect(missed.evidence == .localEngineNotReady)
+    #expect(missed.outsideStopMiss == nil)
+    #expect(missed.outsideStopMissedAt == nil)
+    #expect(missed.outsideStopRecovery == nil)
+
+    // A deliberate bypass never asks the engine, so it cannot claim the stop.
+    let stopped = RestartingEngine(missed: Self.stop, recovery: Self.stop)
+    let bypassed = try #require(try await Self.runEGOne(stopped, text: "ok thanks"))
+    #expect(bypassed.result == .bypassed)
+    #expect(bypassed.outsideStopMiss == nil)
+    #expect(bypassed.outsideStopRecovery == nil)
+    #expect(stopped.attempts.isEmpty)
   }
 
   // MARK: - Handed back once, for the concluded take only

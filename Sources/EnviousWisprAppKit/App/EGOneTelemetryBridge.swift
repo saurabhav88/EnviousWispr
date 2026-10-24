@@ -21,16 +21,24 @@ enum EGOneTelemetryBridge {
     { event in
       Task { @MainActor in
         switch event {
-        case .childProcessFailed(let failure):
+        case .childProcessFailed(let failure, let outsideStop):
           // Identity is in the immutable fact; the handler's current engine never relabels it.
-          TelemetryService.shared.childProcessFailed(failure)
-          SentryBreadcrumb.captureChildProcessFailure(failure)
+          let route = childFailureRoute(failure, outsideStop: outsideStop)
+          TelemetryService.shared.childProcessFailed(
+            failure, stopKind: route.stopKind, memoryPressure: route.memoryPressure)
+          if route.alerts {
+            SentryBreadcrumb.captureChildProcessFailure(failure)
+          } else {
+            SentryBreadcrumb.recordOutsideStop(
+              failure, memoryPressure: route.memoryPressure ?? "unknown")
+          }
           await AppLogger.shared.log(
             "Child process failed role=\(failure.role.rawValue) "
               + "provider=\(failure.provider?.rawValue ?? "unknown") "
               + "phase=\(failure.phase.rawValue) generation=\(failure.generation.map(String.init) ?? "unknown") "
               + "termination=\(failure.termination?.rawValue ?? "not_launched") "
-              + "status=\(failure.status.map(String.init) ?? "unknown") cause=unknown",
+              + "status=\(failure.status.map(String.init) ?? "unknown") "
+              + "stop_kind=\(route.stopKind ?? "none") cause=unknown",
             level: .info, category: "LLM")
         case .healthChanged(let from, let to, let reason):
           TelemetryService.shared.egOneDownloadEvent(
@@ -48,6 +56,19 @@ enum EGOneTelemetryBridge {
         }
       }
     }
+  }
+
+  /// #3988: how one accepted child failure is reported. A server row carries how the manager
+  /// classified it (`outside` | `crash`) and the one pressure sample taken for an outside stop
+  /// (`unknown` otherwise); sweep rows carry neither. An outside stop is a breadcrumb only:
+  /// something outside the app ended a working server, which is not a failure to alert on.
+  /// Everything else keeps its Sentry capture and identity.
+  static func childFailureRoute(
+    _ failure: ChildProcessFailure, outsideStop: OutsideStopContext?
+  ) -> (stopKind: String?, memoryPressure: String?, alerts: Bool) {
+    guard failure.role == .server else { return (nil, nil, true) }
+    guard let outsideStop else { return ("crash", "unknown", true) }
+    return ("outside", outsideStop.memoryPressure?.rawValue ?? "unknown", false)
   }
 
   /// Maps the complete EG-1 replacement lifecycle onto bounded, content-free events.

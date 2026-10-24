@@ -13,16 +13,29 @@ import Foundation
 /// reminder is missing; dictation is unaffected.
 @MainActor
 final class PolishSetupCardPresenter {
-  /// What one card is about, frozen when it was offered.
+  /// What one card is about, frozen when it was offered: the take, the permission it was
+  /// raised under, its subject and the exact words it shows.
   struct Card: Equatable {
+    /// A setup card spends its warning episode's allowance; an outside-stop notice (#3988)
+    /// spends the allowance its stopped engine earned.
+    enum Ticket: Equatable {
+      case setup(PolishSetupCardTicket)
+      case outsideStop(OutsideStopNoticeTicket)
+    }
+
     let takeID: UUID
-    let ticket: PolishSetupCardTicket
+    let ticket: Ticket
     let subject: PolishSetupPromptSubject
+    let model: PolishSetupCardModel
   }
 
   enum Answer {
     case finishSetup
     case notNow
+    /// #3988: closes an outside-stop notice.
+    case ok
+    /// #3988: the repeat notice's button: opens AI Polish to pick another engine.
+    case chooseEngine
   }
 
   private let overlay: any OverlayPresenting
@@ -64,8 +77,11 @@ final class PolishSetupCardPresenter {
   /// passed). Asks the overlay once; a refusal keeps the allowance for a later take. When the
   /// same completion scheduled a data-loss disclosure (`dataLossDisclosureScheduled`), that
   /// disclosure replaces anything shown now, so no card is offered and the allowance waits.
+  /// #3988: a take that missed polish because the engine was stopped from outside raises the
+  /// outside-stop notice instead, under the monitor's frozen-miss rules.
   func offer(after outcome: PolishTakeOutcome, dataLossDisclosureScheduled: Bool) {
-    guard Self.isCandidate(outcome) else { return }
+    let missedOutsideStop = PolishSetupMonitor.outsideStopMissed(outcome) != nil
+    guard missedOutsideStop || Self.isCandidate(outcome) else { return }
     guard dataLossDisclosureScheduled == false else {
       log("card not offered: a data-loss disclosure follows this dictation")
       return
@@ -74,26 +90,44 @@ final class PolishSetupCardPresenter {
       log("card not offered: one is already pending or shown")
       return
     }
-    // The ticket and subject are read AFTER ingestion, so a take that started with no episode
-    // (an unknown key presence its own read resolved) can raise the episode's card.
-    guard let ticket = monitor.cardTicket(), let subject = monitor.promptSubject else {
-      log("card not offered: not eligible (answered, spent, or nothing to show)")
-      return
-    }
     guard let takeID = UUID(uuidString: outcome.takeID) else {
       // No card without its join key: a card row must name its take.
       log("card not offered: take id is not a UUID")
       return
     }
-    let card = Card(takeID: takeID, ticket: ticket, subject: subject)
+    let card: Card
+    if missedOutsideStop {
+      guard let ticket = monitor.outsideStopNoticeTicket(for: outcome) else {
+        log("outside-stop notice not offered: not earned, already shown, or no longer applies")
+        return
+      }
+      let stop = ticket.stop
+      card = Card(
+        takeID: takeID, ticket: .outsideStop(ticket),
+        subject: PolishSetupPromptSubject(
+          problem: .localEngineStoppedOutside(stop.provider, stop), provider: stop.provider),
+        model: PolishSetupCardModel(outsideStop: stop, variant: ticket.variant))
+    } else {
+      // The ticket and subject are read AFTER ingestion, so a take that started with no episode
+      // (an unknown key presence its own read resolved) can raise the episode's card.
+      guard let ticket = monitor.cardTicket(), let subject = monitor.promptSubject else {
+        log("card not offered: not eligible (answered, spent, or nothing to show)")
+        return
+      }
+      card = Card(
+        takeID: takeID, ticket: .setup(ticket), subject: subject,
+        model: PolishSetupCardModel(problem: subject.problem))
+    }
     attempts &+= 1
     let attempt = attempts
     var settledSynchronously = false
+    let dismissAnswer: Answer = card.model.variant == nil ? .notNow : .ok
+    let primaryAnswer: Answer = card.model.variant == nil ? .finishSetup : .chooseEngine
     let admitted = overlay.present(
       .polishSetupCard(
-        model: PolishSetupCardModel(problem: subject.problem),
-        onFinishSetup: { [weak self] in self?.answer(.finishSetup, attempt: attempt) },
-        onNotNow: { [weak self] in self?.answer(.notNow, attempt: attempt) }),
+        model: card.model,
+        onFinishSetup: { [weak self] in self?.answer(primaryAnswer, attempt: attempt) },
+        onNotNow: { [weak self] in self?.answer(dismissAnswer, attempt: attempt) }),
       onResult: { [weak self] result in
         // One result per request: a repeated answer from the host settles nothing again.
         guard settledSynchronously == false else { return }
@@ -119,13 +153,14 @@ final class PolishSetupCardPresenter {
       return
     }
     // Spend only while the ticket is live: a card drawn after its episode ended is withdrawn.
-    guard monitor.cardPresented(card.ticket) else {
+    guard spend(card.ticket) else {
       overlay.dismissIfCurrent(receipt)
       log("card withdrawn at first render: its episode no longer applies")
       return
     }
     current = (attempt, card, receipt)
-    monitor.recordPrompt(.card, .shown, subject: card.subject, takeID: card.takeID)
+    monitor.recordPrompt(
+      .card, .shown, subject: card.subject, takeID: card.takeID, variant: card.model.variant)
     log("card shown")
   }
 
@@ -135,17 +170,50 @@ final class PolishSetupCardPresenter {
     // Bound to the card that drew the button, still on screen, and acted on at most once.
     reconcile()
     guard let shown = current, shown.attempt == attempt else { return }
+    // Each card answers only with its own buttons: a notice has no setup action, and only the
+    // repeat notice has Choose engine.
+    let reported: PolishSetupPromptEvent.Action
+    switch (answer, shown.card.ticket) {
+    case (.finishSetup, .setup): reported = .finishSetup
+    case (.notNow, .setup): reported = .notNow
+    case (.ok, .outsideStop): reported = .ok
+    case (.chooseEngine, .outsideStop(let notice)) where notice.variant == .escalated:
+      reported = .chooseEngine
+    case (.finishSetup, .outsideStop), (.notNow, .outsideStop), (.ok, .setup),
+      (.chooseEngine, .setup), (.chooseEngine, .outsideStop):
+      return
+    }
     current = nil
     overlay.dismissIfCurrent(shown.receipt)
-    switch answer {
-    case .finishSetup:
-      monitor.recordPrompt(
-        .card, .finishSetup, subject: shown.card.subject, takeID: shown.card.takeID)
-      openAIPolish()
-    case .notNow:
-      monitor.recordPrompt(.card, .notNow, subject: shown.card.subject, takeID: shown.card.takeID)
-      // Only the card, only for the episode it showed.
-      monitor.acknowledge(.card, in: shown.card.ticket.episode)
+    monitor.recordPrompt(
+      .card, reported, subject: shown.card.subject, takeID: shown.card.takeID,
+      variant: shown.card.model.variant)
+    switch shown.card.ticket {
+    case .setup(let ticket):
+      if answer == .finishSetup {
+        openAIPolish()
+      } else {
+        // Only the card, only for the episode it showed.
+        monitor.acknowledge(.card, in: ticket.episode)
+      }
+    case .outsideStop:
+      // The notice was spent when it appeared. Choose engine opens AI Polish, where provider
+      // requirements and setup status are shown; OK only closes it.
+      if answer == .chooseEngine { openAIPolish() }
+    }
+  }
+
+  private func spend(_ ticket: Card.Ticket) -> Bool {
+    switch ticket {
+    case .setup(let setup): return monitor.cardPresented(setup)
+    case .outsideStop(let notice): return monitor.outsideStopNoticePresented(notice)
+    }
+  }
+
+  private func stillApplies(_ ticket: Card.Ticket) -> Bool {
+    switch ticket {
+    case .setup(let setup): return monitor.cardStillApplies(setup)
+    case .outsideStop(let notice): return monitor.outsideStopNoticeStillApplies(notice)
     }
   }
 
@@ -159,7 +227,7 @@ final class PolishSetupCardPresenter {
     guard !reconciling else { return }
     reconciling = true
     defer { reconciling = false }
-    if let waiting = pending, !monitor.cardStillApplies(waiting.card.ticket) {
+    if let waiting = pending, !stillApplies(waiting.card.ticket) {
       pending = nil
       attempts &+= 1  // the outstanding result can no longer commit
       if let receipt = waiting.receipt { overlay.dismissIfCurrent(receipt) }
@@ -168,7 +236,7 @@ final class PolishSetupCardPresenter {
     if let shown = current {
       if !overlay.isCurrent(shown.receipt) {
         current = nil
-      } else if !monitor.cardStillApplies(shown.card.ticket) {
+      } else if !stillApplies(shown.card.ticket) {
         current = nil
         overlay.dismissIfCurrent(shown.receipt)
         log("shown card withdrawn: its episode no longer applies")

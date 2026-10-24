@@ -120,6 +120,9 @@ struct PolishSetupFacts {
   let egOneHealth: EGOneHealth
   let s1MiniInstall: EGOneInstallState
   let s1MiniHealth: EGOneHealth
+  /// #3988: each engine's outside stop not yet recovered from (the runtime's projection).
+  var egOneOutsideStop: OutsideStopContext? = nil
+  var s1MiniOutsideStop: OutsideStopContext? = nil
   let appleStatus: AIAvailabilityStatus?
   /// The latest report's reasons, empty when there is no report. The overall status alone
   /// cannot say WHY Apple Intelligence is unavailable, and the warnings must.
@@ -144,6 +147,19 @@ struct PolishSetupFacts {
   let claudeKeySaved: Bool?
   let ollamaSetup: OllamaSetupState
   let ollamaModel: OllamaModelFact
+
+  /// #3988: whether `provider`'s restart after an outside stop failed. A failure keeps its
+  /// own red status and copy; it is never the informational stopped-outside notice.
+  func localRestartFailed(_ provider: LLMProvider) -> Bool {
+    let health: EGOneHealth
+    switch provider {
+    case .egOne: health = egOneHealth
+    case .s1Mini: health = s1MiniHealth
+    case .openAI, .gemini, .claude, .ollama, .appleIntelligence, .none: return false
+    }
+    if case .red = health { return true }
+    return false
+  }
 
   func savedKey(for provider: LLMProvider) -> Bool? {
     switch provider {
@@ -191,6 +207,8 @@ extension PolishSetupFacts {
       egOneHealth: localPolishRuntimes.egOne.health,
       s1MiniInstall: localPolishRuntimes.s1Mini.installState,
       s1MiniHealth: localPolishRuntimes.s1Mini.health,
+      egOneOutsideStop: localPolishRuntimes.egOne.unresolvedOutsideStop,
+      s1MiniOutsideStop: localPolishRuntimes.s1Mini.unresolvedOutsideStop,
       appleStatus: aiAvailability.latestReport?.overallStatus,
       appleFailureReasons: aiAvailability.latestReport?.failureReasons ?? [],
       appleIsChecking: aiAvailability.isChecking,
@@ -230,11 +248,16 @@ enum PolishSetupProblem: Hashable {
   case appleUnavailable(AIFailureReason)
   /// Apple's model is not ready. It MAY still be downloading; that is not established.
   case appleModelNotReady
+  /// #3988: something outside the app stopped the installed engine's server; the next
+  /// dictation starts it again. Informational, and never a leave dialog, banner, menu line or
+  /// sidebar tag: only a take that actually missed polish earns its one notice.
+  case localEngineStoppedOutside(LLMProvider, OutsideStopContext)
 
   /// False for motion the app finishes on its own; those get an OK-only notice.
   var isActionable: Bool {
     switch self {
-    case .localEngineDownloading, .localEngineVerifying, .appleModelNotReady:
+    case .localEngineDownloading, .localEngineVerifying, .appleModelNotReady,
+      .localEngineStoppedOutside:
       return false
     case .cloudKeyMissing, .cloudKeyRejected, .ollamaNotInstalled, .ollamaNotRunning,
       .ollamaNoModel, .ollamaModelNotInstalled, .localEngineNotDownloaded,
@@ -260,9 +283,9 @@ enum PolishSetupReadiness: Equatable {
     case .none:
       return .noProblem
     case .egOne:
-      return local(.egOne, install: facts.egOneInstall)
+      return local(.egOne, install: facts.egOneInstall, facts: facts)
     case .s1Mini:
-      return local(.s1Mini, install: facts.s1MiniInstall)
+      return local(.s1Mini, install: facts.s1MiniInstall, facts: facts)
     case .appleIntelligence:
       return apple(facts)
     case .ollama:
@@ -274,11 +297,18 @@ enum PolishSetupReadiness: Equatable {
 
   // Install state only. An installed engine whose server is starting or unhealthy is not an
   // unfinished setup: the run starts the server itself (see `FileImportPolishGate`).
+  // #3988: the one exception is an installed engine stopped from outside the app and not yet
+  // back, informational only; a failed restart keeps its own red status instead.
   private static func local(
-    _ provider: LLMProvider, install: EGOneInstallState
+    _ provider: LLMProvider, install: EGOneInstallState, facts: PolishSetupFacts
   ) -> PolishSetupReadiness {
     switch install {
-    case .installed: return .noProblem
+    case .installed:
+      let stop = provider == .egOne ? facts.egOneOutsideStop : facts.s1MiniOutsideStop
+      if let stop, stop.provider == provider, !facts.localRestartFailed(provider) {
+        return .problem(.localEngineStoppedOutside(provider, stop))
+      }
+      return .noProblem
     case .notInstalled: return .problem(.localEngineNotDownloaded(provider))
     case .paused: return .problem(.localEngineDownloadPaused(provider))
     case .updatePaused: return .problem(.localEngineUpdatePaused(provider))

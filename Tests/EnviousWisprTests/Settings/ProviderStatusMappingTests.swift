@@ -57,6 +57,28 @@ struct ProviderStatusMappingTests {
     #expect(s?.tone == .unavailable)
   }
 
+  @Test("#3988: stopped from outside reads Stopped, running unchecked reads Ready, failures stay red")
+  func outsideStopChips() {
+    for provider in [LLMProvider.egOne, .s1Mini] {
+      func chip(_ health: EGOneHealth, selected: Bool = true) -> ProviderStatus? {
+        provider == .egOne
+          ? status(for: .egOne, selected: selected, egOneHealth: health)
+          : status(for: .s1Mini, selected: selected, s1MiniHealth: health)
+      }
+      #expect(chip(.yellow(reason: "stopped_outside"))?.label == "Stopped")
+      #expect(chip(.yellow(reason: "stopped_outside"))?.tone == .needsSetup)
+      #expect(chip(.yellow(reason: "ready_unchecked"))?.label == "Ready")
+      #expect(chip(.yellow(reason: "ready_unchecked"))?.tone == .needsSetup)
+      #expect(chip(.yellow(reason: "starting"))?.label == "Starting")
+      #expect(chip(.red(reason: "crashed_twice"))?.label == "Not working")
+      // Not the chosen engine: its health is not shown at all.
+      #expect(chip(.yellow(reason: "stopped_outside"), selected: false)?.label == "Installed")
+    }
+    // One engine stopped never changes the other's chip.
+    #expect(
+      status(for: .s1Mini, egOneHealth: .yellow(reason: "stopped_outside"))?.label == "Installed")
+  }
+
   @Test("S1-mini reads its own state, never EG-1's")
   func s1MiniDoesNotReadEGOneState() {
     // EG-1 broken, S1-mini fine: S1-mini must still be fine.

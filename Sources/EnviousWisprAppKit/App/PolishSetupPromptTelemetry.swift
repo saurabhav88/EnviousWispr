@@ -34,6 +34,8 @@ struct PolishSetupPromptEvent: Equatable {
     case closed
     case openSystemSettings = "open_system_settings"
     case ok
+    /// #3988: the repeat outside-stop notice's button, which opens AI Polish.
+    case chooseEngine = "choose_engine"
   }
 
   let surface: Surface
@@ -41,6 +43,8 @@ struct PolishSetupPromptEvent: Equatable {
   let subject: PolishSetupPromptSubject
   /// Card rows only: the take whose skipped polish raised the card.
   let takeID: UUID?
+  /// #3988: which outside-stop notice the card was, frozen with it; nil for every setup prompt.
+  var variant: PolishSetupCardModel.NoticeVariant? = nil
 
   private var problem: PolishSetupProblem { subject.problem }
   private var provider: LLMProvider { subject.provider }
@@ -49,14 +53,12 @@ struct PolishSetupPromptEvent: Equatable {
   @MainActor func send() {
     TelemetryService.shared.polishSetupPrompt(
       surface: surface.rawValue, action: action.rawValue, problem: problem.telemetryTag,
-      provider: provider.rawValue, takeID: takeID?.uuidString)
-    SentryBreadcrumb.add(
-      stage: "polish_setup",
-      message: "prompt_\(action.rawValue)",
-      data: [
-        "surface": surface.rawValue, "problem": problem.telemetryTag,
-        "provider": provider.rawValue,
-      ])
+      provider: provider.rawValue, takeID: takeID?.uuidString, variant: variant?.rawValue)
+    var data: [String: Any] = [
+      "surface": surface.rawValue, "problem": problem.telemetryTag, "provider": provider.rawValue,
+    ]
+    if let variant { data["variant"] = variant.rawValue }
+    SentryBreadcrumb.add(stage: "polish_setup", message: "prompt_\(action.rawValue)", data: data)
   }
 }
 
@@ -80,6 +82,7 @@ extension PolishSetupProblem {
     case .appleUnavailable(let reason):
       return reason == .appleIntelligenceDisabled ? "apple_turned_off" : "apple_unavailable"
     case .appleModelNotReady: return "apple_not_ready"
+    case .localEngineStoppedOutside: return PolishSetupProblemTag.localStoppedOutside.rawValue
     }
   }
 }

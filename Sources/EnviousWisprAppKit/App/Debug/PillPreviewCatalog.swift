@@ -237,6 +237,7 @@
       case .localEngineVerifying: return "localEngineVerifying"
       case .appleUnavailable: return "appleUnavailable"
       case .appleModelNotReady: return "appleModelNotReady"
+      case .localEngineStoppedOutside: return "localEngineStoppedOutside"
       }
     }
 
@@ -245,13 +246,17 @@
       "ollamaNoModel", "ollamaModelNotInstalled", "localEngineNotDownloaded",
       "localEngineDownloadPaused", "localEngineUpdatePaused", "localEngineFailed",
       "localEngineDownloading", "localEngineVerifying", "appleUnavailable", "appleModelNotReady",
+      "localEngineStoppedOutside",
     ]
 
     /// The setup-card problems real routing can produce, each with a distinct sentence: cloud
     /// problems for the three cloud providers, local-engine problems for the two local
     /// engines, the four Ollama problems and the Apple buckets. Other provider pairings are
     /// not reachable in the app, so they get no row.
-    static let polishSetupSamples: [(id: String, problem: PolishSetupProblem)] = {
+    /// Each row is drawn from the production card model: the problem's own card, or for the
+    /// #3988 repeat notice the outside-stop card in its `.escalated` variant.
+    static let polishSetupSamples:
+      [(id: String, problem: PolishSetupProblem, model: PolishSetupCardModel)] = {
       var samples: [(String, PolishSetupProblem)] = [
         ("ollamaNotInstalled", .ollamaNotInstalled),
         ("ollamaNotRunning", .ollamaNotRunning),
@@ -260,6 +265,19 @@
         ("appleDisabled", .appleUnavailable(.appleIntelligenceDisabled)),
         ("appleUnavailable", .appleUnavailable(.unsupportedOS)),
         ("appleModelNotReady", .appleModelNotReady),
+        // #3988: the notice names no engine, so the engine changes no text; the memory level
+        // does. One row per sentence.
+        (
+          "localEngineStoppedOutside.generic",
+          .localEngineStoppedOutside(
+            .egOne, OutsideStopContext(provider: .egOne, generation: 1, memoryPressure: .normal))
+        ),
+        (
+          "localEngineStoppedOutside.lowMemory",
+          .localEngineStoppedOutside(
+            .s1Mini,
+            OutsideStopContext(provider: .s1Mini, generation: 1, memoryPressure: .critical))
+        ),
       ]
       for provider in [LLMProvider.openAI, .gemini, .claude] {
         samples.append(("cloudKeyMissing.\(provider.rawValue)", .cloudKeyMissing(provider)))
@@ -276,7 +294,23 @@
           ("localEngineVerifying.\(name)", .localEngineVerifying(provider)),
         ]
       }
-      return samples.map { (id: $0.0, problem: $0.1) }
+      var rows = samples.map { (id: $0.0, problem: $0.1, model: PolishSetupCardModel(problem: $0.1)) }
+      // #3988: the repeat notice names the engine, so engine and memory level each change its
+      // text: four sentences, each with Choose engine and OK.
+      for provider in [LLMProvider.egOne, .s1Mini] {
+        for (label, pressure) in [
+          ("generic", OutsideStopContext.MemoryPressure.normal), ("lowMemory", .critical),
+        ] {
+          let stop = OutsideStopContext(provider: provider, generation: 2, memoryPressure: pressure)
+          rows.append(
+            (
+              id: "localEngineStoppedOutside.escalated.\(provider.rawValue).\(label)",
+              problem: .localEngineStoppedOutside(provider, stop),
+              model: PolishSetupCardModel(outsideStop: stop, variant: .escalated)
+            ))
+        }
+      }
+      return rows
     }()
 
     private static let interruptionReasons: [TerminalNoticeReason] = [
@@ -367,10 +401,11 @@
             "polishSetup.\(sample.id)", .polishSetupCard, "AI polish setup",
             "AI polish setup: \(sample.id)"
           ) { note in
+            // Each button names itself; a preview never answers a real card or opens Settings.
             .polishSetupCard(
-              model: PolishSetupCardModel(problem: sample.problem),
-              onFinishSetup: { note("Finish setup pressed (preview only)") },
-              onNotNow: { note("Not now pressed (preview only)") })
+              model: sample.model,
+              onFinishSetup: { note("\(sample.model.primaryLabel ?? "") pressed (preview only)") },
+              onNotNow: { note("\(sample.model.dismissLabel) pressed (preview only)") })
           })
       }
       rows.append(

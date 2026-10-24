@@ -647,6 +647,39 @@
         }
       }
     },
+    "%@ stopped again. A lighter polish engine, or turning polish off, may work better on this Mac. We won't show this again for 24 hours." : {
+      "comment" : "Notice after a dictation, when the local AI model was stopped outside the app again within a day. %@ is a model name, such as EG-1.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ wurde erneut gestoppt. Eine leichtere Engine für die KI-Nachbearbeitung oder das Deaktivieren der KI-Nachbearbeitung könnte auf diesem Mac besser funktionieren. Wir zeigen diesen Hinweis 24 Stunden lang nicht mehr an."
+          }
+        }
+      }
+    },
+    "%@ stopped again. Your Mac was low on memory at the time. A lighter polish engine, or turning polish off, may work better on this Mac. We won't show this again for 24 hours." : {
+      "comment" : "Notice after a dictation, when the local AI model was stopped outside the app again within a day, while memory was low. %@ is a model name, such as EG-1.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ wurde erneut gestoppt. Auf deinem Mac war zu diesem Zeitpunkt nur wenig Arbeitsspeicher frei. Eine leichtere Engine für die KI-Nachbearbeitung oder das Deaktivieren der KI-Nachbearbeitung könnte auf diesem Mac besser funktionieren. Wir zeigen diesen Hinweis 24 Stunden lang nicht mehr an."
+          }
+        }
+      }
+    },
+    "%@ stopped and starts again on your next dictation" : {
+      "comment" : "Short reason, no full stop: a local AI model was stopped outside the app and restarts on the next dictation. %@ is a model name, such as EG-1.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ wurde gestoppt und startet bei deinem nächsten Diktat neu"
+          }
+        }
+      }
+    },
     "%@ word removed · %@ changed" : {
       "comment" : "Transcribe a File, cleanup changes: the legend above the text. The first %@ is 1 (words removed), the second the number of words changed. Keep the middle dot.",
       "localizations" : {
@@ -1897,6 +1930,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "KI-Nachbearbeitung muss eingerichtet werden"
+          }
+        }
+      }
+    },
+    "AI polish skipped" : {
+      "comment" : "Notice after a dictation, title: the local AI model was stopped outside the app, so this dictation was pasted without AI polish.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Nachbearbeitung übersprungen"
           }
         }
       }
@@ -4887,6 +4931,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Auswählen und sichern"
+          }
+        }
+      }
+    },
+    "Choose engine" : {
+      "comment" : "Notice after a dictation, button: opens AI Polish settings to pick another engine.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Engine wählen"
           }
         }
       }
@@ -14673,7 +14728,7 @@
       }
     },
     "Ready" : {
-      "comment" : "EnviousMeet list: status of a meeting.\nSettings: the selected preview engine can run for the current language.\nTranscribe a File, Polish step: the line under an engine's name.",
+      "comment" : "AI Polish provider status chip.\nEnviousMeet list: status of a meeting.\nSettings: the selected preview engine can run for the current language.\nTranscribe a File, Polish step: the line under an engine's name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -14796,6 +14851,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Fertige Wortlisten für ein Fachgebiet. Aktiviere eine Liste und EnviousWispr korrigiert Wörter, die in diesem Fachgebiet häufig falsch erkannt werden."
+          }
+        }
+      }
+    },
+    "Ready. AI polish hasn't been checked yet." : {
+      "comment" : "AI Polish, local model card: the local model is running, but its quality check has not run yet.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bereit. Die KI-Nachbearbeitung wurde noch nicht geprüft."
           }
         }
       }
@@ -17547,12 +17613,34 @@
       }
     },
     "Stopped" : {
-      "comment" : "Transcribe a File, Done step: heading after the user stopped the run.",
+      "comment" : "AI Polish provider status chip.\nTranscribe a File, Done step: heading after the user stopped the run.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Gestoppt"
+          }
+        }
+      }
+    },
+    "Stopped. It starts again on your next dictation." : {
+      "comment" : "AI Polish, local model card: the model was stopped outside the app; the app restarts it on the next dictation.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gestoppt. Startet bei deinem nächsten Diktat neu."
+          }
+        }
+      }
+    },
+    "Stopped. It starts again on your next dictation. Your Mac was low on memory at the time." : {
+      "comment" : "AI Polish, local model card: the model was stopped outside the app while memory was low; the app restarts it on the next dictation.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gestoppt. Startet bei deinem nächsten Diktat neu. Auf deinem Mac war zu diesem Zeitpunkt nur wenig Arbeitsspeicher frei."
           }
         }
       }
@@ -19399,6 +19487,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diese Auswahl ändert auch die Spracherkennung für Diktate."
+          }
+        }
+      }
+    },
+    "This dictation was pasted without AI polish. We'll try again automatically." : {
+      "comment" : "Notice after a dictation: the local AI model was stopped outside the app, so this dictation was not polished. The app restarts the model by itself.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Diktat wurde ohne KI-Nachbearbeitung eingefügt. Wir versuchen es automatisch erneut."
+          }
+        }
+      }
+    },
+    "This dictation was pasted without AI polish. Your Mac was low on memory at the time. We'll try again automatically." : {
+      "comment" : "Notice after a dictation: the local AI model was stopped outside the app while memory was low, so this dictation was not polished. The app restarts the model by itself.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Diktat wurde ohne KI-Nachbearbeitung eingefügt. Auf deinem Mac war zu diesem Zeitpunkt nur wenig Arbeitsspeicher frei. Wir versuchen es automatisch erneut."
           }
         }
       }

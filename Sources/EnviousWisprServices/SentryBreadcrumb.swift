@@ -331,6 +331,18 @@ public enum SentryBreadcrumb {
     add(stage: "local_polish", message: "Owned child process failed", level: .warning, data: event.extra)
   }
 
+  /// #3988: something outside the app stopped a READY local polish server. Not a failure: the
+  /// next dictation starts it again. A breadcrumb with the same content-free facts, never an
+  /// event, so it rides on whatever error happens next and raises no alert of its own.
+  public static func recordOutsideStop(_ failure: ChildProcessFailure, memoryPressure: String) {
+    guard ObservabilityBootstrap.lifecycle.isSentryRunning else { return }
+    var data: [String: Any] = failure.stringProperties
+    for (key, value) in failure.integerProperties { data[key] = value }
+    data["stop_kind"] = "outside"
+    data["memory_pressure"] = memoryPressure
+    add(stage: "local_polish", message: "Local polish server stopped outside the app", data: data)
+  }
+
   static func makeChildProcessFailureWarning(
     _ failure: ChildProcessFailure, environment: String = ObservabilityBootstrap.currentEnvironment
   ) -> Event {
