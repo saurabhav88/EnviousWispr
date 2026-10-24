@@ -46,18 +46,30 @@ struct MeetingCalendarTitleTests {
   @Test("a calendar read that does not return in time leaves the meeting unnamed")
   func slowReadIsBounded() async {
     let release = DispatchSemaphore(value: 0)
-    let title = await MeetingCalendarTitle.lookup(at: Date(), bound: .milliseconds(50)) { _ in
+    let lane = MeetingCalendarTitle.Lane()
+    let title = await MeetingCalendarTitle.lookup(
+      at: Date(), bound: .milliseconds(50), lane: lane
+    ) { _ in
       // Blocks past the bound; released after the Start has moved on.
       release.wait()
       return "Too late"
     }
     #expect(title == nil)
+    // While that read is stuck, the next Start skips the lookup at once.
+    let started = ContinuousClock.now
+    let next = await MeetingCalendarTitle.lookup(at: Date(), bound: .seconds(5), lane: lane) { _ in
+      "Never read"
+    }
+    #expect(next == nil)
+    #expect(ContinuousClock.now - started < .seconds(5))
     release.signal()
   }
 
   @Test("a read that returns in time names the meeting")
   func fastReadNames() async {
-    let title = await MeetingCalendarTitle.lookup(at: Date(), bound: .seconds(5)) { _ in
+    let title = await MeetingCalendarTitle.lookup(
+      at: Date(), bound: .seconds(5), lane: MeetingCalendarTitle.Lane()
+    ) { _ in
       "Weekly sync"
     }
     #expect(title == "Weekly sync")

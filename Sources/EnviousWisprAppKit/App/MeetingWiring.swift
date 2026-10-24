@@ -70,8 +70,10 @@ enum MeetingWiring {
           return (chosen.isEmpty ? nil : chosen, settings.inputChannelByDeviceUID)
         },
         captureCallSound: { [settings = inputs.settings] in settings.meetingCaptureCallSound },
+        // Live, like EnviousMeet's setup (#4017): the polled copy can still say refused just
+        // after a grant in System Settings.
         microphoneAuthorized: { [permissions = inputs.permissions] in
-          permissions.hasMicrophonePermission
+          permissions.microphoneStatusLive == .authorized
         },
         settleDictationHold: { [otherAudioHold = inputs.otherAudioHold] in
           await otherAudioHold.meetingRecordingWillStart()
