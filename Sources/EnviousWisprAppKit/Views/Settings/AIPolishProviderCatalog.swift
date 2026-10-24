@@ -105,6 +105,15 @@ enum ProviderStatusMapping {
       guard healthApplies else { return installed }
       switch health {
       case .green: return installed
+      // #3988: two yellow states that are not a start in progress get their own word.
+      case .yellow(reason: "stopped_outside"):
+        return ProviderStatus(
+          label: String(localized: "Stopped", comment: "AI Polish provider status chip."),
+          tone: .needsSetup)
+      case .yellow(reason: "ready_unchecked"):
+        return ProviderStatus(
+          label: String(localized: "Ready", comment: "AI Polish provider status chip."),
+          tone: .needsSetup)
       case .yellow:
         return ProviderStatus(
           label: String(localized: "Starting", comment: "AI Polish provider status chip."),
