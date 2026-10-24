@@ -2473,12 +2473,22 @@ package final class WisprBootstrapper {
             return status.selected == status.active || !status.selectedInstalled
           },
           activeBackend: { [asrManager] in asrManager.activeBackendType },
-          ensureReady: {
-            switch await ensureSelectedEngineReady() {
-            case .ready: .ready
-            case .notInstalled: .notInstalled
-            case .notReady: .notReady
-            }
+          ensureReady: { [weak engineCoordinator, activeEngine] in
+            let status = engineCoordinator?.status
+            return await MeetingWiring.borrowedEngineReadiness(
+              switchRefused: status.map { $0.selected != $0.active && !$0.selectedInstalled }
+                ?? false,
+              ensureSelected: {
+                switch await ensureSelectedEngineReady() {
+                case .ready: .ready
+                case .notInstalled: .notInstalled
+                case .notReady: .notReady
+                }
+              },
+              readyRunning: {
+                guard (try? await activeEngine.load()) != nil else { return false }
+                return await activeEngine.isLoaded()
+              })
           },
           isModelLoaded: { [asrManager] in asrManager.isModelLoaded },
           isLoadOrUnloadInFlight: { [concreteASRManager] in concreteASRManager.isLoadOrUnloadInFlight },

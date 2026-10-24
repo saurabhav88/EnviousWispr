@@ -729,4 +729,28 @@ struct MeetingWiringTests {
     #expect(job.isEngineResident == false)
     #expect(rig.changeCounter.count > 0)
   }
+
+  @Test("a refused switch to a missing model readies the running Parakeet, not the picked model")
+  func refusedSwitchReadiesRunningEngine() async {
+    var selectedChecks = 0
+    var runningReadies = 0
+    let answer = await MeetingWiring.borrowedEngineReadiness(
+      switchRefused: true,
+      ensureSelected: { selectedChecks += 1; return .notInstalled },
+      readyRunning: { runningReadies += 1; return true })
+    #expect(answer == .ready)
+    #expect(selectedChecks == 0)
+    #expect(runningReadies == 1)
+  }
+
+  @Test("with the picked engine running, readiness is the press path's answer")
+  func settledSwitchUsesPressReadiness() async {
+    var runningReadies = 0
+    let answer = await MeetingWiring.borrowedEngineReadiness(
+      switchRefused: false,
+      ensureSelected: { .notInstalled },
+      readyRunning: { runningReadies += 1; return true })
+    #expect(answer == .notInstalled)
+    #expect(runningReadies == 0)
+  }
 }

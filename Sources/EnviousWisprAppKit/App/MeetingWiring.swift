@@ -89,6 +89,19 @@ enum MeetingWiring {
     let recoveryRecheck: @MainActor () -> Void
   }
 
+  /// Readiness of the engine the shared pass borrows: the running one. Normally that is the
+  /// picked engine, so the press path's readiness answers. When the picked engine is not
+  /// installed its switch never applies, so the running engine is readied instead of the
+  /// picked model being checked (#4052 review).
+  static func borrowedEngineReadiness(
+    switchRefused: Bool,
+    ensureSelected: @MainActor () async -> MeetingParakeetRoute.Readiness,
+    readyRunning: @MainActor () async -> Bool
+  ) async -> MeetingParakeetRoute.Readiness {
+    guard switchRefused else { return await ensureSelected() }
+    return await readyRunning() ? .ready : .notReady
+  }
+
   static func make(_ inputs: Inputs) -> MeetingCoordinator {
     let store = inputs.store
     let lane = MeetingLocalModelLane()
