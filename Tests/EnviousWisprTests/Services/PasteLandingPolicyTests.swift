@@ -131,7 +131,7 @@ struct PasteLandingPolicyTests {
   func shippedExclusionsAreTheFailedGates() {
     let apps = [
       "com.microsoft.VSCode", "com.microsoft.Excel",
-      "com.stablyai.orca", "com.google.antigravity-ide", "com.cmuxterm.app",
+      "com.stablyai.orca", "com.google.antigravity-ide",
     ]
     #expect(
       PasteLandingPolicy.excludedRoutes
@@ -149,9 +149,10 @@ struct PasteLandingPolicyTests {
       }
     }
 
-    // Exact IDs only; the separate Antigravity agent app keeps its existing permission.
+    // Exact IDs only; the separate Antigravity agent app keeps its existing permission. cmux keeps
+    // it too: its key-route reader reads `found` (#3863), so a real miss there may still retain.
     for id in [
-      "com.google.antigravity", "com.google.Chrome",
+      "com.google.antigravity", "com.google.Chrome", "com.cmuxterm.app",
       "com.stablyai.orca.helper", "com.google.antigravity-ide.helper",
       "com.cmuxterm.app.helper", "COM.CMUXTERM.APP",
     ] {

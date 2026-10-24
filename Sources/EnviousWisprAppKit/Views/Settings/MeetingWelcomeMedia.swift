@@ -9,6 +9,10 @@ import SwiftUI
 struct MeetingWelcomeMedia: View {
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+  /// The scene's shape: the video and the animated scene are drawn at 414 x 176 points.
+  static let aspectRatio: CGFloat = 414.0 / 176.0
+  private static let designSize = CGSize(width: 414, height: 176)
+
   var body: some View {
     if !reduceMotion, let url = Self.videoURL() {
       MeetingWelcomeVideo(url: url)
@@ -17,7 +21,13 @@ struct MeetingWelcomeMedia: View {
         .accessibilityElement()
         .accessibilityLabel(Text(MeetingWelcomeAnimation.description))
     } else {
-      MeetingWelcomeAnimation()
+      // Laid out at its design size and scaled to the slot, so a larger slot shows the same
+      // scene larger instead of stretching its layout.
+      GeometryReader { slot in
+        MeetingWelcomeAnimation()
+          .frame(width: Self.designSize.width, height: Self.designSize.height)
+          .scaleEffect(slot.size.width / Self.designSize.width, anchor: .topLeading)
+      }
     }
   }
 

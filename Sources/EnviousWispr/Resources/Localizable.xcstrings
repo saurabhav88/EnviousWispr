@@ -12196,17 +12196,6 @@
         }
       }
     },
-    "No account. No meeting limits." : {
-      "comment" : "EnviousMeet setup: welcome feature line under Free and open source.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kein Konto. Keine Begrenzung für Meetings."
-          }
-        }
-      }
-    },
     "No app was in front, so there was nothing to read." : {
       "comment" : "Quick Add panel: why the selected text could not be read.",
       "localizations" : {
@@ -20780,17 +20769,6 @@
         }
       }
     },
-    "Transcripts are written on your Mac." : {
-      "comment" : "EnviousMeet setup: welcome feature line under Your audio never leaves your Mac.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Transkripte entstehen auf deinem Mac."
-          }
-        }
-      }
-    },
     "Trigger" : {
       "localizations" : {
         "de" : {
@@ -22518,17 +22496,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Funktioniert nur außerhalb einer Aufnahme: Während der Aufnahme verwendet das Tastenkürzel zum Abbrechen (%@) diese Tasten."
-          }
-        }
-      }
-    },
-    "Works with Zoom, Google Meet, Teams, FaceTime and Slack." : {
-      "comment" : "EnviousMeet setup: welcome feature line under No bot joins your call.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Funktioniert mit Zoom, Google Meet, Teams, FaceTime und Slack."
           }
         }
       }
