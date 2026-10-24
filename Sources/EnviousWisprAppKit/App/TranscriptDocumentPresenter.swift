@@ -25,6 +25,9 @@ enum TranscriptDocumentPresenter {
   /// One turn ready to render. `content` carries either plain text or a diff — `.markedUp`
   /// needs styled segments (removed/changed/added), the other two modes do not.
   struct RenderedTurn: Equatable, Sendable {
+    /// The source `Turn.id` (#4001 H11), carried into document-local row keys.
+    /// Retries can reuse IDs; this is not a permanent semantic identity.
+    let turnID: String
     let speakerId: String
     /// `nil` for `"unknown"` — a classification outcome, never a named speaker (#2810).
     /// Callers must never attach a rename control when this is `nil`.
@@ -81,6 +84,7 @@ enum TranscriptDocumentPresenter {
         }
       }
       return RenderedTurn(
+        turnID: turn.id,
         speakerId: turn.speakerId,
         speakerName: displayName(for: turn.speakerId, in: speakerNames),
         timeLabel: timesOn ? timeLabel(for: turn) : nil,

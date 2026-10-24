@@ -113,12 +113,11 @@ struct TranscriptDetailView: View {
               guard documentView == .markedUp else { return }
               await prepareTurnDiffs()
             }
-            // Gives the WHOLE turn-rendering subtree — including every `TurnRowView`'s own
-            // rename-popover `@State` — a fresh identity per document (found by chunk
-            // review): `HistoryContentView` reuses this view across row selections at a
-            // fixed tree position, and `ForEach`'s own `id: \.offset` can otherwise let a
-            // rename popover opened on document A's turn survive into document B if B has a
-            // turn at the same position, committing a rename against the wrong document.
+            // Reset the whole turn-rendering subtree, including rename-popover state,
+            // per document. Turn IDs are document-local: different documents can have
+            // identical turn IDs, so row keys alone cannot isolate their state.
+            // `HistoryContentView` reuses this view across row selections at a fixed tree
+            // position (found by chunk review).
             .id(transcript.id)
           } else {
             plainTextSections

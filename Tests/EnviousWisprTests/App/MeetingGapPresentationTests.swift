@@ -104,7 +104,7 @@ struct MeetingGapPresentationTests {
   func renderedTurns() throws {
     let rendered = [
       TranscriptDocumentPresenter.RenderedTurn(
-        speakerId: "mic:you", speakerName: "You", timeLabel: "1:00",
+        turnID: "m0-60000", speakerId: "mic:you", speakerName: "You", timeLabel: "1:00",
         content: .plain("Hi [Could not transcribe from 2:00]"), isUncleaned: false,
         startMs: 60_000)
     ]
@@ -113,6 +113,7 @@ struct MeetingGapPresentationTests {
     #expect(localized.first?.speakerName == "You")
     #expect(localized.first?.timeLabel == "1:00")
     #expect(localized.first?.startMs == 60_000, "play from here keeps the turn's time")
+    #expect(localized.first?.turnID == "m0-60000", "the row keeps its turn's identity (#4001)")
   }
 
   @Test("the catalog carries reviewed German for both markers and the echo switch")
