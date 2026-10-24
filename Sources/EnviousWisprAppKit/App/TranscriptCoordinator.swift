@@ -157,6 +157,10 @@ final class TranscriptCoordinator {
   /// superseded one cannot publish rows, certify the cache or clear `loadInFlight`.
   private var loadRequestID: UInt64 = 0
   private var loadInFlight = false
+  /// #4001 H12: a History read that was still the current one has ended at least once this
+  /// launch, successfully or not. It says an attempt finished, never that the rows are complete
+  /// or that a given row is there. Never reset: later reads refresh rows in place.
+  private(set) var historyReadFinished = false
   /// #4001 H9: whether the rows held now are the whole store as of `accepted`. Set only by a
   /// certified complete read; dropped by any read that starts, and by a reuse check that finds
   /// the folders changed.
@@ -323,11 +327,16 @@ final class TranscriptCoordinator {
     @ObservationIgnored var listCacheDisabledForTesting = false
     /// How many times a meeting's text was projected rather than read from the kept entry.
     @ObservationIgnored var meetingTextBuildsForTesting = 0
+    /// #4001 H4: full list builds, so a test can tell a skipped read from a cache hit.
+    @ObservationIgnored private(set) var listBuildsForTesting = 0
   #endif
 
   /// The list from one key's captured inputs: its time, records, filter, query, echo choices
   /// and meeting facts.
   private func buildListedItems(at now: Date, from key: ListKey) -> [HistoryListItem] {
+    #if DEBUG
+      listBuildsForTesting += 1
+    #endif
     let records = key.meetings
     let visible = transcripts.filter { Self.isVisible($0, at: now) }
     var rowsByMeeting: [UUID: Transcript] = [:]
@@ -621,17 +630,19 @@ final class TranscriptCoordinator {
   /// narrowing of the list suppresses the fallback, because nothing can prove the pane's text
   /// is among the rows on screen. Widening the list later does not bring either back; only a
   /// selection, or the next completed dictation, does.
+  ///
+  /// #4001 H4: the list is read only on the two branches that check membership, so a reconcile
+  /// with nothing selected and no known fallback row builds nothing.
   private func reconcileSelectionWithDisplayedSet() {
-    let displayed = listedItems
     if let selected = selectedItemID {
-      guard !displayed.contains(where: { $0.id == selected }) else { return }
+      guard !listedItems.contains(where: { $0.id == selected }) else { return }
       selectedItemID = nil
       return
     }
     guard !liveFallbackSuppressed else { return }
     let fallbackRowIsListed: Bool
     if let fallbackRow = liveFallbackRowID {
-      fallbackRowIsListed = displayed.contains(where: { $0.id == .transcript(fallbackRow) })
+      fallbackRowIsListed = listedItems.contains(where: { $0.id == .transcript(fallbackRow) })
     } else {
       fallbackRowIsListed = historyFilter == .all && searchQuery.isEmpty
     }
@@ -1023,7 +1034,13 @@ final class TranscriptCoordinator {
   /// Ends `request`'s hold on the in-flight flag, and only its own: a superseded read finishing
   /// late must not mark a newer read as done.
   private func finishLoad(_ request: UInt64) {
-    if request == loadRequestID { loadInFlight = false }
+    if request == loadRequestID {
+      loadInFlight = false
+      historyReadFinished = true
+      #if DEBUG
+        historyReadEndsForTesting += 1
+      #endif
+    }
   }
 
   private func readStore(_ request: UInt64) async {
@@ -1169,6 +1186,9 @@ final class TranscriptCoordinator {
     /// a test can tell reuse from a read that happened to return the same rows.
     private(set) var historyCacheHitsForTesting = 0
     private(set) var historyFullReadsForTesting = 0
+    /// #4001 H12: reads that ended while still current, so a test can tell that a superseded read
+    /// did not set `historyReadFinished`.
+    private(set) var historyReadEndsForTesting = 0
     /// Runs on the durable write's worker thread just before it writes, so a test can hold a
     /// write while it is registered in flight.
     @ObservationIgnored var durableWriteWillStartForTesting: (@Sendable () -> Void)?
@@ -1355,9 +1375,25 @@ final class TranscriptCoordinator {
 
   /// EnviousMeet published a change to its meetings (`MeetingCoordinator.onMeetingsPublished`):
   /// a meeting removed elsewhere (a peer, dev control) leaves no stale selection (Codex C8 r1).
+  ///
+  /// #4001 H4: queued, not run at once. Each publish changes the meetings in the list's key, so a
+  /// burst (Delete All marks every meeting in one loop) rebuilt the whole list once per meeting.
+  /// Notifications that arrive while one reconcile is pending join it; it reads the state current
+  /// when it runs. Until then a removed selection resolves to an empty detail.
   func meetingsDidChange() {
-    reconcileSelectionWithDisplayedSet()
+    guard meetingReconcileTask == nil else { return }
+    meetingReconcileTask = Task { @MainActor [weak self] in
+      guard let self else { return }
+      self.meetingReconcileTask = nil
+      self.reconcileSelectionWithDisplayedSet()
+    }
   }
+
+  @ObservationIgnored private var meetingReconcileTask: Task<Void, Never>?
+
+  #if DEBUG
+    var pendingMeetingReconcileForTesting: Task<Void, Never>? { meetingReconcileTask }
+  #endif
 
   /// Lists Recordings with no search and selects `meetingID` when given (#3972 R45): the menu's
   /// "Show Live Transcript" and "Show in History", and the EnviousMeet page's "Show
