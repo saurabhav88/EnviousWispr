@@ -781,8 +781,11 @@ public final class TranscriptStore {
       // Same admission as `loadPending`. An unreadable folder reads as empty there; here it also
       // withholds certification, and a confirmed-absent one is a real empty namespace.
       let pendingAbsent = before?.pending == .absent
-      let candidates = pendingAbsent ? [] : Self.pendingCandidates(in: pendingDir, now: now, retention: retention)
-      let pending = (candidates ?? []).compactMap(\.liveTranscript).sorted { $0.createdAt > $1.createdAt }
+      let candidates =
+        pendingAbsent ? [] : Self.pendingCandidates(in: pendingDir, now: now, retention: retention)
+      let pending = (candidates ?? []).compactMap(\.liveTranscript).sorted {
+        $0.createdAt > $1.createdAt
+      }
       let after = Self.freshness(directory: dir, pendingDirectory: pendingDir)
       let certified = permanent.complete && candidates != nil && before != nil && before == after
       return TranscriptHistoryRead(
@@ -807,7 +810,8 @@ public final class TranscriptStore {
   private nonisolated static func readPermanent(
     in dir: URL
   ) async throws -> (rows: [Transcript], complete: Bool) {
-    let files = try FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
+    let files = try FileManager.default.contentsOfDirectory(
+      at: dir, includingPropertiesForKeys: nil)
     let decoder = JSONDecoder()
     var result: [Transcript] = []
     var complete = true
@@ -861,11 +865,15 @@ public final class TranscriptStore {
     }
     let fresh = URL(fileURLWithPath: url.path, isDirectory: true)
     guard
-      let values = try? fresh.resourceValues(forKeys: [.generationIdentifierKey, .fileResourceIdentifierKey]),
+      let values = try? fresh.resourceValues(forKeys: [
+        .generationIdentifierKey, .fileResourceIdentifierKey,
+      ]),
       let generation = values.generationIdentifier,
       let identity = values.fileResourceIdentifier,
-      let generationData = try? NSKeyedArchiver.archivedData(withRootObject: generation, requiringSecureCoding: true),
-      let identityData = try? NSKeyedArchiver.archivedData(withRootObject: identity, requiringSecureCoding: true)
+      let generationData = try? NSKeyedArchiver.archivedData(
+        withRootObject: generation, requiringSecureCoding: true),
+      let identityData = try? NSKeyedArchiver.archivedData(
+        withRootObject: identity, requiringSecureCoding: true)
     else { return nil }
     return .present(identity: identityData, generation: generationData)
   }
