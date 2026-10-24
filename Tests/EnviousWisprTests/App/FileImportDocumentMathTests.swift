@@ -89,4 +89,27 @@ struct FileImportDocumentMathTests {
     struct Other: Error {}
     #expect(FileImportDocumentMath.rejection(for: Other()) == .failed("Other()"))
   }
+
+  @Test("a turn layout matches only the same turns in the same order (#3903)")
+  func sameTurnLayoutTruthTable() {
+    func turn(_ id: String, _ speaker: String = "sys:S1", _ range: Range<Int> = 0..<4) -> Turn {
+      Turn(id: id, speakerId: speaker, startMs: 0, endMs: 1, originalTextRange: range)
+    }
+    let a = [turn("t0"), turn("t1", "mic:you", 5..<9)]
+    #expect(FileImportDocumentMath.sameTurnLayout(nil, nil))
+    #expect(FileImportDocumentMath.sameTurnLayout(a, a))
+    #expect(!FileImportDocumentMath.sameTurnLayout(a, nil))
+    #expect(!FileImportDocumentMath.sameTurnLayout(nil, a))
+    #expect(!FileImportDocumentMath.sameTurnLayout(a, [a[0]]), "a different count")
+    #expect(!FileImportDocumentMath.sameTurnLayout(a, [turn("t0"), turn("t9", "mic:you", 5..<9)]))
+    #expect(!FileImportDocumentMath.sameTurnLayout(a, [turn("t0"), turn("t1", "sys:S2", 5..<9)]))
+    #expect(!FileImportDocumentMath.sameTurnLayout(a, [turn("t0"), turn("t1", "mic:you", 5..<8)]))
+    #expect(!FileImportDocumentMath.sameTurnLayout(a, [a[1], a[0]]), "a different order")
+    let cleaned = Turn(
+      id: "t0", speakerId: "sys:S1", startMs: 0, endMs: 1, originalTextRange: 0..<4,
+      processedText: "Cleaned.", wasPolished: true)
+    #expect(
+      FileImportDocumentMath.sameTurnLayout(a, [cleaned, a[1]]),
+      "cleaned words do not change the layout")
+  }
 }
