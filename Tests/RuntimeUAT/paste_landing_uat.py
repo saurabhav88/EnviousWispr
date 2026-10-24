@@ -209,7 +209,8 @@ TAKE_STUCK = {"stuck": False}
 
 
 def take(label, base, bundle=CHROME, route=None, expected_takes=1, expect_landing=True,
-         before_hold=None, before_release=None, sentence=None):
+         before_hold=None, before_release=None, sentence=None, audio=None, wait=None,
+         until_terminal=False):
     """One silent push-to-talk take into whatever `bundle` (Chrome unless given) has focused.
     Returns every landing line and paste-cascade line written since `base`.
 
@@ -244,7 +245,10 @@ def take(label, base, bundle=CHROME, route=None, expected_takes=1, expect_landin
             before_hold()  # raises Aborted when the phase's own precondition no longer holds
         hold["entered"] = True
         # `before_release` runs while the key is still held, just before the stop (#3304).
-        w.record_tts(sentence or SENTENCE, before_release=before_release)
+        # `audio`: a recording to play instead of TTS; `wait`/`until_terminal`: record_tts's
+        # pipeline wait (#4047).
+        w.record_tts(sentence or SENTENCE, before_release=before_release, audio=audio,
+                     until_terminal=until_terminal, **({} if wait is None else {"wait": wait}))
         hold["completed"] = True
         time.sleep(2.0)  # settle: a second, unrequested take would start inside this window (#3107)
         virtual, transports = take_was_virtual(base)

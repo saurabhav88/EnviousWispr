@@ -607,11 +607,22 @@ def _play_take(audio, on_fail):
 
 def _recording_idle(seconds=30.0):
     """Whether the app stopped recording: its menu offers Start Recording and not Stop Recording.
-    Both are read so a menu AX cannot see at all never reads as idle (#3764)."""
+    Both are read so a menu AX cannot see at all never reads as idle (#3764).
+
+    Both items live in the status item's menu (`AXExtrasMenuBar`), so only the menu bars are
+    searched (#4047): a search of the whole app for the ABSENT "Stop Recording" walked every open
+    window and took 90 s per call (measured 2026-10-24), which stalled every take
+    after the first by about 100 s. With no readable menu bar the answer stays "not idle"."""
+    menus = [m for m in (get_attr(_app, "AXExtrasMenuBar"), get_attr(_app, "AXMenuBar")) if m is not None]
+    if not menus:
+        return False
+
+    def offered(label):
+        return any(_find_match(m, label, "AXMenuItem") is not None for m in menus)
+
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
-        if (_find_match(_app, "Stop Recording", "AXMenuItem") is None
-                and _find_match(_app, "Start Recording", "AXMenuItem") is not None):
+        if not offered("Stop Recording") and offered("Start Recording"):
             return True
         time.sleep(0.3)  # settle: the recording state changes asynchronously; no ack to await
     return False
@@ -3317,7 +3328,8 @@ def test_ptt(key=None, audio=None, sentence=None, expect=None, timeout=10.0):
 
 
 def record_tts(sentence="The quick brown fox jumps over the lazy dog", key=None,
-               voice="echo", wait=10.0, focus_app=None, before_release=None):
+               voice="echo", wait=10.0, focus_app=None, before_release=None, audio=None,
+               until_terminal=False):
     """Generate TTS, hold PTT key, read raw ASR and polished output from app log.
 
     This is the go-to method for testing transcription quality and polish behavior.
@@ -3335,6 +3347,10 @@ def record_tts(sentence="The quick brown fox jumps over the lazy dog", key=None,
         before_release: Called once while the key is still held, immediately before its
                   release (#3304). None (default) keeps the plain hold. The key is released
                   even if it raises.
+        audio:    A recording to play instead of generating TTS (#4047). `sentence` is then
+                  only the label printed in the results.
+        until_terminal: Treat `wait` as a deadline and stop waiting as soon as this take's
+                  `dictation_terminal` line is logged (#4047). False (default) keeps the fixed wait.
 
     Returns:
         dict with keys: raw_asr, polished, word_correction, filler_removal,
@@ -3369,8 +3385,8 @@ def record_tts(sentence="The quick brown fox jumps over the lazy dog", key=None,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         time.sleep(0.5)
 
-    # Generate TTS
-    audio_path = tts(sentence, voice=voice)
+    # Generate TTS, or play the caller's own recording (#4047: replayed saved dictations)
+    audio_path = audio or tts(sentence, voice=voice)
 
     # Get audio duration
     audio_dur = _audio_duration(audio_path) or 3.0
@@ -3411,10 +3427,26 @@ def record_tts(sentence="The quick brown fox jumps over the lazy dog", key=None,
     finally:
         player.join(timeout=hold_dur + 15)  # bounded: a hung player is killed by the rig's cleanup
     _tg.take_stopped()
+    # The player's verdict before any wait: a failed playback is SETUP, never a missing take.
+    _tg.check_player(played[0] if played else None)
 
     # Wait for pipeline (ASR + polish + paste)
-    print(f"Waiting {wait:.0f}s for pipeline...")
-    time.sleep(wait)
+    if until_terminal:
+        print(f"Waiting up to {wait:.0f}s for this take's dictation_terminal line...")
+        deadline = time.monotonic() + wait
+        terminal_seen = False
+        while time.monotonic() < deadline:
+            # Rotation-proof: the take's own entries since its start (#4047, Codex review).
+            evidence = _take_lines(take_started)
+            if time.monotonic() <= deadline and _tg.TERMINAL.search(evidence):
+                terminal_seen = True
+                break
+            time.sleep(0.2)  # settle: poll interval between reads of the take's own signal
+        if not terminal_seen:
+            raise _tg.CouldNotTell(f"no dictation_terminal within {wait:g}s after key release")
+    else:
+        print(f"Waiting {wait:.0f}s for pipeline...")
+        time.sleep(wait)
 
     # Read new log lines
     result = {
@@ -3475,7 +3507,6 @@ def record_tts(sentence="The quick brown fox jumps over the lazy dog", key=None,
     print(f"Result:      {'OK' if result['success'] else 'FAIL'}")
     print(f"{'=' * 60}")
 
-    _tg.check_player(played[0] if played else None)
     _tg.check_after_take(_take_lines(take_started))
     return result
 

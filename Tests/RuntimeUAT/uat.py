@@ -434,6 +434,10 @@ def cmd_run(args):
             command += ["--export", args.export]
         elif args.export:
             raise SystemExit(f"REFUSED: recipe {args.recipe!r} takes no --export")
+        if recipe.get("target"):
+            if not args.target:
+                raise SystemExit(f"REFUSED: recipe {args.recipe!r} needs --target <bundle id of the app in front>")
+            command += ["--app", args.target]
         print(f"== RUN {args.recipe} -> {recipe['script']} (run dir {run_dir}) ==", flush=True)
         completed = subprocess.run(command)
         return completed.returncode
