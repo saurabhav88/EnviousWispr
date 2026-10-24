@@ -1,0 +1,13 @@
+{
+  "language": "fr",
+  "title": "au début d’un appel",
+  "words": [
+    "détection des appels",
+    "enregistrement automatique"
+  ],
+  "phrases": [
+    "me demander si je veux enregistrer l’appel",
+    "enregistrer automatiquement quand un appel commence",
+    "désactiver la détection des appels"
+  ]
+}

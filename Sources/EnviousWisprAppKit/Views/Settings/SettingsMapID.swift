@@ -158,6 +158,8 @@ enum SettingsMapID: String, CaseIterable, Hashable, Sendable {
   case meetingCaptureCallSound = "meetingCaptureCallSound"
   case meetingWriteSummary = "meetingWriteSummary"
   case meetingUseCalendarForNames = "meetingUseCalendarForNames"
+  case meetingCallDetection = "meetingCallDetection"
+  case meetingCallApps = "meetingCallApps"
   case enableAIPolish = "enableAIPolish"
   case aiPolishProvider = "aiPolishProvider"
   case aiPolishProviderEgOne = "aiPolishProvider.egOne"

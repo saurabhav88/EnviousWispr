@@ -1,0 +1,1 @@
+{"language":"lv","title":"jautāt par zvanu ierakstīšanu šajās lietotnēs","words":[],"phrases":["izvēlēties, kurās lietotnēs jautāt par zvanu ierakstīšanu","vairs nejautāt par šīs lietotnes zvanu ierakstīšanu"]}

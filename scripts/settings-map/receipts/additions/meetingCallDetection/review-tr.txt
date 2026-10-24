@@ -1,0 +1,13 @@
+{
+  "language": "tr",
+  "title": "görüşme başladığında",
+  "words": [
+    "arama algılama",
+    "kayıt hatırlatıcısı"
+  ],
+  "phrases": [
+    "görüşme başlayınca kaydetmek isteyip istemediğimi sor",
+    "görüşme başlayınca otomatik kayda başla",
+    "arama algılamayı kapat"
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "language": "cs",
+  "title": "při zahájení hovoru",
+  "words": [
+    "detekce hovorů",
+    "automatické nahrávání"
+  ],
+  "phrases": [
+    "zeptat se, jestli chci nahrát hovor",
+    "automaticky začít nahrávat při zahájení hovoru",
+    "vypnout rozpoznávání hovorů"
+  ]
+}

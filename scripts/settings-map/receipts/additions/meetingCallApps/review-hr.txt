@@ -1,0 +1,1 @@
+{"language":"hr","title":"pitaj za snimanje poziva u ovim aplikacijama","words":[],"phrases":["odaberi u kojim aplikacijama pitati za snimanje poziva","isključi upite za snimanje poziva u aplikaciji"]}

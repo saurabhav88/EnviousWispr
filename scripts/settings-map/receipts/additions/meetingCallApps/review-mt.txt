@@ -1,0 +1,9 @@
+{
+  "language": "mt",
+  "title": "staqsi dwar ir-reġistrazzjoni tas-sejħiet f’dawn l-apps",
+  "words": [],
+  "phrases": [
+    "agħżel f’liema apps tistaqsi jekk tridx tirreġistra s-sejħiet",
+    "tibqax tistaqsi jekk tridx tirreġistra s-sejħiet ta’ app"
+  ]
+}

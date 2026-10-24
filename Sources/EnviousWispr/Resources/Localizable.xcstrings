@@ -191,6 +191,23 @@
         }
       }
     },
+    "%@ call, %@" : {
+      "comment" : "EnviousMeet: a detected call's default name: the app's name (Zoom, Microsoft Teams) and the date and time it started.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ call, %2$@"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anruf über %1$@, %2$@"
+          }
+        }
+      }
+    },
     "%@ channels" : {
       "comment" : "Transcribe a File: a file's audio channels. %@ is the count, never 1 or 2.",
       "localizations" : {
@@ -643,6 +660,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ Schreibweisen"
+          }
+        }
+      }
+    },
+    "%@ started using the microphone." : {
+      "comment" : "EnviousMeet: under Record this call?; the call app's name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ nutzt jetzt das Mikrofon."
           }
         }
       }
@@ -2163,7 +2191,7 @@
       }
     },
     "Accessibility" : {
-      "comment" : "Setup permissions: title of the macOS Accessibility permission row.",
+      "comment" : "EnviousMeet page: the Accessibility permission row's title.\nSetup permissions: title of the macOS Accessibility permission row.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2880,6 +2908,17 @@
         }
       }
     },
+    "Allow Accessibility" : {
+      "comment" : "EnviousMeet: asks macOS for Accessibility access for call detection.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bedienungshilfen erlauben"
+          }
+        }
+      }
+    },
     "Allow Accessibility access so a modifier key used on its own works as a keybind and EnviousWispr can paste your dictation into other apps." : {
       "localizations" : {
         "de" : {
@@ -2918,6 +2957,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Erlaubt"
+          }
+        }
+      }
+    },
+    "Allowed. EnviousMeet can notice when a call starts." : {
+      "comment" : "EnviousMeet page: Accessibility is allowed, so calls are noticed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erlaubt. EnviousMeet kann erkennen, wenn ein Anruf beginnt."
           }
         }
       }
@@ -3575,6 +3625,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Armenisch"
+          }
+        }
+      }
+    },
+    "Ask" : {
+      "comment" : "EnviousMeet page: When a call starts, ask to record.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fragen"
+          }
+        }
+      }
+    },
+    "Ask shows Record this call? under the menu bar. Start by itself starts recording without asking. Off never notices calls. A recording EnviousMeet started stops 10 seconds after the call ends, unless you choose Keep recording. A recording you started yourself never stops by itself." : {
+      "comment" : "EnviousMeet page: help for When a call starts.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„Fragen“ zeigt „Diesen Anruf aufnehmen?“ unter der Menüleiste an. „Automatisch starten“ beginnt die Aufnahme ohne Nachfrage. Bei „Aus“ erkennt EnviousMeet keine Anrufe. Eine von EnviousMeet gestartete Aufnahme endet 10 Sekunden nach Anrufende, außer du wählst „Weiter aufnehmen“. Eine Aufnahme, die du selbst gestartet hast, endet nie automatisch."
+          }
+        }
+      }
+    },
+    "Ask to record calls in" : {
+      "comment" : "EnviousMeet page: the list of call apps EnviousMeet watches, each with a switch.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bei Anrufen in diesen Apps nachfragen"
           }
         }
       }
@@ -5419,7 +5502,7 @@
       }
     },
     "Close" : {
-      "comment" : "Dictation language picker: VoiceOver name of the close button.\nLive Preview settings: catalog close label.",
+      "comment" : "Dictation language picker: VoiceOver name of the close button.\nEnviousMeet: closes the call panel.\nLive Preview settings: catalog close label.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -7477,6 +7560,50 @@
         }
       }
     },
+    "EnviousMeet can ask to record when a call app starts using your microphone." : {
+      "comment" : "EnviousMeet page: the short line under When a call starts.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousMeet kann dich fragen, ob du einen Anruf aufnehmen möchtest, sobald eine Anruf-App dein Mikrofon nutzt."
+          }
+        }
+      }
+    },
+    "EnviousMeet checks which app uses your microphone and whether a call window or meeting page is open. It checks on your Mac and never sends this anywhere. Meetings in a browser covers Google Meet, Zoom, Microsoft Teams, Webex, Whereby and Jitsi in Chrome, Safari, Arc, Dia, Edge, Brave, Opera, Vivaldi, Zen, Comet and ChatGPT Atlas." : {
+      "comment" : "EnviousMeet page: help for Ask to record calls in. App and browser names are not translated.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousMeet prüft, welche App dein Mikrofon nutzt und ob ein Anruffenster oder eine Meeting-Seite geöffnet ist. Diese Prüfung erfolgt auf deinem Mac. Die Informationen bleiben dort und werden nicht übertragen. „Meetings im Browser“ umfasst Google Meet, Zoom, Microsoft Teams, Webex, Whereby und Jitsi in Chrome, Safari, Arc, Dia, Edge, Brave, Opera, Vivaldi, Zen, Comet und ChatGPT Atlas."
+          }
+        }
+      }
+    },
+    "EnviousMeet could not start recording" : {
+      "comment" : "EnviousMeet: Yes to Record this call?, but the recording could not start.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousMeet konnte die Aufnahme nicht starten"
+          }
+        }
+      }
+    },
+    "EnviousMeet needs your attention before it can record" : {
+      "comment" : "EnviousMeet: a call started, but a permission or the call sound explainer is needed first.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousMeet braucht deine Hilfe, bevor es aufnehmen kann"
+          }
+        }
+      }
+    },
     "EnviousMeet records your calls and meetings, then writes who said what." : {
       "comment" : "EnviousMeet setup: welcome line under the title.",
       "localizations" : {
@@ -7495,6 +7622,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "EnviousMeet nimmt deine Stimme mit dem Mikrofon auf, mit dem du diktierst."
+          }
+        }
+      }
+    },
+    "EnviousMeet uses Accessibility to see whether a call window or meeting page is open when an app starts using your microphone. It reads this on your Mac and never sends it anywhere. Pasting your dictation uses the same permission." : {
+      "comment" : "EnviousMeet page: help for the Accessibility permission row.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousMeet nutzt die Bedienungshilfen, um zu prüfen, ob ein Anruffenster oder eine Meeting-Seite offen ist, wenn eine App dein Mikrofon nutzt. Das wird lokal auf deinem Mac ausgelesen und nirgendwohin gesendet. Das Einfügen deines Diktats nutzt dieselbe Berechtigung."
           }
         }
       }
@@ -9898,6 +10036,17 @@
         }
       }
     },
+    "Keep recording" : {
+      "comment" : "EnviousMeet: stops the countdown; the meeting goes on.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weiter aufnehmen"
+          }
+        }
+      }
+    },
     "Keep sentences or turn spoken items into lists." : {
       "comment" : "AI Polish, S1-mini: the line under Structure.",
       "localizations" : {
@@ -11206,6 +11355,17 @@
         }
       }
     },
+    "Meeting ending in %lld seconds" : {
+      "comment" : "EnviousMeet: the call ended; the recording stops after this many seconds.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meeting endet in %lld Sekunden"
+          }
+        }
+      }
+    },
     "Meeting name" : {
       "comment" : "EnviousMeet: the rename field's placeholder.",
       "localizations" : {
@@ -11246,6 +11406,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Meeting: %@"
+          }
+        }
+      }
+    },
+    "Meetings in a browser" : {
+      "comment" : "EnviousMeet page: the switch for meetings in any web browser, like Google Meet in Chrome.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meetings im Browser"
           }
         }
       }
@@ -11861,6 +12032,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Niemals deine Audiodaten, Texte, deinen Verlauf, deine Textbausteine, dein Wörterbuch oder API-Schlüssel. Nur was du in das Feedback-Formular eingibst."
+          }
+        }
+      }
+    },
+    "New call in %@. Start a new recording?" : {
+      "comment" : "EnviousMeet: a new call started while a meeting records; the app's name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neuer Anruf in %@. Neue Aufnahme starten?"
           }
         }
       }
@@ -12549,6 +12731,17 @@
         }
       }
     },
+    "Not allowed. EnviousMeet can't notice calls until you allow it." : {
+      "comment" : "EnviousMeet page: without Accessibility, calls are not noticed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht erlaubt. EnviousMeet kann Anrufe erst erkennen, wenn du den Zugriff erlaubst."
+          }
+        }
+      }
+    },
     "Not asked yet. Turn on Name meetings from my calendar to ask." : {
       "comment" : "EnviousMeet page: macOS has not asked for calendar access yet.",
       "localizations" : {
@@ -13008,6 +13201,17 @@
         }
       }
     },
+    "Noticing calls needs macOS 14.2 or later. You can still start recordings from the menu bar." : {
+      "comment" : "EnviousMeet page: below macOS 14.2 call detection cannot run.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Erkennen von Anrufen erfordert macOS 14.2 oder neuer. Aufnahmen kannst du weiterhin über die Menüleiste starten."
+          }
+        }
+      }
+    },
     "Numbers, dates, your saved words and filler removal run either way." : {
       "comment" : "Transcribe a File, Polish step: the note beside Continue: what runs even without a cleanup engine.",
       "localizations" : {
@@ -13042,7 +13246,7 @@
       }
     },
     "Off" : {
-      "comment" : "AI Polish provider status chip: AI Polish is off.\nLive Preview settings: status off label.\nMicrophone settings: readiness option; the microphone is released at once.\nSettings: Live Preview is switched off.\nShort disabled-state label shared by AI polish, model unload policy, microphone readiness, Live Preview, and switches.\nVoiceOver: the value of a switch that is off.",
+      "comment" : "AI Polish provider status chip: AI Polish is off.\nEnviousMeet page: When a call starts, do nothing.\nLive Preview settings: status off label.\nMicrophone settings: readiness option; the microphone is released at once.\nSettings: Live Preview is switched off.\nShort disabled-state label shared by AI polish, model unload policy, microphone readiness, Live Preview, and switches.\nVoiceOver: the value of a switch that is off.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -13488,6 +13692,17 @@
         }
       }
     },
+    "Open EnviousMeet to see why." : {
+      "comment" : "EnviousMeet: under EnviousMeet could not start recording.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffne EnviousMeet, um den Grund zu erfahren."
+          }
+        }
+      }
+    },
     "Open Settings" : {
       "comment" : "EnviousMeet setup: opens System Settings for a permission.\nPill button: opens the macOS microphone privacy settings.",
       "localizations" : {
@@ -13528,6 +13743,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Datei öffnen"
+          }
+        }
+      }
+    },
+    "Open settings" : {
+      "comment" : "EnviousMeet: opens the EnviousMeet settings page.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen öffnen"
           }
         }
       }
@@ -15291,6 +15517,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aufnahme gestartet"
+          }
+        }
+      }
+    },
+    "Recording stopped" : {
+      "comment" : "EnviousMeet: the detected meeting stopped.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahme beendet"
           }
         }
       }
@@ -17635,6 +17872,17 @@
         }
       }
     },
+    "Start a new recording" : {
+      "comment" : "EnviousMeet: after a detected meeting stopped.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neue Aufnahme starten"
+          }
+        }
+      }
+    },
     "Start a recording from the menu bar." : {
       "localizations" : {
         "de" : {
@@ -17663,6 +17911,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Starte und stoppe eine Aufnahme über die Menüleiste. Deine Aufnahmen findest du im „Verlauf“."
+          }
+        }
+      }
+    },
+    "Start by itself" : {
+      "comment" : "EnviousMeet page: When a call starts, start recording without asking.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatisch starten"
           }
         }
       }
@@ -18866,6 +19125,17 @@
         }
       }
     },
+    "The call ended." : {
+      "comment" : "EnviousMeet: under Recording stopped.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Anruf ist beendet."
+          }
+        }
+      }
+    },
     "The call sound could not be recorded. Only your microphone is recorded. EnviousWispr needs to be allowed under Screen & System Audio Recording in System Settings." : {
       "comment" : "EnviousMeet: recording the sound the Mac plays did not work. The last sentence names the macOS privacy setting.",
       "localizations" : {
@@ -19245,6 +19515,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das gewählte Modell läuft auf Ollamas Servern. Der Text wird dorthin gesendet."
+          }
+        }
+      }
+    },
+    "The new call could not be confirmed." : {
+      "comment" : "EnviousMeet: under Recording stopped, after a switch to a new call that could not be checked.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der neue Anruf konnte nicht bestätigt werden."
           }
         }
       }
@@ -20166,6 +20447,17 @@
         }
       }
     },
+    "Tip: you can turn off call prompts for some apps in EnviousMeet settings." : {
+      "comment" : "EnviousMeet: shown once after the first No to Record this call?",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tipp: In den EnviousMeet-Einstellungen kannst du die Nachfrage bei Anrufen für einzelne Apps ausschalten."
+          }
+        }
+      }
+    },
     "To hear the other people, also with AirPods. Only the sound, never your screen." : {
       "comment" : "EnviousMeet setup: why the call sound.",
       "localizations" : {
@@ -20624,6 +20916,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aktiviere es, um mit dem Diktieren zu beginnen."
+          }
+        }
+      }
+    },
+    "Turn off an app to never be asked about its calls." : {
+      "comment" : "EnviousMeet page: the short line under Ask to record calls in.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn du eine App ausschaltest, fragt EnviousMeet bei Anrufen über diese App nicht mehr nach."
           }
         }
       }
@@ -21831,6 +22134,17 @@
         }
       }
     },
+    "When a call starts" : {
+      "comment" : "EnviousMeet page: the choice of what happens when a call app starts a call.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn ein Anruf beginnt"
+          }
+        }
+      }
+    },
     "When a meeting starts, EnviousMeet looks for the calendar event at that time and uses its title. If several events overlap, it prefers one with a meeting link or a place, and otherwise keeps the date as the name. Your calendar is read on your Mac and never changed. You can rename any meeting in History." : {
       "comment" : "EnviousMeet page: help for Name meetings from my calendar.",
       "localizations" : {
@@ -22510,6 +22824,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das hast du bereits als „%@“."
+          }
+        }
+      }
+    },
+    "You said No to %@ a few times. Last reminder: you can turn off %@ in EnviousMeet settings." : {
+      "comment" : "EnviousMeet: shown once after the third No for one app; the app's name twice.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "You said No to %1$@ a few times. Last reminder: you can turn off %2$@ in EnviousMeet settings."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du hast bei %1$@ mehrmals „Nein“ gewählt. Letzte Erinnerung: In den EnviousMeet-Einstellungen kannst du %2$@ ausschalten."
           }
         }
       }

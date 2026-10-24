@@ -50,6 +50,7 @@ package final class RecordingOverlayPanelDriver: OverlayPanelDriving {
   package var isOpaque = true
   package var isReleasedWhenClosed = true
   package var level: NSWindow.Level = .normal
+  package var sharingType: NSWindow.SharingType = .readOnly
   package var onMove: (@MainActor (CGRect) -> Void)?
 
   // MARK: - Commands

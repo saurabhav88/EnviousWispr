@@ -1,0 +1,1 @@
+{"language":"es","title":"ofrecer grabar llamadas en","words":[],"phrases":["elegir en qué apps preguntar si quiero grabar llamadas","dejar de preguntar si quiero grabar las llamadas de una app"]}

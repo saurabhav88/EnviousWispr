@@ -1,0 +1,1 @@
+{"language":"fi","title":"kun puhelu alkaa","words":["puhelun tunnistus","tallennusmuistutus"],"phrases":["kysy haluanko tallentaa puhelun","tunnista puhelu mikrofonin käytöstä"]}

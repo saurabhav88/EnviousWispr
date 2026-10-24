@@ -670,6 +670,20 @@ enum SettingsMap {
       description: .resource(MeetingsCopy.calendarNamesShort),
       parent: .pageMeetings, destination: .meetings, dictionaryTab: nil,
       visibility: .always, target: .meetingUseCalendarForNames, fallbacks: []),
+    // #4012 D1, D5: what happens when a call starts, and the per-app switches. Like the rows
+    // above, both are on the page whenever it shows its settings.
+    SettingsMapNode(
+      id: .meetingCallDetection, structure: .item, item: .setting,
+      title: .resource(MeetingsCopy.callDetectionTitle),
+      description: .resource(MeetingsCopy.callDetectionShort),
+      parent: .pageMeetings, destination: .meetings, dictionaryTab: nil,
+      visibility: .always, target: .meetingCallDetection, fallbacks: []),
+    SettingsMapNode(
+      id: .meetingCallApps, structure: .item, item: .setting,
+      title: .resource(MeetingsCopy.callAppsTitle),
+      description: .resource(MeetingsCopy.callAppsShort),
+      parent: .pageMeetings, destination: .meetings, dictionaryTab: nil,
+      visibility: .always, target: .meetingCallApps, fallbacks: []),
     SettingsMapNode(
       id: .enableAIPolish, structure: .item, item: .setting,
       title: .resource(SettingsItemCopy.AIPolish.enable),

@@ -877,6 +877,28 @@ struct MeetingSummaryTests {
     #expect(summary == "Summary.")
     #expect(script.requests == 2)
   }
+
+  @Test("#4012: the Title line is split off; an unusable title leaves the summary whole")
+  func splitTitle() {
+    let summary = "## Overview\nShip Friday."
+    func split(_ answer: String) -> [String?] {
+      let parts = MeetingSummary.splitTitle(answer)
+      return [parts.title, parts.summary]
+    }
+    #expect(split("Title: Launch plan\n\(summary)") == ["Launch plan", summary])
+    #expect(split("**Title:** Launch plan\n\(summary)") == ["Launch plan", summary])
+    #expect(split("\n# Title: \"Launch plan\"\n\(summary)") == ["Launch plan", summary])
+    #expect(split(summary) == [nil, summary])
+    #expect(split("Title:\n\(summary)") == [nil, summary])
+    let long = String(repeating: "x", count: MeetingSummary.maxTitleLength + 1)
+    #expect(split("Title: \(long)\n\(summary)") == [nil, summary])
+    #expect(split("Title: C#\n\(summary)") == ["C#", summary])
+    #expect(split("**Title: Launch plan**\n\(summary)") == ["Launch plan", summary])
+    #expect(split("Title:\r\n\(summary)") == [nil, summary])
+    #expect(split("Title: Launch plan\r\n\(summary)") == ["Launch plan", summary])
+    #expect(split("Title: *nix tooling\n\(summary)") == ["*nix tooling", summary])
+    #expect(MeetingSummary.finalShape.contains("Title:"))
+  }
 }
 
 extension Result {

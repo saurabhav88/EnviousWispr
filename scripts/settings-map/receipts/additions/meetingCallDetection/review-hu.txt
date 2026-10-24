@@ -1,0 +1,13 @@
+{
+  "language": "hu",
+  "title": "hívás kezdetekor",
+  "words": [
+    "hívásészlelés",
+    "rákérdezés"
+  ],
+  "phrases": [
+    "kérdezzen rá, hogy rögzítse-e a hívást",
+    "felvétel automatikus indítása a hívás kezdetekor",
+    "hívásészlelés kikapcsolása"
+  ]
+}

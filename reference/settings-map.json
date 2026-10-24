@@ -1,14 +1,14 @@
 {
   "counts" : {
-    "nodes" : 279,
-    "searchable" : 252,
-    "vocabularyBlocks" : 8064
+    "nodes" : 281,
+    "searchable" : 254,
+    "vocabularyBlocks" : 8128
   },
   "fingerprints" : {
-    "mapSHA256" : "22e39ad85f06b6000107349e0ce7dbef19ab235c5197ce1a772ba0759c48815a",
-    "uiCatalogSHA256" : "936c59c340a8f4c08252a224a9004a286210f4e2b2cc08c7721cc8515bead95c",
+    "mapSHA256" : "1f9f351170f097ca51cb4544ccbc0163a29a82316c76b0ce24e03c3607b60300",
+    "uiCatalogSHA256" : "6487de8bd8bbad8592c6fc448672fd1164ba2a19111677baef5e1aff11e50152",
     "vocabularyCanonicalization" : "length-prefixed-v1",
-    "vocabularySHA256" : "008eec0ed54874ef7c36211fd1824c223b858b9e8642a1269312d63ed6990c00"
+    "vocabularySHA256" : "332402ba6b0b126ca48211786bb69c6c017b4c41b963701c4526b44de1bd5c4f"
   },
   "interfaceLanguages" : [
     "en",
@@ -38026,6 +38026,779 @@
           "title" : "根据我的日历为会议命名",
           "words" : [
             "自动命名"
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.meetings"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "EnviousMeet kann dich fragen, ob du einen Anruf aufnehmen möchtest, sobald eine Anruf-App dein Mikrofon nutzt.",
+        "en" : "EnviousMeet can ask to record when a call app starts using your microphone.",
+        "key" : "EnviousMeet can ask to record when a call app starts using your microphone.",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "destination" : {
+        "page" : "meetings"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "meetingCallDetection",
+      "kind" : "setting",
+      "parent" : "page.meetings",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "meetingCallDetection",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Wenn ein Anruf beginnt",
+        "en" : "When a call starts",
+        "key" : "When a call starts",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "اسألني قبل تسجيل المكالمة",
+            "ابدأ التسجيل تلقائيًا عند بدء مكالمة",
+            "إيقاف اكتشاف المكالمات"
+          ],
+          "title" : "عند بدء مكالمة",
+          "words" : [
+            "اكتشاف المكالمات",
+            "التسجيل التلقائي"
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "питай ме дали да запиша разговора",
+            "записвай автоматично, когато започне разговор",
+            "изключи откриването на разговори"
+          ],
+          "title" : "при започване на разговор",
+          "words" : [
+            "откриване на разговори",
+            "подкана за запис",
+            "автоматичен запис"
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "zeptat se, jestli chci nahrát hovor",
+            "automaticky začít nahrávat při zahájení hovoru",
+            "vypnout rozpoznávání hovorů"
+          ],
+          "title" : "při zahájení hovoru",
+          "words" : [
+            "detekce hovorů",
+            "automatické nahrávání"
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "spørg om jeg vil optage opkaldet",
+            "start optagelsen automatisk når et opkald starter",
+            "slå registrering af opkald fra"
+          ],
+          "title" : "når et opkald starter",
+          "words" : [
+
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "frag mich, ob ich den Anruf aufnehmen möchte",
+            "starte die Meetingaufnahme automatisch, wenn ein Anruf beginnt",
+            "schalte die automatische Anruferkennung aus"
+          ],
+          "words" : [
+            "Anruferkennung",
+            "Aufnahmeabfrage"
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "να με ρωτά αν θέλω να καταγράψω την κλήση",
+            "να ξεκινά αυτόματα η εγγραφή όταν αρχίζει μια κλήση",
+            "να μην εντοπίζει κλήσεις"
+          ],
+          "title" : "όταν ξεκινά μια κλήση",
+          "words" : [
+            "ανίχνευση κλήσεων",
+            "αυτόματη εγγραφή"
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "ask me if I want to record a call",
+            "detect calls when an app uses my microphone"
+          ],
+          "words" : [
+            "call detection",
+            "recording prompt"
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "preguntarme si quiero grabar la llamada",
+            "detectar llamadas cuando una app usa el micrófono"
+          ],
+          "title" : "cuando empieza una llamada",
+          "words" : [
+            "detección de llamadas",
+            "aviso de grabación"
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "küsi kõne alguses, kas soovin salvestada",
+            "alusta kõne salvestamist automaatselt",
+            "lülita kõnede tuvastamine välja"
+          ],
+          "title" : "kui kõne algab",
+          "words" : [
+            "kõne algus"
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "kysy haluanko tallentaa puhelun",
+            "tunnista puhelu mikrofonin käytöstä"
+          ],
+          "title" : "kun puhelu alkaa",
+          "words" : [
+            "puhelun tunnistus",
+            "tallennusmuistutus"
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "me demander si je veux enregistrer l’appel",
+            "enregistrer automatiquement quand un appel commence",
+            "désactiver la détection des appels"
+          ],
+          "title" : "au début d’un appel",
+          "words" : [
+            "détection des appels",
+            "enregistrement automatique"
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "कॉल शुरू होने पर रिकॉर्ड करने के लिए पूछें",
+            "कॉल की रिकॉर्डिंग अपने आप शुरू करना",
+            "कॉल की पहचान बंद करना"
+          ],
+          "title" : "कॉल शुरू होने पर",
+          "words" : [
+            "कॉल की पहचान",
+            "ऑटो रिकॉर्डिंग"
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "pitaj me želim li snimiti poziv",
+            "automatski pokreni snimanje kad poziv započne",
+            "isključi otkrivanje poziva"
+          ],
+          "title" : "kad poziv započne",
+          "words" : [
+            "otkrivanje poziva",
+            "upit za snimanje"
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "kérdezzen rá, hogy rögzítse-e a hívást",
+            "felvétel automatikus indítása a hívás kezdetekor",
+            "hívásészlelés kikapcsolása"
+          ],
+          "title" : "hívás kezdetekor",
+          "words" : [
+            "hívásészlelés",
+            "rákérdezés"
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "chiedimi se voglio registrare la chiamata",
+            "rileva le chiamate quando un’app usa il microfono"
+          ],
+          "title" : "quando inizia una chiamata",
+          "words" : [
+            "rilevamento chiamate",
+            "promemoria di registrazione"
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "通話が始まったら録音するか聞いてほしい",
+            "通話が始まったら自動で録音したい",
+            "通話の自動検出をオフにしたい"
+          ],
+          "title" : "通話開始時",
+          "words" : [
+            "通話検出",
+            "録音確認"
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "통화가 시작되면 녹음할지 물어보기",
+            "통화 시작하면 자동으로 녹음하기",
+            "통화 감지 끄기"
+          ],
+          "title" : "통화가 시작될 때",
+          "words" : [
+            "통화 감지",
+            "자동 녹음"
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "paklausti, ar įrašyti skambutį",
+            "automatiškai pradėti įrašymą prasidėjus skambučiui",
+            "išjungti skambučių aptikimą"
+          ],
+          "title" : "prasidėjus skambučiui",
+          "words" : [
+            "skambučių aptikimas",
+            "automatinis įrašymas"
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "jautāt, vai ierakstīt zvanu",
+            "automātiski sākt ierakstīšanu, kad sākas zvans",
+            "noteikt zvanu, kad lietotne sāk izmantot mikrofonu"
+          ],
+          "title" : "kad sākas zvans",
+          "words" : [
+            "zvanu noteikšana",
+            "automātiska ierakstīšana"
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "staqsini jekk irridx nirreġistra t-telefonata",
+            "ibda r-reġistrazzjoni meta tibda telefonata"
+          ],
+          "title" : "meta tibda telefonata",
+          "words" : [
+            "sejbien tat-telefonati",
+            "reġistrazzjoni awtomatika"
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "vraag of ik het gesprek wil opnemen",
+            "gesprekken automatisch opnemen als ze beginnen",
+            "oproepdetectie uitschakelen"
+          ],
+          "title" : "wanneer een gesprek begint",
+          "words" : [
+            "oproepdetectie"
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "zapytaj, czy chcę nagrać rozmowę",
+            "automatycznie rozpocznij nagrywanie, gdy zaczyna się rozmowa",
+            "wyłącz wykrywanie połączeń"
+          ],
+          "title" : "gdy zaczyna się rozmowa",
+          "words" : [
+            "wykrywanie połączeń",
+            "pytanie o nagrywanie"
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "perguntar se quero gravar a chamada",
+            "detectar chamadas quando um app usa o microfone"
+          ],
+          "title" : "quando uma chamada começa",
+          "words" : [
+            "detecção de chamadas",
+            "lembrete de gravação"
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "întreabă-mă dacă vreau să înregistrez apelul",
+            "pornește automat înregistrarea când începe un apel",
+            "detectează apelul când o aplicație începe să folosească microfonul"
+          ],
+          "title" : "când începe un apel",
+          "words" : [
+            "detectarea apelurilor",
+            "înregistrare automată"
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "спрашивать, записывать ли звонок",
+            "автоматически начинать запись звонка",
+            "отключить обнаружение звонков"
+          ],
+          "title" : "когда начинается звонок",
+          "words" : [
+            "обнаружение звонков",
+            "автозапись звонков"
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "opýtať sa, či chcem nahrať hovor",
+            "automaticky spustiť nahrávanie pri začatí hovoru",
+            "vypnúť rozpoznávanie hovorov"
+          ],
+          "title" : "pri začatí hovoru",
+          "words" : [
+            "detekcia hovorov",
+            "výzva na nahrávanie"
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "vprašaj me, ali želim posneti klic",
+            "samodejno začni snemati, ko se klic začne",
+            "izklopi zaznavanje klicev"
+          ],
+          "title" : "ko se klic začne",
+          "words" : [
+            "zaznavanje klicev",
+            "samodejno snemanje klicev"
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "fråga om jag vill spela in samtalet",
+            "upptäck samtal när en app använder mikrofonen"
+          ],
+          "title" : "när ett samtal börjar",
+          "words" : [
+            "samtalsdetektering",
+            "inspelningspåminnelse"
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "görüşme başlayınca kaydetmek isteyip istemediğimi sor",
+            "görüşme başlayınca otomatik kayda başla",
+            "arama algılamayı kapat"
+          ],
+          "title" : "görüşme başladığında",
+          "words" : [
+            "arama algılama",
+            "kayıt hatırlatıcısı"
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "запитувати, чи записувати дзвінок",
+            "автоматично починати запис дзвінка",
+            "вимкнути виявлення дзвінків"
+          ],
+          "title" : "коли починається дзвінок",
+          "words" : [
+            "виявлення дзвінків",
+            "автозапис дзвінків"
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "hỏi tôi có muốn ghi âm cuộc gọi không",
+            "phát hiện cuộc gọi khi ứng dụng dùng mic"
+          ],
+          "title" : "khi cuộc gọi bắt đầu",
+          "words" : [
+            "phát hiện cuộc gọi",
+            "nhắc ghi âm"
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "询问我是否录制通话",
+            "应用使用麦克风时检测通话"
+          ],
+          "title" : "通话开始时",
+          "words" : [
+            "通话检测",
+            "录音提醒"
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.meetings"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Wenn du eine App ausschaltest, fragt EnviousMeet bei Anrufen über diese App nicht mehr nach.",
+        "en" : "Turn off an app to never be asked about its calls.",
+        "key" : "Turn off an app to never be asked about its calls.",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "destination" : {
+        "page" : "meetings"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "meetingCallApps",
+      "kind" : "setting",
+      "parent" : "page.meetings",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "meetingCallApps",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Bei Anrufen in diesen Apps nachfragen",
+        "en" : "Ask to record calls in",
+        "key" : "Ask to record calls in",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "اختيار التطبيقات التي يسأل EnviousMeet عن تسجيل مكالماتها",
+            "إيقاف السؤال عن تسجيل المكالمات في تطبيق معين"
+          ],
+          "title" : "السؤال عن تسجيل المكالمات في هذه التطبيقات",
+          "words" : [
+
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "в кои приложения да пита за запис на разговори",
+            "спри запитванията за запис на разговори в дадено приложение"
+          ],
+          "title" : "питай за запис на разговори в тези приложения",
+          "words" : [
+
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "ve kterých aplikacích se ptát na nahrávání hovorů",
+            "vypnout dotazy na nahrávání hovorů pro aplikaci"
+          ],
+          "title" : "ptát se na nahrávání hovorů v těchto aplikacích",
+          "words" : [
+
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "vælg hvilke apps EnviousMeet skal tilbyde optagelse i",
+            "stop med at spørge om optagelse af opkald i en app"
+          ],
+          "title" : "spørg om at optage opkald i",
+          "words" : [
+
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "wähle aus, für welche Apps EnviousMeet eine Aufnahme anbietet",
+            "schalte die Nachfrage zur Aufnahme für eine App aus",
+            "schalte Aufnahmevorschläge für Meetings im Browser aus"
+          ],
+          "words" : [
+            "Anruf-Apps",
+            "Aufnahmenachfrage"
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "σε ποιες εφαρμογές να με ρωτάει για εγγραφή κλήσεων",
+            "να μη με ρωτάει για εγγραφή κλήσεων σε μια εφαρμογή"
+          ],
+          "title" : "πρόταση για εγγραφή κλήσεων σε αυτές τις εφαρμογές",
+          "words" : [
+
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "choose which apps ask to record calls",
+            "stop asking to record calls in an app"
+          ],
+          "words" : [
+            "call apps",
+            "recording prompts"
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "elegir en qué apps preguntar si quiero grabar llamadas",
+            "dejar de preguntar si quiero grabar las llamadas de una app"
+          ],
+          "title" : "ofrecer grabar llamadas en",
+          "words" : [
+
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "vali rakendused, mille kõnede salvestamise kohta küsida",
+            "ära küsi selle rakenduse kõnede salvestamise kohta"
+          ],
+          "title" : "küsi kõnede salvestamise kohta nendes rakendustes",
+          "words" : [
+
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "valitse missä sovelluksissa puheluiden tallentamisesta kysytään",
+            "älä kysy tämän sovelluksen puheluiden tallentamisesta"
+          ],
+          "title" : "kysy puheluiden tallentamisesta näissä sovelluksissa",
+          "words" : [
+
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "choisir les applis où demander à enregistrer les appels",
+            "ne plus demander à enregistrer les appels d’une appli"
+          ],
+          "title" : "demander à enregistrer les appels dans ces applications",
+          "words" : [
+
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "किन ऐप्स में कॉल रिकॉर्ड करने के लिए पूछना है",
+            "किसी ऐप में कॉल रिकॉर्ड करने के लिए पूछना बंद करें"
+          ],
+          "title" : "इन ऐप्स में कॉल रिकॉर्ड करने के लिए पूछें",
+          "words" : [
+
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "odaberi u kojim aplikacijama pitati za snimanje poziva",
+            "isključi upite za snimanje poziva u aplikaciji"
+          ],
+          "title" : "pitaj za snimanje poziva u ovim aplikacijama",
+          "words" : [
+
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "melyik appnál kérdezzen rá a hívás rögzítésére",
+            "ne kérdezzen rá a hívásrögzítésre ennél az appnál"
+          ],
+          "title" : "hívásrögzítés felajánlása ezekben az alkalmazásokban",
+          "words" : [
+
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "scegli in quali app chiedere se registrare le chiamate",
+            "non chiedere più se registrare le chiamate di un’app"
+          ],
+          "title" : "chiedi se registrare le chiamate in queste app",
+          "words" : [
+
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "通話を録音するか確認するアプリを選ぶ",
+            "このアプリでは通話を録音するか聞かない"
+          ],
+          "title" : "通話を録音するか確認するアプリ",
+          "words" : [
+
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "통화 녹음 여부를 물어볼 앱 선택",
+            "특정 앱에서 통화 녹음 여부를 묻지 않기"
+          ],
+          "title" : "통화 녹음 여부를 물어볼 앱",
+          "words" : [
+
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "pasirinkti kurių programėlių skambučius siūlyti įrašyti",
+            "nebesiūlyti įrašyti šios programėlės skambučių",
+            "nebesiūlyti įrašyti susitikimų naršyklėje"
+          ],
+          "title" : "siūlyti įrašyti skambučius šiose programėlėse",
+          "words" : [
+
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "izvēlēties, kurās lietotnēs jautāt par zvanu ierakstīšanu",
+            "vairs nejautāt par šīs lietotnes zvanu ierakstīšanu"
+          ],
+          "title" : "jautāt par zvanu ierakstīšanu šajās lietotnēs",
+          "words" : [
+
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "agħżel f’liema apps tistaqsi jekk tridx tirreġistra s-sejħiet",
+            "tibqax tistaqsi jekk tridx tirreġistra s-sejħiet ta’ app"
+          ],
+          "title" : "staqsi dwar ir-reġistrazzjoni tas-sejħiet f’dawn l-apps",
+          "words" : [
+
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "kiezen bij welke apps om gespreksopname wordt gevraagd",
+            "niet meer vragen om gesprekken in een app op te nemen"
+          ],
+          "title" : "vragen om gesprekken in deze apps op te nemen",
+          "words" : [
+
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "wybierz w których aplikacjach pytać o nagrywanie rozmów",
+            "wyłącz pytania o nagrywanie rozmów w danej aplikacji"
+          ],
+          "title" : "pytaj o nagrywanie rozmów w tych aplikacjach",
+          "words" : [
+
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "escolher em quais apps perguntar se quero gravar chamadas",
+            "parar de perguntar se quero gravar chamadas de um app"
+          ],
+          "title" : "perguntar se quer gravar chamadas nestas aplicações",
+          "words" : [
+            "apps"
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "alege aplicațiile pentru care EnviousMeet propune înregistrarea apelurilor",
+            "nu mai întreba dacă vreau să înregistrez apelurile dintr-o anumită aplicație"
+          ],
+          "title" : "propune înregistrarea apelurilor din aceste aplicații",
+          "words" : [
+
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "выбрать приложения в которых спрашивать о записи звонков",
+            "больше не спрашивать о записи звонков в этом приложении"
+          ],
+          "title" : "спрашивать о записи звонков в этих приложениях",
+          "words" : [
+
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "vybrať aplikácie, v ktorých sa pýtať na nahrávanie hovorov",
+            "vypnúť ponuku nahrávania hovorov pre konkrétnu aplikáciu",
+            "neponúkať nahrávanie stretnutí v prehliadači"
+          ],
+          "title" : "pýtať sa na nahrávanie hovorov v týchto aplikáciách",
+          "words" : [
+
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "izberi v katerih aplikacijah naj vpraša za snemanje klicev",
+            "ne sprašuj več o snemanju klicev v tej aplikaciji"
+          ],
+          "title" : "vprašaj za snemanje klicev v teh aplikacijah",
+          "words" : [
+
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "välj vilka appar jag får inspelningsfrågor för",
+            "sluta fråga om att spela in samtal i en app"
+          ],
+          "title" : "fråga om att spela in samtal i dessa appar",
+          "words" : [
+
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "hangi uygulamalarda görüşme kaydı sorulacağını seç",
+            "bu uygulamadaki görüşmeleri kaydetmek isteyip istemediğimi sorma"
+          ],
+          "title" : "görüşme kaydı önerilecek uygulamalar",
+          "words" : [
+
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "вибрати застосунки, у яких запитувати про запис дзвінків",
+            "більше не запитувати про запис дзвінків у цьому застосунку"
+          ],
+          "title" : "запитувати про запис дзвінків у цих застосунках",
+          "words" : [
+
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "chọn ứng dụng được hỏi có muốn ghi âm cuộc gọi không",
+            "tắt hỏi ghi âm cuộc gọi cho từng ứng dụng",
+            "không hỏi ghi âm cuộc họp trong trình duyệt nữa"
+          ],
+          "title" : "hỏi có muốn ghi âm cuộc gọi trong các ứng dụng này",
+          "words" : [
+
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "选择哪些应用需要询问是否录制通话",
+            "不要再询问是否录制这个应用的通话"
+          ],
+          "title" : "在这些应用中询问是否录制通话",
+          "words" : [
+
           ]
         }
       }

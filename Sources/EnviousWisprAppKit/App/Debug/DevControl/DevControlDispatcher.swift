@@ -53,6 +53,7 @@
       case meetingSummaryGet = "meeting.summary.get"
       case meetingSummaryWrite = "meeting.summary.write"
       case meetingLive = "meeting.live"
+      case callSimulate = "call.simulate"
     }
 
     enum ErrorCode: String, CaseIterable {
@@ -164,14 +165,18 @@
     private let words: CustomWordsCoordinator
     /// EnviousMeet commands, through the owners the page and the menu use (#3972 C6a).
     private let meetings: DevControlMeetings
+    /// Call detection's simulation (#4012).
+    private let calls: DevControlCalls
 
     init(
       settings: SettingsManager, writeContext: DevControlSettings.WriteContext,
       status: StatusSources, history: HistorySource, models: ModelActions,
       dictation: DevControlDictation, credentials: CredentialWriter,
-      words: CustomWordsCoordinator, meetings: DevControlMeetings
+      words: CustomWordsCoordinator, meetings: DevControlMeetings,
+      calls: DevControlCalls = .unwired()
     ) {
       self.meetings = meetings
+      self.calls = calls
       self.dictation = dictation
       self.credentials = credentials
       self.settings = settings
@@ -264,6 +269,8 @@
         return await meetings.summaryWrite(args)
       case .meetingLive:
         return meetings.live(args)
+      case .callSimulate:
+        return calls.simulate(args)
       }
     }
 

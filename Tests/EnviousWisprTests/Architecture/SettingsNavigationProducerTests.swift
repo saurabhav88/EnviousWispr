@@ -50,7 +50,12 @@ struct SettingsNavigationProducerTests {
     // #3972 coverage C5: a menu Start that needs the call-sound explainer opens EnviousMeet.
     Route(
       "10 menu Start Meeting Recording before the explainer",
-      file: app + "WisprBootstrapper.swift", callee: "request", owner: "label:showMeetingPage",
+      file: app + "WisprBootstrapper.swift", callee: "request", owner: "binding:meetingStartFlow",
+      argument: ".meetings"),
+    // #4012 D6: the call panel's Open settings (tips, needs attention) opens EnviousMeet.
+    Route(
+      "11 call panel Open settings",
+      file: app + "WisprBootstrapper.swift", callee: "request", owner: "binding:callDetection",
       argument: ".meetings"),
   ]
 

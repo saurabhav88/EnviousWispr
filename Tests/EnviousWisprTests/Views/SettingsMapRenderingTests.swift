@@ -805,7 +805,7 @@ struct SettingsMapRenderingTests {
     let flow = MeetingStartFlow(
       dependencies: .init(
         isSetUp: { true }, captureCallSound: { true }, isExplained: { true }, markExplained: {},
-        canStart: { true }, start: { _, _ in .notIdle }, microphoneNeedsAsking: { false },
+        canStart: { true }, start: { _, _, _ in .notIdle }, microphoneNeedsAsking: { false },
         requestMicrophone: {}, showMeetingPage: {}))
     let transcripts = TranscriptCoordinator(
       store: TranscriptStore(directory: home.directory.appendingPathComponent("meetings-history")),

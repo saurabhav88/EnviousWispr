@@ -1,0 +1,1 @@
+{"language":"pt","title":"quando uma chamada começa","words":["detecção de chamadas","lembrete de gravação"],"phrases":["perguntar se quero gravar a chamada","detectar chamadas quando um app usa o microfone"]}

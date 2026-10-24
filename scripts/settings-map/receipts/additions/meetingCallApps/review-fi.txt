@@ -1,0 +1,1 @@
+{"language":"fi","title":"kysy puheluiden tallentamisesta näissä sovelluksissa","words":[],"phrases":["valitse missä sovelluksissa puheluiden tallentamisesta kysytään","älä kysy tämän sovelluksen puheluiden tallentamisesta"]}

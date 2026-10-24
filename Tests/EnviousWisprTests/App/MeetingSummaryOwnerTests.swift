@@ -55,6 +55,8 @@ struct MeetingSummaryOwnerTests {
     /// When set, replaces `localTurn` (production also waits for final-pass work).
     @ObservationIgnored var localTurnCheck: (@MainActor () -> Bool)?
     var finished: [MeetingSummaryFinishedTelemetry] = []
+    /// #4012: titles the owner handed to the coordinator, in order.
+    var titles: [String] = []
     var calls: [String] = []
     /// When set, every call waits for `releaseCall()`.
     var holdCalls = false
@@ -144,7 +146,8 @@ struct MeetingSummaryOwnerTests {
           isLocalTurn: { world.localTurnCheck?() ?? world.localTurn },
           wakes: nil,
           emitFinished: { world.finished.append($0) },
-          log: { _ in }),
+          log: { _ in },
+          assignTitle: { _, title in world.titles.append(title) }),
         documents: documents ?? self.documents, lane: lane)
     }
 
@@ -239,6 +242,43 @@ struct MeetingSummaryOwnerTests {
         == MeetingSummary.configurationFingerprint(provider: .openAI, model: "gpt-4o-mini"))
     #expect(inputs.speakerNamesSHA256 == MeetingSummaryOwner.speakerNamesSHA256(["mic:you": "You"]))
     #expect(rig.owner.activity[id] == nil)
+  }
+
+  @Test("#4012: the answer's Title line names the meeting and never reaches the saved summary")
+  func aiTitle() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    rig.world.answer = "Title: Friday launch plan\n## Overview\nShip Friday."
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("finished") { rig.world.finished.count == 1 }
+    #expect(rig.summaryOnDisk(id) == "## Overview\nShip Friday.")
+    #expect(rig.world.titles == ["Friday launch plan"])
+  }
+
+  @Test("#4012: an answer that is only a Title line keeps the summary saved before")
+  func titleOnlyKeepsSummary() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("first") { rig.world.finished.count == 1 }
+    #expect(rig.summaryOnDisk(id) == "## Overview\nShip Friday.")
+    rig.world.answer = "Title: Launch planning"
+    rig.owner.writeAgain(id, replacing: nil)
+    await Self.eventually("second") { rig.world.finished.count == 2 }
+    #expect(rig.summaryOnDisk(id) == "## Overview\nShip Friday.")
+    #expect(rig.world.titles.isEmpty)
+  }
+
+  @Test("#4012: with the summary setting off, Write again saves the summary but names nothing")
+  func aiTitleNeedsTheSetting() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    rig.world.enabled = false
+    rig.world.answer = "Title: Friday launch plan\n## Overview\nShip Friday."
+    rig.owner.writeAgain(id, replacing: nil)
+    await Self.eventually("finished") { rig.world.finished.count == 1 }
+    #expect(rig.summaryOnDisk(id) == "## Overview\nShip Friday.")
+    #expect(rig.world.titles.isEmpty)
   }
 
   @Test("the user's own summary is kept, and replaced only by a confirmed Write again")

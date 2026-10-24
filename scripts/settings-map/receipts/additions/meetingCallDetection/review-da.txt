@@ -1,0 +1,1 @@
+{"language":"da","title":"når et opkald starter","words":[],"phrases":["spørg om jeg vil optage opkaldet","start optagelsen automatisk når et opkald starter","slå registrering af opkald fra"]}

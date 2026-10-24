@@ -1,0 +1,38 @@
+{
+  "run_id": "run-1792816817-812acf30",
+  "run_dir": "/Users/m4pro_sv/.local/state/council/runs/run-1792816817-812acf30",
+  "providers": {
+    "openai": {
+      "content": "1. OK – Die Begriffe und Suchanfragen beziehen sich auf das Verhalten beim Beginn eines Anrufs.\n2. OK – Die Suchanfragen zielen auf einzelne Apps und Meetings im Browser, nicht auf die allgemeine Startoption.",
+      "latest_response_id": "resp_0f11f14a0f1f4333006adc36b215e481948a888baf4917f382",
+      "model": "gpt-6-sol",
+      "provider": "openai",
+      "session": "ew-4012-vocab-de-2026-10-24-gpt",
+      "status": "ok",
+      "usage": {
+        "completion_tokens": 426,
+        "cost_usd": 0.002133,
+        "latency_ms": 4764,
+        "prompt_tokens": 429,
+        "reasoning_tokens": 371,
+        "total_tokens": 855
+      }
+    },
+    "gemini": {
+      "content": "1. OK\n\n2. OK",
+      "latest_interaction_id": "v1_ChZzamJjYXBRaHB1REswd19FbHFEUkNnEhZzamJjYXBRaHB1REswd19FbHFEUkNn",
+      "model": "gemini-3.8-flash",
+      "provider": "gemini",
+      "session": "ew-4012-vocab-de-2026-10-24-gemini",
+      "status": "ok",
+      "usage": {
+        "prompt_tokens": 431,
+        "completion_tokens": 7,
+        "reasoning_tokens": 1512,
+        "total_tokens": 1950,
+        "cost_usd": 0.012039,
+        "latency_ms": 10578
+      }
+    }
+  }
+}

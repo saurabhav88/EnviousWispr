@@ -1,0 +1,9 @@
+{
+  "language": "ro",
+  "title": "propune înregistrarea apelurilor din aceste aplicații",
+  "words": [],
+  "phrases": [
+    "alege aplicațiile pentru care EnviousMeet propune înregistrarea apelurilor",
+    "nu mai întreba dacă vreau să înregistrez apelurile dintr-o anumită aplicație"
+  ]
+}

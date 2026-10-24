@@ -19,7 +19,7 @@ struct SettingsSearchMeaningAssets: Sendable {
   /// SHA-256 of the committed `manifest.json`. Regenerating any asset changes the manifest and so
   /// this line; `SettingsSearchMeaningAssetsTests` names the new value.
   static let pinnedManifestSHA256 =
-    "a2822403f4ad8733ee0d0bb3a412f0e84fd16506681304f75e979ba0c2065bb9"
+    "fb0638be82ddab47b5998d4e33410d574580b581cad04a1c542464c0f59e5898"
 
   let directory: URL
 

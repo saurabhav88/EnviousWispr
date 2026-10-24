@@ -21,7 +21,8 @@ public enum MeetingSummary {
   /// Bumped whenever the prompt or the plan changes what a summary says; part of each summary's
   /// inputs, so an older summary shows as out of date.
   /// 2 (#3999): a long part answer is shortened by the model, never clipped.
-  public static let promptVersion = 2
+  /// 3 (#4012 D8): the final answer starts with a "Title:" line naming the meeting.
+  public static let promptVersion = 3
 
   /// Whether the selected provider and model can write a summary, and why not (R44 capability
   /// matrix).
@@ -121,12 +122,58 @@ public enum MeetingSummary {
 
   /// The final shape, asked for in the last call.
   static let finalShape = """
-    Write the summary in Markdown with these sections, leaving out a section that has nothing:
+    Start with one line "Title: " followed by a short name for this meeting, at most eight \
+    words, in the language of the transcript (keep the English word "Title:"). Then write the \
+    summary in Markdown with these sections, leaving out a section that has nothing:
     ## Overview (two or three sentences)
     ## Key points (bullets)
     ## Decisions (bullets)
     ## Action items (bullets; name the owner when someone said they would do it)
     """
+
+  /// The longest AI title kept; a longer one is no title.
+  public static let maxTitleLength = 80
+
+  /// The final answer split into its "Title:" line and the summary (R6). The line is removed
+  /// whether or not its title is usable, so the summary never shows it; an empty, too long or
+  /// multi-line title is nil and the summary stays as written.
+  public static func splitTitle(_ answer: String) -> (title: String?, summary: String) {
+    // Windows line ends ("\r\n") and lone "\r" are line ends too (review r16 F4).
+    let answer = answer.replacingOccurrences(of: "\r\n", with: "\n")
+      .replacingOccurrences(of: "\r", with: "\n")
+    var lines = answer.components(separatedBy: "\n")
+    guard let index = lines.firstIndex(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty })
+    else { return (nil, answer) }
+    var line = lines[index].trimmingCharacters(in: .whitespaces)
+    // A model may head or bold the line ("# Title: ...", "**Title:** ..."): only those marks
+    // go, never characters of the title itself ("C#", "*nix", review r11 F5).
+    while line.hasPrefix("#") { line.removeFirst() }
+    line = line.trimmingCharacters(in: .whitespaces)
+    // A bold line ("**Title: Launch plan**"): the pair goes first (review r13 F4).
+    for mark in ["**", "__"] where line.count > 4 && line.hasPrefix(mark) && line.hasSuffix(mark) {
+      line = String(line.dropFirst(2).dropLast(2)).trimmingCharacters(in: .whitespaces)
+    }
+    if line.hasPrefix("**") || line.hasPrefix("__") { line.removeFirst(2) }
+    guard line.lowercased().hasPrefix("title:") else { return (nil, answer) }
+    lines.remove(at: index)
+    let summary = lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    var title = String(line.dropFirst("title:".count)).trimmingCharacters(in: .whitespaces)
+    // The bold's closing marks right after "Title:" ("**Title:** Launch").
+    if title.hasPrefix("**") || title.hasPrefix("__") {
+      title = String(title.dropFirst(2)).trimmingCharacters(in: .whitespaces)
+    }
+    // A wrapper only when it wraps the whole title: a pair of quotes or of bold marks.
+    for (open, close) in [("\"", "\""), ("“", "”"), ("„", "“"), ("«", "»"), ("'", "'"), ("**", "**")] {
+      if title.count > open.count + close.count, title.hasPrefix(open), title.hasSuffix(close) {
+        title = String(title.dropFirst(open.count).dropLast(close.count))
+          .trimmingCharacters(in: .whitespaces)
+      }
+    }
+    guard !title.isEmpty, title.count <= maxTitleLength, !title.contains("\n") else {
+      return (nil, summary)
+    }
+    return (title, summary)
+  }
 
   // MARK: - Counting
 

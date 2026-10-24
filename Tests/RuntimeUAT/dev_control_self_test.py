@@ -371,6 +371,13 @@ def routes_and_values(r, tree):
         (["meeting", "summary-write", word_id, "--replace"], "meeting.summary.write",
          {"meetingID": word_id, "replace": True}),
         (["meeting", "live"], "meeting.live", {}),
+        (["call", "simulate"], "call.simulate", {}),
+        (["call", "simulate", "--clear"], "call.simulate", {"clear": True}),
+        (["call", "simulate", "--press", "yes"], "call.simulate", {"press": "yes"}),
+        (["call", "simulate", "--holders",
+          '[{"bundleID": "us.zoom.xos", "input": "active", "evidence": "call"}]'],
+         "call.simulate",
+         {"holders": [{"bundleID": "us.zoom.xos", "input": "active", "evidence": "call"}]}),
         (["models", "download", "parakeet"], "models.parakeet.download", None),
         (["models", "cancel", "parakeet"], "models.parakeet.cancel", None),
         (["models", "download", "whisper"], "models.whisper.download", None),
@@ -557,7 +564,7 @@ def lock_cases(r, tree):
         for argv in (["status"], ["settings", "list"], ["history", "list"], ["words", "list"],
                      ["meeting", "status"], ["meeting", "list"], ["meeting", "get", word_id],
                      ["meeting", "notes-get", word_id], ["meeting", "summary-get", word_id],
-                     ["meeting", "live"]):
+                     ["meeting", "live"], ["call", "simulate"]):
             status, _, _, _ = _run(["--worktree", tree.wt] + argv,
                                    FakeBoundaries({"111": exe}, door=door, lock=reader_lock))
             r.check("lock", f"a read needs no ownership: {argv[0]}",

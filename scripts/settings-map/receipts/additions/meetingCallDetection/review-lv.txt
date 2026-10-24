@@ -1,0 +1,1 @@
+{"language":"lv","title":"kad sākas zvans","words":["zvanu noteikšana","automātiska ierakstīšana"],"phrases":["jautāt, vai ierakstīt zvanu","automātiski sākt ierakstīšanu, kad sākas zvans","noteikt zvanu, kad lietotne sāk izmantot mikrofonu"]}

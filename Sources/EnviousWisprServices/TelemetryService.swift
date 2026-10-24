@@ -4154,6 +4154,24 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("meeting.setup", properties: props)
   }
 
+  /// #4012 c1 C3: one `meeting.call_prompt` row per answered or timed-out call prompt, and per
+  /// call started by itself. Closed enums only.
+  public func trackMeetingCallPrompt(_ event: MeetingCallPromptTelemetry) {
+    let props = Self.meetingCallPromptProperties(event)
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "meeting.call_prompt",
+          stringProps: props.compactMapValues { $0 as? String },
+          intProps: [:], doubleProps: [:], boolProps: [:]))
+    #endif
+    PostHogSDK.shared.capture("meeting.call_prompt", properties: props)
+  }
+
+  static func meetingCallPromptProperties(_ event: MeetingCallPromptTelemetry) -> [String: Any] {
+    ["call_app": event.family.rawValue, "answer": event.answer.rawValue, "mode": event.mode]
+  }
+
   static func meetingSetupProperties(_ event: MeetingSetupTelemetry) -> [String: Any] {
     [
       "outcome": event.outcome.rawValue, "screen": event.screen.rawValue,

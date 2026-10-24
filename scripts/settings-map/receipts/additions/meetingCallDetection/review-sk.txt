@@ -1,0 +1,1 @@
+{"language":"sk","title":"pri začatí hovoru","words":["detekcia hovorov","výzva na nahrávanie"],"phrases":["opýtať sa, či chcem nahrať hovor","automaticky spustiť nahrávanie pri začatí hovoru","vypnúť rozpoznávanie hovorov"]}

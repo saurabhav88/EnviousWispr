@@ -1,0 +1,13 @@
+{
+  "language": "sl",
+  "title": "ko se klic začne",
+  "words": [
+    "zaznavanje klicev",
+    "samodejno snemanje klicev"
+  ],
+  "phrases": [
+    "vprašaj me, ali želim posneti klic",
+    "samodejno začni snemati, ko se klic začne",
+    "izklopi zaznavanje klicev"
+  ]
+}

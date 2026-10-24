@@ -12,9 +12,9 @@ Generated from the compiled Settings Map and the validated search vocabulary. Do
 
 The interface ships in English and German. The other 30 languages (ar, bg, cs, da, el, es, et, fi, fr, hi, hr, hu, it, ja, ko, lt, lv, mt, nl, pl, pt, ro, ru, sk, sl, sv, tr, uk, vi, zh) are search metadata only: words and titles people may type, matched against the same places. Titles below read English / German.
 
-279 nodes, 252 searchable, 8064 vocabulary blocks.
+281 nodes, 254 searchable, 8128 vocabulary blocks.
 
-Fingerprints: mapSHA256 `22e39ad85f06b6000107349e0ce7dbef19ab235c5197ce1a772ba0759c48815a`, uiCatalogSHA256 `936c59c340a8f4c08252a224a9004a286210f4e2b2cc08c7721cc8515bead95c`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `008eec0ed54874ef7c36211fd1824c223b858b9e8642a1269312d63ed6990c00`
+Fingerprints: mapSHA256 `1f9f351170f097ca51cb4544ccbc0163a29a82316c76b0ce24e03c3607b60300`, uiCatalogSHA256 `6487de8bd8bbad8592c6fc448672fd1164ba2a19111677baef5e1aff11e50152`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `332402ba6b0b126ca48211786bb69c6c017b4c41b963701c4526b44de1bd5c4f`
 
 ## Structure
 
@@ -285,6 +285,8 @@ Fingerprints: mapSHA256 `22e39ad85f06b6000107349e0ce7dbef19ab235c5197ce1a772ba07
     - [Also record the call sound / Auch den Ton vom Mac aufnehmen](#node-meetingCaptureCallSound) `meetingCaptureCallSound` (setting)
     - [Write a summary when a meeting ends / Zusammenfassung erstellen, wenn ein Meeting endet](#node-meetingWriteSummary) `meetingWriteSummary` (setting)
     - [Name meetings from my calendar / Meetings nach meinem Kalender benennen](#node-meetingUseCalendarForNames) `meetingUseCalendarForNames` (setting)
+    - [When a call starts / Wenn ein Anruf beginnt](#node-meetingCallDetection) `meetingCallDetection` (setting)
+    - [Ask to record calls in / Bei Anrufen in diesen Apps nachfragen](#node-meetingCallApps) `meetingCallApps` (setting)
   - [Snippets / Textbausteine](#node-page-snippets) `page.snippets` (page)
     - [Paste the text you type over and over, by voice / Füge Text, den du oft tippst, per Stimme ein](#node-snippets) `snippets` (feature)
     - [Keyword / Schlüsselwort](#node-snippetKeyword) `snippetKeyword` (setting)
@@ -2544,6 +2546,50 @@ Fingerprints: mapSHA256 `22e39ad85f06b6000107349e0ce7dbef19ab235c5197ce1a772ba07
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: automatic naming, event title<br>phrases: use the calendar event title as the meeting name; automatically name meetings from calendar events |
 | Search (de) | words: Terminname<br>phrases: nimm den Termintitel als Meetingnamen; benenne meine Meetings automatisch nach dem Kalender |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-meetingCallDetection"></a>
+
+### When a call starts / Wenn ein Anruf beginnt (`meetingCallDetection`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | setting |
+| Parent | [`page.meetings`](#node-page-meetings) |
+| Title source | catalog key `When a call starts` |
+| Description | EnviousMeet can ask to record when a call app starts using your microphone. / EnviousMeet kann dich fragen, ob du einen Anruf aufnehmen möchtest, sobald eine Anruf-App dein Mikrofon nutzt. |
+| Description source | catalog key `EnviousMeet can ask to record when a call app starts using your microphone.` |
+| Destination | `meetings` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`meetingCallDetection`](#node-meetingCallDetection) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | words: call detection, recording prompt<br>phrases: ask me if I want to record a call; detect calls when an app uses my microphone |
+| Search (de) | words: Anruferkennung, Aufnahmeabfrage<br>phrases: frag mich, ob ich den Anruf aufnehmen möchte; starte die Meetingaufnahme automatisch, wenn ein Anruf beginnt; schalte die automatische Anruferkennung aus |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-meetingCallApps"></a>
+
+### Ask to record calls in / Bei Anrufen in diesen Apps nachfragen (`meetingCallApps`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | setting |
+| Parent | [`page.meetings`](#node-page-meetings) |
+| Title source | catalog key `Ask to record calls in` |
+| Description | Turn off an app to never be asked about its calls. / Wenn du eine App ausschaltest, fragt EnviousMeet bei Anrufen über diese App nicht mehr nach. |
+| Description source | catalog key `Turn off an app to never be asked about its calls.` |
+| Destination | `meetings` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`meetingCallApps`](#node-meetingCallApps) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | words: call apps, recording prompts<br>phrases: choose which apps ask to record calls; stop asking to record calls in an app |
+| Search (de) | words: Anruf-Apps, Aufnahmenachfrage<br>phrases: wähle aus, für welche Apps EnviousMeet eine Aufnahme anbietet; schalte die Nachfrage zur Aufnahme für eine App aus; schalte Aufnahmevorschläge für Meetings im Browser aus |
 | Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-enableAIPolish"></a>

@@ -218,6 +218,9 @@ final class MeetingCoordinator {
     /// nil when the setting is off, access is missing, nothing matches or the bounded lookup
     /// gave up. It must return within its own bound and never throw.
     var meetingTitleAtStart: @MainActor (Date) async -> String? = { _ in nil }
+    /// #4012: whether a detected Start is still wanted (detection and its app still on, the
+    /// call still going), asked after the waits and before anything is created.
+    var detectedStartWanted: @MainActor () async -> Bool = { true }
     /// Saves the meeting's History row durably, its disk work off the main actor; throws when
     /// it could not.
     var saveTranscript: @MainActor (Transcript) async throws -> Void
@@ -630,7 +633,10 @@ final class MeetingCoordinator {
   /// The result names what this Start did, and the meeting it created when it created one, so a
   /// caller never infers it from the newest meeting.
   @discardableResult
-  func start(from entryPoint: MeetingEntryPoint, captureCallSound: Bool? = nil) async
+  func start(
+    from entryPoint: MeetingEntryPoint, captureCallSound: Bool? = nil,
+    callApp: CallAppFamily? = nil
+  ) async
     -> StartOutcome
   {
     guard phase == .idle, !quitting else { return .notIdle }
@@ -666,9 +672,23 @@ final class MeetingCoordinator {
     let calendarTitle = await deps.meetingTitleAtStart(startedAt)
     // A Stop or quit during the lookup owns the outcome: nothing was created.
     guard isCurrentStart(generation) else { return .superseded(meetingID: nil) }
+    // A detected Start whose detection, app switch or call changed during the waits starts
+    // nothing (review r4 F1).
+    if entryPoint == .detected {
+      let wanted = await deps.detectedStartWanted()
+      // A Stop or a newer Start during that read owns the state (review r13 F1).
+      guard isCurrentStart(generation) else { return .superseded(meetingID: nil) }
+      if !wanted {
+        phase = .idle
+        workChanged()
+        return .superseded(meetingID: nil)
+      }
+    }
     var record = MeetingRecord(
       title: calendarTitle, createdAt: startedAt, engine: .parakeet,
       trackStatus: [.microphone: .captured, .callSound: captureCall ? .captured : .off])
+    // #4012: the call app a detected Start was for, so the fallback name says "Zoom call".
+    record.callApp = callApp
     let meetingID = record.id
     do {
       let created = record
@@ -681,13 +701,20 @@ final class MeetingCoordinator {
       workChanged()
       return .refused(.recordingStoppedFileError)
     }
-    guard isCurrentStart(generation) else {
-      // Stopped while the folder was created: nothing was recorded into it.
+    // Stopped while the folder was created, or (a detected Start) detection, its app switch or
+    // the call changed meanwhile (review r5 F2): nothing was recorded into it.
+    var withdrawn = false
+    if entryPoint == .detected { withdrawn = !(await deps.detectedStartWanted()) }
+    guard isCurrentStart(generation), !withdrawn else {
       do {
         try await writer.run { try $0.deleteFolder(meeting: meetingID) }
       } catch {
         // An empty folder left behind; launch recovery lists it as an empty meeting.
         deps.log("meeting start cleanup failed error=\(type(of: error))")
+      }
+      if withdrawn, isCurrentStart(generation) {
+        phase = .idle
+        workChanged()
       }
       return .superseded(meetingID: nil)
     }
@@ -737,6 +764,18 @@ final class MeetingCoordinator {
       // A stop or quit took over while starting; it owns the recorder and the record.
       return .superseded(meetingID: meetingID)
     }
+    // A detected Start withdrawn while capture started (review r6 F1): the attempt is stopped
+    // and removed, so nothing it captured becomes a meeting.
+    var wantedAfterCapture = true
+    if entryPoint == .detected { wantedAfterCapture = await deps.detectedStartWanted() }
+    // A Stop or a newer Start during that read owns the recorder and the record (r13 F1).
+    guard isCurrentStart(generation) else { return .superseded(meetingID: meetingID) }
+    if !wantedAfterCapture {
+      // Still `.starting` with this meeting active: Stop closes its recorder.
+      await stop()
+      await delete(meetingID: meetingID)
+      return .superseded(meetingID: nil)
+    }
     record = live[meetingID] ?? record
     record.trackStatus[.callSound] = result.callSound
     callSoundStatus = result.callSound
@@ -749,6 +788,15 @@ final class MeetingCoordinator {
     if deps.makePreviewJob != nil { liveTranscript = LiveTranscript(meetingID: meetingID) }
     await persist(record)
     return .recording(meetingID: meetingID)
+  }
+
+  /// #4012: whether a Start now would be refused for a reason known before it begins (the
+  /// microphone refused, too little disk). A switch to a new call checks this before it stops
+  /// the meeting recording now. Asks and changes nothing.
+  func startWouldBeRefused() -> Bool {
+    if !deps.microphoneAuthorized() { return true }
+    if let free = deps.freeDiskBytes(), free < Self.diskFloorBytes { return true }
+    return false
   }
 
   /// What one `start` did.
@@ -1274,6 +1322,18 @@ final class MeetingCoordinator {
     guard var record = live[meetingID] else { return }
     let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
     record.title = trimmed.isEmpty ? nil : String(trimmed.prefix(120))
+    await persist(record)
+  }
+
+  /// #4012 D8, R6: a summary's AI title names a meeting that has no name yet. Read from the
+  /// latest record just before the save, so a rename, the calendar's name or a deletion
+  /// meanwhile wins; it never names a meeting the user already named.
+  func assignAITitle(meetingID: UUID, title: String) async {
+    guard var record = live[meetingID], record.title == nil, !deleting.contains(meetingID),
+      !closeOwned.contains(meetingID)
+    else { return }
+    // `MeetingSummary.splitTitle` keeps titles to one short line.
+    record.title = title
     await persist(record)
   }
 

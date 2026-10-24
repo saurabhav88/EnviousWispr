@@ -1,0 +1,12 @@
+{
+  "language": "es",
+  "title": "cuando empieza una llamada",
+  "words": [
+    "detección de llamadas",
+    "aviso de grabación"
+  ],
+  "phrases": [
+    "preguntarme si quiero grabar la llamada",
+    "detectar llamadas cuando una app usa el micrófono"
+  ]
+}

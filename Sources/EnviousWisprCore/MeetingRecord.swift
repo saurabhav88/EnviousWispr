@@ -151,6 +151,16 @@ public struct MeetingRecord: Sendable, Equatable, Codable, Identifiable {
   /// True once launch recovery found this meeting still recording or stopping (a crash, force
   /// quit or quit while recording). Optional: absent means false.
   public var wasInterrupted: Bool?
+  /// The call app this meeting was started for (#4012), by `CallAppFamily` raw value. Optional
+  /// and stored as text: absent on hand-started and older meetings, and a value from a newer
+  /// build never stops this one from reading the record.
+  public var callAppRaw: String?
+
+  /// The call app this meeting was started for, when this build knows it.
+  public var callApp: CallAppFamily? {
+    get { callAppRaw.flatMap(CallAppFamily.init(rawValue:)) }
+    set { callAppRaw = newValue?.rawValue }
+  }
 
   public init(
     id: UUID = UUID(), transcriptID: UUID = UUID(), title: String? = nil,
@@ -174,6 +184,7 @@ public struct MeetingRecord: Sendable, Equatable, Codable, Identifiable {
     self.deletionRequested = false
     self.failureCode = nil
     self.wasInterrupted = nil
+    self.callAppRaw = nil
   }
 
   /// Nothing was captured, the user's notes are kept (#3972 R53, R56). Raises the format so an

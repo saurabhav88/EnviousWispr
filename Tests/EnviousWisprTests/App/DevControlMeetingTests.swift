@@ -27,7 +27,7 @@
           isExplained: { [unowned self] in explained },
           markExplained: { [unowned self] in explained = true },
           canStart: { [unowned self] in harness.coordinator.phase == .idle },
-          start: { [unowned self] entry, callSound in
+          start: { [unowned self] entry, callSound, _ in
             await harness.coordinator.start(from: entry, captureCallSound: callSound)
           },
           microphoneNeedsAsking: { false },

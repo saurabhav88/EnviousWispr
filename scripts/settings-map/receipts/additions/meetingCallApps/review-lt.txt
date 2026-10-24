@@ -1,0 +1,1 @@
+{"language":"lt","title":"siūlyti įrašyti skambučius šiose programėlėse","words":[],"phrases":["pasirinkti kurių programėlių skambučius siūlyti įrašyti","nebesiūlyti įrašyti šios programėlės skambučių","nebesiūlyti įrašyti susitikimų naršyklėje"]}

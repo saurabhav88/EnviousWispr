@@ -49,6 +49,9 @@ final class MeetingSummaryOwner {
     var wakes: MeetingWakeSignal?
     var emitFinished: @MainActor (MeetingSummaryFinishedTelemetry) -> Void
     var log: @MainActor (String) -> Void
+    /// #4012 D8, R6: names a meeting that has no name yet with the summary's AI title
+    /// (`MeetingCoordinator.assignAITitle`).
+    var assignTitle: @MainActor (UUID, String) async -> Void = { _, _ in }
     /// The summary writer; the real one in the app, a fake in tests.
     var write:
       @MainActor (
@@ -431,9 +434,12 @@ final class MeetingSummaryOwner {
       }
     }
 
-    let text: String
+    // R11: an AI title only when "Write a summary when a meeting ends" is on, here and again
+    // after the save; a Write again with it off writes the summary alone.
+    let titleWanted = deps.isEnabled()
+    let answer: String
     do {
-      text = try await deps.write(
+      answer = try await deps.write(
         inputs.transcript.text, inputs.notes, prepared.window,
         local ? deps.localCallTimeoutSeconds : deps.hostedCallTimeoutSeconds, admit, complete)
     } catch let failure as MeetingSummary.Failure {
@@ -451,6 +457,12 @@ final class MeetingSummaryOwner {
     }
     if local { lane.endSummaryCall() }
     if Task.isCancelled { return Ending(end: .cancelled) }
+    // The title line is never part of the saved summary, usable or not (R6).
+    let (title, text) = MeetingSummary.splitTitle(answer)
+    // An answer that was only a title is no summary: the one saved before stays (review r4 F5).
+    guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      return Ending(end: .problem(.providerFailed))
+    }
 
     // The meeting changed while the summary was written (a rename, new notes, a Retry, a model
     // change): the answer describes something else and is not saved.
@@ -467,6 +479,9 @@ final class MeetingSummaryOwner {
       // Checked once more after the save: a change during the write makes the saved summary
       // show as out of date (its recorded inputs differ), and the attempt counts as stale.
       let unchanged = currentInputs(meetingID, selection: deps.selection()) == inputs
+      if unchanged, titleWanted, deps.isEnabled(), let title, !Task.isCancelled {
+        await deps.assignTitle(meetingID, title)
+      }
       return Ending(end: unchanged ? .written : .stale, savedMark: true)
     case .userEditKept, .notesChanged:
       return Ending(end: .stale, savedMark: true)

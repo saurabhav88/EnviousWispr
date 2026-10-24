@@ -161,6 +161,10 @@ enum SettingsProjection {
     case .meetingOnboardingComplete: return []
     // #4017: no settings delta yet; the calendar permission answer rides on `meeting.setup`.
     case .meetingUseCalendarForNames: return []
+    // #4012: `meeting.call_prompt` carries the mode with every answer; the counters are state.
+    case .meetingCallDetection, .meetingCallAppsOff, .meetingCallNoCounts,
+      .meetingCallFirstTipShown:
+      return []
     case .hotkeyEnabled: return [.hotkeyEnabled]
     case .vadAutoStop: return [.vadAutoStop]
     case .vadSilenceTimeout: return [.vadSilenceTimeout]

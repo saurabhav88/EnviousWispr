@@ -1,0 +1,1 @@
+{"language":"sv","title":"fråga om att spela in samtal i dessa appar","words":[],"phrases":["välj vilka appar jag får inspelningsfrågor för","sluta fråga om att spela in samtal i en app"]}

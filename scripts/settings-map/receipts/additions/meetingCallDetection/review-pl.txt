@@ -1,0 +1,13 @@
+{
+  "language": "pl",
+  "title": "gdy zaczyna się rozmowa",
+  "words": [
+    "wykrywanie połączeń",
+    "pytanie o nagrywanie"
+  ],
+  "phrases": [
+    "zapytaj, czy chcę nagrać rozmowę",
+    "automatycznie rozpocznij nagrywanie, gdy zaczyna się rozmowa",
+    "wyłącz wykrywanie połączeń"
+  ]
+}

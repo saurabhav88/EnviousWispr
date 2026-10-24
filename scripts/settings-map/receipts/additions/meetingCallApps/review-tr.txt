@@ -1,0 +1,1 @@
+{"language":"tr","title":"görüşme kaydı önerilecek uygulamalar","words":[],"phrases":["hangi uygulamalarda görüşme kaydı sorulacağını seç","bu uygulamadaki görüşmeleri kaydetmek isteyip istemediğimi sorma"]}

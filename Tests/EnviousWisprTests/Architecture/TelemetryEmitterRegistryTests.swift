@@ -236,8 +236,11 @@ struct TelemetryEmitterRegistryTests {
   /// per visit to EnviousMeet's setup that finished or left (closed outcome, screen and
   /// per-permission answers, seconds), about 1 to 3 rows per install lifetime, no content.
   /// Reader: founder EnviousMeet setup funnel at the first release review.
+  /// #4012 c1 C3: one per_user_action meeting.call_prompt site (`trackMeetingCallPrompt`), keep
+  /// whole; one row per answered, timed-out or auto-started call prompt (closed call_app,
+  /// answer, mode), no window, address or room. Reader: founder call-detection accuracy review.
   static let sitesFingerprint =
-    "7a7753874d9613a18da52ceacf97b9d4a636b107a96429dfe5207826037933ed"
+    "e2191bac790f296481a7a729c0bbded98d19bc632d9bfa7e17e40386ae2ad1b0"
   static let ungradedFingerprint =
     "676fe038e6e688fa79c33aae8cec75e5996979f10c3f79775755ec23c5dba168"
 

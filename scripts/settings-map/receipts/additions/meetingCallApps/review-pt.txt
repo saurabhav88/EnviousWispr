@@ -1,0 +1,1 @@
+{"language":"pt","title":"perguntar se quer gravar chamadas nestas aplicações","words":["apps"],"phrases":["escolher em quais apps perguntar se quero gravar chamadas","parar de perguntar se quero gravar chamadas de um app"]}
