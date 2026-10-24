@@ -364,7 +364,7 @@ extension PasteFocusClassification {
 /// real focused element (#2297).
 internal func tier1DeclineReason(
   axTrusted: Bool, classification: PasteFocusClassification, isChromiumOmnibox: Bool,
-  isGeckoDestination: Bool, recordedWindowSession: Bool = false
+  directWriteSkip: PasteDeliveryPolicy.DirectWriteSkip?, recordedWindowSession: Bool = false
 ) -> PasteService.AXDeclineReason? {
   if !axTrusted { return .accessibilityDenied }
   switch classification {
@@ -374,8 +374,13 @@ internal func tier1DeclineReason(
     // must never show after a paste.
     if recordedWindowSession { return .recordedWindowKeyPasteOnly }
     if isChromiumOmnibox { return .chromiumOmniboxNavigationSeam }
+    switch directWriteSkip {
     // #2652: Gecko's read-back lags its write, so Tier 1 cannot confirm and Tier 2 doubles it.
-    return isGeckoDestination ? .geckoDirectWriteUnconfirmable : nil
+    case .gecko: return .geckoDirectWriteUnconfirmable
+    // #3863: the terminal's write lands but cannot be verified, which ends in the Copied notice.
+    case .terminal: return .terminalDirectWriteUnconfirmable
+    case nil: return nil
+    }
   case .missing: return .focusMissing
   case .nonText: return .focusNonText
   }
@@ -890,7 +895,7 @@ internal final class PasteCascadeExecutor {
     // exits would be nil for most of them (#1332).
     var axDeclineReason: PasteService.AXDeclineReason? = tier1DeclineReason(
       axTrusted: axTrusted, classification: classification, isChromiumOmnibox: isChromiumOmnibox,
-      isGeckoDestination: PasteDeliveryPolicy.skipsDirectWrite(bundleID: targetBundleID),
+      directWriteSkip: PasteDeliveryPolicy.directWriteSkip(bundleID: targetBundleID),
       recordedWindowSession: request.recordedWindow != nil)
     var axSettability: PasteService.AXSettability?
     // Which payload was submitted by the route that last attempted a write.
@@ -954,7 +959,7 @@ internal final class PasteCascadeExecutor {
       #endif
     }()
 
-    // Any pre-write decline (Chromium omnibox, Gecko) skips Tier 1; the DEBUG web gate is separate.
+    // Any pre-write decline skips Tier 1; the DEBUG web gate is separate.
     if classification == .textField, axDeclineReason == nil, !skipTier1ForWebContent,
       let element = request.targetElement
     {

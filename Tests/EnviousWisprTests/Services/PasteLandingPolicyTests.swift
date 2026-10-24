@@ -126,17 +126,38 @@ struct PasteLandingPolicyTests {
   }
 
   /// Drift Guard in a Product Outcome suite on purpose: the shipped table holds only apps that
-  /// failed a PR B gate, each with its evidence line in the policy. A new entry is noticed here.
-  @Test("The shipped exclusion table is exactly the apps that failed a gate")
+  /// failed a gate, each with its evidence line in the policy. A new entry is noticed here.
+  @Test("The shipped exclusions reject retention without changing miss evidence")
   func shippedExclusionsAreTheFailedGates() {
+    let apps = [
+      "com.microsoft.VSCode", "com.microsoft.Excel",
+      "com.stablyai.orca", "com.google.antigravity-ide", "com.cmuxterm.app",
+    ]
     #expect(
-      PasteLandingPolicy.excludedRoutes == [
-        .init(bundleID: "com.microsoft.VSCode"), .init(bundleID: "com.microsoft.Excel"),
-      ])
-    for tier in Self.keyRoutes {
-      #expect(PasteLandingPolicy.routeMayRetain(bundleID: "com.microsoft.VSCode", tier: tier) == false)
-      #expect(PasteLandingPolicy.routeMayRetain(bundleID: "com.microsoft.Excel", tier: tier) == false)
-      #expect(PasteLandingPolicy.routeMayRetain(bundleID: "com.google.Chrome", tier: tier))
+      PasteLandingPolicy.excludedRoutes
+        == Set(apps.map { PasteLandingPolicy.Exclusion(bundleID: $0) }))
+
+    for id in apps {
+      for tier in Self.keyRoutes {
+        #expect(PasteLandingPolicy.routeMayRetain(bundleID: id, tier: tier) == false, "\(id) \(tier)")
+        for appClass in Self.eligibleAbsent {
+          #expect(PasteLandingPolicy.isMiss(.absent, appClass: appClass))
+          #expect(
+            PasteLandingPolicy.mayRetain(
+              .absent, bundleID: id, appClass: appClass, tier: tier) == false, "\(id) \(tier)")
+        }
+      }
+    }
+
+    // Exact IDs only; the separate Antigravity agent app keeps its existing permission.
+    for id in [
+      "com.google.antigravity", "com.google.Chrome",
+      "com.stablyai.orca.helper", "com.google.antigravity-ide.helper",
+      "com.cmuxterm.app.helper", "COM.CMUXTERM.APP",
+    ] {
+      for tier in Self.keyRoutes {
+        #expect(PasteLandingPolicy.routeMayRetain(bundleID: id, tier: tier), "\(id) \(tier)")
+      }
     }
   }
 

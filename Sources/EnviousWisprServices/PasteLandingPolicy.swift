@@ -68,6 +68,19 @@ package enum PasteLandingPolicy {
     // Same run: `menu_paste` into a cell read `absent`, and neither the harness nor #996 could read
     // the cell back, so the miss is unconfirmed; a cell paste can land outside the element watched.
     Exclusion(bundleID: "com.microsoft.Excel"),
+    // #3863, live 2026-10-23 (macOS 27.2): one silent take into Orca's terminal landed at the
+    // shell prompt (screenshot) while the reader saw `absent` (`late_check=completed_no_hit`):
+    // the focus is xterm's "Terminal input" field, which xterm clears after every paste. Fleet:
+    // 260 found / 814 absent in 30 days. A false miss replaced the clipboard and showed "Copied".
+    Exclusion(bundleID: "com.stablyai.orca"),
+    // #3863, same run: Antigravity IDE (a VS Code fork) landed in both its terminal (`absent`,
+    // late `found` at 1825 ms) and its editor (`absent`, `completed_no_hit`, value "\n"), so it
+    // follows VS Code. The separate Antigravity agent app read `found` and is not listed.
+    Exclusion(bundleID: "com.google.antigravity-ide"),
+    // #3863, same run: cmux landed at the shell prompt. Its Tier 1 skip is in
+    // `PasteDeliveryPolicy.directWriteSkips`; on the key route the fleet reads 40 found /
+    // 201 absent, so a checked miss there is not proof either.
+    Exclusion(bundleID: "com.cmuxterm.app"),
   ]
 
   /// May this paste's miss keep the dictation on the clipboard and show the clipboard pill?
