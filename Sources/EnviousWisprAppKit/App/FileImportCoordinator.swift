@@ -884,6 +884,9 @@ final class FileImportCoordinator {
   func choose(url: URL) {
     guard !isRunning else { return }
     parts = []
+    retainedCleanup = nil
+    unsavedRestoredTurns = nil
+    showsRestoredCleanup = false
     rawTranscript = ""
     decodedSamples = []
     // Same reason as `startOver`: a different file must not read as though the LAST
@@ -1322,6 +1325,9 @@ final class FileImportCoordinator {
     advanceGeneration()
     file = nil
     parts = []
+    retainedCleanup = nil
+    unsavedRestoredTurns = nil
+    showsRestoredCleanup = false
     rawTranscript = ""
     decodedSamples = []
     runConfiguration = nil
@@ -1431,6 +1437,85 @@ final class FileImportCoordinator {
     }
   }
   @ObservationIgnored private var turnsTelemetryEmittedFor: UUID?
+
+  /// #3903: the last COMPLETED cleanup of this document, kept so a Clean it again that ends
+  /// without completing (Stop, a polisher that did not start) puts it back instead of leaving
+  /// raw words. The screen, Copy, Save, the saved badge and the header credit all read `parts`
+  /// and `runConfiguration`, so restoring those two restores every one of them; History keeps
+  /// the cleaned turns because no raw write happens. Captured as a cleanup's turns are
+  /// committed (just before that write, with nothing in between, and before the provider
+  /// metadata save, so a failed save keeps it), replaced by the next completed cleanup,
+  /// cleared with the document (`choose(url:)`, `startOver()`).
+  private struct RetainedCleanup {
+    let historyID: UUID
+    let rawTranscript: String
+    /// The turns the cleanup sectioned, before cleaning: a retry that assembled DIFFERENT
+    /// turns has nothing here to keep, and writes its new turns raw as before.
+    let turnLayout: [Turn]?
+    let parts: [Part]
+    let pendingPieces: [String]
+    let configuration: RunConfiguration?
+  }
+  @ObservationIgnored private var retainedCleanup: RetainedCleanup?
+
+  /// #3903: the kept cleanup's turns when restoring could not write them to History. `turns`
+  /// shows these instead of History's. Cleared by the next run and with the document.
+  @ObservationIgnored private var unsavedRestoredTurns: [Turn]?
+
+  /// #3903: the screen shows a restored cleanup, not a stopped run's raw words, so the saved
+  /// badge asks whether History holds THAT cleanup. Cleared by the next run and the document.
+  @ObservationIgnored private var showsRestoredCleanup = false
+
+  /// Puts the retained cleanup back when it belongs to this document and these turns.
+  /// Returns false, changing nothing, when there is none to keep.
+  private func restoreRetainedCleanup() -> Bool {
+    guard let kept = retainedCleanup, kept.historyID == historyID,
+      kept.rawTranscript == rawTranscript,
+      FileImportDocumentMath.sameTurnLayout(kept.turnLayout, pendingSpeakerResult?.turns)
+    else { return false }
+    parts = kept.parts
+    pendingPieces = kept.pendingPieces
+    runConfiguration = kept.configuration
+    // History is read, not remembered: a Stop between this cleanup's turn write and its final
+    // save, a failed save, two cleanups with the same words under different providers, or a
+    // deleted row Clean it again wrote back raw all leave History short of this cleanup
+    // (Codex diff review, three rounds). Saving then makes it describe the screen again; a
+    // row the user deleted and nothing wrote back stays deleted (the update finds no row).
+    // The same for the turns, which the labeled screen and Copy read from History: a later
+    // cleanup whose turn save failed leaves another generation's turns there (Codex diff
+    // review, round 4). The kept cleanup's own final turns are written back when they differ.
+    if let historyID, let result = pendingSpeakerResult, let turns = result.turns {
+      let final = FileImportDocumentMath.finalTurns(turns, parts: parts, cleanupCompleted: true)
+      if currentHistoryRow(historyID)?.turns != final {
+        if (try? mergeSpeakerFields(historyID, result.analysis, final)) == true {
+          if originalHistoryRow?.id == historyID {
+            originalHistoryRow = originalHistoryRow?.mergingSpeakerFields(
+              analysis: result.analysis, turns: final)
+          }
+        } else {
+          // The write failed too: the screen and Copy show the kept turns anyway, and the
+          // saved badge says History does not hold them (second-pass review).
+          unsavedRestoredTurns = final
+        }
+        // `turns` reads through a closure Observation cannot see; this tells the screen.
+        speakerFieldsRevision += 1
+      }
+    }
+    if !historyHoldsDocument { savePolishedToHistory() }
+    showsRestoredCleanup = true
+    return true
+  }
+
+  /// Whether the History row already holds exactly what `savePolishedToHistory` would write
+  /// for the document on screen: its derived and polished text, provider and model.
+  private var historyHoldsDocument: Bool {
+    guard let historyID, let row = currentHistoryRow(historyID) else { return false }
+    let polished = parts.contains(where: \.wasPolished)
+    return row.processedText == documentText
+      && row.polishedText == (polished ? documentText : nil)
+      && row.llmProvider == (polished ? runConfiguration?.polishProvider.rawValue : nil)
+      && row.llmModel == (polished ? runConfiguration?.polishModel : nil)
+  }
 
   private func resetSpeakerResult() {
     pendingSpeakerResult = nil
@@ -1586,7 +1671,7 @@ final class FileImportCoordinator {
   var turns: [Turn]? {
     _ = speakerFieldsRevision
     guard let historyID else { return nil }
-    return currentHistoryRow(historyID)?.turns
+    return unsavedRestoredTurns ?? currentHistoryRow(historyID)?.turns
   }
 
   /// `speakerId -> display name` for the current document, read fresh alongside `turns`.
@@ -1860,9 +1945,22 @@ final class FileImportCoordinator {
     releaseDecodedAudio()
     // `runTask` and `speakerStepTask` are both already cancelled unconditionally above,
     // before this guard.
+    // #3903: a Stop during Clean it again over a completed cleanup keeps that cleanup: the
+    // earlier document comes back on screen and History keeps its cleaned turns.
+    if restoreRetainedCleanup() {
+      let row = historyID?.uuidString ?? "-"
+      let count = pendingSpeakerResult?.turns?.count ?? 0
+      Task {
+        await AppLogger.shared.log(
+          "[TurnStorage] outcome=stopped kept=previous_cleanup turns=\(count) row=\(row)",
+          level: .info, category: "FileImportCoordinator")
+      }
+      return
+    }
     // #2851 follow-up: the labels found before the Stop are not thrown away. The turns are
     // written raw and disclosed, and that raw labeled document is what Done shows and Copy
-    // hands over; `isSavedToHistory` asks about the raw words for a stopped run.
+    // hands over; `isSavedToHistory` asks about the raw words for a stopped run. On a re-run
+    // over a completed cleanup the earlier cleanup stands instead (#3903, above).
     if pendingSpeakerResult != nil, historyID != nil {
       let generationAtStop = generation
       Task { @MainActor [weak self] in
@@ -1914,6 +2012,8 @@ final class FileImportCoordinator {
     advanceGeneration()
     let generationAtStart = generation
     parts = []
+    unsavedRestoredTurns = nil
+    showsRestoredCleanup = false
     // The OLD cut must not place the new run's passages while this run is still preparing.
     // Cleared here and set again by `polishAll` from the new split.
     pendingPieces = []
@@ -2607,6 +2707,14 @@ final class FileImportCoordinator {
     guard localPolisherIsReady else {
       reportRunTelemetry(outcome: .success, asrOutcome: asrOutcome, polishOutcome: .notReady)
       showRejection(.polisherNotReady)
+      // #3903: a Clean it again refused here keeps the completed cleanup it would have
+      // replaced, on screen and in History.
+      if restoreRetainedCleanup() {
+        await AppLogger.shared.log(
+          "[TurnStorage] outcome=polisher_not_ready kept=previous_cleanup",
+          level: .info, category: "FileImportCoordinator")
+        return
+      }
       // The turns' terminal outcome for a labeled import whose cleanup never starts (cloud
       // review of PR #2871, round 2): written now, raw, with the refusal as the outcome.
       await writeSpeakerFields(cleanupOutcome: .polisherNotReady)
@@ -2683,6 +2791,16 @@ final class FileImportCoordinator {
     if savingDocument {
       // #2851 follow-up: the turns are written ONCE, here, carrying their cleaned words;
       // `savePolishedToHistory` then re-reads the live row and carries them forward.
+      // #3903: kept BEFORE the write, with no suspension between them: the History merge runs
+      // synchronously at the start of `writeSpeakerFields`, so a Stop that lands during the
+      // write's later awaits restores THIS cleanup, the one History now holds (Codex diff
+      // review). A failed merge still keeps it (§3.1: the snapshot does not depend on History).
+      if let historyID {
+        retainedCleanup = RetainedCleanup(
+          historyID: historyID, rawTranscript: rawTranscript,
+          turnLayout: pendingSpeakerResult?.turns, parts: parts, pendingPieces: pendingPieces,
+          configuration: runConfiguration)
+      }
       await writeSpeakerFields(cleanupOutcome: .stored)
       guard generationAtFinish == generation else { return }
       savePolishedToHistory()
@@ -2804,6 +2922,9 @@ final class FileImportCoordinator {
     // PREVIOUS cleaned version — a mismatch over words that are safely stored. Found by
     // Codex. The Show original words toggle is the same question asked by the user.
     if screenShowsRawWords { return savedHistoryRow.text == rawTranscript }
+    // #3903: a restored cleanup on screen is saved when History holds its turns (none left
+    // unsaved) and its text and credit; the stopped-run shortcut below is about raw words.
+    if showsRestoredCleanup { return unsavedRestoredTurns == nil && historyHoldsDocument }
     // A stopped labeled document shows its turns RAW once the Stop's write LANDED (#2851
     // follow-up), so the question is then whether the raw words are saved. Until that write
     // lands, or if it failed, the screen still shows the partial cleaned document, and the
