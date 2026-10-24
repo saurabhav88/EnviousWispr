@@ -4,9 +4,9 @@ description: "Fix a misheard word in text EnviousWispr pasted a moment ago, and 
 category: "custom-words"
 section: "Dictionary"
 order: 5
-keywords: ["self-learning dictionary", "learn from my edits", "learn from edits", "undo", "auto-learned", "correction", "misheard word", "custom words", "on-device", "local classifier", "word check", "Envious Word Check", "checked by", "learn-only", "privacy", "which apps", "word not learned", "remove a learned word", "turn off learning", "wrong word added to dictionary", "learned again", "fixed the same word twice", "blocked", "stop learning a word", "forget learning memory"]
+keywords: ["self-learning dictionary", "learn from my edits", "learn from edits", "undo", "auto-learned", "correction", "misheard word", "custom words", "on-device", "local classifier", "word check", "Envious Word Check", "checked by", "learn-only", "privacy", "which apps", "VS Code", "Cursor", "code editor", "Screen Reader Optimized", "word not learned", "remove a learned word", "turn off learning", "wrong word added to dictionary", "learned again", "fixed the same word twice", "blocked", "stop learning a word", "forget learning memory"]
 related: ["adding-custom-words", "how-custom-word-correction-works", "adding-a-word-from-your-selection", "privacy-overview", "model-downloads-and-management"]
-updated: 2026-10-22
+updated: 2026-10-24
 deflection: "can_resolve"
 ---
 The Self-Learning Dictionary adds words to your dictionary for you. When you fix a misheard word in text EnviousWispr pasted a moment ago, and a check on your Mac agrees it was a correction, the word you typed is saved in Your Words with the mishearing attached. A small pill gives you four seconds to undo it. You never have to open Settings to teach it a name.
@@ -50,7 +50,7 @@ If your edit was a real correction and nothing was learned, check these:
 - **You blocked that fix.** A fix you said "no" to twice (with Undo, or by deleting the learned word) is never learned again. Use [Forget what it remembers](#forget-what-it-remembers) to clear blocks.
 
 - **The pill said Couldn’t save.** Nothing was written. The mishearing already belongs to another word as a trigger, the word it was about had been deleted in the meantime, or the dictionary file could not be updated. This pill also stays for 3 seconds.
-- **The app does not share its text.** Some apps and custom web editors never share their text with macOS accessibility. The dictation still pastes normally, but nothing is learned.
+- **The app does not share its text.** Some apps and custom web editors never share their text with macOS accessibility. The dictation still pastes normally, but nothing is learned. In VS Code, Cursor and other editors built on VS Code, turn on [Screen Reader Optimized mode](#code-editors).
 - **The watch ended early.** EnviousWispr stops watching if you clear the text box, click into a different text box, dictate again, rewrite the text instead of fixing a word, or switch to another app before the watch begins. After two pauses in your editing, it also stops judging further fixes to that paste.
 - **You stopped without moving on.** If the only sign you were done was a pause or a switch to another app, the correction model has to be surer before it saves the word, because a half-typed word looks the same. Moving the cursor off the word right after your fix counts as done. Dictating again within a minute and before you leave that app does too, and so does sending the text in most apps (when sending clears or closes the text box): the usual check then applies.
 - **The text went to the clipboard.** EnviousWispr only follows text it pasted itself.
@@ -65,9 +65,20 @@ The Self-Learning Dictionary watches the pasted text for up to 60 seconds throug
 | Native Mac apps (Mail, and any app whose text box works with a screen reader) | Watched. A fix inside the pasted text is judged. |
 | Terminals (Ghostty and terminals that share their rows the same way) | Watched, including when the terminal wraps a long dictation onto several rows. |
 | Apps built on web technology (WhatsApp is one) | Watched. EnviousWispr asks these apps to switch on accessibility first, then waits a moment for the pasted text to show up before it starts watching. |
+| Code editors: VS Code and editors built on it, such as Cursor, Windsurf and Antigravity IDE | Watched only when the editor's **Screen Reader Optimized** mode is on. With it off, the editor does not share its text, so nothing is learned. See [Code editors](#code-editors). |
 | Web pages in Safari, Chrome, Brave and Edge | Watched where the page's text box shares its text with accessibility, which most do. Some custom editors on web pages do not, and then there is nothing to watch. |
 | Password fields | Never watched. |
 | Text that went to the clipboard instead of being pasted | Not watched. |
+
+### Code editors
+
+VS Code and the editors built on it share the text in an editor tab with macOS accessibility only in their **Screen Reader Optimized** mode. Turn it on once to let the Self-Learning Dictionary see your fixes there:
+
+1. **Open the command palette.** Press Cmd+Shift+P in the editor.
+2. **Run the command.** Type **Toggle Screen Reader Accessibility Mode** and press Return.
+3. **Check the status bar.** It now says **Screen Reader Optimized**. Running the same command again turns the mode off.
+
+Dictation pastes into these editors the same way with the mode on or off.
 
 ### Learned words aren't fixing my dictations
 
