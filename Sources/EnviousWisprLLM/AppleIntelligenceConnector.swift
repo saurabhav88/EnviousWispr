@@ -765,9 +765,9 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
       guard case .unavailable(let reason) = model.availability else { return }
       switch reason {
       case .deviceNotEligible:
-        throw LLMError.frameworkUnavailable(
-          "This Mac does not support Apple Intelligence. Requires Apple Silicon (M1 or later)."
-        )
+        // Same sentence as `AppleIntelligenceAvailabilityReport.userVisibleMessage` (#3899): the
+        // cause behind Apple's deviceNotEligible is unknown, so name none.
+        throw LLMError.frameworkUnavailable("Apple Intelligence isn't available on this Mac.")
       case .appleIntelligenceNotEnabled:
         throw LLMError.frameworkUnavailable(
           "Apple Intelligence is not enabled. Turn it on in System Settings > Apple Intelligence & Siri."

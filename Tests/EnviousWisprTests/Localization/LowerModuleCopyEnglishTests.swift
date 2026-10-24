@@ -31,12 +31,12 @@ struct LowerModuleCopyEnglishTests {
 
   @Test("Apple Intelligence availability messages")
   func appleIntelligenceMessages() {
-    func message(_ reasons: [AIFailureReason]) -> String {
+    func message(_ reasons: [AIFailureReason], status: AIAvailabilityStatus? = nil) -> String {
       let gate = AIGateResult.passed(summary: "synthetic")
       let gates = AIGateSet(
         build: gate, runtime: gate, eligibility: gate, modelAccess: gate, functionalProbe: gate)
       return AppleIntelligenceAvailabilityReport(
-        overallStatus: reasons.isEmpty ? .available : .unavailable, gates: gates,
+        overallStatus: status ?? (reasons.isEmpty ? .available : .unavailable), gates: gates,
         failureReasons: reasons, osVersion: "synthetic", hardwareClass: "arm64"
       ).userVisibleMessage
     }
@@ -44,9 +44,9 @@ struct LowerModuleCopyEnglishTests {
     #expect(
       message([.notCompiledIn]) == "This build was compiled without Apple Intelligence support.")
     #expect(message([.unsupportedOS]) == "Apple Intelligence requires macOS 26 or later.")
-    #expect(
-      message([.deviceNotEligible])
-        == "This Mac does not support Apple Intelligence. Requires Apple Silicon (M1 or later).")
+    // #3899: Apple's deviceNotEligible does not say why, so the sentence names no cause.
+    #expect(message([.deviceNotEligible]) == "Apple Intelligence isn't available on this Mac.")
+    #expect(message([.unsupportedHardware]) == "Apple Intelligence isn't available on this Mac.")
     #expect(
       message([.appleIntelligenceDisabled])
         == "Apple Intelligence is not enabled. Turn it on in System Settings > Apple Intelligence & Siri."
@@ -61,6 +61,30 @@ struct LowerModuleCopyEnglishTests {
       message([.generationFailed])
         == "Apple Intelligence model access works but generation failed. Try again later.")
     #expect(message([.unknownError]) == "Apple Intelligence availability could not be determined.")
+    #expect(
+      message([.generationFailed], status: .degraded)
+        == "Apple Intelligence model access works but generation failed. Try again later.")
+  }
+
+  /// #3899: a timed-out model-access or probe gate leaves a degraded (or unknown) report with no
+  /// reason; it once read "available and ready" beside a Degraded chip and a blocked import.
+  @Test("a report that is not available never says ready")
+  func notAvailableNeverSaysReady() {
+    func message(_ status: AIAvailabilityStatus) -> String {
+      let gate = AIGateResult.passed(summary: "synthetic")
+      let gates = AIGateSet(
+        build: gate, runtime: gate, eligibility: gate, modelAccess: gate, functionalProbe: gate)
+      return AppleIntelligenceAvailabilityReport(
+        overallStatus: status, gates: gates, failureReasons: [], osVersion: "synthetic",
+        hardwareClass: "arm64"
+      ).userVisibleMessage
+    }
+    #expect(
+      message(.degraded)
+        == "The Apple Intelligence check did not finish in time. It may still work; check again.")
+    #expect(message(.unknown) == "Apple Intelligence availability could not be determined.")
+    #expect(message(.unavailable) == "Apple Intelligence availability could not be determined.")
+    #expect(message(.available) == "Apple Intelligence is available and ready to use.")
   }
 
   @Test("debug log level names and the no-cleanup provider name")

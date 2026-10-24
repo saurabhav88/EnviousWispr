@@ -180,6 +180,9 @@ final class PolishSetupMonitor {
 
   @ObservationIgnored private let readInputs: @MainActor () -> PolishSetupInputs
   @ObservationIgnored private let ollamaRefresh: OllamaOffPageRefresh?
+  /// Told of every accepted take Apple Intelligence polished (#3897), with no readiness filter:
+  /// `AIAvailabilityCoordinator` decides whether its stored report needs a re-check.
+  @ObservationIgnored private let appleRefresh: (@MainActor () -> Void)?
   /// Where `polish_setup.prompt` rows go. Production sends them; tests collect them.
   @ObservationIgnored private let reportPrompt: @MainActor (PolishSetupPromptEvent) -> Void
   /// Where a take's own key read goes (`SavedKeyPresence.recordRead` in production): a take
@@ -214,12 +217,14 @@ final class PolishSetupMonitor {
   init(
     readInputs: @escaping @MainActor () -> PolishSetupInputs,
     ollamaRefresh: OllamaOffPageRefresh? = nil,
+    appleRefresh: (@MainActor () -> Void)? = nil,
     reportPrompt: @escaping @MainActor (PolishSetupPromptEvent) -> Void = { $0.send() },
     recordKeyEvidence: @escaping @MainActor (LLMProvider, SavedKeyState, ContinuousClock.Instant)
       -> Void = { _, _, _ in }
   ) {
     self.readInputs = readInputs
     self.ollamaRefresh = ollamaRefresh
+    self.appleRefresh = appleRefresh
     self.reportPrompt = reportPrompt
     self.recordKeyEvidence = recordKeyEvidence
   }
@@ -457,6 +462,7 @@ final class PolishSetupMonitor {
           observedAt: outcome.observedAt)
       }
     }
+    if take.provider == .appleIntelligence, polished { appleRefresh?() }
     return true
   }
 

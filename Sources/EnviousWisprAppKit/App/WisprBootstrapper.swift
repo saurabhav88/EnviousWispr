@@ -251,7 +251,15 @@ package final class WisprBootstrapper {
     // #633 Phase 9: owns enabled vocabulary-pack state; merges pack terms into
     // the corrector lane (default OFF). Wired into `wireCustomWords` below.
     let vocabularyPackManager = VocabularyPackManager()
-    let aiAvailability = AIAvailabilityCoordinator()
+    // #3897: automatic repair of a stale report runs only while its readers can show it:
+    // dictation's provider is Apple Intelligence, or onboarding (whose card reads it) is open.
+    let aiAvailability = AIAvailabilityCoordinator(
+      repairDependencies: AppleAvailabilityRepairDependencies(
+        isRepairEligible: { [settings] in
+          AppleAvailabilityRepair.isEligible(
+            provider: settings.llmProvider,
+            onboardingComplete: settings.onboardingState == .completed)
+        }))
 
     // Audio capture runs in-process (#1543, D-028 — the separate XPC audio
     // helper was collapsed away). The ASR helper below stays isolated.
@@ -2483,6 +2491,7 @@ package final class WisprBootstrapper {
       ollamaRefresh: OllamaOffPageRefresh(
         requestOnce: { [weak setup] in setup?.requestOffPageOllamaRefresh() },
         cancel: { [weak setup] in setup?.cancelOffPageOllamaRefresh() }),
+      appleRefresh: { [weak aiAvailability] in aiAvailability?.appleIntelligencePolishSucceeded() },
       // A take that found no key in the Keychain is that read's answer; no second read.
       recordKeyEvidence: { [savedKeyPresence] provider, state, readAt in
         savedKeyPresence.recordRead(state, for: provider, readAt: readAt)
