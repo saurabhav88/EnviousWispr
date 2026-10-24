@@ -1,0 +1,1 @@
+{"language":"sl","title":"splošno","words":[],"phrases":["splošne nastavitve EnviousMeet"]}

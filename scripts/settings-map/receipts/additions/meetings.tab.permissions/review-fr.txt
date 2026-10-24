@@ -1,0 +1,1 @@
+{"language":"fr","title":"autorisations","words":["permissions EnviousMeet"],"phrases":["autorisations pour EnviousMeet","vérifier les autorisations pour enregistrer une réunion","autoriser le micro et le son du Mac pour EnviousMeet"]}

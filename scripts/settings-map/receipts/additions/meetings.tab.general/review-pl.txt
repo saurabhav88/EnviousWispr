@@ -1,0 +1,1 @@
+{"language":"pl","title":"ogólne","words":[],"phrases":["ustawienia ogólne EnviousMeet"]}

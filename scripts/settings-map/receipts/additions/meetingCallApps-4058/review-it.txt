@@ -1,0 +1,1 @@
+{"language":"it","title":"rileva le chiamate in","words":[],"phrases":["scegliere in quali app rilevare le chiamate","non chiedermi di registrare le chiamate di questa app"]}

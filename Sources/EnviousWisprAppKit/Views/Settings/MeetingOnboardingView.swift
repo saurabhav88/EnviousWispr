@@ -353,8 +353,10 @@ private struct MeetingSetupPermissionRow: View {
     switch state {
     case .skipped:
       return LocalizedStringResource(
-        "Turn on later in EnviousMeet settings.",
-        comment: "EnviousMeet setup: under a skipped permission.")
+        // #4058: "Turn on" no longer fits every row: a skipped call sound is undone by turning
+        // Record only my voice off.
+        "You can change this later in EnviousMeet settings.",
+        comment: "EnviousMeet setup: under a skipped permission or choice.")
     case .requested:
       return LocalizedStringResource(
         "Asked. If you said no, allow it in System Settings.",

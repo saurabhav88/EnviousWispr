@@ -3114,17 +3114,6 @@
         }
       }
     },
-    "Also record the call sound" : {
-      "comment" : "EnviousMeet page: switch that records what the Mac plays, like a call.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Auch den Ton vom Mac aufnehmen"
-          }
-        }
-      }
-    },
     "Always" : {
       "comment" : "Microphone settings: readiness option; the microphone stays ready.",
       "localizations" : {
@@ -3658,17 +3647,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "„Fragen“ zeigt „Diesen Anruf aufnehmen?“ unter der Menüleiste an. „Automatisch starten“ beginnt die Aufnahme ohne Nachfrage. Bei „Aus“ erkennt EnviousMeet keine Anrufe. Eine von EnviousMeet gestartete Aufnahme endet 10 Sekunden nach Anrufende, außer du wählst „Weiter aufnehmen“. Eine Aufnahme, die du selbst gestartet hast, endet nie automatisch."
-          }
-        }
-      }
-    },
-    "Ask to record calls in" : {
-      "comment" : "EnviousMeet page: the list of call apps EnviousMeet watches, each with a switch.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bei Anrufen in diesen Apps nachfragen"
           }
         }
       }
@@ -4422,6 +4400,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Anruf"
+          }
+        }
+      }
+    },
+    "Call Apps" : {
+      "comment" : "EnviousMeet settings: tab name for the per-app call switches.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anruf-Apps"
           }
         }
       }
@@ -7594,7 +7583,7 @@
       }
     },
     "EnviousMeet checks which app uses your microphone and whether a call window or meeting page is open. It checks on your Mac and never sends this anywhere. Meetings in a browser covers Google Meet, Zoom, Microsoft Teams, Webex, Whereby and Jitsi in Chrome, Safari, Arc, Dia, Edge, Brave, Opera, Vivaldi, Zen, Comet and ChatGPT Atlas." : {
-      "comment" : "EnviousMeet page: help for Ask to record calls in. App and browser names are not translated.",
+      "comment" : "EnviousMeet page: help for Notice calls in. App and browser names are not translated.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -8845,7 +8834,7 @@
       }
     },
     "General" : {
-      "comment" : "AI Polish, S1-mini writing-style card: context option.",
+      "comment" : "AI Polish, S1-mini writing-style card: context option.\nEnviousMeet settings: tab name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -10630,6 +10619,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Lass dies ausgeschaltet. Wenn du regelmäßig mindestens fünf Minuten am Stück diktierst, kann sich die Abwägung lohnen. Gerade dann ist aber auch das Risiko am größten, dass das Ende fehlt."
+          }
+        }
+      }
+    },
+    "Leaves out the sound your Mac plays, like the other people on a call." : {
+      "comment" : "EnviousMeet page: the short line under Record only my voice.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lässt den Ton weg, den dein Mac abspielt, zum Beispiel die Stimmen anderer Personen bei einem Anruf."
           }
         }
       }
@@ -13234,6 +13234,17 @@
         }
       }
     },
+    "Notice calls in" : {
+      "comment" : "EnviousMeet page: the list of call apps EnviousMeet watches, each with a switch.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anrufe erkennen in"
+          }
+        }
+      }
+    },
     "Noticing calls needs macOS 14.2 or later. You can still start recordings from the menu bar." : {
       "comment" : "EnviousMeet page: below macOS 14.2 call detection cannot run.",
       "localizations" : {
@@ -13285,6 +13296,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aus"
+          }
+        }
+      }
+    },
+    "Off records your microphone and the sound your Mac plays, so the other people on a call are in the transcript. On records only your microphone. Without headphones, your microphone still hears the call through your speakers. The choice applies to the next meeting you start." : {
+      "comment" : "EnviousMeet page: help for Record only my voice.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aus nimmt dein Mikrofon und den Ton auf, den dein Mac abspielt, damit die anderen Gesprächsteilnehmer im Transkript stehen. Ein nimmt nur dein Mikrofon auf. Ohne Kopfhörer hört dein Mikrofon das Gespräch trotzdem über deine Lautsprecher mit. Die Einstellung gilt für das nächste Meeting, das du startest."
           }
         }
       }
@@ -14372,6 +14394,7 @@
       }
     },
     "Permissions" : {
+      "comment" : "EnviousMeet settings: tab name for the macOS permissions EnviousMeet uses.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -15402,6 +15425,17 @@
         }
       }
     },
+    "Record only my voice" : {
+      "comment" : "EnviousMeet page: switch that leaves out what the Mac plays, like a call, and records only the microphone.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur meine Stimme aufnehmen"
+          }
+        }
+      }
+    },
     "Record this call?" : {
       "comment" : "EnviousMeet: the question asked when a call starts.",
       "localizations" : {
@@ -15648,17 +15682,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aufnahmen"
-          }
-        }
-      }
-    },
-    "Records what your Mac plays, like the other people on a call." : {
-      "comment" : "EnviousMeet page: the short line under Also record the call sound.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nimmt auf, was dein Mac abspielt, zum Beispiel die Stimmen anderer Personen bei einem Anruf."
           }
         }
       }
@@ -20965,7 +20988,7 @@
       }
     },
     "Turn off an app to never be asked about its calls." : {
-      "comment" : "EnviousMeet page: the short line under Ask to record calls in.",
+      "comment" : "EnviousMeet page: the short line under Notice calls in.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -20992,17 +21015,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aktiviere Apple Intelligence in den Systemeinstellungen, um Vorschläge zu erhalten"
-          }
-        }
-      }
-    },
-    "Turn on later in EnviousMeet settings." : {
-      "comment" : "EnviousMeet setup: under a skipped permission.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Später in den EnviousMeet-Einstellungen einschalten."
           }
         }
       }
@@ -22367,17 +22379,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Warum OpenAI verwenden?"
-          }
-        }
-      }
-    },
-    "With headphones, your microphone hears only you, and the call comes from the sound your Mac plays. Without headphones, your microphone also hears the call; EnviousMeet hides those repeated lines as probable echo. The choice applies to the next meeting you start." : {
-      "comment" : "EnviousMeet page: help for Also record the call sound.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mit Kopfhörern nimmt dein Mikrofon nur dich auf. Die anderen Gesprächsteilnehmer werden über den Ton aufgenommen, den dein Mac abspielt. Ohne Kopfhörer nimmt dein Mikrofon auch sie auf. EnviousMeet blendet diese doppelten Zeilen als wahrscheinliches Echo aus. Die Einstellung gilt für das nächste Meeting, das du startest."
           }
         }
       }
@@ -33819,6 +33820,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wenn etwas schiefgeht, sind die Hinweise jetzt verständlicher. Bei einem teilweisen Fehler erhältst du eine andere Warnung als bei einem vollständigen Ausfall."
+          }
+        }
+      }
+    },
+    "You can change this later in EnviousMeet settings." : {
+      "comment" : "EnviousMeet setup: under a skipped permission or choice.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du kannst das später in den EnviousMeet-Einstellungen ändern."
           }
         }
       }

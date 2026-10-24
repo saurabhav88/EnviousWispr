@@ -1,0 +1,1 @@
+{"language":"cs","title":"oprávnění","words":["oprávnění EnviousMeet"],"phrases":["oprávnění pro nahrávání schůzek","povolit EnviousMeet přístup k mikrofonu","zkontrolovat oprávnění pro nahrávání zvuku hovoru"]}

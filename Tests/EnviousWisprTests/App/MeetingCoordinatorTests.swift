@@ -263,7 +263,7 @@ struct MeetingCoordinatorTests {
     /// Runs as each row is sent, to read state at that exact moment.
     var onEnded: (@MainActor (MeetingEndedTelemetry) -> Void)?
     var settles = true
-    /// The "Also record the call sound" setting as the coordinator reads it.
+    /// The call-sound setting (shown inverted as "Record only my voice") as the coordinator reads it.
     var callSound = false
     /// When set, the dictation-settle wait at Start parks on it.
     var settleGate: Gate?

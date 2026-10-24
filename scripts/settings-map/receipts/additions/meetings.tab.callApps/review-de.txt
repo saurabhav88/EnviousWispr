@@ -1,0 +1,1 @@
+{"language":"de","words":["Zoom","Microsoft Teams","FaceTime","Slack","Webex","Google Meet"],"phrases":["lege fest, bei welchen Apps EnviousMeet Anrufe erkennt","schalte die Anruferkennung für Zoom aus","schalte die Anruferkennung für Meetings im Browser aus"]}

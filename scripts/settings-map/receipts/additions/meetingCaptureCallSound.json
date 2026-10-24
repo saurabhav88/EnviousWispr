@@ -2,359 +2,266 @@
  "id": "meetingCaptureCallSound",
  "blocks": {
   "ar": {
-   "title": "تسجيل صوت المكالمة أيضًا",
-   "words": [
-    "صوت النظام",
-    "صوت الكمبيوتر"
-   ],
+   "title": "تسجيل صوتي فقط",
+   "words": [],
    "phrases": [
-    "تسجيل الصوت الذي يشغله Mac",
-    "تسجيل أصوات الآخرين في المكالمة"
+    "لا تسجل صوت الكمبيوتر",
+    "تسجيل المكالمة بصوتي فقط"
    ]
   },
   "bg": {
-   "title": "записвай и звука от разговора",
-   "words": [
-    "системен звук",
-    "звук от Mac"
-   ],
+   "title": "записвай само моя глас",
+   "words": [],
    "phrases": [
-    "запис на звука от Mac",
-    "записвай гласовете на другите участници"
+    "без звука от компютъра",
+    "не записвай другите в разговора"
    ]
   },
   "cs": {
-   "title": "nahrávat i zvuk hovoru",
-   "words": [
-    "systémový zvuk",
-    "zvuk počítače"
-   ],
+   "title": "nahrávat jen můj hlas",
+   "words": [],
    "phrases": [
-    "nahrávat zvuk, který přehrává Mac",
-    "nahrávat hlasy ostatních v hovoru"
+    "nenahrávat zvuk počítače",
+    "bez hlasů ostatních v hovoru"
    ]
   },
   "da": {
-   "title": "optag også lyden fra opkaldet",
-   "words": [
-    "systemlyd",
-    "computerlyd"
-   ],
+   "title": "optag kun min stemme",
+   "words": [],
    "phrases": [
-    "optag lyden fra min Mac",
-    "optag de andre i opkaldet"
+    "optag ikke lyd fra computeren",
+    "udelad de andre i opkaldet"
    ]
   },
   "de": {
-   "words": [
-    "Systemaudio",
-    "Systemton",
-    "Computerton",
-    "Gesprächspartner"
-   ],
+   "words": [],
    "phrases": [
-    "nimm den Ton vom Mac mit auf",
-    "nimm die anderen im Anruf mit auf",
-    "zeichne den Systemton auf"
+    "lass den Ton vom Mac bei Aufnahmen weg",
+    "nimm die anderen im Anruf nicht auf"
    ]
   },
   "el": {
-   "title": "εγγραφή και του ήχου της κλήσης",
-   "words": [
-    "ήχος συστήματος",
-    "ήχος υπολογιστή"
-   ],
+   "title": "εγγραφή μόνο της φωνής μου",
+   "words": [],
    "phrases": [
-    "να γράφει τον ήχο από το Mac",
-    "καταγραφή των φωνών των άλλων στην κλήση"
+    "να μη γράφει τον ήχο του υπολογιστή",
+    "χωρίς τις φωνές των άλλων στην κλήση"
    ]
   },
   "en": {
-   "words": [
-    "system audio",
-    "computer audio",
-    "other participants"
-   ],
+   "words": [],
    "phrases": [
-    "record what my Mac plays",
-    "capture the other people on the call"
+    "don't record computer audio",
+    "leave out other people's voices on calls"
    ]
   },
   "es": {
-   "title": "grabar también el audio de la llamada",
-   "words": [
-    "sonido del sistema",
-    "audio del ordenador",
-    "audio de la computadora"
-   ],
+   "title": "grabar solo mi voz",
+   "words": [],
    "phrases": [
-    "grabar lo que suena en el Mac",
-    "grabar las voces de los demás en la llamada"
+    "no grabar el sonido del ordenador",
+    "excluir las voces de los demás en la llamada"
    ]
   },
   "et": {
-   "title": "salvesta ka arvuti heli",
+   "title": "salvesta ainult minu häält",
    "words": [
-    "süsteemiheli",
-    "arvuti heli"
+    "süsteemiheli"
    ],
    "phrases": [
-    "salvesta koosolekul ka arvuti heli",
-    "salvesta kõne teiste osalejate hääled"
+    "ära salvesta arvuti heli",
+    "jäta teiste kõnes osalejate hääled välja"
    ]
   },
   "fi": {
-   "title": "tallenna myös puhelun ääni",
-   "words": [
-    "järjestelmä-äänet",
-    "tietokoneen äänet"
-   ],
+   "title": "tallenna vain oma ääneni",
+   "words": [],
    "phrases": [
-    "tallenna Macin toistama ääni",
-    "tallenna muiden puhe puhelussa"
+    "älä tallenna tietokoneen ääniä",
+    "jätä muiden puhe pois tallenteesta"
    ]
   },
   "fr": {
-   "title": "enregistrer aussi le son de l’appel",
-   "words": [
-    "audio système",
-    "son de l’ordinateur"
-   ],
+   "title": "enregistrer uniquement ma voix",
+   "words": [],
    "phrases": [
-    "enregistrer le son du Mac",
-    "enregistrer la voix des autres pendant l’appel"
+    "ne pas enregistrer le son de l'ordinateur",
+    "ne pas enregistrer les autres pendant un appel"
    ]
   },
   "hi": {
-   "title": "कॉल की आवाज़ भी रिकॉर्ड करें",
+   "title": "सिर्फ़ मेरी आवाज़ रिकॉर्ड करें",
    "words": [
     "सिस्टम ऑडियो",
-    "कंप्यूटर की आवाज़"
+    "कॉल की आवाज़"
    ],
    "phrases": [
-    "Mac पर चल रही आवाज़ रिकॉर्ड करना",
-    "कॉल में दूसरे लोगों की आवाज़ रिकॉर्ड करना"
+    "मीटिंग में सिर्फ़ मेरी आवाज़ रिकॉर्ड करें",
+    "कंप्यूटर की आवाज़ रिकॉर्ड न करें",
+    "कॉल में दूसरों की आवाज़ रिकॉर्ड न करें"
    ]
   },
   "hr": {
-   "title": "snimaj i zvuk poziva",
-   "words": [
-    "zvuk sustava",
-    "zvuk računala"
-   ],
+   "title": "snimaj samo moj glas",
+   "words": [],
    "phrases": [
-    "snimaj zvuk koji Mac reproducira",
-    "snimaj glasove drugih u pozivu"
+    "ne snimaj zvuk računala",
+    "izostavi glasove drugih u pozivu"
    ]
   },
   "hu": {
-   "title": "a hívás hangjának rögzítése is",
-   "words": [
-    "rendszerhang",
-    "számítógép hangja"
-   ],
+   "title": "csak a saját hangom rögzítése",
+   "words": [],
    "phrases": [
-    "a Mac által lejátszott hang felvétele",
-    "a többiek hangjának rögzítése hívás közben"
+    "ne vegye fel a számítógép hangját",
+    "a többiek hangja ne legyen a felvételen"
    ]
   },
   "it": {
-   "title": "registra anche l’audio della chiamata",
-   "words": [
-    "audio di sistema",
-    "suono del computer"
-   ],
+   "title": "registra solo la mia voce",
+   "words": [],
    "phrases": [
-    "registrare il suono del Mac",
-    "registrare le voci degli altri nella chiamata"
+    "non registrare l'audio del computer",
+    "escludi le voci degli altri dalla registrazione"
    ]
   },
   "ja": {
-   "title": "通話の音声も録音",
-   "words": [
-    "システム音声",
-    "パソコンの音"
-   ],
+   "title": "自分の声だけを録音",
+   "words": [],
    "phrases": [
-    "Macで流れる音を録音したい",
-    "通話相手の声も録音したい"
+    "パソコンの音を録音しない",
+    "通話相手の声を録音に入れない"
    ]
   },
   "ko": {
-   "title": "통화 소리도 녹음",
-   "words": [
-    "시스템 오디오",
-    "컴퓨터 소리"
-   ],
+   "title": "내 목소리만 녹음",
+   "words": [],
    "phrases": [
-    "Mac에서 재생되는 소리 녹음",
-    "통화 상대방 목소리도 녹음하기"
+    "컴퓨터 소리는 녹음하지 않기",
+    "통화 상대 목소리 제외하기"
    ]
   },
   "lt": {
-   "title": "įrašyti ir skambučio garsą",
-   "words": [
-    "sistemos garsas",
-    "kompiuterio garsas"
-   ],
+   "title": "įrašyti tik mano balsą",
+   "words": [],
    "phrases": [
-    "įrašyti Mac leidžiamą garsą",
-    "įrašyti kitų pokalbio dalyvių balsus"
+    "neįrašyti kompiuterio garso",
+    "neįrašyti kitų pokalbio dalyvių balsų"
    ]
   },
   "lv": {
-   "title": "ierakstīt arī zvana skaņu",
-   "words": [
-    "sistēmas audio",
-    "datora skaņa"
-   ],
+   "title": "ierakstīt tikai manu balsi",
+   "words": [],
    "phrases": [
-    "ierakstīt Mac atskaņoto skaņu",
-    "ierakstīt citu sarunas dalībnieku balsis"
+    "neierakstīt datora skaņu",
+    "neierakstīt citu sarunas dalībnieku balsis"
    ]
   },
   "mt": {
-   "title": "irreġistra wkoll il-ħoss tas-sejħa",
-   "words": [
-    "awdjo tas-sistema",
-    "ħoss tal-Mac"
-   ],
+   "title": "irrekordja l-vuċi tiegħi biss",
+   "words": [],
    "phrases": [
-    "irreġistra l-ħoss tal-Mac waqt laqgħa",
-    "irreġistra l-vuċijiet tal-oħrajn fis-sejħa"
+    "tirrekordjax il-ħoss tal-kompjuter",
+    "tinkludix l-ilħna tal-oħrajn fit-telefonata"
    ]
   },
   "nl": {
-   "title": "ook het gespreksgeluid opnemen",
-   "words": [
-    "systeemaudio",
-    "computergeluid"
-   ],
+   "title": "alleen mijn stem opnemen",
+   "words": [],
    "phrases": [
-    "geluid van mijn Mac opnemen",
-    "de stemmen van anderen in het gesprek opnemen"
+    "computergeluid niet opnemen",
+    "stemmen van anderen in het gesprek weglaten"
    ]
   },
   "pl": {
-   "title": "nagrywaj też dźwięk rozmowy",
-   "words": [
-    "dźwięk systemowy",
-    "audio z komputera"
-   ],
+   "title": "nagrywaj tylko mój głos",
+   "words": [],
    "phrases": [
-    "nagrywaj dźwięk odtwarzany przez komputer Mac",
-    "nagrywaj głosy innych osób w rozmowie"
+    "nie nagrywaj dźwięku z komputera",
+    "bez głosów innych osób w rozmowie"
    ]
   },
   "pt": {
-   "title": "gravar também o áudio da chamada",
-   "words": [
-    "som do sistema",
-    "som do computador"
-   ],
+   "title": "gravar apenas a minha voz",
+   "words": [],
    "phrases": [
-    "gravar o som do Mac",
-    "gravar as vozes das outras pessoas na chamada"
+    "não gravar o som do computador",
+    "excluir as vozes dos outros na chamada"
    ]
   },
   "ro": {
-   "title": "înregistrează și sunetul apelului",
-   "words": [
-    "audio de sistem",
-    "sunetul calculatorului"
-   ],
+   "title": "înregistrează doar vocea mea",
+   "words": [],
    "phrases": [
-    "înregistrează ce se aude pe Mac",
-    "înregistrează vocile celorlalți din apel"
+    "nu înregistra sunetul calculatorului",
+    "fără vocile celorlalți din apel"
    ]
   },
   "ru": {
-   "title": "также записывать звук звонка",
-   "words": [
-    "системный звук",
-    "звук компьютера"
-   ],
+   "title": "записывать только мой голос",
+   "words": [],
    "phrases": [
-    "записывать звук с Mac",
-    "записывать голоса собеседников"
+    "не записывать звук компьютера",
+    "без голосов собеседников в записи"
    ]
   },
   "sk": {
-   "title": "nahrávať aj zvuk hovoru",
-   "words": [
-    "systémový zvuk",
-    "zvuk počítača"
-   ],
+   "title": "nahrávať iba môj hlas",
+   "words": [],
    "phrases": [
-    "nahrávať systémový zvuk v EnviousMeet",
-    "zaznamenať hlasy ostatných v hovore"
+    "nenahrávať zvuk počítača",
+    "bez hlasov ostatných v hovore"
    ]
   },
   "sl": {
-   "title": "snemaj tudi zvok klica",
-   "words": [
-    "sistemski zvok",
-    "zvok računalnika"
-   ],
+   "title": "snemaj samo moj glas",
+   "words": [],
    "phrases": [
-    "snemaj zvok, ki ga predvaja Mac",
-    "snemaj glasove drugih v klicu"
+    "ne snemaj zvoka računalnika",
+    "izpusti glasove drugih v klicu"
    ]
   },
   "sv": {
-   "title": "spela även in samtalsljudet",
-   "words": [
-    "systemljud",
-    "datorljud"
-   ],
+   "title": "spela bara in min röst",
+   "words": [],
    "phrases": [
-    "spela in ljudet från min Mac",
-    "spela in de andras röster i samtalet"
+    "spela inte in datorljud",
+    "utelämna andras röster i samtalet"
    ]
   },
   "tr": {
-   "title": "görüşme sesini de kaydet",
-   "words": [
-    "sistem sesi",
-    "bilgisayar sesi"
-   ],
+   "title": "yalnızca benim sesimi kaydet",
+   "words": [],
    "phrases": [
-    "Mac'te çalan sesi kaydet",
-    "görüşmedeki diğer kişilerin sesini kaydet"
+    "bilgisayarın sesini kaydetme",
+    "görüşmedeki diğer kişilerin sesini kaydetme"
    ]
   },
   "uk": {
-   "title": "записувати також звук дзвінка",
-   "words": [
-    "системний звук",
-    "звук комп’ютера"
-   ],
+   "title": "записувати лише мій голос",
+   "words": [],
    "phrases": [
-    "записувати звук із Mac",
-    "записувати голоси співрозмовників"
+    "не записувати звук комп’ютера",
+    "без голосів інших учасників дзвінка"
    ]
   },
   "vi": {
-   "title": "ghi cả âm thanh cuộc gọi",
+   "title": "chỉ ghi âm giọng nói của tôi",
    "words": [
-    "âm thanh hệ thống",
-    "tiếng máy tính"
+    "âm thanh cuộc gọi",
+    "âm thanh hệ thống"
    ],
    "phrases": [
-    "ghi âm thanh đang phát trên Mac",
-    "ghi giọng của người khác trong cuộc gọi"
+    "không ghi âm thanh từ máy tính",
+    "không ghi âm giọng người khác trong cuộc gọi"
    ]
   },
   "zh": {
-   "title": "同时录制通话声音",
-   "words": [
-    "系统音频",
-    "电脑声音",
-    "内录"
-   ],
+   "title": "仅录制我的声音",
+   "words": [],
    "phrases": [
-    "录下 Mac 播放的声音",
-    "把通话对方的声音也录下来"
+    "不录电脑播放的声音",
+    "不录通话中其他人的声音"
    ]
   }
  }

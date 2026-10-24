@@ -1,0 +1,1 @@
+{"language":"et","title":"kõnede tuvastamine rakendustes","words":[],"phrases":["millistes äppides kõnesid tuvastada","ära küsi selle äpi kõnede kohta"]}

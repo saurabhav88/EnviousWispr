@@ -1,0 +1,9 @@
+{
+  "language": "nl",
+  "title": "alleen mijn stem opnemen",
+  "words": [],
+  "phrases": [
+    "computergeluid niet opnemen",
+    "stemmen van anderen in het gesprek weglaten"
+  ]
+}

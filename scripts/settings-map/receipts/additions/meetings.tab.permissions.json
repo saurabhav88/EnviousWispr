@@ -1,0 +1,311 @@
+{
+ "id": "meetings.tab.permissions",
+ "blocks": {
+  "ar": {
+   "title": "الأذونات",
+   "words": [
+    "صلاحيات الاجتماعات"
+   ],
+   "phrases": [
+    "أذونات EnviousMeet",
+    "إصلاح أذونات تسجيل الاجتماعات"
+   ]
+  },
+  "bg": {
+   "title": "разрешения",
+   "words": [],
+   "phrases": [
+    "разрешения за EnviousMeet",
+    "разрешения за запис на срещи"
+   ]
+  },
+  "cs": {
+   "title": "oprávnění",
+   "words": [
+    "oprávnění EnviousMeet"
+   ],
+   "phrases": [
+    "oprávnění pro nahrávání schůzek",
+    "povolit EnviousMeet přístup k mikrofonu",
+    "zkontrolovat oprávnění pro nahrávání zvuku hovoru"
+   ]
+  },
+  "da": {
+   "title": "tilladelser",
+   "words": [],
+   "phrases": [
+    "tilladelser til EnviousMeet",
+    "mikrofonadgang til mødeoptagelse",
+    "giv EnviousMeet adgang til computerens lyd"
+   ]
+  },
+  "de": {
+   "words": [],
+   "phrases": [
+    "Berechtigungen für EnviousMeet",
+    "welche Berechtigungen braucht EnviousMeet"
+   ]
+  },
+  "el": {
+   "title": "δικαιώματα πρόσβασης",
+   "words": [
+    "δικαιώματα EnviousMeet",
+    "ήχος κλήσης"
+   ],
+   "phrases": [
+    "δικαιώματα για την εγγραφή συναντήσεων",
+    "άδεια μικροφώνου για το EnviousMeet",
+    "πρόσβαση του EnviousMeet στο ημερολόγιο"
+   ]
+  },
+  "en": {
+   "words": [
+    "meeting permissions",
+    "call sound"
+   ],
+   "phrases": [
+    "EnviousMeet permissions",
+    "check permissions for meeting recording",
+    "allow microphone access for meeting recording"
+   ]
+  },
+  "es": {
+   "title": "permisos",
+   "words": [],
+   "phrases": [
+    "permisos de EnviousMeet",
+    "permisos para grabar reuniones"
+   ]
+  },
+  "et": {
+   "title": "ligipääsuõigused",
+   "words": [
+    "salvestusload"
+   ],
+   "phrases": [
+    "koosoleku salvestamise õigused",
+    "luba koosoleku heli salvestada"
+   ]
+  },
+  "fi": {
+   "title": "käyttöoikeudet",
+   "words": [],
+   "phrases": [
+    "EnviousMeetin käyttöoikeudet",
+    "kokoustallennuksen käyttöoikeudet"
+   ]
+  },
+  "fr": {
+   "title": "autorisations",
+   "words": [
+    "permissions EnviousMeet"
+   ],
+   "phrases": [
+    "autorisations pour EnviousMeet",
+    "vérifier les autorisations pour enregistrer une réunion",
+    "autoriser le micro et le son du Mac pour EnviousMeet"
+   ]
+  },
+  "hi": {
+   "title": "अनुमतियाँ",
+   "words": [
+    "मीटिंग परमिशन",
+    "रिकॉर्डिंग परमिशन"
+   ],
+   "phrases": [
+    "EnviousMeet की अनुमतियाँ",
+    "मीटिंग रिकॉर्ड करने की अनुमतियाँ"
+   ]
+  },
+  "hr": {
+   "title": "dopuštenja",
+   "words": [],
+   "phrases": [
+    "dopuštenja za EnviousMeet",
+    "dopuštenja za snimanje sastanaka"
+   ]
+  },
+  "hu": {
+   "title": "engedélyek",
+   "words": [
+    "rögzítési engedélyek"
+   ],
+   "phrases": [
+    "EnviousMeet engedélyei",
+    "engedélyek a megbeszélések rögzítéséhez"
+   ]
+  },
+  "it": {
+   "title": "autorizzazioni",
+   "words": [
+    "permessi riunioni"
+   ],
+   "phrases": [
+    "autorizzazioni di EnviousMeet",
+    "permessi per registrare le riunioni"
+   ]
+  },
+  "ja": {
+   "title": "アクセス権",
+   "words": [
+    "会議録音の権限"
+   ],
+   "phrases": [
+    "EnviousMeetの権限",
+    "会議録音に必要なアクセス権を確認"
+   ]
+  },
+  "ko": {
+   "title": "권한",
+   "words": [
+    "회의 녹음 권한"
+   ],
+   "phrases": [
+    "EnviousMeet 권한",
+    "회의 녹음에 필요한 권한 확인"
+   ]
+  },
+  "lt": {
+   "title": "leidimai",
+   "words": [
+    "įrašymo leidimai"
+   ],
+   "phrases": [
+    "EnviousMeet leidimai",
+    "susitikimų įrašymo leidimai"
+   ]
+  },
+  "lv": {
+   "title": "atļaujas",
+   "words": [
+    "sapulču ierakstīšanas atļaujas"
+   ],
+   "phrases": [
+    "EnviousMeet atļaujas",
+    "pārbaudīt sapulču ierakstīšanai vajadzīgās atļaujas"
+   ]
+  },
+  "mt": {
+   "title": "permessi",
+   "words": [],
+   "phrases": [
+    "permessi għal EnviousMeet",
+    "permessi għar-reġistrazzjoni tal-laqgħat",
+    "EnviousMeet m’għandux aċċess għall-mikrofonu"
+   ]
+  },
+  "nl": {
+   "title": "machtigingen",
+   "words": [],
+   "phrases": [
+    "machtigingen voor EnviousMeet",
+    "toestemming om vergaderingen op te nemen",
+    "EnviousMeet toegang geven tot microfoon en systeemgeluid"
+   ]
+  },
+  "pl": {
+   "title": "uprawnienia",
+   "words": [],
+   "phrases": [
+    "uprawnienia EnviousMeet",
+    "uprawnienia do nagrywania spotkań",
+    "dostęp EnviousMeet do mikrofonu i dźwięku systemowego"
+   ]
+  },
+  "pt": {
+   "title": "permissões",
+   "words": [
+    "permissões de gravação"
+   ],
+   "phrases": [
+    "permissões do EnviousMeet",
+    "liberar microfone e áudio para gravar reuniões"
+   ]
+  },
+  "ro": {
+   "title": "permisiuni",
+   "words": [],
+   "phrases": [
+    "permisiuni pentru EnviousMeet",
+    "acces la microfon pentru înregistrarea întâlnirilor",
+    "permisiune pentru înregistrarea sunetului apelului"
+   ]
+  },
+  "ru": {
+   "title": "разрешения",
+   "words": [
+    "разрешения EnviousMeet"
+   ],
+   "phrases": [
+    "проверить разрешения для записи встреч",
+    "разрешить EnviousMeet доступ к микрофону и звуку звонка"
+   ]
+  },
+  "sk": {
+   "title": "oprávnenia",
+   "words": [],
+   "phrases": [
+    "oprávnenia pre EnviousMeet",
+    "povolenia na nahrávanie schôdzok"
+   ]
+  },
+  "sl": {
+   "title": "dovoljenja",
+   "words": [],
+   "phrases": [
+    "dovoljenja za EnviousMeet",
+    "dovoljenja za snemanje sestankov"
+   ]
+  },
+  "sv": {
+   "title": "behörigheter",
+   "words": [],
+   "phrases": [
+    "behörigheter för EnviousMeet",
+    "behörigheter för mötesinspelning"
+   ]
+  },
+  "tr": {
+   "title": "izinler",
+   "words": [
+    "toplantı izinleri",
+    "kayıt izinleri"
+   ],
+   "phrases": [
+    "EnviousMeet izinleri",
+    "toplantı kaydı için Mac izinlerini kontrol et"
+   ]
+  },
+  "uk": {
+   "title": "дозволи",
+   "words": [],
+   "phrases": [
+    "дозволи для EnviousMeet",
+    "доступ до мікрофона та звуку Mac для запису зустрічей"
+   ]
+  },
+  "vi": {
+   "title": "quyền truy cập",
+   "words": [
+    "quyền ghi âm cuộc họp",
+    "âm thanh cuộc gọi"
+   ],
+   "phrases": [
+    "cấp quyền cho EnviousMeet",
+    "kiểm tra quyền ghi âm cuộc họp"
+   ]
+  },
+  "zh": {
+   "title": "权限",
+   "words": [
+    "会议录制权限",
+    "通话录音权限"
+   ],
+   "phrases": [
+    "查看 EnviousMeet 的权限",
+    "录制会议需要哪些权限",
+    "会议录音没有权限"
+   ]
+  }
+ }
+}

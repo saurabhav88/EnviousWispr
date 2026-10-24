@@ -1,0 +1,18 @@
+You are reviewing German Settings-search vocabulary for a macOS dictation app (EnviousWispr). Each block lists short "words" and everyday "phrases" a German user might type into the app's Settings search to find one place. Use du-form, no dashes, lowercase except nouns. The interface title is supplied separately and is not part of the block.
+
+1. Place: the EnviousMeet page's tab „Allgemein“ (what happens when a call starts, Nur meine Stimme aufnehmen, summaries, naming meetings from the calendar). Not the app's general settings, not dictation.
+   Block: {"words": [], "phrases": ["allgemeine Einstellungen für EnviousMeet"]}
+
+2. Place: the EnviousMeet page's tab „Anruf-Apps“: one switch per call app (Zoom, Teams, FaceTime, Slack, Webex, meetings in a browser) whose calls EnviousMeet notices. Turning an app off means it is never asked about.
+   Block: {"words": ["Zoom", "Microsoft Teams", "FaceTime", "Slack", "Webex", "Google Meet"], "phrases": ["lege fest, bei welchen Apps EnviousMeet Anrufe erkennt", "schalte die Anruferkennung für Zoom aus", "schalte die Anruferkennung für Meetings im Browser aus"]}
+
+3. Place: the EnviousMeet page's tab „Berechtigungen“: the macOS permissions meeting recording uses (Mikrofon, Ton vom Mac, Kalender, Bedienungshilfen). The App Settings page has its own Berechtigungen tab for the whole app.
+   Block: {"words": [], "phrases": ["Berechtigungen für EnviousMeet", "welche Berechtigungen braucht EnviousMeet"]}
+
+4. Place: the switch „Nur meine Stimme aufnehmen“ on the EnviousMeet page (on: a meeting records only your microphone, leaving out the sound the Mac plays such as the other people on a call; off by default). It replaced „Auch den Ton vom Mac aufnehmen“.
+   Block: {"words": [], "phrases": ["nimm den Computerton nicht mit auf", "nimm die anderen im Anruf nicht auf"]}
+
+5. Place: the list „Anrufe erkennen in“ on the EnviousMeet Anruf-Apps tab: a switch per call app; EnviousMeet notices calls only in apps that are on.
+   Block: {"words": ["Anruf-Apps"], "phrases": ["wähle aus, in welchen Apps Anrufe erkannt werden", "frag mich bei Anrufen in dieser App nicht mehr nach einer Aufnahme", "schalte die Anruferkennung für einzelne Apps aus"]}
+
+For each block answer "N. OK" or "N. <corrected JSON block>" plus a one-sentence reason. Keep 0 to 6 words and 1 to 3 phrases.

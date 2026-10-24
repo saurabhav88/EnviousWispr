@@ -1,0 +1,1 @@
+{"language":"et","title":"salvesta ainult minu häält","words":["süsteemiheli"],"phrases":["ära salvesta arvuti heli","jäta teiste kõnes osalejate hääled välja"]}

@@ -1,0 +1,1 @@
+{"language":"da","title":"tilladelser","words":[],"phrases":["tilladelser til EnviousMeet","mikrofonadgang til mødeoptagelse","giv EnviousMeet adgang til computerens lyd"]}

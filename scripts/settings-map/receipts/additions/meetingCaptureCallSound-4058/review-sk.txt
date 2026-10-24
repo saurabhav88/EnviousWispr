@@ -1,0 +1,9 @@
+{
+  "language": "sk",
+  "title": "nahrávať iba môj hlas",
+  "words": [],
+  "phrases": [
+    "nenahrávať zvuk počítača",
+    "bez hlasov ostatných v hovore"
+  ]
+}

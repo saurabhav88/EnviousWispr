@@ -1,0 +1,1 @@
+{"language":"ro","title":"permisiuni","words":[],"phrases":["permisiuni pentru EnviousMeet","acces la microfon pentru înregistrarea întâlnirilor","permisiune pentru înregistrarea sunetului apelului"]}

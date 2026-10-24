@@ -1,0 +1,1 @@
+{"language":"da","title":"registrér opkald i apps","words":[],"phrases":["slå opkaldsregistrering til for bestemte apps","spørg ikke om opkald i denne app"]}

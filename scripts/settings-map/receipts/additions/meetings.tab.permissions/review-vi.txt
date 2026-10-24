@@ -1,0 +1,1 @@
+{"language":"vi","title":"quyền truy cập","words":["quyền ghi âm cuộc họp","âm thanh cuộc gọi"],"phrases":["cấp quyền cho EnviousMeet","kiểm tra quyền ghi âm cuộc họp"]}

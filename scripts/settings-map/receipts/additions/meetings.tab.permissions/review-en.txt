@@ -1,0 +1,1 @@
+{"language":"en","words":["meeting permissions","call sound"],"phrases":["EnviousMeet permissions","check permissions for meeting recording","allow microphone access for meeting recording"]}

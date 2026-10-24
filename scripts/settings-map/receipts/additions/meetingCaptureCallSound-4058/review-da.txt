@@ -1,0 +1,1 @@
+{"language":"da","title":"optag kun min stemme","words":[],"phrases":["optag ikke lyd fra computeren","udelad de andre i opkaldet"]}

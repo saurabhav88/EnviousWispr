@@ -1,0 +1,1 @@
+{"language":"ro","title":"înregistrează doar vocea mea","words":[],"phrases":["nu înregistra sunetul calculatorului","fără vocile celorlalți din apel"]}

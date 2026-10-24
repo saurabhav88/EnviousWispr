@@ -64,7 +64,7 @@ RECIPES = {
                  "installed (the drill routes audio through it and restores); --export <locked candidate fp32 dir>",
     },
     "settings-search": {
-        # Script-backed (#3545): seven searches from plan section 11.1, each typed into the
+        # Script-backed (#3545): seven searches from plan section 11.1 and three EnviousMeet ones (#4058), each typed into the
         # sidebar field and pressed, with the arrival read from the log.
         "script": "settings_search_uat.py",
         "purpose": "Settings search end to end on the real Debug app: from a starting page, type a search, press "

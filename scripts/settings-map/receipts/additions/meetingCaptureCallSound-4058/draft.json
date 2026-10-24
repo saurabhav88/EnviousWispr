@@ -1,0 +1,291 @@
+{
+ "id": "meetingCaptureCallSound",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "تسجيل صوتي فقط",
+   "words": [],
+   "phrases": [
+    "لا تسجل صوت الكمبيوتر",
+    "تسجيل المكالمة بصوتي فقط"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "записвай само моя глас",
+   "words": [],
+   "phrases": [
+    "без звука от компютъра",
+    "не записвай другите в разговора"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "nahrávat jen můj hlas",
+   "words": [],
+   "phrases": [
+    "nenahrávat zvuk počítače",
+    "bez hlasů ostatních v hovoru"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "optag kun min stemme",
+   "words": [],
+   "phrases": [
+    "optag ikke lyd fra computeren",
+    "udelad de andre i opkaldet"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [],
+   "phrases": [
+    "nimm den Computerton nicht mit auf",
+    "nimm die anderen im Anruf nicht auf"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "εγγραφή μόνο της φωνής μου",
+   "words": [],
+   "phrases": [
+    "να μη γράφει τον ήχο του υπολογιστή",
+    "χωρίς τις φωνές των άλλων στην κλήση"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [],
+   "phrases": [
+    "don't record computer audio",
+    "leave out other people's voices on calls"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "grabar solo mi voz",
+   "words": [],
+   "phrases": [
+    "no grabar el sonido del ordenador",
+    "excluir las voces de los demás en la llamada"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "salvesta ainult minu hääl",
+   "words": [],
+   "phrases": [
+    "ära salvesta arvuti heli",
+    "jäta teiste kõnes osalejate hääled välja"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "tallenna vain oma ääneni",
+   "words": [],
+   "phrases": [
+    "älä tallenna tietokoneen ääniä",
+    "jätä muiden puhe pois tallenteesta"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "enregistrer uniquement ma voix",
+   "words": [],
+   "phrases": [
+    "ne pas enregistrer le son de l'ordinateur",
+    "ne pas enregistrer les autres pendant un appel"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "सिर्फ़ मेरी आवाज़ रिकॉर्ड करें",
+   "words": [],
+   "phrases": [
+    "कंप्यूटर की आवाज़ रिकॉर्ड न करें",
+    "कॉल में दूसरों की आवाज़ न लें"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "snimaj samo moj glas",
+   "words": [],
+   "phrases": [
+    "ne snimaj zvuk računala",
+    "izostavi glasove drugih u pozivu"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "csak a saját hangom rögzítése",
+   "words": [],
+   "phrases": [
+    "ne vegye fel a számítógép hangját",
+    "a többiek hangja ne legyen a felvételen"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "registra solo la mia voce",
+   "words": [],
+   "phrases": [
+    "non registrare l'audio del computer",
+    "escludi le voci degli altri dalla chiamata"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "自分の声だけを録音",
+   "words": [],
+   "phrases": [
+    "パソコンの音を録音しない",
+    "通話相手の声を録音に入れない"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "내 목소리만 녹음",
+   "words": [],
+   "phrases": [
+    "컴퓨터 소리는 녹음하지 않기",
+    "통화 상대 목소리 제외하기"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "įrašyti tik mano balsą",
+   "words": [],
+   "phrases": [
+    "neįrašyti kompiuterio garso",
+    "neįrašyti kitų pokalbio dalyvių balsų"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "ierakstīt tikai manu balsi",
+   "words": [],
+   "phrases": [
+    "neierakstīt datora skaņu",
+    "neierakstīt citu sarunas dalībnieku balsis"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "irrekordja l-vuċi tiegħi biss",
+   "words": [],
+   "phrases": [
+    "tirrekordjax il-ħoss tal-kompjuter",
+    "tinkludix l-ilħna tal-oħrajn fit-telefonata"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "alleen mijn stem opnemen",
+   "words": [],
+   "phrases": [
+    "computergeluid niet opnemen",
+    "stemmen van anderen in het gesprek weglaten"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "nagrywaj tylko mój głos",
+   "words": [],
+   "phrases": [
+    "nie nagrywaj dźwięku z komputera",
+    "bez głosów innych osób w rozmowie"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "gravar apenas a minha voz",
+   "words": [],
+   "phrases": [
+    "não gravar o som do computador",
+    "excluir as vozes dos outros na chamada"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "înregistrează doar vocea mea",
+   "words": [],
+   "phrases": [
+    "nu înregistra sunetul calculatorului",
+    "fără vocile celorlalți din apel"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "записывать только мой голос",
+   "words": [],
+   "phrases": [
+    "не записывать звук компьютера",
+    "без голосов собеседников в записи"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "nahrávať iba môj hlas",
+   "words": [],
+   "phrases": [
+    "nenahrávať zvuk počítača",
+    "bez hlasov ostatných v hovore"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "snemaj samo moj glas",
+   "words": [],
+   "phrases": [
+    "ne snemaj zvoka računalnika",
+    "izpusti glasove drugih v klicu"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "spela bara in min röst",
+   "words": [],
+   "phrases": [
+    "spela inte in datorljud",
+    "utelämna andras röster i samtalet"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "yalnızca benim sesimi kaydet",
+   "words": [],
+   "phrases": [
+    "bilgisayarın sesini kaydetme",
+    "görüşmedeki diğer kişilerin sesini kaydetme"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "записувати лише мій голос",
+   "words": [],
+   "phrases": [
+    "не записувати звук комп’ютера",
+    "без голосів інших учасників дзвінка"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "chỉ ghi âm giọng tôi",
+   "words": [],
+   "phrases": [
+    "không ghi âm thanh máy tính",
+    "bỏ giọng người khác trong cuộc gọi"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "仅录制我的声音",
+   "words": [],
+   "phrases": [
+    "不录电脑播放的声音",
+    "不录通话中其他人的声音"
+   ]
+  }
+ ]
+}
