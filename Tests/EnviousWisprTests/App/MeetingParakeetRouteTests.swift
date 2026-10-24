@@ -42,6 +42,8 @@ struct MeetingParakeetRouteTests {
     var ownSelection: ParakeetModelSelection? = MeetingParakeetRouteTests.selection("own")
     var readiness: MeetingParakeetRoute.Readiness = .ready
     var onEnsureReady: (@MainActor () -> Void)?
+    /// Awaited inside the readiness drive, as a cold load would be.
+    var readinessHold: (@MainActor () async -> Void)?
     var modelSourceUsable = true
     var readyCalls = 0
     var sharedDecodes = 0
@@ -88,6 +90,7 @@ struct MeetingParakeetRouteTests {
           ensureDictationReady: { [unowned self] in
             readyCalls += 1
             onEnsureReady?()
+            await readinessHold?()
             return readiness
           },
           isModelSourceUsable: { [unowned self] in modelSourceUsable },
@@ -397,6 +400,30 @@ struct MeetingParakeetRouteTests {
     }
     #expect(rig.readyCalls == 0, "no readiness drive, so no load or download")
     #expect(rig.lease.admissionEpoch == 0)
+  }
+
+  @Test("a meeting cancelled while dictation's Parakeet loads stops waiting at once")
+  func cancelDuringReadinessStopsWaiting() async throws {
+    final class Hold { var release: CheckedContinuation<Void, Never>? }
+    let rig = Rig()
+    let hold = Hold()
+    let (entered, enteredSignal) = AsyncStream.makeStream(of: Void.self)
+    rig.readinessHold = {
+      enteredSignal.yield()
+      await withCheckedContinuation { hold.release = $0 }
+      enteredSignal.yield()
+    }
+    let route = rig.route()
+    let pass = Task { try await route.acquire() }
+    var signals = entered.makeAsyncIterator()
+    _ = await signals.next()
+    pass.cancel()
+    await #expect(throws: CancellationError.self) { try await pass.value }
+    #expect(rig.lease.admissionEpoch == 0, "the late answer takes no lease")
+    // The load finishes by itself afterwards; the rig outlives it.
+    hold.release?.resume()
+    _ = await signals.next()
+    withExtendedLifetime(rig) {}
   }
 
   @Test("readiness failing is terminal and takes no lease")

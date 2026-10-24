@@ -2474,10 +2474,11 @@ package final class WisprBootstrapper {
           },
           activeBackend: { [asrManager] in asrManager.activeBackendType },
           ensureReady: { [weak engineCoordinator, activeEngine] in
-            let status = engineCoordinator?.status
-            return await MeetingWiring.borrowedEngineReadiness(
-              switchRefused: status.map { $0.selected != $0.active && !$0.selectedInstalled }
-                ?? false,
+            await MeetingWiring.borrowedEngineReadiness(
+              switchRefused: {
+                guard let status = engineCoordinator?.status else { return false }
+                return status.selected != status.active && !status.selectedInstalled
+              },
               ensureSelected: {
                 switch await ensureSelectedEngineReady() {
                 case .ready: .ready

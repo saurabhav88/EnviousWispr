@@ -2,6 +2,7 @@ import EnviousWisprASR
 import EnviousWisprCore
 import EnviousWisprPipeline
 import Foundation
+import os
 
 /// Which Parakeet one EnviousMeet final pass decodes on (#4052), and the claim, decode and
 /// release that choice needs. Built per pass by `MeetingWiring.makeJob`; implements the job's
@@ -145,7 +146,7 @@ final class MeetingParakeetRoute {
       guard deps.isModelSourceUsable() else {
         throw MeetingTranscriptionJob.JobError.engineUnavailable("model_source_unavailable")
       }
-      switch await deps.ensureDictationReady() {
+      switch try await readinessUnlessCancelled() {
       case .ready: break
       case .notInstalled:
         throw MeetingTranscriptionJob.JobError.engineUnavailable("model_not_installed")
@@ -295,6 +296,25 @@ final class MeetingParakeetRoute {
   }
 
   /// `MeetingModelClaim.acquire`, with its terminal errors mapped as the job reports them.
+  /// Dictation's readiness drive, but a cancelled pass stops waiting at once. The drive can be
+  /// dictation's own model load, which does not stop for this caller: it finishes by itself and
+  /// its answer is dropped (#4052 second pass: a meeting deleted during a cold load).
+  private func readinessUnlessCancelled() async throws -> Readiness {
+    try Task.checkCancellation()
+    let ensure = deps.ensureDictationReady
+    let slot = OnceSlot<Readiness?>()
+    let answer = await withTaskCancellationHandler {
+      await withCheckedContinuation { continuation in
+        slot.arm(continuation)
+        Task { @MainActor in slot.resolve(await ensure()) }
+      }
+    } onCancel: {
+      slot.resolve(nil)
+    }
+    guard let answer else { throw CancellationError() }
+    return answer
+  }
+
   private func acquireClaim(_ claim: MeetingModelClaim) async throws {
     do {
       try await claim.acquire()
@@ -383,5 +403,45 @@ final class MeetingParakeetRoute {
   private static func milliseconds(_ duration: Duration) -> Int {
     let (seconds, attoseconds) = duration.components
     return Int(seconds) * 1_000 + Int(attoseconds / 1_000_000_000_000_000)
+  }
+}
+
+/// One answer handed to one waiter, by whichever side answers first; a later answer is dropped.
+/// An answer that arrives before the waiter is armed is kept for it.
+private final class OnceSlot<Value: Sendable>: Sendable {
+  private enum State: Sendable {
+    case empty
+    case armed(CheckedContinuation<Value, Never>)
+    case answered(Value)
+    case done
+  }
+  private let state = OSAllocatedUnfairLock<State>(initialState: .empty)
+
+  func arm(_ continuation: CheckedContinuation<Value, Never>) {
+    let early: Value? = state.withLock { state in
+      guard case .answered(let value) = state else {
+        state = .armed(continuation)
+        return nil
+      }
+      state = .done
+      return value
+    }
+    if let early { continuation.resume(returning: early) }
+  }
+
+  func resolve(_ value: Value) {
+    let waiter: CheckedContinuation<Value, Never>? = state.withLock { state in
+      switch state {
+      case .empty:
+        state = .answered(value)
+        return nil
+      case .armed(let continuation):
+        state = .done
+        return continuation
+      case .answered, .done:
+        return nil
+      }
+    }
+    waiter?.resume(returning: value)
   }
 }

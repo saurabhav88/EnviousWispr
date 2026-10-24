@@ -730,24 +730,24 @@ struct MeetingWiringTests {
     #expect(rig.changeCounter.count > 0)
   }
 
-  @Test("a refused switch to a missing model readies the running Parakeet, not the picked model")
+  @Test("a refused switch to a missing model readies the running Parakeet")
   func refusedSwitchReadiesRunningEngine() async {
-    var selectedChecks = 0
+    // The refusal becomes visible only once the press path refreshed the status.
+    var refreshed = false
     var runningReadies = 0
     let answer = await MeetingWiring.borrowedEngineReadiness(
-      switchRefused: true,
-      ensureSelected: { selectedChecks += 1; return .notInstalled },
+      switchRefused: { refreshed },
+      ensureSelected: { refreshed = true; return .notInstalled },
       readyRunning: { runningReadies += 1; return true })
     #expect(answer == .ready)
-    #expect(selectedChecks == 0)
     #expect(runningReadies == 1)
   }
 
-  @Test("with the picked engine running, readiness is the press path's answer")
-  func settledSwitchUsesPressReadiness() async {
+  @Test("a missing model the coordinator would switch to stays an install error")
+  func missingModelWithoutRefusalStaysAnError() async {
     var runningReadies = 0
     let answer = await MeetingWiring.borrowedEngineReadiness(
-      switchRefused: false,
+      switchRefused: { false },
       ensureSelected: { .notInstalled },
       readyRunning: { runningReadies += 1; return true })
     #expect(answer == .notInstalled)
