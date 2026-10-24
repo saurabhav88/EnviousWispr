@@ -77,10 +77,9 @@ package enum PasteLandingPolicy {
     // late `found` at 1825 ms) and its editor (`absent`, `completed_no_hit`, value "\n"), so it
     // follows VS Code. The separate Antigravity agent app read `found` and is not listed.
     Exclusion(bundleID: "com.google.antigravity-ide"),
-    // #3863, same run: cmux landed at the shell prompt. Its Tier 1 skip is in
-    // `PasteDeliveryPolicy.directWriteSkips`; on the key route the fleet reads 40 found /
-    // 201 absent, so a checked miss there is not proof either.
-    Exclusion(bundleID: "com.cmuxterm.app"),
+    // cmux is deliberately NOT listed (#3863): on the key route its reader reads the prompt.
+    // Fleet: 40 found / 0 absent on 2.5.4-2.5.5 (every absent was 2.5.2-2.5.3); live 2026-10-24,
+    // 9 valid takes of the founder's own saved dictations: 7 found, 2 cannot_read, 0 absent.
   ]
 
   /// May this paste's miss keep the dictation on the clipboard and show the clipboard pill?
