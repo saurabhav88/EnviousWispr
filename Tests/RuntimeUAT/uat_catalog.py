@@ -91,6 +91,20 @@ RECIPES = {
                  "SwitchAudioSource; the call-sound permission for the dev build; push-to-talk mode; "
                  "run_in_background",
     },
+    "paste-check-app": {
+        # Script-backed (#4047): does a dictation land in ONE named app, and what does the paste
+        # check say there. `uat.py run paste-check-app --target <bundle id> --run-dir D`.
+        "script": "paste_check_app_uat.py",
+        "target": True,
+        "purpose": "N silent dictations into the frontmost field of the --target app (the founder's saved dictations, "
+                   "loudness-normalised, under a -80 dBFS noise floor): per take the paste route, the PASTE_LANDING "
+                   "verdict and VALID/INVALID. For per-app paste rules (#3863); landing itself needs a screenshot.",
+        "verdict": "one ROW per take (exactly one cascade into the app and one landing line, no failed take check) "
+                   "and <run dir>/paste-check-app.json; exit 0 all valid, 1 any invalid, 2 setup or clipboard restore",
+        "audio": True,
+        "needs": "the target app running with its field in front; one debug instance of the build; the dev-app lock; "
+                 "BlackHole 2ch + SwitchAudioSource; push-to-talk mode; saved dictations in dictation-audio/; ffmpeg",
+    },
     "quality": {
         "function": "record_tts",
         "purpose": "One dictation whose raw ASR and polished output are read from the log. For transcription/polish quality questions.",
@@ -315,6 +329,8 @@ def _self_test():
           [rid for rid, r in RECIPES.items() if r.get("export")] == ["learn-from-edits"])
     check("settings-search is script-backed", RECIPES["settings-search"].get("script") == "settings_search_uat.py")
     check("meeting is script-backed", RECIPES["meeting"].get("script") == "meeting_uat.py")
+    check("only paste-check-app takes --target as its app",
+          [rid for rid, r in RECIPES.items() if r.get("target")] == ["paste-check-app"])
     check("recipe ids are shell-safe", all(re.fullmatch(r"[a-z][a-z0-9-]*", rid) for rid in RECIPES))
     check("test_hands_free is broken (#2409)", HARNESS_STATUS["test_hands_free"]["status"] == "broken")
 

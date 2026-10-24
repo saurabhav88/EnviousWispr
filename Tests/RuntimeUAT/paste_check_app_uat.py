@@ -2,7 +2,8 @@
 """Does a dictation land in one named app, and what does the paste check say there? (#4047)
 
     python3 Tests/RuntimeUAT/paste_check_app_uat.py --app <bundle id> [--takes N] [--source saved|tts]
-        [--seed S] [--clear none|ctrl-u] [--wait SECONDS]
+        [--seed S] [--clear none|ctrl-u] [--wait SECONDS] [--run-dir D]
+    python3 Tests/RuntimeUAT/uat.py run paste-check-app --target <bundle id> --run-dir D   (front door)
 
 Put the app's text field (or terminal prompt) in front first; the script never stages a field.
 Every take is a silent push-to-talk dictation through the audio rig (BlackHole in and out, the
@@ -122,6 +123,7 @@ def main():
     parser.add_argument("--seed", type=int, default=4047)
     parser.add_argument("--clear", choices=["none", "ctrl-u"], default="none")
     parser.add_argument("--wait", type=float, default=3.0, help="seconds after key release (pipeline)")
+    parser.add_argument("--run-dir", help="write the rows to <run dir>/paste-check-app.json (uat.py run passes it)")
     args = parser.parse_args()
     if args.takes < 1:
         parser.error("--takes must be at least 1")
@@ -180,6 +182,11 @@ def main():
     for r in valid:
         counts[r[3]] = counts.get(r[3], 0) + 1
     print(f"SUMMARY {len(rows)} takes, {len(valid)} valid; verdicts {counts or '{}'}")
+    if args.run_dir:
+        with open(os.path.join(args.run_dir, "paste-check-app.json"), "w") as fh:
+            json.dump({"app": args.app, "source": args.source, "seed": args.seed, "clipboard_restored": restored,
+                       "rows": [{"take": r[0], "valid": r[1], "tier": r[2], "verdict": r[3],
+                                 "seconds": round(r[4], 1)} for r in rows]}, fh, indent=2)
     if not restored:
         print("SETUP: the clipboard was not restored; check it by hand")
         return 2
