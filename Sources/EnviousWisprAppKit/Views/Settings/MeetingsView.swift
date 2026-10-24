@@ -20,8 +20,9 @@ struct MeetingsView: View {
     if settings.meetingOnboardingComplete {
       settingsPage
     } else {
-      // #4017 O1: EnviousMeet is locked until its setup is finished.
-      ScrollView { MeetingOnboardingView() }
+      // #4017 O1: EnviousMeet is locked until its setup is finished. The setup centers itself
+      // and scrolls when the window is short.
+      MeetingOnboardingView()
     }
   }
 
