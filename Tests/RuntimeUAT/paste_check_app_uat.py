@@ -2,7 +2,7 @@
 """Does a dictation land in one named app, and what does the paste check say there? (#4047)
 
     python3 Tests/RuntimeUAT/paste_check_app_uat.py --app <bundle id> [--takes N] [--source saved|tts]
-        [--seed S] [--clear none|ctrl-u] [--wait SECONDS] [--run-dir D]
+        [--seed S] [--clear none|ctrl-u] [--wait MAX_SECONDS] [--run-dir D]
     python3 Tests/RuntimeUAT/uat.py run paste-check-app --target <bundle id> --run-dir D   (front door)
 
 Put the app's text field (or terminal prompt) in front first; the script never stages a field.
@@ -122,7 +122,8 @@ def main():
     parser.add_argument("--source", choices=["saved", "tts"], default="saved")
     parser.add_argument("--seed", type=int, default=4047)
     parser.add_argument("--clear", choices=["none", "ctrl-u"], default="none")
-    parser.add_argument("--wait", type=float, default=3.0, help="seconds after key release (pipeline)")
+    parser.add_argument("--wait", type=float, default=30.0,
+                        help="most seconds to wait after key release for the take's dictation_terminal line")
     parser.add_argument("--run-dir", help="write the rows to <run dir>/paste-check-app.json (uat.py run passes it)")
     args = parser.parse_args()
     if args.takes < 1:
@@ -154,7 +155,7 @@ def main():
                 checks_before = len(u.results)
                 lines, cascades = p.take(args.app, base, bundle=args.app, route=rig.route,
                                          sentence=SENTENCE if audio is None else "(saved dictation)",
-                                         audio=audio, wait=args.wait)
+                                         audio=audio, wait=args.wait, until_terminal=True)
                 mine = [c for c in cascades if c[1].strip() == args.app]
                 # take() records its own setup checks (exactly one recording, virtual capture)
                 # without raising: any failure among them makes the row INVALID too.

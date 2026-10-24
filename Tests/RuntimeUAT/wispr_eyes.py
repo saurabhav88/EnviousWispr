@@ -3328,7 +3328,8 @@ def test_ptt(key=None, audio=None, sentence=None, expect=None, timeout=10.0):
 
 
 def record_tts(sentence="The quick brown fox jumps over the lazy dog", key=None,
-               voice="echo", wait=10.0, focus_app=None, before_release=None, audio=None):
+               voice="echo", wait=10.0, focus_app=None, before_release=None, audio=None,
+               until_terminal=False):
     """Generate TTS, hold PTT key, read raw ASR and polished output from app log.
 
     This is the go-to method for testing transcription quality and polish behavior.
@@ -3348,6 +3349,8 @@ def record_tts(sentence="The quick brown fox jumps over the lazy dog", key=None,
                   even if it raises.
         audio:    A recording to play instead of generating TTS (#4047). `sentence` is then
                   only the label printed in the results.
+        until_terminal: Treat `wait` as a deadline and stop waiting as soon as this take's
+                  `dictation_terminal` line is logged (#4047). False (default) keeps the fixed wait.
 
     Returns:
         dict with keys: raw_asr, polished, word_correction, filler_removal,
@@ -3426,8 +3429,18 @@ def record_tts(sentence="The quick brown fox jumps over the lazy dog", key=None,
     _tg.take_stopped()
 
     # Wait for pipeline (ASR + polish + paste)
-    print(f"Waiting {wait:.0f}s for pipeline...")
-    time.sleep(wait)
+    if until_terminal:
+        print(f"Waiting up to {wait:.0f}s for this take's dictation_terminal line...")
+        deadline = time.monotonic() + wait
+        while time.monotonic() < deadline:
+            with open(_APP_LOG_PATH, "rb") as fh:
+                fh.seek(log_size_before)
+                if b"dictation_terminal" in fh.read():
+                    break
+            time.sleep(0.2)  # settle: poll interval between reads of the take's own signal
+    else:
+        print(f"Waiting {wait:.0f}s for pipeline...")
+        time.sleep(wait)
 
     # Read new log lines
     result = {
