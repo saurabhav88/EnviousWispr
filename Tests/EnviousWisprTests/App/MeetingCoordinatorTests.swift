@@ -109,6 +109,7 @@ struct MeetingCoordinatorTests {
       [:]
     var isEngineResident = false
     var isUnitInFlight = false
+    var isOwnModelResident = false
     var onWaitingForDictation: (@MainActor (Bool) -> Void)?
 
     init(

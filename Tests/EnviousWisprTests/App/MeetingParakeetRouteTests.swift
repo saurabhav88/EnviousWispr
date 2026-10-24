@@ -52,7 +52,17 @@ struct MeetingParakeetRouteTests {
     var rechecks = 0
     var claimHeldAtRecheck: Bool?
     static let meeting = UUID(uuidString: "6F9619FF-8B86-D011-B42D-00C04FC964FF")!
-    lazy var sharedClaim = MeetingModelClaim(gate: gate, resolve: { [unowned self] in published })
+    var resolves = 0
+    /// Runs on each resolve of the served model, after the count (a test changes it there).
+    var onResolve: (@MainActor () -> Void)?
+    lazy var sharedClaim = MeetingModelClaim(
+      gate: gate,
+      resolve: { [unowned self] in
+        resolves += 1
+        let answer = published
+        onResolve?()
+        return answer
+      })
     var lines: [String] = []
     var clock = ContinuousClock.now
 
@@ -101,7 +111,6 @@ struct MeetingParakeetRouteTests {
           },
           ownUnload: { [unowned self] in ownUnloads += 1 },
           ownWaitForAvailability: {},
-          ownIsTemporaryContention: { _ in false },
           log: { [unowned self] line in lines.append(line) },
           now: { [unowned self] in clock }))
     }
@@ -264,6 +273,42 @@ struct MeetingParakeetRouteTests {
     #expect(rig.lease.currentHolder == .fileImport)
     #expect(route.route == nil)
     #expect(rig.disarms == 0)
+  }
+
+  @Test("a cancel while the install claim waits behind a model change ends with nothing held")
+  func cancelWhileInstallGateWaits() async throws {
+    let rig = Rig()
+    // A delivery change of the served install holds its gate; the claim must wait for it.
+    try await rig.gate.beginMutation(Self.key(rig.published!))
+    let route = rig.route()
+    let task = Task { @MainActor in try await route.acquire() }
+    // The claim resolves, then parks in the gate's `beginUse`; the gate gives no parked signal,
+    // so a bounded number of turns lets it get there (the cancel is checked either way).
+    for _ in 0..<200 where rig.resolves < 1 { await Task.yield() }
+    #expect(rig.resolves == 1, "the claim reached the install gate")
+    task.cancel()
+    await #expect(throws: (any Error).self) { try await task.value }
+    #expect(rig.lease.admissionEpoch == 0, "no lease taken while waiting on the install")
+    #expect(await rig.gate.isInUse(Self.key(rig.published!)) == false)
+    await rig.gate.endMutation(Self.key(rig.published!))
+  }
+
+  @Test("the served model changing between readiness and the claim is retried on the new model")
+  func servedModelChangesBeforeTheClaim() async throws {
+    let rig = Rig()
+    let next = Self.selection("upgraded")
+    // The claim resolves twice per attempt. Right after its second resolve answers, the served
+    // model changes (an engine reload), so the claim holds the old one and the final check sees
+    // a mismatch once.
+    rig.onResolve = { [unowned rig] in
+      if rig.resolves == 2 { rig.published = next }
+    }
+    let route = rig.route()
+    try await route.acquire()
+    #expect(rig.lease.currentHolder == .meeting)
+    #expect(rig.sharedClaim.selection == next, "the claim protects the model actually served")
+    #expect(rig.readyCalls == 2)
+    #expect(await rig.gate.isInUse(Self.key(next)))
   }
 
   @Test("readiness failing is terminal and takes no lease")

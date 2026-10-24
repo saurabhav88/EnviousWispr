@@ -1,6 +1,7 @@
 @preconcurrency import AVFoundation
 import EnviousWisprCore
 import Foundation
+import Observation
 import Testing
 import os
 
@@ -397,6 +398,29 @@ struct ASRManagerLoadGenerationTests {
 
   private func waitForPrepareEntered(_ backend: FakeASRBackend, count: Int = 1) async {
     while await backend.prepareCount < count { await Task.yield() }
+  }
+
+  /// #4052: EnviousMeet's wait for in-flight work ends through Observation, with no poke, so
+  /// when this fails a meeting transcript waits until something unrelated wakes it.
+  @Test("a change of isLoadOrUnloadInFlight is reported by Observation")
+  func loadOrUnloadInFlightIsObservable() async throws {
+    let parakeet = FakeASRBackend(initiallyReady: false, gated: true)
+    let manager = ASRManager(
+      engineMutationScope: .alwaysAllowedForTesting,
+      parakeetSelection: ParakeetSelectionProvider(), parakeetBackendFactory: { parakeet })
+    let changes = OSAllocatedUnfairLock(initialState: 0)
+    withObservationTracking { _ = manager.isLoadOrUnloadInFlight } onChange: {
+      changes.withLock { $0 += 1 }
+    }
+    let load = Task { @MainActor in try await manager.loadModel() }
+    #expect(await parakeet.prepareParked())
+    #expect(changes.withLock { $0 } == 1, "the load starting is observed")
+    withObservationTracking { _ = manager.isLoadOrUnloadInFlight } onChange: {
+      changes.withLock { $0 += 1 }
+    }
+    await parakeet.releaseGate()
+    try await load.value
+    #expect(changes.withLock { $0 } == 2, "the load ending is observed")
   }
 
   /// #4052: when this fails, EnviousMeet can take the engine lease while the manager is still

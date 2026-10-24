@@ -61,7 +61,6 @@ final class MeetingParakeetRoute {
     var ownTranscribe: @MainActor ([Float]) async throws -> ASRResult
     var ownUnload: @MainActor () async -> Void
     var ownWaitForAvailability: @MainActor () async throws -> Void
-    var ownIsTemporaryContention: @Sendable (Error) -> Bool
     var log: @MainActor (String) -> Void
     var now: @MainActor () -> ContinuousClock.Instant = { ContinuousClock.now }
   }
@@ -234,10 +233,6 @@ final class MeetingParakeetRoute {
     case nil: break
     }
     route = nil
-  }
-
-  func isTemporaryEngineContention(_ error: Error) -> Bool {
-    route == .own && deps.ownIsTemporaryContention(error)
   }
 
   func waitForEngineAvailability() async throws {

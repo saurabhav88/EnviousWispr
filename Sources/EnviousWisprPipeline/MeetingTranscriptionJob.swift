@@ -55,6 +55,13 @@ package final class MeetingTranscriptionJob {
     /// lane, so no other local model work is admitted in between).
     package var unitStarted: @MainActor () -> Void
     package var unitEnded: @MainActor () -> Void
+    /// #4052: told when a pass starts, before any engine work: the meeting and its recorded
+    /// duration in seconds (the longest track's timeline end, gaps included; never the summed
+    /// track audio).
+    package var passStarted: @MainActor (_ meetingID: UUID?, _ meetingSeconds: Int) -> Void
+    /// #4052: whether the engine this job holds is its own separate model (not one borrowed
+    /// from dictation). Read by the engine switch gate.
+    package var isOwnModelResident: @MainActor () -> Bool
 
     package init(
       isDictationIdle: @escaping @MainActor () -> Bool,
@@ -73,7 +80,9 @@ package final class MeetingTranscriptionJob {
       waitUntilMemoryNormal: @escaping @MainActor () async -> Void = {},
       sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) },
       unitStarted: @escaping @MainActor () -> Void = {},
-      unitEnded: @escaping @MainActor () -> Void = {}
+      unitEnded: @escaping @MainActor () -> Void = {},
+      passStarted: @escaping @MainActor (UUID?, Int) -> Void = { _, _ in },
+      isOwnModelResident: @escaping @MainActor () -> Bool = { false }
     ) {
       self.isDictationIdle = isDictationIdle
       self.waitUntilDictationIdle = waitUntilDictationIdle
@@ -92,6 +101,8 @@ package final class MeetingTranscriptionJob {
       self.sleep = sleep
       self.unitStarted = unitStarted
       self.unitEnded = unitEnded
+      self.passStarted = passStarted
+      self.isOwnModelResident = isOwnModelResident
     }
   }
 
@@ -235,6 +246,9 @@ package final class MeetingTranscriptionJob {
   /// on the gate inside the switch).
   package var isEngineResident: Bool { engineResident }
 
+  /// #4052: the engine this job holds is its own separate model (see `Dependencies`).
+  package var isOwnModelResident: Bool { dependencies.isOwnModelResident() }
+
   private func releaseModelUse() async {
     engineResident = false
     engineLoaded = false
@@ -374,6 +388,9 @@ package final class MeetingTranscriptionJob {
     let totalSamples = order.reduce(0) {
       $0 + (tracks[$1]?.runs.reduce(0) { $0 + $1.sampleCount } ?? 0)
     }
+    let timelineEnd = order.compactMap { tracks[$0]?.endSample }.max() ?? 0
+    dependencies.passStarted(
+      access?.meetingID, Int((Double(timelineEnd) / MeetingAudioFormat.sampleRate).rounded()))
 
     // 0. Progress already committed for exactly these inputs and settings.
     var progress: MeetingProcessingCheckpoint?

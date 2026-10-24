@@ -459,8 +459,8 @@ import Testing
       file: "Sources/EnviousWisprPipeline/MeetingTranscriptionJob.swift", matcher: "finalize",
       text: "let hex = hasher.finalize().map { String(format: \"%02x\", $0) }.joined()",
       classification: .structurallySafe),
-    // #3972 C4a: the job's injected engine calls, bound to a `MeetingParakeetEngine` the wiring
-    // builds for that one pass. Never dictation's backend; never `EngineLease`.
+    // #3972 C4a: the live preview job's injected engine calls, bound to a `MeetingParakeetEngine`
+    // the wiring builds for that one job. Never dictation's backend; never `EngineLease`.
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/MeetingWiring.swift", matcher: "transcribe",
       text: "transcribe: { samples in try await engine.transcribe(samples: samples, language: nil) },",
@@ -468,6 +468,33 @@ import Testing
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/MeetingWiring.swift", matcher: "unload",
       text: "unloadEngine: { await engine.unload() },", classification: .structurallySafe),
+    // #4052: the final pass's injected calls go through `MeetingParakeetRoute`. Its own-route
+    // calls (dictation on Whisper) reach the pass's own `MeetingParakeetEngine`, as above.
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/MeetingWiring.swift", matcher: "transcribe",
+      text: "ownTranscribe: { samples in try await engine.transcribe(samples: samples, language: nil) },",
+      classification: .structurallySafe),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/MeetingWiring.swift", matcher: "unload",
+      text: "ownUnload: { await engine.unload() },", classification: .structurallySafe),
+    // Its shared-route decode (dictation on Parakeet) reaches dictation's backend only while
+    // the route holds `EngineLease` as `.meeting` for the whole speech stage: case (d) of
+    // `structurallySafe`, the same full-duration exclusion a file import has. The route's
+    // `unloadEngine` releases that lease; it unloads no model.
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/MeetingWiring.swift", matcher: "transcribe",
+      text: "transcribe: { samples in try await route.transcribe(samples) },",
+      classification: .structurallySafe),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/MeetingWiring.swift", matcher: "unloadEngine",
+      text: "unloadEngine: { await route.unloadEngine() },", classification: .structurallySafe),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/MeetingWiring.swift", matcher: "transcribe",
+      text: "transcribeShared: shared.transcribe,", classification: .structurallySafe),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/WisprBootstrapper.swift", matcher: "transcribe",
+      text: "try await activeEngine.transcribe(samples, .default, nil)",
+      classification: .structurallySafe),
     // #3972 C13a: the meeting SUMMARY provider set-up (keychain read, Ollama version check,
     // connector choice). An AI Polish text model, not the ASR engine; it holds no adapter and no
     // audio. Matched only by method-name coincidence.

@@ -21,11 +21,15 @@ extension ParakeetBackend: MeetingSpeechBackend {
   }
 }
 
-/// The Parakeet engine EnviousMeet transcribes with (#3972 §3.4, R4, R13, R17, R24).
+/// The Parakeet engine EnviousMeet transcribes with when it does not share dictation's
+/// (#3972 §3.4, R4, R13, R17, R24): the live preview, and the final pass while dictation runs
+/// Whisper. When dictation runs Parakeet, the final pass instead borrows dictation's loaded
+/// Parakeet under the shared engine lease, so the Mac holds one copy and dictation waits until
+/// the transcript is written (#4052, `MeetingParakeetRoute`, founder 2026-10-24).
 ///
 /// Its OWN `ParakeetBackend` instance, never dictation's or recovery's: one backend actor shared
-/// by two callers is not safe across its awaits (Codex consult r1 Q3), and a dictation must never
-/// wait behind a meeting piece. It is resident only while a meeting pass runs, and it never
+/// by two callers is not safe across its awaits (Codex consult r1 Q3; #4052 shares only under the
+/// lease, which keeps every other caller out). It is resident only while a meeting pass runs, and it never
 /// claims `EngineLease`, spends dictation's load accounting or publishes a load as dictation's
 /// serving model (`ParakeetSelectionProvider` is never touched).
 ///

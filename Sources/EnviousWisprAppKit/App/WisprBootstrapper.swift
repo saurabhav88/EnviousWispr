@@ -299,6 +299,9 @@ package final class WisprBootstrapper {
     // once; this admits exactly one WORKLOAD — a dictation, a replay, or (from
     // #2648's later chunks) a file import — onto EG-1's single inference slot.
     let engineLease = EngineLease()
+    // #3972 C4a: EnviousMeet's wake signal. Built this early because the lease release and the
+    // engine switch below poke it (#4052: a final pass waits on both).
+    let meetingWakes = MeetingWakeSignal()
     // #1741 Chunk 3 — forward reference for the shared scope's wake closure;
     // `recoveryCoordinator` isn't constructed until much later in this
     // function. Matches the existing `engineCoordinatorForRecoveryGate`
@@ -1461,13 +1464,16 @@ package final class WisprBootstrapper {
         isMeetingEngineResident: { [meetingBox] in
           meetingBox.coordinator?.isMeetingModelWorkActive ?? false
         },
+        isMeetingOwnParakeetResident: { [meetingBox] in
+          meetingBox.coordinator?.isFinalPassOwnParakeetResident ?? false
+        },
         isInstalled: { [setup] backend in
           backend == .parakeet ? true : setup.whisperSetup.setupState == .ready
         },
         stateLabel: { [kernelDriver, whisperKernelDriver] backend in
           (backend == .whisper ? whisperKernelDriver : kernelDriver).state.telemetryLabel
         },
-        performSwitch: { [asrManager, parakeetUpgrade, whisperKernelDriver] backend in
+        performSwitch: { [asrManager, parakeetUpgrade, whisperKernelDriver, meetingWakes] backend in
           // #3546 E21: an actual transition INTO Parakeet is a selection point;
           // re-selecting the already-active Parakeet is not.
           if backend == .parakeet, asrManager.activeBackendType != .parakeet {
@@ -1486,6 +1492,8 @@ package final class WisprBootstrapper {
           SentryBreadcrumb.updateASRBackend(backend.rawValue)
           // #3546 §3.7 T3: the model tags follow the engine now active.
           ASRModelScopeOwner.shared.activate(backend)
+          // #4052: a meeting pass waiting for the switch to settle chooses its route now.
+          meetingWakes.poke()
         },
         warm: { [kernelDriver, whisperKernelDriver] backend in
           await (backend == .whisper ? whisperKernelDriver : kernelDriver)
@@ -1522,8 +1530,10 @@ package final class WisprBootstrapper {
     // #3546 A3: an activation deferred because the engine lease was held (a speed test, a
     // decode still finishing for an abandoned take) is offered again when it is released.
     // #3849: every poke re-runs every gate, so a switch deferred by gate 6c applies here too.
-    engineLease.onReleased = { [weak engineCoordinator] in
+    engineLease.onReleased = { [weak engineCoordinator, meetingWakes] in
       engineCoordinator?.poke(.parakeetUpgradeOwed)
+      // #4052: a meeting pass waiting for the engine takes its turn.
+      meetingWakes.poke()
     }
     // GitHub cloud review, PR #1732: now that `engineCoordinator` exists,
     // `isDictationActive` (wired above) can read its minting state.
@@ -1999,6 +2009,49 @@ package final class WisprBootstrapper {
       engineLease?.admissionEpoch ?? 0
     }
 
+    // #4052: one readiness drive and one unload-timer pair for the two workloads that borrow the
+    // selected engine under the lease: Transcribe a File and EnviousMeet's final pass.
+    //
+    // The SAME authority a record press uses, so "is the engine the user
+    // picked ready" has one answer in the app rather than two.
+    //
+    // **`.notReady` is not a refusal on its own, and this is the import's own
+    // cold-press path.** `ensureSelectedReadyForPress` deliberately leaves a
+    // SELECTED-AND-ACTIVE BUT COLD engine to dictation's cold-press path,
+    // which warms it on the next press. Import has no next press, so it read
+    // that answer as "no" and refused a file whose engine only needed loading
+    // — reachable through the ordinary memory-saving unload setting. Found by
+    // Codex. `load()`'s postcondition is readiness, not merely that the call
+    // returned, so a warm that fails still refuses.
+    let ensureSelectedEngineReady: @MainActor () async -> FileImportCoordinator.EngineReadiness = {
+      [weak engineCoordinator, activeEngine] in
+      guard let engineCoordinator else { return .notReady }
+      switch await engineCoordinator.ensureSelectedReadyForPress() {
+      case .ready: return .ready
+      case .notInstalled: return .notInstalled
+      case .notReady:
+        guard (try? await activeEngine.load()) != nil else { return .notReady }
+        return await activeEngine.isLoaded() ? .ready : .notReady
+      }
+    }
+    // **The disarm/re-arm pair, handed over as a pair.** A dictation minutes
+    // earlier arms a timer under the user's model-unload setting, and its
+    // mutation gate does not consult `EngineLease`, so it could fire mid-import
+    // and clear the model the decoder is running on. Each engine arms its OWN
+    // timer, so both are named on both sides; `ParakeetEngineAdapter` forwards
+    // to `ASRManager.noteTranscriptionComplete`, which is why going through
+    // the adapters covers both engines rather than one of them twice.
+    // Idempotent, so both are always touched rather than whichever looks
+    // active.
+    let disarmEngineTimers: @MainActor () -> Void = { [kernelDriver, whisperKernelDriver] in
+      kernelDriver.cancelPendingEngineUnload()
+      whisperKernelDriver.cancelPendingEngineUnload()
+    }
+    let rearmEngineTimers: @MainActor () -> Void = { [kernelDriver, whisperKernelDriver, settings] in
+      kernelDriver.applyEngineUnloadPolicy(settings.modelUnloadPolicy)
+      whisperKernelDriver.applyEngineUnloadPolicy(settings.modelUnloadPolicy)
+    }
+
     let fileImportCoordinator = FileImportCoordinator(
       decode: { url in try await AudioFileDecoder.decode(url: url) },
       // **The user's locked language reaches ASR, not just the cleanup.** Cloud
@@ -2099,47 +2152,13 @@ package final class WisprBootstrapper {
       refreshOllamaFacts: { [ollamaSetup = setup.ollamaSetup] in
         await ollamaSetup.refreshDownloadedModels()
       },
-      // The SAME authority a record press uses, so "is the engine the user
-      // picked ready" has one answer in the app rather than two.
-      //
-      // **`.notReady` is not a refusal on its own, and this is the import's own
-      // cold-press path.** `ensureSelectedReadyForPress` deliberately leaves a
-      // SELECTED-AND-ACTIVE BUT COLD engine to dictation's cold-press path,
-      // which warms it on the next press. Import has no next press, so it read
-      // that answer as "no" and refused a file whose engine only needed loading
-      // — reachable through the ordinary memory-saving unload setting. Found by
-      // Codex. `load()`'s postcondition is readiness, not merely that the call
-      // returned, so a warm that fails still refuses.
-      // **The disarm/re-arm pair, handed over as a pair.** A dictation minutes
-      // earlier arms a timer under the user's model-unload setting, and its
-      // mutation gate does not consult `EngineLease`, so it could fire mid-import
-      // and clear the model the decoder is running on. Each engine arms its OWN
-      // timer, so both are named on both sides; `ParakeetEngineAdapter` forwards
-      // to `ASRManager.noteTranscriptionComplete`, which is why going through
-      // the adapters covers both engines rather than one of them twice.
-      // Idempotent, so both are always touched rather than whichever looks
-      // active.
-      disarmEngineTimers: { [kernelDriver, whisperKernelDriver] in
-        kernelDriver.cancelPendingEngineUnload()
-        whisperKernelDriver.cancelPendingEngineUnload()
-      },
-      rearmEngineTimers: { [kernelDriver, whisperKernelDriver, settings] in
-        kernelDriver.applyEngineUnloadPolicy(settings.modelUnloadPolicy)
-        whisperKernelDriver.applyEngineUnloadPolicy(settings.modelUnloadPolicy)
-      },
+      // Shared with EnviousMeet's final pass (#4052); reasons at their definitions above.
+      disarmEngineTimers: disarmEngineTimers,
+      rearmEngineTimers: rearmEngineTimers,
       engineSelectionSettled: { [settings, asrManager] in
         settings.selectedBackend == asrManager.activeBackendType
       },
-      ensureEngineReady: { [weak engineCoordinator, activeEngine] in
-        guard let engineCoordinator else { return .notReady }
-        switch await engineCoordinator.ensureSelectedReadyForPress() {
-        case .ready: return .ready
-        case .notInstalled: return .notInstalled
-        case .notReady:
-          guard (try? await activeEngine.load()) != nil else { return .notReady }
-          return await activeEngine.isLoaded() ? .ready : .notReady
-        }
-      },
+      ensureEngineReady: ensureSelectedEngineReady,
       // The same three retries a finished dictation fires
       // (`DictationLifecycleCoordinator` on its terminal), because an import
       // blocks the same three things: an engine switch deferred by gate 6b, an
@@ -2418,7 +2437,6 @@ package final class WisprBootstrapper {
               coordinator: { [meetingBox] in meetingBox.callDetection }))))
     #endif
     // #3972 C4a: EnviousMeet, bootstrapped here so it lives independently of any view.
-    let meetingWakes = MeetingWakeSignal()
     engineCoordinator.onMintingEnded = { [meetingWakes] in meetingWakes.poke() }
     let meetingMemoryPressure = MeetingMemoryPressure()
     // #3988: the pressure a local polish engine records when something outside
@@ -2446,6 +2464,28 @@ package final class WisprBootstrapper {
           !liveRecordingState.isDictationActive && !engineCoordinator.isMintingAnySession
         },
         dictationWakes: meetingWakes,
+        sharedEngine: MeetingWiring.SharedEngine(
+          admission: .live(lease: engineLease, as: .meeting),
+          selectedBackend: { [settings] in settings.selectedBackend },
+          activeBackend: { [asrManager] in asrManager.activeBackendType },
+          ensureReady: {
+            switch await ensureSelectedEngineReady() {
+            case .ready: .ready
+            case .notInstalled: .notInstalled
+            case .notReady: .notReady
+            }
+          },
+          isModelLoaded: { [asrManager] in asrManager.isModelLoaded },
+          isLoadOrUnloadInFlight: { [concreteASRManager] in concreteASRManager.isLoadOrUnloadInFlight },
+          publishedSelection: { [concreteASRManager] in concreteASRManager.publishedSelection },
+          transcribe: { [activeEngine] samples in
+            try await activeEngine.transcribe(samples, .default, nil)
+          },
+          disarmEngineTimers: disarmEngineTimers,
+          rearmEngineTimers: rearmEngineTimers,
+          recoveryRecheck: {
+            recoveryCoordinatorForEngineMutationScope?.requestRecoveryRecheck()
+          }),
         memoryPressure: meetingMemoryPressure,
         offlineModeAdmission: concreteASRManager,
         meetingSelection: { [parakeetUpgrade] in await parakeetUpgrade.meetingSelection() },

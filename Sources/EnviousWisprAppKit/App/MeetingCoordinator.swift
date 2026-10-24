@@ -31,6 +31,8 @@ protocol MeetingProcessing: AnyObject {
   func cancel()
   var isEngineResident: Bool { get }
   var isUnitInFlight: Bool { get }
+  /// #4052: the pass holds its own separate Parakeet (dictation runs Whisper).
+  var isOwnModelResident: Bool { get }
   /// Told true while a unit waits for dictation to finish, false when it goes on.
   var onWaitingForDictation: (@MainActor (Bool) -> Void)? { get set }
 }
@@ -487,6 +489,11 @@ final class MeetingCoordinator {
 
   /// A meeting's own engine is loaded or a meeting unit is running: dictation's Ultra
   /// activation waits (C3a, C4a).
+  /// #4052: the final pass is transcribing on its own Parakeet. An engine switch of dictation
+  /// into Parakeet waits until it is released (gate 6d), so two copies never coexist. The live
+  /// preview's engine is not counted here.
+  var isFinalPassOwnParakeetResident: Bool { job?.isOwnModelResident ?? false }
+
   var isMeetingModelWorkActive: Bool {
     (job?.isEngineResident ?? false) || (job?.isUnitInFlight ?? false)
       || livePreview.isEngineResident || livePreview.laneOps > 0
