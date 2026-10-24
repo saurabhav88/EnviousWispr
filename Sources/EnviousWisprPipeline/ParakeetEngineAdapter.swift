@@ -38,6 +38,9 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// #1707 Phase 2: DEBUG fault-injection oracle (§11.1) — `nil` in every
   /// production/test path that doesn't explicitly construct one.
   private let batchDecodeFaultController: BatchDecodeFaultController?
+  /// #4052: true while EnviousMeet's transcript holds the shared engine lease
+  /// (`engineLease.currentHolder == .meeting` in production). Read by `recoverFromWedge` only.
+  private let isSharedEngineHeldByOtherWorkload: @MainActor () -> Bool
 
   // MARK: Engine-session bookkeeping (NOT FSM state — §3.11)
 
@@ -223,8 +226,12 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     asrInterruptionRecoveryDeadlineSec: Double = 8.0,
     // #1707 Phase 2: DEBUG fault-injection oracle (§11.1). Defaulted `nil`
     // so every existing test construction site is unaffected.
-    batchDecodeFaultController: BatchDecodeFaultController? = nil
+    batchDecodeFaultController: BatchDecodeFaultController? = nil,
+    // #4052: defaulted for test construction only; production builds this adapter through
+    // `KernelAdapterFactory.makeParakeetAdapter`, which requires it.
+    isSharedEngineHeldByOtherWorkload: @escaping @MainActor () -> Bool = { false }
   ) {
+    self.isSharedEngineHeldByOtherWorkload = isSharedEngineHeldByOtherWorkload
     self.asrManager = asrManager
     self.parakeetUpgrade = parakeetUpgrade
     self.asrInterruptionRecoveryDeadlineSec = asrInterruptionRecoveryDeadlineSec
@@ -896,6 +903,19 @@ final class ParakeetEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// both transports coexist during the migration.
   func recoverFromWedge() async {
     await discardSession()
+    // #4052: EnviousMeet may hold the shared engine lease (its transcript decodes on this same
+    // backend). Read after the await above and with no suspension before the destructive calls
+    // below, so a meeting that took the lease while the session was discarded keeps its model.
+    // Neither call reads the lease itself. Hypothetical (no meeting-time reproduction); guarded
+    // because the alternative is a silent gap in the meeting transcript.
+    if isSharedEngineHeldByOtherWorkload() {
+      Task {
+        await AppLogger.shared.log(
+          "wedge recovery skipped: shared engine held by meeting", level: .info,
+          category: "Pipeline")
+      }
+      return
+    }
     asrManager.cancelInFlightLoad()
     await asrManager.attemptWedgeRecoveryUnload()
     // #1405: this recovery is now for MODEL-LOAD wedges only. The download owns

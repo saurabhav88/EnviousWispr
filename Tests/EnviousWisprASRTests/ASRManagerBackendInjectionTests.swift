@@ -399,6 +399,34 @@ struct ASRManagerLoadGenerationTests {
     while await backend.prepareCount < count { await Task.yield() }
   }
 
+  /// #4052: when this fails, EnviousMeet can take the engine lease while the manager is still
+  /// loading or releasing the model, and decode on a backend that is being replaced.
+  @Test("isLoadOrUnloadInFlight is true exactly while the manager's own load or unload runs")
+  func loadOrUnloadInFlightTracksRealWork() async throws {
+    let parakeet = FakeASRBackend(initiallyReady: false, gated: true)
+    let manager = ASRManager(
+      engineMutationScope: .alwaysAllowedForTesting,
+      parakeetSelection: ParakeetSelectionProvider(), parakeetBackendFactory: { parakeet })
+    #expect(manager.isLoadOrUnloadInFlight == false, "idle")
+
+    let load = Task { @MainActor in try await manager.loadModel() }
+    #expect(await parakeet.prepareParked(), "the load reached the backend and parked")
+    #expect(manager.isLoadOrUnloadInFlight, "a load parked inside the backend")
+    await parakeet.releaseGate()
+    try await load.value
+    #expect(manager.isModelLoaded)
+    #expect(manager.isLoadOrUnloadInFlight == false, "the load finished")
+
+    await parakeet.gateUnload()
+    let unload = Task { @MainActor in await manager.unloadModel() }
+    #expect(await parakeet.unloadParked(), "the unload reached the backend and parked")
+    #expect(manager.isLoadOrUnloadInFlight, "an unload parked inside the backend")
+    await parakeet.releaseUnload()
+    await unload.value
+    #expect(manager.isModelLoaded == false)
+    #expect(manager.isLoadOrUnloadInFlight == false, "the unload finished")
+  }
+
   @Test(
     "a load superseded by cancelInFlightLoad mid-flight releases the caller EARLY with ASRLoadCancelledError, before the vendor call itself returns (#1908)"
   )
@@ -671,6 +699,7 @@ final actor FakeASRBackend: ASRBackend {
     if gated {
       await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
         gateContinuations.append(c)
+        announceParked(&prepareParkedWaiters)
       }
     }
     if let prepareFailure { throw prepareFailure }
@@ -776,8 +805,61 @@ final actor FakeASRBackend: ASRBackend {
     unloadCount += 1
     ready = false
     if unloadGated {
-      await withCheckedContinuation { unloadContinuations.append($0) }
+      await withCheckedContinuation {
+        unloadContinuations.append($0)
+        announceParked(&unloadParkedWaiters)
+      }
     }
     unloadsFinished += 1
+  }
+
+  // MARK: #4052 parked signals (bounded, like `transcribeParked`)
+
+  private var prepareParkedWaiters: [(id: UUID, continuation: CheckedContinuation<Bool, Never>)] = []
+  private var unloadParkedWaiters: [(id: UUID, continuation: CheckedContinuation<Bool, Never>)] = []
+
+  /// Resolves `true` once a gated `prepare()` is parked (its release continuation installed),
+  /// `false` after the deadline.
+  func prepareParked() async -> Bool {
+    if !gateContinuations.isEmpty { return true }
+    return await withCheckedContinuation { (c: CheckedContinuation<Bool, Never>) in
+      let id = UUID()
+      prepareParkedWaiters.append((id, c))
+      Task {
+        try? await Task.sleep(for: .seconds(5))  // deadline-fallback: bounds the signal wait
+        await self.expirePrepareParked(id)
+      }
+    }
+  }
+
+  /// Resolves `true` once a gated `unload()` is parked, `false` after the deadline.
+  func unloadParked() async -> Bool {
+    if !unloadContinuations.isEmpty { return true }
+    return await withCheckedContinuation { (c: CheckedContinuation<Bool, Never>) in
+      let id = UUID()
+      unloadParkedWaiters.append((id, c))
+      Task {
+        try? await Task.sleep(for: .seconds(5))  // deadline-fallback: bounds the signal wait
+        await self.expireUnloadParked(id)
+      }
+    }
+  }
+
+  private func expirePrepareParked(_ id: UUID) {
+    guard let index = prepareParkedWaiters.firstIndex(where: { $0.id == id }) else { return }
+    prepareParkedWaiters.remove(at: index).continuation.resume(returning: false)
+  }
+
+  private func expireUnloadParked(_ id: UUID) {
+    guard let index = unloadParkedWaiters.firstIndex(where: { $0.id == id }) else { return }
+    unloadParkedWaiters.remove(at: index).continuation.resume(returning: false)
+  }
+
+  private func announceParked(
+    _ waiters: inout [(id: UUID, continuation: CheckedContinuation<Bool, Never>)]
+  ) {
+    let parked = waiters
+    waiters.removeAll()
+    for waiter in parked { waiter.continuation.resume(returning: true) }
   }
 }

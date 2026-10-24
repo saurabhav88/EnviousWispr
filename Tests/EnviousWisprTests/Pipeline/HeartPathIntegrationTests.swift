@@ -111,7 +111,7 @@ struct HeartPathIntegrationTests {
         keychainManager: KeychainManager(),
         captureTelemetry: CaptureTelemetryState(),
         pasteCompletionRegistry: PasteCompletionRegistry(),
-        engineMutationScope: .alwaysAllowedForTesting
+        engineMutationScope: .alwaysAllowedForTesting, isSharedEngineHeldByOtherWorkload: { false }
       ))
     let stateWaiter = PipelineStateWaiter(pipeline)
     #expect(pipeline.currentSessionConfig == nil)

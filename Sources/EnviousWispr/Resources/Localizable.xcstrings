@@ -1519,6 +1519,17 @@
         }
       }
     },
+    "A meeting is being transcribed. Try again when it finishes." : {
+      "comment" : "Transcribe a File: why the file was refused. A meeting transcript is using the engine.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Meeting wird gerade transkribiert. Versuche es erneut, wenn es beendet ist."
+          }
+        }
+      }
+    },
     "A recording was saved by a newer version of EnviousWispr. Update the app to open it." : {
       "comment" : "History, Recordings: one meeting this version cannot open (a newer version saved it).",
       "localizations" : {
@@ -20689,6 +20700,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Datei wird transkribiert. Bitte warte."
+          }
+        }
+      }
+    },
+    "Transcribing a meeting. Please wait." : {
+      "comment" : "Pill: a meeting transcript is being written on the speech engine, so dictation must wait. Must fit a small single-line pill (about 40 characters).",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meeting wird transkribiert. Bitte warte."
           }
         }
       }

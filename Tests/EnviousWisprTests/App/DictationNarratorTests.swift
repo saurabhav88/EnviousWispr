@@ -148,11 +148,13 @@ import Testing
       .dictation: "Already recording.",
       // #2787: the decode the user stopped waiting for still owns the engine.
       .abandonedDecode: "A take is stuck. Restart the app.",
+      // #4052: founder-chosen wording.
+      .meeting: "Transcribing a meeting. Please wait.",
     ]
     let sentence = DictationNarrator.copy(for: .sharedEngineBusy(holder: holder))
     #expect(sentence == expected[holder])
     // **The pill truncates rather than wrapping. Live UAT determines whether each sentence
-    // fits; this 34-character limit is a conservative editing heuristic, not a measured
+    // fits; this character limit is a conservative editing heuristic, not a measured
     // width limit.** An earlier version of this note called it MEASURED, which one sentence
     // fitting cannot establish. Corrected by Codex.
     //
@@ -172,8 +174,14 @@ import Testing
     // cannot see a proportional font, and a sentence of 34 wide glyphs may yet overflow. The
     // instrument that decides is the screenshot; this cap only stops an obvious regression
     // between screenshots. Do not raise it without a new photograph.
+    //
+    // #4052 (2026-10-24): raised to 36 on a new photograph. Settings > Diagnostics > Pill
+    // Preview played "Transcribing a meeting. Please wait." (36 characters) and the dev build's
+    // pill rendered it in full with margin (`docs/feature-requests/4052-uat-evidence/
+    // pill-meeting-en-crop.png`, main checkout). The bracket is now 36 shown in full versus 41
+    // cut off.
     #expect(
-      sentence.count <= 34,
+      sentence.count <= 36,
       "\(sentence.count) characters will be cut off in the pill: \(sentence)")
     // The user has never heard of an inference slot, a lease or a claim; the
     // words name the job to wait for instead.

@@ -865,6 +865,14 @@ public final class ASRManager: ASRManagerInterface {
 
   private var inFlightUnloadTask: Task<Void, Never>?
 
+  /// #4052: whether this manager's own load or unload of the Parakeet backend is running now.
+  /// EnviousMeet reads it in the same main-actor step that takes the engine lease, so it never
+  /// starts decoding on a backend that is being replaced or released. Reads the task state
+  /// itself, not a copy.
+  package var isLoadOrUnloadInFlight: Bool {
+    inFlightLoadTask != nil || inFlightUnloadTask != nil
+  }
+
   private func unloadModelOnce() async {
     // #959: a live streaming session means the model is in use and there is no
     // in-flight load to supersede — refuse FIRST, before bumping the generation,

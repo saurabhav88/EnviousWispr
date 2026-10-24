@@ -51,7 +51,7 @@ public enum CompletionInterruptionDisclosure: Equatable, Sendable {
 /// `RecordingWarningReason` below carries one. `EngineLease` is the authority
 /// that hands these out; this is only the name of who holds it.
 ///
-/// EG-1's health probe is a fourth producer of inference and is deliberately
+/// EG-1's health probe is another producer of inference and is deliberately
 /// absent: it never takes a claim, it asks whether the resource is busy and
 /// skips.
 public enum SharedEngineHolder: String, Sendable, Equatable, CaseIterable {
@@ -63,6 +63,9 @@ public enum SharedEngineHolder: String, Sendable, Equatable, CaseIterable {
   /// free until that call returns, and on the machine that motivated this it
   /// never did — so the honest answer to the next record press is "restart".
   case abandonedDecode
+  /// #4052: EnviousMeet's after-meeting transcript is being written on dictation's own
+  /// Parakeet, so the Mac holds one copy of the model. Dictation waits until it is done.
+  case meeting
 }
 
 /// #1567 (heartpath E3): a typed fact explaining a post-completion or advisory

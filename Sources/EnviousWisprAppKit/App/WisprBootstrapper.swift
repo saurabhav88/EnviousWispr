@@ -661,6 +661,10 @@ package final class WisprBootstrapper {
         onRetained: { [retainedPasteNotice] takeID, changeCount, reportShown in
           retainedPasteNotice.retained(
             takeID: takeID, changeCount: changeCount, reportShown: reportShown)
+        },
+        // #4052: the adapter's wedge recovery leaves a model EnviousMeet is decoding on alone.
+        isSharedEngineHeldByOtherWorkload: { [engineLease] in
+          engineLease.currentHolder == .meeting
         }
       ))
 

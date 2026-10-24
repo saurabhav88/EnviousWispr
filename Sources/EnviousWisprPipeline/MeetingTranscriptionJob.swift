@@ -99,6 +99,11 @@ package final class MeetingTranscriptionJob {
     package var pieceTargetSeconds: Double = 60
     package var pieceSearchSeconds: Double = 15
     package var seamPaddingSeconds: Double = 1
+    /// #4052: false decodes each contiguous run in one call, the founder-approved final-pass
+    /// shape (Transcribe a File's: #2648 measured 45 minutes in one Parakeet call losing fewer
+    /// words than 5-minute slices did at their joins). No cut search, no seam padding, and every
+    /// word the engine returns is kept. True keeps the cut pieces the live preview uses.
+    package var cutsPieces = true
     /// Longer than this paused for dictation with the engine loaded, the engine is unloaded
     /// and reloaded when the pass resumes (plan §3 resource table).
     package var prolongedPauseSeconds: Double = 60
@@ -162,7 +167,7 @@ package final class MeetingTranscriptionJob {
 
   /// Bumped whenever segmentation or ownership changes what a piece contains; a checkpoint
   /// from another version is discarded.
-  package nonisolated static let processingVersion = 1
+  package nonisolated static let processingVersion = 2
 
   private let dependencies: Dependencies
   private let configuration: Configuration
@@ -761,6 +766,7 @@ package final class MeetingTranscriptionJob {
       pieceTargetSeconds: configuration.pieceTargetSeconds,
       pieceSearchSeconds: configuration.pieceSearchSeconds,
       seamPaddingSeconds: configuration.seamPaddingSeconds,
+      cutsPieces: configuration.cutsPieces,
       inputs: try order.map { kind in
         MeetingProcessingCheckpoint.TrackInventory(
           track: kind,
@@ -791,6 +797,8 @@ package final class MeetingTranscriptionJob {
     async throws
     -> (Int, Bool)
   {
+    // #4052: a whole-run pass reads no audio to search for a cut.
+    guard configuration.cutsPieces else { return (run.endSample, false) }
     let rate = MeetingAudioFormat.sampleRate
     let target = Int(configuration.pieceTargetSeconds * rate)
     let search = Int(configuration.pieceSearchSeconds * rate)
@@ -816,7 +824,8 @@ package final class MeetingTranscriptionJob {
     async throws -> MeetingTrackPiece?
   {
     let rate = MeetingAudioFormat.sampleRate
-    let pad = Int(configuration.seamPaddingSeconds * rate)
+    let cutsPieces = configuration.cutsPieces
+    let pad = cutsPieces ? Int(configuration.seamPaddingSeconds * rate) : 0
     let paddedStart = max(run.startSample, start - pad)
     let paddedEnd = min(run.endSample, end + pad)
     for attempt in 0..<2 {
@@ -826,6 +835,9 @@ package final class MeetingTranscriptionJob {
           let samples = try await self.readOffMain(
             audio: audio, from: paddedStart, count: paddedEnd - paddedStart)
           let result = try await self.dependencies.transcribe(samples)
+          guard cutsPieces else {
+            return Self.wholeRunPiece(result: result, startMs: Self.ms(start), endMs: Self.ms(end))
+          }
           return await Task.detached(priority: .utility) {
             Self.ownedPiece(
               result: result, paddedStartMs: Self.ms(paddedStart), startMs: Self.ms(start),
@@ -839,6 +851,21 @@ package final class MeetingTranscriptionJob {
       }
     }
     return nil
+  }
+
+  /// #4052: a whole run decoded in one call has no seam, so nothing is filtered: the engine's
+  /// text and every word are kept as returned (boundary and untimed words included), with the
+  /// word times moved onto the meeting timeline. Text ranges are unchanged.
+  nonisolated static func wholeRunPiece(result: ASRResult, startMs: Int, endMs: Int)
+    -> MeetingTrackPiece
+  {
+    MeetingTrackPiece(
+      text: result.text, startMs: startMs, endMs: endMs,
+      words: (result.wordTimings ?? []).map {
+        ASRWordTiming(
+          word: $0.word, range: $0.range, startMs: $0.startMs.map { startMs + $0 },
+          endMs: $0.endMs.map { startMs + $0 })
+      })
   }
 
   /// The words of `result` whose midpoint falls in this piece's own range, as a piece on the

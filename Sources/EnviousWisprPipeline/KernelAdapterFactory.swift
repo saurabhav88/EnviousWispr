@@ -35,11 +35,13 @@ package enum KernelAdapterFactory {
   package static func makeParakeetAdapter(
     asrManager: any ASRManagerInterface,
     parakeetUpgrade: ParakeetUpgradeCoordinator,
-    batchDecodeFaultController: BatchDecodeFaultController? = nil
+    batchDecodeFaultController: BatchDecodeFaultController? = nil,
+    isSharedEngineHeldByOtherWorkload: @escaping @MainActor () -> Bool
   ) -> any ASREngineAdapter {
     ParakeetEngineAdapter(
       asrManager: asrManager, parakeetUpgrade: parakeetUpgrade,
-      batchDecodeFaultController: batchDecodeFaultController)
+      batchDecodeFaultController: batchDecodeFaultController,
+      isSharedEngineHeldByOtherWorkload: isSharedEngineHeldByOtherWorkload)
   }
 
   /// #3735: the production Whisper adapter, over transcribe.cpp. It starts the adapter's

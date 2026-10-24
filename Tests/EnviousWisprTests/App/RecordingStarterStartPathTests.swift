@@ -869,6 +869,37 @@ import Testing
     #expect(Self.showsSharedEngineBusy(fx.overlay, holder: .fileImport))
   }
 
+  /// #4052: a meeting transcript on dictation's own engine refuses both routes the same way,
+  /// naming the meeting, and keeps its claim.
+  @Test func bothRoutesAreRefusedWhileAMeetingTranscriptHoldsTheResource() async {
+    let fx = Self.makeFixture()
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = true
+    guard case .granted = fx.engineLease.admit(.meeting) else {
+      Issue.record("the fixture's lease was already held")
+      return
+    }
+
+    let outcome = await fx.starter.start()
+    #expect(outcome == .noRecording)
+    #expect(fx.kernelDriver.state == .idle, "a refused press must mint no session")
+    #expect(Self.showsSharedEngineBusy(fx.overlay, holder: .meeting))
+    #expect(fx.engineLease.currentHolder == .meeting)
+
+    // The toggle route on its own fixture, so its pill cannot be the press's left on screen.
+    let toggle = Self.makeFixture()
+    toggle.asr.activeBackendType = .parakeet
+    toggle.asr.isModelLoaded = true
+    guard case .granted = toggle.engineLease.admit(.meeting) else {
+      Issue.record("the toggle fixture's lease was already held")
+      return
+    }
+    await toggle.starter.toggle(source: .toggleHotkey)
+    #expect(toggle.kernelDriver.state == .idle, "a refused toggle must mint no session")
+    #expect(Self.showsSharedEngineBusy(toggle.overlay, holder: .meeting))
+    #expect(toggle.engineLease.currentHolder == .meeting)
+  }
+
   /// A refused press must not disturb the claim it lost to. Releasing someone
   /// else's claim would be worse than refusing wrongly: the import would keep
   /// running while a dictation walked into the same inference slot.
