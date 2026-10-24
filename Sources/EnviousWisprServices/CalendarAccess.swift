@@ -13,16 +13,18 @@ public enum CalendarAccess {
     case denied
     /// macOS has not asked yet.
     case notAsked
-    /// Restricted by a device profile, or write-only access that cannot read titles.
+    /// Restricted by a device profile.
     case unavailable
   }
 
   public static func status() -> Status {
     switch EKEventStore.authorizationStatus(for: .event) {
     case .fullAccess: return .granted
-    case .denied: return .denied
+    // Write-only access cannot read titles; full access is granted in System Settings,
+    // so it reads like a refusal and offers that page.
+    case .denied, .writeOnly: return .denied
     case .notDetermined: return .notAsked
-    case .restricted, .writeOnly: return .unavailable
+    case .restricted: return .unavailable
     @unknown default: return .unavailable
     }
   }

@@ -249,7 +249,7 @@ extension MeetingsView {
         comment: "EnviousMeet page: macOS has not asked for calendar access yet.")
     case .unavailable:
       return LocalizedStringResource(
-        "Not available on this Mac.", comment: "EnviousMeet page: calendar access is blocked or write-only.")
+        "Not available on this Mac.", comment: "EnviousMeet page: calendar access is blocked by a device profile.")
     }
   }
 }

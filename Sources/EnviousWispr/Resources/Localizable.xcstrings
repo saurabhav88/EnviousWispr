@@ -12517,7 +12517,7 @@
       }
     },
     "Not available on this Mac." : {
-      "comment" : "EnviousMeet page: calendar access is blocked or write-only.\nEnviousMeet setup: a permission a profile blocks.",
+      "comment" : "EnviousMeet page: calendar access is blocked by a device profile.\nEnviousMeet setup: a permission a profile blocks.",
       "localizations" : {
         "de" : {
           "stringUnit" : {

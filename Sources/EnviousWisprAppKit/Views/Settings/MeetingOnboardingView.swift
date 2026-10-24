@@ -420,6 +420,7 @@ private struct MeetingSetupPermissionRow: View {
           .buttonStyle(.plain)
           .font(.obCaptionSmall)
           .foregroundStyle(Color.obTextTertiary)
+          .disabled(busy)
         }
       }
     }

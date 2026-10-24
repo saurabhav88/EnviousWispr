@@ -161,12 +161,13 @@ final class MeetingOnboardingModel {
   }
 
   /// Not now: the call sound is not recorded until the user turns it on in settings.
+  /// Not now is refused while macOS is asking: the answer would overwrite the choice.
   func skipCallSound() {
-    guard callSound != .granted else { return }
+    guard callSound != .granted, !asking else { return }
     callSound = .skipped
     deps.settings.meetingCaptureCallSound = false
   }
-  func skipCalendar() { if calendar != .granted { calendar = .skipped } }
+  func skipCalendar() { if calendar != .granted, !asking { calendar = .skipped } }
 
   func openCallSoundSettings() { deps.openCallSoundSettings() }
   func openCalendarSettings() { deps.openCalendarSettings() }

@@ -19,6 +19,13 @@ struct MeetingOnboardingModelTests {
     var microphone: AVAuthorizationStatus = .authorized
     var callSoundStatus: SystemAudioPermission.Status = .unknown
     var callSoundAnswer: SystemAudioPermission.Status? = .unknown
+    /// When set, the call-sound request waits for `releaseCallSound()`.
+    var holdCallSound = false
+    private var heldCallSound: CheckedContinuation<Void, Never>?
+    func releaseCallSound() {
+      heldCallSound?.resume()
+      heldCallSound = nil
+    }
     var calendarStatus: CalendarAccess.Status = .notAsked
     var calendarAnswer: CalendarAccess.Status = .granted
     var emitted: [MeetingSetupTelemetry] = []
@@ -34,7 +41,10 @@ struct MeetingOnboardingModelTests {
         microphoneStatus: { [unowned self] in microphone },
         requestMicrophone: { [unowned self] in microphone = .authorized },
         callSoundStatus: { [unowned self] in callSoundStatus },
-        requestCallSound: { [unowned self] in callSoundAnswer },
+        requestCallSound: { [unowned self] in
+          if holdCallSound { await withCheckedContinuation { heldCallSound = $0 } }
+          return callSoundAnswer
+        },
         calendarStatus: { [unowned self] in calendarStatus },
         requestCalendar: { [unowned self] in
           calendarStatus = calendarAnswer
@@ -139,6 +149,21 @@ struct MeetingOnboardingModelTests {
     rig.model.refresh()
     #expect(rig.model.calendar == .granted)
     #expect(rig.model.callSound == .granted)
+  }
+
+  @Test("Not now while macOS asks about the call sound does nothing; the answer decides")
+  func skipWhileAskingIsRefused() async throws {
+    let rig = try Rig()
+    rig.callSoundAnswer = .denied
+    rig.holdCallSound = true
+    let request = Task { await rig.model.allowCallSound() }
+    #expect(await settleUntilObserved { rig.model.asking })
+    rig.model.skipCallSound()
+    #expect(rig.model.callSound != .skipped)
+    rig.releaseCallSound()
+    await request.value
+    #expect(rig.model.callSound == .denied)
+    #expect(rig.settings.meetingCaptureCallSound == true)
   }
 
   @Test("Not now on call sound turns the call sound off for the next meeting")
