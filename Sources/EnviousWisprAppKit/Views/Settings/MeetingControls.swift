@@ -273,6 +273,7 @@ struct MeetingWriteSummaryRow: View {
 /// macOS for calendar access when it was never asked; a refusal leaves it off.
 struct MeetingCalendarNamesRow: View {
   @Environment(SettingsManager.self) private var settings
+  @Environment(PermissionsService.self) private var permissions
   @State private var asking = false
 
   var body: some View {
@@ -293,6 +294,8 @@ struct MeetingCalendarNamesRow: View {
             asking = true
             Task {
               let status = await CalendarAccess.request()
+              // The page's Calendar row reads the shared status, so it shows the result too.
+              permissions.refreshCalendarStatus()
               settings.meetingUseCalendarForNames = status == .granted
               asking = false
             }

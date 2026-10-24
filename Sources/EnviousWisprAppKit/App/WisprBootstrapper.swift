@@ -2460,7 +2460,11 @@ package final class WisprBootstrapper {
           SystemAudioPermission.isAvailable ? await SystemAudioPermission.request() : nil
         },
         calendarStatus: { CalendarAccess.status() },
-        requestCalendar: { await CalendarAccess.request() },
+        requestCalendar: { [permissions] in
+          let status = await CalendarAccess.request()
+          permissions.refreshCalendarStatus()
+          return status
+        },
         openCallSoundSettings: { [permissions] in permissions.openSystemAudioRecordingSettings() },
         openCalendarSettings: { [permissions] in permissions.openCalendarSettings() },
         settings: settings,

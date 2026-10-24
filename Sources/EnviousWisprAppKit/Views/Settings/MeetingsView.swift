@@ -218,12 +218,12 @@ extension MeetingsView {
       notInSettingsMap: .statusLine, icon: "calendar",
       title: LocalizedStringResource(
         "Calendar", comment: "EnviousMeet page: the calendar permission row's title."),
-      short: Self.calendarStatusLine(CalendarAccess.status()),
+      short: Self.calendarStatusLine(permissions.calendarStatus),
       help: LocalizedStringResource(
         "macOS asks for full calendar access. EnviousMeet only reads event titles, times and meeting links to name your meetings, and never changes your calendar.",
         comment: "EnviousMeet page: help for the calendar permission row.")
     ) {
-      if CalendarAccess.status() == .denied {
+      if permissions.calendarStatus == .denied {
         Button {
           permissions.openCalendarSettings()
         } label: {

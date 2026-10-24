@@ -107,6 +107,20 @@ import Testing
       #expect(box.events.isEmpty)  // and did NOT emit a flip event
     }
 
+    @MainActor
+    @Test("#4017: the stored calendar status follows a refusal once refreshed")
+    func calendarStatusRefreshes() {
+      // The EnviousMeet page's Calendar row reads this property; a refusal from the
+      // page's switch must show there, with the System Settings button.
+      var live: CalendarAccess.Status = .notAsked
+      let svc = PermissionsService(accessibilityReader: { true }, calendarReader: { live })
+      #expect(svc.calendarStatus == .notAsked)
+      live = .denied
+      #expect(svc.calendarStatus == .notAsked)
+      svc.refreshCalendarStatus()
+      #expect(svc.calendarStatus == .denied)
+    }
+
     // #2549: `requestMicrophoneAccessOrOpenSettings()` — the denied branch is
     // fully injectable and testable. The not-denied branch calls the real,
     // un-injectable `AVCaptureDevice.requestAccess` (a pre-existing limit of

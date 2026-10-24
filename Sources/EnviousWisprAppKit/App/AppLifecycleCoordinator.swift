@@ -436,6 +436,7 @@ final class AppLifecycleCoordinator {
     // `accessibilityGranted` is a CACHED property (unlike mic, which reads
     // live), so it must be refreshed before the restart decision reads it.
     permissions.refreshAccessibilityStatus()
+    permissions.refreshCalendarStatus()
     permissions.restartMonitoringIfNeeded()
     menuBarController.updateIcon()
 
