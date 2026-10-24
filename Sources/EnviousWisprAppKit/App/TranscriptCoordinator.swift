@@ -18,7 +18,13 @@ final class TranscriptCoordinator {
   /// match a name, not a type, so it flags an unrelated `transcripts` elsewhere
   /// and misses a bare access from an extension. The compiler makes the mistake
   /// unavailable instead. Read `visibleTranscripts`, `listedItems` or `filteredTranscripts`.
-  private var transcripts: [Transcript] = []
+  private var transcripts: [Transcript] = [] {
+    // Every mutation (assignment, insert, subscript, removeAll) passes here, so the list key
+    // sees it without each mutation site remembering to (#4001).
+    didSet { transcriptsRevision &+= 1 }
+  }
+  /// Bumped on every change to `transcripts`: part of the kept list's key (#4001).
+  private(set) var transcriptsRevision = 0
   var searchQuery: String = "" {
     didSet { reconcileSelectionWithDisplayedSet() }
   }
@@ -165,9 +171,13 @@ final class TranscriptCoordinator {
     // instead of relying on each view to remember to read a counter whose
     // relevance is not obvious from its name.
     _ = expiryPulse
-    let now = Date()
+    let now = clock()
     return transcripts.filter { Self.isVisible($0, at: now) }
   }
+
+  /// The time the list, its counts and row visibility are judged at; tests set it to step
+  /// across an expiry boundary without sleeping (#4001).
+  @ObservationIgnored var clock: () -> Date = Date.init
 
   /// What History lists: visible rows and every meeting, inside the kind filter, then inside
   /// the search, newest first.
@@ -177,8 +187,135 @@ final class TranscriptCoordinator {
   /// existed. #3972 R45: a meeting is one item (`.meeting`) whether or not its History row
   /// exists yet; it is listed under All and Recordings, never under Dictations or Transcripts.
   /// A meeting marked for deletion is not listed. The search then keeps its own rule below.
-  var listedItems: [HistoryListItem] {
-    let visible = visibleTranscripts
+  var listedItems: [HistoryListItem] { keptList.items }
+
+  /// #4001: the list, built once and kept while its inputs are unchanged. The key is read on
+  /// every call, through the same observable properties and closures the build reads, so a view
+  /// that reads the list subscribes to every input on a kept answer too.
+  private var keptList: KeptList {
+    let now = clock()
+    let key = listKey(at: now)
+    #if DEBUG
+      if listCacheDisabledForTesting {
+        return KeptList(key: key, items: buildListedItems(at: now, from: key))
+      }
+    #endif
+    if let kept = listCache, kept.key == key { return kept }
+    let kept = KeptList(key: key, items: buildListedItems(at: now, from: key))
+    listCache = kept
+    pruneSearchTextCache()
+    return kept
+  }
+
+  private struct KeptList {
+    let key: ListKey
+    let items: [HistoryListItem]
+    /// Listed items that are not held rows, counted once with the list.
+    let completedCount: Int
+
+    init(key: ListKey, items: [HistoryListItem]) {
+      self.key = key
+      self.items = items
+      completedCount = items.reduce(0) { count, item in
+        switch item {
+        case .transcript(let row): count + (row.escapeRecoveredAt == nil ? 1 : 0)
+        case .meeting(let meeting): count + (meeting.row?.escapeRecoveredAt == nil ? 1 : 0)
+        }
+      }
+    }
+  }
+
+  /// Everything `buildListedItems` and the search read, captured at one `now` (#4001).
+  private struct ListKey: Equatable {
+    let revision: Int
+    let pulse: Int
+    let filter: HistoryFilter
+    let query: String
+    let echoShown: Set<UUID>
+    let meetings: [MeetingRecord]
+    /// The visibility, at `now`, of each held (pending) row, in list order: an expiry between
+    /// pulses changes the key.
+    let pendingVisible: [Bool]
+    /// While searching: every meeting row's facts and notes (a held row's too), read before
+    /// the search runs, so a meeting that does not match yet is still watched. The build reads
+    /// them from here and never asks the closures again.
+    let searchFacts: [SearchFact]?
+    let locale: String
+    let localizations: [String]
+  }
+
+  private struct SearchFact: Equatable {
+    let meetingID: UUID
+    let info: MeetingHistoryInfo?
+    let notes: String?
+  }
+
+  private func listKey(at now: Date) -> ListKey {
+    _ = expiryPulse
+    let index = rowIndex
+    let pendingVisible = index.pending.map { Self.isVisible(transcripts[$0], at: now) }
+    let meetingRowIDs = index.meetingRowIDs
+    let facts: [SearchFact]? =
+      searchQuery.isEmpty
+      ? nil
+      : meetingRowIDs.map {
+        SearchFact(meetingID: $0, info: meetingInfo?($0), notes: meetingNotes?($0))
+      }
+    return ListKey(
+      revision: transcriptsRevision, pulse: expiryPulse, filter: historyFilter, query: searchQuery,
+      echoShown: echoShownRowIDs, meetings: meetingRecords?() ?? [], pendingVisible: pendingVisible,
+      searchFacts: facts, locale: Locale.current.identifier,
+      localizations: Bundle.main.preferredLocalizations)
+  }
+
+  /// The kept list and its key (#4001). Not observed: storing it while a view reads the list is
+  /// not a change anyone needs to see.
+  @ObservationIgnored private var listCache: KeptList?
+
+  /// Where the held rows sit in `transcripts` and which meetings have a row, rebuilt only when
+  /// the rows change (#4001), so checking the kept list does not scan every row.
+  private var rowIndex: RowIndex {
+    let revision = transcriptsRevision
+    #if DEBUG
+      let reuse = !listCacheDisabledForTesting
+    #else
+      let reuse = true
+    #endif
+    if reuse, let kept = rowIndexCache, kept.revision == revision { return kept }
+    var pending: [Int] = []
+    var meetingRowIDs: [UUID] = []
+    for (i, row) in transcripts.enumerated() {
+      if row.escapeRecoveredAt != nil { pending.append(i) }
+      if let meetingID = row.meetingID { meetingRowIDs.append(meetingID) }
+    }
+    let index = RowIndex(
+      revision: revision, pending: pending, meetingRowIDs: meetingRowIDs,
+      meetingRowCounts: meetingRowIDs.reduce(into: [:]) { $0[$1, default: 0] += 1 })
+    rowIndexCache = index
+    return index
+  }
+
+  private struct RowIndex {
+    let revision: Int
+    let pending: [Int]
+    let meetingRowIDs: [UUID]
+    /// How many rows each meeting has, held rows included.
+    let meetingRowCounts: [UUID: Int]
+  }
+
+  @ObservationIgnored private var rowIndexCache: RowIndex?
+
+  #if DEBUG
+    /// Builds the list and the meeting search text afresh on every read: the reference the
+    /// cache tests compare against.
+    @ObservationIgnored var listCacheDisabledForTesting = false
+  #endif
+
+  /// The list from one key's captured inputs: its time, records, filter, query, echo choices
+  /// and meeting facts.
+  private func buildListedItems(at now: Date, from key: ListKey) -> [HistoryListItem] {
+    let records = key.meetings
+    let visible = transcripts.filter { Self.isVisible($0, at: now) }
     var rowsByMeeting: [UUID: Transcript] = [:]
     var items: [HistoryListItem] = []
     for row in visible {
@@ -189,7 +326,7 @@ final class TranscriptCoordinator {
       }
     }
     var meetings: [HistoryMeetingItem] = []
-    for record in meetingRecords?() ?? [] {
+    for record in records {
       // Taken out first, so a meeting marked for deletion never comes back as an orphan row
       // while its deletion runs, stalls or failed (Codex C8 r1).
       let row = rowsByMeeting.removeValue(forKey: record.id)
@@ -203,7 +340,7 @@ final class TranscriptCoordinator {
     }
     let merged = Self.mergeMeetings(meetings, into: items)
     let listed = merged.filter { item in
-      switch (historyFilter, item) {
+      switch (key.filter, item) {
       case (.all, _): return true
       case (.dictations, .transcript(let row)): return !row.isImported
       case (.transcripts, .transcript(let row)): return row.isImported
@@ -212,10 +349,18 @@ final class TranscriptCoordinator {
         return false
       }
     }
-    guard !searchQuery.isEmpty else { return listed }
+    guard !key.query.isEmpty else { return listed }
+    let facts = Dictionary(
+      (key.searchFacts ?? []).map { ($0.meetingID, $0) }, uniquingKeysWith: { first, _ in first })
+    func matches(_ row: Transcript) -> Bool {
+      matchesSearch(
+        row, query: key.query, info: row.meetingID.flatMap { facts[$0]?.info },
+        showEcho: key.echoShown.contains(row.id), locale: key.locale,
+        localizations: key.localizations)
+    }
     return listed.filter { item in
       switch item {
-      case .transcript(let row): return matchesSearch(row)
+      case .transcript(let row): return matches(row)
       // R35: search covers finished meetings only, by their visible words, title and speaker
       // names. A meeting still recording, transcribing (a retry included) or failed is never a
       // match, so an item does not appear and vanish as its state moves.
@@ -223,8 +368,8 @@ final class TranscriptCoordinator {
         guard let row = meeting.row, meeting.record.map({ $0.state == .ready }) ?? true else {
           return false
         }
-        return matchesSearch(row)
-          || (meetingNotes?(meeting.meetingID)?.localizedCaseInsensitiveContains(searchQuery)
+        return matches(row)
+          || (facts[meeting.meetingID]?.notes?.localizedCaseInsensitiveContains(key.query)
             ?? false)
       }
     }
@@ -236,7 +381,10 @@ final class TranscriptCoordinator {
     listedItems.compactMap(\.row)
   }
 
-  private func matchesSearch(_ row: Transcript) -> Bool {
+  private func matchesSearch(
+    _ row: Transcript, query searchQuery: String, info: MeetingHistoryInfo?, showEcho: Bool,
+    locale: String, localizations: [String]
+  ) -> Bool {
     // Pending rows are excluded from search DELIBERATELY: an accidental Escape
     // would otherwise pollute results for 24 hours, and the row is reachable
     // the whole time by scrolling History, which is where the user left it.
@@ -249,9 +397,12 @@ final class TranscriptCoordinator {
     // match against the speaker names themselves, a genuinely new gap this phase closes
     // (plan §6 downstream consumer matrix).
     row.escapeRecoveredAt == nil
-      && (searchableText(of: row).localizedCaseInsensitiveContains(searchQuery)
+      && (searchableText(
+        of: row, info: info, showEcho: showEcho, locale: locale, localizations: localizations
+      )
+      .localizedCaseInsensitiveContains(searchQuery)
         || (row.importedFileName?.localizedCaseInsensitiveContains(searchQuery) ?? false)
-        || (meetingTitle(of: row)?.localizedCaseInsensitiveContains(searchQuery) ?? false)
+        || (info?.title?.localizedCaseInsensitiveContains(searchQuery) ?? false)
         || (row.speakerNames?.values.contains {
           $0.localizedCaseInsensitiveContains(searchQuery)
         } ?? false))
@@ -304,9 +455,7 @@ final class TranscriptCoordinator {
   /// it describes. Under All with an empty search it is exactly the pre-filter count. Renamed
   /// from `transcriptCount`, because a Transcript is now a file import and this counts every
   /// kind.
-  var listedCount: Int {
-    listedItems.filter { $0.row?.escapeRecoveredAt == nil }.count
-  }
+  var listedCount: Int { keptList.completedCount }
 
   /// How many dictations exist: every completed row that is not an import, whatever the
   /// filter shows. Onboarding's success detector reads this one.
@@ -332,10 +481,31 @@ final class TranscriptCoordinator {
   /// #3972 R45: a meeting that has no History row yet (recording, transcribing, failed) is
   /// deleted by Delete All too, so it is counted.
   var deletableCount: Int {
-    visibleTranscripts.count
+    // #4001: the view reads this on every redraw (the Delete All button and its confirmation
+    // text), so it reads the row index instead of scanning every row: every row is visible
+    // except the held rows whose time has run out.
+    #if DEBUG
+      if listCacheDisabledForTesting {
+        let visible = visibleTranscripts
+        let meetingsWithRows = Set(visible.compactMap(\.meetingID))
+        return visible.count
+          + (meetingRecords?() ?? []).filter { record in
+            !record.deletionRequested && !meetingsWithRows.contains(record.id)
+          }.count
+      }
+    #endif
+    _ = expiryPulse
+    let now = clock()
+    let index = rowIndex
+    var visibleCount = transcripts.count
+    var meetingRowCounts = index.meetingRowCounts
+    for i in index.pending where !Self.isVisible(transcripts[i], at: now) {
+      visibleCount -= 1
+      if let meetingID = transcripts[i].meetingID { meetingRowCounts[meetingID]? -= 1 }
+    }
+    return visibleCount
       + (meetingRecords?() ?? []).filter { record in
-        !record.deletionRequested
-          && !visibleTranscripts.contains { $0.meetingID == record.id }
+        !record.deletionRequested && (meetingRowCounts[record.id] ?? 0) == 0
       }.count
   }
 
@@ -1390,15 +1560,53 @@ final class TranscriptCoordinator {
   }
 
   /// The text search reads: a meeting's visible text only, never hidden echo lines.
-  private func searchableText(of row: Transcript) -> String {
+  private func searchableText(
+    of row: Transcript, info: MeetingHistoryInfo?, showEcho: Bool, locale: String,
+    localizations: [String]
+  ) -> String {
     guard row.isMeeting else { return row.displayText }
-    if case .visible(_, let plain) = meetingProjection(of: row) { return plain }
+    // #4001: a meeting's visible text is kept per row while what it is made from is unchanged,
+    // so a keystroke does not rebuild every meeting's projection.
+    let inputs = SearchTextInputs(
+      text: row.text, turns: row.turns ?? [], speakerNames: row.speakerNames ?? [:],
+      info: info, showEcho: showEcho, locale: locale, localizations: localizations)
+    #if DEBUG
+      if listCacheDisabledForTesting { return Self.searchText(row, inputs) }
+    #endif
+    if let kept = searchTextCache[row.id], kept.inputs == inputs { return kept.text }
+    let text = Self.searchText(row, inputs)
+    searchTextCache[row.id] = (inputs, text)
+    return text
+  }
+
+  private static func searchText(_ row: Transcript, _ inputs: SearchTextInputs) -> String {
+    if case .visible(_, let plain) = MeetingHistoryPresentation.project(
+      row, info: inputs.info, showEcho: inputs.showEcho)
+    {
+      return plain
+    }
     return ""
   }
 
-  private func meetingTitle(of row: Transcript) -> String? {
-    guard let meetingID = row.meetingID else { return nil }
-    return meetingInfo?(meetingID)?.title
+  /// What a meeting's searchable text is made from (`Transcript` is not Equatable).
+  private struct SearchTextInputs: Equatable {
+    let text: String
+    let turns: [Turn]
+    let speakerNames: [String: String]
+    let info: MeetingHistoryInfo?
+    let showEcho: Bool
+    let locale: String
+    let localizations: [String]
+  }
+
+  @ObservationIgnored private var searchTextCache:
+    [UUID: (inputs: SearchTextInputs, text: String)] = [:]
+
+  /// Drops kept text of rows that no longer exist; a changed row is caught by its inputs.
+  private func pruneSearchTextCache() {
+    guard !searchTextCache.isEmpty else { return }
+    let ids = Set(transcripts.map(\.id))
+    searchTextCache = searchTextCache.filter { ids.contains($0.key) }
   }
 
   /// Removes one row from disk and from the list, keeping the selection on a neighbour and the
