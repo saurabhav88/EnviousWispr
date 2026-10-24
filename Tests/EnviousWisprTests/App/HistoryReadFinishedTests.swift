@@ -31,21 +31,28 @@ struct HistoryReadFinishedTests {
     #expect(coordinator.historyReadFinished)
   }
 
-  @Test("a read that throws still ends the attempt")
-  func setByAFailedRead() async throws {
-    let dir = Self.makeTempDir()
-    defer {
-      try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path)
-      try? FileManager.default.removeItem(at: dir)
+  #if DEBUG
+    @Test("a read that throws still ends the attempt")
+    func setByAFailedRead() async throws {
+      let dir = Self.makeTempDir()
+      defer {
+        try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path)
+        try? FileManager.default.removeItem(at: dir)
+      }
+      let store = TranscriptStore(directory: dir)
+      try store.save(
+        Transcript(text: "one", processingTime: 0.1, backendType: .parakeet, createdAt: Date()))
+      // A folder that cannot be listed makes the read throw.
+      try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: dir.path)
+      let coordinator = TranscriptCoordinator(store: store)
+      coordinator.load()
+      await coordinator.waitForLoadForTesting()
+      // The read really failed: it published nothing and never reached the merge.
+      #expect(coordinator.historyFullReadsForTesting == 0)
+      #expect(coordinator.filteredTranscripts.isEmpty)
+      #expect(coordinator.historyReadFinished)
     }
-    let store = TranscriptStore(directory: dir)
-    // A folder that cannot be listed makes the read throw.
-    try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: dir.path)
-    let coordinator = TranscriptCoordinator(store: store)
-    coordinator.load()
-    await coordinator.waitForLoadForTesting()
-    #expect(coordinator.historyReadFinished)
-  }
+  #endif
 
   @Test("an open that reuses the rows keeps it true")
   func cacheHitKeepsIt() async throws {
