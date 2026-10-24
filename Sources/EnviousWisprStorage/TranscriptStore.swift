@@ -594,14 +594,31 @@ public final class TranscriptStore {
   private nonisolated static func pendingCandidates(
     in directory: URL, now: Date, retention: TimeInterval
   ) -> [PendingCandidate]? {
+    pendingListing(in: directory, now: now, retention: retention)?.candidates
+  }
+
+  /// `pendingCandidates`, plus whether any file failed to READ (#4001 H9). Such a file is
+  /// `.invalid` like a malformed one, but its failure may pass with no entry change, so History
+  /// must not reuse a read that missed it. Recorded from this read, never from a later probe.
+  private nonisolated static func pendingListing(
+    in directory: URL, now: Date, retention: TimeInterval
+  ) -> (candidates: [PendingCandidate], readFailed: Bool)? {
     guard
       let files = try? FileManager.default.contentsOfDirectory(
         at: directory, includingPropertiesForKeys: nil)
     else { return nil }
-    return
+    var readFailed = false
+    let candidates =
       files
       .filter { $0.pathExtension == "json" }
-      .map { decodeCandidate(at: $0, now: now, retention: retention) }
+      .map { url -> PendingCandidate in
+        guard let data = try? Data(contentsOf: url) else {
+          readFailed = true
+          return .invalid(url: url)
+        }
+        return decodeCandidate(data: data, at: url, now: now, retention: retention)
+      }
+    return (candidates, readFailed)
   }
 
   /// Visibility callers, for whom an unreadable directory and an empty one mean
@@ -650,6 +667,12 @@ public final class TranscriptStore {
     // meant such a file was never offered and never swept, so it accumulated
     // forever while the retention contract claimed otherwise.
     guard let data = try? Data(contentsOf: url) else { return .invalid(url: url) }
+    return decodeCandidate(data: data, at: url, now: now, retention: retention)
+  }
+
+  private nonisolated static func decodeCandidate(
+    data: Data, at url: URL, now: Date, retention: TimeInterval
+  ) -> PendingCandidate {
     guard let transcript = try? JSONDecoder().decode(Transcript.self, from: data) else {
       return .invalid(url: url)
     }
@@ -781,21 +804,13 @@ public final class TranscriptStore {
       // Same admission as `loadPending`. An unreadable folder reads as empty there; here it also
       // withholds certification, and a confirmed-absent one is a real empty namespace.
       let pendingAbsent = before?.pending == .absent
-      let candidates =
-        pendingAbsent ? [] : Self.pendingCandidates(in: pendingDir, now: now, retention: retention)
-      let pending = (candidates ?? []).compactMap(\.liveTranscript).sorted {
+      let listing =
+        pendingAbsent
+        ? ([], false) : Self.pendingListing(in: pendingDir, now: now, retention: retention)
+      let pending = (listing?.candidates ?? []).compactMap(\.liveTranscript).sorted {
         $0.createdAt > $1.createdAt
       }
-      // `.invalid` also covers a file that could not be READ, which may pass without any entry
-      // change (a permission restored). Only those block reuse; one that reads and is refused
-      // stays excluded, as in `readPermanent`.
-      let pendingComplete =
-        candidates.map { found in
-          !found.contains { candidate in
-            guard case .invalid(let url) = candidate else { return false }
-            return (try? Data(contentsOf: url)) == nil
-          }
-        } ?? false
+      let pendingComplete = listing.map { !$0.readFailed } ?? false
       let after = Self.freshness(directory: dir, pendingDirectory: pendingDir)
       let certified = permanent.complete && pendingComplete && before != nil && before == after
       return TranscriptHistoryRead(
