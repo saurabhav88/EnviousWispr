@@ -13,6 +13,7 @@ from pathlib import Path
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -278,7 +279,14 @@ print(json.dumps({'testNodes': [{'nodeType': 'Test Plan', 'children': nodes}]}))
                  f'    while Path({str(gate)!r}).exists() and time.monotonic() < deadline:\n'
                  f'        time.sleep(0.01)  # deadline-fallback: fixture startup gate\n')
         queue.write_text(source.replace(entry, entry + pause))
-        owner = subprocess.Popen(['bash', str(self.root / 'scripts/xcode-test.sh'),
+        # Fast-check members are asynchronous shell jobs and inherit ignored
+        # INT. This experiment requires a parent that receives INT, with only
+        # the gated child ignoring it. Normalize that fixture precondition in
+        # an exec shim; production keeps its launcher's signal policy.
+        normal_int = ('import os,signal,sys; signal.signal(signal.SIGINT,signal.SIG_DFL); '
+                      'os.execvp("bash", ["bash", *sys.argv[1:]])')
+        owner = subprocess.Popen([sys.executable, '-c', normal_int,
+                                  str(self.root / 'scripts/xcode-test.sh'),
                                   '--filter', 'Target/Suite', '--log-dir', str(self.root / 'logs-startup')],
                                  env=self.env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                  text=True, start_new_session=True)
