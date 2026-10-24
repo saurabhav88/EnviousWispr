@@ -133,11 +133,12 @@ enum MeetingWiring {
         },
         visibleTranscript: {
           [weak coordinator, transcriptCoordinator = inputs.transcriptCoordinator] meetingID in
+          // #4001 step 2b-C: the record, the row and the meeting facts are read live here;
+          // the coordinator keeps the projection they make.
           guard let record = coordinator?.record(id: meetingID),
             let row = transcriptCoordinator.currentRow(id: record.transcriptID),
-            case .visible(_, let text) = MeetingHistoryPresentation.project(
-              row, info: historyInfo(coordinator, meetingID: meetingID), showEcho: false),
-            !text.isEmpty
+            let text = transcriptCoordinator.summaryVisibleText(
+              of: row, info: historyInfo(coordinator, meetingID: meetingID))
           else { return nil }
           return .init(text: text, speakerNames: row.speakerNames ?? [:])
         },

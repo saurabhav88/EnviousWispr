@@ -1092,4 +1092,59 @@ struct MeetingSummaryOwnerTests {
     #expect(lateRig.summaryOnDisk(id) == "Newer, saved after the write")
     #expect(try lateRig.manifest(id).summary?.origin == .userEdited)
   }
+
+  // MARK: - Fingerprints (#4001 step 2b-C)
+
+  // `fingerprintBuildsForTesting` exists in Debug builds only.
+  #if DEBUG
+    @Test("the transcript and name hashes are reused while the words and names are byte-identical")
+    func fingerprintsReusedWhileBytesMatch() async throws {
+      let rig = try Rig()
+      let id = try rig.readyMeeting()
+      rig.world.transcript = "You: the Caf\u{00E9} launch ships Friday"
+      _ = await Self.schedule(rig, id)
+      await Self.eventually("written") { rig.world.finished.count == 1 }
+      #expect(await rig.documents.load(id))
+      #expect(rig.owner.isOutOfDate(id) == false)
+      let built = rig.owner.fingerprintBuildsForTesting
+      for _ in 0..<5 { #expect(rig.owner.isOutOfDate(id) == false) }
+      #expect(rig.owner.fingerprintBuildsForTesting == built, "summary keystrokes reuse the hashes")
+      rig.world.model = "gpt-4.1"
+      #expect(rig.owner.isOutOfDate(id), "another model is still noticed")
+      #expect(rig.owner.fingerprintBuildsForTesting == built, "without hashing the words again")
+      rig.world.model = "gpt-4o-mini"
+      // The same words in a different Unicode form: equal to Swift's ==, different bytes, so a
+      // different hash than the one the summary was written from.
+      rig.world.transcript = "You: the Cafe\u{0301} launch ships Friday"
+      #expect(rig.world.transcript == "You: the Caf\u{00E9} launch ships Friday")
+      #expect(rig.owner.isOutOfDate(id), "different bytes are a different transcript")
+      #expect(rig.owner.fingerprintBuildsForTesting == built + 1)
+      rig.world.transcript = "You: the Caf\u{00E9} launch ships Friday"
+      rig.world.speakerNames = ["mic:you": "Ren\u{00E9}e"]
+      #expect(rig.owner.isOutOfDate(id), "a rename")
+      #expect(rig.owner.fingerprintBuildsForTesting == built + 2)
+      rig.world.speakerNames = ["mic:you": "You"]
+      #expect(rig.owner.isOutOfDate(id) == false, "back to the words it was written from")
+    }
+
+    @Test("a meeting's hashes are dropped when its facts go away and after its attempts drain")
+    func fingerprintsDroppedWithTheMeeting() async throws {
+      let rig = try Rig()
+      let id = try rig.readyMeeting()
+      _ = await Self.schedule(rig, id)
+      await Self.eventually("written") { rig.world.finished.count == 1 }
+      #expect(await rig.documents.load(id))
+      _ = rig.owner.isOutOfDate(id)
+      var built = rig.owner.fingerprintBuildsForTesting
+      rig.world.visible = false
+      #expect(rig.owner.isOutOfDate(id), "facts that cannot be read are never current")
+      rig.world.visible = true
+      #expect(rig.owner.isOutOfDate(id) == false)
+      #expect(rig.owner.fingerprintBuildsForTesting == built + 1, "hashed again after the gap")
+      built = rig.owner.fingerprintBuildsForTesting
+      await rig.owner.cancelAndWait(id)
+      _ = rig.owner.isOutOfDate(id)
+      #expect(rig.owner.fingerprintBuildsForTesting == built + 1, "dropped after the drain")
+    }
+  #endif
 }

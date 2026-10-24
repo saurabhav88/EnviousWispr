@@ -191,6 +191,8 @@ final class MeetingSummaryOwner {
     let mine = attempts.values.filter { $0.meetingID == meetingID }
     for running in mine { running.task.cancel() }
     for running in mine { await running.task.value }
+    // After the drain, so a finishing attempt cannot keep this meeting's hashes (#4001).
+    fingerprints[meetingID] = nil
   }
 
   /// A newer transcript of the meeting is ready: every attempt over the old one is cancelled
@@ -499,14 +501,18 @@ final class MeetingSummaryOwner {
   private func currentInputs(
     _ meetingID: UUID, selection: (provider: LLMProvider, model: String)
   ) -> Inputs? {
-    guard let transcript = deps.visibleTranscript(meetingID) else { return nil }
+    guard let transcript = deps.visibleTranscript(meetingID) else {
+      fingerprints[meetingID] = nil
+      return nil
+    }
     let notes = documents.notes(meetingID)
+    let hashes = fingerprint(meetingID, transcript)
     return Inputs(
       transcript: transcript, notes: notes,
       summaryInputs: SummaryInputs(
-        transcriptSHA256: MeetingDocumentHash.sha256(transcript.text),
+        transcriptSHA256: hashes.textSHA,
         notesRevision: documents.manifest(meetingID)?.notes?.revision ?? 0,
-        speakerNamesSHA256: Self.speakerNamesSHA256(transcript.speakerNames),
+        speakerNamesSHA256: hashes.namesSHA,
         promptVersion: MeetingSummary.promptVersion,
         providerID: selection.provider.rawValue,
         configurationSHA256: MeetingSummary.configurationFingerprint(
@@ -581,6 +587,42 @@ final class MeetingSummaryOwner {
     case .ollama, .appleIntelligence, .egOne, .s1Mini: return .local
     case .none: return .none
     }
+  }
+
+  /// #4001 step 2b-C: the transcript and speaker-name hashes of the last transcript this
+  /// meeting was judged against, reused while the words and names are byte-identical, so a
+  /// summary keystroke does not hash the whole meeting again. Only these two hashes are kept;
+  /// notes, provider, model and prompt are read fresh by `currentInputs` every time.
+  private struct Fingerprint {
+    let text: String
+    let names: [String: String]
+    let textSHA: String
+    let namesSHA: String
+  }
+
+  @ObservationIgnored private var fingerprints: [UUID: Fingerprint] = [:]
+
+  #if DEBUG
+    /// How many times the two hashes were computed rather than reused.
+    @ObservationIgnored var fingerprintBuildsForTesting = 0
+  #endif
+
+  private func fingerprint(_ meetingID: UUID, _ transcript: VisibleTranscript) -> Fingerprint {
+    if let kept = fingerprints[meetingID],
+      MeetingDocumentHash.sameBytes(kept.text, transcript.text),
+      MeetingDocumentHash.sameBytes(kept.names, transcript.speakerNames)
+    {
+      return kept
+    }
+    #if DEBUG
+      fingerprintBuildsForTesting += 1
+    #endif
+    let made = Fingerprint(
+      text: transcript.text, names: transcript.speakerNames,
+      textSHA: MeetingDocumentHash.sha256(transcript.text),
+      namesSHA: Self.speakerNamesSHA256(transcript.speakerNames))
+    fingerprints[meetingID] = made
+    return made
   }
 
   /// SHA-256 of the speaker names in a fixed order, so a rename makes a summary out of date.
