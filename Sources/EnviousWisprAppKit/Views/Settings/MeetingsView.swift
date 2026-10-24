@@ -20,8 +20,15 @@ struct MeetingsView: View {
     if settings.meetingOnboardingComplete {
       settingsPage
     } else {
-      // #4017 O1: EnviousMeet is locked until its setup is finished.
-      ScrollView { MeetingOnboardingView() }
+      // #4017 O1: EnviousMeet is locked until its setup is finished. The setup sits in the
+      // same page frame and header panel as every settings page.
+      SettingsContentView {
+        BrandedPanel(
+          icon: "person.2.wave.2", header: "EnviousMeet", description: MeetingsCopy.pageDescription
+        ) {
+          MeetingOnboardingView()
+        }
+      }
     }
   }
 

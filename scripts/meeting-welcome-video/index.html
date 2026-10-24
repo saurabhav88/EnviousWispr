@@ -4,24 +4,25 @@
 <meta charset="utf-8">
 <title>EnviousMeet welcome scene</title>
 <style>
-  /* The welcome slot on EnviousMeet's setup screen: 414 x 176 points (the 470-point card less
+  /* Square corners and an opaque ground: the app rounds the slot, and a video has no
+     transparency (transparent corners would encode as white). The welcome slot on EnviousMeet's setup screen: 414 x 176 points (the 470-point card less
      its 28-point padding), rendered at 2x. Colors are
      the dark onboarding tokens (OnboardingDesignTokens.swift), so the card reads as one object
      on the light and the dark setup screen alike. */
   :root {
-    --card: #1b1729; --card-2: #251f37; --text: #e8e4f1; --text-2: #aaa2bf; --text-3: #7a7290;
-    --accent: #a78bfa; --success: #5cc99a; --fill: #6b4fd1; --surface: #201b2b;
+    --card: #201b2b; --card-2: #2a2338; --text: #e8e4f1; --text-2: #aaa2bf; --text-3: #7a7290;
+    --accent: #a78bfa; --success: #5cc99a; --fill: #8b46f0; --surface: #201b2b;
     --border: rgba(184, 170, 214, 0.16); --rec: #ff5a5f;
   }
-  html, body { margin: 0; padding: 0; background: transparent; }
+  html, body { margin: 0; padding: 0; background: #201b2b; }
   body {
     width: 414px; height: 176px; overflow: hidden; position: relative;
     font-family: -apple-system, "SF Pro Text", "Helvetica Neue", sans-serif;
     -webkit-font-smoothing: antialiased; color: var(--text);
   }
   #card {
-    position: absolute; inset: 0; border-radius: 12px; overflow: hidden;
-    background: radial-gradient(120% 140% at 0% 0%, #2a2140 0%, var(--card) 55%, #15121f 100%);
+    position: absolute; inset: 0; overflow: hidden;
+    background: var(--card);
   }
   .abs { position: absolute; }
   /* Call window */
@@ -42,7 +43,7 @@
     border-radius: 50%; display: flex; align-items: center; justify-content: center;
     font-size: 11px; font-weight: 600; color: rgba(255, 255, 255, 0.92); }
   .tile .name { position: absolute; left: 5px; bottom: 4px; font-size: 8.5px; color: rgba(255, 255, 255, 0.88); }
-  .tile .ring { position: absolute; inset: 0; border-radius: 6px; box-shadow: inset 0 0 0 2px var(--success); opacity: 0; }
+  .tile .ring { position: absolute; inset: 0; border-radius: 6px; box-shadow: inset 0 0 0 2px #a78bfa; opacity: 0; }
   /* Question panel */
   #ask {
     right: 12px; top: 12px; width: 190px; padding: 9px 10px; border-radius: 10px; box-sizing: border-box;
@@ -72,10 +73,10 @@
   <div class="abs" id="call">
     <div class="bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="title">Zoom</span></div>
     <div id="grid">
-      <div class="tile" style="background:#2e3a4a"><div class="face" style="background:#4a6a8c">P</div><div class="name">Priya</div><div class="ring" id="ring-0"></div></div>
-      <div class="tile" style="background:#3a2e4a"><div class="face" style="background:#6a4a8c">M</div><div class="name">Marcus</div><div class="ring" id="ring-1"></div></div>
-      <div class="tile" style="background:#2e4a3d"><div class="face" style="background:#4a8c6d">D</div><div class="name">Diana</div><div class="ring" id="ring-2"></div></div>
-      <div class="tile" style="background:#4a3a2e"><div class="face" style="background:#8c6a4a"><svg width="14" height="14" viewBox="0 0 14 14" fill="rgba(255,255,255,0.92)"><circle cx="7" cy="4.4" r="2.9"/><path d="M1.6 13c0-3 2.4-5 5.4-5s5.4 2 5.4 5z"/></svg></div><div class="name" id="you-tile"></div><div class="ring" id="ring-3"></div></div>
+      <div class="tile" style="background:#33255a"><div class="face" style="background:#7c3aed">P</div><div class="name">Priya</div><div class="ring" id="ring-0"></div></div>
+      <div class="tile" style="background:#1f2c55"><div class="face" style="background:#4169e1">M</div><div class="name">Marcus</div><div class="ring" id="ring-1"></div></div>
+      <div class="tile" style="background:#173f47"><div class="face" style="background:#0e8fa3">D</div><div class="name">Diana</div><div class="ring" id="ring-2"></div></div>
+      <div class="tile" style="background:#3d2752"><div class="face" style="background:#9b6fe0"><svg width="14" height="14" viewBox="0 0 14 14" fill="rgba(255,255,255,0.92)"><circle cx="7" cy="4.4" r="2.9"/><path d="M1.6 13c0-3 2.4-5 5.4-5s5.4 2 5.4 5z"/></svg></div><div class="name" id="you-tile"></div><div class="ring" id="ring-3"></div></div>
     </div>
   </div>
   <div class="abs" id="ask">
@@ -116,7 +117,7 @@ document.getElementById("yes").textContent = c.yes;
 document.getElementById("no").textContent = c.no;
 document.getElementById("you-tile").textContent = c.you;
 
-const COLORS = { Priya: "#5cc99a", Marcus: "#f0a35e", You: "#a78bfa", Du: "#a78bfa" };
+const COLORS = { Priya: "#c4b1fd", Marcus: "#8fb3ff", You: "#ffd27a", Du: "#ffd27a" };
 // Which tile lights for each line.
 const TILE = { Priya: 0, Marcus: 1, You: 3, Du: 3 };
 // Each line: label appears at `at`, typing runs from `at + 0.1` over `dur` seconds.
