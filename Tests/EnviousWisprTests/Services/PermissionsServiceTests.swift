@@ -108,6 +108,16 @@ import Testing
     }
 
     @MainActor
+    @Test("#4017: the live microphone read sees a grant the polled copy has not")
+    func microphoneLiveRead() {
+      var live: AVAuthorizationStatus = .denied
+      let svc = PermissionsService(accessibilityReader: { true }, microphoneReader: { live })
+      live = .authorized
+      #expect(svc.microphoneStatus == .denied)
+      #expect(svc.microphoneStatusLive == .authorized)
+    }
+
+    @MainActor
     @Test("#4017: the stored calendar status follows a refusal once refreshed")
     func calendarStatusRefreshes() {
       // The EnviousMeet page's Calendar row reads this property; a refusal from the

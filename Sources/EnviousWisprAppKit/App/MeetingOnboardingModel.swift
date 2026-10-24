@@ -124,15 +124,20 @@ final class MeetingOnboardingModel {
     refresh()
   }
 
+  /// A permission answer can arrive long after the press (the user may finish setup, or
+  /// change the settings, while macOS asks). So a press saves the user's choice at once, and a
+  /// late answer changes only what the row shows; settings an answer decides are written only
+  /// while setup is still open (`finish` writes the rest).
   func allowCallSound() async {
     guard !asking else { return }
     asking = true
+    // Allow is the choice to record the call sound, whatever macOS answers.
+    deps.settings.meetingCaptureCallSound = true
     let answer = await deps.requestCallSound()
     asking = false
     guard let answer else {
       // Nothing was asked: the first recording with the call sound explains and asks.
       callSound = .askedAtFirstRecording
-      deps.settings.meetingCaptureCallSound = true
       return
     }
     switch answer {
@@ -140,7 +145,6 @@ final class MeetingOnboardingModel {
     case .denied: callSound = .denied
     case .unknown: callSound = .requested
     }
-    deps.settings.meetingCaptureCallSound = true
     // macOS was asked here, so the first call-sound recording does not explain it again.
     deps.settings.meetingCallSoundExplained = true
   }
@@ -153,7 +157,7 @@ final class MeetingOnboardingModel {
     switch answer {
     case .granted:
       calendar = .granted
-      deps.settings.meetingUseCalendarForNames = true
+      if !isComplete { deps.settings.meetingUseCalendarForNames = true }
     case .denied: calendar = .denied
     case .unavailable: calendar = .unavailable
     case .notAsked: calendar = .notAsked

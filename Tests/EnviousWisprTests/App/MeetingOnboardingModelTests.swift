@@ -28,6 +28,13 @@ struct MeetingOnboardingModelTests {
     }
     var calendarStatus: CalendarAccess.Status = .notAsked
     var calendarAnswer: CalendarAccess.Status = .granted
+    /// When set, the calendar request waits for `releaseCalendar()`.
+    var holdCalendar = false
+    private var heldCalendar: CheckedContinuation<Void, Never>?
+    func releaseCalendar() {
+      heldCalendar?.resume()
+      heldCalendar = nil
+    }
     var emitted: [MeetingSetupTelemetry] = []
     var clock = Date(timeIntervalSince1970: 1_000_000)
 
@@ -47,6 +54,7 @@ struct MeetingOnboardingModelTests {
         },
         calendarStatus: { [unowned self] in calendarStatus },
         requestCalendar: { [unowned self] in
+          if holdCalendar { await withCheckedContinuation { heldCalendar = $0 } }
           calendarStatus = calendarAnswer
           return calendarAnswer
         },
@@ -164,6 +172,34 @@ struct MeetingOnboardingModelTests {
     await request.value
     #expect(rig.model.callSound == .denied)
     #expect(rig.settings.meetingCaptureCallSound == true)
+  }
+
+  @Test("an answer that arrives after setup finished never undoes a later settings choice")
+  func lateAnswersKeepLaterChoices() async throws {
+    let rig = try Rig()
+    rig.callSoundAnswer = .granted
+    rig.holdCallSound = true
+    let sound = Task { await rig.model.allowCallSound() }
+    #expect(await settleUntilObserved { rig.model.asking })
+    #expect(rig.settings.meetingCaptureCallSound == true, "Allow saves the choice at once")
+    rig.model.continueToDone()
+    rig.model.finish()
+    rig.settings.meetingCaptureCallSound = false
+    rig.releaseCallSound()
+    await sound.value
+    #expect(rig.settings.meetingCaptureCallSound == false)
+
+    let again = try Rig()
+    again.calendarAnswer = .granted
+    again.holdCalendar = true
+    let calendar = Task { await again.model.allowCalendar() }
+    #expect(await settleUntilObserved { again.model.asking })
+    again.model.continueToDone()
+    again.model.finish()
+    again.settings.meetingUseCalendarForNames = false
+    again.releaseCalendar()
+    await calendar.value
+    #expect(again.settings.meetingUseCalendarForNames == false)
   }
 
   @Test("Not now on call sound turns the call sound off for the next meeting")

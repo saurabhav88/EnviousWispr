@@ -2470,7 +2470,9 @@ package final class WisprBootstrapper {
     self.meetingStartFlow = meetingStartFlow
     self.meetingOnboardingModel = MeetingOnboardingModel(
       dependencies: .init(
-        microphoneStatus: { [permissions] in permissions.microphoneStatus },
+        // Live, not `permissions.microphoneStatus`: that copy refreshes on its own poll, so a
+        // grant made in System Settings could still read as refused on return.
+        microphoneStatus: { [permissions] in permissions.microphoneStatusLive },
         requestMicrophone: { [permissions] in await permissions.requestMicrophoneAccessOrOpenSettings() },
         callSoundStatus: { SystemAudioPermission.status() },
         requestCallSound: {

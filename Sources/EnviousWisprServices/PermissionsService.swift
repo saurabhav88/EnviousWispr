@@ -104,6 +104,9 @@ public final class PermissionsService {
     }
   }
 
+  /// #4017: microphone access read now, for a screen that must not show the polled copy.
+  public var microphoneStatusLive: AVAuthorizationStatus { microphoneReader() }
+
   /// #3972: macOS has never been asked for the microphone. Read live, like
   /// `microphonePermissionIsDenied`.
   public var microphoneNeedsAsking: Bool {
