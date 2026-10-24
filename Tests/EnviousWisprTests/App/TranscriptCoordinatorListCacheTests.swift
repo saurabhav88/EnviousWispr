@@ -185,7 +185,8 @@
           if let record = w.sources.records.randomElement(using: &rng) {
             let row = Self.meetingRow(
               record.id, words: "held meeting \(step)", at: at,
-              heldAt: w.time.addingTimeInterval(-5))
+              heldAt: w.time.addingTimeInterval(
+                [-5, -retention + 2].randomElement(using: &rng)!))
             w.setRows(w.rows + [row])
           }
         case 9:
@@ -284,7 +285,8 @@
       var marked = Self.record(at: w.time, ready: true)
       marked.deletionRequested = true
       let rowless = Self.record(at: w.time, ready: false)
-      w.sources.records = [ready, marked, rowless, rowless]
+      let expiredOnly = Self.record(at: w.time, ready: true)
+      w.sources.records = [ready, marked, rowless, rowless, expiredOnly]
       let orphan = UUID()
       w.setRows([
         Transcript(text: "a", createdAt: w.time),
@@ -293,12 +295,18 @@
         Self.meetingRow(ready.id, words: "ready", at: w.time),
         Self.meetingRow(marked.id, words: "marked", at: w.time),
         Self.meetingRow(orphan, words: "orphan", at: w.time),
+        // A meeting whose only row is a held row past its time: the meeting has no visible row.
+        Self.meetingRow(
+          expiredOnly.id, words: "expired", at: w.time,
+          heldAt: w.time.addingTimeInterval(-AppConstants.pendingTranscriptRetention)),
       ])
-      // Listed: a, held, ready, rowless (once per record), orphan; the marked meeting is not.
-      #expect(w.cached.listedItems.count == 6)
-      #expect(w.cached.listedCount == 5, "the held row is not counted")
-      // Every visible row (5) plus each unmarked record without a row (rowless twice).
-      #expect(w.cached.deletableCount == 7)
+      // Listed: a, held, ready, rowless (once per record), orphan, expiredOnly without its row;
+      // the marked meeting is not.
+      #expect(w.cached.listedItems.count == 7)
+      #expect(w.cached.listedCount == 6, "the held row is not counted")
+      // Every visible row (5) plus each unmarked record without a visible row (rowless twice,
+      // expiredOnly once).
+      #expect(w.cached.deletableCount == 8)
       Self.expectAgree(w, "counts")
     }
 

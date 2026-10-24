@@ -288,7 +288,9 @@ final class TranscriptCoordinator {
       if row.escapeRecoveredAt != nil { pending.append(i) }
       if let meetingID = row.meetingID { meetingRowIDs.append(meetingID) }
     }
-    let index = RowIndex(revision: revision, pending: pending, meetingRowIDs: meetingRowIDs)
+    let index = RowIndex(
+      revision: revision, pending: pending, meetingRowIDs: meetingRowIDs,
+      meetingRowCounts: meetingRowIDs.reduce(into: [:]) { $0[$1, default: 0] += 1 })
     rowIndexCache = index
     return index
   }
@@ -297,6 +299,8 @@ final class TranscriptCoordinator {
     let revision: Int
     let pending: [Int]
     let meetingRowIDs: [UUID]
+    /// How many rows each meeting has, held rows included.
+    let meetingRowCounts: [UUID: Int]
   }
 
   @ObservationIgnored private var rowIndexCache: RowIndex?
@@ -477,12 +481,31 @@ final class TranscriptCoordinator {
   /// #3972 R45: a meeting that has no History row yet (recording, transcribing, failed) is
   /// deleted by Delete All too, so it is counted.
   var deletableCount: Int {
-    // #4001: one pass and one set, not a scan of every row for each meeting.
-    let visible = visibleTranscripts
-    let meetingsWithRows = Set(visible.compactMap(\.meetingID))
-    return visible.count
+    // #4001: the view reads this on every redraw (the Delete All button and its confirmation
+    // text), so it reads the row index instead of scanning every row: every row is visible
+    // except the held rows whose time has run out.
+    #if DEBUG
+      if listCacheDisabledForTesting {
+        let visible = visibleTranscripts
+        let meetingsWithRows = Set(visible.compactMap(\.meetingID))
+        return visible.count
+          + (meetingRecords?() ?? []).filter { record in
+            !record.deletionRequested && !meetingsWithRows.contains(record.id)
+          }.count
+      }
+    #endif
+    _ = expiryPulse
+    let now = clock()
+    let index = rowIndex
+    var visibleCount = transcripts.count
+    var meetingRowCounts = index.meetingRowCounts
+    for i in index.pending where !Self.isVisible(transcripts[i], at: now) {
+      visibleCount -= 1
+      if let meetingID = transcripts[i].meetingID { meetingRowCounts[meetingID]? -= 1 }
+    }
+    return visibleCount
       + (meetingRecords?() ?? []).filter { record in
-        !record.deletionRequested && !meetingsWithRows.contains(record.id)
+        !record.deletionRequested && (meetingRowCounts[record.id] ?? 0) == 0
       }.count
   }
 
