@@ -309,6 +309,8 @@ final class TranscriptCoordinator {
     /// Builds the list and the meeting search text afresh on every read: the reference the
     /// cache tests compare against.
     @ObservationIgnored var listCacheDisabledForTesting = false
+    /// How many times a meeting's text was projected rather than read from the kept entry.
+    @ObservationIgnored var meetingTextBuildsForTesting = 0
   #endif
 
   /// The list from one key's captured inputs: its time, records, filter, query, echo choices
@@ -1559,33 +1561,70 @@ final class TranscriptCoordinator {
       row, info: meetingInfo?(meetingID), showEcho: isShowingEcho(rowID: row.id))
   }
 
+  /// A meeting row's two-line list preview, the same text `meetingProjection` gives, read from
+  /// the kept meeting text (#4001 step 2a) so a row body does not project the whole meeting.
+  /// The meeting info and echo choice are read on every call, so the row stays subscribed.
+  func meetingPreviewText(of row: Transcript) -> String {
+    guard let meetingID = row.meetingID else {
+      return MeetingHistoryPresentation.unavailableMessage
+    }
+    let text = meetingText(
+      of: row, info: meetingInfo?(meetingID), showEcho: isShowingEcho(rowID: row.id),
+      locale: Locale.current.identifier, localizations: Bundle.main.preferredLocalizations)
+    switch text.kind {
+    case .visible: return text.plain
+    case .everythingHidden: return MeetingHistoryPresentation.everythingHiddenMessage
+    case .unavailable: return MeetingHistoryPresentation.unavailableMessage
+    }
+  }
+
   /// The text search reads: a meeting's visible text only, never hidden echo lines.
   private func searchableText(
     of row: Transcript, info: MeetingHistoryInfo?, showEcho: Bool, locale: String,
     localizations: [String]
   ) -> String {
     guard row.isMeeting else { return row.displayText }
-    // #4001: a meeting's visible text is kept per row while what it is made from is unchanged,
-    // so a keystroke does not rebuild every meeting's projection.
+    let text = meetingText(
+      of: row, info: info, showEcho: showEcho, locale: locale, localizations: localizations)
+    return text.kind == .visible ? text.plain : ""
+  }
+
+  /// #4001: a meeting's visible text and which projection it came from, kept per row while what
+  /// it is made from is unchanged, so neither a search keystroke nor a row's preview projects
+  /// every meeting again. Search and the preview read this one entry.
+  private func meetingText(
+    of row: Transcript, info: MeetingHistoryInfo?, showEcho: Bool, locale: String,
+    localizations: [String]
+  ) -> MeetingText {
     let inputs = SearchTextInputs(
       text: row.text, turns: row.turns ?? [], speakerNames: row.speakerNames ?? [:],
       info: info, showEcho: showEcho, locale: locale, localizations: localizations)
     #if DEBUG
-      if listCacheDisabledForTesting { return Self.searchText(row, inputs) }
+      if listCacheDisabledForTesting { return Self.meetingText(row, inputs) }
     #endif
     if let kept = searchTextCache[row.id], kept.inputs == inputs { return kept.text }
-    let text = Self.searchText(row, inputs)
+    let text = Self.meetingText(row, inputs)
+    #if DEBUG
+      meetingTextBuildsForTesting += 1
+    #endif
     searchTextCache[row.id] = (inputs, text)
     return text
   }
 
-  private static func searchText(_ row: Transcript, _ inputs: SearchTextInputs) -> String {
-    if case .visible(_, let plain) = MeetingHistoryPresentation.project(
-      row, info: inputs.info, showEcho: inputs.showEcho)
-    {
-      return plain
+  private static func meetingText(_ row: Transcript, _ inputs: SearchTextInputs) -> MeetingText {
+    switch MeetingHistoryPresentation.project(row, info: inputs.info, showEcho: inputs.showEcho) {
+    case .visible(_, let plain): MeetingText(kind: .visible, plain: plain)
+    case .everythingHidden: MeetingText(kind: .everythingHidden, plain: "")
+    case .unavailable: MeetingText(kind: .unavailable, plain: "")
     }
-    return ""
+  }
+
+  /// Which projection a kept meeting text came from: an empty `.visible` text is not a hidden
+  /// or unavailable meeting, so the kind is kept beside the text, not read from it.
+  private struct MeetingText {
+    enum Kind { case visible, everythingHidden, unavailable }
+    let kind: Kind
+    let plain: String
   }
 
   /// What a meeting's searchable text is made from (`Transcript` is not Equatable).
@@ -1600,7 +1639,7 @@ final class TranscriptCoordinator {
   }
 
   @ObservationIgnored private var searchTextCache:
-    [UUID: (inputs: SearchTextInputs, text: String)] = [:]
+    [UUID: (inputs: SearchTextInputs, text: MeetingText)] = [:]
 
   /// Drops kept text of rows that no longer exist; a changed row is caught by its inputs.
   private func pruneSearchTextCache() {
