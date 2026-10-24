@@ -60,6 +60,13 @@ enum MeetingWiring {
     var emitSummaryFinished: @MainActor (MeetingSummaryFinishedTelemetry) -> Void = {
       TelemetryService.shared.trackMeetingSummaryFinished($0)
     }
+    /// The meeting's own Parakeet backend factory (the live preview, and the final pass while
+    /// dictation runs Whisper). A seam so a test can prove the shared route builds none (#4052).
+    var makeMeetingBackend: () -> any MeetingSpeechBackend = { ParakeetBackend() }
+    /// Speaker analysis of one track (bundled speaker models). A seam for the same tests.
+    var analyzeSpeakers: @Sendable (MeetingTrackAudio) async -> MeetingSpeakerAnalysis = {
+      await MeetingSpeakerAnalyzer.analyze($0)
+    }
   }
 
   /// #4052: dictation's side of the shared Parakeet, as the bootstrapper owns it. The readiness
@@ -219,7 +226,9 @@ enum MeetingWiring {
   ) -> MeetingTranscriptionJob {
     let isDeliveryEnabled = inputs.isDeliveryEnabled
     let engine = MeetingParakeetEngine(
-      offlineModeAdmission: inputs.offlineModeAdmission, isModelSourceUsable: isDeliveryEnabled)
+      offlineModeAdmission: inputs.offlineModeAdmission, makeBackend: inputs.makeMeetingBackend,
+      isModelSourceUsable: isDeliveryEnabled)
+    let analyze = inputs.analyzeSpeakers
     let claim = MeetingModelClaim(gate: inputs.modelUseGate, resolve: inputs.meetingSelection)
     let isIdle = admission(kind, lane: lane, dictationIdle: inputs.isDictationIdle)
     let wakes = inputs.dictationWakes
@@ -243,7 +252,9 @@ enum MeetingWiring {
           },
           transcribe: { samples in try await engine.transcribe(samples: samples, language: nil) },
           unloadEngine: { await engine.unload() },
-          analyzeSpeakers: { audio in await analyzeSpeakers(audio, workChanged: workChanged) },
+          analyzeSpeakers: { audio in
+            await analyzeSpeakers(audio, analyze: analyze, workChanged: workChanged)
+          },
           isTemporaryEngineContention: { MeetingParakeetEngine.isTemporaryContention($0) },
           waitForEngineAvailability: { try await engine.waitUntilOfflineModeAvailable() },
           isModelSourceUsable: isDeliveryEnabled,
@@ -276,6 +287,7 @@ enum MeetingWiring {
           ownTranscribe: { samples in try await engine.transcribe(samples: samples, language: nil) },
           ownUnload: { await engine.unload() },
           ownWaitForAvailability: { try await engine.waitUntilOfflineModeAvailable() },
+          ownResidencyEnded: workChanged,
           log: inputs.log))
       var configuration = MeetingTranscriptionJob.Configuration()
       configuration.cutsPieces = false
@@ -291,7 +303,9 @@ enum MeetingWiring {
           loadEngine: { try await route.loadEngine() },
           transcribe: { samples in try await route.transcribe(samples) },
           unloadEngine: { await route.unloadEngine() },
-          analyzeSpeakers: { audio in await analyzeSpeakers(audio, workChanged: workChanged) },
+          analyzeSpeakers: { audio in
+            await analyzeSpeakers(audio, analyze: analyze, workChanged: workChanged)
+          },
           // Only the meeting's own engine throws this (offline-mode contention); the shared
           // route waits inside `acquire()` and never surfaces it.
           isTemporaryEngineContention: { MeetingParakeetEngine.isTemporaryContention($0) },
@@ -316,9 +330,11 @@ enum MeetingWiring {
 
   /// Speaker analysis of one track; the speaker unit was an activation blocker and has ended.
   private nonisolated static func analyzeSpeakers(
-    _ audio: MeetingTrackAudio, workChanged: @escaping @MainActor () -> Void
+    _ audio: MeetingTrackAudio,
+    analyze: @Sendable (MeetingTrackAudio) async -> MeetingSpeakerAnalysis,
+    workChanged: @escaping @MainActor () -> Void
   ) async -> MeetingSpeakerAnalysis {
-    let analysis = await MeetingSpeakerAnalyzer.analyze(audio)
+    let analysis = await analyze(audio)
     await MainActor.run { workChanged() }
     return analysis
   }

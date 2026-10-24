@@ -3,18 +3,18 @@ import Foundation
 
 /// What `MeetingParakeetEngine` needs from a speech backend. `ParakeetBackend` in production; a
 /// fake in tests.
-protocol MeetingSpeechBackend: Actor {
+package protocol MeetingSpeechBackend: Actor {
   func prepareMeeting(selection: ParakeetModelSelection) async throws
   func transcribeMeeting(samples: [Float], language: String?) async throws -> ASRResult
   func unload() async
 }
 
 extension ParakeetBackend: MeetingSpeechBackend {
-  func prepareMeeting(selection: ParakeetModelSelection) async throws {
+  package func prepareMeeting(selection: ParakeetModelSelection) async throws {
     try await prepare(selection: selection, progressCallback: nil)
   }
 
-  func transcribeMeeting(samples: [Float], language: String?) async throws -> ASRResult {
+  package func transcribeMeeting(samples: [Float], language: String?) async throws -> ASRResult {
     var options = TranscriptionOptions.default
     options.language = language
     return try await transcribe(audioSamples: samples, options: options)
@@ -72,7 +72,9 @@ package final class MeetingParakeetEngine {
       isModelSourceUsable: isModelSourceUsable)
   }
 
-  init(
+  /// `makeBackend` is the meeting's own backend factory; `package` so the meeting wiring's
+  /// tests can count constructions (#4052: the shared route must build none).
+  package init(
     offlineModeAdmission: ASRManager, makeBackend: @escaping () -> any MeetingSpeechBackend,
     isModelSourceUsable: @escaping @MainActor () -> Bool = { true }
   ) {

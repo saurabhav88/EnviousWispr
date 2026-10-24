@@ -41,6 +41,10 @@ public actor MeetingModelUseGate {
       await withTaskCancellationHandler {
         await withCheckedContinuation { continuation in
           useWaiters[id] = (key, continuation)
+          // Announced after the waiter is installed, so a test acting on the signal finds it.
+          let watchers = useWaitWatchers
+          useWaitWatchers.removeAll()
+          watchers.forEach { $0.resume(returning: true) }
         }
       } onCancel: {
         Task { await self.resumeUseWaiter(id) }
@@ -95,6 +99,27 @@ public actor MeetingModelUseGate {
   }
 
   public func isInUse(_ key: String) -> Bool { (uses[key] ?? 0) > 0 }
+
+  /// #4052 test seam: true once a `beginUse` is parked behind a mutation (now or later); false
+  /// after a 5 s deadline, so a test that never gets there fails instead of hanging.
+  package func waitForParkedUseForTesting() async -> Bool {
+    if !useWaiters.isEmpty { return true }
+    return await withCheckedContinuation { (c: CheckedContinuation<Bool, Never>) in
+      useWaitWatchers.append(c)
+      Task {
+        try? await Task.sleep(for: .seconds(5))  // deadline-fallback: bounds the signal wait
+        await self.expireUseWaitWatchers()
+      }
+    }
+  }
+
+  private var useWaitWatchers: [CheckedContinuation<Bool, Never>] = []
+
+  private func expireUseWaitWatchers() {
+    let watchers = useWaitWatchers
+    useWaitWatchers.removeAll()
+    watchers.forEach { $0.resume(returning: false) }
+  }
 
   /// Returns once any mutation has asked for the gate (waiting or running). Tests use it to know
   /// a change is parked behind a meeting's use without polling.

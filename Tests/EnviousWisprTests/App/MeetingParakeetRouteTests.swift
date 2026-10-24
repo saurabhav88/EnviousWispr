@@ -50,6 +50,7 @@ struct MeetingParakeetRouteTests {
     var rearms = 0
     var holderAtRearm: SharedEngineHolder?
     var rechecks = 0
+    var ownResidencyEnds = 0
     var claimHeldAtRecheck: Bool?
     static let meeting = UUID(uuidString: "6F9619FF-8B86-D011-B42D-00C04FC964FF")!
     var resolves = 0
@@ -111,6 +112,7 @@ struct MeetingParakeetRouteTests {
           },
           ownUnload: { [unowned self] in ownUnloads += 1 },
           ownWaitForAvailability: {},
+          ownResidencyEnded: { [unowned self] in ownResidencyEnds += 1 },
           log: { [unowned self] line in lines.append(line) },
           now: { [unowned self] in clock }))
     }
@@ -188,8 +190,9 @@ struct MeetingParakeetRouteTests {
     #expect(rig.sharedDecodes == 0)
     await route.unloadEngine()
     #expect(rig.ownUnloads == 1)
-    #expect(route.isOwnParakeetResident == false)
+    #expect(route.isOwnParakeetResident, "resident until the claim is given back")
     await route.endModelUse()
+    #expect(route.isOwnParakeetResident == false)
     #expect(await rig.gate.isInUse(Self.key(rig.ownSelection!)) == false)
   }
 
@@ -282,10 +285,7 @@ struct MeetingParakeetRouteTests {
     try await rig.gate.beginMutation(Self.key(rig.published!))
     let route = rig.route()
     let task = Task { @MainActor in try await route.acquire() }
-    // The claim resolves, then parks in the gate's `beginUse`; the gate gives no parked signal,
-    // so a bounded number of turns lets it get there (the cancel is checked either way).
-    for _ in 0..<200 where rig.resolves < 1 { await Task.yield() }
-    #expect(rig.resolves == 1, "the claim reached the install gate")
+    #expect(await rig.gate.waitForParkedUseForTesting(), "the claim parked in the install gate")
     task.cancel()
     await #expect(throws: (any Error).self) { try await task.value }
     #expect(rig.lease.admissionEpoch == 0, "no lease taken while waiting on the install")
@@ -309,6 +309,53 @@ struct MeetingParakeetRouteTests {
     #expect(rig.sharedClaim.selection == next, "the claim protects the model actually served")
     #expect(rig.readyCalls == 2)
     #expect(await rig.gate.isInUse(Self.key(next)))
+  }
+
+  @Test("the own route counts as resident from its choice to its release, not only once loaded")
+  func ownResidencyCoversAcquisitionLoadAndDecode() async throws {
+    let rig = Rig()
+    rig.selected = .whisper
+    rig.active = .whisper
+    let own = Self.key(rig.ownSelection!)
+    try await rig.gate.beginMutation(own)  // the own install's gate is busy: the claim waits
+    let route = rig.route()
+    let task = Task { @MainActor in try await route.acquire() }
+    #expect(await rig.gate.waitForParkedUseForTesting())
+    #expect(route.isOwnParakeetResident, "held while the own claim waits")
+    await rig.gate.endMutation(own)
+    try await task.value
+    #expect(route.isOwnParakeetResident)
+    try await route.loadEngine()
+    _ = try await route.transcribe([0])
+    await route.unloadEngine()
+    #expect(route.isOwnParakeetResident, "until the claim is given back")
+    await route.endModelUse()
+    #expect(route.isOwnParakeetResident == false)
+  }
+
+  @Test("a switch to Parakeet requested while the own claim waits hands the pass to the shared route")
+  func switchDuringOwnAcquisitionGoesShared() async throws {
+    let rig = Rig()
+    rig.selected = .whisper
+    rig.active = .whisper
+    let own = Self.key(rig.ownSelection!)
+    try await rig.gate.beginMutation(own)
+    let route = rig.route()
+    let task = Task { @MainActor in try await route.acquire() }
+    #expect(await rig.gate.waitForParkedUseForTesting())
+    // The user picks Parakeet; gate 6d holds the switch while the meeting is resident.
+    rig.selected = .parakeet
+    await rig.gate.endMutation(own)
+    #expect(await route.waitForWaitEnteredForTesting(), "back in step 1, waiting for the switch")
+    #expect(route.isOwnParakeetResident == false, "the own copy was given back")
+    #expect(rig.ownResidencyEnds == 1, "the held switch was woken")
+    #expect(await rig.gate.isInUse(own) == false)
+    // The switch completes and pokes the meeting.
+    rig.active = .parakeet
+    rig.wakes.poke()
+    try await task.value
+    #expect(route.route == .shared)
+    #expect(rig.lease.currentHolder == .meeting)
   }
 
   @Test("readiness failing is terminal and takes no lease")

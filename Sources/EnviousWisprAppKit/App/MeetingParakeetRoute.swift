@@ -61,6 +61,9 @@ final class MeetingParakeetRoute {
     var ownTranscribe: @MainActor ([Float]) async throws -> ASRResult
     var ownUnload: @MainActor () async -> Void
     var ownWaitForAvailability: @MainActor () async throws -> Void
+    /// Told when the own route gives its residency back outside `endModelUse` (an acquisition
+    /// that failed or that a pending switch overtook), so a switch it held can proceed.
+    var ownResidencyEnded: @MainActor () -> Void
     var log: @MainActor (String) -> Void
     var now: @MainActor () -> ContinuousClock.Instant = { ContinuousClock.now }
   }
@@ -70,7 +73,10 @@ final class MeetingParakeetRoute {
   private var token: EngineLease.Token?
   private var claimedAt: ContinuousClock.Instant?
   private var heldTotal: Duration = .zero
-  private var ownLoaded = false
+  /// From the moment this pass chooses its own Parakeet until that copy is unloaded and its
+  /// claim released (acquisition, load and decode included), so gate 6d holds a switch into
+  /// Parakeet for the whole window, not only once the load has finished.
+  private var ownActive = false
   private var meetingID = "-"
   private var meetingSeconds: Int?
   private var reportingDictationWait = false
@@ -93,7 +99,7 @@ final class MeetingParakeetRoute {
 
   /// The final pass's own Parakeet is loaded (gate 6d: a switch of dictation into Parakeet
   /// waits until it is gone, so two copies never coexist).
-  var isOwnParakeetResident: Bool { route == .own && ownLoaded }
+  var isOwnParakeetResident: Bool { ownActive }
 
   /// Whether this route holds the engine lease now.
   var holdsSharedEngine: Bool { token != nil }
@@ -124,8 +130,9 @@ final class MeetingParakeetRoute {
 
       // 2. The route for this attempt.
       guard deps.activeBackend() == .parakeet else {
-        try await acquireOwn()
-        return
+        if try await acquireOwn(settled: ready) { return }
+        publicationLosses = 0
+        continue
       }
 
       // 3. Dictation's Parakeet ready, with no lease held (its own convergence wait cannot
@@ -191,7 +198,6 @@ final class MeetingParakeetRoute {
     case .own:
       guard let selection = deps.ownClaim.selection else { throw MeetingWiringError.noModelClaim }
       try await deps.ownLoad(selection)
-      ownLoaded = true
     case nil:
       throw MeetingWiringError.noModelClaim
     }
@@ -212,7 +218,6 @@ final class MeetingParakeetRoute {
     case .shared: await releaseShared()
     case .own:
       await deps.ownUnload()
-      ownLoaded = false
     case nil: break
     }
   }
@@ -230,6 +235,7 @@ final class MeetingParakeetRoute {
       )
     case .own:
       await deps.ownClaim.release()
+      ownActive = false
     case nil: break
     }
     route = nil
@@ -241,10 +247,28 @@ final class MeetingParakeetRoute {
 
   // MARK: - Internals
 
-  private func acquireOwn() async throws {
-    try await acquireClaim(deps.ownClaim)
+  /// The own route's acquisition. `ownActive` is set before the claim's wait, so an engine
+  /// switch into Parakeet requested during it is held by gate 6d. When the selection moved
+  /// meanwhile (the user picked Parakeet), the claim is given back and the deferred switch is
+  /// woken; returns false so `acquire()` waits for the switch and takes the shared route.
+  private func acquireOwn(settled: @MainActor () -> Bool) async throws -> Bool {
+    ownActive = true
+    do {
+      try await acquireClaim(deps.ownClaim)
+    } catch {
+      ownActive = false
+      deps.ownResidencyEnded()
+      throw error
+    }
+    guard settled(), deps.activeBackend() != .parakeet else {
+      await deps.ownClaim.release()
+      ownActive = false
+      deps.ownResidencyEnded()
+      return false
+    }
     route = .own
     deps.log("meeting engine route=own meeting=\(meetingID)")
+    return true
   }
 
   /// `MeetingModelClaim.acquire`, with its terminal errors mapped as the job reports them.
