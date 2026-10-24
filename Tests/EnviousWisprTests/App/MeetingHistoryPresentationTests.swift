@@ -220,16 +220,86 @@ struct MeetingHistoryPresentationTests {
     #expect(rig.coordinator.listedItems.isEmpty)
   }
 
-  @Test("a meeting removed elsewhere leaves no stale selection once EnviousMeet publishes")
-  func externalRemovalClearsSelection() async throws {
-    let rig = Rig()
-    let record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
-    rig.records = [record]
-    rig.coordinator.selectedItemID = .meeting(record.id)
-    rig.records = []
-    rig.coordinator.meetingsDidChange()
-    #expect(rig.coordinator.selectedItemID == nil)
-  }
+  #if DEBUG
+    @Test("a meeting removed elsewhere leaves no stale selection once EnviousMeet publishes")
+    func externalRemovalClearsSelection() async throws {
+      let rig = Rig()
+      let record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+      rig.records = [record]
+      rig.coordinator.selectedItemID = .meeting(record.id)
+      rig.records = []
+      rig.coordinator.meetingsDidChange()
+      // #4001 H4: the reconcile is queued; until it runs, the gone meeting shows nothing.
+      guard case .empty = rig.coordinator.detail else {
+        Issue.record("a removed meeting must resolve to an empty detail before the reconcile runs")
+        return
+      }
+      let pending = try #require(rig.coordinator.pendingMeetingReconcileForTesting)
+      await pending.value
+      #expect(rig.coordinator.selectedItemID == nil)
+      guard case .empty = rig.coordinator.detail else {
+        Issue.record("still empty after the reconcile")
+        return
+      }
+    }
+
+    @Test("a burst of meeting changes shares one reconcile and one list build (#4001 H4)")
+    func burstSharesOneReconcile() async throws {
+      let rig = Rig()
+      var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+      rig.records = [record]
+      rig.coordinator.selectedItemID = .meeting(record.id)
+      _ = rig.coordinator.listedItems.count
+      let before = rig.coordinator.listBuildsForTesting
+      rig.coordinator.meetingsDidChange()
+      let first = try #require(rig.coordinator.pendingMeetingReconcileForTesting)
+      for i in 1...4 {
+        record.title = "title \(i)"
+        rig.records = [record]
+        rig.coordinator.meetingsDidChange()
+        #expect(rig.coordinator.pendingMeetingReconcileForTesting == first)
+      }
+      await first.value
+      #expect(rig.coordinator.listBuildsForTesting - before == 1)
+      #expect(rig.coordinator.selectedItemID == .meeting(record.id))
+      #expect(rig.coordinator.pendingMeetingReconcileForTesting == nil)
+
+      // A later change schedules a new reconcile.
+      rig.records = []
+      rig.coordinator.meetingsDidChange()
+      let second = try #require(rig.coordinator.pendingMeetingReconcileForTesting)
+      #expect(second != first)
+      await second.value
+      #expect(rig.coordinator.selectedItemID == nil)
+    }
+
+    @Test("a selection made before the queued reconcile runs is kept (#4001 H4)")
+    func newerSelectionSurvives() async throws {
+      let rig = Rig()
+      let gone = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+      let kept = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+      rig.records = [gone, kept]
+      rig.coordinator.selectedItemID = .meeting(gone.id)
+      rig.records = [kept]
+      rig.coordinator.meetingsDidChange()
+      rig.coordinator.selectedItemID = .meeting(kept.id)
+      await rig.coordinator.pendingMeetingReconcileForTesting?.value
+      #expect(rig.coordinator.selectedItemID == .meeting(kept.id))
+    }
+
+    @Test("a reconcile with nothing to check builds no list (#4001 H4)")
+    func nothingToCheckBuildsNothing() async throws {
+      let rig = Rig()
+      var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+      rig.records = [record]
+      record.title = "changed"
+      rig.records = [record]
+      let before = rig.coordinator.listBuildsForTesting
+      rig.coordinator.meetingsDidChange()
+      await rig.coordinator.pendingMeetingReconcileForTesting?.value
+      #expect(rig.coordinator.listBuildsForTesting == before, "no selection, no fallback row")
+    }
+  #endif
 
   @Test("a meeting is never the last dictation to paste or copy again")
   func neverReusedAsLastDictation() async throws {
@@ -482,7 +552,8 @@ struct MeetingHistoryPresentationTests {
         && coordinator.record(id: meetingID)?.state == .processing
     }
     let record = try #require(coordinator.record(id: meetingID))
-    #expect(MeetingWiring.historyInfo(coordinator, meetingID: meetingID) == nil, "hidden until ready")
+    #expect(
+      MeetingWiring.historyInfo(coordinator, meetingID: meetingID) == nil, "hidden until ready")
     func rows() async throws -> [Transcript] {
       try await TranscriptStore(directory: history.directory).loadAll().filter {
         $0.meetingID == meetingID
