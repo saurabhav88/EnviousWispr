@@ -38,7 +38,7 @@ Under **Ask to record calls in**, switch off any app you never want to be asked 
 ### What the call panel's buttons do
 
 - **Record this call?** with a line such as "Zoom started using the microphone." Click **Yes** to record or **No** to skip this call. If you do neither, the panel closes after 15 seconds; that is not counted as a No, and you are not asked again about the same call.
-- **New call in Zoom. Start a new recording?** (with the app's name) A new call started while a meeting records. **Yes** stops the current recording and starts one for the new call. If something would keep the new recording from starting, such as a permission, the current recording keeps going and the panel says so. If the new call cannot be confirmed after the stop, the panel says **Recording stopped** with "The new call could not be confirmed." and offers **Start a new recording**.
+- **New call in Zoom. Start a new recording?** (with the app's name) A new call started while a meeting records. **Yes** stops the current recording and starts one for the new call. If EnviousMeet knows before stopping that the new recording cannot start, such as a missing permission, the current recording keeps going and the panel says so. If the new recording fails after the stop, the panel says **EnviousMeet could not start recording**. If the new call cannot be confirmed after the stop, the panel says **Recording stopped** with "The new call could not be confirmed." and offers **Start a new recording**.
 - **Meeting ending in 10 seconds** counts down when the call you were recording has ended. Click **Keep recording** to keep going; otherwise the recording stops when the count reaches zero.
 - **Recording stopped** means the recording ended with the call. **Start a new recording** stays on the panel for one minute and starts a new, separate meeting. **Close** closes the panel.
 - **EnviousMeet needs your attention before it can record** means a permission or the call-sound step must be done first. Click **Open settings**, or **Close**.
@@ -46,7 +46,7 @@ Under **Ask to record calls in**, switch off any app you never want to be asked 
 
 ### When a recording stops by itself
 
-Only a recording that EnviousMeet started for a call stops by itself. It stops after the countdown, once the call app has stopped using the microphone. A short drop, a reconnect, or a moment the app cannot check does not stop it. The end of a call never stops a recording you started yourself from the menu bar or from History, or one you chose to keep with **Keep recording**. Any recording can still stop if the disk fills up or the recording fails.
+Only a recording that EnviousMeet started for a call stops because the call ended. It stops after the countdown, once the call app has stopped using the microphone. A short drop, a reconnect, or a moment the app cannot check does not stop it. The end of a call never stops a recording you started yourself from the menu bar or from History, or one you chose to keep with **Keep recording**. Any recording can still stop if the disk fills up or the recording fails.
 
 For 10 seconds after your Mac wakes from sleep, EnviousMeet does not start or end any call.
 
