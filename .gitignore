@@ -166,6 +166,8 @@ scripts/*
 # #2778: the Ollama library feed tools (candidate scan, feed validator, shared name fixtures).
 # pr-check.yml runs the validator, so the directory must ship: `scripts/*` would otherwise hide it.
 !scripts/ollama-library/
+# #4017 O7: the EnviousMeet welcome video's source and renderer (the MP4s live in Resources).
+!scripts/meeting-welcome-video/
 # #2374 Phase 2: the view-split equivalence proof and its two-way control. The
 # PR's central claim is a MOVE-ONLY verdict from this script, so a reviewer who
 # cannot read it is being handed an unchecked premise.

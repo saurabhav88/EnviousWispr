@@ -2,14 +2,19 @@ import SwiftUI
 
 /// The "how it works" scene on EnviousMeet's welcome screen (#4017 O7): a call window, the
 /// "Record this call?" question, then the transcript filling in under the speakers' names. It
-/// stands in for the rendered video until that file ships; with Reduce Motion it shows the
-/// finished scene, still.
+/// stands in for the rendered video (`MeetingWelcomeMedia`) with Reduce Motion, where it shows
+/// the finished scene, still, and in a language without its own video.
 struct MeetingWelcomeAnimation: View {
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var start = Date()
 
   /// One loop, in seconds.
   private static let loop = 9.0
+
+  /// What the scene shows, for VoiceOver; the video says the same.
+  static let description = LocalizedStringResource(
+    "A call starts, EnviousWispr asks whether to record it, and the transcript fills in with who said what.",
+    comment: "EnviousMeet setup: describes the welcome animation for VoiceOver.")
 
   var body: some View {
     TimelineView(.animation(paused: reduceMotion)) { context in
@@ -24,10 +29,7 @@ struct MeetingWelcomeAnimation: View {
     .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.obBorder, lineWidth: 1))
     .clipShape(RoundedRectangle(cornerRadius: 12))
     .accessibilityElement()
-    .accessibilityLabel(
-      Text(
-        "A call starts, EnviousWispr asks whether to record it, and the transcript fills in with who said what.",
-        comment: "EnviousMeet setup: describes the welcome animation for VoiceOver."))
+    .accessibilityLabel(Text(Self.description))
   }
 
   private func scene(phase: Double) -> some View {
