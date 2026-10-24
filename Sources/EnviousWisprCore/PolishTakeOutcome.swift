@@ -104,6 +104,9 @@ public struct PolishTakeOutcome: Sendable, Equatable {
   /// missed polish because of it. Frozen at the miss; set only for a
   /// local-engine-not-ready result.
   public let outsideStopMiss: OutsideStopContext?
+  /// #3988: when that miss happened on the wall clock, stamped at the miss itself and carried
+  /// unchanged, so a clock change afterwards cannot move it. Set exactly when `outsideStopMiss` is.
+  public let outsideStopMissedAt: Date?
   /// #3988: the outside stop this take was the first to meet, whether its
   /// polish missed or ran on the restarted engine. Joins a stop to its
   /// recovery take; never a reason for a notice on its own.
@@ -113,7 +116,8 @@ public struct PolishTakeOutcome: Sendable, Equatable {
     takeID: String, context: PolishSetupTakeContext, result: PolishTakeResult,
     evidence: PolishSetupEvidence?, setupProblem: PolishSetupProblemTag?,
     observedAt: ContinuousClock.Instant, keyReadAt: ContinuousClock.Instant? = nil,
-    outsideStopMiss: OutsideStopContext? = nil, outsideStopRecovery: OutsideStopContext? = nil
+    outsideStopMiss: OutsideStopContext? = nil, outsideStopMissedAt: Date? = nil,
+    outsideStopRecovery: OutsideStopContext? = nil
   ) {
     self.takeID = takeID
     self.context = context
@@ -123,6 +127,7 @@ public struct PolishTakeOutcome: Sendable, Equatable {
     self.observedAt = observedAt
     self.keyReadAt = keyReadAt
     self.outsideStopMiss = outsideStopMiss
+    self.outsideStopMissedAt = outsideStopMiss == nil ? nil : outsideStopMissedAt
     self.outsideStopRecovery = outsideStopRecovery
   }
 }

@@ -65,6 +65,8 @@ import Testing
         Set(PolishSetupPromptEvent.Action.allCases.map(\.rawValue)) == [
           "shown", "finish_setup", "go_back", "leave_anyway", "not_now", "closed",
           "open_system_settings", "ok",
+          // #3988 (plan §4, approved at Gate 2): the repeat outside-stop notice's button.
+          "choose_engine",
         ])
       #expect(PolishSetupLeaveAction.finishSetup.promptAction == .finishSetup)
       #expect(PolishSetupLeaveAction.goBack(.gemini).promptAction == .goBack)

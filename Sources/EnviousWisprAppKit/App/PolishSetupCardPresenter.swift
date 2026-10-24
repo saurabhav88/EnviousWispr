@@ -32,8 +32,10 @@ final class PolishSetupCardPresenter {
   enum Answer {
     case finishSetup
     case notNow
-    /// #3988: the outside-stop notice's only button.
+    /// #3988: closes an outside-stop notice.
     case ok
+    /// #3988: the repeat notice's button: opens AI Polish to pick another engine.
+    case chooseEngine
   }
 
   private let overlay: any OverlayPresenting
@@ -104,7 +106,7 @@ final class PolishSetupCardPresenter {
         takeID: takeID, ticket: .outsideStop(ticket),
         subject: PolishSetupPromptSubject(
           problem: .localEngineStoppedOutside(stop.provider, stop), provider: stop.provider),
-        model: PolishSetupCardModel(outsideStop: stop))
+        model: PolishSetupCardModel(outsideStop: stop, variant: ticket.variant))
     } else {
       // The ticket and subject are read AFTER ingestion, so a take that started with no episode
       // (an unknown key presence its own read resolved) can raise the episode's card.
@@ -120,10 +122,11 @@ final class PolishSetupCardPresenter {
     let attempt = attempts
     var settledSynchronously = false
     let dismissAnswer: Answer = card.model.variant == nil ? .notNow : .ok
+    let primaryAnswer: Answer = card.model.variant == nil ? .finishSetup : .chooseEngine
     let admitted = overlay.present(
       .polishSetupCard(
         model: card.model,
-        onFinishSetup: { [weak self] in self?.answer(.finishSetup, attempt: attempt) },
+        onFinishSetup: { [weak self] in self?.answer(primaryAnswer, attempt: attempt) },
         onNotNow: { [weak self] in self?.answer(dismissAnswer, attempt: attempt) }),
       onResult: { [weak self] result in
         // One result per request: a repeated answer from the host settles nothing again.
@@ -156,7 +159,8 @@ final class PolishSetupCardPresenter {
       return
     }
     current = (attempt, card, receipt)
-    monitor.recordPrompt(.card, .shown, subject: card.subject, takeID: card.takeID)
+    monitor.recordPrompt(
+      .card, .shown, subject: card.subject, takeID: card.takeID, variant: card.model.variant)
     log("card shown")
   }
 
@@ -166,17 +170,24 @@ final class PolishSetupCardPresenter {
     // Bound to the card that drew the button, still on screen, and acted on at most once.
     reconcile()
     guard let shown = current, shown.attempt == attempt else { return }
-    // Each card answers only with its own buttons: a notice has no setup action.
+    // Each card answers only with its own buttons: a notice has no setup action, and only the
+    // repeat notice has Choose engine.
     let reported: PolishSetupPromptEvent.Action
     switch (answer, shown.card.ticket) {
     case (.finishSetup, .setup): reported = .finishSetup
     case (.notNow, .setup): reported = .notNow
     case (.ok, .outsideStop): reported = .ok
-    case (.finishSetup, .outsideStop), (.notNow, .outsideStop), (.ok, .setup): return
+    case (.chooseEngine, .outsideStop(let notice)) where notice.variant == .escalated:
+      reported = .chooseEngine
+    case (.finishSetup, .outsideStop), (.notNow, .outsideStop), (.ok, .setup),
+      (.chooseEngine, .setup), (.chooseEngine, .outsideStop):
+      return
     }
     current = nil
     overlay.dismissIfCurrent(shown.receipt)
-    monitor.recordPrompt(.card, reported, subject: shown.card.subject, takeID: shown.card.takeID)
+    monitor.recordPrompt(
+      .card, reported, subject: shown.card.subject, takeID: shown.card.takeID,
+      variant: shown.card.model.variant)
     switch shown.card.ticket {
     case .setup(let ticket):
       if answer == .finishSetup {
@@ -186,8 +197,9 @@ final class PolishSetupCardPresenter {
         monitor.acknowledge(.card, in: ticket.episode)
       }
     case .outsideStop:
-      // The notice was spent when it appeared; OK only closes it.
-      break
+      // The notice was spent when it appeared. Choose engine opens AI Polish, where provider
+      // requirements and setup status are shown; OK only closes it.
+      if answer == .chooseEngine { openAIPolish() }
     }
   }
 

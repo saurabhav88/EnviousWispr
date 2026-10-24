@@ -536,7 +536,8 @@ struct PolishSetupCardPresenterTests {
     let outcome = PolishTakeOutcome(
       takeID: takeID.uuidString, context: fx.monitor.freezeTakeContext(),
       result: .skippedSilently, evidence: .localEngineNotReady, setupProblem: nil,
-      observedAt: .now, outsideStopMiss: stop, outsideStopRecovery: stop)
+      observedAt: .now, outsideStopMiss: stop, outsideStopMissedAt: Date(),
+      outsideStopRecovery: stop)
     if fx.monitor.ingest(outcome) {
       fx.card.offer(after: outcome, dataLossDisclosureScheduled: dataLossDisclosure)
     }
@@ -553,7 +554,7 @@ struct PolishSetupCardPresenterTests {
     defer { fx.monitor.stop() }
     let take = Self.concludeMiss(fx, stop: Self.stop(1))
     let model = try #require(fx.overlay.shownModels.last)
-    #expect(model == PolishSetupCardModel(outsideStop: Self.stop(1)))
+    #expect(model == PolishSetupCardModel(outsideStop: Self.stop(1), variant: .first))
     #expect(model.title == "AI polish skipped")
     #expect(
       model.line
@@ -567,7 +568,8 @@ struct PolishSetupCardPresenterTests {
       fx.log.rows
         == [
           PolishSetupPromptEvent(
-            surface: .card, action: .shown, subject: Self.subject(Self.stop(1)), takeID: take)
+            surface: .card, action: .shown, subject: Self.subject(Self.stop(1)), takeID: take,
+            variant: .first)
         ])
     // Spent on appearing: another take for the same stop raises nothing.
     fx.overlay.pressNotNow()
@@ -579,7 +581,7 @@ struct PolishSetupCardPresenterTests {
   func genericWords() {
     for pressure in [OutsideStopContext.MemoryPressure.normal, nil] {
       #expect(
-        PolishSetupCardModel(outsideStop: Self.stop(1, pressure)).line
+        PolishSetupCardModel(outsideStop: Self.stop(1, pressure), variant: .first).line
           == "This dictation was pasted without AI polish. We'll try again automatically.")
     }
   }
@@ -600,7 +602,8 @@ struct PolishSetupCardPresenterTests {
       fx.log.rows.map(\.action) == [.shown, .ok]
         && fx.log.rows.last
           == PolishSetupPromptEvent(
-            surface: .card, action: .ok, subject: Self.subject(Self.stop(1)), takeID: take))
+            surface: .card, action: .ok, subject: Self.subject(Self.stop(1)), takeID: take,
+            variant: .first))
   }
 
   @Test("the engine coming back before the first render or while shown keeps the notice")
@@ -640,13 +643,88 @@ struct PolishSetupCardPresenterTests {
     #expect(fx.log.rows.last?.takeID == take)
     fx.overlay.pressNotNow()
 
-    // A second physical stop: its own notice.
+    // A second physical stop the same day: its own notice, the repeat one.
     fx.world.egOneStop = Self.stop(2, nil)
     Self.concludeMiss(fx, stop: Self.stop(2, nil))
     #expect(fx.card.isShowingForTesting)
+    #expect(fx.overlay.shownModels.last?.variant == .escalated)
     #expect(
       fx.overlay.shownModels.last?.line
-        == "This dictation was pasted without AI polish. We'll try again automatically.")
+        == "EG-1 stopped again. A lighter polish engine, or turning polish off, may work better on this Mac. We won't show this again for 24 hours."
+    )
+  }
+
+  @Test("the repeat notice names the engine, offers Choose engine once, and OK never opens Settings")
+  func repeatNotice() throws {
+    let fx = Self.stoppedFixture()
+    defer { fx.monitor.stop() }
+    Self.concludeMiss(fx, stop: Self.stop(1))
+    fx.overlay.pressNotNow()
+    fx.world.egOneStop = Self.stop(2)
+    let take = Self.concludeMiss(fx, stop: Self.stop(2))
+    let model = try #require(fx.overlay.shownModels.last)
+    #expect(model == PolishSetupCardModel(outsideStop: Self.stop(2), variant: .escalated))
+    #expect(model.title == "AI polish skipped")
+    #expect(
+      model.line
+        == "EG-1 stopped again. Your Mac was low on memory at the time. A lighter polish engine, or turning polish off, may work better on this Mac. We won't show this again for 24 hours."
+    )
+    #expect(model.primaryLabel == "Choose engine")
+    #expect(model.dismissLabel == "OK")
+    #expect(model.announcement == "\(model.title). \(model.line)")
+    // Inside the quiet it started, the repeat notice is still up and its buttons work.
+    fx.card.reconcile()
+    #expect(fx.card.isShowingForTesting)
+    fx.overlay.pressFinish()
+    fx.overlay.pressFinish()
+    #expect(fx.log.opened == 1)
+    #expect(
+      fx.log.rows.last
+        == PolishSetupPromptEvent(
+          surface: .card, action: .chooseEngine, subject: Self.subject(Self.stop(2)),
+          takeID: take, variant: .escalated))
+    #expect(fx.log.rows.filter { $0.variant == .escalated }.map(\.action) == [.shown, .chooseEngine])
+
+    // OK on another repeat notice (a new fixture, so no quiet is on) closes it only.
+    let other = Self.stoppedFixture()
+    defer { other.monitor.stop() }
+    Self.concludeMiss(other, stop: Self.stop(1))
+    other.overlay.pressNotNow()
+    other.world.egOneStop = Self.stop(2, nil)
+    Self.concludeMiss(other, stop: Self.stop(2, nil))
+    #expect(
+      other.overlay.shownModels.last?.line
+        == "EG-1 stopped again. A lighter polish engine, or turning polish off, may work better on this Mac. We won't show this again for 24 hours."
+    )
+    other.overlay.pressNotNow()
+    #expect(other.log.opened == 0)
+    #expect(other.log.rows.last?.action == .ok)
+    #expect(other.log.rows.last?.variant == .escalated)
+  }
+
+  @Test("the quiet refuses a notice still waiting for its first render, without spending it")
+  func quietAtFirstRender() throws {
+    let fx = Self.stoppedFixture()
+    defer { fx.monitor.stop() }
+    // First notice for stop 1 shown and closed; stop 2's repeat waits for its first render.
+    Self.concludeMiss(fx, stop: Self.stop(1))
+    fx.overlay.pressNotNow()
+    fx.overlay.defersResult = true
+    fx.world.egOneStop = Self.stop(2)
+    Self.concludeMiss(fx, stop: Self.stop(2))
+    #expect(fx.card.isPendingForTesting)
+    // Meanwhile a repeat notice elsewhere started the quiet (stop 3, straight through the monitor).
+    let other = PolishTakeOutcome(
+      takeID: UUID().uuidString, context: fx.monitor.freezeTakeContext(),
+      result: .skippedSilently, evidence: .localEngineNotReady, setupProblem: nil,
+      observedAt: .now, outsideStopMiss: Self.stop(3), outsideStopMissedAt: Date())
+    fx.world.egOneStop = Self.stop(3)
+    #expect(fx.monitor.ingest(other))
+    let otherTicket = try #require(fx.monitor.outsideStopNoticeTicket(for: other))
+    #expect(fx.monitor.outsideStopNoticePresented(otherTicket))
+    fx.overlay.releaseDeferredResult()
+    #expect(fx.card.isShowingForTesting == false, "a notice drawn inside another's quiet was kept")
+    #expect(fx.log.rows.filter { $0.action == .shown }.count == 1, "the refused notice spent")
   }
 
   @Test("onboarding reset, another model or a failed restart withdraws the notice")
@@ -738,7 +816,7 @@ struct PolishSetupCardOverlayTests {
     let outcome = PolishTakeOutcome(
       takeID: UUID().uuidString, context: fx.monitor.freezeTakeContext(),
       result: .skippedSilently, evidence: .localEngineNotReady, setupProblem: nil,
-      observedAt: .now, outsideStopMiss: stop)
+      observedAt: .now, outsideStopMiss: stop, outsideStopMissedAt: Date())
     #expect(fx.monitor.ingest(outcome))
     fx.card.offer(after: outcome, dataLossDisclosureScheduled: false)
     guard case .polishSetupCard(let model)? = fx.overlay.renderModel.state.presentation?.content
@@ -746,7 +824,7 @@ struct PolishSetupCardOverlayTests {
       Issue.record("the notice was not admitted")
       return
     }
-    #expect(model == PolishSetupCardModel(outsideStop: stop))
+    #expect(model == PolishSetupCardModel(outsideStop: stop, variant: .first))
     #expect(
       PillCatalog.announcement(for: .polishSetupCard(model)) == .medium(model.announcement),
       "VoiceOver reads the notice's own title and words")

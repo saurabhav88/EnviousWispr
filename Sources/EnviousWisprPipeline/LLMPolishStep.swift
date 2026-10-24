@@ -821,10 +821,14 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     /// #3988: frozen where the bundled engine was found missing, before the
     /// not-ready skip is thrown; never reconstructed later.
     var outsideStopMiss: OutsideStopContext?
+    /// #3988: the wall-clock time of that miss, stamped in the same place.
+    var outsideStopMissedAt: Date?
     /// #3988: the outside stop this take is the first to meet.
     var outsideStopRecovery: OutsideStopContext?
   }
   private(set) var setupObservation = SetupObservation()
+  /// #3988: the wall clock an outside-stop miss is stamped with. A seam for tests.
+  var wallNow: @MainActor () -> Date = { Date() }
 
   public func process(_ context: TextProcessingContext) async throws -> TextProcessingContext {
     let fileBatchInput = self.fileBatchInput
@@ -985,6 +989,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
           endpoint = ready
         } else {
           setupObservation.outsideStopMiss = attempt.missedOutsideStop
+          if attempt.missedOutsideStop != nil { setupObservation.outsideStopMissedAt = wallNow() }
           setupObservation.requestEndedAt = .now
           endpoint = nil
         }

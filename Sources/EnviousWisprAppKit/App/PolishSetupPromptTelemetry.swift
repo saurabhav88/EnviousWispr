@@ -34,6 +34,8 @@ struct PolishSetupPromptEvent: Equatable {
     case closed
     case openSystemSettings = "open_system_settings"
     case ok
+    /// #3988: the repeat outside-stop notice's button, which opens AI Polish.
+    case chooseEngine = "choose_engine"
   }
 
   let surface: Surface
@@ -41,6 +43,8 @@ struct PolishSetupPromptEvent: Equatable {
   let subject: PolishSetupPromptSubject
   /// Card rows only: the take whose skipped polish raised the card.
   let takeID: UUID?
+  /// #3988: which outside-stop notice the card was, frozen with it; nil for every setup prompt.
+  var variant: PolishSetupCardModel.NoticeVariant? = nil
 
   private var problem: PolishSetupProblem { subject.problem }
   private var provider: LLMProvider { subject.provider }

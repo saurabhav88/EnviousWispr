@@ -167,6 +167,37 @@ enum PolishSetupSurfaceCopy {
     )
   }
 
+  /// The repeat notice's body (#3988, founder-approved 2026-10-23): it names the engine, keeps
+  /// the memory sentence to warning or critical, suggests no particular engine, and says the
+  /// notice is now quiet for 24 hours.
+  static func outsideStopEscalation(_ stop: OutsideStopContext) -> String {
+    let engine = stop.provider.displayName
+    switch stop.memoryPressure {
+    case .warning?, .critical?:
+      return String(
+        localized:
+          "\(engine) stopped again. Your Mac was low on memory at the time. A lighter polish engine, or turning polish off, may work better on this Mac. We won't show this again for 24 hours.",
+        comment:
+          "Notice after a dictation, when the local AI model was stopped outside the app again within a day, while memory was low. %@ is a model name, such as EG-1."
+      )
+    case .normal?, nil:
+      return String(
+        localized:
+          "\(engine) stopped again. A lighter polish engine, or turning polish off, may work better on this Mac. We won't show this again for 24 hours.",
+        comment:
+          "Notice after a dictation, when the local AI model was stopped outside the app again within a day. %@ is a model name, such as EG-1."
+      )
+    }
+  }
+
+  /// The repeat notice's button: opens AI Polish, where the person picks an engine.
+  static var chooseEngine: String {
+    String(
+      localized: "Choose engine",
+      comment: "Notice after a dictation, button: opens AI Polish settings to pick another engine."
+    )
+  }
+
   /// The one owner of the stopped-from-outside notice body. The memory sentence appears only
   /// when the app saw warning or critical memory pressure as it handled the stop: context,
   /// never a claimed cause, and never shown when the level is normal or unknown.

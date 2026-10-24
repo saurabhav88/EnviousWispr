@@ -2512,7 +2512,10 @@ package final class WisprBootstrapper {
       // A take that found no key in the Keychain is that read's answer; no second read.
       recordKeyEvidence: { [savedKeyPresence] provider, state, readAt in
         savedKeyPresence.recordRead(state, for: provider, readAt: readAt)
-      })
+      },
+      // #3988: the notice history lives in THIS build's own defaults domain, never the unified
+      // settings suite, so the dev build and the shipped app never share a day or a quiet.
+      noticeStore: OutsideStopNoticeStore(defaults: .standard))
     polishSetupMonitorHolder.monitor = polishSetupMonitor
     menuBarControllerHolder.controller = menuBarController
     savedKeyPresence.onChange = { [weak polishSetupMonitor] in

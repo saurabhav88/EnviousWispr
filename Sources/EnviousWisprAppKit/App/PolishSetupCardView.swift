@@ -9,6 +9,8 @@ struct PolishSetupCardModel: Hashable, Sendable {
   /// Which outside-stop notice this is (#3988); nil for a setup card.
   enum NoticeVariant: String, Hashable, Sendable {
     case first
+    /// The repeat within a day: names the engine, offers Choose engine, then quiet for 24 h.
+    case escalated
   }
 
   let title: String
@@ -21,7 +23,7 @@ struct PolishSetupCardModel: Hashable, Sendable {
 
   init(problem: PolishSetupProblem) {
     if case .localEngineStoppedOutside(_, let stop) = problem {
-      self.init(outsideStop: stop)
+      self.init(outsideStop: stop, variant: .first)
     } else {
       self.init(
         title: PolishSetupSurfaceCopy.cardTitle,
@@ -31,13 +33,23 @@ struct PolishSetupCardModel: Hashable, Sendable {
     }
   }
 
-  /// #3988: the first notice after a take missed polish because something outside the app
-  /// stopped the engine. Words from the stop the take froze; OK only.
-  init(outsideStop stop: OutsideStopContext) {
-    self.init(
-      title: PolishSetupSurfaceCopy.outsideStopTitle,
-      line: PolishSetupSurfaceCopy.outsideStopNotice(stop), primaryLabel: nil,
-      dismissLabel: PolishSetupLeaveDialogContent.Copy.ok, variant: .first)
+  /// #3988: the notice after a take missed polish because something outside the app stopped
+  /// the engine, in words from the stop the take froze. The first is OK only; the repeat within
+  /// a day adds Choose engine.
+  init(outsideStop stop: OutsideStopContext, variant: NoticeVariant) {
+    switch variant {
+    case .first:
+      self.init(
+        title: PolishSetupSurfaceCopy.outsideStopTitle,
+        line: PolishSetupSurfaceCopy.outsideStopNotice(stop), primaryLabel: nil,
+        dismissLabel: PolishSetupLeaveDialogContent.Copy.ok, variant: .first)
+    case .escalated:
+      self.init(
+        title: PolishSetupSurfaceCopy.outsideStopTitle,
+        line: PolishSetupSurfaceCopy.outsideStopEscalation(stop),
+        primaryLabel: PolishSetupSurfaceCopy.chooseEngine,
+        dismissLabel: PolishSetupLeaveDialogContent.Copy.ok, variant: .escalated)
+    }
   }
 
   private init(

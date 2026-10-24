@@ -257,12 +257,49 @@ struct PolishTakeOutcomeCarryTests {
     #expect(engine.attempts == ["take-stopped"], "one decision, for the live take")
   }
 
+  @Test("the miss keeps the wall-clock time it happened, even if the clock moves before settlement")
+  func missTimeIsStampedAtTheMiss() async throws {
+    let engine = RestartingEngine(missed: Self.stop, recovery: Self.stop)
+    let step = LLMPolishStep(keychainManager: KeychainManager())
+    step.llmProvider = .egOne
+    step.llmModel = LLMProvider.egOneModelName
+    step.egOneRuntime = engine
+    var wall = Date(timeIntervalSince1970: 1_800_000_000)
+    let missTime = wall
+    step.wallNow = { wall }
+    let runner = TextProcessingRunner(
+      telemetry: .init(
+        captureError: { _, _, _, _, _, _ in }, recordPolishFailed: { _, _, _, _, _ in },
+        recordPolishSkipped: { _, _, _ in }),
+      timeoutExecutor: { _, operation in
+        do {
+          return try await operation()
+        } catch {
+          // Between the miss and settlement, someone sets the clock an hour forward.
+          wall = wall.addingTimeInterval(3600)
+          throw error
+        }
+      })
+    let probe = PolishSetupTakeProbe(
+      takeID: "take-clock", context: Self.egOneTake, classify: { _ in nil },
+      recordTerminalProblem: { _, _ in }, now: { .now })
+    let outcome = try #require(
+      try await runner.run(
+        rawText: raw, evidence: .locked("en"), targetAppName: nil, steps: [step],
+        polishSetup: probe, takeID: "take-clock"
+      ).polishTakeOutcome)
+    #expect(outcome.outsideStopMiss == Self.stop)
+    #expect(outcome.outsideStopMissedAt == missTime)
+    #expect(wall != missTime)
+  }
+
   @Test("an ordinary not-ready miss, or a too-short take, carries no stop")
   func noStopWithoutOne() async throws {
     let ordinary = RestartingEngine(missed: nil, recovery: nil)
     let missed = try #require(try await Self.runEGOne(ordinary, text: raw))
     #expect(missed.evidence == .localEngineNotReady)
     #expect(missed.outsideStopMiss == nil)
+    #expect(missed.outsideStopMissedAt == nil)
     #expect(missed.outsideStopRecovery == nil)
 
     // A deliberate bypass never asks the engine, so it cannot claim the stop.

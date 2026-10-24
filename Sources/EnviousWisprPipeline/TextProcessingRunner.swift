@@ -316,6 +316,7 @@ internal final class TextProcessingRunner {
         takeID: probe.takeID, context: probe.context, result: result, evidence: evidence,
         setupProblem: tag, observedAt: observedAt, keyReadAt: keyReadAt,
         outsideStopMiss: evidence == .localEngineNotReady ? observation?.outsideStopMiss : nil,
+        outsideStopMissedAt: observation?.outsideStopMissedAt,
         outsideStopRecovery: observation?.outsideStopRecovery)
     }
 
