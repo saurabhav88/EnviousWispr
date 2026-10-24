@@ -113,7 +113,7 @@ struct HeartPathTelemetryWiringTests {
         captureTelemetry: CaptureTelemetryState(),
         pasteCompletionRegistry: PasteCompletionRegistry(),
         engineMutationScope: .alwaysAllowedForTesting,
-        captureErrorSink: captureErrorSink
+        captureErrorSink: captureErrorSink, isSharedEngineHeldByOtherWorkload: { false }
       ))
   }
 
@@ -230,7 +230,7 @@ struct HeartPathTelemetryWiringTests {
         engineMutationScope: .alwaysAllowedForTesting,
         // Asserts on STATE, not Sentry — no-op sink keeps the stall captureError
         // off the process-global delegate (#875).
-        captureErrorSink: { _, _, _, _, _ in }
+        captureErrorSink: { _, _, _, _, _ in }, isSharedEngineHeldByOtherWorkload: { false }
       ))
     let stateWaiter = PipelineStateWaiter(pipeline)
 
@@ -306,7 +306,7 @@ struct HeartPathTelemetryWiringTests {
           captureTelemetry: CaptureTelemetryState(),
           pasteCompletionRegistry: PasteCompletionRegistry(),
           engineMutationScope: .alwaysAllowedForTesting,
-          captureErrorSink: { _, _, _, _, _ in }
+          captureErrorSink: { _, _, _, _, _ in }, isSharedEngineHeldByOtherWorkload: { false }
         ))
       let stateWaiter = PipelineStateWaiter(pipeline)
 
@@ -487,7 +487,7 @@ struct HeartPathTelemetryWiringTests {
           captureTelemetry: CaptureTelemetryState(),
           pasteCompletionRegistry: PasteCompletionRegistry(),
           engineMutationScope: .alwaysAllowedForTesting,
-          captureErrorSink: { _, _, _, _, _ in }
+          captureErrorSink: { _, _, _, _, _ in }, isSharedEngineHeldByOtherWorkload: { false }
         ))
     }
   #endif

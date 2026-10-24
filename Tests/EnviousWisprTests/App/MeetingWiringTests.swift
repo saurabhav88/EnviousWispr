@@ -1,6 +1,7 @@
 import CoreAudio
 import Foundation
 import Testing
+import os
 
 @testable import EnviousWisprASR
 @testable import EnviousWisprAppKit
@@ -166,6 +167,9 @@ struct MeetingWiringTests {
     var selection: ParakeetModelSelection?
     var workChanges = 0
     let inputs: MeetingWiring.Inputs
+    let lease: EngineLease
+    let dictation: DictationSide
+    let wakes: MeetingWakeSignal
 
     init() throws {
       root = FileManager.default.temporaryDirectory
@@ -185,27 +189,197 @@ struct MeetingWiringTests {
       selectionBox = box
       let changes = ChangeCounter()
       changeCounter = changes
+      let dictation = DictationSide()
+      self.dictation = dictation
+      let lease = EngineLease()
+      self.lease = lease
+      let wakes = MeetingWakeSignal()
+      self.wakes = wakes
+      let logBox = LineBox()
+      lineBox = logBox
+      let pressure = MeetingMemoryPressure()
+      self.pressure = pressure
+      let ownBackends = OwnBackendFactory()
+      self.ownBackends = ownBackends
+      let speakers = SpeakerSpy()
+      speakers.lease = lease
+      self.speakers = speakers
       inputs = MeetingWiring.Inputs(
         store: store,
         settings: SettingsManager(defaults: TestDefaults.suite("ew-meeting-\(UUID().uuidString)")!),
         permissions: PermissionsService(microphoneReader: { .authorized }),
         otherAudioHold: hold, transcriptCoordinator: transcripts,
-        isDictationIdle: { true }, dictationWakes: MeetingWakeSignal(),
-        memoryPressure: MeetingMemoryPressure(),
+        isDictationIdle: { true }, dictationWakes: wakes,
+        sharedEngine: MeetingWiring.SharedEngine(
+          admission: .live(lease: lease, as: .meeting),
+          isSwitchSettled: { true }, activeBackend: { dictation.backend },
+          ensureReady: {
+            dictation.readyCalls += 1
+            return .ready
+          },
+          isModelLoaded: { true }, isLoadOrUnloadInFlight: { false },
+          publishedSelection: { dictation.published },
+          transcribe: { samples in
+            dictation.decodes.append((samples.count, lease.currentHolder))
+            await dictation.onDecode?()
+            guard dictation.hears else { throw DictationSide.Undecodable() }
+            return DictationSide.heard(samples)
+          },
+          disarmEngineTimers: { dictation.disarms += 1 },
+          rearmEngineTimers: { dictation.rearms += 1 },
+          recoveryRecheck: { dictation.rechecks += 1 }),
+        memoryPressure: pressure,
         offlineModeAdmission: ASRManager(
           engineMutationScope: .alwaysAllowedForTesting,
           parakeetSelection: ParakeetSelectionProvider()),
         meetingSelection: { box.selection }, modelUseGate: gate, isDeliveryEnabled: { true },
-        workChanged: { changes.count += 1 }, log: { _ in },
+        workChanged: { changes.count += 1 }, log: { logBox.append($0) },
         // An isolated key folder: never the real Keychain or key files.
         keychain: KeychainManager(
           backend: .legacyFiles,
           legacyStore: FileLegacyKeyStore(
-            storageDirectory: root.appendingPathComponent("keys"))))
+            storageDirectory: root.appendingPathComponent("keys"))),
+        makeMeetingBackend: { [ownBackends] in ownBackends.make() },
+        analyzeSpeakers: { [speakers] audio in await speakers.analyze(audio) })
     }
+
+    /// The meeting's own backend factory, counted; its backends park in prepare on request.
+    let ownBackends: OwnBackendFactory
+    let speakers: SpeakerSpy
 
     let selectionBox: SelectionBox
     let changeCounter: ChangeCounter
+    let lineBox: LineBox
+    let pressure: MeetingMemoryPressure
+  }
+
+  /// Dictation's side of the shared engine, faked at `MeetingWiring.SharedEngine`. Whisper by
+  /// default, so the final pass keeps the meeting's own engine unless a test says Parakeet.
+  @MainActor
+  final class DictationSide {
+    struct Undecodable: Error {}
+    var backend: ASRBackendType = .whisper
+    var published: ParakeetModelSelection?
+    var readyCalls = 0
+    var decodes: [(samples: Int, holder: SharedEngineHolder?)] = []
+    var disarms = 0
+    var rearms = 0
+    var rechecks = 0
+    /// Runs inside each decode, while the meeting holds the lease.
+    var onDecode: (@MainActor () async -> Void)?
+    /// When true a decode returns words: one timed word per whole second of audio.
+    var hears = false
+
+    nonisolated static func heard(_ samples: [Float]) -> ASRResult {
+      let seconds = samples.count / 16_000
+      var text = ""
+      var timings: [ASRWordTiming] = []
+      for second in 0..<seconds {
+        if !text.isEmpty { text += " " }
+        let lower = text.utf16.count
+        text += "word\(second)"
+        timings.append(
+          ASRWordTiming(
+            word: "word\(second)", range: lower..<text.utf16.count, startMs: second * 1_000,
+            endMs: second * 1_000 + 400))
+      }
+      return ASRResult(
+        text: text, language: nil, duration: Double(seconds), processingTime: 0,
+        backendType: .parakeet, wordTimings: timings)
+    }
+  }
+
+  /// Counts the meeting's own backend constructions. Builds the real `ParakeetBackend` (so a
+  /// missing install fails to load, as in production) unless a test asks for `backend`, one fake
+  /// it holds, which can park in prepare.
+  final class OwnBackendFactory: Sendable {
+    let made = OSAllocatedUnfairLock(initialState: 0)
+    let usesFake = OSAllocatedUnfairLock(initialState: false)
+    let backend = FakeMeetingBackend()
+    func make() -> any MeetingSpeechBackend {
+      made.withLock { $0 += 1 }
+      return usesFake.withLock { $0 } ? backend : ParakeetBackend()
+    }
+  }
+
+  actor FakeMeetingBackend: MeetingSpeechBackend {
+    private var parks = false
+    private var parked: [CheckedContinuation<Void, Never>] = []
+    private var parkWatchers: [CheckedContinuation<Bool, Never>] = []
+    /// From now on, prepare parks until `releasePrepare()`.
+    func parkPrepares() { parks = true }
+    func prepareMeeting(selection: ParakeetModelSelection) async throws {
+      guard parks else { return }
+      await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+        parked.append(c)
+        parkWatchers.forEach { $0.resume(returning: true) }
+        parkWatchers.removeAll()
+      }
+    }
+    /// True once prepare is parked; false after 5 s.
+    func waitForParkedPrepare() async -> Bool {
+      if !parked.isEmpty { return true }
+      return await withCheckedContinuation { (c: CheckedContinuation<Bool, Never>) in
+        parkWatchers.append(c)
+        Task {
+          try? await Task.sleep(for: .seconds(5))  // deadline-fallback: bounds the signal wait
+          await self.expireWatchers()
+        }
+      }
+    }
+    private func expireWatchers() {
+      parkWatchers.forEach { $0.resume(returning: false) }
+      parkWatchers.removeAll()
+    }
+    func releasePrepare() {
+      parked.forEach { $0.resume() }
+      parked.removeAll()
+    }
+    func transcribeMeeting(samples: [Float], language: String?) async throws -> ASRResult {
+      DictationSide.heard(samples)
+    }
+    func unload() async {}
+  }
+
+  /// Speaker analysis, recorded: whether the engine lease was free when it started.
+  @MainActor
+  final class SpeakerSpy {
+    var calls = 0
+    var leaseBusyAtStart: [Bool] = []
+    var lease: EngineLease?
+    func analyze(_ audio: MeetingTrackAudio) async -> MeetingSpeakerAnalysis {
+      calls += 1
+      leaseBusyAtStart.append(lease?.isBusy ?? false)
+      return MeetingSpeakerAnalysis(outcome: .single, segments: [])
+    }
+  }
+
+  @MainActor
+  final class LineBox {
+    private(set) var lines: [String] = []
+    private var watchers: [(text: String, continuation: CheckedContinuation<Bool, Never>)] = []
+
+    func append(_ line: String) {
+      lines.append(line)
+      let hit = watchers.filter { line.contains($0.text) }
+      watchers.removeAll { line.contains($0.text) }
+      hit.forEach { $0.continuation.resume(returning: true) }
+    }
+
+    /// True once a line containing `text` has been logged (now or later); false after 5 s.
+    func waitForLine(containing text: String) async -> Bool {
+      if lines.contains(where: { $0.contains(text) }) { return true }
+      return await withCheckedContinuation { (c: CheckedContinuation<Bool, Never>) in
+        watchers.append((text, c))
+        Task { @MainActor [weak self] in
+          try? await Task.sleep(for: .seconds(5))  // deadline-fallback: bounds the signal wait
+          guard let self else { return }
+          let expired = self.watchers.filter { $0.text == text }
+          self.watchers.removeAll { $0.text == text }
+          expired.forEach { $0.continuation.resume(returning: false) }
+        }
+      }
+    }
   }
 
   @MainActor
@@ -303,6 +477,227 @@ struct MeetingWiringTests {
     #expect(final() && preview())
   }
 
+  /// #4052: when this fails, a Mac that dictates with Parakeet loads a second Parakeet for the
+  /// meeting transcript, or a dictation records over the meeting's decode.
+  @Test("Parakeet dictation: the real final pass decodes on dictation's engine under the lease, whole runs")
+  func realFinalPassSharesDictationsEngine() async throws {
+    let rig = try Rig()
+    rig.dictation.backend = .parakeet
+    rig.dictation.published = Self.selection("served-\(UUID().uuidString)")
+    // No meeting-owned model: if the pass touched its own engine it would fail on this.
+    rig.selectionBox.selection = nil
+    let job = MeetingWiring.makeJob(rig.inputs, lane: MeetingLocalModelLane(), kind: .finalPass)
+    let folder = try MeetingAudioFixture.folder("meeting-wiring-shared")
+    // Microphone: 0-2 s and 10-12 s (two runs across a gap). Call sound: 0-3 s.
+    let mic = MeetingTrackAudio(files: [
+      (url: try MeetingAudioFixture.writeSegment(in: folder, index: 1, startMs: 0, frames: 32_000),
+       startMs: 0),
+      (url: try MeetingAudioFixture.writeSegment(in: folder, index: 2, startMs: 10_000, frames: 32_000),
+       startMs: 10_000),
+    ])
+    let callFolder = try MeetingAudioFixture.folder("meeting-wiring-shared-call")
+    let call = MeetingTrackAudio(files: [
+      (url: try MeetingAudioFixture.writeSegment(
+        in: callFolder, track: .callSound, index: 1, startMs: 0, frames: 48_000),
+       startMs: 0)
+    ])
+    #expect(mic.runs.count == 2)
+    // Every decode fails twice (the fake cannot transcribe), so each run is a gap marker and no
+    // speaker analysis runs; the engine path is what this test reads.
+    let result = try await job.run(tracks: [.microphone: mic, .callSound: call], checkpoint: nil) { _ in }
+    #expect(result.failedPieces == 3)
+    // One unpadded decode per run, retried once: call sound first, then the two microphone runs.
+    #expect(rig.dictation.decodes.map(\.samples) == [48_000, 48_000, 32_000, 32_000, 32_000, 32_000])
+    #expect(rig.dictation.decodes.allSatisfy { $0.holder == .meeting }, "every decode ran under the meeting's lease")
+    #expect(rig.dictation.readyCalls == 1)
+    #expect(rig.dictation.disarms == 1)
+    #expect(rig.dictation.rearms >= 1)
+    #expect(rig.dictation.rechecks == 1)
+    #expect(rig.lease.isBusy == false, "the engine is back for dictation")
+    #expect(job.isOwnModelResident == false)
+    #expect(job.isEngineResident == false)
+    // The pass is named by its timeline end (12 s, the microphone's), not the summed audio (7 s).
+    #expect(
+      rig.lineBox.lines.contains { $0.hasPrefix("meeting engine route=shared total meeting=- heldMs=") && $0.hasSuffix(" meetingSeconds=12") },
+      "lines: \(rig.lineBox.lines)")
+    #expect(rig.changeCounter.count > 0)
+  }
+
+  /// A decode the test holds open, released on demand.
+  @MainActor
+  final class DecodeGate {
+    private var parked: [CheckedContinuation<Void, Never>] = []
+    private(set) var entered = 0
+    private var enteredWaiters: [(count: Int, continuation: CheckedContinuation<Bool, Never>)] = []
+    func hold() async {
+      await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+        // The release continuation is installed before arrival is announced.
+        parked.append(c)
+        entered += 1
+        let ready = enteredWaiters.filter { $0.count <= entered }
+        enteredWaiters.removeAll { $0.count <= entered }
+        ready.forEach { $0.continuation.resume(returning: true) }
+      }
+    }
+    /// True once `count` decodes are parked here (now or later); false after 5 s.
+    func waitForEntered(_ count: Int) async -> Bool {
+      if entered >= count { return true }
+      return await withCheckedContinuation { (c: CheckedContinuation<Bool, Never>) in
+        enteredWaiters.append((count, c))
+        Task { @MainActor [weak self] in
+          try? await Task.sleep(for: .seconds(5))  // deadline-fallback: bounds the signal wait
+          guard let self else { return }
+          let expired = self.enteredWaiters.filter { $0.count == count }
+          self.enteredWaiters.removeAll { $0.count == count }
+          expired.forEach { $0.continuation.resume(returning: false) }
+        }
+      }
+    }
+    func releaseAll() {
+      parked.forEach { $0.resume() }
+      parked.removeAll()
+    }
+  }
+
+  @Test("a cancel during a shared decode keeps the lease until the decode physically returns")
+  func cancelDuringSharedDecodeKeepsLease() async throws {
+    let rig = try Rig()
+    rig.dictation.backend = .parakeet
+    rig.dictation.published = Self.selection("served-\(UUID().uuidString)")
+    let gate = DecodeGate()
+    rig.dictation.onDecode = { await gate.hold() }
+    let job = MeetingWiring.makeJob(rig.inputs, lane: MeetingLocalModelLane(), kind: .finalPass)
+    let folder = try MeetingAudioFixture.folder("meeting-wiring-cancel")
+    let url = try MeetingAudioFixture.writeSegment(in: folder, index: 1, startMs: 0, frames: 32_000)
+    let run = Task { @MainActor in
+      try await job.run(tracks: [.microphone: MeetingTrackAudio(files: [(url: url, startMs: 0)])], checkpoint: nil) { _ in }
+    }
+    #expect(await gate.waitForEntered(1))
+    job.cancel()
+    // The decode is still inside the engine: dictation stays out.
+    #expect(rig.lease.currentHolder == .meeting)
+    gate.releaseAll()
+    await #expect(throws: MeetingTranscriptionJob.JobError.cancelled) { _ = try await run.value }
+    #expect(rig.lease.isBusy == false, "released once the decode returned")
+    #expect(rig.dictation.decodes.count == 1, "no decode starts after the cancel")
+  }
+
+  @Test("memory pressure mid-pass gives the engine back, then takes it again for the next run")
+  func memoryPressureReleasesAndReacquires() async throws {
+    let rig = try Rig()
+    rig.dictation.backend = .parakeet
+    rig.dictation.published = Self.selection("served-\(UUID().uuidString)")
+    let gate = DecodeGate()
+    rig.dictation.onDecode = { await gate.hold() }
+    let job = MeetingWiring.makeJob(rig.inputs, lane: MeetingLocalModelLane(), kind: .finalPass)
+    let folder = try MeetingAudioFixture.folder("meeting-wiring-pressure")
+    let audio = MeetingTrackAudio(files: [
+      (url: try MeetingAudioFixture.writeSegment(in: folder, index: 1, startMs: 0, frames: 16_000), startMs: 0),
+      (url: try MeetingAudioFixture.writeSegment(in: folder, index: 2, startMs: 5_000, frames: 16_000), startMs: 5_000),
+    ])
+    let run = Task { @MainActor in
+      try await job.run(tracks: [.microphone: audio], checkpoint: nil) { _ in }
+    }
+    // First run, first attempt: pressure rises while it decodes.
+    #expect(await gate.waitForEntered(1))
+    rig.pressure.receive(.warning)
+    gate.releaseAll()
+    // Its retry (inside the same residency) and then the pressure check before the second run.
+    #expect(await gate.waitForEntered(2))
+    gate.releaseAll()
+    // The route logs the release when it gives the engine back, before the job parks on
+    // memory pressure: that line is the subject's own signal.
+    #expect(await rig.lineBox.waitForLine(containing: "route=shared released"))
+    #expect(rig.lease.isBusy == false, "the engine is given back while pressure lasts")
+    rig.pressure.receive(.normal)
+    #expect(await gate.waitForEntered(3))
+    #expect(rig.lease.currentHolder == .meeting, "taken again for the second run")
+    gate.releaseAll()
+    #expect(await gate.waitForEntered(4))
+    gate.releaseAll()
+    _ = try await run.value
+    #expect(rig.lease.isBusy == false)
+    #expect(rig.lineBox.lines.filter { $0.contains("route=shared released") }.count == 2)
+    #expect(rig.lineBox.lines.filter { $0.contains("route=shared claimed") }.count == 2)
+  }
+
+  @Test("Parakeet dictation: a heard meeting keeps every word, builds no own engine, frees the engine before speakers")
+  func realFinalPassHeardTranscript() async throws {
+    let rig = try Rig()
+    rig.dictation.backend = .parakeet
+    rig.dictation.published = Self.selection("served-\(UUID().uuidString)")
+    rig.dictation.hears = true
+    rig.selectionBox.selection = Self.selection("own-\(UUID().uuidString)")
+    let job = MeetingWiring.makeJob(rig.inputs, lane: MeetingLocalModelLane(), kind: .finalPass)
+    let folder = try MeetingAudioFixture.folder("meeting-wiring-heard")
+    let audio = MeetingTrackAudio(files: [
+      (url: try MeetingAudioFixture.writeSegment(in: folder, index: 1, startMs: 0, frames: 48_000), startMs: 0),
+      (url: try MeetingAudioFixture.writeSegment(in: folder, index: 2, startMs: 10_000, frames: 32_000), startMs: 10_000),
+    ])
+    let result = try await job.run(tracks: [.microphone: audio], checkpoint: nil) { _ in }
+    // One decode per run, the whole run each time.
+    #expect(rig.dictation.decodes.map(\.samples) == [48_000, 32_000])
+    #expect(rig.dictation.decodes.allSatisfy { $0.holder == .meeting })
+    // Every heard word reaches the composed transcript, in order.
+    let words = result.composition.text.split(whereSeparator: { $0 == " " || $0 == "\n" }).map(String.init)
+    #expect(words == ["word0", "word1", "word2", "word0", "word1"], "transcript: \(result.composition.text)")
+    #expect(result.failedPieces == 0)
+    // Speaker analysis ran once, after the engine was given back to dictation.
+    #expect(rig.speakers.calls == 1)
+    #expect(rig.speakers.leaseBusyAtStart == [false])
+    // The meeting never built its own Parakeet.
+    #expect(rig.ownBackends.made.withLock { $0 } == 0)
+  }
+
+  @Test("Whisper dictation: a switch to Parakeet waits while the pass's own Parakeet loads, then applies")
+  func switchWaitsForOwnParakeetLoad() async throws {
+    let rig = try Rig()
+    rig.dictation.backend = .whisper
+    rig.selectionBox.selection = Self.selection("own-\(UUID().uuidString)")
+    rig.ownBackends.usesFake.withLock { $0 = true }
+    await rig.ownBackends.backend.parkPrepares()
+    let job = MeetingWiring.makeJob(rig.inputs, lane: MeetingLocalModelLane(), kind: .finalPass)
+    let fake = FakeEngineDeps(selected: .whisper, active: .whisper)
+    fake.meetingOwnParakeetResident = { job.isOwnModelResident }
+    let coordinator = fake.makeStartedCoordinator()
+    let folder = try MeetingAudioFixture.folder("meeting-wiring-own-load")
+    let url = try MeetingAudioFixture.writeSegment(in: folder, index: 1, startMs: 0, frames: 16_000)
+    let run = Task { @MainActor in
+      try await job.run(tracks: [.microphone: MeetingTrackAudio(files: [(url: url, startMs: 0)])], checkpoint: nil) { _ in }
+    }
+    // The pass's own Parakeet is loading (parked in prepare).
+    let loading = rig.ownBackends.backend
+    #expect(await loading.waitForParkedPrepare(), "the pass never started loading its own model")
+    #expect(rig.ownBackends.made.withLock { $0 } == 1)
+    #expect(job.isOwnModelResident)
+    // The user switches dictation to Parakeet: held, no Parakeet loads beside the meeting's.
+    fake.selected = .parakeet
+    coordinator.poke(.settingsChanged)
+    #expect(await enginePoll { coordinator.status.blockedReason == .pipelineActive })
+    #expect(fake.switchCount == 0)
+    await loading.releasePrepare()
+    _ = try await run.value
+    #expect(job.isOwnModelResident == false)
+    // The pass's end pokes the coordinator (production's workChanged); the switch applies.
+    coordinator.poke(.parakeetUpgradeOwed)
+    #expect(await enginePoll { fake.active == .parakeet })
+    #expect(fake.switchCount == 1)
+  }
+
+  @Test("Whisper dictation: the real final pass never takes the lease or readies dictation's engine")
+  func realFinalPassOwnEngineUnderWhisper() async throws {
+    let rig = try Rig()
+    rig.dictation.backend = .whisper
+    rig.selectionBox.selection = Self.selection("own-missing-\(UUID().uuidString)")
+    let job = MeetingWiring.makeJob(rig.inputs, lane: MeetingLocalModelLane(), kind: .finalPass)
+    let folder = try MeetingAudioFixture.folder("meeting-wiring-own")
+    let url = try MeetingAudioFixture.writeSegment(in: folder, index: 1, startMs: 0, frames: 32_000)
+    _ = try? await job.run(tracks: [.microphone: MeetingTrackAudio(files: [(url: url, startMs: 0)])], checkpoint: nil) { _ in }
+    #expect(rig.lease.admissionEpoch == 0)
+    #expect(rig.dictation.readyCalls == 0)
+    #expect(rig.dictation.decodes.isEmpty)
+  }
+
   @Test("the real job fails cleanly when no model is installed, and holds no model claim")
   func realJobWithoutModel() async throws {
     let rig = try Rig()
@@ -333,5 +728,29 @@ struct MeetingWiringTests {
     #expect(await rig.gate.isInUse(Self.key(missing)) == false)
     #expect(job.isEngineResident == false)
     #expect(rig.changeCounter.count > 0)
+  }
+
+  @Test("a refused switch to a missing model readies the running Parakeet")
+  func refusedSwitchReadiesRunningEngine() async {
+    // The refusal becomes visible only once the press path refreshed the status.
+    var refreshed = false
+    var runningReadies = 0
+    let answer = await MeetingWiring.borrowedEngineReadiness(
+      switchRefused: { refreshed },
+      ensureSelected: { refreshed = true; return .notInstalled },
+      readyRunning: { runningReadies += 1; return true })
+    #expect(answer == .ready)
+    #expect(runningReadies == 1)
+  }
+
+  @Test("a missing model the coordinator would switch to stays an install error")
+  func missingModelWithoutRefusalStaysAnError() async {
+    var runningReadies = 0
+    let answer = await MeetingWiring.borrowedEngineReadiness(
+      switchRefused: { false },
+      ensureSelected: { .notInstalled },
+      readyRunning: { runningReadies += 1; return true })
+    #expect(answer == .notInstalled)
+    #expect(runningReadies == 0)
   }
 }

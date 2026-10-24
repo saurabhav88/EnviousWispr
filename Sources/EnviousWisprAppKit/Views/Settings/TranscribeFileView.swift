@@ -2288,6 +2288,11 @@ struct TranscribeFileView: View {
       return String(
         localized: "The last dictation is still transcribing. Restart the app, then try again.",
         comment: "Transcribe a File: why the file was refused.")
+    // #4052: EnviousMeet's transcript is using dictation's engine.
+    case .engineBusy(.meeting):
+      return String(
+        localized: "A meeting is being transcribed. Try again when it finishes.",
+        comment: "Transcribe a File: why the file was refused. A meeting transcript is using the engine.")
     case .failed:
       return String(
         localized: "Something went wrong reading that file. Try a different one.",

@@ -593,6 +593,47 @@ import Testing
     _ = await warmTask.value
   }
 
+  // MARK: - #4052 wedge recovery under a meeting's engine lease
+
+  @Test("wedge recovery unloads and cancels the load when no meeting holds the engine")
+  func wedgeRecoveryRunsWhenUnheld() async {
+    let manager = StubParakeetASRManager()
+    let adapter = ParakeetEngineAdapter(
+      asrManager: manager, parakeetUpgrade: .legacyForTesting(),
+      isSharedEngineHeldByOtherWorkload: { false })
+    await adapter.recoverFromWedge()
+    #expect(manager.cancelInFlightLoadCount == 1)
+    #expect(manager.attemptWedgeRecoveryUnloadCount == 1)
+  }
+
+  @Test("wedge recovery leaves the model alone while a meeting holds the engine")
+  func wedgeRecoverySkipsWhileMeetingHolds() async {
+    let manager = StubParakeetASRManager()
+    let adapter = ParakeetEngineAdapter(
+      asrManager: manager, parakeetUpgrade: .legacyForTesting(),
+      isSharedEngineHeldByOtherWorkload: { true })
+    await adapter.recoverFromWedge()
+    #expect(manager.cancelInFlightLoadCount == 0)
+    #expect(manager.attemptWedgeRecoveryUnloadCount == 0)
+  }
+
+  @Test("a meeting that takes the engine while the session is being discarded keeps its model")
+  func wedgeRecoveryRereadsAfterDiscard() async throws {
+    let manager = StubParakeetASRManager()
+    var held = false
+    let adapter = ParakeetEngineAdapter(
+      asrManager: manager, parakeetUpgrade: .legacyForTesting(),
+      isSharedEngineHeldByOtherWorkload: { held })
+    let sid = SessionID()
+    try await adapter.beginSession(sid, options: .default, streaming: true)
+    // The discard suspends in cancelStreaming; the meeting takes the lease there.
+    manager.onCancelStreaming = { held = true }
+    await adapter.recoverFromWedge()
+    #expect(manager.cancelStreamingCount == 1, "the discard reached its suspension point")
+    #expect(manager.cancelInFlightLoadCount == 0)
+    #expect(manager.attemptWedgeRecoveryUnloadCount == 0)
+  }
+
   @Test("finalize drains in-flight streaming feeds before finalizeStreaming")
   func finalizeDrainsStreamingFeeds() async throws {
     let manager = StubParakeetASRManager()
@@ -1217,6 +1258,9 @@ final class StubParakeetASRManager: ASRManagerInterface {
   var cancelStreamingCount = 0
   var transcribeCount = 0
   var cancelInFlightLoadCount = 0
+  var attemptWedgeRecoveryUnloadCount = 0
+  /// #4052: runs inside `cancelStreaming`, while the adapter's discard is suspended there.
+  var onCancelStreaming: (@MainActor () -> Void)?
   var cancelInFlightStreamingStartCount = 0
   var cancelIdleTimerCount = 0
   var lastUnloadPolicy: ModelUnloadPolicy?
@@ -1329,7 +1373,9 @@ final class StubParakeetASRManager: ASRManagerInterface {
     finalizeStreamingWaiters.resume(id: id)
   }
 
+  func attemptWedgeRecoveryUnload() async { attemptWedgeRecoveryUnloadCount += 1 }
   func cancelStreaming() async {
+    onCancelStreaming?()
     cancelStreamingCount += 1
     isStreaming = false
   }

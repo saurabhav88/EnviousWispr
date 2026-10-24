@@ -194,6 +194,10 @@ public enum KernelDictationDriverFactory {
     /// `onTakeAccepted`.
     package let onRetained: RetainedCallback
 
+    /// #4052: true while EnviousMeet's transcript holds the shared engine lease. Required, no
+    /// default: the adapter's wedge recovery must not unload a model a meeting is decoding on.
+    package let isSharedEngineHeldByOtherWorkload: @MainActor () -> Bool
+
     /// Explicit package init: Swift's synthesized memberwise init is `internal`
     /// and would prevent App callers from constructing this struct. `@MainActor`
     /// because `captureErrorSink`'s default is a main-actor-isolated value;
@@ -221,8 +225,10 @@ public enum KernelDictationDriverFactory {
       transcriptionCheckpoint: @escaping @MainActor (TranscriptionCheckpointEvent) -> Void = { _ in
       },
       onTakeAccepted: @escaping @MainActor (String) -> Void = { _ in },
-      onRetained: @escaping RetainedCallback = { _, _, report in report(false) }
+      onRetained: @escaping RetainedCallback = { _, _, report in report(false) },
+      isSharedEngineHeldByOtherWorkload: @escaping @MainActor () -> Bool
     ) {
+      self.isSharedEngineHeldByOtherWorkload = isSharedEngineHeldByOtherWorkload
       self.audioCapture = audioCapture
       self.asrManager = asrManager
       self.parakeetUpgrade = parakeetUpgrade
@@ -442,7 +448,8 @@ public enum KernelDictationDriverFactory {
     // Test B); it assembles around the opaque `any ASREngineAdapter` returned.
     let adapter = KernelAdapterFactory.makeParakeetAdapter(
       asrManager: inputs.asrManager, parakeetUpgrade: inputs.parakeetUpgrade,
-      batchDecodeFaultController: inputs.batchDecodeFaultController)
+      batchDecodeFaultController: inputs.batchDecodeFaultController,
+      isSharedEngineHeldByOtherWorkload: inputs.isSharedEngineHeldByOtherWorkload)
     return assembleDriver(
       adapter: adapter,
       audioCapture: inputs.audioCapture,

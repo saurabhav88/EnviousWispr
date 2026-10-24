@@ -145,7 +145,7 @@ enum DictationRuntimeFixtures {
         keychainManager: KeychainManager(),
         captureTelemetry: CaptureTelemetryState(),
         pasteCompletionRegistry: PasteCompletionRegistry(),
-        engineMutationScope: .alwaysAllowedForTesting
+        engineMutationScope: .alwaysAllowedForTesting, isSharedEngineHeldByOtherWorkload: { false }
       ))
   }
 

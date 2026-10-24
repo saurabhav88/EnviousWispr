@@ -50,7 +50,7 @@ struct DedupSurvivesStallTests {
         // no-op so the pipeline's stall captureError never reaches the
         // process-global delegate, where it could pollute a concurrent test's
         // installed spy (#875).
-        captureErrorSink: { _, _, _, _, _ in }
+        captureErrorSink: { _, _, _, _, _ in }, isSharedEngineHeldByOtherWorkload: { false }
       ))
     let stateWaiter = PipelineStateWaiter(pipeline)
 

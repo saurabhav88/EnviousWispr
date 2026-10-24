@@ -562,7 +562,7 @@
           transcriptStore: TranscriptStore(), keychainManager: KeychainManager(),
           captureTelemetry: CaptureTelemetryState(),
           pasteCompletionRegistry: PasteCompletionRegistry(),
-          engineMutationScope: .alwaysAllowedForTesting))
+          engineMutationScope: .alwaysAllowedForTesting, isSharedEngineHeldByOtherWorkload: { false }))
       let waiter = PipelineStateWaiter(driver)
       let control = DevControlDictation.Control(
         activeBackend: { .parakeet },

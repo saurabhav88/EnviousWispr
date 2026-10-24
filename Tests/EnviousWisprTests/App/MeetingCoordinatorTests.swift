@@ -109,6 +109,7 @@ struct MeetingCoordinatorTests {
       [:]
     var isEngineResident = false
     var isUnitInFlight = false
+    var isOwnModelResident = false
     var onWaitingForDictation: (@MainActor (Bool) -> Void)?
 
     init(
@@ -408,7 +409,7 @@ struct MeetingCoordinatorTests {
     MeetingProcessingCheckpoint(
       key: .init(
         meetingID: meetingID, processingVersion: 1, pieceTargetSeconds: 60,
-        pieceSearchSeconds: 15, seamPaddingSeconds: 1, inputs: []),
+        pieceSearchSeconds: 15, seamPaddingSeconds: 1, cutsPieces: true, inputs: []),
       engineIdentity: "ultra:rev", tracks: [:])
   }
 

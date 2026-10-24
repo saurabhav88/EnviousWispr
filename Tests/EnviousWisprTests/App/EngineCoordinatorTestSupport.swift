@@ -64,6 +64,8 @@ final class FakeEngineDeps {
   var activationOwed = false
   var fileImportRunning = false
   var meetingEngineResident = false
+  /// #4052: EnviousMeet's final pass holds its own Parakeet (gate 6d).
+  var meetingOwnParakeetResident: @MainActor () -> Bool = { false }
   /// The shared engine lease's holder check; a test can bind it to a real `EngineLease`.
   var engineHeld: @MainActor () -> Bool = { false }
   private(set) var activationCount = 0
@@ -126,6 +128,7 @@ final class FakeEngineDeps {
       isFileImportRunning: { self.fileImportRunning },
       isEngineHeld: { self.engineHeld() },
       isMeetingEngineResident: { self.meetingEngineResident },
+      isMeetingOwnParakeetResident: { self.meetingOwnParakeetResident() },
       isInstalled: { self.installed($0) },
       stateLabel: { _ in "idle" },
       performSwitch: { backend in

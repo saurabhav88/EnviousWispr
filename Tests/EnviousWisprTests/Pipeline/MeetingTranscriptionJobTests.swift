@@ -555,11 +555,12 @@ struct MeetingTranscriptionJobTests {
   /// successful save with the running count (a test cancels there to simulate a crash).
   private func checkpointJob(
     engine: FakeEngine, identity: String = "ultra:r1", target: Double = 20,
-    analyses: OSAllocatedUnfairLock<Int>? = nil
+    analyses: OSAllocatedUnfairLock<Int>? = nil, cutsPieces: Bool = true
   ) -> MeetingTranscriptionJob {
     var config = MeetingTranscriptionJob.Configuration()
     config.pieceTargetSeconds = target
     config.pieceSearchSeconds = 5
+    config.cutsPieces = cutsPieces
     return MeetingTranscriptionJob(
       dependencies: .init(
         isDictationIdle: { true }, waitUntilDictationIdle: {}, beginModelUse: {}, endModelUse: {},
@@ -687,6 +688,122 @@ struct MeetingTranscriptionJobTests {
     _ = try await checkpointJob(engine: otherModel, identity: "v3:r9").run(
       tracks: [.microphone: audio], checkpoint: access(store, meetingID: meetingID)) { _ in }
     #expect(otherModel.calls.count == total)
+  }
+
+  // MARK: - Whole runs (#4052)
+
+  @Test("whole-run mode decodes each contiguous run once, unpadded, and keeps every word")
+  func wholeRunDecodesEachRunOnce() async throws {
+    let dir = try folder()
+    // 0-70 s contiguous across two files, then a gap, then 80-85 s: two runs.
+    let audio = MeetingTrackAudio(files: [
+      try segment(in: dir, index: 1, startMs: 0, seconds: 60),
+      try segment(in: dir, index: 2, startMs: 60_000, seconds: 10),
+      try segment(in: dir, index: 3, startMs: 80_000, seconds: 5),
+    ])
+    #expect(audio.runs.count == 2)
+    let engine = FakeEngine()
+    var fractions: [Double] = []
+    let result = try await checkpointJob(engine: engine, cutsPieces: false).run(
+      tracks: [.microphone: audio]
+    ) { stage in
+      if case .transcribing(_, let fraction) = stage { fractions.append(fraction) }
+    }
+    // One call per run, each exactly the run (no seam padding on either side).
+    #expect(engine.calls == [70 * 16_000, 5 * 16_000])
+    // The fake hears one word per 500 ms: 140 + 10, none dropped.
+    #expect(words(result) == 150)
+    #expect(result.forcedCuts == 0)
+    #expect(result.failedPieces == 0)
+    // Progress moves once per finished run.
+    #expect(fractions.count == 2)
+    #expect(fractions.last == 1)
+  }
+
+  @Test("a whole-run piece keeps boundary and untimed words, shifted onto the meeting timeline")
+  func wholeRunPieceKeepsEveryWord() {
+    // "late" ends after the run's end (a rounding past the edge); "um" has no times.
+    let text = "first um late"
+    let timings = [
+      ASRWordTiming(word: "first", range: 0..<5, startMs: 0, endMs: 300),
+      ASRWordTiming(word: "um", range: 6..<8, startMs: nil, endMs: nil),
+      ASRWordTiming(word: "late", range: 9..<13, startMs: 9_900, endMs: 10_300),
+    ]
+    let piece = MeetingTranscriptionJob.wholeRunPiece(
+      result: ASRResult(
+        text: text, language: nil, duration: 10, processingTime: 0, backendType: .parakeet,
+        wordTimings: timings),
+      startMs: 80_000, endMs: 90_000)
+    #expect(piece.text == "first um late")
+    #expect(piece.words.map(\.word) == ["first", "um", "late"])
+    #expect(piece.words.map(\.range) == [0..<5, 6..<8, 9..<13])
+    #expect(piece.words.map(\.startMs) == [80_000, nil, 89_900])
+    #expect(piece.words.map(\.endMs) == [80_300, nil, 90_300])
+    #expect(piece.startMs == 80_000)
+    #expect(piece.endMs == 90_000)
+  }
+
+  @Test("a whole run that fails twice is one gap marker spanning the run")
+  func wholeRunFailingTwiceIsAGap() async throws {
+    let dir = try folder()
+    let audio = MeetingTrackAudio(files: [try segment(in: dir, index: 1, startMs: 0, seconds: 50)])
+    struct Broken: Error {}
+    var calls = 0
+    var config = MeetingTranscriptionJob.Configuration()
+    config.cutsPieces = false
+    let job = MeetingTranscriptionJob(
+      dependencies: .init(
+        isDictationIdle: { true }, waitUntilDictationIdle: {}, beginModelUse: {}, endModelUse: {},
+        loadEngine: {},
+        transcribe: { _ in
+          calls += 1
+          throw Broken()
+        }, unloadEngine: {},
+        analyzeSpeakers: { _ in MeetingSpeakerAnalysis(outcome: .single, segments: []) }),
+      configuration: config)
+    let result = try await job.run(tracks: [.microphone: audio]) { _ in }
+    #expect(calls == 2)
+    #expect(result.failedPieces == 1)
+    #expect(result.failedRanges[.microphone] == [0..<(50 * 16_000)])
+    #expect(result.composition.text == "[Could not transcribe 0:00 to 0:50]")
+  }
+
+  @Test("a whole-run checkpoint resumes, and is never mixed with a cut-pieces one")
+  func wholeRunCheckpointIdentity() async throws {
+    let dir = try folder()
+    let audio = MeetingTrackAudio(files: [
+      try segment(in: dir, index: 1, startMs: 0, seconds: 30),
+      try segment(in: dir, index: 2, startMs: 40_000, seconds: 5),
+    ])
+    let store = MeetingProcessingCheckpointStore(meetingFolder: dir)
+    let meetingID = UUID()
+
+    // Interrupted after the first run's save; the resume decodes only the second run.
+    let first = FakeEngine()
+    let job1 = checkpointJob(engine: first, cutsPieces: false)
+    await #expect(throws: MeetingTranscriptionJob.JobError.cancelled) {
+      _ = try await job1.run(
+        tracks: [.microphone: audio],
+        checkpoint: access(store, meetingID: meetingID) { saves in if saves == 1 { job1.cancel() } }
+      ) { _ in }
+    }
+    guard case .checkpoint(let saved) = store.load() else {
+      Issue.record("no checkpoint after the interrupted whole-run pass")
+      return
+    }
+    #expect(saved.key.cutsPieces == false)
+    #expect(saved.key.processingVersion == 2)
+    let resumed = FakeEngine()
+    let result = try await checkpointJob(engine: resumed, cutsPieces: false).run(
+      tracks: [.microphone: audio], checkpoint: access(store, meetingID: meetingID)) { _ in }
+    #expect(resumed.calls == [5 * 16_000])
+    #expect(words(result) == 70)
+
+    // The same meeting under cut pieces starts over: nothing whole-run is reused.
+    let cut = FakeEngine()
+    _ = try await checkpointJob(engine: cut, cutsPieces: true).run(
+      tracks: [.microphone: audio], checkpoint: access(store, meetingID: meetingID)) { _ in }
+    #expect(cut.calls.count >= 3, "a cut-pieces pass must not reuse whole-run pieces")
   }
 
   @Test("a piece that fails twice is a reported gap; its neighbours keep their words")

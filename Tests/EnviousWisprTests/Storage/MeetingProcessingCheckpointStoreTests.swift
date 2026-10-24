@@ -18,7 +18,7 @@ struct MeetingProcessingCheckpointStoreTests {
   private func checkpoint(pieces: Int = 2) -> MeetingProcessingCheckpoint {
     let key = MeetingProcessingCheckpoint.Key(
       meetingID: UUID(), processingVersion: 1, pieceTargetSeconds: 60, pieceSearchSeconds: 15,
-      seamPaddingSeconds: 1,
+      seamPaddingSeconds: 1, cutsPieces: true,
       inputs: [
         .init(
           track: .microphone,
@@ -79,5 +79,42 @@ struct MeetingProcessingCheckpointStoreTests {
     defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: store.directory.path) }
     #expect(throws: (any Error).self) { try store.save(checkpoint(pieces: 3)) }
     #expect(store.load() == .checkpoint(first))
+  }
+
+  /// #4052: a checkpoint written before `cutsPieces` existed (version-1 job, 60 s pieces) still
+  /// loads, reads as cut pieces, and so can never match a whole-run pass's key.
+  @Test("a checkpoint key written before whole-run mode loads and reads as cut pieces")
+  func legacyKeyLoadsAsCutPieces() throws {
+    let folder = try meetingFolder()
+    let store = MeetingProcessingCheckpointStore(meetingFolder: folder)
+    let legacy = """
+      {"formatVersion":1,"key":{"meetingID":"6F9619FF-8B86-D011-B42D-00C04FC964FF",\
+      "processingVersion":1,"pieceTargetSeconds":60,"pieceSearchSeconds":15,\
+      "seamPaddingSeconds":1,"inputs":[{"track":"microphone","segments":[\
+      {"fileName":"mic-00001-s000000000.caf","startSample":0,"frameCount":960000,\
+      "byteSize":1920100,"sha256":"ab12"}]}]},"engineIdentity":"ultra:rev",\
+      "tracks":{"microphone":{"pieces":[{"startSample":0,"endSample":16000,"forcedCut":false,\
+      "text":"hello","words":[{"word":"hello","lower":0,"upper":5,"startMs":0,"endMs":400}]}]}}}
+      """
+    try FileManager.default.createDirectory(at: store.directory, withIntermediateDirectories: true)
+    try Data(legacy.utf8).write(to: store.fileURL)
+    guard case .checkpoint(let loaded) = store.load() else {
+      Issue.record("a legacy checkpoint did not load")
+      return
+    }
+    #expect(loaded.key.cutsPieces == true)
+    #expect(loaded.key.processingVersion == 1)
+    #expect(loaded.tracks[.microphone]?.pieces.count == 1)
+    var wholeRun = MeetingProcessingCheckpoint.Key(
+      meetingID: loaded.key.meetingID, processingVersion: 2, pieceTargetSeconds: 60,
+      pieceSearchSeconds: 15, seamPaddingSeconds: 1, cutsPieces: false,
+      inputs: loaded.key.inputs)
+    #expect(loaded.key != wholeRun)
+    // Version alone also differs; with the version equal, the mode still keeps them apart.
+    wholeRun = MeetingProcessingCheckpoint.Key(
+      meetingID: loaded.key.meetingID, processingVersion: 1, pieceTargetSeconds: 60,
+      pieceSearchSeconds: 15, seamPaddingSeconds: 1, cutsPieces: false,
+      inputs: loaded.key.inputs)
+    #expect(loaded.key != wholeRun)
   }
 }

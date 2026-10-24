@@ -18,18 +18,40 @@ public struct MeetingProcessingCheckpoint: Codable, Equatable, Sendable {
     public let pieceTargetSeconds: Double
     public let pieceSearchSeconds: Double
     public let seamPaddingSeconds: Double
+    /// #4052: false when each contiguous run was decoded whole. A key written before this field
+    /// existed decodes as `true` (it came from cut pieces), so it never matches a whole-run pass.
+    public let cutsPieces: Bool
     public let inputs: [TrackInventory]
 
     public init(
       meetingID: UUID, processingVersion: Int, pieceTargetSeconds: Double,
-      pieceSearchSeconds: Double, seamPaddingSeconds: Double, inputs: [TrackInventory]
+      pieceSearchSeconds: Double, seamPaddingSeconds: Double, cutsPieces: Bool,
+      inputs: [TrackInventory]
     ) {
       self.meetingID = meetingID
       self.processingVersion = processingVersion
       self.pieceTargetSeconds = pieceTargetSeconds
       self.pieceSearchSeconds = pieceSearchSeconds
       self.seamPaddingSeconds = seamPaddingSeconds
+      self.cutsPieces = cutsPieces
       self.inputs = inputs
+    }
+
+    private enum CodingKeys: String, CodingKey {
+      case meetingID, processingVersion, pieceTargetSeconds, pieceSearchSeconds
+      case seamPaddingSeconds, cutsPieces, inputs
+    }
+
+    public init(from decoder: any Decoder) throws {
+      let c = try decoder.container(keyedBy: CodingKeys.self)
+      meetingID = try c.decode(UUID.self, forKey: .meetingID)
+      processingVersion = try c.decode(Int.self, forKey: .processingVersion)
+      pieceTargetSeconds = try c.decode(Double.self, forKey: .pieceTargetSeconds)
+      pieceSearchSeconds = try c.decode(Double.self, forKey: .pieceSearchSeconds)
+      seamPaddingSeconds = try c.decode(Double.self, forKey: .seamPaddingSeconds)
+      // Absent in keys written before #4052, which always cut pieces.
+      cutsPieces = try c.decodeIfPresent(Bool.self, forKey: .cutsPieces) ?? true
+      inputs = try c.decode([TrackInventory].self, forKey: .inputs)
     }
   }
 

@@ -30,6 +30,7 @@ struct TranscribeFileCopyTests {
       (.engineBusy(.fileImport), "Another file is being transcribed right now."),
       (.engineBusy(.abandonedDecode),
        "The last dictation is still transcribing. Restart the app, then try again."),
+      (.engineBusy(.meeting), "A meeting is being transcribed. Try again when it finishes."),
       (.failed("internal detail"), "Something went wrong reading that file. Try a different one."),
     ]
     for (reason, expected) in rows {

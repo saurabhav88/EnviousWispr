@@ -174,7 +174,7 @@ struct AbandonedDecodeHoldTests {
     #expect(hold.isHolding)
     #expect(lease.currentHolder == .abandonedDecode)
     // A record press, a replay, an import: all refused, naming the abandoned decode.
-    for holder in [SharedEngineHolder.dictation, .crashRecovery, .fileImport] {
+    for holder in [SharedEngineHolder.dictation, .crashRecovery, .fileImport, .meeting] {
       guard case .refused(let by) = lease.admit(holder) else {
         Issue.record("\(holder) claimed the engine while a decode was still running")
         continue

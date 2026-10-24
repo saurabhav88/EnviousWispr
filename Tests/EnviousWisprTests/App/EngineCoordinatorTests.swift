@@ -316,6 +316,36 @@ struct EngineCoordinatorTests {
     #expect(fake.switchCount == 1)
   }
 
+  /// #4052: when this fails, switching dictation to Parakeet during a meeting transcript (made
+  /// on the meeting's own Parakeet because dictation was on Whisper) loads a second copy.
+  @Test("a switch into Parakeet waits while the meeting's own Parakeet is loaded; the release applies it")
+  func meetingOwnParakeetDefersSwitchIntoParakeet() async {
+    let fake = FakeEngineDeps(selected: .whisper, active: .whisper)
+    var resident = true
+    fake.meetingOwnParakeetResident = { resident }
+    let c = fake.makeStartedCoordinator()
+    fake.selected = .parakeet
+    c.poke(.settingsChanged)
+    #expect(await enginePoll { c.status.blockedReason == .pipelineActive })
+    #expect(fake.switchCount == 0, "no Parakeet loads beside the meeting's copy")
+    // The meeting releases its copy and pokes, as its endModelUse does.
+    resident = false
+    c.poke(.parakeetUpgradeOwed)
+    #expect(await enginePoll { fake.active == .parakeet })
+    #expect(fake.switchCount == 1)
+  }
+
+  @Test("a switch into Whisper is not held by the meeting's own Parakeet")
+  func meetingOwnParakeetDoesNotHoldSwitchIntoWhisper() async {
+    let fake = FakeEngineDeps(selected: .parakeet, active: .parakeet)
+    fake.meetingOwnParakeetResident = { true }
+    let c = fake.makeStartedCoordinator()
+    fake.selected = .whisper
+    c.poke(.settingsChanged)
+    #expect(await enginePoll { fake.active == .whisper })
+    #expect(fake.switchCount == 1)
+  }
+
   @Test("switching away from Whisper frees its model and logs the receipt before Parakeet warms")
   func switchAwayParksBeforeReplacementWarm() async {
     let fake = FakeEngineDeps(selected: .whisper, active: .whisper)

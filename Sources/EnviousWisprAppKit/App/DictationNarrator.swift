@@ -288,6 +288,13 @@ enum DictationNarrator {
           comment:
             "Pill: an earlier dictation is stuck and holds the speech engine. Must fit a small single-line pill (about 40 characters)."
         )
+      case .meeting:
+        // #4052: founder-chosen wording (2026-10-24).
+        return String(
+          localized: "Transcribing a meeting. Please wait.",
+          comment:
+            "Pill: a meeting transcript is being written on the speech engine, so dictation must wait. Must fit a small single-line pill (about 40 characters)."
+        )
       }
     }
   }

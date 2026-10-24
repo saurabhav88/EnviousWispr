@@ -91,7 +91,7 @@ struct CancellationSilentUnwindTests {
         engineMutationScope: .alwaysAllowedForTesting,
         captureErrorSink: { _, category, stage, _, _ in
           spy.record(.init(category: category, stage: stage))
-        }
+        }, isSharedEngineHeldByOtherWorkload: { false }
       ))
     let stateWaiter = PipelineStateWaiter(pipeline)
 

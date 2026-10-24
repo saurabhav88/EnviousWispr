@@ -56,7 +56,7 @@ import Testing
         keychainManager: KeychainManager(),
         captureTelemetry: CaptureTelemetryState(),
         pasteCompletionRegistry: PasteCompletionRegistry(),
-        engineMutationScope: .alwaysAllowedForTesting)
+        engineMutationScope: .alwaysAllowedForTesting, isSharedEngineHeldByOtherWorkload: { false })
       return KernelDictationDriverFactory.makeForParakeet(inputs: inputs)
     }
 
