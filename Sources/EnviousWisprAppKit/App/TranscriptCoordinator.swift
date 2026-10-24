@@ -153,6 +153,18 @@ final class TranscriptCoordinator {
   /// choice never reaches another, and every row starts hidden.
   private(set) var echoShownRowIDs: Set<UUID> = []
   private var loadTask: Task<Void, Never>?
+  /// #4001 H9: which read owns History's state. Bumped by every new read or reuse check, so a
+  /// superseded one cannot publish rows, certify the cache or clear `loadInFlight`.
+  private var loadRequestID: UInt64 = 0
+  private var loadInFlight = false
+  /// #4001 H9: whether the rows held now are the whole store as of `accepted`. Set only by a
+  /// certified complete read; dropped by any read that starts, and by a reuse check that finds
+  /// the folders changed.
+  private enum HistoryCache: Equatable {
+    case unread
+    case reusable(TranscriptStoreFreshness)
+  }
+  private var historyCache: HistoryCache = .unread
   private var pulseTask: Task<Void, Never>?
 
   /// Rows that are still OFFERED, at read time (#2087).
@@ -666,8 +678,8 @@ final class TranscriptCoordinator {
   /// Rows still counting down ON DISK, from the last COMPLETE sweep (#2186).
   ///
   /// The countdown used to arm only from `livePendingCount`, which reads
-  /// `transcripts`, which only `load()` fills — and `load()`'s one production
-  /// caller is the History view. So a row carried over from a PREVIOUS session
+  /// `transcripts`, which only `load()` fills — and `load()` is reached only from
+  /// the History view. So a row carried over from a PREVIOUS session
   /// was invisible to the timer for the entire session: nothing deleted it at
   /// its moment, and it waited for a relaunch. Founder, 2026-08-20: "As long as
   /// the application is running, the timer should be ticking… and then it just
@@ -963,83 +975,144 @@ final class TranscriptCoordinator {
   // object goes away the next wake finds nothing and returns. Nothing is
   // retained in the meantime.
 
+  /// History's open (#4001 H9). Joins a read already running, reuses the rows already held when
+  /// the store's folders have not changed since the last complete read, and otherwise reads the
+  /// store as `load()` does. Only a complete read sets what "unchanged" is measured against;
+  /// every write, this app's included, changes a folder token, so the next open reads again.
+  func loadIfNeeded() {
+    guard !loadInFlight else { return }
+    guard case .reusable(let accepted) = historyCache else {
+      load()
+      return
+    }
+    loadRequestID &+= 1
+    let request = loadRequestID
+    loadInFlight = true
+    loadTask = Task {
+      defer { finishLoad(request) }
+      let current = await store.freshness()
+      guard request == loadRequestID, !Task.isCancelled else { return }
+      guard let current, current == accepted, case .reusable(accepted) = historyCache else {
+        historyCache = .unread
+        await readStore(request)
+        return
+      }
+      #if DEBUG
+        historyCacheHitsForTesting += 1
+      #endif
+      // Cleanup still runs on every open. A sweep that deletes a file changes the pending token,
+      // so the open after it reads the store again.
+      await sweepExpiredPending()
+    }
+  }
+
+  /// A full read of the store, replacing any read in flight. History's opens go through
+  /// `loadIfNeeded()`.
   func load() {
     loadTask?.cancel()
+    loadRequestID &+= 1
+    let request = loadRequestID
+    loadInFlight = true
+    historyCache = .unread
     loadTask = Task {
-      // #2087: sweep BEFORE reading, so the load cannot pick up a row this pass
-      // is about to delete. Reclaims disk and produces the `expired` half of the
-      // ratio that judges the feature.
-      //
-      // Placed here rather than at process launch deliberately: this is the
-      // path that already does History disk I/O, and read-time expiry means an
-      // unswept row is invisible regardless — so the sweep governs disk and
-      // telemetry, never what the user can see. That is also why a missed sweep
-      // is not a user-facing bug.
-      await sweepExpiredPending()
-      guard !Task.isCancelled else { return }
-      do {
-        // #2772: taken BEFORE the read, so a write that lands while it is in flight can be
-        // recognised as newer than what the disk handed back.
-        let revisionAtRead = historyWriteRevision
-        // And the deletion generation, for the opposite race: a row DELETED while this read
-        // was suspended is still in the picture the disk handed back, and the merge below
-        // would reinstate it. For an import that is worse than a stale list, because the
-        // cleanup's update then finds the row and rewrites its file — the deletion
-        // `updateExistingRow` exists to respect. Every removal bumps this synchronously
-        // (`invalidateDiskState`), so a mismatch means re-read rather than trust.
-        let generationAtRead = diskStateGeneration
-        var diskRows = try await store.loadAll()
-        // Phase C union-by-ID merge. Preserve any in-memory rows whose IDs
-        // are not yet on disk (append-during-load race window) in their
-        // existing order, then append disk rows. Protects the newest-first
-        // invariant under multiple concurrent completions while a slow
-        // startup load is still running.
-        // #2087: pending rows are ADDITIVE and never authoritative. Keep writes
-        // the permanent copy before deleting the pending file, so a crash
-        // between those two steps leaves the same id in both namespaces — root
-        // wins, and the user sees the row they kept exactly once rather than a
-        // permanent row shadowed by a copy still counting down.
-        let pendingRows = (try? await store.loadPending()) ?? []
-        guard !Task.isCancelled else { return }
-        guard generationAtRead == diskStateGeneration else {
-          load()
-          return
-        }
-        // #2772: a row written SINCE this read began is newer than the disk copy that came
-        // back, and the merge below prefers the disk one whenever the id already exists. An
-        // import writes twice under one id, so without this the raw version read at the
-        // start of a load replaces the cleaned version saved a moment later, and History
-        // shows unpolished words until something else refreshes it. Found by Codex.
-        let newerRows = Dictionary(
-          uniqueKeysWithValues:
-            transcripts
-            .filter { (writtenAtRevision[$0.id] ?? 0) > revisionAtRead }
-            .map { ($0.id, $0) })
-        diskRows = diskRows.map { newerRows[$0.id] ?? $0 }
-        let rootIDs = Set(diskRows.map(\.id))
-        let heldRows = pendingRows.filter { !rootIDs.contains($0.id) }
-        let knownIDs = rootIDs.union(heldRows.map(\.id))
-        let inFlightRows = transcripts.filter { !knownIDs.contains($0.id) }
-        // Merged rather than re-sorted: both inputs are already newest-first,
-        // and re-sorting the combined list could reorder permanent rows that
-        // share a `createdAt`. With no held rows this returns `diskRows`
-        // unchanged, so History is byte-identical for anyone who never turns
-        // Escape Recovery on.
-        transcripts = inFlightRows + Self.mergeNewestFirst(heldRows, diskRows)
-        reconcileSelectionWithDisplayedSet()
-        startPulseIfNeeded()
-      } catch {
-        await AppLogger.shared.log(
-          "Failed to load transcripts: \(error)",
-          level: .info, category: "TranscriptCoordinator"
-        )
+      defer { finishLoad(request) }
+      await readStore(request)
+    }
+  }
+
+  /// Ends `request`'s hold on the in-flight flag, and only its own: a superseded read finishing
+  /// late must not mark a newer read as done.
+  private func finishLoad(_ request: UInt64) {
+    if request == loadRequestID { loadInFlight = false }
+  }
+
+  private func readStore(_ request: UInt64) async {
+    // #2087: sweep BEFORE reading, so the load cannot pick up a row this pass
+    // is about to delete. Reclaims disk and produces the `expired` half of the
+    // ratio that judges the feature.
+    //
+    // Placed here rather than at process launch deliberately: this is the
+    // path that already does History disk I/O, and read-time expiry means an
+    // unswept row is invisible regardless — so the sweep governs disk and
+    // telemetry, never what the user can see. That is also why a missed sweep
+    // is not a user-facing bug.
+    await sweepExpiredPending()
+    guard request == loadRequestID, !Task.isCancelled else { return }
+    do {
+      // #2772: taken BEFORE the read, so a write that lands while it is in flight can be
+      // recognised as newer than what the disk handed back.
+      let revisionAtRead = historyWriteRevision
+      // And the deletion generation, for the opposite race: a row DELETED while this read
+      // was suspended is still in the picture the disk handed back, and the merge below
+      // would reinstate it. For an import that is worse than a stale list, because the
+      // cleanup's update then finds the row and rewrites its file — the deletion
+      // `updateExistingRow` exists to respect. Every removal bumps this synchronously
+      // (`invalidateDiskState`), so a mismatch means re-read rather than trust.
+      let generationAtRead = diskStateGeneration
+      let read = try await store.readHistory()
+      var diskRows = read.permanent
+      // Phase C union-by-ID merge. Preserve any in-memory rows whose IDs
+      // are not yet on disk (append-during-load race window) in their
+      // existing order, then append disk rows. Protects the newest-first
+      // invariant under multiple concurrent completions while a slow
+      // startup load is still running.
+      // #2087: pending rows are ADDITIVE and never authoritative. Keep writes
+      // the permanent copy before deleting the pending file, so a crash
+      // between those two steps leaves the same id in both namespaces — root
+      // wins, and the user sees the row they kept exactly once rather than a
+      // permanent row shadowed by a copy still counting down.
+      let pendingRows = read.pending
+      guard request == loadRequestID, !Task.isCancelled else { return }
+      guard generationAtRead == diskStateGeneration else {
+        load()
+        return
       }
+      // #2772: a row written SINCE this read began is newer than the disk copy that came
+      // back, and the merge below prefers the disk one whenever the id already exists. An
+      // import writes twice under one id, so without this the raw version read at the
+      // start of a load replaces the cleaned version saved a moment later, and History
+      // shows unpolished words until something else refreshes it. Found by Codex.
+      let newerRows = Dictionary(
+        uniqueKeysWithValues:
+          transcripts
+          .filter { (writtenAtRevision[$0.id] ?? 0) > revisionAtRead }
+          .map { ($0.id, $0) })
+      diskRows = diskRows.map { newerRows[$0.id] ?? $0 }
+      let rootIDs = Set(diskRows.map(\.id))
+      let heldRows = pendingRows.filter { !rootIDs.contains($0.id) }
+      let knownIDs = rootIDs.union(heldRows.map(\.id))
+      let inFlightRows = transcripts.filter { !knownIDs.contains($0.id) }
+      // Merged rather than re-sorted: both inputs are already newest-first,
+      // and re-sorting the combined list could reorder permanent rows that
+      // share a `createdAt`. With no held rows this returns `diskRows`
+      // unchanged, so History is byte-identical for anyone who never turns
+      // Escape Recovery on.
+      transcripts = inFlightRows + Self.mergeNewestFirst(heldRows, diskRows)
+      // #4001 H9: reusable only when the read itself was certified. A read that skipped a file
+      // it could not open, or that a write overlapped, leaves the next open to read again.
+      historyCache = read.freshness.map(HistoryCache.reusable) ?? .unread
+      #if DEBUG
+        historyFullReadsForTesting += 1
+      #endif
+      reconcileSelectionWithDisplayedSet()
+      startPulseIfNeeded()
+    } catch {
+      await AppLogger.shared.log(
+        "Failed to load transcripts: \(error)",
+        level: .info, category: "TranscriptCoordinator"
+      )
     }
   }
 
   // periphery:ignore - test seam
   func waitForLoadForTesting() async {
-    await loadTask?.value
+    // A read that finds the store changed under it starts another one, so wait for the read
+    // that is current once nothing replaces it, not only the one running when this was called.
+    var awaited: Task<Void, Never>?
+    while let running = loadTask, running != awaited {
+      awaited = running
+      await running.value
+    }
   }
 
   /// Append a just-completed transcript to the in-memory cache.
@@ -1092,6 +1165,10 @@ final class TranscriptCoordinator {
   private var durableWritesInFlight: Set<UUID> = []
 
   #if DEBUG
+    /// #4001 H9: opens that reused the held rows, and full reads that completed. Counted apart so
+    /// a test can tell reuse from a read that happened to return the same rows.
+    private(set) var historyCacheHitsForTesting = 0
+    private(set) var historyFullReadsForTesting = 0
     /// Runs on the durable write's worker thread just before it writes, so a test can hold a
     /// write while it is registered in flight.
     @ObservationIgnored var durableWriteWillStartForTesting: (@Sendable () -> Void)?
@@ -2002,6 +2079,7 @@ final class TranscriptCoordinator {
   // periphery:ignore - test seam
   func setTranscriptsForTesting(_ rows: [Transcript]) {
     transcripts = rows
+    historyCache = .unread
     startPulseIfNeeded()
   }
 }
