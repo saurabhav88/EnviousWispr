@@ -4,6 +4,7 @@ import Sentry
 import Testing
 import os
 
+@testable import EnviousWisprAppKit
 @testable import EnviousWisprLLM
 @testable import EnviousWisprServices
 
@@ -156,5 +157,145 @@ struct ChildProcessFailureTests {
     #expect(event.extra?["native_stack"] as? String == "not_captured")
     #expect(event.extra?["cleanup_initiator"] == nil)
     #expect(event.extra?["owning_provider"] as? String == LLMProvider.egOne.rawValue)
+  }
+}
+
+/// #3988: an outside stop of a ready server is classified once, on the accepted record, and
+/// reported as a breadcrumb with the one pressure sample; everything else keeps its capture.
+/// When this fails, a routine outside stop pages as a failure, or a real crash goes quiet.
+@MainActor
+@Suite("Outside-stop child telemetry (#3988)", .tags(.observabilityContract))
+struct OutsideStopChildTelemetryTests {
+
+  private static func record(
+    _ phase: ChildProcessFailure.Phase, _ termination: ChildProcessFailure.Termination?,
+    _ status: Int32?, provider: LLMProvider = .egOne, generation: Int = 3,
+    role: ChildProcessFailure.Role = .server
+  ) -> ChildProcessFailure {
+    ChildProcessFailure(
+      role: role, provider: provider, generation: generation, phase: phase,
+      termination: termination, status: status, pid: 42,
+      launchErrorCode: termination == nil ? 2 : nil)
+  }
+
+  @MainActor
+  private final class Box {
+    var events: [EGOneRuntimeEvent] = []
+    var samples = 0
+  }
+
+  private static func runtime(
+    _ provider: LLMProvider = .egOne, pressure: OutsideStopContext.MemoryPressure? = .warning
+  ) -> (EGOneRuntime, Box) {
+    let runtime = EGOneRuntime(manifest: nil, serverBinaryURL: nil, delivery: nil, provider: provider)
+    let box = Box()
+    runtime.onEvent = { event in MainActor.assumeIsolated { box.events.append(event) } }
+    runtime.memoryPressureLevel = {
+      box.samples += 1
+      return pressure
+    }
+    return (runtime, box)
+  }
+
+  private static func outsideStop(_ event: EGOneRuntimeEvent?) -> OutsideStopContext?? {
+    guard case .childProcessFailed(_, let stop)? = event else { return nil }
+    return .some(stop)
+  }
+
+  @Test("every allowlisted ready ending is an outside stop; crashes, startup and sweeps are not")
+  func classificationReachesTheReport() {
+    for (termination, status) in [
+      (ChildProcessFailure.Termination.signal, SIGTERM), (.signal, SIGKILL), (.signal, SIGINT),
+      (.signal, SIGHUP), (.exit, 0),
+    ] {
+      let (runtime, box) = Self.runtime()
+      runtime.reportChildProcessFailure(Self.record(.ready, termination, status))
+      #expect(
+        Self.outsideStop(box.events.last)
+          == .some(OutsideStopContext(provider: .egOne, generation: 3, memoryPressure: .warning)))
+    }
+    for failure in [
+      Self.record(.ready, .signal, SIGSEGV), Self.record(.ready, .exit, 1),
+      Self.record(.starting, .exit, 0), Self.record(.ready, nil, nil),
+      Self.record(.cleanup, .exit, 2, role: .sweep),
+      Self.record(.ready, .signal, SIGTERM, provider: .s1Mini),
+    ] {
+      let (runtime, box) = Self.runtime()
+      runtime.reportChildProcessFailure(failure)
+      #expect(Self.outsideStop(box.events.last) == .some(nil), "\(failure)")
+      #expect(box.samples == 0, "only an outside stop is sampled")
+    }
+  }
+
+  @Test("the failure and the lifecycle share one pressure sample, in either order")
+  func oneSampleEitherOrder() {
+    let stopped = EGOneServerManager.Lifecycle(state: .stoppedOutside, outsideStopGeneration: 3)
+    let (failureFirst, box1) = Self.runtime()
+    failureFirst.reportChildProcessFailure(Self.record(.ready, .signal, SIGTERM))
+    failureFirst.receive(LocalPolishLifecycleEvent(lifecycle: stopped, order: 1))
+    #expect(box1.samples == 1)
+    #expect(failureFirst.unresolvedOutsideStop?.memoryPressure == .warning)
+
+    let (lifecycleFirst, box2) = Self.runtime(.egOne, pressure: .critical)
+    lifecycleFirst.receive(LocalPolishLifecycleEvent(lifecycle: stopped, order: 1))
+    lifecycleFirst.reportChildProcessFailure(Self.record(.ready, .signal, SIGTERM))
+    #expect(box2.samples == 1)
+    #expect(Self.outsideStop(box2.events.last)??.memoryPressure == .critical)
+  }
+
+  @Test("a late report for an older stop says unknown and never touches the newer stop")
+  func lateOlderReport() {
+    let (runtime, box) = Self.runtime()
+    runtime.receive(
+      LocalPolishLifecycleEvent(
+        lifecycle: .init(state: .stoppedOutside, outsideStopGeneration: 5), order: 1))
+    runtime.reportChildProcessFailure(Self.record(.ready, .signal, SIGTERM, generation: 4))
+    #expect(Self.outsideStop(box.events.last)??.memoryPressure == .some(nil))
+    #expect(Self.outsideStop(box.events.last)??.generation == 4)
+    #expect(runtime.unresolvedOutsideStop?.generation == 5)
+    #expect(runtime.unresolvedOutsideStop?.memoryPressure == .warning)
+    #expect(box.samples == 1)
+    // Reporting after the engine is back resurrects nothing.
+    runtime.receive(
+      LocalPolishLifecycleEvent(
+        lifecycle: .init(state: .ready(EGOneEndpoint(port: 1, authToken: "t", contextTokens: 1))),
+        order: 2))
+    runtime.reportChildProcessFailure(Self.record(.ready, .signal, SIGTERM, generation: 5))
+    #expect(runtime.unresolvedOutsideStop == nil)
+    #expect(Self.outsideStop(box.events.last)??.memoryPressure == .warning)
+  }
+
+  @Test("an outside stop is a breadcrumb only; crash, startup, spawn and sweep failures still alert")
+  func vendorRouting() {
+    let outside = OutsideStopContext(provider: .egOne, generation: 3, memoryPressure: nil)
+    let route = EGOneTelemetryBridge.childFailureRoute(
+      Self.record(.ready, .signal, SIGTERM), outsideStop: outside)
+    #expect(route.stopKind == "outside")
+    #expect(route.memoryPressure == "unknown")
+    #expect(route.alerts == false)
+    let crash = EGOneTelemetryBridge.childFailureRoute(
+      Self.record(.ready, .signal, SIGSEGV), outsideStop: nil)
+    #expect(crash.stopKind == "crash" && crash.memoryPressure == "unknown" && crash.alerts)
+    for failure in [
+      Self.record(.starting, .exit, 0), Self.record(.starting, nil, nil),
+    ] {
+      #expect(EGOneTelemetryBridge.childFailureRoute(failure, outsideStop: nil).alerts)
+    }
+    let sweep = EGOneTelemetryBridge.childFailureRoute(
+      Self.record(.cleanup, .exit, 2, role: .sweep), outsideStop: nil)
+    #expect(sweep.stopKind == nil && sweep.memoryPressure == nil && sweep.alerts)
+  }
+
+  @Test("the PostHog row carries stop_kind and memory_pressure only when given")
+  func posthogShape() {
+    let outside = TelemetryService.childProcessFailedStrings(
+      Self.record(.ready, .signal, SIGTERM), stopKind: "outside", memoryPressure: "critical")
+    #expect(outside["stop_kind"] == "outside")
+    #expect(outside["memory_pressure"] == "critical")
+    #expect(outside["failure_kind"] == "unexpected_exit", "the existing facts stay")
+    let sweep = TelemetryService.childProcessFailedStrings(
+      Self.record(.cleanup, .exit, 2, role: .sweep), stopKind: nil, memoryPressure: nil)
+    #expect(sweep["stop_kind"] == nil)
+    #expect(sweep["memory_pressure"] == nil)
   }
 }

@@ -675,6 +675,15 @@ struct KernelFinalizationWiring {
       outcome.afmPrewarmTakeID = ctx.afmPrewarmOutcome == nil ? nil : ctx.takeID
       outcome.polishNotice = result.polishNotice
       outcome.polishTakeOutcome = result.polishTakeOutcome
+      // #3988: the first live take to meet an outside stop is its recovery take. Its stop and
+      // its own polish result ride on its terminal row (zero new rows), written here because the
+      // row closes before the concluded take is handed back to the app.
+      if let take = result.polishTakeOutcome, let stop = take.outsideStopRecovery {
+        TelemetryService.shared.recordOutsideStopRecovery(
+          takeID: take.takeID, engine: stop.provider.rawValue, generation: stop.generation,
+          memoryPressure: stop.memoryPressure?.rawValue ?? "unknown",
+          polishResult: take.result.rawValue)
+      }
       outcome.polishDurationSeconds = CFAbsoluteTimeGetCurrent() - start
 
       // #1358: the display text after the limb chain. `ctx.polishedText ?? ctx.text`

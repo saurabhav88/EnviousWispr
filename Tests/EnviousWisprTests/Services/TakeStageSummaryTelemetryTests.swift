@@ -232,6 +232,42 @@ import Testing
       #expect(events.filter { $0.name == "dictation.terminal" }.count == 2, "no extra rows")
     }
 
+    @Test("#3988 a recovery take's terminal names the stop and its own polish result; others carry none")
+    func outsideStopRecoveryFoldsOntoItsTake() throws {
+      let takeC = "5B1E2C3D-4F50-4617-8A9B-0C1D2E3F4A55"
+      let events = capture {
+        for take in [Self.takeA, Self.takeB, takeC] {
+          TelemetryService.shared.dictationStarted(takeID: take, backend: "parakeet", model: nil)
+        }
+        TelemetryService.shared.recordOutsideStopRecovery(
+          takeID: Self.takeA, engine: "egOne", generation: 4, memoryPressure: "critical",
+          polishResult: "polished")
+        TelemetryService.shared.recordOutsideStopRecovery(
+          takeID: Self.takeB, engine: "s1Mini", generation: 2, memoryPressure: "unknown",
+          polishResult: "skippedSilently")
+        for take in [Self.takeA, Self.takeB, takeC] {
+          TelemetryService.shared.dictationTerminal(
+            takeID: take, backend: "parakeet", result: "completed", reason: nil, model: nil)
+        }
+      }
+      let a = try terminal(events, take: Self.takeA)
+      #expect(a.stringProps["outside_stop_engine"] == "egOne")
+      #expect(a.intProps["outside_stop_generation"] == 4)
+      #expect(a.stringProps["outside_stop_memory_pressure"] == "critical")
+      #expect(a.stringProps["outside_stop_polish_result"] == "polished")
+      let b = try terminal(events, take: Self.takeB)
+      #expect(b.stringProps["outside_stop_polish_result"] == "skippedSilently")
+      #expect(b.stringProps["outside_stop_engine"] == "s1Mini")
+      let c = try terminal(events, take: takeC)
+      for key in [
+        "outside_stop_engine", "outside_stop_memory_pressure", "outside_stop_polish_result",
+      ] {
+        #expect(c.stringProps[key] == nil, "an ordinary take carries no \(key)")
+      }
+      #expect(c.intProps["outside_stop_generation"] == nil)
+      #expect(events.filter { $0.name == "dictation.terminal" }.count == 3, "no extra rows")
+    }
+
     @Test(
       "#3438 a setup problem recorded after the terminal, or for an unopened take, writes nothing")
     func polishSetupProblemNeedsAnOpenTake() throws {

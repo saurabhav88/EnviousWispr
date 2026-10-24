@@ -181,3 +181,70 @@ import Testing
         == Set(["download_required", "not_started", "starting", "ready_unchecked"]))
   }
 }
+
+// MARK: - #3988: `ready_unchecked` emits the rows `starting` did
+
+extension EGOneHealthTransitionTelemetryTests {
+
+  /// Each sequence is driven through the real health path; its expected rows are written out
+  /// literally from the pre-#3988 behaviour (a ready server kept showing `starting` until a probe
+  /// answered, and an outside stop went the crash path to `starting`), never derived from the
+  /// code under test. The only delta: the outside-stop row names `stopped_outside` where the
+  /// crash path named `starting`, the same row in the same place.
+  @Test("ready_unchecked adds and removes no rows on activation, a skipped probe, recovery or a probe verdict")
+  func readyUncheckedRowEquivalence() throws {
+    let endpoint = EGOneEndpoint(port: 9, authToken: "t", contextTokens: 1)
+    func run(_ steps: (EGOneRuntime) -> Void) throws -> [EGOneRuntimeEvent] {
+      let (runtime, recorded, cleanup) = try makeRuntime()
+      defer { cleanup() }
+      runtime.applyInstallStateForTesting(.installed(version: nil))  // seed: not_started
+      steps(runtime)
+      return recorded.events
+    }
+    func activate(_ runtime: EGOneRuntime) {
+      runtime.applyServerStateForTesting(.starting)
+      runtime.applyServerStateForTesting(.ready(endpoint))
+    }
+
+    // An ordinary activation whose probe passes: one yellow -> green row, as before.
+    #expect(
+      try run { runtime in
+        activate(runtime)
+        runtime.acceptProbeResult(.green, for: endpoint)
+      } == [.healthChanged(from: "yellow", to: "green", reason: nil)])
+
+    // A probe skipped because a take holds the engine: no row, as before.
+    #expect(try run { runtime in activate(runtime) } == [])
+
+    // A probe verdict that is not green: the same row `starting` -> verdict made.
+    #expect(
+      try run { runtime in
+        activate(runtime)
+        runtime.acceptProbeResult(.yellow(reason: "probe_slow"), for: endpoint)
+      } == [.healthChanged(from: "yellow", to: "yellow", reason: "probe_slow")])
+    #expect(
+      try run { runtime in
+        activate(runtime)
+        runtime.acceptProbeResult(.red(reason: "probe_failed"), for: endpoint)
+      } == [.healthChanged(from: "yellow", to: "red", reason: "probe_failed")])
+
+    // An outside stop of a green server, then recovery with a passing probe: two rows, as the
+    // crash path made (green -> yellow, yellow -> green); the first now names stopped_outside.
+    #expect(
+      try run { runtime in
+        activate(runtime)
+        runtime.acceptProbeResult(.green, for: endpoint)
+        runtime.applyLifecycleForTesting(
+          EGOneServerManager.Lifecycle(state: .stoppedOutside, outsideStopGeneration: 1))
+        runtime.applyLifecycleForTesting(
+          EGOneServerManager.Lifecycle(state: .starting, outsideStopGeneration: 1))
+        let replacement = EGOneEndpoint(port: 10, authToken: "u", contextTokens: 1)
+        runtime.applyServerStateForTesting(.ready(replacement))
+        runtime.acceptProbeResult(.green, for: replacement)
+      } == [
+        .healthChanged(from: "yellow", to: "green", reason: nil),
+        .healthChanged(from: "green", to: "yellow", reason: "stopped_outside"),
+        .healthChanged(from: "yellow", to: "green", reason: nil),
+      ])
+  }
+}

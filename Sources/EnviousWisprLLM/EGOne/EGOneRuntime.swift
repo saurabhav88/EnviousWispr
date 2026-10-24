@@ -64,7 +64,10 @@ public struct LocalPolishAttempt: Sendable {
 /// construction, when it is debounced by a tracker that deliberately skips
 /// `.verifying`.
 public enum EGOneRuntimeEvent: Sendable, Equatable {
-  case childProcessFailed(ChildProcessFailure)
+  /// `outsideStop` is set when the manager's one classification calls this accepted record an
+  /// outside stop of a ready server (#3988), with the pressure the runtime sampled for that
+  /// stop; nil for every crash-policy, startup, spawn and sweep failure.
+  case childProcessFailed(ChildProcessFailure, outsideStop: OutsideStopContext?)
   case healthChanged(from: String, to: String, reason: String?)
   /// The user ENTERED or LEFT a paused install state (#2109). `nil` means
   /// they left one.
@@ -374,7 +377,7 @@ public final class EGOneRuntime: EGOneLeaseProviding {
 
   private func registerProcessFailureObserver() async {
     await server.setProcessFailureObserver(for: provider) { [weak self] failure in
-      Task { @MainActor [weak self] in self?.onEvent?(.childProcessFailed(failure)) }
+      Task { @MainActor [weak self] in self?.reportChildProcessFailure(failure) }
     }
   }
 
@@ -388,6 +391,36 @@ public final class EGOneRuntime: EGOneLeaseProviding {
   /// Test seam for the server-lifecycle leg of `recomputeHealth` (#2966): a
   /// same-colour change into a runtime diagnosis is reachable only through
   /// the server state, and no delivery fixture produces one.
+  /// #3988: an accepted child failure, classified by the manager's one rule on this same record.
+  /// An outside stop of this engine's ready server shares the lifecycle projection's single
+  /// pressure sample, whichever of the two reaches the main actor first. Reporting never touches
+  /// live recovery state.
+  func reportChildProcessFailure(_ failure: ChildProcessFailure) {
+    var outsideStop: OutsideStopContext?
+    if EGOneServerManager.classify(failure) == .outsideStop, let generation = failure.generation,
+      failure.provider == provider
+    {
+      outsideStop = acceptOutsideStop(generation: generation)
+    }
+    onEvent?(.childProcessFailed(failure, outsideStop: outsideStop))
+  }
+
+  /// The one place a stop's pressure is sampled, once per stop (#3988). A stop older than the
+  /// one already sampled is reported with unknown pressure: sampling now would describe a later
+  /// moment, and recording it would overwrite the newer stop's context.
+  private func acceptOutsideStop(generation: Int) -> OutsideStopContext {
+    if let sampled = lastSampledOutsideStop {
+      if sampled.generation == generation { return sampled }
+      if sampled.generation > generation {
+        return OutsideStopContext(provider: provider, generation: generation, memoryPressure: nil)
+      }
+    }
+    let sampled = OutsideStopContext(
+      provider: provider, generation: generation, memoryPressure: memoryPressureLevel?())
+    lastSampledOutsideStop = sampled
+    return sampled
+  }
+
   /// One delivered lifecycle event. Internal so tests can deliver events out
   /// of order, which the real hops do only by scheduling luck.
   func receive(_ event: LocalPolishLifecycleEvent) {
@@ -561,13 +594,7 @@ public final class EGOneRuntime: EGOneLeaseProviding {
     if let generation = lifecycle.outsideStopGeneration {
       // One sample per stop: a repeat of the same stop keeps its context.
       if unresolvedOutsideStop?.generation != generation {
-        let sampled =
-          lastSampledOutsideStop?.generation == generation
-          ? lastSampledOutsideStop
-          : OutsideStopContext(
-            provider: provider, generation: generation, memoryPressure: memoryPressureLevel?())
-        unresolvedOutsideStop = sampled
-        lastSampledOutsideStop = sampled
+        unresolvedOutsideStop = acceptOutsideStop(generation: generation)
       }
     } else {
       unresolvedOutsideStop = nil

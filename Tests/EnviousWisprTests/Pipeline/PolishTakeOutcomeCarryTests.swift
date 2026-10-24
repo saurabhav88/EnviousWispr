@@ -7,6 +7,7 @@ import Testing
 
 @testable import EnviousWisprASR
 @testable import EnviousWisprPipeline
+@testable import EnviousWisprServices
 
 /// #3438 chunk 4. A take's AI polish setup is frozen when the take starts, carried through the
 /// real finalization step, and handed back once after the take concludes. When this fails, a
@@ -291,6 +292,46 @@ struct PolishTakeOutcomeCarryTests {
     #expect(outcome.outsideStopMiss == Self.stop)
     #expect(outcome.outsideStopMissedAt == missTime)
     #expect(wall != missTime)
+  }
+
+  @Test("#3988: the real finish step writes the recovery take's stop onto its terminal summary")
+  func recoveryReachesTheTerminalSummary() async throws {
+    let takeID = UUID().uuidString
+    let engine = RestartingEngine(missed: Self.stop, recovery: Self.stop)
+    let polish = LLMPolishStep(keychainManager: KeychainManager())
+    polish.llmProvider = .egOne
+    polish.llmModel = LLMProvider.egOneModelName
+    polish.egOneRuntime = engine
+    let log = HookLog()
+    let context = KernelSessionContext()
+    context.config = .testDefault(llmProvider: .egOne, llmModel: LLMProvider.egOneModelName)
+    context.polishSetupContext = Self.egOneTake
+    context.polishSetupHooks = log.hooks
+    let telemetry = KernelTelemetryState()
+    telemetry.resetForNewSession(takeID: takeID, polishEnabled: true)
+    let outcome = KernelFinalizationOutcome()
+    let wiring = KernelFinalizationWiring(
+      outcome: outcome, context: context,
+      adapter: FakeEngine(behavior: .batchSuccess(text: "hi"), clock: FakeClock()),
+      steps: Self.steps(polish: polish),
+      textProcessingRunner: TextProcessingRunner(
+        timeoutExecutor: FakeTimeoutExecutor(throwBelowSeconds: 0.0).run),
+      save: { _, _ in },
+      deliverPaste: { _ in
+        PasteDeliveryResult(
+          tier: .cgEvent, durationMs: 1, outcome: .delivered(tier: .cgEvent, durationMs: 1))
+      },
+      pasteCompletionRegistry: nil, telemetryState: telemetry, copyToClipboard: { _ in })
+    TelemetryService.shared.dictationStarted(takeID: takeID, backend: "parakeet", model: nil)
+    defer { _ = TelemetryService.shared.takeStages.close(takeID: takeID) }
+    _ = try await wiring.processText(raw) {}
+    #expect(outcome.polishTakeOutcome?.outsideStopRecovery == Self.stop)
+    let summary = try #require(TelemetryService.shared.takeStages.close(takeID: takeID))
+    #expect(
+      summary.outsideStopRecovery
+        == OutsideStopRecoveryTerminalFacts(
+          engine: "egOne", generation: 4, memoryPressure: "warning",
+          polishResult: "skippedSilently"))
   }
 
   @Test("an ordinary not-ready miss, or a too-short take, carries no stop")

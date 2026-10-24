@@ -226,8 +226,14 @@ struct TelemetryEmitterRegistryTests {
   /// step did not run), which changes that one site's enclosing-function identity. Same event, same
   /// single site, same per_user_action cadence, no content; the event's row stays unchanged.
   /// Reader: the #3986 plan §3a release review.
+  /// #3988: `childProcessFailed` gains `stopKind:` and `memoryPressure:` (properties `stop_kind`
+  /// and `memory_pressure`, closed strings on server rows only) and `polishSetupPrompt` gains
+  /// `variant:` (closed `first`/`escalated` on outside-stop card rows only), which changes those
+  /// two sites' enclosing-function identities. Same events, same single sites, same cadences
+  /// (`rare_failure`, `per_user_action`), no content; both rows are updated in place.
+  /// Reader: the #3988 plan §3a release review.
   static let sitesFingerprint =
-    "2380b9d4d73a6b02e81ce08f9db41551cab1121bd2601f6d0c31f0cf9732c77a"
+    "b4c4abb590dfe1df73de873fac16cc022f69d17ff8c8c4c9a0c1d4af9b4034c1"
   static let ungradedFingerprint =
     "676fe038e6e688fa79c33aae8cec75e5996979f10c3f79775755ec23c5dba168"
 

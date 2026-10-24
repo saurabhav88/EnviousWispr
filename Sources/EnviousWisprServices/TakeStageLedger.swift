@@ -47,6 +47,8 @@ struct TakeStageSummary: Equatable {
   /// (`PolishSetupProblemTag`), written when the polish result is classified. Absent unless
   /// confirmed: never a "none" or "unknown" value.
   var polishSetupProblem: String?
+  /// #3988: the outside stop this take was the recovery take for, and what its polish did.
+  var outsideStopRecovery: OutsideStopRecoveryTerminalFacts?
 
   /// The terminal-row projection. Keys are prefixed `vad_` beside the #2184 conditioning
   /// fields that already live on the same row; `vad_stage_reached` is always present when
@@ -64,7 +66,30 @@ struct TakeStageSummary: Equatable {
     if let polishLanguageHint { out["polish_language_hint"] = polishLanguageHint }
     if let learnedCheck { out.merge(learnedCheck.terminalProperties) { current, _ in current } }
     if let polishSetupProblem { out["polish_setup_problem"] = polishSetupProblem }
+    if let outsideStopRecovery {
+      out.merge(outsideStopRecovery.terminalProperties) { current, _ in current }
+    }
     return out
+  }
+}
+
+/// #3988. The local polish engine's outside stop that this take was the FIRST live take to
+/// meet, carried on its `dictation.terminal` row. Joined to `eg1.child_process_failed` by
+/// install (`distinct_id`), launch (`process_launch_id`), engine and the stopped child's
+/// generation; a generation alone repeats across launches. Closed values and counts only.
+struct OutsideStopRecoveryTerminalFacts: Equatable {
+  var engine: String
+  var generation: Int
+  /// `normal`, `warning`, `critical` or `unknown`: the one sample taken for that stop.
+  var memoryPressure: String
+  /// `PolishTakeResult`: `polished` when the restarted engine polished this take.
+  var polishResult: String
+
+  var terminalProperties: [String: Any] {
+    [
+      "outside_stop_engine": engine, "outside_stop_generation": generation,
+      "outside_stop_memory_pressure": memoryPressure, "outside_stop_polish_result": polishResult,
+    ]
   }
 }
 

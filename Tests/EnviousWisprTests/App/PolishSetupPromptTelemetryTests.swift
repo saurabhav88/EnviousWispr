@@ -55,6 +55,36 @@ import Testing
         ])
     }
 
+    @Test("#3988: an outside-stop card row says which notice it was; setup rows never do")
+    func noticeVariant() throws {
+      let box = EventBox()
+      TelemetryService.shared.testEventHook = { box.events.append($0) }
+      defer { TelemetryService.shared.testEventHook = nil }
+      let stop = OutsideStopContext(provider: .s1Mini, generation: 2, memoryPressure: nil)
+      let subject = PolishSetupPromptSubject(
+        problem: .localEngineStoppedOutside(.s1Mini, stop), provider: .s1Mini)
+      let take = UUID()
+      PolishSetupPromptEvent(
+        surface: .card, action: .shown, subject: subject, takeID: take, variant: .first
+      ).send()
+      PolishSetupPromptEvent(
+        surface: .card, action: .chooseEngine, subject: subject, takeID: take, variant: .escalated
+      ).send()
+      PolishSetupPromptEvent(
+        surface: .card, action: .notNow,
+        subject: .init(problem: .cloudKeyMissing(.openAI), provider: .openAI), takeID: take
+      ).send()
+      #expect(box.events.count == 3)
+      #expect(
+        box.events[0].stringProps == [
+          "surface": "card", "action": "shown", "problem": "local_stopped_outside",
+          "provider": "s1Mini", "take_id": take.uuidString, "variant": "first",
+        ])
+      #expect(box.events[1].stringProps["action"] == "choose_engine")
+      #expect(box.events[1].stringProps["variant"] == "escalated")
+      #expect(box.events[2].stringProps["variant"] == nil)
+    }
+
     @Test("the vocabularies are the approved ones")
     func vocabularies() {
       #expect(

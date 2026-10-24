@@ -53,14 +53,12 @@ struct PolishSetupPromptEvent: Equatable {
   @MainActor func send() {
     TelemetryService.shared.polishSetupPrompt(
       surface: surface.rawValue, action: action.rawValue, problem: problem.telemetryTag,
-      provider: provider.rawValue, takeID: takeID?.uuidString)
-    SentryBreadcrumb.add(
-      stage: "polish_setup",
-      message: "prompt_\(action.rawValue)",
-      data: [
-        "surface": surface.rawValue, "problem": problem.telemetryTag,
-        "provider": provider.rawValue,
-      ])
+      provider: provider.rawValue, takeID: takeID?.uuidString, variant: variant?.rawValue)
+    var data: [String: Any] = [
+      "surface": surface.rawValue, "problem": problem.telemetryTag, "provider": provider.rawValue,
+    ]
+    if let variant { data["variant"] = variant.rawValue }
+    SentryBreadcrumb.add(stage: "polish_setup", message: "prompt_\(action.rawValue)", data: data)
   }
 }
 
