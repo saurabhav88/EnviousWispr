@@ -123,8 +123,13 @@
       var expectedIDs: Set<String> = [
         "ollamaNotInstalled", "ollamaNotRunning", "ollamaNoModel", "ollamaModelNotInstalled",
         "appleDisabled", "appleUnavailable", "appleModelNotReady",
-        // #3988: the outside-stop notice's two sentences (no engine name in either).
+        // #3988: the first notice's two sentences (no engine name in either), and the repeat
+        // notice's four (it names the engine).
         "localEngineStoppedOutside.generic", "localEngineStoppedOutside.lowMemory",
+        "localEngineStoppedOutside.escalated.egOne.generic",
+        "localEngineStoppedOutside.escalated.egOne.lowMemory",
+        "localEngineStoppedOutside.escalated.s1Mini.generic",
+        "localEngineStoppedOutside.escalated.s1Mini.lowMemory",
       ]
       for provider in ["openAI", "gemini", "claude"] {
         for problem in ["cloudKeyMissing", "cloudKeyRejected"] {
@@ -143,8 +148,24 @@
       #expect(
         Set(samples.map { PillPreviewCatalog.polishProblemCaseName($0.problem) })
           == PillPreviewCatalog.allPolishProblemCaseNames)
-      let sampleLines = samples.map { PolishSetupCardModel(problem: $0.problem).line }
+      let sampleLines = samples.map(\.model.line)
       #expect(Set(sampleLines).count == sampleLines.count, "two setup samples show one sentence")
+      // #3988: every notice variant has rows, and each shape has its own buttons.
+      let variants = Set(samples.compactMap(\.model.variant))
+      #expect(variants == [.first, .escalated])
+      for sample in samples {
+        switch sample.model.variant {
+        case nil:
+          #expect(sample.model.primaryLabel == "Finish setup", "\(sample.id)")
+          #expect(sample.model.dismissLabel == "Not now", "\(sample.id)")
+        case .first?:
+          #expect(sample.model.primaryLabel == nil, "\(sample.id)")
+          #expect(sample.model.dismissLabel == "OK", "\(sample.id)")
+        case .escalated?:
+          #expect(sample.model.primaryLabel == "Choose engine", "\(sample.id)")
+          #expect(sample.model.dismissLabel == "OK", "\(sample.id)")
+        }
+      }
 
       var rowLines: [String] = []
       var tails = Set<String>()
