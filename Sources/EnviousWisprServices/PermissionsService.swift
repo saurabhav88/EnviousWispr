@@ -43,6 +43,11 @@ public final class PermissionsService {
   /// no-prompt system check.
   private let microphoneReader: () -> AVAuthorizationStatus
 
+  /// #3960: injected so tests can answer the microphone prompt without TCC;
+  /// defaults to Apple's request, which shows the system prompt only while
+  /// macOS has never asked.
+  private let microphoneRequester: () async -> Bool
+
   /// #2549: injected so tests can observe/intercept the System Settings
   /// deep-link without a real window opening; defaults to the real
   /// `NSWorkspace` call.
@@ -58,12 +63,16 @@ public final class PermissionsService {
     microphoneReader: @escaping () -> AVAuthorizationStatus = {
       AVCaptureDevice.authorizationStatus(for: .audio)
     },
+    microphoneRequester: @escaping () async -> Bool = {
+      await AVCaptureDevice.requestAccess(for: .audio)
+    },
     openMicrophoneSettings: @escaping @MainActor (URL) -> Void = { NSWorkspace.shared.open($0) },
     permissionPollIntervalNanoseconds: UInt64 = UInt64(
       TimingConstants.accessibilityPollIntervalSec * 1_000_000_000)
   ) {
     self.accessibilityReader = accessibilityReader
     self.microphoneReader = microphoneReader
+    self.microphoneRequester = microphoneRequester
     self.openMicrophoneSettings = openMicrophoneSettings
     self.permissionPollIntervalNanoseconds = permissionPollIntervalNanoseconds
     microphoneStatus = microphoneReader()
@@ -89,8 +98,8 @@ public final class PermissionsService {
 
   /// Request microphone access. Returns true if granted.
   public func requestMicrophoneAccess() async -> Bool {
-    let granted = await AVCaptureDevice.requestAccess(for: .audio)
-    microphoneStatus = AVCaptureDevice.authorizationStatus(for: .audio)
+    let granted = await microphoneRequester()
+    microphoneStatus = microphoneReader()
     TelemetryService.shared.permissionStatus(
       permission: "microphone", status: granted ? "granted" : "denied", context: "request")
     return granted

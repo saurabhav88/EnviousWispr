@@ -37,7 +37,8 @@ struct ZeroSignalRecoveryTests {
       ZeroSignalDecisionSnapshot(eligibility: .eligible, currentRunWasClassifiedReactively: false)
     },
     zeroSignalRefusalSink: @escaping @MainActor ([ZeroSignalRefusalContext]) -> Void = { _ in },
-    minimumRecordingTicks: Int = 0
+    minimumRecordingTicks: Int = 0,
+    microphonePermissionIsDenied: @escaping @MainActor () -> Bool = { false }
   ) -> Context {
     let clock = FakeClock()
     let engine = FakeEngine(behavior: .batchSuccess(text: "hello"), clock: clock)
@@ -48,7 +49,8 @@ struct ZeroSignalRecoveryTests {
       engine: engine, capture: capture, vad: vad, clock: clock, paste: paste,
       minimumRecordingTicks: minimumRecordingTicks,
       zeroSignalDecisionSnapshot: zeroSignalDecisionSnapshot,
-      zeroSignalRefusalSink: zeroSignalRefusalSink)
+      zeroSignalRefusalSink: zeroSignalRefusalSink,
+      microphonePermissionIsDenied: microphonePermissionIsDenied)
     return Context(wrapper: wrapper, engine: engine, capture: capture, vad: vad)
   }
 
@@ -240,6 +242,48 @@ struct ZeroSignalRecoveryTests {
   }
 
   // MARK: - STOP-win: the detector never fired, classify at stop
+
+  // MARK: - #3960 access turned off while recording
+
+  @MainActor private final class AccessBox { var denied = false }
+
+  /// Access is granted when the take starts (the kernel's pre-start check
+  /// passes), then reads denied by the time the take is judged: the zeros are
+  /// the missing permission, so the user is told that, not to check hardware.
+  /// The retire still runs; only the ending changes.
+  @Test("reactive allZeroFromStart with access now off ends permissionDenied, still one retire")
+  func reactiveAllZeroWithAccessOffEndsPermissionDenied() async {
+    let access = AccessBox()
+    let ctx = makeContext(microphonePermissionIsDenied: { access.denied })
+    await startToRecording(ctx)
+    ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0)
+    access.denied = true
+
+    ctx.wrapper.testKernel.externalCaptureStalled(
+      stallContext(ctx, failureMode: .allZeroFromStart))
+    await ctx.wrapper.drainUntilConcluded()
+
+    #expect(ctx.wrapper.testKernel.recordingOutcome == .failed(.permissionDenied))
+    #expect(ctx.wrapper.testKernel.deliveredTranscript == nil)
+    #expect(ctx.capture.retireCapturingSourceCallCount == 1)
+  }
+
+  @Test("STOP-win all-zero with access now off ends permissionDenied")
+  func stopWinAllZeroWithAccessOffEndsPermissionDenied() async {
+    let access = AccessBox()
+    let ctx = makeContext(microphonePermissionIsDenied: { access.denied })
+    await startToRecording(ctx)
+    ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0)
+    ctx.vad.evidence = .confirmedNoSpeech
+    await ctx.wrapper.drainReadyWork()
+    access.denied = true
+
+    await ctx.wrapper.apply(.stop)
+    await ctx.wrapper.drainUntilConcluded()
+
+    #expect(ctx.wrapper.testKernel.recordingOutcome == .failed(.permissionDenied))
+    #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == .allZeroFromStart)
+  }
 
   @Test("STOP-win: an all-zero capture at stop classifies as zeroSignal, not ordinary no-speech")
   func stopWinAllZeroClassifies() async {
