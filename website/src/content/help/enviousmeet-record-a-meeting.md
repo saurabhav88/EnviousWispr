@@ -67,7 +67,7 @@ The first time you record the call sound, EnviousWispr explains that macOS will 
 Your recordings are in **History**, under **Recordings**. On the EnviousMeet page, **Show recordings** takes you there.
 
 - **Live words.** While a meeting records, its words appear about a minute behind, marked **You** or **Call**.
-- **Transcript.** The transcript with who said what is written when you stop. When the call sound was recorded and only your voice is on the microphone, you are **You**. Everyone else is **Speaker 1**, **Speaker 2** and so on, in the order they first speak. In an in-person meeting recorded on the microphone alone, everyone is a numbered speaker.
+- **Transcript.** The transcript with who said what is written when you stop. Your voice is marked **You** when the call sound has speech in it and the microphone heard one voice that is mostly not echo. Other voices are **Speaker 1**, **Speaker 2** and so on, in the order they first speak. If the voices in the call sound cannot be told apart, their words are marked **Call**. In an in-person meeting recorded on the microphone alone, everyone is a numbered speaker.
 - **Notes.** Type your own notes on the **Notes** tab.
 - **Summary.** When summaries are on, your AI Polish provider writes one after the meeting, on the **Summary** tab.
 - **Audio.** Each recording keeps its audio until you delete it. **Delete audio** removes only the audio and keeps the transcript. **Delete meeting** removes everything. **Transcribe again** writes the transcript again from the kept audio.
@@ -76,7 +76,7 @@ Your recordings are in **History**, under **Recordings**. On the EnviousMeet pag
 
 A new meeting gets its name in this order:
 
-1. **Your calendar.** With **Name meetings from my calendar** on, EnviousMeet uses the title of the calendar event at the time the meeting starts. It skips all-day events. If it cannot tell which event it is, the meeting does not take a calendar name.
+1. **Your calendar.** With **Name meetings from my calendar** on, EnviousMeet uses the title of the calendar event at the time the meeting starts, allowing up to 10 minutes before or after the event's times. It skips all-day events. If it cannot tell which event it is, the meeting does not take a calendar name.
 2. **The summary.** With summaries on, the summary writer suggests a short title when the meeting has no name yet.
 3. **The call app and the date,** such as "Zoom call" and the date. A meeting without a call app is named "Meeting" and the date.
 
@@ -99,4 +99,4 @@ Summaries with Ollama need Ollama 0.12.6 or later. If no AI Polish provider is c
 
 ### What stays on your Mac
 
-Meeting audio, transcripts and notes are stored on your Mac. Only a cloud summary provider you chose receives the transcript and notes, as the summary table shows. Envious Labs receives only anonymous usage counts, such as how long a meeting was, how many speakers it had, and which call app a call question was about; never audio, words, people's names or calendar events. See the [privacy overview](/help/privacy-overview/).
+Meeting audio, transcripts and notes are stored on your Mac. Only a cloud summary provider you chose receives the transcript and notes, as the summary table shows. Anonymous usage data, which you can turn off in **App Settings** > **Privacy**, tells Envious Labs things like how long a meeting was, how many speakers it had, which call app a call question was about and how you answered. It never includes audio, words, people's names or calendar events. See [What Data Is Collected](/help/what-data-is-collected/).
