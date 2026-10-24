@@ -8,9 +8,12 @@
 Put the app's text field (or terminal prompt) in front first; the script never stages a field.
 Every take is a silent push-to-talk dictation through the audio rig (BlackHole in and out, the
 app's microphone pinned, everything restored at the end). One row per take: the paste route, the
-`PASTE_LANDING` verdict and whether the row is VALID: exactly one paste cascade into the named app
-and, on a key-paste route, exactly one landing line (a direct `ax_direct` write runs no landing
-check and reads `not_applicable`). Anything else (a panel took the focus, extra recordings started) is
+`PASTE_LANDING` verdict and whether the row is VALID. VALID means a usable observation, not that
+the words landed: one recording through the virtual device that completed, no failed take check,
+exactly one paste cascade (into the named app, on a known route) and, on a key-paste route, exactly
+one landing line for that app and route (a direct `ax_direct` write or clipboard-only runs no
+landing check and reads `not_applicable`). A take whose evidence is missing gets an INVALID row;
+the run stops on a setup failure or a take not proven stopped, and still writes its results. Anything else (a panel took the focus, extra recordings started) is
 INVALID and never evidence. Whether the words really landed is the caller's screenshot.
 
 `--source saved` (default) replays the founder's own saved dictations
@@ -143,68 +146,131 @@ def main():
         return 2
     rows = []
     restored = False
+    run_failed = False
+    known_tiers = {"ax_direct", "clipboard_only", *KEY_TIERS}
+
     try:
         with tempfile.TemporaryDirectory(prefix="ew-paste-check-") as folder, \
                 AudioRig(target=AppTarget(args.app)) as rig, NoiseFloor(folder):
             for n in range(1, args.takes + 1):
-                audio = normalised(clips[n - 1], folder, n) if args.source == "saved" else None
-                rig.target.activate()
-                if not _wait_frontmost(args.app):
-                    raise tg.SetupFailed("paste-target", f"{args.app} did not come to the front "
-                                         f"(front is {tg.frontmost_bundle()!r})")
                 start = time.monotonic()
-                base = u.log_size()
                 checks_before = len(u.results)
-                # The cascade line first: only a key paste writes a PASTE_LANDING line, so the
-                # landing check is waited for only when the route was one (#4047, Codex review).
-                lines, cascades = p.take(args.app, base, bundle=args.app, route=rig.route,
-                                         sentence=SENTENCE if audio is None else "(saved dictation)",
-                                         audio=audio, wait=args.wait, until_terminal=True,
-                                         expect_landing=False)
+                base = None
+                lines, cascades = [], []
+                text = ""
+                error = ""
+
+                try:
+                    audio = (normalised(clips[n - 1], folder, n)
+                             if args.source == "saved" else None)
+                    rig.target.activate()
+                    if not _wait_frontmost(args.app):
+                        raise tg.SetupFailed(
+                            "paste-target", f"{args.app} did not come to the front")
+                    base = u.log_size()
+                    # The cascade line first: only a key paste writes a PASTE_LANDING line, so
+                    # the landing check is waited for only when the route was one (#4047).
+                    lines, cascades = p.take(
+                        args.app, base, bundle=args.app, route=rig.route,
+                        sentence=SENTENCE if audio is None else "(saved dictation)",
+                        audio=audio, wait=args.wait, until_terminal=True,
+                        expect_landing=False)
+
+                    mine = [c for c in cascades if c[1].strip() == args.app]
+                    if len(mine) == 1 and mine[0][0] in KEY_TIERS:
+                        u.wait_for(
+                            "a PASTE_LANDING line",
+                            lambda: p.LANDING.search(u.log_since(base)),
+                            deadline=25.0)
+
+                    # Judge on the final evidence: recordings and cascades that appeared during
+                    # that wait count too.
+                    if not u.stop_any_live_take(base_offset=base):
+                        p.TAKE_STUCK["stuck"] = True
+                        raise p.LiveTakeNotStopped("the take was not proven stopped")
+                    text = u.log_since(base)
+                    lines = p.LANDING.findall(text)
+                    cascades = p.CASCADE.findall(text)
+
+                except (tg.SetupFailed, tg.CouldNotTell, u.Aborted,
+                        OSError, subprocess.SubprocessError) as exc:
+                    error = str(exc)
+                    # Only a missing signal with the take proven over may continue the run.
+                    recoverable = (
+                        isinstance(exc, tg.CouldNotTell)
+                        and not p.TAKE_STUCK["stuck"]
+                        and tg.stop_active_take() == (True, True))
+                    if not recoverable:
+                        run_failed = True
+
                 mine = [c for c in cascades if c[1].strip() == args.app]
-                key_route = len(mine) == 1 and mine[0][0] in KEY_TIERS
-                if key_route:
-                    u.wait_for("a PASTE_LANDING line", lambda: p.LANDING.search(u.log_since(base)),
-                               deadline=25.0)
-                    lines = p.LANDING.findall(u.log_since(base))
-                # take() records its own setup checks (exactly one recording, virtual capture)
-                # without raising: any failure among them makes the row INVALID too.
-                failed = [r for r in u.results[checks_before:] if r[1] in ("FAIL", "ABORT")]
-                valid = (len(cascades) == 1 and len(mine) == 1 and not failed
-                         and len(lines) == (1 if key_route else 0))
                 tier = mine[0][0] if mine else "-"
-                verdict = (f"{lines[0][1]}/{lines[0][2]}" if len(lines) == 1
-                           else "not_applicable" if len(mine) == 1 and not key_route else "-")
+                key_route = len(mine) == 1 and tier in KEY_TIERS
+                landing_matches = (
+                    len(lines) == 1
+                    and lines[0][0] == tier
+                    and lines[0][3] == args.app)
+                failed = [
+                    r for r in u.results[checks_before:]
+                    if r[1] in ("FAIL", "ABORT")]
+
+                valid = (
+                    not error and not failed
+                    and len(cascades) == len(mine) == 1
+                    and tier in known_tiers
+                    and text.count("Recording started") == 1
+                    and tg.TRANSPORT.findall(text) == ["virtual"]
+                    and tg.TERMINAL.findall(text) == ["completed"]
+                    and (landing_matches if key_route else len(lines) == 0))
+                verdict = (
+                    f"{lines[0][1]}/{lines[0][2]}"
+                    if key_route and landing_matches else
+                    "not_applicable"
+                    if len(mine) == 1 and tier in known_tiers
+                    and not key_route and not lines else "-")
                 rows.append((n, valid, tier, verdict, time.monotonic() - start))
-                print(f"ROW {n} {'VALID' if valid else 'INVALID'} tier={tier} verdict={verdict} "
-                      f"cascades={len(cascades)} landing_lines={len(lines)} failed_checks={len(failed)} "
-                      f"secs={rows[-1][4]:.0f}",
-                      flush=True)
+                print(
+                    f"ROW {n} {'VALID' if valid else 'INVALID'} "
+                    f"tier={tier} verdict={verdict} cascades={len(cascades)} "
+                    f"landing_lines={len(lines)} failed_checks={len(failed)} "
+                    f"secs={rows[-1][4]:.0f} error={error!r}", flush=True)
+
+                if run_failed:
+                    break
                 if args.clear == "ctrl-u":
                     rig.target.activate()
                     apps.press("u", args.app, ctrl=True)
                     time.sleep(0.3)  # settle: the shell redraws the emptied prompt; no ack
-    except tg.SetupFailed as e:
-        print(f"SETUP: {e}")
-        return 2
+
+    except (tg.SetupFailed, tg.CouldNotTell, u.Aborted,
+            OSError, subprocess.SubprocessError) as exc:
+        print(f"SETUP: {exc}")
+        run_failed = True
     finally:
-        restored = bool(u.pasteboard_restore(snapshot))
+        try:
+            restored = bool(u.pasteboard_restore(snapshot))
+        except Exception as exc:
+            print(f"SETUP: clipboard restore raised {exc!r}")
         print(f"clipboard restored: {restored}")
-    valid = [r for r in rows if r[1]]
+
+    valid_rows = [r for r in rows if r[1]]
     counts = {}
-    for r in valid:
-        counts[r[3]] = counts.get(r[3], 0) + 1
-    print(f"SUMMARY {len(rows)} takes, {len(valid)} valid; verdicts {counts or '{}'}")
+    for row in valid_rows:
+        counts[row[3]] = counts.get(row[3], 0) + 1
+    print(f"SUMMARY {len(rows)} takes, {len(valid_rows)} valid; verdicts {counts}")
     if args.run_dir:
         with open(os.path.join(args.run_dir, "paste-check-app.json"), "w") as fh:
-            json.dump({"app": args.app, "source": args.source, "seed": args.seed, "clipboard_restored": restored,
-                       "rows": [{"take": r[0], "valid": r[1], "tier": r[2], "verdict": r[3],
-                                 "seconds": round(r[4], 1)} for r in rows]}, fh, indent=2)
-    if not restored:
-        print("SETUP: the clipboard was not restored; check it by hand")
+            json.dump({
+                "app": args.app, "source": args.source, "seed": args.seed,
+                "clipboard_restored": restored, "setup_failed": run_failed,
+                "rows": [
+                    {"take": r[0], "valid": r[1], "tier": r[2],
+                     "verdict": r[3], "seconds": round(r[4], 1)}
+                    for r in rows]
+            }, fh, indent=2)
+    if run_failed or not restored:
         return 2
-    return 0 if len(valid) == len(rows) == args.takes else 1
-
+    return 0 if len(valid_rows) == len(rows) == args.takes else 1
 
 if __name__ == "__main__":
     sys.exit(main())

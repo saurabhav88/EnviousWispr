@@ -3432,12 +3432,15 @@ def record_tts(sentence="The quick brown fox jumps over the lazy dog", key=None,
     if until_terminal:
         print(f"Waiting up to {wait:.0f}s for this take's dictation_terminal line...")
         deadline = time.monotonic() + wait
+        terminal_seen = False
         while time.monotonic() < deadline:
-            with open(_APP_LOG_PATH, "rb") as fh:
-                fh.seek(log_size_before)
-                if b"dictation_terminal" in fh.read():
-                    break
+            # Rotation-proof: the take's own entries since its start (#4047, Codex review).
+            if _tg.TERMINAL.search(_take_lines(take_started)):
+                terminal_seen = True
+                break
             time.sleep(0.2)  # settle: poll interval between reads of the take's own signal
+        if not terminal_seen:
+            raise _tg.CouldNotTell(f"no dictation_terminal within {wait:g}s after key release")
     else:
         print(f"Waiting {wait:.0f}s for pipeline...")
         time.sleep(wait)
