@@ -196,10 +196,27 @@ struct MeetingOnboardingModelTests {
     #expect(await settleUntilObserved { again.model.asking })
     again.model.continueToDone()
     again.model.finish()
+    // The user turns the page switch on, then off again, while macOS still asks.
+    again.model.noteCalendarNamesChoice()
     again.settings.meetingUseCalendarForNames = false
     again.releaseCalendar()
     await calendar.value
     #expect(again.settings.meetingUseCalendarForNames == false)
+  }
+
+  @Test("a calendar grant that arrives after setup finished still turns on calendar names")
+  func lateCalendarGrantStillApplies() async throws {
+    let rig = try Rig()
+    rig.calendarAnswer = .granted
+    rig.holdCalendar = true
+    let calendar = Task { await rig.model.allowCalendar() }
+    #expect(await settleUntilObserved { rig.model.asking })
+    rig.model.continueToDone()
+    rig.model.finish()
+    #expect(rig.settings.meetingUseCalendarForNames == false)
+    rig.releaseCalendar()
+    await calendar.value
+    #expect(rig.settings.meetingUseCalendarForNames == true)
   }
 
   @Test("Not now on call sound turns the call sound off for the next meeting")

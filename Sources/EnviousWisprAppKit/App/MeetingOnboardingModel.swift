@@ -50,6 +50,12 @@ final class MeetingOnboardingModel {
   private(set) var calendar: PermissionState = .notAsked
   /// A permission request is waiting on macOS; its button is disabled meanwhile.
   private(set) var asking = false
+  /// Times the user set "Name meetings from my calendar" on the EnviousMeet page, so a late
+  /// calendar answer never overrides that choice.
+  @ObservationIgnored private var calendarNamesChoices = 0
+
+  /// The page's "Name meetings from my calendar" switch was set by the user.
+  func noteCalendarNamesChoice() { calendarNamesChoices += 1 }
 
   private let deps: Dependencies
   private var visitStart: Date?
@@ -152,12 +158,16 @@ final class MeetingOnboardingModel {
   func allowCalendar() async {
     guard !asking else { return }
     asking = true
+    // A late grant still turns calendar names on, unless the user set the switch meanwhile.
+    let choiceBefore = calendarNamesChoices
     let answer = await deps.requestCalendar()
     asking = false
     switch answer {
     case .granted:
       calendar = .granted
-      if !isComplete { deps.settings.meetingUseCalendarForNames = true }
+      if !isComplete || calendarNamesChoices == choiceBefore {
+        deps.settings.meetingUseCalendarForNames = true
+      }
     case .denied: calendar = .denied
     case .unavailable: calendar = .unavailable
     case .notAsked: calendar = .notAsked

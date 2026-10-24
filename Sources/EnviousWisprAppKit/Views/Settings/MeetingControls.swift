@@ -274,6 +274,8 @@ struct MeetingWriteSummaryRow: View {
 struct MeetingCalendarNamesRow: View {
   @Environment(SettingsManager.self) private var settings
   @Environment(PermissionsService.self) private var permissions
+  /// Optional: a screen without EnviousMeet's setup (a test render) still shows the switch.
+  @Environment(MeetingOnboardingModel.self) private var onboarding: MeetingOnboardingModel?
   @State private var asking = false
 
   var body: some View {
@@ -286,6 +288,7 @@ struct MeetingCalendarNamesRow: View {
         isOn: Binding(
           get: { settings.meetingUseCalendarForNames },
           set: { on in
+            onboarding?.noteCalendarNamesChoice()
             guard on else {
               settings.meetingUseCalendarForNames = false
               return
