@@ -366,9 +366,39 @@ struct TranscribeCppPreviewRecognizerTests {
     #expect(expired?.what == "a step that never finishes")
   }
 
-  @Test("the preview audio cap is ten minutes at 16 kHz")
-  func audioCapIsTenMinutes() {
-    #expect(TranscribeCppPreviewSession.maxRetainedSamples == 9_600_000)
+  /// #2117: before, the session kept every sample and stopped decoding at 10 minutes, so a
+  /// long meeting's live words froze. Through the shipped wiring (recognizer, runtime, rolling
+  /// core, owner), decoding must continue past the retained ceiling, which only holds if the
+  /// core's releases reach the owner: without them the owner hits the ceiling and stops.
+  @Test("decoding keeps going past the retained ceiling because the owner drops released audio")
+  func decodingContinuesPastTheRetainedCeiling() async throws {
+    let driver = FakeDriver()
+    driver.openAll()  // every decode passes straight through
+    let recognizer = Self.recognizer(driver, residency: .init())
+    let session = try await Self.step("the open", driver) {
+      try await recognizer.openSession(
+        vocabulary: .init(lookups: nil, contextualPhrases: [], dictionaryEnabled: true),
+        onText: { _ in })
+    }
+    let owner = try #require(session as? TranscribeCppPreviewSession)
+    // 1.2 s per feed: 125 feeds is 150 s, past the 120 s ceiling.
+    let feeds = TranscribeCppPreviewSession.maxRetainedSamples / Self.speech.count + 25
+    var maxRetained = 0
+    for n in 1...feeds {
+      try await Self.step("feed \(n)", driver) { await session.feed(Self.speech) }
+      // One decode per feed: each adds more than the loop's one second of new audio.
+      await Self.within("decode \(n)", driver) { await driver.until { driver.entered >= n } }
+      maxRetained = max(maxRetained, owner.retainedSampleCountForTests)
+    }
+    #expect(feeds * Self.speech.count > TranscribeCppPreviewSession.maxRetainedSamples)
+    #expect(driver.entered >= feeds, "decoding never stopped")
+    #expect(maxRetained < 40 * 16_000, "the owner kept a rolling window, not the recording")
+    try await Self.step("the end", driver) { await session.end() }
+  }
+
+  @Test("the retained preview audio ceiling is two minutes at 16 kHz (#2117)")
+  func retainedAudioCeilingIsTwoMinutes() {
+    #expect(TranscribeCppPreviewSession.maxRetainedSamples == 1_920_000)
   }
 
   final class AdmissionSwitch: @unchecked Sendable {

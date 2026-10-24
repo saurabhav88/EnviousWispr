@@ -1350,7 +1350,8 @@ struct TranscribeCppPreviewPriorityTests {
     let heart = try await executor.load(modelPath: "turbo", lane: .heart)
     let published = Published()
     let session = try await Self.runtime(executor).makeSession(
-      language: "en", hypothesisRetentionLimit: 2_000, onHypothesis: published.append)
+      language: "en", hypothesisRetentionLimit: 2_000, onHypothesis: published.append,
+          onAudioReleased: { _ in })
     await session.start { (Self.speech, Self.speech.count) }
     await native.waitForArrivals(1)
     #expect(native.log == ["enter small"], "control: the preview decode is inside native code")
@@ -1394,7 +1395,8 @@ struct TranscribeCppPreviewPriorityTests {
 
     let published = Published()
     let session = try await runtime.makeSession(
-      language: nil, hypothesisRetentionLimit: 2_000, onHypothesis: published.append)
+      language: nil, hypothesisRetentionLimit: 2_000, onHypothesis: published.append,
+          onAudioReleased: { _ in })
     await session.start { (Self.speech, Self.speech.count) }
     let rolling = try #require(session as? TranscribeCppRollingSession)
     // Three refused cycles: the executor answered `heartBusy` without queueing anything.
@@ -1427,7 +1429,8 @@ struct TranscribeCppPreviewPriorityTests {
     await native.observe(executor)
     let published = Published()
     let session = try await Self.runtime(executor).makeSession(
-      language: "en", hypothesisRetentionLimit: 2_000, onHypothesis: published.append)
+      language: "en", hypothesisRetentionLimit: 2_000, onHypothesis: published.append,
+          onAudioReleased: { _ in })
     await session.start { (audio, audio.count) }
     await native.waitForArrivals(1)
     native.release(Self.small)
@@ -1443,7 +1446,8 @@ struct TranscribeCppPreviewPriorityTests {
     await native.observe(executor)
     let published = Published()
     let session = try await Self.runtime(executor).makeSession(
-      language: "en", hypothesisRetentionLimit: 2_000, onHypothesis: published.append)
+      language: "en", hypothesisRetentionLimit: 2_000, onHypothesis: published.append,
+          onAudioReleased: { _ in })
     await session.start { (Self.speech, Self.speech.count) }
     await native.waitForArrivals(1)
     await Self.within("the preview's stop", native) { await session.cancel() }
@@ -1472,7 +1476,8 @@ struct TranscribeCppPreviewPriorityTests {
     #expect(residency.loadedCount == 1, "one load, however often and however concurrently asked")
     let published = Published()
     var session: (any WhisperIncrementalSession)? = try await runtime?.makeSession(
-      language: "en", hypothesisRetentionLimit: 2_000, onHypothesis: published.append)
+      language: "en", hypothesisRetentionLimit: 2_000, onHypothesis: published.append,
+          onAudioReleased: { _ in })
     await session?.start { (Self.speech, Self.speech.count) }
     await native.waitForArrivals(1)
     // The window plus 0.5 s of trailing silence, like the heart's decodes.
