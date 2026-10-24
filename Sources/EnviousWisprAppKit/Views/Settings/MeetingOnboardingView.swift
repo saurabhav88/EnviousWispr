@@ -272,7 +272,7 @@ private struct MeetingSetupPermissions: View {
           line: LocalizedStringResource(
             "To hear your voice.", comment: "EnviousMeet setup: why the microphone."),
           state: model.microphone, busy: model.asking,
-          allow: { Task { await model.allowMicrophone() } }, skip: nil, openSettings: nil)
+          allow: { Task { await model.allowMicrophone() } }, skip: nil, openSettings: { Task { await model.allowMicrophone() } })
         MeetingSetupPermissionRow(
           icon: "speaker.wave.2.fill",
           title: LocalizedStringResource(
@@ -374,6 +374,10 @@ private struct MeetingSetupPermissionRow: View {
     case .unavailable:
       return LocalizedStringResource(
         "Not available on this Mac.", comment: "EnviousMeet setup: a permission a profile blocks.")
+    case .askedAtFirstRecording:
+      return LocalizedStringResource(
+        "macOS asks the first time you record the call sound.",
+        comment: "EnviousMeet setup: this Mac cannot ask for the call sound ahead of a recording.")
     case .granted, .notAsked:
       return nil
     }
@@ -398,7 +402,7 @@ private struct MeetingSetupPermissionRow: View {
         .font(.system(size: 12, weight: .semibold))
         .fixedSize()
       }
-    case .unavailable:
+    case .unavailable, .askedAtFirstRecording:
       EmptyView()
     case .notAsked, .skipped:
       VStack(alignment: .trailing, spacing: 4) {

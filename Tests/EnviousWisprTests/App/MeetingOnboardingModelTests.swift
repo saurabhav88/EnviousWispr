@@ -18,7 +18,7 @@ struct MeetingOnboardingModelTests {
     let settings: SettingsManager
     var microphone: AVAuthorizationStatus = .authorized
     var callSoundStatus: SystemAudioPermission.Status = .unknown
-    var callSoundAnswer: SystemAudioPermission.Status = .unknown
+    var callSoundAnswer: SystemAudioPermission.Status? = .unknown
     var calendarStatus: CalendarAccess.Status = .notAsked
     var calendarAnswer: CalendarAccess.Status = .granted
     var emitted: [MeetingSetupTelemetry] = []
@@ -139,5 +139,50 @@ struct MeetingOnboardingModelTests {
     rig.model.refresh()
     #expect(rig.model.calendar == .granted)
     #expect(rig.model.callSound == .granted)
+  }
+
+  @Test("Not now on call sound turns the call sound off for the next meeting")
+  func skipCallSoundTurnsItOff() throws {
+    let rig = try Rig()
+    #expect(rig.settings.meetingCaptureCallSound)
+    rig.model.begin()
+    rig.model.skipCallSound()
+    #expect(rig.settings.meetingCaptureCallSound == false)
+  }
+
+  @Test("calendar access allowed later in System Settings still turns on calendar names")
+  func calendarGrantedLaterNamesMeetings() async throws {
+    let rig = try Rig()
+    rig.model.begin()
+    rig.calendarAnswer = .denied
+    await rig.model.allowCalendar()
+    #expect(rig.settings.meetingUseCalendarForNames == false)
+    rig.calendarStatus = .granted
+    rig.model.refresh()
+    rig.model.continueToDone()
+    rig.model.finish()
+    #expect(rig.settings.meetingUseCalendarForNames)
+  }
+
+  @Test("when nothing can be asked, setup never says asked and keeps the first-recording explainer")
+  func callSoundRequestUnavailable() async throws {
+    let rig = try Rig()
+    rig.callSoundAnswer = nil
+    rig.model.begin()
+    await rig.model.allowCallSound()
+    #expect(rig.model.callSound == .askedAtFirstRecording)
+    #expect(rig.settings.meetingCallSoundExplained == false)
+    #expect(rig.model.unresolved.count == 2)
+  }
+
+  @Test("the setup row reports the furthest screen, not the one shown when the user left")
+  func furthestScreenIsReported() throws {
+    let rig = try Rig()
+    rig.model.begin()
+    rig.model.getStarted()
+    rig.model.back()
+    #expect(rig.model.screen == .welcome)
+    rig.model.left()
+    #expect(rig.emitted.first?.screen == .legal)
   }
 }

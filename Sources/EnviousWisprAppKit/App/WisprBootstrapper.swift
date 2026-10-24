@@ -2456,7 +2456,9 @@ package final class WisprBootstrapper {
         microphoneStatus: { [permissions] in permissions.microphoneStatus },
         requestMicrophone: { [permissions] in await permissions.requestMicrophoneAccessOrOpenSettings() },
         callSoundStatus: { SystemAudioPermission.status() },
-        requestCallSound: { await SystemAudioPermission.request() },
+        requestCallSound: {
+          SystemAudioPermission.isAvailable ? await SystemAudioPermission.request() : nil
+        },
         calendarStatus: { CalendarAccess.status() },
         requestCalendar: { await CalendarAccess.request() },
         openCallSoundSettings: { [permissions] in permissions.openSystemAudioRecordingSettings() },

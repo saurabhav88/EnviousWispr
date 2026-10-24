@@ -24795,6 +24795,17 @@
         }
       }
     },
+    "macOS asks the first time you record the call sound." : {
+      "comment" : "EnviousMeet setup: this Mac cannot ask for the call sound ahead of a recording.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS fragt beim ersten Aufnehmen des Tons vom Mac nach deiner Erlaubnis."
+          }
+        }
+      }
+    },
     "macOS asks the first time you record the call sound. If you said no, allow it in System Settings." : {
       "comment" : "EnviousMeet page: how the permission to record the Mac's sound works.",
       "localizations" : {

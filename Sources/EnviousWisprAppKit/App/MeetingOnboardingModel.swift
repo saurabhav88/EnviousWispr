@@ -24,13 +24,16 @@ final class MeetingOnboardingModel {
     case skipped
     case notAsked
     case unavailable
+    /// This Mac gives no way to ask ahead; macOS asks the first time a recording needs it.
+    case askedAtFirstRecording
   }
 
   struct Dependencies {
     var microphoneStatus: @MainActor () -> AVAuthorizationStatus
     var requestMicrophone: @MainActor () async -> Void
     var callSoundStatus: @MainActor () -> SystemAudioPermission.Status
-    var requestCallSound: @MainActor () async -> SystemAudioPermission.Status
+    /// Nil when no request could be made (the TCC functions are missing on this macOS).
+    var requestCallSound: @MainActor () async -> SystemAudioPermission.Status?
     var calendarStatus: @MainActor () -> CalendarAccess.Status
     var requestCalendar: @MainActor () async -> CalendarAccess.Status
     var openCallSoundSettings: @MainActor () -> Void
@@ -52,6 +55,8 @@ final class MeetingOnboardingModel {
   private var visitStart: Date?
   /// One `meeting.setup` row per visit (R8): set when the visit reaches a terminal.
   private var visitReported = false
+  /// The furthest screen this visit reached, for `meeting.setup` (R8).
+  private var furthest: Screen = .welcome
 
   init(dependencies: Dependencies) {
     deps = dependencies
@@ -64,6 +69,7 @@ final class MeetingOnboardingModel {
     if visitStart == nil || visitReported {
       visitStart = deps.now()
       visitReported = false
+      furthest = screen
     }
     refresh()
   }
@@ -86,7 +92,15 @@ final class MeetingOnboardingModel {
     }
   }
 
-  func getStarted() { screen = .legal }
+  func getStarted() { move(to: .legal) }
+
+  private func move(to next: Screen) {
+    screen = next
+    let order = Screen.allCases
+    if let a = order.firstIndex(of: next), let b = order.firstIndex(of: furthest), a > b {
+      furthest = next
+    }
+  }
 
   func back() {
     switch screen {
@@ -99,7 +113,7 @@ final class MeetingOnboardingModel {
   /// Accept moves on only with the consent box ticked (O4).
   func accept() {
     guard consented else { return }
-    screen = .permissions
+    move(to: .permissions)
   }
 
   func allowMicrophone() async {
@@ -115,11 +129,18 @@ final class MeetingOnboardingModel {
     asking = true
     let answer = await deps.requestCallSound()
     asking = false
+    guard let answer else {
+      // Nothing was asked: the first recording with the call sound explains and asks.
+      callSound = .askedAtFirstRecording
+      deps.settings.meetingCaptureCallSound = true
+      return
+    }
     switch answer {
     case .granted: callSound = .granted
     case .denied: callSound = .denied
     case .unknown: callSound = .requested
     }
+    deps.settings.meetingCaptureCallSound = true
     // macOS was asked here, so the first call-sound recording does not explain it again.
     deps.settings.meetingCallSoundExplained = true
   }
@@ -139,14 +160,19 @@ final class MeetingOnboardingModel {
     }
   }
 
-  func skipCallSound() { if callSound != .granted { callSound = .skipped } }
+  /// Not now: the call sound is not recorded until the user turns it on in settings.
+  func skipCallSound() {
+    guard callSound != .granted else { return }
+    callSound = .skipped
+    deps.settings.meetingCaptureCallSound = false
+  }
   func skipCalendar() { if calendar != .granted { calendar = .skipped } }
 
   func openCallSoundSettings() { deps.openCallSoundSettings() }
   func openCalendarSettings() { deps.openCalendarSettings() }
 
   /// Continue on the permissions screen: always possible (O5).
-  func continueToDone() { screen = .done }
+  func continueToDone() { move(to: .done) }
 
   /// The permissions that are not allowed, for the done screen (R7).
   var unresolved: [String] {
@@ -167,6 +193,9 @@ final class MeetingOnboardingModel {
 
   /// "Open EnviousMeet": the lock opens and the page shows the settings.
   func finish() {
+    // Calendar names follow the calendar answer at the end, so access allowed later in System
+    // Settings still names meetings.
+    if calendar == .granted { deps.settings.meetingUseCalendarForNames = true }
     report(outcome: .finished)
     deps.settings.meetingOnboardingComplete = true
     screen = .welcome
@@ -185,7 +214,7 @@ final class MeetingOnboardingModel {
     deps.emit(
       MeetingSetupTelemetry(
         outcome: outcome,
-        screen: MeetingSetupTelemetry.Screen(rawValue: screen.rawValue) ?? .welcome,
+        screen: MeetingSetupTelemetry.Screen(rawValue: furthest.rawValue) ?? .welcome,
         seconds: max(0, deps.now().timeIntervalSince(visitStart)),
         microphone: Self.telemetryAnswer(microphone), callSound: Self.telemetryAnswer(callSound),
         calendar: Self.telemetryAnswer(calendar)))
@@ -209,7 +238,7 @@ final class MeetingOnboardingModel {
     case .requested: return .requestedUnknown
     case .denied: return .denied
     case .skipped: return .skipped
-    case .notAsked, .unavailable: return .unknown
+    case .notAsked, .unavailable, .askedAtFirstRecording: return .unknown
     }
   }
 }
