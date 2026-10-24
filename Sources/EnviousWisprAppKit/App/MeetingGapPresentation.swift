@@ -62,7 +62,7 @@ enum MeetingGapPresentation {
     turns?.map { turn in
       guard case .plain(let text) = turn.content else { return turn }
       return TranscriptDocumentPresenter.RenderedTurn(
-        speakerId: turn.speakerId, speakerName: turn.speakerName, timeLabel: turn.timeLabel,
+        turnID: turn.turnID, speakerId: turn.speakerId, speakerName: turn.speakerName, timeLabel: turn.timeLabel,
         content: .plain(localized(text, forms: forms)), isUncleaned: turn.isUncleaned,
         startMs: turn.startMs)
     }

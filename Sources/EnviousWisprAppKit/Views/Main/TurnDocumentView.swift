@@ -44,7 +44,9 @@ struct TurnDocumentView<Fallback: View>: View {
   var body: some View {
     if let turns {
       LazyVStack(alignment: .leading, spacing: 16) {
-        ForEach(Array(turns.enumerated()), id: \.offset) { _, turn in
+        // #4001 H11: surviving unique-ID turns keep their keys when other turns
+        // are hidden or shown. Reused IDs can retain state across replacements.
+        ForEach(TurnRowKey.keyed(turns), id: \.key) { _, turn in
           TurnRowView(
             turn: turn, onRename: onRename, onRenameCancelled: onRenameCancelled,
             onPlayFrom: onPlayFrom)
@@ -53,6 +55,29 @@ struct TurnDocumentView<Fallback: View>: View {
       .onAppear(perform: onTurnsDisplayed)
     } else {
       fallback()
+    }
+  }
+}
+
+/// A turn row's identity in `TurnDocumentView` (#4001 H11): the turn's id and its occurrence
+/// among turns with the same id in one document.
+struct TurnRowKey: Hashable {
+  let turnID: String
+  let occurrence: Int
+
+  /// Each turn's id and its zero-based occurrence among matching ids.
+  /// Valid producer output has unique IDs; duplicate data still receives
+  /// distinct keys. Occurrences do not establish semantic identity across edits.
+  /// Keeping the count separate makes ["x", "x", "x#1"] collision-free.
+  /// Plain value code with no main-actor isolation.
+  static func keyed(_ turns: [TranscriptDocumentPresenter.RenderedTurn])
+    -> [(key: TurnRowKey, turn: TranscriptDocumentPresenter.RenderedTurn)]
+  {
+    var seen: [String: Int] = [:]
+    return turns.map { turn in
+      let occurrence = seen[turn.turnID, default: 0]
+      seen[turn.turnID] = occurrence + 1
+      return (TurnRowKey(turnID: turn.turnID, occurrence: occurrence), turn)
     }
   }
 }
@@ -94,10 +119,9 @@ private struct TurnRowView: View {
   @State private var isRenaming = false
   @State private var draftName = ""
   @State private var renameFailure: RenameFailure?
-  /// Captured when the popover opens, never read live off `turn` at commit time: `ForEach`
-  /// keys rows by POSITION (`\.offset`), so the same row identity can be reused for a
-  /// different turn while a popover is still open (found by chunk review). Committing must
-  /// target the speaker the user actually opened the popover on.
+  /// Captured when the popover opens, never read live off `turn` at commit
+  /// time: a retry can reuse a persisted turn ID with changed content or
+  /// speaker assignment. Commit targets the speaker the user opened.
   @State private var renamingSpeakerId: String?
 
   var body: some View {

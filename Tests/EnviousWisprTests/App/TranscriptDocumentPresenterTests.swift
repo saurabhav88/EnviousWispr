@@ -43,13 +43,16 @@ struct TranscriptDocumentPresenterTests {
     let originalMode = TranscriptDocumentPresenter.render(
       turns: turns, rawText: Self.rawText, speakerNames: [:], mode: .original, timesOn: false,
       documentFinished: true, diffLookup: Self.noDiff)
-    #expect(originalMode?.map(\.isUncleaned) == [false, true], "the disclosure does not depend on the mode")
+    #expect(
+      originalMode?.map(\.isUncleaned) == [false, true],
+      "the disclosure does not depend on the mode")
   }
 
   @Test("nil turns renders nil, never an empty list")
   func nilTurnsRendersNil() {
     let result = TranscriptDocumentPresenter.render(
-      turns: nil, rawText: Self.rawText, speakerNames: [:], mode: .cleaned, timesOn: true, documentFinished: true,
+      turns: nil, rawText: Self.rawText, speakerNames: [:], mode: .cleaned, timesOn: true,
+      documentFinished: true,
       diffLookup: Self.noDiff)
     #expect(result == nil)
   }
@@ -57,7 +60,8 @@ struct TranscriptDocumentPresenterTests {
   @Test("an empty turns array renders nil too — the same fallback as nil, never an empty list")
   func emptyTurnsRendersNilToo() {
     let result = TranscriptDocumentPresenter.render(
-      turns: [], rawText: Self.rawText, speakerNames: [:], mode: .cleaned, timesOn: true, documentFinished: true,
+      turns: [], rawText: Self.rawText, speakerNames: [:], mode: .cleaned, timesOn: true,
+      documentFinished: true,
       diffLookup: Self.noDiff)
     #expect(result == nil)
   }
@@ -82,7 +86,8 @@ struct TranscriptDocumentPresenterTests {
   func originalModeAlwaysShowsRawSlice() {
     let turns = [Self.turn("0-5", "A", 0..<5, processedText: "Hello!")]
     let result = TranscriptDocumentPresenter.render(
-      turns: turns, rawText: Self.rawText, speakerNames: [:], mode: .original, timesOn: false, documentFinished: true,
+      turns: turns, rawText: Self.rawText, speakerNames: [:], mode: .original, timesOn: false,
+      documentFinished: true,
       diffLookup: Self.noDiff)
     #expect(result?[0].content == .plain("hello"))
   }
@@ -92,7 +97,8 @@ struct TranscriptDocumentPresenterTests {
     let turns = [Self.turn("0-5", "A", 0..<5, processedText: "Hi!")]
     let suppliedDiff = WordDiff.compare(original: "hello", cleaned: "Hi!", language: nil)
     let result = TranscriptDocumentPresenter.render(
-      turns: turns, rawText: Self.rawText, speakerNames: [:], mode: .markedUp, timesOn: false, documentFinished: true,
+      turns: turns, rawText: Self.rawText, speakerNames: [:], mode: .markedUp, timesOn: false,
+      documentFinished: true,
       diffLookup: { _ in suppliedDiff })
     guard case .markedUp(let diff) = result?[0].content else {
       Issue.record("expected a .markedUp content case")
@@ -105,7 +111,8 @@ struct TranscriptDocumentPresenterTests {
   func markedUpModeWithNoDiffFallsBackToCleanedText() {
     let turns = [Self.turn("0-5", "A", 0..<5, processedText: "Hi!")]
     let result = TranscriptDocumentPresenter.render(
-      turns: turns, rawText: Self.rawText, speakerNames: [:], mode: .markedUp, timesOn: false, documentFinished: true,
+      turns: turns, rawText: Self.rawText, speakerNames: [:], mode: .markedUp, timesOn: false,
+      documentFinished: true,
       diffLookup: Self.noDiff)
     #expect(result?[0].content == .plain("Hi!"))
   }
@@ -123,7 +130,8 @@ struct TranscriptDocumentPresenterTests {
   func unnamedRealSpeakerRendersNilName() {
     let turns = [Self.turn("0-5", "A", 0..<5)]
     let result = TranscriptDocumentPresenter.render(
-      turns: turns, rawText: Self.rawText, speakerNames: [:], mode: .cleaned, timesOn: false, documentFinished: true,
+      turns: turns, rawText: Self.rawText, speakerNames: [:], mode: .cleaned, timesOn: false,
+      documentFinished: true,
       diffLookup: Self.noDiff)
     #expect(result?[0].speakerName == nil)
   }
@@ -132,10 +140,12 @@ struct TranscriptDocumentPresenterTests {
   func timesToggleControlsTheLabel() {
     let turns = [Self.turn("0-5", "A", 0..<5, startMs: 65_000)]
     let on = TranscriptDocumentPresenter.render(
-      turns: turns, rawText: Self.rawText, speakerNames: [:], mode: .cleaned, timesOn: true, documentFinished: true,
+      turns: turns, rawText: Self.rawText, speakerNames: [:], mode: .cleaned, timesOn: true,
+      documentFinished: true,
       diffLookup: Self.noDiff)
     let off = TranscriptDocumentPresenter.render(
-      turns: turns, rawText: Self.rawText, speakerNames: [:], mode: .cleaned, timesOn: false, documentFinished: true,
+      turns: turns, rawText: Self.rawText, speakerNames: [:], mode: .cleaned, timesOn: false,
+      documentFinished: true,
       diffLookup: Self.noDiff)
     #expect(on?[0].timeLabel == "1:05")
     #expect(off?[0].timeLabel == nil)
@@ -145,7 +155,8 @@ struct TranscriptDocumentPresenterTests {
   func untimedTurnNeverGetsALabel() {
     let turns = [Self.turn("0-5", "A", 0..<5, startMs: nil)]
     let result = TranscriptDocumentPresenter.render(
-      turns: turns, rawText: Self.rawText, speakerNames: [:], mode: .cleaned, timesOn: true, documentFinished: true,
+      turns: turns, rawText: Self.rawText, speakerNames: [:], mode: .cleaned, timesOn: true,
+      documentFinished: true,
       diffLookup: Self.noDiff)
     #expect(result?[0].timeLabel == nil)
   }
@@ -218,8 +229,59 @@ struct TranscriptDocumentPresenterTests {
   func rangeMismatchRendersEmptySliceRatherThanCrashing() {
     let turns = [Self.turn("100-200", "A", 100..<200)]
     let result = TranscriptDocumentPresenter.render(
-      turns: turns, rawText: "short", speakerNames: [:], mode: .original, timesOn: false, documentFinished: true,
+      turns: turns, rawText: "short", speakerNames: [:], mode: .original, timesOn: false,
+      documentFinished: true,
       diffLookup: Self.noDiff)
     #expect(result?[0].content == .plain(""))
+  }
+
+  // MARK: - Turn identity (#4001 H11)
+
+  @Test("each rendered turn carries its source turn's id, in order, in every mode")
+  func renderCarriesTurnIDs() throws {
+    let turns = [Self.turn("0-5", "sys:S1", 0..<5), Self.turn("6-11", "mic:you", 6..<11)]
+    for mode in [TranscriptDocumentPresenter.ViewMode.cleaned, .original, .markedUp] {
+      let rendered = try #require(
+        TranscriptDocumentPresenter.render(
+          turns: turns, rawText: Self.rawText, speakerNames: [:], mode: mode, timesOn: true,
+          documentFinished: true, diffLookup: Self.noDiff))
+      #expect(rendered.map(\.turnID) == ["0-5", "6-11"], "\(mode)")
+    }
+  }
+
+  static func rendered(_ id: String) -> TranscriptDocumentPresenter.RenderedTurn {
+    TranscriptDocumentPresenter.RenderedTurn(
+      turnID: id, speakerId: "sys:S1", speakerName: "Maria", timeLabel: nil,
+      content: .plain("Hi"), isUncleaned: false)
+  }
+
+  @Test("row keys are the turn id and its occurrence, unique and in order")
+  func rowKeys() {
+    let keys = TurnRowKey.keyed(["x", "x", "x#1", "", ""].map(Self.rendered))
+      .map(\.key)
+    #expect(
+      keys == [
+        TurnRowKey(turnID: "x", occurrence: 0), TurnRowKey(turnID: "x", occurrence: 1),
+        TurnRowKey(turnID: "x#1", occurrence: 0), TurnRowKey(turnID: "", occurrence: 0),
+        TurnRowKey(turnID: "", occurrence: 1),
+      ])
+    #expect(Set(keys).count == keys.count, "no two rows share a key")
+  }
+
+  @Test("a turn keeps its row key when earlier turns are hidden or the order changes")
+  func rowKeysSurviveFiltering() {
+    let all = ["a", "b", "c", "d"].map(Self.rendered)
+    let full = Dictionary(
+      uniqueKeysWithValues: TurnRowKey.keyed(all).map { ($0.turn.turnID, $0.key) })
+    let hidden = TurnRowKey.keyed([all[1], all[3]])
+    for entry in hidden { #expect(entry.key == full[entry.turn.turnID]) }
+    let reordered = TurnRowKey.keyed(all.reversed())
+    for entry in reordered { #expect(entry.key == full[entry.turn.turnID]) }
+  }
+
+  @Test("rendered turns that differ only by source id are different turns")
+  func renderedTurnEquality() {
+    #expect(Self.rendered("a") == Self.rendered("a"))
+    #expect(Self.rendered("a") != Self.rendered("b"))
   }
 }
