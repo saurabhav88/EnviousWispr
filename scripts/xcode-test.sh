@@ -20,13 +20,17 @@ set -euo pipefail
 #                                         # one Debug run for both suites
 #   scripts/xcode-test.sh --configuration Release  # release-cut validation only
 #   scripts/xcode-test.sh --release       # legacy: Debug AND Release
+#   scripts/xcode-test.sh --serial        # previous full Debug execution order
+#   scripts/xcode-test.sh --grouped       # explicit isolated local Debug groups
 #   scripts/xcode-test.sh --filter Target/Suite --result-bundle-path build/foo.xcresult
 #                                         # Debug receipt at an explicit path
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 if [ "${1:-}" = "--self-test" ]; then
   shift
-  exec python3 "$PROJECT_ROOT/scripts/xcode-test-self-test.py" "$@"
+  python3 "$PROJECT_ROOT/scripts/xcode-test-self-test.py" "$@"
+  python3 "$PROJECT_ROOT/scripts/local-test-groups-test.py"
+  exec python3 "$PROJECT_ROOT/scripts/local-ci-queue-test.py"
 fi
 # #3524: keep the tracked pre-push hook switched on (scripts/githooks/install.sh owns the
 # policy). Silent when it is on; never stops this run.
@@ -83,9 +87,24 @@ ew_validation_lock() {
 trap 'ew_validation_cleanup; ew_seed_release_all' EXIT
 # bash exits on a signal WITHOUT running the EXIT trap, which would strand a
 # seed lock. Converting each signal into a normal exit makes EXIT run.
-trap 'exit 129' HUP
-trap 'exit 130' INT
-trap 'exit 143' TERM
+ew_validation_interrupt() {
+  local code="$1" job
+  trap '' HUP INT TERM
+  # Only this shell's owned async jobs. Query the job table rather than a PID
+  # variable: a signal can arrive after spawn but before `$!` is assigned.
+  # Wait for supervisor cleanup BEFORE EXIT releases the validation lock.
+  for job in $(jobs -pr); do
+    # Async shell jobs can ignore INT before Python installs its handlers.
+    # TERM is safe both before startup and after cleanup handlers are ready;
+    # retain the original cancellation status for this top-level caller.
+    kill -TERM "$job" 2>/dev/null || true
+  done
+  wait || true
+  exit "$code"
+}
+trap 'ew_validation_interrupt 129 HUP' HUP
+trap 'ew_validation_interrupt 130 INT' INT
+trap 'ew_validation_interrupt 143 TERM' TERM
 DERIVED_DATA="${DERIVED_DATA_PATH:-$PROJECT_ROOT/.derivedData/Test}"
 PROJECT="EnviousWispr.xcodeproj"
 DEBUG_SCHEME="EnviousWispr"
@@ -97,6 +116,11 @@ CONFIGURATION_SELECTED=0
 RESULT_BUNDLE_PATH=""
 # Default keeps the existing per-invocation log directory and lane filenames.
 LOG_DIR=""
+# The candidate default is validated in this worktree before it reaches main.
+# Groups overlap read-only source checks with the remaining serial tests;
+# filtered, Release and CI invocations retain the original execution path.
+TEST_EXECUTION="grouped"
+EXECUTION_SELECTED=0
 
 # A value that looks like an option is a missing value: `--filter A --filter
 # --release` must not select a suite named `--release` and drop the lane.
@@ -112,6 +136,13 @@ while [ "$#" -gt 0 ]; do
       option_value "$1" "${2:-}"
       TEST_ARGS+=("-only-testing:$2")
       shift 2 ;;
+    --serial|--grouped)
+      if [ "$EXECUTION_SELECTED" = 1 ]; then
+        echo "ERROR: choose one execution option (--serial or --grouped)" >&2; exit 2
+      fi
+      EXECUTION_SELECTED=1
+      TEST_EXECUTION="${1#--}"
+      shift ;;
     --configuration|--release)
       if [ "$CONFIGURATION_SELECTED" = 1 ]; then
         echo "ERROR: choose one configuration option" >&2; exit 2
@@ -129,8 +160,8 @@ while [ "$#" -gt 0 ]; do
         *) echo "ERROR: configuration must be Debug, Release or both" >&2; exit 2 ;;
       esac ;;
     --help|-h)
-      echo "usage: scripts/xcode-test.sh [--filter TARGET/SUITE ...] [--configuration Debug|Release|both | --release] [--log-dir DIR] [--result-bundle-path PATH]"
-      echo "Default: one Debug run. Batch related suites with repeated --filter. Release is for release-cut validation; --release retains legacy both-config behavior."
+      echo "usage: scripts/xcode-test.sh [--filter TARGET/SUITE ...] [--configuration Debug|Release|both | --release] [--serial | --grouped] [--log-dir DIR] [--result-bundle-path PATH]"
+      echo "Default: one Debug run with isolated source and serial test groups. --serial restores the previous order. Batch related suites with repeated --filter. Release is for release-cut validation; --release retains legacy both-config behavior."
       exit 0 ;;
     --result-bundle-path) option_value "$1" "${2:-}"; RESULT_BUNDLE_PATH="$2"; shift 2 ;;
     # #2165: a per-invocation log directory. `run_lane` SUMS every
@@ -140,13 +171,24 @@ while [ "$#" -gt 0 ]; do
     # one. A caller running many lanes (a mutation battery, a matrix) needs its
     # own path per row or its counts are not its own.
     --log-dir) option_value "$1" "${2:-}"; LOG_DIR="$2"; shift 2 ;;
-    *) echo "usage: scripts/xcode-test.sh [--filter TARGET/SUITE ...] [--configuration Debug|Release|both | --release] [--log-dir DIR] [--result-bundle-path PATH]" >&2; exit 2 ;;
+    *) echo "usage: scripts/xcode-test.sh [--filter TARGET/SUITE ...] [--configuration Debug|Release|both | --release] [--serial | --grouped] [--log-dir DIR] [--result-bundle-path PATH]" >&2; exit 2 ;;
   esac
 done
 
 if [ -n "$RESULT_BUNDLE_PATH" ] && [ "$CONFIGURATION" = "both" ]; then
   echo "ERROR: --result-bundle-path requires a single configuration" >&2
   exit 2
+fi
+
+if [ "$TEST_EXECUTION" = "grouped" ] && {
+  [ "$CONFIGURATION" != "Debug" ] || [ "${#TEST_ARGS[@]}" -gt 0 ] ||
+  [ -n "${CI:-}" ] || [ -n "${EW_LANE_REQUIRED_BUNDLES+set}" ];
+}; then
+  if [ "$EXECUTION_SELECTED" = 1 ]; then
+    echo "ERROR: --grouped requires unfiltered local Debug without a required-bundle override" >&2
+    exit 2
+  fi
+  TEST_EXECUTION="serial"
 fi
 
 cd "$PROJECT_ROOT"
@@ -187,6 +229,17 @@ if [ "${#TEST_ARGS[@]}" -eq 0 ] && [ "$CONFIGURATION" != "Release" ]; then
     fi
   fi
 fi
+# #4056: every worktree shares one local CI slot. A short Python child acquires
+# flock on Bash's inherited descriptor; this shell keeps it open through setup,
+# tests and eval compilation. No stale ownership record or reclaim is needed.
+# Acquiring is an owned async job so the existing interrupt handler can cancel a
+# queued runner's PID before EXIT releases its checkout lock. Never unlink the
+# shared file or explicitly unlock from the child.
+CI_QUEUE_PATH="$(python3 "$PROJECT_ROOT/scripts/local-ci-queue.py" prepare)"
+exec 9<>"$CI_QUEUE_PATH"
+python3 "$PROJECT_ROOT/scripts/local-ci-queue.py" acquire 9 &
+CI_QUEUE_PID=$!
+if wait "$CI_QUEUE_PID"; then :; else exit "$?"; fi
 PHASE_START=$SECONDS
 # Owner: scripts/lib/log-dir.sh, which has its own two-way suite. Creating the
 # directory is deliberately the caller's job — a resolver with a side effect
@@ -309,6 +362,24 @@ run_lane() {  # $1=scheme $2=config $3=logfile $4=bundle $5...=extra build setti
     *) echo "ERROR: result bundle path must end in .xcresult: $bundle" >&2; exit 2 ;;
   esac
   set -o pipefail
+  if [ "$TEST_EXECUTION" = "grouped" ]; then
+    local build_start=$SECONDS supervisor rc
+    xcodebuild build-for-testing \
+      -project "$PROJECT" -scheme "$scheme" -configuration "$config" \
+      -derivedDataPath "$DERIVED_DATA" -destination "$DEST" \
+      -onlyUsePackageVersionsFromResolvedFile \
+      ARCHS=arm64 VALID_ARCHS=arm64 ONLY_ACTIVE_ARCH=YES "$@" \
+      2>&1 | tee "$LOG_DIR/xcode-build-debug.log"
+    echo "==> phase debug build: $((SECONDS - build_start))s"
+    # Background only inside this supervised runner so the shell can handle a
+    # signal to its OWN PID while waiting, forward it, and wait for cleanup.
+    python3 "$PROJECT_ROOT/scripts/local-test-groups.py" \
+      --products "$DERIVED_DATA/Build/Products" --scheme "$scheme" \
+      --log "$log" --result-bundle "$bundle" &
+    supervisor=$!
+    if wait "$supervisor"; then rc=0; else rc=$?; fi
+    [ "$rc" -eq 0 ] || return "$rc"
+  else
   # Xcode forwards TEST_RUNNER_* variables to the test process after removing
   # the prefix. This keeps AppLogger tests away from the running dev app's
   # ~/Library/Logs/EnviousWispr/app.log (#2279).
@@ -334,6 +405,7 @@ run_lane() {  # $1=scheme $2=config $3=logfile $4=bundle $5...=extra build setti
     "$@" \
     -resultBundlePath "$bundle" \
     "${TEST_ARGS[@]}" | tee "$log"
+  fi
 
   # The expected count is a FLAG, never a gate: it warns on a mismatch and
   # cannot decide the lane either way. Unset by default, because a count is a
