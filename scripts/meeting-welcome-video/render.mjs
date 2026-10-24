@@ -1,5 +1,5 @@
 // Renders the EnviousMeet welcome scene (index.html) frame by frame into the app's resources
-// (#4017 O7): one muted, looping MP4 per language, 940 x 352 pixels (the 470 x 176 point slot
+// (#4017 O7): one muted, looping MP4 per language, 828 x 352 pixels (the 414 x 176 point slot
 // at 2x), 30 fps.
 //
 //   npm install --prefix <tools dir> puppeteer-core@23.11.1
@@ -27,7 +27,7 @@ const stills = stillsAt >= 0 ? args[stillsAt + 1].split(",").map(Number) : null;
 const browser = await puppeteer.launch({
   executablePath: CHROME,
   headless: true,
-  defaultViewport: { width: 470, height: 176, deviceScaleFactor: 2 },
+  defaultViewport: { width: 414, height: 176, deviceScaleFactor: 2 },
   args: ["--hide-scrollbars", "--force-color-profile=srgb", "--allow-file-access-from-files"],
 });
 const page = await browser.newPage();

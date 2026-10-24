@@ -42,13 +42,14 @@ private struct MeetingWelcomeVideo: NSViewRepresentable {
   final class PlayerView: NSView {
     let player = AVQueuePlayer()
     private var looper: AVPlayerLooper?
+    private let playerLayer: AVPlayerLayer
 
     init(url: URL) {
+      playerLayer = AVPlayerLayer(player: player)
       super.init(frame: .zero)
       wantsLayer = true
-      let layer = AVPlayerLayer(player: player)
-      layer.videoGravity = .resizeAspectFill
-      self.layer = layer
+      playerLayer.videoGravity = .resizeAspectFill
+      layer = playerLayer
       player.isMuted = true
       player.preventsDisplaySleepDuringVideoPlayback = false
       looper = AVPlayerLooper(player: player, templateItem: AVPlayerItem(url: url))
@@ -57,6 +58,15 @@ private struct MeetingWelcomeVideo: NSViewRepresentable {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { nil }
+
+    /// Stops for good: no more looping, no queued items, no player on the layer.
+    func stop() {
+      player.pause()
+      looper?.disableLooping()
+      looper = nil
+      player.removeAllItems()
+      playerLayer.player = nil
+    }
   }
 
   func makeNSView(context: Context) -> PlayerView { PlayerView(url: url) }
@@ -64,7 +74,6 @@ private struct MeetingWelcomeVideo: NSViewRepresentable {
   func updateNSView(_ view: PlayerView, context: Context) {}
 
   static func dismantleNSView(_ view: PlayerView, coordinator: ()) {
-    view.player.pause()
-    view.player.removeAllItems()
+    view.stop()
   }
 }
