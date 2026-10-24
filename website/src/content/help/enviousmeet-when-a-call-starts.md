@@ -38,7 +38,7 @@ Under **Ask to record calls in**, switch off any app you never want to be asked 
 ### What the call panel's buttons do
 
 - **Record this call?** with a line such as "Zoom started using the microphone." Click **Yes** to record or **No** to skip this call. If you do neither, the panel closes after 15 seconds; that is not counted as a No, and you are not asked again about the same call.
-- **New call in Zoom. Start a new recording?** (with the app's name) A new call started while a meeting records. **Yes** stops the current recording and starts one for the new call.
+- **New call in Zoom. Start a new recording?** (with the app's name) A new call started while a meeting records. **Yes** stops the current recording and starts one for the new call. If something would keep the new recording from starting, such as a permission, the current recording keeps going and the panel says so. If the new call cannot be confirmed after the stop, the panel says **Recording stopped** with "The new call could not be confirmed." and offers **Start a new recording**.
 - **Meeting ending in 10 seconds** counts down when the call you were recording has ended. Click **Keep recording** to keep going; otherwise the recording stops when the count reaches zero.
 - **Recording stopped** means the recording ended with the call. **Start a new recording** stays on the panel for one minute and starts a new, separate meeting. **Close** closes the panel.
 - **EnviousMeet needs your attention before it can record** means a permission or the call-sound step must be done first. Click **Open settings**, or **Close**.
@@ -46,28 +46,28 @@ Under **Ask to record calls in**, switch off any app you never want to be asked 
 
 ### When a recording stops by itself
 
-Only a recording that EnviousMeet started for a call stops by itself. It stops after the countdown, once the call app has stopped using the microphone. A short drop, a reconnect, or a moment the app cannot check does not stop it. A recording you started yourself from the menu bar or from History never stops by itself.
+Only a recording that EnviousMeet started for a call stops by itself. It stops after the countdown, once the call app has stopped using the microphone. A short drop, a reconnect, or a moment the app cannot check does not stop it. The end of a call never stops a recording you started yourself from the menu bar or from History, or one you chose to keep with **Keep recording**. Any recording can still stop if the disk fills up or the recording fails.
 
 For 10 seconds after your Mac wakes from sleep, EnviousMeet does not start or end any call.
 
 ### Why do I see a tip after No?
 
-A No lasts for that call: you are not asked again until it ends. After your first No ever, a tip tells you that you can turn off call prompts for some apps. After your third No for one app, a last reminder names that app. Both tips have **Open settings** and **Close**, and close by themselves after 15 seconds. EnviousMeet never turns an app off by itself.
+A No lasts for that call: you are not asked again until it ends. After your first No ever, a tip tells you that you can turn off call prompts for some apps. After your third No for one app, a last reminder names it. All meetings in a browser share one count, and the reminder names **Meetings in a browser**. Both tips have **Open settings** and **Close**, and close by themselves after 15 seconds. EnviousMeet never turns an app off by itself.
 
 ### What EnviousMeet looks at
 
-To tell a call from other microphone use, EnviousMeet checks which app holds the microphone, the title of its window, and, in a browser, the address of the tab you are on. Window titles and page addresses are checked on your Mac and never stored or sent. EnviousMeet keeps which app a call was in, to name the meeting, and its anonymous usage counts include that app's name and your answer. Your calendar is never used to notice calls; it is only used to name meetings.
+To tell a call from other microphone use, EnviousMeet checks which app holds the microphone, the title of its window, and, in a browser, the address of the tab you are on. Window titles and page addresses are checked on your Mac and never stored or sent. EnviousMeet keeps which app a call was in, to name the meeting, and its anonymous usage data includes that app's name and your answer. Your calendar is never used to notice calls; it is only used to name meetings.
 
 ### It did not ask to record
 
 - **The app or browser is switched off** under **Ask to record calls in**, or **When a call starts** is **Off**.
 - **Accessibility is not allowed.** Without it, EnviousMeet cannot tell a call from other microphone use, so it never asks.
 - **The meeting was in a background tab.** A browser does not say which tab uses the microphone, so the meeting page must be the tab you are on when the call starts.
-- **You were dictating.** The question waits until the dictation ends.
+- **You were dictating.** **Record this call?** waits until the dictation ends. A question about switching from a meeting that is already recording can still appear.
 - **You said No earlier in the same call.**
 
 You can always start the recording yourself from the menu bar with **Start Meeting Recording**.
 
 ### It stopped while I was still in the call
 
-If the call app lets go of the microphone while you are on mute, it can look like the call ended. When **Meeting ending in 10 seconds** appears, click **Keep recording**. The recording then keeps going until you stop it.
+If the call app lets go of the microphone while you are on mute, it can look like the call ended. When **Meeting ending in 10 seconds** appears, click **Keep recording**. The end of the call then no longer stops the recording; you stop it yourself.
