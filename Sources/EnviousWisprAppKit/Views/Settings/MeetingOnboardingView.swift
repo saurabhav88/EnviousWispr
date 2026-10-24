@@ -1,36 +1,28 @@
 import SwiftUI
 
 /// EnviousMeet's setup, shown on the EnviousMeet page until it is finished (#4017 O1, O2, O3):
-/// Get Started, the consent promise, three permissions, then "You're all set". A calm, open
-/// layout: no card, one centered column on the page, a large welcome video, and step dots.
+/// Get Started, the consent promise, three permissions, then "You're all set". It sits inside
+/// the EnviousMeet page's panel like every settings page: left-aligned, step dots, a large
+/// welcome video; the page frame scrolls.
 struct MeetingOnboardingView: View {
   @Environment(MeetingOnboardingModel.self) private var model
 
   var body: some View {
-    // Centered when the window has room; scrolls when it is short. Every column has a
-    // largest width, never a fixed one, so a narrow window narrows it.
-    GeometryReader { window in
-      ScrollView(.vertical) {
-        VStack(spacing: 0) {
-          MeetingSetupStepDots(step: model.screen)
-            .padding(.top, 24)
-          Spacer(minLength: 24)
-          ZStack {
-            switch model.screen {
-            case .welcome: MeetingSetupWelcome().transition(Self.transition)
-            case .legal: MeetingSetupConsent().transition(Self.transition)
-            case .permissions: MeetingSetupPermissions().transition(Self.transition)
-            case .done: MeetingSetupDone().transition(Self.transition)
-            }
-          }
-          .animation(.easeInOut(duration: 0.35), value: model.screen)
-          Spacer(minLength: 32)
+    // Every column has a largest width, never a fixed one, so a narrow window narrows it.
+    VStack(alignment: .leading, spacing: 22) {
+      MeetingSetupStepDots(step: model.screen)
+      ZStack(alignment: .topLeading) {
+        switch model.screen {
+        case .welcome: MeetingSetupWelcome().transition(Self.transition)
+        case .legal: MeetingSetupConsent().transition(Self.transition)
+        case .permissions: MeetingSetupPermissions().transition(Self.transition)
+        case .done: MeetingSetupDone().transition(Self.transition)
         }
-        .padding(.horizontal, 32)
-        .frame(maxWidth: .infinity, minHeight: window.size.height)
       }
-      .scrollBounceBehavior(.basedOnSize)
+      .animation(.easeInOut(duration: 0.35), value: model.screen)
     }
+    .padding(.top, 6)
+    .frame(maxWidth: .infinity, alignment: .leading)
     .onAppear { model.begin() }
     .onDisappear { model.left() }
     .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification))
@@ -43,9 +35,10 @@ struct MeetingOnboardingView: View {
     insertion: .opacity.combined(with: .offset(y: 20)), removal: .opacity)
 }
 
-/// The setup's own type sizes: larger than the app onboarding's card, for an open page.
+/// The setup's type sizes: a step title inside the page's panel, then the settings pages'
+/// reading sizes (14-point floor).
 private extension Font {
-  static let setupTitle = Font.system(size: 30, weight: .bold)
+  static let setupTitle = Font.system(size: 22, weight: .bold)
   static let setupLead = Font.system(size: 16, weight: .regular)
   static let setupBody = Font.system(size: 15, weight: .regular)
   static let setupRowTitle = Font.system(size: 15, weight: .semibold)
@@ -104,33 +97,32 @@ private struct MeetingSetupWelcome: View {
   ]
 
   var body: some View {
-    VStack(spacing: 0) {
+    VStack(alignment: .leading, spacing: 0) {
       MeetingWelcomeMedia()
         .aspectRatio(MeetingWelcomeMedia.aspectRatio, contentMode: .fit)
         .frame(maxWidth: 640)
-        .padding(.bottom, 28)
+        .padding(.bottom, 22)
 
       Text("Meeting notes, with no bot in your call.", comment: "EnviousMeet setup: welcome title.")
         .font(.setupTitle)
         .foregroundStyle(Color.obTextPrimary)
-        .kerning(-0.4)
-        .multilineTextAlignment(.center)
-        .padding(.bottom, 10)
+        .kerning(-0.3)
+        .padding(.bottom, 8)
       Text(
         "EnviousMeet records your calls and meetings, then writes who said what.",
         comment: "EnviousMeet setup: welcome line under the title."
       )
       .font(.setupLead)
       .foregroundStyle(Color.obTextSecondary)
-      .multilineTextAlignment(.center)
-      .padding(.bottom, 18)
+      .fixedSize(horizontal: false, vertical: true)
+      .padding(.bottom, 16)
 
       // In a row when it fits, else stacked.
       ViewThatFits(in: .horizontal) {
         HStack(spacing: 18) { features }
-        VStack(spacing: 8) { features }
+        VStack(alignment: .leading, spacing: 8) { features }
       }
-      .padding(.bottom, 28)
+      .padding(.bottom, 24)
 
       Button {
         model.getStarted()
@@ -141,7 +133,7 @@ private struct MeetingSetupWelcome: View {
       .keyboardShortcut(.defaultAction)
       .accessibilityIdentifier("meetings.setup.getStarted")
     }
-    .frame(maxWidth: 640)
+    .frame(maxWidth: 640, alignment: .leading)
     .onAppear { appeared = true }
   }
 
@@ -433,16 +425,16 @@ private struct MeetingSetupDone: View {
   @Environment(MeetingOnboardingModel.self) private var model
 
   var body: some View {
-    VStack(spacing: 0) {
+    VStack(alignment: .leading, spacing: 0) {
       ZStack {
         MeetingConfettiBurst()
-        RainbowLipsView(animationState: .heart, size: 144)
+        RainbowLipsView(animationState: .heart, size: 96)
           .accessibilityHidden(true)
       }
-      .frame(height: 150)
+      .frame(width: 160, height: 110)
       .padding(.bottom, 12)
       Text("You're all set!", comment: "EnviousMeet setup: the last screen's title.")
-        .font(.system(size: 32, weight: .bold))
+        .font(.setupTitle)
         .foregroundStyle(Color.obTextPrimary)
         .padding(.bottom, 8)
       Text(
@@ -451,7 +443,6 @@ private struct MeetingSetupDone: View {
       )
       .font(.setupLead)
       .foregroundStyle(Color.obTextPrimary.opacity(0.85))
-      .multilineTextAlignment(.center)
       .fixedSize(horizontal: false, vertical: true)
       .padding(.bottom, 6)
       Text(
@@ -469,7 +460,6 @@ private struct MeetingSetupDone: View {
         )
         .font(.setupRowLine)
         .foregroundStyle(Color.obWarning)
-        .multilineTextAlignment(.center)
         .fixedSize(horizontal: false, vertical: true)
         .padding(.bottom, 18)
       }
@@ -485,7 +475,7 @@ private struct MeetingSetupDone: View {
       .keyboardShortcut(.defaultAction)
       .accessibilityIdentifier("meetings.setup.finish")
     }
-    .frame(maxWidth: 560)
+    .frame(maxWidth: 560, alignment: .leading)
   }
 }
 
