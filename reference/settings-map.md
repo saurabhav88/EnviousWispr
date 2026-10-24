@@ -14,7 +14,7 @@ The interface ships in English and German. The other 30 languages (ar, bg, cs, d
 
 284 nodes, 257 searchable, 8224 vocabulary blocks.
 
-Fingerprints: mapSHA256 `24061e6092271327669c5f228c05fa442970953bb4c084d99aae8975fe7ea7a0`, uiCatalogSHA256 `cb4f5199803556c54110cdd13538ea31bc30b8d1544c0fc6c9d9468fcb65cb55`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `cae02edd4ef7193550e77b8ada9060b4c4c90ae8facf6fd41d44086d2d974765`
+Fingerprints: mapSHA256 `24061e6092271327669c5f228c05fa442970953bb4c084d99aae8975fe7ea7a0`, uiCatalogSHA256 `bb363b7d6a6144e2cf6b64d2eb974bff85600afa4308219ec1826a8f7f832931`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `cae02edd4ef7193550e77b8ada9060b4c4c90ae8facf6fd41d44086d2d974765`
 
 ## Structure
 
