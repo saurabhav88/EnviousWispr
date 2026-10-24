@@ -67,11 +67,6 @@ enum PolishSetupSurfaceCopy {
       comment: "Card after a dictation: closes the card and leaves the setup for later.")
   }
 
-  /// What VoiceOver reads when the card appears.
-  static func cardAnnouncement(line: String) -> String {
-    "\(cardTitle). \(line)"
-  }
-
   /// The short reason: a fragment, no final punctuation, built from the problem itself (never
   /// from an error message).
   static func shortReason(_ problem: PolishSetupProblem) -> String {

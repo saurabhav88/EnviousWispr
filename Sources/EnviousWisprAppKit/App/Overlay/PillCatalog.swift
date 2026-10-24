@@ -161,7 +161,7 @@ enum PillCatalog {
       return .medium(CorrectionLearnedPillCopy.saveError(error))
     }
     if case .polishSetupCard(let model) = request {
-      return .medium(PolishSetupSurfaceCopy.cardAnnouncement(line: model.line))
+      return .medium(model.announcement)
     }
     if case .parakeetUpgrade(let model) = request {
       return .medium(DictationNarrator.parakeetUpgradeAnnouncement(for: model.phase))

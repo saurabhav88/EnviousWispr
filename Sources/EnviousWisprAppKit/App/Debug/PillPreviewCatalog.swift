@@ -246,6 +246,7 @@
       "ollamaNoModel", "ollamaModelNotInstalled", "localEngineNotDownloaded",
       "localEngineDownloadPaused", "localEngineUpdatePaused", "localEngineFailed",
       "localEngineDownloading", "localEngineVerifying", "appleUnavailable", "appleModelNotReady",
+      "localEngineStoppedOutside",
     ]
 
     /// The setup-card problems real routing can produce, each with a distinct sentence: cloud
@@ -261,6 +262,19 @@
         ("appleDisabled", .appleUnavailable(.appleIntelligenceDisabled)),
         ("appleUnavailable", .appleUnavailable(.unsupportedOS)),
         ("appleModelNotReady", .appleModelNotReady),
+        // #3988: the notice names no engine, so the engine changes no text; the memory level
+        // does. One row per sentence.
+        (
+          "localEngineStoppedOutside.generic",
+          .localEngineStoppedOutside(
+            .egOne, OutsideStopContext(provider: .egOne, generation: 1, memoryPressure: .normal))
+        ),
+        (
+          "localEngineStoppedOutside.lowMemory",
+          .localEngineStoppedOutside(
+            .s1Mini,
+            OutsideStopContext(provider: .s1Mini, generation: 1, memoryPressure: .critical))
+        ),
       ]
       for provider in [LLMProvider.openAI, .gemini, .claude] {
         samples.append(("cloudKeyMissing.\(provider.rawValue)", .cloudKeyMissing(provider)))

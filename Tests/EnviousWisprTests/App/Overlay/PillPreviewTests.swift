@@ -123,6 +123,8 @@
       var expectedIDs: Set<String> = [
         "ollamaNotInstalled", "ollamaNotRunning", "ollamaNoModel", "ollamaModelNotInstalled",
         "appleDisabled", "appleUnavailable", "appleModelNotReady",
+        // #3988: the outside-stop notice's two sentences (no engine name in either).
+        "localEngineStoppedOutside.generic", "localEngineStoppedOutside.lowMemory",
       ]
       for provider in ["openAI", "gemini", "claude"] {
         for problem in ["cloudKeyMissing", "cloudKeyRejected"] {

@@ -267,6 +267,15 @@ final class PolishSetupMonitor {
   @ObservationIgnored private var configurationRevision: UInt64 = 0
   @ObservationIgnored private var lastConfiguration: PolishSetupConfiguration?
   @ObservationIgnored private var lastEligible = false
+  /// #3988: what an outside-stop notice's applicability reads, so a change to it reaches the
+  /// card owner in the same turn even when no setup episode moved.
+  private struct NoticeApplicability: Equatable {
+    let configurationRevision: UInt64
+    let onboardingComplete: Bool
+    let provider: LLMProvider
+    let restartFailed: Bool
+  }
+  @ObservationIgnored private var lastNoticeApplicability: NoticeApplicability?
   /// What takes said about the Ollama SERVER (not installed, not running, or running: any take
   /// that polished), and about each MODEL (missing or none chosen, or working), with WHEN they
   /// observed it. Kept apart because one server serves many models: a success with model B
@@ -821,10 +830,15 @@ final class PolishSetupMonitor {
     var next = episodes
     next.reconcile(
       readiness: readiness, configuration: inputs.configuration, eligible: eligible)
-    if next != episodes {
-      episodes = next
-      onEpisodeChange?()
-    }
+    let applicability = NoticeApplicability(
+      configurationRevision: configurationRevision,
+      onboardingComplete: inputs.onboardingComplete, provider: inputs.configuration.provider,
+      restartFailed: inputs.facts.localRestartFailed(inputs.configuration.provider))
+    let noticeChanged = applicability != lastNoticeApplicability
+    lastNoticeApplicability = applicability
+    let episodeChanged = next != episodes
+    if episodeChanged { episodes = next }
+    if episodeChanged || noticeChanged { onEpisodeChange?() }
     return inputs
   }
 }
