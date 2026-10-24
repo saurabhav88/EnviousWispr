@@ -555,6 +555,99 @@
         w.sources.infoOverride[record.id] = MeetingHistoryInfo(echoTurnIDs: [], title: "New")
       }
     }
+
+    // MARK: - Summary text (#4001 step 2b-C)
+
+    static func directSummaryText(_ c: TranscriptCoordinator, _ row: Transcript) -> String? {
+      guard let id = row.meetingID,
+        case .visible(_, let text) = MeetingHistoryPresentation.project(
+          row, info: c.meetingInfo?(id), showEcho: false), !text.isEmpty
+      else { return nil }
+      return text
+    }
+
+    @Test("the summary text is the echo-hidden projection for every kind, whatever echo is shown")
+    func summaryTextMatchesTheEchoHiddenProjection() {
+      let w = World()
+      var visible = Self.record(at: w.time, ready: true)
+      visible.echoTurnIDs = ["t0"]
+      var hidden = Self.record(at: w.time, ready: true)
+      hidden.echoTurnIDs = ["t0", "t1"]
+      let unavailable = Self.record(at: w.time, ready: false)
+      w.sources.records = [visible, hidden, unavailable]
+      let rows = [
+        Self.twoTurnRow(visible.id, at: w.time), Self.twoTurnRow(hidden.id, at: w.time),
+        Self.twoTurnRow(unavailable.id, at: w.time),
+        Transcript(text: "a dictation", createdAt: w.time),
+      ]
+      w.setRows(rows)
+      for show in [false, true] {
+        for c in w.both { for row in rows { c.setShowEcho(show, rowID: row.id) } }
+        for (i, row) in rows.enumerated() {
+          let info = row.meetingID.flatMap { w.cached.meetingInfo?($0) }
+          let expected = Self.directSummaryText(w.reference, row)
+          #expect(
+            w.cached.summaryVisibleText(of: row, info: info) == expected, "row \(i) show \(show)")
+          #expect(w.reference.summaryVisibleText(of: row, info: info) == expected)
+        }
+      }
+      #expect(
+        w.cached.summaryVisibleText(of: rows[0], info: w.cached.meetingInfo?(visible.id))?
+          .contains("Ship it Friday.") == false, "echo stays hidden for the summary")
+    }
+
+    @Test("a byte-distinct but equal-looking speaker name is projected again, never reused")
+    func summaryTextFollowsBytes() {
+      let w = World()
+      let c = w.cached
+      let record = Self.record(at: w.time, ready: true)
+      w.sources.records = [record]
+      // Only the name's bytes differ: the words and turn ranges stay identical, so the
+      // projection inputs compare equal under == and only the byte check tells them apart.
+      func row(named name: String, id: UUID) -> Transcript {
+        let base = Self.twoTurnRow(record.id, at: w.time)
+        return Transcript(
+          id: id, text: base.text, backendType: .parakeet, createdAt: base.createdAt,
+          speakerAnalysis: base.speakerAnalysis, speakerNames: ["sys:S1": name],
+          turns: base.turns, meetingID: record.id)
+      }
+      let id = UUID()
+      let first = row(named: "Ren\u{00E9}e", id: id)
+      w.setRows([first])
+      let info = c.meetingInfo?(record.id)
+      let a = c.summaryVisibleText(of: first, info: info)
+      let built = c.meetingTextBuildsForTesting
+      _ = c.summaryVisibleText(of: first, info: info)
+      #expect(c.meetingTextBuildsForTesting == built, "the same bytes reuse the kept text")
+      let replaced = row(named: "Rene\u{0301}e", id: id)
+      #expect(replaced.speakerNames == first.speakerNames, "equal to ==")
+      w.setRows([replaced])
+      let b = c.summaryVisibleText(of: replaced, info: info)
+      #expect(c.meetingTextBuildsForTesting == built + 1, "different bytes are projected again")
+      #expect(a == b, "they look the same to ==")
+      #expect(
+        b.map { Array($0.utf8) }
+          == Self.directSummaryText(w.reference, replaced).map { Array($0.utf8) },
+        "and the kept text has the new bytes")
+    }
+
+    @Test("the summary-only cache is pruned with the list even when search kept nothing")
+    func summaryCacheIsPruned() {
+      let w = World()
+      let c = w.cached
+      let record = Self.record(at: w.time, ready: true)
+      w.sources.records = [record]
+      let row = Self.twoTurnRow(record.id, at: w.time)
+      w.setRows([row])
+      let info = c.meetingInfo?(record.id)
+      _ = c.summaryVisibleText(of: row, info: info)
+      let built = c.meetingTextBuildsForTesting
+      w.setRows([])
+      _ = c.listedItems  // a rebuild prunes
+      w.setRows([row])
+      _ = c.summaryVisibleText(of: row, info: info)
+      #expect(c.meetingTextBuildsForTesting == built + 1, "the removed row's kept text was dropped")
+    }
   }
 
   /// A small deterministic generator (SplitMix64), so a failing step reproduces.

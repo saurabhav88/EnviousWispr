@@ -1611,6 +1611,40 @@ final class TranscriptCoordinator {
     return text
   }
 
+  /// #4001 step 2b-C: the visible text a meeting summary is written from and judged against,
+  /// echo always hidden; nil when nothing is visible. The same projection as search and the
+  /// preview, kept in its own cache so the display's echo choice never evicts it. A kept text
+  /// is reused only for byte-identical words and names, because the summary's fingerprints
+  /// hash bytes. The caller reads the row and the meeting facts live, before this lookup.
+  func summaryVisibleText(of row: Transcript, info: MeetingHistoryInfo?) -> String? {
+    let inputs = SearchTextInputs(
+      text: row.text, turns: row.turns ?? [], speakerNames: row.speakerNames ?? [:],
+      info: info, showEcho: false, locale: Locale.current.identifier,
+      localizations: Bundle.main.preferredLocalizations)
+    let text: MeetingText
+    #if DEBUG
+      let bypass = listCacheDisabledForTesting
+    #else
+      let bypass = false
+    #endif
+    if !bypass, let kept = summaryTextCache[row.id], kept.inputs == inputs,
+      MeetingDocumentHash.sameBytes(kept.inputs.text, inputs.text),
+      MeetingDocumentHash.sameBytes(kept.inputs.speakerNames, inputs.speakerNames)
+    {
+      text = kept.text
+    } else {
+      text = Self.meetingText(row, inputs)
+      #if DEBUG
+        meetingTextBuildsForTesting += 1
+      #endif
+      if !bypass { summaryTextCache[row.id] = (inputs, text) }
+    }
+    return text.kind == .visible && !text.plain.isEmpty ? text.plain : nil
+  }
+
+  @ObservationIgnored private var summaryTextCache:
+    [UUID: (inputs: SearchTextInputs, text: MeetingText)] = [:]
+
   private static func meetingText(_ row: Transcript, _ inputs: SearchTextInputs) -> MeetingText {
     switch MeetingHistoryPresentation.project(row, info: inputs.info, showEcho: inputs.showEcho) {
     case .visible(_, let plain): MeetingText(kind: .visible, plain: plain)
@@ -1643,9 +1677,10 @@ final class TranscriptCoordinator {
 
   /// Drops kept text of rows that no longer exist; a changed row is caught by its inputs.
   private func pruneSearchTextCache() {
-    guard !searchTextCache.isEmpty else { return }
+    guard !searchTextCache.isEmpty || !summaryTextCache.isEmpty else { return }
     let ids = Set(transcripts.map(\.id))
     searchTextCache = searchTextCache.filter { ids.contains($0.key) }
+    summaryTextCache = summaryTextCache.filter { ids.contains($0.key) }
   }
 
   /// Removes one row from disk and from the list, keeping the selection on a neighbour and the

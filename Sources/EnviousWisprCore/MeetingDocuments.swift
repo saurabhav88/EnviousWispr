@@ -87,4 +87,22 @@ public enum MeetingDocumentHash {
   public static func sha256(_ text: String) -> String {
     SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined()
   }
+
+  /// Whether two texts have the same UTF-8 bytes, the question a kept hash must ask before it
+  /// is reused (#4001). `==` is not it: Swift treats canonically equivalent strings as equal
+  /// ("\u{00E9}" and "e\u{0301}"), and their hashes differ.
+  public static func sameBytes(_ a: String, _ b: String) -> Bool {
+    a.utf8.elementsEqual(b.utf8)
+  }
+
+  /// The same question for a key-to-value map, every key and value compared by bytes.
+  public static func sameBytes(_ a: [String: String], _ b: [String: String]) -> Bool {
+    guard a.count == b.count else { return false }
+    func ordered(_ m: [String: String]) -> [(key: String, value: String)] {
+      m.sorted { $0.key.utf8.lexicographicallyPrecedes($1.key.utf8) }
+    }
+    return zip(ordered(a), ordered(b)).allSatisfy { x, y in
+      sameBytes(x.key, y.key) && sameBytes(x.value, y.value)
+    }
+  }
 }
