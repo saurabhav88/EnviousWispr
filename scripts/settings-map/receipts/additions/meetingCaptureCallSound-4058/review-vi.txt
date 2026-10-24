@@ -1,0 +1,1 @@
+{"language":"vi","title":"chỉ ghi âm giọng nói của tôi","words":["âm thanh cuộc gọi","âm thanh hệ thống"],"phrases":["không ghi âm thanh từ máy tính","không ghi âm giọng người khác trong cuộc gọi"]}

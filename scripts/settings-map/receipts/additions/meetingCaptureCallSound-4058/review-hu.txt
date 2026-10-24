@@ -1,0 +1,9 @@
+{
+  "language": "hu",
+  "title": "csak a saját hangom rögzítése",
+  "words": [],
+  "phrases": [
+    "ne vegye fel a számítógép hangját",
+    "a többiek hangja ne legyen a felvételen"
+  ]
+}

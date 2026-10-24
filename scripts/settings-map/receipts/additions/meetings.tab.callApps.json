@@ -1,0 +1,393 @@
+{
+ "id": "meetings.tab.callApps",
+ "blocks": {
+  "ar": {
+   "title": "تطبيقات المكالمات",
+   "words": [
+    "Zoom",
+    "Microsoft Teams",
+    "FaceTime",
+    "Slack",
+    "Webex",
+    "Google Meet"
+   ],
+   "phrases": [
+    "إعدادات تطبيقات المكالمات"
+   ]
+  },
+  "bg": {
+   "title": "приложения за разговори",
+   "words": [
+    "Zoom",
+    "Microsoft Teams",
+    "FaceTime",
+    "Slack",
+    "Webex",
+    "Google Meet"
+   ],
+   "phrases": [
+    "приложения за обаждания",
+    "настройки за Zoom и Teams"
+   ]
+  },
+  "cs": {
+   "title": "aplikace pro hovory",
+   "words": [
+    "videohovory"
+   ],
+   "phrases": [
+    "aplikace na volání"
+   ]
+  },
+  "da": {
+   "title": "apps til opkald",
+   "words": [
+    "Zoom",
+    "Microsoft Teams",
+    "FaceTime",
+    "Slack",
+    "Webex",
+    "Google Meet"
+   ],
+   "phrases": [
+    "opkaldsapps i EnviousMeet",
+    "indstillinger for opkaldsapps"
+   ]
+  },
+  "de": {
+   "words": [
+    "Zoom",
+    "Microsoft Teams",
+    "FaceTime",
+    "Slack",
+    "Webex",
+    "Google Meet"
+   ],
+   "phrases": [
+    "lege fest, bei welchen Apps EnviousMeet Anrufe erkennt",
+    "schalte die Anruferkennung für Zoom aus",
+    "schalte die Anruferkennung für Meetings im Browser aus"
+   ]
+  },
+  "el": {
+   "title": "εφαρμογές κλήσεων",
+   "words": [],
+   "phrases": [
+    "εφαρμογές για κλήσεις",
+    "λίστα εφαρμογών κλήσεων"
+   ]
+  },
+  "en": {
+   "words": [
+    "Zoom",
+    "Microsoft Teams",
+    "FaceTime",
+    "Slack",
+    "Webex",
+    "Google Meet"
+   ],
+   "phrases": [
+    "choose which apps to watch for calls",
+    "turn off call detection for Zoom"
+   ]
+  },
+  "es": {
+   "title": "aplicaciones de llamadas",
+   "words": [],
+   "phrases": [
+    "pestaña de apps de llamadas",
+    "lista de aplicaciones de llamadas en EnviousMeet"
+   ]
+  },
+  "et": {
+   "title": "kõnerakendused",
+   "words": [],
+   "phrases": [
+    "kõnerakenduste loend"
+   ]
+  },
+  "fi": {
+   "title": "puhelusovellukset",
+   "words": [
+    "kokoussovellukset"
+   ],
+   "phrases": [
+    "puhelusovellusten asetukset",
+    "EnviousMeetin puhelusovellukset"
+   ]
+  },
+  "fr": {
+   "title": "applications d’appel",
+   "words": [
+    "applis d’appel"
+   ],
+   "phrases": [
+    "paramètres des applications d’appel",
+    "liste des applications d’appel"
+   ]
+  },
+  "hi": {
+   "title": "कॉल ऐप्स",
+   "words": [
+    "Zoom",
+    "Microsoft Teams",
+    "FaceTime",
+    "Slack",
+    "Webex",
+    "Google Meet"
+   ],
+   "phrases": [
+    "कॉल का पता लगाने के लिए ऐप्स चुनें",
+    "Zoom में कॉल का पता लगाना बंद करें"
+   ]
+  },
+  "hr": {
+   "title": "aplikacije za pozive",
+   "words": [],
+   "phrases": [
+    "popis aplikacija za pozive"
+   ]
+  },
+  "hu": {
+   "title": "hívásokhoz használt alkalmazások",
+   "words": [
+    "Zoom",
+    "Microsoft Teams",
+    "FaceTime",
+    "Slack",
+    "Webex",
+    "Google Meet"
+   ],
+   "phrases": [
+    "hívásalkalmazások beállításai",
+    "Zoom és Teams hívásészlelése"
+   ]
+  },
+  "it": {
+   "title": "app per le chiamate",
+   "words": [
+    "Zoom",
+    "Microsoft Teams",
+    "FaceTime",
+    "Slack",
+    "Webex",
+    "Google Meet"
+   ],
+   "phrases": [
+    "scegli quali app monitorare per rilevare le chiamate",
+    "escludi un’app dal rilevamento delle chiamate"
+   ]
+  },
+  "ja": {
+   "title": "通話アプリ",
+   "words": [
+    "Zoom",
+    "Microsoft Teams",
+    "FaceTime",
+    "Slack",
+    "Webex",
+    "Google Meet"
+   ],
+   "phrases": [
+    "通話アプリのタブ",
+    "通話アプリの一覧"
+   ]
+  },
+  "ko": {
+   "title": "통화 앱",
+   "words": [
+    "Zoom",
+    "Microsoft Teams",
+    "FaceTime",
+    "Slack",
+    "Webex",
+    "Google Meet"
+   ],
+   "phrases": [
+    "통화를 감지할 앱 선택",
+    "앱별 통화 감지 설정"
+   ]
+  },
+  "lt": {
+   "title": "skambučių programėlės",
+   "words": [
+    "Zoom",
+    "Microsoft Teams",
+    "FaceTime",
+    "Slack",
+    "Webex",
+    "Google Meet"
+   ],
+   "phrases": [
+    "skambučių programėlių sąrašas",
+    "EnviousMeet stebimos skambučių programėlės"
+   ]
+  },
+  "lv": {
+   "title": "zvanu lietotnes",
+   "words": [
+    "Zoom",
+    "Microsoft Teams",
+    "FaceTime",
+    "Slack",
+    "Webex",
+    "Google Meet"
+   ],
+   "phrases": [
+    "zvanu lietotņu saraksts",
+    "zvanu lietotnes EnviousMeet iestatījumos"
+   ]
+  },
+  "mt": {
+   "title": "apps għas-sejħiet",
+   "words": [
+    "Zoom",
+    "Microsoft Teams",
+    "FaceTime",
+    "Slack",
+    "Webex",
+    "Google Meet"
+   ],
+   "phrases": [
+    "agħżel l-apps li EnviousMeet jimmonitorja għas-sejħiet"
+   ]
+  },
+  "nl": {
+   "title": "belapps",
+   "words": [
+    "Zoom",
+    "Microsoft Teams",
+    "FaceTime",
+    "Slack",
+    "Webex",
+    "Google Meet"
+   ],
+   "phrases": [
+    "gespreksdetectie per app instellen",
+    "kiezen welke belapps worden herkend"
+   ]
+  },
+  "pl": {
+   "title": "aplikacje do rozmów",
+   "words": [],
+   "phrases": [
+    "lista aplikacji do rozmów",
+    "ustawienia aplikacji do rozmów"
+   ]
+  },
+  "pt": {
+   "title": "aplicações de chamadas",
+   "words": [
+    "Zoom",
+    "Microsoft Teams",
+    "FaceTime",
+    "Slack",
+    "Webex",
+    "Google Meet"
+   ],
+   "phrases": [
+    "separador de aplicações de chamadas",
+    "aplicações de chamadas no EnviousMeet"
+   ]
+  },
+  "ro": {
+   "title": "aplicații pentru apeluri",
+   "words": [],
+   "phrases": [
+    "lista aplicațiilor pentru apeluri",
+    "fila cu aplicații pentru apeluri"
+   ]
+  },
+  "ru": {
+   "title": "приложения для звонков",
+   "words": [],
+   "phrases": [
+    "список приложений для звонков",
+    "приложения для созвонов"
+   ]
+  },
+  "sk": {
+   "title": "aplikácie na hovory",
+   "words": [],
+   "phrases": [
+    "zoznam aplikácií na hovory"
+   ]
+  },
+  "sl": {
+   "title": "aplikacije za klice",
+   "words": [
+    "Zoom",
+    "Microsoft Teams",
+    "FaceTime",
+    "Slack",
+    "Webex",
+    "Google Meet"
+   ],
+   "phrases": [
+    "nastavitve aplikacij za klice",
+    "seznam aplikacij za videoklice"
+   ]
+  },
+  "sv": {
+   "title": "samtalsappar",
+   "words": [
+    "Zoom",
+    "Microsoft Teams",
+    "FaceTime",
+    "Slack",
+    "Webex",
+    "Google Meet"
+   ],
+   "phrases": [
+    "inställningar för samtalsappar",
+    "samtalsappar i EnviousMeet"
+   ]
+  },
+  "tr": {
+   "title": "görüşme uygulamaları",
+   "words": [
+    "Zoom",
+    "Microsoft Teams",
+    "FaceTime",
+    "Slack",
+    "Webex",
+    "Google Meet"
+   ],
+   "phrases": [
+    "Zoom için görüşme algılamayı kapat",
+    "görüşmelerin hangi uygulamalarda algılanacağını seç"
+   ]
+  },
+  "uk": {
+   "title": "застосунки для дзвінків",
+   "words": [],
+   "phrases": [
+    "список застосунків для дзвінків",
+    "налаштування застосунків для дзвінків"
+   ]
+  },
+  "vi": {
+   "title": "ứng dụng gọi điện",
+   "words": [],
+   "phrases": [
+    "danh sách ứng dụng gọi điện",
+    "tab ứng dụng gọi điện"
+   ]
+  },
+  "zh": {
+   "title": "通话应用",
+   "words": [
+    "Zoom",
+    "Microsoft Teams",
+    "FaceTime",
+    "Slack",
+    "Webex",
+    "Google Meet"
+   ],
+   "phrases": [
+    "管理通话应用",
+    "通话应用列表"
+   ]
+  }
+ }
+}

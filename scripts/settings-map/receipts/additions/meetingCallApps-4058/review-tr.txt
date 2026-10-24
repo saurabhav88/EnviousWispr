@@ -1,0 +1,1 @@
+{"language":"tr","title":"aramaların algılanacağı uygulamalar","words":["arama uygulamaları"],"phrases":["hangi uygulamalardaki aramalar algılansın","Zoom aramalarını kaydetmek isteyip istemediğimi sorma"]}

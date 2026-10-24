@@ -1,0 +1,1 @@
+{"language":"sl","title":"zaznavanje klicev v aplikacijah","words":[],"phrases":["v katerih aplikacijah zaznavati klice","ne sprašuj o klicih v tej aplikaciji"]}

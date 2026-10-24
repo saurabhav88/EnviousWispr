@@ -1,0 +1,1 @@
+{"language":"et","title":"ligipääsuõigused","words":["salvestusload"],"phrases":["koosoleku salvestamise õigused","luba koosoleku heli salvestada"]}

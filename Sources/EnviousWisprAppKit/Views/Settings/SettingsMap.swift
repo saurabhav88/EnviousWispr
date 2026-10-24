@@ -55,7 +55,7 @@ enum SettingsMap {
       id: .pageMeetings, structure: .page, item: nil,
       title: .resource(SettingsPage.meetings.labelResource!),
       description: nil,
-      parent: .windowSettings, destination: .meetings, dictionaryTab: nil,
+      parent: .windowSettings, destination: .meetings(.general), dictionaryTab: nil,
       visibility: .always, target: nil, fallbacks: []),
     SettingsMapNode(
       id: .pageSnippets, structure: .page, item: nil,
@@ -652,14 +652,14 @@ enum SettingsMap {
       id: .meetingCaptureCallSound, structure: .item, item: .setting,
       title: .resource(MeetingsCopy.callSoundTitle),
       description: .resource(MeetingsCopy.callSoundShort),
-      parent: .pageMeetings, destination: .meetings, dictionaryTab: nil,
+      parent: .meetingsTabGeneral, destination: .meetings(.general), dictionaryTab: nil,
       visibility: .always, target: .meetingCaptureCallSound, fallbacks: []),
     // #3972 R39: the automatic-summary switch, always on the page.
     SettingsMapNode(
       id: .meetingWriteSummary, structure: .item, item: .setting,
       title: .resource(MeetingsCopy.writeSummaryTitle),
       description: .resource(MeetingsCopy.writeSummaryShort),
-      parent: .pageMeetings, destination: .meetings, dictionaryTab: nil,
+      parent: .meetingsTabGeneral, destination: .meetings(.general), dictionaryTab: nil,
       visibility: .always, target: .meetingWriteSummary, fallbacks: []),
     // #4017 R5: name meetings from the calendar. Like the two switches above, it is on the page
     // whenever the page shows its settings; until EnviousMeet's setup is finished the page
@@ -668,7 +668,7 @@ enum SettingsMap {
       id: .meetingUseCalendarForNames, structure: .item, item: .setting,
       title: .resource(MeetingsCopy.calendarNamesTitle),
       description: .resource(MeetingsCopy.calendarNamesShort),
-      parent: .pageMeetings, destination: .meetings, dictionaryTab: nil,
+      parent: .meetingsTabGeneral, destination: .meetings(.general), dictionaryTab: nil,
       visibility: .always, target: .meetingUseCalendarForNames, fallbacks: []),
     // #4012 D1, D5: what happens when a call starts, and the per-app switches. Like the rows
     // above, both are on the page whenever it shows its settings.
@@ -676,13 +676,13 @@ enum SettingsMap {
       id: .meetingCallDetection, structure: .item, item: .setting,
       title: .resource(MeetingsCopy.callDetectionTitle),
       description: .resource(MeetingsCopy.callDetectionShort),
-      parent: .pageMeetings, destination: .meetings, dictionaryTab: nil,
+      parent: .meetingsTabGeneral, destination: .meetings(.general), dictionaryTab: nil,
       visibility: .always, target: .meetingCallDetection, fallbacks: []),
     SettingsMapNode(
       id: .meetingCallApps, structure: .item, item: .setting,
       title: .resource(MeetingsCopy.callAppsTitle),
       description: .resource(MeetingsCopy.callAppsShort),
-      parent: .pageMeetings, destination: .meetings, dictionaryTab: nil,
+      parent: .meetingsTabCallApps, destination: .meetings(.callApps), dictionaryTab: nil,
       visibility: .always, target: .meetingCallApps, fallbacks: []),
     SettingsMapNode(
       id: .enableAIPolish, structure: .item, item: .setting,
@@ -1147,6 +1147,25 @@ enum SettingsMap {
       description: nil,
       parent: .snippetsSearch, destination: .snippets, dictionaryTab: nil,
       visibility: .searchHasQuery, target: .snippetsClearSearch, fallbacks: [.snippetsSearch, .yourSnippets]),
+    // #4058: the EnviousMeet tabs. Like its rows, they are drawn only once setup is finished.
+    SettingsMapNode(
+      id: .meetingsTabGeneral, structure: .tab, item: .feature,
+      title: .resource(MeetingsTab.general.label),
+      description: nil,
+      parent: .pageMeetings, destination: .meetings(.general), dictionaryTab: nil,
+      visibility: .always, target: .meetingsTabGeneral, fallbacks: []),
+    SettingsMapNode(
+      id: .meetingsTabCallApps, structure: .tab, item: .feature,
+      title: .resource(MeetingsTab.callApps.label),
+      description: nil,
+      parent: .pageMeetings, destination: .meetings(.callApps), dictionaryTab: nil,
+      visibility: .always, target: .meetingsTabCallApps, fallbacks: []),
+    SettingsMapNode(
+      id: .meetingsTabPermissions, structure: .tab, item: .feature,
+      title: .resource(MeetingsTab.permissions.label),
+      description: nil,
+      parent: .pageMeetings, destination: .meetings(.permissions), dictionaryTab: nil,
+      visibility: .always, target: .meetingsTabPermissions, fallbacks: []),
     SettingsMapNode(
       id: .appSettingsTabAppearance, structure: .tab, item: .feature,
       title: .resource(AppSettingsTab.appearance.label),
@@ -1478,7 +1497,7 @@ extension SettingsMap {
     case .dictionary: dictionaryTab?.mapID ?? .sectionDictionary
     case .keybinds: .sectionKeybindsRecording
     case .transcribeFile: .transcribeFileSteps
-    case .meetings: .meetingCaptureCallSound
+    case .meetings(let tab): tab.mapID
     case .aiPolish: .enableAIPolish
     case .snippets: .snippets
     case .history: nil

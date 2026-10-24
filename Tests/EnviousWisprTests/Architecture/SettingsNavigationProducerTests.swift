@@ -47,16 +47,18 @@ struct SettingsNavigationProducerTests {
       "9 Configure Live Preview", file: views + "Settings/RecordingPillAppearancePanel.swift",
       callee: "navigate", owner: "if:Self.selected(in: model).canHoldWords",
       argument: ".dictation(.livePreview)"),
-    // #3972 coverage C5: a menu Start that needs the call-sound explainer opens EnviousMeet.
+    // #3972 coverage C5: a menu Start that needs the call-sound explainer opens EnviousMeet's
+    // General tab (#4058), where the explainer's switch is.
     Route(
       "10 menu Start Meeting Recording before the explainer",
       file: app + "WisprBootstrapper.swift", callee: "request", owner: "binding:meetingStartFlow",
-      argument: ".meetings"),
-    // #4012 D6: the call panel's Open settings (tips, needs attention) opens EnviousMeet.
+      argument: ".meetings(.general)"),
+    // #4012 D6: the call panel's Open settings (tips, needs attention) opens EnviousMeet's Call
+    // Apps tab (#4058), where its turn-off-an-app tips point.
     Route(
       "11 call panel Open settings",
       file: app + "WisprBootstrapper.swift", callee: "request", owner: "binding:callDetection",
-      argument: ".meetings"),
+      argument: ".meetings(.callApps)"),
   ]
 
   @Test("every producer route opens its planned destination", arguments: routes)

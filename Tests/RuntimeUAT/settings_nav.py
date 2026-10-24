@@ -31,7 +31,11 @@ TABS = {
         "Engine", "Microphone", "Live Preview", "Recording Pill", "Chimes", "Clipboard",
     ),
     "App Settings": ("Appearance", "Permissions", "Privacy", "Licenses"),
+    # #4058: drawn only once EnviousMeet's setup is finished (see SETUP_GATED).
+    "EnviousMeet": ("General", "Call Apps", "Permissions"),
 }
+# Pages that show a setup instead of their tab strip until it is finished.
+SETUP_GATED = {"EnviousMeet"}
 SIDEBAR_LABELS = PAGES
 
 
@@ -501,6 +505,24 @@ def navigate(ax, root_of, page, tab=None, open_settings=None, timeout=3.0, debug
 
     if page not in TABS:
         return Route(page, None, None)
+
+    if page in SETUP_GATED:
+        # #4058: before setup is finished there is no strip. A page-only request lands on the
+        # setup; a tab request cannot be met and says so, never waits for a strip that never comes.
+        def strip_present():
+            root2 = root_of()
+            try:
+                return tab_strip(ax, root2, page, sidebar(ax, root2)) is not None
+            except NavigationError:
+                return False
+        try:
+            wait_until(ax, strip_present, min(timeout, 3.0), f"the {page!r} tab strip")
+        except NavigationError:
+            if tab is None:
+                return Route(page, None, None)
+            raise NavigationError(
+                f"{page!r} shows its setup, so tab {tab!r} does not exist yet; finish setup first"
+            ) from None
 
     def strip_buttons():
         root2 = root_of()
@@ -1079,9 +1101,9 @@ POLISH_PROVIDERS = ("EG-1", "S1-mini", "Apple Intelligence", "Ollama", "OpenAI",
 
 SCAN = [
     ("History", None, [("named", "Search history", None)]),
-    # #4024: EnviousMeet shows its setup until it is finished, then its settings page; the
-    # call-sound permission row's button is always on the settings page.
-    ("EnviousMeet", None, [("one_of", ("Get Started", "Open System Settings"), None)]),
+    # #4024: EnviousMeet shows its setup until it is finished, then its settings in tabs
+    # (#4058): the setup's first button, or the Call Apps tab of the strip.
+    ("EnviousMeet", None, [("one_of", ("Get Started", "Call Apps"), None)]),
     ("App Settings", "Appearance", [
         ("button", "System", None), ("button", "Light", None), ("button", "Dark", None),
         ("toggle^", "Show app in Dock", None),

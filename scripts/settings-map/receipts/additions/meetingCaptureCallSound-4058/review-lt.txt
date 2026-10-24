@@ -1,0 +1,1 @@
+{"language":"lt","title":"įrašyti tik mano balsą","words":[],"phrases":["neįrašyti kompiuterio garso","neįrašyti kitų pokalbio dalyvių balsų"]}

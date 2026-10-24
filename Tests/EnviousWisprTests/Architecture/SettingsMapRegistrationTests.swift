@@ -179,6 +179,7 @@ struct SettingsMapRegistrationTests {
   static let indirectProducers: [(ids: [SettingsMapID], file: String, consumer: String)] = [
     (DictationTab.allCases.map(\.mapID), "DictationSettingsView.swift", "map: $0.mapID"),
     (AppSettingsTab.allCases.map(\.mapID), "AppSettingsView.swift", "map: $0.mapID"),
+    (MeetingsTab.allCases.map(\.mapID), "MeetingsView.swift", "map: $0.mapID"),
     (DictionaryTab.allCases.map(\.mapID), "YourWordsView.swift", ".settingsMapRegistration(tab.mapID)"),
     (EngineChoicePresentation.choices.map(\.mapID), "SpeechEngineSettingsView.swift", "map: .id(choice.mapID)"),
     (

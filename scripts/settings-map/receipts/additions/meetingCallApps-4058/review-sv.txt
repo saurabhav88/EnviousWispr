@@ -1,0 +1,1 @@
+{"language":"sv","title":"upptäck samtal i appar","words":[],"phrases":["välj appar för samtalsdetektering","fråga inte om samtal i den här appen"]}

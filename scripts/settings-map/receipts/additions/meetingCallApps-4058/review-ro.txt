@@ -1,0 +1,9 @@
+{
+  "language": "ro",
+  "title": "detectarea apelurilor în aplicații",
+  "words": [],
+  "phrases": [
+    "în ce aplicații să detecteze apelurile",
+    "nu mai întreba despre apelurile din această aplicație"
+  ]
+}

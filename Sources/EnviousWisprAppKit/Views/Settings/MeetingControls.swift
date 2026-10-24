@@ -232,8 +232,9 @@ struct MeetingNoticeBanner: View {
   }
 }
 
-/// "Also record the call sound": always shown on the EnviousMeet page, so search can always land
-/// on it; read when the next meeting starts.
+/// "Record only my voice" (#4058): `meetingCaptureCallSound` shown the other way round, so on
+/// means the call sound is left out. Always on the General tab, so search can always land on it;
+/// read when the next meeting starts.
 struct MeetingCallSoundRow: View {
   @Environment(SettingsManager.self) private var settings
 
@@ -243,7 +244,11 @@ struct MeetingCallSoundRow: View {
       map: .id(.meetingCaptureCallSound), icon: "speaker.wave.2",
       help: MeetingsCopy.callSoundHelp
     ) {
-      Toggle("", isOn: $settings.meetingCaptureCallSound)
+      Toggle(
+        "",
+        isOn: Binding(
+          get: { !settings.meetingCaptureCallSound },
+          set: { settings.meetingCaptureCallSound = !$0 }))
         .labelsHidden()
         .toggleStyle(BrandedToggleStyle())
         .fixedSize()
@@ -412,7 +417,7 @@ struct MeetingCallDetectionRow: View {
       help: MeetingsCopy.callDetectionHelp
     ) {
       BrandedSegmentedPicker(
-        options: CallDetectionPolicy.Mode.allCases.map {
+        options: MeetingsCopy.callDetectionDisplayOrder.map {
           (String(localized: MeetingsCopy.callDetectionChoice($0)), nil, $0)
         },
         selection: Binding(

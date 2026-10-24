@@ -193,7 +193,7 @@ enum DictationTab: String, CaseIterable, Hashable, Identifiable {
 /// "Check for Updates" is an action, never a place, so it has no case.
 enum SettingsDestination: Equatable {
   case history
-  case meetings
+  case meetings(MeetingsTab)
   case dictation(DictationTab)
   case keybinds
   case transcribeFile
@@ -232,6 +232,7 @@ struct SettingsNavigationState: Equatable {
   /// the page binds to it the way Dictation Settings binds `dictationTab`.
   var dictionaryTab: DictionaryTab = .yourWords
   var appSettingsTab: AppSettingsTab = .appearance
+  var meetingsTab: MeetingsTab = .general
   /// The arrival a search navigation asked for. Every other commit clears it, so a reveal never
   /// outlives the navigation that asked for it.
   var reveal: SettingsReveal?
@@ -282,6 +283,7 @@ struct SettingsNavigationState: Equatable {
     switch destination {
     case .dictation(let tab): return tab == dictationTab
     case .appSettings(let tab): return tab == appSettingsTab
+    case .meetings(let tab): return tab == meetingsTab
     case .dictionary: return dictionaryTab.map { $0 == self.dictionaryTab } ?? true
     default: return true
     }
@@ -311,7 +313,8 @@ struct SettingsNavigationState: Equatable {
     switch destination {
     case .dictation(let tab): dictationTab = tab
     case .appSettings(let tab): appSettingsTab = tab
-    case .history, .meetings, .keybinds, .transcribeFile, .aiPolish, .dictionary, .snippets: break
+    case .meetings(let tab): meetingsTab = tab
+    case .history, .keybinds, .transcribeFile, .aiPolish, .dictionary, .snippets: break
     #if DEBUG
       case .diagnostics: break
     #endif

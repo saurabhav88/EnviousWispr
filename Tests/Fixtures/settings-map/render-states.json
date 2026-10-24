@@ -974,16 +974,37 @@
    "section.previewEngine"
   ]
  },
- "meetings": {
-  "exempt": {
-   "statusLine": 5
-  },
+ "meetings.callApps": {
+  "exempt": {},
   "mapped": [
    "meetingCallApps",
+   "meetings.tab.callApps",
+   "meetings.tab.general",
+   "meetings.tab.permissions"
+  ]
+ },
+ "meetings.general": {
+  "exempt": {
+   "statusLine": 1
+  },
+  "mapped": [
    "meetingCallDetection",
    "meetingCaptureCallSound",
    "meetingUseCalendarForNames",
-   "meetingWriteSummary"
+   "meetingWriteSummary",
+   "meetings.tab.callApps",
+   "meetings.tab.general",
+   "meetings.tab.permissions"
+  ]
+ },
+ "meetings.permissions": {
+  "exempt": {
+   "statusLine": 4
+  },
+  "mapped": [
+   "meetings.tab.callApps",
+   "meetings.tab.general",
+   "meetings.tab.permissions"
   ]
  }
 }

@@ -1,0 +1,1 @@
+{"language":"en","words":["Zoom","Microsoft Teams","FaceTime","Slack","Webex","Google Meet"],"phrases":["choose which apps to watch for calls","turn off call detection for Zoom"]}

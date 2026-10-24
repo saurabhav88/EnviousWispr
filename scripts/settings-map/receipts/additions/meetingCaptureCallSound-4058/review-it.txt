@@ -1,0 +1,1 @@
+{"language":"it","title":"registra solo la mia voce","words":[],"phrases":["non registrare l'audio del computer","escludi le voci degli altri dalla registrazione"]}

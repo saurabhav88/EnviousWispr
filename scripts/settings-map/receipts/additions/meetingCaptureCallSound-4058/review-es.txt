@@ -1,0 +1,1 @@
+{"language":"es","title":"grabar solo mi voz","words":[],"phrases":["no grabar el sonido del ordenador","excluir las voces de los demás en la llamada"]}

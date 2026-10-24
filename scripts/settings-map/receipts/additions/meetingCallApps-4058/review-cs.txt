@@ -1,0 +1,1 @@
+{"language":"cs","title":"rozpoznávání hovorů v aplikacích","words":[],"phrases":["ve kterých aplikacích rozpoznávat hovory","neptat se na hovory v této aplikaci"]}

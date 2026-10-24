@@ -1,0 +1,1 @@
+{"language":"pt","title":"detectar chamadas em apps","words":["apps de chamadas"],"phrases":["escolher em quais apps detectar chamadas","desativar avisos de chamadas de um app"]}

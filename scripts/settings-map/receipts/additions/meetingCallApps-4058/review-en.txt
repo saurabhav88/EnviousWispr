@@ -1,0 +1,1 @@
+{"language":"en","words":["call apps"],"phrases":["choose which apps to detect calls in","stop asking about calls in this app"]}

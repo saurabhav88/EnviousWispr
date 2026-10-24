@@ -1,0 +1,9 @@
+{
+  "language": "pl",
+  "title": "nagrywaj tylko mój głos",
+  "words": [],
+  "phrases": [
+    "nie nagrywaj dźwięku z komputera",
+    "bez głosów innych osób w rozmowie"
+  ]
+}
