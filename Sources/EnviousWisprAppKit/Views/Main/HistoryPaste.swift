@@ -35,7 +35,9 @@ enum HistoryPaste {
       let result = ClipboardCleanup.manualPaste(
         text: text, restore: settings.restoreClipboardAfterPaste,
         markTransient: settings.keepDictationsOutOfClipboardHistory, on: .general,
-        dispatch: { PasteService.postPasteKeystroke() })
+        dispatch: {
+          PasteService.postPasteKeystroke(keyCode: SyntheticCopyChord.commandVKeyCode())
+        })
       switch result {
       case .dispatched:
         dispatched()

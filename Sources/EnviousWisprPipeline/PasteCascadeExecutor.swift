@@ -479,7 +479,9 @@ enum PasteTargetWindowGate {
     target: PasteTargetWindow, element: AXUIElement?, pid: pid_t,
     ax: any PastedRegionAXOperations, admit: (AXUIElement) -> Bool
   ) -> Refusal? {
-    guard case .refuse(let refusal) = decide(target: target, element: element, pid: pid, ax: ax, admit: admit)
+    guard
+      case .refuse(let refusal) = decide(
+        target: target, element: element, pid: pid, ax: ax, admit: admit)
     else { return nil }
     return refusal
   }
@@ -687,9 +689,11 @@ internal final class PasteCascadeExecutor {
   /// take's `paste.landing_retained` row.
   private let onRetained: RetainedHandler?
 
-  typealias RetainedHandler = @MainActor (
-    _ takeID: String, _ retainedChangeCount: Int, _ reportShown: @escaping @MainActor (Bool) -> Void
-  ) -> Void
+  typealias RetainedHandler =
+    @MainActor (
+      _ takeID: String, _ retainedChangeCount: Int,
+      _ reportShown: @escaping @MainActor (Bool) -> Void
+    ) -> Void
 
   internal init(
     pasteboard: NSPasteboard, policy: PasteDeliveryPolicy,
@@ -1078,7 +1082,8 @@ internal final class PasteCascadeExecutor {
         let reason = "target_window_not_confirmed(\(windowRefusal.rawValue)) ms=\(elapsed)"
         tierFailures["activation"] = reason
         emitTierFailureBreadcrumb(stage: "activation", reason: reason, bundleId: bundleId)
-        logWindowRefusal(stage: "activation", reason: reason, bundleId: bundleId, origin: request.origin)
+        logWindowRefusal(
+          stage: "activation", reason: reason, bundleId: bundleId, origin: request.origin)
       } else if activated {
         // Revalidated AFTER activation, because bringing the app frontmost is
         // itself capable of moving focus and selection.
@@ -1137,7 +1142,8 @@ internal final class PasteCascadeExecutor {
           let reason = "target_window_not_confirmed(\(windowRefusal))"
           tierFailures["cgevent"] = reason
           emitTierFailureBreadcrumb(stage: "cgevent", reason: reason, bundleId: bundleId)
-          logWindowRefusal(stage: "cgevent", reason: reason, bundleId: bundleId, origin: request.origin)
+          logWindowRefusal(
+            stage: "cgevent", reason: reason, bundleId: bundleId, origin: request.origin)
         } else if !chromiumOmniboxStillFocused {
           // Refuse the blind paste rather than guess where it lands — the same
           // "not confident enough to act automatically" floor PR #220 already
@@ -1170,12 +1176,20 @@ internal final class PasteCascadeExecutor {
           #if DEBUG
             submissionLedger.append(submissionToken(tier: .cgEvent, text: payload.text))
           #endif
+          // The owner route posts at the destination's process; the front route posts at the
+          // session tap with the layout's "v" key (#3437).
+          let poster: @MainActor () -> Bool
+          if let pid = Self.keystrokeProcess(ownerPath: gate.ownerPath, app: app) {
+            poster = { Self.postPasteChord(at: pid) }
+          } else {
+            poster = {
+              PasteService.postPasteKeystroke(keyCode: SyntheticCopyChord.commandVKeyCode())
+            }
+          }
           let dispatchResult = PasteService.pasteToActiveApp(
             payload.text, to: self.pasteboard,
             kind: request.pasteWriteKind,
-            postKeystroke: Self.keystrokeProcess(ownerPath: gate.ownerPath, app: app).map { pid in
-              { MainActor.assumeIsolated { Self.postPasteChord(at: pid) } }
-            })
+            postKeystroke: poster)
           submittedClipboardChangeCount = dispatchResult.changeCount
           switch dispatchResult {
           case .dispatched:
@@ -1268,7 +1282,8 @@ internal final class PasteCascadeExecutor {
           let reason = "target_window_not_confirmed(\(windowRefusal))"
           tierFailures["applescript"] = reason
           emitTierFailureBreadcrumb(stage: "applescript", reason: reason, bundleId: bundleId)
-          logWindowRefusal(stage: "applescript", reason: reason, bundleId: bundleId, origin: request.origin)
+          logWindowRefusal(
+            stage: "applescript", reason: reason, bundleId: bundleId, origin: request.origin)
         } else if !chromiumOmniboxStillFocusedForAppleScript {
           // Cloud review round 5 (same shape, Tier 2b): `.appleScript` must NOT
           // be recorded as attempted here — `pasteViaAppleScript` is never
@@ -1361,10 +1376,12 @@ internal final class PasteCascadeExecutor {
       if let windowRefusal = activation.windowRefusal {
         // #3121: the app came front with another of its windows. Its Edit > Paste would paste
         // there, so the probe does not run; Tier 3 follows.
-        let reason = "target_window_not_confirmed(\(windowRefusal.rawValue)) ms=\(activation.elapsed)"
+        let reason =
+          "target_window_not_confirmed(\(windowRefusal.rawValue)) ms=\(activation.elapsed)"
         tierFailures["activation"] = reason
         emitTierFailureBreadcrumb(stage: "activation", reason: reason, bundleId: bundleId)
-        logWindowRefusal(stage: "activation", reason: reason, bundleId: bundleId, origin: request.origin)
+        logWindowRefusal(
+          stage: "activation", reason: reason, bundleId: bundleId, origin: request.origin)
       } else if activation.activated {
         // Put our text on the clipboard BEFORE probing enabled-state: apps grey
         // out Paste when the clipboard is empty/incompatible (#729 Codex r1).
@@ -1408,14 +1425,15 @@ internal final class PasteCascadeExecutor {
             // #3106: prepared once the enabled item is known, immediately before AXPress.
             let arrivalCapture = prepareArrivalCapture(
               tier: .menuPaste, app: app, payloadText: payload.text, request: request,
-          tier1BoundTheTarget: policy.boundTier1MessagingTimeout && tiersAttempted.contains(.axDirect))
+              tier1BoundTheTarget: policy.boundTier1MessagingTimeout
+                && tiersAttempted.contains(.axDirect))
             defer { arrivalCapture?.cancelUnlessCommitted() }
             // #3121 R2-1/R2-4: the menu probe's AX reads above can move focus; this is the last
             // AX step before AXPress, and `.menuPaste` counts as attempted only once it passes.
             let gate = dispatchGate(
               app: app, target: activation.target, element: request.targetElement,
               tier1BoundTheTarget: false, takeID: request.takeID, bundleId: bundleId,
-          origin: request.origin)
+              origin: request.origin)
             // `dispatchGate` read the destination last (the front app, or the confirmed focus owner
             // with the captured field, #3423); no AX step follows it before AXPress.
             let dispatchRefusal = gate.refusal
@@ -1424,7 +1442,8 @@ internal final class PasteCascadeExecutor {
               let reason = "target_window_not_confirmed(\(windowRefusal))"
               tierFailures["menu_paste"] = reason
               emitTierFailureBreadcrumb(stage: "menu_paste", reason: reason, bundleId: bundleId)
-              logWindowRefusal(stage: "menu_paste", reason: reason, bundleId: bundleId, origin: request.origin)
+              logWindowRefusal(
+                stage: "menu_paste", reason: reason, bundleId: bundleId, origin: request.origin)
             } else {
               tiersAttempted.append(.menuPaste)
               if PasteService.pressMenuItem(menuItem) {

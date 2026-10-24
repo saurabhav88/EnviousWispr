@@ -187,7 +187,8 @@ final class LastDictationAction {
   ) async {
     finish(
       .paste, source,
-      await pasteOutcome(rowID: rowID, target: target, source: source, copiesAtPress: copiesAtPress))
+      await pasteOutcome(rowID: rowID, target: target, source: source, copiesAtPress: copiesAtPress)
+    )
   }
 
   private func pasteOutcome(
@@ -345,7 +346,8 @@ extension LastDictationAction {
             .isEmpty
         },
         restoreClipboard: { [weak settings] in settings?.restoreClipboardAfterPaste ?? true },
-        markTransient: { [weak settings] in settings?.keepDictationsOutOfClipboardHistory ?? false },
+        markTransient: { [weak settings] in settings?.keepDictationsOutOfClipboardHistory ?? false
+        },
         clipboardHeld: { ClipboardCleanup.isBoardHeldForManualWrite(.general) },
         clipboardWaited: { waited in
           Task {
@@ -357,7 +359,9 @@ extension LastDictationAction {
         manualPaste: { text, restore, markTransient in
           ClipboardCleanup.manualPaste(
             text: text, restore: restore, markTransient: markTransient, on: .general,
-            dispatch: { PasteService.postPasteKeystroke() })
+            dispatch: {
+              PasteService.postPasteKeystroke(keyCode: SyntheticCopyChord.commandVKeyCode())
+            })
         },
         manualCopy: { ClipboardCleanup.manualCopy(text: $0, on: .general) },
         openPermissions: openPermissions,

@@ -458,19 +458,19 @@ public enum PasteService {
 
     package static var live: KeyboardFocusOperations {
       KeyboardFocusOperations(
-      isTrusted: { AXIsProcessTrusted() },
-      systemWide: { AXUIElementCreateSystemWide() },
-      setMessagingTimeout: { AXUIElementSetMessagingTimeout($0, Float($1)) == .success },
-      copyFocusedElement: { handle in
-        var ref: CFTypeRef?
-        let error = AXUIElementCopyAttributeValue(
-          handle, kAXFocusedUIElementAttribute as CFString, &ref)
-        return (error, ref)
-      },
-      ownerPID: { element in
-        var pid: pid_t = 0
-        return AXUIElementGetPid(element, &pid) == .success ? pid : nil
-      })
+        isTrusted: { AXIsProcessTrusted() },
+        systemWide: { AXUIElementCreateSystemWide() },
+        setMessagingTimeout: { AXUIElementSetMessagingTimeout($0, Float($1)) == .success },
+        copyFocusedElement: { handle in
+          var ref: CFTypeRef?
+          let error = AXUIElementCopyAttributeValue(
+            handle, kAXFocusedUIElementAttribute as CFString, &ref)
+          return (error, ref)
+        },
+        ownerPID: { element in
+          var pid: pid_t = 0
+          return AXUIElementGetPid(element, &pid) == .success ? pid : nil
+        })
     }
   }
 
@@ -2368,15 +2368,17 @@ public enum PasteService {
   /// whatever the real board held into the frontmost app. Production passes
   /// `.general`, where the skip is unreachable and behaviour is unchanged.
   ///
-  /// `postKeystroke` posts the Cmd+V; nil posts it at the annotated session tap, which the window
+  /// `postKeystroke` posts the Cmd+V, and every caller names one (#3437). The front route passes
+  /// `postPasteKeystroke(keyCode:)`, which posts at the annotated session tap that the window
   /// server delivers to the FRONT application. A destination that owns the keyboard focus without
   /// being front (a non-activating launcher panel, #3423) never receives that post, so its caller
   /// passes a poster aimed at the destination's process instead.
+  @MainActor
   public static func pasteToActiveApp(
     _ text: String,
     to pasteboard: NSPasteboard = .general,
     kind: WriteKind,
-    postKeystroke: (() -> Bool)? = nil
+    postKeystroke: @MainActor () -> Bool
   ) -> PasteDispatchResult {
     let pasteStart = CFAbsoluteTimeGetCurrent()
     let accessibilityTrusted = AXIsProcessTrusted()
@@ -2410,7 +2412,7 @@ public enum PasteService {
       )
     }
 
-    guard (postKeystroke ?? dispatchCmdV)() else {
+    guard postKeystroke() else {
       Task {
         await AppLogger.shared.log(
           "Paste attempt: accessibility=\(accessibilityTrusted), cgEventAttempted=false, clipboardWrite=\(clipboardWriteSuccess) — Failed to create CGEvent",
@@ -2459,8 +2461,12 @@ public enum PasteService {
   /// clipboard transaction (`ClipboardCleanup.manualPaste`), which Paste Last Dictation and
   /// History's Paste (#3875) both use. `pasteToActiveApp` writes the board itself, so calling it
   /// there would write twice.
-  public static func postPasteKeystroke() -> Bool {
-    dispatchCmdV()
+  ///
+  /// `keyCode` is the key that means "v" on the active layout (#3437); Pipeline resolves it
+  /// (`SyntheticCopyChord.commandVKeyCode()`), because the layout resolver lives there.
+  @MainActor
+  public static func postPasteKeystroke(keyCode: CGKeyCode) -> Bool {
+    dispatchCmdV(keyCode: keyCode)
   }
 
   // MARK: - Tier 2c: Language-agnostic Edit > Paste via Accessibility menu (#729)
@@ -2703,24 +2709,32 @@ public enum PasteService {
 
   // MARK: - Private
 
-  /// Send Cmd+V keystroke via CGEvent. Returns true on success.
+  /// Send Cmd+V keystroke via CGEvent. Returns true on success. `keyCode` is the layout's "v"
+  /// key (#3437); everything else (source, flags, marker, tap, hold) is the shipped sequence.
+  @MainActor
   @discardableResult
-  private static func dispatchCmdV() -> Bool {
+  private static func dispatchCmdV(keyCode: CGKeyCode) -> Bool {
     guard let source = CGEventSource(stateID: .combinedSessionState),
-      let keyDown = CGEvent(
-        keyboardEventSource: source, virtualKey: UInt16(kVK_ANSI_V), keyDown: true),
-      let keyUp = CGEvent(
-        keyboardEventSource: source, virtualKey: UInt16(kVK_ANSI_V), keyDown: false)
+      let (keyDown, keyUp) = commandVEvents(keyCode: keyCode, source: source)
     else { return false }
+    keyDown.post(tap: .cgAnnotatedSessionEventTap)
+    SyntheticKeyHold.beforeRelease()
+    keyUp.post(tap: .cgAnnotatedSessionEventTap)
+    return true
+  }
+
+  /// The two key events `dispatchCmdV` posts, built and marked but not posted, so a test can
+  /// check the key, the Command flag and the marker without touching the machine.
+  static func commandVEvents(keyCode: CGKeyCode, source: CGEventSource) -> (CGEvent, CGEvent)? {
+    guard
+      let keyDown = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true),
+      let keyUp = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
+    else { return nil }
     // Marked as ours (#3544 P3), so the keyboard listener never reads this chord as the user's.
     for event in [keyDown, keyUp] {
       event.setIntegerValueField(.eventSourceUserData, value: SyntheticKeyboardEventMarker.userData)
+      event.flags = .maskCommand
     }
-    keyDown.flags = .maskCommand
-    keyDown.post(tap: .cgAnnotatedSessionEventTap)
-    SyntheticKeyHold.beforeRelease()
-    keyUp.flags = .maskCommand
-    keyUp.post(tap: .cgAnnotatedSessionEventTap)
-    return true
+    return (keyDown, keyUp)
   }
 }
