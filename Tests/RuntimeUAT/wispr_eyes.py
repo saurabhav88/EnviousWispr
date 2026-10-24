@@ -607,11 +607,22 @@ def _play_take(audio, on_fail):
 
 def _recording_idle(seconds=30.0):
     """Whether the app stopped recording: its menu offers Start Recording and not Stop Recording.
-    Both are read so a menu AX cannot see at all never reads as idle (#3764)."""
+    Both are read so a menu AX cannot see at all never reads as idle (#3764).
+
+    Both items live in the status item's menu (`AXExtrasMenuBar`), so only the menu bars are
+    searched (#4047): a search of the whole app for the ABSENT "Stop Recording" walked every open
+    window and took 90 s per call (measured 2026-10-24), which stalled every take
+    after the first by about 100 s. With no readable menu bar the answer stays "not idle"."""
+    menus = [m for m in (get_attr(_app, "AXExtrasMenuBar"), get_attr(_app, "AXMenuBar")) if m is not None]
+    if not menus:
+        return False
+
+    def offered(label):
+        return any(_find_match(m, label, "AXMenuItem") is not None for m in menus)
+
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
-        if (_find_match(_app, "Stop Recording", "AXMenuItem") is None
-                and _find_match(_app, "Start Recording", "AXMenuItem") is not None):
+        if not offered("Stop Recording") and offered("Start Recording"):
             return True
         time.sleep(0.3)  # settle: the recording state changes asynchronously; no ack to await
     return False
@@ -3317,7 +3328,7 @@ def test_ptt(key=None, audio=None, sentence=None, expect=None, timeout=10.0):
 
 
 def record_tts(sentence="The quick brown fox jumps over the lazy dog", key=None,
-               voice="echo", wait=10.0, focus_app=None, before_release=None):
+               voice="echo", wait=10.0, focus_app=None, before_release=None, audio=None):
     """Generate TTS, hold PTT key, read raw ASR and polished output from app log.
 
     This is the go-to method for testing transcription quality and polish behavior.
@@ -3335,6 +3346,8 @@ def record_tts(sentence="The quick brown fox jumps over the lazy dog", key=None,
         before_release: Called once while the key is still held, immediately before its
                   release (#3304). None (default) keeps the plain hold. The key is released
                   even if it raises.
+        audio:    A recording to play instead of generating TTS (#4047). `sentence` is then
+                  only the label printed in the results.
 
     Returns:
         dict with keys: raw_asr, polished, word_correction, filler_removal,
@@ -3369,8 +3382,8 @@ def record_tts(sentence="The quick brown fox jumps over the lazy dog", key=None,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         time.sleep(0.5)
 
-    # Generate TTS
-    audio_path = tts(sentence, voice=voice)
+    # Generate TTS, or play the caller's own recording (#4047: replayed saved dictations)
+    audio_path = audio or tts(sentence, voice=voice)
 
     # Get audio duration
     audio_dur = _audio_duration(audio_path) or 3.0
