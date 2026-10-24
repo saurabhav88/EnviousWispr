@@ -307,33 +307,19 @@ def _walk(el, out, d):
     role = get_attr(el,"AXRole") or ""
     ind = "  " * d
     children = list(_iter_children_with_menubars(el))
-    if role == "AXOutline":  # sidebar — compact inline
-        sel = None
+    if role == "AXOutline":
+        # A content list (History), never the sidebar: the main window's sidebar is buttons
+        # (#1296). Naming each row took minutes on 24,384 rows, and since History pages its
+        # list (#4001 step 3a) it holds 30 rows, so every list gets the count, the selected
+        # row and the first few rows, never all of them.
         rows = get_attr(el,"AXRows") or get_attr(el,"AXChildren") or []
-        if len(rows) > _sn.LONG_LIST_CHILDREN:
-            # A content list (History: every dictation), not the sidebar. Naming each row
-            # took minutes on 24,384 rows; show the count and the first few.
-            out.append(f'{ind}[list] {len(rows)} rows')
-            for r in rows[:5]:
-                if len(out) >= _MAX_LINES: return
-                t = _row_text(r) if get_attr(r,"AXRole") == "AXRow" else ""
-                if t: out.append(f"{ind}  - {t}")
-            return
-        names = []
-        for r in rows:
-            if get_attr(r,"AXRole") != "AXRow": continue
-            t = _row_text(r)
-            if get_attr(r,"AXSelected"): sel = t
-            if t: names.append(f"*{t}*" if t == sel else t)
-        out.append(f'{ind}[sidebar] selected="{sel or "?"}"')
-        if names:
-            line = ind + "  "
-            for i, n in enumerate(names):
-                add = (", " if i else "") + n
-                if len(line) + len(add) > 72:
-                    out.append(line); line = ind + "  " + n
-                else: line += add
-            if line.strip(): out.append(line)
+        selected = get_attr(el,"AXSelectedRows") or []  # one read, not one per row
+        sel = _row_text(selected[0]) if selected else None
+        out.append(f'{ind}[list] {len(rows)} rows, selected="{sel or "?"}"')
+        for r in rows[:5]:
+            if len(out) >= _MAX_LINES: return
+            t = _row_text(r) if get_attr(r,"AXRole") == "AXRow" else ""
+            if t: out.append(f"{ind}  - {t}")
         return
     if role in _NOISE:
         for c in children:

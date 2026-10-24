@@ -10858,6 +10858,17 @@
         }
       }
     },
+    "Load more history" : {
+      "comment" : "History list: the button at the end of the shown rows that shows older ones.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weitere Verlaufseinträge anzeigen"
+          }
+        }
+      }
+    },
     "Loaded" : {
       "comment" : "Main window sidebar: the speech model is in memory.",
       "localizations" : {

@@ -5,9 +5,22 @@ import SwiftUI
 struct TranscriptHistoryView: View {
   @Environment(TranscriptCoordinator.self) private var transcriptCoordinator
   @State private var showDeleteAllConfirmation = false
+  /// #4001 step 3a: how many listed items `List` draws, for which filter and search.
+  @State private var paging = HistoryPaging.State()
+
+  private var pagingContext: HistoryPaging.Context {
+    HistoryPaging.Context(
+      filter: transcriptCoordinator.historyFilter, query: transcriptCoordinator.searchQuery)
+  }
 
   var body: some View {
     @Bindable var tc = transcriptCoordinator
+    // #4001 step 3a: `List` draws the first page or pages of the listed items, always through
+    // the selected one; counts, empty state and selection rules stay on the full list.
+    let items = transcriptCoordinator.listedItems
+    let window = HistoryPaging.window(
+      items: items, context: pagingContext, state: paging, selected: tc.selectedItemID)
+    let request = HistoryPaging.request(for: window)
 
     VStack(spacing: 0) {
       SidebarStatsHeader()
@@ -15,20 +28,47 @@ struct TranscriptHistoryView: View {
       Divider()
 
       // #3972 R45: one list of typed items; a meeting is one item from Start to deletion.
-      List(transcriptCoordinator.listedItems, selection: $tc.selectedItemID) { item in
-        Group {
-          switch item {
-          case .transcript(let transcript): TranscriptRowView(transcript: transcript)
-          case .meeting(let meeting): MeetingRowView(meeting: meeting)
+      List(selection: $tc.selectedItemID) {
+        ForEach(items.prefix(window.boundary), id: \.id) { item in
+          Group {
+            switch item {
+            case .transcript(let transcript): TranscriptRowView(transcript: transcript)
+            case .meeting(let meeting): MeetingRowView(meeting: meeting)
+            }
+          }
+          .tag(item.id)
+          // Paint the row background with the page colour so macOS's default
+          // grey selection highlight is replaced — our card's accent ring is the
+          // only selection signal.
+          .listRowBackground(Color.stPageBg)
+          .listRowSeparator(.hidden)
+          .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
+          .onAppear {
+            // A best-effort prefetch hint: it can come early, together with other rows, or
+            // twice; `loadMore` accepts one request per window.
+            if item.id == window.tail, let request { loadMore(request) }
           }
         }
-        .tag(item.id)
-        // Paint the row background with the page colour so macOS's default
-        // grey selection highlight is replaced — our card's accent ring is the
-        // only selection signal.
-        .listRowBackground(Color.stPageBg)
-        .listRowSeparator(.hidden)
-        .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
+        if let request {
+          // Not tagged, so it is not a selectable item; keyboard and VoiceOver reach it.
+          Button {
+            loadMore(request)
+          } label: {
+            Text(
+              "Load more history",
+              comment:
+                "History list: the button at the end of the shown rows that shows older ones."
+            )
+            .font(.caption)
+            .frame(maxWidth: .infinity)
+          }
+          .buttonStyle(.borderless)
+          .listRowBackground(Color.stPageBg)
+          .listRowSeparator(.hidden)
+        }
+      }
+      .onChange(of: pagingContext) { _, context in
+        paging = HistoryPaging.synchronized(paging, to: context)
       }
       .listStyle(.plain)
       .scrollContentBackground(.hidden)
@@ -72,6 +112,16 @@ struct TranscriptHistoryView: View {
       // equally easy to type, with nothing testable observing the choice.
       Text(transcriptCoordinator.deleteAllConfirmationMessage)
     }
+  }
+
+  /// The one load action for the last row and Load more history. Synchronous on the main
+  /// actor: it rebuilds the window from live state, accepts at most one page for it and stores
+  /// the result before returning, so a second request for the same window is refused.
+  private func loadMore(_ request: HistoryPaging.LoadRequest) {
+    let current = HistoryPaging.window(
+      items: transcriptCoordinator.listedItems, context: pagingContext, state: paging,
+      selected: transcriptCoordinator.selectedItemID)
+    paging = HistoryPaging.load(request, state: paging, current: current)
   }
 }
 
