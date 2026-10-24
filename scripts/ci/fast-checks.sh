@@ -44,7 +44,7 @@ DEFAULT_TREE="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # POSIX baseline every supported machine has: grep, sed, awk, find, cut, tr.
 # Order is CI's step order, then the two members whose CI home is another job.
 MEMBERS=(
-  "ci-self-tests|bash python3 git jq curl iconv|build-check"
+  "ci-self-tests|bash python3 git jq curl iconv ps|build-check"
   "dependency-direction|bash grep|build-check"
   "lane-verdict-self-test|bash python3|build-check"
   "dev-app-lock-self-test|python3 ps|build-check"
@@ -102,6 +102,9 @@ member_ci_self_tests() {
   bash scripts/ci/verify-release-downloads.sh --self-test
   bash scripts/ci/release-summary.sh --self-test
   bash scripts/ci/check-source-run.sh --self-test
+  # #4056: local execution, result aggregation and the cross-worktree queue.
+  # All boundaries are private fixtures; this neither builds nor runs the app.
+  bash scripts/xcode-test.sh --self-test
 }
 
 # CI step: Dependency direction (#3095)

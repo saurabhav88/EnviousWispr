@@ -5,6 +5,8 @@ No app compilation or real cache deletion. Pass --runner PATH for a baseline
 control. These checks prove command orchestration, not Xcode test discovery.
 """
 import argparse
+import fcntl
+import selectors
 import json
 import os
 from pathlib import Path
@@ -32,6 +34,13 @@ class RunnerContract(unittest.TestCase):
         # The real receipt owner, against owned classifier and eval-compile
         # stand-ins with the real output contracts (#3729 PR-C).
         shutil.copyfile(RUNNER.with_name('lib') / 'validation-receipt.py', lib / 'validation-receipt.py')
+        # Private COPY of the machine queue: a missed rewrite must never acquire
+        # the developer's real slot from a self-test fixture.
+        queue = (RUNNER.parent / 'local-ci-queue.py').read_text()
+        definition = 'LOCK_PATH = Path(pwd.getpwuid(os.getuid()).pw_dir) / "Library/Caches/EnviousWispr/local-ci/runner.lock"'
+        self.assertEqual(queue.count(definition), 1)
+        (self.root / 'scripts/local-ci-queue.py').write_text(
+            queue.replace(definition, f"LOCK_PATH = Path({str(self.root / 'private-queue/runner.lock')!r})"))
         ci = self.root / 'scripts/ci'
         ci.mkdir()
         for name, key, prefix in (('classify-changes.sh', 'needs_build', 'Sources/'),
@@ -53,6 +62,27 @@ ew_seed_resolve_or_unseed() { [ "${STUB_SEEDED:-1}" = 1 ] || return 0; shift; "$
 ew_take_default_lane() { mkdir -p "$1"; }
 ew_publish_latest_lane() { :; }
 ew_prune_stale_lanes() { :; }
+''')
+        # A recorded supervisor boundary; the real two-process supervisor and
+        # verdict owners have their process tests in local-test-groups-test.py.
+        (self.root / 'scripts/local-test-groups.py').write_text('''import argparse, os, signal, sys, time
+from pathlib import Path
+p = argparse.ArgumentParser()
+for name in ('products', 'scheme', 'log', 'result-bundle'): p.add_argument('--' + name, required=True)
+a = p.parse_args()
+root = Path(os.environ['FIXTURE_ROOT'])
+trace = Path(os.environ['TRACE'])
+with trace.open('a') as f: f.write('groups\\n')
+def stop(sig, frame):
+    held = (root / '.derivedData/Test/.ew-validation.lock').exists()
+    with trace.open('a') as f: f.write('groups-stopped:lock=' + str(int(held)) + '\\n')
+    sys.exit(128 + sig)
+signal.signal(signal.SIGTERM, stop)
+if os.environ.get('STARTED'): Path(os.environ['STARTED']).write_text(str(os.getpid()))
+while os.environ.get('HOLD') and Path(os.environ['HOLD']).exists(): time.sleep(0.01)
+if os.environ.get('GROUP_RC'): sys.exit(int(os.environ['GROUP_RC']))
+Path(a.result_bundle).mkdir()
+Path(a.log).write_text('Test run with 2 tests passed.\\n')
 ''')
         (lib / 'lane-verdict.sh').write_text('''ew_lane_verdict() {
   echo "verdict:$3:required=${EW_LANE_REQUIRED_BUNDLES-unset}" >> "$TRACE"
@@ -76,6 +106,9 @@ if args[0] == '-version':
     sys.exit(0)
 with open(os.environ['CALLS'], 'a') as f:
     f.write(json.dumps(args) + '\\n')
+if args[0] == 'build-for-testing':
+    Path(os.environ['PACKAGE_STATE']).write_text('current lockfile dependencies')
+    sys.exit(int(os.environ.get('BUILD_RC', '0')))
 if args[0] == 'test':
     Path(args[args.index('-resultBundlePath') + 1]).mkdir()
     root = Path(os.environ['FIXTURE_ROOT'])
@@ -128,7 +161,7 @@ print(json.dumps({'testNodes': [{'nodeType': 'Test Plan', 'children': nodes}]}))
         self.env.pop('XCODE_RC', None)
         for name in ('VERDICT_RC', 'XCRESULT_RC', 'OMIT_SELECTION', 'NODE_SUFFIX', 'CI',
                      'EW_LANE_REQUIRED_BUNDLES', 'EVAL_RC', 'HOLD', 'STARTED', 'MUTATE',
-                     'MUTATE_STAGE', 'TOOLCHAIN_FLAG', 'PLANT_RECEIPT'):
+                     'MUTATE_STAGE', 'TOOLCHAIN_FLAG', 'PLANT_RECEIPT', 'GROUP_RC', 'BUILD_RC'):
             self.env.pop(name, None)
         self.sentinel = self.root / 'derived/keep-cache'
         self.sentinel.parent.mkdir()
@@ -154,9 +187,10 @@ print(json.dumps({'testNodes': [{'nodeType': 'Test Plan', 'children': nodes}]}))
     def receipt_data(self):
         return json.loads(self.receipt.read_text())
 
-    def run_runner(self, *args, rc=0, **env):
+    def run_runner(self, *args, rc=0, execution='serial', **env):
+        mode = ['--' + execution] if execution else []
         result = subprocess.run(['bash', str(self.root / 'scripts/xcode-test.sh'),
-                                 '--log-dir', str(self.root / 'logs'), *args],
+                                 '--log-dir', str(self.root / 'logs'), *mode, *args],
                                 env=dict(self.env, **env), text=True,
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=15)
         self.assertEqual(result.returncode, rc, result.stdout)
@@ -180,12 +214,140 @@ print(json.dumps({'testNodes': [{'nodeType': 'Test Plan', 'children': nodes}]}))
         self.assertEqual(trace.count('generate'), 1)
         self.assertIn('verdict:Debug lane:required=', trace)
 
-    def test_default_is_full_debug_with_required_bundles(self):
+    def test_serial_is_full_debug_with_required_bundles(self):
         self.run_runner()
         self.assertEqual(self.configurations(), ['Debug'])
         self.assertFalse(any(arg.startswith('-only-testing:') for arg in self.tests[0]))
         self.assertIn('verdict:Debug lane:required=unset', (self.root / 'trace').read_text())
         self.assertFalse((self.root / 'xcrun-calls').exists())  # no selections to confirm
+
+    def test_default_uses_groups_without_requiring_a_new_command(self):
+        self.run_runner(execution=None)
+        self.assertIn('groups', self.trace())
+        self.assertEqual(self.tests, [])
+        self.assertTrue(self.receipt.exists())
+
+    def test_grouped_run_builds_once_then_judges_the_complete_result(self):
+        result = self.run_runner('--grouped', execution=None)
+        builds = [row for row in self.calls if row[0] == 'build-for-testing']
+        self.assertEqual(len(builds), 1)
+        self.assertEqual(builds[0][builds[0].index('-configuration') + 1], 'Debug')
+        self.assertEqual(self.tests, [])
+        trace = self.trace()
+        self.assertLess(trace.index('groups'), trace.index('verdict:Debug lane:required=unset'))
+        self.assertLess(trace.index('verdict:Debug lane:required=unset'), trace.index('eval'))
+        self.assertIn('validation receipt: issued', result.stdout)
+        self.assertTrue(Path(self.receipt_data()['result_bundle']).is_dir())
+
+    def test_grouped_build_failure_never_launches_test_groups(self):
+        self.run_runner('--grouped', execution=None, rc=65, BUILD_RC='65')
+        self.assertFalse(self.receipt.exists())
+        self.assertNotIn('groups', self.trace())
+
+    def test_group_failure_cannot_publish_seed_or_receipt(self):
+        self.run_runner('--grouped', execution=None, rc=1, GROUP_RC='1')
+        self.assertFalse(self.receipt.exists())
+        self.assertNotIn('publish', self.trace())
+        self.assertNotIn('eval', self.trace())
+
+    def test_conflicting_execution_options_stop_before_setup(self):
+        self.run_runner('--grouped', rc=2)
+        self.assertEqual(self.calls, [])
+
+    def test_grouped_mode_requires_full_local_debug(self):
+        for args, env in [(('--filter', 'Target/Suite'), {}),
+                          (('--configuration', 'Release'), {}),
+                          ((), {'CI': 'true'}),
+                          ((), {'EW_LANE_REQUIRED_BUNDLES': 'EnviousWisprTests'})]:
+            with self.subTest(args=args, env=env):
+                self.run_runner('--grouped', *args, execution=None, rc=2, **env)
+                self.assertEqual(self.calls, [])
+
+    def test_int_during_helper_startup_stops_it_before_generation(self):
+        marker, gate = self.root / 'queue-startup', self.root / 'hold-queue-startup'
+        gate.write_text('hold')
+        queue = self.root / 'scripts/local-ci-queue.py'
+        source = queue.read_text()
+        entry = 'def acquire(fd):\n    checked_descriptor(fd)\n'
+        self.assertEqual(source.count(entry), 1)
+        # A private copy holds the observed startup state before custom signal
+        # handlers exist. An INT forwarded unchanged would be lost here.
+        pause = (f'    signal.signal(signal.SIGINT, signal.SIG_IGN)\n'
+                 f'    Path({str(marker)!r}).write_text("ready")\n'
+                 f'    deadline = time.monotonic() + 8\n'
+                 f'    while Path({str(gate)!r}).exists() and time.monotonic() < deadline:\n'
+                 f'        time.sleep(0.01)  # deadline-fallback: fixture startup gate\n')
+        queue.write_text(source.replace(entry, entry + pause))
+        owner = subprocess.Popen(['bash', str(self.root / 'scripts/xcode-test.sh'),
+                                  '--filter', 'Target/Suite', '--log-dir', str(self.root / 'logs-startup')],
+                                 env=self.env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                 text=True, start_new_session=True)
+        try:
+            deadline = time.monotonic() + 10
+            while not marker.exists() and time.monotonic() < deadline:
+                time.sleep(0.01)  # deadline-fallback: subject announces startup
+            self.assertTrue(marker.exists())
+            owner.send_signal(signal.SIGINT)
+            out, _ = owner.communicate(timeout=3)
+            self.assertEqual(owner.returncode, 130, out)
+            self.assertFalse(self.lock.exists())
+            self.assertFalse(self.receipt.exists())
+            self.assertNotIn('generate', self.trace())
+        finally:
+            if owner.poll() is None:
+                os.killpg(owner.pid, signal.SIGTERM)
+                owner.communicate(timeout=15)
+
+    def test_queued_top_level_pid_cancellation_releases_checkout_lock(self):
+        queue = self.root / 'private-queue/runner.lock'
+        queue.parent.mkdir()
+        fd = os.open(queue, os.O_CREAT | os.O_RDWR, 0o600)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        owner = subprocess.Popen(['bash', str(self.root / 'scripts/xcode-test.sh'),
+                                  '--serial', '--log-dir', str(self.root / 'logs-queued')],
+                                 env=self.env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                 text=True, start_new_session=True)
+        try:
+            with selectors.DefaultSelector() as selector:
+                selector.register(owner.stdout, selectors.EVENT_READ)
+                self.assertTrue(selector.select(timeout=10), 'queued runner did not announce its wait')
+                self.assertIn('waiting', owner.stdout.readline())
+            self.assertTrue(self.lock.exists())
+            self.assertNotIn('generate', self.trace())
+            owner.send_signal(signal.SIGTERM)
+            out, _ = owner.communicate(timeout=15)
+            self.assertNotEqual(owner.returncode, 0, out)
+            self.assertFalse(self.lock.exists())
+            self.assertFalse(self.receipt.exists())
+        finally:
+            if owner.poll() is None:
+                os.killpg(owner.pid, signal.SIGTERM)
+                owner.communicate(timeout=15)
+            os.close(fd)
+
+    def test_top_level_pid_cancellation_waits_for_supervisor_before_unlock(self):
+        hold, started = self.root / 'hold-groups', self.root / 'started-groups'
+        hold.write_text('hold')
+        owner = subprocess.Popen(['bash', str(self.root / 'scripts/xcode-test.sh'),
+                                  '--grouped', '--log-dir', str(self.root / 'logs-groups')],
+                                 env=dict(self.env, HOLD=str(hold), STARTED=str(started)),
+                                 text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                 start_new_session=True)
+        try:
+            deadline = time.monotonic() + 10
+            while not started.exists() and time.monotonic() < deadline:
+                time.sleep(0.01)
+            self.assertTrue(started.exists())
+            owner.send_signal(signal.SIGTERM)  # parent only, no group-wide shortcut
+            out, _ = owner.communicate(timeout=15)
+            self.assertNotEqual(owner.returncode, 0, out)
+            self.assertIn('groups-stopped:lock=1', self.trace())
+            self.assertFalse(self.lock.exists())
+            self.assertFalse(self.receipt.exists())
+        finally:
+            if owner.poll() is None:
+                os.killpg(owner.pid, signal.SIGTERM)
+                owner.communicate(timeout=15)
 
     def stub_hook_installer(self):
         hooks = self.root / 'scripts/githooks'
@@ -437,7 +599,7 @@ print(json.dumps({'testNodes': [{'nodeType': 'Test Plan', 'children': nodes}]}))
         hold, started = self.root / 'hold', self.root / f'started-{log_dir}'
         hold.write_text('hold')
         proc = subprocess.Popen(['bash', str(self.root / 'scripts/xcode-test.sh'),
-                                 '--log-dir', str(self.root / log_dir)],
+                                 '--log-dir', str(self.root / log_dir), '--serial'],
                                 env=dict(self.env, HOLD=str(hold), STARTED=str(started)),
                                 text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                 start_new_session=True)
