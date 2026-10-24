@@ -250,6 +250,8 @@ struct MeetingCoordinatorTests {
     var recoveryHold: DispatchSemaphore?
     var checkpointHold: DispatchSemaphore?
     let checkpointEntered = DispatchSemaphore(value: 0)
+    /// Signalled when a held recovery read begins: the coordinator has counted it by then (#4031).
+    let recoveryEntered = DispatchSemaphore(value: 0)
     let writeGate = WriteGate()
     var removedRows: [UUID] = []
     /// What `meetingRowIDs` answers per meeting.
@@ -328,8 +330,11 @@ struct MeetingCoordinatorTests {
           return NSObject()
         },
         endActivity: { [self] _ in activitiesEnded += 1 },
-        recoverFolder: { [recoveryHold] folder in
-          _ = recoveryHold?.wait(timeout: .now() + 10)
+        recoverFolder: { [recoveryHold, recoveryEntered] folder in
+          if let recoveryHold {
+            recoveryEntered.signal()
+            _ = recoveryHold.wait(timeout: .now() + 10)
+          }
           return MeetingTrackRecovery.recover(folder: folder)
         },
         saveCheckpoint: { [checkpointHold, checkpointEntered] store, checkpoint in
@@ -1192,8 +1197,11 @@ struct MeetingCoordinatorTests {
     await coordinator.start(from: .history)
     let meetingID = try onlyMeeting(harness).id
     await coordinator.stop()
-    // Recovery is held on its worker thread.
-    await Self.eventually("recovery held") { coordinator.processing != nil }
+    // Recovery is held on its worker thread. The claim (`processing`) comes before the read is
+    // counted, so the wait is on the read itself (#4031).
+    let recoverySignal = harness.recoveryEntered
+    let recovering = await Task.detached { Self.waitBlocking(recoverySignal) }.value
+    #expect(recovering == .success)
     #expect(busy())
     recovery.signal()
     // The checkpoint write is held next.
