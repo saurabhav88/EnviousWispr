@@ -1,3 +1,5 @@
+import AppKit
+import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprServices
 import SwiftUI
@@ -397,5 +399,96 @@ struct MeetingLiveWordsView: View {
     }
     .padding(14)
     .background(Color.stSectionBg, in: RoundedRectangle(cornerRadius: 12))
+  }
+}
+
+/// #4012 D1: what EnviousMeet does when a call starts: ask, start by itself, or nothing.
+struct MeetingCallDetectionRow: View {
+  @Environment(SettingsManager.self) private var settings
+
+  var body: some View {
+    SettingsRow(
+      map: .id(.meetingCallDetection), icon: "phone.badge.waveform",
+      help: MeetingsCopy.callDetectionHelp
+    ) {
+      BrandedSegmentedPicker(
+        options: CallDetectionPolicy.Mode.allCases.map {
+          (String(localized: MeetingsCopy.callDetectionChoice($0)), nil, $0)
+        },
+        selection: Binding(
+          get: { CallDetectionPolicy.Mode(rawValue: settings.meetingCallDetection) ?? .ask },
+          set: { settings.meetingCallDetection = $0.rawValue })
+      )
+      .fixedSize()
+      .accessibilityElement(children: .contain)
+      .accessibilityLabel(Text(MeetingsCopy.callDetectionTitle))
+      // The watcher needs macOS 14.2 (r3 F8): below it the choice cannot do anything.
+      .disabled(!CallMicrophoneWatcher.isSupported)
+    }
+    .rowStatus {
+      if !CallMicrophoneWatcher.isSupported {
+        Text(MeetingsCopy.callDetectionNeedsNewerMacOS)
+          .font(.stRowHelper)
+          .foregroundStyle(.stTextSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+    }
+  }
+}
+
+/// #4012 D5: a switch per call app on this Mac, plus one for every browser, all on by default.
+/// Switching one off stores its id in `meetingCallAppsOff`.
+struct MeetingCallAppsRow: View {
+  @Environment(SettingsManager.self) private var settings
+  @State private var installed: [CallAppFamily] = []
+
+  var body: some View {
+    SettingsRow(
+      map: .id(.meetingCallApps), icon: "app.badge.checkmark", help: MeetingsCopy.callAppsHelp
+    ) {
+      EmptyView()
+    }
+    .rowStatus {
+      VStack(alignment: .leading, spacing: 6) {
+        ForEach(installed, id: \.self) { family in
+          appSwitch(id: family.rawValue, name: family.displayName)
+        }
+        appSwitch(
+          id: CallAppCatalog.browserSwitchID, name: String(localized: MeetingsCopy.browserMeetings))
+      }
+      .padding(.top, 6)
+      .disabled(
+        settings.meetingCallDetection == CallDetectionPolicy.Mode.off.rawValue
+          || !CallMicrophoneWatcher.isSupported)
+    }
+    .onAppear {
+      installed = CallAppCatalog.installedNativeApps {
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) != nil
+      }
+    }
+  }
+
+  private func appSwitch(id: String, name: String) -> some View {
+    HStack(spacing: 10) {
+      Text(verbatim: name)
+        .font(.stRowHelper)
+        .foregroundStyle(.stTextPrimary)
+      Spacer(minLength: 8)
+      Toggle(
+        "",
+        isOn: Binding(
+          get: { !CallAppCatalog.appsOff(from: settings.meetingCallAppsOff).contains(id) },
+          set: { on in
+            var off = CallAppCatalog.appsOff(from: settings.meetingCallAppsOff)
+            if on { off.remove(id) } else { off.insert(id) }
+            settings.meetingCallAppsOff = CallAppCatalog.encodeAppsOff(off)
+          })
+      )
+      .labelsHidden()
+      .toggleStyle(BrandedToggleStyle())
+      .fixedSize()
+      .accessibilityLabel(Text(verbatim: name))
+    }
+    .accessibilityIdentifier("meetings.callApps.\(id)")
   }
 }

@@ -1,0 +1,1 @@
+{"language":"vi","title":"hỏi có muốn ghi âm cuộc gọi trong các ứng dụng này","words":[],"phrases":["chọn ứng dụng được hỏi có muốn ghi âm cuộc gọi không","tắt hỏi ghi âm cuộc gọi cho từng ứng dụng","không hỏi ghi âm cuộc họp trong trình duyệt nữa"]}

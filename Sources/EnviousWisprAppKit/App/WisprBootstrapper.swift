@@ -42,6 +42,8 @@ package final class WisprBootstrapper {
   let meetingStartFlow: MeetingStartFlow
   /// #4017: EnviousMeet's setup visit, kept for the app run so leaving the page keeps the place.
   let meetingOnboardingModel: MeetingOnboardingModel
+  /// #4012: notices calls and asks to record them.
+  let callDetection: CallDetectionCoordinator
   let meetingMemoryPressure: MeetingMemoryPressure
   /// #2648 — Transcribe a File's state machine, held here so the run survives
   /// the page being closed.
@@ -2406,7 +2408,10 @@ package final class WisprBootstrapper {
             sources: DevControlMeetings.Sources(
               coordinator: { [meetingBox] in meetingBox.coordinator },
               startFlow: { [meetingBox] in meetingBox.startFlow },
-              transcripts: { [transcriptCoordinator] in transcriptCoordinator }))))
+              transcripts: { [transcriptCoordinator] in transcriptCoordinator })),
+          calls: DevControlCalls(
+            sources: DevControlCalls.Sources(
+              coordinator: { [meetingBox] in meetingBox.callDetection }))))
     #endif
     // #3972 C4a: EnviousMeet, bootstrapped here so it lives independently of any view.
     let meetingWakes = MeetingWakeSignal()
@@ -2446,7 +2451,10 @@ package final class WisprBootstrapper {
         log: { line in
           Task { await AppLogger.shared.log(line, level: .info, category: "Meetings") }
         },
-        keychain: keychainManager))
+        keychain: keychainManager,
+        detectedStartWanted: { [meetingBox] in
+          meetingBox.callDetection?.detectedStartStillWanted() ?? false
+        }))
     meetingBox.coordinator = meetingCoordinator
     self.meetingCoordinator = meetingCoordinator
     let meetingStartFlow = MeetingStartFlow(
@@ -2456,9 +2464,10 @@ package final class WisprBootstrapper {
         isExplained: { [settings] in settings.meetingCallSoundExplained },
         markExplained: { [settings] in settings.meetingCallSoundExplained = true },
         canStart: { [weak meetingCoordinator] in meetingCoordinator?.phase == .idle },
-        start: { [weak meetingCoordinator] entryPoint, captureCallSound in
+        start: { [weak meetingCoordinator] entryPoint, captureCallSound, callApp in
           guard let meetingCoordinator else { return .notIdle }
-          return await meetingCoordinator.start(from: entryPoint, captureCallSound: captureCallSound)
+          return await meetingCoordinator.start(
+            from: entryPoint, captureCallSound: captureCallSound, callApp: callApp)
         },
         microphoneNeedsAsking: { [permissions] in permissions.microphoneNeedsAsking },
         requestMicrophone: { [permissions] in await permissions.requestMicrophoneAccessOrOpenSettings() },
@@ -2488,6 +2497,35 @@ package final class WisprBootstrapper {
         openCalendarSettings: { [permissions] in permissions.openCalendarSettings() },
         settings: settings,
         emit: { TelemetryService.shared.trackMeetingSetup($0) }))
+    let callDetection = CallDetectionCoordinator(
+      dependencies: .init(
+        settings: settings,
+        meetingPhase: { [weak meetingCoordinator] in meetingCoordinator?.phase ?? .idle },
+        stopMeeting: { [weak meetingCoordinator] in await meetingCoordinator?.stop() },
+        requestStart: { [weak meetingStartFlow] family in
+          await meetingStartFlow?.requestStart(from: .detected, callApp: family) ?? .notIdle
+        },
+        // The panel's Start a new recording is the user's own Start: the menu's route.
+        startByUser: { [weak meetingStartFlow] family in
+          await meetingStartFlow?.requestStart(from: .menu, callApp: family) ?? .notIdle
+        },
+        detectedStartIsBlocked: { [weak meetingStartFlow, weak meetingCoordinator] in
+          (meetingStartFlow?.detectedStartIsBlocked() ?? true)
+            || (meetingCoordinator?.startWouldBeRefused() ?? true)
+        },
+        dictationActive: { [liveRecordingState] in liveRecordingState.isDictationActive },
+        showMeetingPage: { [navigationCoordinator, appWindowCoordinator] in
+          navigationCoordinator.request(.meetings)
+          appWindowCoordinator.showWindow()
+        },
+        anchor: { [menuBarControllerHolder] in menuBarControllerHolder.controller?.statusItemFrame },
+        emit: { TelemetryService.shared.trackMeetingCallPrompt($0) },
+        evidence: { rule, pid in await CallEvidenceRead.bounded(rule: rule, pid: pid) },
+        makePresenter: { [overlayEffects] anchor in
+          CallPromptPanel(anchor: anchor, makePanel: overlayEffects.makePanel)
+        }))
+    meetingBox.callDetection = callDetection
+    self.callDetection = callDetection
     self.meetingMemoryPressure = meetingMemoryPressure
     self.transcriptCoordinator = transcriptCoordinator
     self.liveRecordingState = liveRecordingState
@@ -2757,6 +2795,7 @@ package final class WisprBootstrapper {
     // #3972 R3/R15: meetings recover after the orphaned hold is restored, before any take.
     meetingMemoryPressure.start()
     meetingCoordinator.launch()
+    callDetection.start()
     appLifecycleCoordinator.runDidFinishLaunching()
     // #2480: bring the launch window to the front.
     appWindowCoordinator.finishLaunch()
@@ -2824,6 +2863,7 @@ package final class WisprBootstrapper {
     dictationRuntime.otherAudioHold.finishForTermination()
     // #3972 R18: close meeting admission, cancel its pass, stop capture and close both files
     // against one shared one-second deadline.
+    callDetection.shutDown()
     meetingCoordinator.prepareForTermination(deadline: .now() + 1)
     meetingMemoryPressure.stop()
     // #3438: stop observing before the owners it reads are torn down.
@@ -3151,4 +3191,6 @@ struct OutputClassifierEmissionPolicy: Equatable {
 final class MeetingCoordinatorBox {
   weak var coordinator: MeetingCoordinator?
   weak var startFlow: MeetingStartFlow?
+  /// #4012: call detection, for the DEBUG `call.simulate` command.
+  weak var callDetection: CallDetectionCoordinator?
 }

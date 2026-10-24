@@ -21,6 +21,7 @@ struct MeetingStartFlowTests {
     var pageShown = 0
     var settings: SettingsManager?
     var startedWithCallSound: [Bool] = []
+    var startedApps: [CallAppFamily?] = []
     let startedMeetingID = UUID()
     var microphoneUnasked = false
     var microphoneRequests = 0
@@ -38,8 +39,9 @@ struct MeetingStartFlowTests {
           if let settings { settings.meetingCallSoundExplained = true } else { explained = true }
         },
         canStart: { [unowned self] in idle },
-        start: { [unowned self] entry, callSound in
+        start: { [unowned self] entry, callSound, callApp in
           starts.append(entry)
+          startedApps.append(callApp)
           startedWithCallSound.append(callSound)
           idle = false
           return .recording(meetingID: startedMeetingID)
@@ -51,6 +53,40 @@ struct MeetingStartFlowTests {
           microphoneUnasked = false
         },
         showMeetingPage: { [unowned self] in pageShown += 1 }))
+  }
+
+  @Test("#4012: a Start that waits for the explainer keeps its call app")
+  func explainerKeepsCallApp() async {
+    let rig = Rig()
+    #expect(await rig.flow.requestStart(from: .menu, callApp: .zoom) == .waitingForExplainer)
+    await rig.flow.continueAfterExplainer()
+    #expect(rig.startedApps == [.zoom])
+  }
+
+  @Test("#4012: a detected call never asks macOS or shows the explainer; it needs attention")
+  func detectedStartNeverPrompts() async {
+    let unasked = Rig()
+    unasked.callSound = false
+    unasked.microphoneUnasked = true
+    #expect(unasked.flow.detectedStartIsBlocked())
+    #expect(await unasked.flow.requestStart(from: .detected, callApp: .zoom) == .needsAttention)
+    #expect(unasked.microphoneRequests == 0)
+    #expect(unasked.starts.isEmpty)
+    #expect(unasked.pageShown == 0)
+
+    let unexplained = Rig()
+    #expect(unexplained.flow.detectedStartIsBlocked())
+    #expect(await unexplained.flow.requestStart(from: .detected, callApp: .zoom) == .needsAttention)
+    #expect(unexplained.flow.pendingExplainer == nil)
+    #expect(unexplained.starts.isEmpty)
+
+    let ready = Rig()
+    ready.explained = true
+    #expect(!ready.flow.detectedStartIsBlocked())
+    #expect(
+      await ready.flow.requestStart(from: .detected, callApp: .zoom)
+        == .started(.recording(meetingID: ready.startedMeetingID)))
+    #expect(ready.starts == [.detected])
   }
 
   @Test("the first call-sound Start waits for the explainer; Continue starts it once")

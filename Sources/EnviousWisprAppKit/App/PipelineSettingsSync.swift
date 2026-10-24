@@ -391,7 +391,8 @@ final class PipelineSettingsSync {
     case .warmEnginePolicy:
       audioCapture.warmEnginePolicy = settings.warmEnginePolicy
     case .meetingCaptureCallSound, .meetingCallSoundExplained, .meetingWriteSummary,
-      .meetingOnboardingComplete, .meetingUseCalendarForNames:
+      .meetingOnboardingComplete, .meetingUseCalendarForNames, .meetingCallDetection,
+      .meetingCallAppsOff, .meetingCallNoCounts, .meetingCallFirstTipShown:
       break  // #3972, #4017: read by EnviousMeet when a meeting starts or ends; not by the pipeline.
     case .autoCopyToClipboard, .vadAutoStop, .vadSilenceTimeout, .vadSensitivity,
       .vadEnergyGate, .restoreClipboardAfterPaste, .keepDictationsOutOfClipboardHistory,

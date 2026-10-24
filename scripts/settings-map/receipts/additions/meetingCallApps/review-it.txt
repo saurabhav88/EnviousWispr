@@ -1,0 +1,9 @@
+{
+  "language": "it",
+  "title": "chiedi se registrare le chiamate in queste app",
+  "words": [],
+  "phrases": [
+    "scegli in quali app chiedere se registrare le chiamate",
+    "non chiedere più se registrare le chiamate di un’app"
+  ]
+}

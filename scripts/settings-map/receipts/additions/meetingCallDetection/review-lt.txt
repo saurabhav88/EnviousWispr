@@ -1,0 +1,13 @@
+{
+  "language": "lt",
+  "title": "prasidėjus skambučiui",
+  "words": [
+    "skambučių aptikimas",
+    "automatinis įrašymas"
+  ],
+  "phrases": [
+    "paklausti, ar įrašyti skambutį",
+    "automatiškai pradėti įrašymą prasidėjus skambučiui",
+    "išjungti skambučių aptikimą"
+  ]
+}

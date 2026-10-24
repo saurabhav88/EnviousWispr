@@ -1,0 +1,10 @@
+{
+  "language": "sk",
+  "title": "pýtať sa na nahrávanie hovorov v týchto aplikáciách",
+  "words": [],
+  "phrases": [
+    "vybrať aplikácie, v ktorých sa pýtať na nahrávanie hovorov",
+    "vypnúť ponuku nahrávania hovorov pre konkrétnu aplikáciu",
+    "neponúkať nahrávanie stretnutí v prehliadači"
+  ]
+}

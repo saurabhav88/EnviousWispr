@@ -1,0 +1,387 @@
+{
+ "id": "meetingCallDetection",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "عند بدء مكالمة",
+   "words": [
+    "اكتشاف المكالمات",
+    "تذكير بالتسجيل"
+   ],
+   "phrases": [
+    "اسألني إن كنت أريد تسجيل المكالمة",
+    "اكتشف المكالمة عندما يستخدم تطبيق الميكروفون"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "При започване на разговор",
+   "words": [
+    "разпознаване на разговори",
+    "подкана за запис"
+   ],
+   "phrases": [
+    "питай ме дали да запиша разговора",
+    "разпознавай разговор, когато приложение използва микрофона"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "při zahájení hovoru",
+   "words": [
+    "detekce hovorů",
+    "upozornění na nahrávání"
+   ],
+   "phrases": [
+    "zeptat se, jestli chci nahrát hovor",
+    "rozpoznat hovor podle použití mikrofonu"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "når et opkald starter",
+   "words": [
+    "opkaldsregistrering",
+    "optagelsespåmindelse"
+   ],
+   "phrases": [
+    "spørg om jeg vil optage opkaldet",
+    "opdag opkald når en app bruger mikrofonen"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [
+    "Anruferkennung",
+    "Aufnahmehinweis"
+   ],
+   "phrases": [
+    "frag mich, ob ich den Anruf aufnehmen möchte",
+    "Anrufe erkennen, wenn eine App das Mikrofon nutzt"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "όταν ξεκινά μια κλήση",
+   "words": [
+    "ανίχνευση κλήσεων",
+    "υπενθύμιση εγγραφής"
+   ],
+   "phrases": [
+    "ρώτα με αν θέλω να καταγράψω την κλήση",
+    "εντοπισμός κλήσης όταν μια εφαρμογή χρησιμοποιεί το μικρόφωνο"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [
+    "call detection",
+    "recording prompt"
+   ],
+   "phrases": [
+    "ask me if I want to record a call",
+    "detect calls when an app uses my microphone"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "cuando empieza una llamada",
+   "words": [
+    "detección de llamadas",
+    "aviso de grabación"
+   ],
+   "phrases": [
+    "preguntarme si quiero grabar la llamada",
+    "detectar llamadas cuando una app usa el micrófono"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "kui kõne algab",
+   "words": [
+    "kõnetuvastus",
+    "salvestusmeeldetuletus"
+   ],
+   "phrases": [
+    "küsi, kas tahan kõnet salvestada",
+    "tuvasta kõne, kui rakendus kasutab mikrofoni"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "kun puhelu alkaa",
+   "words": [
+    "puhelun tunnistus",
+    "tallennusmuistutus"
+   ],
+   "phrases": [
+    "kysy haluanko tallentaa puhelun",
+    "tunnista puhelu mikrofonin käytöstä"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "au début d’un appel",
+   "words": [
+    "détection des appels",
+    "rappel d’enregistrement"
+   ],
+   "phrases": [
+    "me demander si je veux enregistrer l’appel",
+    "détecter un appel quand une appli utilise le micro"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "कॉल शुरू होने पर",
+   "words": [
+    "कॉल पहचान",
+    "रिकॉर्डिंग रिमाइंडर"
+   ],
+   "phrases": [
+    "मुझसे पूछें कि कॉल रिकॉर्ड करनी है या नहीं",
+    "ऐप के माइक इस्तेमाल करने पर कॉल पहचानें"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "kad poziv započne",
+   "words": [
+    "otkrivanje poziva",
+    "podsjetnik za snimanje"
+   ],
+   "phrases": [
+    "pitaj me želim li snimiti poziv",
+    "prepoznaj poziv kad aplikacija koristi mikrofon"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "hívás kezdetekor",
+   "words": [
+    "hívásészlelés",
+    "felvételi emlékeztető"
+   ],
+   "phrases": [
+    "kérdezze meg, hogy szeretném-e rögzíteni a hívást",
+    "hívás észlelése a mikrofon használata alapján"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "quando inizia una chiamata",
+   "words": [
+    "rilevamento chiamate",
+    "promemoria di registrazione"
+   ],
+   "phrases": [
+    "chiedimi se voglio registrare la chiamata",
+    "rileva le chiamate quando un’app usa il microfono"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "通話開始時",
+   "words": [
+    "通話検出",
+    "録音確認"
+   ],
+   "phrases": [
+    "通話を録音するか聞いてほしい",
+    "アプリのマイク使用で通話を検出"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "통화가 시작될 때",
+   "words": [
+    "통화 감지",
+    "녹음 알림"
+   ],
+   "phrases": [
+    "통화를 녹음할지 물어보기",
+    "앱이 마이크를 사용하면 통화 감지"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "prasidėjus skambučiui",
+   "words": [
+    "skambučių aptikimas",
+    "priminimas įrašyti"
+   ],
+   "phrases": [
+    "paklausk, ar noriu įrašyti skambutį",
+    "aptikti skambutį, kai programa naudoja mikrofoną"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "kad sākas zvans",
+   "words": [
+    "zvanu noteikšana",
+    "ierakstīšanas atgādinājums"
+   ],
+   "phrases": [
+    "jautāt, vai vēlos ierakstīt zvanu",
+    "noteikt zvanu, kad lietotne izmanto mikrofonu"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "meta tibda telefonata",
+   "words": [
+    "sejbien tat-telefonati",
+    "tfakkira għar-reġistrazzjoni"
+   ],
+   "phrases": [
+    "staqsini jekk irridx nirreġistra t-telefonata",
+    "agħraf telefonata meta app tuża l-mikrofonu"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "wanneer een gesprek begint",
+   "words": [
+    "oproepdetectie",
+    "opnameherinnering"
+   ],
+   "phrases": [
+    "vraag of ik het gesprek wil opnemen",
+    "oproepen herkennen als een app de microfoon gebruikt"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "gdy zaczyna się rozmowa",
+   "words": [
+    "wykrywanie połączeń",
+    "przypomnienie o nagrywaniu"
+   ],
+   "phrases": [
+    "zapytaj czy chcę nagrać rozmowę",
+    "wykryj połączenie gdy aplikacja używa mikrofonu"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "quando uma chamada começa",
+   "words": [
+    "detecção de chamadas",
+    "lembrete de gravação"
+   ],
+   "phrases": [
+    "perguntar se quero gravar a chamada",
+    "detectar chamadas quando um app usa o microfone"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "când începe un apel",
+   "words": [
+    "detectarea apelurilor",
+    "memento de înregistrare"
+   ],
+   "phrases": [
+    "întreabă-mă dacă vreau să înregistrez apelul",
+    "detectează apelul când o aplicație folosește microfonul"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "при начале звонка",
+   "words": [
+    "обнаружение звонков",
+    "напоминание о записи"
+   ],
+   "phrases": [
+    "спрашивать, хочу ли я записать звонок",
+    "определять звонок, когда приложение использует микрофон"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "pri začatí hovoru",
+   "words": [
+    "detekcia hovorov",
+    "pripomenutie nahrávania"
+   ],
+   "phrases": [
+    "opýtať sa, či chcem nahrať hovor",
+    "rozpoznať hovor podľa používania mikrofónu"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "ko se klic začne",
+   "words": [
+    "zaznavanje klicev",
+    "opomnik za snemanje"
+   ],
+   "phrases": [
+    "vprašaj me, ali želim posneti klic",
+    "zaznaj klic, ko aplikacija uporablja mikrofon"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "när ett samtal börjar",
+   "words": [
+    "samtalsdetektering",
+    "inspelningspåminnelse"
+   ],
+   "phrases": [
+    "fråga om jag vill spela in samtalet",
+    "upptäck samtal när en app använder mikrofonen"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "arama başladığında",
+   "words": [
+    "arama algılama",
+    "kayıt hatırlatıcısı"
+   ],
+   "phrases": [
+    "görüşmeyi kaydetmek isteyip istemediğimi sor",
+    "uygulama mikrofonu kullanınca aramayı algıla"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "коли починається дзвінок",
+   "words": [
+    "виявлення дзвінків",
+    "нагадування про запис"
+   ],
+   "phrases": [
+    "запитувати, чи хочу я записати дзвінок",
+    "виявляти дзвінок, коли застосунок використовує мікрофон"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "khi cuộc gọi bắt đầu",
+   "words": [
+    "phát hiện cuộc gọi",
+    "nhắc ghi âm"
+   ],
+   "phrases": [
+    "hỏi tôi có muốn ghi âm cuộc gọi không",
+    "phát hiện cuộc gọi khi ứng dụng dùng mic"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "通话开始时",
+   "words": [
+    "通话检测",
+    "录音提醒"
+   ],
+   "phrases": [
+    "询问我是否录制通话",
+    "应用使用麦克风时检测通话"
+   ]
+  }
+ ]
+}

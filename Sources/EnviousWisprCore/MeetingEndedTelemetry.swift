@@ -7,6 +7,8 @@ import Foundation
 public enum MeetingEntryPoint: String, Sendable, Equatable {
   case history
   case menu
+  /// Started for a call EnviousMeet noticed (#4012): the user's Yes, or Start by itself.
+  case detected
 }
 
 /// The one `meeting.ended` row (#3972 R11, plan C4): one row per meeting attempt, at its

@@ -1,0 +1,12 @@
+{
+  "language": "sv",
+  "title": "när ett samtal börjar",
+  "words": [
+    "samtalsdetektering",
+    "inspelningspåminnelse"
+  ],
+  "phrases": [
+    "fråga om jag vill spela in samtalet",
+    "upptäck samtal när en app använder mikrofonen"
+  ]
+}

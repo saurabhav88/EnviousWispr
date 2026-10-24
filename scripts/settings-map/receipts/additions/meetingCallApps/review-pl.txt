@@ -1,0 +1,9 @@
+{
+  "language": "pl",
+  "title": "pytaj o nagrywanie rozmów w tych aplikacjach",
+  "words": [],
+  "phrases": [
+    "wybierz w których aplikacjach pytać o nagrywanie rozmów",
+    "wyłącz pytania o nagrywanie rozmów w danej aplikacji"
+  ]
+}

@@ -2335,6 +2335,40 @@
    }
   },
   {
+   "id": "meetingCallDetection",
+   "kind": "setting",
+   "destination": {
+    "page": "meetings"
+   },
+   "disposition": "mapped",
+   "parent": "page.meetings",
+   "target": "meetingCallDetection",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "EnviousMeet can ask to record when a call app starts using your microphone."
+   }
+  },
+  {
+   "id": "meetingCallApps",
+   "kind": "setting",
+   "destination": {
+    "page": "meetings"
+   },
+   "disposition": "mapped",
+   "parent": "page.meetings",
+   "target": "meetingCallApps",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Turn off an app to never be asked about its calls."
+   }
+  },
+  {
    "id": "transcribeFile.chooseFile",
    "kind": "action",
    "destination": {

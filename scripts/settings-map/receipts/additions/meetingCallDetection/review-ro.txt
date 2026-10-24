@@ -1,0 +1,13 @@
+{
+  "language": "ro",
+  "title": "când începe un apel",
+  "words": [
+    "detectarea apelurilor",
+    "înregistrare automată"
+  ],
+  "phrases": [
+    "întreabă-mă dacă vreau să înregistrez apelul",
+    "pornește automat înregistrarea când începe un apel",
+    "detectează apelul când o aplicație începe să folosească microfonul"
+  ]
+}

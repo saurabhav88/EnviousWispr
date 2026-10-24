@@ -26,7 +26,7 @@ final class MeetingStartFlow {
     var canStart: @MainActor () -> Bool
     /// Starts the meeting with the call-sound choice this flow admitted it with.
     var start:
-      @MainActor (MeetingEntryPoint, _ captureCallSound: Bool) async ->
+      @MainActor (MeetingEntryPoint, _ captureCallSound: Bool, _ callApp: CallAppFamily?) async ->
         MeetingCoordinator.StartOutcome
     /// macOS has never been asked for the microphone (read live).
     var microphoneNeedsAsking: @MainActor () -> Bool
@@ -43,6 +43,8 @@ final class MeetingStartFlow {
   /// The call-sound choice the pending request asked for itself (a DEBUG command), or nil when
   /// it follows the setting.
   private var pendingCallSound: Bool?
+  /// The call app of the Start waiting on the explainer (#4012 r11 F6), so it keeps its name.
+  private var pendingCallApp: CallAppFamily?
 
   /// What one request did.
   enum Outcome: Equatable {
@@ -59,6 +61,10 @@ final class MeetingStartFlow {
     /// EnviousMeet's setup is not finished (#4017): nothing started, and the EnviousMeet page,
     /// where the setup runs, was shown.
     case setupRequired
+    /// A Start for a detected call that would need a macOS prompt or the call-sound explainer
+    /// first (#4012 R5): nothing started, nothing was asked, no window opened. The caller
+    /// offers "Open EnviousMeet".
+    case needsAttention
   }
 
   /// A Start waiting on the macOS microphone prompt, and where it was asked from. While it is
@@ -79,11 +85,19 @@ final class MeetingStartFlow {
   /// `captureCallSound` overrides the setting for this request only (a DEBUG command); nil
   /// follows the setting, as the page and the menu do.
   @discardableResult
-  func requestStart(from entryPoint: MeetingEntryPoint, captureCallSound override: Bool? = nil)
-    async -> Outcome
+  func requestStart(
+    from entryPoint: MeetingEntryPoint, captureCallSound override: Bool? = nil,
+    callApp: CallAppFamily? = nil
+  ) async -> Outcome
   {
     // Setup first (#4017 R4): before any prompt, pending state or recording.
     guard admitSetup() else { return .setupRequired }
+    // A detected call never opens a macOS prompt or the explainer by itself (#4012 R5).
+    if entryPoint == .detected {
+      guard deps.canStart() else { return .notIdle }
+      let wouldExplain = (override ?? deps.captureCallSound()) && !deps.isExplained()
+      guard !deps.microphoneNeedsAsking(), !wouldExplain else { return .needsAttention }
+    }
     // A Start already waiting on the microphone prompt owns this request: the first entry
     // point is kept and macOS is asked once.
     guard waitingForMicrophone == nil else { return .joinedMicrophonePrompt }
@@ -113,6 +127,7 @@ final class MeetingStartFlow {
       if pendingExplainer == nil {
         pendingExplainer = entryPoint
         pendingCallSound = override
+        pendingCallApp = callApp
       }
       if entryPoint == .menu { deps.showMeetingPage() }
       return .waitingForExplainer
@@ -122,7 +137,16 @@ final class MeetingStartFlow {
     // nothing.
     pendingExplainer = nil
     pendingCallSound = nil
-    return .started(await deps.start(entryPoint, captureCallSound))
+    pendingCallApp = nil
+    return .started(await deps.start(entryPoint, captureCallSound, callApp))
+  }
+
+  /// #4012: whether a detected Start would stop at `.needsAttention` or `.setupRequired` (setup,
+  /// a macOS prompt, or the explainer). A switch to a new call checks this BEFORE it stops the
+  /// meeting recording now, so a Yes never leaves nothing recording. Asks and shows nothing.
+  func detectedStartIsBlocked() -> Bool {
+    !deps.isSetUp() || deps.microphoneNeedsAsking()
+      || (deps.captureCallSound() && !deps.isExplained())
   }
 
   /// The notice's Allow Microphone: the macOS prompt when never asked, else System Settings.
@@ -140,12 +164,14 @@ final class MeetingStartFlow {
     guard admitSetup() else { return .setupRequired }
     guard let entryPoint = pendingExplainer else { return .cancelled }
     let override = pendingCallSound
+    let callApp = pendingCallApp
     pendingExplainer = nil
     pendingCallSound = nil
+    pendingCallApp = nil
     guard deps.canStart() else { return .notIdle }
     let captureCallSound = override ?? deps.captureCallSound()
     if captureCallSound { deps.markExplained() }
-    return .started(await deps.start(entryPoint, captureCallSound))
+    return .started(await deps.start(entryPoint, captureCallSound, callApp))
   }
 
   /// The user closed the explainer without starting, or a Start waiting on the microphone
@@ -165,6 +191,7 @@ final class MeetingStartFlow {
   func cancelExplainer() {
     pendingExplainer = nil
     pendingCallSound = nil
+    pendingCallApp = nil
     waitingForMicrophone = nil
     startGeneration += 1
   }

@@ -1,0 +1,1 @@
+{"language":"de","words":["Anruferkennung","Aufnahmeabfrage"],"phrases":["frag mich, ob ich den Anruf aufnehmen möchte","starte die Meetingaufnahme automatisch, wenn ein Anruf beginnt","schalte die automatische Anruferkennung aus"]}

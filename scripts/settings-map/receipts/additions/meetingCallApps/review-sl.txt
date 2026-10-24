@@ -1,0 +1,1 @@
+{"language":"sl","title":"vprašaj za snemanje klicev v teh aplikacijah","words":[],"phrases":["izberi v katerih aplikacijah naj vpraša za snemanje klicev","ne sprašuj več o snemanju klicev v tej aplikaciji"]}

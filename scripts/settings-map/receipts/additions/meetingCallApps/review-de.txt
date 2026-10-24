@@ -1,0 +1,12 @@
+{
+  "language": "de",
+  "words": [
+    "Anruf-Apps",
+    "Aufnahmenachfrage"
+  ],
+  "phrases": [
+    "wähle aus, für welche Apps EnviousMeet eine Aufnahme anbietet",
+    "schalte die Nachfrage zur Aufnahme für eine App aus",
+    "schalte Aufnahmevorschläge für Meetings im Browser aus"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "language": "hu",
+  "title": "hívásrögzítés felajánlása ezekben az alkalmazásokban",
+  "words": [],
+  "phrases": [
+    "melyik appnál kérdezzen rá a hívás rögzítésére",
+    "ne kérdezzen rá a hívásrögzítésre ennél az appnál"
+  ]
+}

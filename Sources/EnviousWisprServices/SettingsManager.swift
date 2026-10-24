@@ -33,6 +33,13 @@ public final class SettingsManager {
     case meetingOnboardingComplete
     /// #4017: "Name meetings from my calendar".
     case meetingUseCalendarForNames
+    /// #4012 D1: when a call starts: ask, start by itself, or off.
+    case meetingCallDetection
+    /// #4012 D5: the call apps switched off in "Ask in these apps".
+    case meetingCallAppsOff
+    /// #4012 D6: how many times the user answered No, per app, and whether the first tip showed.
+    case meetingCallNoCounts
+    case meetingCallFirstTipShown
     case hotkeyEnabled
     case vadAutoStop
     case vadSilenceTimeout
@@ -133,7 +140,7 @@ public final class SettingsManager {
   public nonisolated static let unifiedDefaultsKeys: [String] = [
     "selectedBackend", "recordingMode", "llmProvider", "lastLLMProvider", "llmModel", "ollamaModel",
     "s1MiniStyling", "s1MiniStructure", "s1MiniContext",
-    "autoCopyToClipboard", "meetingCaptureCallSound", "meetingCallSoundExplained", "meetingWriteSummary", "meetingOnboardingComplete", "meetingUseCalendarForNames", "hotkeyEnabled", "vadAutoStop", "vadSilenceTimeout",
+    "autoCopyToClipboard", "meetingCaptureCallSound", "meetingCallSoundExplained", "meetingWriteSummary", "meetingOnboardingComplete", "meetingUseCalendarForNames", "meetingCallDetection", "meetingCallAppsOff", "meetingCallNoCounts", "meetingCallFirstTipShown", "hotkeyEnabled", "vadAutoStop", "vadSilenceTimeout",
     "vadSensitivity", "vadEnergyGate", "onboardingState", "hasCompletedOnboarding",
     "cancelKeyCode", "cancelModifiersRaw", "toggleKeyCode", "toggleModifiersRaw",
     "quickAddKeyCode", "quickAddModifiersRaw",
@@ -535,6 +542,40 @@ public final class SettingsManager {
     didSet {
       defaults.set(meetingUseCalendarForNames, forKey: "meetingUseCalendarForNames")
       onChange?(.meetingUseCalendarForNames)
+    }
+  }
+
+  /// #4012 D1: what EnviousMeet does when a call starts, a `CallDetectionPolicy.Mode` raw value
+  /// ("ask", "start_by_itself", "off"). An unknown value reads as ask.
+  public var meetingCallDetection: String {
+    didSet {
+      defaults.set(meetingCallDetection, forKey: "meetingCallDetection")
+      onChange?(.meetingCallDetection)
+    }
+  }
+
+  /// #4012 D5: the app switches that are off, as `CallAppCatalog.switchID` values joined by
+  /// commas ("zoom,browser"). Empty means every app asks.
+  public var meetingCallAppsOff: String {
+    didSet {
+      defaults.set(meetingCallAppsOff, forKey: "meetingCallAppsOff")
+      onChange?(.meetingCallAppsOff)
+    }
+  }
+
+  /// #4012 D6: No answers per app switch ("zoom=2,slack=1"), for the last-reminder tip.
+  public var meetingCallNoCounts: String {
+    didSet {
+      defaults.set(meetingCallNoCounts, forKey: "meetingCallNoCounts")
+      onChange?(.meetingCallNoCounts)
+    }
+  }
+
+  /// #4012 D6: the first "you can turn off call prompts" tip was shown once.
+  public var meetingCallFirstTipShown: Bool {
+    didSet {
+      defaults.set(meetingCallFirstTipShown, forKey: "meetingCallFirstTipShown")
+      onChange?(.meetingCallFirstTipShown)
     }
   }
 
@@ -1394,6 +1435,15 @@ public final class SettingsManager {
     meetingUseCalendarForNames =
       defaults.object(forKey: "meetingUseCalendarForNames") as? Bool
       ?? SettingsDefaultValues.meetingUseCalendarForNames
+    meetingCallDetection =
+      defaults.string(forKey: "meetingCallDetection") ?? SettingsDefaultValues.meetingCallDetection
+    meetingCallAppsOff =
+      defaults.string(forKey: "meetingCallAppsOff") ?? SettingsDefaultValues.meetingCallAppsOff
+    meetingCallNoCounts =
+      defaults.string(forKey: "meetingCallNoCounts") ?? SettingsDefaultValues.meetingCallNoCounts
+    meetingCallFirstTipShown =
+      defaults.object(forKey: "meetingCallFirstTipShown") as? Bool
+      ?? SettingsDefaultValues.meetingCallFirstTipShown
     hotkeyEnabled = SettingsDefaultValues.hotkeyEnabled  // toggle removed; always enabled
     vadAutoStop =
       defaults.object(forKey: "vadAutoStop") as? Bool ?? SettingsDefaultValues.vadAutoStop

@@ -268,6 +268,13 @@ enum MeetingsPresentation {
   static func title(_ record: MeetingRecord) -> String {
     if let title = record.title, !title.isEmpty { return title }
     let date = record.createdAt.formatted(date: .abbreviated, time: .shortened)
+    if let app = record.callApp?.displayName {
+      // #4012 D8: a detected call without a calendar or AI name says which app it was.
+      return String(
+        localized: "\(app) call, \(date)",
+        comment:
+          "EnviousMeet: a detected call's default name: the app's name (Zoom, Microsoft Teams) and the date and time it started.")
+    }
     return String(
       localized: "Meeting, \(date)",
       comment: "EnviousMeet: a meeting's default name, from the date and time it started.")

@@ -1,0 +1,9 @@
+{
+  "language": "cs",
+  "title": "ptát se na nahrávání hovorů v těchto aplikacích",
+  "words": [],
+  "phrases": [
+    "ve kterých aplikacích se ptát na nahrávání hovorů",
+    "vypnout dotazy na nahrávání hovorů pro aplikaci"
+  ]
+}

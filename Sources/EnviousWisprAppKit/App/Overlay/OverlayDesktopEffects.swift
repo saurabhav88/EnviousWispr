@@ -27,6 +27,8 @@ package protocol OverlayPanelDriving: AnyObject {
   var isOpaque: Bool { get set }
   var isReleasedWhenClosed: Bool { get set }
   var level: NSWindow.Level { get set }
+  /// #4012: whether screen sharing may capture the window (best effort on recent macOS).
+  var sharingType: NSWindow.SharingType { get set }
 
   /// The move callback, replacing `NSWindowDelegate.windowDidMove`.
   ///

@@ -37,6 +37,8 @@ struct MeetingsView: View {
           if let notice = meetings.notice {
             MeetingNoticeBanner(notice: notice)
           }
+          MeetingCallDetectionRow()
+          MeetingCallAppsRow()
           MeetingCallSoundRow()
           MeetingWriteSummaryRow()
           summaryWriterRow
@@ -44,6 +46,7 @@ struct MeetingsView: View {
           microphonePermissionRow
           callSoundPermissionRow
           calendarPermissionRow
+          accessibilityPermissionRow
           Text(MeetingsCopy.keptUntilDeleted)
             .font(.stHelper)
             .foregroundStyle(.stTextSecondary)
@@ -236,6 +239,37 @@ extension MeetingsView {
     }
   }
 
+  /// #4012: call detection reads which call or meeting page is open through Accessibility,
+  /// the permission paste already uses. Without it no call is noticed. A status line.
+  fileprivate var accessibilityPermissionRow: some View {
+    SettingsRow(
+      notInSettingsMap: .statusLine, icon: "accessibility",
+      title: LocalizedStringResource(
+        "Accessibility", comment: "EnviousMeet page: the Accessibility permission row's title."),
+      short: permissions.accessibilityGranted
+        ? LocalizedStringResource(
+          "Allowed. EnviousMeet can notice when a call starts.",
+          comment: "EnviousMeet page: Accessibility is allowed, so calls are noticed.")
+        : LocalizedStringResource(
+          "Not allowed. EnviousMeet can't notice calls until you allow it.",
+          comment: "EnviousMeet page: without Accessibility, calls are not noticed."),
+      help: LocalizedStringResource(
+        "EnviousMeet uses Accessibility to see whether a call window or meeting page is open when an app starts using your microphone. It reads this on your Mac and never sends it anywhere. Pasting your dictation uses the same permission.",
+        comment: "EnviousMeet page: help for the Accessibility permission row.")
+    ) {
+      if !permissions.accessibilityGranted {
+        Button {
+          _ = permissions.requestAccessibilityAccess()
+        } label: {
+          Text(
+            "Allow Accessibility",
+            comment: "EnviousMeet: asks macOS for Accessibility access for call detection.")
+        }
+        .accessibilityIdentifier("meetings.settings.allowAccessibility")
+      }
+    }
+  }
+
   static func calendarStatusLine(_ status: CalendarAccess.Status) -> LocalizedStringResource {
     switch status {
     case .granted:
@@ -295,6 +329,42 @@ enum MeetingsCopy {
   static let calendarNamesHelp = LocalizedStringResource(
     "When a meeting starts, EnviousMeet looks for the calendar event at that time and uses its title. If several events overlap, it prefers one with a meeting link or a place, and otherwise keeps the date as the name. Your calendar is read on your Mac and never changed. You can rename any meeting in History.",
     comment: "EnviousMeet page: help for Name meetings from my calendar.")
+  static let callDetectionTitle = LocalizedStringResource(
+    "When a call starts",
+    comment: "EnviousMeet page: the choice of what happens when a call app starts a call.")
+  static let callDetectionShort = LocalizedStringResource(
+    "EnviousMeet can ask to record when a call app starts using your microphone.",
+    comment: "EnviousMeet page: the short line under When a call starts.")
+  static let callDetectionHelp = LocalizedStringResource(
+    "Ask shows Record this call? under the menu bar. Start by itself starts recording without asking. Off never notices calls. A recording EnviousMeet started stops 10 seconds after the call ends, unless you choose Keep recording. A recording you started yourself never stops by itself.",
+    comment: "EnviousMeet page: help for When a call starts.")
+  static func callDetectionChoice(_ mode: CallDetectionPolicy.Mode) -> LocalizedStringResource {
+    switch mode {
+    case .ask:
+      LocalizedStringResource("Ask", comment: "EnviousMeet page: When a call starts, ask to record.")
+    case .startByItself:
+      LocalizedStringResource(
+        "Start by itself",
+        comment: "EnviousMeet page: When a call starts, start recording without asking.")
+    case .off:
+      LocalizedStringResource("Off", comment: "EnviousMeet page: When a call starts, do nothing.")
+    }
+  }
+  static let callDetectionNeedsNewerMacOS = LocalizedStringResource(
+    "Noticing calls needs macOS 14.2 or later. You can still start recordings from the menu bar.",
+    comment: "EnviousMeet page: below macOS 14.2 call detection cannot run.")
+  static let callAppsTitle = LocalizedStringResource(
+    "Ask to record calls in",
+    comment: "EnviousMeet page: the list of call apps EnviousMeet watches, each with a switch.")
+  static let callAppsShort = LocalizedStringResource(
+    "Turn off an app to never be asked about its calls.",
+    comment: "EnviousMeet page: the short line under Ask to record calls in.")
+  static let callAppsHelp = LocalizedStringResource(
+    "EnviousMeet checks which app uses your microphone and whether a call window or meeting page is open. It checks on your Mac and never sends this anywhere. Meetings in a browser covers Google Meet, Zoom, Microsoft Teams, Webex, Whereby and Jitsi in Chrome, Safari, Arc, Dia, Edge, Brave, Opera, Vivaldi, Zen, Comet and ChatGPT Atlas.",
+    comment: "EnviousMeet page: help for Ask to record calls in. App and browser names are not translated.")
+  static let browserMeetings = LocalizedStringResource(
+    "Meetings in a browser",
+    comment: "EnviousMeet page: the switch for meetings in any web browser, like Google Meet in Chrome.")
   static let callSoundHelp = LocalizedStringResource(
     "With headphones, your microphone hears only you, and the call comes from the sound your Mac plays. Without headphones, your microphone also hears the call; EnviousMeet hides those repeated lines as probable echo. The choice applies to the next meeting you start.",
     comment: "EnviousMeet page: help for Also record the call sound.")

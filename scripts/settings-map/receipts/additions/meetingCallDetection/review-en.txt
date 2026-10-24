@@ -1,0 +1,1 @@
+{"language":"en","words":["call detection","recording prompt"],"phrases":["ask me if I want to record a call","detect calls when an app uses my microphone"]}

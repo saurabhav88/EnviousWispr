@@ -1,0 +1,12 @@
+{
+  "language": "it",
+  "title": "quando inizia una chiamata",
+  "words": [
+    "rilevamento chiamate",
+    "promemoria di registrazione"
+  ],
+  "phrases": [
+    "chiedimi se voglio registrare la chiamata",
+    "rileva le chiamate quando un’app usa il microfono"
+  ]
+}

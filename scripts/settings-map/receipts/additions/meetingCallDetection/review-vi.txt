@@ -1,0 +1,1 @@
+{"language":"vi","title":"khi cuộc gọi bắt đầu","words":["phát hiện cuộc gọi","nhắc ghi âm"],"phrases":["hỏi tôi có muốn ghi âm cuộc gọi không","phát hiện cuộc gọi khi ứng dụng dùng mic"]}

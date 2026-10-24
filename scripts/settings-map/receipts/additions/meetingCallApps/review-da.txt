@@ -1,0 +1,1 @@
+{"language":"da","title":"spørg om at optage opkald i","words":[],"phrases":["vælg hvilke apps EnviousMeet skal tilbyde optagelse i","stop med at spørge om optagelse af opkald i en app"]}

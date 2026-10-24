@@ -76,6 +76,10 @@ package final class LiveOverlayPanelDriver: NSObject, OverlayPanelDriving, NSWin
     get { panel.level }
     set { panel.level = newValue }
   }
+  package var sharingType: NSWindow.SharingType {
+    get { panel.sharingType }
+    set { panel.sharingType = newValue }
+  }
 
   // MARK: - Commands
 

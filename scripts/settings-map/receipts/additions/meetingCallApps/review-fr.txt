@@ -1,0 +1,1 @@
+{"language":"fr","title":"demander à enregistrer les appels dans ces applications","words":[],"phrases":["choisir les applis où demander à enregistrer les appels","ne plus demander à enregistrer les appels d’une appli"]}

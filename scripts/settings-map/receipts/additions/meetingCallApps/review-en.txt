@@ -1,0 +1,11 @@
+{
+  "language": "en",
+  "words": [
+    "call apps",
+    "recording prompts"
+  ],
+  "phrases": [
+    "choose which apps ask to record calls",
+    "stop asking to record calls in an app"
+  ]
+}

@@ -51,7 +51,7 @@
       .selectedBackend, .recordingMode, .llmProvider, .llmModel, .ollamaModel,
       .fileImportLLMProvider, .fileImportLLMModel, .fileImportOllamaModel,
       .s1MiniStyling, .s1MiniStructure, .s1MiniContext, .autoCopyToClipboard,
-      .meetingCaptureCallSound, .meetingCallSoundExplained, .meetingWriteSummary, .meetingOnboardingComplete, .meetingUseCalendarForNames, .hotkeyEnabled, .vadAutoStop, .vadSilenceTimeout, .vadSensitivity, .vadEnergyGate, .onboardingState,
+      .meetingCaptureCallSound, .meetingCallSoundExplained, .meetingWriteSummary, .meetingOnboardingComplete, .meetingUseCalendarForNames, .meetingCallDetection, .meetingCallAppsOff, .meetingCallNoCounts, .meetingCallFirstTipShown, .hotkeyEnabled, .vadAutoStop, .vadSilenceTimeout, .vadSensitivity, .vadEnergyGate, .onboardingState,
       .hasCompletedOnboarding, .cancelKeyCode, .cancelModifiers, .quickAddKeyCode,
       .quickAddModifiers, .pasteLastKeyCode, .pasteLastModifiers, .copyLastKeyCode,
       .copyLastModifiers, .toggleKeyCode, .toggleModifiers, .pushToTalkKeyCode,
@@ -85,7 +85,8 @@
       case .selectedBackend, .recordingMode, .llmProvider, .llmModel, .s1MiniStyling,
         .s1MiniStructure, .s1MiniContext, .autoCopyToClipboard, .meetingCaptureCallSound,
         .meetingCallSoundExplained, .meetingWriteSummary, .meetingOnboardingComplete,
-        .meetingUseCalendarForNames, .vadAutoStop, .modelUnloadPolicy,
+        .meetingUseCalendarForNames, .meetingCallDetection, .meetingCallAppsOff,
+        .meetingCallNoCounts, .meetingCallFirstTipShown, .vadAutoStop, .modelUnloadPolicy,
         .restoreClipboardAfterPaste, .keepDictationsOutOfClipboardHistory,
         .quickAddClipboardFallback, .smartInsertion, .escapeRecoveryEnabled,
         .wordCorrectionEnabled, .fillerRemovalEnabled, .emojiFormatterEnabled,
@@ -135,6 +136,10 @@
       case .meetingWriteSummary: return settings.meetingWriteSummary
       case .meetingOnboardingComplete: return settings.meetingOnboardingComplete
       case .meetingUseCalendarForNames: return settings.meetingUseCalendarForNames
+      case .meetingCallDetection: return settings.meetingCallDetection
+      case .meetingCallAppsOff: return settings.meetingCallAppsOff
+      case .meetingCallNoCounts: return settings.meetingCallNoCounts
+      case .meetingCallFirstTipShown: return settings.meetingCallFirstTipShown
       case .hotkeyEnabled: return settings.hotkeyEnabled
       case .vadAutoStop: return settings.vadAutoStop
       case .vadSilenceTimeout: return settings.vadSilenceTimeout
@@ -277,6 +282,14 @@
         return set(Codec.bool(value)) { settings.meetingOnboardingComplete = $0 }
       case .meetingUseCalendarForNames:
         return set(Codec.bool(value)) { settings.meetingUseCalendarForNames = $0 }
+      case .meetingCallDetection:
+        return set(Codec.string(value)) { settings.meetingCallDetection = $0 }
+      case .meetingCallAppsOff:
+        return set(Codec.string(value)) { settings.meetingCallAppsOff = $0 }
+      case .meetingCallNoCounts:
+        return set(Codec.string(value)) { settings.meetingCallNoCounts = $0 }
+      case .meetingCallFirstTipShown:
+        return set(Codec.bool(value)) { settings.meetingCallFirstTipShown = $0 }
       case .hotkeyEnabled:
         return set(Codec.bool(value)) { settings.hotkeyEnabled = $0 }
       case .vadAutoStop:
@@ -523,7 +536,9 @@
         return .shortcutField
       case .selectedBackend, .recordingMode, .llmProvider, .s1MiniStyling, .s1MiniStructure,
         .s1MiniContext, .autoCopyToClipboard, .meetingCaptureCallSound, .meetingCallSoundExplained,
-        .meetingWriteSummary, .meetingOnboardingComplete, .meetingUseCalendarForNames, .hotkeyEnabled,
+        .meetingWriteSummary, .meetingOnboardingComplete, .meetingUseCalendarForNames,
+        .meetingCallDetection, .meetingCallAppsOff, .meetingCallNoCounts, .meetingCallFirstTipShown,
+        .hotkeyEnabled,
         .vadAutoStop, .vadSensitivity,
         .vadEnergyGate, .onboardingState, .hasCompletedOnboarding, .pushToTalkKeyCode,
         .pushToTalkModifiers, .modelUnloadPolicy, .restoreClipboardAfterPaste,

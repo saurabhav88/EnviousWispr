@@ -316,6 +316,10 @@ meeting notes-set types and saves a meeting's notes (--text) as the Notes tab do
 notes-get reads them back. summary-write is the Summary tab's Write summary / Write again
 (--replace confirms replacing an edited summary); it returns at the start, so poll
 summary-get. meeting live prints the recording meeting's live words (memory only).
+call simulate fakes call apps holding the microphone (--holders JSON list of {bundleID,
+input, evidence, url?, pid?}); the rules, the panel and every Start run as in production.
+--clear returns to the real microphone; --press presses a button the call panel shows;
+with no option it reads the panel.
 Changes need the shared dev-app lock (dev-app-lock.py claim) unless run by hand.
 """
 
@@ -325,6 +329,8 @@ MODEL_BACKENDS = ("parakeet", "whisper")
 # ShortcutRole raw values; the door refuses anything else.
 SHORTCUT_ROLES = ("record", "cancel", "quickAdd", "pasteLast", "copyLast")
 MODEL_ACTIONS = ("download", "cancel")
+# The call panel's buttons `call simulate --press` may name (DevControlCalls.buttons).
+CALL_PANEL_BUTTONS = ("yes", "no", "keepRecording", "startNewRecording", "openSettings", "close")
 # MeetingEntryPoint raw values; the door refuses anything else.
 MEETING_ENTRY_POINTS = ("history", "menu")
 # CLI verb -> door command for the meeting commands that take only a meeting id; all change
@@ -444,6 +450,13 @@ def build_parser():
     summary_write.add_argument("--replace", action="store_true")
     meeting.add_parser("live")
 
+    call = sub.add_parser("call", help="EnviousMeet call detection (simulated)").add_subparsers(
+        dest="action", required=True, metavar="ACTION")
+    simulate = call.add_parser("simulate").add_mutually_exclusive_group()
+    simulate.add_argument("--holders")
+    simulate.add_argument("--clear", action="store_true")
+    simulate.add_argument("--press", choices=CALL_PANEL_BUTTONS)
+
     file_ = sub.add_parser("file", help="Transcribe a File").add_subparsers(
         dest="action", required=True, metavar="ACTION")
     transcribe = file_.add_parser("transcribe")
@@ -561,6 +574,20 @@ def route(args):
         return "meeting.summary.write", wire, True
     if key == ("meeting", "live"):
         return "meeting.live", {}, False
+    if key == ("call", "simulate"):
+        if args.clear:
+            return "call.simulate", {"clear": True}, True
+        if args.press is not None:
+            return "call.simulate", {"press": args.press}, True
+        if args.holders is not None:
+            try:
+                holders = json.loads(args.holders, parse_constant=_reject_constant)
+            except ValueError:
+                raise CliError("usage", "--holders must be a JSON list", EXIT_USAGE) from None
+            if not isinstance(holders, list):
+                raise CliError("usage", "--holders must be a JSON list", EXIT_USAGE)
+            return "call.simulate", {"holders": holders}, True
+        return "call.simulate", {}, False
     if args.group == "meeting" and args.action in MEETING_ID_ACTIONS:
         return MEETING_ID_ACTIONS[args.action], {"meetingID": args.id}, True
     if key == ("history", "list"):

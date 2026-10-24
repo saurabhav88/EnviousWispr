@@ -35,6 +35,9 @@ final class MenuBarController: NSObject {
   private let actions: MenuBarActions
 
   /// The status item. `var` Optional — created in `installStatusItem()`.
+  /// #4012: where the menu bar icon is on screen, for the call panel under it.
+  var statusItemFrame: NSRect? { statusItem?.button?.window?.frame }
+
   private var statusItem: NSStatusItem?
   /// #3972 R34: ticks the meeting block's time and percent while the menu is open.
   private var meetingTicker: Timer?

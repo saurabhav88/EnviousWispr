@@ -976,9 +976,11 @@
  },
  "meetings": {
   "exempt": {
-   "statusLine": 4
+   "statusLine": 5
   },
   "mapped": [
+   "meetingCallApps",
+   "meetingCallDetection",
    "meetingCaptureCallSound",
    "meetingUseCalendarForNames",
    "meetingWriteSummary"

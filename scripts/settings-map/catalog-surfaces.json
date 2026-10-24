@@ -42,6 +42,12 @@
   "mac-ctl-meeting-calendar-names": [
    "meetingUseCalendarForNames"
   ],
+  "mac-ctl-meeting-call-detection": [
+   "meetingCallDetection"
+  ],
+  "mac-ctl-meeting-call-apps": [
+   "meetingCallApps"
+  ],
   "mac-sec-engine-transcription": [
    "section.transcriptionEngine"
   ],
@@ -733,6 +739,16 @@
    "kind": "control",
    "parent": "mac-page-meetings",
    "label": "Name meetings from my calendar"
+  },
+  "mac-ctl-meeting-call-detection": {
+   "kind": "control",
+   "parent": "mac-page-meetings",
+   "label": "When a call starts"
+  },
+  "mac-ctl-meeting-call-apps": {
+   "kind": "control",
+   "parent": "mac-page-meetings",
+   "label": "Ask to record calls in"
   }
  }
 }

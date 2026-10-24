@@ -268,6 +268,12 @@ struct MeetingCoordinatorTests {
     var settleGate: Gate?
     /// #4017 R11: the calendar name a Start's lookup returns, and a gate it parks on.
     var calendarTitle: String?
+    /// #4012: what the detected-Start check answers.
+    var detectedWanted = true
+    /// When set, answers the detected-Start checks in order (then `detectedWanted`).
+    var detectedAnswers: [Bool] = []
+    /// When set, each detected-Start check waits for it.
+    var detectedGate: Gate?
     var titleGate: Gate?
     var titleLookups: [Date] = []
     var freeBytes: Int64? = 50_000_000_000
@@ -314,6 +320,10 @@ struct MeetingCoordinatorTests {
           titleLookups.append(startedAt)
           await titleGate?.wait()
           return calendarTitle
+        },
+        detectedStartWanted: { [self] in
+          await detectedGate?.wait()
+          return detectedAnswers.isEmpty ? detectedWanted : detectedAnswers.removeFirst()
         },
         saveTranscript: { [self] transcript in
           if let meetingID = transcript.meetingID {
@@ -1330,6 +1340,80 @@ struct MeetingCoordinatorTests {
     let saved = try harness.store.load(id: meetingID)
     #expect(saved.title == "Board sync")
     #expect(saved.state == .ready)
+  }
+
+  @Test("#4012: a Start that low disk would refuse is known before a switch stops anything")
+  func startWouldBeRefusedOnLowDisk() throws {
+    let harness = try Harness()
+    #expect(harness.coordinator.startWouldBeRefused() == false)
+    harness.freeBytes = 1
+    #expect(harness.coordinator.startWouldBeRefused())
+  }
+
+  @Test("#4012: a detected Start no longer wanted records nothing and leaves no meeting")
+  func unwantedDetectedStartRecordsNothing() async throws {
+    let harness = try Harness()
+    harness.detectedWanted = false
+    let coordinator = harness.coordinator
+    let outcome = await coordinator.start(from: .detected, callApp: .zoom)
+    #expect(outcome == .superseded(meetingID: nil))
+    #expect(harness.recorders.isEmpty)
+    #expect(coordinator.phase == .idle)
+    #expect(try harness.store.loadAll().isEmpty)
+    // A manual Start is never asked.
+    #expect(await coordinator.start(from: .history) != .superseded(meetingID: nil))
+  }
+
+  @Test("#4012: a detected Start whose check finishes after a Stop and a newer Start leaves that recording")
+  func lateCheckLeavesNewerRecording() async throws {
+    let harness = try Harness()
+    let gate = Gate()
+    harness.detectedGate = gate
+    harness.detectedWanted = false
+    let coordinator = harness.coordinator
+    let detected = Task { await coordinator.start(from: .detected, callApp: .zoom) }
+    await Self.eventually("check parked") { gate.parked }
+    await coordinator.stop()
+    harness.detectedGate = nil
+    #expect(await coordinator.start(from: .history) != .superseded(meetingID: nil))
+    guard case .recording(let newer, _) = coordinator.phase else {
+      Issue.record("the manual Start did not record")
+      return
+    }
+    gate.open()
+    #expect(await detected.value == .superseded(meetingID: nil))
+    guard case .recording(let still, _) = coordinator.phase else {
+      Issue.record("the newer recording was stopped")
+      return
+    }
+    #expect(still == newer)
+  }
+
+  @Test("#4012: a detected Start withdrawn while capture started keeps no meeting")
+  func withdrawnAfterCaptureKeepsNothing() async throws {
+    let harness = try Harness()
+    // Wanted after the calendar wait and the folder, withdrawn once capture began.
+    harness.detectedAnswers = [true, true, false]
+    let coordinator = harness.coordinator
+    let outcome = await coordinator.start(from: .detected, callApp: .zoom)
+    #expect(outcome == .superseded(meetingID: nil))
+    #expect(coordinator.phase == .idle)
+    await Self.eventually("removed") { (try? harness.store.loadAll().isEmpty) == true }
+  }
+
+  @Test("#4012: an AI title names an unnamed meeting and never replaces a name")
+  func aiTitleNamesOnlyUnnamed() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    await coordinator.stop()
+    await Self.eventually("ready") { coordinator.record(id: meetingID)?.state == .ready }
+    await coordinator.assignAITitle(meetingID: meetingID, title: "Launch plan")
+    #expect(try harness.store.load(id: meetingID).title == "Launch plan")
+    await coordinator.rename(meetingID: meetingID, title: "Board sync")
+    await coordinator.assignAITitle(meetingID: meetingID, title: "Something else")
+    #expect(try harness.store.load(id: meetingID).title == "Board sync")
   }
 
   @Test("a damaged last file has an unknown end; readable overlap is not called missing")

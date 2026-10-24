@@ -57,6 +57,12 @@ enum SettingsDefaultValues {
   static let meetingOnboardingComplete = false
   /// #4017 R5: calendar names are off until the user allows calendar access.
   static let meetingUseCalendarForNames = false
+  /// #4012 D1: ask "Record this call?" by default.
+  static let meetingCallDetection = "ask"
+  /// #4012 D5: every app asks.
+  static let meetingCallAppsOff = ""
+  static let meetingCallNoCounts = ""
+  static let meetingCallFirstTipShown = false
   static let hotkeyEnabled = true
 
   static let vadAutoStop = false

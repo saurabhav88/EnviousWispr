@@ -1,0 +1,1 @@
+{"language":"nl","title":"wanneer een gesprek begint","words":["oproepdetectie"],"phrases":["vraag of ik het gesprek wil opnemen","gesprekken automatisch opnemen als ze beginnen","oproepdetectie uitschakelen"]}

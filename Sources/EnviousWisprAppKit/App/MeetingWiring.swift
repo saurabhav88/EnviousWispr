@@ -48,6 +48,9 @@ enum MeetingWiring {
     var emitMeetingEnded: @MainActor (MeetingEndedTelemetry) -> Void = {
       TelemetryService.shared.trackMeetingEnded($0)
     }
+    /// #4012: whether a detected Start is still wanted (`CallDetectionCoordinator`), asked
+    /// before the meeting is created. Late-bound: call detection is built after the meetings.
+    var detectedStartWanted: @MainActor () async -> Bool = { true }
     /// The `meeting.summary_finished` emitter.
     var emitSummaryFinished: @MainActor (MeetingSummaryFinishedTelemetry) -> Void = {
       TelemetryService.shared.trackMeetingSummaryFinished($0)
@@ -83,6 +86,7 @@ enum MeetingWiring {
           guard settings.meetingUseCalendarForNames else { return nil }
           return await MeetingCalendarTitle.lookup(at: startedAt, bound: .seconds(1))
         },
+        detectedStartWanted: inputs.detectedStartWanted,
         saveTranscript: { [transcriptCoordinator = inputs.transcriptCoordinator] transcript in
           try await transcriptCoordinator.saveAndShowDurably(transcript)
         },
@@ -153,7 +157,10 @@ enum MeetingWiring {
         },
         wakes: inputs.dictationWakes,
         emitFinished: inputs.emitSummaryFinished,
-        log: inputs.log),
+        log: inputs.log,
+        assignTitle: { [weak coordinator] meetingID, title in
+          await coordinator?.assignAITitle(meetingID: meetingID, title: title)
+        }),
       documents: coordinator.documents, lane: lane)
   }
 

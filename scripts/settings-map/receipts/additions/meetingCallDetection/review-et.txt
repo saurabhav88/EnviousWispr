@@ -1,0 +1,1 @@
+{"language":"et","title":"kui kõne algab","words":["kõne algus"],"phrases":["küsi kõne alguses, kas soovin salvestada","alusta kõne salvestamist automaatselt","lülita kõnede tuvastamine välja"]}

@@ -1,0 +1,13 @@
+{
+  "language": "hr",
+  "title": "kad poziv započne",
+  "words": [
+    "otkrivanje poziva",
+    "upit za snimanje"
+  ],
+  "phrases": [
+    "pitaj me želim li snimiti poziv",
+    "automatski pokreni snimanje kad poziv započne",
+    "isključi otkrivanje poziva"
+  ]
+}
