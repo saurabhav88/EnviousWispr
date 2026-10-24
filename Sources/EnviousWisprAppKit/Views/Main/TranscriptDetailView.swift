@@ -578,7 +578,8 @@ struct TranscriptDetailView: View {
     do {
       try text.write(to: url, atomically: true, encoding: .utf8)
     } catch {
-      saveError = String(describing: error)
+      // #3908: Foundation's localized sentence, never the NSError debug dump.
+      saveError = error.localizedDescription
     }
   }
 }
