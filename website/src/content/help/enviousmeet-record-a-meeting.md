@@ -36,11 +36,11 @@ This is the text on the consent screen. The same text is on the EnviousMeet page
 
 ### Turn a permission on later
 
-Each permission has its own row on the EnviousMeet page.
+Each permission has its own row on the **Permissions** tab of the EnviousMeet page.
 
 - **Microphone.** Click **Allow Microphone**. If you said no before, it opens System Settings. The row says **Allowed** when it worked.
-- **Call sound.** If you clicked **Not now** during setup, turn on **Also record the call sound**. If you said no to macOS, click **Open System Settings** and allow EnviousWispr under **Privacy & Security > Screen & System Audio Recording**. macOS can only answer during a recording, so the row always reminds you of this. You know it worked when the menu says **Recording the call sound** while a meeting records.
-- **Calendar.** If the row says "Not asked yet", turn on **Name meetings from my calendar**, and macOS asks. If you said no to macOS, click **Open System Settings** and allow EnviousWispr under **Privacy & Security > Calendars**. The row says **Allowed** when it worked.
+- **Call sound.** If you clicked **Not now** during setup, turn off **Record only my voice** on the **General** tab. If you said no to macOS, click **Open System Settings** and allow EnviousWispr under **Privacy & Security > Screen & System Audio Recording**. macOS can only answer during a recording, so the row always reminds you of this. You know it worked when the menu says **Recording the call sound** while a meeting records.
+- **Calendar.** If the row says "Not asked yet", turn on **Name meetings from my calendar** on the **General** tab, and macOS asks. If you said no to macOS, click **Open System Settings** and allow EnviousWispr under **Privacy & Security > Calendars**. The row says **Allowed** when it worked.
 
 ### Record a meeting
 
@@ -54,7 +54,7 @@ EnviousMeet can also ask to record when a call starts. See [EnviousMeet: When a 
 
 ### Recording the call sound
 
-The **Also record the call sound** switch records what your Mac plays, such as the other people on a call. It needs macOS 14.2 or later; on an older Mac, only your microphone is recorded. It works with any headphones. The choice applies to the next meeting you start.
+EnviousMeet records what your Mac plays, such as the other people on a call, unless **Record only my voice** is on (on the **General** tab). Recording the call sound needs macOS 14.2 or later; on an older Mac, only your microphone is recorded. It works with any headphones. The choice applies to the next meeting you start.
 
 The first time you record the call sound, EnviousWispr explains that macOS will ask for permission. Click **Continue**, then answer the macOS question. **Cancel** starts nothing.
 

@@ -13,7 +13,7 @@ When a call app starts using your microphone in a real call, EnviousMeet can sho
 
 ### Choose what happens when a call starts
 
-On the EnviousMeet page, **When a call starts** has three choices.
+On the **General** tab of the EnviousMeet page, **When a call starts** has three choices.
 
 | Choice | What happens |
 | --- | --- |
@@ -33,7 +33,7 @@ Firefox, Discord and WhatsApp are not on the list yet.
 
 ### Stop being asked about one app
 
-Under **Ask to record calls in**, switch off any app you never want to be asked about. The list shows the call apps installed on your Mac, plus **Meetings in a browser**, which covers every browser at once. The switches are greyed out while **When a call starts** is **Off**.
+On the **Call Apps** tab, under **Notice calls in**, switch off any app you never want to be asked about. The list shows the call apps installed on your Mac, plus **Meetings in a browser**, which covers every browser at once. The switches are greyed out while **When a call starts** is **Off**.
 
 ### What the call panel's buttons do
 
@@ -60,7 +60,7 @@ To tell a call from other microphone use, EnviousMeet checks which app holds the
 
 ### It did not ask to record
 
-- **The app or browser is switched off** under **Ask to record calls in**, or **When a call starts** is **Off**.
+- **The app or browser is switched off** under **Notice calls in** on the **Call Apps** tab, or **When a call starts** is **Off**.
 - **Accessibility is not allowed.** Without it, EnviousMeet cannot tell a call from other microphone use, so it never asks.
 - **The meeting was in a background tab.** A browser does not say which tab uses the microphone, so the meeting page must be the tab you are on when the call starts.
 - **You were dictating.** **Record this call?** waits until the dictation ends. A question about switching from a meeting that is already recording can still appear.
