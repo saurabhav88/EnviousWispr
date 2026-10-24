@@ -9,7 +9,8 @@ Put the app's text field (or terminal prompt) in front first; the script never s
 Every take is a silent push-to-talk dictation through the audio rig (BlackHole in and out, the
 app's microphone pinned, everything restored at the end). One row per take: the paste route, the
 `PASTE_LANDING` verdict and whether the row is VALID: exactly one paste cascade into the named app
-and exactly one landing line. Anything else (a panel took the focus, extra recordings started) is
+and, on a key-paste route, exactly one landing line (a direct `ax_direct` write runs no landing
+check and reads `not_applicable`). Anything else (a panel took the focus, extra recordings started) is
 INVALID and never evidence. Whether the words really landed is the caller's screenshot.
 
 `--source saved` (default) replays the founder's own saved dictations
@@ -48,6 +49,7 @@ from audio_rig import AppTarget, AudioRig, _wait_frontmost  # noqa: E402
 
 ARCHIVE = os.path.expanduser("~/Library/Application Support/EnviousWispr/dictation-audio")
 SENTENCE = "Send the draft to Maya tomorrow morning."
+KEY_TIERS = p.KEY_TIERS  # the routes that run the landing check (one owner)
 
 
 def saved_clips(seed):
@@ -153,16 +155,26 @@ def main():
                 start = time.monotonic()
                 base = u.log_size()
                 checks_before = len(u.results)
+                # The cascade line first: only a key paste writes a PASTE_LANDING line, so the
+                # landing check is waited for only when the route was one (#4047, Codex review).
                 lines, cascades = p.take(args.app, base, bundle=args.app, route=rig.route,
                                          sentence=SENTENCE if audio is None else "(saved dictation)",
-                                         audio=audio, wait=args.wait, until_terminal=True)
+                                         audio=audio, wait=args.wait, until_terminal=True,
+                                         expect_landing=False)
                 mine = [c for c in cascades if c[1].strip() == args.app]
+                key_route = len(mine) == 1 and mine[0][0] in KEY_TIERS
+                if key_route:
+                    u.wait_for("a PASTE_LANDING line", lambda: p.LANDING.search(u.log_since(base)),
+                               deadline=25.0)
+                    lines = p.LANDING.findall(u.log_since(base))
                 # take() records its own setup checks (exactly one recording, virtual capture)
                 # without raising: any failure among them makes the row INVALID too.
                 failed = [r for r in u.results[checks_before:] if r[1] in ("FAIL", "ABORT")]
-                valid = len(cascades) == 1 and len(mine) == 1 and len(lines) == 1 and not failed
+                valid = (len(cascades) == 1 and len(mine) == 1 and not failed
+                         and len(lines) == (1 if key_route else 0))
                 tier = mine[0][0] if mine else "-"
-                verdict = f"{lines[0][1]}/{lines[0][2]}" if len(lines) == 1 else "-"
+                verdict = (f"{lines[0][1]}/{lines[0][2]}" if len(lines) == 1
+                           else "not_applicable" if len(mine) == 1 and not key_route else "-")
                 rows.append((n, valid, tier, verdict, time.monotonic() - start))
                 print(f"ROW {n} {'VALID' if valid else 'INVALID'} tier={tier} verdict={verdict} "
                       f"cascades={len(cascades)} landing_lines={len(lines)} failed_checks={len(failed)} "
