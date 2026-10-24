@@ -987,7 +987,8 @@ struct TranscribeCppRollingSessionTests {
   ) -> TranscribeCppRollingSession {
     TranscribeCppRollingSession(
       decode: decode, cadence: .milliseconds(1),
-      publication: .init(retentionLimit: limit, onHypothesis: shown.append))
+      publication: .init(
+        retentionLimit: limit, onHypothesis: shown.append, onAudioReleased: { _ in }))
   }
 
   @Test(
@@ -1108,5 +1109,108 @@ struct TranscribeCppRollingSessionTests {
     #expect(d.callSampleCounts.allSatisfy { $0 <= 30 * 16_000 }, "no decode past 25 + 5 s")
     #expect(shown.all.count >= 2, "control: text kept flowing")
     #expect(shown.all.allSatisfy { $0.count <= 100 })
+  }
+
+  // MARK: - #2117: the preview owner keeps a rolling window
+
+  /// The provider of a preview owner that drops what the session released: `count` stays
+  /// absolute, the array holds only the tail. `release` is wired to `onAudioReleased`.
+  final class TrimmingAudio: @unchecked Sendable {
+    private let lock = NSLock()
+    private let full: [Float]
+    private var origin = 0
+    private var end = 0
+    private var marks: [Int] = []
+    init(_ full: [Float]) { self.full = full }
+    func set(seconds: Float) { lock.withLock { end = Int(seconds * 16_000) } }
+    func release(_ mark: Int) {
+      lock.withLock {
+        marks.append(mark)
+        origin = max(origin, min(mark, end))
+      }
+    }
+    var released: [Int] { lock.withLock { marks } }
+    var retained: Int { lock.withLock { end - origin } }
+    var provider: @Sendable () async -> (samples: [Float], count: Int) {
+      { [self] in lock.withLock { (Array(full[origin..<end]), end) } }
+    }
+  }
+
+  /// Every decode input, in order.
+  final class Windows: @unchecked Sendable {
+    private let lock = NSLock()
+    private var inputs: [[Float]] = []
+    var all: [[Float]] { lock.withLock { inputs } }
+    /// Never agrees with the previous call, so nothing commits and the origin advances by
+    /// force; non-empty, so every cycle is heard once.
+    var decode: TranscribeCppRollingSession.Decode {
+      { [self] samples in
+        let call = lock.withLock { () -> Int in
+          inputs.append(samples)
+          return inputs.count
+        }
+        let ms = Int64(samples.count / 16)
+        return TranscribeCppRunResult(
+          text: "a\(call) b\(call)", detectedLanguage: nil,
+          segments: [TranscribeCppSegment(startMs: 0, endMs: ms, text: " a\(call) b\(call)")])
+      }
+    }
+  }
+
+  /// When this fails, a long meeting's live words show text from the wrong moment, or stop.
+  @Test("a provider that drops released audio decodes exactly the windows the whole recording would")
+  func trimmedProviderDecodesTheSameWindows() async {
+    // Position-dependent audio, so a window cut from the wrong offset cannot match.
+    let full = (0..<(60 * 16_000)).map { Float(sin(Double($0) * 0.0123)) * 0.2 }
+    var arms: [(windows: Windows, audio: TrimmingAudio, trims: Bool)] = []
+    for trims in [false, true] {
+      let windows = Windows()
+      let audio = TrimmingAudio(full)
+      let s = TranscribeCppRollingSession(
+        decode: windows.decode, cadence: .milliseconds(1),
+        publication: .init(
+          retentionLimit: 2_000, onHypothesis: { _ in },
+          onAudioReleased: { trims ? audio.release($0) : () }))
+      audio.set(seconds: 20)
+      await s.start(audioSamplesProvider: audio.provider)
+      // 32 s and 60 s each push the unconfirmed window past 30 s: the origin moves twice.
+      for (step, seconds) in [26, 32, 34, 50, 60].enumerated() {
+        await Self.within("cycle \(step + 1)") { await s.cyclesCompleted(reach: step + 1) }
+        audio.set(seconds: Float(seconds))
+      }
+      await Self.within("cycle 6") { await s.cyclesCompleted(reach: 6) }
+      await s.cancel()
+      arms.append((windows, audio, trims))
+    }
+    let (whole, trimmed) = (arms[0], arms[1])
+    #expect(whole.windows.all.map(\.count) == [20, 26, 8, 10, 26, 8].map { $0 * 16_000 })
+    #expect(trimmed.windows.all == whole.windows.all, "identical decode inputs, sample for sample")
+    // Independent of both arms' slicing: each window starts at its literal origin.
+    let starts = trimmed.windows.all.map(\.first)
+    #expect(starts == [0, 0, 24, 24, 24, 52].map { Optional(full[$0 * 16_000]) })
+    #expect(trimmed.audio.released == [24 * 16_000, 52 * 16_000], "one mark per origin move")
+    #expect(trimmed.audio.retained == 8 * 16_000, "the owner keeps only the live window")
+    #expect(whole.audio.retained == 60 * 16_000, "control: the other arm kept everything")
+  }
+
+  @Test("a committed-boundary trim releases the new origin monotonically")
+  func releaseMarkIsTheNewOrigin() async {
+    let marks = Shown()
+    let preview = TranscribeCppRollingSession(
+      decode: Self.noDecode, cadence: .milliseconds(1),
+      publication: .init(
+        retentionLimit: 2_000, onHypothesis: { _ in }, onAudioReleased: { marks.append("\($0)") }))
+    // Sentences agreed by two decodes, so they commit; past 15 s the origin moves to the last
+    // committed end that leaves 8 s of audio.
+    var segments: [RollingSegment] = []
+    for i in 0..<18 {
+      segments.append(Self.seg(Float(i), Float(i + 1), " sentence\(i)."))
+      await preview.apply(segments, realAudioEnd: Float(i + 1))
+      await preview.apply(segments, realAudioEnd: Float(i + 1) + 0.5)
+    }
+    let origin = await preview.bufferStartForTests
+    #expect(origin > 0, "control: the origin moved")
+    #expect(marks.all.last == "\(Int(origin * 16_000))")
+    #expect(marks.all.compactMap(Int.init) == marks.all.compactMap(Int.init).sorted())
   }
 }

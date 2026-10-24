@@ -6,34 +6,34 @@ import os
 
 /// One Universal preview session over transcribe.cpp, owning everything it needs (#3735 §3.5).
 ///
-/// **The session accumulates its own audio.** The shared rolling core
+/// **The session holds its own audio, as a rolling window.** The shared rolling core
 /// (`TranscribeCppRollingSession`) has no `feed`: `start` retains a provider the decode loop
-/// PULLS each cycle, so something must hold the growing buffer. That something is this
-/// object, per session, which is also what makes a stale `feed` unable to reach a newer
-/// session's buffer.
+/// PULLS each cycle, so something must hold the buffer. That something is this object, per
+/// session, which is also what makes a stale `feed` unable to reach a newer session's buffer.
+/// The core tells it which audio it will never read again (`releaseAudio(before:)`), and this
+/// object drops exactly that, so it keeps the core's decode window rather than the recording
+/// (#2117).
 ///
 /// **A preview stop discards.** `end()` only cancels the rolling session, which aborts and
 /// joins its in-flight decode; it never runs the heart's authoritative flush or the batch
 /// fallback, because nothing the preview decodes ever reaches the document.
 package final class TranscribeCppPreviewSession: LivePreviewEngineSession, @unchecked Sendable {
 
-  /// Hard cap on retained preview audio, in samples: 10 minutes at 16 kHz mono.
+  /// Ceiling on RETAINED preview audio, in samples: 2 minutes at 16 kHz mono (~7.7 MB).
   ///
-  /// **Why a cap and not a rolling window.** The rolling core addresses audio by
-  /// absolute time from index 0 of what the provider returns (its decode window is
-  /// `[bufferStart .. end]`), so front-trimming this array would shift every timestamp it
-  /// relies on. The rolling-window design that fixes it needs an origin offset in the
-  /// session itself and is routed to its own issue (#2117).
+  /// Not a recording-length cap (#2117). The core releases audio each time its origin moves.
+  /// It checks before every decode that has a second of new audio, including retries after an
+  /// empty, failed or refused decode: past 15 s it moves to a committed segment end that leaves
+  /// 8 s, and with no such boundary it moves by force past 30 s. So a promptly serviced
+  /// session retains about 30 s however long the recording runs. That is an expectation, not
+  /// a bound: audio keeps arriving during start-up, a drain wait or a long decode, and a
+  /// committed boundary reached late can leave a longer window.
   ///
-  /// What this buys: retained preview audio stops at ~38 MB instead of growing to
-  /// ~230 MB across the 60-minute dictation ceiling. Past the cap the preview stops
-  /// updating and keeps its last text. **Dictation is completely unaffected**: this is
-  /// the limb's own copy and the heart's audio path never sees it.
-  ///
-  /// Ten minutes covers essentially all real dictation: the product is built for
-  /// dictation rather than long-form, and a preview that quietly stops after ten
-  /// minutes is a far better failure than one that costs a quarter of a gigabyte.
-  static let maxRetainedSamples = 10 * 60 * 16_000
+  /// This ceiling is the bound. If it is reached the preview stops updating for the rest of
+  /// that session and keeps its last text, the same failure the old 10-minute cap had, rather
+  /// than holding audio without limit. **Dictation is completely unaffected**: this is the
+  /// limb's own copy and the heart's audio path never sees it.
+  static let maxRetainedSamples = 2 * 60 * 16_000
 
   /// All mutable session state behind ONE scoped lock.
   ///
@@ -47,7 +47,10 @@ package final class TranscribeCppPreviewSession: LivePreviewEngineSession, @unch
   /// `withLock` form is the async-safe one and also makes it impossible to
   /// return early while still holding the lock.
   private struct State {
+    /// The retained window: absolute samples `origin ..< origin + samples.count`.
     var samples: [Float] = []
+    /// Absolute index of `samples[0]`: everything before it was released by the core.
+    var origin = 0
     var ended = false
     var capped = false
     /// Held as the protocol rather than the concrete session so a test can
@@ -162,7 +165,8 @@ package final class TranscribeCppPreviewSession: LivePreviewEngineSession, @unch
       let task = Task { [weak self] in
         await session.start { [weak self] in
           guard let self else { return (samples: [], count: 0) }
-          return self.state.withLock { s in (samples: s.samples, count: s.samples.count) }
+          // `count` is absolute (everything fed so far); the array holds only its tail.
+          return self.state.withLock { s in (samples: s.samples, count: s.origin + s.samples.count) }
         }
       }
       s.attaching = task
@@ -175,6 +179,22 @@ package final class TranscribeCppPreviewSession: LivePreviewEngineSession, @unch
     }
     await starting.value
   }
+
+  /// The core's release notice: it will never read audio before absolute sample `mark` again.
+  /// Drops exactly that prefix; a mark at or before `origin` (a repeat, or one landing after
+  /// `end()` emptied the buffer) drops nothing. Runs on the core's actor inside its loop, so
+  /// it only trims under the lock.
+  nonisolated func releaseAudio(before mark: Int) {
+    state.withLock { s in
+      let drop = min(max(0, mark - s.origin), s.samples.count)
+      guard drop > 0 else { return }
+      s.samples.removeFirst(drop)
+      s.origin += drop
+    }
+  }
+
+  /// Retained audio, in samples (tests and the long-run harness).
+  package var retainedSampleCountForTests: Int { state.withLock { $0.samples.count } }
 
   package func feed(_ newSamples: [Float]) async {
     let justCapped: Bool = state.withLock { s in

@@ -462,7 +462,8 @@ struct TranscribeCppPreviewRealBoundaryTests {
     do {
       let first = try #require(
         try await runtime?.makeSession(
-          language: "en", hypothesisRetentionLimit: 2_000, onHypothesis: shown.append))
+          language: "en", hypothesisRetentionLimit: 2_000, onHypothesis: shown.append,
+          onAudioReleased: { _ in }))
       await first.start(audioSamplesProvider: Self.recording(take))
       await TranscribeCppRollingSessionTests.within("the first preview text", seconds: 60) {
         await shown.reach(1)
@@ -487,7 +488,8 @@ struct TranscribeCppPreviewRealBoundaryTests {
     do {
       let second = try #require(
         try await runtime?.makeSession(
-          language: "en", hypothesisRetentionLimit: 2_000, onHypothesis: again.append))
+          language: "en", hypothesisRetentionLimit: 2_000, onHypothesis: again.append,
+          onAudioReleased: { _ in }))
       await second.start(audioSamplesProvider: Self.recording(clip))
       await TranscribeCppRollingSessionTests.within("the reused model's text", seconds: 60) {
         await again.reach(1)
