@@ -22,6 +22,9 @@ some speech above -30 dBFS). The archive is recorded at the mic's own low level,
 loudness-normalised into a temporary folder that is deleted at the end; nothing leaves the Mac.
 `--source tts` speaks a fixed sentence instead.
 
+Known limit: the cascade and landing reads use byte offsets into app.log, so a log rotation
+inside a take makes that row INVALID (never a wrong VALID).
+
 `--clear ctrl-u` empties a shell prompt after each take (terminals); `none` (default) leaves the
 text for the caller to remove. Run `--takes 1` first as a smoke test.
 

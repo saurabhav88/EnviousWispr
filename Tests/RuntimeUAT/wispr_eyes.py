@@ -3427,6 +3427,8 @@ def record_tts(sentence="The quick brown fox jumps over the lazy dog", key=None,
     finally:
         player.join(timeout=hold_dur + 15)  # bounded: a hung player is killed by the rig's cleanup
     _tg.take_stopped()
+    # The player's verdict before any wait: a failed playback is SETUP, never a missing take.
+    _tg.check_player(played[0] if played else None)
 
     # Wait for pipeline (ASR + polish + paste)
     if until_terminal:
@@ -3435,7 +3437,8 @@ def record_tts(sentence="The quick brown fox jumps over the lazy dog", key=None,
         terminal_seen = False
         while time.monotonic() < deadline:
             # Rotation-proof: the take's own entries since its start (#4047, Codex review).
-            if _tg.TERMINAL.search(_take_lines(take_started)):
+            evidence = _take_lines(take_started)
+            if time.monotonic() <= deadline and _tg.TERMINAL.search(evidence):
                 terminal_seen = True
                 break
             time.sleep(0.2)  # settle: poll interval between reads of the take's own signal
@@ -3504,7 +3507,6 @@ def record_tts(sentence="The quick brown fox jumps over the lazy dog", key=None,
     print(f"Result:      {'OK' if result['success'] else 'FAIL'}")
     print(f"{'=' * 60}")
 
-    _tg.check_player(played[0] if played else None)
     _tg.check_after_take(_take_lines(take_started))
     return result
 
