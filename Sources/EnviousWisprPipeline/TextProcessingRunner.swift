@@ -302,16 +302,21 @@ internal final class TextProcessingRunner {
     // confirmed meanwhile must stay newer than it.
     func settlePolishOutcome(
       _ result: PolishTakeResult, _ evidence: PolishSetupEvidence?,
-      observedAt: ContinuousClock.Instant, keyReadAt: ContinuousClock.Instant? = nil
+      observedAt: ContinuousClock.Instant, keyReadAt: ContinuousClock.Instant? = nil,
+      observation: LLMPolishStep.SetupObservation? = nil
     ) {
       guard let probe = polishSetup else { return }
       // The app confirms evidence for the take's FROZEN provider, now, before the terminal row
       // closes; a later repair or acknowledgement cannot change what this take met.
       let tag = evidence.flatMap { probe.classify($0) }
       if let tag { probe.recordTerminalProblem(probe.takeID, tag) }
+      // #3988: the stop evidence the step froze at its miss, carried as-is. Only a
+      // not-ready skip is a miss; any result keeps the recovery attribution.
       polishTakeOutcome = PolishTakeOutcome(
         takeID: probe.takeID, context: probe.context, result: result, evidence: evidence,
-        setupProblem: tag, observedAt: observedAt, keyReadAt: keyReadAt)
+        setupProblem: tag, observedAt: observedAt, keyReadAt: keyReadAt,
+        outsideStopMiss: evidence == .localEngineNotReady ? observation?.outsideStopMiss : nil,
+        outsideStopRecovery: observation?.outsideStopRecovery)
     }
 
     let logger = self.logger
@@ -373,7 +378,8 @@ internal final class TextProcessingRunner {
             observedAt: Self.observationStamp(
               evidence: nil, result: result, step: step as? LLMPolishStep,
               fallback: polishObservedAt),
-            keyReadAt: (step as? LLMPolishStep)?.setupObservation.requestStartedAt)
+            keyReadAt: (step as? LLMPolishStep)?.setupObservation.requestStartedAt,
+            observation: (step as? LLMPolishStep)?.setupObservation)
         }
         let stepMs = (CFAbsoluteTimeGetCurrent() - stepStart) * 1000
         stepElapsedMs = stepMs
@@ -618,7 +624,8 @@ internal final class TextProcessingRunner {
             observedAt: Self.observationStamp(
               evidence: evidence, result: result, step: step as? LLMPolishStep,
               fallback: polishObservedAt),
-            keyReadAt: (step as? LLMPolishStep)?.setupObservation.requestStartedAt)
+            keyReadAt: (step as? LLMPolishStep)?.setupObservation.requestStartedAt,
+            observation: (step as? LLMPolishStep)?.setupObservation)
         }
         // #1055: emit a dedicated skip event so we can measure how often long
         // dictations bypass on-device polish — input the future 1-hour-recording

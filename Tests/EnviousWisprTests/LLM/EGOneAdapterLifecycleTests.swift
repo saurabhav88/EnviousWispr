@@ -1,10 +1,12 @@
 import EnviousWisprCore
+import EnviousWisprServices
 import Foundation
 import Testing
 import os
 
 @testable import EnviousWisprLLM
 @testable import EnviousWisprModelDelivery
+@testable import EnviousWisprPipeline
 
 @Suite("EG-1 adapter server lifecycle (#3105)", .serialized, .tags(.driftGuard))
 struct EGOneAdapterLifecycleTests {
@@ -331,6 +333,12 @@ struct EGOneAdapterLifecycleTests {
     }
     func releaseLocalServerLease(_ lease: LocalPolishServerLease) async {
       await coordinator.releaseLease(lease)
+    }
+    func beginPolishAttempt(takeID: String?) async -> LocalPolishAttempt {
+      let (admission, availability) = await coordinator.admitPolish(for: .egOne, takeID: takeID)
+      return LocalPolishAttempt(
+        admission: admission, endpoint: availability.endpoint, missedOutsideStop: nil,
+        recoveryOutsideStop: nil)
     }
   }
 
@@ -1011,6 +1019,260 @@ struct EGOneRecordingRecoveryTests {
       LocalPolishLifecycleEvent(
         lifecycle: Lifecycle(state: .stoppedOutside, outsideStopGeneration: 3), order: 1))
     #expect(runtime.unresolvedOutsideStop?.memoryPressure == level)
+  }
+
+  // MARK: - What a take freezes at the polish step (#3988 Chunk 3)
+
+  private static let longTake =
+    "so i was thinking we could maybe ship the new thing some time next week or so"
+
+  private struct CannedPolisher: TranscriptPolisher {
+    let output: String
+    func polish(
+      text: String, instructions: PolishInstructions, config: LLMProviderConfig,
+      onToken: (@Sendable (String) -> Void)?
+    ) async throws -> LLMResult {
+      LLMResult(polishedText: output)
+    }
+  }
+
+  private struct CancelledPolisher: TranscriptPolisher {
+    func polish(
+      text: String, instructions: PolishInstructions, config: LLMProviderConfig,
+      onToken: (@Sendable (String) -> Void)?
+    ) async throws -> LLMResult {
+      throw CancellationError()
+    }
+  }
+
+  /// Forwards to the real runtime and announces each lease release, so a test
+  /// can wait for the step's deferred release instead of guessing.
+  @MainActor
+  final class ReleaseSignal: EGOneLeaseProviding {
+    let runtime: EGOneRuntime
+    private(set) var releases = 0
+    private var waiter: CheckedContinuation<Void, Never>?
+    init(_ runtime: EGOneRuntime) { self.runtime = runtime }
+    func activeEndpoint() async -> EGOneEndpoint? { await runtime.activeEndpoint() }
+    func acquireLocalServerLease() async -> LocalPolishLeaseAdmission {
+      await runtime.acquireLocalServerLease()
+    }
+    func releaseLocalServerLease(_ lease: LocalPolishServerLease) async {
+      await runtime.releaseLocalServerLease(lease)
+      releases += 1
+      waiter?.resume()
+      waiter = nil
+    }
+    func beginPolishAttempt(takeID: String?) async -> LocalPolishAttempt {
+      await runtime.beginPolishAttempt(takeID: takeID)
+    }
+    /// True once `count` releases happened, false at the deadline.
+    func waitForReleases(_ count: Int) async -> Bool {
+      if releases >= count { return true }
+      await withCheckedContinuation { continuation in
+        waiter = continuation
+        Task { @MainActor [weak self] in
+          // deadline-fallback: give up so the test fails by name instead of hanging
+          try? await Task.sleep(for: .seconds(20))
+          self?.waiter?.resume()
+          self?.waiter = nil
+        }
+      }
+      return releases >= count
+    }
+  }
+
+  private func step(
+    _ runtime: any EGOneLeaseProviding, polisher: (any TranscriptPolisher)? = nil
+  ) -> LLMPolishStep {
+    let step = LLMPolishStep(keychainManager: KeychainManager())
+    step.llmProvider = .egOne
+    step.llmModel = LLMProvider.egOneModelName
+    step.egOneRuntime = runtime
+    if let polisher { step.makeEGOnePolisher = { _ in polisher } }
+    return step
+  }
+
+  /// One live take through the real runner. `between` runs after the step
+  /// returns or throws and before the runner settles the take's outcome.
+  private func take(
+    _ step: LLMPolishStep, id takeID: String,
+    between: (@MainActor () async -> Void)? = nil
+  ) async throws -> TextProcessingRunResult {
+    let probe = PolishSetupTakeProbe(
+      takeID: takeID,
+      context: PolishSetupTakeContext(
+        provider: .egOne, model: LLMProvider.egOneModelName, configurationRevision: 1,
+        episode: nil),
+      classify: { _ in nil }, recordTerminalProblem: { _, _ in }, now: { .now })
+    let runner = TextProcessingRunner(
+      telemetry: .init(
+        captureError: { _, _, _, _, _, _ in }, recordPolishFailed: { _, _, _, _, _ in },
+        recordPolishSkipped: { _, _, _ in }),
+      timeoutExecutor: { _, operation in
+        do {
+          let result = try await operation()
+          await between?()
+          return result
+        } catch {
+          await between?()
+          throw error
+        }
+      })
+    return try await runner.run(
+      rawText: Self.longTake, evidence: .locked("en"), targetAppName: nil, steps: [step],
+      polishSetup: probe, takeID: takeID)
+  }
+
+  @Test("only the next live take is a stop's recovery take; imports and the other engine never use it up")
+  func recoveryTakeIsTheNextLiveTake() async throws {
+    let rig = try await makeRig()
+    defer { rig.cleanup() }
+    rig.runtime.memoryPressureLevel = { .warning }
+    try await bringUp(rig)
+    #expect(try await stopFromOutside(rig) != nil)
+    let stop = OutsideStopContext(provider: .egOne, generation: 1, memoryPressure: .warning)
+
+    // A file import or replay asks without a take; the other engine asks for its own.
+    let importRead = await rig.runtime.beginPolishAttempt(takeID: nil)
+    if case .granted(let lease) = importRead.admission {
+      await rig.runtime.releaseLocalServerLease(lease)
+    }
+    #expect(importRead.missedOutsideStop == stop)
+    #expect(importRead.recoveryOutsideStop == nil)
+    let s1Mini = EGOneRuntime(
+      manifest: nil, serverBinaryURL: nil, delivery: nil, coordinator: rig.coordinator,
+      provider: .s1Mini)
+    let other = await s1Mini.beginPolishAttempt(takeID: "s1-take")
+    if case .granted(let lease) = other.admission { await s1Mini.releaseLocalServerLease(lease) }
+    #expect(other.endpoint == nil)
+    #expect(other.missedOutsideStop == nil)
+    #expect(other.recoveryOutsideStop == nil)
+
+    let first = try #require(try await take(step(rig.runtime), id: "take-1").polishTakeOutcome)
+    #expect(first.result == .skippedSilently)
+    #expect(first.outsideStopMiss == stop)
+    #expect(first.outsideStopRecovery == stop)
+    // The same take asking again keeps it; the next take is only a miss.
+    let again = await rig.runtime.beginPolishAttempt(takeID: "take-1")
+    if case .granted(let lease) = again.admission { await rig.runtime.releaseLocalServerLease(lease) }
+    #expect(again.recoveryOutsideStop == stop)
+    let second = try #require(try await take(step(rig.runtime), id: "take-2").polishTakeOutcome)
+    #expect(second.outsideStopMiss == stop)
+    #expect(second.outsideStopRecovery == nil)
+
+    // Recovered: a later ordinary take polishes and carries nothing of the stop.
+    let mark = rig.recorder.applied.count
+    await rig.runtime.activateAndProbe()?.value
+    _ = await rig.recorder.first(from: mark, where: Self.isReady)
+    let ordinary = try await take(
+      step(rig.runtime, polisher: CannedPolisher(output: "Polished.")), id: "take-3")
+    let outcome = try #require(ordinary.polishTakeOutcome)
+    #expect(outcome.result == .polished)
+    #expect(outcome.outsideStopMiss == nil)
+    #expect(outcome.outsideStopRecovery == nil)
+    await rig.coordinator.transition(to: .idle(.egOne), intent: rig.coordinator.claimIntent())
+  }
+
+  @Test("the first take on a restarted engine is polished and carries the stop it recovered from")
+  func successfulRecoveryTake() async throws {
+    let rig = try await makeRig()
+    defer { rig.cleanup() }
+    rig.runtime.memoryPressureLevel = { .critical }
+    try await bringUp(rig)
+    #expect(try await stopFromOutside(rig) != nil)
+    let mark = rig.recorder.applied.count
+    await rig.runtime.activateAndProbe()?.value
+    _ = await rig.recorder.first(from: mark, where: Self.isReady)
+
+    let result = try await take(
+      step(rig.runtime, polisher: CannedPolisher(output: "So I was thinking we could maybe ship the new thing sometime next week or so.")), id: "take-r")
+    let outcome = try #require(result.polishTakeOutcome)
+    #expect(outcome.result == .polished)
+    #expect(outcome.outsideStopMiss == nil)
+    #expect(
+      outcome.outsideStopRecovery
+        == OutsideStopContext(provider: .egOne, generation: 1, memoryPressure: .critical))
+    #expect(
+      result.context.polishedText
+        == "So I was thinking we could maybe ship the new thing sometime next week or so.")
+    await rig.coordinator.transition(to: .idle(.egOne), intent: rig.coordinator.claimIntent())
+  }
+
+  @Test("the engine coming back between the miss and the take's result does not change what the take met")
+  func readinessBetweenMissAndSettlement() async throws {
+    let rig = try await makeRig()
+    defer { rig.cleanup() }
+    var pressure: OutsideStopContext.MemoryPressure = .normal
+    rig.runtime.memoryPressureLevel = { pressure }
+    try await bringUp(rig)
+    #expect(try await stopFromOutside(rig) != nil)
+
+    // The recording's recovery is parked before ready, so the take misses.
+    try Data().write(to: rig.fixture.root.appendingPathComponent("hold_ready"))
+    let recovery = try #require(rig.runtime.recordingStarted())
+    let result = try await take(step(rig.runtime), id: "take-m") {
+      // Between the miss and settlement: the engine comes back and pressure rises.
+      let mark = rig.recorder.applied.count
+      try? Data().write(to: rig.fixture.root.appendingPathComponent("release_ready"))
+      await recovery.value
+      _ = await rig.recorder.first(from: mark, where: Self.isReady)
+      pressure = .critical
+    }
+    let outcome = try #require(result.polishTakeOutcome)
+    #expect(Self.isReady(await rig.runtime.serverCoordinator.lifecycle(for: .egOne)))
+    #expect(outcome.result == .skippedSilently)
+    #expect(
+      outcome.outsideStopMiss
+        == OutsideStopContext(provider: .egOne, generation: 1, memoryPressure: .normal))
+    await rig.coordinator.transition(to: .idle(.egOne), intent: rig.coordinator.claimIntent())
+  }
+
+  @Test("a cancelled polish releases its hold, and a reused step starts each take clean")
+  func cancellationReleasesAndReuseIsClean() async throws {
+    let rig = try await makeRig()
+    defer { rig.cleanup() }
+    try await bringUp(rig)
+    #expect(try await stopFromOutside(rig) != nil)
+    let signal = ReleaseSignal(rig.runtime)
+    let reused = step(signal, polisher: CancelledPolisher())
+    let missed = try await take(reused, id: "take-c1")
+    #expect(missed.polishTakeOutcome?.outsideStopMiss != nil)
+    #expect(await signal.waitForReleases(1), "the miss took a hold and must release it")
+
+    let mark = rig.recorder.applied.count
+    await rig.runtime.activateAndProbe()?.value
+    _ = await rig.recorder.first(from: mark, where: Self.isReady)
+    let cancelled = try await take(reused, id: "take-c2")
+    let outcome = try #require(cancelled.polishTakeOutcome)
+    #expect(outcome.result == .cancelled)
+    #expect(outcome.outsideStopMiss == nil, "the reused step kept nothing from the last take")
+    #expect(outcome.outsideStopRecovery == nil)
+    #expect(await signal.waitForReleases(2), "a cancelled polish must release its hold")
+    #expect(await rig.coordinator.hasLease(for: .egOne) == false)
+    await rig.coordinator.transition(to: .idle(.egOne), intent: rig.coordinator.claimIntent())
+  }
+
+  @Test("a stop the main actor has not accepted yet is frozen with unknown pressure, never resampled")
+  func unacceptedStopHasUnknownPressure() {
+    let runtime = EGOneRuntime(manifest: nil, serverBinaryURL: nil, delivery: nil)
+    var samples = 0
+    runtime.memoryPressureLevel = {
+      samples += 1
+      return .critical
+    }
+    #expect(runtime.outsideStopContext(generation: 7).memoryPressure == nil)
+    #expect(samples == 0)
+    runtime.receive(
+      LocalPolishLifecycleEvent(
+        lifecycle: Lifecycle(state: .stoppedOutside, outsideStopGeneration: 7), order: 1))
+    // Accepted once: later reads reuse that sample, also after the stop resolves.
+    runtime.receive(
+      LocalPolishLifecycleEvent(
+        lifecycle: Lifecycle(state: .ready(EGOneEndpoint(port: 1, authToken: "t", contextTokens: 1))),
+        order: 2))
+    #expect(runtime.outsideStopContext(generation: 7).memoryPressure == .critical)
+    #expect(samples == 1)
   }
 
   @Test("the applied-lifecycle waiter gives up at its deadline")

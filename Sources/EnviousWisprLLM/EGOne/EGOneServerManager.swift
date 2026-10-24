@@ -97,6 +97,22 @@ public actor EGOneServerManager {
     public static let stopped = Lifecycle(state: .stopped)
   }
 
+  /// What a polish attempt meets, read in ONE manager turn (#3988), so the
+  /// endpoint and the stop evidence cannot describe two different moments.
+  public struct Availability: Sendable, Equatable {
+    public let endpoint: EGOneEndpoint?
+    /// The outside stop that leaves no endpoint, when that is why.
+    public let outstandingOutsideStop: Int?
+    /// The outside stop whose recovery take is the asking take: the first live
+    /// take to meet that stop, still outstanding or replaced by the ready
+    /// server. The same take asking again gets it again; any other take, and
+    /// any request without a take, gets nil.
+    public let recoveryOutsideStop: Int?
+
+    public static let unavailable = Availability(
+      endpoint: nil, outstandingOutsideStop: nil, recoveryOutsideStop: nil)
+  }
+
   /// #3988: how an accepted termination is handled. Closed allowlist: only an
   /// unexpected exit of a READY server with exit status 0 or a stop signal
   /// (SIGHUP, SIGINT, SIGKILL, SIGTERM) is an outside stop. Everything else,
@@ -172,6 +188,14 @@ public actor EGOneServerManager {
   /// Bumped on every transition (#3988), so each published lifecycle carries
   /// its place in emission order before any hop can reorder it.
   private var revision = 0
+  /// The outside stop the current ready server replaced (#3988); set when a
+  /// recovery reaches ready, cleared by any other ready and by deliberate stops.
+  private var recoveredOutsideStopGeneration: Int?
+  /// The stop most recently attributed, and the live take it belongs to (#3988).
+  private var recoveryTake: (generation: Int, takeID: String)?
+  /// The engine the current process was launched for (#3988). Evidence and
+  /// attribution are handed only to that engine, checked here at the authority.
+  private var owner: LLMProvider?
   public private(set) var checkerFailureReason: CheckerFailureReason?
   /// Monotonic spawn token (#1271 matrix gap 1): `stop()` / memory-pressure
   /// pause / a newer spawn bump it, so a spawn whose readiness await resumes
@@ -254,6 +278,7 @@ public actor EGOneServerManager {
     case .starting: processObservation?.publish(.starting)
     case .ready:
       processObservation?.publish(.ready)
+      recoveredOutsideStopGeneration = outsideStopGeneration
       outsideStopGeneration = nil
     case .stopped, .pausedForMemoryPressure, .failed, .stoppedOutside: break
     }
@@ -266,6 +291,30 @@ public actor EGOneServerManager {
   public func activeEndpoint() -> EGOneEndpoint? {
     if case .ready(let endpoint) = state { return endpoint }
     return nil
+  }
+
+  /// The endpoint and its outside-stop evidence for `provider`, from this one
+  /// turn (#3988). Never boots or waits, like `activeEndpoint()`. Only a live
+  /// take (`takeID`) can become a stop's recovery take; a file import, a
+  /// replay or another engine reads without using it up.
+  public func observeAvailability(
+    for provider: LLMProvider, claimingFor takeID: String?
+  ) -> Availability {
+    guard owner == provider else { return .unavailable }
+    let endpoint = activeEndpoint()
+    let met = endpoint == nil ? outsideStopGeneration : recoveredOutsideStopGeneration
+    var recovery: Int?
+    if let met, let takeID {
+      if let held = recoveryTake, held.generation == met {
+        recovery = held.takeID == takeID ? met : nil
+      } else {
+        recoveryTake = (met, takeID)
+        recovery = met
+      }
+    }
+    return Availability(
+      endpoint: endpoint, outstandingOutsideStop: endpoint == nil ? outsideStopGeneration : nil,
+      recoveryOutsideStop: recovery)
   }
 
   // MARK: - Lifecycle
@@ -289,6 +338,8 @@ public actor EGOneServerManager {
   public func stop() -> LocalPolishLifecycleEvent {
     launchGeneration += 1
     outsideStopGeneration = nil
+    recoveredOutsideStopGeneration = nil
+    owner = nil
     tearDownProcess()
     transition(to: .stopped)
     return currentEvent()
@@ -401,6 +452,7 @@ public actor EGOneServerManager {
   private func spawn(configuration: Configuration) async {
     launchGeneration += 1
     let generation = launchGeneration
+    owner = configuration.owningProvider
     transition(to: .starting)
 
     guard FileManager.default.fileExists(atPath: configuration.serverBinaryURL.path) else {
@@ -597,6 +649,7 @@ public actor EGOneServerManager {
     }
     launchGeneration += 1
     outsideStopGeneration = nil
+    recoveredOutsideStopGeneration = nil
     tearDownProcess()
     transition(to: .pausedForMemoryPressure)
     await AppLogger.shared.log(

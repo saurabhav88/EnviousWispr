@@ -97,11 +97,20 @@ public struct PolishTakeOutcome: Sendable, Equatable {
   /// step); nil when no request was made. A request the provider answered, or rejected, carried
   /// a saved key at this moment.
   public let keyReadAt: ContinuousClock.Instant?
+  /// #3988: the bundled engine was stopped from outside the app and this take
+  /// missed polish because of it. Frozen at the miss; set only for a
+  /// local-engine-not-ready result.
+  public let outsideStopMiss: OutsideStopContext?
+  /// #3988: the outside stop this take was the first to meet, whether its
+  /// polish missed or ran on the restarted engine. Joins a stop to its
+  /// recovery take; never a reason for a notice on its own.
+  public let outsideStopRecovery: OutsideStopContext?
 
   public init(
     takeID: String, context: PolishSetupTakeContext, result: PolishTakeResult,
     evidence: PolishSetupEvidence?, setupProblem: PolishSetupProblemTag?,
-    observedAt: ContinuousClock.Instant, keyReadAt: ContinuousClock.Instant? = nil
+    observedAt: ContinuousClock.Instant, keyReadAt: ContinuousClock.Instant? = nil,
+    outsideStopMiss: OutsideStopContext? = nil, outsideStopRecovery: OutsideStopContext? = nil
   ) {
     self.takeID = takeID
     self.context = context
@@ -110,5 +119,7 @@ public struct PolishTakeOutcome: Sendable, Equatable {
     self.setupProblem = setupProblem
     self.observedAt = observedAt
     self.keyReadAt = keyReadAt
+    self.outsideStopMiss = outsideStopMiss
+    self.outsideStopRecovery = outsideStopRecovery
   }
 }

@@ -197,6 +197,83 @@ struct PolishTakeOutcomeCarryTests {
         takeID: nil, context: Self.openAITake, hooks: log.hooks) == nil)
   }
 
+  // MARK: - #3988: an engine stopped from outside the app
+
+  /// A bundled engine that is restarting after an outside stop: admission is
+  /// refused and its one observation names the stop.
+  @MainActor
+  final class RestartingEngine: EGOneLeaseProviding {
+    var missed: OutsideStopContext?
+    var recovery: OutsideStopContext?
+    private(set) var attempts: [String?] = []
+    init(missed: OutsideStopContext?, recovery: OutsideStopContext?) {
+      self.missed = missed
+      self.recovery = recovery
+    }
+    func activeEndpoint() async -> EGOneEndpoint? { nil }
+    func acquireLocalServerLease() async -> LocalPolishLeaseAdmission { .changing }
+    func releaseLocalServerLease(_ lease: LocalPolishServerLease) async {}
+    func beginPolishAttempt(takeID: String?) async -> LocalPolishAttempt {
+      attempts.append(takeID)
+      return LocalPolishAttempt(
+        admission: .changing, endpoint: nil, missedOutsideStop: missed,
+        recoveryOutsideStop: recovery)
+    }
+  }
+
+  private static let egOneTake = PolishSetupTakeContext(
+    provider: .egOne, model: LLMProvider.egOneModelName, configurationRevision: 9, episode: nil)
+  private static let stop = OutsideStopContext(provider: .egOne, generation: 4, memoryPressure: .warning)
+
+  private static func runEGOne(
+    _ engine: RestartingEngine, text: String
+  ) async throws -> PolishTakeOutcome? {
+    let step = LLMPolishStep(keychainManager: KeychainManager())
+    step.llmProvider = .egOne
+    step.llmModel = LLMProvider.egOneModelName
+    step.egOneRuntime = engine
+    let probe = PolishSetupTakeProbe(
+      takeID: "take-stopped", context: egOneTake, classify: { _ in nil },
+      recordTerminalProblem: { _, _ in }, now: { .now })
+    let runner = TextProcessingRunner(
+      telemetry: .init(
+        captureError: { _, _, _, _, _, _ in }, recordPolishFailed: { _, _, _, _, _ in },
+        recordPolishSkipped: { _, _, _ in }),
+      timeoutExecutor: FakeTimeoutExecutor(throwBelowSeconds: 0.0).run)
+    return try await runner.run(
+      rawText: text, evidence: .locked("en"), targetAppName: nil, steps: [step],
+      polishSetup: probe, takeID: "take-stopped"
+    ).polishTakeOutcome
+  }
+
+  @Test("a take refused while the engine restarts carries the stop it met, frozen at the miss")
+  func admissionMissCarriesTheStop() async throws {
+    let engine = RestartingEngine(missed: Self.stop, recovery: Self.stop)
+    let outcome = try #require(try await Self.runEGOne(engine, text: raw))
+    #expect(outcome.result == .skippedSilently)
+    #expect(outcome.evidence == .localEngineNotReady)
+    #expect(outcome.outsideStopMiss == Self.stop)
+    #expect(outcome.outsideStopRecovery == Self.stop)
+    #expect(engine.attempts == ["take-stopped"], "one decision, for the live take")
+  }
+
+  @Test("an ordinary not-ready miss, or a too-short take, carries no stop")
+  func noStopWithoutOne() async throws {
+    let ordinary = RestartingEngine(missed: nil, recovery: nil)
+    let missed = try #require(try await Self.runEGOne(ordinary, text: raw))
+    #expect(missed.evidence == .localEngineNotReady)
+    #expect(missed.outsideStopMiss == nil)
+    #expect(missed.outsideStopRecovery == nil)
+
+    // A deliberate bypass never asks the engine, so it cannot claim the stop.
+    let stopped = RestartingEngine(missed: Self.stop, recovery: Self.stop)
+    let bypassed = try #require(try await Self.runEGOne(stopped, text: "ok thanks"))
+    #expect(bypassed.result == .bypassed)
+    #expect(bypassed.outsideStopMiss == nil)
+    #expect(bypassed.outsideStopRecovery == nil)
+    #expect(stopped.attempts.isEmpty)
+  }
+
   // MARK: - Handed back once, for the concluded take only
 
   private static func outcome(_ takeID: String) -> PolishTakeOutcome {

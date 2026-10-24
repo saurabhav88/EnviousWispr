@@ -393,6 +393,18 @@ public actor LocalPolishServerCoordinator {
     return lifecycle
   }
 
+  /// #3988: a polish attempt's admission and what it meets, as ONE decision.
+  /// The manager's snapshot is read first; admission is then decided in this
+  /// actor's turn with no suspension in between, so a refusal can never be
+  /// paired with evidence from a later moment. The manager checks the
+  /// provider itself, so another engine's request cannot use up attribution.
+  public func admitPolish(
+    for provider: LLMProvider, takeID: String?
+  ) async -> (admission: LocalPolishLeaseAdmission, availability: EGOneServerManager.Availability) {
+    let availability = await manager.observeAvailability(for: provider, claimingFor: takeID)
+    return (acquireLease(for: provider), availability)
+  }
+
   public func endpoint(for provider: LLMProvider) async -> EGOneEndpoint? {
     guard resident == provider else { return nil }
     let endpoint = await manager.activeEndpoint()

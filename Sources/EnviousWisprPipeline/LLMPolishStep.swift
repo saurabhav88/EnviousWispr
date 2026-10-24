@@ -818,6 +818,11 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     var probeAnsweredAt: ContinuousClock.Instant?
     var requestStartedAt: ContinuousClock.Instant?
     var requestEndedAt: ContinuousClock.Instant?
+    /// #3988: frozen where the bundled engine was found missing, before the
+    /// not-ready skip is thrown; never reconstructed later.
+    var outsideStopMiss: OutsideStopContext?
+    /// #3988: the outside stop this take is the first to meet.
+    var outsideStopRecovery: OutsideStopContext?
   }
   private(set) var setupObservation = SetupObservation()
 
@@ -968,13 +973,26 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       guard let runtime = handles.runtime else {
         throw LLMError.localEngineSkipped(.notReady, provider)
       }
+      let endpoint: EGOneEndpoint?
       if let owner = runtime as? any EGOneLeaseProviding {
-        switch await owner.acquireLocalServerLease() {
-        case .granted(let lease): inferenceLease = (owner, lease)
-        case .changing: throw LLMError.localEngineSkipped(.notReady, provider)
+        // #3988: admission, endpoint and the outside-stop evidence behind a miss
+        // come from ONE decision, frozen here for this take before the skip is
+        // thrown. Only a live take (`context.takeID`) can be a stop's recovery take.
+        let attempt = await owner.beginPolishAttempt(takeID: context.takeID)
+        if case .granted(let lease) = attempt.admission { inferenceLease = (owner, lease) }
+        setupObservation.outsideStopRecovery = attempt.recoveryOutsideStop
+        if case .granted = attempt.admission, let ready = attempt.endpoint {
+          endpoint = ready
+        } else {
+          setupObservation.outsideStopMiss = attempt.missedOutsideStop
+          setupObservation.requestEndedAt = .now
+          endpoint = nil
         }
+      } else {
+        // An endpoint-only runtime owns no process, so it has no stop to report.
+        endpoint = await runtime.activeEndpoint()
       }
-      guard let endpoint = await runtime.activeEndpoint() else {
+      guard let endpoint else {
         // Also the answer when ANOTHER model holds the server: the coordinator
         // refuses an endpoint to a non-resident model, so this is the branch
         // that stops a polish being served by different weights. Silent bypass,

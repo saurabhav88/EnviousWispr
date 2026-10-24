@@ -18,6 +18,32 @@ public protocol EGOneEndpointProviding: AnyObject {
 public protocol EGOneLeaseProviding: EGOneEndpointProviding {
   func acquireLocalServerLease() async -> LocalPolishLeaseAdmission
   func releaseLocalServerLease(_ lease: LocalPolishServerLease) async
+  /// #3988: admission, the endpoint and the outside-stop evidence behind a
+  /// miss, decided together. A requirement, not an extension default: a
+  /// default would drop the evidence silently for a conformer that forgot it.
+  /// `takeID` is the live take, nil for imports and replays.
+  func beginPolishAttempt(takeID: String?) async -> LocalPolishAttempt
+}
+
+/// What a polish attempt met on a bundled engine (#3988). Content-free.
+public struct LocalPolishAttempt: Sendable {
+  public let admission: LocalPolishLeaseAdmission
+  public let endpoint: EGOneEndpoint?
+  /// Set only when there is no endpoint BECAUSE something outside the app
+  /// stopped the server: the take's miss evidence.
+  public let missedOutsideStop: OutsideStopContext?
+  /// The stop whose recovery take this is, missed or recovered from.
+  public let recoveryOutsideStop: OutsideStopContext?
+
+  public init(
+    admission: LocalPolishLeaseAdmission, endpoint: EGOneEndpoint?,
+    missedOutsideStop: OutsideStopContext?, recoveryOutsideStop: OutsideStopContext?
+  ) {
+    self.admission = admission
+    self.endpoint = endpoint
+    self.missedOutsideStop = missedOutsideStop
+    self.recoveryOutsideStop = recoveryOutsideStop
+  }
 }
 
 /// Observable lifecycle events the AppKit layer forwards to telemetry.
@@ -230,6 +256,9 @@ public final class EGOneRuntime: EGOneLeaseProviding {
   /// through the recovery start and a failed recovery; cleared when the server
   /// is ready again or the engine is torn down.
   public private(set) var unresolvedOutsideStop: OutsideStopContext?
+  /// The last stop sampled, kept after recovery so a take that meets it later
+  /// reads the SAME pressure, never a new sample (#3988).
+  private var lastSampledOutsideStop: OutsideStopContext?
   private var removalPending = false
 
   public let manifest: EGOneManifest?
@@ -532,8 +561,13 @@ public final class EGOneRuntime: EGOneLeaseProviding {
     if let generation = lifecycle.outsideStopGeneration {
       // One sample per stop: a repeat of the same stop keeps its context.
       if unresolvedOutsideStop?.generation != generation {
-        unresolvedOutsideStop = OutsideStopContext(
-          provider: provider, generation: generation, memoryPressure: memoryPressureLevel?())
+        let sampled =
+          lastSampledOutsideStop?.generation == generation
+          ? lastSampledOutsideStop
+          : OutsideStopContext(
+            provider: provider, generation: generation, memoryPressure: memoryPressureLevel?())
+        unresolvedOutsideStop = sampled
+        lastSampledOutsideStop = sampled
       }
     } else {
       unresolvedOutsideStop = nil
@@ -1040,6 +1074,23 @@ public final class EGOneRuntime: EGOneLeaseProviding {
 
   public func activeEndpoint() async -> EGOneEndpoint? {
     await server.endpoint(for: provider)
+  }
+
+  public func beginPolishAttempt(takeID: String?) async -> LocalPolishAttempt {
+    let (admission, availability) = await server.admitPolish(for: provider, takeID: takeID)
+    return LocalPolishAttempt(
+      admission: admission, endpoint: availability.endpoint,
+      missedOutsideStop: availability.outstandingOutsideStop.map(outsideStopContext(generation:)),
+      recoveryOutsideStop: availability.recoveryOutsideStop.map(outsideStopContext(generation:)))
+  }
+
+  /// The stop's context with the pressure sampled when the main actor accepted
+  /// it, or unknown when that has not happened yet. Never a new sample.
+  func outsideStopContext(generation: Int) -> OutsideStopContext {
+    OutsideStopContext(
+      provider: provider, generation: generation,
+      memoryPressure: lastSampledOutsideStop?.generation == generation
+        ? lastSampledOutsideStop?.memoryPressure : nil)
   }
 
   public func acquireLocalServerLease() async -> LocalPolishLeaseAdmission {
