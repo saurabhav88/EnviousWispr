@@ -20,7 +20,7 @@ import time
 
 # Final release sidebar. Updates are in a toolbar popover, never a page.
 PAGES = (
-    "History", "Dictation Settings", "Keybinds", "Transcribe a File",
+    "History", "EnviousMeet", "Dictation Settings", "Keybinds", "Transcribe a File",
     "AI Polish", "Dictionary", "Snippets", "App Settings",
 )
 DEBUG_PAGES = ("Diagnostics",)
@@ -1079,6 +1079,9 @@ POLISH_PROVIDERS = ("EG-1", "S1-mini", "Apple Intelligence", "Ollama", "OpenAI",
 
 SCAN = [
     ("History", None, [("named", "Search history", None)]),
+    # #4024: EnviousMeet shows its setup until it is finished, then its settings page; the
+    # call-sound permission row's button is always on the settings page.
+    ("EnviousMeet", None, [("one_of", ("Get Started", "Open System Settings"), None)]),
     ("App Settings", "Appearance", [
         ("button", "System", None), ("button", "Light", None), ("button", "Dark", None),
         ("toggle^", "Show app in Dock", None),
