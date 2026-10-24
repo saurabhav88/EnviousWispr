@@ -154,6 +154,72 @@ import Testing
     }
   }
 
+  /// Keeps the provider `start` was handed, so the test can pull it like the decode loop does.
+  private final class ProviderSession: WhisperIncrementalSession, @unchecked Sendable {
+    private let mutex = NSLock()
+    private var provider: (@Sendable () async -> (samples: [Float], count: Int))?
+    private var cancelled = false
+    var wasCancelled: Bool { mutex.withLock { cancelled } }
+
+    func pull() async -> (samples: [Float], count: Int)? {
+      guard let provider = mutex.withLock({ provider }) else { return nil }
+      return await provider()
+    }
+    func start(
+      audioSamplesProvider: @Sendable @escaping () async -> (samples: [Float], count: Int)
+    ) async {
+      mutex.withLock { provider = audioSamplesProvider }
+    }
+    func noteStopRequested() async {}
+    func finalize(finalSamples: [Float], speechSegments: [SpeechSegment]) async
+      -> IncrementalResult
+    {
+      fatalError("the preview never finalizes — it cancels")
+    }
+    func cancel() async { mutex.withLock { cancelled = true } }
+  }
+
+  /// #2117: a Universal preview in a long meeting keeps showing live words. Before, the owner
+  /// kept every sample and stopped decoding at 10 minutes, so the pill froze for the rest of
+  /// the meeting. Now it keeps only what the decode loop has not released.
+  /// A sample value that names its absolute position, exact in `Float` (below 2^24).
+  private static func mark(_ position: Int) -> Float { Float(position % 8_000_000) }
+
+  @Test("a 20-minute stream preserves absolute provider coordinates without capping")
+  func longStreamKeepsARollingWindow() async throws {
+    let handle = TranscribeCppPreviewSession(lookups: nil, onText: { _ in })
+    let session = ProviderSession()
+    await handle.attach(session)
+    let second = 16_000
+    var fed = 0
+    var maxRetained = 0
+    for minuteSecond in 0..<(20 * 60) {
+      // Position-dependent audio, so a wrong slice cannot pass for the right one.
+      await handle.feed((0..<second).map { Self.mark(fed + $0) })
+      fed += second
+      // The decode loop releases everything older than its last 20 s.
+      handle.releaseAudio(before: fed - 20 * second)
+      maxRetained = max(maxRetained, handle.retainedSampleCountForTests)
+      if minuteSecond % 60 == 59 {
+        let pulled = try #require(await session.pull(), "control: the session was started")
+        #expect(pulled.count == fed, "count stays absolute")
+        let kept = min(fed, 20 * second)
+        #expect(pulled.samples.count == kept)
+        #expect(pulled.samples.first == Self.mark(fed - kept), "the window is the newest audio")
+        #expect(pulled.samples.last == Self.mark(fed - 1))
+      }
+    }
+    #expect(fed > TranscribeCppPreviewSession.maxRetainedSamples, "control: past the ceiling")
+    #expect(maxRetained <= 21 * second, "retained audio stays at the released window")
+    #expect(session.wasCancelled == false, "the ceiling never stopped the decode loop")
+    // A repeated or stale release drops nothing more.
+    handle.releaseAudio(before: fed - 30 * second)
+    #expect(handle.retainedSampleCountForTests == 20 * second)
+    await handle.end()
+    handle.releaseAudio(before: fed)
+    #expect(handle.retainedSampleCountForTests == 0, "a release after end() is harmless")
+  }
+
   private final class Flag: @unchecked Sendable {
     private let mutex = NSLock()
     private var value = false

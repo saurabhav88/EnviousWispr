@@ -39,8 +39,11 @@ import Foundation
 // recording cap and finalizes as above. Preview mode (the Universal Live Preview, §3.5) adds a
 // `Publication`: after every heard decode it hands the display a tail built from the END, and
 // it keeps its own committed and scrolled-out text to that tail's limit, because nothing ever
-// releases a preview transcript. The preview's audio cap lives with its session owner; the
-// preview only ever cancels, never finalizes. Preview bounds never apply in heart mode.
+// releases a preview transcript. It also tells its session owner, each time the origin moves,
+// which audio it will never read again, so the owner keeps a rolling window rather than the
+// whole recording (#2117); the provider's array may therefore start after sample 0 (see
+// `start`). The preview only ever cancels, never finalizes. Preview bounds never apply in heart
+// mode.
 
 /// One segment of a decode, in absolute seconds of the session's `streamingPCM`.
 struct RollingSegment: Sendable, Equatable {
@@ -73,6 +76,12 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
     /// Called on this actor inside the loop. It must only enqueue: anything slower delays the
     /// next decode.
     let onHypothesis: @Sendable (String) -> Void
+    /// Called on this actor each time the buffer origin moves, with the absolute sample index
+    /// before which this session will never read audio again (#2117). The owner may drop that
+    /// prefix from what its provider returns. Called synchronously on this actor: the owner may
+    /// update bookkeeping and remove the released prefix under its lock; it must not await or
+    /// decode.
+    let onAudioReleased: @Sendable (Int) -> Void
   }
 
   private let decode: Decode
@@ -176,6 +185,11 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
 
   // MARK: WhisperIncrementalSession
 
+  /// `count` is the absolute number of samples captured so far; `samples` holds the LAST
+  /// `samples.count` of them. The heart's provider returns the whole recording
+  /// (`count == samples.count`); a preview owner drops audio this session released through
+  /// `Publication.onAudioReleased`, so its array starts at absolute sample
+  /// `count - samples.count`.
   package func start(
     audioSamplesProvider: @Sendable @escaping () async -> (samples: [Float], count: Int)
   ) {
@@ -254,8 +268,8 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
     // audio a decode was handed, #1308), clamped to real audio.
     let releasedEnd = min(
       max(lastCommittedEnd, heldBack.last?.end ?? 0), Float(count) / Self.sampleRate)
-    let unheardStart = max(0, min(count, Int(releasedEnd * Self.sampleRate)))
-    let unheard = unheardStart < count ? Array(samples[unheardStart..<count]) : []
+    let unheardStart = Self.originSample(releasedEnd, count: count, samples: samples)
+    let unheard = Self.audio(samples, count: count, from: unheardStart)
     let unheardSec = Float(unheard.count) / Self.sampleRate
     if unheardSec < Self.minVoicedTailSec || Self.rms(unheard) <= Self.tailEnergyFloor {
       return result(text: releaseText, samplesCovered: count, tailDecodeMs: 0)
@@ -265,8 +279,8 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
     // (or the caller's cancellation) aborts it; either way it is joined before anything else
     // uses the model.
     let flushStart = ContinuousClock.now
-    let originSample = max(0, min(count, Int(bufferStart * Self.sampleRate)))
-    let window = Array(samples[originSample..<count])
+    let window = Self.audio(
+      samples, count: count, from: Self.originSample(bufferStart, count: count, samples: samples))
     let decode = self.decode
     let flush = Task { try await decode(window) }
     flushTask = flush
@@ -355,9 +369,9 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
       // §3.5 holds whatever the decodes return: empty and failed decodes never apply, so the
       // bound is enforced on the captured audio before the window is cut.
       retain(realAudioEnd: Float(count) / Self.sampleRate)
-      let originSample = max(0, min(count, Int(bufferStart * Self.sampleRate)))
+      let originSample = Self.originSample(bufferStart, count: count, samples: samples)
       let origin = Float(originSample) / Self.sampleRate
-      let window = Array(samples[originSample..<count])
+      let window = Self.audio(samples, count: count, from: originSample)
       let started = ContinuousClock.now
       loopDecodeInFlight = true
       let native: TranscribeCppRunResult
@@ -486,6 +500,7 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
       }
       committedInBuffer.removeAll { $0.end <= boundary }
       bufferStart = boundary
+      releaseAudio()
       return
     }
     guard realAudioEnd - bufferStart > Self.defaultMaxUnconfirmedWindowSec + 5 else { return }
@@ -504,6 +519,43 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
     heldBack = []
     previousHypothesis = []
     bufferStart = retentionLine
+    releaseAudio()
+  }
+
+  /// Preview mode: tells the owner the audio before the new origin is never read again. The
+  /// mark is `sampleIndex(bufferStart)`, the same expression every later window cut starts from,
+  /// so the owner can never drop a sample a window still needs. It only grows within a run:
+  /// both callers move `bufferStart` forward.
+  private func releaseAudio() {
+    publication?.onAudioReleased(Self.sampleIndex(bufferStart))
+  }
+
+  // MARK: - Absolute sample positions
+
+  /// The absolute sample at `seconds`, never negative.
+  private static func sampleIndex(_ seconds: Float) -> Int {
+    max(0, Int(seconds * sampleRate))
+  }
+
+  /// The absolute sample a cut at `seconds` starts from: within the captured audio and never
+  /// before the provider's first retained sample. The owner only drops what this session
+  /// released (`releaseAudio`), so the lower clamp is arithmetic safety, not a policy.
+  private static func originSample(_ seconds: Float, count: Int, samples: [Float]) -> Int {
+    max(firstSample(count: count, samples: samples), min(count, sampleIndex(seconds)))
+  }
+
+  /// The absolute index of the provider array's first element.
+  private static func firstSample(count: Int, samples: [Float]) -> Int {
+    max(0, count - samples.count)
+  }
+
+  /// The audio from absolute sample `start` up to `count`, out of a provider array whose first
+  /// element is absolute sample `firstSample`.
+  private static func audio(_ samples: [Float], count: Int, from start: Int) -> [Float] {
+    let first = firstSample(count: count, samples: samples)
+    let lower = max(0, start - first)
+    let upper = count - first
+    return lower < upper ? Array(samples[lower..<upper]) : []
   }
 
   /// Appends to a transcript. Heart mode keeps it whole; preview mode keeps only its last

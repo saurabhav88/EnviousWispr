@@ -132,7 +132,8 @@ package actor TranscribeCppPreviewRuntime {
     return model
   }
 
-  /// A preview session over the loaded model, publishing bounded text through `onHypothesis`.
+  /// A preview session over the loaded model, publishing bounded text through `onHypothesis`
+  /// and reporting through `onAudioReleased` the audio its owner may drop (#2117).
   ///
   /// `language` nil is native detection (Auto): this model detects language itself, and must
   /// never inherit Apple's system-locale guess. The session holds this runtime through its
@@ -140,7 +141,8 @@ package actor TranscribeCppPreviewRuntime {
   package func makeSession(
     language: String?,
     hypothesisRetentionLimit: Int,
-    onHypothesis: @escaping @Sendable (String) -> Void
+    onHypothesis: @escaping @Sendable (String) -> Void,
+    onAudioReleased: @escaping @Sendable (Int) -> Void
   ) async throws -> any WhisperIncrementalSession {
     let model = try await model()
     return TranscribeCppRollingSession(
@@ -149,7 +151,9 @@ package actor TranscribeCppPreviewRuntime {
         return try await model.transcribe(samples, language)
       },
       cadence: cadence,
-      publication: .init(retentionLimit: hypothesisRetentionLimit, onHypothesis: onHypothesis))
+      publication: .init(
+        retentionLimit: hypothesisRetentionLimit, onHypothesis: onHypothesis,
+        onAudioReleased: onAudioReleased))
   }
 
   /// Whether a model is currently held. Lets a caller assert residency rather than infer it.

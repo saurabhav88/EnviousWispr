@@ -4985,6 +4985,17 @@
         }
       }
     },
+    "Choose Transcribe again to make it from the recording." : {
+      "comment" : "History, a ready meeting whose transcript could not be opened: the way back.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle „Erneut transkribieren“, um es aus der Aufnahme zu erstellen."
+          }
+        }
+      }
+    },
     "Choose a different file" : {
       "comment" : "Transcribe a File, Upload step: button beside the chosen file.",
       "localizations" : {
@@ -10973,6 +10984,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Testbewertung aus dem UAT-Bereich wird geladen"
+          }
+        }
+      }
+    },
+    "Loading the transcript" : {
+      "comment" : "History, a ready meeting: waiting for History's first read attempt to finish.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkript wird geladen"
           }
         }
       }
@@ -20241,6 +20263,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Dateien dieses Meetings sind noch auf diesem Mac, lassen sich aber nicht lesen. Deshalb kann das Meeting hier nicht gelöscht werden."
+          }
+        }
+      }
+    },
+    "This meeting's transcript could not be opened." : {
+      "comment" : "History, a ready meeting whose saved transcript is missing or unreadable.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Transkript dieses Meetings konnte nicht geöffnet werden."
           }
         }
       }

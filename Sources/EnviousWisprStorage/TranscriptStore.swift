@@ -1,3 +1,4 @@
+import Darwin
 import EnviousWisprCore
 import Foundation
 
@@ -27,6 +28,7 @@ public final class TranscriptStore {
     liveSpoolIDs = Self.spoolIDsFromDisk
     Self.prepareDirectory(at: directory)
     Self.scheduleMigration(in: directory)
+    _ = Self.scheduleLeftoverCleanup(besides: directory)
   }
 
   // Tests only. Reached via `@testable import EnviousWisprStorage`.
@@ -38,7 +40,8 @@ public final class TranscriptStore {
   // periphery:ignore
   internal init(
     directory: URL,
-    liveSpoolIDs: @escaping @Sendable () -> Set<String>? = { [] }
+    liveSpoolIDs: @escaping @Sendable () -> Set<String>? = { [] },
+    cleansLeftovers: Bool = false
   ) {
     self.directory = directory
     // Defaults to EMPTY, not to the disk reader: a test store must never touch
@@ -47,6 +50,14 @@ public final class TranscriptStore {
     self.liveSpoolIDs = liveSpoolIDs
     Self.prepareDirectory(at: directory)
     Self.scheduleMigration(in: directory)
+    // #4001 H7: off by default, because a test store's parent is the shared temporary folder;
+    // a test that wants the start-up cleanup gives its store a private parent and opts in.
+    if cleansLeftovers {
+      let cleanup = Self.scheduleLeftoverCleanup(besides: directory)
+      #if DEBUG
+        leftoverCleanupForTesting = cleanup
+      #endif
+    }
   }
 
   /// Save a transcript to disk at 0600.
@@ -67,7 +78,14 @@ public final class TranscriptStore {
   /// when either flush fails; the row may then be on disk but is not promised.
   public func durableWriter() -> @Sendable (Transcript) throws -> Void {
     let directory = directory
-    return { transcript in try Self.write(transcript, into: directory, durable: true) }
+    #if DEBUG
+      let didOpen = durableWriteDidOpenForTesting
+      return { transcript in
+        try Self.write(transcript, into: directory, durable: true, didOpen: didOpen)
+      }
+    #else
+      return { transcript in try Self.write(transcript, into: directory, durable: true) }
+    #endif
   }
 
   // MARK: - Pending (Escape Recovery) namespace — #2087
@@ -594,14 +612,31 @@ public final class TranscriptStore {
   private nonisolated static func pendingCandidates(
     in directory: URL, now: Date, retention: TimeInterval
   ) -> [PendingCandidate]? {
+    pendingListing(in: directory, now: now, retention: retention)?.candidates
+  }
+
+  /// `pendingCandidates`, plus whether any file failed to READ (#4001 H9). Such a file is
+  /// `.invalid` like a malformed one, but its failure may pass with no entry change, so History
+  /// must not reuse a read that missed it. Recorded from this read, never from a later probe.
+  private nonisolated static func pendingListing(
+    in directory: URL, now: Date, retention: TimeInterval
+  ) -> (candidates: [PendingCandidate], readFailed: Bool)? {
     guard
       let files = try? FileManager.default.contentsOfDirectory(
         at: directory, includingPropertiesForKeys: nil)
     else { return nil }
-    return
+    var readFailed = false
+    let candidates =
       files
       .filter { $0.pathExtension == "json" }
-      .map { decodeCandidate(at: $0, now: now, retention: retention) }
+      .map { url -> PendingCandidate in
+        guard let data = try? Data(contentsOf: url) else {
+          readFailed = true
+          return .invalid(url: url)
+        }
+        return decodeCandidate(data: data, at: url, now: now, retention: retention)
+      }
+    return (candidates, readFailed)
   }
 
   /// Visibility callers, for whom an unreadable directory and an empty one mean
@@ -650,6 +685,12 @@ public final class TranscriptStore {
     // meant such a file was never offered and never swept, so it accumulated
     // forever while the retention contract claimed otherwise.
     guard let data = try? Data(contentsOf: url) else { return .invalid(url: url) }
+    return decodeCandidate(data: data, at: url, now: now, retention: retention)
+  }
+
+  private nonisolated static func decodeCandidate(
+    data: Data, at url: URL, now: Date, retention: TimeInterval
+  ) -> PendingCandidate {
     guard let transcript = try? JSONDecoder().decode(Transcript.self, from: data) else {
       return .invalid(url: url)
     }
@@ -672,7 +713,8 @@ public final class TranscriptStore {
 
   /// Shared 0600 temp-then-rename write used by `save` and `savePending`.
   private nonisolated static func write(
-    _ transcript: Transcript, into directory: URL, durable: Bool = false
+    _ transcript: Transcript, into directory: URL, durable: Bool = false,
+    didOpen: (@Sendable () -> Void)? = nil
   ) throws {
     let url = directory.appendingPathComponent("\(transcript.id.uuidString).json")
     let data = try JSONEncoder().encode(transcript)
@@ -691,6 +733,7 @@ public final class TranscriptStore {
         throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
       }
       let fh = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+      didOpen?()
       try fh.write(contentsOf: data)
       if durable, fcntl(fd, F_FULLFSYNC) != 0, fsync(fd) != 0 {
         throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
@@ -729,7 +772,7 @@ public final class TranscriptStore {
     // does not need its own marker — and adding one would leave a stray file
     // that `decodePending` would have to learn to ignore.
     guard dropSpotlightMarker else { return }
-    let marker = directory.appendingPathComponent(".metadata_never_index")
+    let marker = directory.appendingPathComponent(Self.spotlightMarkerName)
     if !fm.fileExists(atPath: marker.path) {
       fm.createFile(atPath: marker.path, contents: Data(), attributes: nil)
     }
@@ -759,33 +802,125 @@ public final class TranscriptStore {
   public func loadAll() async throws -> [Transcript] {
     let dir = directory
     guard FileManager.default.fileExists(atPath: dir.path) else { return [] }
-
-    // Move heavy IO to background thread
-    let transcripts: [Transcript] = try await Task.detached(priority: .userInitiated) {
-      let files = try FileManager.default.contentsOfDirectory(
-        at: dir,
-        includingPropertiesForKeys: nil
-      )
-
-      let decoder = JSONDecoder()
-      var result: [Transcript] = []
-      for url in files where url.pathExtension == "json" {
-        do {
-          let data = try Data(contentsOf: url)
-          let transcript = try decoder.decode(Transcript.self, from: data)
-          result.append(transcript)
-        } catch {
-          // Log errors but don't block — corrupt files are skipped
-          await AppLogger.shared.log(
-            "Skipping corrupt transcript \(url.lastPathComponent): \(error)",
-            level: .info, category: "TranscriptStore"
-          )
-        }
-      }
-      return result.sorted { $0.createdAt > $1.createdAt }
+    return try await Task.detached(priority: .userInitiated) {
+      try await Self.readPermanent(in: dir).rows
     }.value
+  }
 
-    return transcripts
+  /// History's read (#4001 H9): both namespaces, whether every row file could be read, and the
+  /// folder tokens that certify the result. One detached unit, so the tokens are taken around
+  /// exactly this read: `freshness` is non-nil only when both samples are known and equal and
+  /// nothing retryable was skipped. A changed token means some write overlapped the read, so the
+  /// read cannot vouch for the folder as it is now.
+  public func readHistory(now: Date = Date()) async throws -> TranscriptHistoryRead {
+    let dir = directory
+    let pendingDir = pendingDirectory
+    let retention = AppConstants.pendingTranscriptRetention
+    return try await Task.detached(priority: .userInitiated) {
+      let before = Self.freshness(directory: dir, pendingDirectory: pendingDir)
+      let permanent: (rows: [Transcript], complete: Bool) =
+        FileManager.default.fileExists(atPath: dir.path)
+        ? try await Self.readPermanent(in: dir) : ([], false)
+      // Same admission as `loadPending`. An unreadable folder reads as empty there; here it also
+      // withholds certification, and a confirmed-absent one is a real empty namespace.
+      let pendingAbsent = before?.pending == .absent
+      let listing =
+        pendingAbsent
+        ? ([], false) : Self.pendingListing(in: pendingDir, now: now, retention: retention)
+      let pending = (listing?.candidates ?? []).compactMap(\.liveTranscript).sorted {
+        $0.createdAt > $1.createdAt
+      }
+      let pendingComplete = listing.map { !$0.readFailed } ?? false
+      let after = Self.freshness(directory: dir, pendingDirectory: pendingDir)
+      let certified = permanent.complete && pendingComplete && before != nil && before == after
+      return TranscriptHistoryRead(
+        permanent: permanent.rows, pending: pending, freshness: certified ? before : nil)
+    }.value
+  }
+
+  /// The folder tokens as they are now, or nil when they cannot vouch for anything (#4001 H9).
+  /// Off the main actor, like the reads it lets History skip.
+  public func freshness() async -> TranscriptStoreFreshness? {
+    let dir = directory
+    let pendingDir = pendingDirectory
+    return await Task.detached(priority: .userInitiated) {
+      Self.freshness(directory: dir, pendingDirectory: pendingDir)
+    }.value
+  }
+
+  /// Every row file in the permanent folder. `complete` is false when a file that is there could
+  /// not be READ: that row is missing for a reason that may pass, so the result must not be
+  /// reused as the whole History. A file that reads but does not decode is excluded for good, as
+  /// before, and does not make the read incomplete.
+  private nonisolated static func readPermanent(
+    in dir: URL
+  ) async throws -> (rows: [Transcript], complete: Bool) {
+    let files = try FileManager.default.contentsOfDirectory(
+      at: dir, includingPropertiesForKeys: nil)
+    let decoder = JSONDecoder()
+    var result: [Transcript] = []
+    var complete = true
+    for url in files where url.pathExtension == "json" {
+      let data: Data
+      do {
+        data = try Data(contentsOf: url)
+      } catch {
+        complete = false
+        await AppLogger.shared.log(
+          "Could not read transcript \(url.lastPathComponent): \(error)",
+          level: .info, category: "TranscriptStore"
+        )
+        continue
+      }
+      do {
+        result.append(try decoder.decode(Transcript.self, from: data))
+      } catch {
+        // Log errors but don't block — corrupt files are skipped
+        await AppLogger.shared.log(
+          "Skipping corrupt transcript \(url.lastPathComponent): \(error)",
+          level: .info, category: "TranscriptStore"
+        )
+      }
+    }
+    return (result.sorted { $0.createdAt > $1.createdAt }, complete)
+  }
+
+  /// Both folders' tokens, or nil when either is unknown or the permanent folder is missing (a
+  /// missing permanent folder stays retryable, so it certifies nothing).
+  private nonisolated static func freshness(
+    directory: URL, pendingDirectory: URL
+  ) -> TranscriptStoreFreshness? {
+    guard case .some(.present(let identity, let generation)) = folderToken(directory),
+      let pending = folderToken(pendingDirectory)
+    else { return nil }
+    return TranscriptStoreFreshness(
+      permanent: .present(identity: identity, generation: generation), pending: pending)
+  }
+
+  /// One folder's identity and generation identifier, `.absent` only on a confirmed ENOENT, and
+  /// nil for anything else: a permission failure or an unsupported identifier is not knowledge.
+  /// The generation identifier changes when a direct child is added, removed or renamed, which is
+  /// every entry change this store makes (temporary create, rename or replace, removal). It does
+  /// not change for an in-place edit of a child's bytes, which no writer here performs. A new URL
+  /// each call, so no cached resource value is reused.
+  private nonisolated static func folderToken(_ url: URL) -> TranscriptStoreFreshness.Folder? {
+    var info = stat()
+    if lstat(url.path, &info) != 0 {
+      return errno == ENOENT ? .absent : nil
+    }
+    let fresh = URL(fileURLWithPath: url.path, isDirectory: true)
+    guard
+      let values = try? fresh.resourceValues(forKeys: [
+        .generationIdentifierKey, .fileResourceIdentifierKey,
+      ]),
+      let generation = values.generationIdentifier,
+      let identity = values.fileResourceIdentifier,
+      let generationData = try? NSKeyedArchiver.archivedData(
+        withRootObject: generation, requiringSecureCoding: true),
+      let identityData = try? NSKeyedArchiver.archivedData(
+        withRootObject: identity, requiringSecureCoding: true)
+    else { return nil }
+    return .present(identity: identityData, generation: generationData)
   }
 
   /// Delete a transcript by ID, from BOTH namespaces (#2087).
@@ -825,14 +960,181 @@ public final class TranscriptStore {
     if let failure = failures.first { throw failure }
   }
 
-  /// Delete all transcripts from disk atomically.
-  /// Removes and recreates the directory with the same hardened permissions
-  /// + Spotlight marker established at init.
+  /// Delete all transcripts (#4001 H7). The folder is renamed away and an empty one put in its
+  /// place, so the main actor never walks thousands of files; the renamed folder is removed on
+  /// a background task. Steps, each a single rename with `RENAME_EXCL` (never a copy, never a
+  /// replacement of something already there):
+  /// 1. the folder becomes `.transcripts-handoff-<id>`. Failure throws with nothing changed;
+  /// 2. a checked empty folder (0700, Spotlight marker) is made at the original path;
+  /// 3. the handoff becomes `.transcripts-deleting-<id>`, which clears it for removal.
+  /// If step 2 or 3 fails, an empty folder made in step 2 is taken away again (only while it
+  /// holds nothing but the marker), the handoff is renamed back, and the first failure is thrown. When it cannot go back, it stays as a handoff folder, which nothing
+  /// removes automatically, so rows are never destroyed by a Delete All that reported failure.
+  /// Returning certifies the empty folder, not that the old files are already gone.
   public func deleteAll() throws {
     guard FileManager.default.fileExists(atPath: directory.path) else { return }
-    try FileManager.default.removeItem(at: directory)
-    Self.prepareDirectory(at: directory)
+    let parent = directory.deletingLastPathComponent()
+    let id = UUID().uuidString
+    let handoff = parent.appendingPathComponent(
+      AppConstants.transcriptsHandoffPrefix + id, isDirectory: true)
+    let deleting = parent.appendingPathComponent(
+      AppConstants.transcriptsDeletingPrefix + id, isDirectory: true)
+    try renameExclusive(directory, to: handoff, step: .handoff)
+    do {
+      try prepareReplacement()
+      #if DEBUG
+        deleteAllReplacementReadyForTesting?()
+      #endif
+      try renameExclusive(handoff, to: deleting, step: .clearForRemoval)
+    } catch {
+      do {
+        removeEmptyReplacement()
+        try renameExclusive(handoff, to: directory, step: .restore)
+      } catch let restoreError {
+        let kept = handoff.lastPathComponent
+        Task {
+          await AppLogger.shared.log(
+            "Delete All could not finish (\(error)) or put the folder back (\(restoreError)); "
+              + "rows kept in \(kept)",
+            level: .info, category: "TranscriptStore")
+        }
+      }
+      throw error
+    }
+    let removal = Task.detached(priority: .utility) { await Self.removeRetired(deleting) }
+    #if DEBUG
+      deletionCleanupForTesting = removal
+    #else
+      _ = removal
+    #endif
   }
+
+  /// The Delete All steps a test can make fail (#4001 H7).
+  enum DeleteAllStep: Sendable {
+    case handoff, replacement, clearForRemoval, restore
+  }
+
+  #if DEBUG
+    /// Makes these Delete All steps throw instead of running, so every failure path is reachable.
+    var deleteAllFaultsForTesting: Set<DeleteAllStep> = []
+    /// Runs on a durable write's worker right after its temporary file is opened, so a test can
+    /// hold the write there while Delete All moves the folder.
+    var durableWriteDidOpenForTesting: (@Sendable () -> Void)?
+    /// Runs right after the empty folder is made, so a test can save a row into it.
+    var deleteAllReplacementReadyForTesting: (() -> Void)?
+    /// The background removal the last Delete All started, so a test can await it.
+    private(set) var deletionCleanupForTesting: Task<Void, Never>?
+    /// The start-up cleanup a store made with `cleansLeftovers` scheduled.
+    private(set) var leftoverCleanupForTesting: Task<Void, Never>?
+  #endif
+
+  private func injectFault(_ step: DeleteAllStep) throws {
+    #if DEBUG
+      if deleteAllFaultsForTesting.contains(step) {
+        throw NSError(domain: NSPOSIXErrorDomain, code: Int(EIO))
+      }
+    #endif
+  }
+
+  /// One rename that fails rather than replace anything at `destination` or copy across
+  /// volumes. The errno is captured before anything else can change it.
+  private func renameExclusive(_ source: URL, to destination: URL, step: DeleteAllStep) throws {
+    try injectFault(step)
+    if renamex_np(source.path, destination.path, UInt32(RENAME_EXCL)) != 0 {
+      throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+    }
+  }
+
+  /// The empty folder Delete All leaves, made with errors reported rather than ignored: unlike
+  /// `prepareDirectory`, a failure here must stop the Delete All, because the rows are about to
+  /// be cleared for removal.
+  private func prepareReplacement() throws {
+    try injectFault(.replacement)
+    let fm = FileManager.default
+    try fm.createDirectory(
+      at: directory, withIntermediateDirectories: false,
+      attributes: [.posixPermissions: 0o700])
+    try fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+    let marker = directory.appendingPathComponent(Self.spotlightMarkerName)
+    guard fm.createFile(atPath: marker.path, contents: Data(), attributes: nil) else {
+      throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: marker.path])
+    }
+    var info = stat()
+    guard lstat(directory.path, &info) == 0, info.st_mode & S_IFMT == S_IFDIR,
+      info.st_mode & 0o777 == 0o700
+    else { throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: directory.path]) }
+  }
+
+  /// Takes away the folder `prepareReplacement` made, so a failed Delete All can put the rows
+  /// back. Never recursive: only the marker is removed by name, and `rmdir` refuses a folder that
+  /// holds anything else (a row saved in the meantime), which then keeps the handoff folder.
+  private func removeEmptyReplacement() {
+    let entries = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
+    guard entries.allSatisfy({ $0 == Self.spotlightMarkerName }) else { return }
+    unlink(directory.appendingPathComponent(Self.spotlightMarkerName).path)
+    rmdir(directory.path)
+  }
+
+  /// Removes a folder Delete All cleared for removal. A failure is logged; the next start tries
+  /// again, because the folder keeps its deleting name.
+  private nonisolated static func removeRetired(_ folder: URL) async {
+    do {
+      try FileManager.default.removeItem(at: folder)
+    } catch {
+      await AppLogger.shared.log(
+        "Could not remove \(folder.lastPathComponent) after Delete All: \(error)",
+        level: .info, category: "TranscriptStore")
+    }
+  }
+
+  /// At start, removes what an interrupted Delete All cleared for removal (#4001 H7). Only a
+  /// direct child of the parent that is a real folder (not a link) named exactly
+  /// `.transcripts-deleting-<UUID>`. A handoff folder is logged and kept: it may hold rows a
+  /// failed Delete All promised to keep.
+  private nonisolated static func scheduleLeftoverCleanup(besides directory: URL) -> Task<
+    Void, Never
+  > {
+    let parent = directory.deletingLastPathComponent()
+    return Task.detached(priority: .utility) {
+      let names: [String]
+      do {
+        names = try FileManager.default.contentsOfDirectory(atPath: parent.path)
+      } catch {
+        await AppLogger.shared.log(
+          "Could not look for folders left by Delete All: \(error)",
+          level: .info, category: "TranscriptStore")
+        return
+      }
+      for name in names {
+        let url = parent.appendingPathComponent(name, isDirectory: true)
+        if reservedID(name, prefix: AppConstants.transcriptsHandoffPrefix) != nil, isRealFolder(url)
+        {
+          await AppLogger.shared.log(
+            "Kept \(name): a Delete All did not finish, and its rows are not removed automatically",
+            level: .info, category: "TranscriptStore")
+          continue
+        }
+        guard reservedID(name, prefix: AppConstants.transcriptsDeletingPrefix) != nil,
+          isRealFolder(url)
+        else { continue }
+        await removeRetired(url)
+      }
+    }
+  }
+
+  /// The UUID after `prefix` when `name` is exactly `prefix` plus a UUID, else nil.
+  private nonisolated static func reservedID(_ name: String, prefix: String) -> UUID? {
+    guard name.hasPrefix(prefix) else { return nil }
+    return UUID(uuidString: String(name.dropFirst(prefix.count)))
+  }
+
+  /// A folder itself, not a link to one.
+  private nonisolated static func isRealFolder(_ url: URL) -> Bool {
+    var info = stat()
+    return lstat(url.path, &info) == 0 && info.st_mode & S_IFMT == S_IFDIR
+  }
+
+  private static let spotlightMarkerName = ".metadata_never_index"
 }
 
 /// What one sweep did (#2087).
@@ -872,7 +1174,7 @@ public struct PendingSweepResult: Sendable {
   /// DISK truth, deliberately, because the caller's own list is not a substitute
   /// and that is the defect this exists to close. `TranscriptCoordinator` arms
   /// its expiry pulse from `livePendingCount`, which reads `transcripts`, which
-  /// only `load()` populates — and `load()`'s sole production caller is the
+  /// only `load()` populates — and `load()` is reached only from the
   /// History view. So a row carried over from a PREVIOUS session was invisible
   /// to the countdown for the whole session: nothing deleted it at its moment,
   /// and it waited for a relaunch.
@@ -922,6 +1224,26 @@ public struct PendingSweepResult: Sendable {
     self.nextLiveDeadline = nextLiveDeadline
     self.clearedShadows = clearedShadows
   }
+}
+
+/// What History read from the store (#4001 H9). `freshness` is the accepted folder state the
+/// rows describe, or nil when this read cannot certify reuse.
+public struct TranscriptHistoryRead: Sendable {
+  public let permanent: [Transcript]
+  public let pending: [Transcript]
+  public let freshness: TranscriptStoreFreshness?
+}
+
+/// The permanent and pending folders' change tokens (#4001 H9). Equal tokens mean no entry was
+/// added, removed or renamed in either folder between the two samples.
+public struct TranscriptStoreFreshness: Sendable, Equatable {
+  public enum Folder: Sendable, Equatable {
+    case present(identity: Data, generation: Data)
+    /// Confirmed missing. Valid for `pending/`, which is created by the first held row.
+    case absent
+  }
+  let permanent: Folder
+  let pending: Folder
 }
 
 /// A pending Escape Recovery row that aged out un-restored (#2087).
