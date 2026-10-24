@@ -1,0 +1,1 @@
+{"language":"sk","title":"pomenovať schôdzky podľa môjho kalendára","words":["kalendár"],"phrases":["použiť názov udalosti ako názov schôdzky","preberať názvy schôdzok z kalendára"]}

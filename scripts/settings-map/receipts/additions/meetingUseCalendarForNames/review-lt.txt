@@ -1,0 +1,12 @@
+{
+  "language": "lt",
+  "title": "pavadinti susitikimus pagal mano kalendorių",
+  "words": [
+    "kalendorius",
+    "įvykio pavadinimas"
+  ],
+  "phrases": [
+    "naudoti kalendoriaus įvykio pavadinimą kaip susitikimo pavadinimą",
+    "paimti susitikimo pavadinimą iš kalendoriaus"
+  ]
+}

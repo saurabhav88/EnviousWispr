@@ -1,0 +1,1 @@
+{"language":"cs","title":"pojmenovat schůzky podle kalendáře","words":["kalendář","název události"],"phrases":["použít název události jako název schůzky","přebírat názvy schůzek z kalendáře"]}

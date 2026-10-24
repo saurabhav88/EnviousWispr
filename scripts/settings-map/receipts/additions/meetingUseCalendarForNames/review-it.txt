@@ -1,0 +1,12 @@
+{
+  "language": "it",
+  "title": "usa i titoli del calendario come nomi delle riunioni",
+  "words": [
+    "nome riunione",
+    "titolo evento"
+  ],
+  "phrases": [
+    "usa il titolo dell’evento come nome della riunione",
+    "prendi i nomi delle riunioni dal calendario"
+  ]
+}

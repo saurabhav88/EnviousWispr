@@ -1,0 +1,11 @@
+{
+  "language": "en",
+  "words": [
+    "automatic naming",
+    "event title"
+  ],
+  "phrases": [
+    "use the calendar event title as the meeting name",
+    "automatically name meetings from calendar events"
+  ]
+}

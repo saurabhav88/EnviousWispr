@@ -8,6 +8,9 @@ import EnviousWisprCore
 @Observable
 public final class PermissionsService {
   public private(set) var microphoneStatus: AVAuthorizationStatus = .notDetermined
+  /// #4017: calendar access, stored so the EnviousMeet page's rows redraw when it changes.
+  /// Refreshed after each request and when the app becomes active.
+  public private(set) var calendarStatus: CalendarAccess.Status = .notAsked
   public private(set) var accessibilityGranted: Bool = false
 
   /// Called when either permission's status changes — set by AppDelegate/MenuBarController for
@@ -67,6 +70,7 @@ public final class PermissionsService {
       await AVCaptureDevice.requestAccess(for: .audio)
     },
     openMicrophoneSettings: @escaping @MainActor (URL) -> Void = { NSWorkspace.shared.open($0) },
+    calendarReader: @escaping () -> CalendarAccess.Status = { CalendarAccess.status() },
     permissionPollIntervalNanoseconds: UInt64 = UInt64(
       TimingConstants.accessibilityPollIntervalSec * 1_000_000_000)
   ) {
@@ -74,9 +78,19 @@ public final class PermissionsService {
     self.microphoneReader = microphoneReader
     self.microphoneRequester = microphoneRequester
     self.openMicrophoneSettings = openMicrophoneSettings
+    self.calendarReader = calendarReader
     self.permissionPollIntervalNanoseconds = permissionPollIntervalNanoseconds
     microphoneStatus = microphoneReader()
     accessibilityGranted = accessibilityReader()
+    calendarStatus = calendarReader()
+  }
+
+  private let calendarReader: () -> CalendarAccess.Status
+
+  /// #4017: reads calendar access again (after a request, or back from System Settings).
+  public func refreshCalendarStatus() {
+    let now = calendarReader()
+    if now != calendarStatus { calendarStatus = now }
   }
 
   /// #1558: live microphone-denied check for the start-path error router. A
@@ -89,6 +103,9 @@ public final class PermissionsService {
     default: return false
     }
   }
+
+  /// #4017: microphone access read now, for a screen that must not show the polled copy.
+  public var microphoneStatusLive: AVAuthorizationStatus { microphoneReader() }
 
   /// #3972: macOS has never been asked for the microphone. Read live, like
   /// `microphonePermissionIsDenied`.
@@ -131,6 +148,17 @@ public final class PermissionsService {
     guard
       let url = URL(
         string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")
+    else { return }
+    openMicrophoneSettings(url)
+  }
+
+  /// #4017: opens System Settings on Privacy & Security, Calendars, where EnviousMeet's calendar
+  /// access is allowed. Only on an explicit user action. NOT VERIFIED on hardware until #4017
+  /// Live UAT checks the pane anchor.
+  public func openCalendarSettings() {
+    guard
+      let url = URL(
+        string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars")
     else { return }
     openMicrophoneSettings(url)
   }

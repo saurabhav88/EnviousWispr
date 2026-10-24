@@ -214,6 +214,10 @@ final class MeetingCoordinator {
     /// settle in time (R28).
     var settleDictationHold: @MainActor () async -> Bool
     var freeDiskBytes: @MainActor () -> Int64?
+    /// A name for a meeting starting at this time, from the user's calendar (#4017 R5, R11);
+    /// nil when the setting is off, access is missing, nothing matches or the bounded lookup
+    /// gave up. It must return within its own bound and never throw.
+    var meetingTitleAtStart: @MainActor (Date) async -> String? = { _ in nil }
     /// Saves the meeting's History row durably, its disk work off the main actor; throws when
     /// it could not.
     var saveTranscript: @MainActor (Transcript) async throws -> Void
@@ -656,8 +660,14 @@ final class MeetingCoordinator {
       return .refused(.finishDictationFirst)
     }
     guard isCurrentStart(generation) else { return .superseded(meetingID: nil) }
+    // #4017 R11: one start time for the calendar lookup and the record; the name is set on the
+    // record before it is first written, so no published record is ever renamed from here.
+    let startedAt = Date()
+    let calendarTitle = await deps.meetingTitleAtStart(startedAt)
+    // A Stop or quit during the lookup owns the outcome: nothing was created.
+    guard isCurrentStart(generation) else { return .superseded(meetingID: nil) }
     var record = MeetingRecord(
-      engine: .parakeet,
+      title: calendarTitle, createdAt: startedAt, engine: .parakeet,
       trackStatus: [.microphone: .captured, .callSound: captureCall ? .captured : .off])
     let meetingID = record.id
     do {

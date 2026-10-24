@@ -1,0 +1,11 @@
+{
+  "language": "nl",
+  "title": "vergaderingen een naam geven op basis van mijn agenda",
+  "words": [
+    "afspraaktitel"
+  ],
+  "phrases": [
+    "gebruik de titel van de agenda-afspraak als vergadernaam",
+    "haal vergadernamen uit mijn agenda"
+  ]
+}

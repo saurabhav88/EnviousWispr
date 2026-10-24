@@ -1,0 +1,11 @@
+{
+  "language": "lv",
+  "title": "nosaukt sapulces pēc mana kalendāra",
+  "words": [
+    "kalendārs"
+  ],
+  "phrases": [
+    "izmantot kalendāra notikuma nosaukumu kā sapulces nosaukumu",
+    "ņemt sapulces nosaukumu no kalendāra"
+  ]
+}

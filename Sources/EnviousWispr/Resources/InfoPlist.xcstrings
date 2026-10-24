@@ -37,6 +37,24 @@
         }
       }
     },
+    "NSCalendarsFullAccessUsageDescription" : {
+      "comment" : "macOS permission prompt (NSCalendarsFullAccessUsageDescription), shown when the app first asks for this access. Say exactly what the app does with it, no more and no less.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr reads your calendar events to name your meetings after the event at that time. It never changes your calendar, and your events stay on your Mac."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr liest deine Kalendertermine, um deine Meetings nach dem Termin zu dieser Zeit zu benennen. Es ändert deinen Kalender nie, und deine Termine bleiben auf deinem Mac."
+          }
+        }
+      }
+    },
     "NSContactsUsageDescription" : {
       "comment" : "macOS permission prompt (NSContactsUsageDescription), shown when the app first asks for this access. Say exactly what the app does with it, no more and no less.",
       "extractionState" : "manual",

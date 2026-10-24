@@ -1,0 +1,1 @@
+{"language":"mt","title":"semmi l-laqgħat skont il-kalendarju tiegħi","words":["kalendarju","titlu tal-avveniment"],"phrases":["uża t-titlu tal-avveniment bħala l-isem tal-laqgħa","ħu l-isem tal-laqgħa mill-kalendarju"]}

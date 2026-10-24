@@ -1,0 +1,1 @@
+{"language":"sv","title":"namnge möten utifrån min kalender","words":["mötesnamn"],"phrases":["använd kalenderhändelsens titel som mötesnamn","hämta mötesnamn från kalendern"]}

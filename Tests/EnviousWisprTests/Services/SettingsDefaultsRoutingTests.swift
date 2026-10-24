@@ -41,6 +41,9 @@ struct SettingsDefaultsRoutingTests {
     #expect(settings.meetingCaptureCallSound == true)
     #expect(settings.meetingCallSoundExplained == false)
     #expect(settings.meetingWriteSummary == true)
+    // #4017: EnviousMeet starts locked, calendar names off.
+    #expect(settings.meetingOnboardingComplete == false)
+    #expect(settings.meetingUseCalendarForNames == false)
     #expect(settings.restoreClipboardAfterPaste == true)
     // Smart insertion ships ON: the repair only fires where it is positively
     // safe, and an unrecognised word keeps today's behaviour, so the default

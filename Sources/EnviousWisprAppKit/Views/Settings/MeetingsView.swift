@@ -17,6 +17,15 @@ struct MeetingsView: View {
   @Environment(SettingsManager.self) private var settings
 
   var body: some View {
+    if settings.meetingOnboardingComplete {
+      settingsPage
+    } else {
+      // #4017 O1: EnviousMeet is locked until its setup is finished.
+      ScrollView { MeetingOnboardingView() }
+    }
+  }
+
+  private var settingsPage: some View {
     SettingsContentView {
       BrandedPanel(
         icon: "person.2.wave.2", header: "EnviousMeet", description: MeetingsCopy.pageDescription
@@ -31,8 +40,10 @@ struct MeetingsView: View {
           MeetingCallSoundRow()
           MeetingWriteSummaryRow()
           summaryWriterRow
+          MeetingCalendarNamesRow()
           microphonePermissionRow
           callSoundPermissionRow
+          calendarPermissionRow
           Text(MeetingsCopy.keptUntilDeleted)
             .font(.stHelper)
             .foregroundStyle(.stTextSecondary)
@@ -53,6 +64,7 @@ struct MeetingsView: View {
             .accessibilityIdentifier("meetings.showRecordings")
           }
         }
+          MeetingConsentNote()
       } footnote: {
         // R48: true for every provider. Audio never leaves the Mac; a summary by a cloud model
         // (OpenAI, Gemini, Claude, or an Ollama hosted model) sends its provider the transcript
@@ -198,6 +210,48 @@ extension MeetingsView {
       .accessibilityIdentifier("meetings.settings.callSoundSettings")
     }
   }
+
+  /// #4017: what macOS lets EnviousMeet read from the calendar, with the fix when it is not
+  /// allowed. A status line, not a setting.
+  fileprivate var calendarPermissionRow: some View {
+    SettingsRow(
+      notInSettingsMap: .statusLine, icon: "calendar",
+      title: LocalizedStringResource(
+        "Calendar", comment: "EnviousMeet page: the calendar permission row's title."),
+      short: Self.calendarStatusLine(permissions.calendarStatus),
+      help: LocalizedStringResource(
+        "macOS asks for full calendar access. EnviousMeet only reads event titles, times and meeting links to name your meetings, and never changes your calendar.",
+        comment: "EnviousMeet page: help for the calendar permission row.")
+    ) {
+      if permissions.calendarStatus == .denied {
+        Button {
+          permissions.openCalendarSettings()
+        } label: {
+          Text(
+            "Open System Settings",
+            comment: "EnviousMeet: opens the macOS privacy setting for calendar access.")
+        }
+        .accessibilityIdentifier("meetings.settings.calendarSettings")
+      }
+    }
+  }
+
+  static func calendarStatusLine(_ status: CalendarAccess.Status) -> LocalizedStringResource {
+    switch status {
+    case .granted:
+      return LocalizedStringResource("Allowed", comment: "EnviousMeet page: calendar access is allowed.")
+    case .denied:
+      return LocalizedStringResource(
+        "Turned off. Allow it in System Settings.", comment: "EnviousMeet page: calendar access was refused.")
+    case .notAsked:
+      return LocalizedStringResource(
+        "Not asked yet. Turn on Name meetings from my calendar to ask.",
+        comment: "EnviousMeet page: macOS has not asked for calendar access yet.")
+    case .unavailable:
+      return LocalizedStringResource(
+        "Not available on this Mac.", comment: "EnviousMeet page: calendar access is blocked by a device profile.")
+    }
+  }
 }
 
 /// EnviousMeet copy that the Settings Map also reads, so the page and its search entries share
@@ -232,6 +286,15 @@ enum MeetingsCopy {
   static let writeSummaryHelp = LocalizedStringResource(
     "The summary is written from the transcript and your notes by your AI Polish provider. OpenAI, Gemini and Claude receive them under your key. An Ollama hosted model sends them to Ollama's servers. Apple Intelligence and Ollama models on this Mac keep them on your Mac. Turning this off does not stop a summary that has already started. In History you can write a summary for any meeting that has a transcript.",
     comment: "EnviousMeet page: help for Write a summary when a meeting ends.")
+  static let calendarNamesTitle = LocalizedStringResource(
+    "Name meetings from my calendar",
+    comment: "EnviousMeet page: switch that names a meeting after the calendar event at its start.")
+  static let calendarNamesShort = LocalizedStringResource(
+    "Uses the title of the calendar event at the time the meeting starts.",
+    comment: "EnviousMeet page: the short line under Name meetings from my calendar.")
+  static let calendarNamesHelp = LocalizedStringResource(
+    "When a meeting starts, EnviousMeet looks for the calendar event at that time and uses its title. If several events overlap, it prefers one with a meeting link or a place, and otherwise keeps the date as the name. Your calendar is read on your Mac and never changed. You can rename any meeting in History.",
+    comment: "EnviousMeet page: help for Name meetings from my calendar.")
   static let callSoundHelp = LocalizedStringResource(
     "With headphones, your microphone hears only you, and the call comes from the sound your Mac plays. Without headphones, your microphone also hears the call; EnviousMeet hides those repeated lines as probable echo. The choice applies to the next meeting you start.",
     comment: "EnviousMeet page: help for Also record the call sound.")

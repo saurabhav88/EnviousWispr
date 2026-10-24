@@ -583,6 +583,7 @@
       case .joinedMicrophonePrompt: return ["outcome": "joinedMicrophonePrompt"]
       case .cancelled: return ["outcome": "cancelled"]
       case .notIdle: return ["outcome": "notIdle"]
+      case .setupRequired: return ["outcome": "setupRequired"]
       case .started(let start):
         switch start {
         case .recording(let id): return ["outcome": "recording", "meetingID": id.uuidString]

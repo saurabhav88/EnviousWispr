@@ -1,0 +1,12 @@
+{
+  "language": "sl",
+  "title": "poimenuj sestanke po mojem koledarju",
+  "words": [
+    "koledar",
+    "naslov dogodka"
+  ],
+  "phrases": [
+    "uporabi naslov dogodka za ime sestanka",
+    "prevzemi ime sestanka iz koledarja"
+  ]
+}

@@ -266,6 +266,10 @@ struct MeetingCoordinatorTests {
     var callSound = false
     /// When set, the dictation-settle wait at Start parks on it.
     var settleGate: Gate?
+    /// #4017 R11: the calendar name a Start's lookup returns, and a gate it parks on.
+    var calendarTitle: String?
+    var titleGate: Gate?
+    var titleLookups: [Date] = []
     var freeBytes: Int64? = 50_000_000_000
     var activitiesBegun = 0
     var activitiesEnded = 0
@@ -306,6 +310,11 @@ struct MeetingCoordinatorTests {
           return settles
         },
         freeDiskBytes: { [self] in freeBytes },
+        meetingTitleAtStart: { [self] startedAt in
+          titleLookups.append(startedAt)
+          await titleGate?.wait()
+          return calendarTitle
+        },
         saveTranscript: { [self] transcript in
           if let meetingID = transcript.meetingID {
             stateAtSave.append(try store.load(id: meetingID).state)
@@ -571,6 +580,47 @@ struct MeetingCoordinatorTests {
     #expect(record.trackStatus[.microphone] == .failed)
     #expect(harness.saved.count == 1)
     #expect(harness.activitiesBegun == harness.activitiesEnded)
+  }
+
+  @Test("a calendar name is on the meeting from its first write and survives a reload")
+  func calendarTitleNamesTheMeeting() async throws {
+    let harness = try Harness()
+    harness.calendarTitle = "Customer sync: Acme"
+    let coordinator = harness.coordinator
+    await coordinator.start(from: .menu)
+    let meeting = try onlyMeeting(harness)
+    #expect(meeting.title == "Customer sync: Acme")
+    // The lookup and the record use one start time.
+    #expect(harness.titleLookups == [meeting.createdAt])
+    #expect(try harness.store.load(id: meeting.id).title == "Customer sync: Acme")
+    await coordinator.stop()
+  }
+
+  @Test("no calendar name leaves the title empty for the date name")
+  func noCalendarTitle() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    await coordinator.start(from: .menu)
+    #expect(try onlyMeeting(harness).title == nil)
+    await coordinator.stop()
+  }
+
+  @Test("a Stop during the calendar lookup creates nothing, and its late name is dropped")
+  func stopDuringCalendarLookup() async throws {
+    let harness = try Harness()
+    harness.calendarTitle = "Late name"
+    let gate = Gate()
+    harness.titleGate = gate
+    let coordinator = harness.coordinator
+    let starting = Task { await coordinator.start(from: .menu) }
+    await Self.eventually("lookup parked") { gate.parked }
+    await coordinator.stop()
+    gate.open()
+    let outcome = await starting.value
+    #expect(outcome == .superseded(meetingID: nil))
+    #expect(coordinator.meetings.isEmpty)
+    #expect(harness.recorders.isEmpty)
+    #expect(coordinator.phase == .idle)
   }
 
   @Test("Start is refused before any source opens: low disk, or sound that did not settle")

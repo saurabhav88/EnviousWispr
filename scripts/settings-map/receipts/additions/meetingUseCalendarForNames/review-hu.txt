@@ -1,0 +1,12 @@
+{
+  "language": "hu",
+  "title": "megbeszélések elnevezése a naptáram alapján",
+  "words": [
+    "naptár",
+    "naptáresemény"
+  ],
+  "phrases": [
+    "a naptáresemény címe legyen a megbeszélés neve",
+    "megbeszélés nevének átvétele a naptárból"
+  ]
+}

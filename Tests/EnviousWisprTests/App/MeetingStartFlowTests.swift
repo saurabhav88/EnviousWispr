@@ -27,8 +27,11 @@ struct MeetingStartFlowTests {
     /// Runs while the macOS microphone prompt would be up.
     var onMicrophoneRequest: @MainActor () async -> Void = {}
 
+    /// EnviousMeet's setup is finished (#4017); false locks every Start.
+    var setUp = true
     lazy var flow = MeetingStartFlow(
       dependencies: .init(
+        isSetUp: { [unowned self] in setUp },
         captureCallSound: { [unowned self] in settings?.meetingCaptureCallSound ?? callSound },
         isExplained: { [unowned self] in settings?.meetingCallSoundExplained ?? explained },
         markExplained: { [unowned self] in
@@ -250,5 +253,55 @@ struct MeetingStartFlowTests {
     await rig.flow.continueAfterExplainer()
     #expect(rig.starts == [.history])
     #expect(SettingsManager(defaults: defaults).meetingCallSoundExplained == true)
+  }
+
+  // MARK: - #4017 setup lock
+
+  @Test("before setup, every Start route records nothing and shows the EnviousMeet page")
+  func lockedStartRecordsNothing() async {
+    for entry in [MeetingEntryPoint.menu, .history] {
+      let rig = Rig()
+      rig.setUp = false
+      rig.microphoneUnasked = true
+      let outcome = await rig.flow.requestStart(from: entry)
+      #expect(outcome == .setupRequired)
+      #expect(rig.starts.isEmpty)
+      #expect(rig.microphoneRequests == 0)
+      #expect(rig.flow.pendingExplainer == nil)
+      #expect(rig.pageShown == 1)
+    }
+  }
+
+  @Test("setup reset while the explainer waits: Continue records nothing")
+  func lockedContinueRecordsNothing() async {
+    let rig = Rig()
+    rig.explained = false
+    await rig.flow.requestStart(from: .history)
+    #expect(rig.flow.pendingExplainer == .history)
+    rig.setUp = false
+    let outcome = await rig.flow.continueAfterExplainer()
+    #expect(outcome == .setupRequired)
+    #expect(rig.starts.isEmpty)
+    #expect(rig.flow.pendingExplainer == nil)
+  }
+
+  @Test("setup reset while macOS asks for the microphone: that Start records nothing")
+  func lockedDuringMicrophonePrompt() async {
+    let rig = Rig()
+    rig.microphoneUnasked = true
+    rig.onMicrophoneRequest = { [unowned rig] in rig.setUp = false }
+    let outcome = await rig.flow.requestStart(from: .menu)
+    #expect(outcome == .setupRequired)
+    #expect(rig.starts.isEmpty)
+    #expect(rig.flow.waitingForMicrophone == nil)
+  }
+
+  @Test("after setup, the same Start records")
+  func unlockedStartRecords() async {
+    let rig = Rig()
+    rig.explained = true
+    let outcome = await rig.flow.requestStart(from: .menu)
+    #expect(outcome == .started(.recording(meetingID: rig.startedMeetingID)))
+    #expect(rig.starts == [.menu])
   }
 }

@@ -1,0 +1,38 @@
+{
+  "run_id": "run-1792811634-887fee74",
+  "run_dir": "/Users/m4pro_sv/.local/state/council/runs/run-1792811634-887fee74",
+  "providers": {
+    "openai": {
+      "content": "1. OK \u2014 Die Begriffe beschreiben die Benennung anhand des Kalenders, ohne eine Aufnahmefunktion zu suggerieren.",
+      "latest_response_id": "resp_0522d8001904e620006adc2272b468819092b56728607df960",
+      "model": "gpt-6-sol",
+      "provider": "openai",
+      "session": "enviousmeet-calendar-vocab-de-2026-10-23-gpt",
+      "status": "ok",
+      "usage": {
+        "completion_tokens": 174,
+        "cost_usd": 0.00094,
+        "latency_ms": 2692,
+        "prompt_tokens": 244,
+        "reasoning_tokens": 143,
+        "total_tokens": 418
+      }
+    },
+    "gemini": {
+      "content": "1. OK. The block adheres to all formatting constraints, lowercase rules, and du-form style while providing natural search queries for the calendar naming switch.",
+      "latest_interaction_id": "v1_ChZjaUxjYXJHZE5QekV4ZElQa0tyQ1FBEhZjaUxjYXJHZE5QekV4ZElQa0tyQ1FB",
+      "model": "gemini-3.8-flash",
+      "provider": "gemini",
+      "session": "enviousmeet-calendar-vocab-de-2026-10-23-gemini",
+      "status": "ok",
+      "usage": {
+        "prompt_tokens": 242,
+        "completion_tokens": 31,
+        "reasoning_tokens": 926,
+        "total_tokens": 1199,
+        "cost_usd": 0.0075405,
+        "latency_ms": 10583
+      }
+    }
+  }
+}

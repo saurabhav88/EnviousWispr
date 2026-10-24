@@ -232,8 +232,12 @@ struct TelemetryEmitterRegistryTests {
   /// two sites' enclosing-function identities. Same events, same single sites, same cadences
   /// (`rare_failure`, `per_user_action`), no content; both rows are updated in place.
   /// Reader: the #3988 plan §3a release review.
+  /// #4017 R8: one per_user_action meeting.setup site (`trackMeetingSetup`), keep whole; one row
+  /// per visit to EnviousMeet's setup that finished or left (closed outcome, screen and
+  /// per-permission answers, seconds), about 1 to 3 rows per install lifetime, no content.
+  /// Reader: founder EnviousMeet setup funnel at the first release review.
   static let sitesFingerprint =
-    "b4c4abb590dfe1df73de873fac16cc022f69d17ff8c8c4c9a0c1d4af9b4034c1"
+    "7a7753874d9613a18da52ceacf97b9d4a636b107a96429dfe5207826037933ed"
   static let ungradedFingerprint =
     "676fe038e6e688fa79c33aae8cec75e5996979f10c3f79775755ec23c5dba168"
 

@@ -1,0 +1,358 @@
+{
+ "id": "meetingUseCalendarForNames",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "تسمية الاجتماعات من التقويم",
+   "words": [
+    "تلقائي"
+   ],
+   "phrases": [
+    "استخدم عنوان الموعد كاسم للاجتماع",
+    "سمّ الاجتماعات تلقائيًا حسب التقويم"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "именуване на срещите според календара",
+   "words": [
+    "автоматично"
+   ],
+   "phrases": [
+    "използвай заглавието на събитието за име на срещата",
+    "вземай имената на срещите от календара"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "pojmenovat schůzky podle kalendáře",
+   "words": [
+    "automaticky"
+   ],
+   "phrases": [
+    "použít název události jako název schůzky",
+    "přebírat názvy schůzek z kalendáře"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "navngiv møder ud fra min kalender",
+   "words": [
+    "automatisk"
+   ],
+   "phrases": [
+    "brug kalenderaftalens titel som mødenavn",
+    "hent mødenavne fra kalenderen"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [
+    "automatisch",
+    "Terminname"
+   ],
+   "phrases": [
+    "nimm den Termintitel als Meetingnamen",
+    "benenne meine Meetings automatisch nach dem Kalender"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "ονομασία συναντήσεων από το ημερολόγιό μου",
+   "words": [
+    "αυτόματα"
+   ],
+   "phrases": [
+    "χρήση του τίτλου της εκδήλωσης ως ονόματος συνάντησης",
+    "πάρε τα ονόματα των συναντήσεων από το ημερολόγιο"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [
+    "automatic naming",
+    "event title"
+   ],
+   "phrases": [
+    "use the calendar event title as the meeting name",
+    "automatically name meetings from calendar events"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "nombrar reuniones según mi calendario",
+   "words": [
+    "automático"
+   ],
+   "phrases": [
+    "usar el título del evento como nombre de la reunión",
+    "tomar los nombres de las reuniones del calendario"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "koosolekute nimetamine kalendri järgi",
+   "words": [
+    "automaatselt"
+   ],
+   "phrases": [
+    "kasuta sündmuse pealkirja koosoleku nimena",
+    "võta koosoleku nimi kalendrist"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "nimeä kokoukset kalenterini mukaan",
+   "words": [
+    "automaattisesti"
+   ],
+   "phrases": [
+    "käytä kalenteritapahtuman otsikkoa kokouksen nimenä",
+    "ota kokouksen nimi kalenterista"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "nommer les réunions à partir de mon calendrier",
+   "words": [
+    "automatique"
+   ],
+   "phrases": [
+    "utiliser le titre de l’événement comme nom de réunion",
+    "reprendre les noms des réunions du calendrier"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "मेरे कैलेंडर के अनुसार मीटिंग का नाम रखें",
+   "words": [
+    "अपने आप"
+   ],
+   "phrases": [
+    "कैलेंडर इवेंट का शीर्षक मीटिंग के नाम के लिए इस्तेमाल करें",
+    "मीटिंग का नाम कैलेंडर से लें"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "nazivi sastanaka prema mom kalendaru",
+   "words": [
+    "automatski"
+   ],
+   "phrases": [
+    "koristi naslov događaja kao naziv sastanka",
+    "preuzmi naziv sastanka iz kalendara"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "értekezletek elnevezése a naptáram alapján",
+   "words": [
+    "automatikusan"
+   ],
+   "phrases": [
+    "a naptáresemény címe legyen az értekezlet neve",
+    "értekezlet nevének átvétele a naptárból"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "assegna i nomi alle riunioni dal mio calendario",
+   "words": [
+    "automatico"
+   ],
+   "phrases": [
+    "usa il titolo dell’evento come nome della riunione",
+    "prendi i nomi delle riunioni dal calendario"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "カレンダーから会議名を設定",
+   "words": [
+    "自動命名"
+   ],
+   "phrases": [
+    "予定のタイトルを会議名に使う",
+    "カレンダーに合わせて会議名を自動で付ける"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "내 캘린더로 회의 이름 지정",
+   "words": [
+    "자동 명명"
+   ],
+   "phrases": [
+    "일정 제목을 회의 이름으로 사용",
+    "캘린더에서 회의 이름 가져오기"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "susitikimų pavadinimai pagal mano kalendorių",
+   "words": [
+    "automatiškai"
+   ],
+   "phrases": [
+    "naudoti įvykio pavadinimą kaip susitikimo pavadinimą",
+    "paimti susitikimo pavadinimą iš kalendoriaus"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "sapulču nosaukumi pēc mana kalendāra",
+   "words": [
+    "automātiski"
+   ],
+   "phrases": [
+    "izmantot notikuma nosaukumu kā sapulces nosaukumu",
+    "ņemt sapulces nosaukumu no kalendāra"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "semmi l-laqgħat skont il-kalendarju tiegħi",
+   "words": [
+    "awtomatikament"
+   ],
+   "phrases": [
+    "uża t-titlu tal-avveniment bħala isem il-laqgħa",
+    "ħu l-isem tal-laqgħa mill-kalendarju"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "vergaderingen naar mijn agenda noemen",
+   "words": [
+    "automatisch",
+    "afspraaktitel"
+   ],
+   "phrases": [
+    "gebruik de titel van de agenda-afspraak als vergadernaam",
+    "haal vergadernamen uit mijn agenda"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "nazywaj spotkania na podstawie mojego kalendarza",
+   "words": [
+    "automatycznie"
+   ],
+   "phrases": [
+    "użyj tytułu wydarzenia jako nazwy spotkania",
+    "pobieraj nazwy spotkań z kalendarza"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "nomear reuniões com base no meu calendário",
+   "words": [
+    "automático"
+   ],
+   "phrases": [
+    "usar o título do evento como nome da reunião",
+    "obter os nomes das reuniões do calendário"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "denumește întâlnirile după calendarul meu",
+   "words": [
+    "automat"
+   ],
+   "phrases": [
+    "folosește titlul evenimentului ca nume al întâlnirii",
+    "preia numele întâlnirilor din calendar"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "называть встречи по моему календарю",
+   "words": [
+    "автоматически"
+   ],
+   "phrases": [
+    "использовать название события как название встречи",
+    "брать названия встреч из календаря"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "pomenovať schôdzky podľa môjho kalendára",
+   "words": [
+    "automaticky"
+   ],
+   "phrases": [
+    "použiť názov udalosti ako názov schôdzky",
+    "preberať názvy schôdzok z kalendára"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "poimenuj sestanke po mojem koledarju",
+   "words": [
+    "samodejno"
+   ],
+   "phrases": [
+    "uporabi naslov dogodka za ime sestanka",
+    "prevzemi ime sestanka iz koledarja"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "namnge möten utifrån min kalender",
+   "words": [
+    "automatiskt"
+   ],
+   "phrases": [
+    "använd kalenderhändelsens titel som mötesnamn",
+    "hämta mötesnamn från kalendern"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "toplantıları takvimime göre adlandır",
+   "words": [
+    "otomatik"
+   ],
+   "phrases": [
+    "etkinlik başlığını toplantı adı olarak kullan",
+    "toplantı adını takvimden al"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "називати зустрічі за моїм календарем",
+   "words": [
+    "автоматично"
+   ],
+   "phrases": [
+    "використовувати назву події як назву зустрічі",
+    "брати назви зустрічей із календаря"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "đặt tên cuộc họp theo lịch của tôi",
+   "words": [
+    "tự động"
+   ],
+   "phrases": [
+    "dùng tiêu đề sự kiện làm tên cuộc họp",
+    "lấy tên cuộc họp từ lịch"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "根据我的日历为会议命名",
+   "words": [
+    "自动命名"
+   ],
+   "phrases": [
+    "用日程标题作为会议名称",
+    "从日历获取会议名称"
+   ]
+  }
+ ]
+}

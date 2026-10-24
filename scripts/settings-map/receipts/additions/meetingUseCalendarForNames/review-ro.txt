@@ -1,0 +1,1 @@
+{"language":"ro","title":"denumește întâlnirile după calendarul meu","words":["calendar"],"phrases":["folosește titlul evenimentului din calendar ca nume al întâlnirii","preia numele întâlnirilor din calendar"]}

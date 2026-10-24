@@ -1,0 +1,1 @@
+{"language":"pl","title":"nazywaj spotkania na podstawie mojego kalendarza","words":["kalendarz","tytuł wydarzenia"],"phrases":["użyj tytułu wydarzenia jako nazwy spotkania","pobieraj nazwy spotkań z kalendarza"]}

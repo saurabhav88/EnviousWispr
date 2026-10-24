@@ -4139,6 +4139,29 @@ public final class TelemetryService {
     ["outcome": event.outcome.rawValue, "provider_kind": event.providerKind.rawValue]
   }
 
+  /// #4017 R8: one `meeting.setup` row per visit to EnviousMeet's setup that finished or left.
+  /// Closed enums and a duration only; never calendar or event content.
+  public func trackMeetingSetup(_ event: MeetingSetupTelemetry) {
+    let props = Self.meetingSetupProperties(event)
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "meeting.setup",
+          stringProps: props.compactMapValues { $0 as? String },
+          intProps: [:], doubleProps: props.compactMapValues { $0 as? Double },
+          boolProps: [:]))
+    #endif
+    PostHogSDK.shared.capture("meeting.setup", properties: props)
+  }
+
+  static func meetingSetupProperties(_ event: MeetingSetupTelemetry) -> [String: Any] {
+    [
+      "outcome": event.outcome.rawValue, "screen": event.screen.rawValue,
+      "seconds": event.seconds, "microphone": event.microphone.rawValue,
+      "call_sound": event.callSound.rawValue, "calendar": event.calendar.rawValue,
+    ]
+  }
+
   /// Speakers across both tracks: `0` (no turns), `1`, `2`, `3-4`, `5+` (the file-import scale
   /// with a `0` for a meeting that produced no speech).
   static func meetingSpeakerCountBucket(_ count: Int) -> String {

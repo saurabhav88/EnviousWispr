@@ -51,7 +51,7 @@
       .selectedBackend, .recordingMode, .llmProvider, .llmModel, .ollamaModel,
       .fileImportLLMProvider, .fileImportLLMModel, .fileImportOllamaModel,
       .s1MiniStyling, .s1MiniStructure, .s1MiniContext, .autoCopyToClipboard,
-      .meetingCaptureCallSound, .meetingCallSoundExplained, .meetingWriteSummary, .hotkeyEnabled, .vadAutoStop, .vadSilenceTimeout, .vadSensitivity, .vadEnergyGate, .onboardingState,
+      .meetingCaptureCallSound, .meetingCallSoundExplained, .meetingWriteSummary, .meetingOnboardingComplete, .meetingUseCalendarForNames, .hotkeyEnabled, .vadAutoStop, .vadSilenceTimeout, .vadSensitivity, .vadEnergyGate, .onboardingState,
       .hasCompletedOnboarding, .cancelKeyCode, .cancelModifiers, .quickAddKeyCode,
       .quickAddModifiers, .pasteLastKeyCode, .pasteLastModifiers, .copyLastKeyCode,
       .copyLastModifiers, .toggleKeyCode, .toggleModifiers, .pushToTalkKeyCode,
@@ -84,7 +84,8 @@
       switch key {
       case .selectedBackend, .recordingMode, .llmProvider, .llmModel, .s1MiniStyling,
         .s1MiniStructure, .s1MiniContext, .autoCopyToClipboard, .meetingCaptureCallSound,
-        .meetingCallSoundExplained, .meetingWriteSummary, .vadAutoStop, .modelUnloadPolicy,
+        .meetingCallSoundExplained, .meetingWriteSummary, .meetingOnboardingComplete,
+        .meetingUseCalendarForNames, .vadAutoStop, .modelUnloadPolicy,
         .restoreClipboardAfterPaste, .keepDictationsOutOfClipboardHistory,
         .quickAddClipboardFallback, .smartInsertion, .escapeRecoveryEnabled,
         .wordCorrectionEnabled, .fillerRemovalEnabled, .emojiFormatterEnabled,
@@ -132,6 +133,8 @@
       case .meetingCaptureCallSound: return settings.meetingCaptureCallSound
       case .meetingCallSoundExplained: return settings.meetingCallSoundExplained
       case .meetingWriteSummary: return settings.meetingWriteSummary
+      case .meetingOnboardingComplete: return settings.meetingOnboardingComplete
+      case .meetingUseCalendarForNames: return settings.meetingUseCalendarForNames
       case .hotkeyEnabled: return settings.hotkeyEnabled
       case .vadAutoStop: return settings.vadAutoStop
       case .vadSilenceTimeout: return settings.vadSilenceTimeout
@@ -270,6 +273,10 @@
         return set(Codec.bool(value)) { settings.meetingCallSoundExplained = $0 }
       case .meetingWriteSummary:
         return set(Codec.bool(value)) { settings.meetingWriteSummary = $0 }
+      case .meetingOnboardingComplete:
+        return set(Codec.bool(value)) { settings.meetingOnboardingComplete = $0 }
+      case .meetingUseCalendarForNames:
+        return set(Codec.bool(value)) { settings.meetingUseCalendarForNames = $0 }
       case .hotkeyEnabled:
         return set(Codec.bool(value)) { settings.hotkeyEnabled = $0 }
       case .vadAutoStop:
@@ -516,7 +523,7 @@
         return .shortcutField
       case .selectedBackend, .recordingMode, .llmProvider, .s1MiniStyling, .s1MiniStructure,
         .s1MiniContext, .autoCopyToClipboard, .meetingCaptureCallSound, .meetingCallSoundExplained,
-        .meetingWriteSummary, .hotkeyEnabled,
+        .meetingWriteSummary, .meetingOnboardingComplete, .meetingUseCalendarForNames, .hotkeyEnabled,
         .vadAutoStop, .vadSensitivity,
         .vadEnergyGate, .onboardingState, .hasCompletedOnboarding, .pushToTalkKeyCode,
         .pushToTalkModifiers, .modelUnloadPolicy, .restoreClipboardAfterPaste,

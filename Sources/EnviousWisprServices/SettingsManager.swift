@@ -29,6 +29,10 @@ public final class SettingsManager {
     case meetingCallSoundExplained
     /// #3972: "Write a summary when a meeting ends".
     case meetingWriteSummary
+    /// #4017: the user finished EnviousMeet's setup; EnviousMeet is locked until then.
+    case meetingOnboardingComplete
+    /// #4017: "Name meetings from my calendar".
+    case meetingUseCalendarForNames
     case hotkeyEnabled
     case vadAutoStop
     case vadSilenceTimeout
@@ -129,7 +133,7 @@ public final class SettingsManager {
   public nonisolated static let unifiedDefaultsKeys: [String] = [
     "selectedBackend", "recordingMode", "llmProvider", "lastLLMProvider", "llmModel", "ollamaModel",
     "s1MiniStyling", "s1MiniStructure", "s1MiniContext",
-    "autoCopyToClipboard", "meetingCaptureCallSound", "meetingCallSoundExplained", "meetingWriteSummary", "hotkeyEnabled", "vadAutoStop", "vadSilenceTimeout",
+    "autoCopyToClipboard", "meetingCaptureCallSound", "meetingCallSoundExplained", "meetingWriteSummary", "meetingOnboardingComplete", "meetingUseCalendarForNames", "hotkeyEnabled", "vadAutoStop", "vadSilenceTimeout",
     "vadSensitivity", "vadEnergyGate", "onboardingState", "hasCompletedOnboarding",
     "cancelKeyCode", "cancelModifiersRaw", "toggleKeyCode", "toggleModifiersRaw",
     "quickAddKeyCode", "quickAddModifiersRaw",
@@ -513,6 +517,24 @@ public final class SettingsManager {
     didSet {
       defaults.set(meetingWriteSummary, forKey: "meetingWriteSummary")
       onChange?(.meetingWriteSummary)
+    }
+  }
+
+  /// #4017 O1: true once the user finished EnviousMeet's setup (consent and permissions). Every
+  /// meeting Start is refused until then (`MeetingStartFlow`). Never reset by the app.
+  public var meetingOnboardingComplete: Bool {
+    didSet {
+      defaults.set(meetingOnboardingComplete, forKey: "meetingOnboardingComplete")
+      onChange?(.meetingOnboardingComplete)
+    }
+  }
+
+  /// #4017 R5: name a meeting after the calendar event at its start time. Read when a meeting
+  /// starts; it has an effect only while macOS allows full calendar access.
+  public var meetingUseCalendarForNames: Bool {
+    didSet {
+      defaults.set(meetingUseCalendarForNames, forKey: "meetingUseCalendarForNames")
+      onChange?(.meetingUseCalendarForNames)
     }
   }
 
@@ -1366,6 +1388,12 @@ public final class SettingsManager {
     meetingWriteSummary =
       defaults.object(forKey: "meetingWriteSummary") as? Bool
       ?? SettingsDefaultValues.meetingWriteSummary
+    meetingOnboardingComplete =
+      defaults.object(forKey: "meetingOnboardingComplete") as? Bool
+      ?? SettingsDefaultValues.meetingOnboardingComplete
+    meetingUseCalendarForNames =
+      defaults.object(forKey: "meetingUseCalendarForNames") as? Bool
+      ?? SettingsDefaultValues.meetingUseCalendarForNames
     hotkeyEnabled = SettingsDefaultValues.hotkeyEnabled  // toggle removed; always enabled
     vadAutoStop =
       defaults.object(forKey: "vadAutoStop") as? Bool ?? SettingsDefaultValues.vadAutoStop
