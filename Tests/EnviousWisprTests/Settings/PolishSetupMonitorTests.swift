@@ -487,7 +487,8 @@ extension PolishSetupMonitorTests {
     #expect(monitor.freezeTakeContext().configurationRevision > take.configurationRevision)
   }
 
-  @Test("evidence is confirmed for the take's frozen provider, from the take's own proof or live facts")
+  @Test(
+    "evidence is confirmed for the take's frozen provider, from the take's own proof or live facts")
   func confirmsSetupProblems() {
     let world = World()
     world.facts = Self.facts(egOneInstall: .notInstalled, openAIKeySaved: nil)
@@ -796,7 +797,9 @@ extension PolishSetupMonitorTests {
     return monitor
   }
 
-  @Test("unknown presence: a rejection warns, a later success ends that episode, a new rejection starts afresh")
+  @Test(
+    "unknown presence: a rejection warns, a later success ends that episode, a new rejection starts afresh"
+  )
   func unknownPresenceRejectionEpisodes() throws {
     let world = World()
     world.facts = Self.facts(openAIKeySaved: nil)
@@ -1089,7 +1092,8 @@ extension PolishSetupMonitorTests {
   /// A take that missed polish because `stop` left no engine.
   private static func missed(
     _ take: PolishSetupTakeContext, id: String, stop: OutsideStopContext?,
-    result: PolishTakeResult = .skippedSilently, evidence: PolishSetupEvidence? = .localEngineNotReady,
+    result: PolishTakeResult = .skippedSilently,
+    evidence: PolishSetupEvidence? = .localEngineNotReady,
     recovery: OutsideStopContext? = nil
   ) -> PolishTakeOutcome {
     PolishTakeOutcome(
@@ -1098,11 +1102,14 @@ extension PolishSetupMonitorTests {
       outsideStopRecovery: recovery)
   }
 
-  @Test("an installed engine stopped from outside reads informational; a failed restart or no stop does not")
+  @Test(
+    "an installed engine stopped from outside reads informational; a failed restart or no stop does not"
+  )
   func stoppedOutsideReadiness() {
     let s1Stop = Self.stop(4, .s1Mini, nil)
     #expect(
-      PolishSetupReadiness.evaluate(provider: .egOne, facts: Self.localFacts(egOneStop: Self.stop(1)))
+      PolishSetupReadiness.evaluate(
+        provider: .egOne, facts: Self.localFacts(egOneStop: Self.stop(1)))
         == .problem(.localEngineStoppedOutside(.egOne, Self.stop(1))))
     #expect(
       PolishSetupReadiness.evaluate(provider: .s1Mini, facts: Self.localFacts(s1MiniStop: s1Stop))
@@ -1114,7 +1121,8 @@ extension PolishSetupMonitorTests {
         provider: .egOne,
         facts: Self.localFacts(egOneStop: Self.stop(1), egOneHealth: .red(reason: "crashed_twice")))
         == .noProblem)
-    #expect(PolishSetupProblem.localEngineStoppedOutside(.egOne, Self.stop(1)).isActionable == false)
+    #expect(
+      PolishSetupProblem.localEngineStoppedOutside(.egOne, Self.stop(1)).isActionable == false)
     #expect(
       PolishSetupProblem.localEngineStoppedOutside(.egOne, Self.stop(1)).telemetryTag
         == "local_stopped_outside")
@@ -1126,11 +1134,14 @@ extension PolishSetupMonitorTests {
     let monitor = Self.monitor(world)
     _ = monitor.currentContext()
     #expect(monitor.eligibleProblem == .localEngineStoppedOutside(.egOne, Self.stop(1)))
-    for surface in PolishSetupSurface.allCases { #expect(monitor.shows(surface) == false, "\(surface)") }
+    for surface in PolishSetupSurface.allCases {
+      #expect(monitor.shows(surface) == false, "\(surface)")
+    }
     #expect(monitor.cardTicket() == nil)
   }
 
-  @Test("a take that missed polish earns one notice, kept when the engine comes back before or after")
+  @Test(
+    "a take that missed polish earns one notice, kept when the engine comes back before or after")
   func noticeSurvivesRecovery() throws {
     let world = Self.stoppedWorld()
     let monitor = Self.monitor(world)
@@ -1148,7 +1159,8 @@ extension PolishSetupMonitorTests {
     world.facts = Self.localFacts()
     #expect(monitor.outsideStopNoticePresented(ticket))
     #expect(monitor.outsideStopNoticeStillApplies(ticket), "a shown notice stays after ready")
-    #expect(monitor.outsideStopNoticePresented(ticket) == false, "a duplicate receipt spends nothing")
+    #expect(
+      monitor.outsideStopNoticePresented(ticket) == false, "a duplicate receipt spends nothing")
     #expect(monitor.outsideStopNoticeTicket(for: outcome) == nil)
   }
 
@@ -1179,7 +1191,8 @@ extension PolishSetupMonitorTests {
     #expect(monitor.ingest(next) == false)
   }
 
-  @Test("only a frozen miss earns: polished, recovery-only, bypassed and other-engine outcomes do not")
+  @Test(
+    "only a frozen miss earns: polished, recovery-only, bypassed and other-engine outcomes do not")
   func onlyAFrozenMissEarns() {
     let world = Self.stoppedWorld()
     let monitor = Self.monitor(world)
@@ -1214,7 +1227,8 @@ extension PolishSetupMonitorTests {
     #expect(monitor.outsideStopNoticeTicket(for: outcome) == ticket, "the allowance was kept")
 
     // The restart failed: its red status takes over, the stop's context notwithstanding.
-    world.facts = Self.localFacts(egOneStop: Self.stop(1), egOneHealth: .red(reason: "crashed_twice"))
+    world.facts = Self.localFacts(
+      egOneStop: Self.stop(1), egOneHealth: .red(reason: "crashed_twice"))
     #expect(monitor.outsideStopNoticeTicket(for: outcome) == nil)
     #expect(monitor.outsideStopNoticeStillApplies(ticket) == false)
     world.facts = Self.localFacts()
@@ -1244,7 +1258,8 @@ extension PolishSetupMonitorTests {
     #expect(monitor.ingest(after))
     let ticket = try #require(monitor.outsideStopNoticeTicket(for: after))
     #expect(ticket.configurationRevision > oldTicket.configurationRevision)
-    #expect(monitor.outsideStopNoticePresented(oldTicket) == false, "a replaced ticket spends nothing")
+    #expect(
+      monitor.outsideStopNoticePresented(oldTicket) == false, "a replaced ticket spends nothing")
     #expect(monitor.outsideStopNoticePresented(ticket))
     #expect(monitor.outsideStopNoticePresented(ticket) == false)
 
@@ -1292,7 +1307,8 @@ extension PolishSetupMonitorTests {
     let generic = PolishSetupSurfaceCopy.outsideStopNotice(Self.stop(1, .egOne, .normal))
     let unknown = PolishSetupSurfaceCopy.outsideStopNotice(Self.stop(1, .egOne, nil))
     let low = PolishSetupSurfaceCopy.outsideStopNotice(Self.stop(1, .egOne, .critical))
-    #expect(generic == "This dictation was pasted without AI polish. We'll try again automatically.")
+    #expect(
+      generic == "This dictation was pasted without AI polish. We'll try again automatically.")
     #expect(unknown == generic)
     #expect(
       low
@@ -1357,7 +1373,8 @@ extension PolishSetupMonitorTests {
     ] {
       let clock = Clock()
       let world = World()
-      let monitor = Self.policyMonitor(world, clock: clock, store: OutsideStopNoticeStore(defaults: nil))
+      let monitor = Self.policyMonitor(
+        world, clock: clock, store: OutsideStopNoticeStore(defaults: nil))
       // Stop 2's take misses BEFORE (or after) the first notice appears.
       var early: PolishTakeOutcome?
       if offset < 0 {
@@ -1387,10 +1404,12 @@ extension PolishSetupMonitorTests {
   func missTimeDecides() throws {
     let clock = Clock()
     let world = World()
-    let monitor = Self.policyMonitor(world, clock: clock, store: OutsideStopNoticeStore(defaults: nil))
+    let monitor = Self.policyMonitor(
+      world, clock: clock, store: OutsideStopNoticeStore(defaults: nil))
     let first = Self.miss(monitor, world, clock: clock, stop: Self.stop(1))
     #expect(monitor.ingest(first))
-    #expect(monitor.outsideStopNoticePresented(try #require(monitor.outsideStopNoticeTicket(for: first))))
+    #expect(
+      monitor.outsideStopNoticePresented(try #require(monitor.outsideStopNoticeTicket(for: first))))
     clock.advance(Self.day - 60)
     let second = Self.miss(monitor, world, clock: clock, stop: Self.stop(2))
     // Delivered two minutes later, past the day: it missed inside it.
@@ -1414,10 +1433,12 @@ extension PolishSetupMonitorTests {
     world.onboardingComplete = true
     #expect(monitor.outsideStopNoticePresented(ticket))
     #expect(store.date(OutsideStopNoticeStore.firstShownKey(.egOne)) == clock.wall)
-    #expect(store.date(OutsideStopNoticeStore.muteUntilKey) == nil, "a first notice starts no quiet")
+    #expect(
+      store.date(OutsideStopNoticeStore.muteUntilKey) == nil, "a first notice starts no quiet")
   }
 
-  @Test("the repeat notice starts a quiet for every engine; it stays usable; muted misses never replay")
+  @Test(
+    "the repeat notice starts a quiet for every engine; it stays usable; muted misses never replay")
   func quietAfterTheRepeat() throws {
     let clock = Clock()
     let world = World()
@@ -1425,14 +1446,16 @@ extension PolishSetupMonitorTests {
     let monitor = Self.policyMonitor(world, clock: clock, store: store)
     let first = Self.miss(monitor, world, clock: clock, stop: Self.stop(1))
     #expect(monitor.ingest(first))
-    #expect(monitor.outsideStopNoticePresented(try #require(monitor.outsideStopNoticeTicket(for: first))))
+    #expect(
+      monitor.outsideStopNoticePresented(try #require(monitor.outsideStopNoticeTicket(for: first))))
     clock.advance(3600)
     let repeated = Self.miss(monitor, world, clock: clock, stop: Self.stop(2))
     #expect(monitor.ingest(repeated))
     let repeatTicket = try #require(monitor.outsideStopNoticeTicket(for: repeated))
     #expect(repeatTicket.variant == .escalated)
     #expect(monitor.outsideStopNoticePresented(repeatTicket))
-    #expect(store.date(OutsideStopNoticeStore.muteUntilKey) == clock.wall.addingTimeInterval(Self.day))
+    #expect(
+      store.date(OutsideStopNoticeStore.muteUntilKey) == clock.wall.addingTimeInterval(Self.day))
     #expect(monitor.outsideStopNoticeStillApplies(repeatTicket), "its own quiet does not end it")
 
     // S1-mini, an hour later: quiet.
@@ -1449,7 +1472,9 @@ extension PolishSetupMonitorTests {
     #expect(monitor.outsideStopNoticeTicket(for: fresh)?.variant == .first)
   }
 
-  @Test("history and the quiet survive a relaunch; missing keys mean none; a clock set back cannot stretch it")
+  @Test(
+    "history and the quiet survive a relaunch; missing keys mean none; a clock set back cannot stretch it"
+  )
   func persistedPolicy() throws {
     let (defaults, cleanup) = try Self.scratchDefaults()
     defer { cleanup() }
@@ -1466,9 +1491,11 @@ extension PolishSetupMonitorTests {
       world, clock: clock, store: OutsideStopNoticeStore(defaults: defaults))
     let take = Self.miss(relaunched, world, clock: clock, stop: Self.stop(1))
     #expect(relaunched.ingest(take))
-    #expect(relaunched.outsideStopNoticeTicket(for: take) == nil, "the saved quiet holds after relaunch")
+    #expect(
+      relaunched.outsideStopNoticeTicket(for: take) == nil, "the saved quiet holds after relaunch")
     // Cut to a day from now and saved, so reading again cannot push it out.
-    let bounded = OutsideStopNoticeStore(defaults: defaults).date(OutsideStopNoticeStore.muteUntilKey)
+    let bounded = OutsideStopNoticeStore(defaults: defaults).date(
+      OutsideStopNoticeStore.muteUntilKey)
     #expect(bounded == clock.wall.addingTimeInterval(Self.day))
     clock.advance(Self.day + 1)
     let later = Self.miss(relaunched, world, clock: clock, stop: Self.stop(2))
@@ -1487,9 +1514,12 @@ extension PolishSetupMonitorTests {
     OutsideStopNoticeStore(defaults: devDefaults).set(
       Date(timeIntervalSince1970: 5), for: OutsideStopNoticeStore.muteUntilKey)
     #expect(
-      OutsideStopNoticeStore(defaults: prodDefaults).date(OutsideStopNoticeStore.muteUntilKey) == nil)
+      OutsideStopNoticeStore(defaults: prodDefaults).date(OutsideStopNoticeStore.muteUntilKey)
+        == nil)
     #expect(
-      SettingsManager.unifiedDefaultsKeys.contains { $0.hasPrefix(OutsideStopNoticeStore.keyPrefix) }
+      SettingsManager.unifiedDefaultsKeys.contains {
+        $0.hasPrefix(OutsideStopNoticeStore.keyPrefix)
+      }
         == false)
   }
 
@@ -1506,7 +1536,8 @@ extension PolishSetupMonitorTests {
   ) throws {
     let first = Self.miss(monitor, world, clock: clock, stop: Self.stop(1))
     #expect(monitor.ingest(first))
-    #expect(monitor.outsideStopNoticePresented(try #require(monitor.outsideStopNoticeTicket(for: first))))
+    #expect(
+      monitor.outsideStopNoticePresented(try #require(monitor.outsideStopNoticeTicket(for: first))))
     clock.advance(3600)
     let repeated = Self.miss(monitor, world, clock: clock, stop: Self.stop(2))
     #expect(monitor.ingest(repeated))
@@ -1519,7 +1550,8 @@ extension PolishSetupMonitorTests {
   func missedDuringQuietNeverReplays() throws {
     let clock = Clock()
     let world = World()
-    let monitor = Self.policyMonitor(world, clock: clock, store: OutsideStopNoticeStore(defaults: nil))
+    let monitor = Self.policyMonitor(
+      world, clock: clock, store: OutsideStopNoticeStore(defaults: nil))
     try Self.quietStarted(monitor, world, clock: clock)
     let muted = Self.miss(monitor, world, clock: clock, stop: Self.stop(3, .egOne, .normal))
     #expect(monitor.ingest(muted))
@@ -1530,15 +1562,31 @@ extension PolishSetupMonitorTests {
     #expect(monitor.ingest(fresh))
     let ticket = try #require(monitor.outsideStopNoticeTicket(for: fresh))
     #expect(ticket.stop.memoryPressure == .critical)
-    #expect(monitor.outsideStopNoticeTicket(for: muted) == nil, "the old take never gets the new offer")
+    #expect(
+      monitor.outsideStopNoticeTicket(for: muted) == nil, "the old take never gets the new offer")
     #expect(ticket.takeID == fresh.takeID)
+  }
+
+  @Test("a miss inside the quiet whose take concludes after it is not shown")
+  func delayedMutedMissNeverReplays() throws {
+    let clock = Clock()
+    let world = World()
+    let monitor = Self.policyMonitor(
+      world, clock: clock, store: OutsideStopNoticeStore(defaults: nil))
+    try Self.quietStarted(monitor, world, clock: clock)
+    clock.advance(Self.day - 1)
+    let muted = Self.miss(monitor, world, clock: clock, stop: Self.stop(3))
+    clock.advance(2)
+    #expect(monitor.ingest(muted))
+    #expect(monitor.outsideStopNoticeTicket(for: muted) == nil)
   }
 
   @Test("a ticket offered before the quiet cannot present inside it or after it")
   func ticketAcrossTheQuiet() throws {
     let clock = Clock()
     let world = World()
-    let monitor = Self.policyMonitor(world, clock: clock, store: OutsideStopNoticeStore(defaults: nil))
+    let monitor = Self.policyMonitor(
+      world, clock: clock, store: OutsideStopNoticeStore(defaults: nil))
     // Stop 3's take is offered (its card waiting for a first render); the quiet then starts.
     let early = Self.miss(monitor, world, clock: clock, stop: Self.stop(3))
     #expect(monitor.ingest(early))
@@ -1550,19 +1598,23 @@ extension PolishSetupMonitorTests {
     #expect(monitor.outsideStopNoticeTicket(for: early) == nil)
   }
 
-  @Test("first-notice history and the quiet are written by real presentations and survive recreation")
+  @Test(
+    "first-notice history and the quiet are written by real presentations and survive recreation")
   func historyThroughRecreation() throws {
     let (defaults, cleanup) = try Self.scratchDefaults()
     defer { cleanup() }
     let clock = Clock()
     let world = World()
-    let first = Self.policyMonitor(world, clock: clock, store: OutsideStopNoticeStore(defaults: defaults))
+    let first = Self.policyMonitor(
+      world, clock: clock, store: OutsideStopNoticeStore(defaults: defaults))
     let firstTake = Self.miss(first, world, clock: clock, stop: Self.stop(1))
     #expect(first.ingest(firstTake))
-    #expect(first.outsideStopNoticePresented(try #require(first.outsideStopNoticeTicket(for: firstTake))))
+    #expect(
+      first.outsideStopNoticePresented(try #require(first.outsideStopNoticeTicket(for: firstTake))))
 
     clock.advance(3600)
-    let second = Self.policyMonitor(world, clock: clock, store: OutsideStopNoticeStore(defaults: defaults))
+    let second = Self.policyMonitor(
+      world, clock: clock, store: OutsideStopNoticeStore(defaults: defaults))
     let secondTake = Self.miss(second, world, clock: clock, stop: Self.stop(2))
     #expect(second.ingest(secondTake))
     let repeatTicket = try #require(second.outsideStopNoticeTicket(for: secondTake))
@@ -1570,7 +1622,8 @@ extension PolishSetupMonitorTests {
     #expect(second.outsideStopNoticePresented(repeatTicket))
 
     clock.advance(3600)
-    let third = Self.policyMonitor(world, clock: clock, store: OutsideStopNoticeStore(defaults: defaults))
+    let third = Self.policyMonitor(
+      world, clock: clock, store: OutsideStopNoticeStore(defaults: defaults))
     let thirdTake = Self.miss(third, world, clock: clock, stop: Self.stop(3))
     #expect(third.ingest(thirdTake))
     #expect(third.outsideStopNoticeTicket(for: thirdTake) == nil, "the quiet survived the relaunch")
@@ -1581,11 +1634,14 @@ extension PolishSetupMonitorTests {
 
 extension PolishSetupMonitorTests {
 
-  @Test("an offer belongs to its take: old tickets, callbacks and re-deliveries never touch a newer one")
+  @Test(
+    "an offer belongs to its take: old tickets, callbacks and re-deliveries never touch a newer one"
+  )
   func offersBelongToTakes() throws {
     var notices = OutsideStopNotices()
     let missed = Date(timeIntervalSince1970: 1)
-    let earnedA = notices.earn(Self.stop(1), configurationRevision: 1, missedAt: missed, takeID: "A")
+    let earnedA = notices.earn(
+      Self.stop(1), configurationRevision: 1, missedAt: missed, takeID: "A")
     #expect(earnedA)
     let ticketA = try #require(notices.ticket(for: Self.stop(1), ownedBy: "A"))
     notices.suppress(Self.stop(1), ownedBy: "A")
@@ -1603,9 +1659,11 @@ extension PolishSetupMonitorTests {
     notices.suppress(Self.stop(1), ownedBy: "A")
     #expect(notices.ticket(for: Self.stop(1), ownedBy: "B") == ticketB)
     // A delivered again cannot take the stop back.
-    let reEarnA = notices.earn(Self.stop(1), configurationRevision: 1, missedAt: missed, takeID: "A")
+    let reEarnA = notices.earn(
+      Self.stop(1), configurationRevision: 1, missedAt: missed, takeID: "A")
     #expect(reEarnA == false)
-    let reEarnB = notices.earn(Self.stop(1), configurationRevision: 1, missedAt: missed, takeID: "B")
+    let reEarnB = notices.earn(
+      Self.stop(1), configurationRevision: 1, missedAt: missed, takeID: "B")
     #expect(reEarnB == false, "the owner re-delivered makes no new offer")
     #expect(notices.ticket(for: Self.stop(1), ownedBy: "B") == ticketB)
     let spentB = notices.presented(ticketB)

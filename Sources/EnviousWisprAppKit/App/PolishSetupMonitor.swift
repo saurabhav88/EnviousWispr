@@ -612,8 +612,15 @@ final class PolishSetupMonitor {
       outsideStopNotices.earn(
         outsideStop, configurationRevision: take.configurationRevision, missedAt: missedAt,
         takeID: outcome.takeID)
-      // Missed inside the quiet: refused now, not when someone asks.
-      if isMuted(except: nil) { outsideStopNotices.suppress(outsideStop, ownedBy: outcome.takeID) }
+      // Missed inside the quiet: refused now, not when someone asks. Timed by the miss, so a
+      // take that concludes just after the quiet ends cannot replay a miss made inside it.
+      let missedDuringQuiet =
+        noticeStore.date(OutsideStopNoticeStore.muteUntilKey).map { deadline in
+          missedAt >= deadline.addingTimeInterval(-Self.quiet) && missedAt < deadline
+        } ?? false
+      if missedDuringQuiet || isMuted(except: nil) {
+        outsideStopNotices.suppress(outsideStop, ownedBy: outcome.takeID)
+      }
     }
 
     // A bypassed (too short) or skipped take asked no model, so only `.polished` is repair.
@@ -749,7 +756,6 @@ final class PolishSetupMonitor {
     return verdict.lastDefinitive?.decidedAt
   }
 
-
   /// Newer wins, for the same saved key only; a different key replaces it outright.
   private func recordCloudKeyTakeObservation(
     rejected: Bool, configuration: PolishSetupConfiguration, observedAt: ContinuousClock.Instant
@@ -813,7 +819,8 @@ final class PolishSetupMonitor {
     if isMuted(except: nil) {
       // Drawn inside the quiet: refused for good, this offer never comes back after it. Only
       // if it is still this ticket's offer: a stale callback never touches a newer take's.
-      if outsideStopNotices.ticket(for: ticket.stop, ownedBy: ticket.takeID)?.offer == ticket.offer {
+      if outsideStopNotices.ticket(for: ticket.stop, ownedBy: ticket.takeID)?.offer == ticket.offer
+      {
         outsideStopNotices.suppress(ticket.stop, ownedBy: ticket.takeID)
       }
       return false
@@ -933,7 +940,9 @@ final class PolishSetupMonitor {
     reconcile()
   }
 
-  private func recordOllamaServer(_ problem: PolishSetupProblem?, at observedAt: ContinuousClock.Instant) {
+  private func recordOllamaServer(
+    _ problem: PolishSetupProblem?, at observedAt: ContinuousClock.Instant
+  ) {
     if let current = ollamaServerObservation, current.observedAt >= observedAt { return }
     ollamaServerObservation = (problem, observedAt)
   }

@@ -398,11 +398,28 @@ public actor LocalPolishServerCoordinator {
   /// actor's turn with no suspension in between, so a refusal can never be
   /// paired with evidence from a later moment. The manager checks the
   /// provider itself, so another engine's request cannot use up attribution.
+  ///
+  /// A process change that finished while the snapshot was awaited can leave
+  /// it holding the outgoing server's endpoint. Once granted, the lease defers
+  /// every further process change, so the endpoint is read again under it and
+  /// the take talks to the server it holds. The stop evidence stays frozen at
+  /// the snapshot.
   public func admitPolish(
     for provider: LLMProvider, takeID: String?
   ) async -> (admission: LocalPolishLeaseAdmission, availability: EGOneServerManager.Availability) {
     let availability = await manager.observeAvailability(for: provider, claimingFor: takeID)
-    return (acquireLease(for: provider), availability)
+    let admission = acquireLease(for: provider)
+    guard case .granted = admission, availability.endpoint != nil else {
+      return (admission, availability)
+    }
+    let held = await manager.activeEndpoint()
+    guard held != availability.endpoint else { return (admission, availability) }
+    return (
+      admission,
+      EGOneServerManager.Availability(
+        endpoint: held, outstandingOutsideStop: availability.outstandingOutsideStop,
+        recoveryOutsideStop: availability.recoveryOutsideStop)
+    )
   }
 
   public func endpoint(for provider: LLMProvider) async -> EGOneEndpoint? {
