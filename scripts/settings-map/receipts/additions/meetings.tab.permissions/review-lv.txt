@@ -1,0 +1,1 @@
+{"language":"lv","title":"atļaujas","words":["sapulču ierakstīšanas atļaujas"],"phrases":["EnviousMeet atļaujas","pārbaudīt sapulču ierakstīšanai vajadzīgās atļaujas"]}

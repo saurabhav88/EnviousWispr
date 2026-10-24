@@ -1,0 +1,1 @@
+{"language":"hu","title":"engedélyek","words":["rögzítési engedélyek"],"phrases":["EnviousMeet engedélyei","engedélyek a megbeszélések rögzítéséhez"]}

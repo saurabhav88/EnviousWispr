@@ -12,9 +12,9 @@ Generated from the compiled Settings Map and the validated search vocabulary. Do
 
 The interface ships in English and German. The other 30 languages (ar, bg, cs, da, el, es, et, fi, fr, hi, hr, hu, it, ja, ko, lt, lv, mt, nl, pl, pt, ro, ru, sk, sl, sv, tr, uk, vi, zh) are search metadata only: words and titles people may type, matched against the same places. Titles below read English / German.
 
-281 nodes, 254 searchable, 8128 vocabulary blocks.
+284 nodes, 257 searchable, 8224 vocabulary blocks.
 
-Fingerprints: mapSHA256 `1f9f351170f097ca51cb4544ccbc0163a29a82316c76b0ce24e03c3607b60300`, uiCatalogSHA256 `5b7a0ef6fca4a460a0dd43578ac4ac1e43afbc0c95639d684bac3c67a3d8bae0`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `332402ba6b0b126ca48211786bb69c6c017b4c41b963701c4526b44de1bd5c4f`
+Fingerprints: mapSHA256 `24061e6092271327669c5f228c05fa442970953bb4c084d99aae8975fe7ea7a0`, uiCatalogSHA256 `2180e869b51b790ade202a803d19aeb13282faa74fc8cc96bb784a68e26f0863`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `cae02edd4ef7193550e77b8ada9060b4c4c90ae8facf6fd41d44086d2d974765`
 
 ## Structure
 
@@ -282,11 +282,14 @@ Fingerprints: mapSHA256 `1f9f351170f097ca51cb4544ccbc0163a29a82316c76b0ce24e03c3
       - [Paste last dictation / Letztes Diktat einfügen](#node-pasteLastKeybind) `pasteLastKeybind` (setting)
       - [Copy last dictation / Letztes Diktat kopieren](#node-copyLastKeybind) `copyLastKeybind` (setting)
   - [EnviousMeet / EnviousMeet](#node-page-meetings) `page.meetings` (page)
-    - [Also record the call sound / Auch den Ton vom Mac aufnehmen](#node-meetingCaptureCallSound) `meetingCaptureCallSound` (setting)
-    - [Write a summary when a meeting ends / Zusammenfassung erstellen, wenn ein Meeting endet](#node-meetingWriteSummary) `meetingWriteSummary` (setting)
-    - [Name meetings from my calendar / Meetings nach meinem Kalender benennen](#node-meetingUseCalendarForNames) `meetingUseCalendarForNames` (setting)
-    - [When a call starts / Wenn ein Anruf beginnt](#node-meetingCallDetection) `meetingCallDetection` (setting)
-    - [Ask to record calls in / Bei Anrufen in diesen Apps nachfragen](#node-meetingCallApps) `meetingCallApps` (setting)
+    - [General / Allgemein](#node-meetings-tab-general) `meetings.tab.general` (feature)
+      - [Record only my voice / Nur meine Stimme aufnehmen](#node-meetingCaptureCallSound) `meetingCaptureCallSound` (setting)
+      - [Write a summary when a meeting ends / Zusammenfassung erstellen, wenn ein Meeting endet](#node-meetingWriteSummary) `meetingWriteSummary` (setting)
+      - [Name meetings from my calendar / Meetings nach meinem Kalender benennen](#node-meetingUseCalendarForNames) `meetingUseCalendarForNames` (setting)
+      - [When a call starts / Wenn ein Anruf beginnt](#node-meetingCallDetection) `meetingCallDetection` (setting)
+    - [Call Apps / Anruf-Apps](#node-meetings-tab-callApps) `meetings.tab.callApps` (feature)
+      - [Notice calls in / Anrufe erkennen in](#node-meetingCallApps) `meetingCallApps` (setting)
+    - [Permissions / Berechtigungen](#node-meetings-tab-permissions) `meetings.tab.permissions` (feature)
   - [Snippets / Textbausteine](#node-page-snippets) `page.snippets` (page)
     - [Paste the text you type over and over, by voice / Füge Text, den du oft tippst, per Stimme ein](#node-snippets) `snippets` (feature)
     - [Keyword / Schlüsselwort](#node-snippetKeyword) `snippetKeyword` (setting)
@@ -439,7 +442,7 @@ Fingerprints: mapSHA256 `1f9f351170f097ca51cb4544ccbc0163a29a82316c76b0ce24e03c3
 | Parent | [`window.settings`](#node-window-settings) |
 | Title source | catalog key `EnviousMeet` |
 | Description | none |
-| Destination | `meetings` |
+| Destination | `meetings` › `general` |
 | Dictionary tab | none |
 | Shown when | `always` |
 | Arrival target | none |
@@ -2484,24 +2487,24 @@ Fingerprints: mapSHA256 `1f9f351170f097ca51cb4544ccbc0163a29a82316c76b0ce24e03c3
 
 <a id="node-meetingCaptureCallSound"></a>
 
-### Also record the call sound / Auch den Ton vom Mac aufnehmen (`meetingCaptureCallSound`)
+### Record only my voice / Nur meine Stimme aufnehmen (`meetingCaptureCallSound`)
 
 | Field | Value |
 |---|---|
 | Structure | item |
 | Kind | setting |
-| Parent | [`page.meetings`](#node-page-meetings) |
-| Title source | catalog key `Also record the call sound` |
-| Description | Records what your Mac plays, like the other people on a call. / Nimmt auf, was dein Mac abspielt, zum Beispiel die Stimmen anderer Personen bei einem Anruf. |
-| Description source | catalog key `Records what your Mac plays, like the other people on a call.` |
-| Destination | `meetings` |
+| Parent | [`meetings.tab.general`](#node-meetings-tab-general) |
+| Title source | catalog key `Record only my voice` |
+| Description | Leaves out the sound your Mac plays, like the other people on a call. / Lässt den Ton weg, den dein Mac abspielt, zum Beispiel die Stimmen anderer Personen bei einem Anruf. |
+| Description source | catalog key `Leaves out the sound your Mac plays, like the other people on a call.` |
+| Destination | `meetings` › `general` |
 | Dictionary tab | none |
 | Shown when | `always` |
 | Arrival target | [`meetingCaptureCallSound`](#node-meetingCaptureCallSound) |
 | Fallbacks, in order | none |
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
-| Search (en) | words: system audio, computer audio, other participants<br>phrases: record what my Mac plays; capture the other people on the call |
-| Search (de) | words: Systemaudio, Systemton, Computerton, Gesprächspartner<br>phrases: nimm den Ton vom Mac mit auf; nimm die anderen im Anruf mit auf; zeichne den Systemton auf |
+| Search (en) | phrases: don't record computer audio; leave out other people's voices on calls |
+| Search (de) | phrases: lass den Ton vom Mac bei Aufnahmen weg; nimm die anderen im Anruf nicht auf |
 | Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingWriteSummary"></a>
@@ -2512,11 +2515,11 @@ Fingerprints: mapSHA256 `1f9f351170f097ca51cb4544ccbc0163a29a82316c76b0ce24e03c3
 |---|---|
 | Structure | item |
 | Kind | setting |
-| Parent | [`page.meetings`](#node-page-meetings) |
+| Parent | [`meetings.tab.general`](#node-meetings-tab-general) |
 | Title source | catalog key `Write a summary when a meeting ends` |
 | Description | Your AI Polish provider writes a summary of each meeting. / Dein Anbieter für KI-Nachbearbeitung erstellt eine Zusammenfassung für jedes Meeting. |
 | Description source | catalog key `Your AI Polish provider writes a summary of each meeting.` |
-| Destination | `meetings` |
+| Destination | `meetings` › `general` |
 | Dictionary tab | none |
 | Shown when | `always` |
 | Arrival target | [`meetingWriteSummary`](#node-meetingWriteSummary) |
@@ -2534,11 +2537,11 @@ Fingerprints: mapSHA256 `1f9f351170f097ca51cb4544ccbc0163a29a82316c76b0ce24e03c3
 |---|---|
 | Structure | item |
 | Kind | setting |
-| Parent | [`page.meetings`](#node-page-meetings) |
+| Parent | [`meetings.tab.general`](#node-meetings-tab-general) |
 | Title source | catalog key `Name meetings from my calendar` |
 | Description | Uses the title of the calendar event at the time the meeting starts. / Nutzt den Titel des Kalendertermins zum Zeitpunkt, an dem das Meeting beginnt. |
 | Description source | catalog key `Uses the title of the calendar event at the time the meeting starts.` |
-| Destination | `meetings` |
+| Destination | `meetings` › `general` |
 | Dictionary tab | none |
 | Shown when | `always` |
 | Arrival target | [`meetingUseCalendarForNames`](#node-meetingUseCalendarForNames) |
@@ -2556,11 +2559,11 @@ Fingerprints: mapSHA256 `1f9f351170f097ca51cb4544ccbc0163a29a82316c76b0ce24e03c3
 |---|---|
 | Structure | item |
 | Kind | setting |
-| Parent | [`page.meetings`](#node-page-meetings) |
+| Parent | [`meetings.tab.general`](#node-meetings-tab-general) |
 | Title source | catalog key `When a call starts` |
 | Description | EnviousMeet can ask to record when a call app starts using your microphone. / EnviousMeet kann dich fragen, ob du einen Anruf aufnehmen möchtest, sobald eine Anruf-App dein Mikrofon nutzt. |
 | Description source | catalog key `EnviousMeet can ask to record when a call app starts using your microphone.` |
-| Destination | `meetings` |
+| Destination | `meetings` › `general` |
 | Dictionary tab | none |
 | Shown when | `always` |
 | Arrival target | [`meetingCallDetection`](#node-meetingCallDetection) |
@@ -2572,24 +2575,24 @@ Fingerprints: mapSHA256 `1f9f351170f097ca51cb4544ccbc0163a29a82316c76b0ce24e03c3
 
 <a id="node-meetingCallApps"></a>
 
-### Ask to record calls in / Bei Anrufen in diesen Apps nachfragen (`meetingCallApps`)
+### Notice calls in / Anrufe erkennen in (`meetingCallApps`)
 
 | Field | Value |
 |---|---|
 | Structure | item |
 | Kind | setting |
-| Parent | [`page.meetings`](#node-page-meetings) |
-| Title source | catalog key `Ask to record calls in` |
+| Parent | [`meetings.tab.callApps`](#node-meetings-tab-callApps) |
+| Title source | catalog key `Notice calls in` |
 | Description | Turn off an app to never be asked about its calls. / Wenn du eine App ausschaltest, fragt EnviousMeet bei Anrufen über diese App nicht mehr nach. |
 | Description source | catalog key `Turn off an app to never be asked about its calls.` |
-| Destination | `meetings` |
+| Destination | `meetings` › `callApps` |
 | Dictionary tab | none |
 | Shown when | `always` |
 | Arrival target | [`meetingCallApps`](#node-meetingCallApps) |
 | Fallbacks, in order | none |
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
-| Search (en) | words: call apps, recording prompts<br>phrases: choose which apps ask to record calls; stop asking to record calls in an app |
-| Search (de) | words: Anruf-Apps, Aufnahmenachfrage<br>phrases: wähle aus, für welche Apps EnviousMeet eine Aufnahme anbietet; schalte die Nachfrage zur Aufnahme für eine App aus; schalte Aufnahmevorschläge für Meetings im Browser aus |
+| Search (en) | words: call apps<br>phrases: choose which apps to detect calls in; stop asking about calls in this app |
+| Search (de) | words: Anruferkennung<br>phrases: wähle aus, in welchen Apps Anrufe erkannt werden; frag mich bei Anrufen in dieser App nicht mehr nach einer Aufnahme; schalte die Anruferkennung für einzelne Apps aus |
 | Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-enableAIPolish"></a>
@@ -4228,6 +4231,69 @@ Fingerprints: mapSHA256 `1f9f351170f097ca51cb4544ccbc0163a29a82316c76b0ce24e03c3
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: clear the search field in my snippet list |
 | Search (de) | phrases: das Suchfeld in meiner Textbausteinliste leeren |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-meetings-tab-general"></a>
+
+### General / Allgemein (`meetings.tab.general`)
+
+| Field | Value |
+|---|---|
+| Structure | tab |
+| Kind | feature |
+| Parent | [`page.meetings`](#node-page-meetings) |
+| Title source | catalog key `General` |
+| Description | none |
+| Destination | `meetings` › `general` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`meetings.tab.general`](#node-meetings-tab-general) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | phrases: general EnviousMeet settings |
+| Search (de) | phrases: allgemeine Einstellungen für EnviousMeet |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-meetings-tab-callApps"></a>
+
+### Call Apps / Anruf-Apps (`meetings.tab.callApps`)
+
+| Field | Value |
+|---|---|
+| Structure | tab |
+| Kind | feature |
+| Parent | [`page.meetings`](#node-page-meetings) |
+| Title source | catalog key `Call Apps` |
+| Description | none |
+| Destination | `meetings` › `callApps` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`meetings.tab.callApps`](#node-meetings-tab-callApps) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | words: Zoom, Microsoft Teams, FaceTime, Slack, Webex, Google Meet<br>phrases: choose which apps to watch for calls; turn off call detection for Zoom |
+| Search (de) | words: Zoom, Microsoft Teams, FaceTime, Slack, Webex, Google Meet<br>phrases: lege fest, bei welchen Apps EnviousMeet Anrufe erkennt; schalte die Anruferkennung für Zoom aus; schalte die Anruferkennung für Meetings im Browser aus |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-meetings-tab-permissions"></a>
+
+### Permissions / Berechtigungen (`meetings.tab.permissions`)
+
+| Field | Value |
+|---|---|
+| Structure | tab |
+| Kind | feature |
+| Parent | [`page.meetings`](#node-page-meetings) |
+| Title source | catalog key `Permissions` |
+| Description | none |
+| Destination | `meetings` › `permissions` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`meetings.tab.permissions`](#node-meetings-tab-permissions) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | words: meeting permissions, call sound<br>phrases: EnviousMeet permissions; check permissions for meeting recording; allow microphone access for meeting recording |
+| Search (de) | phrases: Berechtigungen für EnviousMeet; welche Berechtigungen braucht EnviousMeet |
 | Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-appSettings-tab-appearance"></a>

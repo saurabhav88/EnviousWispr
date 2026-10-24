@@ -1,0 +1,1 @@
+{"language":"nl","title":"oproepen herkennen in apps","words":["belapps"],"phrases":["kiezen in welke apps oproepen worden herkend","niet meer vragen om gesprekken in deze app op te nemen"]}

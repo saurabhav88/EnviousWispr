@@ -1,0 +1,309 @@
+{
+ "id": "meetingCallApps",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "اكتشاف المكالمات في التطبيقات",
+   "words": [],
+   "phrases": [
+    "اختيار التطبيقات لاكتشاف مكالماتها",
+    "عدم السؤال عن مكالمات تطبيق معين"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "откриване на обаждания в приложения",
+   "words": [],
+   "phrases": [
+    "в кои приложения да се откриват обаждания",
+    "без въпроси за обажданията в това приложение"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "rozpoznávání hovorů v aplikacích",
+   "words": [],
+   "phrases": [
+    "ve kterých aplikacích rozpoznávat hovory",
+    "neptat se na hovory v této aplikaci"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "registrer opkald i apps",
+   "words": [],
+   "phrases": [
+    "vælg apps til registrering af opkald",
+    "spørg ikke om opkald i denne app"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [
+    "Anruferkennung"
+   ],
+   "phrases": [
+    "wähle Apps für die Anruferkennung",
+    "frag mich nicht mehr nach Anrufen in dieser App"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "εντοπισμός κλήσεων σε εφαρμογές",
+   "words": [],
+   "phrases": [
+    "σε ποιες εφαρμογές να εντοπίζονται κλήσεις",
+    "να μη με ρωτάει για κλήσεις σε αυτή την εφαρμογή"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [
+    "call detection"
+   ],
+   "phrases": [
+    "choose which apps to detect calls in",
+    "stop asking about calls in this app"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "detectar llamadas en aplicaciones",
+   "words": [],
+   "phrases": [
+    "elegir en qué apps detectar llamadas",
+    "dejar de preguntar por las llamadas de esta app"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "kõnede tuvastamine rakendustes",
+   "words": [],
+   "phrases": [
+    "millistes äppides kõnesid tuvastada",
+    "ära küsi selle äpi kõnede kohta"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "puhelujen tunnistus sovelluksissa",
+   "words": [],
+   "phrases": [
+    "missä sovelluksissa puhelut tunnistetaan",
+    "älä kysy tämän sovelluksen puheluista"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "détecter les appels dans les applications",
+   "words": [],
+   "phrases": [
+    "choisir les applis où détecter les appels",
+    "ne plus me demander pour les appels de cette appli"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "ऐप्स में कॉल का पता लगाना",
+   "words": [],
+   "phrases": [
+    "किन ऐप्स में कॉल का पता लगाना है",
+    "इस ऐप की कॉल के बारे में मत पूछो"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "prepoznavanje poziva u aplikacijama",
+   "words": [],
+   "phrases": [
+    "u kojim aplikacijama prepoznavati pozive",
+    "ne pitaj za pozive u ovoj aplikaciji"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "hívások felismerése alkalmazásokban",
+   "words": [],
+   "phrases": [
+    "melyik appokban ismerje fel a hívásokat",
+    "ne kérdezzen rá az app hívásaira"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "rilevare le chiamate nelle app",
+   "words": [],
+   "phrases": [
+    "scegliere in quali app rilevare le chiamate",
+    "non chiedermi più delle chiamate di questa app"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "アプリ内の通話を検出",
+   "words": [],
+   "phrases": [
+    "通話を検出するアプリを選ぶ",
+    "このアプリの通話について確認しない"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "앱에서 통화 감지",
+   "words": [],
+   "phrases": [
+    "통화를 감지할 앱 선택",
+    "이 앱의 통화에 대해 그만 물어보기"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "skambučių aptikimas programėlėse",
+   "words": [],
+   "phrases": [
+    "kuriose programėlėse aptikti skambučius",
+    "nebeklausti apie skambučius šioje programėlėje"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "zvanu noteikšana lietotnēs",
+   "words": [],
+   "phrases": [
+    "kurās lietotnēs noteikt zvanus",
+    "vairs nejautāt par zvaniem šajā lietotnē"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "sejbien ta’ sejħiet fl-apps",
+   "words": [],
+   "phrases": [
+    "agħżel f’liema apps jinstabu s-sejħiet",
+    "tibqax tistaqsini dwar sejħiet f’din l-app"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "oproepen herkennen in apps",
+   "words": [
+    "gespreksdetectie"
+   ],
+   "phrases": [
+    "kiezen in welke apps gesprekken worden herkend",
+    "niet meer vragen over gesprekken in deze app"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "wykrywanie połączeń w aplikacjach",
+   "words": [
+    "rozmowy"
+   ],
+   "phrases": [
+    "w których aplikacjach wykrywać połączenia",
+    "nie pytaj o połączenia w tej aplikacji"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "detetar chamadas em aplicações",
+   "words": [
+    "detectar chamadas"
+   ],
+   "phrases": [
+    "escolher em quais apps detetar chamadas",
+    "parar de perguntar sobre chamadas deste app"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "detectarea apelurilor în aplicații",
+   "words": [],
+   "phrases": [
+    "în ce aplicații să detecteze apelurile",
+    "nu mai întreba despre apelurile din această aplicație"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "обнаружение звонков в приложениях",
+   "words": [
+    "распознавание звонков"
+   ],
+   "phrases": [
+    "в каких приложениях определять звонки",
+    "не спрашивать о звонках в этом приложении"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "rozpoznávanie hovorov v aplikáciách",
+   "words": [],
+   "phrases": [
+    "v ktorých aplikáciách rozpoznávať hovory",
+    "nepýtať sa na hovory v tejto aplikácii"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "zaznavanje klicev v aplikacijah",
+   "words": [],
+   "phrases": [
+    "v katerih aplikacijah zaznavati klice",
+    "ne sprašuj o klicih v tej aplikaciji"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "upptäck samtal i appar",
+   "words": [],
+   "phrases": [
+    "välj vilka appar som ska känna av samtal",
+    "fråga inte om samtal i den här appen"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "uygulamalarda arama algılama",
+   "words": [
+    "çağrı algılama"
+   ],
+   "phrases": [
+    "hangi uygulamalarda aramalar algılansın",
+    "bu uygulamadaki aramalar hakkında sorma"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "виявлення дзвінків у застосунках",
+   "words": [
+    "розпізнавання дзвінків"
+   ],
+   "phrases": [
+    "у яких додатках виявляти дзвінки",
+    "не питати про дзвінки в цьому додатку"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "phát hiện cuộc gọi trong ứng dụng",
+   "words": [],
+   "phrases": [
+    "chọn ứng dụng để phát hiện cuộc gọi",
+    "đừng hỏi về cuộc gọi trong ứng dụng này nữa"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "检测应用中的通话",
+   "words": [
+    "通话识别"
+   ],
+   "phrases": [
+    "选择要检测通话的应用",
+    "不要再询问这个应用的通话"
+   ]
+  }
+ ]
+}

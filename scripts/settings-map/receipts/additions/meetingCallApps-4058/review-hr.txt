@@ -1,0 +1,1 @@
+{"language":"hr","title":"prepoznavanje poziva u aplikacijama","words":[],"phrases":["u kojim aplikacijama prepoznavati pozive","ne pitaj za pozive u ovoj aplikaciji"]}

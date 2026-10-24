@@ -1,0 +1,1 @@
+{"language":"cs","title":"aplikace pro hovory","words":["videohovory"],"phrases":["aplikace na volání"]}

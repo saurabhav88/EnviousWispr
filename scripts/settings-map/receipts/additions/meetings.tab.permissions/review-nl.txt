@@ -1,0 +1,1 @@
+{"language":"nl","title":"machtigingen","words":[],"phrases":["machtigingen voor EnviousMeet","toestemming om vergaderingen op te nemen","EnviousMeet toegang geven tot microfoon en systeemgeluid"]}

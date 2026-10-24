@@ -1,0 +1,1 @@
+{"language":"cs","title":"nahrávat jen můj hlas","words":[],"phrases":["nenahrávat zvuk počítače","bez hlasů ostatních v hovoru"]}

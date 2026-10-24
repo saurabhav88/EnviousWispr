@@ -1,0 +1,1 @@
+{"language":"pl","title":"wykrywanie połączeń w aplikacjach","words":["aplikacje do rozmów"],"phrases":["w których aplikacjach wykrywać połączenia","nie pytaj o połączenia w tej aplikacji"]}

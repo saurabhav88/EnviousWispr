@@ -1,0 +1,1 @@
+{"language":"hu","title":"hívások felismerése alkalmazásokban","words":[],"phrases":["mely alkalmazásokban ismerje fel a hívásokat","ne kérdezzen rá az app hívásaira"]}

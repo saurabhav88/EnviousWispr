@@ -1,0 +1,1 @@
+{"language":"ko","title":"권한","words":["회의 녹음 권한"],"phrases":["EnviousMeet 권한","회의 녹음에 필요한 권한 확인"]}

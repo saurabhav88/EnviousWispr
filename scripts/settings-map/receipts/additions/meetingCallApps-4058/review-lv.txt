@@ -1,0 +1,1 @@
+{"language":"lv","title":"zvanu noteikšana lietotnēs","words":[],"phrases":["kurās lietotnēs noteikt zvanus","vairs nejautāt par zvaniem šajā lietotnē"]}

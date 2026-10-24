@@ -1,0 +1,38 @@
+{
+  "run_id": "run-1792871267-2c789284",
+  "run_dir": "/Users/m4pro_sv/.local/state/council/runs/run-1792871267-2c789284",
+  "providers": {
+    "openai": {
+      "content": "1. {\"words\":[\"Zusammenfassungen\",\"Kalender\"],\"phrases\":[\"lege fest, was beim Start eines Anrufs passiert\",\"\u00fcbernimm Besprechungsnamen aus dem Kalender\",\"stelle Zusammenfassungen f\u00fcr EnviousMeet ein\"]}  \n\u201eAllgemeine Einstellungen\u201c k\u00f6nnte zur allgemeinen App-Einstellung statt zu EnviousMeet f\u00fchren.\n\n2. {\"words\":[\"Zoom\",\"Microsoft Teams\",\"FaceTime\",\"Slack\",\"Webex\",\"Browser\"],\"phrases\":[\"lege fest, bei welchen Apps EnviousMeet Anrufe erkennt\",\"schalte die Anruferkennung f\u00fcr Zoom aus\",\"schalte die Anruferkennung f\u00fcr Meetings im Browser aus\"]}  \nGoogle Meet ist hier kein eigener Schalter, sondern f\u00e4llt unter Meetings im Browser.\n\n3. OK  \nBeide Phrasen nennen EnviousMeet und unterscheiden diese Berechtigungen damit von denen der gesamten App.\n\n4. {\"words\":[\"Stimme\",\"Mikrofon\"],\"phrases\":[\"nimm nur meine Stimme auf\",\"lass den Ton vom Mac bei Aufnahmen weg\"]}  \nDie urspr\u00fcnglichen Phrasen benennen den Schalter nicht direkt und lassen offen, dass es um den Ton vom Mac geht.\n\n5. {\"words\":[\"Anruferkennung\"],\"phrases\":[\"w\u00e4hle aus, in welchen Apps Anrufe erkannt werden\",\"erkenne Anrufe in dieser App nicht mehr\",\"schalte die Anruferkennung f\u00fcr einzelne Apps aus\"]}  \n\u201eAnruf-Apps\u201c verst\u00f6\u00dft gegen die Vorgabe ohne Bindestriche, und die Frage nach einer Aufnahme beschreibt nur eine Folge des Schalters.",
+      "latest_response_id": "resp_0670d975e7b5953c006add0b6614f88194a85d74ec3f0037e1",
+      "model": "gpt-6-sol",
+      "provider": "openai",
+      "session": "ew-4058-vocab-de-2026-10-24-gpt",
+      "status": "ok",
+      "usage": {
+        "completion_tokens": 1104,
+        "cost_usd": 0.005025,
+        "latency_ms": 12042,
+        "prompt_tokens": 609,
+        "reasoning_tokens": 774,
+        "total_tokens": 1713
+      }
+    },
+    "gemini": {
+      "content": "1. OK. The search phrase is natural, grammatically correct, and follows all casing and dash rules.\n\n2. OK. All app names and phrases follow the constraints, contain no dashes, and represent realistic search queries.\n\n3. OK. Both phrases accurately target the tab and follow all casing and dash rules.\n\n4. OK. The search phrases accurately describe the inverted feature in everyday du-form without dashes.\n\n5. {\"words\": [\"Anrufapps\"], \"phrases\": [\"w\u00e4hle aus, in welchen Apps Anrufe erkannt werden\", \"frag mich bei Anrufen in dieser App nicht mehr nach einer Aufnahme\", \"schalte die Anruferkennung f\u00fcr einzelne Apps aus\"]}\nThe hyphen in \u201eAnruf-Apps\u201c violated the \"no dashes\" rule and was changed to the solid compound \u201eAnrufapps\u201c.",
+      "latest_interaction_id": "v1_ChdZd3ZkYXZxZEk4YW94ZElQOTlPSDBBdxIXWXd2ZGF2cWRJOGFveGRJUDk5T0gwQXc",
+      "model": "gemini-3.8-flash",
+      "provider": "gemini",
+      "session": "ew-4058-vocab-de-2026-10-24-gemini",
+      "status": "ok",
+      "usage": {
+        "prompt_tokens": 614,
+        "completion_tokens": 173,
+        "reasoning_tokens": 982,
+        "total_tokens": 1769,
+        "cost_usd": 0.0095835,
+        "latency_ms": 10729
+      }
+    }
+  }
+}

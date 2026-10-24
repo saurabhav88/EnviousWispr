@@ -1,0 +1,1 @@
+{"language":"mt","title":"permessi","words":[],"phrases":["permessi għal EnviousMeet","permessi għar-reġistrazzjoni tal-laqgħat","EnviousMeet m’għandux aċċess għall-mikrofonu"]}

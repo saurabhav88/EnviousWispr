@@ -1,0 +1,1 @@
+{"language":"fi","title":"puhelujen tunnistus sovelluksissa","words":[],"phrases":["missä sovelluksissa puhelut tunnistetaan","älä kysy tämän sovelluksen puheluista"]}

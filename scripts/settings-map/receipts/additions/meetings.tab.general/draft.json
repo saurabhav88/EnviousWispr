@@ -1,0 +1,259 @@
+{
+ "id": "meetings.tab.general",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "عام",
+   "words": [],
+   "phrases": [
+    "إعدادات EnviousMeet العامة"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "общи",
+   "words": [],
+   "phrases": [
+    "общи настройки на EnviousMeet"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "obecné",
+   "words": [],
+   "phrases": [
+    "obecná nastavení EnviousMeet"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "generelt",
+   "words": [],
+   "phrases": [
+    "generelle indstillinger for EnviousMeet"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [],
+   "phrases": [
+    "allgemeine Einstellungen für EnviousMeet"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "γενικά",
+   "words": [],
+   "phrases": [
+    "γενικές ρυθμίσεις του EnviousMeet"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [],
+   "phrases": [
+    "general EnviousMeet settings"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "general",
+   "words": [],
+   "phrases": [
+    "ajustes generales de EnviousMeet"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "üldine",
+   "words": [],
+   "phrases": [
+    "EnviousMeet üldseaded"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "yleiset",
+   "words": [],
+   "phrases": [
+    "EnviousMeet yleiset asetukset"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "général",
+   "words": [],
+   "phrases": [
+    "paramètres généraux de EnviousMeet"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "सामान्य",
+   "words": [],
+   "phrases": [
+    "EnviousMeet की सामान्य सेटिंग्स"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "općenito",
+   "words": [],
+   "phrases": [
+    "opće postavke za EnviousMeet"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "általános",
+   "words": [],
+   "phrases": [
+    "EnviousMeet általános beállításai"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "generali",
+   "words": [],
+   "phrases": [
+    "impostazioni generali di EnviousMeet"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "一般",
+   "words": [],
+   "phrases": [
+    "EnviousMeetの一般設定"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "일반",
+   "words": [],
+   "phrases": [
+    "EnviousMeet 일반 설정"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "bendrieji",
+   "words": [],
+   "phrases": [
+    "EnviousMeet bendrieji nustatymai"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "vispārīgi",
+   "words": [],
+   "phrases": [
+    "EnviousMeet vispārīgie iestatījumi"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "ġenerali",
+   "words": [],
+   "phrases": [
+    "settings ġenerali ta’ EnviousMeet"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "algemeen",
+   "words": [],
+   "phrases": [
+    "algemene instellingen van EnviousMeet"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "ogólne",
+   "words": [],
+   "phrases": [
+    "ustawienia ogólne EnviousMeet"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "geral",
+   "words": [],
+   "phrases": [
+    "configurações gerais do EnviousMeet"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "general",
+   "words": [],
+   "phrases": [
+    "setări generale pentru EnviousMeet"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "общие",
+   "words": [],
+   "phrases": [
+    "общие настройки EnviousMeet"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "všeobecné",
+   "words": [],
+   "phrases": [
+    "všeobecné nastavenia EnviousMeet"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "splošno",
+   "words": [],
+   "phrases": [
+    "splošne nastavitve EnviousMeet"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "allmänt",
+   "words": [],
+   "phrases": [
+    "allmänna inställningar för EnviousMeet"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "genel",
+   "words": [],
+   "phrases": [
+    "EnviousMeet genel ayarları"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "загальні",
+   "words": [],
+   "phrases": [
+    "загальні налаштування EnviousMeet"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "chung",
+   "words": [],
+   "phrases": [
+    "cài đặt chung của EnviousMeet"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "通用",
+   "words": [],
+   "phrases": [
+    "EnviousMeet通用设置"
+   ]
+  }
+ ]
+}

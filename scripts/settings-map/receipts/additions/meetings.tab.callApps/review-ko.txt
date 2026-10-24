@@ -1,0 +1,1 @@
+{"language":"ko","title":"통화 앱","words":["Zoom","Microsoft Teams","FaceTime","Slack","Webex","Google Meet"],"phrases":["통화를 감지할 앱 선택","앱별 통화 감지 설정"]}

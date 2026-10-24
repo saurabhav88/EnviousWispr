@@ -1,0 +1,1 @@
+{"language":"lv","title":"zvanu lietotnes","words":["Zoom","Microsoft Teams","FaceTime","Slack","Webex","Google Meet"],"phrases":["zvanu lietotņu saraksts","zvanu lietotnes EnviousMeet iestatījumos"]}

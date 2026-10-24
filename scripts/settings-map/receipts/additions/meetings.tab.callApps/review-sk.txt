@@ -1,0 +1,1 @@
+{"language":"sk","title":"aplikácie na hovory","words":[],"phrases":["zoznam aplikácií na hovory"]}

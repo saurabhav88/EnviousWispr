@@ -1,0 +1,1 @@
+{"language":"mt","title":"apps għas-sejħiet","words":["Zoom","Microsoft Teams","FaceTime","Slack","Webex","Google Meet"],"phrases":["agħżel l-apps li EnviousMeet jimmonitorja għas-sejħiet"]}

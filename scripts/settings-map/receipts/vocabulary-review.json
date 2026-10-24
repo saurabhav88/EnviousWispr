@@ -15,7 +15,7 @@
   {
    "id": "meetingCaptureCallSound",
    "review": "additions/meetingCaptureCallSound.json",
-   "reviewSHA256": "2bea4ff80448b182c1725419619f49fef7a9c95ba075a7c63ca86333a89df961"
+   "reviewSHA256": "f9e5262f9468bbc2e7fd641369591915f06139e972d7c4342bceed8c84577460"
   },
   {
    "id": "meetingWriteSummary",
@@ -40,14 +40,29 @@
   {
    "id": "meetingCallApps",
    "review": "additions/meetingCallApps.json",
-   "reviewSHA256": "880256924d8240dbfe83b76fe4a79c70715ffab7d052c6d0c7c5e94ab4e18b6f"
+   "reviewSHA256": "d8eb612922a833d46d945a3333e03c297f601e114b695152e1bd9f2ad24524bd"
+  },
+  {
+   "id": "meetings.tab.general",
+   "review": "additions/meetings.tab.general.json",
+   "reviewSHA256": "3939844bf45c57b74a7a51bdd1bc80de1a991e90b1324550426d80924fbf2ee7"
+  },
+  {
+   "id": "meetings.tab.callApps",
+   "review": "additions/meetings.tab.callApps.json",
+   "reviewSHA256": "036937a878c8db29efe2dcab893a488423a157f05744c6cc3b1baa02a5ec2fff"
+  },
+  {
+   "id": "meetings.tab.permissions",
+   "review": "additions/meetings.tab.permissions.json",
+   "reviewSHA256": "18a28e61403cedff995b02d0cda95d98162e4d460caa2afe94e078d6be6cdc7a"
   }
  ],
  "retiredIDs": [],
  "resource": {
   "path": "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json",
-  "sha256": "332402ba6b0b126ca48211786bb69c6c017b4c41b963701c4526b44de1bd5c4f",
-  "bytes": 1652109
+  "sha256": "cae02edd4ef7193550e77b8ada9060b4c4c90ae8facf6fd41d44086d2d974765",
+  "bytes": 1664408
  },
  "sources": [
   {
@@ -331,7 +346,7 @@
  "languages": [
   {
    "language": "ar",
-   "contentSHA256": "dc8455d137c8071e4e5b517c8a199f3014ff545e8368573a39de2673d0b69536",
+   "contentSHA256": "be0e383dfd523f020e1b5471df12c0d9b9eee43d52bb36c8094782ca7a6647f4",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -584,13 +599,108 @@
       "sha256": "c20be5e8199e3238f56b94f5b218ab690983ddc1a1a057887a1d24e086faf52a"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.general",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Call Apps and Permissions tabs, the When a call starts choice, the summary switch and App Settings' Appearance tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.general/draft.json",
+      "sha256": "29784e756d957d7d9d2be13a948e6257be952f30dce35995951eca075b36395c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.general/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.general/review-ar.txt",
+      "sha256": "27831f6a19c2da72d006633c1fa5f766a28229a6046d795866eaff6dd20894c8"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.general.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.callApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the per-app list, the When a call starts choice and the other two EnviousMeet tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.callApps/draft.json",
+      "sha256": "966a773bfdb8493b3e9b5da9d105faa0f85a83ca455504658c8da5ec358e769c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.callApps/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.callApps/review-ar.txt",
+      "sha256": "65f586fe6ca37031c647f7b46b4f94317c9e9c8e64eeacc93acd56d150281b2d"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.callApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.permissions",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with App Settings' Permissions tab, the other two EnviousMeet tabs and the calendar-name switch); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.permissions/draft.json",
+      "sha256": "2df14fee1db8351e43e8aef8df85da2fccf37f35a20c98d296c6fc4bce2f0fe7"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.permissions/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.permissions/review-ar.txt",
+      "sha256": "be244f2c8f953de9ee29e6a6ea6d4c39b392e8565ecc31078ff638b26525b077"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.permissions.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCaptureCallSound",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice, summary and calendar-name switches and the Permissions tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCaptureCallSound-4058/draft.json",
+      "sha256": "4945fb3730423a80b8f41351f7ccaa58535385272e0a999f95ce138516c401fe"
+     },
+     "prompt": {
+      "path": "additions/meetingCaptureCallSound-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCaptureCallSound-4058/review-ar.txt",
+      "sha256": "43a597ae8d4f867ded12d0a86a892f66db8c74fd39b5b6284fe0c29eaa967613"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCallApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice and the General and Call Apps tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCallApps-4058/draft.json",
+      "sha256": "3d9aef9d0d79ddcda6a3763d67158e4aaa742487a1874106a10d5bf23af3f081"
+     },
+     "prompt": {
+      "path": "additions/meetingCallApps-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCallApps-4058/review-ar.txt",
+      "sha256": "8a440313537851fdb6646dc6c8bd64ad97124cc4778d8c9cc8c92de28d5fa31a"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "bg",
-   "contentSHA256": "9f4fb62852229e174b0dabebb52f721303bdca8f5ca823d854d7976e8e622008",
+   "contentSHA256": "2620f10f21e999d0bf6a75eafe3753978474c61f2c90fd4f2e232a5d884b7799",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -834,13 +944,108 @@
       "sha256": "b9ae51d22092ff17473cee3e03c9812101c1e27bbf2672190b80d2d4899ef556"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.general",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Call Apps and Permissions tabs, the When a call starts choice, the summary switch and App Settings' Appearance tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.general/draft.json",
+      "sha256": "29784e756d957d7d9d2be13a948e6257be952f30dce35995951eca075b36395c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.general/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.general/review-bg.txt",
+      "sha256": "3011026a33e1fe2a2306ae7e3a717855a02bef5e0d6696d1147fcb6057e88b1b"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.general.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.callApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the per-app list, the When a call starts choice and the other two EnviousMeet tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.callApps/draft.json",
+      "sha256": "966a773bfdb8493b3e9b5da9d105faa0f85a83ca455504658c8da5ec358e769c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.callApps/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.callApps/review-bg.txt",
+      "sha256": "0e1d998df4a0575d6aac1cd27b345206592c0447eb7052f4e0cc44c46a829140"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.callApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.permissions",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with App Settings' Permissions tab, the other two EnviousMeet tabs and the calendar-name switch); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.permissions/draft.json",
+      "sha256": "2df14fee1db8351e43e8aef8df85da2fccf37f35a20c98d296c6fc4bce2f0fe7"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.permissions/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.permissions/review-bg.txt",
+      "sha256": "e2317ebc2108c65a836405146019dca32ad5d403e09c21551e61e802a5584436"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.permissions.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCaptureCallSound",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice, summary and calendar-name switches and the Permissions tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCaptureCallSound-4058/draft.json",
+      "sha256": "4945fb3730423a80b8f41351f7ccaa58535385272e0a999f95ce138516c401fe"
+     },
+     "prompt": {
+      "path": "additions/meetingCaptureCallSound-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCaptureCallSound-4058/review-bg.txt",
+      "sha256": "2b786c4a88708fe1ea2db15eb8bfe123bbff10aa9d542578c42bed99667e9428"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCallApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice and the General and Call Apps tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCallApps-4058/draft.json",
+      "sha256": "3d9aef9d0d79ddcda6a3763d67158e4aaa742487a1874106a10d5bf23af3f081"
+     },
+     "prompt": {
+      "path": "additions/meetingCallApps-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCallApps-4058/review-bg.txt",
+      "sha256": "9af401f20bfbc2502d27bb9ca954a72150dcc61e0493ce3881111a3080257148"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "cs",
-   "contentSHA256": "7e3872a43110f9f98ca0125d586e843c7ad0a6be1ab8b945875d0e1a70cf4ddf",
+   "contentSHA256": "b840eaf121d63604a7eecc398ca22e1cd32ecac04916ce867783e0efc1df0dc8",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1084,13 +1289,108 @@
       "sha256": "501e65111e3f8c176bdfefa9c94228f8243caaaa425da2738102c25c8b8b4743"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.general",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Call Apps and Permissions tabs, the When a call starts choice, the summary switch and App Settings' Appearance tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.general/draft.json",
+      "sha256": "29784e756d957d7d9d2be13a948e6257be952f30dce35995951eca075b36395c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.general/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.general/review-cs.txt",
+      "sha256": "75abb6df97b9dce70cfd1d2545c9fbefb49057c7cd6a1f3ae3374a6f081476df"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.general.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.callApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the per-app list, the When a call starts choice and the other two EnviousMeet tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.callApps/draft.json",
+      "sha256": "966a773bfdb8493b3e9b5da9d105faa0f85a83ca455504658c8da5ec358e769c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.callApps/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.callApps/review-cs.txt",
+      "sha256": "cc9b1b3c93c91769e267b3c48c571b7911b3467f520a6f4eef35b51f93298a33"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.callApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.permissions",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with App Settings' Permissions tab, the other two EnviousMeet tabs and the calendar-name switch); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.permissions/draft.json",
+      "sha256": "2df14fee1db8351e43e8aef8df85da2fccf37f35a20c98d296c6fc4bce2f0fe7"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.permissions/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.permissions/review-cs.txt",
+      "sha256": "d8a160cc4459dd34dddc9c997b246ff05db7c98aca406957a48ff40c28c46c23"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.permissions.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCaptureCallSound",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice, summary and calendar-name switches and the Permissions tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCaptureCallSound-4058/draft.json",
+      "sha256": "4945fb3730423a80b8f41351f7ccaa58535385272e0a999f95ce138516c401fe"
+     },
+     "prompt": {
+      "path": "additions/meetingCaptureCallSound-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCaptureCallSound-4058/review-cs.txt",
+      "sha256": "8a9ce8bfc903c5eb1491bf219fee4e4d84a195e98324fddfe969982f3930108e"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCallApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice and the General and Call Apps tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCallApps-4058/draft.json",
+      "sha256": "3d9aef9d0d79ddcda6a3763d67158e4aaa742487a1874106a10d5bf23af3f081"
+     },
+     "prompt": {
+      "path": "additions/meetingCallApps-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCallApps-4058/review-cs.txt",
+      "sha256": "35c735a31fc6c91c79bf1431b6a28c54f902f6d1d9cf2903341715d52271f422"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "da",
-   "contentSHA256": "dcf18c78745891e08a4e53d91d000d92230cba989a75369bebce7ab5758911bc",
+   "contentSHA256": "222a5796185c848ddfc1a1f6f0e4ac92b94836243204d9e71c568b04bcfd0ea0",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1334,13 +1634,108 @@
       "sha256": "41bff0f15ed0e111ba75de598e598cfa22303c85639819662fa257c51acc3d5e"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.general",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Call Apps and Permissions tabs, the When a call starts choice, the summary switch and App Settings' Appearance tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.general/draft.json",
+      "sha256": "29784e756d957d7d9d2be13a948e6257be952f30dce35995951eca075b36395c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.general/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.general/review-da.txt",
+      "sha256": "88799630904c3eb962c3d14ba44607ac3e31c6521bc64abed15267e8ad00bde7"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.general.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.callApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the per-app list, the When a call starts choice and the other two EnviousMeet tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.callApps/draft.json",
+      "sha256": "966a773bfdb8493b3e9b5da9d105faa0f85a83ca455504658c8da5ec358e769c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.callApps/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.callApps/review-da.txt",
+      "sha256": "f99bc7f37d882c2b8fa5f4403a0a40bb8715815844de82e9087783545d2cb179"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.callApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.permissions",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with App Settings' Permissions tab, the other two EnviousMeet tabs and the calendar-name switch); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.permissions/draft.json",
+      "sha256": "2df14fee1db8351e43e8aef8df85da2fccf37f35a20c98d296c6fc4bce2f0fe7"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.permissions/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.permissions/review-da.txt",
+      "sha256": "a4b69ed54f0f79e40a9edd15f575fe4cd5469358a46973bb0a171ceb007f3273"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.permissions.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCaptureCallSound",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice, summary and calendar-name switches and the Permissions tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCaptureCallSound-4058/draft.json",
+      "sha256": "4945fb3730423a80b8f41351f7ccaa58535385272e0a999f95ce138516c401fe"
+     },
+     "prompt": {
+      "path": "additions/meetingCaptureCallSound-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCaptureCallSound-4058/review-da.txt",
+      "sha256": "bdb3071c7952f653ffc98ef12b2a721dd3486eddda0b2508704602a6133d4530"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCallApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice and the General and Call Apps tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCallApps-4058/draft.json",
+      "sha256": "3d9aef9d0d79ddcda6a3763d67158e4aaa742487a1874106a10d5bf23af3f081"
+     },
+     "prompt": {
+      "path": "additions/meetingCallApps-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCallApps-4058/review-da.txt",
+      "sha256": "bb9df6d7054b15ce4b6e30f59367aa066e04eb0f00cda95530e22ba25f8f3448"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "de",
-   "contentSHA256": "373fc057623fd29fbc1ad641201ccecf0d964a481519b95c83110c50b5d5d276",
+   "contentSHA256": "3e89576ceb30c37c0ccf3405820a5ea527cda80af0d73cc713165a8128fa3f44",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1630,13 +2025,128 @@
       "path": "additions/meetingCallApps/council-de.json",
       "sha256": "ac858f0769ad330bcaa22f398ceb16b5c2fff7883a33525d956393bb123f811e"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.general",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Call Apps and Permissions tabs, the When a call starts choice, the summary switch and App Settings' Appearance tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.general/draft.json",
+      "sha256": "29784e756d957d7d9d2be13a948e6257be952f30dce35995951eca075b36395c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.general/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.general/review-de.txt",
+      "sha256": "a3738efa8e41562dcc984d2215f81335663fac791c2d45d40aeb0acb5abf4169"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.general.json); German council (GPT and Gemini): kept as reviewed: Gemini OK; GPT's summary and calendar words left out because they belong to the rows on the tab",
+     "council": {
+      "path": "additions/meetings.tab.general/council-de.json",
+      "sha256": "5804aa1467669d8815b2a4c70a498b655d9333d9dadff4e55ceddc7f228abff8"
+     }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.callApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the per-app list, the When a call starts choice and the other two EnviousMeet tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.callApps/draft.json",
+      "sha256": "966a773bfdb8493b3e9b5da9d105faa0f85a83ca455504658c8da5ec358e769c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.callApps/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.callApps/review-de.txt",
+      "sha256": "364132659909acdb303f1c1925bbe2023e05b86c105ac220f546119e9cbf25cd"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.callApps.json); German council (GPT and Gemini): kept as reviewed: Gemini OK; GPT's swap of Google Meet for Browser not taken, since people search for Google Meet and it is covered by Meetings in a browser",
+     "council": {
+      "path": "additions/meetings.tab.callApps/council-de.json",
+      "sha256": "5804aa1467669d8815b2a4c70a498b655d9333d9dadff4e55ceddc7f228abff8"
+     }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.permissions",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with App Settings' Permissions tab, the other two EnviousMeet tabs and the calendar-name switch); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.permissions/draft.json",
+      "sha256": "2df14fee1db8351e43e8aef8df85da2fccf37f35a20c98d296c6fc4bce2f0fe7"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.permissions/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.permissions/review-de.txt",
+      "sha256": "ebc4c31521921dd319942bfa12b24ae7eb1479f4b2b13b182749dd765967ef4c"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.permissions.json); German council (GPT and Gemini): kept as reviewed: GPT and Gemini OK",
+     "council": {
+      "path": "additions/meetings.tab.permissions/council-de.json",
+      "sha256": "5804aa1467669d8815b2a4c70a498b655d9333d9dadff4e55ceddc7f228abff8"
+     }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCaptureCallSound",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice, summary and calendar-name switches and the Permissions tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCaptureCallSound-4058/draft.json",
+      "sha256": "4945fb3730423a80b8f41351f7ccaa58535385272e0a999f95ce138516c401fe"
+     },
+     "prompt": {
+      "path": "additions/meetingCaptureCallSound-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCaptureCallSound-4058/review-de.txt",
+      "sha256": "13d508bae8925cf1e98ad1222e109bdd5d11b16a2f97587e43d6b6e0d87a7556"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json); German council (GPT and Gemini): phrases from GPT's correction (Gemini OK on the reviewed block); GPT's word Mikrofon left out (it belongs to the Permissions tab)",
+     "council": {
+      "path": "additions/meetingCaptureCallSound-4058/council-de.json",
+      "sha256": "5804aa1467669d8815b2a4c70a498b655d9333d9dadff4e55ceddc7f228abff8"
+     }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCallApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice and the General and Call Apps tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCallApps-4058/draft.json",
+      "sha256": "3d9aef9d0d79ddcda6a3763d67158e4aaa742487a1874106a10d5bf23af3f081"
+     },
+     "prompt": {
+      "path": "additions/meetingCallApps-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCallApps-4058/review-de.txt",
+      "sha256": "15f36aa3acd8acfa0fcdaca24bf8d8d6862af383be6f45ca7fee375805b66486"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCallApps.json); German council (GPT and Gemini): word Anruferkennung from GPT's correction (replaces Anruf-Apps, the Call Apps tab title); phrases kept as reviewed; the hyphen in Anruf-Apps is a German compound, not a dash",
+     "council": {
+      "path": "additions/meetingCallApps-4058/council-de.json",
+      "sha256": "5804aa1467669d8815b2a4c70a498b655d9333d9dadff4e55ceddc7f228abff8"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "el",
-   "contentSHA256": "7dd27d870d5c8486187f6aee89bc8e492340199a0d787c3b9e73726b2492c5ff",
+   "contentSHA256": "5a016bfc1e5ff9199cf9c3a1a47469ab3a3d2de212234c82ffe7c454bcf68cfa",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1889,13 +2399,108 @@
       "sha256": "897d7d4b40312899d2d26440259979668d9654a717de61dc9177106ab1ff450e"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.general",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Call Apps and Permissions tabs, the When a call starts choice, the summary switch and App Settings' Appearance tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.general/draft.json",
+      "sha256": "29784e756d957d7d9d2be13a948e6257be952f30dce35995951eca075b36395c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.general/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.general/review-el.txt",
+      "sha256": "0f59512bf7562a4e28f10b170e41513fe3988ff706bfd2d25c4cd393c6535fba"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.general.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.callApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the per-app list, the When a call starts choice and the other two EnviousMeet tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.callApps/draft.json",
+      "sha256": "966a773bfdb8493b3e9b5da9d105faa0f85a83ca455504658c8da5ec358e769c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.callApps/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.callApps/review-el.txt",
+      "sha256": "f243a0d0f3b08dff7fe3b72c248c0c316b7a283d36e73262c2c11ab40e376cb4"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.callApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.permissions",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with App Settings' Permissions tab, the other two EnviousMeet tabs and the calendar-name switch); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.permissions/draft.json",
+      "sha256": "2df14fee1db8351e43e8aef8df85da2fccf37f35a20c98d296c6fc4bce2f0fe7"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.permissions/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.permissions/review-el.txt",
+      "sha256": "a5692b51d52a066e7938869288088143ea451910ef38f88279c8aae0e0e0d352"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.permissions.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCaptureCallSound",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice, summary and calendar-name switches and the Permissions tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCaptureCallSound-4058/draft.json",
+      "sha256": "4945fb3730423a80b8f41351f7ccaa58535385272e0a999f95ce138516c401fe"
+     },
+     "prompt": {
+      "path": "additions/meetingCaptureCallSound-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCaptureCallSound-4058/review-el.txt",
+      "sha256": "676058fc463158be7d81e47bfb86afdffa2324425edc942eccc9275d4dc3aaa8"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCallApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice and the General and Call Apps tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCallApps-4058/draft.json",
+      "sha256": "3d9aef9d0d79ddcda6a3763d67158e4aaa742487a1874106a10d5bf23af3f081"
+     },
+     "prompt": {
+      "path": "additions/meetingCallApps-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCallApps-4058/review-el.txt",
+      "sha256": "c9976e099b0c2defad4e4cfcc378de73d291847dd6615179240a6e50d2f45958"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "en",
-   "contentSHA256": "508c255b5643be5fc94cdf6ff7f538c9e5945335aa87cc56b71350dfc5b0b484",
+   "contentSHA256": "e46cf132159ca245a0196b766de704154632fd12df5ce073354a75b356c8c30d",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2154,13 +2759,108 @@
       "sha256": "968eb38f1041523afb802bf5d47c918bb9d643343f293c8cb242524bb0bd925d"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.general",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Call Apps and Permissions tabs, the When a call starts choice, the summary switch and App Settings' Appearance tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.general/draft.json",
+      "sha256": "29784e756d957d7d9d2be13a948e6257be952f30dce35995951eca075b36395c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.general/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.general/review-en.txt",
+      "sha256": "25630bc93ea1668458f6407eeef55b1b826c6b942b4f3634b43ba6f7e28470c4"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.general.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.callApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the per-app list, the When a call starts choice and the other two EnviousMeet tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.callApps/draft.json",
+      "sha256": "966a773bfdb8493b3e9b5da9d105faa0f85a83ca455504658c8da5ec358e769c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.callApps/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.callApps/review-en.txt",
+      "sha256": "301907a70e5d7512ff8607dbd3e11edb63ce627d697de34f4b52ac3470f5b7c9"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.callApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.permissions",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with App Settings' Permissions tab, the other two EnviousMeet tabs and the calendar-name switch); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.permissions/draft.json",
+      "sha256": "2df14fee1db8351e43e8aef8df85da2fccf37f35a20c98d296c6fc4bce2f0fe7"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.permissions/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.permissions/review-en.txt",
+      "sha256": "426cd6cc0bb6c4f76a69842f3f56cbe38efbb242a76c8340345b89b689aed850"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.permissions.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCaptureCallSound",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice, summary and calendar-name switches and the Permissions tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCaptureCallSound-4058/draft.json",
+      "sha256": "4945fb3730423a80b8f41351f7ccaa58535385272e0a999f95ce138516c401fe"
+     },
+     "prompt": {
+      "path": "additions/meetingCaptureCallSound-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCaptureCallSound-4058/review-en.txt",
+      "sha256": "1be1303f3e3f0372e19583d32894c187244441ac7383d38f047847bf073bd335"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCallApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice and the General and Call Apps tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCallApps-4058/draft.json",
+      "sha256": "3d9aef9d0d79ddcda6a3763d67158e4aaa742487a1874106a10d5bf23af3f081"
+     },
+     "prompt": {
+      "path": "additions/meetingCallApps-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCallApps-4058/review-en.txt",
+      "sha256": "369aec486271c9e3b047059435a806035d3bce21e2e49f56770c0ba2b066ec58"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "es",
-   "contentSHA256": "863b558b58e4eb8b16161d4b22e52460a9a36f8c877b9330520e62a7e7e8e4c2",
+   "contentSHA256": "ec5ca27b76d3ff5f8558d7f8eccc94730ce189210a5cd1f12a28c55cc8776729",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2413,13 +3113,108 @@
       "sha256": "fd5fb5c524809bda0b688da52b89f5ee46f62bcc9b9d8214d3eb63cdb4c8a1f6"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.general",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Call Apps and Permissions tabs, the When a call starts choice, the summary switch and App Settings' Appearance tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.general/draft.json",
+      "sha256": "29784e756d957d7d9d2be13a948e6257be952f30dce35995951eca075b36395c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.general/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.general/review-es.txt",
+      "sha256": "93b8d0edaf5ad5c65330afee20b6e2bb114345e5bffa6457dd87f8ae27e04d09"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.general.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.callApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the per-app list, the When a call starts choice and the other two EnviousMeet tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.callApps/draft.json",
+      "sha256": "966a773bfdb8493b3e9b5da9d105faa0f85a83ca455504658c8da5ec358e769c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.callApps/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.callApps/review-es.txt",
+      "sha256": "c0f713a9c98b852dc0b01601d59484497c339454efb998d1acebb899b96d3d80"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.callApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.permissions",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with App Settings' Permissions tab, the other two EnviousMeet tabs and the calendar-name switch); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.permissions/draft.json",
+      "sha256": "2df14fee1db8351e43e8aef8df85da2fccf37f35a20c98d296c6fc4bce2f0fe7"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.permissions/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.permissions/review-es.txt",
+      "sha256": "91f701b52f8bc29dd7ade325586596fce83fdcf9956f05d3721298901a9df1f6"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.permissions.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCaptureCallSound",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice, summary and calendar-name switches and the Permissions tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCaptureCallSound-4058/draft.json",
+      "sha256": "4945fb3730423a80b8f41351f7ccaa58535385272e0a999f95ce138516c401fe"
+     },
+     "prompt": {
+      "path": "additions/meetingCaptureCallSound-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCaptureCallSound-4058/review-es.txt",
+      "sha256": "cbb617adfbbe14efef0d451eac1eca77a19029be4a22cf2a729ecc3ab1719e2c"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCallApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice and the General and Call Apps tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCallApps-4058/draft.json",
+      "sha256": "3d9aef9d0d79ddcda6a3763d67158e4aaa742487a1874106a10d5bf23af3f081"
+     },
+     "prompt": {
+      "path": "additions/meetingCallApps-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCallApps-4058/review-es.txt",
+      "sha256": "e0ff16d00b2e86d856c3668c4a4f0c01ab176039b1dd5c0bc5d33755262f4535"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "et",
-   "contentSHA256": "f83a8814ebe8c51b5e394704b580bda5079bc12170c1f21dac5f6d12ebd7b7a1",
+   "contentSHA256": "c8db755c5e88b02c8d81a73c5e0befbafbae107fffd0ff3827c8d356d6514411",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2663,13 +3458,108 @@
       "sha256": "62b95558bf2039ed912a7234008069563d4f3e18c266dbcaf4643c5a0b323b98"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.general",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Call Apps and Permissions tabs, the When a call starts choice, the summary switch and App Settings' Appearance tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.general/draft.json",
+      "sha256": "29784e756d957d7d9d2be13a948e6257be952f30dce35995951eca075b36395c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.general/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.general/review-et.txt",
+      "sha256": "1f70ae81912805c27c9ec03dc8cacf75aef7d1666bd25d3d0a572f2e58b6e93f"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.general.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.callApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the per-app list, the When a call starts choice and the other two EnviousMeet tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.callApps/draft.json",
+      "sha256": "966a773bfdb8493b3e9b5da9d105faa0f85a83ca455504658c8da5ec358e769c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.callApps/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.callApps/review-et.txt",
+      "sha256": "ab07adf95c22c70511c9f80784622f267a1c7c5ae390235870f0c223aa9d4496"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.callApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.permissions",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with App Settings' Permissions tab, the other two EnviousMeet tabs and the calendar-name switch); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.permissions/draft.json",
+      "sha256": "2df14fee1db8351e43e8aef8df85da2fccf37f35a20c98d296c6fc4bce2f0fe7"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.permissions/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.permissions/review-et.txt",
+      "sha256": "1199336b41f4a8d55cdf262cc06caf9c77b74d3e1658051682c07c9b72a28398"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.permissions.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCaptureCallSound",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice, summary and calendar-name switches and the Permissions tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCaptureCallSound-4058/draft.json",
+      "sha256": "4945fb3730423a80b8f41351f7ccaa58535385272e0a999f95ce138516c401fe"
+     },
+     "prompt": {
+      "path": "additions/meetingCaptureCallSound-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCaptureCallSound-4058/review-et.txt",
+      "sha256": "a50d0065efcecb7191794eeb0c3a2eb924f2a5f9d66c441747775b9d628ce9d4"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCallApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice and the General and Call Apps tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCallApps-4058/draft.json",
+      "sha256": "3d9aef9d0d79ddcda6a3763d67158e4aaa742487a1874106a10d5bf23af3f081"
+     },
+     "prompt": {
+      "path": "additions/meetingCallApps-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCallApps-4058/review-et.txt",
+      "sha256": "e0d3847d6f0a8122114f08bc549c9b7f594301f32e2d562d8d371c00c763c1d8"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fi",
-   "contentSHA256": "a0eed28936561b5459b5fa94d8c633d45c157d2c9e454b9e56b0512c079e9a76",
+   "contentSHA256": "7a8d202f0788734e4755df86167e17f6a97f83d5b6c638440365cfe52c4dcc53",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2913,13 +3803,108 @@
       "sha256": "952538158d6469e6c740a97f4113975fe7a3e3dab81a91c208daaf24038a7f92"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.general",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Call Apps and Permissions tabs, the When a call starts choice, the summary switch and App Settings' Appearance tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.general/draft.json",
+      "sha256": "29784e756d957d7d9d2be13a948e6257be952f30dce35995951eca075b36395c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.general/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.general/review-fi.txt",
+      "sha256": "cfb0c21bb7b5d96b946dc30b5e48f901f3002532fa8c11e2405983635db84b13"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.general.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.callApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the per-app list, the When a call starts choice and the other two EnviousMeet tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.callApps/draft.json",
+      "sha256": "966a773bfdb8493b3e9b5da9d105faa0f85a83ca455504658c8da5ec358e769c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.callApps/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.callApps/review-fi.txt",
+      "sha256": "e3ac90e0f515bb801fc3e2a8bb2b7089b0eb5edb9b6ed2e333120c2ba8f45f2a"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.callApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.permissions",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with App Settings' Permissions tab, the other two EnviousMeet tabs and the calendar-name switch); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.permissions/draft.json",
+      "sha256": "2df14fee1db8351e43e8aef8df85da2fccf37f35a20c98d296c6fc4bce2f0fe7"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.permissions/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.permissions/review-fi.txt",
+      "sha256": "e1d514c8f0544cfd13acd6f87ad52bea57c77871040489eb279383703be6baef"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.permissions.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCaptureCallSound",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice, summary and calendar-name switches and the Permissions tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCaptureCallSound-4058/draft.json",
+      "sha256": "4945fb3730423a80b8f41351f7ccaa58535385272e0a999f95ce138516c401fe"
+     },
+     "prompt": {
+      "path": "additions/meetingCaptureCallSound-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCaptureCallSound-4058/review-fi.txt",
+      "sha256": "6bb86379bba05595497f56aa393f8d24301bbfb5c95301ff4de7dad414322521"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCallApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice and the General and Call Apps tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCallApps-4058/draft.json",
+      "sha256": "3d9aef9d0d79ddcda6a3763d67158e4aaa742487a1874106a10d5bf23af3f081"
+     },
+     "prompt": {
+      "path": "additions/meetingCallApps-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCallApps-4058/review-fi.txt",
+      "sha256": "1e7f8c993e99b25e8a64f92f1abb4f771b38bff34c8abac9507ca0bb391291b7"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fr",
-   "contentSHA256": "45395dd7c10e5c8f5f752be0116690acbb92a05e9985f0b8c078265e2885e1e7",
+   "contentSHA256": "534cbbb0f9b7ce3f5fc1fd34ea82a33d1eaf673f20744bddab4802d7fc4c89d7",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3163,13 +4148,108 @@
       "sha256": "a2bf90ee6cfb0ce1952882b0168dcdeb79fb879ce4754bbd70d041bda158542b"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.general",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Call Apps and Permissions tabs, the When a call starts choice, the summary switch and App Settings' Appearance tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.general/draft.json",
+      "sha256": "29784e756d957d7d9d2be13a948e6257be952f30dce35995951eca075b36395c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.general/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.general/review-fr.txt",
+      "sha256": "b6e5743b4028506a59709db7c7b12ec1c227d9dee2921507e8a2742d05f62c30"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.general.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.callApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the per-app list, the When a call starts choice and the other two EnviousMeet tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.callApps/draft.json",
+      "sha256": "966a773bfdb8493b3e9b5da9d105faa0f85a83ca455504658c8da5ec358e769c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.callApps/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.callApps/review-fr.txt",
+      "sha256": "8a95c2b2dc07144d0d5f178b2dfe214092fa0a0478e349e3dcb55b01aca529e4"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.callApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.permissions",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with App Settings' Permissions tab, the other two EnviousMeet tabs and the calendar-name switch); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.permissions/draft.json",
+      "sha256": "2df14fee1db8351e43e8aef8df85da2fccf37f35a20c98d296c6fc4bce2f0fe7"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.permissions/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.permissions/review-fr.txt",
+      "sha256": "a99d10ecd32712a5eefd8d2f51b29fa9c84964450b875742f4624b4a46f35741"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.permissions.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCaptureCallSound",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice, summary and calendar-name switches and the Permissions tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCaptureCallSound-4058/draft.json",
+      "sha256": "4945fb3730423a80b8f41351f7ccaa58535385272e0a999f95ce138516c401fe"
+     },
+     "prompt": {
+      "path": "additions/meetingCaptureCallSound-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCaptureCallSound-4058/review-fr.txt",
+      "sha256": "3611f778726f7a3dabecb98d66302a1c6c70f0022492b9654f8cecfe5be98656"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCallApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice and the General and Call Apps tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCallApps-4058/draft.json",
+      "sha256": "3d9aef9d0d79ddcda6a3763d67158e4aaa742487a1874106a10d5bf23af3f081"
+     },
+     "prompt": {
+      "path": "additions/meetingCallApps-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCallApps-4058/review-fr.txt",
+      "sha256": "d8e0c7438dd29e09d6751c92757fa9df04ff5dec86c49753387592dc2376242a"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hi",
-   "contentSHA256": "07f780ed2201d0fa816cbc967b8b94bb0be2880569cd4f0a3b18881f0e4fb1a3",
+   "contentSHA256": "2b21c5bc31dfdcb2024850cdf89500795214b0b26e210d63471be05301446b34",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3413,13 +4493,108 @@
       "sha256": "57c83e665d722bc7bbd0306b9258591b24a90297b9099d7afe026deaf9ae425e"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.general",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Call Apps and Permissions tabs, the When a call starts choice, the summary switch and App Settings' Appearance tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.general/draft.json",
+      "sha256": "29784e756d957d7d9d2be13a948e6257be952f30dce35995951eca075b36395c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.general/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.general/review-hi.txt",
+      "sha256": "13fc4b669b2dd299e1d184714612ec921124709debf4ec222982303edd754f38"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.general.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.callApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the per-app list, the When a call starts choice and the other two EnviousMeet tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.callApps/draft.json",
+      "sha256": "966a773bfdb8493b3e9b5da9d105faa0f85a83ca455504658c8da5ec358e769c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.callApps/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.callApps/review-hi.txt",
+      "sha256": "b25b09b6330a751f7849058bf24f22e1a0716466bea69507e26b446ac968425f"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.callApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.permissions",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with App Settings' Permissions tab, the other two EnviousMeet tabs and the calendar-name switch); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.permissions/draft.json",
+      "sha256": "2df14fee1db8351e43e8aef8df85da2fccf37f35a20c98d296c6fc4bce2f0fe7"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.permissions/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.permissions/review-hi.txt",
+      "sha256": "7b969972db8b6092e16025a6017f3a7254c196dcabf431e389b21bc0f2d216b9"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.permissions.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCaptureCallSound",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice, summary and calendar-name switches and the Permissions tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCaptureCallSound-4058/draft.json",
+      "sha256": "4945fb3730423a80b8f41351f7ccaa58535385272e0a999f95ce138516c401fe"
+     },
+     "prompt": {
+      "path": "additions/meetingCaptureCallSound-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCaptureCallSound-4058/review-hi.txt",
+      "sha256": "9e700bfbbe17b0745001205e8de295fb0ac8f87ae5fc2996a5f40deaf6096696"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCallApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice and the General and Call Apps tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCallApps-4058/draft.json",
+      "sha256": "3d9aef9d0d79ddcda6a3763d67158e4aaa742487a1874106a10d5bf23af3f081"
+     },
+     "prompt": {
+      "path": "additions/meetingCallApps-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCallApps-4058/review-hi.txt",
+      "sha256": "c528b8b17b055312dea8775706963107a82c2f5d181a82afbe5d45e3d96aa995"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hr",
-   "contentSHA256": "7ee36944a23cef33fd2ecde444c53dd856055cd4bf8d340447a100c1d92fd67e",
+   "contentSHA256": "ed8b8a5dfea8ad71dfb97e72cea06deca35b797d3e72d8ab88240fa8e52ed2a4",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3663,13 +4838,108 @@
       "sha256": "747afac3e4be01af0fb2aa5bde018946f5f1c7165b393c0d7514167d39d14ca1"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.general",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Call Apps and Permissions tabs, the When a call starts choice, the summary switch and App Settings' Appearance tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.general/draft.json",
+      "sha256": "29784e756d957d7d9d2be13a948e6257be952f30dce35995951eca075b36395c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.general/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.general/review-hr.txt",
+      "sha256": "8c4a68deb3dde138b758afde6540475de0204926210250b0ea75f295932212f0"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.general.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.callApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the per-app list, the When a call starts choice and the other two EnviousMeet tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.callApps/draft.json",
+      "sha256": "966a773bfdb8493b3e9b5da9d105faa0f85a83ca455504658c8da5ec358e769c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.callApps/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.callApps/review-hr.txt",
+      "sha256": "1ec48e32074b3066bd2758fc1522852a2f4ce938e48ce7df7b919085de6aa7a9"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.callApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.permissions",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with App Settings' Permissions tab, the other two EnviousMeet tabs and the calendar-name switch); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.permissions/draft.json",
+      "sha256": "2df14fee1db8351e43e8aef8df85da2fccf37f35a20c98d296c6fc4bce2f0fe7"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.permissions/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.permissions/review-hr.txt",
+      "sha256": "5538649156dd0cbfe7e49de4e86aed44eb7fcfc38229aa5990aa87a7a2885553"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.permissions.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCaptureCallSound",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice, summary and calendar-name switches and the Permissions tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCaptureCallSound-4058/draft.json",
+      "sha256": "4945fb3730423a80b8f41351f7ccaa58535385272e0a999f95ce138516c401fe"
+     },
+     "prompt": {
+      "path": "additions/meetingCaptureCallSound-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCaptureCallSound-4058/review-hr.txt",
+      "sha256": "0e662f700f5a056351ae4ef8d74b2b5dfda9a31f6aac6aa557d043ee7decf0ca"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCallApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice and the General and Call Apps tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCallApps-4058/draft.json",
+      "sha256": "3d9aef9d0d79ddcda6a3763d67158e4aaa742487a1874106a10d5bf23af3f081"
+     },
+     "prompt": {
+      "path": "additions/meetingCallApps-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCallApps-4058/review-hr.txt",
+      "sha256": "7bd3139c83122212a16b67609bb29798a6decc2532ac49b80f23b0c39c954e47"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hu",
-   "contentSHA256": "b61a80bc58a7ecbc15a8ab7473cf4a7d1fb9f05f0ae9496ed4b719e53e0d6be3",
+   "contentSHA256": "c41e25970987ba82f754f1b6c97c1a2974edc0d6aaf2c05c275f314317cecfdc",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3913,13 +5183,108 @@
       "sha256": "d57d819f39a759811fdfe756e95bf3d8be67c5015a8fe948ed4463b9842c35e6"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.general",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Call Apps and Permissions tabs, the When a call starts choice, the summary switch and App Settings' Appearance tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.general/draft.json",
+      "sha256": "29784e756d957d7d9d2be13a948e6257be952f30dce35995951eca075b36395c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.general/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.general/review-hu.txt",
+      "sha256": "fa35d845782261a707f129fdf0f8555dae783d5848aba7ea0153925de90a333e"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.general.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.callApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the per-app list, the When a call starts choice and the other two EnviousMeet tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.callApps/draft.json",
+      "sha256": "966a773bfdb8493b3e9b5da9d105faa0f85a83ca455504658c8da5ec358e769c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.callApps/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.callApps/review-hu.txt",
+      "sha256": "e7eea5791b76e5b4cd8c33500e8b62d687fa8de5e8b8f7cff8d03981900b0b83"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.callApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.permissions",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with App Settings' Permissions tab, the other two EnviousMeet tabs and the calendar-name switch); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.permissions/draft.json",
+      "sha256": "2df14fee1db8351e43e8aef8df85da2fccf37f35a20c98d296c6fc4bce2f0fe7"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.permissions/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.permissions/review-hu.txt",
+      "sha256": "eb9c6b52c745233b9e94df9443c981068c91795d8cce20c73da3d22dbfb8b1b0"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.permissions.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCaptureCallSound",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice, summary and calendar-name switches and the Permissions tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCaptureCallSound-4058/draft.json",
+      "sha256": "4945fb3730423a80b8f41351f7ccaa58535385272e0a999f95ce138516c401fe"
+     },
+     "prompt": {
+      "path": "additions/meetingCaptureCallSound-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCaptureCallSound-4058/review-hu.txt",
+      "sha256": "442dbc2f0df5f64be31747c5353c9d6ab5f61cb05828bbf759c552c1a732086a"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCallApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice and the General and Call Apps tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCallApps-4058/draft.json",
+      "sha256": "3d9aef9d0d79ddcda6a3763d67158e4aaa742487a1874106a10d5bf23af3f081"
+     },
+     "prompt": {
+      "path": "additions/meetingCallApps-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCallApps-4058/review-hu.txt",
+      "sha256": "f68c54f0b9d6f9dd52afc72944bdcb24d50f37cf02c49336ca20bba30b7e2598"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "it",
-   "contentSHA256": "b2a58df2d84f1b19c3847065649f5f8b2fa5cc9be0d799e68e365cc19829364d",
+   "contentSHA256": "05c342eecbea15141d77abfe3efd8f83aa2853d4717505002783ee850bb3d40d",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4172,13 +5537,108 @@
       "sha256": "fdc96d9337d26ea71789039d94c0f931958fb8718e5a895757389371d3c4df45"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.general",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Call Apps and Permissions tabs, the When a call starts choice, the summary switch and App Settings' Appearance tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.general/draft.json",
+      "sha256": "29784e756d957d7d9d2be13a948e6257be952f30dce35995951eca075b36395c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.general/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.general/review-it.txt",
+      "sha256": "47382cd0865fa03ff6df52f128fb1f79a10727dda309959675f82494c773a056"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.general.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.callApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the per-app list, the When a call starts choice and the other two EnviousMeet tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.callApps/draft.json",
+      "sha256": "966a773bfdb8493b3e9b5da9d105faa0f85a83ca455504658c8da5ec358e769c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.callApps/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.callApps/review-it.txt",
+      "sha256": "4f6148993ba5b9f9e9e5b6a59098bd3f4b67a8f67122e27e95c9dcdd9f75ef9b"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.callApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.permissions",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with App Settings' Permissions tab, the other two EnviousMeet tabs and the calendar-name switch); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.permissions/draft.json",
+      "sha256": "2df14fee1db8351e43e8aef8df85da2fccf37f35a20c98d296c6fc4bce2f0fe7"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.permissions/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.permissions/review-it.txt",
+      "sha256": "97eb97e15fd40bd669523c9b304ecce944f11bb89881201a425c0c28903f3760"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.permissions.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCaptureCallSound",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice, summary and calendar-name switches and the Permissions tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCaptureCallSound-4058/draft.json",
+      "sha256": "4945fb3730423a80b8f41351f7ccaa58535385272e0a999f95ce138516c401fe"
+     },
+     "prompt": {
+      "path": "additions/meetingCaptureCallSound-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCaptureCallSound-4058/review-it.txt",
+      "sha256": "a68588ea9e9c9794753b94996686131476307ae7b8d9d3e1237d83aeec2102c4"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCallApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice and the General and Call Apps tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCallApps-4058/draft.json",
+      "sha256": "3d9aef9d0d79ddcda6a3763d67158e4aaa742487a1874106a10d5bf23af3f081"
+     },
+     "prompt": {
+      "path": "additions/meetingCallApps-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCallApps-4058/review-it.txt",
+      "sha256": "f0d638f162d88ffda3dae65a73411454f4a23f3030d47a52ac1e06c8216a49ed"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ja",
-   "contentSHA256": "3f66b8181f0bc234360b80422c5ca7f01a3594169318eb1f464a68f74186f810",
+   "contentSHA256": "c71a21471ef61f1b50b3afe0bc144d5b668e639eaf47126ddd73de24af5575c4",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4422,13 +5882,108 @@
       "sha256": "4a422372c82f8cb2f2392fb472b49bc475cf57b65a2112b5c6ffb4f2b6b1ad8c"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.general",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Call Apps and Permissions tabs, the When a call starts choice, the summary switch and App Settings' Appearance tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.general/draft.json",
+      "sha256": "29784e756d957d7d9d2be13a948e6257be952f30dce35995951eca075b36395c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.general/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.general/review-ja.txt",
+      "sha256": "a2bf4f4bc7270b6c31cefb6d2fdd8eb1526fb5c2b8f715af8d039bed89c79d3c"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.general.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.callApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the per-app list, the When a call starts choice and the other two EnviousMeet tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.callApps/draft.json",
+      "sha256": "966a773bfdb8493b3e9b5da9d105faa0f85a83ca455504658c8da5ec358e769c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.callApps/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.callApps/review-ja.txt",
+      "sha256": "71ec180fb490a105f9c0b2c835f4a5795f926806763bd1c32ce783868aba9fcb"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.callApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.permissions",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with App Settings' Permissions tab, the other two EnviousMeet tabs and the calendar-name switch); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.permissions/draft.json",
+      "sha256": "2df14fee1db8351e43e8aef8df85da2fccf37f35a20c98d296c6fc4bce2f0fe7"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.permissions/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.permissions/review-ja.txt",
+      "sha256": "282a95baa2493191788fb578544023e67e386442db67c21db6a22e84c8e9f253"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.permissions.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCaptureCallSound",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice, summary and calendar-name switches and the Permissions tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCaptureCallSound-4058/draft.json",
+      "sha256": "4945fb3730423a80b8f41351f7ccaa58535385272e0a999f95ce138516c401fe"
+     },
+     "prompt": {
+      "path": "additions/meetingCaptureCallSound-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCaptureCallSound-4058/review-ja.txt",
+      "sha256": "137aac7038de5b1849dd3c1e2cb2b12d148f62d323041def9d01637bf53bd6fa"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCallApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice and the General and Call Apps tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCallApps-4058/draft.json",
+      "sha256": "3d9aef9d0d79ddcda6a3763d67158e4aaa742487a1874106a10d5bf23af3f081"
+     },
+     "prompt": {
+      "path": "additions/meetingCallApps-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCallApps-4058/review-ja.txt",
+      "sha256": "a684c444d37fc985423ef6f69ec126ac5be77d2a190c0c5745d69fe17305d285"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ko",
-   "contentSHA256": "cf910c87bb5e0d9b83bed30707fc2902ed950786e40386a90cb411d59f204371",
+   "contentSHA256": "29e69bcb2f564e2cec4c6f17ccd8d36d942555c6a77dd3d6c55d394f3832a776",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4672,13 +6227,108 @@
       "sha256": "9311a27b8670a2ec1f9ea676ccebd3de9dacee7e370d0c1f18a57e3cac7fb576"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.general",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Call Apps and Permissions tabs, the When a call starts choice, the summary switch and App Settings' Appearance tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.general/draft.json",
+      "sha256": "29784e756d957d7d9d2be13a948e6257be952f30dce35995951eca075b36395c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.general/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.general/review-ko.txt",
+      "sha256": "5996b4e4e01ed7a60f503ce4207175a604d11f58c7618371452ced1d614e135a"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.general.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.callApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the per-app list, the When a call starts choice and the other two EnviousMeet tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.callApps/draft.json",
+      "sha256": "966a773bfdb8493b3e9b5da9d105faa0f85a83ca455504658c8da5ec358e769c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.callApps/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.callApps/review-ko.txt",
+      "sha256": "2d364bd0e1d97b863468371bfac61aa9bd5c5ce8147c59e89646ecf7650fc852"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.callApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.permissions",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with App Settings' Permissions tab, the other two EnviousMeet tabs and the calendar-name switch); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.permissions/draft.json",
+      "sha256": "2df14fee1db8351e43e8aef8df85da2fccf37f35a20c98d296c6fc4bce2f0fe7"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.permissions/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.permissions/review-ko.txt",
+      "sha256": "b53ca0de69b47bd16b9a13901a44baac68170cae41fb025f08bf9870ecdb7b0e"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.permissions.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCaptureCallSound",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice, summary and calendar-name switches and the Permissions tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCaptureCallSound-4058/draft.json",
+      "sha256": "4945fb3730423a80b8f41351f7ccaa58535385272e0a999f95ce138516c401fe"
+     },
+     "prompt": {
+      "path": "additions/meetingCaptureCallSound-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCaptureCallSound-4058/review-ko.txt",
+      "sha256": "f3439da6c74ce76ad34fb3adcc6d078f1016cc5a84f8217a90c0c72a41d747eb"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCallApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice and the General and Call Apps tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCallApps-4058/draft.json",
+      "sha256": "3d9aef9d0d79ddcda6a3763d67158e4aaa742487a1874106a10d5bf23af3f081"
+     },
+     "prompt": {
+      "path": "additions/meetingCallApps-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCallApps-4058/review-ko.txt",
+      "sha256": "add5dc8fdd9e36a932dbeab3a902b9ae1c9717c6b40bbd98617ab7c328daf8ea"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lt",
-   "contentSHA256": "39e7a21bebf18cffff13111ea8f2e42f65806adb98881683bc4681b36c83c723",
+   "contentSHA256": "2a6850824e9a4fbdc4b6557935137d285cd963ee9fe5445d68c59273322b436c",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4931,13 +6581,108 @@
       "sha256": "45626a155eab8f0fcebd2e4803a143b5dcd90240d698d70e32489ca19987d175"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.general",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Call Apps and Permissions tabs, the When a call starts choice, the summary switch and App Settings' Appearance tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.general/draft.json",
+      "sha256": "29784e756d957d7d9d2be13a948e6257be952f30dce35995951eca075b36395c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.general/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.general/review-lt.txt",
+      "sha256": "884dcd2d31d6bab5fc13a3be4cc77505c95a416fe2603de1dd7c47ac6fa07334"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.general.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.callApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the per-app list, the When a call starts choice and the other two EnviousMeet tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.callApps/draft.json",
+      "sha256": "966a773bfdb8493b3e9b5da9d105faa0f85a83ca455504658c8da5ec358e769c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.callApps/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.callApps/review-lt.txt",
+      "sha256": "9c5ca428317176de8be0d9a986b577d949c5b760274ca75095700468e0111c4d"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.callApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.permissions",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with App Settings' Permissions tab, the other two EnviousMeet tabs and the calendar-name switch); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.permissions/draft.json",
+      "sha256": "2df14fee1db8351e43e8aef8df85da2fccf37f35a20c98d296c6fc4bce2f0fe7"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.permissions/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.permissions/review-lt.txt",
+      "sha256": "4d918522b22e7821d8fe66c05616522b29aa4097cfa6c47fcfb0d81af8d26b3e"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.permissions.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCaptureCallSound",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice, summary and calendar-name switches and the Permissions tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCaptureCallSound-4058/draft.json",
+      "sha256": "4945fb3730423a80b8f41351f7ccaa58535385272e0a999f95ce138516c401fe"
+     },
+     "prompt": {
+      "path": "additions/meetingCaptureCallSound-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCaptureCallSound-4058/review-lt.txt",
+      "sha256": "df8015237d8f6995c6e173eaa7e9b81fa1632cfd82f047cbc054969c83cb76b0"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCallApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice and the General and Call Apps tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCallApps-4058/draft.json",
+      "sha256": "3d9aef9d0d79ddcda6a3763d67158e4aaa742487a1874106a10d5bf23af3f081"
+     },
+     "prompt": {
+      "path": "additions/meetingCallApps-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCallApps-4058/review-lt.txt",
+      "sha256": "5504c9735bf0f64034167a76a7e2d816b76a8551ac6dc798ddcba442f9b0a5bf"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lv",
-   "contentSHA256": "ae58ddb1e8185436e0d5dd5fe56b5eb2f603919655e336b699ef2c68f17da34d",
+   "contentSHA256": "e8f8b341d1fec84990a1506433d9aafa8d4e5418c5a0d6ab0f68069301c0f52f",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5181,13 +6926,108 @@
       "sha256": "5942b4ceb44d101850554514e0f8b0171ed8a24c869d7b0251e49ae0b87f9864"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.general",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Call Apps and Permissions tabs, the When a call starts choice, the summary switch and App Settings' Appearance tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.general/draft.json",
+      "sha256": "29784e756d957d7d9d2be13a948e6257be952f30dce35995951eca075b36395c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.general/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.general/review-lv.txt",
+      "sha256": "fac4e2ede9e43ce22cfdfebc9b1e6a42d90e2a80d4062cd3831c734b7b5d336f"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.general.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.callApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the per-app list, the When a call starts choice and the other two EnviousMeet tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.callApps/draft.json",
+      "sha256": "966a773bfdb8493b3e9b5da9d105faa0f85a83ca455504658c8da5ec358e769c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.callApps/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.callApps/review-lv.txt",
+      "sha256": "c6f2f6d2b8e6fa1013feb1ea48d1868a971e61b33ff4bbd9d026fdd42fa1a49b"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.callApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.permissions",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with App Settings' Permissions tab, the other two EnviousMeet tabs and the calendar-name switch); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.permissions/draft.json",
+      "sha256": "2df14fee1db8351e43e8aef8df85da2fccf37f35a20c98d296c6fc4bce2f0fe7"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.permissions/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.permissions/review-lv.txt",
+      "sha256": "6c5c3c85c4be41a4b131da993ee3205a1d50ff3f3053af4676881ac051171c20"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.permissions.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCaptureCallSound",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice, summary and calendar-name switches and the Permissions tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCaptureCallSound-4058/draft.json",
+      "sha256": "4945fb3730423a80b8f41351f7ccaa58535385272e0a999f95ce138516c401fe"
+     },
+     "prompt": {
+      "path": "additions/meetingCaptureCallSound-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCaptureCallSound-4058/review-lv.txt",
+      "sha256": "f4f7fa8547f12c2083cabe39ae784790b04e82a22eaffe86a5730d429b0540bf"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCallApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice and the General and Call Apps tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCallApps-4058/draft.json",
+      "sha256": "3d9aef9d0d79ddcda6a3763d67158e4aaa742487a1874106a10d5bf23af3f081"
+     },
+     "prompt": {
+      "path": "additions/meetingCallApps-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCallApps-4058/review-lv.txt",
+      "sha256": "7f1452144a8699e81b9cd8cf978e45b77405ba73f352b509f3bd4bd0925667e3"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "mt",
-   "contentSHA256": "3cb01d48503ba691703cde6d40bf98014c93c4b5e8dd1cc0cd35b50da20442a3",
+   "contentSHA256": "89c68fcc3164bfe2a5a87652c275a0931adc4e465a2199fecdffde0932745b79",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5440,13 +7280,108 @@
       "sha256": "ad4c713161c4cafebb3dec9a55e9b2f34ed8d3c9e9dd71c0ef62ae930f86e479"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.general",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Call Apps and Permissions tabs, the When a call starts choice, the summary switch and App Settings' Appearance tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.general/draft.json",
+      "sha256": "29784e756d957d7d9d2be13a948e6257be952f30dce35995951eca075b36395c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.general/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.general/review-mt.txt",
+      "sha256": "2aa0f4f9a5b8169f9c1e2cbb4823ab987a40c693c6ad9f04b870f78b6ab4f09b"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.general.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.callApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the per-app list, the When a call starts choice and the other two EnviousMeet tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.callApps/draft.json",
+      "sha256": "966a773bfdb8493b3e9b5da9d105faa0f85a83ca455504658c8da5ec358e769c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.callApps/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.callApps/review-mt.txt",
+      "sha256": "f57ef78edbd17ffd47b562cdbd3177abb3eb7b4c8d2c1984fde9fa2317cff2ed"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.callApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.permissions",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with App Settings' Permissions tab, the other two EnviousMeet tabs and the calendar-name switch); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.permissions/draft.json",
+      "sha256": "2df14fee1db8351e43e8aef8df85da2fccf37f35a20c98d296c6fc4bce2f0fe7"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.permissions/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.permissions/review-mt.txt",
+      "sha256": "d7159fbd5c7e684ea73f53c622282a130b3461d575c8a10ec49e1810b4d3ba51"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.permissions.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCaptureCallSound",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice, summary and calendar-name switches and the Permissions tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCaptureCallSound-4058/draft.json",
+      "sha256": "4945fb3730423a80b8f41351f7ccaa58535385272e0a999f95ce138516c401fe"
+     },
+     "prompt": {
+      "path": "additions/meetingCaptureCallSound-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCaptureCallSound-4058/review-mt.txt",
+      "sha256": "f9c41e8e6de975617a9339ebb7591757edc01871cd4e77b7b54a3dd6e33c468d"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCallApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice and the General and Call Apps tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCallApps-4058/draft.json",
+      "sha256": "3d9aef9d0d79ddcda6a3763d67158e4aaa742487a1874106a10d5bf23af3f081"
+     },
+     "prompt": {
+      "path": "additions/meetingCallApps-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCallApps-4058/review-mt.txt",
+      "sha256": "632ff2398147ce300773022eddb70d89a20d9f64af023c26aa30092a655a69a3"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "nl",
-   "contentSHA256": "4b8709dc88730457acbaa8664cc2693810b45a27d8add7d8d129d84ba4ee465a",
+   "contentSHA256": "97dd90e76b3bc61049dcdc0a8b5428b89feaf306b050c7107ca3dfb69d9f6fa7",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5690,13 +7625,108 @@
       "sha256": "d9d12c16f3ae5579ddfe805fb4891e7042c1e4642cd314b0640d7ac02389a38c"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.general",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Call Apps and Permissions tabs, the When a call starts choice, the summary switch and App Settings' Appearance tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.general/draft.json",
+      "sha256": "29784e756d957d7d9d2be13a948e6257be952f30dce35995951eca075b36395c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.general/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.general/review-nl.txt",
+      "sha256": "e67bb1d6fe184ebd65cfee50c5b9a77c300d383ad82a82a06afec4a6ee1bd1f9"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.general.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.callApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the per-app list, the When a call starts choice and the other two EnviousMeet tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.callApps/draft.json",
+      "sha256": "966a773bfdb8493b3e9b5da9d105faa0f85a83ca455504658c8da5ec358e769c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.callApps/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.callApps/review-nl.txt",
+      "sha256": "59ff7ac062a2343c4107b06f99bf91fd5ae65cc6988d9f7fde31989b25f1fd9d"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.callApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.permissions",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with App Settings' Permissions tab, the other two EnviousMeet tabs and the calendar-name switch); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.permissions/draft.json",
+      "sha256": "2df14fee1db8351e43e8aef8df85da2fccf37f35a20c98d296c6fc4bce2f0fe7"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.permissions/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.permissions/review-nl.txt",
+      "sha256": "7830ea8f68097bf4777fd148c7302c4bc0165b20c539d77867d7123267220707"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.permissions.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCaptureCallSound",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice, summary and calendar-name switches and the Permissions tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCaptureCallSound-4058/draft.json",
+      "sha256": "4945fb3730423a80b8f41351f7ccaa58535385272e0a999f95ce138516c401fe"
+     },
+     "prompt": {
+      "path": "additions/meetingCaptureCallSound-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCaptureCallSound-4058/review-nl.txt",
+      "sha256": "431a4bf38aa585b0da5d1b79a27dd0c83a5229b1dc81127555bb59a1d28a3248"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCallApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice and the General and Call Apps tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCallApps-4058/draft.json",
+      "sha256": "3d9aef9d0d79ddcda6a3763d67158e4aaa742487a1874106a10d5bf23af3f081"
+     },
+     "prompt": {
+      "path": "additions/meetingCallApps-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCallApps-4058/review-nl.txt",
+      "sha256": "13cb0cbaf6f98adc582fab84adb2c6af6a5c1cff7e18e54625b11b902b202e35"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pl",
-   "contentSHA256": "8eb0b0f5b7a0488ac9b2fbdf175e82c8ec915833fdde1e065ffd11d4434fab1d",
+   "contentSHA256": "eb5bd1cfbcabda628d37f688597fedb3910c303b3e9ac45f56a6b6c2dd253bc4",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5940,13 +7970,108 @@
       "sha256": "99dcc8e4e9c87959397d16a5f5a9e6c174b0db60019118e59681e2c7054e2074"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.general",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Call Apps and Permissions tabs, the When a call starts choice, the summary switch and App Settings' Appearance tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.general/draft.json",
+      "sha256": "29784e756d957d7d9d2be13a948e6257be952f30dce35995951eca075b36395c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.general/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.general/review-pl.txt",
+      "sha256": "8fb5401d22a137c2ed6c38bc01b37a040e64504c88b7b37173e71aa992e5c71a"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.general.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.callApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the per-app list, the When a call starts choice and the other two EnviousMeet tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.callApps/draft.json",
+      "sha256": "966a773bfdb8493b3e9b5da9d105faa0f85a83ca455504658c8da5ec358e769c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.callApps/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.callApps/review-pl.txt",
+      "sha256": "fd226956057bc59d4376c6bea9c7a94f432c9a671a14374410504b291e505b3d"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.callApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.permissions",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with App Settings' Permissions tab, the other two EnviousMeet tabs and the calendar-name switch); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.permissions/draft.json",
+      "sha256": "2df14fee1db8351e43e8aef8df85da2fccf37f35a20c98d296c6fc4bce2f0fe7"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.permissions/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.permissions/review-pl.txt",
+      "sha256": "2747867c156a8f4a4ba5a84760b6c38912920d111e050d69ebd677a6f37ead53"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.permissions.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCaptureCallSound",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice, summary and calendar-name switches and the Permissions tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCaptureCallSound-4058/draft.json",
+      "sha256": "4945fb3730423a80b8f41351f7ccaa58535385272e0a999f95ce138516c401fe"
+     },
+     "prompt": {
+      "path": "additions/meetingCaptureCallSound-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCaptureCallSound-4058/review-pl.txt",
+      "sha256": "edf6f31c1e2ea9ddb00b722b6f9de46378ad1721aedd26b19eb8464aa1478ca1"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCallApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice and the General and Call Apps tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCallApps-4058/draft.json",
+      "sha256": "3d9aef9d0d79ddcda6a3763d67158e4aaa742487a1874106a10d5bf23af3f081"
+     },
+     "prompt": {
+      "path": "additions/meetingCallApps-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCallApps-4058/review-pl.txt",
+      "sha256": "0e9c1bbe73458d114c0ec0ff2d2ced46414ded0839723d3c3f6a516192159210"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pt",
-   "contentSHA256": "1db70d79bc0f7155a1392b932eac4b8e1aee703975673d0aad6bf84ad8ca0e46",
+   "contentSHA256": "bb091000eab1400d84a449a59c24f169cff81f04220d462d38799f97bacc6e40",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -6198,13 +8323,108 @@
       "sha256": "005b2e5b2852fdd29efb9cf542e9897637442166d7ad482cbed94cd967f34616"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.general",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Call Apps and Permissions tabs, the When a call starts choice, the summary switch and App Settings' Appearance tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.general/draft.json",
+      "sha256": "29784e756d957d7d9d2be13a948e6257be952f30dce35995951eca075b36395c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.general/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.general/review-pt.txt",
+      "sha256": "9722f152e06277cff5f13d84ddadc3bef5c1e423ad5f9f383db31fe8eaa641aa"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.general.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.callApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the per-app list, the When a call starts choice and the other two EnviousMeet tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.callApps/draft.json",
+      "sha256": "966a773bfdb8493b3e9b5da9d105faa0f85a83ca455504658c8da5ec358e769c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.callApps/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.callApps/review-pt.txt",
+      "sha256": "39a223528bc099a82d6bc3b9fdb43568b30a565a39f0e389d05036188858536d"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.callApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.permissions",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with App Settings' Permissions tab, the other two EnviousMeet tabs and the calendar-name switch); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.permissions/draft.json",
+      "sha256": "2df14fee1db8351e43e8aef8df85da2fccf37f35a20c98d296c6fc4bce2f0fe7"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.permissions/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.permissions/review-pt.txt",
+      "sha256": "6f45b6917cc63e20cefa434843b73063758b7c537877056fbc1124caced5bbb7"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.permissions.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCaptureCallSound",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice, summary and calendar-name switches and the Permissions tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCaptureCallSound-4058/draft.json",
+      "sha256": "4945fb3730423a80b8f41351f7ccaa58535385272e0a999f95ce138516c401fe"
+     },
+     "prompt": {
+      "path": "additions/meetingCaptureCallSound-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCaptureCallSound-4058/review-pt.txt",
+      "sha256": "bfa44000a756b96227dcefec573e205d16193377979f36c6ba713f18f055387a"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCallApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice and the General and Call Apps tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCallApps-4058/draft.json",
+      "sha256": "3d9aef9d0d79ddcda6a3763d67158e4aaa742487a1874106a10d5bf23af3f081"
+     },
+     "prompt": {
+      "path": "additions/meetingCallApps-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCallApps-4058/review-pt.txt",
+      "sha256": "f81f636ae10cad42519d83f41936a92356180ea24032e68289b66915ef2f9de9"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ro",
-   "contentSHA256": "0cc59c13cea87bf8d0cd20a5e63b218d0ed6d5d03873aa81005fd086b6d3a9d4",
+   "contentSHA256": "6c2b7b893234bda67b851ebd1abd5a88a5171ae22adbf65643474c27c480fbbc",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -6448,13 +8668,108 @@
       "sha256": "b21bee5a738426cbb79a0e5f89a1be4478bdb93880b564f9991310e22683330b"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.general",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Call Apps and Permissions tabs, the When a call starts choice, the summary switch and App Settings' Appearance tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.general/draft.json",
+      "sha256": "29784e756d957d7d9d2be13a948e6257be952f30dce35995951eca075b36395c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.general/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.general/review-ro.txt",
+      "sha256": "9c970113e528c32d2bf120bdc96c20ea85e26161de0e26dcc25dc0f53e6c958e"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.general.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.callApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the per-app list, the When a call starts choice and the other two EnviousMeet tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.callApps/draft.json",
+      "sha256": "966a773bfdb8493b3e9b5da9d105faa0f85a83ca455504658c8da5ec358e769c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.callApps/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.callApps/review-ro.txt",
+      "sha256": "a8ea1ee560445360d61c16d7e8672dc263153bca8fe90fce1adf606aa987aa16"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.callApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.permissions",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with App Settings' Permissions tab, the other two EnviousMeet tabs and the calendar-name switch); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.permissions/draft.json",
+      "sha256": "2df14fee1db8351e43e8aef8df85da2fccf37f35a20c98d296c6fc4bce2f0fe7"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.permissions/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.permissions/review-ro.txt",
+      "sha256": "b92d74cd515045ddf77601c5da88e561cee0f7774ef32a9ad72ce0b79aa61edc"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.permissions.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCaptureCallSound",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice, summary and calendar-name switches and the Permissions tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCaptureCallSound-4058/draft.json",
+      "sha256": "4945fb3730423a80b8f41351f7ccaa58535385272e0a999f95ce138516c401fe"
+     },
+     "prompt": {
+      "path": "additions/meetingCaptureCallSound-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCaptureCallSound-4058/review-ro.txt",
+      "sha256": "f7205cba32134339dce184f7cd3c0a6444cd684385bab210125d02baffa358b0"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCallApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice and the General and Call Apps tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCallApps-4058/draft.json",
+      "sha256": "3d9aef9d0d79ddcda6a3763d67158e4aaa742487a1874106a10d5bf23af3f081"
+     },
+     "prompt": {
+      "path": "additions/meetingCallApps-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCallApps-4058/review-ro.txt",
+      "sha256": "363511f3a633bd262b90a5e8e6bd85126f9b69a9bd8f9573ad25e9c04cc25962"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ru",
-   "contentSHA256": "cfa2ae17ff469d0723aca26fd9a4002cd33b36b851c98b4d9f5a27e8dfa2489b",
+   "contentSHA256": "e9edeb20036410ddb135cb07f6c720e5b9bce87270e8962681f3e5a3bebf3e81",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -6698,13 +9013,108 @@
       "sha256": "0edde07d7f67f4fccc8fe76052017c427efe4f44980926c80c30059f90480170"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.general",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Call Apps and Permissions tabs, the When a call starts choice, the summary switch and App Settings' Appearance tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.general/draft.json",
+      "sha256": "29784e756d957d7d9d2be13a948e6257be952f30dce35995951eca075b36395c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.general/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.general/review-ru.txt",
+      "sha256": "bc0ce91783c20d58ac977ddf3bc912e2e490e747d63547de1fb08e37da00c97a"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.general.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.callApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the per-app list, the When a call starts choice and the other two EnviousMeet tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.callApps/draft.json",
+      "sha256": "966a773bfdb8493b3e9b5da9d105faa0f85a83ca455504658c8da5ec358e769c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.callApps/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.callApps/review-ru.txt",
+      "sha256": "e4d87f5c4aa51c96f19c4d3ada5ff33d4c6d0e61c2cf5e57610024da9d03d7f9"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.callApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.permissions",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with App Settings' Permissions tab, the other two EnviousMeet tabs and the calendar-name switch); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.permissions/draft.json",
+      "sha256": "2df14fee1db8351e43e8aef8df85da2fccf37f35a20c98d296c6fc4bce2f0fe7"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.permissions/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.permissions/review-ru.txt",
+      "sha256": "d2b43246714694ab15f3989af34a20adb61a1a58afb7dd7ba553a76a3c368a99"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.permissions.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCaptureCallSound",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice, summary and calendar-name switches and the Permissions tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCaptureCallSound-4058/draft.json",
+      "sha256": "4945fb3730423a80b8f41351f7ccaa58535385272e0a999f95ce138516c401fe"
+     },
+     "prompt": {
+      "path": "additions/meetingCaptureCallSound-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCaptureCallSound-4058/review-ru.txt",
+      "sha256": "7fd11871b118023bd78e4b867c6dcc6238557e5a5392b2ffdb4a7747ef185097"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCallApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice and the General and Call Apps tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCallApps-4058/draft.json",
+      "sha256": "3d9aef9d0d79ddcda6a3763d67158e4aaa742487a1874106a10d5bf23af3f081"
+     },
+     "prompt": {
+      "path": "additions/meetingCallApps-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCallApps-4058/review-ru.txt",
+      "sha256": "bab3201faa9623ff538b6327181fecdc5710e297b4c5207cc7ff151d732814dc"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sk",
-   "contentSHA256": "fb2dc2539863e11c85b2254b93ce21a523fef357f296165af8ea864503b93dfa",
+   "contentSHA256": "5213380c2094d989208b0bb1f0a6e7fdee703eb145bfaeaed75f972a5fcf2295",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -6948,13 +9358,108 @@
       "sha256": "3212c0f5a598581493d5b98e64d9e3a9bf82d74c5880300c06a3a587500f8532"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.general",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Call Apps and Permissions tabs, the When a call starts choice, the summary switch and App Settings' Appearance tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.general/draft.json",
+      "sha256": "29784e756d957d7d9d2be13a948e6257be952f30dce35995951eca075b36395c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.general/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.general/review-sk.txt",
+      "sha256": "5ab40c2e306d181b1026556b68bc358c2a3defdc5d856a77ee151387a2a8c5f3"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.general.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.callApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the per-app list, the When a call starts choice and the other two EnviousMeet tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.callApps/draft.json",
+      "sha256": "966a773bfdb8493b3e9b5da9d105faa0f85a83ca455504658c8da5ec358e769c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.callApps/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.callApps/review-sk.txt",
+      "sha256": "20f7281a143e51ba585b05f360bbabbe8c39815da3b19f2f4a24f0fe2316c977"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.callApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.permissions",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with App Settings' Permissions tab, the other two EnviousMeet tabs and the calendar-name switch); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.permissions/draft.json",
+      "sha256": "2df14fee1db8351e43e8aef8df85da2fccf37f35a20c98d296c6fc4bce2f0fe7"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.permissions/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.permissions/review-sk.txt",
+      "sha256": "07c3166139b11576eb34ee095adee9bfaf9284c65f0bd6d3b0492dc872ab0034"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.permissions.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCaptureCallSound",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice, summary and calendar-name switches and the Permissions tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCaptureCallSound-4058/draft.json",
+      "sha256": "4945fb3730423a80b8f41351f7ccaa58535385272e0a999f95ce138516c401fe"
+     },
+     "prompt": {
+      "path": "additions/meetingCaptureCallSound-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCaptureCallSound-4058/review-sk.txt",
+      "sha256": "7394f58e6796361d0960e325a377dd4931261e962327af103cfd8201682d4fc1"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCallApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice and the General and Call Apps tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCallApps-4058/draft.json",
+      "sha256": "3d9aef9d0d79ddcda6a3763d67158e4aaa742487a1874106a10d5bf23af3f081"
+     },
+     "prompt": {
+      "path": "additions/meetingCallApps-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCallApps-4058/review-sk.txt",
+      "sha256": "5dd5a6e55bccde83d40a3792f772b4f425f52f4d4ec83b1f205e07f6b502e7b7"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sl",
-   "contentSHA256": "66efcc3bd364ef1f73a0f245903cc14ad132f8a5dbdc69f977d841cb59ceab49",
+   "contentSHA256": "82fb7cfb50a9929d77a1ddacbf4f2b3ce6ac3ad2eae010eaed3490b587e49e27",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -7207,13 +9712,108 @@
       "sha256": "58ebfdbcb9c4ccc003ec4bb612a174c1cbfc51d904db7b5dbc71b00ed6ce8c75"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.general",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Call Apps and Permissions tabs, the When a call starts choice, the summary switch and App Settings' Appearance tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.general/draft.json",
+      "sha256": "29784e756d957d7d9d2be13a948e6257be952f30dce35995951eca075b36395c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.general/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.general/review-sl.txt",
+      "sha256": "4914d49cbd37ee13f8e6968611e6d1ecf7b54e0fe36b012a7c803a54784e557e"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.general.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.callApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the per-app list, the When a call starts choice and the other two EnviousMeet tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.callApps/draft.json",
+      "sha256": "966a773bfdb8493b3e9b5da9d105faa0f85a83ca455504658c8da5ec358e769c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.callApps/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.callApps/review-sl.txt",
+      "sha256": "23476996cbe6e3849cfe3c60b3390ea4ca0e5a2be2c2d2661df7b59dbfdb91ea"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.callApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.permissions",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with App Settings' Permissions tab, the other two EnviousMeet tabs and the calendar-name switch); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.permissions/draft.json",
+      "sha256": "2df14fee1db8351e43e8aef8df85da2fccf37f35a20c98d296c6fc4bce2f0fe7"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.permissions/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.permissions/review-sl.txt",
+      "sha256": "a980cf560fba8fa2130110eded5cccab849339365c657611f8c938d6f75a4c10"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.permissions.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCaptureCallSound",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice, summary and calendar-name switches and the Permissions tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCaptureCallSound-4058/draft.json",
+      "sha256": "4945fb3730423a80b8f41351f7ccaa58535385272e0a999f95ce138516c401fe"
+     },
+     "prompt": {
+      "path": "additions/meetingCaptureCallSound-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCaptureCallSound-4058/review-sl.txt",
+      "sha256": "f313be1417c212b9c0ef44f5178b75d1396413d316ded25eaa6052fafb9a6f5d"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCallApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice and the General and Call Apps tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCallApps-4058/draft.json",
+      "sha256": "3d9aef9d0d79ddcda6a3763d67158e4aaa742487a1874106a10d5bf23af3f081"
+     },
+     "prompt": {
+      "path": "additions/meetingCallApps-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCallApps-4058/review-sl.txt",
+      "sha256": "a35e89a155f89b88c1797ce89c115e4002ed980445bb8fb68d2e18bec986c64a"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sv",
-   "contentSHA256": "ca7fb997bc657b273b12cc7230ed99dc3ee1f06953f1ce5c493b866ed94df418",
+   "contentSHA256": "65b7d4837b9695f43fdcf5e0968b215e0ed86902390c9324a5437fa3432f12df",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -7457,13 +10057,108 @@
       "sha256": "c813394b69e413497c21ea045586079422e3007894c8fc911841a81b3b446356"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.general",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Call Apps and Permissions tabs, the When a call starts choice, the summary switch and App Settings' Appearance tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.general/draft.json",
+      "sha256": "29784e756d957d7d9d2be13a948e6257be952f30dce35995951eca075b36395c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.general/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.general/review-sv.txt",
+      "sha256": "59ce4627ca53cb55a20199afb266237199ac3c772694925258cc627cf4854401"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.general.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.callApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the per-app list, the When a call starts choice and the other two EnviousMeet tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.callApps/draft.json",
+      "sha256": "966a773bfdb8493b3e9b5da9d105faa0f85a83ca455504658c8da5ec358e769c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.callApps/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.callApps/review-sv.txt",
+      "sha256": "1ed14fa81f63aaf39347ea0d7c7b0215793156b83cadc3173c07feae08e09384"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.callApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.permissions",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with App Settings' Permissions tab, the other two EnviousMeet tabs and the calendar-name switch); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.permissions/draft.json",
+      "sha256": "2df14fee1db8351e43e8aef8df85da2fccf37f35a20c98d296c6fc4bce2f0fe7"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.permissions/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.permissions/review-sv.txt",
+      "sha256": "3cb2ab8760de08961bb358ddfa6737bcde0901aba4530681427f9525d711cc00"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.permissions.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCaptureCallSound",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice, summary and calendar-name switches and the Permissions tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCaptureCallSound-4058/draft.json",
+      "sha256": "4945fb3730423a80b8f41351f7ccaa58535385272e0a999f95ce138516c401fe"
+     },
+     "prompt": {
+      "path": "additions/meetingCaptureCallSound-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCaptureCallSound-4058/review-sv.txt",
+      "sha256": "4f265ee3a8ec13ce430eaf6b9a95fee9632830215a33c712e0651053f5405d1c"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCallApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice and the General and Call Apps tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCallApps-4058/draft.json",
+      "sha256": "3d9aef9d0d79ddcda6a3763d67158e4aaa742487a1874106a10d5bf23af3f081"
+     },
+     "prompt": {
+      "path": "additions/meetingCallApps-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCallApps-4058/review-sv.txt",
+      "sha256": "918ddf433ee3b5d18ac324d381b0aaa41932f95463cb07d31285476baa8f4e90"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "tr",
-   "contentSHA256": "030710327409a013fb2576579c87278a65b2328a3bc6957bcb481e2034b04782",
+   "contentSHA256": "e71702abbfdf52f8c01c2af0b903720ded1f5794619e65a0b2dc9a1aeabaf5d7",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -7707,13 +10402,108 @@
       "sha256": "70ec3c2c2d69b96995eea5f97f179e02618039fde6eca6476e7f1bbe57d01f9e"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.general",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Call Apps and Permissions tabs, the When a call starts choice, the summary switch and App Settings' Appearance tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.general/draft.json",
+      "sha256": "29784e756d957d7d9d2be13a948e6257be952f30dce35995951eca075b36395c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.general/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.general/review-tr.txt",
+      "sha256": "9be5bd877d362e4559bbb73d6f2f7992a3db5dbed51c170f6ca70a0a077cde83"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.general.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.callApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the per-app list, the When a call starts choice and the other two EnviousMeet tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.callApps/draft.json",
+      "sha256": "966a773bfdb8493b3e9b5da9d105faa0f85a83ca455504658c8da5ec358e769c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.callApps/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.callApps/review-tr.txt",
+      "sha256": "bd5a0199fc4145c249ccfd37bd87ddaac13ab2f6abeb17d411f76667f30e5c38"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.callApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.permissions",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with App Settings' Permissions tab, the other two EnviousMeet tabs and the calendar-name switch); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.permissions/draft.json",
+      "sha256": "2df14fee1db8351e43e8aef8df85da2fccf37f35a20c98d296c6fc4bce2f0fe7"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.permissions/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.permissions/review-tr.txt",
+      "sha256": "a3107f5fb4b67794c0fdb7b5f707ed11c65c9c40dd3e9907e1a2a9c438d3c6ac"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.permissions.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCaptureCallSound",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice, summary and calendar-name switches and the Permissions tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCaptureCallSound-4058/draft.json",
+      "sha256": "4945fb3730423a80b8f41351f7ccaa58535385272e0a999f95ce138516c401fe"
+     },
+     "prompt": {
+      "path": "additions/meetingCaptureCallSound-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCaptureCallSound-4058/review-tr.txt",
+      "sha256": "933008e33bd803269782261861239891f2029e5cc8d075f0cea03bf17ffe2814"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCallApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice and the General and Call Apps tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCallApps-4058/draft.json",
+      "sha256": "3d9aef9d0d79ddcda6a3763d67158e4aaa742487a1874106a10d5bf23af3f081"
+     },
+     "prompt": {
+      "path": "additions/meetingCallApps-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCallApps-4058/review-tr.txt",
+      "sha256": "c4217dc08a96c4a7ea9252b89d02c593858c1e07fc7873fffae66a74f4d568b8"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "uk",
-   "contentSHA256": "f15903d19ae24227d5bd4396a1068a730173ad0543cd88f5ed2e16c5c7ec2cf5",
+   "contentSHA256": "9922e80e9dd19791c1a85b220ac57a3c160892cb2eca48f93f2c632470afee8f",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -7966,13 +10756,108 @@
       "sha256": "8d0f114857b44db9f8d27576f70c075b92b62ac79bfe4d3230b7b170703c4ffa"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.general",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Call Apps and Permissions tabs, the When a call starts choice, the summary switch and App Settings' Appearance tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.general/draft.json",
+      "sha256": "29784e756d957d7d9d2be13a948e6257be952f30dce35995951eca075b36395c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.general/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.general/review-uk.txt",
+      "sha256": "aa17111666e322d7c7d1f0916b3140f15b1be8a5c36d450ea4ccf55ba637fe7b"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.general.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.callApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the per-app list, the When a call starts choice and the other two EnviousMeet tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.callApps/draft.json",
+      "sha256": "966a773bfdb8493b3e9b5da9d105faa0f85a83ca455504658c8da5ec358e769c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.callApps/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.callApps/review-uk.txt",
+      "sha256": "cf2c83810156cd0e3b59bc47f1509f3afc34a98a24618bc69710e4e03fb68026"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.callApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.permissions",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with App Settings' Permissions tab, the other two EnviousMeet tabs and the calendar-name switch); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.permissions/draft.json",
+      "sha256": "2df14fee1db8351e43e8aef8df85da2fccf37f35a20c98d296c6fc4bce2f0fe7"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.permissions/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.permissions/review-uk.txt",
+      "sha256": "4c231df218bc44a2b487bd507d1c4fda7dc6667a94c4eb4676d35a028bb65073"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.permissions.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCaptureCallSound",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice, summary and calendar-name switches and the Permissions tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCaptureCallSound-4058/draft.json",
+      "sha256": "4945fb3730423a80b8f41351f7ccaa58535385272e0a999f95ce138516c401fe"
+     },
+     "prompt": {
+      "path": "additions/meetingCaptureCallSound-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCaptureCallSound-4058/review-uk.txt",
+      "sha256": "6aa7f976af4e65a9ee42a01f47be719d5346b7aec0e3811ff0c71b96e7a305c2"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCallApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice and the General and Call Apps tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCallApps-4058/draft.json",
+      "sha256": "3d9aef9d0d79ddcda6a3763d67158e4aaa742487a1874106a10d5bf23af3f081"
+     },
+     "prompt": {
+      "path": "additions/meetingCallApps-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCallApps-4058/review-uk.txt",
+      "sha256": "e17ad474ffa1cd1c04ae889ddf4c8b8544b63269a1804e74265a50494afe81d8"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "vi",
-   "contentSHA256": "927a97b78cda8b6acd8631a83bc08e5d5a493e4d5cbf275799bf0ecdfc791531",
+   "contentSHA256": "ba5c4dbda4c98abf3900e1d3f06e3574d551b641d642523e6035431597642084",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -8216,13 +11101,108 @@
       "sha256": "427a174d015b062fb312e37ef590fb5f4623698173f9447e81f979d4211c23b3"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.general",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Call Apps and Permissions tabs, the When a call starts choice, the summary switch and App Settings' Appearance tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.general/draft.json",
+      "sha256": "29784e756d957d7d9d2be13a948e6257be952f30dce35995951eca075b36395c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.general/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.general/review-vi.txt",
+      "sha256": "b64174bea4b8b7c697a9d5cd52b61201a58f37b91a2fb872c1d02fe0e3031786"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.general.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.callApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the per-app list, the When a call starts choice and the other two EnviousMeet tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.callApps/draft.json",
+      "sha256": "966a773bfdb8493b3e9b5da9d105faa0f85a83ca455504658c8da5ec358e769c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.callApps/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.callApps/review-vi.txt",
+      "sha256": "b55f3d4a1a690e104bd1b7c93c66bc15a1ddd9801b137d89d794237725ed673e"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.callApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.permissions",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with App Settings' Permissions tab, the other two EnviousMeet tabs and the calendar-name switch); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.permissions/draft.json",
+      "sha256": "2df14fee1db8351e43e8aef8df85da2fccf37f35a20c98d296c6fc4bce2f0fe7"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.permissions/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.permissions/review-vi.txt",
+      "sha256": "d0b10ec0fb704f58d911068e610f8cca2dc765c8d25a1f43343f12aa13dc240f"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.permissions.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCaptureCallSound",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice, summary and calendar-name switches and the Permissions tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCaptureCallSound-4058/draft.json",
+      "sha256": "4945fb3730423a80b8f41351f7ccaa58535385272e0a999f95ce138516c401fe"
+     },
+     "prompt": {
+      "path": "additions/meetingCaptureCallSound-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCaptureCallSound-4058/review-vi.txt",
+      "sha256": "007c32fdb65d125b979245db66cf59df07aba56b4de912332535c3496cd634a2"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCallApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice and the General and Call Apps tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCallApps-4058/draft.json",
+      "sha256": "3d9aef9d0d79ddcda6a3763d67158e4aaa742487a1874106a10d5bf23af3f081"
+     },
+     "prompt": {
+      "path": "additions/meetingCallApps-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCallApps-4058/review-vi.txt",
+      "sha256": "9d840760bc72922ed72c69d1b587d989aaebb4339826f42842faad97fb96dfa3"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "zh",
-   "contentSHA256": "af64c113b1e4f3bdbbfde1abd20eb33aeb575ad7bf05807f951217f126eca840",
+   "contentSHA256": "76a7e8d75698a81875a654582ebb842aad0d79545ef7f9be690669a188f63812",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -8466,6 +11446,101 @@
       "sha256": "dfc08c0d1fd379cdda4c64d286522b4281171be483a5db3fe3da2eadb8947ba2"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.general",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the Call Apps and Permissions tabs, the When a call starts choice, the summary switch and App Settings' Appearance tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.general/draft.json",
+      "sha256": "29784e756d957d7d9d2be13a948e6257be952f30dce35995951eca075b36395c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.general/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.general/review-zh.txt",
+      "sha256": "1b331b831ffe3d4267553025a538e2b50eaa43a863115249cffae8256f95c9b2"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.general.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.callApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the per-app list, the When a call starts choice and the other two EnviousMeet tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.callApps/draft.json",
+      "sha256": "966a773bfdb8493b3e9b5da9d105faa0f85a83ca455504658c8da5ec358e769c"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.callApps/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.callApps/review-zh.txt",
+      "sha256": "7cf6ede0186b92d6ae5dbe36ee33b0dab930cfdf7d070098f644a8c14f209a09"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.callApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.permissions",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with App Settings' Permissions tab, the other two EnviousMeet tabs and the calendar-name switch); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetings.tab.permissions/draft.json",
+      "sha256": "2df14fee1db8351e43e8aef8df85da2fccf37f35a20c98d296c6fc4bce2f0fe7"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.permissions/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetings.tab.permissions/review-zh.txt",
+      "sha256": "73ee6b8da8ccfa98ca9c9921778625dc5d75191e2d5f1e9a75a75092d42abaa3"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.permissions.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCaptureCallSound",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice, summary and calendar-name switches and the Permissions tab); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCaptureCallSound-4058/draft.json",
+      "sha256": "4945fb3730423a80b8f41351f7ccaa58535385272e0a999f95ce138516c401fe"
+     },
+     "prompt": {
+      "path": "additions/meetingCaptureCallSound-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCaptureCallSound-4058/review-zh.txt",
+      "sha256": "47619799b8959c2ce2949d272433318e0e9b787853fce961cd4323e6738790d5"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCaptureCallSound.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingCallApps",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the When a call starts choice and the General and Call Apps tabs); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages; re-review after the #4058 rename",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingCallApps-4058/draft.json",
+      "sha256": "3d9aef9d0d79ddcda6a3763d67158e4aaa742487a1874106a10d5bf23af3f081"
+     },
+     "prompt": {
+      "path": "additions/meetingCallApps-4058/review-driver.py.txt",
+      "sha256": "3a9b7bc59d69a0c947e3f336a9ac598816208a33f41d610e6552a4b67021934f"
+     },
+     "output": {
+      "path": "additions/meetingCallApps-4058/review-zh.txt",
+      "sha256": "c822cc65cfd3ed6177780d310de57e324df9f0e064276b16d972d1ae66084650"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
     }
    ],
    "phraseExemptions": []
@@ -8568,7 +11643,7 @@
   "mediaDuringDictation.lower": "34e795b0f1b000510093889c5f0784476cd1a64f9c7a2ae0af97642c206a391d",
   "mediaDuringDictation.mute": "61261da87a72f323e1b6155942feab4029e1fa0616b1a692784408f2ffcfbc21",
   "mediaDuringDictation.pause": "1c2af924f376aed17cb6889b9607e4da0671f99c506481509e2ec708850a1323",
-  "meetingCaptureCallSound": "d2a8d22a6e4f35310ec662e5a8bc64e876fb6f0be3760911affa986af88d313c",
+  "meetingCaptureCallSound": "0db6ed871c23b54df99053c09432e3f68be6e1cf1ca3e52644d9dc2a190768ec",
   "meetingWriteSummary": "7431099b2d00fae72d81030f90319b211195ee5035eb83bc342350f4b4353af8",
   "micReadiness": "bf8b4b6cae2085a1dff902e99abf148a5adb4f508c89ef195283d205992f0472",
   "micReadiness.10s": "0d73303cda6cd2ac7f0a6bb3fdaefe248a5c8598d6d9a17a54656bae7504919d",
@@ -8725,7 +11800,10 @@
   "selfLearningDictionary.forgetMemory": "df6f4cc0a6d055a0e8f95ed369832bb56bb7f738c3aad4f3a30c81e0bb909e1b",
   "meetingUseCalendarForNames": "5ebf312c9a264cc605d3532f704a1fec134805ccd695a432174b05d2c51c6dd3",
   "meetingCallDetection": "7ae4896de9da439337589120b6338cb98aef3d7953ab527c12f3e3c7f85f3420",
-  "meetingCallApps": "dcf8325ffb7833b08079b2a73ebeb7322f50f9d9e81e18b688a6ac6f18b089bb"
+  "meetingCallApps": "eb11e2f297db44ad67d311a6f01032ebc6301374dc95cddc41ffb59d04e2a289",
+  "meetings.tab.callApps": "d3596e3b3103efb3058bf9e1253e2fe28aebff3b81cc3dac6346c7545e877266",
+  "meetings.tab.general": "eb61dcc5ade549cbc95f3534cb1266185805c18a5a4bc409678408f601e8cce6",
+  "meetings.tab.permissions": "659b60cb068e578a1d1dad89d85db0622749e04467fcbbd65dbb456c912351f6"
  },
  "reviewedSourceNote": "Per searchable id, the SHA-256 of the English title and description its translations were reviewed against (reference/settings-map.json; SettingsSearchVocabularyTests.sourceFingerprint). First recorded 2026-10-07 at be0086b6 from the export the Phase 0 and council reviews covered. When a test names an id here, re-review that id's translated blocks, then record the hash the test prints. Limit: dynamic titles are bound by resolver name, not template wording."
 }

@@ -1,0 +1,1 @@
+{"language":"it","title":"autorizzazioni","words":["permessi riunioni"],"phrases":["autorizzazioni di EnviousMeet","permessi per registrare le riunioni"]}

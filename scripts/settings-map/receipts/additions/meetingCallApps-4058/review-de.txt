@@ -1,0 +1,1 @@
+{"language":"de","words":["Anruf-Apps"],"phrases":["wähle aus, in welchen Apps Anrufe erkannt werden","frag mich bei Anrufen in dieser App nicht mehr nach einer Aufnahme","schalte die Anruferkennung für einzelne Apps aus"]}
