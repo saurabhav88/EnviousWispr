@@ -257,4 +257,21 @@ struct HistoryReuseTests {
     try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: pending.path)
     #expect(try await store.readHistory().freshness == nil)
   }
+
+  @Test(
+    "a held row file that cannot be read certifies nothing; one that reads but is malformed does")
+  func unreadablePendingFileIsNotCertified() async throws {
+    let dir = Self.makeTempDir()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let store = TranscriptStore(directory: dir)
+    try store.savePending(Self.heldRow())
+    let pending = dir.appendingPathComponent(AppConstants.pendingTranscriptsDir)
+    try Data("not json".utf8).write(to: pending.appendingPathComponent("\(UUID().uuidString).json"))
+    #expect(try await store.readHistory().freshness != nil, "malformed: excluded, still certified")
+    // A folder where a row file belongs is listed like a row and fails to read.
+    try FileManager.default.createDirectory(
+      at: pending.appendingPathComponent("\(UUID().uuidString).json"),
+      withIntermediateDirectories: false)
+    #expect(try await store.readHistory().freshness == nil)
+  }
 }

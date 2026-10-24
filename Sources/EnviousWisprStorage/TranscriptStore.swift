@@ -786,8 +786,18 @@ public final class TranscriptStore {
       let pending = (candidates ?? []).compactMap(\.liveTranscript).sorted {
         $0.createdAt > $1.createdAt
       }
+      // `.invalid` also covers a file that could not be READ, which may pass without any entry
+      // change (a permission restored). Only those block reuse; one that reads and is refused
+      // stays excluded, as in `readPermanent`.
+      let pendingComplete =
+        candidates.map { found in
+          !found.contains { candidate in
+            guard case .invalid(let url) = candidate else { return false }
+            return (try? Data(contentsOf: url)) == nil
+          }
+        } ?? false
       let after = Self.freshness(directory: dir, pendingDirectory: pendingDir)
-      let certified = permanent.complete && candidates != nil && before != nil && before == after
+      let certified = permanent.complete && pendingComplete && before != nil && before == after
       return TranscriptHistoryRead(
         permanent: permanent.rows, pending: pending, freshness: certified ? before : nil)
     }.value
