@@ -23,7 +23,6 @@ struct MeetingHistoryDetailView: View {
   /// Why a Paste did not happen, shown once History is back in front.
   @State private var pasteNotice: String?
 
-  @State private var titleDraft = ""
   @State private var confirming: Confirmation?
   @State private var actionInFlight = false
   /// The orphan row's Delete was refused: its folder is still on this Mac.
@@ -35,8 +34,6 @@ struct MeetingHistoryDetailView: View {
   @State private var player: MeetingPlaybackController?
   /// The source `player` was made from; a different source replaces it.
   @State private var playerSource: MeetingPlaybackSource?
-  /// The scrubber's place while the user drags it; nil follows the player.
-  @State private var scrubMs: Double?
 
   enum Confirmation: Equatable {
     case deleteAudio
@@ -58,10 +55,14 @@ struct MeetingHistoryDetailView: View {
           Text(MeetingsPresentation.title(record))
             .font(.system(size: 22, weight: .semibold))
             .foregroundStyle(.stTextPrimary)
-          header(record)
+          // #4001 step 2b-A: the name draft and the playback position are read by these two
+          // views only, so typing a name or a playback tick does not rebuild the transcript.
+          MeetingDetailHeader(meetingID: meetingID, record: record, audioSize: audioSize)
           actions(record)
           if let confirming { confirmation(confirming, record: record) }
-          if let player { playback(player) }
+          if let player {
+            MeetingPlaybackControls(player: player).id(ObjectIdentifier(player))
+          }
           tabPicker
           switch tab {
           case .transcript: transcriptTab(record)
@@ -81,7 +82,6 @@ struct MeetingHistoryDetailView: View {
         reconcilePlayer()
       }
       .onAppear {
-        titleDraft = record.title ?? ""
         // A meeting that recorded nothing has only notes to show.
         if record.state == .notesOnly { tab = .notes }
       }
@@ -175,59 +175,12 @@ struct MeetingHistoryDetailView: View {
     player?.stop()
     player = nil
     playerSource = nil
-    scrubMs = nil
   }
 
   /// What the audio size depends on, so it is measured again only when that changes.
   private struct AudioSizeKey: Hashable {
     let audioKept: Bool
     let state: MeetingState
-  }
-
-  // MARK: - Header
-
-  private func header(_ record: MeetingRecord) -> some View {
-    VStack(alignment: .leading, spacing: 8) {
-      HStack(spacing: 8) {
-        TextField(
-          String(
-            localized: "Meeting name", comment: "EnviousMeet: the rename field's placeholder."),
-          text: $titleDraft
-        )
-        .textFieldStyle(.roundedBorder)
-        .onSubmit { rename() }
-        .disabled(!record.isWritableByThisBuild)
-        .accessibilityIdentifier("meetings.detail.title")
-        Button {
-          rename()
-        } label: {
-          Text("Rename", comment: "EnviousMeet: saves the meeting's new name.")
-        }
-        .disabled(titleDraft == (record.title ?? "") || !record.isWritableByThisBuild)
-      }
-      let status = MeetingsPresentation.status(
-        record, processingID: meetings.processing?.meetingID)
-      Text(
-        [
-          MeetingsPresentation.statusLabel(status),
-          MeetingsPresentation.duration(ms: record.recordedDurationMs),
-          MeetingsPresentation.audioSizeLine(audioSize),
-        ].joined(separator: " · ")
-      )
-      .font(.stHelper)
-      .foregroundStyle(.stTextSecondary)
-      if let failure = MeetingsPresentation.failureLine(record) {
-        Text(failure)
-          .font(.stBody)
-          .foregroundStyle(.stError)
-          .fixedSize(horizontal: false, vertical: true)
-      }
-    }
-  }
-
-  private func rename() {
-    let title = titleDraft
-    Task { await meetings.rename(meetingID: meetingID, title: title) }
   }
 
   // MARK: - Actions
@@ -332,55 +285,6 @@ struct MeetingHistoryDetailView: View {
   }
 
   // MARK: - Playback
-
-  private func playback(_ player: MeetingPlaybackController) -> some View {
-    let duration = Double(max(1, player.durationMs))
-    let shown = scrubMs ?? Double(player.positionMs)
-    return VStack(alignment: .leading, spacing: 6) {
-      HStack(spacing: 10) {
-        Button {
-          if player.state == .playing { player.pause() } else { player.play() }
-        } label: {
-          Image(systemName: player.state == .playing ? "pause.fill" : "play.fill")
-            .frame(width: 18)
-        }
-        .buttonStyle(.borderless)
-        .disabled(player.state == .unavailable)
-        .accessibilityLabel(
-          player.state == .playing
-            ? Text("Pause", comment: "EnviousMeet: pauses the meeting recording.")
-            : Text("Play", comment: "EnviousMeet: plays the meeting recording.")
-        )
-        .accessibilityIdentifier("meetings.detail.play")
-        Slider(
-          value: Binding(get: { shown }, set: { scrubMs = $0 }), in: 0...duration,
-          onEditingChanged: { editing in
-            guard !editing, let target = scrubMs else { return }
-            player.seek(toMs: Int(target))
-            scrubMs = nil
-          }
-        )
-        .disabled(player.state == .unavailable)
-        .accessibilityLabel(Text("Position", comment: "EnviousMeet: the playback scrubber."))
-        .accessibilityValue(Text(MeetingsPresentation.clock(ms: Int(shown))))
-        Text(
-          verbatim:
-            "\(MeetingsPresentation.clock(ms: Int(shown))) / \(MeetingsPresentation.clock(ms: player.durationMs))"
-        )
-        .font(.stHelper.monospacedDigit())
-        .foregroundStyle(.stTextSecondary)
-        .accessibilityHidden(true)
-      }
-      if player.state == .unavailable {
-        Text(
-          "The recording can't be played. Its audio may have been deleted or damaged.",
-          comment: "EnviousMeet detail: playback could not read the meeting's audio."
-        )
-        .font(.stHelper)
-        .foregroundStyle(.stError)
-      }
-    }
-  }
 
   private func isActive(_ record: MeetingRecord) -> Bool {
     if meetings.processing?.meetingID == record.id { return true }
