@@ -86,6 +86,11 @@ final class AIAvailabilityCoordinator {
   /// The one in-flight activation read; later activations coalesce into it.
   private(set) var liveReadTask: Task<Void, Never>?
 
+  /// While the report says the model is still downloading, re-reads the live answer on a
+  /// timer, because nothing tells the app when macOS finishes (#3897 Live UAT, 2026-10-23:
+  /// the status stayed "downloading" with the window in front until the next activation).
+  private(set) var downloadWaitTask: Task<Void, Never>?
+
   private let repairDependencies: AppleAvailabilityRepairDependencies
   private let defaults: UserDefaults
 
@@ -145,6 +150,7 @@ final class AIAvailabilityCoordinator {
     persistReport(report)
     appendHistory(report: report, trigger: trigger)
     repairDependencies.reportCompleted(report, trigger)
+    armDownloadWait()
   }
 
   /// Debounced re-check — waits 500ms before starting. Cancels any pending debounce.
@@ -183,7 +189,9 @@ final class AIAvailabilityCoordinator {
     let read = repairDependencies.readLiveAvailability
     liveReadTask = Task { [weak self] in
       let live = await read()
-      self?.acceptActivationSample(live, capturedGeneration: generation, capturedToken: token)
+      self?.liveReadTask = nil
+      self?.acceptLiveSample(
+        live, capturedGeneration: generation, capturedToken: token, trigger: "app_active")
     }
   }
 
@@ -198,14 +206,44 @@ final class AIAvailabilityCoordinator {
       capturedToken: currentRequestToken)
   }
 
+  /// Re-reads the live answer every `downloadWait` while the report says still downloading,
+  /// at most `AppleAvailabilityRepair.maxDownloadWaits` times; stops as soon as the report
+  /// says anything else or repair stops being eligible.
+  private func armDownloadWait() {
+    guard downloadWaitTask == nil, repairDependencies.isRepairEligible(),
+      let report = latestReport,
+      AppleAvailabilityRepair.activationClaim(of: report) == .modelNotReady
+    else { return }
+    let wait = repairDependencies.downloadWait
+    let read = repairDependencies.readLiveAvailability
+    downloadWaitTask = Task { [weak self] in
+      for _ in 0..<AppleAvailabilityRepair.maxDownloadWaits {
+        await wait()
+        guard !Task.isCancelled, let coordinator = self,
+          coordinator.repairDependencies.isRepairEligible(),
+          let report = coordinator.latestReport,
+          AppleAvailabilityRepair.activationClaim(of: report) == .modelNotReady
+        else { break }
+        // An activation read already asks the same question.
+        guard coordinator.liveReadTask == nil else { continue }
+        let generation = coordinator.reportGeneration
+        let token = coordinator.currentRequestToken
+        let live = await read()
+        coordinator.acceptLiveSample(
+          live, capturedGeneration: generation, capturedToken: token, trigger: "download_wait")
+      }
+      self?.downloadWaitTask = nil
+    }
+  }
+
   /// Takes a live answer in only when nothing moved while it was read: a stale answer neither
   /// moves the baseline nor renews the budget.
-  private func acceptActivationSample(
-    _ live: AppleIntelligenceLiveAvailability, capturedGeneration: UInt64, capturedToken: UInt
+  private func acceptLiveSample(
+    _ live: AppleIntelligenceLiveAvailability, capturedGeneration: UInt64, capturedToken: UInt,
+    trigger: String
   ) {
-    liveReadTask = nil
     guard isCurrent(generation: capturedGeneration, token: capturedToken) else {
-      Self.log("activation live=\(live.rawValue) dropped: stale")
+      Self.log("\(trigger) live=\(live.rawValue) dropped: stale")
       return
     }
     let transition = AppleAvailabilityRepair.isTransition(from: lastLiveSample, to: live)
@@ -215,11 +253,14 @@ final class AIAvailabilityCoordinator {
       AppleAvailabilityRepair.activationWantsCheck(report: $0, live: live)
     } ?? false
     Self.log(
-      "activation live=\(live.rawValue) report=\(latestReport?.overallStatus.rawValue ?? "nil") "
+      "\(trigger) live=\(live.rawValue) report=\(latestReport?.overallStatus.rawValue ?? "nil") "
         + "new_epoch=\(transition) wants_check=\(wants)")
-    guard wants else { return }
+    guard wants else {
+      armDownloadWait()
+      return
+    }
     scheduleAutomaticRepair(
-      trigger: "app_active", capturedGeneration: capturedGeneration, capturedToken: capturedToken)
+      trigger: trigger, capturedGeneration: capturedGeneration, capturedToken: capturedToken)
   }
 
   /// Still eligible, no report landed and no check started since the work captured these.
@@ -232,7 +273,7 @@ final class AIAvailabilityCoordinator {
   /// accepted live answer, so a repair a newer sample contradicts never starts.
   private func stillWanted(_ trigger: String) -> Bool {
     guard let report = latestReport else { return false }
-    if trigger == "app_active" {
+    if trigger == "app_active" || trigger == "download_wait" {
       guard let live = lastLiveSample else { return false }
       return AppleAvailabilityRepair.activationWantsCheck(report: report, live: live)
     }
@@ -428,6 +469,10 @@ struct AppleAvailabilityRepairDependencies {
   var reportCompleted: @MainActor (AppleIntelligenceAvailabilityReport, String) -> Void = {
     AIAvailabilityCoordinator.recordCompleted($0, trigger: $1)
   }
+  /// The pause between live reads while the model downloads.
+  var downloadWait: @Sendable () async -> Void = {
+    try? await Task.sleep(for: .seconds(30))
+  }
   /// The debounce before a re-check starts.
   var debounceWait: @Sendable () async -> Void = {
     try? await Task.sleep(for: .milliseconds(500))
@@ -436,8 +481,11 @@ struct AppleAvailabilityRepairDependencies {
 
 /// The automatic repair's pure policy (#3897). The coordinator owns the state; these answer.
 enum AppleAvailabilityRepair {
-  /// Automatic diagnostics starts allowed per recovery epoch, across both triggers.
+  /// Automatic diagnostics starts allowed per recovery epoch, across all automatic triggers.
   static let maxAutomaticStartsPerEpoch = 2
+
+  /// Live reads while the model downloads: 20 x 30 s, ten minutes.
+  static let maxDownloadWaits = 20
 
   /// Automatic repair runs only while a reader can show the report: dictation's provider is
   /// Apple Intelligence, or onboarding (whose card reads it) is not finished.

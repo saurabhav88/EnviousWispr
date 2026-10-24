@@ -61,6 +61,28 @@ struct AIAvailabilityRecheckPolicyTests {
       debounceGate = nil
     }
 
+    /// The download re-check timer: `.never` fires no tick in the test's lifetime (no leaked
+    /// continuation), `.gate` waits for `releaseDownloadTick()`, `.immediate` never waits.
+    enum DownloadTicks { case never, gate, immediate }
+    var downloadTicks = DownloadTicks.never
+    var downloadGate: CheckedContinuation<Void, Never>?
+    var downloadWaits = 0
+
+    func downloadWaitPoint() async {
+      downloadWaits += 1
+      switch downloadTicks {
+      // test-fixture-timer: a tick that never comes in a test's lifetime, without a parked continuation.
+      case .never: try? await Task.sleep(for: .seconds(3600))
+      case .gate: await withCheckedContinuation { downloadGate = $0 }
+      case .immediate: return
+      }
+    }
+
+    func releaseDownloadTick() {
+      downloadGate?.resume()
+      downloadGate = nil
+    }
+
     func liveValue() async -> AppleIntelligenceLiveAvailability {
       liveReads += 1
       if holdReads { await withCheckedContinuation { readGate = $0 } }
@@ -93,8 +115,19 @@ struct AIAvailabilityRecheckPolicyTests {
         readLiveAvailability: { await script.liveValue() },
         runDiagnostics: { await script.nextReport() },
         reportCompleted: { _, trigger in script.triggers.append(trigger) },
+        downloadWait: { await script.downloadWaitPoint() },
         debounceWait: { await script.debounceWaitPoint() }),
       defaults: defaults)
+  }
+
+  /// Waits for `condition` by yielding, a bounded number of times: a signal that never comes
+  /// fails the test instead of hanging it (no clock involved).
+  private static func eventually(_ condition: () -> Bool) async -> Bool {
+    for _ in 0..<50_000 {
+      if condition() { return true }
+      await Task.yield()
+    }
+    return condition()
   }
 
   /// Lets the activation read and any debounced check it admitted run to completion.
@@ -291,7 +324,7 @@ struct AIAvailabilityRecheckPolicyTests {
     let c = try Self.coordinator(script, seed: Self.disabled)
     // A check is already running (the launch check) when the dictation polishes.
     let launch = Task { await c.checkAvailability(trigger: "app_launch") }
-    while script.gate == nil { await Task.yield() }
+    #expect(await Self.eventually { script.gate != nil }, "never saw: script.gate != nil")
     c.appleIntelligencePolishSucceeded()
     await c.debounceTask?.value
     #expect(script.starts == 1, "a repair never starts while a check runs")
@@ -340,7 +373,7 @@ struct AIAvailabilityRecheckPolicyTests {
     script.live = .modelNotReady
     script.holdReads = true
     c.applicationDidBecomeActive()
-    while script.readGate == nil { await Task.yield() }
+    #expect(await Self.eventually { script.readGate != nil }, "never saw: script.readGate != nil")
     await c.checkAvailability(trigger: "provider_switch")
     script.readGate?.resume()
     await Self.settle(c)
@@ -351,7 +384,7 @@ struct AIAvailabilityRecheckPolicyTests {
 
   /// Holds the debounce until `script.releaseDebounce()`, so a test acts inside the wait.
   private static func waitForHeldDebounce(_ script: Script) async {
-    while script.debounceGate == nil { await Task.yield() }
+    #expect(await Self.eventually { script.debounceGate != nil }, "never saw: script.debounceGate != nil")
   }
 
   @Test("a check that starts during the wait drops the waiting repair")
@@ -437,7 +470,7 @@ struct AIAvailabilityRecheckPolicyTests {
     script.reports = [Self.available]
     let c = try Self.coordinator(script, seed: Self.disabled)
     c.debouncedCheck()  // the re-check button; past its wait it runs diagnostics
-    while script.gate == nil { await Task.yield() }
+    #expect(await Self.eventually { script.gate != nil }, "never saw: script.gate != nil")
     c.appleIntelligencePolishSucceeded()
     script.gate?.resume()
     await Self.settle(c)
@@ -458,5 +491,69 @@ struct AIAvailabilityRecheckPolicyTests {
     await Self.settle(c)
     #expect(script.starts == 0)
     #expect(c.automaticStartsThisEpoch == 0)
+  }
+
+  // MARK: - The re-check while the model downloads (#3897 Live UAT)
+
+  private static func waitForDownloadTick(_ script: Script) async {
+    #expect(await Self.eventually { script.downloadGate != nil }, "never saw: script.downloadGate != nil")
+  }
+
+  @Test("the download finishes with the window in front: the timer repairs the report")
+  func downloadTimerRepairs() async throws {
+    let script = Script()
+    script.downloadTicks = .gate
+    script.live = .modelNotReady
+    script.reports = [Self.available]
+    let c = try Self.coordinator(script, seed: Self.downloading)
+    c.applicationDidBecomeActive()  // still downloading: no check, the timer starts
+    await Self.settle(c)
+    await Self.waitForDownloadTick(script)
+    #expect(script.starts == 0)
+    script.live = .available  // macOS finished the download; nothing tells the app
+    script.releaseDownloadTick()
+    #expect(await Self.eventually { script.starts != 0 }, "never saw: script.starts != 0")
+    await Self.settle(c)
+    #expect(script.triggers == ["download_wait"])
+    #expect(c.latestReport?.overallStatus == .available)
+    // The next tick sees an available report and the timer ends.
+    await Self.waitForDownloadTick(script)
+    script.releaseDownloadTick()
+    #expect(await Self.eventually { c.downloadWaitTask == nil }, "the timer did not end")
+    #expect(script.starts == 1)
+  }
+
+  @Test("a download that never finishes is read at most twenty times, with no check")
+  func downloadTimerIsBounded() async throws {
+    let script = Script()
+    script.downloadTicks = .immediate
+    script.live = .modelNotReady
+    let c = try Self.coordinator(script, seed: Self.downloading)
+    c.applicationDidBecomeActive()
+    await Self.settle(c)
+    #expect(await Self.eventually { c.downloadWaitTask == nil }, "never saw: c.downloadWaitTask == nil")
+    #expect(script.downloadWaits == AppleAvailabilityRepair.maxDownloadWaits)
+    #expect(script.liveReads == 1 + AppleAvailabilityRepair.maxDownloadWaits)
+    #expect(script.starts == 0)
+  }
+
+  @Test("no timer for a switched-off report or another provider")
+  func downloadTimerOnlyWhileDownloading() async throws {
+    for (seed, eligible) in [(Self.disabled, true), (Self.downloading, false)] {
+      let script = Script()
+      script.downloadTicks = .immediate
+      script.live = seed.failureReasons == [.modelNotReady] ? .modelNotReady : .disabled
+      script.eligible = eligible
+      let c = try Self.coordinator(script, seed: seed)
+      c.applicationDidBecomeActive()
+      await Self.settle(c)
+      #expect(c.downloadWaitTask == nil)
+      #expect(script.downloadWaits == 0)
+    }
+  }
+
+  @Test("the bounded wait gives up on a signal that never comes")
+  func boundedWaitGivesUp() async {
+    #expect(await Self.eventually { false } == false)
   }
 }

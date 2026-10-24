@@ -22,7 +22,7 @@
 # Budget the graded rows against: about 1.14M rows / month after policy 1 (2026-09-15
 # simulation), 8.9 events per started take, about 976 rows per install per month. A new
 # per_take row is +1 event per take (+11%). Owner of the numbers: analytics-operations.md.
-ai_diagnostics.run_completed	per_launch	keep	analytics-operations.md FACT: app-posthog-events (founder post-release Apple Intelligence availability repair review, grouped by version, trigger and status: does app_active / polished_take clear disabled and model_not_ready reports, #3897); one row per launch check (plus the first-launch delayed re-check), per manual re-check, per settings_open / provider_switch, and at most two automatic app_active + polished_take rows per recovery epoch (AppleAvailabilityRepair.maxAutomaticStartsPerEpoch), only for installs whose dictation provider is Apple Intelligence or whose onboarding is open	#3897
+ai_diagnostics.run_completed	per_launch	keep	analytics-operations.md FACT: app-posthog-events (founder post-release Apple Intelligence availability repair review, grouped by version, trigger and status: does app_active / polished_take / download_wait clear disabled and model_not_ready reports, #3897); one row per launch check (plus the first-launch delayed re-check), per manual re-check, per settings_open / provider_switch, and at most two automatic app_active + polished_take + download_wait rows per recovery epoch (AppleAvailabilityRepair.maxAutomaticStartsPerEpoch), only for installs whose dictation provider is Apple Intelligence or whose onboarding is open	#3897
 api_key.changed	ungraded	ungraded	-	pre-#2987
 api_key.validation_completed	ungraded	ungraded	-	pre-#2987
 app.launched	ungraded	ungraded	-	pre-#2987
