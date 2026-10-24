@@ -17,7 +17,8 @@ final class MeetingStartFlow {
     /// The user finished EnviousMeet's setup (`SettingsManager.meetingOnboardingComplete`,
     /// #4017 O1). Read live at each Start: EnviousMeet records nothing until it is true.
     var isSetUp: @MainActor () -> Bool
-    /// The user's "Also record the call sound" choice, read when a Start is asked for.
+    /// Whether to record the call sound (the inverse of "Record only my voice"), read when a Start
+    /// is asked for.
     var captureCallSound: @MainActor () -> Bool
     /// The explainer was already read (`SettingsManager.meetingCallSoundExplained`).
     var isExplained: @MainActor () -> Bool

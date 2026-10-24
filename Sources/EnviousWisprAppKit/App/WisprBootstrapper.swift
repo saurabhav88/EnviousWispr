@@ -2471,8 +2471,9 @@ package final class WisprBootstrapper {
         },
         microphoneNeedsAsking: { [permissions] in permissions.microphoneNeedsAsking },
         requestMicrophone: { [permissions] in await permissions.requestMicrophoneAccessOrOpenSettings() },
+        // #4058: the call-sound explainer and setup are on the General tab.
         showMeetingPage: { [navigationCoordinator, appWindowCoordinator] in
-          navigationCoordinator.request(.meetings)
+          navigationCoordinator.request(.meetings(.general))
           appWindowCoordinator.showWindow()
         }))
     meetingBox.startFlow = meetingStartFlow
@@ -2514,8 +2515,9 @@ package final class WisprBootstrapper {
             || (meetingCoordinator?.startWouldBeRefused() ?? true)
         },
         dictationActive: { [liveRecordingState] in liveRecordingState.isDictationActive },
+        // #4058: the prompt's Open settings and its turn-off-an-app tips point at Call Apps.
         showMeetingPage: { [navigationCoordinator, appWindowCoordinator] in
-          navigationCoordinator.request(.meetings)
+          navigationCoordinator.request(.meetings(.callApps))
           appWindowCoordinator.showWindow()
         },
         anchor: { [menuBarControllerHolder] in menuBarControllerHolder.controller?.statusItemFrame },

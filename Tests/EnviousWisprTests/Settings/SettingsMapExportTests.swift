@@ -173,6 +173,7 @@ struct SettingsMapExportTests {
     switch destination {
     case .dictation(let tab): object["tab"] = tab.rawValue
     case .appSettings(let tab): object["tab"] = tab.rawValue
+    case .meetings(let tab): object["tab"] = tab.rawValue
     default: break
     }
     return object

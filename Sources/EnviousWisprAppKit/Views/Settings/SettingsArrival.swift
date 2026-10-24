@@ -23,15 +23,17 @@ struct SettingsArrivalContent: Hashable, Sendable {
   let dictationTab: DictationTab?
   let appSettingsTab: AppSettingsTab?
   let dictionaryTab: DictionaryTab?
+  let meetingsTab: MeetingsTab?
 
   init(
     page: SettingsPage, dictationTab: DictationTab? = nil, appSettingsTab: AppSettingsTab? = nil,
-    dictionaryTab: DictionaryTab? = nil
+    dictionaryTab: DictionaryTab? = nil, meetingsTab: MeetingsTab? = nil
   ) {
     self.page = page
     self.dictationTab = dictationTab
     self.appSettingsTab = appSettingsTab
     self.dictionaryTab = dictionaryTab
+    self.meetingsTab = meetingsTab
   }
 
   /// The content a map destination is drawn in. A Dictionary entry without a tab is page-level.
@@ -39,6 +41,7 @@ struct SettingsArrivalContent: Hashable, Sendable {
     switch destination {
     case .dictation(let tab): self.init(page: .dictation, dictationTab: tab)
     case .appSettings(let tab): self.init(page: .appSettings, appSettingsTab: tab)
+    case .meetings(let tab): self.init(page: .meetings, meetingsTab: tab)
     case .dictionary: self.init(page: .dictionary, dictionaryTab: dictionaryTab)
     default: self.init(page: destination.page)
     }

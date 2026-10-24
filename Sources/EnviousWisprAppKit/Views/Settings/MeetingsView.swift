@@ -4,11 +4,12 @@ import EnviousWisprLLM
 import EnviousWisprServices
 import SwiftUI
 
-/// The EnviousMeet page (#3972 §3.8, R34, founder F18): EnviousMeet's settings. Recordings live
-/// in History (Recordings), and recording is managed from the menu bar and History, so this
-/// page never shows a recording. It still shows the call-sound explainer, because a first
+/// The EnviousMeet page (#3972 §3.8, R34, founder F18): EnviousMeet's settings, in tabs since
+/// #4058. Recordings live in History (Recordings), and recording is managed from the menu bar and
+/// History, so this page never shows a recording. It still shows the call-sound explainer, because a first
 /// call-sound Start from the menu brings this page forward to explain it.
 struct MeetingsView: View {
+  @Binding var selection: MeetingsTab
   @Environment(MeetingCoordinator.self) private var meetings
   @Environment(MeetingStartFlow.self) private var startFlow
   @Environment(TranscriptCoordinator.self) private var transcripts
@@ -32,28 +33,66 @@ struct MeetingsView: View {
     }
   }
 
+  /// #4058: the settings in three tabs, drawn like Dictation Settings and App Settings. The
+  /// call-sound explainer and the notice banner sit above the tab strip, so they show on every
+  /// tab (the banner can carry the microphone fix).
   private var settingsPage: some View {
+    GeometryReader { pane in
+      VStack(spacing: 0) {
+        if startFlow.pendingExplainer != nil || meetings.notice != nil {
+          VStack(alignment: .leading, spacing: 10) {
+            if startFlow.pendingExplainer != nil {
+              MeetingCallSoundExplainer()
+            }
+            if let notice = meetings.notice {
+              MeetingNoticeBanner(notice: notice)
+            }
+          }
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(.horizontal, SettingsLayout.contentH)
+          .padding(.top, SettingsLayout.contentTop)
+        }
+        SettingsTabStrip(
+          items: MeetingsTab.allCases.map {
+            SettingsTabItem(id: $0, icon: $0.icon, label: $0.label, map: $0.mapID)
+          }, selection: $selection
+        )
+        .frame(width: max(0, pane.size.width - 2 * (SettingsLayout.contentH - 4)))
+        .padding(.horizontal, SettingsLayout.contentH - 4)
+        .padding(.top, SettingsLayout.contentTop - 6)
+        // Each tab keeps its own scroll view, so no outer one here.
+        tabContent.frame(width: pane.size.width)
+          // #3545: the tab drawn here, carried by every control inside it.
+          .environment(
+            \.settingsArrivalContent,
+            SettingsArrivalContent(page: .meetings, meetingsTab: selection))
+      }
+      .frame(width: pane.size.width, height: pane.size.height)
+    }
+    .background(Color.stPageBg)
+    .environment(\.settingsPR1Density, true)
+  }
+
+  @ViewBuilder
+  private var tabContent: some View {
+    switch selection {
+    case .general: generalTab
+    case .callApps: callAppsTab
+    case .permissions: permissionsTab
+    }
+  }
+
+  private var generalTab: some View {
     SettingsContentView {
-      BrandedPanel(
-        icon: "person.2.wave.2", header: "EnviousMeet", description: MeetingsCopy.pageDescription
-      ) {
-        VStack(alignment: .leading, spacing: 14) {
-          if startFlow.pendingExplainer != nil {
-            MeetingCallSoundExplainer()
-          }
-          if let notice = meetings.notice {
-            MeetingNoticeBanner(notice: notice)
-          }
-          MeetingCallDetectionRow()
-          MeetingCallAppsRow()
-          MeetingCallSoundRow()
-          MeetingWriteSummaryRow()
-          summaryWriterRow
-          MeetingCalendarNamesRow()
-          microphonePermissionRow
-          callSoundPermissionRow
-          calendarPermissionRow
-          accessibilityPermissionRow
+      VStack(alignment: .leading, spacing: 16) {
+        BrandedSection {
+          BrandedRow { MeetingCallDetectionRow() }
+          BrandedRow { MeetingCallSoundRow() }
+          BrandedRow { MeetingWriteSummaryRow() }
+          BrandedRow { summaryWriterRow }
+          BrandedRow(showDivider: false) { MeetingCalendarNamesRow() }
+        }
+        VStack(alignment: .leading, spacing: 8) {
           Text(MeetingsCopy.keptUntilDeleted)
             .font(.stHelper)
             .foregroundStyle(.stTextSecondary)
@@ -73,19 +112,39 @@ struct MeetingsView: View {
             .buttonStyle(.link)
             .accessibilityIdentifier("meetings.showRecordings")
           }
-        }
           MeetingConsentNote()
-      } footnote: {
-        // R48: true for every provider. Audio never leaves the Mac; a summary by a cloud model
-        // (OpenAI, Gemini, Claude, or an Ollama hosted model) sends its provider the transcript
-        // and notes.
-        Text(
-          "Works with any headphones. Recordings stay on your Mac. A summary written by a cloud model sends the transcript and your notes to its provider.",
-          comment:
-            "EnviousMeet page: the footnote. Recordings are kept on the Mac; a cloud model's provider receives the text of a summary."
-        )
-        .font(.stHelper)
-        .foregroundStyle(.stTextSecondary)
+          // R48: true for every provider. Audio never leaves the Mac; a summary by a cloud model
+          // (OpenAI, Gemini, Claude, or an Ollama hosted model) sends its provider the transcript
+          // and notes.
+          Text(
+            "Works with any headphones. Recordings stay on your Mac. A summary written by a cloud model sends the transcript and your notes to its provider.",
+            comment:
+              "EnviousMeet page: the footnote. Recordings are kept on the Mac; a cloud model's provider receives the text of a summary."
+          )
+          .font(.stHelper)
+          .foregroundStyle(.stTextSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 4)
+      }
+    }
+  }
+
+  private var callAppsTab: some View {
+    SettingsContentView {
+      BrandedSection {
+        BrandedRow(showDivider: false) { MeetingCallAppsRow() }
+      }
+    }
+  }
+
+  private var permissionsTab: some View {
+    SettingsContentView {
+      BrandedSection {
+        BrandedRow { microphonePermissionRow }
+        BrandedRow { callSoundPermissionRow }
+        BrandedRow { calendarPermissionRow }
+        BrandedRow(showDivider: false) { accessibilityPermissionRow }
       }
     }
   }
@@ -313,11 +372,11 @@ enum MeetingsCopy {
     "Show recordings",
     comment: "EnviousMeet page: opens History with the Recordings filter.")
   static let callSoundTitle = LocalizedStringResource(
-    "Also record the call sound",
-    comment: "EnviousMeet page: switch that records what the Mac plays, like a call.")
+    "Record only my voice",
+    comment: "EnviousMeet page: switch that leaves out what the Mac plays, like a call, and records only the microphone.")
   static let callSoundShort = LocalizedStringResource(
-    "Records what your Mac plays, like the other people on a call.",
-    comment: "EnviousMeet page: the short line under Also record the call sound.")
+    "Leaves out the sound your Mac plays, like the other people on a call.",
+    comment: "EnviousMeet page: the short line under Record only my voice.")
   static let writeSummaryTitle = LocalizedStringResource(
     "Write a summary when a meeting ends",
     comment: "EnviousMeet page: switch that writes a summary of each meeting automatically.")
@@ -361,18 +420,21 @@ enum MeetingsCopy {
     "Noticing calls needs macOS 14.2 or later. You can still start recordings from the menu bar.",
     comment: "EnviousMeet page: below macOS 14.2 call detection cannot run.")
   static let callAppsTitle = LocalizedStringResource(
-    "Ask to record calls in",
+    "Notice calls in",
     comment: "EnviousMeet page: the list of call apps EnviousMeet watches, each with a switch.")
   static let callAppsShort = LocalizedStringResource(
     "Turn off an app to never be asked about its calls.",
-    comment: "EnviousMeet page: the short line under Ask to record calls in.")
+    comment: "EnviousMeet page: the short line under Notice calls in.")
   static let callAppsHelp = LocalizedStringResource(
     "EnviousMeet checks which app uses your microphone and whether a call window or meeting page is open. It checks on your Mac and never sends this anywhere. Meetings in a browser covers Google Meet, Zoom, Microsoft Teams, Webex, Whereby and Jitsi in Chrome, Safari, Arc, Dia, Edge, Brave, Opera, Vivaldi, Zen, Comet and ChatGPT Atlas.",
-    comment: "EnviousMeet page: help for Ask to record calls in. App and browser names are not translated.")
+    comment: "EnviousMeet page: help for Notice calls in. App and browser names are not translated.")
   static let browserMeetings = LocalizedStringResource(
     "Meetings in a browser",
     comment: "EnviousMeet page: the switch for meetings in any web browser, like Google Meet in Chrome.")
   static let callSoundHelp = LocalizedStringResource(
-    "With headphones, your microphone hears only you, and the call comes from the sound your Mac plays. Without headphones, your microphone also hears the call; EnviousMeet hides those repeated lines as probable echo. The choice applies to the next meeting you start.",
-    comment: "EnviousMeet page: help for Also record the call sound.")
+    "Off records your microphone and the sound your Mac plays, so the other people on a call are in the transcript. On records only your microphone. Without headphones, your microphone still hears the call through your speakers. The choice applies to the next meeting you start.",
+    comment: "EnviousMeet page: help for Record only my voice.")
+  /// #4058: the order the call choices are shown in. Display only; stored values keep the
+  /// `CallDetectionPolicy.Mode` raw values.
+  static let callDetectionDisplayOrder: [CallDetectionPolicy.Mode] = [.off, .ask, .startByItself]
 }

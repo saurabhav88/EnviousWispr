@@ -142,6 +142,7 @@ struct SettingsMapRenderingTests {
       case .dictation: Set(DictationTab.allCases.map(\.mapID))
       case .appSettings: Set(AppSettingsTab.allCases.map(\.mapID))
       case .dictionary: Set(DictionaryTab.allCases.map(\.mapID))
+      case .meetings: Set(MeetingsTab.allCases.map(\.mapID))
       default: []
       }
     // Each row sits under the heading the map names as its parent: the nearest heading drawn
@@ -228,8 +229,8 @@ struct SettingsMapRenderingTests {
       "snippets", "snippets.empty", "snippets.searching", "keybinds",
     ] + AppSettingsTab.allCases.map { "appSettings.\($0.rawValue)" } + [
       "appSettings.permissions.denied", "appSettings.privacy.restartNeeded",
-      "appSettings.appearance.languageChange", "transcribeFile", "meetings",
-    ]
+      "appSettings.appearance.languageChange", "transcribeFile",
+    ] + MeetingsTab.allCases.map { "meetings.\($0.rawValue)" }
 
   static func render(_ label: String) async throws -> Rendered {
     let parts = label.split(separator: ".").map(String.init)
@@ -244,7 +245,7 @@ struct SettingsMapRenderingTests {
         list: list, destination: .keybinds, alwaysOnThisPage: alwaysShown(on: .keybinds))
     case "appSettings": return try await appSettings(label)
     case "transcribeFile": return try await transcribeFile()
-    case "meetings": return try await meetings()
+    case "meetings": return try await meetings(label)
     default: throw StateError.unknown(label)
     }
   }
@@ -797,8 +798,10 @@ struct SettingsMapRenderingTests {
     return Rendered(list: list, destination: .transcribeFile, alwaysOnThisPage: [])
   }
 
-  /// #3972: the EnviousMeet page at rest, with no meetings.
-  static func meetings() async throws -> Rendered {
+  /// #3972: the EnviousMeet page at rest, with no meetings, on one tab (#4058) with its strip.
+  static func meetings(_ label: String) async throws -> Rendered {
+    let parts = label.split(separator: ".").map(String.init)
+    let tab = try #require(MeetingsTab(rawValue: parts.count > 1 ? parts[1] : ""), "\(label) names no tab")
     // #4017: the settings show once EnviousMeet's setup is finished (`.meetingSetUp`).
     let home = try Home(seed: { $0.set(true, forKey: "meetingOnboardingComplete") })
     let harness = try MeetingCoordinatorTests.Harness()
@@ -810,11 +813,11 @@ struct SettingsMapRenderingTests {
     let transcripts = TranscriptCoordinator(
       store: TranscriptStore(directory: home.directory.appendingPathComponent("meetings-history")),
       emitRenameTelemetry: { _ in }, emitTurnsDisplayedTelemetry: {})
-    let view = MeetingsView()
+    let view = MeetingsView(selection: .constant(tab))
       .environment(harness.coordinator).environment(flow).environment(transcripts)
       .environment(PermissionsService()).environment(NavigationCoordinator())
     let list = try await registrations(home.polish(view))
-    return Rendered(list: list, destination: .meetings, alwaysOnThisPage: [])
+    return Rendered(list: list, destination: .meetings(tab), alwaysOnThisPage: [])
   }
 
   // MARK: - The fixture
@@ -862,6 +865,8 @@ struct SettingsMapRenderingTests {
       return SettingsArrivalContent(page: page, appSettingsTab: try #require(AppSettingsTab(rawValue: parts[1])))
     case .dictionary:
       return SettingsArrivalContent(page: page, dictionaryTab: try #require(DictionaryTab(rawValue: parts[1])))
+    case .meetings:
+      return SettingsArrivalContent(page: page, meetingsTab: try #require(MeetingsTab(rawValue: parts[1])))
     default:
       return SettingsArrivalContent(page: page)
     }
@@ -920,6 +925,7 @@ struct SettingsMapRenderingTests {
     switch page {
     case .dictation: Set(DictationTab.allCases.map(\.mapID))
     case .appSettings: Set(AppSettingsTab.allCases.map(\.mapID))
+    case .meetings: Set(MeetingsTab.allCases.map(\.mapID))
     case .dictionary:
       Set(DictionaryTab.allCases.map(\.mapID)).union([.enableDictionary, .sectionDictionary])
     default: []
@@ -1007,9 +1013,16 @@ struct SettingsMapRenderingTests {
           Set(DictionaryTab.allCases.map(\.mapID)).union([.enableDictionary, .sectionDictionary])
         ))
     }
+    for tab in MeetingsTab.allCases {
+      pages.append(
+        (
+          SettingsArrivalContent(page: .meetings, meetingsTab: tab),
+          try await rendered("meetings.\(tab.rawValue)", page: .meetings),
+          Set(MeetingsTab.allCases.map(\.mapID))
+        ))
+    }
     let untabbed: [(String, SettingsPage)] = [
       ("keybinds", .keybinds), ("snippets", .snippets), ("transcribeFile", .transcribeFile),
-      ("meetings", .meetings),
       ("aiPolish.off", .aiPolish), ("aiPolish.openAI", .aiPolish),
     ]
     for (label, page) in untabbed {

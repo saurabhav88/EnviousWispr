@@ -2287,27 +2287,29 @@
    "id": "meetingCaptureCallSound",
    "kind": "setting",
    "destination": {
-    "page": "meetings"
+    "page": "meetings",
+    "tab": "general"
    },
    "disposition": "mapped",
-   "parent": "page.meetings",
+   "parent": "meetings.tab.general",
    "target": "meetingCaptureCallSound",
    "fallbacks": [],
    "dynamicTitle": false,
    "seedParent": null,
    "description": {
     "kind": "static",
-    "english": "Records what your Mac plays, like the other people on a call."
+    "english": "Leaves out the sound your Mac plays, like the other people on a call."
    }
   },
   {
    "id": "meetingWriteSummary",
    "kind": "setting",
    "destination": {
-    "page": "meetings"
+    "page": "meetings",
+    "tab": "general"
    },
    "disposition": "mapped",
-   "parent": "page.meetings",
+   "parent": "meetings.tab.general",
    "target": "meetingWriteSummary",
    "fallbacks": [],
    "dynamicTitle": false,
@@ -2321,10 +2323,11 @@
    "id": "meetingUseCalendarForNames",
    "kind": "setting",
    "destination": {
-    "page": "meetings"
+    "page": "meetings",
+    "tab": "general"
    },
    "disposition": "mapped",
-   "parent": "page.meetings",
+   "parent": "meetings.tab.general",
    "target": "meetingUseCalendarForNames",
    "fallbacks": [],
    "dynamicTitle": false,
@@ -2338,10 +2341,11 @@
    "id": "meetingCallDetection",
    "kind": "setting",
    "destination": {
-    "page": "meetings"
+    "page": "meetings",
+    "tab": "general"
    },
    "disposition": "mapped",
-   "parent": "page.meetings",
+   "parent": "meetings.tab.general",
    "target": "meetingCallDetection",
    "fallbacks": [],
    "dynamicTitle": false,
@@ -2355,10 +2359,11 @@
    "id": "meetingCallApps",
    "kind": "setting",
    "destination": {
-    "page": "meetings"
+    "page": "meetings",
+    "tab": "callApps"
    },
    "disposition": "mapped",
-   "parent": "page.meetings",
+   "parent": "meetings.tab.callApps",
    "target": "meetingCallApps",
    "fallbacks": [],
    "dynamicTitle": false,
@@ -4640,6 +4645,45 @@
    },
    "disposition": "exempt",
    "reason": "userContent"
+  },
+  {
+   "id": "meetings.tab.general",
+   "kind": "feature",
+   "destination": {
+    "page": "meetings",
+    "tab": "general"
+   },
+   "disposition": "mapped",
+   "parent": "page.meetings",
+   "target": "meetings.tab.general",
+   "fallbacks": [],
+   "dynamicTitle": false
+  },
+  {
+   "id": "meetings.tab.callApps",
+   "kind": "feature",
+   "destination": {
+    "page": "meetings",
+    "tab": "callApps"
+   },
+   "disposition": "mapped",
+   "parent": "page.meetings",
+   "target": "meetings.tab.callApps",
+   "fallbacks": [],
+   "dynamicTitle": false
+  },
+  {
+   "id": "meetings.tab.permissions",
+   "kind": "feature",
+   "destination": {
+    "page": "meetings",
+    "tab": "permissions"
+   },
+   "disposition": "mapped",
+   "parent": "page.meetings",
+   "target": "meetings.tab.permissions",
+   "fallbacks": [],
+   "dynamicTitle": false
   },
   {
    "id": "appSettings.tab.appearance",
