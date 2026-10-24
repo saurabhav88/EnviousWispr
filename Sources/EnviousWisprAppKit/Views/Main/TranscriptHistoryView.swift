@@ -4,13 +4,7 @@ import SwiftUI
 /// Sidebar list of past transcripts with stats header and search.
 struct TranscriptHistoryView: View {
   @Environment(TranscriptCoordinator.self) private var transcriptCoordinator
-  // PR7 of #763: live phase resolves through LiveRecordingState.
-  @Environment(LiveRecordingState.self) private var liveRecordingState
   @State private var showDeleteAllConfirmation = false
-
-  private var isRecording: Bool {
-    liveRecordingState.pipelineState == .recording
-  }
 
   var body: some View {
     @Bindable var tc = transcriptCoordinator
@@ -39,8 +33,9 @@ struct TranscriptHistoryView: View {
       .listStyle(.plain)
       .scrollContentBackground(.hidden)
       .background(Color.stPageBg)
-      .opacity(isRecording ? 0.4 : 1.0)
-      .animation(.easeInOut(duration: 0.3), value: isRecording)
+      // #4001 step 2a: the recording state is read inside the modifier, not by this body, so
+      // the list is not built again each time the pipeline state moves.
+      .recordingDimmed()
       .overlay {
         // #2807: the coordinator decides WHICH absence this is, so a list a filter emptied
         // cannot show the global "nothing yet" over rows that exist.

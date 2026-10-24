@@ -86,7 +86,7 @@ struct MeetingRowView: View {
       Text(MeetingsPresentation.statusLabel(status))
         .foregroundStyle(status == .needsAttention ? Color.stError : Color.stTextSecondary)
     } else if let row = meeting.row {
-      Text(MeetingHistoryPresentation.previewText(transcriptCoordinator.meetingProjection(of: row)))
+      Text(transcriptCoordinator.meetingPreviewText(of: row))
     }
   }
 }

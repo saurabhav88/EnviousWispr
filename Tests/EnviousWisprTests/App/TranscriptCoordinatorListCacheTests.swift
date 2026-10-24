@@ -378,6 +378,183 @@
       let row = try #require(c.rawTranscriptsForTesting.first { !$0.isMeeting })
       expectObserved("a deletion", w) { try? c.removeRow(id: row.id) }
     }
+
+    // MARK: - Meeting preview text (#4001 step 2a)
+
+    /// A two-turn meeting row: turn t0 is Maria's, t1 is yours.
+    static func twoTurnRow(
+      _ meetingID: UUID, at: Date, first: String = "Ship it Friday.",
+      second: String = "Agreed."
+    ) -> Transcript {
+      let text = first + "\n" + second
+      let split = first.utf16.count
+      return Transcript(
+        text: text, backendType: .parakeet, createdAt: at,
+        speakerAnalysis: .labeled(count: 2), speakerNames: ["sys:S1": "Maria"],
+        turns: [
+          Turn(
+            id: "t0", speakerId: "sys:S1", startMs: 0, endMs: 1_000,
+            originalTextRange: 0..<split),
+          Turn(
+            id: "t1", speakerId: "mic:you", startMs: 1_000, endMs: 2_000,
+            originalTextRange: (split + 1)..<text.utf16.count),
+        ], meetingID: meetingID)
+    }
+
+    /// The preview the row showed before step 2a: the whole projection, cut to its preview.
+    static func projectedPreview(_ c: TranscriptCoordinator, _ row: Transcript) -> String {
+      MeetingHistoryPresentation.previewText(c.meetingProjection(of: row))
+    }
+
+    static func expectPreviewAgrees(_ w: World, _ row: Transcript, _ step: String) {
+      let expected = projectedPreview(w.reference, row)
+      #expect(w.cached.meetingPreviewText(of: row) == expected, "cached, \(step)")
+      #expect(w.reference.meetingPreviewText(of: row) == expected, "reference, \(step)")
+      #expect(
+        projectedPreview(w.cached, row) == expected, "both coordinators project alike, \(step)")
+    }
+
+    @Test("a meeting preview is the projection's preview for every kind of meeting")
+    func previewMatchesTheProjectionForEveryKind() {
+      let w = World()
+      var visible = Self.record(at: w.time, ready: true)
+      visible.title = "Visible"
+      var mixed = Self.record(at: w.time, ready: true)
+      mixed.echoTurnIDs = ["t0"]
+      var hidden = Self.record(at: w.time, ready: true)
+      hidden.echoTurnIDs = ["t0", "t1"]
+      let unavailable = Self.record(at: w.time, ready: false)
+      let empty = Self.record(at: w.time, ready: true)
+      w.sources.records = [visible, mixed, hidden, unavailable, empty]
+      let rows = [
+        Self.twoTurnRow(visible.id, at: w.time), Self.twoTurnRow(mixed.id, at: w.time),
+        Self.twoTurnRow(hidden.id, at: w.time), Self.twoTurnRow(unavailable.id, at: w.time),
+        Transcript(
+          text: "", backendType: .parakeet, createdAt: w.time, speakerAnalysis: .labeled(count: 0),
+          turns: [], meetingID: empty.id),
+        Self.twoTurnRow(UUID(), at: w.time),  // an orphan with no info
+        Transcript(text: "a dictation", createdAt: w.time),  // not a meeting
+      ]
+      w.setRows(rows)
+      for (i, row) in rows.enumerated() { Self.expectPreviewAgrees(w, row, "kind \(i)") }
+      #expect(w.cached.meetingPreviewText(of: rows[0]).contains("Ship it Friday."))
+      #expect(!w.cached.meetingPreviewText(of: rows[1]).contains("Ship it Friday."))
+      #expect(
+        w.cached.meetingPreviewText(of: rows[2])
+          == MeetingHistoryPresentation.everythingHiddenMessage)
+      #expect(
+        w.cached.meetingPreviewText(of: rows[3]) == MeetingHistoryPresentation.unavailableMessage)
+      #expect(
+        w.cached.meetingPreviewText(of: rows[6]) == MeetingHistoryPresentation.unavailableMessage)
+    }
+
+    @Test("search and the preview share one kept entry, whichever reads first")
+    func searchAndPreviewShareOneEntry() {
+      for searchFirst in [true, false] {
+        let w = World()
+        let c = w.cached
+        let record = Self.record(at: w.time, ready: true)
+        w.sources.records = [record]
+        let row = Self.twoTurnRow(record.id, at: w.time)
+        w.setRows([row])
+        func search() {
+          c.searchQuery = "friday"
+          _ = c.listedItems
+          c.searchQuery = ""
+        }
+        if searchFirst { search() } else { _ = c.meetingPreviewText(of: row) }
+        let built = c.meetingTextBuildsForTesting
+        #expect(built == 1, "searchFirst \(searchFirst): one projection for the first read")
+        if searchFirst { _ = c.meetingPreviewText(of: row) } else { search() }
+        #expect(c.meetingTextBuildsForTesting == built, "searchFirst \(searchFirst): reused")
+        // Hidden and unavailable meetings never match a search on their hidden words.
+        w.sources.infoOverride[record.id] = MeetingHistoryInfo(echoTurnIDs: ["t0", "t1"])
+        c.searchQuery = "friday"
+        #expect(c.listedItems.isEmpty, "searchFirst \(searchFirst): hidden words do not match")
+        c.searchQuery = ""
+      }
+    }
+
+    @Test("each projection input changes the preview exactly as the projection does")
+    func everyInputChangesThePreview() {
+      let w = World()
+      var record = Self.record(at: w.time, ready: true)
+      w.sources.records = [record]
+      var row = Self.twoTurnRow(record.id, at: w.time)
+      w.setRows([row])
+      Self.expectPreviewAgrees(w, row, "start")
+      let first = w.cached.meetingPreviewText(of: row)
+      // Raw text, with the same id.
+      row = Self.twoTurnRow(record.id, at: w.time, first: "Ship it Monday.")
+      row = Transcript(
+        id: w.rows[0].id, text: row.text, backendType: .parakeet, createdAt: row.createdAt,
+        speakerAnalysis: row.speakerAnalysis, speakerNames: row.speakerNames, turns: row.turns,
+        meetingID: record.id)
+      w.setRows([row])
+      Self.expectPreviewAgrees(w, row, "raw text")
+      #expect(w.cached.meetingPreviewText(of: row) != first)
+      // Turn ranges: t0 now covers less of the text.
+      let ranged = Transcript(
+        id: row.id, text: row.text, backendType: .parakeet, createdAt: row.createdAt,
+        speakerAnalysis: row.speakerAnalysis, speakerNames: row.speakerNames,
+        turns: [
+          Turn(id: "t0", speakerId: "sys:S1", startMs: 0, endMs: 1_000, originalTextRange: 0..<4),
+          row.turns![1],
+        ], meetingID: record.id)
+      w.setRows([ranged])
+      Self.expectPreviewAgrees(w, ranged, "turn ranges")
+      // Speaker names.
+      let renamed = Transcript(
+        id: row.id, text: ranged.text, backendType: .parakeet, createdAt: row.createdAt,
+        speakerAnalysis: row.speakerAnalysis, speakerNames: ["sys:S1": "Zach"],
+        turns: ranged.turns, meetingID: record.id)
+      w.setRows([renamed])
+      Self.expectPreviewAgrees(w, renamed, "speaker names")
+      #expect(w.cached.meetingPreviewText(of: renamed).contains("Zach"))
+      // Echo IDs from the record, then the echo choice shows them again.
+      record.echoTurnIDs = ["t0"]
+      w.sources.records = [record]
+      Self.expectPreviewAgrees(w, renamed, "echo IDs")
+      for c in w.both { c.setShowEcho(true, rowID: renamed.id) }
+      Self.expectPreviewAgrees(w, renamed, "echo shown")
+      // Info availability: the meeting stops being ready.
+      record.state = .processing
+      w.sources.records = [record]
+      Self.expectPreviewAgrees(w, renamed, "info unavailable")
+      #expect(
+        w.cached.meetingPreviewText(of: renamed) == MeetingHistoryPresentation.unavailableMessage)
+    }
+
+    @Test("a kept preview still tells its reader about the echo choice and the meeting info")
+    func previewReadersAreTold() {
+      let w = World()
+      let c = w.cached
+      var record = Self.record(at: w.time, ready: true)
+      w.sources.records = [record]
+      let row = Self.twoTurnRow(record.id, at: w.time)
+      w.setRows([row])
+      func expectToldAbout(_ name: String, change: () -> Void) {
+        _ = c.meetingPreviewText(of: row)
+        let built = c.meetingTextBuildsForTesting
+        let fired = Flag()
+        withObservationTracking {
+          _ = c.meetingPreviewText(of: row)
+        } onChange: {
+          fired.value = true
+        }
+        #expect(c.meetingTextBuildsForTesting == built, "\(name): the tracked read was a kept one")
+        change()
+        #expect(fired.value, "\(name) did not reach a reader of a kept preview")
+      }
+      expectToldAbout("the echo choice") { c.setShowEcho(true, rowID: row.id) }
+      expectToldAbout("the meeting record") {
+        record.echoTurnIDs = ["t1"]
+        w.sources.records = [record]
+      }
+      expectToldAbout("an info override") {
+        w.sources.infoOverride[record.id] = MeetingHistoryInfo(echoTurnIDs: [], title: "New")
+      }
+    }
   }
 
   /// A small deterministic generator (SplitMix64), so a failing step reproduces.
