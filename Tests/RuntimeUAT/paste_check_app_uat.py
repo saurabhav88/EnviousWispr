@@ -20,7 +20,8 @@ loudness-normalised into a temporary folder that is deleted at the end; nothing 
 `--clear ctrl-u` empties a shell prompt after each take (terminals); `none` (default) leaves the
 text for the caller to remove. Run `--takes 1` first as a smoke test.
 
-Exit 0 when every take was valid, 1 when any was invalid, 2 when the setup failed.
+Exit 0 when every take was valid, 1 when any was invalid (including a failed take setup check),
+2 when the setup failed or the clipboard could not be restored.
 """
 import argparse
 import array
@@ -136,6 +137,7 @@ def main():
         print(f"SETUP: {e}")
         return 2
     rows = []
+    restored = False
     try:
         with tempfile.TemporaryDirectory(prefix="ew-paste-check-") as folder, \
                 AudioRig(target=AppTarget(args.app)) as rig, NoiseFloor(folder):
@@ -147,16 +149,21 @@ def main():
                                          f"(front is {tg.frontmost_bundle()!r})")
                 start = time.monotonic()
                 base = u.log_size()
+                checks_before = len(u.results)
                 lines, cascades = p.take(args.app, base, bundle=args.app, route=rig.route,
                                          sentence=SENTENCE if audio is None else "(saved dictation)",
                                          audio=audio, wait=args.wait)
                 mine = [c for c in cascades if c[1].strip() == args.app]
-                valid = len(cascades) == 1 and len(mine) == 1 and len(lines) == 1
+                # take() records its own setup checks (exactly one recording, virtual capture)
+                # without raising: any failure among them makes the row INVALID too.
+                failed = [r for r in u.results[checks_before:] if r[1] in ("FAIL", "ABORT")]
+                valid = len(cascades) == 1 and len(mine) == 1 and len(lines) == 1 and not failed
                 tier = mine[0][0] if mine else "-"
                 verdict = f"{lines[0][1]}/{lines[0][2]}" if len(lines) == 1 else "-"
                 rows.append((n, valid, tier, verdict, time.monotonic() - start))
                 print(f"ROW {n} {'VALID' if valid else 'INVALID'} tier={tier} verdict={verdict} "
-                      f"cascades={len(cascades)} landing_lines={len(lines)} secs={rows[-1][4]:.0f}",
+                      f"cascades={len(cascades)} landing_lines={len(lines)} failed_checks={len(failed)} "
+                      f"secs={rows[-1][4]:.0f}",
                       flush=True)
                 if args.clear == "ctrl-u":
                     rig.target.activate()
@@ -166,12 +173,16 @@ def main():
         print(f"SETUP: {e}")
         return 2
     finally:
-        print(f"clipboard restored: {u.pasteboard_restore(snapshot)}")
+        restored = bool(u.pasteboard_restore(snapshot))
+        print(f"clipboard restored: {restored}")
     valid = [r for r in rows if r[1]]
     counts = {}
     for r in valid:
         counts[r[3]] = counts.get(r[3], 0) + 1
     print(f"SUMMARY {len(rows)} takes, {len(valid)} valid; verdicts {counts or '{}'}")
+    if not restored:
+        print("SETUP: the clipboard was not restored; check it by hand")
+        return 2
     return 0 if len(valid) == len(rows) == args.takes else 1
 
 
