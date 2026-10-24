@@ -74,7 +74,9 @@ enum MeetingWiring {
   struct SharedEngine {
     /// The shared engine lease, bound as `.meeting`.
     let admission: EngineAdmissionAccess
-    let selectedBackend: @MainActor () -> ASRBackendType
+    /// The picked engine is running, or it is not installed (`EngineCoordinator.status`,
+    /// observable, so a waiting pass wakes when it changes).
+    let isSwitchSettled: @MainActor () -> Bool
     let activeBackend: @MainActor () -> ASRBackendType
     let ensureReady: @MainActor () async -> MeetingParakeetRoute.Readiness
     let isModelLoaded: @MainActor () -> Bool
@@ -268,11 +270,12 @@ enum MeetingWiring {
         dependencies: .init(
           isAdmitted: isIdle,
           isDictationIdle: inputs.isDictationIdle,
-          selectedBackend: shared.selectedBackend,
+          isSwitchSettled: shared.isSwitchSettled,
           activeBackend: shared.activeBackend,
           wakes: wakes,
           admission: shared.admission,
           ensureDictationReady: shared.ensureReady,
+          isModelSourceUsable: isDeliveryEnabled,
           isModelLoaded: shared.isModelLoaded,
           isLoadOrUnloadInFlight: shared.isLoadOrUnloadInFlight,
           publishedSelection: shared.publishedSelection,

@@ -212,7 +212,7 @@ struct MeetingWiringTests {
         isDictationIdle: { true }, dictationWakes: wakes,
         sharedEngine: MeetingWiring.SharedEngine(
           admission: .live(lease: lease, as: .meeting),
-          selectedBackend: { dictation.backend }, activeBackend: { dictation.backend },
+          isSwitchSettled: { true }, activeBackend: { dictation.backend },
           ensureReady: {
             dictation.readyCalls += 1
             return .ready

@@ -39,13 +39,18 @@ final class MeetingParakeetRoute {
     var isAdmitted: @MainActor () -> Bool
     /// Dictation alone (no summary term), for "Paused while you dictate".
     var isDictationIdle: @MainActor () -> Bool
-    var selectedBackend: @MainActor () -> ASRBackendType
+    /// No engine switch is pending: the picked engine is the running one, or the picked one is
+    /// not installed (its switch is refused and never applies, so the pass uses what runs).
+    var isSwitchSettled: @MainActor () -> Bool
     var activeBackend: @MainActor () -> ASRBackendType
     /// Poked on every lease release and engine-switch completion.
     var wakes: MeetingWakeSignal
     /// The shared engine lease, bound as `.meeting`.
     var admission: EngineAdmissionAccess
     var ensureDictationReady: @MainActor () async -> Readiness
+    /// The installed model may be read by a meeting now (model delivery is on). Checked before
+    /// the shared route can drive a load, so a refused meeting loads and downloads nothing.
+    var isModelSourceUsable: @MainActor () -> Bool
     var isModelLoaded: @MainActor () -> Bool
     var isLoadOrUnloadInFlight: @MainActor () -> Bool
     var publishedSelection: @MainActor () -> ParakeetModelSelection?
@@ -123,8 +128,8 @@ final class MeetingParakeetRoute {
       // 1. Admission, lease and engine settled. Nothing is held here.
       let ready: @MainActor () -> Bool = {
         [isAdmitted = deps.isAdmitted, holder = deps.admission.currentHolder,
-        selected = deps.selectedBackend, active = deps.activeBackend] in
-        isAdmitted() && holder() == nil && selected() == active()
+        settled = deps.isSwitchSettled] in
+        isAdmitted() && holder() == nil && settled()
       }
       try await wait(until: ready)
 
@@ -136,7 +141,10 @@ final class MeetingParakeetRoute {
       }
 
       // 3. Dictation's Parakeet ready, with no lease held (its own convergence wait cannot
-      // then wait on this meeting).
+      // then wait on this meeting). Not when the meeting may not use the model at all.
+      guard deps.isModelSourceUsable() else {
+        throw MeetingTranscriptionJob.JobError.engineUnavailable("model_source_unavailable")
+      }
       switch await deps.ensureDictationReady() {
       case .ready: break
       case .notInstalled:
@@ -146,8 +154,23 @@ final class MeetingParakeetRoute {
       }
       try Task.checkCancellation()
 
-      // 4. The install claim on the model dictation serves, with no lease held.
-      try await acquireClaim(deps.sharedClaim)
+      // 4. The install claim on the model dictation serves, with no lease held. An idle unload
+      // that lands while the claim waits clears the published model, so the claim finds none:
+      // that is a publication loss (retried once), not a missing install.
+      do {
+        try await deps.sharedClaim.acquire()
+      } catch let error as MeetingWiringError
+        where error == .noInstalledModel || error == .selectionUnstable
+      {
+        publicationLosses += 1
+        if publicationLosses >= 2 {
+          throw MeetingTranscriptionJob.JobError.engineUnavailable("model_unstable")
+        }
+        try Task.checkCancellation()
+        continue
+      } catch let error as MeetingWiringError {
+        throw MeetingTranscriptionJob.JobError.engineUnavailable(String(describing: error))
+      }
 
       // 5. One synchronous step: re-check everything, then take the lease. Each cause that is
       // not yet true releases the claim and waits for its own progress; only a published

@@ -35,12 +35,14 @@ struct MeetingParakeetRouteTests {
     var dictationIdle = true
     var selected: ASRBackendType = .parakeet
     var active: ASRBackendType = .parakeet
+    var selectedInstalled = true
     var loaded = true
     var inFlight = false
     var published: ParakeetModelSelection? = MeetingParakeetRouteTests.selection("served")
     var ownSelection: ParakeetModelSelection? = MeetingParakeetRouteTests.selection("own")
     var readiness: MeetingParakeetRoute.Readiness = .ready
     var onEnsureReady: (@MainActor () -> Void)?
+    var modelSourceUsable = true
     var readyCalls = 0
     var sharedDecodes = 0
     var ownLoads: [ParakeetModelSelection] = []
@@ -60,7 +62,8 @@ struct MeetingParakeetRouteTests {
       gate: gate,
       resolve: { [unowned self] in
         resolves += 1
-        let answer = published
+        // As the manager: a model that is not loaded is not published.
+        let answer = loaded ? published : nil
         onResolve?()
         return answer
       })
@@ -78,7 +81,7 @@ struct MeetingParakeetRouteTests {
         dependencies: .init(
           isAdmitted: { [unowned self] in admitted },
           isDictationIdle: { [unowned self] in dictationIdle },
-          selectedBackend: { [unowned self] in selected },
+          isSwitchSettled: { [unowned self] in selected == active || !selectedInstalled },
           activeBackend: { [unowned self] in active },
           wakes: wakes,
           admission: .live(lease: lease, as: .meeting),
@@ -87,9 +90,10 @@ struct MeetingParakeetRouteTests {
             onEnsureReady?()
             return readiness
           },
+          isModelSourceUsable: { [unowned self] in modelSourceUsable },
           isModelLoaded: { [unowned self] in loaded },
           isLoadOrUnloadInFlight: { [unowned self] in inFlight },
-          publishedSelection: { [unowned self] in published },
+          publishedSelection: { [unowned self] in loaded ? published : nil },
           transcribeShared: { [unowned self] samples in
             sharedDecodes += 1
             return Self.result(samples)
@@ -356,6 +360,43 @@ struct MeetingParakeetRouteTests {
     try await task.value
     #expect(route.route == .shared)
     #expect(rig.lease.currentHolder == .meeting)
+  }
+
+  @Test("a picked engine that is not installed never stalls the pass: it uses the running engine")
+  func uninstalledSelectionDoesNotStall() async throws {
+    let rig = Rig()
+    rig.selected = .whisper  // picked, but its model was never downloaded: the switch is refused
+    rig.selectedInstalled = false
+    let route = rig.route()
+    try await route.acquire()
+    #expect(route.route == .shared, "the running Parakeet serves the pass")
+    #expect(rig.lease.currentHolder == .meeting)
+    #expect(route.waitsEntered == 0, "no wait for a switch that never applies")
+  }
+
+  @Test("an idle unload landing while the claim waits is retried, not reported as a missing model")
+  func unloadDuringClaimIsRetried() async throws {
+    let rig = Rig()
+    // Readiness answers ready, then the model is unloaded before the claim resolves; the next
+    // readiness drive loads it again.
+    rig.onEnsureReady = { [unowned rig] in rig.loaded = rig.readyCalls != 1 }
+    let route = rig.route()
+    try await route.acquire()
+    #expect(rig.readyCalls == 2)
+    #expect(rig.lease.currentHolder == .meeting)
+    #expect(rig.sharedClaim.selection == rig.published)
+  }
+
+  @Test("a meeting that may not use the model loads nothing on the shared route")
+  func modelSourceOffLoadsNothing() async throws {
+    let rig = Rig()
+    rig.modelSourceUsable = false
+    let route = rig.route()
+    await #expect(throws: MeetingTranscriptionJob.JobError.engineUnavailable("model_source_unavailable")) {
+      try await route.acquire()
+    }
+    #expect(rig.readyCalls == 0, "no readiness drive, so no load or download")
+    #expect(rig.lease.admissionEpoch == 0)
   }
 
   @Test("readiness failing is terminal and takes no lease")

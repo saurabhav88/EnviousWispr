@@ -2466,7 +2466,12 @@ package final class WisprBootstrapper {
         dictationWakes: meetingWakes,
         sharedEngine: MeetingWiring.SharedEngine(
           admission: .live(lease: engineLease, as: .meeting),
-          selectedBackend: { [settings] in settings.selectedBackend },
+          isSwitchSettled: { [weak engineCoordinator] in
+            // A switch refused because the picked model is not downloaded never applies; the
+            // pass then uses the running engine instead of waiting for it (#4052 review).
+            guard let status = engineCoordinator?.status else { return true }
+            return status.selected == status.active || !status.selectedInstalled
+          },
           activeBackend: { [asrManager] in asrManager.activeBackendType },
           ensureReady: {
             switch await ensureSelectedEngineReady() {
