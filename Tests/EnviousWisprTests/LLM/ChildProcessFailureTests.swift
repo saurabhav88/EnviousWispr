@@ -49,6 +49,33 @@ struct ChildProcessFailureTests {
     #expect(count.withLock { $0 } == 1)
   }
 
+  /// #3988: the callback and teardown read one frozen record, so the lifecycle
+  /// classification and the diagnostic fact can never describe two exits.
+  @Test func everyObserverReadsTheOneAcceptedRecord() {
+    let count = OSAllocatedUnfairLock(initialState: 0)
+    let observation = ChildProcessObservation(provider: .egOne, generation: 3) { _ in
+      count.withLock { $0 += 1 }
+    }
+    observation.publish(.ready)
+    let first = observation.recordTermination(reason: .signal, status: 15, pid: 50)
+    observation.publish(.starting)
+    let second = observation.recordTermination(reason: .exit, status: 1, pid: 50)
+    observation.suppressIntentionalStop()
+    let afterSuppression = observation.recordTermination(reason: .exit, status: 0, pid: 50)
+    #expect(first?.phase == .ready)
+    #expect(first?.status == 15)
+    #expect(second == first)
+    #expect(afterSuppression == first)
+    #expect(count.withLock { $0 } == 1)
+  }
+
+  @Test func suppressionBeforeAcceptanceLeavesNoRecord() {
+    let observation = ChildProcessObservation(provider: .egOne, generation: 3, report: nil)
+    observation.publish(.ready)
+    observation.suppressIntentionalStop()
+    #expect(observation.recordTermination(reason: .signal, status: 15, pid: 50) == nil)
+  }
+
   @Test func failedSweepLaunchNeverWaitsOrInventsExitFacts() {
     let process = Process()
     let received = OSAllocatedUnfairLock(initialState: [ChildProcessFailure]())

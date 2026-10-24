@@ -114,7 +114,7 @@ public actor LocalPolishServerCoordinator {
 
   /// One observer per model. See `setStateObserver(for:_:)` for why a single
   /// slot was a regression rather than merely a limitation.
-  private var observers: [LLMProvider: @Sendable (EGOneServerManager.ServerState) -> Void] = [:]
+  private var observers: [LLMProvider: @Sendable (EGOneServerManager.Lifecycle) -> Void] = [:]
   private var failureObservers: [LLMProvider: @Sendable (ChildProcessFailure) -> Void] = [:]
   private var managerObserverInstalled = false
 
@@ -373,6 +373,15 @@ public actor LocalPolishServerCoordinator {
 
   /// The live endpoint for `provider`, or nil when another model holds the
   /// process. A polish request must never be answered by different weights.
+  /// #3988: `provider`'s lifecycle, including an outstanding outside stop, read
+  /// in one manager turn. Another model's stop is never this model's news.
+  public func lifecycle(for provider: LLMProvider) async -> EGOneServerManager.Lifecycle {
+    guard resident == provider else { return .stopped }
+    let lifecycle = await manager.currentLifecycle()
+    guard resident == provider else { return .stopped }
+    return lifecycle
+  }
+
   public func endpoint(for provider: LLMProvider) async -> EGOneEndpoint? {
     guard resident == provider else { return nil }
     let endpoint = await manager.activeEndpoint()
@@ -418,14 +427,14 @@ public actor LocalPolishServerCoordinator {
   /// told the process changed, because the change is not about it.
   public func setStateObserver(
     for provider: LLMProvider,
-    _ observer: @escaping @Sendable (EGOneServerManager.ServerState) -> Void
+    _ observer: @escaping @Sendable (EGOneServerManager.Lifecycle) -> Void
   ) async {
     observers[provider] = observer
     // Seed with the caller's OWN truth rather than the manager's state: a model
     // that is not resident is stopped as far as it is concerned, whatever the
     // other one is doing.
-    let seed: EGOneServerManager.ServerState =
-      resident == provider ? await manager.currentState() : .stopped
+    let seed: EGOneServerManager.Lifecycle =
+      resident == provider ? await manager.currentLifecycle() : .stopped
     // Re-checked after the await for the same reason as the readers above: a
     // switch during registration would seed this model with the other's state.
     observer(resident == provider ? seed : .stopped)
@@ -454,7 +463,7 @@ public actor LocalPolishServerCoordinator {
     }
   }
 
-  private func publish(_ state: EGOneServerManager.ServerState, for provider: LLMProvider?) {
+  private func publish(_ state: EGOneServerManager.Lifecycle, for provider: LLMProvider?) {
     // Both halves matter: the event must belong to a model, and that model must
     // STILL be resident when it lands. A stale event for a model that has since
     // been evicted is not news it can act on.

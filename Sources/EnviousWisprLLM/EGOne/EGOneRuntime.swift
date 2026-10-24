@@ -332,7 +332,7 @@ public final class EGOneRuntime: EGOneLeaseProviding {
         Task { @MainActor [weak self] in
           guard let self, mySeq > self.serverStateSeqApplied else { return }
           self.serverStateSeqApplied = mySeq
-          self.applyServerState(state)
+          self.applyServerState(state.state)
         }
       }
     }
@@ -527,6 +527,8 @@ public final class EGOneRuntime: EGOneLeaseProviding {
       case .stopped: health = .yellow(reason: "not_started")
       case .starting: health = .yellow(reason: "starting")
       case .pausedForMemoryPressure: health = .yellow(reason: "paused_for_memory")
+      // #3988: yellow, not red. The next dictation starts it again.
+      case .stoppedOutside: health = .yellow(reason: "stopped_outside")
       case .failed(let reason): health = .red(reason: reason)
       case .ready: break  // keep last probe result (green or probe-derived yellow)
       }
