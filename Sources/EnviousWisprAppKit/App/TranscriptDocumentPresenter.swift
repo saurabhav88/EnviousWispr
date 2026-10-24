@@ -124,6 +124,24 @@ enum TranscriptDocumentPresenter {
     return (blocks.joined(separator: "\n\n"), isCleanedFallback)
   }
 
+  /// What a caller's export would hand over, without building it (#4001 H10).
+  enum ExportAvailability: Equatable {
+    /// Nothing to deliver: the caller's own fallback is unavailable.
+    case none
+    /// A plain document with no text. Save accepts it; Share does not.
+    case empty
+    case content
+  }
+
+  /// The outcome of a caller that delivers `exportText` for these turns, else its own
+  /// `fallback`, and delivers nothing when the fallback is nil (History's `exportText`).
+  /// Turn-labeled text is never empty: every block carries a header line.
+  static func exportAvailability(turns: [Turn]?, fallback: String?) -> ExportAvailability {
+    guard let fallback else { return .none }
+    if let turns, !turns.isEmpty { return .content }
+    return fallback.isEmpty ? .empty : .content
+  }
+
   /// Button titles for the three export actions. `.markedUp` relabels to disclose the
   /// substitution (founder's export rule, #2811 §2.1); the other two modes keep the
   /// wizard's own existing titles unchanged.

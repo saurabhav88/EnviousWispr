@@ -92,7 +92,19 @@ public enum MeetingDocumentHash {
   /// is reused (#4001). `==` is not it: Swift treats canonically equivalent strings as equal
   /// ("\u{00E9}" and "e\u{0301}"), and their hashes differ.
   public static func sameBytes(_ a: String, _ b: String) -> Bool {
-    a.utf8.elementsEqual(b.utf8)
+    // One memory compare over the contiguous UTF-8 storage (#4001 H10): a byte-by-byte
+    // `elementsEqual` walk cost more than rendering a 600-turn document in a Debug build.
+    // `withUTF8` copies only a string that is not already contiguous UTF-8, so the inputs
+    // are taken as local copies.
+    guard a.utf8.count == b.utf8.count else { return false }
+    var a = a
+    var b = b
+    return a.withUTF8 { x in
+      b.withUTF8 { y in
+        x.count == 0 || x.baseAddress == y.baseAddress
+          || memcmp(x.baseAddress!, y.baseAddress!, x.count) == 0
+      }
+    }
   }
 
   /// The same question for a key-to-value map, every key and value compared by bytes.

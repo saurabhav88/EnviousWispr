@@ -24,8 +24,6 @@ struct TranscriptDetailView: View {
   /// `@State` across a mere value change at the same tree position (§5 E2E audit).
   @State private var documentView: FileImportCoordinator.DocumentView = .cleaned
   @State private var timesOn = true
-  @State private var turnDiffCache:
-    (input: FileImportCoordinator.TurnDiffInput, results: [String: WordDiff.Result])?
   /// Surfaced via `.alert` rather than swallowed by `try?` (found by chunk review) — a failed
   /// disk write must not look identical to a successful one.
   @State private var saveError: String?
@@ -85,39 +83,24 @@ struct TranscriptDetailView: View {
         VStack(alignment: .leading, spacing: 20) {
           header
 
-          if let renderedTurns {
+          if let turns = displayTurns, !turns.isEmpty {
             transcriptSection(kindWord, icon: "doc.text") {
-              // `fallback` is genuinely unreachable here — `renderedTurns` is already known
-              // non-nil — so it carries no risk of the double-card nesting a reachable
-              // `plainTextSections` would produce inside this same `transcriptSection`.
-              TurnDocumentView(
-                turns: renderedTurns,
-                onRename: { id, name in
-                  transcriptCoordinator.renameSpeaker(
-                    id: transcript.id, speakerId: id, name: name, isMeeting: transcript.isMeeting)
-                },
-                onRenameCancelled: {
-                  transcriptCoordinator.noteRenameCancelled(isMeeting: transcript.isMeeting)
-                },
-                onTurnsDisplayed: {
-                  transcriptCoordinator.noteTurnsDisplayed(
-                    id: transcript.id, isMeeting: transcript.isMeeting)
-                },
-                fallback: { EmptyView() }
+              // #4001 H10: compared on its inputs, so a detail redraw that leaves the
+              // document unchanged does not render every turn again.
+              TranscriptTurnsDocument(
+                inputs: TranscriptTurnsDocument.Inputs(
+                  rowID: transcript.id, text: transcript.text, turns: turns,
+                  speakerNames: transcript.speakerNames ?? [:], language: transcript.language,
+                  isMeeting: transcript.isMeeting, mode: documentView, timesOn: timesOn,
+                  documentFinished: documentFinished)
               )
+              .equatable()
             }
-            .task(
-              id: FileImportCoordinator.TurnDiffRequest(
-                input: turnDiffInput, markedUp: documentView == .markedUp)
-            ) {
-              guard documentView == .markedUp else { return }
-              await prepareTurnDiffs()
-            }
-            // Reset the whole turn-rendering subtree, including rename-popover state,
-            // per document. Turn IDs are document-local: different documents can have
-            // identical turn IDs, so row keys alone cannot isolate their state.
-            // `HistoryContentView` reuses this view across row selections at a fixed tree
-            // position (found by chunk review).
+            // Reset the whole turn-rendering subtree, including rename-popover state and
+            // the Marked up diffs, per document. Turn IDs are document-local: different
+            // documents can have identical turn IDs, so row keys alone cannot isolate their
+            // state. `HistoryContentView` reuses this view across row selections at a fixed
+            // tree position (found by chunk review).
             .id(transcript.id)
           } else {
             plainTextSections
@@ -130,7 +113,6 @@ struct TranscriptDetailView: View {
     .onChange(of: transcript.id) {
       documentView = .cleaned
       timesOn = true
-      turnDiffCache = nil
     }
     .alert(
       "Couldn't save the file",
@@ -182,7 +164,11 @@ struct TranscriptDetailView: View {
   // MARK: - Action bar
 
   private var actionBar: some View {
-    HStack(spacing: 8) {
+    // #4001 H10: Save and Share are enabled from the displayed row without building the
+    // export; pressing them still reads `exportText` from the live row.
+    let availability = TranscriptDocumentPresenter.exportAvailability(
+      turns: transcript.turns, fallback: transcriptCoordinator.textForDelivery(transcript))
+    return HStack(spacing: 8) {
       Button {
         // #2087: `exportText` reads `textForDelivery` fresh by id rather than taking the
         // rendered row's own snapshot. A held recovery can lapse between this row appearing
@@ -203,7 +189,7 @@ struct TranscriptDetailView: View {
       } label: {
         Label(exportButtonLabels.save, systemImage: "square.and.arrow.down")
       }
-      .disabled(exportText == nil)
+      .disabled(availability == .none)
       .help("Save as a text file")
 
       // `DeliverableText`, never a plain `String` item (found by chunk review): a share sheet
@@ -217,7 +203,7 @@ struct TranscriptDetailView: View {
       ) {
         Label(exportButtonLabels.share, systemImage: "square.and.arrow.up")
       }
-      .disabled(exportText == nil || exportText?.isEmpty == true)
+      .disabled(availability != .content)
 
       Button {
         if permissions.accessibilityGranted {
@@ -461,76 +447,11 @@ struct TranscriptDetailView: View {
 
   private var displayTurns: [Turn]? { transcript.turns }
 
-  private var renderedTurns: [TranscriptDocumentPresenter.RenderedTurn]? {
-    let diffs = turnDiffs
-    return TranscriptDocumentPresenter.render(
-      turns: displayTurns, rawText: transcript.text,
-      speakerNames: transcript.speakerNames ?? [:], mode: documentView, timesOn: timesOn,
-      // Finished unless the file import is still cleaning THIS row (#2851 §3 D, cloud
-      // review of PR #2871): a turn the cleanup has not reached yet is not "unpolished".
-      documentFinished: !(transcriptCoordinator.isImportInProgress?(transcript.id) ?? false),
-      diffLookup: { diffs?[$0.id] })
-  }
-
-  /// Mirrors `FileImportCoordinator.turnDiffInput`, reusing its own `TurnDiffPair`/
-  /// `TurnDiffInput` types (chunk review found their FIRST duplicate; this would have been a
-  /// second) — the wizard and History prepare the same per-turn diff shape from different
-  /// live/persisted sources.
-  private var turnDiffInput: FileImportCoordinator.TurnDiffInput {
-    guard let turns = displayTurns else {
-      return FileImportCoordinator.TurnDiffInput(pairs: [], language: transcript.language)
-    }
-    let text = transcript.text
-    let pairs = turns.map { turn -> FileImportCoordinator.TurnDiffPair in
-      let original = TranscriptDocumentPresenter.slice(text, turn.originalTextRange)
-      return FileImportCoordinator.TurnDiffPair(
-        id: turn.id, original: original, cleaned: turn.processedText ?? original)
-    }
-    return FileImportCoordinator.TurnDiffInput(pairs: pairs, language: transcript.language)
-  }
-
-  /// `nil` while `prepareTurnDiffs` is still running or the input has moved — same
-  /// input-matches-cache contract as `FileImportCoordinator.turnDiffs` (found by chunk
-  /// review: an unkeyed dictionary can go on describing OLDER text after this row's own
-  /// turns change under it — a retry or a background pass replacing `processedText` while
-  /// this row happens to still be selected — even though the turn ids themselves survive).
-  private var turnDiffs: [String: WordDiff.Result]? {
-    guard let cached = turnDiffCache, cached.input == turnDiffInput else { return nil }
-    return cached.results
-  }
-
-  /// Off the main actor, same reason as the wizard's own `prepareTurnDiffs` (chunk-1 review:
-  /// `WordDiff` can take ~3 seconds on worst-case inputs). `View` is a VALUE type, so this
-  /// `async` method runs against a `self` FROZEN at the moment `.task(id:)` invoked it —
-  /// `turnDiffInput` inside this function keeps reading THAT frozen `transcript` forever, so
-  /// it can never observe a row-selection change on its own (found by chunk review: two
-  /// selections whose diffs finish OUT OF ORDER — A's slow computation outliving a switch to
-  /// B, then landing after B's own already has — would otherwise let A silently overwrite B's
-  /// cache, since the input comparison alone always reads true against itself). `Task
-  /// .isCancelled` is the one signal that DOES observe it: `.task(id:)` cancels the previous
-  /// invocation's Task the instant the id changes, which is exactly A's task in that repro.
-  private func prepareTurnDiffs() async {
-    let input = turnDiffInput
-    guard turnDiffs == nil, !input.pairs.isEmpty else { return }
-    let worker = Task.detached(priority: .userInitiated) {
-      var results: [String: WordDiff.Result] = [:]
-      for pair in input.pairs {
-        // Between compares: selecting another row cancels this `.task(id:)` invocation, and
-        // the handler below forwards that to the worker, which stops at the next turn
-        // instead of diffing a long transcript nobody is looking at (found by cloud review,
-        // round 4). `Task.detached` does not inherit the caller's cancellation on its own.
-        guard !Task.isCancelled else { break }
-        results[pair.id] = WordDiff.compare(
-          original: pair.original, cleaned: pair.cleaned, language: input.language)
-      }
-      return results
-    }
-    let computed = await withTaskCancellationHandler(
-      operation: { await worker.value },
-      onCancel: { worker.cancel() }
-    )
-    guard !Task.isCancelled, turnDiffInput == input else { return }
-    turnDiffCache = (input, computed)
+  /// Finished unless the file import is still cleaning THIS row (#2851 §3 D, cloud review of
+  /// PR #2871): a turn the cleanup has not reached yet is not "unpolished". Read in this
+  /// view's body (#4001 H10), so a finishing import redraws the turn document.
+  private var documentFinished: Bool {
+    !(transcriptCoordinator.isImportInProgress?(transcript.id) ?? false)
   }
 
   /// What Copy/Save/Share hand over. Turn-labeled documents route through the presenter

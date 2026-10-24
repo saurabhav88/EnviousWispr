@@ -284,4 +284,122 @@ struct TranscriptDocumentPresenterTests {
     #expect(Self.rendered("a") == Self.rendered("a"))
     #expect(Self.rendered("a") != Self.rendered("b"))
   }
+
+  // MARK: - #4001 H10: toolbar availability and the turn document's inputs
+
+  @Test("Save and Share availability matches what History's export would deliver")
+  func exportAvailabilityMatchesTheExport() {
+    let one = [Self.turn("0-5", "A", 0..<5, processedText: "Hello!")]
+    for turns in [nil, [], one] as [[Turn]?] {
+      for fallback in [nil, "", "words"] as [String?] {
+        for mode in [TranscriptDocumentPresenter.ViewMode.cleaned, .original, .markedUp] {
+          let got = TranscriptDocumentPresenter.exportAvailability(
+            turns: turns, fallback: fallback)
+          // History's `exportText`: nothing without its fallback, else the turn export,
+          // else the fallback itself.
+          let delivered = fallback.map { base in
+            TranscriptDocumentPresenter.exportText(
+              turns: turns, rawText: Self.rawText, speakerNames: [:], timesOn: true, mode: mode)?
+              .text ?? base
+          }
+          let expected: TranscriptDocumentPresenter.ExportAvailability =
+            delivered == nil ? .none : (delivered!.isEmpty ? .empty : .content)
+          #expect(
+            got == expected,
+            "turns \(String(describing: turns?.count)) fallback \(String(describing: fallback))")
+        }
+      }
+    }
+    #expect(TranscriptDocumentPresenter.exportAvailability(turns: one, fallback: nil) == .none)
+  }
+
+  private static func inputs(
+    text: String = rawText, turns: [Turn]? = nil, names: [String: String] = ["A": "Ann"],
+    language: String? = "en", isMeeting: Bool = false,
+    mode: TranscriptDocumentPresenter.ViewMode = .cleaned,
+    timesOn: Bool = true, finished: Bool = true,
+    rowID: UUID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+  ) -> TranscriptTurnsDocument.Inputs {
+    TranscriptTurnsDocument.Inputs(
+      rowID: rowID, text: text,
+      turns: turns ?? [Self.turn("0-5", "A", 0..<5, processedText: "Hello!")],
+      speakerNames: names, language: language, isMeeting: isMeeting, mode: mode,
+      timesOn: timesOn, documentFinished: finished)
+  }
+
+  @Test("the turn document's inputs differ when any one input changes")
+  @MainActor
+  func turnDocumentInputsCoverEveryField() {
+    let base = Self.inputs()
+    #expect(base == Self.inputs())
+    let changed: [TranscriptTurnsDocument.Inputs] = [
+      Self.inputs(rowID: UUID()),
+      Self.inputs(text: "hello there friends"),
+      Self.inputs(turns: [Self.turn("0-5", "A", 0..<5, processedText: "Hello?")]),
+      Self.inputs(turns: [Self.turn("0-5", "B", 0..<5, processedText: "Hello!")]),
+      Self.inputs(turns: [Self.turn("0-4", "A", 0..<4, processedText: "Hello!")]),
+      Self.inputs(turns: [Self.turn("0-5", "A", 0..<5, startMs: 5, processedText: "Hello!")]),
+      Self.inputs(
+        turns: [Self.turn("0-5", "A", 0..<5, processedText: "Hello!", wasPolished: false)]),
+      Self.inputs(names: ["A": "Bea"]),
+      Self.inputs(language: "de"),
+      Self.inputs(isMeeting: true),
+      Self.inputs(mode: .markedUp),
+      Self.inputs(timesOn: false),
+      Self.inputs(finished: false),
+    ]
+    for (i, other) in changed.enumerated() { #expect(base != other, "input \(i)") }
+  }
+
+  @Test("the turn document's inputs compare bytes, not canonically equal Strings")
+  @MainActor
+  func turnDocumentInputsCompareBytes() {
+    let composed = "caf\u{00E9}"
+    let decomposed = "cafe\u{0301}"
+    #expect(composed == decomposed)  // Swift calls them equal; the bytes differ.
+    #expect(Self.inputs(text: composed) != Self.inputs(text: decomposed))
+    #expect(Self.inputs(names: ["A": composed]) != Self.inputs(names: ["A": decomposed]))
+    #expect(
+      Self.inputs(turns: [Self.turn("0-5", "A", 0..<5, processedText: composed)])
+        != Self.inputs(turns: [Self.turn("0-5", "A", 0..<5, processedText: decomposed)]))
+    #expect(
+      Self.inputs(turns: [Self.turn("0-5", "A", 0..<5, processedText: nil)])
+        != Self.inputs(turns: [Self.turn("0-5", "A", 0..<5, processedText: "")]))
+  }
+
+  @Test("the byte compare answers by bytes for empty, short, long, look-alike and bridged text")
+  func sameBytesCompare() {
+    let same: (String, String) -> Bool = MeetingDocumentHash.sameBytes
+    #expect(same("", ""))
+    #expect(!same("", "a"))
+    #expect(!same("ab", "abc"))
+    #expect(same("caf\u{00E9}", "caf\u{00E9}"))
+    #expect(!same("caf\u{00E9}", "cafe\u{0301}"))
+    let long = String(repeating: "word ", count: 20_000)
+    #expect(same(long, String(repeating: "word ", count: 20_000)))
+    #expect(!same(long, String(repeating: "word ", count: 19_999) + "worD "))
+    // A string bridged from Objective-C may not be contiguous UTF-8.
+    let bridged = NSString(string: "caf\u{00E9} and more") as String
+    #expect(same(bridged, "caf\u{00E9} and more"))
+    #expect(!same(bridged, "cafe\u{0301} and more"))
+  }
+
+  @Test("the Marked up diff key compares bytes, so a byte change never reuses older marks")
+  @MainActor
+  func diffKeyComparesBytes() {
+    func key(_ cleaned: String, markedUp: Bool = true, language: String? = "en")
+      -> TranscriptTurnsDocument.DiffKey
+    {
+      TranscriptTurnsDocument.DiffKey(
+        input: FileImportCoordinator.TurnDiffInput(
+          pairs: [.init(id: "0-5", original: "hello", cleaned: cleaned)], language: language),
+        markedUp: markedUp)
+    }
+    #expect(key("hello caf\u{00E9}") == key("hello caf\u{00E9}"))
+    #expect(key("hello caf\u{00E9}") != key("hello cafe\u{0301}"))
+    // The shared input keeps Swift's own `==` for the wizard.
+    #expect(key("hello caf\u{00E9}").input == key("hello cafe\u{0301}").input)
+    #expect(key("x") != key("x", markedUp: false))
+    #expect(key("x") != key("x", language: "de"))
+  }
 }
