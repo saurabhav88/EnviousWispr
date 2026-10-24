@@ -1,0 +1,1 @@
+{"language":"hr","title":"imenuj sastanke prema mom kalendaru","words":["kalendar"],"phrases":["koristi naslov događaja iz kalendara kao naziv sastanka","preuzmi naziv sastanka iz kalendara"]}

@@ -1,0 +1,1 @@
+{"language":"et","title":"nimeta koosolekud minu kalendri järgi","words":["kalendrisündmus"],"phrases":["kasuta kalendrisündmuse pealkirja koosoleku nimena","võta koosoleku nimi kalendrist"]}

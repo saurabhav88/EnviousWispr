@@ -14,6 +14,10 @@
     -->
     <key>com.apple.security.personal-information.addressbook</key>
     <true/>
+    <!-- #4017: EnviousMeet reads calendar event titles to name meetings. Hardened Runtime
+         requires this resource entitlement for EventKit even without App Sandbox. -->
+    <key>com.apple.security.personal-information.calendars</key>
+    <true/>
     <key>com.apple.security.automation.apple-events</key>
     <true/>
     <!--

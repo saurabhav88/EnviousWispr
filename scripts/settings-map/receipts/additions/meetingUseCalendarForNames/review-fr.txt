@@ -1,0 +1,12 @@
+{
+  "language": "fr",
+  "title": "nommer les réunions d’après mon calendrier",
+  "words": [
+    "calendrier",
+    "titre de l’événement"
+  ],
+  "phrases": [
+    "utiliser le titre de l’événement du calendrier comme nom de réunion",
+    "nommer automatiquement les réunions d’après mon calendrier"
+  ]
+}

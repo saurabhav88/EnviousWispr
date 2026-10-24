@@ -12,9 +12,9 @@ Generated from the compiled Settings Map and the validated search vocabulary. Do
 
 The interface ships in English and German. The other 30 languages (ar, bg, cs, da, el, es, et, fi, fr, hi, hr, hu, it, ja, ko, lt, lv, mt, nl, pl, pt, ro, ru, sk, sl, sv, tr, uk, vi, zh) are search metadata only: words and titles people may type, matched against the same places. Titles below read English / German.
 
-278 nodes, 251 searchable, 8032 vocabulary blocks.
+279 nodes, 252 searchable, 8064 vocabulary blocks.
 
-Fingerprints: mapSHA256 `dfb02ce9535f382888daba212854d30fc4013c1b2a05f1a618a48199bf2f1990`, uiCatalogSHA256 `2791b939468c91de8234ed58718d72acd30ec87907cb1bac8aab2c21e4fee459`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `f72979fcb42d8d5af6b66456ee79145393838fa2355b42a66fee7f421dbe9c2d`
+Fingerprints: mapSHA256 `22e39ad85f06b6000107349e0ce7dbef19ab235c5197ce1a772ba0759c48815a`, uiCatalogSHA256 `eaf66f6ee1f79d316282392787575075a4b7ef4d495bac4f53c789921088b34b`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `008eec0ed54874ef7c36211fd1824c223b858b9e8642a1269312d63ed6990c00`
 
 ## Structure
 
@@ -284,6 +284,7 @@ Fingerprints: mapSHA256 `dfb02ce9535f382888daba212854d30fc4013c1b2a05f1a618a4819
   - [EnviousMeet / EnviousMeet](#node-page-meetings) `page.meetings` (page)
     - [Also record the call sound / Auch den Ton vom Mac aufnehmen](#node-meetingCaptureCallSound) `meetingCaptureCallSound` (setting)
     - [Write a summary when a meeting ends / Zusammenfassung erstellen, wenn ein Meeting endet](#node-meetingWriteSummary) `meetingWriteSummary` (setting)
+    - [Name meetings from my calendar / Meetings nach meinem Kalender benennen](#node-meetingUseCalendarForNames) `meetingUseCalendarForNames` (setting)
   - [Snippets / Textbausteine](#node-page-snippets) `page.snippets` (page)
     - [Paste the text you type over and over, by voice / Füge Text, den du oft tippst, per Stimme ein](#node-snippets) `snippets` (feature)
     - [Keyword / Schlüsselwort](#node-snippetKeyword) `snippetKeyword` (setting)
@@ -2521,6 +2522,28 @@ Fingerprints: mapSHA256 `dfb02ce9535f382888daba212854d30fc4013c1b2a05f1a618a4819
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: recap, summarize, summarise<br>phrases: automatically summarize meetings; AI meeting recap |
 | Search (de) | words: Meetingzusammenfassung, Besprechungszusammenfassung, Kurzfassung<br>phrases: fass mein Meeting zusammen; erstelle nach dem Meeting automatisch eine Zusammenfassung |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-meetingUseCalendarForNames"></a>
+
+### Name meetings from my calendar / Meetings nach meinem Kalender benennen (`meetingUseCalendarForNames`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | setting |
+| Parent | [`page.meetings`](#node-page-meetings) |
+| Title source | catalog key `Name meetings from my calendar` |
+| Description | Uses the title of the calendar event at the time the meeting starts. / Nutzt den Titel des Kalendertermins zum Zeitpunkt, an dem das Meeting beginnt. |
+| Description source | catalog key `Uses the title of the calendar event at the time the meeting starts.` |
+| Destination | `meetings` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`meetingUseCalendarForNames`](#node-meetingUseCalendarForNames) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | words: automatic naming, event title<br>phrases: use the calendar event title as the meeting name; automatically name meetings from calendar events |
+| Search (de) | words: Terminname<br>phrases: nimm den Termintitel als Meetingnamen; benenne meine Meetings automatisch nach dem Kalender |
 | Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-enableAIPolish"></a>

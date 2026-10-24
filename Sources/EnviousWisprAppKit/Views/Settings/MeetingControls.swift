@@ -269,6 +269,67 @@ struct MeetingWriteSummaryRow: View {
   }
 }
 
+/// "Name meetings from my calendar" (#4017 R5): read when a meeting starts. Turning it on asks
+/// macOS for calendar access when it was never asked; a refusal leaves it off.
+struct MeetingCalendarNamesRow: View {
+  @Environment(SettingsManager.self) private var settings
+  @State private var asking = false
+
+  var body: some View {
+    SettingsRow(
+      map: .id(.meetingUseCalendarForNames), icon: "calendar.badge.clock",
+      help: MeetingsCopy.calendarNamesHelp
+    ) {
+      Toggle(
+        "",
+        isOn: Binding(
+          get: { settings.meetingUseCalendarForNames },
+          set: { on in
+            guard on else {
+              settings.meetingUseCalendarForNames = false
+              return
+            }
+            guard !asking else { return }
+            asking = true
+            Task {
+              let status = await CalendarAccess.request()
+              settings.meetingUseCalendarForNames = status == .granted
+              asking = false
+            }
+          })
+      )
+      .labelsHidden()
+      .toggleStyle(BrandedToggleStyle())
+      .fixedSize()
+      .disabled(asking)
+      .accessibilityLabel(Text(MeetingsCopy.calendarNamesTitle))
+    }
+  }
+}
+
+/// The consent text on the EnviousMeet page (#4017 O4), the same words the setup shows.
+struct MeetingConsentNote: View {
+  var body: some View {
+    HStack(alignment: .top, spacing: 10) {
+      Image(systemName: "checkmark.shield")
+        .foregroundStyle(.stAccent)
+        .accessibilityHidden(true)
+      VStack(alignment: .leading, spacing: 6) {
+        ForEach(MeetingConsentCopy.paragraphs.indices, id: \.self) { index in
+          Text(MeetingConsentCopy.paragraphs[index])
+            .font(.stHelper)
+            .foregroundStyle(.stTextSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+      }
+    }
+    .padding(12)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(Color.stAccentLight, in: RoundedRectangle(cornerRadius: 10))
+    .accessibilityElement(children: .combine)
+  }
+}
+
 /// The recording meeting's live words (#3972 R42, R52): provisional, about a minute behind,
 /// one line per closed minute of each track, labelled by track. The status line says how fresh
 /// they are from the last decoded stretch, and why they lag (dictation, a backlog, skipped

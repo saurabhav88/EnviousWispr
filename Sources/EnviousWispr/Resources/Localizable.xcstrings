@@ -1371,6 +1371,17 @@
         }
       }
     },
+    "A call starts, EnviousWispr asks whether to record it, and the transcript fills in with who said what." : {
+      "comment" : "EnviousMeet setup: describes the welcome animation for VoiceOver.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Anruf beginnt, EnviousWispr fragt, ob er aufgenommen werden soll, und das Transkript zeigt, wer was gesagt hat."
+          }
+        }
+      }
+    },
     "A change to a meeting could not be saved. Its last saved state is kept." : {
       "comment" : "EnviousMeet: writing a meeting's details failed.",
       "localizations" : {
@@ -2096,6 +2107,17 @@
         }
       }
     },
+    "Accept and continue" : {
+      "comment" : "EnviousMeet setup: accepts the consent promise.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Akzeptieren und fortfahren"
+          }
+        }
+      }
+    },
     "Accessibility" : {
       "comment" : "Setup permissions: title of the macOS Accessibility permission row.",
       "localizations" : {
@@ -2803,6 +2825,17 @@
         }
       }
     },
+    "Allow" : {
+      "comment" : "EnviousMeet setup: asks macOS for a permission.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erlauben"
+          }
+        }
+      }
+    },
     "Allow Accessibility access so a modifier key used on its own works as a keybind and EnviousWispr can paste your dictation into other apps." : {
       "localizations" : {
         "de" : {
@@ -2835,7 +2868,7 @@
       }
     },
     "Allowed" : {
-      "comment" : "EnviousMeet page: macOS lets EnviousWispr use the microphone.\nPermissions settings: the pill shown when a permission is granted.",
+      "comment" : "EnviousMeet page: calendar access is allowed.\nEnviousMeet page: macOS lets EnviousWispr use the microphone.\nPermissions settings: the pill shown when a permission is granted.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2851,6 +2884,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Fast geschafft. Es fehlen nur zwei Berechtigungen."
+          }
+        }
+      }
+    },
+    "Almost there. Three quick permissions." : {
+      "comment" : "EnviousMeet setup: permissions title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fast geschafft. Noch drei kurze Berechtigungen."
           }
         }
       }
@@ -3491,6 +3535,17 @@
         }
       }
     },
+    "Asked. If you said no, allow it in System Settings." : {
+      "comment" : "EnviousMeet setup: macOS was asked for the call sound; its answer cannot be read.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Angefragt. Wenn du abgelehnt hast, erteile die Berechtigung in den Systemeinstellungen."
+          }
+        }
+      }
+    },
     "Assamese" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -3754,7 +3809,7 @@
       }
     },
     "Back" : {
-      "comment" : "Transcribe a File: button that returns to the previous step.",
+      "comment" : "EnviousMeet setup: goes to the previous screen.\nTranscribe a File: button that returns to the previous step.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3793,6 +3848,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Baskisch"
+          }
+        }
+      }
+    },
+    "Before you record" : {
+      "comment" : "EnviousMeet setup: the consent screen's title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bevor du aufnimmst"
           }
         }
       }
@@ -4189,6 +4255,17 @@
         }
       }
     },
+    "Calendar" : {
+      "comment" : "EnviousMeet page: the calendar permission row's title.\nEnviousMeet setup: a permission name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kalender"
+          }
+        }
+      }
+    },
     "Calibrating whisper detection..." : {
       "comment" : "Playful status line cycled on the setup screen while the speech model installs.",
       "localizations" : {
@@ -4212,7 +4289,7 @@
       }
     },
     "Call sound" : {
-      "comment" : "EnviousMeet: the level meter for the sound the Mac plays.",
+      "comment" : "EnviousMeet setup: a permission name.\nEnviousMeet: the level meter for the sound the Mac plays.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4580,6 +4657,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Bei jedem Start von EnviousWispr nach neuen Kontakten suchen. Standardmäßig deaktiviert."
+          }
+        }
+      }
+    },
+    "Check the laws that apply to you and to the people you record." : {
+      "comment" : "EnviousMeet consent text, paragraph 3.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prüfe die Gesetze, die für dich und die Personen gelten, die du aufnimmst."
           }
         }
       }
@@ -5459,7 +5547,7 @@
       }
     },
     "Continue" : {
-      "comment" : "EnviousMeet: starts the recording after the call-sound explanation.\nTranscribe a File: button that goes to the next step.",
+      "comment" : "EnviousMeet setup: leaves the permissions screen.\nEnviousMeet: starts the recording after the call-sound explanation.\nTranscribe a File: button that goes to the next step.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -7334,6 +7422,17 @@
         }
       }
     },
+    "EnviousMeet records your calls and meetings, then writes who said what." : {
+      "comment" : "EnviousMeet setup: welcome line under the title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousMeet nimmt deine Anrufe und Meetings auf und schreibt dann auf, wer was gesagt hat."
+          }
+        }
+      }
+    },
     "EnviousMeet records your voice with the microphone you dictate with." : {
       "comment" : "EnviousMeet page: help for the microphone permission row.",
       "localizations" : {
@@ -8411,6 +8510,17 @@
         }
       }
     },
+    "Free and open source" : {
+      "comment" : "EnviousMeet setup: welcome feature title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kostenlos und Open Source"
+          }
+        }
+      }
+    },
     "Free up the Globe key" : {
       "comment" : "Globe key tip (a popover after choosing the Globe key as the keybind): title.",
       "localizations" : {
@@ -8564,6 +8674,7 @@
       }
     },
     "Get Started" : {
+      "comment" : "EnviousMeet setup: the welcome screen's button.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -8781,6 +8892,7 @@
       }
     },
     "Granted" : {
+      "comment" : "EnviousMeet setup: a permission that macOS allowed.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -9131,6 +9243,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ungarisch"
+          }
+        }
+      }
+    },
+    "I understand. I will get consent where the law requires it." : {
+      "comment" : "EnviousMeet setup: the consent checkbox.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ich habe verstanden. Ich hole die Zustimmung ein, wo das Gesetz es verlangt."
           }
         }
       }
@@ -11039,6 +11162,17 @@
         }
       }
     },
+    "Meeting notes, with no bot in your call." : {
+      "comment" : "EnviousMeet setup: welcome title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meeting-Notizen ohne Bot in deinem Anruf."
+          }
+        }
+      }
+    },
     "Meeting work never slows your dictation: it waits while you dictate." : {
       "comment" : "EnviousMeet: under the transcript progress bar.",
       "localizations" : {
@@ -11084,7 +11218,7 @@
       }
     },
     "Microphone" : {
-      "comment" : "Dictation Settings: tab name for the microphone and what other audio does.\nEnviousMeet page: the microphone permission row's title.\nMenu bar menu: the submenu for choosing the microphone used for recording.\nSetup permissions: title of the microphone permission row.",
+      "comment" : "Dictation Settings: tab name for the microphone and what other audio does.\nEnviousMeet page: the microphone permission row's title.\nEnviousMeet setup: a permission name.\nMenu bar menu: the submenu for choosing the microphone used for recording.\nSetup permissions: title of the microphone permission row.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -11503,6 +11637,17 @@
         }
       }
     },
+    "Name meetings from my calendar" : {
+      "comment" : "EnviousMeet page: switch that names a meeting after the calendar event at its start.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meetings nach meinem Kalender benennen"
+          }
+        }
+      }
+    },
     "Names" : {
       "comment" : "Your Words, vocabulary packs: a pack's name. People's first names and surnames.",
       "localizations" : {
@@ -11727,6 +11872,17 @@
         }
       }
     },
+    "No" : {
+      "comment" : "EnviousMeet: answer to Record this call?",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nein"
+          }
+        }
+      }
+    },
     "No AI Polish provider is chosen, so no summary is written." : {
       "comment" : "EnviousMeet page: no AI Polish provider is selected, so meetings get no summary.",
       "localizations" : {
@@ -11792,6 +11948,17 @@
         }
       }
     },
+    "No account. No meeting limits." : {
+      "comment" : "EnviousMeet setup: welcome feature line under Free and open source.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Konto. Keine Begrenzung für Meetings."
+          }
+        }
+      }
+    },
     "No app was in front, so there was nothing to read." : {
       "comment" : "Quick Add panel: why the selected text could not be read.",
       "localizations" : {
@@ -11842,6 +12009,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Noch keine automatisch gelernten Wörter."
+          }
+        }
+      }
+    },
+    "No bot joins your call" : {
+      "comment" : "EnviousMeet setup: welcome feature title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Bot nimmt an deinem Anruf teil"
           }
         }
       }
@@ -12294,6 +12472,17 @@
         }
       }
     },
+    "Not allowed yet: %@. Turn them on later in EnviousMeet settings." : {
+      "comment" : "EnviousMeet setup: the permissions still off, as a list, on the last screen.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch nicht erlaubt: %@. Schalte sie später in den EnviousMeet-Einstellungen ein."
+          }
+        }
+      }
+    },
     "Not allowed. Allow it to record meetings." : {
       "comment" : "EnviousMeet page: macOS does not let EnviousWispr use the microphone.",
       "localizations" : {
@@ -12305,6 +12494,17 @@
         }
       }
     },
+    "Not asked yet. Turn on Name meetings from my calendar to ask." : {
+      "comment" : "EnviousMeet page: macOS has not asked for calendar access yet.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch nicht angefragt. Schalte „Meetings nach meinem Kalender benennen“ ein, um anzufragen."
+          }
+        }
+      }
+    },
     "Not available on this Mac" : {
       "comment" : "AI Polish, Apple Intelligence: the status row's title when this Mac reports it unavailable.",
       "localizations" : {
@@ -12312,6 +12512,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Auf diesem Mac nicht verfügbar"
+          }
+        }
+      }
+    },
+    "Not available on this Mac." : {
+      "comment" : "EnviousMeet page: calendar access is blocked or write-only.\nEnviousMeet setup: a permission a profile blocks.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf diesem Mac nicht verfügbar."
           }
         }
       }
@@ -12459,7 +12670,7 @@
       }
     },
     "Not now" : {
-      "comment" : "Card after a dictation: closes the card and leaves the setup for later.",
+      "comment" : "Card after a dictation: closes the card and leaves the setup for later.\nEnviousMeet setup: skips a permission for now.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -13123,6 +13334,17 @@
         }
       }
     },
+    "One promise, then you are ready." : {
+      "comment" : "EnviousMeet setup: the line under Before you record.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Versprechen, dann bist du bereit."
+          }
+        }
+      }
+    },
     "One thing to know" : {
       "comment" : "Speech engine settings, Faster Transcription: help panel heading.",
       "localizations" : {
@@ -13200,8 +13422,19 @@
         }
       }
     },
+    "Open EnviousMeet" : {
+      "comment" : "EnviousMeet setup: finishes setup and shows its settings.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousMeet öffnen"
+          }
+        }
+      }
+    },
     "Open Settings" : {
-      "comment" : "Pill button: opens the macOS microphone privacy settings.",
+      "comment" : "EnviousMeet setup: opens System Settings for a permission.\nPill button: opens the macOS microphone privacy settings.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -13212,7 +13445,7 @@
       }
     },
     "Open System Settings" : {
-      "comment" : "AI Polish, leave pop-up button. System Settings is the name of the macOS app.\nEnviousMeet: opens the macOS privacy setting for recording the Mac's sound.",
+      "comment" : "AI Polish, leave pop-up button. System Settings is the name of the macOS app.\nEnviousMeet: opens the macOS privacy setting for calendar access.\nEnviousMeet: opens the macOS privacy setting for recording the Mac's sound.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -14844,6 +15077,17 @@
         }
       }
     },
+    "Record this call?" : {
+      "comment" : "EnviousMeet: the question asked when a call starts.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diesen Anruf aufnehmen?"
+          }
+        }
+      }
+    },
     "Recording" : {
       "comment" : "EnviousMeet list: status of a meeting.\nToolbar badge and sidebar status while recording.",
       "localizations" : {
@@ -14949,6 +15193,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Tastenkürzel für Aufnahme"
+          }
+        }
+      }
+    },
+    "Recording laws differ by place. In some places, everyone in a call or a room must agree before you record." : {
+      "comment" : "EnviousMeet consent text, paragraph 1.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Gesetze zu Aufnahmen unterscheiden sich je nach Ort. An manchen Orten müssen alle Personen im Anruf oder im Raum zustimmen, bevor du aufnimmst."
           }
         }
       }
@@ -17320,6 +17575,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Starte eine Aufnahme über die Menüleiste."
+          }
+        }
+      }
+    },
+    "Start a recording from the menu bar. The lips in the menu bar glow while a meeting records." : {
+      "comment" : "EnviousMeet setup: how to record, on the last screen.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Starte eine Aufnahme über die Menüleiste. Die Lippen in der Menüleiste leuchten, während ein Meeting aufgenommen wird."
           }
         }
       }
@@ -19790,6 +20056,17 @@
         }
       }
     },
+    "To hear the other people, also with AirPods. Only the sound, never your screen." : {
+      "comment" : "EnviousMeet setup: why the call sound.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Damit die anderen Personen zu hören sind, auch mit AirPods. Nur der Ton vom Mac, nie dein Bildschirm."
+          }
+        }
+      }
+    },
     "To hear your voice for transcription." : {
       "comment" : "Setup permissions: why the microphone is needed.",
       "localizations" : {
@@ -19797,6 +20074,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Um deine Stimme für die Transkription aufzunehmen."
+          }
+        }
+      }
+    },
+    "To hear your voice." : {
+      "comment" : "EnviousMeet setup: why the microphone.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Damit deine Stimme zu hören ist."
+          }
+        }
+      }
+    },
+    "To name each meeting after its event. macOS asks for full access; EnviousMeet only reads event titles, times and meeting links, and never changes your calendar." : {
+      "comment" : "EnviousMeet setup: why the calendar.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Damit jedes Meeting nach seinem Termin benannt wird. macOS fragt nach vollem Zugriff; EnviousMeet liest nur Titel, Zeiten und Meeting-Links von Terminen und ändert deinen Kalender nie."
           }
         }
       }
@@ -20068,6 +20367,17 @@
         }
       }
     },
+    "Transcripts are written on your Mac." : {
+      "comment" : "EnviousMeet setup: welcome feature line under Your audio never leaves your Mac.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkripte entstehen auf deinem Mac."
+          }
+        }
+      }
+    },
     "Trigger" : {
       "localizations" : {
         "de" : {
@@ -20229,12 +20539,34 @@
         }
       }
     },
+    "Turn on later in EnviousMeet settings." : {
+      "comment" : "EnviousMeet setup: under a skipped permission.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Später in den EnviousMeet-Einstellungen einschalten."
+          }
+        }
+      }
+    },
     "Turn on the microphone" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mikrofon aktivieren"
+          }
+        }
+      }
+    },
+    "Turned off. Allow it in System Settings." : {
+      "comment" : "EnviousMeet page: calendar access was refused.\nEnviousMeet setup: a refused permission.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ausgeschaltet. Erteile die Berechtigung in den Systemeinstellungen."
           }
         }
       }
@@ -20811,6 +21143,17 @@
         }
       }
     },
+    "Uses the title of the calendar event at the time the meeting starts." : {
+      "comment" : "EnviousMeet page: the short line under Name meetings from my calendar.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nutzt den Titel des Kalendertermins zum Zeitpunkt, an dem das Meeting beginnt."
+          }
+        }
+      }
+    },
     "Using a Bluetooth microphone?" : {
       "comment" : "Heading of the Bluetooth guide in Microphone settings.",
       "localizations" : {
@@ -21378,6 +21721,17 @@
         }
       }
     },
+    "When a meeting starts, EnviousMeet looks for the calendar event at that time and uses its title. If several events overlap, it prefers one with a meeting link or a place, and otherwise keeps the date as the name. Your calendar is read on your Mac and never changed. You can rename any meeting in History." : {
+      "comment" : "EnviousMeet page: help for Name meetings from my calendar.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn ein Meeting beginnt, sucht EnviousMeet den Kalendertermin zu dieser Zeit und nutzt seinen Titel. Wenn sich mehrere Termine überschneiden, bevorzugt es einen mit Meeting-Link oder Ort und behält sonst das Datum als Namen. Dein Kalender wird auf deinem Mac gelesen und nie geändert. Im „Verlauf“ kannst du jedes Meeting umbenennen."
+          }
+        }
+      }
+    },
     "When off, the Dock icon appears only while an EnviousWispr window is open. The menu bar icon always stays." : {
       "localizations" : {
         "de" : {
@@ -21733,6 +22087,17 @@
         }
       }
     },
+    "Works with Zoom, Google Meet, Teams, FaceTime and Slack." : {
+      "comment" : "EnviousMeet setup: welcome feature line under No bot joins your call.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Funktioniert mit Zoom, Google Meet, Teams, FaceTime und Slack."
+          }
+        }
+      }
+    },
     "Works with any headphones. Recordings stay on your Mac. A summary written by a cloud model sends the transcript and your notes to its provider." : {
       "comment" : "EnviousMeet page: the footnote. Recordings are kept on the Mac; a cloud model's provider receives the text of a summary.",
       "localizations" : {
@@ -21842,6 +22207,17 @@
         }
       }
     },
+    "Yes" : {
+      "comment" : "EnviousMeet: answer to Record this call?",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ja"
+          }
+        }
+      }
+    },
     "Yiddish" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -21865,7 +22241,7 @@
       }
     },
     "You" : {
-      "comment" : "EnviousMeet: the microphone level meter's label.",
+      "comment" : "EnviousMeet setup animation: the user's speaker label.\nEnviousMeet: the microphone level meter's label.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -21919,6 +22295,17 @@
         }
       }
     },
+    "You are responsible for telling people and getting their consent where the law requires it. Envious Labs is not responsible for recordings you make without consent." : {
+      "comment" : "EnviousMeet consent text, paragraph 2.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du bist dafür verantwortlich, andere zu informieren und ihre Zustimmung einzuholen, wo das Gesetz es verlangt. Envious Labs ist nicht verantwortlich für Aufnahmen, die du ohne Zustimmung machst."
+          }
+        }
+      }
+    },
     "You can keep dictating while %@ downloads." : {
       "comment" : "AI Polish, local model: while the model downloads. %@ is the model name.",
       "localizations" : {
@@ -21948,6 +22335,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Du kannst diese Kopie beenden und die im Ordner „Programme“ verwenden."
+          }
+        }
+      }
+    },
+    "You can say no to any of them and turn it on later." : {
+      "comment" : "EnviousMeet setup: the line under the permissions title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du kannst jede davon ablehnen und sie später einschalten."
           }
         }
       }
@@ -22029,6 +22427,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Du sagst „%@ %@“"
+          }
+        }
+      }
+    },
+    "You're all set!" : {
+      "comment" : "EnviousMeet setup: the last screen's title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alles bereit!"
           }
         }
       }
@@ -22191,6 +22600,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Deine Aufnahme verlässt diesen Mac nie. Der Text wird an %@ gesendet."
+          }
+        }
+      }
+    },
+    "Your audio never leaves your Mac" : {
+      "comment" : "EnviousMeet setup: welcome feature title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein Audio verlässt nie deinen Mac"
           }
         }
       }
@@ -22420,6 +22840,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Aufnahmeanzeige erscheint, solange du die Taste gedrückt hältst."
+          }
+        }
+      }
+    },
+    "Your recordings appear in History, under Recordings." : {
+      "comment" : "EnviousMeet setup: where recordings are, on the last screen.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Aufnahmen findest du im „Verlauf“ unter „Aufnahmen“."
           }
         }
       }
@@ -24349,6 +24780,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "lang"
+          }
+        }
+      }
+    },
+    "macOS asks for full calendar access. EnviousMeet only reads event titles, times and meeting links to name your meetings, and never changes your calendar." : {
+      "comment" : "EnviousMeet page: help for the calendar permission row.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS fragt nach vollem Kalenderzugriff. EnviousMeet liest nur Titel, Zeiten und Meeting-Links von Terminen, um deine Meetings zu benennen, und ändert deinen Kalender nie."
           }
         }
       }

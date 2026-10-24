@@ -19,8 +19,10 @@
       let history: MeetingHistoryPresentationTests.Rig
       var explained = true
       var pageShown = 0
+      var setUp = true
       lazy var flow = MeetingStartFlow(
         dependencies: .init(
+          isSetUp: { [unowned self] in setUp },
           captureCallSound: { [unowned self] in harness.callSound },
           isExplained: { [unowned self] in explained },
           markExplained: { [unowned self] in explained = true },

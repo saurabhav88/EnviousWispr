@@ -40,6 +40,8 @@ package final class WisprBootstrapper {
   let meetingCoordinator: MeetingCoordinator
   /// #3972 C5: the one route to a meeting Start, shared by the EnviousMeet page and the menu bar.
   let meetingStartFlow: MeetingStartFlow
+  /// #4017: EnviousMeet's setup visit, kept for the app run so leaving the page keeps the place.
+  let meetingOnboardingModel: MeetingOnboardingModel
   let meetingMemoryPressure: MeetingMemoryPressure
   /// #2648 — Transcribe a File's state machine, held here so the run survives
   /// the page being closed.
@@ -2432,6 +2434,7 @@ package final class WisprBootstrapper {
     self.meetingCoordinator = meetingCoordinator
     let meetingStartFlow = MeetingStartFlow(
       dependencies: .init(
+        isSetUp: { [settings] in settings.meetingOnboardingComplete },
         captureCallSound: { [settings] in settings.meetingCaptureCallSound },
         isExplained: { [settings] in settings.meetingCallSoundExplained },
         markExplained: { [settings] in settings.meetingCallSoundExplained = true },
@@ -2448,6 +2451,18 @@ package final class WisprBootstrapper {
         }))
     meetingBox.startFlow = meetingStartFlow
     self.meetingStartFlow = meetingStartFlow
+    self.meetingOnboardingModel = MeetingOnboardingModel(
+      dependencies: .init(
+        microphoneStatus: { [permissions] in permissions.microphoneStatus },
+        requestMicrophone: { [permissions] in await permissions.requestMicrophoneAccessOrOpenSettings() },
+        callSoundStatus: { SystemAudioPermission.status() },
+        requestCallSound: { await SystemAudioPermission.request() },
+        calendarStatus: { CalendarAccess.status() },
+        requestCalendar: { await CalendarAccess.request() },
+        openCallSoundSettings: { [permissions] in permissions.openSystemAudioRecordingSettings() },
+        openCalendarSettings: { [permissions] in permissions.openCalendarSettings() },
+        settings: settings,
+        emit: { TelemetryService.shared.trackMeetingSetup($0) }))
     self.meetingMemoryPressure = meetingMemoryPressure
     self.transcriptCoordinator = transcriptCoordinator
     self.liveRecordingState = liveRecordingState
@@ -2897,6 +2912,7 @@ private struct MainWindowRoot: View {
       .environment(b.fileImportCoordinator)
       .environment(b.meetingCoordinator)
       .environment(b.meetingStartFlow)
+      .environment(b.meetingOnboardingModel)
       .environment(b.liveRecordingState)
       .environment(b.lastRecordingResult)
       .environment(b.backendMetadata)

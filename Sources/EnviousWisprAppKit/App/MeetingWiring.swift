@@ -77,6 +77,10 @@ enum MeetingWiring {
           await otherAudioHold.meetingRecordingWillStart()
         },
         freeDiskBytes: { ModelDeliveryController.volumeAvailableBytes(store.root) },
+        meetingTitleAtStart: { [settings = inputs.settings] startedAt in
+          guard settings.meetingUseCalendarForNames else { return nil }
+          return await MeetingCalendarTitle.lookup(at: startedAt, bound: .seconds(1))
+        },
         saveTranscript: { [transcriptCoordinator = inputs.transcriptCoordinator] transcript in
           try await transcriptCoordinator.saveAndShowDurably(transcript)
         },

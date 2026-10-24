@@ -799,11 +799,12 @@ struct SettingsMapRenderingTests {
 
   /// #3972: the EnviousMeet page at rest, with no meetings.
   static func meetings() async throws -> Rendered {
-    let home = try Home()
+    // #4017: the settings show once EnviousMeet's setup is finished (`.meetingSetUp`).
+    let home = try Home(seed: { $0.set(true, forKey: "meetingOnboardingComplete") })
     let harness = try MeetingCoordinatorTests.Harness()
     let flow = MeetingStartFlow(
       dependencies: .init(
-        captureCallSound: { true }, isExplained: { true }, markExplained: {},
+        isSetUp: { true }, captureCallSound: { true }, isExplained: { true }, markExplained: {},
         canStart: { true }, start: { _, _ in .notIdle }, microphoneNeedsAsking: { false },
         requestMicrophone: {}, showMeetingPage: {}))
     let transcripts = TranscriptCoordinator(

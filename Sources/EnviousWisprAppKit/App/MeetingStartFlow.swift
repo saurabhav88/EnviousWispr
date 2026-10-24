@@ -14,6 +14,9 @@ import Foundation
 @Observable
 final class MeetingStartFlow {
   struct Dependencies {
+    /// The user finished EnviousMeet's setup (`SettingsManager.meetingOnboardingComplete`,
+    /// #4017 O1). Read live at each Start: EnviousMeet records nothing until it is true.
+    var isSetUp: @MainActor () -> Bool
     /// The user's "Also record the call sound" choice, read when a Start is asked for.
     var captureCallSound: @MainActor () -> Bool
     /// The explainer was already read (`SettingsManager.meetingCallSoundExplained`).
@@ -53,6 +56,9 @@ final class MeetingStartFlow {
     case cancelled
     /// A meeting is starting, recording or stopping.
     case notIdle
+    /// EnviousMeet's setup is not finished (#4017): nothing started, and the EnviousMeet page,
+    /// where the setup runs, was shown.
+    case setupRequired
   }
 
   /// A Start waiting on the macOS microphone prompt, and where it was asked from. While it is
@@ -76,6 +82,8 @@ final class MeetingStartFlow {
   func requestStart(from entryPoint: MeetingEntryPoint, captureCallSound override: Bool? = nil)
     async -> Outcome
   {
+    // Setup first (#4017 R4): before any prompt, pending state or recording.
+    guard admitSetup() else { return .setupRequired }
     // A Start already waiting on the microphone prompt owns this request: the first entry
     // point is kept and macOS is asked once.
     guard waitingForMicrophone == nil else { return .joinedMicrophonePrompt }
@@ -92,6 +100,8 @@ final class MeetingStartFlow {
       guard generation == startGeneration, let owner = waitingForMicrophone else {
         return .cancelled
       }
+      // Setup may have been reset while macOS asked (a DEBUG command): the same check again.
+      guard admitSetup() else { return .setupRequired }
       waitingForMicrophone = nil
       entryPoint = owner
       guard deps.canStart() else { return .notIdle }
@@ -126,6 +136,8 @@ final class MeetingStartFlow {
   /// microphone-only Start that has explained nothing.
   @discardableResult
   func continueAfterExplainer() async -> Outcome {
+    // The same setup check as `requestStart` (#4017 R4): Continue is the second way in.
+    guard admitSetup() else { return .setupRequired }
     guard let entryPoint = pendingExplainer else { return .cancelled }
     let override = pendingCallSound
     pendingExplainer = nil
@@ -139,6 +151,17 @@ final class MeetingStartFlow {
   /// The user closed the explainer without starting, or a Start waiting on the microphone
   /// prompt was called off. Nothing pending may start afterwards; the explainer shows again at
   /// the next Start.
+  /// True when setup is finished. Otherwise every pending Start is called off (explainer and
+  /// microphone wait), the EnviousMeet page is shown, and the caller returns `.setupRequired`.
+  private func admitSetup() -> Bool {
+    guard deps.isSetUp() else {
+      cancelExplainer()
+      deps.showMeetingPage()
+      return false
+    }
+    return true
+  }
+
   func cancelExplainer() {
     pendingExplainer = nil
     pendingCallSound = nil

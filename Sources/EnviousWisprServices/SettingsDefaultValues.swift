@@ -53,6 +53,10 @@ enum SettingsDefaultValues {
   static let meetingCallSoundExplained = false
   /// #3972 R39: a summary is written when a meeting ends unless the user turns it off.
   static let meetingWriteSummary = true
+  /// #4017 O1: EnviousMeet starts locked until its setup is finished.
+  static let meetingOnboardingComplete = false
+  /// #4017 R5: calendar names are off until the user allows calendar access.
+  static let meetingUseCalendarForNames = false
   static let hotkeyEnabled = true
 
   static let vadAutoStop = false

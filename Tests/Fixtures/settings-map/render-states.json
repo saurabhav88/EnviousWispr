@@ -976,10 +976,11 @@
  },
  "meetings": {
   "exempt": {
-   "statusLine": 3
+   "statusLine": 4
   },
   "mapped": [
    "meetingCaptureCallSound",
+   "meetingUseCalendarForNames",
    "meetingWriteSummary"
   ]
  }

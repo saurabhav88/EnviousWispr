@@ -2318,6 +2318,23 @@
    }
   },
   {
+   "id": "meetingUseCalendarForNames",
+   "kind": "setting",
+   "destination": {
+    "page": "meetings"
+   },
+   "disposition": "mapped",
+   "parent": "page.meetings",
+   "target": "meetingUseCalendarForNames",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Uses the title of the calendar event at the time the meeting starts."
+   }
+  },
+  {
    "id": "transcribeFile.chooseFile",
    "kind": "action",
    "destination": {

@@ -157,6 +157,10 @@ enum SettingsProjection {
     // #3972 R48: no settings delta. `meeting.ended` carries `summary_plan=off` for every meeting
     // that ends with it off, which is the question this choice answers.
     case .meetingWriteSummary: return []
+    // #4017 R8: `meeting.setup` reports how setup ended; a settings delta would repeat it.
+    case .meetingOnboardingComplete: return []
+    // #4017: no settings delta yet; the calendar permission answer rides on `meeting.setup`.
+    case .meetingUseCalendarForNames: return []
     case .hotkeyEnabled: return [.hotkeyEnabled]
     case .vadAutoStop: return [.vadAutoStop]
     case .vadSilenceTimeout: return [.vadSilenceTimeout]

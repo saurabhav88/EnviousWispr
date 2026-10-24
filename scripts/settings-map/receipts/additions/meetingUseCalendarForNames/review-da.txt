@@ -1,0 +1,1 @@
+{"language":"da","title":"navngiv møder ud fra min kalender","words":["kalender","mødenavn"],"phrases":["brug kalenderaftalens titel som mødenavn","hent mødenavne fra kalenderen"]}

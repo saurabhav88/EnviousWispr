@@ -26,13 +26,18 @@
    "id": "selfLearningDictionary.forgetMemory",
    "review": "additions/selfLearningDictionary.forgetMemory.json",
    "reviewSHA256": "68da6c005df7611c8afff987422337699397665f0be3392385fec780d49cb70c"
+  },
+  {
+   "id": "meetingUseCalendarForNames",
+   "review": "additions/meetingUseCalendarForNames.json",
+   "reviewSHA256": "d99b129400d41f1b69b8bef4f47a536f5d5e98cc4ad8f8c4ec183f18e822fc2b"
   }
  ],
  "retiredIDs": [],
  "resource": {
   "path": "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json",
-  "sha256": "f72979fcb42d8d5af6b66456ee79145393838fa2355b42a66fee7f421dbe9c2d",
-  "bytes": 1628192
+  "sha256": "008eec0ed54874ef7c36211fd1824c223b858b9e8642a1269312d63ed6990c00",
+  "bytes": 1635837
  },
  "sources": [
   {
@@ -316,7 +321,7 @@
  "languages": [
   {
    "language": "ar",
-   "contentSHA256": "c24e932f903ff41bed9a914aefa443b0366f0e9c79db58423fcaed0a196dc460",
+   "contentSHA256": "b4ed7302ecf719f8fe6e733818c40f35ac4f36ebfe89580fe092b527ff0204ab",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -512,13 +517,32 @@
       "sha256": "a0c85d35e852fc6086856ba66a520689471f7d292e736d296faa05386efc2045"
      },
      "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingUseCalendarForNames",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound and summary switches on the EnviousMeet page); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingUseCalendarForNames/draft.json",
+      "sha256": "b16535069c98fec2b9fac9eb1183beadd15690b90a57fab75132f2668b9715d9"
+     },
+     "prompt": {
+      "path": "additions/meetingUseCalendarForNames/review-driver.py.txt",
+      "sha256": "b8c5b177c5ac4561623455aff1150b7d874adc331eee60a80fcf8cb792a95edc"
+     },
+     "output": {
+      "path": "additions/meetingUseCalendarForNames/review-ar.txt",
+      "sha256": "2a4d6a14ad61f6ea13e4f1e7fd5b8e5b589658fda8395a501315e636a79a134b"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingUseCalendarForNames.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "bg",
-   "contentSHA256": "e98286669d63fc85a1b863a93b26a48ab4728ed509689ff0a1bc91b4c008b34f",
+   "contentSHA256": "c4c4d92355b318d38f47db396274f668f50992ca650e064eb1f089b67e2950df",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -705,13 +729,32 @@
       "sha256": "1e7eeb421714732d5a72df96dcf790cc89908367114f7369f4aebdafeeb8dfd4"
      },
      "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingUseCalendarForNames",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound and summary switches on the EnviousMeet page); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingUseCalendarForNames/draft.json",
+      "sha256": "b16535069c98fec2b9fac9eb1183beadd15690b90a57fab75132f2668b9715d9"
+     },
+     "prompt": {
+      "path": "additions/meetingUseCalendarForNames/review-driver.py.txt",
+      "sha256": "b8c5b177c5ac4561623455aff1150b7d874adc331eee60a80fcf8cb792a95edc"
+     },
+     "output": {
+      "path": "additions/meetingUseCalendarForNames/review-bg.txt",
+      "sha256": "2246af0ea42d709883048e42dd55829c6d9950b67569dd93a6565c752048b755"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingUseCalendarForNames.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "cs",
-   "contentSHA256": "90af33f01c6b0918ca4d7377c382c6f7b502dab24ee35ce953a5be862d5f5980",
+   "contentSHA256": "ce581f31943c77bfa9af7869948ba6f02bfaf58b44b985d718de75a23cd2912c",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -898,13 +941,32 @@
       "sha256": "f270d84b043df13e14b6077ef6161bc75c44e84457464b22a6aed64c20cedfc0"
      },
      "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingUseCalendarForNames",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound and summary switches on the EnviousMeet page); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingUseCalendarForNames/draft.json",
+      "sha256": "b16535069c98fec2b9fac9eb1183beadd15690b90a57fab75132f2668b9715d9"
+     },
+     "prompt": {
+      "path": "additions/meetingUseCalendarForNames/review-driver.py.txt",
+      "sha256": "b8c5b177c5ac4561623455aff1150b7d874adc331eee60a80fcf8cb792a95edc"
+     },
+     "output": {
+      "path": "additions/meetingUseCalendarForNames/review-cs.txt",
+      "sha256": "383f9c06956093fe0fc84d10342801f793a76e50eafe2e3770f406510d85eca0"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingUseCalendarForNames.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "da",
-   "contentSHA256": "3b02120a82924860428602faa1ca6324b157d162a865db77b96c527bd8b4cb16",
+   "contentSHA256": "4efb48646107c6ecf13eb71e5210813493a6816678457066504f8914e0c6dda6",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1091,13 +1153,32 @@
       "sha256": "0fa3f022a949a03763eda33eaf5a14d509529ee4ed47fadbfaf2d196743a7df4"
      },
      "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingUseCalendarForNames",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound and summary switches on the EnviousMeet page); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingUseCalendarForNames/draft.json",
+      "sha256": "b16535069c98fec2b9fac9eb1183beadd15690b90a57fab75132f2668b9715d9"
+     },
+     "prompt": {
+      "path": "additions/meetingUseCalendarForNames/review-driver.py.txt",
+      "sha256": "b8c5b177c5ac4561623455aff1150b7d874adc331eee60a80fcf8cb792a95edc"
+     },
+     "output": {
+      "path": "additions/meetingUseCalendarForNames/review-da.txt",
+      "sha256": "8b61f66f9fafd992ceb318462592f12898c20cbf6888fc922f14221ee9fdb400"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingUseCalendarForNames.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "de",
-   "contentSHA256": "2cbb257c20e183d42eec3347e5e22b95b7dc8c1d0cf5f6900f4c41c1297c521b",
+   "contentSHA256": "5708b8e860aea9f84241959cb86def4f4f774ad3958804790c3958177ec8312f",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1318,13 +1399,36 @@
      },
      "disposition": "adopted with the GPT and Gemini council's corrections (session ew-3975-forget-memory-de-2026-10-22, digest additions/selfLearningDictionary.forgetMemory/council-de.txt): \"blockiert\" as on screen instead of \"gesperrt\", \"entsperren\" and \"vergessen\" kept, \"Korrekturen\" alone left out because it fits the Self-Learning Dictionary switch as well (additions/selfLearningDictionary.forgetMemory.json)",
      "note": "German: Codex review, then the GPT and Gemini council (Azure, under the founder's standing approval)."
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingUseCalendarForNames",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound and summary switches on the EnviousMeet page); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingUseCalendarForNames/draft.json",
+      "sha256": "b16535069c98fec2b9fac9eb1183beadd15690b90a57fab75132f2668b9715d9"
+     },
+     "prompt": {
+      "path": "additions/meetingUseCalendarForNames/review-driver.py.txt",
+      "sha256": "b8c5b177c5ac4561623455aff1150b7d874adc331eee60a80fcf8cb792a95edc"
+     },
+     "output": {
+      "path": "additions/meetingUseCalendarForNames/review-de.txt",
+      "sha256": "45c19c289a77e78602240cd28c3115081b4edf5de3c17f55feb3a0055b2e2dda"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingUseCalendarForNames.json); the German council (GPT and Gemini) returned OK",
+     "council": {
+      "path": "additions/meetingUseCalendarForNames/council-de.json",
+      "sha256": "07079d0614e50bca26accef930bc6e38443d535861098c608cf280d9bbb3d53e"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "el",
-   "contentSHA256": "d85cbe7a81021cc4595f916086f990c0123d7e101f174dbad5bb64b62e21d2fc",
+   "contentSHA256": "cfe549dd9913efdaa7e51fc060bf224748dfa125d52be49058a9a76747a43b88",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1520,13 +1624,32 @@
       "sha256": "dcafd9ccd6c42ec4199af0aca53af281d6546dc7127d49f41f701484a6ec3b01"
      },
      "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingUseCalendarForNames",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound and summary switches on the EnviousMeet page); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingUseCalendarForNames/draft.json",
+      "sha256": "b16535069c98fec2b9fac9eb1183beadd15690b90a57fab75132f2668b9715d9"
+     },
+     "prompt": {
+      "path": "additions/meetingUseCalendarForNames/review-driver.py.txt",
+      "sha256": "b8c5b177c5ac4561623455aff1150b7d874adc331eee60a80fcf8cb792a95edc"
+     },
+     "output": {
+      "path": "additions/meetingUseCalendarForNames/review-el.txt",
+      "sha256": "9f9126931e213a8b47b87e6f45f8963b2e9362213f9547ea9a90ca81166a8ca0"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingUseCalendarForNames.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "en",
-   "contentSHA256": "20dc50a035227a573d17172ae3b9740c3e176f7de737e187ba31c78a36abf43b",
+   "contentSHA256": "df10e31e709296e114675d59b446bc1bd9f044375395fc9b3c35e0644f36e146",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1728,13 +1851,32 @@
       "sha256": "1519a380bea9039ac3a9747a68b47cac1ecb6c305e34a7c05b96c6e69e7eaa3a"
      },
      "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingUseCalendarForNames",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound and summary switches on the EnviousMeet page); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingUseCalendarForNames/draft.json",
+      "sha256": "b16535069c98fec2b9fac9eb1183beadd15690b90a57fab75132f2668b9715d9"
+     },
+     "prompt": {
+      "path": "additions/meetingUseCalendarForNames/review-driver.py.txt",
+      "sha256": "b8c5b177c5ac4561623455aff1150b7d874adc331eee60a80fcf8cb792a95edc"
+     },
+     "output": {
+      "path": "additions/meetingUseCalendarForNames/review-en.txt",
+      "sha256": "3eb542fba4014aa6b2742e8c32ec3bfa1fdd8ed5aa54060d64302323866074d6"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingUseCalendarForNames.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "es",
-   "contentSHA256": "b75639226a2c651f4827a8719f5824ed9ac8b15d18739e31ff1afbe10150682c",
+   "contentSHA256": "47db656f51c0c38728dad66edb80b851eb68f9930abf8a45b0e090b50ad24dd4",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1930,13 +2072,32 @@
       "sha256": "54db39fd03fa310a0730c54f5388e5222455969142bdacabe125ab2e08255ee1"
      },
      "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingUseCalendarForNames",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound and summary switches on the EnviousMeet page); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingUseCalendarForNames/draft.json",
+      "sha256": "b16535069c98fec2b9fac9eb1183beadd15690b90a57fab75132f2668b9715d9"
+     },
+     "prompt": {
+      "path": "additions/meetingUseCalendarForNames/review-driver.py.txt",
+      "sha256": "b8c5b177c5ac4561623455aff1150b7d874adc331eee60a80fcf8cb792a95edc"
+     },
+     "output": {
+      "path": "additions/meetingUseCalendarForNames/review-es.txt",
+      "sha256": "6e3c2b6fde78a3839d122b98ec9164b3dc8909789b088c56fcc8de24bd6d4784"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingUseCalendarForNames.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "et",
-   "contentSHA256": "d4c9c9f2b923bf2970a8b319f08a38acdfcd79406b40e3ac2843a32ed8d1306a",
+   "contentSHA256": "048fae4f2542a46800215db5de2ba419aecc2cd255d4cd927ca4d41ba952b9e8",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2123,13 +2284,32 @@
       "sha256": "c07d6310a9b80b350184210fd19667f90913f9bab19df69241eea26a866d979b"
      },
      "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingUseCalendarForNames",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound and summary switches on the EnviousMeet page); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingUseCalendarForNames/draft.json",
+      "sha256": "b16535069c98fec2b9fac9eb1183beadd15690b90a57fab75132f2668b9715d9"
+     },
+     "prompt": {
+      "path": "additions/meetingUseCalendarForNames/review-driver.py.txt",
+      "sha256": "b8c5b177c5ac4561623455aff1150b7d874adc331eee60a80fcf8cb792a95edc"
+     },
+     "output": {
+      "path": "additions/meetingUseCalendarForNames/review-et.txt",
+      "sha256": "277697bc72b378bcc364e5a7d24dbfee4dee8a0bfcc5ef25cccc31bada4e1ca3"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingUseCalendarForNames.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fi",
-   "contentSHA256": "325c05504ec065cf155f5b1f1984d993e0d177e57247fa55f9d4fc59dde3a225",
+   "contentSHA256": "b8dd33e9be1e9ff6d1f2aab0d7a84ba30ff44b1ff974a46f1a8b70525908eefc",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2316,13 +2496,32 @@
       "sha256": "89d90a1f131e492e1b694d5c3fdd9f29c380e3619fc38c7fd385d76f7529027e"
      },
      "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingUseCalendarForNames",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound and summary switches on the EnviousMeet page); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingUseCalendarForNames/draft.json",
+      "sha256": "b16535069c98fec2b9fac9eb1183beadd15690b90a57fab75132f2668b9715d9"
+     },
+     "prompt": {
+      "path": "additions/meetingUseCalendarForNames/review-driver.py.txt",
+      "sha256": "b8c5b177c5ac4561623455aff1150b7d874adc331eee60a80fcf8cb792a95edc"
+     },
+     "output": {
+      "path": "additions/meetingUseCalendarForNames/review-fi.txt",
+      "sha256": "bee736a284831ec50e4d85b07d7f0152ff81919ebcdd8ac621872591f6ad4d12"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingUseCalendarForNames.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fr",
-   "contentSHA256": "7b4432e7bdb7bd06d5135cc439b3ef7a5921f2f37d77928809afca7720c69984",
+   "contentSHA256": "353e27876a9518151443734c6d8f3635203057376e1341b177692c902aab006e",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2509,13 +2708,32 @@
       "sha256": "ac24e429336a9a9cef46d2bab1c61977c403c0d2eac1b3d3addf5746fd0cb6ce"
      },
      "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingUseCalendarForNames",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound and summary switches on the EnviousMeet page); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingUseCalendarForNames/draft.json",
+      "sha256": "b16535069c98fec2b9fac9eb1183beadd15690b90a57fab75132f2668b9715d9"
+     },
+     "prompt": {
+      "path": "additions/meetingUseCalendarForNames/review-driver.py.txt",
+      "sha256": "b8c5b177c5ac4561623455aff1150b7d874adc331eee60a80fcf8cb792a95edc"
+     },
+     "output": {
+      "path": "additions/meetingUseCalendarForNames/review-fr.txt",
+      "sha256": "f5197e15ff20e6c80563ae38fa7e0d622321304bc56a3fa33423cc20f48b4964"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingUseCalendarForNames.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hi",
-   "contentSHA256": "1bbabd130cb7929d4861af5c337a812fce81c4d53f638bce3b337e2b1278134c",
+   "contentSHA256": "46bbc1de627bda424b5067356af710e691b932f457ab386d8aff89b1ab2d9682",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2702,13 +2920,32 @@
       "sha256": "ec4b49751531290b8d365d5daba21945e5d1115d78c7225584d42fdc71ce8e49"
      },
      "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingUseCalendarForNames",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound and summary switches on the EnviousMeet page); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingUseCalendarForNames/draft.json",
+      "sha256": "b16535069c98fec2b9fac9eb1183beadd15690b90a57fab75132f2668b9715d9"
+     },
+     "prompt": {
+      "path": "additions/meetingUseCalendarForNames/review-driver.py.txt",
+      "sha256": "b8c5b177c5ac4561623455aff1150b7d874adc331eee60a80fcf8cb792a95edc"
+     },
+     "output": {
+      "path": "additions/meetingUseCalendarForNames/review-hi.txt",
+      "sha256": "3da548013777ef62633df620bea53d084befd8dc12e67f2c58bf2470ba255336"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingUseCalendarForNames.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hr",
-   "contentSHA256": "57f4edffeb741e55b8d467cefc9245973d27a4410af02a5303c264868f603e66",
+   "contentSHA256": "c16ca4523a48d56eb91d017da2208318b3ffa09476c821496eb97fbd8953d032",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2895,13 +3132,32 @@
       "sha256": "f083bb0049f3bdfc0cbcef9b8bbc5bea1e6a90c69a384fb4bb1e2914f2a60e4c"
      },
      "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingUseCalendarForNames",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound and summary switches on the EnviousMeet page); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingUseCalendarForNames/draft.json",
+      "sha256": "b16535069c98fec2b9fac9eb1183beadd15690b90a57fab75132f2668b9715d9"
+     },
+     "prompt": {
+      "path": "additions/meetingUseCalendarForNames/review-driver.py.txt",
+      "sha256": "b8c5b177c5ac4561623455aff1150b7d874adc331eee60a80fcf8cb792a95edc"
+     },
+     "output": {
+      "path": "additions/meetingUseCalendarForNames/review-hr.txt",
+      "sha256": "c0fa749f9a1d3dafaae5409e9be9f30b81a756e03214ca535fa15d08728eb712"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingUseCalendarForNames.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hu",
-   "contentSHA256": "de1bf2a8da57d04c5ecf4bfee5c70875ac8423f9d6ff7990491e211e14f15826",
+   "contentSHA256": "6bc641b77406df0157e52569c00c06b9000f97ab4d616127dc1501c092189136",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3088,13 +3344,32 @@
       "sha256": "a76ef7bc9272622d58f7928627388dd411ad9fc1b9f3116ba00a3a353fd0b8de"
      },
      "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingUseCalendarForNames",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound and summary switches on the EnviousMeet page); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingUseCalendarForNames/draft.json",
+      "sha256": "b16535069c98fec2b9fac9eb1183beadd15690b90a57fab75132f2668b9715d9"
+     },
+     "prompt": {
+      "path": "additions/meetingUseCalendarForNames/review-driver.py.txt",
+      "sha256": "b8c5b177c5ac4561623455aff1150b7d874adc331eee60a80fcf8cb792a95edc"
+     },
+     "output": {
+      "path": "additions/meetingUseCalendarForNames/review-hu.txt",
+      "sha256": "0af28b72a4a0e45a50d59b8b9d9773f7cfb2331055cdb63fba3c33ba38ec2aec"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingUseCalendarForNames.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "it",
-   "contentSHA256": "5ea2414ace84d8beb615574da0e8f3b41a62bb0aae551a29679fc335b6b0848a",
+   "contentSHA256": "6ab04a639c7a08024b8ace69a815a9659758d9a0562bff0a7e0f2333a181ccf0",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3290,13 +3565,32 @@
       "sha256": "c539bd44df7ad215520bbc8de8185fc29c525e16a339d20aa4352c86536913d4"
      },
      "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingUseCalendarForNames",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound and summary switches on the EnviousMeet page); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingUseCalendarForNames/draft.json",
+      "sha256": "b16535069c98fec2b9fac9eb1183beadd15690b90a57fab75132f2668b9715d9"
+     },
+     "prompt": {
+      "path": "additions/meetingUseCalendarForNames/review-driver.py.txt",
+      "sha256": "b8c5b177c5ac4561623455aff1150b7d874adc331eee60a80fcf8cb792a95edc"
+     },
+     "output": {
+      "path": "additions/meetingUseCalendarForNames/review-it.txt",
+      "sha256": "6ebbb743097792d2c47eb3516bf878491ca1015abf6795e6a2a1246e725c956c"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingUseCalendarForNames.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ja",
-   "contentSHA256": "d525b74990f49285f79eb40a7ec7f26fe9b397e0c4d14b3ec8c4b8e115aa6278",
+   "contentSHA256": "c49b9a092f36173422f248182fbffc95f701f14b0368d78619f2cf93768578fc",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3483,13 +3777,32 @@
       "sha256": "2c4bf36f30cc293f355099803637e631442aca6240636e63286e1cf3ec61a867"
      },
      "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingUseCalendarForNames",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound and summary switches on the EnviousMeet page); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingUseCalendarForNames/draft.json",
+      "sha256": "b16535069c98fec2b9fac9eb1183beadd15690b90a57fab75132f2668b9715d9"
+     },
+     "prompt": {
+      "path": "additions/meetingUseCalendarForNames/review-driver.py.txt",
+      "sha256": "b8c5b177c5ac4561623455aff1150b7d874adc331eee60a80fcf8cb792a95edc"
+     },
+     "output": {
+      "path": "additions/meetingUseCalendarForNames/review-ja.txt",
+      "sha256": "5d082bad63d14653c60539fec73eff333807fccdb1e0f5b24b390192c493208c"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingUseCalendarForNames.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ko",
-   "contentSHA256": "55b81aff0902dd75fca674f61389f92042f48503e3a922bf9f81f8f2e4002fef",
+   "contentSHA256": "272f9039a8df729df76f8aa88cb2f800d0177749423dc16447e45b28d661fec6",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3676,13 +3989,32 @@
       "sha256": "577ba69a1df9ca655baa2682a74bbdf9a60cec646fe81e5cf5f4981df1b3cc8e"
      },
      "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingUseCalendarForNames",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound and summary switches on the EnviousMeet page); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingUseCalendarForNames/draft.json",
+      "sha256": "b16535069c98fec2b9fac9eb1183beadd15690b90a57fab75132f2668b9715d9"
+     },
+     "prompt": {
+      "path": "additions/meetingUseCalendarForNames/review-driver.py.txt",
+      "sha256": "b8c5b177c5ac4561623455aff1150b7d874adc331eee60a80fcf8cb792a95edc"
+     },
+     "output": {
+      "path": "additions/meetingUseCalendarForNames/review-ko.txt",
+      "sha256": "fd1b097406ad78e6eb981488b8c751cb1167f7a57f267a9b3480f86185d6303c"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingUseCalendarForNames.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lt",
-   "contentSHA256": "9fb1849520488ad2b84fa0767a9d08bcfa42050acc0e88db6cf4a85e8a864781",
+   "contentSHA256": "c4aad5a308d99da9639d561627a84806c16736d183359247eaba7d1f643687cf",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3878,13 +4210,32 @@
       "sha256": "ba2d2150a0022a5a39e4b49f7c0204775126440b8682c19e4d6750995cba1cd6"
      },
      "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingUseCalendarForNames",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound and summary switches on the EnviousMeet page); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingUseCalendarForNames/draft.json",
+      "sha256": "b16535069c98fec2b9fac9eb1183beadd15690b90a57fab75132f2668b9715d9"
+     },
+     "prompt": {
+      "path": "additions/meetingUseCalendarForNames/review-driver.py.txt",
+      "sha256": "b8c5b177c5ac4561623455aff1150b7d874adc331eee60a80fcf8cb792a95edc"
+     },
+     "output": {
+      "path": "additions/meetingUseCalendarForNames/review-lt.txt",
+      "sha256": "d906911397fcea1e182d500a31fc4015b542e5a0cf1d8f1ef108d5bd36444082"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingUseCalendarForNames.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lv",
-   "contentSHA256": "6ab8e1a9b827fb33ce505fd4a1546b160b1c0f43b5bfc2b65fd6b9ae85d11762",
+   "contentSHA256": "2a696804878ac4ff53ff00256b7f2a380998642516934bf3f340f815e94944c3",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4071,13 +4422,32 @@
       "sha256": "8a61d0f97de68895410fb532d37837eb31deab869d4e21587969c6166985c4a0"
      },
      "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingUseCalendarForNames",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound and summary switches on the EnviousMeet page); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingUseCalendarForNames/draft.json",
+      "sha256": "b16535069c98fec2b9fac9eb1183beadd15690b90a57fab75132f2668b9715d9"
+     },
+     "prompt": {
+      "path": "additions/meetingUseCalendarForNames/review-driver.py.txt",
+      "sha256": "b8c5b177c5ac4561623455aff1150b7d874adc331eee60a80fcf8cb792a95edc"
+     },
+     "output": {
+      "path": "additions/meetingUseCalendarForNames/review-lv.txt",
+      "sha256": "1958043522adf28d8e10a9b8ca7668a2b7f77261a785e39c6af7d8ffb9ba55d9"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingUseCalendarForNames.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "mt",
-   "contentSHA256": "b0a13ea32f013380f0d02569374e355d09f6cdd883405015af83875e049024f2",
+   "contentSHA256": "7c1609bb21c1e41114c459fa9136b22f55421f2970b9db388da731693ff7952a",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4273,13 +4643,32 @@
       "sha256": "6fc5e6b9d39097de6766933745ca40d39678f52f5d89f45d4ca7638c70d6d851"
      },
      "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingUseCalendarForNames",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound and summary switches on the EnviousMeet page); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingUseCalendarForNames/draft.json",
+      "sha256": "b16535069c98fec2b9fac9eb1183beadd15690b90a57fab75132f2668b9715d9"
+     },
+     "prompt": {
+      "path": "additions/meetingUseCalendarForNames/review-driver.py.txt",
+      "sha256": "b8c5b177c5ac4561623455aff1150b7d874adc331eee60a80fcf8cb792a95edc"
+     },
+     "output": {
+      "path": "additions/meetingUseCalendarForNames/review-mt.txt",
+      "sha256": "b850d791dc35b90e97fd495252e482da0bed0c6a609479e1ef65c9cbe2ac3109"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingUseCalendarForNames.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "nl",
-   "contentSHA256": "e6778cb7c664a13e8cde9057f9883ff43eab0bce243fab2f0c020c5e40c73ae7",
+   "contentSHA256": "769da1b0401fbefb13f7c1d216d84701a2a02e6612e1710e3a54b02d33475b09",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4466,13 +4855,32 @@
       "sha256": "bd4c6cdb3dcbc2d2dc6d01f51ad7783913228c4224b5ea7b4420ac5cc6eea982"
      },
      "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingUseCalendarForNames",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound and summary switches on the EnviousMeet page); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingUseCalendarForNames/draft.json",
+      "sha256": "b16535069c98fec2b9fac9eb1183beadd15690b90a57fab75132f2668b9715d9"
+     },
+     "prompt": {
+      "path": "additions/meetingUseCalendarForNames/review-driver.py.txt",
+      "sha256": "b8c5b177c5ac4561623455aff1150b7d874adc331eee60a80fcf8cb792a95edc"
+     },
+     "output": {
+      "path": "additions/meetingUseCalendarForNames/review-nl.txt",
+      "sha256": "a99f1ac1258a2c44bf61d14758af121408145201f011fcbeb79db93714c6e728"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingUseCalendarForNames.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pl",
-   "contentSHA256": "1c9e6b522c9dd5e4e70e563f9611489c08adf57690144206fa0958863d142aec",
+   "contentSHA256": "5fe18bd045c9af0ebad04e2c30291748de18f9b26566ea6e4fbe9f7106181046",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4659,13 +5067,32 @@
       "sha256": "b0ccdd1b6d9ade665525935af1587cf6995d4e64b517e182709324dd35e2ec0d"
      },
      "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingUseCalendarForNames",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound and summary switches on the EnviousMeet page); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingUseCalendarForNames/draft.json",
+      "sha256": "b16535069c98fec2b9fac9eb1183beadd15690b90a57fab75132f2668b9715d9"
+     },
+     "prompt": {
+      "path": "additions/meetingUseCalendarForNames/review-driver.py.txt",
+      "sha256": "b8c5b177c5ac4561623455aff1150b7d874adc331eee60a80fcf8cb792a95edc"
+     },
+     "output": {
+      "path": "additions/meetingUseCalendarForNames/review-pl.txt",
+      "sha256": "83a9ac48fb492c61189e70c10ecb9f9f685f13449bd306c13edbbf04f99d85d5"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingUseCalendarForNames.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pt",
-   "contentSHA256": "a2242794e233bcebe6161542327a573d501b7686057fc03dcae68fc8722e0d52",
+   "contentSHA256": "cf931ff692e13d293a1e0b38cb5dd52e4259ff95176890881f32ffa79ca0b47c",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4860,13 +5287,32 @@
       "sha256": "de7f09088964d4dc7a3b51c92df9f8a70394d0e7e21c9942a3a83665c6b8d1b3"
      },
      "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingUseCalendarForNames",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound and summary switches on the EnviousMeet page); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingUseCalendarForNames/draft.json",
+      "sha256": "b16535069c98fec2b9fac9eb1183beadd15690b90a57fab75132f2668b9715d9"
+     },
+     "prompt": {
+      "path": "additions/meetingUseCalendarForNames/review-driver.py.txt",
+      "sha256": "b8c5b177c5ac4561623455aff1150b7d874adc331eee60a80fcf8cb792a95edc"
+     },
+     "output": {
+      "path": "additions/meetingUseCalendarForNames/review-pt.txt",
+      "sha256": "49f181ed32b8911b28b56b94035313d5efab31852cd81981aa30c3e812839efd"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingUseCalendarForNames.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ro",
-   "contentSHA256": "b738bc2980d5b2a7945a39337f92d9f22ad6f24f32ce76a911d72c449bb6466c",
+   "contentSHA256": "05e11858db29c950f1d48b0451bd3747ea3b0db07e8217ec1f1c43fc375818b7",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5053,13 +5499,32 @@
       "sha256": "604282198d29131177eca276f1516aa759d6bb213cedf2d7147310b433949f2f"
      },
      "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingUseCalendarForNames",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound and summary switches on the EnviousMeet page); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingUseCalendarForNames/draft.json",
+      "sha256": "b16535069c98fec2b9fac9eb1183beadd15690b90a57fab75132f2668b9715d9"
+     },
+     "prompt": {
+      "path": "additions/meetingUseCalendarForNames/review-driver.py.txt",
+      "sha256": "b8c5b177c5ac4561623455aff1150b7d874adc331eee60a80fcf8cb792a95edc"
+     },
+     "output": {
+      "path": "additions/meetingUseCalendarForNames/review-ro.txt",
+      "sha256": "207132c1baec986eda6a8a8b968310ad59083550779970ae00fecbc02b4e6a06"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingUseCalendarForNames.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ru",
-   "contentSHA256": "27101051212ed83810d9a7951314ea6ee6fa72141f725ca102cf35ecb0929316",
+   "contentSHA256": "87892c094b7c68ae7f43179eac365008fcf8b4c8c3ab39a58eea7ded53f41e68",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5246,13 +5711,32 @@
       "sha256": "3e1bf88616d2bedd84345a2169fa262a37fd47e86ffdfeeb050a53d482222715"
      },
      "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingUseCalendarForNames",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound and summary switches on the EnviousMeet page); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingUseCalendarForNames/draft.json",
+      "sha256": "b16535069c98fec2b9fac9eb1183beadd15690b90a57fab75132f2668b9715d9"
+     },
+     "prompt": {
+      "path": "additions/meetingUseCalendarForNames/review-driver.py.txt",
+      "sha256": "b8c5b177c5ac4561623455aff1150b7d874adc331eee60a80fcf8cb792a95edc"
+     },
+     "output": {
+      "path": "additions/meetingUseCalendarForNames/review-ru.txt",
+      "sha256": "d7e8aa564fb02ec9f87e4256db72febd05435a600d663149675beb21d75ea867"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingUseCalendarForNames.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sk",
-   "contentSHA256": "312b57e39f5d8d0fa52df34004dbca358124d37e1f2155af523506c623502618",
+   "contentSHA256": "62658bcaafd081730e600560f026d62757e0e9c8ba1107336b186f712f0bc8d8",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5439,13 +5923,32 @@
       "sha256": "36b3e2f1a783a992f6da00856ae5ebf83982a552f68c257fc53250109031e7d8"
      },
      "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingUseCalendarForNames",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound and summary switches on the EnviousMeet page); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingUseCalendarForNames/draft.json",
+      "sha256": "b16535069c98fec2b9fac9eb1183beadd15690b90a57fab75132f2668b9715d9"
+     },
+     "prompt": {
+      "path": "additions/meetingUseCalendarForNames/review-driver.py.txt",
+      "sha256": "b8c5b177c5ac4561623455aff1150b7d874adc331eee60a80fcf8cb792a95edc"
+     },
+     "output": {
+      "path": "additions/meetingUseCalendarForNames/review-sk.txt",
+      "sha256": "5f17535735fe656ab326951772f395d5f02d9a1e7b2df896e2871d0ba8027dae"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingUseCalendarForNames.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sl",
-   "contentSHA256": "0d492314c2d25bb8a52c13f92282bd913fa0df468dbf5bc6d68481438d48a819",
+   "contentSHA256": "a26cf699ea59f9cbb07e56453adef7c193bc6472ac6a68367d2ee698a909a9d0",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5641,13 +6144,32 @@
       "sha256": "e3ea490d2e7932e9ea3779e71b11e8c34346db4c6917ac0bb6d56f6f250d4301"
      },
      "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingUseCalendarForNames",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound and summary switches on the EnviousMeet page); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingUseCalendarForNames/draft.json",
+      "sha256": "b16535069c98fec2b9fac9eb1183beadd15690b90a57fab75132f2668b9715d9"
+     },
+     "prompt": {
+      "path": "additions/meetingUseCalendarForNames/review-driver.py.txt",
+      "sha256": "b8c5b177c5ac4561623455aff1150b7d874adc331eee60a80fcf8cb792a95edc"
+     },
+     "output": {
+      "path": "additions/meetingUseCalendarForNames/review-sl.txt",
+      "sha256": "18e3a71238d8baaefa36c142025b73f70ad4b2b281a3bc69ffc01b07fada191f"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingUseCalendarForNames.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sv",
-   "contentSHA256": "e1b76941c613d839131554249ac37cff5303729a31bf61261c0b1e0cb45db1a3",
+   "contentSHA256": "a068a2d63eae822a451e65aa3cbe64a35826becad44f36c60cb36ad5ce3f8422",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5834,13 +6356,32 @@
       "sha256": "3aef45cc2346e40d34af0d16740bcdef58accaf03f5bc5a34198c23784cb07a6"
      },
      "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingUseCalendarForNames",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound and summary switches on the EnviousMeet page); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingUseCalendarForNames/draft.json",
+      "sha256": "b16535069c98fec2b9fac9eb1183beadd15690b90a57fab75132f2668b9715d9"
+     },
+     "prompt": {
+      "path": "additions/meetingUseCalendarForNames/review-driver.py.txt",
+      "sha256": "b8c5b177c5ac4561623455aff1150b7d874adc331eee60a80fcf8cb792a95edc"
+     },
+     "output": {
+      "path": "additions/meetingUseCalendarForNames/review-sv.txt",
+      "sha256": "3a986ab36c9eed7f16ae18c7e19dfec24ba2bc67f50b463d277190b0c3ad9355"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingUseCalendarForNames.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "tr",
-   "contentSHA256": "adb66e9d4b2699b84c9b32873bb123834d46e317650f483c0d1e06767bed76b5",
+   "contentSHA256": "3de506f185a24294ab723de9b94baf7e0fcba11c90ff55af51bfb393e91baf2a",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -6027,13 +6568,32 @@
       "sha256": "fee6b8dac263ff2c435eb793e3b0cc0800e9da5bf7bf779a75adc07af2b12be4"
      },
      "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingUseCalendarForNames",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound and summary switches on the EnviousMeet page); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingUseCalendarForNames/draft.json",
+      "sha256": "b16535069c98fec2b9fac9eb1183beadd15690b90a57fab75132f2668b9715d9"
+     },
+     "prompt": {
+      "path": "additions/meetingUseCalendarForNames/review-driver.py.txt",
+      "sha256": "b8c5b177c5ac4561623455aff1150b7d874adc331eee60a80fcf8cb792a95edc"
+     },
+     "output": {
+      "path": "additions/meetingUseCalendarForNames/review-tr.txt",
+      "sha256": "b7e732e95dc5177e7b35ce915605c8ea8de3101a0f1712baa4b3bda91d57c97f"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingUseCalendarForNames.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "uk",
-   "contentSHA256": "7c6f7c6f8245ffcf73ea0aa7c60595810b03ed1bde59624ad111c2d4fa9804d4",
+   "contentSHA256": "23a34b79fac708094ee016a3789b785004fb1dc442a2e645b8c399672c8da772",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -6229,13 +6789,32 @@
       "sha256": "8b3cf9733e3a24b4cb464042f0cb710f4bdc648e5847b5f88577eb84acdfcb1e"
      },
      "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingUseCalendarForNames",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound and summary switches on the EnviousMeet page); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingUseCalendarForNames/draft.json",
+      "sha256": "b16535069c98fec2b9fac9eb1183beadd15690b90a57fab75132f2668b9715d9"
+     },
+     "prompt": {
+      "path": "additions/meetingUseCalendarForNames/review-driver.py.txt",
+      "sha256": "b8c5b177c5ac4561623455aff1150b7d874adc331eee60a80fcf8cb792a95edc"
+     },
+     "output": {
+      "path": "additions/meetingUseCalendarForNames/review-uk.txt",
+      "sha256": "c4569375b032f4da261242dbadf4b04be0be90db8ce8b5c2f156b6a848b1c1c5"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingUseCalendarForNames.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "vi",
-   "contentSHA256": "558b787bab038466e5199ebc8cd935380f9ca686fd6a4cfd785052f7ea6be96b",
+   "contentSHA256": "8aca9472c5212100fc4c8b098fbb55f55d3738e4f49b513ec2072c70ea068f54",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -6422,13 +7001,32 @@
       "sha256": "9d2176c92d3b69b51693f44154726f199fd75a3db8fd8783cf5e69a063df6584"
      },
      "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingUseCalendarForNames",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound and summary switches on the EnviousMeet page); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingUseCalendarForNames/draft.json",
+      "sha256": "b16535069c98fec2b9fac9eb1183beadd15690b90a57fab75132f2668b9715d9"
+     },
+     "prompt": {
+      "path": "additions/meetingUseCalendarForNames/review-driver.py.txt",
+      "sha256": "b8c5b177c5ac4561623455aff1150b7d874adc331eee60a80fcf8cb792a95edc"
+     },
+     "output": {
+      "path": "additions/meetingUseCalendarForNames/review-vi.txt",
+      "sha256": "2755ef28f40af67724b59e6471e8b614ea3107262861b2e82922f9e13e709fd4"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingUseCalendarForNames.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "zh",
-   "contentSHA256": "7e09a1e14b2f0c6045d7534df64c625f31ce98efa3152c8248315638474921c4",
+   "contentSHA256": "2b4d4a9cbfe4bc0cb73f13f06f4dec4f6a8b4fd242f8024d5fe2c3506e256d0d",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -6615,6 +7213,25 @@
       "sha256": "52d7ea885095d930c457bc8d2c9d1e4f0097afeefbc2661e2975597337eb5647"
      },
      "disposition": "adopted as returned by the review (additions/selfLearningDictionary.forgetMemory.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingUseCalendarForNames",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the call-sound and summary switches on the EnviousMeet page); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingUseCalendarForNames/draft.json",
+      "sha256": "b16535069c98fec2b9fac9eb1183beadd15690b90a57fab75132f2668b9715d9"
+     },
+     "prompt": {
+      "path": "additions/meetingUseCalendarForNames/review-driver.py.txt",
+      "sha256": "b8c5b177c5ac4561623455aff1150b7d874adc331eee60a80fcf8cb792a95edc"
+     },
+     "output": {
+      "path": "additions/meetingUseCalendarForNames/review-zh.txt",
+      "sha256": "518efa9941b071b7ceb5e484d7d47d8552514c99b84101036b477432509dfd1f"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingUseCalendarForNames.json)"
     }
    ],
    "phraseExemptions": []
@@ -6871,7 +7488,8 @@
   "yourWords.import": "9d9c4a63e66f3bb7799bdd48927c19066f99dab2b41c973d15eebcf19ec1b136",
   "yourWords.massEdit": "a3f4fe070d5e6fc8cf78e3122bc299db26a3c139c8b7b0ad6aff1bbae9d5ce03",
   "yourWords.search": "e2edb884f10d397e3e04823d498a44c3c820f9115d7192febdf86633014248e0",
-  "selfLearningDictionary.forgetMemory": "df6f4cc0a6d055a0e8f95ed369832bb56bb7f738c3aad4f3a30c81e0bb909e1b"
+  "selfLearningDictionary.forgetMemory": "df6f4cc0a6d055a0e8f95ed369832bb56bb7f738c3aad4f3a30c81e0bb909e1b",
+  "meetingUseCalendarForNames": "5ebf312c9a264cc605d3532f704a1fec134805ccd695a432174b05d2c51c6dd3"
  },
  "reviewedSourceNote": "Per searchable id, the SHA-256 of the English title and description its translations were reviewed against (reference/settings-map.json; SettingsSearchVocabularyTests.sourceFingerprint). First recorded 2026-10-07 at be0086b6 from the export the Phase 0 and council reviews covered. When a test names an id here, re-review that id's translated blocks, then record the hash the test prints. Limit: dynamic titles are bound by resolver name, not template wording."
 }

@@ -1,0 +1,1 @@
+{"language":"pt","title":"nomear reuniões com base no meu calendário","words":["calendário"],"phrases":["usar o título do evento como nome da reunião","dar às reuniões o nome do evento no calendário"]}

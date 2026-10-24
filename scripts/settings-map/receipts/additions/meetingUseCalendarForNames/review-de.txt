@@ -1,0 +1,10 @@
+{
+  "language": "de",
+  "words": [
+    "Terminname"
+  ],
+  "phrases": [
+    "nimm den Termintitel als Meetingnamen",
+    "benenne meine Meetings automatisch nach dem Kalender"
+  ]
+}

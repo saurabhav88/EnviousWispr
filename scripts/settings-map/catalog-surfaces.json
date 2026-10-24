@@ -39,6 +39,9 @@
   "mac-ctl-meeting-write-summary": [
    "meetingWriteSummary"
   ],
+  "mac-ctl-meeting-calendar-names": [
+   "meetingUseCalendarForNames"
+  ],
   "mac-sec-engine-transcription": [
    "section.transcriptionEngine"
   ],
@@ -725,6 +728,11 @@
    "kind": "control",
    "parent": "mac-page-meetings",
    "label": "Write a summary when a meeting ends"
+  },
+  "mac-ctl-meeting-calendar-names": {
+   "kind": "control",
+   "parent": "mac-page-meetings",
+   "label": "Name meetings from my calendar"
   }
  }
 }

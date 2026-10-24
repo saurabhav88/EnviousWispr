@@ -661,6 +661,15 @@ enum SettingsMap {
       description: .resource(MeetingsCopy.writeSummaryShort),
       parent: .pageMeetings, destination: .meetings, dictionaryTab: nil,
       visibility: .always, target: .meetingWriteSummary, fallbacks: []),
+    // #4017 R5: name meetings from the calendar. Like the two switches above, it is on the page
+    // whenever the page shows its settings; until EnviousMeet's setup is finished the page
+    // shows the setup instead, and a search arrives on the page itself.
+    SettingsMapNode(
+      id: .meetingUseCalendarForNames, structure: .item, item: .setting,
+      title: .resource(MeetingsCopy.calendarNamesTitle),
+      description: .resource(MeetingsCopy.calendarNamesShort),
+      parent: .pageMeetings, destination: .meetings, dictionaryTab: nil,
+      visibility: .always, target: .meetingUseCalendarForNames, fallbacks: []),
     SettingsMapNode(
       id: .enableAIPolish, structure: .item, item: .setting,
       title: .resource(SettingsItemCopy.AIPolish.enable),

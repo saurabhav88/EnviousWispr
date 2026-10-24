@@ -135,6 +135,17 @@ public final class PermissionsService {
     openMicrophoneSettings(url)
   }
 
+  /// #4017: opens System Settings on Privacy & Security, Calendars, where EnviousMeet's calendar
+  /// access is allowed. Only on an explicit user action. NOT VERIFIED on hardware until #4017
+  /// Live UAT checks the pane anchor.
+  public func openCalendarSettings() {
+    guard
+      let url = URL(
+        string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars")
+    else { return }
+    openMicrophoneSettings(url)
+  }
+
   /// Whether microphone permission has been granted.
   public var hasMicrophonePermission: Bool {
     microphoneStatus == .authorized
