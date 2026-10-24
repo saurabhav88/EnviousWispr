@@ -157,6 +157,10 @@ final class TranscriptCoordinator {
   /// superseded one cannot publish rows, certify the cache or clear `loadInFlight`.
   private var loadRequestID: UInt64 = 0
   private var loadInFlight = false
+  /// #4001 H12: a History read that was still the current one has ended at least once this
+  /// launch, successfully or not. It says an attempt finished, never that the rows are complete
+  /// or that a given row is there. Never reset: later reads refresh rows in place.
+  private(set) var historyReadFinished = false
   /// #4001 H9: whether the rows held now are the whole store as of `accepted`. Set only by a
   /// certified complete read; dropped by any read that starts, and by a reuse check that finds
   /// the folders changed.
@@ -1023,7 +1027,13 @@ final class TranscriptCoordinator {
   /// Ends `request`'s hold on the in-flight flag, and only its own: a superseded read finishing
   /// late must not mark a newer read as done.
   private func finishLoad(_ request: UInt64) {
-    if request == loadRequestID { loadInFlight = false }
+    if request == loadRequestID {
+      loadInFlight = false
+      historyReadFinished = true
+      #if DEBUG
+        historyReadEndsForTesting += 1
+      #endif
+    }
   }
 
   private func readStore(_ request: UInt64) async {
@@ -1169,6 +1179,9 @@ final class TranscriptCoordinator {
     /// a test can tell reuse from a read that happened to return the same rows.
     private(set) var historyCacheHitsForTesting = 0
     private(set) var historyFullReadsForTesting = 0
+    /// #4001 H12: reads that ended while still current, so a test can tell that a superseded read
+    /// did not set `historyReadFinished`.
+    private(set) var historyReadEndsForTesting = 0
     /// Runs on the durable write's worker thread just before it writes, so a test can hold a
     /// write while it is registered in flight.
     @ObservationIgnored var durableWriteWillStartForTesting: (@Sendable () -> Void)?

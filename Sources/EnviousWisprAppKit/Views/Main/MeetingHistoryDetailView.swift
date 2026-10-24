@@ -144,7 +144,8 @@ struct MeetingHistoryDetailView: View {
       if orphanRefused {
         Text(
           "This meeting's files are still on this Mac but can't be read, so it can't be deleted here.",
-          comment: "History: Delete was refused for a meeting whose folder exists but cannot be read."
+          comment:
+            "History: Delete was refused for a meeting whose folder exists but cannot be read."
         )
         .font(.stHelper)
         .foregroundStyle(.stError)
@@ -188,13 +189,13 @@ struct MeetingHistoryDetailView: View {
   private func actions(_ record: MeetingRecord) -> some View {
     let offered = MeetingsPresentation.actions(
       record, isActive: isActive(record),
-      canTranscribeAgain: meetings.canTranscribeAgain(record.id))
+      canTranscribeAgain: canOfferTranscribeAgain(record.id))
     return HStack(spacing: 10) {
       SettingsActionButton(
         title: LocalizedStringResource(
           "Transcribe again",
           comment: "EnviousMeet: makes the meeting's transcript again from its kept audio."),
-        isEnabled: offered.transcribeAgain && !actionInFlight, systemImage: "arrow.clockwise"
+        isEnabled: offered.transcribeAgain, systemImage: "arrow.clockwise"
       ) {
         run { meetings in await meetings.retry(meetingID: meetingID) }
       }
@@ -355,6 +356,16 @@ struct MeetingHistoryDetailView: View {
       }
       if record.state == .ready, let row = transcripts.currentRow(id: record.transcriptID) {
         transcript(row: row, record: record)
+      } else if record.state == .ready, !transcripts.historyReadFinished {
+        busyLine(
+          String(
+            localized: "Loading the transcript",
+            comment: "History, a ready meeting: waiting for History's first read attempt to finish."
+          ))
+      } else if record.state == .ready {
+        // #4001 H12: ready, History has been read, and the row is still not there (its file is
+        // missing or could not be read). Say so instead of showing nothing.
+        missingTranscript(canTranscribeAgain: canOfferTranscribeAgain(record.id))
       } else if record.state == .notesOnly {
         Text(
           "Nothing was recorded for this meeting. Your notes are in Notes.",
@@ -364,6 +375,32 @@ struct MeetingHistoryDetailView: View {
         .foregroundStyle(.stTextSecondary)
       }
     }
+  }
+
+  /// Whether Transcribe again can be pressed now. The button and the missing-transcript hint
+  /// share it, so the hint never names a disabled button.
+  private func canOfferTranscribeAgain(_ meetingID: UUID) -> Bool {
+    meetings.canTranscribeAgain(meetingID) && !actionInFlight
+  }
+
+  private func missingTranscript(canTranscribeAgain: Bool) -> some View {
+    VStack(alignment: .leading, spacing: 4) {
+      Text(
+        "This meeting's transcript could not be opened.",
+        comment: "History, a ready meeting whose saved transcript is missing or unreadable."
+      )
+      .font(.stBody)
+      .foregroundStyle(.stTextPrimary)
+      if canTranscribeAgain {
+        Text(
+          "Choose Transcribe again to make it from the recording.",
+          comment: "History, a ready meeting whose transcript could not be opened: the way back."
+        )
+        .font(.stBody)
+        .foregroundStyle(.stTextSecondary)
+      }
+    }
+    .accessibilityElement(children: .combine)
   }
 
   private func busyLine(_ text: String) -> some View {

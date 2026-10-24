@@ -332,7 +332,8 @@ enum MeetingsPresentation {
   }
 
   /// `canTranscribeAgain` is the coordinator's answer (`MeetingCoordinator.canTranscribeAgain`,
-  /// #4008), never re-derived here.
+  /// #4008), never re-derived here; the detail view also turns it off while one of its own
+  /// actions is running (#4001 H12), so its missing-transcript hint can share the same answer.
   static func actions(_ record: MeetingRecord, isActive: Bool, canTranscribeAgain: Bool)
     -> Actions
   {
