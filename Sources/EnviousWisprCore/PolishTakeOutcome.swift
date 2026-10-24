@@ -60,6 +60,9 @@ public enum PolishSetupProblemTag: String, Sendable, Equatable, CaseIterable {
   case localDownloadPaused = "local_download_paused"
   case localUpdatePaused = "local_update_paused"
   case localDownloadFailed = "local_download_failed"
+  /// #3988: something outside the app stopped the local engine. Informational; never a
+  /// confirmed setup problem on a terminal row.
+  case localStoppedOutside = "local_stopped_outside"
 }
 
 /// What happened to the take's polish. Closed.

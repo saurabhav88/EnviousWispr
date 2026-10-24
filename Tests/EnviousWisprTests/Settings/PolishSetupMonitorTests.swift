@@ -1049,3 +1049,243 @@ extension PolishSetupMonitorTests {
     #expect(calls == 2)
   }
 }
+
+// MARK: - A local engine stopped outside the app (#3988 chunk 4)
+
+extension PolishSetupMonitorTests {
+
+  private static func stop(
+    _ generation: Int, _ provider: LLMProvider = .egOne,
+    _ pressure: OutsideStopContext.MemoryPressure? = .warning
+  ) -> OutsideStopContext {
+    OutsideStopContext(provider: provider, generation: generation, memoryPressure: pressure)
+  }
+
+  /// EG-1 and S1-mini installed; `egOneStop` is EG-1's unresolved outside stop, if any.
+  private static func localFacts(
+    egOneStop: OutsideStopContext? = nil, s1MiniStop: OutsideStopContext? = nil,
+    egOneHealth: EGOneHealth = .green
+  ) -> PolishSetupFacts {
+    var facts = PolishSetupFacts(
+      egOneInstall: .installed(version: "1.2"), egOneHealth: egOneHealth,
+      s1MiniInstall: .installed(version: "1"), s1MiniHealth: .green,
+      appleStatus: .available, appleFailureReasons: [], appleIsChecking: false,
+      validationProvider: nil, cloudValidation: .idle, credentialRevisions: [:],
+      cloudVerdicts: [:], openAIKeySaved: true, geminiKeySaved: true, claudeKeySaved: true,
+      ollamaSetup: .ready, ollamaModel: .installed)
+    facts.egOneOutsideStop = egOneStop
+    facts.s1MiniOutsideStop = s1MiniStop
+    return facts
+  }
+
+  private static func stoppedWorld(_ stop: OutsideStopContext? = Self.stop(1)) -> World {
+    let world = World()
+    world.configuration = Self.egOne
+    world.facts = Self.localFacts(egOneStop: stop)
+    return world
+  }
+
+  /// A take that missed polish because `stop` left no engine.
+  private static func missed(
+    _ take: PolishSetupTakeContext, id: String, stop: OutsideStopContext?,
+    result: PolishTakeResult = .skippedSilently, evidence: PolishSetupEvidence? = .localEngineNotReady,
+    recovery: OutsideStopContext? = nil
+  ) -> PolishTakeOutcome {
+    PolishTakeOutcome(
+      takeID: id, context: take, result: result, evidence: evidence, setupProblem: nil,
+      observedAt: .now, outsideStopMiss: stop, outsideStopRecovery: recovery)
+  }
+
+  @Test("an installed engine stopped from outside reads informational; a failed restart or no stop does not")
+  func stoppedOutsideReadiness() {
+    let s1Stop = Self.stop(4, .s1Mini, nil)
+    #expect(
+      PolishSetupReadiness.evaluate(provider: .egOne, facts: Self.localFacts(egOneStop: Self.stop(1)))
+        == .problem(.localEngineStoppedOutside(.egOne, Self.stop(1))))
+    #expect(
+      PolishSetupReadiness.evaluate(provider: .s1Mini, facts: Self.localFacts(s1MiniStop: s1Stop))
+        == .problem(.localEngineStoppedOutside(.s1Mini, s1Stop)))
+    #expect(PolishSetupReadiness.evaluate(provider: .egOne, facts: Self.localFacts()) == .noProblem)
+    // The restart failed: its own red status speaks, not this notice.
+    #expect(
+      PolishSetupReadiness.evaluate(
+        provider: .egOne,
+        facts: Self.localFacts(egOneStop: Self.stop(1), egOneHealth: .red(reason: "crashed_twice")))
+        == .noProblem)
+    #expect(PolishSetupProblem.localEngineStoppedOutside(.egOne, Self.stop(1)).isActionable == false)
+    #expect(
+      PolishSetupProblem.localEngineStoppedOutside(.egOne, Self.stop(1)).telemetryTag
+        == "local_stopped_outside")
+  }
+
+  @Test("an outside stop raises no leave dialog, banner, menu line, sidebar tag or setup card")
+  func stoppedOutsideIsOffEverySetupSurface() {
+    let world = Self.stoppedWorld()
+    let monitor = Self.monitor(world)
+    _ = monitor.currentContext()
+    #expect(monitor.eligibleProblem == .localEngineStoppedOutside(.egOne, Self.stop(1)))
+    for surface in PolishSetupSurface.allCases { #expect(monitor.shows(surface) == false, "\(surface)") }
+    #expect(monitor.cardTicket() == nil)
+  }
+
+  @Test("a take that missed polish earns one notice, kept when the engine comes back before or after")
+  func noticeSurvivesRecovery() throws {
+    let world = Self.stoppedWorld()
+    let monitor = Self.monitor(world)
+    let take = monitor.freezeTakeContext()
+    #expect(take.episode != nil, "the take started inside the stopped-outside episode")
+    // The engine came back before the take was taken in: that episode ended.
+    world.facts = Self.localFacts()
+    let outcome = Self.missed(take, id: "take-1", stop: Self.stop(1))
+    #expect(monitor.ingest(outcome))
+    let ticket = try #require(monitor.outsideStopNoticeTicket(for: outcome))
+    #expect(ticket.stop == Self.stop(1), "the frozen stop, pressure included")
+    // Asking spends nothing.
+    #expect(monitor.outsideStopNoticeTicket(for: outcome) == ticket)
+    // Ready again between offering and first render: still presented, once.
+    world.facts = Self.localFacts()
+    #expect(monitor.outsideStopNoticePresented(ticket))
+    #expect(monitor.outsideStopNoticeStillApplies(ticket), "a shown notice stays after ready")
+    #expect(monitor.outsideStopNoticePresented(ticket) == false, "a duplicate receipt spends nothing")
+    #expect(monitor.outsideStopNoticeTicket(for: outcome) == nil)
+  }
+
+  @Test("once per stop: a second take for the same stop earns nothing; each new stop earns its own")
+  func oncePerStop() throws {
+    let world = Self.stoppedWorld()
+    let monitor = Self.monitor(world)
+    let first = Self.missed(monitor.freezeTakeContext(), id: "a", stop: Self.stop(1))
+    let sameStop = Self.missed(monitor.freezeTakeContext(), id: "b", stop: Self.stop(1))
+    #expect(monitor.ingest(first))
+    #expect(monitor.ingest(sameStop))
+    let ticket = try #require(monitor.outsideStopNoticeTicket(for: first))
+    // Not presented yet (refused or still pending): the allowance is kept for this stop.
+    #expect(monitor.outsideStopNoticeTicket(for: sameStop) == ticket)
+    #expect(monitor.outsideStopNoticePresented(ticket))
+    #expect(monitor.outsideStopNoticeTicket(for: sameStop) == nil)
+
+    // A second stop, with no ready the monitor ever saw in between: its own allowance.
+    world.facts = Self.localFacts(egOneStop: Self.stop(2))
+    let next = Self.missed(monitor.freezeTakeContext(), id: "c", stop: Self.stop(2))
+    #expect(monitor.ingest(next))
+    let nextTicket = try #require(monitor.outsideStopNoticeTicket(for: next))
+    #expect(nextTicket.stop.generation == 2)
+    #expect(monitor.outsideStopNoticePresented(nextTicket))
+    // A repeated delivery of a take already taken in is refused.
+    #expect(monitor.ingest(next) == false)
+  }
+
+  @Test("only a frozen miss earns: polished, recovery-only, bypassed and other-engine outcomes do not")
+  func onlyAFrozenMissEarns() {
+    let world = Self.stoppedWorld()
+    let monitor = Self.monitor(world)
+    let take = monitor.freezeTakeContext()
+    let notEarning = [
+      Self.missed(take, id: "polished", stop: Self.stop(1), result: .polished, evidence: nil),
+      Self.missed(take, id: "recovery", stop: nil, recovery: Self.stop(1)),
+      Self.missed(take, id: "bypassed", stop: Self.stop(1), result: .bypassed, evidence: nil),
+      Self.missed(take, id: "other", stop: Self.stop(1, .s1Mini)),
+      Self.missed(take, id: "ordinary", stop: nil),
+    ]
+    for outcome in notEarning {
+      #expect(PolishSetupMonitor.outsideStopMissed(outcome) == nil, "\(outcome.takeID)")
+      monitor.ingest(outcome)
+      #expect(monitor.outsideStopNoticeTicket(for: outcome) == nil, "\(outcome.takeID)")
+    }
+    #expect(monitor.outsideStopNotices.earned.isEmpty)
+  }
+
+  @Test("a changed setup, onboarding not finished or a failed restart holds the notice back")
+  func noticeHeldBack() throws {
+    let world = Self.stoppedWorld()
+    let monitor = Self.monitor(world)
+    let outcome = Self.missed(monitor.freezeTakeContext(), id: "take-1", stop: Self.stop(1))
+    #expect(monitor.ingest(outcome))
+    let ticket = try #require(monitor.outsideStopNoticeTicket(for: outcome))
+
+    world.onboardingComplete = false
+    #expect(monitor.outsideStopNoticeTicket(for: outcome) == nil)
+    #expect(monitor.outsideStopNoticePresented(ticket) == false, "a refused receipt spends nothing")
+    world.onboardingComplete = true
+    #expect(monitor.outsideStopNoticeTicket(for: outcome) == ticket, "the allowance was kept")
+
+    // The restart failed: its red status takes over, the stop's context notwithstanding.
+    world.facts = Self.localFacts(egOneStop: Self.stop(1), egOneHealth: .red(reason: "crashed_twice"))
+    #expect(monitor.outsideStopNoticeTicket(for: outcome) == nil)
+    #expect(monitor.outsideStopNoticeStillApplies(ticket) == false)
+    world.facts = Self.localFacts()
+
+    // Another model is a different setup: the notice no longer applies, and a take from
+    // before the change is not taken in.
+    world.configuration = PolishSetupConfiguration(
+      provider: .s1Mini, model: "s1-mini", credentialRevision: nil)
+    #expect(monitor.outsideStopNoticeStillApplies(ticket) == false)
+    #expect(monitor.ingest(Self.missed(outcome.context, id: "late", stop: Self.stop(1))) == false)
+  }
+
+  @Test("an unshown notice survives switching away and back; a shown one is never earned again")
+  func noticeAcrossConfigurationChanges() throws {
+    let world = Self.stoppedWorld()
+    let monitor = Self.monitor(world)
+    let before = Self.missed(monitor.freezeTakeContext(), id: "a", stop: Self.stop(1))
+    #expect(monitor.ingest(before))
+    let oldTicket = try #require(monitor.outsideStopNoticeTicket(for: before))
+
+    // Away to S1-mini and back to EG-1 while the stop is still outstanding: a new revision.
+    world.configuration = PolishSetupConfiguration(
+      provider: .s1Mini, model: "s1-mini", credentialRevision: nil)
+    world.configuration = Self.egOne
+    #expect(monitor.outsideStopNoticeTicket(for: before) == nil, "the old take's ticket is stale")
+    let after = Self.missed(monitor.freezeTakeContext(), id: "b", stop: Self.stop(1))
+    #expect(monitor.ingest(after))
+    let ticket = try #require(monitor.outsideStopNoticeTicket(for: after))
+    #expect(ticket.configurationRevision > oldTicket.configurationRevision)
+    #expect(monitor.outsideStopNoticePresented(oldTicket) == false, "a replaced ticket spends nothing")
+    #expect(monitor.outsideStopNoticePresented(ticket))
+    #expect(monitor.outsideStopNoticePresented(ticket) == false)
+
+    // Shown, then away and back again: the same stop is never told twice.
+    world.configuration = PolishSetupConfiguration(
+      provider: .s1Mini, model: "s1-mini", credentialRevision: nil)
+    world.configuration = Self.egOne
+    let again = Self.missed(monitor.freezeTakeContext(), id: "c", stop: Self.stop(1))
+    #expect(monitor.ingest(again))
+    #expect(monitor.outsideStopNoticeTicket(for: again) == nil)
+  }
+
+  @Test("many later stops never drop a notice still waiting, nor let a spent stop earn again")
+  func noTrimmingOfNotices() throws {
+    var notices = OutsideStopNotices()
+    let earnedFirst = notices.earn(Self.stop(1), configurationRevision: 1)
+    #expect(earnedFirst)
+    let waiting = try #require(notices.ticket(for: Self.stop(1)))
+    let earnedSecond = notices.earn(Self.stop(2), configurationRevision: 1)
+    #expect(earnedSecond)
+    let spent = try #require(notices.ticket(for: Self.stop(2)))
+    let spentOnce = notices.presented(spent)
+    #expect(spentOnce)
+    for generation in 3...40 { notices.earn(Self.stop(generation), configurationRevision: 1) }
+    #expect(notices.ticket(for: Self.stop(1)) == waiting)
+    let waitingPresented = notices.presented(waiting)
+    #expect(waitingPresented)
+    let sameRevision = notices.earn(Self.stop(2), configurationRevision: 1)
+    #expect(sameRevision == false)
+    let newRevision = notices.earn(Self.stop(2), configurationRevision: 9)
+    #expect(newRevision == false, "spent stays spent")
+    #expect(notices.ticket(for: Self.stop(2)) == nil)
+  }
+
+  @Test("the notice has one copy owner: the memory sentence only for warning or critical")
+  func noticeCopy() {
+    let generic = PolishSetupSurfaceCopy.outsideStopNotice(Self.stop(1, .egOne, .normal))
+    let unknown = PolishSetupSurfaceCopy.outsideStopNotice(Self.stop(1, .egOne, nil))
+    let low = PolishSetupSurfaceCopy.outsideStopNotice(Self.stop(1, .egOne, .critical))
+    #expect(generic == "This dictation was pasted without AI polish. We'll try again automatically.")
+    #expect(unknown == generic)
+    #expect(
+      low
+        == "This dictation was pasted without AI polish. Your Mac was low on memory at the time. We'll try again automatically."
+    )
+    #expect(PolishSetupSurfaceCopy.outsideStopTitle == "AI polish skipped")
+  }
+}

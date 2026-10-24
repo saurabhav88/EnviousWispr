@@ -57,6 +57,74 @@ struct PolishSetupInputs {
   let ollamaLastCommitAt: ContinuousClock.Instant?
 }
 
+/// Permission to present one earned outside-stop notice (#3988): the stop it is about and the
+/// configuration revision the take ran under. Asking for one spends nothing.
+struct OutsideStopNoticeTicket: Hashable {
+  let stop: OutsideStopContext
+  let configurationRevision: UInt64
+}
+
+/// Outside-stop notices earned by takes (#3988), keyed by engine and stopped child, and kept
+/// apart from the setup episodes: the engine coming back ends the live recovery, never a notice
+/// a take already earned. A value, so its rules are tested without an app.
+struct OutsideStopNotices: Equatable {
+  struct Key: Hashable {
+    let provider: LLMProvider
+    let generation: Int
+  }
+  struct Earned: Equatable {
+    let key: Key
+    let stop: OutsideStopContext
+    let configurationRevision: UInt64
+    var presented = false
+  }
+
+  /// Kept for the app's lifetime, never trimmed by age or count: an entry may hold a notice
+  /// still waiting to show, and a spent one is what stops its stop being told twice. One entry
+  /// per physical stop, so it grows only as often as something stops the engine.
+  private(set) var earned: [Earned] = []
+
+  /// A take missed polish because of `stop`, under `configurationRevision`. The first take per
+  /// stop earns. A notice already presented is never earned again. An unshown one earned under
+  /// a configuration that has since changed is replaced by this newer take, whose ticket
+  /// carries the current revision; the old ticket no longer matches and spends nothing.
+  @discardableResult
+  mutating func earn(_ stop: OutsideStopContext, configurationRevision: UInt64) -> Bool {
+    let key = Key(provider: stop.provider, generation: stop.generation)
+    let fresh = Earned(key: key, stop: stop, configurationRevision: configurationRevision)
+    guard let index = earned.firstIndex(where: { $0.key == key }) else {
+      earned.append(fresh)
+      return true
+    }
+    guard !earned[index].presented, earned[index].configurationRevision != configurationRevision
+    else { return false }
+    earned[index] = fresh
+    return true
+  }
+
+  /// A ticket for `stop`'s notice while it has not been presented.
+  func ticket(for stop: OutsideStopContext) -> OutsideStopNoticeTicket? {
+    let key = Key(provider: stop.provider, generation: stop.generation)
+    guard let notice = earned.first(where: { $0.key == key }), !notice.presented else { return nil }
+    return OutsideStopNoticeTicket(
+      stop: notice.stop, configurationRevision: notice.configurationRevision)
+  }
+
+  /// The notice actually appeared: spends it once. Only a ticket matching the stored notice in
+  /// full (stop, context and revision) spends it; a duplicate, replaced or unknown receipt
+  /// answers false.
+  @discardableResult
+  mutating func presented(_ ticket: OutsideStopNoticeTicket) -> Bool {
+    let key = Key(provider: ticket.stop.provider, generation: ticket.stop.generation)
+    guard let index = earned.firstIndex(where: { $0.key == key }), !earned[index].presented,
+      earned[index].stop == ticket.stop,
+      earned[index].configurationRevision == ticket.configurationRevision
+    else { return false }
+    earned[index].presented = true
+    return true
+  }
+}
+
 /// The episode state machine, as a value: pure, so its rules are tested without an app.
 struct PolishSetupEpisodes: Equatable {
   struct Episode: Equatable {
@@ -111,6 +179,8 @@ struct PolishSetupEpisodes: Equatable {
     guard let problem = eligibleProblem, let episode else { return false }
     switch surface {
     case .leaveDialog:
+      // #3988: an outside stop is told once after the take it cost, never on leaving.
+      if case .localEngineStoppedOutside = problem { return false }
       // Informational problems still get their OK-only notice on leaving.
       return !episode.acknowledged.contains(.leaveDialog)
     case .card:
@@ -210,6 +280,8 @@ final class PolishSetupMonitor {
   /// accepted (a take that polished). One per PROVIDER, each a fact about that key (its
   /// credential revision): it survives model and provider changes and another provider's
   /// takes, and stops counting when that key is replaced or cleared.
+  /// #3988: outside-stop notices earned by takes, independent of the episodes.
+  @ObservationIgnored private(set) var outsideStopNotices = OutsideStopNotices()
   @ObservationIgnored private var cloudKeyTakeObservations:
     [LLMProvider: (credentialRevision: UInt64, rejected: Bool, observedAt: ContinuousClock.Instant)] =
       [:]
@@ -388,8 +460,10 @@ final class PolishSetupMonitor {
       case .cloudKeyMissing, .cloudKeyRejected, .ollamaNotInstalled, .ollamaNotRunning,
         .ollamaNoModel, .ollamaModelNotInstalled, .localEngineNotDownloaded,
         .localEngineDownloadPaused, .localEngineUpdatePaused, .localEngineFailed,
-        .localEngineDownloading, .localEngineVerifying, .appleUnavailable, .appleModelNotReady:
-        // Downloading, verifying or another engine's state: not this take's setup problem.
+        .localEngineDownloading, .localEngineVerifying, .appleUnavailable, .appleModelNotReady,
+        .localEngineStoppedOutside:
+        // Downloading, verifying, stopped from outside (#3988: told by its own notice, never a
+        // setup problem) or another engine's state: not this take's setup problem.
         return nil
       }
     }
@@ -409,9 +483,19 @@ final class PolishSetupMonitor {
       let configuration = lastConfiguration,
       configuration.provider == take.provider, configuration.model == take.model
     else { return false }
-    if let episode = take.episode, episodes.episode?.token.rawValue != episode { return false }
+    let outsideStop = Self.outsideStopMissed(outcome)
+    // #3988: the engine coming back ends the stopped-outside episode the take started in; that
+    // must not reject the take whose notice it earned.
+    if outsideStop == nil, let episode = take.episode,
+      episodes.episode?.token.rawValue != episode
+    {
+      return false
+    }
     ingestedTakeIDs.append(outcome.takeID)
     if ingestedTakeIDs.count > 16 { ingestedTakeIDs.removeFirst() }
+    if let outsideStop {
+      outsideStopNotices.earn(outsideStop, configurationRevision: take.configurationRevision)
+    }
 
     // A bypassed (too short) or skipped take asked no model, so only `.polished` is repair.
     let polished = outcome.result == .polished
@@ -561,6 +645,61 @@ final class PolishSetupMonitor {
     reconcile()
   }
 
+  // MARK: - Outside-stop notices (#3988)
+
+  /// The stop a concluded take missed polish because of, or nil. Only the frozen miss evidence
+  /// of a bundled engine's not-ready skip counts: recovery attribution alone, a polished take
+  /// and a bypass never do, and the stop must be the take's own engine's.
+  static func outsideStopMissed(_ outcome: PolishTakeOutcome) -> OutsideStopContext? {
+    guard let stop = outcome.outsideStopMiss, outcome.evidence == .localEngineNotReady,
+      stop.provider == outcome.context.provider
+    else { return nil }
+    switch stop.provider {
+    case .egOne, .s1Mini: break
+    case .openAI, .gemini, .claude, .ollama, .appleIntelligence, .none: return nil
+    }
+    switch outcome.result {
+    case .skippedSilently, .skippedWithNotice, .failed: return stop
+    case .notRequested, .polished, .bypassed, .cancelled: return nil
+    }
+  }
+
+  /// A ticket to present `outcome`'s notice now, or nil when it may not show: not earned,
+  /// already presented, onboarding not finished, another configuration, or the restart failed
+  /// (its own red status takes over). Asking spends nothing.
+  func outsideStopNoticeTicket(for outcome: PolishTakeOutcome) -> OutsideStopNoticeTicket? {
+    let inputs = reconcile()
+    guard let stop = Self.outsideStopMissed(outcome),
+      let ticket = outsideStopNotices.ticket(for: stop),
+      outsideStopNoticeApplies(ticket, inputs: inputs)
+    else { return nil }
+    return ticket
+  }
+
+  /// The notice really appeared: spends it once, judged against the live state. False for a
+  /// stale, duplicate or no-longer-applicable receipt, and the caller withdraws it.
+  @discardableResult
+  func outsideStopNoticePresented(_ ticket: OutsideStopNoticeTicket) -> Bool {
+    let inputs = reconcile()
+    guard outsideStopNoticeApplies(ticket, inputs: inputs) else { return false }
+    return outsideStopNotices.presented(ticket)
+  }
+
+  /// Whether a notice raised under `ticket` still describes the present. The engine being
+  /// ready again does not end it; a configuration change, onboarding reset or failed restart does.
+  func outsideStopNoticeStillApplies(_ ticket: OutsideStopNoticeTicket) -> Bool {
+    outsideStopNoticeApplies(ticket, inputs: reconcile())
+  }
+
+  private func outsideStopNoticeApplies(
+    _ ticket: OutsideStopNoticeTicket, inputs: PolishSetupInputs
+  ) -> Bool {
+    inputs.onboardingComplete
+      && ticket.configurationRevision == configurationRevision
+      && inputs.configuration.provider == ticket.stop.provider
+      && !inputs.facts.localRestartFailed(ticket.stop.provider)
+  }
+
   private static func usesCloudKey(_ provider: LLMProvider) -> Bool {
     switch provider {
     case .openAI, .gemini, .claude: return true
@@ -575,7 +714,7 @@ final class PolishSetupMonitor {
     case .ollamaNoModel: return .ollamaNoModel
     case .ollamaModelNotInstalled: return .ollamaModelNotInstalled
     case .cloudKeyMissing, .cloudKeyRejected, .localNotDownloaded, .localDownloadPaused,
-      .localUpdatePaused, .localDownloadFailed:
+      .localUpdatePaused, .localDownloadFailed, .localStoppedOutside:
       return nil
     }
   }

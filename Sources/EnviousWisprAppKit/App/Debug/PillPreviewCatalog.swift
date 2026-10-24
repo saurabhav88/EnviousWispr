@@ -237,6 +237,7 @@
       case .localEngineVerifying: return "localEngineVerifying"
       case .appleUnavailable: return "appleUnavailable"
       case .appleModelNotReady: return "appleModelNotReady"
+      case .localEngineStoppedOutside: return "localEngineStoppedOutside"
       }
     }
 

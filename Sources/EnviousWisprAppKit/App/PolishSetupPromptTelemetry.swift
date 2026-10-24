@@ -80,6 +80,7 @@ extension PolishSetupProblem {
     case .appleUnavailable(let reason):
       return reason == .appleIntelligenceDisabled ? "apple_turned_off" : "apple_unavailable"
     case .appleModelNotReady: return "apple_not_ready"
+    case .localEngineStoppedOutside: return PolishSetupProblemTag.localStoppedOutside.rawValue
     }
   }
 }

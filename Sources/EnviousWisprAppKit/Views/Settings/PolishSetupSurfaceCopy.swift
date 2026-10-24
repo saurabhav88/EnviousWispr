@@ -149,6 +149,47 @@ enum PolishSetupSurfaceCopy {
       return String(
         localized: "Apple Intelligence isn't ready yet",
         comment: "AI Polish, notice when leaving the page. Apple Intelligence is a product name.")
+    case .localEngineStoppedOutside(let provider, _):
+      // Never shown by the setup surfaces (#3988 keeps this problem off them); here so the
+      // switch stays exhaustive and any defensive reader gets true words.
+      return String(
+        localized: "\(provider.displayName) stopped and starts again on your next dictation",
+        comment:
+          "Short reason, no full stop: a local AI model was stopped outside the app and restarts on the next dictation. %@ is a model name, such as EG-1."
+      )
+    }
+  }
+
+  // MARK: - A local model stopped outside the app (#3988)
+
+  /// The first notice's title: what happened to the dictation, in plain words. No engine
+  /// name; that is kept for the repeat notice.
+  static var outsideStopTitle: String {
+    String(
+      localized: "AI polish skipped",
+      comment:
+        "Notice after a dictation, title: the local AI model was stopped outside the app, so this dictation was pasted without AI polish."
+    )
+  }
+
+  /// The one owner of the stopped-from-outside notice body. The memory sentence appears only
+  /// when the app saw warning or critical memory pressure as it handled the stop: context,
+  /// never a claimed cause, and never shown when the level is normal or unknown.
+  static func outsideStopNotice(_ stop: OutsideStopContext) -> String {
+    switch stop.memoryPressure {
+    case .warning?, .critical?:
+      return String(
+        localized:
+          "This dictation was pasted without AI polish. Your Mac was low on memory at the time. We'll try again automatically.",
+        comment:
+          "Notice after a dictation: the local AI model was stopped outside the app while memory was low, so this dictation was not polished. The app restarts the model by itself."
+      )
+    case .normal?, nil:
+      return String(
+        localized: "This dictation was pasted without AI polish. We'll try again automatically.",
+        comment:
+          "Notice after a dictation: the local AI model was stopped outside the app, so this dictation was not polished. The app restarts the model by itself."
+      )
     }
   }
 }
