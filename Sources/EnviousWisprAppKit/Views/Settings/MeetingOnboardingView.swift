@@ -49,6 +49,7 @@ private extension Font {
 /// title says where they are.
 private struct MeetingSetupStepDots: View {
   let step: MeetingOnboardingModel.Screen
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   private var index: Int {
     switch step {
@@ -67,7 +68,7 @@ private struct MeetingSetupStepDots: View {
           .frame(width: dot == index ? 28 : 6, height: 6)
       }
     }
-    .animation(.easeInOut(duration: 0.3), value: index)
+    .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: index)
     .accessibilityHidden(true)
   }
 }
