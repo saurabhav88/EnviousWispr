@@ -214,10 +214,11 @@ struct TranscriptStoreDeleteAllTests {
       #expect(box.jsonNames(in: box.directory).isEmpty, "History opens empty, as confirmed")
     }
 
-    @Test("start-up leaves alone a handoff folder while a Delete All holds the lock")
+    @Test("while another copy holds the Delete All lock, start-up keeps the handoff and Delete All refuses")
     func startupSkipsHandoffWhileLocked() async throws {
       let box = Sandbox()
       defer { box.remove() }
+      let (active, names) = try seeded(box)
       let fm = FileManager.default
       let handoff = box.parent.appendingPathComponent(
         AppConstants.transcriptsHandoffPrefix + UUID().uuidString, isDirectory: true)
@@ -227,16 +228,28 @@ struct TranscriptStoreDeleteAllTests {
       let lockPath = box.parent.appendingPathComponent(
         AppConstants.transcriptsDeleteAllLockName
       ).path
-      let holder = open(lockPath, O_RDWR | O_CREAT, 0o600)
-      #expect(holder >= 0)
-      #expect(flock(holder, LOCK_EX) == 0)
+      let holder = open(lockPath, O_RDWR | O_CREAT | O_CLOEXEC, 0o600)
+      try #require(holder >= 0)
+      var holderIsOpen = true
+      defer {
+        if holderIsOpen { close(holder) }
+      }
+      try #require(flock(holder, LOCK_EX | LOCK_NB) == 0)
 
       let store = box.store(cleansLeftovers: true)
       await store.leftoverCleanupForTesting?.value
       #expect(fm.fileExists(atPath: handoff.appendingPathComponent("a.json").path))
+      // Delete All refuses while the lock is held, before changing anything.
+      #expect(throws: (any Error).self) { try active.deleteAll() }
+      #expect(box.jsonNames(in: box.directory) == names)
+      #expect(box.jsonNames(in: box.pending).count == 1)
 
-      // Released, the next start finishes it.
+      // Released, Delete All works and the next start finishes the leftover handoff.
       close(holder)
+      holderIsOpen = false
+      try active.deleteAll()
+      await active.deletionCleanupForTesting?.value
+      #expect(box.jsonNames(in: box.directory).isEmpty)
       let restarted = box.store(cleansLeftovers: true)
       await restarted.leftoverCleanupForTesting?.value
       #expect(!fm.fileExists(atPath: handoff.path))

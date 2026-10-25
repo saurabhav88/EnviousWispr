@@ -980,13 +980,17 @@ public final class TranscriptStore {
       AppConstants.transcriptsHandoffPrefix + id, isDirectory: true)
     let deleting = parent.appendingPathComponent(
       AppConstants.transcriptsDeletingPrefix + id, isDirectory: true)
-    // Held from before the handoff exists until this returns, so start-up cleanup in any app
-    // copy sharing the folder never finishes a handoff this Delete All is still using. The
-    // cleanup holds it only for one rename, so waiting here is brief.
-    guard let lock = Self.takeDeleteAllLock(in: parent, wait: true) else {
+    // Held from before the handoff exists until this returns, so start-up cleanup in a
+    // cooperating app copy never finishes a handoff this Delete All is still using. Refuse
+    // contention before changing folders; waiting for another process here would block the
+    // main actor.
+    guard let lock = Self.takeDeleteAllLock(in: parent) else {
       throw CocoaError(
         .fileWriteUnknown,
-        userInfo: [NSFilePathErrorKey: AppConstants.transcriptsDeleteAllLockName])
+        userInfo: [
+          NSFilePathErrorKey:
+            parent.appendingPathComponent(AppConstants.transcriptsDeleteAllLockName).path
+        ])
     }
     defer { close(lock) }
     try renameExclusive(directory, to: handoff, step: .handoff)
@@ -1097,17 +1101,15 @@ public final class TranscriptStore {
     }
   }
 
-  /// Opens the Delete All lock file beside the History folder and takes it (#4075 G1). Every
-  /// app copy sharing the folder uses the same file, so a Delete All in one copy and start-up
-  /// cleanup in another never act on the same handoff folder. A `flock` lock belongs to the
-  /// open file, so two opens in one process exclude each other too. Returns the descriptor, or
-  /// nil when the lock is held and `wait` is false, or the file cannot be opened. The kernel
-  /// releases the lock when the descriptor closes or the process ends.
-  private nonisolated static func takeDeleteAllLock(in parent: URL, wait: Bool) -> Int32? {
+  /// Takes the shared Delete All lock without waiting (#4075 G1).
+  /// Cooperating app copies and independent opens in this process exclude each other.
+  /// Returns nil on contention or any open/locking failure. The caller closes a successful
+  /// descriptor. Older app copies that do not acquire this lock are not protected.
+  private nonisolated static func takeDeleteAllLock(in parent: URL) -> Int32? {
     let path = parent.appendingPathComponent(AppConstants.transcriptsDeleteAllLockName).path
     let fd = open(path, O_RDWR | O_CREAT | O_CLOEXEC, 0o600)
     guard fd >= 0 else { return nil }
-    guard flock(fd, wait ? LOCK_EX : LOCK_EX | LOCK_NB) == 0 else {
+    guard flock(fd, LOCK_EX | LOCK_NB) == 0 else {
       close(fd)
       return nil
     }
@@ -1119,8 +1121,8 @@ public final class TranscriptStore {
   /// `.transcripts-deleting-<UUID>` or `.transcripts-handoff-<UUID>`. A deleting folder is
   /// removed. A handoff folder holds the rows of a Delete All the user confirmed that did not
   /// finish, so it is cleared for removal (renamed to its deleting name) and removed; leaving it
-  /// kept text on disk that History no longer showed. While a Delete All holds the lock, in this
-  /// or another app copy, the handoff is left for the next start.
+  /// kept text on disk that History no longer showed. When the shared Delete All lock is
+  /// unavailable, the handoff is left for the next start.
   private nonisolated static func scheduleLeftoverCleanup(besides directory: URL) -> Task<
     Void, Never
   > {
@@ -1159,15 +1161,15 @@ public final class TranscriptStore {
     }
   }
 
-  /// Renames a leftover handoff folder to its deleting name while holding the Delete All lock,
-  /// so no Delete All in any app copy is using it. Returns the deleting folder, or nil (logged)
-  /// when the lock is held or the rename fails; the handoff then waits for the next start.
+  /// Renames a leftover handoff while holding the shared Delete All lock, excluding
+  /// cooperating app copies. Returns nil when lock acquisition or the rename fails;
+  /// the handoff then waits for the next start.
   private nonisolated static func clearForRemoval(_ handoff: URL, to deleting: URL, parent: URL)
     async -> URL?
   {
-    guard let lock = takeDeleteAllLock(in: parent, wait: false) else {
+    guard let lock = takeDeleteAllLock(in: parent) else {
       await AppLogger.shared.log(
-        "Left \(handoff.lastPathComponent) for the next start: a Delete All is running",
+        "Left \(handoff.lastPathComponent) for the next start: Delete All lock unavailable",
         level: .info, category: "TranscriptStore")
       return nil
     }

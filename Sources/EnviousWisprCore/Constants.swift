@@ -19,7 +19,7 @@ public enum AppConstants {
   /// if that was interrupted.
   public static let transcriptsHandoffPrefix = ".transcripts-handoff-"
   public static let transcriptsDeletingPrefix = ".transcripts-deleting-"
-  /// Sibling lock file every app copy takes around Delete All's renames and start-up's
+  /// Sibling lock file cooperating app copies take around Delete All's renames and start-up's
   /// finishing of a handoff folder (#4075 G1).
   public static let transcriptsDeleteAllLockName = ".transcripts-delete-all.lock"
   /// EnviousMeet recordings (#3972): one folder per meeting holding `meeting.json` and the
