@@ -352,13 +352,15 @@ struct MeetingLiveWordsView: View {
   let transcript: MeetingLiveWords.Transcript
   /// The call sound is recorded: echo is hidden only in the final transcript.
   let callSoundRecorded: Bool
-  /// Greyed while the after-recording pass makes the real transcript.
+  /// After Stop, until the transcript replaces them: greyed, and the copy says the recording
+  /// ended.
   var superseded = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
       ForEach(
-        MeetingsPresentation.liveStatusLines(transcript, callSoundRecorded: callSoundRecorded),
+        MeetingsPresentation.liveStatusLines(
+          transcript, callSoundRecorded: callSoundRecorded, recordingEnded: superseded),
         id: \.self
       ) {
         line in
@@ -368,12 +370,11 @@ struct MeetingLiveWordsView: View {
           .fixedSize(horizontal: false, vertical: true)
       }
       if transcript.lines.isEmpty {
-        Text(
-          "No words yet.",
-          comment: "History, a recording meeting: no live words have been heard yet."
-        )
-        .font(.stBody)
-        .foregroundStyle(.stTextSecondary)
+        if let empty = MeetingsPresentation.emptyLiveWords(transcript, recordingEnded: superseded) {
+          Text(empty)
+            .font(.stBody)
+            .foregroundStyle(.stTextSecondary)
+        }
       } else {
         ScrollView {
           LazyVStack(alignment: .leading, spacing: 10) {
