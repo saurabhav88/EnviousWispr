@@ -44,7 +44,8 @@ the speakers, also on an error.
   one service, so another app recognizing speech at that moment is interrupted too):
   a track says live words stopped, the meeting keeps recording, Stop gives the transcript and
   the saved tracks cover the recording.
-- quit (#3973): Quit (Apple Event) while live words run: the app exits, no crash report, and the
+- quit (#3973): Quit (`NSRunningApplication.terminate`, the quit Cmd-Q sends, to the verified
+  PID) while live words run: the app exits, no crash report, and the
   meeting is transcribed after relaunch.
 - memory: `footprint` peak of the app process sampled every 1 s over `--minutes` of
   dictation-only work, then the same with a meeting recording and live words proven active;
@@ -908,8 +909,14 @@ def scenario_quit(run_dir, made, checks):
         first, _ = wait_both_tracks_progress("before quit")
         c.check("live words run before the quit", bool(first))
         pid = this_build_pid()
-        subprocess.run(["osascript", "-e", 'tell application id "com.enviouswispr.app.dev" to quit'],
-                       check=True, capture_output=True, timeout=30)
+        # The quit a user's Cmd-Q sends, to this exact process: never by bundle id, which every
+        # worktree's dev build shares (tools-and-apps.md RULE: dev-bundle-id-collision-across-worktrees).
+        import AppKit
+        app = AppKit.NSRunningApplication.runningApplicationWithProcessIdentifier_(pid)
+        if app is None or not (app.executableURL().path() or "").startswith(DEV_APP + "/"):
+            raise Setup(f"pid {pid} is no longer this worktree's dev app")
+        if not app.terminate():
+            raise Setup(f"the quit request to pid {pid} was not sent")
         gone = wait_for("exit", lambda: not any(p == pid for p, _ in dev_pids()), 30, 0.5)
         c.check("the app exits after Quit", bool(gone))
         players.stop_all()
