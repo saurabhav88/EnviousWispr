@@ -12,16 +12,18 @@ import UniformTypeIdentifiers
 /// (History rebuilds this view per meeting).
 struct MeetingHistoryDetailView: View {
   let meeting: HistoryMeetingItem
+  /// #4101: why a History Paste did not happen; the History page holds the notice, so this view
+  /// being rebuilt for another meeting does not lose it.
+  let showPasteNotice: @MainActor (String) -> Void
   private var meetingID: UUID { meeting.meetingID }
 
   @Environment(MeetingCoordinator.self) private var meetings
   @Environment(TranscriptCoordinator.self) private var transcripts
-  @Environment(SettingsManager.self) private var settings
   @Environment(PermissionsService.self) private var permissions
   @Environment(NavigationCoordinator.self) private var navigationCoordinator
   @Environment(AppWindowCoordinator.self) private var appWindowCoordinator
-  /// Why a Paste did not happen, shown once History is back in front.
-  @State private var pasteNotice: String?
+  @Environment(HistoryPaste.self) private var historyPaste
+  @Environment(PreviousApplicationTracker.self) private var previousApplication
 
   @State private var confirming: Confirmation?
   @State private var actionInFlight = false
@@ -93,14 +95,6 @@ struct MeetingHistoryDetailView: View {
         Button(String(localized: "OK", comment: "EnviousMeet: closes the Save error.")) {}
       } message: {
         Text(saveError ?? "")
-      }
-      .alert(
-        pasteNotice ?? "",
-        isPresented: Binding(get: { pasteNotice != nil }, set: { if !$0 { pasteNotice = nil } })
-      ) {
-        Button(String(localized: "OK", comment: "EnviousMeet: closes the Paste message.")) {
-          pasteNotice = nil
-        }
       }
     } else if let row = meeting.row {
       // A meeting row whose meeting EnviousMeet does not hold: its transcript only.
@@ -485,15 +479,13 @@ struct MeetingHistoryDetailView: View {
           .disabled(!canDeliver)
           Button {
             if permissions.accessibilityGranted {
-              HistoryPaste.paste(
+              // #4101: into the app the user came from, read at the press.
+              historyPaste.paste(
+                destination: previousApplication.lastOtherApplication,
                 allowed: { true },
                 text: { transcripts.textForDelivery(row) },
-                settings: settings, permissions: permissions,
                 showHistory: { showHistory() },
-                showNotice: { notice in
-                  showHistory()
-                  pasteNotice = notice
-                })
+                showNotice: { showPasteNotice($0) })
             } else {
               navigationCoordinator.request(.appSettings(.permissions))
             }

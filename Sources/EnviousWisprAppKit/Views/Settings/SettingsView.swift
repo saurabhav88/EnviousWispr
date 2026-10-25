@@ -6,6 +6,8 @@ import SwiftUI
 /// Unified single-window view: History + all settings tabs in one sidebar.
 struct UnifiedWindowView: View {
   @Environment(NavigationCoordinator.self) private var navigationCoordinator
+  /// #4101: a waiting History Paste ends when this window closes or the user leaves History.
+  @Environment(HistoryPaste.self) private var historyPaste
   @Environment(UpdateCoordinatorHolder.self) private var updateCoordinatorHolder
   @Environment(CustomWordsCoordinator.self) private var customWordsCoordinator
   /// #2772 finding 15: the sidebar dot while an import runs. Shows an ACTIVE import job,
@@ -61,6 +63,7 @@ struct UnifiedWindowView: View {
         SettingsWindowCloseObserver {
           search.reset(endedBy: .windowClose)
           navigationState.endWindowSession()
+          historyPaste.windowClosed()
         })
       // #3482 §3.4: a direct tab change drops an arrival meant for another tab.
       .onChange(of: navigationState.dictationTab) { _, _ in navigationState.noteTabChange() }
@@ -160,7 +163,11 @@ struct UnifiedWindowView: View {
 
   private func commit(_ intent: SettingsNavigationIntent) {
     let wasOnAIPolish = navigationState.selectedPage == .aiPolish
+    let pageBefore = navigationState.selectedPage
     navigationState.perform(intent)
+    // #4101: only a committed navigation reaches here (a declined leave does not); History Paste
+    // decides whether it left History.
+    historyPaste.navigated(from: pageBefore, to: navigationState.selectedPage)
     // #3482 §3.4, §8.1: every committed navigation ends the search (a Stay never reaches here),
     // reporting how it ended after the navigation committed.
     switch intent {

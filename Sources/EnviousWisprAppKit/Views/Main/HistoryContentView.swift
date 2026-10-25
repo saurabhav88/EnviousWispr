@@ -17,6 +17,10 @@ struct HistoryContentView: View {
   // PR7 of #763: live-recording fallback transcript comes from LiveRecordingState.
   @Environment(LiveRecordingState.self) private var liveRecordingState
   @Environment(MeetingCoordinator.self) private var meetings
+  /// #3875, #4101: why a History Paste did not happen, shown once History is back in front. Held
+  /// by this page, outside the detail branches, so deleting the row or selecting another one
+  /// (which replaces the detail view) does not lose it.
+  @State private var pasteNotice = HistoryPasteNotice()
 
   /// User's preferred list width from divider drags; the effective width shown
   /// is this value re-clamped to the live container (see `effectiveListWidth`).
@@ -67,10 +71,10 @@ struct HistoryContentView: View {
 
           Group {
             if case .meeting(let meeting) = transcriptCoordinator.detail {
-              MeetingHistoryDetailView(meeting: meeting)
+              MeetingHistoryDetailView(meeting: meeting, showPasteNotice: pasteNotice.show)
                 .id(meeting.meetingID)
             } else if let transcript = displayedTranscript {
-              TranscriptDetailView(transcript: transcript)
+              TranscriptDetailView(transcript: transcript, showPasteNotice: pasteNotice.show)
             } else {
               StatusView()
             }
@@ -94,6 +98,15 @@ struct HistoryContentView: View {
     ) {
       Button(String(localized: "OK", comment: "History: closes the message about a failed action.")) {
         transcriptCoordinator.dismissActionFailure()
+      }
+    }
+    .alert(
+      pasteNotice.text ?? "",
+      isPresented: Binding(
+        get: { pasteNotice.text != nil }, set: { if !$0 { pasteNotice.dismiss() } })
+    ) {
+      Button(String(localized: "OK", comment: "History: closes the Paste message.")) {
+        pasteNotice.dismiss()
       }
     }
   }
@@ -191,4 +204,16 @@ private struct HistorySplitDivider: View {
         }
     )
   }
+}
+
+/// #4101: History's Paste notice, owned by `HistoryContentView` for the life of the page. The
+/// detail views get `show` as a callback; replacing a detail view does not touch it.
+@MainActor
+@Observable
+final class HistoryPasteNotice {
+  private(set) var text: String?
+
+  func show(_ notice: String) { text = notice }
+
+  func dismiss() { text = nil }
 }

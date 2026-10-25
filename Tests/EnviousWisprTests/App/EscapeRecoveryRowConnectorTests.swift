@@ -139,9 +139,11 @@ struct EscapeRecoveryRowConnectorTests {
     #expect(
       source.contains("allowed: { pasteAllowed },"), "Paste hands the policy to History's paste")
     let paste = try self.source(Self.pastePath)
-    #expect(paste.contains("guard allowed() else { return }"), "Paste must stand down at press time")
     #expect(
-      paste.contains("guard allowed(), permissions.accessibilityGrantedLive,"),
+      paste.contains("guard allowed() else { return nil }"), "Paste must stand down at press time")
+    // #4101: after the destination is confirmed, with no await before the write.
+    #expect(
+      paste.contains("guard allowed(), effects.accessibilityGrantedLive(), let text = text() else {"),
       "and again after History is hidden")
     #expect(
       source.contains("guard keepAllowed else { return }"),

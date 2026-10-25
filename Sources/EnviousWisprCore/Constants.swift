@@ -387,9 +387,6 @@ public enum TimingConstants {
   /// nobody measured.
   public static let activationSettleBeforePasteMs: Int = 200
 
-  /// Delay after hiding the app before simulating paste (ms).
-  public static let appHideBeforePasteDelayMs: Int = 300
-
   /// Interval between activation-check polls (ms).
   public static let activationPollIntervalMs: Int = 50
 

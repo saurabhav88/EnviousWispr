@@ -10,12 +10,16 @@ import UniformTypeIdentifiers
 /// #27 aesthetic). Read-only display of existing data — no new features.
 struct TranscriptDetailView: View {
   let transcript: Transcript
+  /// #4101: why a History Paste did not happen; the History page holds the notice, so replacing
+  /// this detail (a deletion, another selection) does not lose it.
+  let showPasteNotice: @MainActor (String) -> Void
   @Environment(PermissionsService.self) private var permissions
   @Environment(NavigationCoordinator.self) private var navigationCoordinator
   @Environment(TranscriptCoordinator.self) private var transcriptCoordinator
   @Environment(LiveRecordingState.self) private var liveRecordingState
-  @Environment(SettingsManager.self) private var settings
   @Environment(AppWindowCoordinator.self) private var appWindowCoordinator
+  @Environment(HistoryPaste.self) private var historyPaste
+  @Environment(PreviousApplicationTracker.self) private var previousApplication
 
   /// Screen-local, per-row UI state (#2811, phase 4 of #2807) — History has no persisted view
   /// mode today, and this phase does not add one (plan §2.2 non-goal). Reset on row change
@@ -27,8 +31,6 @@ struct TranscriptDetailView: View {
   /// Surfaced via `.alert` rather than swallowed by `try?` (found by chunk review) — a failed
   /// disk write must not look identical to a successful one.
   @State private var saveError: String?
-  /// #3875: why a History Paste did not happen, shown once History is back in front.
-  @State private var pasteNotice: String?
 
   /// #2087: the two actions this feature adds stand down while a dictation is
   /// in flight — Paste on a HELD recovery, and Keep.
@@ -123,13 +125,6 @@ struct TranscriptDetailView: View {
     } message: {
       Text(saveError ?? "")
     }
-    .alert(
-      pasteNotice ?? "",
-      isPresented: Binding(
-        get: { pasteNotice != nil }, set: { if !$0 { pasteNotice = nil } })
-    ) {
-      Button("OK") { pasteNotice = nil }
-    }
   }
 
   // MARK: - Paste
@@ -138,22 +133,19 @@ struct TranscriptDetailView: View {
   /// Dictation, so "Restore clipboard after paste" and "Keep dictations out of clipboard
   /// history" hold here too. It used to write the board as a kept copy and post Cmd+V,
   /// which left the dictation on the clipboard in place of whatever the user had there.
+  ///
+  /// #4101: into the app the user came from, read at the press.
   private func pasteFromHistory() {
-    HistoryPaste.paste(
+    historyPaste.paste(
+      destination: previousApplication.lastOtherApplication,
       allowed: { pasteAllowed },
       text: { transcriptCoordinator.textForDelivery(transcript) },
-      settings: settings, permissions: permissions,
       showHistory: { showHistory() },
       showNotice: { showPasteNotice($0) },
       // #2087: the OTHER door back to a held recovery. The pill reports its restores; without
       // this one the funnel counted only the users who caught a three-second offer. No-op for
       // an ordinary row. Reported only once Cmd+V was posted: an attempt, never an arrival.
       dispatched: { transcriptCoordinator.reportRestoredFromHistory(transcript) })
-  }
-
-  private func showPasteNotice(_ notice: String) {
-    showHistory()
-    pasteNotice = notice
   }
 
   private func showHistory() {
