@@ -34,56 +34,28 @@ enum MeetingsPresentation {
     }
   }
 
-  /// How fresh the live words are and why they lag, one sentence each (R52). Freshness is the
-  /// end of the newest decoded stretch, never a promised delay.
-  /// `waitingOnSummary`: dictation is idle and a meeting summary on this Mac holds the turn, so
-  /// a wait is for the summary, not for dictation (R50).
+  /// What the live words are and how each track is doing, one sentence each (#3973): words
+  /// appear as people speak; a track that is off or stopped says why; skipped live audio is
+  /// named. The full transcript, with speakers and echo hidden, comes after the meeting.
   static func liveStatusLines(
-    _ live: MeetingCoordinator.LiveTranscript, callSoundRecorded: Bool,
-    waitingOnSummary: Bool = false
+    _ live: MeetingLiveWords.Transcript, callSoundRecorded: Bool
   ) -> [String] {
     var lines = [
       String(
-        localized: "Live words, usually about a minute behind.",
+        localized: "Live words, as people speak. The full transcript comes after the meeting.",
         comment: "History, a recording meeting: what the live words are.")
     ]
-    if let upTo = live.wordsUpToMs {
-      let clock = clock(ms: upTo)
-      lines.append(
-        String(
-          localized: "Words up to \(clock).",
-          comment: "History, a recording meeting: the live words reach this point of the meeting, like 12:04."))
+    for track in MeetingTrackKind.allCases {
+      guard let state = live.tracks[track], let line = trackLine(track, state.status),
+        !lines.contains(line)
+      else { continue }
+      lines.append(line)
     }
-    if live.waitingForDictation, waitingOnSummary {
+    if live.tracks.values.contains(where: \.droppedAudio) {
       lines.append(
         String(
-          localized: "Waiting for a meeting summary to finish.",
-          comment: "History, a recording meeting: live words pause while a summary is written on this Mac."))
-    } else if live.waitingForDictation {
-      lines.append(
-        String(
-          localized: "Waiting for your dictation to finish.",
-          comment: "History, a recording meeting: live words pause while the user dictates."))
-    } else if live.queued == 1 {
-      lines.append(
-        String(
-          localized: "Catching up: 1 recorded stretch is waiting.",
-          comment:
-            "History, a recording meeting: one closed stretch of recorded audio (up to a minute) waits to become live words."
-        ))
-    } else if live.queued > 1 {
-      lines.append(
-        String(
-          localized: "Catching up: \(String(live.queued)) recorded stretches are waiting.",
-          comment:
-            "History, a recording meeting: how many closed stretches of recorded audio (each up to a minute) wait to become live words. Never 1."
-        ))
-    }
-    if live.skipped > 0 {
-      lines.append(
-        String(
-          localized: "Some stretches were skipped here. The full transcript comes after the meeting.",
-          comment: "History, a recording meeting: some recorded minutes were not shown as live words."))
+          localized: "Some live audio was skipped. The full transcript comes after the meeting.",
+          comment: "History, a recording meeting: some audio did not reach the live words."))
     }
     if callSoundRecorded {
       lines.append(
@@ -92,6 +64,37 @@ enum MeetingsPresentation {
           comment: "History, a recording meeting: repeated call lines are hidden only in the final transcript."))
     }
     return lines
+  }
+
+  /// Why a track shows no live words, or nil when it is starting or running.
+  static func trackLine(_ track: MeetingTrackKind, _ status: MeetingLiveWords.Status) -> String? {
+    let name = liveSpeaker(track)
+    switch status {
+    case .starting, .running, .off(.notCaptured):
+      return nil
+    case .off(.universalNotDownloaded):
+      return String(
+        localized:
+          "Live words need the Universal engine. Download it in Dictation Settings, Live Preview.",
+        comment: "History, a recording meeting: no live words on this Mac until the Universal engine is downloaded.")
+    case .off(.appleLanguageAndUniversalMissing(let language)):
+      return String(
+        localized:
+          "Live words need Apple's \(language) language or the Universal engine. Download either in Dictation Settings, Live Preview.",
+        comment: "History, a recording meeting: no live words until a language or the Universal engine is downloaded. The placeholder is a language name.")
+    case .off(.previousStillClosing):
+      return String(
+        localized: "Live words are off for this meeting while the last one finishes closing.",
+        comment: "History, a recording meeting: the previous meeting's live words are still closing.")
+    case .off(.couldNotStart), .off(.unavailable):
+      return String(
+        localized: "Live words are not available for this meeting.",
+        comment: "History, a recording meeting: live words could not start.")
+    case .stopped:
+      return String(
+        localized: "Live words stopped for \(name). The recording continues.",
+        comment: "History, a recording meeting: one track's live words stopped; the placeholder is You or Call.")
+    }
   }
 
   /// `m:ss`, or `h:mm:ss` from an hour. A clock that went backwards reads 0:00.

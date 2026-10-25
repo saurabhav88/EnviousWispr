@@ -94,6 +94,7 @@ struct MeetingCoordinatorTests {
     var boundMicrophoneUID: String? { "fake-mic" }
     var microphoneLevel: Float { 0 }
     var callSoundLevel: Float { 0 }
+    @ObservationIgnored var liveSamples: MeetingRecorder.LiveSamplesObserver?
   }
 
   @MainActor

@@ -54,6 +54,41 @@ enum WhisperPreviewDeliveryWiring {
     modelDelivery: ModelDeliveryHome,
     settings: SettingsManager
   ) -> LivePreviewEngineRoute? {
+    environment(modelDelivery: modelDelivery, settings: settings).map(
+      WhisperPreviewEngineResolver.route)
+  }
+
+  /// #3973: EnviousMeet's Universal route over the same artifact, admission and heart check
+  /// (`WhisperPreviewEngineResolver.resolveForMeeting`). Unavailable in this build answers as
+  /// `makeRoute`'s nil does.
+  static func makeMeetingResolver(
+    modelDelivery: ModelDeliveryHome,
+    settings: SettingsManager
+  ) -> @Sendable (LanguageMode) async -> MeetingLiveWords.UniversalResolution {
+    guard let environment = environment(modelDelivery: modelDelivery, settings: settings) else {
+      return { _ in .blocked(.engineUnavailableInThisBuild) }
+    }
+    return meetingResolver(environment)
+  }
+
+  /// The meeting route over one environment, as `MeetingLiveWords` consumes it.
+  static func meetingResolver(
+    _ environment: WhisperPreviewEngineResolver.Environment
+  ) -> @Sendable (LanguageMode) async -> MeetingLiveWords.UniversalResolution {
+    { mode in
+      switch await WhisperPreviewEngineResolver.resolveForMeeting(mode, environment: environment) {
+      case .ready(let candidate):
+        return .ready(makeEngine: { admit in candidate.makeEngine(admitTranscriptDecode: admit) })
+      case .blocked(let reason):
+        return .blocked(reason)
+      }
+    }
+  }
+
+  private static func environment(
+    modelDelivery: ModelDeliveryHome,
+    settings: SettingsManager
+  ) -> WhisperPreviewEngineResolver.Environment? {
     guard let registration = modelDelivery.whisperPreviewRegistration,
       let modelPath = modelPath(registration)
     else { return nil }
@@ -71,8 +106,7 @@ enum WhisperPreviewDeliveryWiring {
       isHeartStreaming: {
         await MainActor.run { Self.heartIsStreaming(settings: settings) }
       })
-
-    return WhisperPreviewEngineResolver.route(environment)
+    return environment
   }
 
   /// Whether the transcription engine is itself decoding continuously right now.

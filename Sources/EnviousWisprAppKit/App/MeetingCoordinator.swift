@@ -1,5 +1,6 @@
 import EnviousWisprAudio
 import EnviousWisprCore
+import EnviousWisprLivePreview
 import EnviousWisprPipeline
 import EnviousWisprStorage
 import Foundation
@@ -15,6 +16,8 @@ protocol MeetingRecording: AnyObject {
   var boundMicrophoneUID: String? { get }
   var microphoneLevel: Float { get }
   var callSoundLevel: Float { get }
+  /// #3973: each recorded chunk for live words (`MeetingRecorder.liveSamples`).
+  var liveSamples: MeetingRecorder.LiveSamplesObserver? { get set }
 }
 
 extension MeetingRecorder: MeetingRecording {}
@@ -38,21 +41,6 @@ protocol MeetingProcessing: AnyObject {
 }
 
 extension MeetingTranscriptionJob: MeetingProcessing {}
-
-/// What the coordinator needs for live words (#3972 R42, R43): `MeetingTranscriptionJob`'s
-/// preview units, on a job of their own with its own engine and model claim.
-@MainActor
-protocol MeetingPreviewing: AnyObject {
-  /// The window's words, or nil when its audio cannot be read (counted as skipped).
-  func preview(audio: MeetingTrackAudio) async throws -> String?
-  func releaseIdle() async
-  func cancel()
-  var isEngineResident: Bool { get }
-  var isUnitInFlight: Bool { get }
-  var onWaitingForDictation: (@MainActor (Bool) -> Void)? { get set }
-}
-
-extension MeetingTranscriptionJob: MeetingPreviewing {}
 
 /// The one serial queue every ordinary meeting file operation runs on (#3972 C4a): record
 /// writes, creation, listing, audio and folder removal. Off the main actor, and in the order
@@ -204,9 +192,14 @@ final class MeetingCoordinator {
         @escaping MeetingRecorder.FailureHandler
       ) -> MeetingRecording
     var makeJob: @MainActor () -> MeetingProcessing
-    /// Live words while a meeting records (#3972 R42): a preview job of its own. Nil shows no
-    /// live words.
-    var makePreviewJob: (@MainActor () -> MeetingPreviewing)?
+    /// Live words while a meeting records (#3973): nil shows none.
+    var liveWords: MeetingLiveWords?
+    /// The language live words use, read once at each recording's start (decision 16).
+    var meetingLanguage: @MainActor () -> LanguageMode = { .auto }
+    /// Custom Words for live words, read once at each recording's start.
+    var liveVocabulary: @MainActor () -> LivePreviewVocabulary = {
+      LivePreviewVocabulary(lookups: nil, contextualPhrases: [], dictionaryEnabled: false)
+    }
     /// The meeting's microphone choice at Start: dictation's input setting (nil = Auto) and
     /// its channel preferences.
     var microphoneSelection: @MainActor () -> (uid: String?, channels: [String: Int])
@@ -255,9 +248,6 @@ final class MeetingCoordinator {
       }
     /// One `meeting.json` write, run on `MeetingFileWriter`'s queue.
     var writeRecord: @Sendable (MeetingStore, MeetingRecord) throws -> Void = { try $0.save($1) }
-    /// How long the preview engine stays loaded with nothing queued (R43: 20 s). Must return
-    /// promptly when its task is cancelled.
-    var previewIdleWait: @Sendable () async -> Void = { try? await Task.sleep(for: .seconds(20)) }
     /// The wait between the last notes change and its save (#3972 R46).
     var notesDebounce: @Sendable () async -> Void = { try? await Task.sleep(for: .seconds(1)) }
   }
@@ -284,29 +274,6 @@ final class MeetingCoordinator {
     case storageFailed
   }
 
-  /// One line of live words: one closed capture file of one track, decoded provisionally
-  /// (R42). Never read by the after-recording pass.
-  struct LiveLine: Equatable, Identifiable {
-    let id: String
-    let track: MeetingTrackKind
-    let startMs: Int
-    let endMs: Int
-    let text: String
-  }
-
-  /// The recording meeting's live words and how fresh they are (R52).
-  struct LiveTranscript: Equatable {
-    let meetingID: UUID
-    var lines: [LiveLine] = []
-    /// The end of the newest decoded stretch, on the meeting timeline.
-    var wordsUpToMs: Int?
-    /// Closed files waiting for a preview unit.
-    var queued = 0
-    /// Files dropped from the queue (the cap) or that could not be decoded.
-    var skipped = 0
-    var waitingForDictation = false
-  }
-
   struct Processing: Equatable {
     let meetingID: UUID
     var stage: MeetingTranscriptionJob.Stage?
@@ -327,8 +294,8 @@ final class MeetingCoordinator {
   /// The microphone the current recording actually bound.
   private(set) var boundMicrophoneUID: String?
   /// Live words of the meeting recording now, kept after Stop until its transcript is ready
-  /// (R42, R52). Nil without a preview job.
-  private(set) var liveTranscript: LiveTranscript?
+  /// (#3973). Nil without live words.
+  var liveTranscript: MeetingLiveWords.Transcript? { deps.liveWords?.transcript }
 
   // MARK: - Private state
 
@@ -336,16 +303,8 @@ final class MeetingCoordinator {
   private let writer: MeetingFileWriter
   /// Each meeting's notes and summary (#3972 R46): drafts, debounce and their file writes.
   let documents: MeetingDocumentsOwner
-  /// Live words while a meeting records (#3972 R42): the preview queue, lane and engine.
-  let livePreview: MeetingLivePreviewScheduler
   /// Writes each ready meeting's summary (#3972 R39). Set by `MeetingWiring`; nil writes none.
   var summaries: MeetingSummaryOwner?
-
-  /// Live words wait for a meeting summary, not for dictation: dictation is idle and a local
-  /// summary waits for its turn or calls (R50: summary before preview).
-  var liveWaitsOnSummary: Bool {
-    (summaries?.localSummaryActive ?? false) && deps.isDictationIdle()
-  }
 
   /// The final pass waits for a meeting summary call, not for dictation (R50).
   var passWaitsOnSummary: Bool {
@@ -421,29 +380,6 @@ final class MeetingCoordinator {
     self.documents = MeetingDocumentsOwner(
       writer: writer,
       dependencies: .init(debounce: dependencies.notesDebounce, log: dependencies.log))
-    self.livePreview = MeetingLivePreviewScheduler(
-      makeJob: dependencies.makePreviewJob, idleWait: dependencies.previewIdleWait)
-    livePreview.host = .init(
-      isQuitting: { [weak self] in self?.quitting ?? true },
-      isDeleting: { [weak self] in self?.deleting.contains($0) ?? true },
-      isRecording: { [weak self] id in
-        guard let self else { return false }
-        return self.isRecording && self.activeMeetingID == id
-      },
-      finalPassBusy: { [weak self] in
-        guard let self else { return false }
-        return self.processing != nil || self.committing
-      },
-      waitForPassEnd: { [weak self] in
-        guard let self else { return }
-        await withCheckedContinuation { self.processEndWaiters.append($0) }
-      },
-      liveTranscript: { [weak self] in self?.liveTranscript },
-      setLiveTranscript: { [weak self] in self?.liveTranscript = $0 },
-      folder: { [weak self] in
-        self?.deps.store.folder(for: $0) ?? URL(fileURLWithPath: "/dev/null")
-      },
-      workChanged: { [weak self] in self?.workChanged() })
   }
 
   // MARK: - Queries
@@ -461,7 +397,7 @@ final class MeetingCoordinator {
   /// deletion or typed notes not yet saved is in progress: a relaunch must wait (R4, R19, R46). A queued meeting alone resumes
   /// after a relaunch.
   var isWorkInFlight: Bool {
-    isCapturing || (job?.isUnitInFlight ?? false) || livePreview.laneOps > 0 || committing
+    isCapturing || (job?.isUnitInFlight ?? false) || committing
       || !deleting.isEmpty || !removingAudio.isEmpty
       || fileWorkInFlight > 0 || checkpointWrites.withLock { $0 } > 0
       || writer.pendingCount > 0 || documents.hasPendingWork
@@ -490,13 +426,12 @@ final class MeetingCoordinator {
   /// A meeting's own engine is loaded or a meeting unit is running: dictation's Ultra
   /// activation waits (C3a, C4a).
   /// #4052: the final pass is transcribing on its own Parakeet. An engine switch of dictation
-  /// into Parakeet waits until it is released (gate 6d), so two copies never coexist. The live
-  /// preview's engine is not counted here.
+  /// into Parakeet waits until it is released (gate 6d), so two copies never coexist. Live
+  /// words run on Apple speech or the Universal engine, never a meeting Parakeet.
   var isFinalPassOwnParakeetResident: Bool { job?.isOwnModelResident ?? false }
 
   var isMeetingModelWorkActive: Bool {
     (job?.isEngineResident ?? false) || (job?.isUnitInFlight ?? false)
-      || livePreview.isEngineResident || livePreview.laneOps > 0
   }
 
   var microphoneLevel: Float { recorder?.microphoneLevel ?? 0 }
@@ -745,6 +680,13 @@ final class MeetingCoordinator {
       { [weak self] track, error in
         Task { await self?.trackFailed(meetingID: meetingID, track: track, error: error) }
       })
+    // #3973: live words' inputs are this recording's, read once now. Their pumps and the
+    // recorder's observer exist before capture starts, so the first samples are buffered;
+    // engines start only once capture did.
+    let liveLanguage = deps.meetingLanguage()
+    let liveVocabulary = deps.liveVocabulary()
+    let liveClockStart = ContinuousClock.now
+    recorder.liveSamples = deps.liveWords?.prepareCapture(meetingID: meetingID)
     // Reachable while it starts, so a Stop or a quit in the meantime reaches it.
     self.recorder = recorder
     activeMeetingID = meetingID
@@ -752,6 +694,9 @@ final class MeetingCoordinator {
     do {
       result = try await recorder.start()
     } catch {
+      // No engine starts for a recording that never captured (a Stop that took over already
+      // retired them).
+      deps.liveWords?.captureFailed(meetingID: meetingID)
       // A stop or quit that took over owns the recorder and the record.
       guard isCurrentStart(generation) else { return .superseded(meetingID: meetingID) }
       deps.log("meeting start failed error=\(String(describing: error).prefix(80))")
@@ -792,7 +737,11 @@ final class MeetingCoordinator {
     deps.log("meeting recording started bound=\(boundMicrophoneUID ?? "unknown")")
     if let token = deps.beginActivity() { activity = token }
     phase = .recording(meetingID: meetingID, startedAt: record.createdAt)
-    if deps.makePreviewJob != nil { liveTranscript = LiveTranscript(meetingID: meetingID) }
+    var captured: Set<MeetingTrackKind> = [.microphone]
+    if result.callSound == .captured { captured.insert(.callSound) }
+    deps.liveWords?.captureStarted(
+      meetingID: meetingID, captured: captured, language: liveLanguage, vocabulary: liveVocabulary,
+      clock: { Int((ContinuousClock.now - liveClockStart) / .milliseconds(1)) })
     await persist(record)
     return .recording(meetingID: meetingID)
   }
@@ -916,12 +865,11 @@ final class MeetingCoordinator {
     }
     startGeneration += 1
     phase = .stopping(meetingID: meetingID)
-    // The after-recording pass makes the real words; queued previews are not needed (R42), and
-    // one still waiting for admission is called off (a decode already running finishes).
-    // Redundant by design with the pass's own `livePreview.yieldEngine()` and the lane's admission
-    // check (the pass sets `processing` before it yields); kept so a Stop never depends on the
-    // pass starting. A mutation removing it alone changes nothing a test can see (C10 r4).
-    livePreview.stopRecording(of: meetingID)
+    // #3973: live words end now and never hold up the Stop: admission closes, their sessions
+    // go to a cleanup of their own, and nothing below waits for it. The lines stay until the
+    // transcript is ready.
+    deps.liveWords?.stop()
+    self.recorder?.liveSamples = nil
     // Stays reachable until the files are closed, so a quit meanwhile takes it over.
     let recorder = self.recorder
     let report = await recorder?.stop()
@@ -978,7 +926,6 @@ final class MeetingCoordinator {
     guard !quitting, meetingID == activeMeetingID, var record = live[meetingID] else { return }
     record.segments[track, default: []].append(info)
     await persist(record)
-    if isRecording, meetingID == activeMeetingID { livePreview.enqueue(meetingID, track: track, info) }
     if let free = deps.freeDiskBytes(), free < Self.diskFloorBytes, isRecording,
       meetingID == activeMeetingID
     {
@@ -1066,14 +1013,9 @@ final class MeetingCoordinator {
       releaseProcessingClaim()
       return
     }
-    // R50: a final pass comes first. A preview unit already running finishes (its compute
-    // cannot stop), then the preview engine unloads before this pass loads its own.
-    await livePreview.yieldEngine()
     defer {
       processing = nil
       job = nil
-      // The pass ended (ready, failed, cancelled): its live words are no longer the newest.
-      if liveTranscript?.meetingID == meetingID, !isActive(meetingID) { liveTranscript = nil }
       let waiters = processEndWaiters
       processEndWaiters.removeAll()
       for waiter in waiters { waiter.resume() }
@@ -1231,6 +1173,9 @@ final class MeetingCoordinator {
       !missingAudio.isEmpty ? "audio_damaged" : (result.failedPieces > 0 ? "pieces_failed" : nil)
     // The ready write (file and directory synced) is the barrier before progress is cleared.
     guard await persist(ready) else { return }
+    // #3973: the transcript now replaces this meeting's live words. A failed, cancelled or
+    // uncommitted pass keeps them.
+    deps.liveWords?.transcriptReady(meetingID: meetingID)
     // The attempt ends at the ready barrier, in the same main-actor turn: a deletion during the
     // checkpoint clear below finds no open attempt, so it never reports the ready meeting as
     // deleted before ready.
@@ -1396,6 +1341,9 @@ final class MeetingCoordinator {
       deleting.remove(meetingID)
       workChanged()
     }
+    // #3973: live words go now, before any write: admission closes and the lines clear. Their
+    // cleanup never holds up the deletion.
+    deps.liveWords?.delete(meetingID: meetingID)
     record.deletionRequested = true
     guard await persist(record) else { return }
     // The notes this session knows, read before they are forgotten (R54 `has_notes`).
@@ -1404,8 +1352,6 @@ final class MeetingCoordinator {
     documents.forget(meetingID)
     // A summary being written ends, and has physically ended before the folder is removed.
     await summaries?.cancelAndWait(meetingID)
-    livePreview.dropQueued(of: meetingID)
-    if liveTranscript?.meetingID == meetingID { liveTranscript = nil }
     switch phase {
     case .recording(let id, _) where id == meetingID: await stop()
     case .starting where activeMeetingID == meetingID: await stop()
@@ -1416,8 +1362,6 @@ final class MeetingCoordinator {
       }
     default: break
     }
-    // The preview lane lets go of this meeting's files before they are removed.
-    await livePreview.drain(of: meetingID)
     // Ends an attempt still open (recording, queued, processing); a finished one already
     // sent its row.
     endAttempt(record, outcome: .deletedBeforeReady, hasNotes: hadNotes)
@@ -1559,7 +1503,9 @@ final class MeetingCoordinator {
     summaries?.prepareForTermination()
     queueTask?.cancel()
     job?.cancel()
-    livePreview.cancelForQuit()
+    // Live words close admission and start their cleanup; the process exit frees any native
+    // model still loaded (`TranscribeCppProcessExit`).
+    deps.liveWords?.quit()
     guard let recorder, let meetingID = activeMeetingID, var record = live[meetingID] else {
       // Notes save whether or not anything records (R46), inside the same deadline.
       documents.flushForQuit(deadline: deadline)

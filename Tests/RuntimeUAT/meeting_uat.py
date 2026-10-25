@@ -239,6 +239,11 @@ def live_lines():
     return (door_ok("meeting", "live")["live"] or {}).get("lines") or []
 
 
+def live_text_length():
+    """Characters of live words so far (#3973: a streaming line grows, so lines need not)."""
+    return sum(len(line.get("text") or "") for line in live_lines())
+
+
 def meeting_folder(meeting_id):
     found = glob.glob(os.path.expanduser(
         f"~/Library/Application Support/*/Meetings/{meeting_id}"))
@@ -564,9 +569,9 @@ def scenario_latency(run_dir, made, checks, takes):
         meeting_id = start_meeting(call_sound=True)
         made.append(meeting_id)
         players.finish(players.play(audio))
-        preview = wait_for("live words", live_lines, 150, 5.0)
+        preview = wait_for("live words", live_text_length, 150, 5.0)
         recording = timed_takes(takes, sentence, players, audio)
-        preview_after = live_lines()
+        preview_after = live_text_length()
         door_ok("meeting", "stop", meeting_id)
         in_pass = wait_for("pass", lambda: door_ok("meeting", "status")["processing"], 60, 0.5)
         during_pass = timed_takes(
@@ -576,7 +581,7 @@ def scenario_latency(run_dir, made, checks, takes):
     if len(baseline) < takes:
         c.cannot_tell("the no-meeting baseline", f"{len(baseline)}/{takes} timed takes")
         return
-    if not preview or len(preview_after) <= len(preview):
+    if not preview or preview_after <= preview:
         c.cannot_tell("ASR time while a meeting records with live words",
                       "live words were not shown to be active through the takes")
     elif len(recording) < takes:
@@ -652,10 +657,10 @@ def scenario_memory(run_dir, made, checks, minutes):
         def meeting_work():
             players.loop(audio)
             dictations()
-            previews.append(len(live_lines()))
+            previews.append(live_text_length())
 
         during = sampled_peak(pid, seconds, meeting_work)
-        previews.append(len(live_lines()))
+        previews.append(live_text_length())
         players.stop_all()
         door_ok("meeting", "stop", meeting_id)
     name = "a recording meeting with live words adds at most 1.2 GB"

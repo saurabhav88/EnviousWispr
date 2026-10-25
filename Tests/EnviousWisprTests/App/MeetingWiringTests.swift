@@ -457,24 +457,22 @@ struct MeetingWiringTests {
     #expect(coordinator.meetings.count == 1)
   }
 
-  @Test("the lane's order: dictation first, final pass over local summary over preview (R50)")
+  @Test("the lane's order: dictation first, then a final pass over a local summary (R50)")
   func laneOrder() {
     let lane = MeetingLocalModelLane()
     var dictating = false
-    let final = MeetingWiring.admission(.finalPass, lane: lane, dictationIdle: { !dictating })
-    let preview = MeetingWiring.admission(.preview, lane: lane, dictationIdle: { !dictating })
-    #expect(final() && preview())
+    let final = MeetingWiring.admission(lane: lane, dictationIdle: { !dictating })
+    #expect(final())
     dictating = true
-    #expect(!final() && !preview(), "nothing starts while the user dictates")
+    #expect(!final(), "nothing starts while the user dictates")
     dictating = false
     lane.summaryQueued()
     #expect(final(), "a final pass goes before a waiting summary")
-    #expect(!preview(), "a preview gives way to a waiting summary")
     lane.beginSummaryCall()
     #expect(!final(), "a running summary call is never joined by a final pass unit")
     lane.endSummaryCall()
     lane.summaryFinished()
-    #expect(final() && preview())
+    #expect(final())
   }
 
   /// #4052: when this fails, a Mac that dictates with Parakeet loads a second Parakeet for the
@@ -486,7 +484,7 @@ struct MeetingWiringTests {
     rig.dictation.published = Self.selection("served-\(UUID().uuidString)")
     // No meeting-owned model: if the pass touched its own engine it would fail on this.
     rig.selectionBox.selection = nil
-    let job = MeetingWiring.makeJob(rig.inputs, lane: MeetingLocalModelLane(), kind: .finalPass)
+    let job = MeetingWiring.makeJob(rig.inputs, lane: MeetingLocalModelLane())
     let folder = try MeetingAudioFixture.folder("meeting-wiring-shared")
     // Microphone: 0-2 s and 10-12 s (two runs across a gap). Call sound: 0-3 s.
     let mic = MeetingTrackAudio(files: [
@@ -566,7 +564,7 @@ struct MeetingWiringTests {
     rig.dictation.published = Self.selection("served-\(UUID().uuidString)")
     let gate = DecodeGate()
     rig.dictation.onDecode = { await gate.hold() }
-    let job = MeetingWiring.makeJob(rig.inputs, lane: MeetingLocalModelLane(), kind: .finalPass)
+    let job = MeetingWiring.makeJob(rig.inputs, lane: MeetingLocalModelLane())
     let folder = try MeetingAudioFixture.folder("meeting-wiring-cancel")
     let url = try MeetingAudioFixture.writeSegment(in: folder, index: 1, startMs: 0, frames: 32_000)
     let run = Task { @MainActor in
@@ -589,7 +587,7 @@ struct MeetingWiringTests {
     rig.dictation.published = Self.selection("served-\(UUID().uuidString)")
     let gate = DecodeGate()
     rig.dictation.onDecode = { await gate.hold() }
-    let job = MeetingWiring.makeJob(rig.inputs, lane: MeetingLocalModelLane(), kind: .finalPass)
+    let job = MeetingWiring.makeJob(rig.inputs, lane: MeetingLocalModelLane())
     let folder = try MeetingAudioFixture.folder("meeting-wiring-pressure")
     let audio = MeetingTrackAudio(files: [
       (url: try MeetingAudioFixture.writeSegment(in: folder, index: 1, startMs: 0, frames: 16_000), startMs: 0),
@@ -628,7 +626,7 @@ struct MeetingWiringTests {
     rig.dictation.published = Self.selection("served-\(UUID().uuidString)")
     rig.dictation.hears = true
     rig.selectionBox.selection = Self.selection("own-\(UUID().uuidString)")
-    let job = MeetingWiring.makeJob(rig.inputs, lane: MeetingLocalModelLane(), kind: .finalPass)
+    let job = MeetingWiring.makeJob(rig.inputs, lane: MeetingLocalModelLane())
     let folder = try MeetingAudioFixture.folder("meeting-wiring-heard")
     let audio = MeetingTrackAudio(files: [
       (url: try MeetingAudioFixture.writeSegment(in: folder, index: 1, startMs: 0, frames: 48_000), startMs: 0),
@@ -656,7 +654,7 @@ struct MeetingWiringTests {
     rig.selectionBox.selection = Self.selection("own-\(UUID().uuidString)")
     rig.ownBackends.usesFake.withLock { $0 = true }
     await rig.ownBackends.backend.parkPrepares()
-    let job = MeetingWiring.makeJob(rig.inputs, lane: MeetingLocalModelLane(), kind: .finalPass)
+    let job = MeetingWiring.makeJob(rig.inputs, lane: MeetingLocalModelLane())
     let fake = FakeEngineDeps(selected: .whisper, active: .whisper)
     fake.meetingOwnParakeetResident = { job.isOwnModelResident }
     let coordinator = fake.makeStartedCoordinator()
@@ -689,7 +687,7 @@ struct MeetingWiringTests {
     let rig = try Rig()
     rig.dictation.backend = .whisper
     rig.selectionBox.selection = Self.selection("own-missing-\(UUID().uuidString)")
-    let job = MeetingWiring.makeJob(rig.inputs, lane: MeetingLocalModelLane(), kind: .finalPass)
+    let job = MeetingWiring.makeJob(rig.inputs, lane: MeetingLocalModelLane())
     let folder = try MeetingAudioFixture.folder("meeting-wiring-own")
     let url = try MeetingAudioFixture.writeSegment(in: folder, index: 1, startMs: 0, frames: 32_000)
     _ = try? await job.run(tracks: [.microphone: MeetingTrackAudio(files: [(url: url, startMs: 0)])], checkpoint: nil) { _ in }
@@ -702,7 +700,7 @@ struct MeetingWiringTests {
   func realJobWithoutModel() async throws {
     let rig = try Rig()
     rig.selectionBox.selection = nil
-    let job = MeetingWiring.makeJob(rig.inputs, lane: MeetingLocalModelLane(), kind: .finalPass)
+    let job = MeetingWiring.makeJob(rig.inputs, lane: MeetingLocalModelLane())
     let folder = try MeetingAudioFixture.folder("meeting-wiring-job")
     let url = try MeetingAudioFixture.writeSegment(in: folder, index: 1, startMs: 0, frames: 32_000)
     let audio = MeetingTrackAudio(files: [(url: url, startMs: 0)])
@@ -720,7 +718,7 @@ struct MeetingWiringTests {
     // claim must be released on that failure.
     let missing = Self.selection("missing-\(UUID().uuidString)")
     rig.selectionBox.selection = missing
-    let job = MeetingWiring.makeJob(rig.inputs, lane: MeetingLocalModelLane(), kind: .finalPass)
+    let job = MeetingWiring.makeJob(rig.inputs, lane: MeetingLocalModelLane())
     let folder = try MeetingAudioFixture.folder("meeting-wiring-claim")
     let url = try MeetingAudioFixture.writeSegment(in: folder, index: 1, startMs: 0, frames: 32_000)
     let audio = MeetingTrackAudio(files: [(url: url, startMs: 0)])

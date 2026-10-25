@@ -2,6 +2,7 @@ import EnviousWisprASR
 import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprLLM
+import EnviousWisprLivePreview
 import EnviousWisprModelDelivery
 import EnviousWisprPipeline
 import EnviousWisprServices
@@ -2453,8 +2454,19 @@ package final class WisprBootstrapper {
         }
       }
     }
-    let meetingCoordinator = MeetingWiring.make(
-      MeetingWiring.Inputs(
+    // #3973: EnviousMeet's live words: Apple speech on macOS 26 when its pack is installed, else
+    // the downloaded Universal engine, never a download; each Universal decode waits while
+    // dictation's engine streams.
+    let meetingLiveWords = MeetingLiveWords(
+      dependencies: .init(
+        appleSupported: { ApplePreviewEngineResolver.isSupportedOnThisSystem },
+        resolveApple: { mode in await ApplePreviewEngineResolver.route.resolve(mode) },
+        resolveUniversal: WhisperPreviewDeliveryWiring.makeMeetingResolver(
+          modelDelivery: modelDelivery, settings: settings),
+        isHeartStreaming: { [settings] in
+          await MainActor.run { WhisperPreviewDeliveryWiring.heartIsStreaming(settings: settings) }
+        }))
+    var meetingInputs = MeetingWiring.Inputs(
         store: MeetingStore(),
         settings: settings, permissions: permissions, otherAudioHold: otherAudioHold,
         transcriptCoordinator: transcriptCoordinator,
@@ -2514,7 +2526,13 @@ package final class WisprBootstrapper {
         keychain: keychainManager,
         detectedStartWanted: { [meetingBox] in
           meetingBox.callDetection?.detectedStartStillWanted() ?? false
-        }))
+        })
+    meetingInputs.liveWords = meetingLiveWords
+    meetingInputs.liveVocabulary = { [weak livePreview] in
+      livePreview?.vocabularySnapshot()
+        ?? LivePreviewVocabulary(lookups: nil, contextualPhrases: [], dictionaryEnabled: false)
+    }
+    let meetingCoordinator = MeetingWiring.make(meetingInputs)
     meetingBox.coordinator = meetingCoordinator
     self.meetingCoordinator = meetingCoordinator
     let meetingStartFlow = MeetingStartFlow(

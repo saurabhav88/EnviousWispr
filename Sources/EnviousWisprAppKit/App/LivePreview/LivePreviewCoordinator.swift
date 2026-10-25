@@ -917,6 +917,15 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   /// Not availability-gated: `CustomWordsPropagator` writes the vocabulary on
   /// every Mac we support, and gating the STORE on macOS 26 would leave a machine
   /// that later prepares a recognizer with nothing to hand it.
+  /// #3973: the Custom Words a dictation preview session gets, for EnviousMeet's live words
+  /// (read once at a meeting's start).
+  func vocabularySnapshot() -> LivePreviewVocabulary {
+    rebuildCorrectorLookupsIfNeeded()
+    return LivePreviewVocabulary(
+      lookups: correctorLookups, contextualPhrases: contextualPhrases,
+      dictionaryEnabled: isDictionaryOn())
+  }
+
   private func rebuildCorrectorLookupsIfNeeded() {
     guard builtLookupsGeneration != correctorVocabulary.generation else { return }
     builtLookupsGeneration = correctorVocabulary.generation

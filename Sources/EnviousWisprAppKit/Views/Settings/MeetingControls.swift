@@ -1,6 +1,7 @@
 import AppKit
 import EnviousWisprAudio
 import EnviousWisprCore
+import EnviousWisprLivePreview
 import EnviousWisprServices
 import SwiftUI
 
@@ -343,24 +344,21 @@ struct MeetingConsentNote: View {
   }
 }
 
-/// The recording meeting's live words (#3972 R42, R52): provisional, about a minute behind,
-/// one line per closed minute of each track, labelled by track. The status line says how fresh
-/// they are from the last decoded stretch, and why they lag (dictation, a backlog, skipped
-/// stretches). The full transcript, with speakers and echo hidden, comes after the meeting.
+/// The recording meeting's live words (#3973): lines labelled by track as people speak, words
+/// still changing and words the engine was unsure of shown lighter. The status lines say when
+/// a track has no live words and why. The full transcript, with speakers and echo hidden, comes
+/// after the meeting.
 struct MeetingLiveWordsView: View {
-  let transcript: MeetingCoordinator.LiveTranscript
+  let transcript: MeetingLiveWords.Transcript
   /// The call sound is recorded: echo is hidden only in the final transcript.
   let callSoundRecorded: Bool
   /// Greyed while the after-recording pass makes the real transcript.
   var superseded = false
-  @Environment(MeetingCoordinator.self) private var meetings
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
       ForEach(
-        MeetingsPresentation.liveStatusLines(
-          transcript, callSoundRecorded: callSoundRecorded,
-          waitingOnSummary: meetings.liveWaitsOnSummary),
+        MeetingsPresentation.liveStatusLines(transcript, callSoundRecorded: callSoundRecorded),
         id: \.self
       ) {
         line in
@@ -371,8 +369,8 @@ struct MeetingLiveWordsView: View {
       }
       if transcript.lines.isEmpty {
         Text(
-          "No words yet. The first minute shows when it has been recorded.",
-          comment: "History, a recording meeting: no live words have been decoded yet."
+          "No words yet.",
+          comment: "History, a recording meeting: no live words have been heard yet."
         )
         .font(.stBody)
         .foregroundStyle(.stTextSecondary)
@@ -389,7 +387,9 @@ struct MeetingLiveWordsView: View {
                 .foregroundStyle(.stTextSecondary)
                 Text(line.text)
                   .font(.stBody)
-                  .foregroundStyle(superseded ? Color.stTextSecondary : Color.stTextPrimary)
+                  .italic(line.kind == .uncertain)
+                  .foregroundStyle(
+                    superseded || line.kind != .confirmed ? Color.stTextSecondary : Color.stTextPrimary)
                   .textSelection(.enabled)
               }
               .id(line.id)

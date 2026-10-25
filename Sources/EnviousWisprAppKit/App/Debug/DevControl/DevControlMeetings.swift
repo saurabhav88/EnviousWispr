@@ -1,5 +1,6 @@
 #if DEBUG
   import EnviousWisprCore
+  import EnviousWisprLivePreview
   import EnviousWisprPipeline
   import Foundation
 
@@ -496,16 +497,52 @@
           "meetingID": live.meetingID.uuidString,
           "lines": live.lines.map { line -> [String: Any] in
             [
-              "id": line.id, "track": line.track.rawValue, "startMs": line.startMs,
-              "endMs": line.endMs, "text": line.text,
+              "id": line.id, "track": line.track.rawValue, "kind": Self.name(line.kind),
+              "startMs": line.startMs, "endMs": line.endMs, "text": line.text,
             ]
           },
-          "wordsUpToMs": live.wordsUpToMs as Any? ?? NSNull(),
-          "queued": live.queued, "skipped": live.skipped,
-          "waitingForDictation": live.waitingForDictation,
-          "waitingOnSummary": coordinator.liveWaitsOnSummary,
+          // #3973: each track's live-words state, by track name.
+          "tracks": Dictionary(
+            uniqueKeysWithValues: live.tracks.map { track, state -> (String, Any) in
+              (
+                track.rawValue,
+                ["status": Self.name(state.status), "droppedAudio": state.droppedAudio]
+                  as [String: Any]
+              )
+            }),
         ] as [String: Any]
       ])
+    }
+
+    static func name(_ kind: LiveWordsAssembler.Line.Kind) -> String {
+      switch kind {
+      case .confirmed: return "confirmed"
+      case .uncertain: return "uncertain"
+      case .provisional: return "provisional"
+      }
+    }
+
+    /// `running`, `starting`, `off:<reason>` or `stopped:<reason>`.
+    static func name(_ status: MeetingLiveWords.Status) -> String {
+      switch status {
+      case .starting: return "starting"
+      case .running: return "running"
+      case .off(let reason):
+        switch reason {
+        case .notCaptured: return "off:notCaptured"
+        case .universalNotDownloaded: return "off:universalNotDownloaded"
+        case .appleLanguageAndUniversalMissing: return "off:appleLanguageAndUniversalMissing"
+        case .previousStillClosing: return "off:previousStillClosing"
+        case .couldNotStart: return "off:couldNotStart"
+        case .unavailable: return "off:unavailable"
+        }
+      case .stopped(let reason):
+        switch reason {
+        case .engineFailed: return "stopped:engineFailed"
+        case .restartTimedOut: return "stopped:restartTimedOut"
+        case .restartFailed: return "stopped:restartFailed"
+        }
+      }
     }
 
     static func name(_ state: MeetingDocumentsOwner.LoadState) -> String {

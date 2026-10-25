@@ -280,7 +280,7 @@ struct MeetingLiveWordsTests {
     }
   }
 
-  private static func owner(_ world: World) -> MeetingLiveWords {
+  static func owner(_ world: World) -> MeetingLiveWords {
     MeetingLiveWords(
       dependencies: .init(
         appleSupported: { world.appleSupported },
@@ -322,7 +322,7 @@ struct MeetingLiveWordsTests {
   }
 
   /// Returns once `condition` holds, observing the owner's published transcript.
-  private static func until(
+  static func until(
     _ what: String, _ owner: MeetingLiveWords, release: @escaping @Sendable () -> Void = {},
     _ condition: @escaping @MainActor (MeetingLiveWords) -> Bool
   ) async {
@@ -336,13 +336,13 @@ struct MeetingLiveWordsTests {
     }
   }
 
-  private static func status(_ owner: MeetingLiveWords, _ track: MeetingTrackKind)
+  static func status(_ owner: MeetingLiveWords, _ track: MeetingTrackKind)
     -> MeetingLiveWords.Status?
   {
     owner.transcript?.tracks[track]?.status
   }
 
-  private static func bothRunning(_ owner: MeetingLiveWords) -> Bool {
+  static func bothRunning(_ owner: MeetingLiveWords) -> Bool {
     status(owner, .microphone) == .running && status(owner, .callSound) == .running
   }
 
