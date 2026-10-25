@@ -968,8 +968,9 @@ public final class TranscriptStore {
   /// 2. a checked empty folder (0700, Spotlight marker) is made at the original path;
   /// 3. the handoff becomes `.transcripts-deleting-<id>`, which clears it for removal.
   /// If step 2 or 3 fails, an empty folder made in step 2 is taken away again (only while it
-  /// holds nothing but the marker), the handoff is renamed back, and the first failure is thrown. When it cannot go back, it stays as a handoff folder, which nothing
-  /// removes automatically, so rows are never destroyed by a Delete All that reported failure.
+  /// holds nothing but the marker), the handoff is renamed back, and the first failure is thrown.
+  /// When it cannot go back, it stays as a handoff folder, and the next start finishes the
+  /// removal the user confirmed (#4075 G1).
   /// Returning certifies the empty folder, not that the old files are already gone.
   public func deleteAll() throws {
     guard FileManager.default.fileExists(atPath: directory.path) else { return }
@@ -979,6 +980,11 @@ public final class TranscriptStore {
       AppConstants.transcriptsHandoffPrefix + id, isDirectory: true)
     let deleting = parent.appendingPathComponent(
       AppConstants.transcriptsDeletingPrefix + id, isDirectory: true)
+    // Registered before the folder exists, so start-up cleanup never finishes a handoff this
+    // Delete All is still using. Both run on the main actor, so the check and the use cannot
+    // interleave.
+    Self.handoffsInFlight.insert(handoff.path)
+    defer { Self.handoffsInFlight.remove(handoff.path) }
     try renameExclusive(directory, to: handoff, step: .handoff)
     do {
       try prepareReplacement()
@@ -1087,10 +1093,16 @@ public final class TranscriptStore {
     }
   }
 
-  /// At start, removes what an interrupted Delete All cleared for removal (#4001 H7). Only a
-  /// direct child of the parent that is a real folder (not a link) named exactly
-  /// `.transcripts-deleting-<UUID>`. A handoff folder is logged and kept: it may hold rows a
-  /// failed Delete All promised to keep.
+  /// Handoff folders a Delete All in this process is using right now (#4075 G1).
+  private static var handoffsInFlight: Set<String> = []
+
+  /// At start, finishes what an interrupted or failed Delete All left (#4001 H7, #4075 G1).
+  /// Only a direct child of the parent that is a real folder (not a link) named exactly
+  /// `.transcripts-deleting-<UUID>` or `.transcripts-handoff-<UUID>`. A deleting folder is
+  /// removed. A handoff folder holds the rows of a Delete All the user confirmed that did not
+  /// finish, so it is cleared for removal (renamed to its deleting name) and removed; leaving it
+  /// kept text on disk that History no longer showed. A handoff a Delete All in this process is
+  /// still using is skipped.
   private nonisolated static func scheduleLeftoverCleanup(besides directory: URL) -> Task<
     Void, Never
   > {
@@ -1107,11 +1119,16 @@ public final class TranscriptStore {
       }
       for name in names {
         let url = parent.appendingPathComponent(name, isDirectory: true)
-        if reservedID(name, prefix: AppConstants.transcriptsHandoffPrefix) != nil, isRealFolder(url)
+        if let id = reservedID(name, prefix: AppConstants.transcriptsHandoffPrefix),
+          isRealFolder(url)
         {
+          let deleting = parent.appendingPathComponent(
+            AppConstants.transcriptsDeletingPrefix + id.uuidString, isDirectory: true)
+          guard let cleared = await clearForRemoval(url, to: deleting) else { continue }
           await AppLogger.shared.log(
-            "Kept \(name): a Delete All did not finish, and its rows are not removed automatically",
+            "Finishing a Delete All that did not complete (\(name))",
             level: .info, category: "TranscriptStore")
+          await removeRetired(cleared)
           continue
         }
         guard reservedID(name, prefix: AppConstants.transcriptsDeletingPrefix) != nil,
@@ -1121,6 +1138,35 @@ public final class TranscriptStore {
       }
     }
   }
+
+  /// Renames a leftover handoff folder to its deleting name, on the main actor so a Delete All
+  /// in this process cannot be using it at the same moment. Returns the deleting folder, or nil
+  /// (logged) when the handoff is in use or the rename fails; a failed rename leaves the handoff
+  /// for the next start.
+  private nonisolated static func clearForRemoval(_ handoff: URL, to deleting: URL) async -> URL? {
+    let outcome: Int32? = await MainActor.run {
+      guard !handoffsInFlight.contains(handoff.path) else { return nil }
+      return renamex_np(handoff.path, deleting.path, UInt32(RENAME_EXCL)) == 0 ? 0 : errno
+    }
+    switch outcome {
+    case nil:
+      return nil
+    case 0:
+      return deleting
+    case let code?:
+      await AppLogger.shared.log(
+        "Could not clear \(handoff.lastPathComponent) for removal: errno \(code)",
+        level: .info, category: "TranscriptStore")
+      return nil
+    }
+  }
+
+  #if DEBUG
+    /// Marks a handoff folder as in use by a Delete All, so a test can prove start-up skips it.
+    static func markHandoffInFlightForTesting(_ handoff: URL, _ inFlight: Bool) {
+      if inFlight { handoffsInFlight.insert(handoff.path) } else { handoffsInFlight.remove(handoff.path) }
+    }
+  #endif
 
   /// The UUID after `prefix` when `name` is exactly `prefix` plus a UUID, else nil.
   private nonisolated static func reservedID(_ name: String, prefix: String) -> UUID? {

@@ -168,7 +168,7 @@ struct TranscriptStoreDeleteAllTests {
     }
 
     @Test(
-      "when a row lands in the empty folder first, the old rows stay in a handoff folder start-up keeps"
+      "when a row lands in the empty folder first, the next start removes the old rows and keeps the new one"
     )
     func clearForRemovalFailureWithNewRowKeepsBoth() async throws {
       let box = Sandbox()
@@ -185,12 +185,16 @@ struct TranscriptStoreDeleteAllTests {
       let handoff = box.parent.appendingPathComponent(handoffs[0], isDirectory: true)
       #expect(box.jsonNames(in: handoff) == names)
 
+      // #4075 G1: the user confirmed Delete All, so the next start finishes it.
       let restarted = box.store(cleansLeftovers: true)
       await restarted.leftoverCleanupForTesting?.value
-      #expect(box.jsonNames(in: handoff) == names, "start-up keeps a handoff folder")
+      #expect(!FileManager.default.fileExists(atPath: handoff.path))
+      #expect(box.siblings().isEmpty)
+      #expect(box.jsonNames(in: box.directory) == ["\(newRow.id.uuidString).json"])
     }
 
-    @Test("when the empty folder and the way back both fail, the rows stay in the handoff folder")
+    @Test(
+      "when the empty folder and the way back both fail, the next start removes the handoff folder")
     func restoreFailureKeepsHandoff() async throws {
       let box = Sandbox()
       defer { box.remove() }
@@ -204,12 +208,32 @@ struct TranscriptStoreDeleteAllTests {
 
       let restarted = box.store(cleansLeftovers: true)
       await restarted.leftoverCleanupForTesting?.value
-      #expect(box.jsonNames(in: handoff) == names)
+      #expect(!FileManager.default.fileExists(atPath: handoff.path))
+      #expect(box.siblings().isEmpty)
+      #expect(box.jsonNames(in: box.directory).isEmpty, "History opens empty, as confirmed")
+    }
+
+    @Test("start-up leaves alone a handoff folder a Delete All is still using")
+    func startupSkipsHandoffInUse() async throws {
+      let box = Sandbox()
+      defer { box.remove() }
+      let fm = FileManager.default
+      let handoff = box.parent.appendingPathComponent(
+        AppConstants.transcriptsHandoffPrefix + UUID().uuidString, isDirectory: true)
+      try fm.createDirectory(at: handoff, withIntermediateDirectories: false)
+      try Data("x".utf8).write(to: handoff.appendingPathComponent("a.json"))
+      TranscriptStore.markHandoffInFlightForTesting(handoff, true)
+      defer { TranscriptStore.markHandoffInFlightForTesting(handoff, false) }
+
+      let store = box.store(cleansLeftovers: true)
+      await store.leftoverCleanupForTesting?.value
+
+      #expect(fm.fileExists(atPath: handoff.appendingPathComponent("a.json").path))
     }
 
     // MARK: - Start-up cleanup
 
-    @Test("start-up removes only real folders named exactly like a cleared Delete All")
+    @Test("start-up removes only real folders named exactly like a Delete All's folders")
     func startupCleanupIsStrict() async throws {
       let box = Sandbox()
       defer { box.remove() }
@@ -222,18 +246,23 @@ struct TranscriptStoreDeleteAllTests {
       }
       let cleared = try folder(AppConstants.transcriptsDeletingPrefix + UUID().uuidString)
       let malformed = try folder(AppConstants.transcriptsDeletingPrefix + "not-a-uuid")
+      let malformedHandoff = try folder(AppConstants.transcriptsHandoffPrefix + "not-a-uuid")
       let handoff = try folder(AppConstants.transcriptsHandoffPrefix + UUID().uuidString)
       let unrelated = try folder("Meetings")
       let target = try folder("link-target")
       let link = box.parent.appendingPathComponent(
         AppConstants.transcriptsDeletingPrefix + UUID().uuidString)
       try fm.createSymbolicLink(at: link, withDestinationURL: target)
+      let handoffLink = box.parent.appendingPathComponent(
+        AppConstants.transcriptsHandoffPrefix + UUID().uuidString)
+      try fm.createSymbolicLink(at: handoffLink, withDestinationURL: target)
 
       let store = box.store(cleansLeftovers: true)
       await store.leftoverCleanupForTesting?.value
 
       #expect(!fm.fileExists(atPath: cleared.path))
-      for kept in [malformed, handoff, unrelated, target] {
+      #expect(!fm.fileExists(atPath: handoff.path), "a leftover handoff is finished (#4075 G1)")
+      for kept in [malformed, malformedHandoff, unrelated, target] {
         #expect(
           fm.fileExists(atPath: kept.appendingPathComponent("a.json").path),
           "\(kept.lastPathComponent)")
@@ -241,6 +270,9 @@ struct TranscriptStoreDeleteAllTests {
       #expect(
         (try? fm.destinationOfSymbolicLink(atPath: link.path)) != nil,
         "the link is not followed or removed")
+      #expect(
+        (try? fm.destinationOfSymbolicLink(atPath: handoffLink.path)) != nil,
+        "a handoff-named link is not followed or removed")
       #expect(fm.fileExists(atPath: box.directory.path), "the live folder is never touched")
     }
 

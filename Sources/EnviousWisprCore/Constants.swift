@@ -14,8 +14,9 @@ public enum AppConstants {
   public static let transcriptsDir = "transcripts"
   /// Siblings of `transcriptsDir` that Delete All moves the folder through (#4001 H7), each
   /// followed by a UUID. A handoff folder holds rows not yet cleared for removal (a Delete All
-  /// that failed or was interrupted part way) and is never removed automatically. A deleting
-  /// folder is removed in the background, and again by the next start if that was interrupted.
+  /// that failed or was interrupted part way); the next start clears it for removal and removes
+  /// it (#4075 G1). A deleting folder is removed in the background, and again by the next start
+  /// if that was interrupted.
   public static let transcriptsHandoffPrefix = ".transcripts-handoff-"
   public static let transcriptsDeletingPrefix = ".transcripts-deleting-"
   /// EnviousMeet recordings (#3972): one folder per meeting holding `meeting.json` and the
