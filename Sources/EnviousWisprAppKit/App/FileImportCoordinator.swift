@@ -712,9 +712,12 @@ final class FileImportCoordinator {
   /// and turns via `currentHistoryRow` immediately before calling this, never reusing a value
   /// captured when a popover opened. Defaults to a harmless failure so tests that do not
   /// exercise rename need not wire it.
+  ///
+  /// #4075 S1: awaited. A write already sent settles with its real outcome even if the
+  /// rename's caller is cancelled or the visible document is replaced while it waits.
   private let writeExplicitRename:
     @MainActor (UUID, TranscriptSpeakerAnalysis, [Turn]?, (speakerId: String, name: String))
-      throws -> Bool
+      async throws -> Bool
 
   /// Whether the import's row is in History RIGHT NOW. Every "saved" answer on this page
   /// goes through it, because a remembered write is not a row: the user can delete the row
@@ -906,7 +909,7 @@ final class FileImportCoordinator {
     writeExplicitRename:
       @escaping @MainActor (
         UUID, TranscriptSpeakerAnalysis, [Turn]?, (speakerId: String, name: String)
-      ) throws -> Bool = { _, _, _, _ in false },
+      ) async throws -> Bool = { _, _, _, _ in false },
     currentHistoryRow: @escaping @MainActor (UUID) -> Transcript? = { _ in nil },
     historyRowExists: @escaping @MainActor (UUID) -> Bool,
     processParts: @escaping ProcessParts
@@ -2621,27 +2624,45 @@ final class FileImportCoordinator {
       emitRenameTelemetry(.failed)
       return RenameFailure(message: RenameFailure.couldNotSaveName, currentName: nil)
     }
-    do {
-      let saved = try writeExplicitRename(
-        historyIDForWrite, analysis, current.turns, (id, name))
-      guard saved else {
-        emitRenameTelemetry(.failed)
-        return RenameFailure(
-          message: RenameFailure.recordingRemoved, currentName: nil)
-      }
-      // Neither `turns` nor `speakerNames` below is itself an `@Observable`-tracked stored
-      // property — they read through `currentHistoryRow`, a closure Observation cannot see
-      // into — so nothing would tell a view to re-render after a successful rename without
-      // this. Bumping it is what makes "every turn showing that speaker id re-renders" true.
-      speakerFieldsRevision += 1
-      emitRenameTelemetry(.saved)
-      return nil
-    } catch {
+    // #4075 S1: a cancelled caller sends no new write.
+    guard Task.isCancelled == false else {
       emitRenameTelemetry(.failed)
       return RenameFailure(
         message: RenameFailure.couldNotSaveName, currentName: current.speakerNames?[id])
     }
+    // The rename belongs to the row it was pressed on (`historyIDForWrite`), not to a cleanup
+    // generation: once sent, its real outcome is reported once, even if the caller is
+    // cancelled or another file replaced this one while it waited.
+    let outcome: Result<Bool, any Error>
+    do {
+      outcome = .success(
+        try await writeExplicitRename(historyIDForWrite, analysis, current.turns, (id, name)))
+    } catch {
+      outcome = .failure(error)
+    }
+    switch outcome {
+    case .success(true):
+      // Neither `turns` nor `speakerNames` below is itself an `@Observable`-tracked stored
+      // property — they read through `currentHistoryRow`, a closure Observation cannot see
+      // into — so nothing would tell a view to re-render after a successful rename without
+      // this. Bumping it is what makes "every turn showing that speaker id re-renders" true.
+      // Only while this row is still the document on screen: a replacement is not re-rendered
+      // for a rename of a row it does not show.
+      if historyID == historyIDForWrite { speakerFieldsRevision += 1 }
+      emitRenameTelemetry(.saved)
+      return nil
+    case .success(false):
+      emitRenameTelemetry(.failed)
+      return RenameFailure(message: RenameFailure.recordingRemoved, currentName: nil)
+    case .failure:
+      emitRenameTelemetry(.failed)
+      // The name as it is NOW, read after the wait, not the copy taken before it.
+      return RenameFailure(
+        message: RenameFailure.couldNotSaveName,
+        currentName: currentHistoryRow(historyIDForWrite)?.speakerNames?[id])
+    }
   }
+
 
   /// The rename popover closed on Escape or a blank name (plan §3d). Telemetry only; nothing
   /// to write and nothing to revert, since neither path ever reached `renameSpeaker`.

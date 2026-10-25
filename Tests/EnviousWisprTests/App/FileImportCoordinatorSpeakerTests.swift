@@ -126,7 +126,7 @@ struct FileImportCoordinatorSpeakerTests {
       Bool = { _, _, _ in true },
     writeExplicitRename: @escaping @MainActor (
       UUID, TranscriptSpeakerAnalysis, [Turn]?, (speakerId: String, name: String)
-    ) throws -> Bool = { _, _, _, _ in false },
+    ) async throws -> Bool = { _, _, _, _ in false },
     currentHistoryRow: @escaping @MainActor (UUID) -> Transcript? = { _ in nil },
     historyRowExists: @escaping @MainActor (UUID) -> Bool = { _ in true },
     emitSpeakerTelemetry: @escaping @MainActor (
@@ -734,6 +734,39 @@ struct FileImportCoordinatorSpeakerTests {
       return true
     }
     func current(_ id: UUID) -> Transcript? { rows[id] }
+
+    /// #4075 S1: holds the next explicit rename until `releaseHeldRename()`, like a write
+    /// already sent: cancelling the waiting caller does not withdraw it.
+    var holdNextRename = false
+    /// Makes the next released rename throw instead of writing.
+    var failNextRename = false
+    private(set) var renameCalls = 0
+    private var heldRename: CheckedContinuation<Void, Never>?
+    var isHoldingRename: Bool { heldRename != nil }
+    struct RenameError: Error {}
+
+    func submitRename(
+      _ id: UUID, _ analysis: TranscriptSpeakerAnalysis, _ turns: [Turn]?,
+      _ explicitRename: (speakerId: String, name: String)
+    ) async throws -> Bool {
+      renameCalls += 1
+      if holdNextRename {
+        holdNextRename = false
+        await withCheckedContinuation { heldRename = $0 }
+      }
+      if failNextRename {
+        failNextRename = false
+        throw RenameError()
+      }
+      return rename(id, analysis, turns, explicitRename)
+    }
+
+    func releaseHeldRename() {
+      holdNextRename = false
+      let held = heldRename
+      heldRename = nil
+      held?.resume()
+    }
   }
 
   private func makeStoreBackedCoordinator(
@@ -768,7 +801,7 @@ struct FileImportCoordinatorSpeakerTests {
       saveToHistory: { store.save($0) },
       updateHistoryRow: { store.update($0) },
       mergeSpeakerFields: { try store.mergeSpeakerFields($0, $1, $2) },
-      writeExplicitRename: { store.rename($0, $1, $2, $3) },
+      writeExplicitRename: { try await store.submitRename($0, $1, $2, $3) },
       currentHistoryRow: { store.current($0) },
       emitTurnTelemetry: emitTurnTelemetry, emitRenameTelemetry: emitRenameTelemetry,
       emitSpeakerRetryTelemetry: emitSpeakerRetryTelemetry,
@@ -2777,6 +2810,147 @@ struct FileImportCoordinatorSpeakerTests {
 
     let failure = await coordinator.renameSpeaker(id: "A", name: "Zach")
     #expect(failure != nil, "there is nothing to rename against a .single outcome")
+  }
+
+  /// A finished two-speaker import with its labeled row stored, for the held-rename tests.
+  private func finishedLabeledImport(
+    store: FakeHistoryStore,
+    emitRenameTelemetry: @escaping @MainActor (TelemetryService.FileImportRenameOutcome) -> Void
+  ) async throws -> (FileImportCoordinator, UUID) {
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
+      emitRenameTelemetry: emitRenameTelemetry)
+    coordinator.choose(url: Self.anyURL)
+    try #require(
+      await settleUntil {
+        if case .ready = coordinator.state { return true } else { return false }
+      })
+    coordinator.start()
+    try #require(await settleUntil { coordinator.state == .finished }, "the import never finished")
+    let historyID = try #require(coordinator.historyID)
+    try #require(await settleUntil { store.current(historyID)?.turns != nil })
+    try #require(await settleUntil { coordinator.speakerStepState == .finished })
+    return (coordinator, historyID)
+  }
+
+  /// #4075 S1: the rename's write is awaited. It reports its real outcome only after the
+  /// write settles: success, a row deleted while it waited, or a failure that names the
+  /// speaker's name as it is now.
+  @Test("a held rename reports the write's real outcome once it settles")
+  func heldRenameReportsTheRealOutcome() async throws {
+    for ending in ["saved", "deleted", "failed"] {
+      let store = FakeHistoryStore()
+      defer { store.releaseHeldRename() }
+      var outcomes: [TelemetryService.FileImportRenameOutcome] = []
+      let (coordinator, historyID) = try await finishedLabeledImport(
+        store: store, emitRenameTelemetry: { outcomes.append($0) })
+      let revisionBefore = coordinator.speakerFieldsRevision
+      store.holdNextRename = true
+      var returned = false
+      let rename = Task { @MainActor in
+        let failure = await coordinator.renameSpeaker(id: "A", name: "Zach")
+        returned = true
+        return failure
+      }
+      try #require(await settleUntil { store.isHoldingRename }, "the rename never arrived")
+      #expect(returned == false, "the rename answered before its write settled")
+      switch ending {
+      case "deleted":
+        store.delete(historyID)
+      case "failed":
+        // Someone else renamed A while this write waited; the failure must say so.
+        let row = try #require(store.current(historyID))
+        store.save(
+          row.mergingSpeakerFields(
+            analysis: try #require(row.speakerAnalysis), turns: row.turns,
+            explicitRename: ("A", "Latest")))
+        try #require(store.current(historyID)?.speakerNames?["A"] == "Latest")
+        store.failNextRename = true
+      default:
+        break
+      }
+      store.releaseHeldRename()
+      let failure = await rename.value
+      #expect(store.renameCalls == 1)
+      switch ending {
+      case "saved":
+        #expect(failure == nil)
+        #expect(store.current(historyID)?.speakerNames?["A"] == "Zach")
+        #expect(outcomes == [.saved])
+        #expect(coordinator.speakerFieldsRevision == revisionBefore + 1)
+      case "deleted":
+        #expect(failure?.message == RenameFailure.recordingRemoved)
+        #expect(store.current(historyID) == nil, "the refused rename brought the row back")
+        #expect(outcomes == [.failed])
+      default:
+        #expect(failure?.message == RenameFailure.couldNotSaveName)
+        #expect(failure?.currentName == "Latest", "the failure named a stale speaker name")
+        #expect(store.current(historyID)?.speakerNames?["A"] == "Latest")
+        #expect(outcomes == [.failed])
+      }
+    }
+  }
+
+  /// #4075 S1: a new file chosen while an old rename waits. The old rename still settles and
+  /// reports once; the new file's identity and view are untouched.
+  @Test("a rename that settles after another file was chosen leaves that file alone")
+  func heldRenameAfterReplacement() async throws {
+    for fails in [false, true] {
+      let store = FakeHistoryStore()
+      defer { store.releaseHeldRename() }
+      var outcomes: [TelemetryService.FileImportRenameOutcome] = []
+      let (coordinator, historyID) = try await finishedLabeledImport(
+        store: store, emitRenameTelemetry: { outcomes.append($0) })
+      let nameBefore = store.current(historyID)?.speakerNames?["A"]
+      store.holdNextRename = true
+      let rename = Task { @MainActor in
+        await coordinator.renameSpeaker(id: "A", name: "Zach")
+      }
+      try #require(await settleUntil { store.isHoldingRename }, "the rename never arrived")
+      coordinator.choose(url: URL(fileURLWithPath: "/tmp/replacement.m4a"))
+      try #require(
+        await settleUntil {
+          if case .ready = coordinator.state { return true } else { return false }
+        })
+      let revisionBefore = coordinator.speakerFieldsRevision
+      store.failNextRename = fails
+      store.releaseHeldRename()
+      let failure = await rename.value
+      #expect((failure == nil) == (fails == false))
+      #expect(outcomes == [fails ? .failed : .saved])
+      #expect(store.current(historyID)?.speakerNames?["A"] == (fails ? nameBefore : "Zach"))
+      #expect(coordinator.historyID == nil, "the new file took the old row's identity")
+      #expect(coordinator.file?.name == "replacement.m4a")
+      #expect(coordinator.speakerFieldsRevision == revisionBefore)
+      #expect(coordinator.historySaveFailure == nil)
+    }
+  }
+
+  /// #4075 S1: cancellation. A caller cancelled before the write is sent sends none; one
+  /// cancelled after it is sent still gets the write's real result, with no second write.
+  @Test("a cancelled rename sends no write, and a sent one still settles")
+  func cancelledRename() async throws {
+    let store = FakeHistoryStore()
+    defer { store.releaseHeldRename() }
+    let (coordinator, historyID) = try await finishedLabeledImport(
+      store: store, emitRenameTelemetry: { _ in })
+    // Not yet started: this test holds the main actor until it awaits the task.
+    let early = Task { @MainActor in await coordinator.renameSpeaker(id: "A", name: "Early") }
+    early.cancel()
+    let earlyFailure = await early.value
+    #expect(earlyFailure?.message == RenameFailure.couldNotSaveName)
+    #expect(store.renameCalls == 0, "a cancelled rename still sent a write")
+
+    store.holdNextRename = true
+    let late = Task { @MainActor in await coordinator.renameSpeaker(id: "A", name: "Zach") }
+    try #require(await settleUntil { store.isHoldingRename }, "the rename never arrived")
+    late.cancel()
+    store.releaseHeldRename()
+    let lateFailure = await late.value
+    #expect(lateFailure == nil, "a sent write was reported as failed because its caller left")
+    #expect(store.renameCalls == 1)
+    #expect(store.current(historyID)?.speakerNames?["A"] == "Zach")
   }
 
   @Test("exportButtonLabels relabels for Marked up regardless of whether the document has turns")
