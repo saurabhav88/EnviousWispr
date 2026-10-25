@@ -665,4 +665,43 @@ struct MeetingDocumentsOwnerTests {
     #expect(await documents.load(other.id) == false)
     #expect(documents.canEdit(other.id) == false)
   }
+
+  // Moved from the retired MeetingLivePreviewTests (#3973): Save reads the notes first.
+  @Test("Save waits for the notes, and says so when they cannot be read")
+  func exportReadsNotesFirst() async throws {
+    let harness = try Harness()
+    let rig = MeetingHistoryPresentationTests.Rig()
+    var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    record.state = .ready
+    try harness.store.create(record)
+    _ = try harness.store.saveNotes("Budget owner: Priya", revision: 1, meeting: record.id)
+    let row = MeetingHistoryPresentationTests.meetingRow(
+      id: record.transcriptID, meetingID: record.id)
+    rig.infos[record.id] = MeetingHistoryInfo(echoTurnIDs: [], title: nil)
+    try await rig.coordinator.saveAndShowDurably(row)
+    let coordinator = MeetingDocumentsOwnerTests.coordinator(harness)
+
+    // Notes not read yet, the read held: Save waits for it and carries the notes.
+    let hold = MeetingDocumentsOwnerTests.holdFileQueue()
+    let export = Task {
+      await MeetingExport.document(
+        meetingID: record.id, rowID: row.id, documents: coordinator.documents,
+        transcripts: rig.coordinator)
+    }
+    hold.signal()
+    guard case .document(let text) = await export.value else {
+      Issue.record("Save wrote nothing")
+      return
+    }
+    #expect(text.hasSuffix("Notes\n\nBudget owner: Priya\n"))
+
+    // Unreadable notes: nothing is written, and Save says why.
+    let other = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    try harness.store.create(other)
+    try Data("not json".utf8).write(to: harness.store.documentsURL(for: other.id))
+    #expect(
+      await MeetingExport.document(
+        meetingID: other.id, rowID: row.id, documents: coordinator.documents,
+        transcripts: rig.coordinator) == .notesUnreadable)
+  }
 }

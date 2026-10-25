@@ -354,6 +354,8 @@ def routes_and_values(r, tree):
          {"entryPoint": "history", "callSound": True}),
         (["meeting", "start", "--no-call-sound"], "meeting.start",
          {"entryPoint": "menu", "callSound": False}),
+        (["meeting", "start", "--live-engine", "universal"], "meeting.start",
+         {"entryPoint": "menu", "liveEngine": "universal"}),
         (["meeting", "status"], "meeting.status", None),
         (["meeting", "list", "--limit", "3"], "meeting.list", {"limit": 3}),
         (["meeting", "get", word_id, "--turn-offset", "10", "--turn-limit", "5",

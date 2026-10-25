@@ -17,6 +17,31 @@ package struct LivePreviewVocabulary: Sendable {
   }
 }
 
+/// One step of a transcript session's output (#3973): what EnviousMeet's live words need, which
+/// the bounded display string of `openSession(onText:)` cannot carry.
+///
+/// Producer obligations (each engine's transcript session meets them; the meeting relies on
+/// them): events arrive in order. `finalized` is text that became final since the previous
+/// update and is never repeated; `inProgress` replaces the previous not-yet-final words.
+/// Consecutive `.update`s may be coalesced (finalized texts joined in order, the latest
+/// `inProgress` kept) but never across a `.discontinuity` or `.ended`. Exactly one `.ended`
+/// arrives, after every finalized delta the session accepted has been delivered.
+package enum LiveWordsEvent: Sendable, Equatable {
+  case update(finalized: String, inProgress: String)
+  /// The engine dropped the agreement state behind the words in progress: they will not be
+  /// finalized, and later words may recognize some of the same audio again.
+  case discontinuity
+  case ended(LiveWordsEnd)
+}
+
+/// Why a transcript session ended.
+package enum LiveWordsEnd: Sendable, Equatable {
+  /// Its owner asked it to end.
+  case requested
+  /// It stopped on its own (the speech service ended, an error, a backlog limit).
+  case failed(String)
+}
+
 /// What the live preview needs from a recognizer, and nothing more (#2077).
 ///
 /// The coordinator used to name `ApplePreviewRecognizer` in nine places, which was
@@ -27,9 +52,9 @@ package struct LivePreviewVocabulary: Sendable {
 /// so availability has to be something an engine ANSWERS rather than something the
 /// coordinator assumes.
 ///
-/// Deliberately six members, matching exactly what the coordinator already called.
-/// This is a seam, not a design for a future engine: anything an engine needs that
-/// the coordinator never asked for belongs on the engine, not here.
+/// Deliberately small: what the coordinator already called, plus the transcript session
+/// EnviousMeet's live words open (#3973). This is a seam, not a design for a future engine:
+/// anything an engine needs that no caller asks for belongs on the engine, not here.
 ///
 /// `Sendable` rather than `: Actor`. The one conformer today is an actor and actors
 /// are already `Sendable`, so constraining to `Actor` would buy nothing and would
@@ -57,6 +82,23 @@ package protocol LivePreviewEngine: Sendable {
   func openSession(
     vocabulary: LivePreviewVocabulary,
     onText: @escaping @Sendable (String) -> Void
+  ) async throws -> any LivePreviewEngineSession
+
+  /// Open a transcript session (#3973, EnviousMeet's live words): every finalized delta in
+  /// order and the words in progress replaced, through `onEvent`, ending with exactly one
+  /// `.ended` after the last accepted final (contract on `LiveWordsEvent`).
+  ///
+  /// Concurrency is per engine. Apple serves one transcript session per recognizer at a time
+  /// (a newer one supersedes the older one's feeds), so a meeting uses one Apple recognizer per
+  /// track. Universal transcript sessions are independent of each other and of dictation's
+  /// preview turnover, so both tracks open on one recognizer over one shared runtime.
+  ///
+  /// The session's `end()` delivers the accepted finals and joins its cleanup; its terminal is
+  /// `.requested` unless the session had already ended on its own or failed while ending
+  /// (`.failed`), which `end()` never replaces.
+  func openTranscriptSession(
+    vocabulary: LivePreviewVocabulary,
+    onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
   ) async throws -> any LivePreviewEngineSession
 }
 

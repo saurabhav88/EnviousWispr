@@ -923,17 +923,8 @@ struct MeetingSummaryOwnerTests {
     #expect(other.owner.isOutOfDate(written) == false, "the user's own summary records no inputs")
   }
 
-  @Test("a wait names its real reason: dictation, or a meeting summary on this Mac")
+  @Test("a final pass's wait names its real reason: dictation, or a meeting summary on this Mac")
   func waitReasons() {
-    var live = MeetingCoordinator.LiveTranscript(meetingID: UUID())
-    live.waitingForDictation = true
-    let dictation = MeetingsPresentation.liveStatusLines(
-      live, callSoundRecorded: false, waitingOnSummary: false)
-    let summary = MeetingsPresentation.liveStatusLines(
-      live, callSoundRecorded: false, waitingOnSummary: true)
-    #expect(dictation.contains("Waiting for your dictation to finish."))
-    #expect(summary.contains("Waiting for a meeting summary to finish."))
-    #expect(!summary.contains("Waiting for your dictation to finish."))
     var processing = MeetingCoordinator.Processing(meetingID: UUID(), stage: nil)
     processing.waitingForDictation = true
     #expect(MeetingsPresentation.stage(processing, waitingOnSummary: false) == "Paused while you dictate")

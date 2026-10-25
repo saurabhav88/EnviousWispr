@@ -32,6 +32,11 @@ struct LivePreviewEnglishSpellingTests {
 
     /// An engine whose session says one fixed sentence as soon as it opens.
     final class SpeakingEngine: LivePreviewEngine, @unchecked Sendable {
+      func openTranscriptSession(
+        vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        throw displayOnlyTranscriptOpen(Self.self)
+      }
       let heard: String
       init(heard: String) { self.heard = heard }
       func prepare() async throws {}
@@ -49,6 +54,11 @@ struct LivePreviewEnglishSpellingTests {
 
     /// An engine whose session never says anything: the control for the bounded wait.
     final class SilentEngine: LivePreviewEngine, @unchecked Sendable {
+      func openTranscriptSession(
+        vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        throw displayOnlyTranscriptOpen(Self.self)
+      }
       func prepare() async throws {}
       func openSession(
         vocabulary: LivePreviewVocabulary, onText: @escaping @Sendable (String) -> Void

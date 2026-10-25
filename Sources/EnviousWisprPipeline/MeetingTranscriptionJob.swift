@@ -113,7 +113,7 @@ package final class MeetingTranscriptionJob {
     /// #4052: false decodes each contiguous run in one call, the founder-approved final-pass
     /// shape (Transcribe a File's: #2648 measured 45 minutes in one Parakeet call losing fewer
     /// words than 5-minute slices did at their joins). No cut search, no seam padding, and every
-    /// word the engine returns is kept. True keeps the cut pieces the live preview uses.
+    /// word the engine returns is kept. True keeps the earlier cut pieces.
     package var cutsPieces = true
     /// Longer than this paused for dictation with the engine loaded, the engine is unloaded
     /// and reloaded when the pass resumes (plan §3 resource table).
@@ -571,48 +571,6 @@ package final class MeetingTranscriptionJob {
   private var transient: [MeetingTrackKind: [MeetingProcessingCheckpoint.Piece]] = [:]
 
   /// Model use, then the engine load, waiting through temporary contention (C3a).
-  // MARK: - Live preview (#3972 R42, R43, R50)
-
-  /// One provisional preview window: one closed capture file of the meeting still recording,
-  /// decoded whole, as one model unit with the same admission as a pass piece (dictation idle,
-  /// memory, model-use gate, model source). Never at the same time as `run` on this job; the
-  /// coordinator's scheduler also keeps it away from every other meeting model unit. The
-  /// result is shown while the meeting records and is never read by the after-recording pass.
-  /// The engine stays loaded afterwards; `releaseIdle` frees it.
-  /// Returns the window's words (empty for decoded silence), or nil when the file cannot be
-  /// read whole: nothing was decoded, so the caller never advances its freshness for it.
-  package func preview(audio: MeetingTrackAudio) async throws -> String? {
-    guard !running else { throw JobError.alreadyRunning }
-    running = true
-    defer { running = false }
-    try checkCancelled()
-    guard audio.problems.isEmpty, let run = audio.runs.first, audio.runs.count == 1,
-      run.sampleCount > 0
-    else { return nil }
-    try await prepareModelUnit()
-    return try await unit {
-      try self.requireModelSource()
-      let samples = try await self.readOffMain(
-        audio: audio, from: run.startSample, count: run.sampleCount)
-      return try await self.dependencies.transcribe(samples).text
-    }
-  }
-
-  /// Unloads an idle preview engine and gives its model use back (R43: 20 s with no queued
-  /// preview, or before a final pass needs the engine). No-op while a unit runs or nothing is
-  /// loaded.
-  package func releaseIdle() async {
-    guard !unitInFlight, !running else { return }
-    // Reserved for the whole teardown, so no preview starts while the engine unloads.
-    running = true
-    defer { running = false }
-    if engineLoaded {
-      await releaseEngine()
-    } else if engineResident {
-      await releaseModelUse()
-    }
-  }
-
   private func acquireAndLoadEngine() async throws {
     engineResident = true
     do {

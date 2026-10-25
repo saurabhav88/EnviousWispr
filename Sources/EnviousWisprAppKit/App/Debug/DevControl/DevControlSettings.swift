@@ -51,7 +51,7 @@
       .selectedBackend, .recordingMode, .llmProvider, .llmModel, .ollamaModel,
       .fileImportLLMProvider, .fileImportLLMModel, .fileImportOllamaModel,
       .s1MiniStyling, .s1MiniStructure, .s1MiniContext, .autoCopyToClipboard,
-      .meetingCaptureCallSound, .meetingCallSoundExplained, .meetingWriteSummary, .meetingTurnsOffDictation, .meetingOnboardingComplete, .meetingUseCalendarForNames, .meetingCallDetection, .meetingCallAppsOff, .meetingCallNoCounts, .meetingCallFirstTipShown, .hotkeyEnabled, .vadAutoStop, .vadSilenceTimeout, .vadSensitivity, .vadEnergyGate, .onboardingState,
+      .meetingCaptureCallSound, .meetingCallSoundExplained, .meetingWriteSummary, .meetingTurnsOffDictation, .meetingOnboardingComplete, .meetingUseCalendarForNames, .meetingCallDetection, .meetingCallAppsOff, .meetingCallNoCounts, .meetingCallFirstTipShown, .meetingLanguageMode, .hotkeyEnabled, .vadAutoStop, .vadSilenceTimeout, .vadSensitivity, .vadEnergyGate, .onboardingState,
       .hasCompletedOnboarding, .cancelKeyCode, .cancelModifiers, .quickAddKeyCode,
       .quickAddModifiers, .pasteLastKeyCode, .pasteLastModifiers, .copyLastKeyCode,
       .copyLastModifiers, .toggleKeyCode, .toggleModifiers, .pushToTalkKeyCode,
@@ -107,7 +107,7 @@
         .fileImportLLMModel, .fileImportOllamaModel, .ollamaModel, .inputChannelByDeviceUID:
         return make(.extractedCheck)
       case .hotkeyEnabled, .vadSensitivity, .vadEnergyGate, .crashRecoveryEnabled,
-        .onboardingState:
+        .onboardingState, .meetingLanguageMode:
         return make(.staging)
       case .whisperKitLanguage, .pushToTalkKeyCode, .pushToTalkModifiers:
         return make(.staging, legacy: true)
@@ -181,6 +181,7 @@
       case .debugLogLevel: return settings.debugLogLevel.rawValue
       case .whisperKitLanguage: return settings.whisperKitLanguage
       case .languageMode: return Codec.encode(settings.languageMode)
+      case .meetingLanguageMode: return Codec.encode(settings.meetingLanguageMode)
       case .englishSpelling: return settings.englishSpelling.rawValue
       case .selectedInputDeviceUID: return settings.selectedInputDeviceUID
       case .preferredInputDeviceIDOverride: return settings.preferredInputDeviceIDOverride
@@ -377,6 +378,8 @@
         return set(Codec.string(value)) { settings.whisperKitLanguage = $0 }
       case .languageMode:
         return set(Codec.languageMode(value)) { settings.languageMode = $0 }
+      case .meetingLanguageMode:
+        return set(Codec.languageMode(value)) { settings.meetingLanguageMode = $0 }
       case .englishSpelling:
         return set(Codec.raw(value, EnglishSpelling.self)) { settings.englishSpelling = $0 }
       case .selectedInputDeviceUID:
@@ -543,7 +546,7 @@
         .meetingWriteSummary, .meetingTurnsOffDictation, .meetingOnboardingComplete,
         .meetingUseCalendarForNames,
         .meetingCallDetection, .meetingCallAppsOff, .meetingCallNoCounts, .meetingCallFirstTipShown,
-        .hotkeyEnabled,
+        .meetingLanguageMode, .hotkeyEnabled,
         .vadAutoStop, .vadSensitivity,
         .vadEnergyGate, .onboardingState, .hasCompletedOnboarding, .pushToTalkKeyCode,
         .pushToTalkModifiers, .modelUnloadPolicy, .restoreClipboardAfterPaste,

@@ -3,6 +3,7 @@ import EnviousWisprCore
 import EnviousWisprPostProcessing
 import Foundation
 import Testing
+import os
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprAudio
@@ -134,6 +135,11 @@ struct LivePreviewCoordinatorTests {
 
     let stuck = Gate()
     final class StuckEngine: LivePreviewEngine, @unchecked Sendable {
+      func openTranscriptSession(
+        vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        throw displayOnlyTranscriptOpen(Self.self)
+      }
       let stuck: Gate
       init(stuck: Gate) { self.stuck = stuck }
       func prepare() async throws { await stuck.wait() }
@@ -226,6 +232,11 @@ struct LivePreviewCoordinatorTests {
 
     let openingGate = Gate()
     final class SlowOpenEngine: LivePreviewEngine, @unchecked Sendable {
+      func openTranscriptSession(
+        vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        throw displayOnlyTranscriptOpen(Self.self)
+      }
       let gate: Gate
       init(gate: Gate) { self.gate = gate }
       func prepare() async throws {}
@@ -290,6 +301,11 @@ struct LivePreviewCoordinatorTests {
     }
     let opens = Opens()
     final class CountingEngine: LivePreviewEngine, @unchecked Sendable {
+      func openTranscriptSession(
+        vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        throw displayOnlyTranscriptOpen(Self.self)
+      }
       let opens: Opens
       init(opens: Opens) { self.opens = opens }
       func prepare() async throws {}
@@ -415,6 +431,11 @@ struct LivePreviewCoordinatorTests {
       defer { TelemetryService.shared.testEventHook = nil }
 
       final class ReadyEngine: LivePreviewEngine, @unchecked Sendable {
+        func openTranscriptSession(
+          vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
+        ) async throws -> any LivePreviewEngineSession {
+          throw displayOnlyTranscriptOpen(Self.self)
+        }
         func prepare() async throws {}
         func openSession(
           vocabulary: LivePreviewVocabulary, onText: @escaping @Sendable (String) -> Void
@@ -501,6 +522,11 @@ struct LivePreviewCoordinatorTests {
       let opening = Gate()
 
       final class SlowOpenEngine: LivePreviewEngine, @unchecked Sendable {
+        func openTranscriptSession(
+          vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
+        ) async throws -> any LivePreviewEngineSession {
+          throw displayOnlyTranscriptOpen(Self.self)
+        }
         let gate: Gate
         init(gate: Gate) { self.gate = gate }
         func prepare() async throws {}
@@ -555,6 +581,11 @@ struct LivePreviewCoordinatorTests {
 
       struct Boom: Error {}
       final class FailingEngine: LivePreviewEngine, @unchecked Sendable {
+        func openTranscriptSession(
+          vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
+        ) async throws -> any LivePreviewEngineSession {
+          throw displayOnlyTranscriptOpen(Self.self)
+        }
         func prepare() async throws { throw Boom() }
         func openSession(
           vocabulary: LivePreviewVocabulary, onText: @escaping @Sendable (String) -> Void
@@ -594,6 +625,11 @@ struct LivePreviewCoordinatorTests {
 
       struct Boom: Error {}
       final class OpenFailsEngine: LivePreviewEngine, @unchecked Sendable {
+        func openTranscriptSession(
+          vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
+        ) async throws -> any LivePreviewEngineSession {
+          throw displayOnlyTranscriptOpen(Self.self)
+        }
         func prepare() async throws {}
         func openSession(
           vocabulary: LivePreviewVocabulary, onText: @escaping @Sendable (String) -> Void
@@ -689,6 +725,11 @@ struct LivePreviewCoordinatorTests {
   @Test("switching engines releases the engine switched away from")
   func switchingEnginesReleases() async {
     final class ReadyEngine: LivePreviewEngine, @unchecked Sendable {
+      func openTranscriptSession(
+        vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        throw displayOnlyTranscriptOpen(Self.self)
+      }
       func prepare() async throws {}
       func openSession(
         vocabulary: LivePreviewVocabulary, onText: @escaping @Sendable (String) -> Void
@@ -733,6 +774,11 @@ struct LivePreviewCoordinatorTests {
   @Test("the engine-change release fires even though the preview is still on")
   func engineChangeIsNotGuardedByTheToggle() async {
     final class ReadyEngine: LivePreviewEngine, @unchecked Sendable {
+      func openTranscriptSession(
+        vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        throw displayOnlyTranscriptOpen(Self.self)
+      }
       func prepare() async throws {}
       func openSession(
         vocabulary: LivePreviewVocabulary, onText: @escaping @Sendable (String) -> Void
@@ -834,6 +880,11 @@ struct LivePreviewCoordinatorTests {
     }
     let opens = Opens()
     final class CountingEngine: LivePreviewEngine, @unchecked Sendable {
+      func openTranscriptSession(
+        vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        throw displayOnlyTranscriptOpen(Self.self)
+      }
       let opens: Opens
       init(opens: Opens) { self.opens = opens }
       func prepare() async throws {}
@@ -1436,6 +1487,24 @@ struct LivePreviewCoordinatorTests {
       "a generation-0 seed carrying real terms must build lookups")
   }
 
+  @Test("the meeting's vocabulary carries word corrections only while Dictionary is on (#3973)")
+  func meetingVocabularyFollowsDictionarySwitch() {
+    let dictionaryOn = OSAllocatedUnfairLock(initialState: true)
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isPreviewOn: { true },
+      isDictionaryOn: { dictionaryOn.withLock { $0 } },
+      languageMode: { .locked("en") },
+      selectedRoute: previewRoute { _ in .blocked(.unsupportedSystem) })
+    coordinator.correctorVocabulary = CorrectorVocabulary(terms: [word("Qualtrics")], generation: 1)
+    let on = coordinator.vocabularySnapshot()
+    #expect(on.dictionaryEnabled && on.lookups != nil, "control: corrections while on")
+    dictionaryOn.withLock { $0 = false }
+    let off = coordinator.vocabularySnapshot()
+    #expect(!off.dictionaryEnabled)
+    #expect(off.lookups == nil, "Universal reads lookups directly, so off must carry none")
+  }
+
   @Test("A new generation rebuilds; the same generation does not")
   func rebuildsOnlyOnGenerationChange() {
     let coordinator = makeCoordinator()
@@ -1506,6 +1575,11 @@ struct LivePreviewCoordinatorTests {
   @Test("disabling MID-RECORDING tears down the live session, not just the cache")
   func disablingMidRecordingTearsDownTheSession() async {
     final class ReadyEngine: LivePreviewEngine, @unchecked Sendable {
+      func openTranscriptSession(
+        vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        throw displayOnlyTranscriptOpen(Self.self)
+      }
       func prepare() async throws {}
       func openSession(
         vocabulary: LivePreviewVocabulary, onText: @escaping @Sendable (String) -> Void
@@ -1607,6 +1681,11 @@ struct LivePreviewCoordinatorTests {
     let gate = Gate()
     let opens = Opens()
     final class GatedEngine: LivePreviewEngine, @unchecked Sendable {
+      func openTranscriptSession(
+        vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        throw displayOnlyTranscriptOpen(Self.self)
+      }
       let gate: Gate
       let opens: Opens
       init(gate: Gate, opens: Opens) {
@@ -1737,6 +1816,11 @@ struct LivePreviewCoordinatorTests {
 
     /// First engine hangs in `prepare()`; every later one prepares instantly.
     final class MaybeStuckEngine: LivePreviewEngine, @unchecked Sendable {
+      func openTranscriptSession(
+        vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        throw displayOnlyTranscriptOpen(Self.self)
+      }
       let hangs: Bool
       let counts: Counts
       let stuck: Gate
@@ -1860,6 +1944,11 @@ struct LivePreviewCoordinatorTests {
 
     /// The first engine hangs INSIDE `openSession`; later ones open instantly.
     final class MaybeSlowEngine: LivePreviewEngine, @unchecked Sendable {
+      func openTranscriptSession(
+        vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        throw displayOnlyTranscriptOpen(Self.self)
+      }
       let hangs: Bool
       let counts: Counts
       let slowOpen: Gate
@@ -1942,6 +2031,11 @@ struct LivePreviewCoordinatorTests {
   @Test("a blocked resolution releases the engine instead of caching a model it cannot use")
   func blockedResolutionReleasesTheEngine() async {
     final class ReadyEngine: LivePreviewEngine, @unchecked Sendable {
+      func openTranscriptSession(
+        vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        throw displayOnlyTranscriptOpen(Self.self)
+      }
       func prepare() async throws {}
       func openSession(
         vocabulary: LivePreviewVocabulary, onText: @escaping @Sendable (String) -> Void
@@ -1997,6 +2091,11 @@ struct LivePreviewCoordinatorTests {
   @Test("turning the setting off releases the engine without needing another recording")
   func disablingTheSettingReleasesWithoutAnotherRecording() async {
     final class ReleasableEngine: LivePreviewEngine, @unchecked Sendable {
+      func openTranscriptSession(
+        vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        throw displayOnlyTranscriptOpen(Self.self)
+      }
       let onPrepared: @Sendable () -> Void
       init(onPrepared: @escaping @Sendable () -> Void) { self.onPrepared = onPrepared }
       func prepare() async throws { onPrepared() }
@@ -2052,6 +2151,11 @@ struct LivePreviewCoordinatorTests {
   @Test("the setting-change release is a no-op while the preview is still enabled")
   func settingChangeReleaseIsANoOpWhileEnabled() async {
     final class ReadyEngine: LivePreviewEngine, @unchecked Sendable {
+      func openTranscriptSession(
+        vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        throw displayOnlyTranscriptOpen(Self.self)
+      }
       let onPrepared: @Sendable () -> Void
       init(onPrepared: @escaping @Sendable () -> Void) { self.onPrepared = onPrepared }
       func prepare() async throws { onPrepared() }
@@ -2094,6 +2198,11 @@ struct LivePreviewCoordinatorTests {
   @Test("disabling the preview releases the prepared engine, not just the display")
   func disablingReleasesThePreparedEngine() async {
     final class ReleasableEngine: LivePreviewEngine, @unchecked Sendable {
+      func openTranscriptSession(
+        vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
+      ) async throws -> any LivePreviewEngineSession {
+        throw displayOnlyTranscriptOpen(Self.self)
+      }
       let onPrepared: @Sendable () -> Void
       init(onPrepared: @escaping @Sendable () -> Void) { self.onPrepared = onPrepared }
       func prepare() async throws { onPrepared() }
@@ -2356,11 +2465,27 @@ private struct FakePreviewSession: LivePreviewEngineSession {
   func end() async { await probe.noteEnd() }
 }
 
+/// #3973: the display-only engine fakes in these suites never serve EnviousMeet's live words.
+/// A transcript open on one is a test mistake: it records an issue and throws, never returns a
+/// session that would look like it works.
+func displayOnlyTranscriptOpen(
+  _ fake: Any.Type, sourceLocation: SourceLocation = #_sourceLocation
+) -> any Error {
+  Issue.record("\(fake) is display-only: it opens no transcript session", sourceLocation: sourceLocation)
+  struct DisplayOnlyFake: Error {}
+  return DisplayOnlyFake()
+}
+
 /// A preview engine with no vendor behind it, which is the whole point: before the
 /// #2077 seam the coordinator could only be driven on macOS 26 with a reserved
 /// locale and possibly a model download, so none of the behaviour below could be
 /// asserted anywhere except by hand.
 private struct FakePreviewEngine: LivePreviewEngine {
+  func openTranscriptSession(
+    vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
+  ) async throws -> any LivePreviewEngineSession {
+    throw displayOnlyTranscriptOpen(Self.self)
+  }
   let probe: PreviewEngineProbe
   let prepareGate: PreviewSetupGate?
 

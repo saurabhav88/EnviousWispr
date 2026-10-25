@@ -392,8 +392,10 @@ final class PipelineSettingsSync {
       audioCapture.warmEnginePolicy = settings.warmEnginePolicy
     case .meetingCaptureCallSound, .meetingCallSoundExplained, .meetingWriteSummary,
       .meetingOnboardingComplete, .meetingUseCalendarForNames, .meetingCallDetection,
-      .meetingCallAppsOff, .meetingCallNoCounts, .meetingCallFirstTipShown:
-      break  // #3972, #4017: read by EnviousMeet when a meeting starts or ends; not by the pipeline.
+      .meetingCallAppsOff, .meetingCallNoCounts, .meetingCallFirstTipShown, .meetingLanguageMode:
+      // #3972, #4017, #3973: read by EnviousMeet when a meeting starts or ends; not by the
+      // pipeline. `.meetingLanguageMode` never touches dictation's language.
+      break
     case .meetingTurnsOffDictation:
       break  // #4069: read by `RecordingStarter` at each dictation start press; nothing to push.
     case .autoCopyToClipboard, .vadAutoStop, .vadSilenceTimeout, .vadSensitivity,

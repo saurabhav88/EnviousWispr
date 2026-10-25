@@ -748,15 +748,13 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     // second press could otherwise enter a second removal, find the first one's
     // holders already taken, delete while the first drain was still running, and
     // lift the suppression early. Everyone awaits the first operation instead.
+    // #3973: begun synchronously before the first await, also by the composed
+    // removal drain before either holder drains. Idempotent.
+    beginRemovalSuppression()
     if let inFlight = removalDrain {
       await inFlight.value
       return
     }
-
-    isRemovingModel = true
-    // The suppression BEGINS here, so a page already on screen stops offering
-    // what the next recording will not deliver.
-    onWordsCapabilityMayHaveChanged?()
 
     // **CAPTURE EVERY HOLDER BEFORE RELEASING ANYTHING.** The shared teardown
     // clears `preparationTask` on its way through, so reading it afterwards
@@ -786,6 +784,17 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     }
     removalDrain = drain
     await drain.value
+  }
+
+  /// Removal begins: nothing may start a preview from here (#3973: the composed
+  /// removal drain calls this before any holder drains). Synchronous and
+  /// idempotent.
+  func beginRemovalSuppression() {
+    guard !isRemovingModel else { return }
+    isRemovingModel = true
+    // The suppression BEGINS here, so a page already on screen stops offering
+    // what the next recording will not deliver.
+    onWordsCapabilityMayHaveChanged?()
   }
 
   /// Removal is over: previews may run again.
@@ -917,6 +926,18 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   /// Not availability-gated: `CustomWordsPropagator` writes the vocabulary on
   /// every Mac we support, and gating the STORE on macOS 26 would leave a machine
   /// that later prepares a recognizer with nothing to hand it.
+  /// #3973: the Custom Words a dictation preview session gets, for EnviousMeet's live words
+  /// (read once at a meeting's start).
+  func vocabularySnapshot() -> LivePreviewVocabulary {
+    rebuildCorrectorLookupsIfNeeded()
+    // #3973: Dictionary off means no word corrections on any engine (Universal reads `lookups`
+    // without checking `dictionaryEnabled`).
+    let dictionaryOn = isDictionaryOn()
+    return LivePreviewVocabulary(
+      lookups: dictionaryOn ? correctorLookups : nil, contextualPhrases: contextualPhrases,
+      dictionaryEnabled: dictionaryOn)
+  }
+
   private func rebuildCorrectorLookupsIfNeeded() {
     guard builtLookupsGeneration != correctorVocabulary.generation else { return }
     builtLookupsGeneration = correctorVocabulary.generation

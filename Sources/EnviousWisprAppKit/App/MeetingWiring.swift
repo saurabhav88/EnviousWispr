@@ -2,6 +2,7 @@ import EnviousWisprASR
 import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprLLM
+import EnviousWisprLivePreview
 import EnviousWisprModelDelivery
 import EnviousWisprPipeline
 import EnviousWisprServices
@@ -60,9 +61,15 @@ enum MeetingWiring {
     var emitSummaryFinished: @MainActor (MeetingSummaryFinishedTelemetry) -> Void = {
       TelemetryService.shared.trackMeetingSummaryFinished($0)
     }
-    /// The meeting's own Parakeet backend factory (the live preview, and the final pass while
-    /// dictation runs Whisper). A seam so a test can prove the shared route builds none (#4052).
+    /// The meeting's own Parakeet backend factory (the final pass while dictation runs
+    /// Whisper). A seam so a test can prove the shared route builds none (#4052).
     var makeMeetingBackend: () -> any MeetingSpeechBackend = { ParakeetBackend() }
+    /// #3973: the meeting's live words (built where the engines' routes are), or nil for none.
+    var liveWords: MeetingLiveWords?
+    /// Custom Words for live words, read once at each recording's start.
+    var liveVocabulary: @MainActor () -> LivePreviewVocabulary = {
+      LivePreviewVocabulary(lookups: nil, contextualPhrases: [], dictionaryEnabled: false)
+    }
     /// Speaker analysis of one track (bundled speaker models). A seam for the same tests.
     var analyzeSpeakers: @Sendable (MeetingTrackAudio) async -> MeetingSpeakerAnalysis = {
       await MeetingSpeakerAnalyzer.analyze($0)
@@ -113,8 +120,10 @@ enum MeetingWiring {
         makeRecorder: { configuration, onSegment, onFailure in
           MeetingRecorder(configuration: configuration, onSegment: onSegment, onFailure: onFailure)
         },
-        makeJob: { makeJob(inputs, lane: lane, kind: .finalPass) },
-        makePreviewJob: { makeJob(inputs, lane: lane, kind: .preview) },
+        makeJob: { makeJob(inputs, lane: lane) },
+        liveWords: inputs.liveWords,
+        meetingLanguage: { [settings = inputs.settings] in settings.meetingLanguageMode },
+        liveVocabulary: inputs.liveVocabulary,
         microphoneSelection: { [settings = inputs.settings] in
           let chosen = settings.preferredInputDeviceIDOverride
           return (chosen.isEmpty ? nil : chosen, settings.inputChannelByDeviceUID)
@@ -217,21 +226,12 @@ enum MeetingWiring {
       documents: coordinator.documents, lane: lane)
   }
 
-  /// Which work a job does, for the lane (R50): a final pass yields only to a running local
-  /// summary call; a preview also to a local summary waiting for its turn.
-  enum JobKind {
-    case finalPass
-    case preview
-  }
-
-  /// When a job's unit may start: dictation first, then the lane's order (R50).
+  /// When a final-pass unit may start: dictation first, then the lane's order (R50): it yields
+  /// only to a running local summary call.
   static func admission(
-    _ kind: JobKind, lane: MeetingLocalModelLane, dictationIdle: @escaping @MainActor () -> Bool
+    lane: MeetingLocalModelLane, dictationIdle: @escaping @MainActor () -> Bool
   ) -> @MainActor () -> Bool {
-    switch kind {
-    case .finalPass: return { dictationIdle() && !lane.summaryCallRunning }
-    case .preview: return { dictationIdle() && !lane.summaryActive }
-    }
+    { dictationIdle() && !lane.summaryCallRunning }
   }
 
   /// History's meeting facts, from the coordinator's in-memory durable copy (observable), and
@@ -242,51 +242,20 @@ enum MeetingWiring {
     MeetingHistoryInfo.paired(with: coordinator?.record(id: meetingID))
   }
 
-  /// One pass's job. The final pass decodes through a `MeetingParakeetRoute` (#4052), whole
-  /// runs at a time; the live preview keeps its own engine and cut pieces.
-  static func makeJob(
-    _ inputs: Inputs, lane: MeetingLocalModelLane, kind: JobKind
-  ) -> MeetingTranscriptionJob {
+  /// The final pass's job. It decodes through a `MeetingParakeetRoute` (#4052), whole runs at a
+  /// time.
+  static func makeJob(_ inputs: Inputs, lane: MeetingLocalModelLane) -> MeetingTranscriptionJob {
     let isDeliveryEnabled = inputs.isDeliveryEnabled
     let engine = MeetingParakeetEngine(
       offlineModeAdmission: inputs.offlineModeAdmission, makeBackend: inputs.makeMeetingBackend,
       isModelSourceUsable: isDeliveryEnabled)
     let analyze = inputs.analyzeSpeakers
     let claim = MeetingModelClaim(gate: inputs.modelUseGate, resolve: inputs.meetingSelection)
-    let isIdle = admission(kind, lane: lane, dictationIdle: inputs.isDictationIdle)
+    let isIdle = admission(lane: lane, dictationIdle: inputs.isDictationIdle)
     let wakes = inputs.dictationWakes
     let pressure = inputs.memoryPressure
     let workChanged = inputs.workChanged
     let shared = inputs.sharedEngine
-    switch kind {
-    case .preview:
-      return MeetingTranscriptionJob(
-        dependencies: .init(
-          isDictationIdle: isIdle,
-          waitUntilDictationIdle: { await MeetingWorkAdmission.waitUntil(isIdle, wakes: wakes) },
-          beginModelUse: { try await claim.acquire() },
-          endModelUse: {
-            await claim.release()
-            workChanged()
-          },
-          loadEngine: {
-            guard let selection = claim.selection else { throw MeetingWiringError.noModelClaim }
-            try await engine.load(selection: selection)
-          },
-          transcribe: { samples in try await engine.transcribe(samples: samples, language: nil) },
-          unloadEngine: { await engine.unload() },
-          analyzeSpeakers: { audio in
-            await analyzeSpeakers(audio, analyze: analyze, workChanged: workChanged)
-          },
-          isTemporaryEngineContention: { MeetingParakeetEngine.isTemporaryContention($0) },
-          waitForEngineAvailability: { try await engine.waitUntilOfflineModeAvailable() },
-          isModelSourceUsable: isDeliveryEnabled,
-          engineIdentity: { claim.engineIdentity },
-          isMemoryPressureElevated: { pressure.isElevated },
-          waitUntilMemoryNormal: { await pressure.waitUntilNormal() },
-          unitStarted: { lane.asrBegan() },
-          unitEnded: { lane.asrEnded() }))
-    case .finalPass:
       let route = MeetingParakeetRoute(
         dependencies: .init(
           isAdmitted: isIdle,
@@ -349,7 +318,6 @@ enum MeetingWiring {
       // The route's dictation waits show the job's "Paused while you dictate".
       route.onWaitingForDictation = { [weak job] waiting in job?.onWaitingForDictation?(waiting) }
       return job
-    }
   }
 
   /// Speaker analysis of one track; the speaker unit was an activation blocker and has ended.

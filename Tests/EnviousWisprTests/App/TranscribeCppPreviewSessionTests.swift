@@ -457,3 +457,404 @@ import Testing
     #expect(counter.done == 25)
   }
 }
+
+/// #3973: a Universal transcript session (EnviousMeet's live words) delivers every finalized
+/// delta in order, within a queued-text budget, and ends exactly once.
+///
+/// **What the user sees when this fails:** the meeting's live words skip a sentence, repeat
+/// one, or keep running after the track stopped; or a slow screen makes the app's memory grow.
+@Suite("Universal live words transcript session (#3973)", .tags(.productOutcome))
+struct LiveWordsTranscriptSessionTests {
+
+  /// What the owner received, with waits on the count. With `holdFirst`, delivery of the first
+  /// event blocks the queue's consumer until `release()`: a consumer stuck in the owner.
+  final class Received: @unchecked Sendable {
+    /// Recursive: waiter conditions run under it and read `all`.
+    private let lock = NSRecursiveLock()
+    private var events: [LiveWordsEvent] = []
+    /// Each waiter's condition is checked under the lock on registration and after every event.
+    private var waiters: [(([LiveWordsEvent]) -> Bool, CheckedContinuation<Void, Never>)] = []
+    private var holding: Bool
+    private var released = false
+    private let gate = DispatchSemaphore(value: 0)
+    init(holdFirst: Bool = false) { holding = holdFirst }
+    var all: [LiveWordsEvent] { lock.withLock { events } }
+    @Sendable func receive(_ event: LiveWordsEvent) {
+      let (ready, hold) = lock.withLock { () -> ([CheckedContinuation<Void, Never>], Bool) in
+        events.append(event)
+        let met = waiters.filter { $0.0(events) }.map(\.1)
+        waiters.removeAll { $0.0(events) }
+        return (met, holding && events.count == 1)
+      }
+      for waiter in ready { waiter.resume() }
+      if hold { gate.wait() }
+    }
+    /// Lets the held consumer go (idempotent; also every wait's expiry cleanup).
+    @Sendable func release() {
+      let first = lock.withLock { () -> Bool in
+        holding = false
+        defer { released = true }
+        return !released
+      }
+      // One signal: frees a consumer already waiting, or is never consumed.
+      if first { gate.signal() }
+    }
+    func until(_ count: Int) async {
+      await until { $0.count >= count }
+    }
+    /// Returns once `condition` holds for the events received so far: checked and registered
+    /// in one lock step, so an event arriving in between cannot be missed.
+    func until(_ condition: @escaping ([LiveWordsEvent]) -> Bool) async {
+      await withCheckedContinuation { c in
+        let now = lock.withLock { () -> Bool in
+          if condition(events) { return true }
+          waiters.append((condition, c))
+          return false
+        }
+        if now { c.resume() }
+      }
+    }
+  }
+
+  /// A rolling session stand-in: `start` returns at once, `cancel` is recorded.
+  final class IdleSession: WhisperIncrementalSession, @unchecked Sendable {
+    private let lock = NSLock()
+    private var cancels = 0
+    var cancelCount: Int { lock.withLock { cancels } }
+    func start(
+      audioSamplesProvider: @Sendable @escaping () async -> (samples: [Float], count: Int)
+    ) async {}
+    func noteStopRequested() async {}
+    func finalize(finalSamples: [Float], speechSegments: [SpeechSegment]) async
+      -> IncrementalResult
+    {
+      fatalError("the preview never finalizes — it cancels")
+    }
+    func cancel() async { lock.withLock { cancels += 1 } }
+  }
+
+  private static func handle(_ received: Received) -> TranscribeCppPreviewSession {
+    TranscribeCppPreviewSession(lookups: nil, onEvent: received.receive)
+  }
+
+  private static func text(_ bytes: Int) -> String { String(repeating: "a", count: bytes) }
+
+  @Test("a slow consumer receives every finalized delta in order, coalesced only between barriers")
+  func orderedCoalescedDelivery() async {
+    let received = Received(holdFirst: true)
+    let handle = Self.handle(received)
+    handle.publish(.update(finalized: "One.", inProgress: "two"))
+    await PreviewWait.within("the consumer inside the first delivery", onExpiry: received.release) {
+      await received.until(1)
+    }
+    // Queued behind the stuck consumer.
+    handle.publish(.update(finalized: " Two.", inProgress: "three"))
+    handle.publish(.update(finalized: " Three.", inProgress: "four"))
+    handle.publish(.discontinuity)
+    handle.publish(.update(finalized: "", inProgress: "five"))
+    handle.publish(.update(finalized: " Five.", inProgress: ""))
+    handle.publish(.discontinuity)
+    received.release()
+    await PreviewWait.within("the end", onExpiry: received.release) { await handle.end() }
+    handle.publish(.update(finalized: " Late.", inProgress: ""))
+    #expect(
+      received.all == [
+        .update(finalized: "One.", inProgress: "two"),
+        .update(finalized: " Two. Three.", inProgress: "four"),
+        .discontinuity,
+        .update(finalized: " Five.", inProgress: ""),
+        .discontinuity,
+        .ended(.requested),
+      ])
+  }
+
+  @Test("requested end delivers every queued final before its one terminal")
+  func endDrainsBeforeTerminal() async throws {
+    let received = Received(holdFirst: true)
+    let handle = Self.handle(received)
+    handle.publish(.update(finalized: "A.", inProgress: ""))
+    await PreviewWait.within("the first delivery", onExpiry: received.release) {
+      await received.until(1)
+    }
+    handle.publish(.discontinuity)
+    handle.publish(.update(finalized: " B.", inProgress: ""))
+    // What had been delivered when end() returned: an ordering record.
+    let atReturn = Task { () -> [LiveWordsEvent] in
+      await handle.end()
+      return received.all
+    }
+    received.release()
+    let seen = try await PreviewWait.value("the end", onExpiry: received.release) {
+      await atReturn.value
+    }
+    let expected: [LiveWordsEvent] = [
+      .update(finalized: "A.", inProgress: ""), .discontinuity,
+      .update(finalized: " B.", inProgress: ""), .ended(.requested),
+    ]
+    #expect(seen == expected, "end() returned only after the terminal")
+    await PreviewWait.within("a second end") { await handle.end() }
+    #expect(received.all == expected, "exactly one terminal")
+  }
+
+  @Test("the budget admits up to 64 KB including the delivery in flight, then refuses whole")
+  func budgetBoundary() async throws {
+    let received = Received(holdFirst: true)
+    let handle = Self.handle(received)
+    handle.publish(.update(finalized: "x", inProgress: ""))  // in flight: 64 + 1
+    await PreviewWait.within("the first delivery", onExpiry: received.release) {
+      await received.until(1)
+    }
+    let inFlight = LiveWordsQueue.entryCost + 1
+    let fits = LiveWordsQueue.budget - inFlight - LiveWordsQueue.entryCost
+    let big = Self.text(fits)
+    handle.publish(.update(finalized: big, inProgress: ""))
+    // One more byte of anything is refused; a barrier costs 64.
+    handle.publish(.discontinuity)
+    handle.publish(.update(finalized: "never", inProgress: ""))
+    received.release()
+    await PreviewWait.within("the backlog terminal", onExpiry: received.release) {
+      await received.until(3)
+    }
+    #expect(
+      received.all == [
+        .update(finalized: "x", inProgress: ""), .update(finalized: big, inProgress: ""),
+        .ended(.failed("backlog")),
+      ])
+    await PreviewWait.within("the end") { await handle.end() }
+    #expect(received.all.count == 3, "end() after the backlog keeps that one terminal")
+  }
+
+  @Test("queued finals merge with the assembler's spacing, never running words together")
+  func coalescedFinalsKeepTheirSpace() async {
+    let received = Received(holdFirst: true)
+    let handle = Self.handle(received)
+    handle.publish(.update(finalized: "First.", inProgress: ""))  // held in flight
+    await PreviewWait.within("the first delivery", onExpiry: received.release) {
+      await received.until(1)
+    }
+    handle.publish(.update(finalized: "Hello world.", inProgress: "x"))
+    handle.publish(.update(finalized: "How are you?", inProgress: ""))
+    received.release()
+    await PreviewWait.within("the end", onExpiry: received.release) { await handle.end() }
+    #expect(
+      Array(received.all.prefix(2)) == [
+        .update(finalized: "First.", inProgress: ""),
+        .update(finalized: "Hello world. How are you?", inProgress: ""),
+      ])
+  }
+
+  @Test("an oversized final is refused whole: accepted finals drain, then one backlog failure")
+  func oversizedFinalRefusedWhole() async {
+    let received = Received(holdFirst: true)
+    let handle = Self.handle(received)
+    handle.publish(.update(finalized: "Kept.", inProgress: ""))
+    await PreviewWait.within("the first delivery", onExpiry: received.release) {
+      await received.until(1)
+    }
+    handle.publish(.update(finalized: " Also kept.", inProgress: "x"))
+    handle.publish(.update(finalized: Self.text(LiveWordsQueue.budget), inProgress: ""))
+    handle.publish(.update(finalized: " After.", inProgress: ""))
+    received.release()
+    await PreviewWait.within("the end", onExpiry: received.release) { await handle.end() }
+    #expect(
+      received.all == [
+        .update(finalized: "Kept.", inProgress: ""),
+        .update(finalized: " Also kept.", inProgress: "x"),
+        .ended(.failed("backlog")),
+      ], "nothing of the oversized final, nothing after it")
+  }
+
+  @Test("alternating barriers and empty updates are charged and cannot grow without bound")
+  func barriersAreCharged() async {
+    let received = Received(holdFirst: true)
+    let handle = Self.handle(received)
+    handle.publish(.discontinuity)  // in flight: 64
+    await PreviewWait.within("the first delivery", onExpiry: received.release) {
+      await received.until(1)
+    }
+    let room = (LiveWordsQueue.budget - LiveWordsQueue.entryCost) / LiveWordsQueue.entryCost
+    for i in 0..<(room + 50) {
+      handle.publish(i.isMultiple(of: 2) ? .update(finalized: "", inProgress: "") : .discontinuity)
+    }
+    received.release()
+    await PreviewWait.within("the end", onExpiry: received.release) { await handle.end() }
+    let all = received.all
+    #expect(all.count == 1 + room + 1, "the first, exactly the entries that fit, one terminal")
+    #expect(all.last == .ended(.failed("backlog")))
+    #expect(all.filter { if case .ended = $0 { true } else { false } }.count == 1)
+  }
+
+  @Test("the retained-audio ceiling ends the session with a failure; a later end keeps it")
+  func ceilingReachesTheOwner() async {
+    let received = Received()
+    let handle = Self.handle(received)
+    let session = IdleSession()
+    await PreviewWait.within("the attach") { await handle.attach(session) }
+    handle.publish(.update(finalized: "Before.", inProgress: ""))
+    let overCap = [Float](repeating: 0, count: TranscribeCppPreviewSession.maxRetainedSamples + 1)
+    await PreviewWait.within("the capping feed") { await handle.feed(overCap) }
+    await PreviewWait.within("the ceiling terminal") { await received.until(2) }
+    handle.publish(.update(finalized: " After.", inProgress: ""))
+    await PreviewWait.within("the end") { await handle.end() }
+    #expect(
+      received.all == [.update(finalized: "Before.", inProgress: ""), .ended(.failed("ceiling"))])
+    #expect(session.cancelCount == 1, "decoding stopped once")
+  }
+
+  @Test("backlog, ceiling and end racing still deliver exactly one terminal and one cleanup")
+  func racingTerminalsDeliverOne() async {
+    let received = Received(holdFirst: true)
+    let handle = Self.handle(received)
+    let session = IdleSession()
+    await PreviewWait.within("the attach", onExpiry: received.release) { await handle.attach(session) }
+    handle.publish(.update(finalized: "First.", inProgress: ""))
+    await PreviewWait.within("the first delivery", onExpiry: received.release) {
+      await received.until(1)
+    }
+    let overCap = [Float](repeating: 0, count: TranscribeCppPreviewSession.maxRetainedSamples + 1)
+    async let backlog: Void = handle.publish(
+      .update(finalized: Self.text(LiveWordsQueue.budget), inProgress: ""))
+    async let ceiling: Void = handle.feed(overCap)
+    let ends = (0..<3).map { _ in Task { await handle.end() } }
+    _ = await (backlog, ceiling)
+    received.release()
+    await PreviewWait.within("every end", onExpiry: received.release) {
+      for end in ends { await end.value }
+    }
+    let terminals = received.all.filter { if case .ended = $0 { true } else { false } }
+    #expect(terminals.count == 1, "one terminal: \(received.all)")
+    #expect(received.all.first == .update(finalized: "First.", inProgress: ""))
+    #expect(session.cancelCount == 1, "one physical cleanup")
+  }
+
+  @Test("end() during a start waits for the start, then cancels, then sends the terminal")
+  func endDuringStart() async {
+    let received = Received()
+    let teardownStarted = PreviewWait.Once()
+    let handle = TranscribeCppPreviewSession(
+      lookups: nil, onEvent: received.receive,
+      onTeardownStarted: { teardownStarted.fulfil(true) })
+    let session = GatedStart()
+    let attaching = Task { await handle.attach(session) }
+    await PreviewWait.within("the start's entry", onExpiry: session.open) {
+      _ = await session.entered.value()
+    }
+    let ending = Task { await handle.end() }
+    await PreviewWait.within("teardown's entry", onExpiry: session.open) {
+      _ = await teardownStarted.value()
+    }
+    #expect(session.log == ["start entered"], "no cancel while the start is held")
+    #expect(received.all.isEmpty, "no terminal before decoding stopped")
+    session.open()
+    await PreviewWait.within("attach and end", onExpiry: session.open) {
+      await attaching.value
+      await ending.value
+    }
+    #expect(session.log == ["start entered", "start returned", "cancel"])
+    #expect(received.all == [.ended(.requested)])
+  }
+
+  @Test("an opening that never reached its owner delivers nothing and releases its consumer")
+  func discardDeliversNothing() async {
+    let received = Received()
+    let handle = Self.handle(received)
+    handle.publish(.update(finalized: "Unseen.", inProgress: ""))
+    // discard() returns only after the queue's consumer exited, so no event can follow.
+    await PreviewWait.within("the discard") { await handle.discard() }
+    let afterDiscard = received.all
+    handle.publish(.update(finalized: "Late.", inProgress: ""))
+    await PreviewWait.within("an end after it") { await handle.end() }
+    #expect(!afterDiscard.contains { if case .ended = $0 { true } else { false } })
+    #expect(received.all == afterDiscard, "nothing after the discard, not even a terminal")
+  }
+
+  @Test("an update that would coalesce past the budget is refused and the queued one stays intact")
+  func oversizedCoalescingRefused() async {
+    let received = Received(holdFirst: true)
+    let handle = Self.handle(received)
+    handle.publish(.update(finalized: "x", inProgress: ""))
+    await PreviewWait.within("the first delivery", onExpiry: received.release) {
+      await received.until(1)
+    }
+    // Queued tail an oversized update would merge into.
+    handle.publish(.update(finalized: " Queued.", inProgress: "held"))
+    handle.publish(.update(finalized: Self.text(LiveWordsQueue.budget), inProgress: "y"))
+    received.release()
+    await PreviewWait.within("the end", onExpiry: received.release) { await handle.end() }
+    #expect(
+      received.all == [
+        .update(finalized: "x", inProgress: ""),
+        .update(finalized: " Queued.", inProgress: "held"),
+        .ended(.failed("backlog")),
+      ], "the queued update is delivered exactly as queued")
+  }
+
+  @Test("publications after end() began are refused and cannot turn the stop into a backlog")
+  func publicationAfterEndRefused() async {
+    let received = Received()
+    let teardownStarted = PreviewWait.Once()
+    let handle = TranscribeCppPreviewSession(
+      lookups: nil, onEvent: received.receive,
+      onTeardownStarted: { teardownStarted.fulfil(true) })
+    let session = GatedStart()
+    let attaching = Task { await handle.attach(session) }
+    await PreviewWait.within("the start's entry", onExpiry: session.open) {
+      _ = await session.entered.value()
+    }
+    handle.publish(.update(finalized: "Accepted.", inProgress: ""))
+    let ending = Task { await handle.end() }
+    // Cleanup is held behind the start: the stop has begun, decoding has not stopped yet.
+    await PreviewWait.within("teardown's entry", onExpiry: session.open) {
+      _ = await teardownStarted.value()
+    }
+    handle.publish(.update(finalized: " Late.", inProgress: ""))
+    handle.publish(.update(finalized: Self.text(LiveWordsQueue.budget), inProgress: ""))
+    session.open()
+    await PreviewWait.within("attach and end", onExpiry: session.open) {
+      await attaching.value
+      await ending.value
+    }
+    #expect(
+      received.all == [.update(finalized: "Accepted.", inProgress: ""), .ended(.requested)])
+  }
+
+  /// `start` signals entry and holds until `open()`; every signal comes from the subject.
+  final class GatedStart: WhisperIncrementalSession, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _log: [String] = []
+    private var gate: CheckedContinuation<Void, Never>?
+    private var isOpen = false
+    let entered = PreviewWait.Once()
+    var log: [String] { lock.withLock { _log } }
+    @Sendable func open() {
+      let waiting = lock.withLock { () -> CheckedContinuation<Void, Never>? in
+        isOpen = true
+        defer { gate = nil }
+        return gate
+      }
+      waiting?.resume()
+    }
+    func start(
+      audioSamplesProvider: @Sendable @escaping () async -> (samples: [Float], count: Int)
+    ) async {
+      lock.withLock { _log.append("start entered") }
+      entered.fulfil(true)
+      await withCheckedContinuation { c in
+        let now = lock.withLock { () -> Bool in
+          if isOpen { return true }
+          gate = c
+          return false
+        }
+        if now { c.resume() }
+      }
+      lock.withLock { _log.append("start returned") }
+    }
+    func noteStopRequested() async {}
+    func finalize(finalSamples: [Float], speechSegments: [SpeechSegment]) async
+      -> IncrementalResult
+    {
+      fatalError("the preview never finalizes — it cancels")
+    }
+    func cancel() async { lock.withLock { _log.append("cancel") } }
+  }
+}

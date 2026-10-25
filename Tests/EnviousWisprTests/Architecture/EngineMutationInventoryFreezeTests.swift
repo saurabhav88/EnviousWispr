@@ -449,31 +449,18 @@ import EnviousWisprAppKitTestSupport
       file: "Sources/EnviousWisprPipeline/MeetingTranscriptionJob.swift", matcher: "transcribe",
       text: "let result = try await self.dependencies.transcribe(samples)",
       classification: .structurallySafe),
-    // #3972 C10: a live-words preview unit decodes one closed capture file with the same
-    // injected meeting engine, inside the same dictation-idle `unit`. Never dictation's backend.
-    CallSite(
-      file: "Sources/EnviousWisprPipeline/MeetingTranscriptionJob.swift", matcher: "transcribe",
-      text: "return try await self.dependencies.transcribe(samples).text",
-      classification: .structurallySafe),
     // The checkpoint's SHA-256 digest (`CryptoKit`), not an engine finalize.
     CallSite(
       file: "Sources/EnviousWisprPipeline/MeetingTranscriptionJob.swift", matcher: "finalize",
       text: "let hex = hasher.finalize().map { String(format: \"%02x\", $0) }.joined()",
       classification: .structurallySafe),
-    // #3972 C4a: the live preview job's injected engine calls, bound to a `MeetingParakeetEngine`
-    // the wiring builds for that one job. Never dictation's backend; never `EngineLease`.
-    CallSite(
-      file: "Sources/EnviousWisprAppKit/App/MeetingWiring.swift", matcher: "transcribe",
-      text: "transcribe: { samples in try await engine.transcribe(samples: samples, language: nil) },",
-      classification: .structurallySafe),
-    CallSite(
-      file: "Sources/EnviousWisprAppKit/App/MeetingWiring.swift", matcher: "unload",
-      text: "unloadEngine: { await engine.unload() },", classification: .structurallySafe),
     // #4052: the final pass's injected calls go through `MeetingParakeetRoute`. Its own-route
-    // calls (dictation on Whisper) reach the pass's own `MeetingParakeetEngine`, as above.
+    // calls (dictation on Whisper) reach the pass's own `MeetingParakeetEngine`, built for that
+    // one job. Never dictation's backend; never `EngineLease`.
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/MeetingWiring.swift", matcher: "transcribe",
-      text: "ownTranscribe: { samples in try await engine.transcribe(samples: samples, language: nil) },",
+      text:
+        "ownTranscribe: { samples in try await engine.transcribe(samples: samples, language: nil) },",
       classification: .structurallySafe),
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/MeetingWiring.swift", matcher: "unload",
@@ -501,7 +488,8 @@ import EnviousWisprAppKitTestSupport
     // audio. Matched only by method-name coincidence.
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/MeetingWiring.swift", matcher: "prepare",
-      text: "await MeetingSummaryProviders.prepare(provider: provider, model: model, keychain: keychain)",
+      text:
+        "await MeetingSummaryProviders.prepare(provider: provider, model: model, keychain: keychain)",
       classification: .unrelatedDomain),
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/MeetingSummaryOwner.swift", matcher: "prepare",
@@ -854,7 +842,7 @@ import EnviousWisprAppKitTestSupport
       text: "let run = try await driver.transcribe(", classification: .unrelatedDomain),
     CallSite(
       file: "Sources/EnviousWisprASR/TranscribeCppPreviewRuntime.swift", matcher: "transcribe",
-      text: "return try await model.transcribe(samples, language)",
+      text: "let result = try await model.transcribe(samples, language)",
       classification: .unrelatedDomain),
     CallSite(
       file: "Sources/EnviousWisprASR/TranscribeCppPreviewRuntime.swift", matcher: "unload",
@@ -862,6 +850,18 @@ import EnviousWisprAppKitTestSupport
     CallSite(
       file: "Sources/EnviousWisprASR/TranscribeCppPreviewRuntime.swift", matcher: "unload",
       text: "Task { await loaded.unload() }", classification: .unrelatedDomain),
+    // #3973: a meeting's explicit release frees the same preview model (never the heart's).
+    CallSite(
+      file: "Sources/EnviousWisprASR/TranscribeCppPreviewRuntime.swift", matcher: "unload",
+      text: "await model?.unload()", classification: .unrelatedDomain),
+    // #3973: a meeting's live words prepare their own Apple recognizer (one per track) or the
+    // meeting's Universal preview runtime, never the dictation engine; one call each.
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/MeetingLiveWords.swift", matcher: "prepare",
+      text: "try await engine.prepare()", classification: .unrelatedDomain),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/MeetingLiveWords.swift", matcher: "prepare",
+      text: "try await engine.prepare()", classification: .unrelatedDomain),
 
     // MARK: CaptureVADSignalSource — a different subsystem (voice-activity
     // detection), not the ASR engine. Matched only by method-name coincidence.

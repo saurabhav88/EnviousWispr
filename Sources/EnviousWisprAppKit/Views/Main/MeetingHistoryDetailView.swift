@@ -335,14 +335,10 @@ struct MeetingHistoryDetailView: View {
         String(
           localized: "Saving the recording",
           comment: "EnviousMeet: the meeting recording is being closed and saved."))
+      supersededLiveWords(record)
     default:
       if let processing = meetings.processing, processing.meetingID == meetingID {
         MeetingProcessingPanel(processing: processing)
-        if let live = meetings.liveTranscript, live.meetingID == meetingID {
-          MeetingLiveWordsView(
-            transcript: live, callSoundRecorded: record.trackStatus[.callSound] == .captured,
-            superseded: true)
-        }
       } else if record.state == .queued, meetings.queueWaitsForSpace {
         busyLine(
           String(
@@ -366,7 +362,11 @@ struct MeetingHistoryDetailView: View {
         // #4001 H12: ready, History has been read, and the row is still not there (its file is
         // missing or could not be read). Say so instead of showing nothing.
         missingTranscript(canTranscribeAgain: canOfferTranscribeAgain(record.id))
-      } else if record.state == .notesOnly {
+      } else if record.state != .notesOnly {
+        // #3973: processing, queued or failed: the live words stay until a transcript is ready.
+        supersededLiveWords(record)
+      }
+      if record.state == .notesOnly {
         Text(
           "Nothing was recorded for this meeting. Your notes are in Notes.",
           comment: "History, a meeting that recorded nothing: where its notes are."
@@ -374,6 +374,16 @@ struct MeetingHistoryDetailView: View {
         .font(.stBody)
         .foregroundStyle(.stTextSecondary)
       }
+    }
+  }
+
+  /// This meeting's live words after Stop, greyed, until its transcript replaces them (the
+  /// owner clears them then, and at once on Delete).
+  @ViewBuilder private func supersededLiveWords(_ record: MeetingRecord) -> some View {
+    if let live = meetings.liveTranscript, live.meetingID == meetingID {
+      MeetingLiveWordsView(
+        transcript: live, callSoundRecorded: record.trackStatus[.callSound] == .captured,
+        superseded: true)
     }
   }
 

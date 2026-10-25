@@ -76,6 +76,9 @@ package actor WhisperPreviewRecognizer: LivePreviewEngine {
 
   private let runtime: TranscribeCppPreviewRuntime
   private let language: String?
+  /// Asked before every decode of this recognizer's transcript sessions (#3973); a throw is a
+  /// temporary refusal the rolling loop retries. Dictation's `openSession` never uses it.
+  private let admitTranscriptDecode: @Sendable () async throws -> Void
 
   /// The session most recently opened, so the NEXT `openSession` can wait for it
   /// to finish tearing down before starting another decode loop over the SAME
@@ -96,9 +99,16 @@ package actor WhisperPreviewRecognizer: LivePreviewEngine {
 
   /// `language` is the already-resolved decode language, or nil for auto —
   /// resolved by the resolver, which owns what `.auto` means for THIS engine.
-  package init(runtime: TranscribeCppPreviewRuntime, language: String?) {
+  ///
+  /// `admitTranscriptDecode` is the owner's per-decode admission for transcript sessions
+  /// (EnviousMeet supplies its heart-streaming refusal); the default admits every decode.
+  package init(
+    runtime: TranscribeCppPreviewRuntime, language: String?,
+    admitTranscriptDecode: @escaping @Sendable () async throws -> Void = {}
+  ) {
     self.runtime = runtime
     self.language = language
+    self.admitTranscriptDecode = admitTranscriptDecode
   }
 
   /// Claim the model. Throws rather than downloading: a display-only limb must
@@ -155,5 +165,35 @@ package actor WhisperPreviewRecognizer: LivePreviewEngine {
       await turnover.release()
       throw error
     }
+  }
+
+  /// A transcript session for EnviousMeet's live words (#3973 plan §3.1): every finalized delta
+  /// in order, the words in progress replaced, exactly one `.ended`.
+  ///
+  /// Independent of `openSession`'s turnover: it takes no lock, ends no predecessor and is not
+  /// recorded as `previousSession`. A meeting holds two of these (one per track) on this
+  /// recognizer's runtime at once and ends each through its own `end()`.
+  package func openTranscriptSession(
+    vocabulary: LivePreviewVocabulary,
+    onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
+  ) async throws -> any LivePreviewEngineSession {
+    let handle = TranscribeCppPreviewSession(lookups: vocabulary.lookups, onEvent: onEvent)
+    let session: any WhisperIncrementalSession
+    do {
+      session = try await runtime.makeSession(
+        language: language,
+        // Bounds only the unused display tail; the transcript events are not cut by it.
+        hypothesisRetentionLimit: LivePreviewTextBound.maxCharacters,
+        onHypothesis: { _ in },
+        onAudioReleased: handle.releaseAudio(before:),
+        onTranscript: handle.publish,
+        admitDecode: admitTranscriptDecode)
+    } catch {
+      // Never handed to the owner: no events, not even a terminal; the queue's task ends.
+      await handle.discard()
+      throw error
+    }
+    await handle.attach(session)
+    return handle
   }
 }

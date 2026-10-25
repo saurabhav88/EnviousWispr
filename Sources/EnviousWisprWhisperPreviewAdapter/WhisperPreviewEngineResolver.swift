@@ -110,19 +110,110 @@ package enum WhisperPreviewEngineResolver {
     // between the two Englishes rebuilds the prepared engine.
     let (language, commitment) = decodeLanguage(for: mode)
 
-    // The key carries ARTIFACT identity as well as language commitment. A
-    // revision or digest change must invalidate a prepared engine; without it a
-    // user could keep previewing with weights we no longer ship.
-    let key = LivePreviewEngineKey(
-      engine: "\(WhisperPreviewRecognizer.engineID)#\(environment.artifactIdentity)",
-      commitment: commitment)
-
     return .ready(
-      LivePreviewEngineCandidate(key: key) {
+      LivePreviewEngineCandidate(key: key(environment, commitment)) {
         WhisperPreviewRecognizer(
           runtime: TranscribeCppPreviewRuntime(
             modelPath: environment.modelPath, isAdmitted: environment.isAdmitted),
           language: language)
       })
+  }
+
+  /// The key carries ARTIFACT identity as well as language commitment. A
+  /// revision or digest change must invalidate a prepared engine; without it a
+  /// user could keep previewing with weights we no longer ship.
+  private static func key(_ environment: Environment, _ commitment: String)
+    -> LivePreviewEngineKey
+  {
+    LivePreviewEngineKey(
+      engine: "\(WhisperPreviewRecognizer.engineID)#\(environment.artifactIdentity)",
+      commitment: commitment)
+  }
+
+  // MARK: - #3973: EnviousMeet's live words
+
+  /// Whether the Universal engine can give a meeting live words, and with what.
+  package enum MeetingResolution: Sendable {
+    case ready(MeetingCandidate)
+    case blocked(LivePreviewUnavailability)
+  }
+
+  /// The meeting route (plan §3.4 step 2). Admission and language only: unlike `resolve`, it
+  /// does NOT ask whether the heart is streaming, because a meeting must not lose its live
+  /// words for the whole recording when the user dictates once. The heart stays protected per
+  /// decode instead: the meeting supplies its temporary refusal through
+  /// `MeetingCandidate.makeEngine(admitTranscriptDecode:)`, which the rolling loop retries.
+  /// Allocates nothing and never downloads: an unadmitted artifact is unavailable, whatever
+  /// else is true.
+  package static func resolveForMeeting(
+    _ mode: LanguageMode, environment: Environment
+  ) async -> MeetingResolution {
+    guard await environment.isAdmitted() else {
+      return .blocked(.modelNotInstalled)
+    }
+    // Same language rule as dictation's route: Auto detects, a regional lock decodes its bare
+    // language and keeps the full code as the commitment.
+    let (language, commitment) = decodeLanguage(for: mode)
+    return .ready(
+      MeetingCandidate(
+        key: key(environment, commitment), language: language,
+        makeRuntime: {
+          TranscribeCppPreviewRuntime(
+            modelPath: environment.modelPath, isAdmitted: environment.isAdmitted)
+        }))
+  }
+
+  /// A ready meeting route, before anything is allocated. The meeting owner calls `makeEngine`
+  /// once per recording, when it may hold a model (never while a previous recording's model
+  /// is still being freed).
+  package struct MeetingCandidate: Sendable {
+    package let key: LivePreviewEngineKey
+    let language: String?
+    let makeRuntime: @Sendable () -> TranscribeCppPreviewRuntime
+
+    /// One runtime for both tracks, and one recognizer over it whose transcript sessions ask
+    /// `admitTranscriptDecode` before every decode.
+    package func makeEngine(
+      admitTranscriptDecode: @escaping @Sendable () async throws -> Void
+    ) -> MeetingEngine {
+      MeetingEngine(
+        runtime: makeRuntime(), language: language, admitTranscriptDecode: admitTranscriptDecode)
+    }
+  }
+
+  /// A meeting's Universal engine: the runtime both tracks share and what the owner needs to
+  /// prepare, open and free it. Building it loads nothing; the model loads on `prepare()` or on
+  /// the first transcript open, whichever comes first (once, shared by both tracks).
+  package struct MeetingEngine: Sendable {
+    /// Opens each track's transcript session; every session decodes on this engine's runtime.
+    package let recognizer: any LivePreviewEngine
+    private let runtime: TranscribeCppPreviewRuntime
+
+    init(
+      runtime: TranscribeCppPreviewRuntime, language: String?,
+      admitTranscriptDecode: @escaping @Sendable () async throws -> Void
+    ) {
+      self.runtime = runtime
+      self.recognizer = WhisperPreviewRecognizer(
+        runtime: runtime, language: language, admitTranscriptDecode: admitTranscriptDecode)
+    }
+
+    /// Loads the model ahead of the first open (once, shared by both tracks). Throws rather than
+    /// downloading.
+    package func prepare() async throws {
+      try await recognizer.prepare()
+    }
+
+    /// Frees this engine's model for good (`TranscribeCppPreviewRuntime.beginRelease`): on
+    /// return every later load, open and decode is refused; the task completes once the model
+    /// is physically freed.
+    /// #3973: `prepare` failed only because dictation's engine held the executor.
+    package func isTemporary(_ error: any Error) -> Bool {
+      TranscribeCppPreviewRuntime.isTemporary(error)
+    }
+
+    package func beginRelease() async -> Task<Void, Never> {
+      await runtime.beginRelease()
+    }
   }
 }

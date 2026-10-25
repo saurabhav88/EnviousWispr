@@ -4,6 +4,9 @@
     python3 Tests/RuntimeUAT/meeting_uat.py crash --run-dir <dir>
     python3 Tests/RuntimeUAT/meeting_uat.py latency --run-dir <dir> [--takes 20]
     python3 Tests/RuntimeUAT/meeting_uat.py memory --run-dir <dir> [--minutes 10]
+    python3 Tests/RuntimeUAT/meeting_uat.py live --run-dir <dir> [--live-engine universal]
+    python3 Tests/RuntimeUAT/meeting_uat.py speechkill --run-dir <dir>
+    python3 Tests/RuntimeUAT/meeting_uat.py quit --run-dir <dir>
     python3 Tests/RuntimeUAT/meeting_uat.py --self-test
 
 Run every scenario with Bash `run_in_background: true` (the dictations hold the push-to-talk
@@ -33,6 +36,17 @@ the speakers, also on an error.
 - latency: `--takes` dictations with no meeting; `--takes` while a meeting records with live
   words proven active; `--takes` during a meeting's after-recording pass where the pass lasts.
   Median within +10 %, p90 within +20 % (R51); p95 reported. Missing takes: COULD NOT TELL.
+- live (#3973): live words through Apple speech (or `--live-engine universal`) progress on both
+  tracks; a dictation with live preview lands meanwhile; Stop gives the transcript and the live
+  words go; saved tracks cover the recording; speech-service RSS and app footprint every 5 s.
+- speechkill (#3973): SIGKILL Apple's `localspeechrecognition` mid-meeting (by executable path;
+  refused unless exactly one exists, re-verified just before the kill; it is the user session's
+  one service, so another app recognizing speech at that moment is interrupted too):
+  a track says live words stopped, the meeting keeps recording, Stop gives the transcript and
+  the saved tracks cover the recording.
+- quit (#3973): Quit (`NSRunningApplication.terminate`, the quit Cmd-Q sends, to the verified
+  PID) while live words run: the app exits, no crash report, and the
+  meeting is transcribed after relaunch.
 - memory: `footprint` peak of the app process sampled every 1 s over `--minutes` of
   dictation-only work, then the same with a meeting recording and live words proven active;
   at most 1.2 GB added (R51, R58). Under 90 % sample coverage in an arm: COULD NOT TELL.
@@ -158,16 +172,117 @@ def memory_verdict(baseline, during, expected_samples):
     return (EXIT_PASS if added <= 1.2 * 1024 ** 3 else EXIT_FAIL), detail
 
 
+CAPTURE_TRACKS = ("microphone", "callSound")
+
+
+def saved_audio_problems(record, recorded_seconds, tracks=CAPTURE_TRACKS):
+    """Every reason the saved audio does not cover the recording (#3973). Each expected track
+    must be present, captured, have frames, cover the recorded length and have no gaps; missing
+    or malformed data is a problem, never skipped."""
+    problems = []
+    duration = (record.get("durationMs") or 0) / 1000 if isinstance(record, dict) else 0
+    if duration <= 0:
+        problems.append(f"no recorded length ({record.get('durationMs') if isinstance(record, dict) else record})")
+    elif abs(duration - recorded_seconds) > 5:
+        problems.append(f"recorded {duration:.1f} s against {recorded_seconds:.1f} s wall clock")
+    saved = (record.get("tracks") if isinstance(record, dict) else None) or {}
+    for name in tracks:
+        track = saved.get(name)
+        if not isinstance(track, dict):
+            problems.append(f"{name}: missing")
+            continue
+        if track.get("status") != "captured":
+            problems.append(f"{name}: status {track.get('status')}")
+        frames = track.get("frames")
+        if not isinstance(frames, int) or frames <= 0:
+            problems.append(f"{name}: frames {frames}")
+        elif duration > 0 and abs(frames / 16000 - duration) > 3:
+            problems.append(f"{name}: {frames / 16000:.1f} s of {duration:.1f} s")
+        if track.get("gaps") != 0:
+            problems.append(f"{name}: gaps {track.get('gaps')}")
+    if isinstance(record, dict) and record.get("failureCode") in ("audio_damaged", "audio_unreadable"):
+        problems.append(f"failureCode {record.get('failureCode')}")
+    return problems
+
+
+def call_text_between(meeting, start_ms, end_ms):
+    """The call track's visible words in turns starting in [start_ms, end_ms]."""
+    transcript = meeting.get("transcript") or {}
+    # An explicitly empty list hides every turn; only an absent projection shows them all.
+    listed = (transcript.get("projection") or {}).get("visibleTurnIDs")
+    visible = None if listed is None else set(listed)
+    out = []
+    for turn in transcript.get("turns") or []:
+        start = turn.get("startMs")
+        if not (turn.get("speakerId") or "").startswith("sys:") or start is None:
+            continue
+        if visible is not None and turn.get("id") not in visible:
+            continue
+        if start_ms <= start <= end_ms:
+            out.append(turn.get("text") or "")
+    return " ".join(out)
+
+
+def phrase_heard(phrase, text, need=0.6):
+    """(heard, hits, content words): at least `need` of the phrase's distinct content words
+    (longer than three letters) appear in `text`."""
+    words = sorted({w for w in normalize(phrase) if len(w) > 3})
+    got = set(normalize(text))
+    hits = sum(1 for w in words if w in got)
+    return bool(words) and hits >= need * len(words), hits, len(words)
+
+
+PREVIEW_ENDED_RE = re.compile(r"LIVE_PREVIEW session ended, feeds=(\d+) shownChars=(\d+)")
+
+
+def preview_witness(log_text):
+    """(feeds, shown characters) of dictation's live preview sessions that ended in `log_text`
+    (LivePreviewCoordinator's own line), or None when none ended."""
+    found = [(int(a), int(b)) for a, b in PREVIEW_ENDED_RE.findall(log_text)]
+    if not found:
+        return None
+    return max(f for f, _ in found), max(c for _, c in found)
+
+
+def wait_preview_witness(start, read, seconds=20.0, every=1.0, clock=time.monotonic,
+                         sleep=time.sleep):
+    """Dictation's live preview witness for the take that began at `start`: `read(start)` returns
+    the app.log lines stamped since then across rotated files (`wispr_eyes.log_lines_since`).
+    The session's end line may follow the take's return, so this waits up to `seconds` for a
+    witness that showed words; it returns the last witness seen (possibly None)."""
+    deadline = clock() + seconds
+    witness = None
+    while True:
+        witness = preview_witness("\n".join(read(start)))
+        if (witness and witness[1] > 0) or clock() >= deadline:
+            return witness
+        sleep(every)  # deadline-fallback: the preview's teardown logs its line; nothing signals it
+
+
+def held_recording(killed_at, observed_at, still_recording, need=30.0):
+    """(passed, elapsed): the meeting was observed recording at least `need` seconds after the
+    kill. Both times on one monotonic clock."""
+    elapsed = observed_at - killed_at
+    return bool(still_recording) and elapsed >= need, round(elapsed, 1)
+
+
+# A sentence played only after the speech service is killed: never in the conversation.
+POST_KILL_SENTENCE = ("Seventeen purple lanterns arrived at the harbor museum before sunrise "
+                      "on Wednesday.")
+
+
 def call_track_text(meeting, window_end_ms=None):
     """The call track's visible words from a `meeting get --include-text` reply, only turns
     that start before `window_end_ms` when it is given."""
     transcript = meeting.get("transcript") or {}
-    visible = set((transcript.get("projection") or {}).get("visibleTurnIDs") or [])
+    # An explicitly empty list hides every turn; only an absent projection shows them all.
+    listed = (transcript.get("projection") or {}).get("visibleTurnIDs")
+    visible = None if listed is None else set(listed)
     lines, speakers = [], set()
     for turn in transcript.get("turns") or []:
         speaker = turn.get("speakerId") or ""
         # Track speaker prefixes: `mic:` and `sys:` (MeetingTrackKind.speakerPrefix).
-        if not speaker.startswith("sys:") or (visible and turn.get("id") not in visible):
+        if not speaker.startswith("sys:") or (visible is not None and turn.get("id") not in visible):
             continue
         start = turn.get("startMs")
         if window_end_ms is not None and (start is None or start > window_end_ms):
@@ -237,6 +352,96 @@ def meeting_get(meeting_id, include_text=False):
 
 def live_lines():
     return (door_ok("meeting", "live")["live"] or {}).get("lines") or []
+
+
+def live_state():
+    return door_ok("meeting", "live")["live"] or {}
+
+
+def track_text_lengths(live=None):
+    """{track: characters of its live words} (#3973: per track, so each track's progress shows)."""
+    live = live_state() if live is None else live
+    lengths = {"microphone": 0, "callSound": 0}
+    for line in live.get("lines") or []:
+        lengths[line.get("track")] = lengths.get(line.get("track"), 0) + len(line.get("text") or "")
+    return lengths
+
+
+def track_statuses(live=None):
+    live = live_state() if live is None else live
+    return {name: (state or {}).get("status") for name, state in (live.get("tracks") or {}).items()}
+
+
+SPEECH_SERVICE_RE = re.compile(r"^\s*(\d+) (/.*/localspeechrecognition)$")
+
+
+def speech_service_pids():
+    """Apple's speech service processes, by EXECUTABLE PATH (never a bare name)."""
+    out = subprocess.run(["ps", "-A", "-o", "pid=,comm="], capture_output=True, text=True).stdout
+    return [int(m.group(1)) for m in map(SPEECH_SERVICE_RE.match, out.splitlines()) if m]
+
+
+def the_speech_service(pids):
+    """The one speech-service PID to stop, or Setup naming every candidate. Never chooses
+    between several (tools-and-apps.md RULE: a-harness-that-ACTS-on-a-shared-resource-must-refuse-
+    not-choose)."""
+    if len(pids) != 1:
+        raise Setup(f"need exactly one localspeechrecognition process; found {pids}")
+    return pids[0]
+
+
+def still_the_speech_service(pid):
+    """Re-verified just before the kill: `pid` is still a localspeechrecognition executable."""
+    return pid in speech_service_pids()
+
+
+def rss_mb(pids):
+    if not pids:
+        return 0.0
+    out = subprocess.run(["ps", "-o", "rss=", "-p", ",".join(map(str, pids))],
+                         capture_output=True, text=True).stdout
+    return sum(int(v) for v in out.split() if v.isdigit()) / 1024
+
+
+class Sampler:
+    """Every 5 s while the meeting records (plan section 3a): Apple's speech service RSS and the
+    app's footprint. Coverage is reported, never assumed."""
+
+    def __init__(self, pid):
+        self.pid, self.rows, self.stop = pid, [], threading.Event()
+        self.thread = threading.Thread(target=self.run, daemon=True)
+
+    def run(self):
+        while not self.stop.is_set():
+            try:
+                app = footprint_bytes(self.pid)
+            except subprocess.TimeoutExpired:
+                app = None
+            self.rows.append({"t": time.monotonic(), "speech_mb": round(rss_mb(speech_service_pids()), 1),
+                              "app_mb": round(app / 1048576, 1) if app else None})
+            self.stop.wait(5.0)  # deadline-fallback: the 5 s sampling period, ended by stop
+
+    def __enter__(self):
+        self.thread.start()
+        return self
+
+    def __exit__(self, *exc):
+        self.stop.set()
+        self.thread.join()
+        return False
+
+    def summary(self):
+        speech = [r["speech_mb"] for r in self.rows if r["speech_mb"]]
+        app = [r["app_mb"] for r in self.rows if r["app_mb"]]
+        return {"samples": len(self.rows),
+                "speech_mb_first": speech[0] if speech else None,
+                "speech_mb_peak": max(speech) if speech else None,
+                "app_mb_first": app[0] if app else None, "app_mb_peak": max(app) if app else None}
+
+
+def live_text_length():
+    """Characters of live words so far (#3973: a streaming line grows, so lines need not)."""
+    return sum(len(line.get("text") or "") for line in live_lines())
 
 
 def meeting_folder(meeting_id):
@@ -384,9 +589,10 @@ def unsafe_exit(error, exit=os._exit):
         exit(EXIT_SETUP)
 
 
-def start_meeting(call_sound=True):
+def start_meeting(call_sound=True, live_engine=None):
+    extra = ["--live-engine", live_engine] if live_engine else []
     reply = door_ok("meeting", "start", "--entry-point", "menu",
-                    "--call-sound" if call_sound else "--no-call-sound")
+                    "--call-sound" if call_sound else "--no-call-sound", *extra)
     if reply.get("outcome") != "recording":
         raise Setup(f"meeting start did not record: {reply}")
     return reply["meetingID"]
@@ -521,6 +727,223 @@ def scenario_crash(run_dir, made, checks):
     c.check("it is marked as interrupted", bool(record) and record.get("wasInterrupted") is True)
 
 
+def wait_both_tracks_progress(label, seconds=120):
+    """Both tracks' live text grows between two reads at least 10 s apart."""
+    first = wait_for(f"{label}: live words on both tracks",
+                     lambda: (lambda n: n if n["microphone"] and n["callSound"] else None)(
+                         track_text_lengths()), seconds, 2.0)
+    if not first:
+        return None, track_text_lengths()
+    time.sleep(10)  # deadline-fallback: the progress window; the text is read again after it
+    later = wait_for(f"{label}: progress", lambda: (lambda n: n if n["microphone"] > first["microphone"]
+                     and n["callSound"] > first["callSound"] else None)(track_text_lengths()),
+                     seconds, 2.0)
+    return first, later or track_text_lengths()
+
+
+def check_saved_audio(c, meeting_id, recorded_seconds):
+    """Both captured tracks cover the recording, with frames and no gaps."""
+    record = meeting_get(meeting_id)["meeting"]
+    problems = saved_audio_problems(record, recorded_seconds)
+    c.check("the saved audio covers the recording on both tracks", not problems,
+            "; ".join(problems) or f"{(record.get('durationMs') or 0) / 1000:.1f} s, both tracks")
+    return record
+
+
+def isolated_dictation(c, players, audio, sentence):
+    """A push-to-talk dictation with dictation's live preview on, heard alone: the meeting's
+    playback stops first and resumes after. Checks the transcript against the spoken sentence,
+    the take gate's input and paste checks (`success`), and that the preview showed words."""
+    import wispr_eyes as w
+    preview = door_ok("settings", "get", "livePreviewEnabled")
+    for proc in list(players.procs):
+        players.stop(proc)
+    players.procs.clear()
+    import datetime
+    take_start = datetime.datetime.now().astimezone()
+    door_ok("settings", "set", "livePreviewEnabled", "true")
+    try:
+        result = w.record_tts(sentence, voice="echo", focus_app="TextEdit")
+    finally:
+        door_ok("settings", "set", "livePreviewEnabled", json.dumps(preview.get("value")))
+    players.loop(audio)
+    raw = result.get("raw_asr") or ""
+    score = wer(sentence, raw) if raw else 1.0
+    c.check("the dictation lands in the paste target during the meeting",
+            bool(result.get("success")), json.dumps({k: result.get(k) for k in ("success", "provider")}))
+    c.check("the dictation heard the spoken sentence", score <= 0.2, f"WER {score:.2f}: {raw[:120]}")
+    witness = wait_preview_witness(take_start, w.log_lines_since)
+    c.check("dictation's live preview showed words", bool(witness) and witness[1] > 0,
+            f"feeds, shownChars = {witness} (app.log since {take_start.isoformat()})")
+
+
+def scenario_live(run_dir, made, checks, engine):
+    """#3973: live words through the chosen engine on both tracks while the meeting records,
+    a dictation with its own live preview during it, then the normal transcript."""
+    import audio_rig
+    import wispr_eyes as w
+    c = checks
+    work = tempfile.mkdtemp(prefix="meeting-live-", dir=run_dir)
+    audio, _, _ = make_conversation(work)
+    with audio_rig.AudioRig(), Players() as players, Sampler(this_build_pid()) as sampler:
+        meeting_id = start_meeting(call_sound=True, live_engine="universal" if engine == "universal" else None)
+        started = time.monotonic()
+        made.append(meeting_id)
+        players.loop(audio)
+        want = "universal" if engine == "universal" else "apple"
+        chosen = wait_for("engine", lambda: live_state().get("engine"), 60, 1.0)
+        c.check("the live words use the expected engine", chosen == want, f"{chosen} (want {want})")
+        first, later = wait_both_tracks_progress("live")
+        c.check("live words appear on both tracks", bool(first), json.dumps(first or later))
+        c.check("both tracks' live text keeps growing", bool(first) and later["microphone"] >
+                first["microphone"] and later["callSound"] > first["callSound"],
+                f"{first} -> {later}")
+        c.check("every track is running", set(track_statuses().values()) == {"running"},
+                json.dumps(track_statuses()))
+        # A dictation with dictation's own live preview while the meeting records.
+        isolated_dictation(c, players, audio, DICTATIONS[0])
+        after = track_text_lengths()
+        time.sleep(15)  # deadline-fallback: live words after the dictation, read again after it
+        resumed = track_text_lengths()
+        c.check("call live words grow in the 15 s after the dictation",
+                resumed["callSound"] > after["callSound"],
+                f"{after} -> {resumed}")
+        players.stop_all()
+        recorded = time.monotonic() - started
+        ready = stop_and_wait_ready(meeting_id)
+    c.check("the transcript is ready after Stop", bool(ready) and ready["meeting"]["state"] == "ready",
+            (ready or {}).get("meeting", {}).get("state", "timed out"))
+    c.check("the live words are gone once the transcript is ready", not live_state(),
+            json.dumps(live_state())[:200])
+    if ready:
+        check_saved_audio(c, meeting_id, recorded)
+    checks.rows.append({"memory": sampler.summary()})
+    print(f"  memory: {json.dumps(sampler.summary())}")
+
+
+def scenario_speechkill(run_dir, made, checks):
+    """#3973: Apple's speech service dies mid-meeting. Live words stop; the recording, its saved
+    audio and the final transcript do not."""
+    import audio_rig
+    c = checks
+    work = tempfile.mkdtemp(prefix="meeting-kill-", dir=run_dir)
+    audio, _, _ = make_conversation(work)
+    with audio_rig.AudioRig(), Players() as players:
+        meeting_id = start_meeting(call_sound=True)
+        started = time.monotonic()
+        made.append(meeting_id)
+        players.loop(audio)
+        if wait_for("engine", lambda: live_state().get("engine"), 60, 1.0) != "apple":
+            raise Unsure(f"the meeting is not on Apple speech: {live_state().get('engine')}")
+        first, later = wait_both_tracks_progress("before the kill")
+        if not first:
+            raise Unsure(f"no live words on both tracks before the kill: {later}")
+        # One user-session service serves every app's Apple speech: stopping it also interrupts
+        # any other app recognizing speech right now (macOS restarts it on the next request).
+        pid = the_speech_service(speech_service_pids())
+        if not still_the_speech_service(pid):
+            raise Setup(f"localspeechrecognition {pid} changed before the kill")
+        os.kill(pid, signal.SIGKILL)
+        pids = [pid]
+        killed_at = time.monotonic()
+        print(f"  killed localspeechrecognition {pid}")
+        stopped = wait_for("a track stops", lambda: (lambda t: t if any(
+            (v or "").startswith("stopped") for v in t.values()) else None)(track_statuses()), 60, 1.0)
+        c.check("a live-words track says it stopped", bool(stopped), json.dumps(track_statuses()))
+        status = door_ok("meeting", "status")
+        c.check("the meeting keeps recording after the kill", status["phase"]["name"] == "recording",
+                status["phase"]["name"])
+        # A sentence never played before, alone, inside the continued recording.
+        for proc in list(players.procs):
+            players.stop(proc)
+        players.procs.clear()
+        clip = os.path.join(work, "post-kill.wav")
+        aiff = os.path.join(work, "post-kill.aiff")
+        subprocess.run(["say", "-v", CALL_VOICES["nova"], "-o", aiff, POST_KILL_SENTENCE],
+                       check=True, timeout=60)
+        subprocess.run(["afconvert", "-f", "WAVE", "-d", f"LEI16@{SAMPLE_RATE}", "-c", "1", aiff,
+                        clip], check=True, capture_output=True)
+        said_from_ms = int((time.monotonic() - started) * 1000)
+        player = players.play(clip)
+        players.finish(player)
+        c.check("the post-kill sentence played to the end", player.returncode == 0,
+                f"afplay exit {player.returncode}")
+        said_to_ms = int((time.monotonic() - started) * 1000)
+        # Observed, not assumed: wait until 30 s have passed since the kill, then read the phase.
+        remaining = 30 - (time.monotonic() - killed_at)
+        if remaining > 0:
+            time.sleep(remaining)  # deadline-fallback: the 30 s window after the kill is fixed
+        status = door_ok("meeting", "status")
+        held, elapsed = held_recording(killed_at, time.monotonic(),
+                                       status["phase"]["name"] == "recording")
+        c.check("the meeting is still recording at least 30 s after the kill", held,
+                f"{status['phase']['name']} {elapsed} s after the kill")
+        players.stop_all()
+        recorded = time.monotonic() - started
+        ready = stop_and_wait_ready(meeting_id)
+    c.check("the transcript is ready after Stop", bool(ready) and ready["meeting"]["state"] == "ready",
+            (ready or {}).get("meeting", {}).get("state", "timed out"))
+    if ready:
+        check_saved_audio(c, meeting_id, recorded)
+        # Turn times are on the meeting clock, which starts a little after `started`.
+        text = call_text_between(meeting_get(meeting_id, include_text=True),
+                                 said_from_ms - 5000, said_to_ms + 2000)
+        heard, hits, total = phrase_heard(POST_KILL_SENTENCE, text)
+        c.check("the sentence played after the kill is in the final transcript", heard,
+                f"{hits}/{total} content words in call turns {said_from_ms}-{said_to_ms} ms: {text[:160]}")
+    checks.rows.append({"killedAfterSeconds": round(killed_at - started, 1), "pids": pids})
+
+
+def crash_reports():
+    return set(glob.glob(os.path.expanduser("~/Library/Logs/DiagnosticReports/*EnviousWispr*")))
+
+
+def scenario_quit(run_dir, made, checks):
+    """#3973: the user quits while the meeting's live words run: the app exits without a crash
+    report, and the meeting is kept and transcribed after relaunch."""
+    import audio_rig
+    c = checks
+    work = tempfile.mkdtemp(prefix="meeting-quit-", dir=run_dir)
+    audio, _, _ = make_conversation(work)
+    before = crash_reports()
+    with audio_rig.AudioRig(), Players() as players:
+        meeting_id = start_meeting(call_sound=True)
+        made.append(meeting_id)
+        players.loop(audio)
+        first, _ = wait_both_tracks_progress("before quit")
+        c.check("live words run before the quit", bool(first))
+        pid = this_build_pid()
+        # The quit a user's Cmd-Q sends, to this exact process: never by bundle id, which every
+        # worktree's dev build shares (tools-and-apps.md RULE: dev-bundle-id-collision-across-worktrees).
+        import AppKit
+        app = AppKit.NSRunningApplication.runningApplicationWithProcessIdentifier_(pid)
+        if app is None or not (app.executableURL().path() or "").startswith(DEV_APP + "/"):
+            raise Setup(f"pid {pid} is no longer this worktree's dev app")
+        if not app.terminate():
+            raise Setup(f"the quit request to pid {pid} was not sent")
+        gone = wait_for("exit", lambda: not any(p == pid for p, _ in dev_pids()), 30, 0.5)
+        c.check("the app exits after Quit", bool(gone))
+        players.stop_all()
+        time.sleep(5)  # deadline-fallback: ReportCrash writes within seconds of an exit
+        new = sorted(crash_reports() - before)
+        c.check("no crash report within 5 s of the exit", not new, json.dumps(new))
+        # Relaunched inside the rig: its restore puts the app's own microphone back through the
+        # door, which needs the app running.
+        subprocess.run(["open", DEV_APP], check=True)
+        if not wait_for("relaunch", dev_pids, 60, 1.0):
+            raise Setup("the dev app did not relaunch")
+        if not wait_for("door", lambda: door("meeting", "status")[0] == 0, 60, 1.0):
+            raise Setup("the relaunched app's door did not open")
+
+    def kept():
+        reply = meeting_get(meeting_id)["meeting"]
+        return reply if reply["state"] == "ready" else None
+
+    record = wait_for("transcribed", kept, 600, 3.0)
+    c.check("the meeting is kept and transcribed after relaunch", bool(record),
+            (record or {}).get("state", "not ready"))
+
+
 def asr_seconds(sentence):
     import wispr_eyes as w
     result = w.record_tts(sentence, voice="echo", focus_app="TextEdit")
@@ -564,9 +987,9 @@ def scenario_latency(run_dir, made, checks, takes):
         meeting_id = start_meeting(call_sound=True)
         made.append(meeting_id)
         players.finish(players.play(audio))
-        preview = wait_for("live words", live_lines, 150, 5.0)
+        preview = wait_for("live words", live_text_length, 150, 5.0)
         recording = timed_takes(takes, sentence, players, audio)
-        preview_after = live_lines()
+        preview_after = live_text_length()
         door_ok("meeting", "stop", meeting_id)
         in_pass = wait_for("pass", lambda: door_ok("meeting", "status")["processing"], 60, 0.5)
         during_pass = timed_takes(
@@ -576,7 +999,7 @@ def scenario_latency(run_dir, made, checks, takes):
     if len(baseline) < takes:
         c.cannot_tell("the no-meeting baseline", f"{len(baseline)}/{takes} timed takes")
         return
-    if not preview or len(preview_after) <= len(preview):
+    if not preview or preview_after <= preview:
         c.cannot_tell("ASR time while a meeting records with live words",
                       "live words were not shown to be active through the takes")
     elif len(recording) < takes:
@@ -652,10 +1075,10 @@ def scenario_memory(run_dir, made, checks, minutes):
         def meeting_work():
             players.loop(audio)
             dictations()
-            previews.append(len(live_lines()))
+            previews.append(live_text_length())
 
         during = sampled_peak(pid, seconds, meeting_work)
-        previews.append(len(live_lines()))
+        previews.append(live_text_length())
         players.stop_all()
         door_ok("meeting", "stop", meeting_id)
     name = "a recording meeting with live words adds at most 1.2 GB"
@@ -700,6 +1123,12 @@ def run_scenario(args, delete=None):
             scenario_crash(args.run_dir, made, checks)
         elif args.scenario == "latency":
             scenario_latency(args.run_dir, made, checks, args.takes)
+        elif args.scenario == "live":
+            scenario_live(args.run_dir, made, checks, args.live_engine)
+        elif args.scenario == "speechkill":
+            scenario_speechkill(args.run_dir, made, checks)
+        elif args.scenario == "quit":
+            scenario_quit(args.run_dir, made, checks)
         else:
             scenario_memory(args.run_dir, made, checks, args.minutes)
     except (Setup, tg.SetupFailed, subprocess.SubprocessError, OSError) as error:
@@ -727,6 +1156,92 @@ def self_test():
             failures.append(name)
 
     expect("identical text has no errors", wer("Hello, World!", "hello world") == 0.0)
+    # #3973: saved audio, post-kill speech and the dictation witness.
+    good = {"durationMs": 60000, "failureCode": None, "tracks": {
+        "microphone": {"status": "captured", "frames": 960000, "gaps": 0},
+        "callSound": {"status": "captured", "frames": 958000, "gaps": 0}}}
+    expect("both full tracks pass", saved_audio_problems(good, 61) == [])
+    missing = {**good, "tracks": {"microphone": good["tracks"]["microphone"]}}
+    expect("a missing call track fails", saved_audio_problems(missing, 61) == ["callSound: missing"])
+    zero = {**good, "tracks": {**good["tracks"], "callSound": {"status": "captured", "frames": 0,
+                                                               "gaps": 0}}}
+    expect("a zero-frame track fails", any("frames 0" in p for p in saved_audio_problems(zero, 61)))
+    off = {**good, "tracks": {**good["tracks"], "callSound": {"status": "failed", "frames": 958000,
+                                                              "gaps": 0}}}
+    expect("an uncaptured track fails", any("status failed" in p for p in saved_audio_problems(off, 61)))
+    gappy = {**good, "tracks": {**good["tracks"], "microphone": {"status": "captured",
+                                                                  "frames": 960000, "gaps": 1}}}
+    expect("a gap fails", any("gaps 1" in p for p in saved_audio_problems(gappy, 61)))
+    expect("a short track fails", any("callSound:" in p for p in saved_audio_problems(
+        {**good, "tracks": {**good["tracks"], "callSound": {"status": "captured", "frames": 16000 * 50,
+                                                            "gaps": 0}}}, 61)))
+    expect("no length fails", saved_audio_problems({"tracks": good["tracks"]}, 61)[0].startswith("no recorded"))
+    expect("a malformed reply fails", saved_audio_problems({}, 61) != [])
+    turns = {"transcript": {"projection": {"visibleTurnIDs": ["a", "b", "c"]}, "turns": [
+        {"id": "a", "speakerId": "sys:1", "startMs": 10000, "text": "Good morning everyone."},
+        {"id": "b", "speakerId": "sys:2", "startMs": 90000, "text": POST_KILL_SENTENCE},
+        {"id": "c", "speakerId": "mic:1", "startMs": 90500, "text": "Seventeen purple lanterns"}]}}
+    heard, _, _ = phrase_heard(POST_KILL_SENTENCE, call_text_between(turns, 85000, 100000))
+    expect("the post-kill sentence in its window is heard", heard)
+    heard, _, _ = phrase_heard(POST_KILL_SENTENCE, call_text_between(turns, 0, 60000))
+    expect("pre-kill text alone does not count", not heard)
+    early = {"transcript": {"turns": [
+        {"id": "b", "speakerId": "sys:2", "startMs": 20000, "text": POST_KILL_SENTENCE}]}}
+    heard, _, _ = phrase_heard(POST_KILL_SENTENCE, call_text_between(early, 85000, 100000))
+    expect("the sentence before the kill window does not count", not heard)
+    hidden = {"transcript": {"projection": {"visibleTurnIDs": ["x"]}, "turns": [
+        {"id": "b", "speakerId": "sys:2", "startMs": 90000, "text": POST_KILL_SENTENCE}]}}
+    heard, _, _ = phrase_heard(POST_KILL_SENTENCE, call_text_between(hidden, 85000, 100000))
+    expect("a hidden turn does not count", not heard)
+    none_visible = {"transcript": {"projection": {"visibleTurnIDs": []}, "turns": [
+        {"id": "b", "speakerId": "sys:2", "startMs": 90000, "text": POST_KILL_SENTENCE}]}}
+    heard, _, _ = phrase_heard(POST_KILL_SENTENCE, call_text_between(none_visible, 85000, 100000))
+    expect("an empty visible list hides every turn", not heard)
+    no_projection = {"transcript": {"turns": [
+        {"id": "b", "speakerId": "sys:2", "startMs": 90000, "text": POST_KILL_SENTENCE}]}}
+    heard, _, _ = phrase_heard(POST_KILL_SENTENCE, call_text_between(no_projection, 85000, 100000))
+    expect("no projection shows every turn", heard)
+    expect("call_track_text: an empty visible list hides every turn",
+           call_track_text(none_visible)[0] == "")
+    expect("call_track_text: no projection shows every turn",
+           call_track_text(no_projection)[0] == POST_KILL_SENTENCE)
+    heard, _, _ = phrase_heard(POST_KILL_SENTENCE, "the call ended")
+    expect("unrelated text does not count", not heard)
+    expect("one speech service is the one to stop", the_speech_service([4242]) == 4242)
+    for candidates in ([], [1, 2]):
+        try:
+            the_speech_service(candidates)
+            refused = False
+        except Setup:
+            refused = True
+        expect(f"{len(candidates)} speech services refuse the kill", refused)
+    expect("a matching dictation passes", wer(DICTATIONS[0], DICTATIONS[0].lower()) <= 0.2)
+    expect("a mismatched dictation fails", wer(DICTATIONS[0], "Good morning everyone") > 0.2)
+    log = ("x LIVE_PREVIEW session ended, feeds=40 shownChars=52\n"
+           "y LIVE_PREVIEW session ended, feeds=3 shownChars=0\n")
+    expect("the preview witness reads its own line", preview_witness(log) == (40, 52))
+    # The witness reader: lines from rotated files arrive through `read`; a late line is waited for.
+    rotated = ["[2026-10-25T10:00:01Z] [INFO] [LivePreview] LIVE_PREVIEW session ended, feeds=12 shownChars=30"]
+    expect("a witness in a rotated file is read",
+           wait_preview_witness("t", lambda _: rotated, seconds=0) == (12, 30))
+    reads, now = [], [0.0]
+
+    def late(_start):
+        reads.append(1)
+        return rotated if len(reads) >= 3 else []
+
+    witness = wait_preview_witness("t", late, seconds=10, every=1.0, clock=lambda: now[0],
+                                   sleep=lambda d: now.__setitem__(0, now[0] + d))
+    expect("a late witness is waited for", witness == (12, 30) and len(reads) == 3)
+    witness = wait_preview_witness("t", lambda _: [], seconds=3, every=1.0, clock=lambda: now[0],
+                                   sleep=lambda d: now.__setitem__(0, now[0] + d))
+    expect("no witness by the deadline is None", witness is None)
+    expect("recording 31 s after the kill passes", held_recording(100.0, 131.0, True) == (True, 31.0))
+    expect("29 s after the kill fails", held_recording(100.0, 129.0, True)[0] is False)
+    expect("not recording fails", held_recording(100.0, 140.0, False)[0] is False)
+    expect("no preview line is no witness", preview_witness("LIVE_PREVIEW resolving") is None)
+    expect("a preview that showed nothing is not a witness",
+           preview_witness("LIVE_PREVIEW session ended, feeds=9 shownChars=0") == (9, 0))
     expect("one substitution in four words", wer("a b c d", "a x c d") == 0.25)
     expect("a deletion and an insertion", wer("a b c", "a c d") == 2 / 3)
     expect("an empty hypothesis is all errors", wer("a b", "") == 1.0)
@@ -916,7 +1431,9 @@ def self_test():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("scenario", nargs="?", choices=["feature", "crash", "latency", "memory"])
+    parser.add_argument("scenario", nargs="?", choices=[
+        "feature", "crash", "latency", "memory", "live", "speechkill", "quit"])
+    parser.add_argument("--live-engine", choices=["auto", "universal"], default="auto")
     parser.add_argument("--run-dir")
     parser.add_argument("--takes", type=int, default=20)
     parser.add_argument("--minutes", type=float, default=10.0)

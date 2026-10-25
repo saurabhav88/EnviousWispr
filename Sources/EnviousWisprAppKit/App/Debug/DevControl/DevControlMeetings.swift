@@ -1,5 +1,6 @@
 #if DEBUG
   import EnviousWisprCore
+  import EnviousWisprLivePreview
   import EnviousWisprPipeline
   import Foundation
 
@@ -52,8 +53,16 @@
     /// only; the saved setting is never changed. The explainer and the microphone prompt are
     /// never answered for the caller: `waitingForExplainer` means the page shows the explainer.
     func start(_ args: [String: Any]) async -> Result {
-      guard Set(args.keys).isSubset(of: ["entryPoint", "callSound"]) else {
-        return .failure(.badArgs, "meeting.start takes entryPoint and callSound only")
+      guard Set(args.keys).isSubset(of: ["entryPoint", "callSound", "liveEngine"]) else {
+        return .failure(.badArgs, "meeting.start takes entryPoint, callSound and liveEngine only")
+      }
+      // #3973: `universal` makes this one recording skip Apple speech (runtime UAT).
+      var forceUniversal = false
+      if let value = args["liveEngine"] {
+        guard let name = value as? String, ["auto", "universal"].contains(name) else {
+          return .failure(.badArgs, "liveEngine must be auto or universal")
+        }
+        forceUniversal = name == "universal"
       }
       guard let raw = args["entryPoint"] as? String,
         let entryPoint = MeetingEntryPoint(rawValue: raw)
@@ -67,10 +76,13 @@
         }
         callSound = flag
       }
-      guard let flow = sources.startFlow(), sources.coordinator() != nil else {
+      guard let flow = sources.startFlow(), let coordinator = sources.coordinator() else {
         return unwiredResult
       }
+      coordinator.liveWords?.debugForceUniversalNextRecording = forceUniversal
       let outcome = await flow.requestStart(from: entryPoint, captureCallSound: callSound)
+      // A start that never reached capture leaves nothing for a later meeting.
+      coordinator.liveWords?.debugForceUniversalNextRecording = false
       return .ok(Self.encode(outcome))
     }
 
@@ -494,18 +506,60 @@
       return .ok([
         "live": [
           "meetingID": live.meetingID.uuidString,
+          // #3973: the engine the recording's live words use (null before it is chosen, or
+          // once the recording ended).
+          "engine": coordinator.liveWords?.currentEngine.map { $0 == .apple ? "apple" : "universal" }
+            as Any? ?? NSNull(),
           "lines": live.lines.map { line -> [String: Any] in
             [
-              "id": line.id, "track": line.track.rawValue, "startMs": line.startMs,
-              "endMs": line.endMs, "text": line.text,
+              "id": line.id, "track": line.track.rawValue, "kind": Self.name(line.kind),
+              "startMs": line.startMs, "endMs": line.endMs, "text": line.text,
             ]
           },
-          "wordsUpToMs": live.wordsUpToMs as Any? ?? NSNull(),
-          "queued": live.queued, "skipped": live.skipped,
-          "waitingForDictation": live.waitingForDictation,
-          "waitingOnSummary": coordinator.liveWaitsOnSummary,
+          // #3973: each track's live-words state, by track name.
+          "tracks": Dictionary(
+            uniqueKeysWithValues: live.tracks.map { track, state -> (String, Any) in
+              (
+                track.rawValue,
+                ["status": Self.name(state.status), "droppedAudio": state.droppedAudio]
+                  as [String: Any]
+              )
+            }),
         ] as [String: Any]
       ])
+    }
+
+    static func name(_ kind: LiveWordsAssembler.Line.Kind) -> String {
+      switch kind {
+      case .confirmed: return "confirmed"
+      case .uncertain: return "uncertain"
+      case .provisional: return "provisional"
+      }
+    }
+
+    /// `running`, `starting`, `off:<reason>` or `stopped:<reason>`.
+    static func name(_ status: MeetingLiveWords.Status) -> String {
+      switch status {
+      case .starting: return "starting"
+      case .running: return "running"
+      case .off(let reason):
+        switch reason {
+        case .notCaptured: return "off:notCaptured"
+        case .universalNotDownloaded: return "off:universalNotDownloaded"
+        case .appleLanguageAndUniversalMissing: return "off:appleLanguageAndUniversalMissing"
+        case .previousStillClosing: return "off:previousStillClosing"
+        case .couldNotStart: return "off:couldNotStart"
+        case .unavailable: return "off:unavailable"
+        case .modelBeingRemoved: return "off:modelBeingRemoved"
+        }
+      case .stopped(let reason):
+        switch reason {
+        case .engineFailed: return "stopped:engineFailed"
+        case .restartTimedOut: return "stopped:restartTimedOut"
+        case .restartFailed: return "stopped:restartFailed"
+        case .modelRemoved: return "stopped:modelRemoved"
+        }
+      }
     }
 
     static func name(_ state: MeetingDocumentsOwner.LoadState) -> String {

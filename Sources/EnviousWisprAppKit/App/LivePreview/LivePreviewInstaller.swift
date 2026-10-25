@@ -129,20 +129,9 @@ enum LivePreviewInstaller {
       coordinator?.releaseForEngineChange()
     }
 
-    // #2123: removing the model must free the DISK, and an unlinked file that is
-    // still mapped frees nothing. So the limb drops its loaded engine before the
-    // files are deleted, not after. Same teardown as an engine switch — the
-    // engine is going away either way — and weak for the same reason.
-    modelDelivery.drainPreviewHoldersBeforeRemoval = { [weak coordinator] in
-      await coordinator?.releaseAndDrainForRemoval()
-      // #3735: the executor, not ARC, owns a transcribe.cpp model. Dropping the last
-      // holder starts its free; the free drains any running native work first, so wait
-      // for it to finish before the file is deleted.
-      await TranscribeCppPreviewResidency.shared.waitUntilNoneLoaded()
-    }
-    modelDelivery.previewRemovalDidFinish = { [weak coordinator] in
-      coordinator?.endRemovalSuppression()
-    }
+    // #2123/#3973: removal's hooks are composed in `WisprBootstrapper` with the
+    // meeting's live words (`PreviewModelRemoval`), so both holders drain before
+    // the one residency wait and the delete.
     return LivePreviewInstallation(coordinator: coordinator, bridge: bridge)
   }
 

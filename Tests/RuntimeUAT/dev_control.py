@@ -431,6 +431,7 @@ def build_parser():
     call_sound.add_argument("--call-sound", dest="call_sound", action="store_const", const=True)
     call_sound.add_argument("--no-call-sound", dest="call_sound", action="store_const",
                             const=False)
+    meeting_start.add_argument("--live-engine", choices=["auto", "universal"])
     meeting.add_parser("status")
     meeting.add_parser("list").add_argument("--limit", type=int)
     meeting_get = meeting.add_parser("get")
@@ -547,6 +548,8 @@ def route(args):
         wire = {"entryPoint": args.entry_point}
         if args.call_sound is not None:
             wire["callSound"] = args.call_sound
+        if args.live_engine is not None:
+            wire["liveEngine"] = args.live_engine
         return "meeting.start", wire, True
     if key == ("meeting", "status"):
         return "meeting.status", None, False

@@ -65,6 +65,8 @@ enum SettingsDefaultValues {
   static let meetingCallAppsOff = ""
   static let meetingCallNoCounts = ""
   static let meetingCallFirstTipShown = false
+  /// #3973 (decision 16): EnviousMeet's own language, Auto (detect) until the user picks one.
+  static let meetingLanguageMode: LanguageMode = .auto
   static let hotkeyEnabled = true
 
   static let vadAutoStop = false

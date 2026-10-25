@@ -4598,28 +4598,6 @@
         }
       }
     },
-    "Catching up: %@ recorded stretches are waiting." : {
-      "comment" : "History, a recording meeting: how many closed stretches of recorded audio (each up to a minute) wait to become live words. Never 1.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Holt auf: %@ aufgenommene Abschnitte warten."
-          }
-        }
-      }
-    },
-    "Catching up: 1 recorded stretch is waiting." : {
-      "comment" : "History, a recording meeting: one closed stretch of recorded audio (up to a minute) waits to become live words.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Holt auf: 1 aufgenommener Abschnitt wartet."
-          }
-        }
-      }
-    },
     "Category" : {
       "comment" : "Edit word sheet: section label for the word's category.",
       "localizations" : {
@@ -7452,6 +7430,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Audiodaten jeder Aufnahme bleiben gespeichert, bis du sie löschst. Lösche nur die Audioaufnahme, um das Transkript zu behalten."
+          }
+        }
+      }
+    },
+    "Echo is hidden in the full transcript." : {
+      "comment" : "History, a stopped meeting: repeated call lines are hidden only in the final transcript.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Im vollständigen Transkript wird Echo ausgeblendet."
           }
         }
       }
@@ -10924,13 +10913,123 @@
         }
       }
     },
-    "Live words, usually about a minute behind." : {
+    "Live words are not available for this meeting." : {
+      "comment" : "History, a recording meeting: live words could not start.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für dieses Meeting ist kein Live-Transkript verfügbar."
+          }
+        }
+      }
+    },
+    "Live words are off for this meeting while the last one finishes closing." : {
+      "comment" : "History, a recording meeting: the previous meeting's live words are still closing.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Live-Transkript ist für dieses Meeting deaktiviert, während das vorherige Meeting noch abgeschlossen wird."
+          }
+        }
+      }
+    },
+    "Live words from the recording. The full transcript replaces them when it is ready." : {
+      "comment" : "History, a stopped meeting: the live words kept until its transcript is ready.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live-Transkript der Aufnahme. Das vollständige Transkript ersetzt es, sobald es fertig ist."
+          }
+        }
+      }
+    },
+    "Live words need Apple's %@ language or the Universal engine. Download either in Dictation Settings, Live Preview." : {
+      "comment" : "History, a recording meeting: no live words until a language or the Universal engine is downloaded. The placeholder is a language name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für das Live-Transkript wird die Sprache „%@“ von Apple oder die Engine „Universal“ benötigt. Lade eine davon unter „Live-Vorschau“ in den Diktateinstellungen herunter."
+          }
+        }
+      }
+    },
+    "Live words need the Universal engine. Download it in Dictation Settings, Live Preview." : {
+      "comment" : "History, a recording meeting: no live words on this Mac until the Universal engine is downloaded.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für das Live-Transkript wird die Engine „Universal“ benötigt. Lade sie unter „Live-Vorschau“ in den Diktateinstellungen herunter."
+          }
+        }
+      }
+    },
+    "Live words stopped for %@ before the recording ended." : {
+      "comment" : "History, a stopped meeting: one track's live words stopped early; the placeholder is You or Call.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live-Transkript („%@“) vor dem Ende der Aufnahme gestoppt."
+          }
+        }
+      }
+    },
+    "Live words stopped for %@. The recording continues." : {
+      "comment" : "History, a recording meeting: one track's live words stopped; the placeholder is You or Call.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live-Transkript („%@“) gestoppt. Die Aufnahme läuft weiter."
+          }
+        }
+      }
+    },
+    "Live words stopped while the Universal engine is being removed." : {
+      "comment" : "History, a recording meeting: live words stopped because the Universal engine is being removed in Dictation Settings.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Live-Transkript wurde gestoppt, während die Engine „Universal“ entfernt wird."
+          }
+        }
+      }
+    },
+    "Live words stopped while the Universal engine was being removed." : {
+      "comment" : "History, a stopped meeting: live words stopped because the Universal engine was being removed in Dictation Settings.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Live-Transkript wurde gestoppt, während die Engine „Universal“ entfernt wurde."
+          }
+        }
+      }
+    },
+    "Live words were not available for this meeting." : {
+      "comment" : "History, a stopped meeting: live words did not run for it.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für dieses Meeting war kein Live-Transkript verfügbar."
+          }
+        }
+      }
+    },
+    "Live words, as people speak. The full transcript comes after the meeting." : {
       "comment" : "History, a recording meeting: what the live words are.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Live-Transkript, meist etwa eine Minute verzögert."
+            "value" : "Live-Transkript, während gesprochen wird. Das vollständige Transkript folgt nach dem Meeting."
           }
         }
       }
@@ -12403,6 +12502,17 @@
         }
       }
     },
+    "No live words were heard." : {
+      "comment" : "History, a stopped meeting: the live words had no lines.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Im Live-Transkript wurden keine Wörter erkannt."
+          }
+        }
+      }
+    },
     "No match for \"%@\"" : {
       "comment" : "Quick Add panel: line above the list. %@ is the bounded misheard text; use this language's quotation marks.",
       "localizations" : {
@@ -12687,6 +12797,17 @@
         }
       }
     },
+    "No words yet." : {
+      "comment" : "History, a recording meeting: no live words have been heard yet.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch kein Text."
+          }
+        }
+      }
+    },
     "No words yet. Add one with the button above." : {
       "comment" : "Your Words: empty word list.",
       "localizations" : {
@@ -12694,17 +12815,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Noch keine Wörter. Füge mit der Schaltfläche oben eines hinzu."
-          }
-        }
-      }
-    },
-    "No words yet. The first minute shows when it has been recorded." : {
-      "comment" : "History, a recording meeting: no live words have been decoded yet.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Noch kein Text. Die erste Minute erscheint, sobald sie aufgenommen wurde."
           }
         }
       }
@@ -17734,13 +17844,13 @@
         }
       }
     },
-    "Some stretches were skipped here. The full transcript comes after the meeting." : {
-      "comment" : "History, a recording meeting: some recorded minutes were not shown as live words.",
+    "Some live words were skipped. The full transcript comes after the meeting." : {
+      "comment" : "History, a meeting: some audio did not reach the live words.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hier wurden einige Abschnitte übersprungen. Das vollständige Transkript folgt nach dem Meeting."
+            "value" : "Im Live-Transkript fehlen einige Wörter. Das vollständige Transkript folgt nach dem Meeting."
           }
         }
       }
@@ -21913,17 +22023,6 @@
         }
       }
     },
-    "Waiting for a meeting summary to finish." : {
-      "comment" : "History, a recording meeting: live words pause while a summary is written on this Mac.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Warten, bis eine Meeting-Zusammenfassung fertig ist."
-          }
-        }
-      }
-    },
     "Waiting for free disk space. Free up space, then choose Transcribe again." : {
       "comment" : "History, a meeting: the transcript waits because the Mac is almost full.",
       "localizations" : {
@@ -21942,17 +22041,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Warten, bis dein Diktat und andere Meeting-Aufgaben abgeschlossen sind."
-          }
-        }
-      }
-    },
-    "Waiting for your dictation to finish." : {
-      "comment" : "History, a recording meeting: live words pause while the user dictates.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wartet, bis dein Diktat beendet ist."
           }
         }
       }
@@ -22499,17 +22587,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wörter zum Importieren"
-          }
-        }
-      }
-    },
-    "Words up to %@." : {
-      "comment" : "History, a recording meeting: the live words reach this point of the meeting, like 12:04.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Transkript bis %@."
           }
         }
       }
