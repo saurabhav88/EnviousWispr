@@ -192,54 +192,71 @@ struct TranscriptCoordinatorTests {
 
   // MARK: - Merge algorithm (race guard)
 
-  @Test("load during a concurrent append merges both rows")
-  func testLoadDuringAppendMergesCorrectly() async throws {
-    let dir = Self.makeTempDir()
-    defer { Self.cleanup(dir) }
-    let diskOnly = Self.makeTranscript(text: "disk")
-    try Self.writeToDisk([diskOnly], in: dir)
-    let store = TranscriptStore(directory: dir)
-    let coordinator = TranscriptCoordinator(store: store)
+  // Save and append after the disk snapshot returns, before reconciliation. The snapshot
+  // is certified but predates these writes, so their newer revision must preserve them. An
+  // append before `load()` starts is not this race: its file is already on disk (`append`'s
+  // precondition), so a complete read that lacks it means the file was deleted (#4075 G9).
+  #if DEBUG
+    @Test("load during a concurrent append merges both rows")
+    func testLoadDuringAppendMergesCorrectly() async throws {
+      let dir = Self.makeTempDir()
+      defer { Self.cleanup(dir) }
+      let diskOnly = Self.makeTranscript(text: "disk")
+      try Self.writeToDisk([diskOnly], in: dir)
+      let store = TranscriptStore(directory: dir)
+      let coordinator = TranscriptCoordinator(store: store)
 
-    // Simulate the race: an append arrives before load() finishes.
-    let newRow = Self.makeTranscript(text: "appended")
-    coordinator.append(newRow)
-    coordinator.load()
-    await coordinator.waitForLoadForTesting()
+      let newRow = Self.makeTranscript(text: "appended")
+      coordinator.historyReadDidFinishForTesting = { read in
+        coordinator.historyReadDidFinishForTesting = nil
+        #expect(read.freshness != nil)
+        try store.save(newRow)
+        coordinator.append(newRow)
+      }
+      coordinator.load()
+      await coordinator.waitForLoadForTesting()
 
-    let ids = coordinator.visibleTranscripts.map(\.id)
-    #expect(ids.count == 2)
-    #expect(ids.contains(newRow.id))
-    #expect(ids.contains(diskOnly.id))
-    // In-memory row must come before disk rows to preserve newest-first
-    // under the append-order contract.
-    #expect(ids.first == newRow.id)
-  }
+      let ids = coordinator.visibleTranscripts.map(\.id)
+      #expect(ids.count == 2)
+      #expect(ids.contains(newRow.id))
+      #expect(ids.contains(diskOnly.id))
+      // In-memory row must come before disk rows to preserve newest-first
+      // under the append-order contract.
+      #expect(ids.first == newRow.id)
+    }
 
-  @Test("load during multiple appends preserves append-order at the front")
-  func testLoadDuringMultipleAppendsPreservesNewestFirstOrder() async throws {
-    let dir = Self.makeTempDir()
-    defer { Self.cleanup(dir) }
-    let diskRow = Self.makeTranscript(text: "disk")
-    try Self.writeToDisk([diskRow], in: dir)
-    let store = TranscriptStore(directory: dir)
-    let coordinator = TranscriptCoordinator(store: store)
+    @Test("load during multiple appends preserves append-order at the front")
+    func testLoadDuringMultipleAppendsPreservesNewestFirstOrder() async throws {
+      let dir = Self.makeTempDir()
+      defer { Self.cleanup(dir) }
+      let diskRow = Self.makeTranscript(text: "disk")
+      try Self.writeToDisk([diskRow], in: dir)
+      let store = TranscriptStore(directory: dir)
+      let coordinator = TranscriptCoordinator(store: store)
 
-    // Three rapid appends, all before load finishes.
-    let r1 = Self.makeTranscript(text: "r1")
-    let r2 = Self.makeTranscript(text: "r2")
-    let r3 = Self.makeTranscript(text: "r3")
-    coordinator.append(r1)
-    coordinator.append(r2)
-    coordinator.append(r3)
-    coordinator.load()
-    await coordinator.waitForLoadForTesting()
+      // Three persisted appends after the snapshot, before reconciliation.
+      let r1 = Self.makeTranscript(text: "r1")
+      let r2 = Self.makeTranscript(text: "r2")
+      let r3 = Self.makeTranscript(text: "r3")
+      coordinator.historyReadDidFinishForTesting = { read in
+        coordinator.historyReadDidFinishForTesting = nil
+        #expect(read.freshness != nil)
+        try store.save(r1)
+        coordinator.append(r1)
+        try store.save(r2)
+        coordinator.append(r2)
+        try store.save(r3)
+        coordinator.append(r3)
+      }
+      coordinator.load()
+      await coordinator.waitForLoadForTesting()
 
-    // Pre-merge in-memory order was [r3, r2, r1] (each append inserts at 0).
-    // After merge: in-memory rows first (order preserved), then disk row.
-    let ids = coordinator.visibleTranscripts.map(\.id)
-    #expect(ids == [r3.id, r2.id, r1.id, diskRow.id])
-  }
+      // Pre-merge in-memory order was [r3, r2, r1] (each append inserts at 0).
+      // After merge: in-memory rows first (order preserved), then disk row.
+      let ids = coordinator.visibleTranscripts.map(\.id)
+      #expect(ids == [r3.id, r2.id, r1.id, diskRow.id])
+    }
+  #endif
 
   // MARK: - Delete routing (consumer matrix row)
 
