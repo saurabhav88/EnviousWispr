@@ -23,6 +23,39 @@ final class LastDictationAction {
 
   enum Action: String, CaseIterable { case paste, copy }
   enum Source: String, CaseIterable { case menu, chord }
+  /// Where a paste was aimed (#3437): the front application, or a keyboard-focus owner that is not
+  /// front (a launcher panel such as Raycast's). Logged, not sent as telemetry.
+  enum Route: String, CaseIterable { case front, owner }
+
+  /// The keyboard-focus owner sampled at the chord press (#3437): the application and the exact
+  /// focused element, so the write can confirm the same field, not only the same process.
+  struct KeyboardOwnerSnapshot {
+    let application: NSRunningApplication
+    let element: AXUIElement
+  }
+
+  /// What a Paste was aimed at when its gesture began.
+  enum ChordTarget {
+    /// The front application (nil when none could be read).
+    case front(NSRunningApplication?)
+    /// A different application holding the keyboard focus, which a post at the session tap would
+    /// never reach (#3437, measured with Raycast's panel).
+    case focusOwner(KeyboardOwnerSnapshot)
+
+    var application: NSRunningApplication? {
+      switch self {
+      case .front(let application): application
+      case .focusOwner(let snapshot): snapshot.application
+      }
+    }
+
+    var route: Route {
+      switch self {
+      case .front: .front
+      case .focusOwner: .owner
+      }
+    }
+  }
 
   /// The closed outcome vocabulary of `dictation.last_reused`. `dispatched` means Cmd+V was POSTED,
   /// not that the text landed: nothing observes landing here. `copied` means the write succeeded.
@@ -57,6 +90,9 @@ final class LastDictationAction {
     var isDictationActive: @MainActor () -> Bool
     var isAccessibilityTrusted: @MainActor () -> Bool
     var frontmost: @MainActor () -> NSRunningApplication?
+    /// The application and element holding the system keyboard focus, when it is an eligible
+    /// application (#3437). One bounded Accessibility read per call; nil when unreadable.
+    var keyboardOwner: @MainActor () -> KeyboardOwnerSnapshot?
     var isTerminated: @MainActor (NSRunningApplication) -> Bool
     /// Whether an application is this app. Asked as a question, not by comparing a pid here,
     /// because `NSRunningApplication.current` has no pid outside a launched app bundle.
@@ -77,9 +113,15 @@ final class LastDictationAction {
     var manualPaste:
       @MainActor (_ text: String, _ restore: Bool, _ markTransient: Bool) ->
         ClipboardCleanup.ManualClipboardResult
+    /// `manualPaste` with Cmd+V posted at one process (#3437), for a keyboard owner that is not
+    /// front; the same clipboard transaction, restore and transient-marker contracts.
+    var manualPasteAtProcess:
+      @MainActor (_ text: String, _ restore: Bool, _ markTransient: Bool, _ pid: pid_t) ->
+        ClipboardCleanup.ManualClipboardResult
     var manualCopy: @MainActor (_ text: String) -> ClipboardCleanup.ManualClipboardResult
     var openPermissions: @MainActor () -> Void
-    var report: @MainActor (Action, Source, Outcome) -> Void
+    /// The route is the paste's own (nil for Copy), captured when its gesture began.
+    var report: @MainActor (Action, Source, Outcome, Route?) -> Void
     var sleep: @MainActor (Duration) async -> Void
     /// A monotonic reading. The waits end when THIS says the deadline passed, not after a count of
     /// sleeps: a loaded main actor makes each sleep longer than asked.
@@ -94,9 +136,10 @@ final class LastDictationAction {
 
   private let environment: Environment
 
-  /// The application frontmost when the Paste chord went DOWN. Taken on the press because the paste
-  /// fires on the release; consumed by that release.
-  private var chordTarget: NSRunningApplication?
+  /// What the Paste chord was aimed at when it went DOWN: the front application, or a keyboard
+  /// owner that is not front (#3437). Taken on the press because the paste fires on the release;
+  /// consumed by that release.
+  private var chordTarget: ChordTarget?
 
   /// The Copy Last still waiting for the clipboard, if any (#3135). Any newer reuse cancels it, a
   /// Copy at its press and a Paste immediately before its write: the latest action wins, so an older
@@ -115,9 +158,19 @@ final class LastDictationAction {
 
   // MARK: Entry points
 
-  /// The Paste Last chord went down. Samples the target now, before anything can move focus.
+  /// The Paste Last chord went down. Samples the target now, before anything can move focus: the
+  /// front application, and the keyboard owner (#3437). A different eligible application holding
+  /// the keyboard (a launcher panel over the front app) becomes the target; otherwise the front app.
   func notePasteChordPressed() {
-    chordTarget = environment.frontmost()
+    let front = environment.frontmost()
+    if let owner = environment.keyboardOwner(), !environment.isTerminated(owner.application),
+      !environment.isOwnApplication(owner.application),
+      owner.application.processIdentifier != front?.processIdentifier
+    {
+      chordTarget = .focusOwner(owner)
+    } else {
+      chordTarget = .front(front)
+    }
   }
 
   /// The Paste Last chord was released. SYNCHRONOUS on the release turn: the press-time target and
@@ -126,7 +179,7 @@ final class LastDictationAction {
   /// caller (a test) wait for this one invocation.
   @discardableResult
   func pasteFromChord() -> Task<Void, Never> {
-    let target = chordTarget
+    let target = chordTarget ?? .front(nil)
     chordTarget = nil
     let rowID = environment.lastPasteable()?.id
     let copiesAtPress = copyPresses
@@ -142,7 +195,7 @@ final class LastDictationAction {
   func pasteFromMenu(rowID: UUID?, target: NSRunningApplication?) -> Task<Void, Never> {
     let copiesAtPress = copyPresses
     return Task {
-      await paste(rowID: rowID, target: target, source: .menu, copiesAtPress: copiesAtPress)
+      await paste(rowID: rowID, target: .front(target), source: .menu, copiesAtPress: copiesAtPress)
     }
   }
 
@@ -155,7 +208,8 @@ final class LastDictationAction {
     copyPresses += 1
     pendingCopy?.cancel()
     let task = Task {
-      finish(.copy, .chord, await copy(rowID: rowID, recordingAtPress: recordingAtPress))
+      finish(
+        .copy, .chord, await copy(rowID: rowID, recordingAtPress: recordingAtPress), route: nil)
     }
     pendingCopy = task
     return task
@@ -183,17 +237,19 @@ final class LastDictationAction {
   // MARK: Paste
 
   private func paste(
-    rowID: UUID?, target: NSRunningApplication?, source: Source, copiesAtPress: Int
+    rowID: UUID?, target chordTarget: ChordTarget, source: Source, copiesAtPress: Int
   ) async {
     finish(
       .paste, source,
-      await pasteOutcome(rowID: rowID, target: target, source: source, copiesAtPress: copiesAtPress)
-    )
+      await pasteOutcome(
+        rowID: rowID, chordTarget: chordTarget, source: source, copiesAtPress: copiesAtPress),
+      route: chordTarget.route)
   }
 
   private func pasteOutcome(
-    rowID: UUID?, target: NSRunningApplication?, source: Source, copiesAtPress: Int
+    rowID: UUID?, chordTarget: ChordTarget, source: Source, copiesAtPress: Int
   ) async -> Outcome {
+    let target = chordTarget.application
     // Checked before anything is resolved: a recording in flight owns the clipboard's next write.
     guard !environment.isDictationActive() else { return .recording }
     // Before Accessibility: with nothing to paste, the truthful answer is that, not a permission.
@@ -224,23 +280,39 @@ final class LastDictationAction {
     // visible side effect of its own.
     if let refusal = recheck(rowID: rowID, target: target, source: source) { return refusal }
 
-    // Usually still in front (a chord pressed in place; a status-bar menu does not activate us).
-    // When it is not, bring it back and wait for that to be observed.
-    if !isFrontmost(target) {
-      _ = environment.activate(target)
-      switch await DeadlinePoll.wait(
-        within: Self.activationDeadline, every: Self.pollInterval, now: environment.now,
-        sleep: environment.sleep, { self.isFrontmost(target) })
-      {
-      case .met: break
-      case .expired: return environment.isTerminated(target) ? .targetGone : .focusLost
-      case .cancelled: return .cancelled
+    switch chordTarget {
+    case .front:
+      // Usually still in front (a chord pressed in place; a status-bar menu does not activate us).
+      // When it is not, bring it back and wait for that to be observed.
+      if !isFrontmost(target) {
+        _ = environment.activate(target)
+        switch await DeadlinePoll.wait(
+          within: Self.activationDeadline, every: Self.pollInterval, now: environment.now,
+          sleep: environment.sleep, { self.isFrontmost(target) })
+        {
+        case .met: break
+        case .expired: return environment.isTerminated(target) ? .targetGone : .focusLost
+        case .cancelled: return .cancelled
+        }
       }
-    }
 
-    // And again after the activation wait, the last await before the write.
-    if let refusal = recheck(rowID: rowID, target: target, source: source) { return refusal }
-    guard isFrontmost(target) else { return .focusLost }
+      // And again after the activation wait, the last await before the write.
+      if let refusal = recheck(rowID: rowID, target: target, source: source) { return refusal }
+      guard isFrontmost(target) else { return .focusLost }
+    case .focusOwner(let snapshot):
+      // A keyboard owner is never activated: activating it would move the focus the paste is for.
+      // Its confirmation is the last Accessibility query, saved before the common rechecks so a
+      // read that failed because the owner quit or the permission went reports that, not focus_lost.
+      let confirmation = environment.keyboardOwner()
+      if let refusal = recheck(rowID: rowID, target: target, source: source) { return refusal }
+      if Task.isCancelled { return .cancelled }
+      // The same process AND the same focused field: a panel that moved its focus to another of its
+      // fields, or closed, must not receive this paste, and nothing falls back to the front app.
+      guard let confirmation,
+        confirmation.application.processIdentifier == snapshot.application.processIdentifier,
+        CFEqual(confirmation.element, snapshot.element)
+      else { return .focusLost }
+    }
     guard let text = environment.textForReuse(rowID) else { return .noDictation }
     // Read AGAIN immediately before the write: the activation wait above can take up to 500 ms, and
     // a Control or Command pressed during it would ride into the synthetic Cmd+V (final review,
@@ -252,9 +324,17 @@ final class LastDictationAction {
     // replace the text this paste is about to put there.
     guard copyPresses == copiesAtPress else { return .cancelled }
     pendingCopy?.cancel()
-    switch environment.manualPaste(
-      text, environment.restoreClipboard(), environment.markTransient())
-    {
+    let result: ClipboardCleanup.ManualClipboardResult
+    switch chordTarget {
+    case .front:
+      result = environment.manualPaste(
+        text, environment.restoreClipboard(), environment.markTransient())
+    case .focusOwner:
+      result = environment.manualPasteAtProcess(
+        text, environment.restoreClipboard(), environment.markTransient(),
+        target.processIdentifier)
+    }
+    switch result {
     case .dispatched: return .dispatched
     case .dispatchFailed: return .dispatchFailed
     case .clipboardBusy: return .clipboardBusy
@@ -305,8 +385,8 @@ final class LastDictationAction {
     environment.frontmost()?.processIdentifier == application.processIdentifier
   }
 
-  private func finish(_ action: Action, _ source: Source, _ outcome: Outcome) {
-    environment.report(action, source, outcome)
+  private func finish(_ action: Action, _ source: Source, _ outcome: Outcome, route: Route?) {
+    environment.report(action, source, outcome, route)
   }
 }
 
@@ -332,6 +412,17 @@ extension LastDictationAction {
         },
         isAccessibilityTrusted: { AXIsProcessTrusted() },
         frontmost: { NSWorkspace.shared.frontmostApplication },
+        keyboardOwner: {
+          guard
+            case .focused(let element, let pid) = PasteService.readKeyboardFocus(
+              cap: PasteService.keyboardFocusReadCapSeconds, admit: nil),
+            let application = NSRunningApplication(processIdentifier: pid),
+            PasteService.isEligibleFocusOwner(
+              activationPolicy: application.activationPolicy,
+              isTerminated: application.isTerminated)
+          else { return nil }
+          return KeyboardOwnerSnapshot(application: application, element: element)
+        },
         isTerminated: { $0.isTerminated },
         isOwnApplication: { $0.processIdentifier == ProcessInfo.processInfo.processIdentifier },
         // The AX route first, as Escape Recovery does: macOS 14+ refuses a background process the
@@ -363,15 +454,21 @@ extension LastDictationAction {
               PasteService.postPasteKeystroke(keyCode: SyntheticCopyChord.commandVKeyCode())
             })
         },
+        manualPasteAtProcess: { text, restore, markTransient, pid in
+          ClipboardCleanup.manualPaste(
+            text: text, restore: restore, markTransient: markTransient, on: .general,
+            dispatch: { SyntheticCopyChord.postCommandV(at: pid) })
+        },
         manualCopy: { ClipboardCleanup.manualCopy(text: $0, on: .general) },
         openPermissions: openPermissions,
-        report: { action, source, outcome in
+        report: { action, source, outcome, route in
           TelemetryService.shared.lastDictationReused(
             action: action.rawValue, source: source.rawValue, outcome: outcome.rawValue)
+          let routeField = route.map { " route=\($0.rawValue)" } ?? ""
           Task {
             await AppLogger.shared.log(
               "last dictation reuse: action=\(action.rawValue) source=\(source.rawValue) "
-                + "outcome=\(outcome.rawValue)",
+                + "outcome=\(outcome.rawValue)\(routeField)",
               level: .info, category: "LastDictation")
           }
         },

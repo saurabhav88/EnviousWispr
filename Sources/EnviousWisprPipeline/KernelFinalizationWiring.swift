@@ -221,15 +221,6 @@ final class KernelSessionContext {
     case unreadable
   }
 
-  /// Whether a focus owner other than the front app may become the paste target (#3423): a running
-  /// regular or accessory application. A prohibited-policy process (a helper, an XPC or service
-  /// host) never does, nor a terminated one.
-  nonisolated static func isEligibleOwner(
-    activationPolicy: NSApplication.ActivationPolicy, isTerminated: Bool
-  ) -> Bool {
-    !isTerminated && (activationPolicy == .regular || activationPolicy == .accessory)
-  }
-
   /// This recording's `FocusOwnerState`; nil before the first record start.
   var focusOwnerState: FocusOwnerState?
 
@@ -258,7 +249,7 @@ final class KernelSessionContext {
       NSRunningApplication(processIdentifier: $0)
     },
     isEligibleOwner: (NSRunningApplication) -> Bool = {
-      KernelSessionContext.isEligibleOwner(
+      PasteService.isEligibleFocusOwner(
         activationPolicy: $0.activationPolicy, isTerminated: $0.isTerminated)
     },
     ownPID: pid_t = ProcessInfo.processInfo.processIdentifier
@@ -349,7 +340,6 @@ struct KernelFinalizationWiring {
       now: hooks.now)
   }
 
-
   // MARK: Wedge-detection tuning (PR-4 §3.6)
 
   /// Logical-tick granularity. Parakeet load-progress ticks arrive far slower
@@ -362,8 +352,9 @@ struct KernelFinalizationWiring {
   /// conversion to the kernel's tick unit (3.0 s / 0.1 s = 30 ticks). Both the
   /// kernel initializer default and the factory read it, so no literal exists.
   static var deadAirAdvisoryMinimumTicks: Int {
-    Int((RawAudioDeadAirClassifier.AdvisoryBar.minimumDurationSeconds / tickDurationSeconds)
-      .rounded())
+    Int(
+      (RawAudioDeadAirClassifier.AdvisoryBar.minimumDurationSeconds / tickDurationSeconds)
+        .rounded())
   }
 
   /// Wedge window in ticks: `10 x 100 ms = 1.0 s`. Above `LoadProgressWatcher`'s
@@ -427,9 +418,11 @@ struct KernelFinalizationWiring {
     // Caret reader seam. Production reads the live focused field, and supplies
     // the per-delivery terminal budget so a terminal read is bounded by the same
     // cumulative allowance as its later revalidation.
-    readCaretContext: @escaping @MainActor (
-      AXUIElement, TerminalResolutionBudget, ((TerminalContextRefusal) -> Void)?
-    ) -> PasteService.CaretContext? = KernelFinalizationWiring.InsertionSeams.live.readCaretContext,
+    readCaretContext:
+      @escaping @MainActor (
+        AXUIElement, TerminalResolutionBudget, ((TerminalContextRefusal) -> Void)?
+      ) -> PasteService.CaretContext? = KernelFinalizationWiring.InsertionSeams.live
+      .readCaretContext,
     // #1980 delivery-time retry seam. Production queries the target app's OWN
     // focused element directly, scoped to its pid by construction, so it can
     // never resolve to a different app than the one the user was dictating
@@ -494,13 +487,14 @@ struct KernelFinalizationWiring {
     // A test injects a blocking resolver to drive the REAL deadline into its two
     // reachable timeout orders. Without this the only way to reach them would be
     // to time work against the 100 ms boundary, which is a clock race.
-    resolveLanguage: @escaping @Sendable (
-      _ lockedLanguage: String?,
-      _ engineDetectsLanguage: Bool,
-      _ engineReportedLanguage: String?,
-      _ text: String,
-      _ surroundingText: String
-    ) -> DictationLanguageResolver.Resolution =
+    resolveLanguage:
+      @escaping @Sendable (
+        _ lockedLanguage: String?,
+        _ engineDetectsLanguage: Bool,
+        _ engineReportedLanguage: String?,
+        _ text: String,
+        _ surroundingText: String
+      ) -> DictationLanguageResolver.Resolution =
       KernelFinalizationWiring.InsertionSeams.live.resolveLanguage,
     pasteCompletionRegistry: PasteCompletionRegistry?,
     // #900 clock seam — defaults to today's live expression, so production
@@ -1005,7 +999,8 @@ struct KernelFinalizationWiring {
             recordedWindow: context.targetWindow, capturedFieldWindow: context.targetFieldWindow,
             takeID: deliveryTakeID,
             restoreClipboardAfterPaste: config?.restoreClipboardAfterPaste ?? false,
-            keepDictationsOutOfClipboardHistory: config?.keepDictationsOutOfClipboardHistory ?? false,
+            keepDictationsOutOfClipboardHistory: config?.keepDictationsOutOfClipboardHistory
+              ?? false,
             origin: .dictation))
         pasteResult = result
 
@@ -1403,25 +1398,27 @@ struct KernelFinalizationWiring {
     // Teaching the repair to treat a resolved expansion as an opaque region is filed as
     // the follow-up.
     let repairContext: CursorInsertionRepair.CaretText? =
-      snippetFired ? nil : caretContext.map {
-      CursorInsertionRepair.CaretText(
-        left: $0.leftWindow, right: $0.rightWindow,
-        // Read, not derived. This was `leftWindow.utf16.count ==
-        // selectionLocation`, which is exact for a real caret and vacuous
-        // for a terminal — both values come from the same string there, so
-        // EVERY screen-derived context claimed to reach the start, wrapped
-        // ones included. Each source now states the fact it alone knows.
-        leftReachesDocumentStart: $0.leftReachesDocumentStart,
-        // The narrow policy fact the repair needs. A screen-derived line is
-        // ONE rendered row, so a payload carrying a line break is refused
-        // rather than reasoned about — in a terminal a newline can submit
-        // the command.
-        isScreenDerived: $0.isScreenDerived,
-        // #2258: a space anywhere in a browser's address bar blocks
-        // pressing Enter to navigate. Services already did the AX work;
-        // this is the same policy-fact-only handoff as `isScreenDerived`.
-        isURLBarField: $0.isBrowserAddressBar)
-    }
+      snippetFired
+      ? nil
+      : caretContext.map {
+        CursorInsertionRepair.CaretText(
+          left: $0.leftWindow, right: $0.rightWindow,
+          // Read, not derived. This was `leftWindow.utf16.count ==
+          // selectionLocation`, which is exact for a real caret and vacuous
+          // for a terminal — both values come from the same string there, so
+          // EVERY screen-derived context claimed to reach the start, wrapped
+          // ones included. Each source now states the fact it alone knows.
+          leftReachesDocumentStart: $0.leftReachesDocumentStart,
+          // The narrow policy fact the repair needs. A screen-derived line is
+          // ONE rendered row, so a payload carrying a line break is refused
+          // rather than reasoned about — in a terminal a newline can submit
+          // the command.
+          isScreenDerived: $0.isScreenDerived,
+          // #2258: a space anywhere in a browser's address bar blocks
+          // pressing Enter to navigate. Services already did the AX work;
+          // this is the same policy-fact-only handoff as `isScreenDerived`.
+          isURLBarField: $0.isBrowserAddressBar)
+      }
 
     // The caret windows we already read. A short mid-sentence continuation
     // cannot always be identified on its own, and that is exactly the

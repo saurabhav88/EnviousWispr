@@ -1180,7 +1180,7 @@ internal final class PasteCascadeExecutor {
           // session tap with the layout's "v" key (#3437).
           let poster: @MainActor () -> Bool
           if let pid = Self.keystrokeProcess(ownerPath: gate.ownerPath, app: app) {
-            poster = { Self.postPasteChord(at: pid) }
+            poster = { SyntheticCopyChord.postCommandV(at: pid) }
           } else {
             poster = {
               PasteService.postPasteKeystroke(keyCode: SyntheticCopyChord.commandVKeyCode())
@@ -1891,16 +1891,6 @@ internal final class PasteCascadeExecutor {
   /// the front path keeps the session tap unchanged.
   static func keystrokeProcess(ownerPath: Bool, app: NSRunningApplication) -> pid_t? {
     ownerPath ? app.processIdentifier : nil
-  }
-
-  /// Command+V at one process, bracketed by `flagsChanged` events so Command is never left latched
-  /// (`SyntheticCopyChord`). The key is the one that means "v" under Command on the active layout,
-  /// so a Dvorak user's panel gets Paste and never another shortcut; an unreadable layout posts
-  /// nothing (the creation-failure path). True when posted; posted is not delivered, and the
-  /// landing check judges the outcome.
-  static func postPasteChord(at pid: pid_t) -> Bool {
-    guard let key = SyntheticCopyChord.keyCode(for: "v") else { return false }
-    return SyntheticCopyChord.post(at: pid, copyKeyCode: key) != .notPosted
   }
 
   static func appFrontRefusal(_ activity: DestinationActivity, ownerPathOnly: Bool) -> String? {
