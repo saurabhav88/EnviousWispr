@@ -41,6 +41,8 @@ public final class SettingsManager {
     /// #4012 D6: how many times the user answered No, per app, and whether the first tip showed.
     case meetingCallNoCounts
     case meetingCallFirstTipShown
+    /// #3973 (decision 16): the language EnviousMeet transcribes in; its own, never dictation's.
+    case meetingLanguageMode
     case hotkeyEnabled
     case vadAutoStop
     case vadSilenceTimeout
@@ -141,7 +143,7 @@ public final class SettingsManager {
   public nonisolated static let unifiedDefaultsKeys: [String] = [
     "selectedBackend", "recordingMode", "llmProvider", "lastLLMProvider", "llmModel", "ollamaModel",
     "s1MiniStyling", "s1MiniStructure", "s1MiniContext",
-    "autoCopyToClipboard", "meetingCaptureCallSound", "meetingCallSoundExplained", "meetingWriteSummary", "meetingOnboardingComplete", "meetingUseCalendarForNames", "meetingCallDetection", "meetingCallAppsOff", "meetingCallNoCounts", "meetingCallFirstTipShown", "hotkeyEnabled", "vadAutoStop", "vadSilenceTimeout",
+    "autoCopyToClipboard", "meetingCaptureCallSound", "meetingCallSoundExplained", "meetingWriteSummary", "meetingOnboardingComplete", "meetingUseCalendarForNames", "meetingCallDetection", "meetingCallAppsOff", "meetingCallNoCounts", "meetingCallFirstTipShown", "meetingLanguageMode", "hotkeyEnabled", "vadAutoStop", "vadSilenceTimeout",
     "vadSensitivity", "vadEnergyGate", "onboardingState", "hasCompletedOnboarding",
     "cancelKeyCode", "cancelModifiersRaw", "toggleKeyCode", "toggleModifiersRaw",
     "quickAddKeyCode", "quickAddModifiersRaw",
@@ -165,6 +167,23 @@ public final class SettingsManager {
     WhatsNewConstants.lastSeenVersionDefaultsKey,
     globeGuidanceClaimKey,
   ]
+
+  /// A stored language choice as it may be used: a supported locked code, lowercased, or Auto
+  /// for anything empty, unknown or case-variant, so a stale or bogus persisted value cannot
+  /// lock the user into a non-existent language. Shared by `languageMode` and
+  /// `meetingLanguageMode`.
+  nonisolated static func validatedLanguageMode(_ mode: LanguageMode) -> LanguageMode {
+    switch mode {
+    case .auto:
+      return .auto
+    case .locked(let code):
+      let normalized = code.lowercased()
+      guard !normalized.isEmpty, LanguageTypes.isSupported(normalized) else {
+        return .auto
+      }
+      return .locked(normalized)
+    }
+  }
 
   // MARK: - Globe key guidance (#1987)
 
@@ -577,6 +596,21 @@ public final class SettingsManager {
     didSet {
       defaults.set(meetingCallFirstTipShown, forKey: "meetingCallFirstTipShown")
       onChange?(.meetingCallFirstTipShown)
+    }
+  }
+
+  /// #3973 (decision 16): the language EnviousMeet transcribes a meeting in, Auto by default.
+  /// The meeting's own setting: never read from, migrated from or written with dictation's
+  /// `languageMode`, `whisperKitLanguage` or `englishSpelling`. Persisted in `languageMode`'s
+  /// shape; an absent, undecodable or unsupported value loads as Auto. A meeting freezes it at
+  /// start. No Settings row yet (it arrives with the Models tab, PR 2), so the Settings Map has
+  /// no place for it.
+  public var meetingLanguageMode: LanguageMode {
+    didSet {
+      if let data = try? JSONEncoder().encode(meetingLanguageMode) {
+        defaults.set(data, forKey: "meetingLanguageMode")
+      }
+      onChange?(.meetingLanguageMode)
     }
   }
 
@@ -1445,6 +1479,11 @@ public final class SettingsManager {
     meetingCallFirstTipShown =
       defaults.object(forKey: "meetingCallFirstTipShown") as? Bool
       ?? SettingsDefaultValues.meetingCallFirstTipShown
+    // #3973: its own key only, validated like `languageMode`; nothing is written on load.
+    meetingLanguageMode =
+      defaults.data(forKey: "meetingLanguageMode")
+      .flatMap { try? JSONDecoder().decode(LanguageMode.self, from: $0) }
+      .map(Self.validatedLanguageMode) ?? SettingsDefaultValues.meetingLanguageMode
     hotkeyEnabled = SettingsDefaultValues.hotkeyEnabled  // toggle removed; always enabled
     vadAutoStop =
       defaults.object(forKey: "vadAutoStop") as? Bool ?? SettingsDefaultValues.vadAutoStop
@@ -1592,22 +1631,10 @@ public final class SettingsManager {
     // codes fall back to .auto so a stale or bogus persisted value cannot
     // lock the user into a non-existent language.
     let resolvedLanguageMode: LanguageMode = {
-      let validate: (LanguageMode) -> LanguageMode = { mode in
-        switch mode {
-        case .auto:
-          return .auto
-        case .locked(let code):
-          let normalized = code.lowercased()
-          guard !normalized.isEmpty, LanguageTypes.isSupported(normalized) else {
-            return .auto
-          }
-          return .locked(normalized)
-        }
-      }
       if let data = defaults.data(forKey: "languageMode"),
         let decoded = try? JSONDecoder().decode(LanguageMode.self, from: data)
       {
-        return validate(decoded)
+        return Self.validatedLanguageMode(decoded)
       }
       let legacy = (defaults.string(forKey: "whisperKitLanguage") ?? "en").lowercased()
       let migrated: LanguageMode

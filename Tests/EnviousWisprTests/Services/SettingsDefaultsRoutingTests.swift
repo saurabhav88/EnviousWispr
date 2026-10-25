@@ -66,6 +66,8 @@ struct SettingsDefaultsRoutingTests {
     #expect(settings.showInDock == true)
     // #3441: the menu bar update alert stays on by default.
     #expect(settings.showMenuBarUpdateAlert == true)
+    // #3973: EnviousMeet's own language detects until the user picks one.
+    #expect(settings.meetingLanguageMode == .auto)
   }
 
   @Test("the Ollama default and the Core fallback cannot drift apart")

@@ -165,6 +165,9 @@ enum SettingsProjection {
     case .meetingCallDetection, .meetingCallAppsOff, .meetingCallNoCounts,
       .meetingCallFirstTipShown:
       return []
+    // #3973: no settings delta in PR 1 (no screen writes it yet); its Language row arrives with
+    // PR 2, which decides its telemetry.
+    case .meetingLanguageMode: return []
     case .hotkeyEnabled: return [.hotkeyEnabled]
     case .vadAutoStop: return [.vadAutoStop]
     case .vadSilenceTimeout: return [.vadSilenceTimeout]
