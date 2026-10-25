@@ -776,6 +776,7 @@ final class FileImportCoordinator {
   /// Starts a fresh raw prerequisite for the run that begins at `generationAtStart`.
   private func beginRawPrerequisite(generationAtStart: Int) {
     rawPrerequisite = (generationAtStart, .notAttempted)
+    requiredWriteFailedGeneration = nil
   }
 
   /// How one raw gate ended for the run that asked.
@@ -1584,6 +1585,13 @@ final class FileImportCoordinator {
 
   var isSettlingRunPersistence: Bool { persistenceSettlingGeneration == generation }
 
+  /// #4075 S1: the generation whose own required History write (its speaker write or its
+  /// cleaned update) failed. `DebugImportDoor` reports such a run as not saved even when the
+  /// words on screen are, because the run did not persist everything it claims.
+  private var requiredWriteFailedGeneration: Int?
+
+  var runRequiredWriteFailed: Bool { requiredWriteFailedGeneration == generation }
+
   /// Puts the retained cleanup back when it belongs to this document and these turns.
   /// Returns false, changing nothing, when there is none to keep.
   ///
@@ -1701,28 +1709,31 @@ final class FileImportCoordinator {
     // An ordinary source (a run or a retry) stops submitting once it is stopped, replaced or
     // cancelled; a settlement passes its own `stillOwned` and always finishes.
     let generationAtWrite = generation
-    await writeSpeakerFields(
+    let written = await writeSpeakerFields(
       historyID: historyID, result: result, parts: parts, cleanupOutcome: cleanupOutcome,
       stillOwned: { [self] in
         generation == generationAtWrite && self.historyID == historyID && !Task.isCancelled
       })
+    if !written, generation == generationAtWrite { requiredWriteFailedGeneration = generationAtWrite }
   }
 
   /// #4075 S1: the same write from inputs captured by its caller, so a Stop's settlement
   /// writes the document it stopped even after another file replaced it.
+  /// Returns false only when the write was sent and failed.
+  @discardableResult
   private func writeSpeakerFields(
     historyID: UUID, result: SpeakerStepResult, parts: [Part],
     cleanupOutcome: TelemetryService.FileImportTurnsOutcome,
     stillOwned: @escaping @MainActor () -> Bool
-  ) async {
+  ) async -> Bool {
     let passStart = CFAbsoluteTimeGetCurrent()
     guard let turns = result.turns else {
-      await mergeAndReport(
+      let written = await mergeAndReport(
         historyID: historyID, analysis: result.analysis, turns: nil,
         outcome: result.terminalOutcome, turnCount: nil, fallbackTurnCount: 0, passStart: passStart,
         stillOwned: stillOwned)
       if self.historyID == historyID { releaseRetryInputsIfNoLongerRetryable() }
-      return
+      return written
     }
     // Only a completed cleanup writes cleaned words. A Stop or a refused polisher writes the
     // turns raw and disclosed (second-pass review: a partial write would disagree with the
@@ -1731,7 +1742,7 @@ final class FileImportCoordinator {
     let final = FileImportDocumentMath.finalTurns(
       turns, parts: completed ? parts : [], cleanupCompleted: completed)
     let disclosed = final.filter { !$0.wasPolished }.count
-    await mergeAndReport(
+    let written = await mergeAndReport(
       historyID: historyID, analysis: result.analysis, turns: final, outcome: cleanupOutcome,
       turnCount: final.count, fallbackTurnCount: disclosed, passStart: passStart,
       stillOwned: stillOwned)
@@ -1739,6 +1750,7 @@ final class FileImportCoordinator {
     // test-row read): before this write the row has no analysis and the audio would be kept.
     // #4075 S1: only for the document this write was for; another file's inputs are its own.
     if self.historyID == historyID { releaseRetryInputsIfNoLongerRetryable() }
+    return written
   }
 
   /// Retained PCM for a possible "Try again" (#2811 §3 Design "retained retry state"
@@ -2842,9 +2854,9 @@ final class FileImportCoordinator {
     historyID: UUID, analysis: TranscriptSpeakerAnalysis, turns: [Turn]?,
     outcome: TelemetryService.FileImportTurnsOutcome?, turnCount: Int?, fallbackTurnCount: Int,
     passStart: CFAbsoluteTime, stillOwned: @escaping @MainActor () -> Bool
-  ) async {
+  ) async -> Bool {
     // #4075 S1: an ordinary source that was stopped, replaced or cancelled sends nothing new.
-    guard stillOwned() else { return }
+    guard stillOwned() else { return true }
     let saveFailed: Bool
     let rowDeleted: Bool
     do {
@@ -2879,17 +2891,18 @@ final class FileImportCoordinator {
     }
     let reportedOutcome: TelemetryService.FileImportTurnsOutcome? =
       saveFailed ? .saveFailed : (rowDeleted ? .rowDeleted : outcome)
-    guard let reportedOutcome else { return }
+    guard let reportedOutcome else { return !saveFailed }
     let emitted = turnsTelemetryEmittedFor != historyID
     await AppLogger.shared.log(
       "[TurnStorage] outcome=\(reportedOutcome.rawValue) turns=\(turnCount ?? 0) fallback=\(fallbackTurnCount) emitted=\(emitted) ms=\(Self.elapsedMs(since: passStart))",
       level: .info, category: "FileImportCoordinator")
-    guard emitted else { return }
+    guard emitted else { return !saveFailed }
     // #4075 S1: the dedupe mark belongs to the document on screen; a settlement finishing
     // for a replaced document reports its outcome without claiming the new one's mark.
     if self.historyID == historyID { turnsTelemetryEmittedFor = historyID }
     emitTurnTelemetry(
       reportedOutcome, reportedOutcome == .stored ? turnCount : nil, fallbackTurnCount)
+    return !saveFailed
   }
 
   /// Ends the physical hold and wakes whatever deferred itself because of it.
@@ -3208,7 +3221,10 @@ final class FileImportCoordinator {
       savedHistoryRow = polished
       if generation == generationAtWrite { historySaveFailure = nil }
     case .failure(let error):
-      if generation == generationAtWrite { historySaveFailure = String(describing: error) }
+      if generation == generationAtWrite {
+        historySaveFailure = String(describing: error)
+        requiredWriteFailedGeneration = generationAtWrite
+      }
     }
   }
 

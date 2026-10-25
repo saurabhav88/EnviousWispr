@@ -528,7 +528,7 @@
     func claimedReplyWaitsForTheLastWrite() async throws {
       struct WriteError: Error {}
       // (polisher starts, the held write fails)
-      for (polisherStarts, fails) in [(true, false), (true, true), (false, false)] {
+      for (polisherStarts, fails) in [(true, false), (true, true), (false, false), (false, true)] {
         let sink = ReplySink()
         let saved = SavedRows()
         let gate = ManualGate()
@@ -569,6 +569,8 @@
             #expect(reply["saved"] == (fails ? "false" : "true"))
           } else {
             #expect(reply["history"] != nil)
+            // A refused cleanup's required write is the speaker write; a failed one reads false.
+            #expect(reply["saved"] == (fails ? "false" : "true"))
           }
         } catch {
           await gate.open()

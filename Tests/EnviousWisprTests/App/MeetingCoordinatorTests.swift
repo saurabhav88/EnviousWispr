@@ -295,6 +295,20 @@ struct MeetingCoordinatorTests {
       try store.prepareRoot()
     }
 
+    /// #4075 S1: a harness on a COPY of another harness's meeting files, for a relaunch that
+    /// must not share files with the run it recovers from.
+    init(copying source: URL) throws {
+      root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("MeetingCoordinatorTests-\(UUID().uuidString)", isDirectory: true)
+      try FileManager.default.copyItem(at: source, to: root)
+      store = MeetingStore(root: root)
+      try store.prepareRoot()
+    }
+
+    /// #4075 S1: when set, the History save also goes through this real History coordinator's
+    /// durable write, after `saveGate` and `saveError`.
+    var history: TranscriptCoordinator?
+
     /// The closures hold the harness strongly on purpose: a pass still draining after a test's
     /// last assertion must never read a freed harness. One harness per test, never reused.
     func dependencies() -> MeetingCoordinator.Dependencies {
@@ -335,6 +349,7 @@ struct MeetingCoordinatorTests {
           }
           await saveGate?.wait()
           if let saveError { throw saveError }
+          if let history { try await history.saveAndShowDurably(transcript) }
           saved.append(transcript)
         },
         removeTranscriptRow: { [self] id in
@@ -1362,6 +1377,88 @@ struct MeetingCoordinatorTests {
     await deletion.value
     #expect(harness.removedRows == [record.transcriptID])
     #expect(FileManager.default.fileExists(atPath: harness.store.folder(for: record.id).path) == false)
+  }
+
+  #if DEBUG
+  /// #4075 S1: quit while the meeting's durable History commit is held at the real History
+  /// boundary. Ready is not written; the audio and the processing checkpoint stay. A launch on
+  /// a COPY of those files finishes the meeting, and the original run's held write, released
+  /// afterwards, changes nothing in the copy.
+  @Test("quit during an unacknowledged History commit leaves the meeting for the next launch to finish")
+  func quitDuringHistoryCommitRecoversAtLaunch() async throws {
+    let harness = try Harness()
+    let historyDir = FileManager.default.temporaryDirectory
+      .appendingPathComponent("ew-4075-meeting-history-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: historyDir) }
+    let history = TranscriptCoordinator(store: TranscriptStore(directory: historyDir))
+    harness.history = history
+    let entered = DispatchSemaphore(value: 0)
+    let release = DispatchSemaphore(value: 0)
+    defer { release.signal() }
+    let released = OSAllocatedUnfairLock<Bool?>(initialState: nil)
+    history.durableWriteWillStartForTesting = {
+      entered.signal()
+      // deadline-fallback: bound a missing release; a timeout fails the test below
+      let outcome = release.wait(timeout: .now() + 10)
+      released.withLock { $0 = outcome == .success }
+    }
+    harness.jobBehavior = { access in
+      try await #require(access).save(Self.checkpoint(try #require(access).meetingID))
+      return Self.result()
+    }
+    let coordinator = harness.coordinator
+    await coordinator.start(from: .history)
+    let record = try onlyMeeting(harness)
+    await coordinator.stop()
+    // MainActor must stay free here; this blocking waiter runs independently. Task inherits
+    // MainActor, a task group does not offload blocking work, and an @concurrent helper is
+    // unnecessary for one wait.
+    try #require(
+      await Task.detached { Self.waitBlocking(entered) == .success }.value,
+      "the durable History write never started")
+    coordinator.prepareForTermination()
+    let onDisk = try harness.store.load(id: record.id)
+    #expect(onDisk.state != .ready, "Ready was written before History acknowledged the row")
+    #expect(try harness.store.segmentFiles(meeting: record.id).isEmpty == false, "the audio went")
+    #expect(
+      FileManager.default.fileExists(atPath: harness.checkpointURL(record.id).path),
+      "the processing checkpoint went")
+    #expect(harness.saved.isEmpty)
+
+    // The next launch, on a copy of the files as quit left them.
+    let recovered = try Harness(copying: harness.root)
+    let relaunched = recovered.coordinator
+    relaunched.launch()
+    await Self.eventually("ready after launch") { relaunched.record(id: record.id)?.state == .ready }
+    #expect(recovered.saved.map(\.meetingID) == [record.id])
+
+    // The original run's write now finishes in its own History; the copy is untouched.
+    release.signal()
+    try #require(
+      await settleUntilObserved { history.hasRow(id: record.transcriptID) },
+      "the original durable write never settled")
+    #expect(released.withLock { $0 } == true, "the held write was released by its timeout")
+    #expect(recovered.saved.map(\.meetingID) == [record.id], "the original run wrote into the copy")
+    #expect(try recovered.store.load(id: record.id).state == .ready)
+  }
+  #endif
+
+  /// #4075 S1: an orphan delete whose awaited row removal fails says so, and the same delete
+  /// succeeds once the removal can.
+  @Test("an orphan delete reports a failed row removal, and succeeds once it can")
+  func orphanDeleteRevalidatesAndReportsFailure() async throws {
+    struct RowRemovalFailed: Error {}
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    coordinator.launch()
+    let orphan = UUID()
+    harness.meetingRows[orphan] = [UUID()]
+    harness.removeError = RowRemovalFailed()
+    #expect(await coordinator.deleteOrphan(meetingID: orphan) == false)
+    #expect(harness.removedRows.isEmpty)
+    harness.removeError = nil
+    #expect(await coordinator.deleteOrphan(meetingID: orphan))
+    #expect(harness.removedRows.count == 1)
   }
 
   @Test("the relaunch predicate counts recovery reads and checkpoint writes, not queued work")

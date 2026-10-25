@@ -5,6 +5,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
+@testable import EnviousWisprStorage
 
 /// #2772 finding 11 — imports reach History, and the RAW words get there first.
 ///
@@ -487,6 +488,89 @@ struct FileImportHistoryTests {
     try #require(await settleUntil { c.state == .finished }, "Clean it again never finished")
     #expect(spy.inserts == 2)
     #expect(c.historyRowWasDeleted == false)
+  }
+
+  /// #4075 S1: the importer wired to the REAL History coordinator, the way WisprBootstrapper
+  /// wires it, on a temporary store. The raw save, the cleaned update and the speaker write go
+  /// through History's queue and storage worker; the fresh store is the oracle.
+  private static func coordinatorOnRealHistory(
+    _ history: TranscriptCoordinator, onSpeakerStep: (@MainActor () async -> Void)? = nil
+  ) -> FileImportCoordinator {
+    FileImportCoordinator(
+      decode: { _ in Self.decoded() },
+      transcribe: { _, _, _ in
+        ASRResult(
+          text: "um one two three", language: "en", duration: 0, processingTime: 0,
+          backendType: .parakeet)
+      },
+      speakerLabeler: { _, _ in
+        await onSpeakerStep?()
+        return .failed(.modelsUnavailable)
+      },
+      engineAdmission: .live(lease: EngineLease(), as: .fileImport),
+      beginRun: {
+        FileImportCoordinator.RunConfiguration(
+          polishIsCloud: false, localPolishProvider: nil, polishProvider: .egOne,
+          ollamaModel: nil, polishModel: "eg-1", backendType: .parakeet)
+      },
+      saveToHistory: { try await history.saveAndShow($0) },
+      updateHistoryRow: { try await history.updateExistingRow($0) },
+      mergeSpeakerFields: { id, analysis, turns in
+        try await history.mergeSpeakerFields(id: id, analysis: analysis, turns: turns)
+      },
+      writeExplicitRename: { id, analysis, turns, rename in
+        try await history.mergeSpeakerFields(
+          id: id, analysis: analysis, turns: turns, explicitRename: rename)
+      },
+      currentHistoryRow: { history.currentRow(id: $0) },
+      historyRowExists: { history.hasRow(id: $0) },
+      processParts: serialFileImportTestProcessor { _, _ in
+        FileImportRunner.PartOutcome(text: "One two three.", polishedText: "One two three.")
+      })
+  }
+
+  @Test("through the real History, an import lands raw then cleaned, and a deletion mid-run stands")
+  func importThroughTheRealHistory() async throws {
+    let dir = FileManager.default.temporaryDirectory
+      .appendingPathComponent("ew-4075-import-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let history = TranscriptCoordinator(store: TranscriptStore(directory: dir))
+    let c = Self.coordinatorOnRealHistory(history)
+    await run(c)
+    try #require(c.state == .finished, "the import never finished")
+    let id = try #require(c.historyID)
+    let fresh = try await TranscriptStore(directory: dir).loadAll()
+    let row = try #require(fresh.first { $0.id == id })
+    #expect(row.text == "um one two three")
+    #expect(row.polishedText == "One two three.")
+    #expect(row.importedFileName == "marketing-sync.m4a")
+    #expect(c.isSavedToHistory)
+
+    // A deletion between the raw save and the cleanup, through the real History: it stands.
+    let dir2 = FileManager.default.temporaryDirectory
+      .appendingPathComponent("ew-4075-import-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: dir2) }
+    let history2 = TranscriptCoordinator(store: TranscriptStore(directory: dir2))
+    var deletedBeforeCleanup: Bool?
+    var deleter: FileImportCoordinator?
+    let c2 = Self.coordinatorOnRealHistory(
+      history2,
+      onSpeakerStep: {
+        // Between the raw save and the cleanup: the delete commits before the run goes on.
+        guard deletedBeforeCleanup == nil, let id = deleter?.historyID,
+          let row = history2.currentRow(id: id)
+        else { return }
+        await history2.delete(row)
+        deletedBeforeCleanup = history2.hasRow(id: id) == false
+      })
+    deleter = c2
+    await run(c2)
+    try #require(c2.state == .finished, "the second import never finished")
+    try #require(deletedBeforeCleanup == true, "the deletion was not committed before the cleanup")
+    let id2 = try #require(c2.historyID)
+    #expect(history2.hasRow(id: id2) == false, "the import put back a row the user deleted")
+    #expect(try await TranscriptStore(directory: dir2).loadAll().contains { $0.id == id2 } == false)
+    #expect(c2.historyRowWasDeleted)
   }
 
   /// The saved badge answers about the words ON SCREEN (#2772).

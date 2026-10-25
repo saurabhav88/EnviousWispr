@@ -328,6 +328,24 @@ import EnviousWisprAppKitTestSupport
     #expect(FileManager.default.fileExists(atPath: twinPermanent.path) == false)
   }
 
+  /// #4075 S1: a removal is trusted only on confirmed absence. A pending folder that cannot
+  /// be read is not proof that the pending copy is gone, so the removal throws.
+  @Test("a removal that cannot confirm the pending copy is gone throws instead of succeeding")
+  func removalThatCannotConfirmAbsenceThrows() throws {
+    let (store, dir) = makeStore()
+    let row = pendingRow(at: Date())
+    try store.savePending(row)
+    let pending = dir.appendingPathComponent(AppConstants.pendingTranscriptsDir)
+    try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: pending.path)
+    defer {
+      try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: pending.path)
+    }
+    #expect(throws: (any Error).self) { try store.operations().remove(id: row.id) }
+    // A row that was never there is a confirmed absence: no error, and nothing existed.
+    try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: pending.path)
+    #expect(try store.operations().remove(id: UUID()) == false)
+  }
+
   @Test("Keep revalidates: an expired row cannot be promoted by a stale click")
   func promotionRefusesAnExpiredRow() async throws {
     let (store, _) = makeStore()

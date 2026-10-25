@@ -276,11 +276,20 @@ struct TranscriptCoordinatorTests {
     await coordinator.waitForLoadForTesting()
     #expect(coordinator.actionFailure == nil)
 
+    // #4075 S1: the presentation the failed removal must not touch.
+    coordinator.selectedItemID = .transcript(row.id)
+    coordinator.setShowEcho(true, rowID: row.id)
+    var announced: [UUID] = []
+    coordinator.onRowDeleted = { announced.append($0) }
+
     // A read-only folder: the file cannot be removed.
     try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: dir.path)
     await coordinator.delete(row)
     #expect(coordinator.actionFailure == .delete)
     #expect(coordinator.visibleTranscripts.map(\.id) == [row.id])
+    #expect(coordinator.selectedItemID == .transcript(row.id), "a failed delete moved the selection")
+    #expect(coordinator.isShowingEcho(rowID: row.id), "a failed delete cleared the echo choice")
+    #expect(announced.isEmpty, "a failed delete was announced")
 
     coordinator.dismissActionFailure()
     #expect(coordinator.actionFailure == nil)
@@ -1289,6 +1298,213 @@ struct TranscriptCoordinatorMeetingTests {
     await coordinator.delete(row)
     #expect(announced == [row.id, row.id])
   }
+
+  #if DEBUG
+    // MARK: - #4075 S1: remaining queue windows (plan-to-evidence audit)
+
+    @Test("a successful delete moves the selection to the row beside it and clears its echo choice")
+    func successfulDeleteMovesSelectionAndClearsEcho() async throws {
+      let dir = Self.makeTempDir()
+      let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
+      let older = Transcript(text: "older", backendType: .parakeet, createdAt: Date().addingTimeInterval(-60))
+      let newer = Transcript(text: "newer", backendType: .parakeet)
+      try await coordinator.saveAndShow(older)
+      try await coordinator.saveAndShow(newer)
+      coordinator.selectedItemID = .transcript(newer.id)
+      coordinator.setShowEcho(true, rowID: newer.id)
+      await coordinator.delete(newer)
+      #expect(coordinator.selectedItemID == .transcript(older.id), "the neighbour was not selected")
+      #expect(coordinator.isShowingEcho(rowID: newer.id) == false)
+      // A second delete of the gone row is a no-op: the selection stays where it moved.
+      await coordinator.delete(newer)
+      #expect(coordinator.selectedItemID == .transcript(older.id))
+      #expect(coordinator.actionFailure == nil)
+    }
+
+    @Test("a selection, search or filter chosen while a write waits survives the write")
+    func choicesMadeWhileAWriteWaitsSurvive() async throws {
+      let dir = Self.makeTempDir()
+      let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
+      let first = Transcript(text: "first zebra", backendType: .parakeet)
+      let second = Transcript(text: "second zebra", backendType: .parakeet)
+      try await coordinator.saveAndShow(first)
+      try await coordinator.saveAndShow(second)
+      let gate = WorkerGate()
+      defer { gate.releaseAll() }
+      coordinator.ordinaryWriteWillStartForTesting = { gate.hook() }
+      let edited = Transcript(id: first.id, text: "first zebra edited", backendType: .parakeet, createdAt: first.createdAt)
+      let write = Task { @MainActor in try await coordinator.updateExistingRow(edited) }
+      try #require(await gate.waitForStart(), "the write never reached the worker")
+      coordinator.selectedItemID = .transcript(second.id)
+      coordinator.searchQuery = "zebra"
+      coordinator.historyFilter = .dictations
+      gate.releaseOne()
+      #expect(try await write.value)
+      #expect(coordinator.selectedItemID == .transcript(second.id), "the write restored an old selection")
+      #expect(coordinator.searchQuery == "zebra")
+      #expect(coordinator.historyFilter == .dictations)
+      #expect(coordinator.currentRow(id: first.id)?.text == "first zebra edited")
+      #expect(gate.anyTimedOut == false, "a held write was released by its timeout")
+    }
+
+    @Test("a Keep queued behind a delete of its row is refused and writes nothing back")
+    func staleKeepAfterDeleteIsRefused() async throws {
+      let dir = Self.makeTempDir()
+      let store = TranscriptStore(directory: dir)
+      var kept = 0
+      var outcomes: [String] = []
+      let coordinator = TranscriptCoordinator(
+        store: store, emitEscapeRecoveryKept: { _, _ in kept += 1 },
+        recordEscapeRecoveryKeep: { outcome, _ in outcomes.append(outcome) })
+      let held = Transcript(
+        text: "held", escapeRecoveredAt: Date().addingTimeInterval(-60), escapeRecoveryTakeID: "take")
+      try store.savePending(held)
+      coordinator.load()
+      await coordinator.waitForLoadForTesting()
+      let loaded = try #require(coordinator.currentRow(id: held.id))
+      let gate = WorkerGate()
+      defer { gate.releaseAll() }
+      coordinator.ordinaryWriteWillStartForTesting = { gate.hook() }
+      let head = Task { @MainActor in
+        try await coordinator.saveAndShow(Transcript(text: "head", backendType: .parakeet))
+      }
+      try #require(await gate.waitForStart(), "the head never reached the worker")
+      let before = coordinator.commandsAdmittedForTesting
+      let delete = Task { @MainActor in await coordinator.delete(loaded) }
+      try #require(await settleUntilObserved { coordinator.commandsAdmittedForTesting == before + 1 })
+      let keep = Task { @MainActor in await coordinator.keep(loaded) }
+      try #require(await settleUntilObserved { coordinator.commandsAdmittedForTesting == before + 2 })
+      gate.releaseOne()
+      try await head.value
+      await delete.value
+      await keep.value
+      #expect(outcomes == ["refused-not-offerable"])
+      #expect(kept == 0)
+      #expect(coordinator.currentRow(id: held.id) == nil)
+      #expect(try await TranscriptStore(directory: dir).loadAll().contains { $0.id == held.id } == false)
+      #expect(gate.anyTimedOut == false, "a held write was released by its timeout")
+    }
+
+    @Test("an update queued before a delete lands then goes; one queued after refuses; a save behind Delete All survives")
+    func queuedUpdateDeleteAndDeleteAllOrders() async throws {
+      let dir = Self.makeTempDir()
+      let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
+      let row = Transcript(text: "row", backendType: .parakeet)
+      try await coordinator.saveAndShow(row)
+      let gate = WorkerGate()
+      defer { gate.releaseAll() }
+      coordinator.ordinaryWriteWillStartForTesting = { gate.hook() }
+      let head = Task { @MainActor in
+        try await coordinator.saveAndShow(Transcript(text: "head", backendType: .parakeet))
+      }
+      try #require(await gate.waitForStart(), "the head never reached the worker")
+      let before = coordinator.commandsAdmittedForTesting
+      let edited = Transcript(id: row.id, text: "edited", backendType: .parakeet, createdAt: row.createdAt)
+      let updateFirst = Task { @MainActor in try await coordinator.updateExistingRow(edited) }
+      try #require(await settleUntilObserved { coordinator.commandsAdmittedForTesting == before + 1 })
+      let delete = Task { @MainActor in await coordinator.delete(row) }
+      try #require(await settleUntilObserved { coordinator.commandsAdmittedForTesting == before + 2 })
+      let updateAfter = Task { @MainActor in try await coordinator.updateExistingRow(edited) }
+      try #require(await settleUntilObserved { coordinator.commandsAdmittedForTesting == before + 3 })
+      let deleteAll = Task { @MainActor in await coordinator.deleteAll() }
+      try #require(await settleUntilObserved { coordinator.commandsAdmittedForTesting == before + 4 })
+      let survivor = Transcript(text: "survivor", backendType: .parakeet)
+      let late = Task { @MainActor in try await coordinator.saveAndShow(survivor) }
+      try #require(await settleUntilObserved { coordinator.commandsAdmittedForTesting == before + 5 })
+      gate.releaseAll()
+      try await head.value
+      #expect(try await updateFirst.value, "the update admitted before the delete did not land")
+      await delete.value
+      #expect(try await updateAfter.value == false, "an update after the delete revived the row")
+      await deleteAll.value
+      try await late.value
+      #expect(coordinator.hasRow(id: row.id) == false)
+      let fresh = try await TranscriptStore(directory: dir).loadAll()
+      #expect(fresh.map(\.id) == [survivor.id], "a save admitted behind Delete All was lost")
+      #expect(gate.anyTimedOut == false, "a held write was released by its timeout")
+    }
+
+    /// #4075 S1: a scan whose snapshot holds a row, and a delete of that row that commits
+    /// before the snapshot is applied. The stale snapshot must not bring the row back: the
+    /// removal moved the disk generation, so a fresh read replaces it.
+    @Test("a scan that read a row before its delete committed does not bring the row back")
+    func readSpanningACommittedDeleteDoesNotResurrect() async throws {
+      let dir = Self.makeTempDir()
+      let store = TranscriptStore(directory: dir)
+      let coordinator = TranscriptCoordinator(store: store)
+      let row = Transcript(text: "deleted mid-read", backendType: .parakeet)
+      try await coordinator.saveAndShow(row)
+      let scanEntered = DispatchSemaphore(value: 0)
+      let scanRelease = DispatchSemaphore(value: 0)
+      defer { scanRelease.signal() }
+      let armed = OSAllocatedUnfairLock(initialState: true)
+      let scanReleased = OSAllocatedUnfairLock<Bool?>(initialState: nil)
+      store.permanentFileWillReadForTesting = {
+        guard armed.withLock({ let was = $0; $0 = false; return was }) else { return }
+        scanEntered.signal()
+        // deadline-fallback: bound a missing release; a timeout fails the test below
+        let outcome = scanRelease.wait(timeout: .now() + 10)
+        scanReleased.withLock { $0 = outcome == .success }
+      }
+      var snapshotHeldRow: Bool?
+      coordinator.historyReadDidFinishForTesting = { read in
+        if snapshotHeldRow == nil { snapshotHeldRow = read.permanent.contains { $0.id == row.id } }
+      }
+      let gate = WorkerGate()
+      defer { gate.releaseAll() }
+      let readsBefore = coordinator.historyFullReadsForTesting
+      coordinator.load()
+      // This semaphore wait blocks: Task inherits MainActor, and a task group does
+      // not offload blocking work. This local detached waiter is awaited immediately;
+      // an @concurrent helper would add an unnecessary declaration for this test.
+      try #require(
+        await Task.detached { Self.waitBlocking(scanEntered) == .success }.value,
+        "the scan never started")
+      // A write holds the queue's head; the delete is admitted behind it, before the scan ends.
+      coordinator.ordinaryWriteWillStartForTesting = { gate.hook() }
+      let head = Task { @MainActor in
+        try await coordinator.saveAndShow(Transcript(text: "head", backendType: .parakeet))
+      }
+      try #require(await gate.waitForStart(), "the head never reached the worker")
+      let before = coordinator.commandsAdmittedForTesting
+      let delete = Task { @MainActor in await coordinator.delete(row) }
+      try #require(
+        await settleUntilObserved { coordinator.commandsAdmittedForTesting == before + 1 },
+        "the delete was never admitted")
+      // The scan now reads the row's file and queues its application behind the delete.
+      scanRelease.signal()
+      try #require(
+        await settleUntilObserved { coordinator.commandsAdmittedForTesting == before + 2 },
+        "the scan's application was never queued")
+      #expect(snapshotHeldRow == true, "the scan's snapshot did not hold the row")
+      coordinator.ordinaryWriteWillStartForTesting = nil
+      gate.releaseOne()
+      try await head.value
+      await delete.value
+      await coordinator.waitForLoadForTesting()
+      #expect(coordinator.hasRow(id: row.id) == false, "the stale scan brought the deleted row back")
+      #expect(
+        coordinator.historyFullReadsForTesting == readsBefore + 1,
+        "the stale read published, or no fresh read replaced it")
+      #expect(coordinator.hasQueuedCommandsForTesting == false, "the queue did not go idle")
+      #expect(scanReleased.withLock { $0 } == true, "the scan was released by its timeout")
+      #expect(gate.anyTimedOut == false, "a held write was released by its timeout")
+    }
+
+    @Test("a caller already cancelled before it reaches History submits nothing")
+    func cancelledBeforeAdmissionSubmitsNothing() async throws {
+      let dir = Self.makeTempDir()
+      let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
+      let row = Transcript(text: "never", backendType: .parakeet)
+      let admitted = coordinator.commandsAdmittedForTesting
+      // Not yet started: this test holds the main actor until it awaits the task.
+      let save = Task { @MainActor in try await coordinator.saveAndShow(row) }
+      save.cancel()
+      await #expect(throws: CancellationError.self) { try await save.value }
+      #expect(coordinator.commandsAdmittedForTesting == admitted)
+      #expect(coordinator.hasRow(id: row.id) == false)
+    }
+  #endif
 
   nonisolated static func waitBlocking(_ semaphore: DispatchSemaphore) -> DispatchTimeoutResult {
     semaphore.wait(timeout: .now() + 10)
