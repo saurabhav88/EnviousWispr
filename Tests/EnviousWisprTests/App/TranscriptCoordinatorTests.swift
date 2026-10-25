@@ -227,6 +227,71 @@ struct TranscriptCoordinatorTests {
       #expect(ids.first == newRow.id)
     }
 
+    /// Codex review of the #4075 S7 fix: a row written after the snapshot but OLDER than a
+    /// row the snapshot found goes below it, by date, not in front of everything.
+    @Test("load during an older row's write merges it by date")
+    func testLoadDuringOlderWriteMergesByDate() async throws {
+      let dir = Self.makeTempDir()
+      defer { Self.cleanup(dir) }
+      let now = Date()
+      let diskRow = Self.makeTranscript(text: "disk", createdAt: now)
+      try Self.writeToDisk([diskRow], in: dir)
+      let store = TranscriptStore(directory: dir)
+      let coordinator = TranscriptCoordinator(store: store)
+
+      let older = Self.makeTranscript(text: "older", createdAt: now.addingTimeInterval(-60))
+      coordinator.historyReadDidFinishForTesting = { read in
+        coordinator.historyReadDidFinishForTesting = nil
+        #expect(read.freshness != nil)
+        try store.save(older)
+        coordinator.append(older)
+      }
+      coordinator.load()
+      await coordinator.waitForLoadForTesting()
+
+      #expect(coordinator.visibleTranscripts.map(\.id) == [diskRow.id, older.id])
+    }
+
+    /// Codex review of the #4075 S7 fix: a row written during the read with the SAME date as
+    /// a disk row stays ahead of it, as `append` put it, so Paste Last keeps its pick.
+    @Test("load during a same-date write keeps the written row first")
+    func testLoadDuringSameDateWriteKeepsItFirst() async throws {
+      let dir = Self.makeTempDir()
+      defer { Self.cleanup(dir) }
+      let now = Date()
+      let diskRow = Self.makeTranscript(text: "disk", createdAt: now)
+      try Self.writeToDisk([diskRow], in: dir)
+      let store = TranscriptStore(directory: dir)
+      let coordinator = TranscriptCoordinator(store: store)
+
+      let sameDate = Self.makeTranscript(text: "written", createdAt: now)
+      coordinator.historyReadDidFinishForTesting = { read in
+        coordinator.historyReadDidFinishForTesting = nil
+        #expect(read.freshness != nil)
+        try store.save(sameDate)
+        coordinator.append(sameDate)
+      }
+      coordinator.load()
+      await coordinator.waitForLoadForTesting()
+
+      #expect(coordinator.visibleTranscripts.map(\.id) == [sameDate.id, diskRow.id])
+    }
+
+    /// Codex review of the #4075 S7 fix: a dictation dated before a newer row published
+    /// lands below that row when it is appended.
+    @Test("an append older than the newest row lands below it")
+    func testOlderAppendLandsByDate() async throws {
+      let dir = Self.makeTempDir()
+      defer { Self.cleanup(dir) }
+      let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
+      let now = Date()
+      let newer = Self.makeTranscript(text: "import", createdAt: now)
+      try await coordinator.saveAndShow(newer)
+      let older = Self.makeTranscript(text: "dictation", createdAt: now.addingTimeInterval(-5))
+      coordinator.append(older)
+      #expect(coordinator.visibleTranscripts.map(\.id) == [newer.id, older.id])
+    }
+
     @Test("load during multiple appends preserves append-order at the front")
     func testLoadDuringMultipleAppendsPreservesNewestFirstOrder() async throws {
       let dir = Self.makeTempDir()

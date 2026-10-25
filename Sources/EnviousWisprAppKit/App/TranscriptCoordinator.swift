@@ -1145,12 +1145,16 @@ final class TranscriptCoordinator {
       !knownIDs.contains($0.id)
         && (read.freshness == nil || (writtenAtRevision[$0.id] ?? 0) > revisionAtRead)
     }
-    // Merged rather than re-sorted: both inputs are already newest-first,
+    // Merged rather than re-sorted: all three inputs are already newest-first,
     // and re-sorting the combined list could reorder permanent rows that
-    // share a `createdAt`. With no held rows this returns `diskRows`
-    // unchanged, so History is byte-identical for anyone who never turns
-    // Escape Recovery on.
-    let merged = inFlightRows + Self.mergeNewestFirst(heldRows, diskRows)
+    // share a `createdAt`. With no held or in-flight rows this returns
+    // `diskRows` unchanged, so History is byte-identical for anyone who never
+    // turns Escape Recovery on. In-flight rows are merged by date too, not put
+    // first: a queued save can publish an older row than one this read found
+    // (Codex review of the #4075 S7 fix). In-flight rows go second so they win ties, as
+    // `append` and a save put a new row ahead of rows with the same date.
+    let merged = Self.mergeNewestFirst(
+      Self.mergeNewestFirst(heldRows, diskRows), inFlightRows)
     let mergedIDs = Set(merged.map(\.id))
     removedRowIDs.formUnion(transcripts.lazy.map(\.id).filter { !mergedIDs.contains($0) })
     transcripts = merged
@@ -1183,7 +1187,9 @@ final class TranscriptCoordinator {
   /// protection would mask heart-path bugs.
   func append(_ transcript: Transcript) {
     noteWritten(transcript.id)
-    transcripts.insert(transcript, at: 0)
+    // By date, not at the top: a dictation is dated before its delivery suspends, so a newer
+    // queued save can publish first (Codex review of the #4075 S7 fix).
+    insertByDate(transcript)
     // #2807: a COMPLETED dictation landing in the displayed set with nothing selected is the
     // one moment the live fallback exists for, so it may show again. A held recovery is a
     // cancellation, not a completion, and an import never comes through here; neither lifts
