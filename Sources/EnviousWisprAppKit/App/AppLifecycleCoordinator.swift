@@ -37,6 +37,9 @@ final class AppLifecycleCoordinator {
   // bootstrapper with the live desktop seam; started here, stopped in
   // `runWillTerminate`. Every wheel decision lives on the smoother.
   private let wheelScrollSmoother: WheelScrollSmoother
+  // #4101: the app the user came from, which History Paste pastes into. Started here, stopped in
+  // `runWillTerminate`, unconditionally: not behind the warmup observer's UAT switch.
+  private let previousApplicationTracker: PreviousApplicationTracker
 
   #if DEBUG
     /// V2 fault-injection control surface (issue #291). Started only when
@@ -100,6 +103,7 @@ final class AppLifecycleCoordinator {
 
   init(
     wheelScrollSmoother: WheelScrollSmoother,
+    previousApplicationTracker: PreviousApplicationTracker,
     settings: SettingsManager,
     permissions: PermissionsService,
     keychainManager: KeychainManager,
@@ -131,6 +135,7 @@ final class AppLifecycleCoordinator {
   ) {
     self.onRecordingStarted = onRecordingStarted
     self.wheelScrollSmoother = wheelScrollSmoother
+    self.previousApplicationTracker = previousApplicationTracker
     self.settings = settings
     self.permissions = permissions
     self.keychainManager = keychainManager
@@ -400,6 +405,9 @@ final class AppLifecycleCoordinator {
     // frame (reporter's video, discussion #3059); Chrome moves about 100 with a
     // glide. The smoother rewrites only non-precise wheel events.
     wheelScrollSmoother.start()
+
+    // #4101: outside the warmup suppression above, in every build.
+    previousApplicationTracker.start()
   }
 
   /// #3802 (Live UAT only): the sleeping-Chrome phases in
@@ -479,6 +487,8 @@ final class AppLifecycleCoordinator {
 
     accessibilityWarmupObserver?.stop()
     accessibilityWarmupObserver = nil
+
+    previousApplicationTracker.stop()
 
     wheelScrollSmoother.stop()
   }

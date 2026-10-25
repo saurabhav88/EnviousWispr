@@ -68,6 +68,9 @@ package final class WisprBootstrapper {
   let dictationRuntime: DictationRuntime
   let hotkeyService: HotkeyService
   let appWindowCoordinator: AppWindowCoordinator
+  /// #4101: the one record of the app the user came from; started by `appLifecycleCoordinator`,
+  /// read by History Paste through the main window's environment.
+  let previousApplicationTracker: PreviousApplicationTracker
   let menuBarController: MenuBarController
   let appLifecycleCoordinator: AppLifecycleCoordinator
 
@@ -1909,8 +1912,10 @@ package final class WisprBootstrapper {
 
     // PR-B.4 of #763: process-lifecycle home. Constructed last. It receives the
     // 10 specific homes it reads.
+    let previousApplicationTracker = PreviousApplicationTracker()
     let appLifecycleCoordinator = AppLifecycleCoordinator(
       wheelScrollSmoother: WheelScrollSmoother(monitor: scrollWheelMonitor),
+      previousApplicationTracker: previousApplicationTracker,
       settings: settings,
       permissions: permissions,
       keychainManager: keychainManager,
@@ -2626,6 +2631,7 @@ package final class WisprBootstrapper {
     self.dictationRuntime = dictationRuntime
     self.hotkeyService = hotkeyService
     self.appWindowCoordinator = appWindowCoordinator
+    self.previousApplicationTracker = previousApplicationTracker
     self.menuBarController = menuBarController
     self.appLifecycleCoordinator = appLifecycleCoordinator
 
@@ -3080,6 +3086,7 @@ private struct MainWindowRoot: View {
       .environment(b.checkerEligibility)
       .environment(b.dictationRuntime)
       .environment(b.appWindowCoordinator)
+      .environment(b.previousApplicationTracker)
       // The nine view-facing homes (epic #763).
       .environment(b.settings)
       .environment(b.pillAppearance)
