@@ -1505,9 +1505,11 @@ final class FileImportCoordinator {
     case .failed, .unanalyzed, nil: return nil
     }
   }
-  @ObservationIgnored private var turnsTelemetryEmittedFor: UUID?
-  /// Rows whose turn outcome is being reported right now (#4075 S1).
-  @ObservationIgnored private var turnsTelemetryClaimed: Set<UUID> = []
+  /// Rows whose turn outcome has been reported (#4075 S1: by row id, claimed before the
+  /// report's log await, and kept). A row's outcome is reported once per launch: a new file
+  /// or Start over gets a new row id, and a Stop's settlement finishing beside the run's own
+  /// write, or after another file replaced it, finds the row already claimed.
+  @ObservationIgnored private var turnsTelemetryReported: Set<UUID> = []
 
   /// #3903: the last COMPLETED cleanup of this document, kept so a Clean it again that ends
   /// without completing (Stop, a polisher that did not start) puts it back instead of leaving
@@ -1700,7 +1702,6 @@ final class FileImportCoordinator {
 
   private func resetSpeakerResult() {
     pendingSpeakerResult = nil
-    turnsTelemetryEmittedFor = nil
   }
 
   /// The one write of the speaker fields for this document, at the end of the cleanup (or of
@@ -2897,17 +2898,13 @@ final class FileImportCoordinator {
     // #4075 S1: claimed BEFORE the log's await, by the row's own id, so a Stop's settlement and
     // the run's own write finishing together report the row once, even after another file
     // replaced it.
-    let emitted =
-      turnsTelemetryEmittedFor != historyID && !turnsTelemetryClaimed.contains(historyID)
-    if emitted { turnsTelemetryClaimed.insert(historyID) }
+    let emitted = turnsTelemetryReported.insert(historyID).inserted
     await AppLogger.shared.log(
       "[TurnStorage] outcome=\(reportedOutcome.rawValue) turns=\(turnCount ?? 0) fallback=\(fallbackTurnCount) emitted=\(emitted) ms=\(Self.elapsedMs(since: passStart))",
       level: .info, category: "FileImportCoordinator")
     guard emitted else { return !saveFailed }
     // #4075 S1: the dedupe mark belongs to the document on screen; a settlement finishing
     // for a replaced document reports its outcome without claiming the new one's mark.
-    if self.historyID == historyID { turnsTelemetryEmittedFor = historyID }
-    turnsTelemetryClaimed.remove(historyID)
     emitTurnTelemetry(
       reportedOutcome, reportedOutcome == .stored ? turnCount : nil, fallbackTurnCount)
     return !saveFailed
