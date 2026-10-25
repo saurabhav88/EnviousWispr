@@ -1115,7 +1115,10 @@ final class TranscriptCoordinator {
       // share a `createdAt`. With no held rows this returns `diskRows`
       // unchanged, so History is byte-identical for anyone who never turns
       // Escape Recovery on.
-      transcripts = inFlightRows + Self.mergeNewestFirst(heldRows, diskRows)
+      let merged = inFlightRows + Self.mergeNewestFirst(heldRows, diskRows)
+      let mergedIDs = Set(merged.map(\.id))
+      removedRowIDs.formUnion(transcripts.lazy.map(\.id).filter { !mergedIDs.contains($0) })
+      transcripts = merged
       // #4001 H9: reusable only when the read itself was certified. A read that skipped a file
       // it could not open, or that a write overlapped, leaves the next open to read again.
       historyCache = read.freshness.map(HistoryCache.reusable) ?? .unread
@@ -1504,14 +1507,23 @@ final class TranscriptCoordinator {
       return MeetingHistoryPresentation.deliveryText(
         current, projection: meetingProjection(of: current), timesOn: false)
     }
-    guard transcript.escapeRecoveredAt != nil else { return transcript.displayText }
-    let now = Date()
-    guard
-      let current = transcripts.first(where: { $0.id == transcript.id }),
-      Self.isVisible(current, at: now)
-    else { return nil }
-    return current.displayText
+    // #4075 R5: the row as it is now, never the caller's copy. History Paste reads this after
+    // hiding the app, and an import's cleanup or a deletion can land in that wait.
+    if let current = transcripts.first(where: { $0.id == transcript.id }) {
+      return Self.isVisible(current, at: Date()) ? current.displayText : nil
+    }
+    // Not in History. A held recovery that is gone has lapsed, and a row History held and
+    // removed was deleted: both are refused. A dictation History never held (the live pane's
+    // copy when its save failed) keeps the text it showed.
+    guard transcript.escapeRecoveredAt == nil, !removedRowIDs.contains(transcript.id) else {
+      return nil
+    }
+    return transcript.displayText
   }
+
+  /// Rows History held and then removed this session (#4075 R5), so delivery refuses a copy of
+  /// one instead of treating it like a dictation History never held.
+  private var removedRowIDs: Set<UUID> = []
 
   /// The newest dictation the menu bar and the Paste/Copy Last Dictation shortcuts may offer
   /// again (#3106), or nil when there is none.
@@ -1707,8 +1719,23 @@ final class TranscriptCoordinator {
   /// What a meeting row shows; `.unavailable` for a row that is not a meeting.
   func meetingProjection(of row: Transcript) -> MeetingHistoryPresentation.Projection {
     guard let meetingID = row.meetingID else { return .unavailable }
-    return MeetingHistoryPresentation.project(
-      row, info: meetingInfo?(meetingID), showEcho: isShowingEcho(rowID: row.id))
+    let info = meetingInfo?(meetingID)
+    let showEcho = isShowingEcho(rowID: row.id)
+    // #4075 R6: the plain text comes from the kept meeting text (the same projection search and
+    // the preview read), so a detail redraw does not rebuild the whole meeting's text. Only the
+    // visible turns, a filter, are computed here.
+    let text = meetingText(
+      of: row, info: info, showEcho: showEcho, locale: Locale.current.identifier,
+      localizations: Bundle.main.preferredLocalizations)
+    switch text.kind {
+    case .unavailable: return .unavailable
+    case .everythingHidden: return .everythingHidden
+    case .visible:
+      guard let info else { return .unavailable }
+      let visible = MeetingTranscriptProjection.visible(
+        turns: row.turns ?? [], echoTurnIDs: info.echoTurnIDs, showEcho: showEcho)
+      return .visible(turns: visible.turns, plainText: text.plain)
+    }
   }
 
   /// A meeting row's two-line list preview, the same text `meetingProjection` gives, read from
@@ -1752,7 +1779,12 @@ final class TranscriptCoordinator {
     #if DEBUG
       if listCacheDisabledForTesting { return Self.meetingText(row, inputs) }
     #endif
-    if let kept = searchTextCache[row.id], kept.inputs == inputs { return kept.text }
+    if let kept = searchTextCache[row.id], kept.inputs == inputs,
+      MeetingDocumentHash.sameBytes(kept.inputs.text, inputs.text),
+      MeetingDocumentHash.sameBytes(kept.inputs.speakerNames, inputs.speakerNames)
+    {
+      return kept.text
+    }
     let text = Self.meetingText(row, inputs)
     #if DEBUG
       meetingTextBuildsForTesting += 1
@@ -1843,6 +1875,7 @@ final class TranscriptCoordinator {
     let displayed = listedItems
     try store.delete(id: id)
     transcripts.removeAll { $0.id == id }
+    removedRowIDs.insert(id)
     echoShownRowIDs.remove(id)
     // A meeting's row leaving does not remove the meeting's item (its meeting is still held);
     // only a dictation or an import selection moves.
@@ -1877,6 +1910,7 @@ final class TranscriptCoordinator {
       try store.deleteAll()
       let removedIDs = transcripts.map(\.id)
       transcripts.removeAll()
+      removedRowIDs.formUnion(removedIDs)
       echoShownRowIDs.removeAll()
       // The same announcement `delete(_:)` makes, per row, after the list is already empty
       // (found by cloud review, round 3: this route bypassed it).
