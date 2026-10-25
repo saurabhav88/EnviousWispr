@@ -474,6 +474,16 @@ public enum PasteService {
     }
   }
 
+  /// Whether a focus owner other than the front app may become the paste target (#3423): a running
+  /// regular or accessory application. A prohibited-policy process (a helper, an XPC or service
+  /// host) never does, nor a terminated one. Shared by the dictation owner path and Paste Last's
+  /// chord (#3437), which is why it lives beside the focus reader.
+  package nonisolated static func isEligibleFocusOwner(
+    activationPolicy: NSApplication.ActivationPolicy, isTerminated: Bool
+  ) -> Bool {
+    !isTerminated && (activationPolicy == .regular || activationPolicy == .accessory)
+  }
+
   /// The bound on one keyboard-focus read on the paste, landing and learning paths (#3423 plan
   /// section 2.5, "AX read cost": at most 0.25 s, less when the caller's budget has less left).
   package static let keyboardFocusReadCapSeconds: Double = 0.25

@@ -64,6 +64,16 @@ struct LastDictationActionTests {
     var copies: [String] = []
     var permissionsOpened = 0
     var reports: [(LastDictationAction.Action, LastDictationAction.Source, String)] = []
+    /// Each report's route (#3437), nil for Copy.
+    var routes: [LastDictationAction.Route?] = []
+    /// The keyboard owner each read returns, in order (#3437); the last answer repeats. Empty
+    /// means "unreadable" on every read.
+    var ownerReads: [LastDictationAction.KeyboardOwnerSnapshot?] = []
+    var ownerReadCount = 0
+    /// Runs on each owner read, so a test can change the world during the final confirmation.
+    var duringOwnerRead: (() -> Void)?
+    /// Pastes posted at a process (#3437): text, restore, transient marker and the pid.
+    var processPastes: [(text: String, restore: Bool, mark: Bool, pid: pid_t)] = []
     /// Runs on every sleep, so a test can change the world mid-wait.
     var duringWait: (() -> Void)?
     /// The monotonic clock the waits read. Each sleep advances it by what was asked plus `lag`, so a
@@ -101,6 +111,12 @@ struct LastDictationActionTests {
         isDictationActive: { fake.dictationActive },
         isAccessibilityTrusted: { fake.axTrusted },
         frontmost: { fake.frontmost },
+        keyboardOwner: {
+          fake.ownerReadCount += 1
+          fake.duringOwnerRead?()
+          guard !fake.ownerReads.isEmpty else { return nil }
+          return fake.ownerReads.count > 1 ? fake.ownerReads.removeFirst() : fake.ownerReads[0]
+        },
         isTerminated: { fake.terminated.contains($0.processIdentifier) },
         isOwnApplication: { app in fake.own.map { $0 === app } ?? false },
         activate: { app in
@@ -129,12 +145,18 @@ struct LastDictationActionTests {
           fake.pasteMarks.append(markTransient)
           return fake.pasteResult
         },
+        manualPasteAtProcess: { text, restore, markTransient, pid in
+          fake.processPastes.append((text, restore, markTransient, pid))
+          return fake.pasteResult
+        },
         manualCopy: { text in
           fake.copies.append(text)
           return fake.copyResult
         },
         openPermissions: { fake.permissionsOpened += 1 },
-        report: { action, source, outcome in fake.reports.append((action, source, outcome.rawValue))
+        report: { action, source, outcome, route in
+          fake.reports.append((action, source, outcome.rawValue))
+          fake.routes.append(route)
         },
         sleep: { duration in
           fake.sleeps += 1
@@ -402,7 +424,9 @@ struct LastDictationActionTests {
     let second = action.pasteFromChord()  // then pressed and released in B
     await first.value
     await second.value
-    #expect(fake.activated == [a.processIdentifier, b.processIdentifier], "A for the first, B for the second")
+    #expect(
+      fake.activated == [a.processIdentifier, b.processIdentifier],
+      "A for the first, B for the second")
     #expect(outcomes(fake) == ["dispatched", "dispatched"])
   }
 
@@ -501,7 +525,8 @@ struct LastDictationActionTests {
     #expect(fake.copies.count == 1, "no second write")
   }
 
-  @Test("A newer Copy pressed WHILE an older one waits cancels it, so the older cannot overwrite it")
+  @Test(
+    "A newer Copy pressed WHILE an older one waits cancels it, so the older cannot overwrite it")
   func newerCopyWins() async {
     let fake = Fake()
     fake.clipboardHeldPolls = 20
@@ -637,7 +662,8 @@ struct LastDictationActionTests {
     await makeAction(fake).pasteFromMenu(rowID: fake.row?.id, target: a).value
 
     #expect(outcomes(fake) == ["recording", "target_gone", "ax_denied"])
-    #expect(fake.permissionsOpened == 1, "revoked during a MENU wait: sent to the fix, as at the start")
+    #expect(
+      fake.permissionsOpened == 1, "revoked during a MENU wait: sent to the fix, as at the start")
     #expect(fake.activated.isEmpty, "no app was brought forward for a paste that will not happen")
     #expect(fake.pastes.isEmpty)
   }
@@ -682,5 +708,135 @@ struct LastDictationActionTests {
     fake.duringWait = { fake.row = (id, "Edited after the menu opened.") }
     await makeAction(fake).pasteFromMenu(rowID: id, target: a).value
     #expect(fake.pastes.map(\.text) == ["Edited after the menu opened."])
+  }
+
+  // MARK: A keyboard owner that is not front (#3437)
+
+  /// A snapshot of `app` holding the keyboard with a given element; the element is a real AX
+  /// object used only for identity.
+  private static func owner(
+    _ app: NSRunningApplication, element: AXUIElement? = nil
+  ) -> LastDictationAction.KeyboardOwnerSnapshot {
+    .init(
+      application: app, element: element ?? AXUIElementCreateApplication(app.processIdentifier))
+  }
+
+  @Test("a chord with a launcher panel holding the keyboard pastes at the panel, never activating")
+  func ownerRoutePastesAtTheOwner() async throws {
+    let (front, panel) = try Self.twoOtherApps()
+    let fake = Fake()
+    fake.frontmost = front
+    let snapshot = Self.owner(panel)
+    fake.ownerReads = [snapshot]
+    fake.markTransient = true
+    let action = makeAction(fake)
+    action.notePasteChordPressed()
+    await action.pasteFromChord().value
+    #expect(outcomes(fake) == ["dispatched"])
+    #expect(fake.routes == [.owner])
+    #expect(fake.processPastes.count == 1)
+    #expect(fake.processPastes.first?.pid == panel.processIdentifier)
+    #expect(fake.processPastes.first?.text == "Send the draft to Maya.")
+    #expect(fake.processPastes.first?.restore == true)
+    #expect(fake.processPastes.first?.mark == true)
+    #expect(fake.pastes.isEmpty, "nothing posted at the front app")
+    #expect(fake.activated.isEmpty, "the panel is never activated")
+    #expect(fake.ownerReadCount == 2, "one read at the press, one confirmation before the write")
+  }
+
+  @Test("the owner route refuses when the panel's focused field or owner changed, with no fallback")
+  func ownerRouteRefusesAChangedField() async throws {
+    let (front, panel) = try Self.twoOtherApps()
+    for confirmation: LastDictationAction.KeyboardOwnerSnapshot? in [
+      Self.owner(panel, element: AXUIElementCreateSystemWide()),  // same process, other field
+      Self.owner(front),  // another process
+      nil,  // unreadable
+    ] {
+      let fake = Fake()
+      fake.frontmost = front
+      fake.ownerReads = [Self.owner(panel), confirmation]
+      let action = makeAction(fake)
+      action.notePasteChordPressed()
+      await action.pasteFromChord().value
+      #expect(outcomes(fake) == ["focus_lost"])
+      #expect(fake.processPastes.isEmpty && fake.pastes.isEmpty)
+      #expect(fake.activated.isEmpty)
+    }
+  }
+
+  @Test("an owner that quits or Accessibility revoked during the confirmation reports that")
+  func ownerRouteKeepsRefusalPrecedence() async throws {
+    let (front, panel) = try Self.twoOtherApps()
+    let quit = Fake()
+    quit.frontmost = front
+    quit.ownerReads = [Self.owner(panel), nil]
+    let quitAction = makeAction(quit)
+    quitAction.notePasteChordPressed()
+    quit.duringOwnerRead = { quit.terminated = [panel.processIdentifier] }
+    await quitAction.pasteFromChord().value
+    #expect(outcomes(quit) == ["target_gone"])
+
+    let revoked = Fake()
+    revoked.frontmost = front
+    revoked.ownerReads = [Self.owner(panel), nil]
+    let revokedAction = makeAction(revoked)
+    revokedAction.notePasteChordPressed()
+    revoked.duringOwnerRead = { revoked.axTrusted = false }
+    await revokedAction.pasteFromChord().value
+    #expect(outcomes(revoked) == ["ax_denied"])
+    #expect(quit.processPastes.isEmpty && revoked.processPastes.isEmpty)
+  }
+
+  @Test("an owner that is the front app, our own window or unreadable keeps the front route")
+  func frontRouteWhenTheOwnerIsNotAnotherApp() async throws {
+    let (front, us) = try Self.twoOtherApps()
+    for reads: [LastDictationAction.KeyboardOwnerSnapshot?] in [
+      [Self.owner(front)], [Self.owner(us)], [],
+    ] {
+      let fake = Fake()
+      fake.frontmost = front
+      fake.own = us
+      fake.ownerReads = reads
+      let action = makeAction(fake)
+      action.notePasteChordPressed()
+      await action.pasteFromChord().value
+      #expect(outcomes(fake) == ["dispatched"])
+      #expect(fake.routes == [.front])
+      #expect(fake.pastes.count == 1 && fake.processPastes.isEmpty)
+      #expect(fake.ownerReadCount == 1, "no confirmation read on the front route")
+    }
+  }
+
+  @Test("the menu and Copy never read the keyboard owner")
+  func menuAndCopyDoNotReadTheOwner() async throws {
+    let (front, panel) = try Self.twoOtherApps()
+    let fake = Fake()
+    fake.frontmost = front
+    fake.ownerReads = [Self.owner(panel)]
+    let action = makeAction(fake)
+    await action.pasteFromMenu(rowID: fake.row?.id, target: front).value
+    await action.copyFromChord().value
+    #expect(fake.ownerReadCount == 0)
+    #expect(fake.routes == [.front, nil])
+    #expect(fake.processPastes.isEmpty)
+  }
+
+  @Test("each chord keeps the target it pressed on")
+  func overlappingChordsKeepTheirOwnTargets() async throws {
+    let (front, panel) = try Self.twoOtherApps()
+    let fake = Fake()
+    fake.frontmost = front
+    // Reads in order: first press (the panel), second press (the front app: front route, no
+    // confirmation), then the first paste's confirmation (the panel again).
+    fake.ownerReads = [Self.owner(panel), Self.owner(front), Self.owner(panel)]
+    let action = makeAction(fake)
+    action.notePasteChordPressed()
+    let first = action.pasteFromChord()
+    action.notePasteChordPressed()
+    let second = action.pasteFromChord()
+    await first.value
+    await second.value
+    #expect(Set(fake.routes.compactMap { $0 }) == [.owner, .front])
+    #expect(fake.processPastes.count == 1 && fake.pastes.count == 1)
   }
 }

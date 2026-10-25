@@ -164,6 +164,18 @@ package enum SyntheticCopyChord {
     keyCode(for: "c")
   }
 
+  /// Command+V at one process, bracketed by `flagsChanged` events so Command is never left latched
+  /// (see `post`). The key is the one that means "v" under Command on the active layout, so a Dvorak
+  /// user's panel gets Paste and never another shortcut; an unreadable layout posts nothing (the
+  /// creation-failure path). True when posted; posted is not delivered, and the caller's landing
+  /// check, or the destination itself, judges the outcome. Shared by the dictation owner path
+  /// (#3423) and Paste Last's chord when a launcher panel holds the keyboard (#3437).
+  @MainActor
+  package static func postCommandV(at pid: pid_t) -> Bool {
+    guard let key = keyCode(for: "v") else { return false }
+    return post(at: pid, copyKeyCode: key) != .notPosted
+  }
+
   /// The key every front-path Command+V presses (#3437): the one that means "v" under Command
   /// on the active layout, so a Dvorak user gets Paste and never Command+K (physical V types "k"
   /// there). When the layout cannot be read, or no key types "v", it falls back to physical V,
