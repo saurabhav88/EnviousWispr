@@ -1213,4 +1213,188 @@ struct TranscribeCppRollingSessionTests {
     #expect(marks.all.last == "\(Int(origin * 16_000))")
     #expect(marks.all.compactMap(Int.init) == marks.all.compactMap(Int.init).sorted())
   }
+
+  // MARK: - #3973: the transcript channel (EnviousMeet's live words)
+
+  /// Every transcript event, in order.
+  final class Events: @unchecked Sendable {
+    private let lock = NSLock()
+    private var list: [TranscriptEvent] = []
+    var all: [TranscriptEvent] { lock.withLock { list } }
+    func append(_ event: TranscriptEvent) { lock.withLock { list.append(event) } }
+    /// Every finalized delta, joined: the whole confirmed transcript.
+    var finalized: String {
+      all.reduce(into: "") { text, event in
+        if case .update(let finalized, _) = event { text += finalized }
+      }
+    }
+  }
+
+  private static func transcriptSession(
+    _ decode: @escaping TranscribeCppRollingSession.Decode, limit: Int = 2_000,
+    shown: Shown = Shown(), events: Events?
+  ) -> TranscribeCppRollingSession {
+    var publication = TranscribeCppRollingSession.Publication(
+      retentionLimit: limit, onHypothesis: shown.append, onAudioReleased: { _ in })
+    if let events { publication.onTranscript = events.append }
+    return TranscribeCppRollingSession(
+      decode: decode, cadence: .milliseconds(1), publication: publication)
+  }
+
+  @Test("a commit hands over its prefix once and the held-back suffix replaces the last one")
+  func transcriptPrefixAndSuffix() async {
+    let events = Events()
+    let s = Self.transcriptSession(Self.noDecode, events: events)
+    await s.apply(
+      [Self.seg(0, 1.2, " Hello world."), Self.seg(1.2, 2.0, " How are")], realAudioEnd: 2)
+    await s.apply(
+      [Self.seg(0, 1.5, " Hello world. How"), Self.seg(1.5, 3.0, " are you")], realAudioEnd: 3)
+    #expect(
+      events.all == [
+        .update(finalized: "", inProgress: " Hello world. How are"),
+        .update(finalized: " Hello world. How", inProgress: " are you"),
+      ])
+  }
+
+  @Test("a commit is handed over even when the held-back words do not change")
+  func transcriptCommitWithUnchangedSuffix() async {
+    let events = Events()
+    let s = Self.transcriptSession(Self.noDecode, events: events)
+    // "no" is held back, then committed while the next "no" is held back: the held-back words
+    // read the same before and after, and the commit must still be handed over.
+    await s.apply([Self.seg(0, 1, " no")], realAudioEnd: 1)
+    await s.apply([Self.seg(0, 1, " no"), Self.seg(1, 2, " no")], realAudioEnd: 2)
+    #expect(
+      events.all == [
+        .update(finalized: "", inProgress: " no"),
+        .update(finalized: " no", inProgress: " no"),
+      ])
+  }
+
+  @Test("finalized deltas keep every word even past the preview's retention limit")
+  func transcriptIsLosslessPastTheLimit() async {
+    let events = Events()
+    let s = Self.transcriptSession(Self.noDecode, limit: 40, events: events)
+    var segments: [RollingSegment] = []
+    var expected = ""
+    for i in 0..<20 {
+      segments.append(Self.seg(Float(i), Float(i + 1), " sentence\(i)."))
+      expected += " sentence\(i)."
+      await s.apply(segments, realAudioEnd: Float(i + 1))
+      await s.apply(segments, realAudioEnd: Float(i + 1) + 0.5)
+    }
+    #expect(await s.committedTextForTests.count <= 40, "control: the display copy is bounded")
+    #expect(events.finalized == expected, "the transcript copy is not")
+  }
+
+  @Test("a forced advance with nothing committed hands over a discontinuity and no finalized text")
+  func transcriptForcedAdvanceWithoutCommit() async {
+    let events = Events()
+    let s = Self.transcriptSession(Self.noDecode, events: events)
+    await s.apply([Self.seg(0, 31, " unstable words")], realAudioEnd: 31)
+    #expect(await s.discardedUnstableAudioForTests, "control: the advance was forced")
+    #expect(events.all == [.update(finalized: "", inProgress: " unstable words"), .discontinuity])
+  }
+
+  @Test("a genuine commit in the same decode arrives once before the forced advance")
+  func transcriptForcedAdvanceAfterCommit() async {
+    let events = Events()
+    let s = Self.transcriptSession(Self.noDecode, events: events)
+    // Agreed on twice, then a decode commits the short first segment while the long unstable
+    // tail pushes the window past 30 s with no boundary at or before the retention line.
+    // The committed segment ends at 25 s, after the 23 s retention line, so it is no safe trim
+    // boundary and the 31 s window forces the advance.
+    await s.apply([Self.seg(0, 25, " Yes."), Self.seg(25, 28, " and then")], realAudioEnd: 28)
+    await s.apply(
+      [Self.seg(0, 25, " Yes."), Self.seg(25, 31, " and then something long")], realAudioEnd: 31)
+    #expect(await s.discardedUnstableAudioForTests, "control: the advance was forced")
+    #expect(
+      events.all == [
+        .update(finalized: "", inProgress: " Yes. and then"),
+        .update(finalized: " Yes.", inProgress: " and then something long"),
+        .discontinuity,
+      ])
+  }
+
+  @Test("failed decodes past the window bound still hand over the discontinuity")
+  func transcriptForcedAdvanceBeforeDecode() async {
+    let d = ScriptedDecoder([])
+    d.failingEvery()
+    // A failed decode leaves its audio unheard, so the loop retries at once; holding the second
+    // call lets the audio grow past the bound between two known cycles.
+    d.hold(call: 1)
+    let events = Events()
+    let audio = Audio()
+    audio.set(Self.voiced(20))
+    let s = Self.transcriptSession(d.decode, events: events)
+    await s.start(audioSamplesProvider: audio.provider)
+    await Self.within("the held second decode", onExpiry: d.release) { await d.calls(reach: 2) }
+    audio.set(Self.voiced(32))
+    d.release()
+    // Cycle 3 retains at 32 s before its decode: the forced advance.
+    await Self.within("cycle 3") { await s.cyclesCompleted(reach: 3) }
+    await s.cancel()
+    #expect(await s.bufferStartForTests > 0, "control: the window advanced before decoding")
+    #expect(events.all == [.discontinuity], "no decode succeeded, so no update; one advance")
+  }
+
+  @Test("without a transcript owner the preview shows exactly what it showed before")
+  func noTranscriptOwnerKeepsThePreviewOutput() async {
+    var shownBy: [[String]] = []
+    for withOwner in [false, true] {
+      let words = (0..<300).map { " w\($0)" }.joined()
+      let d = ScriptedDecoder(
+        (0..<6).map { i in
+          [Self.native(0, 1000, (i.isMultiple(of: 2) ? words : " other" + words) + " end\(i)")]
+        })
+      let shown = Shown()
+      let audio = Audio()
+      let s = Self.transcriptSession(
+        d.decode, limit: 100, shown: shown, events: withOwner ? Events() : nil)
+      audio.set(Self.voiced(20))
+      await s.start(audioSamplesProvider: audio.provider)
+      for (step, seconds) in [26, 32, 34].enumerated() {
+        await Self.within("cycle \(step + 1)") { await s.cyclesCompleted(reach: step + 1) }
+        audio.set(Self.voiced(Float(seconds)))
+      }
+      await Self.within("cycle 4") { await s.cyclesCompleted(reach: 4) }
+      await s.cancel()
+      shownBy.append(shown.all)
+    }
+    #expect(shownBy[0].count >= 2, "control: text flowed")
+    #expect(shownBy[0] == shownBy[1])
+  }
+
+  @Test("without a transcript owner agreement, retention and the committed text are unchanged")
+  func noTranscriptOwnerKeepsTheState() async {
+    var states: [[String]] = []
+    for withOwner in [false, true] {
+      let s = Self.transcriptSession(Self.noDecode, limit: 50, events: withOwner ? Events() : nil)
+      var segments: [RollingSegment] = []
+      for i in 0..<18 {
+        segments.append(Self.seg(Float(i), Float(i + 1), " sentence\(i)."))
+        await s.apply(segments, realAudioEnd: Float(i + 1))
+        await s.apply(segments, realAudioEnd: Float(i + 1) + 0.5)
+      }
+      // The first trims at the last committed end; the second finds no boundary left and forces.
+      await s.apply([Self.seg(17, 50, " unstable")], realAudioEnd: 50)
+      await s.apply([Self.seg(17, 50, " unstable")], realAudioEnd: 50)
+      states.append([
+        await s.committedTextForTests, "\(await s.bufferStartForTests)",
+        await s.heldBackTextForTests, "\(await s.discardedUnstableAudioForTests)",
+      ])
+    }
+    #expect(states[0][3] == "true", "control: the sequence forced an advance")
+    #expect(states[0] == states[1])
+  }
+
+  @Test("Japanese finalized deltas keep the decoder's spacing (none)")
+  func transcriptKeepsUnspacedScripts() async {
+    let events = Events()
+    let s = Self.transcriptSession(Self.noDecode, events: events)
+    let segments = [Self.seg(0, 1, "今日は"), Self.seg(1, 2, "いい天気です。")]
+    await s.apply(segments, realAudioEnd: 2)
+    await s.apply(segments, realAudioEnd: 2.5)
+    #expect(events.finalized == "今日はいい天気です。")
+  }
 }

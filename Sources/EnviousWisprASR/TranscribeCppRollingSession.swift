@@ -45,6 +45,18 @@ import Foundation
 // `start`). The preview only ever cancels, never finalizes. Preview bounds never apply in heart
 // mode.
 
+/// Preview mode's lossless transcript output (#3973), next to the bounded display tail: what an
+/// owner needs to build a growing transcript (EnviousMeet's live words).
+package enum TranscriptEvent: Sendable, Equatable {
+  /// `finalized`: text that became final in this decode, never repeated. `inProgress`: the
+  /// words still held back, replacing the previous ones (empty when none).
+  case update(finalized: String, inProgress: String)
+  /// A forced advance discarded the agreement state of words that never committed: the
+  /// held-back words shown so far are not promoted to finalized. The audio retained after the
+  /// new origin is decoded again, so later decodes may recognize some of the same words.
+  case discontinuity
+}
+
 /// One segment of a decode, in absolute seconds of the session's `streamingPCM`.
 struct RollingSegment: Sendable, Equatable {
   let start: Float
@@ -82,6 +94,10 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
     /// update bookkeeping and remove the released prefix under its lock; it must not await or
     /// decode.
     let onAudioReleased: @Sendable (Int) -> Void
+    /// Called on this actor with every committed delta and held-back change (#3973). Nil for
+    /// dictation's preview, which only shows `onHypothesis`'s bounded tail. Cheap only: it runs
+    /// inside the loop.
+    var onTranscript: (@Sendable (TranscriptEvent) -> Void)? = nil
   }
 
   private let decode: Decode
@@ -89,6 +105,8 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
   private let publication: Publication?
   /// The last text handed to `onHypothesis`, so an unchanged hypothesis is not handed again.
   private var lastPublished = ""
+  /// The held-back words last handed to `Publication.onTranscript`.
+  private var lastTranscriptInProgress = ""
 
   static let sampleRate: Float = 16_000
   /// One second of new audio before a cycle decodes (the retired WhisperKit session's gate).
@@ -213,6 +231,7 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
     stopSnapshotTaken = false
     cyclesCompleted = 0
     lastPublished = ""
+    lastTranscriptInProgress = ""
     self.audioSamplesProvider = audioSamplesProvider
     // A previous take's native work may still be draining: the new loop decodes only after it
     // physically ended, so two runs never share the model.
@@ -483,6 +502,13 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
     let remaining = Array(fresh[commitCount...])
     heldBack = remaining.map { ($0, segments[$0.segment].end) }
     previousHypothesis = remaining
+    // Before retention: a forced advance below must follow this decode's genuine commits.
+    // Strings are built only for a transcript owner, never on dictation's decodes.
+    if publication?.onTranscript != nil {
+      publishTranscript(
+        finalized: fresh[0..<commitCount].map(\.text).joined(),
+        inProgress: remaining.map(\.text).joined())
+    }
 
     // 3. RETAIN (§3.5).
     retain(realAudioEnd: realAudioEnd)
@@ -520,6 +546,21 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
     previousHypothesis = []
     bufferStart = retentionLine
     releaseAudio()
+    // The held-back words go with their agreement state: they never become finalized.
+    if let onTranscript = publication?.onTranscript {
+      lastTranscriptInProgress = ""
+      onTranscript(.discontinuity)
+    }
+  }
+
+  /// Preview mode: hands the transcript owner this decode's committed delta (exactly once, from
+  /// the units themselves, before any bounded retention can drop them) and the held-back words,
+  /// when either changed.
+  private func publishTranscript(finalized: String, inProgress: String) {
+    guard let onTranscript = publication?.onTranscript else { return }
+    guard !finalized.isEmpty || inProgress != lastTranscriptInProgress else { return }
+    lastTranscriptInProgress = inProgress
+    onTranscript(.update(finalized: finalized, inProgress: inProgress))
   }
 
   /// Preview mode: tells the owner the audio before the new origin is never read again. The
