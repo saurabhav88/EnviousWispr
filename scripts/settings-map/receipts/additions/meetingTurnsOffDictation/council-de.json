@@ -1,0 +1,38 @@
+{
+  "run_id": "run-1792889286-2adea08c",
+  "run_dir": "/Users/m4pro_sv/.local/state/council/runs/run-1792889286-2adea08c",
+  "providers": {
+    "openai": {
+      "content": "1. {\"words\":[\"Meetings\",\"Diktieren\",\"Meetingaufnahme\"],\"phrases\":[\"w\u00e4hrend einer Meetingaufnahme kein Diktat starten\",\"Diktiertaste startet bei Meetingaufnahmen kein Diktat\"]} \u2014 \u201eDiktiertaste funktioniert nicht\u201c ist zu pauschal, und ein laufendes Diktat wird nicht ausgeschaltet.",
+      "latest_response_id": "resp_06c8da73bb6ea659006add51c7171481949c5a362b29e8ed0b",
+      "model": "gpt-6-sol",
+      "provider": "openai",
+      "session": "ew-4069-vocab-de-2026-10-24-gpt",
+      "status": "ok",
+      "usage": {
+        "completion_tokens": 356,
+        "cost_usd": 0.001689,
+        "latency_ms": 9835,
+        "prompt_tokens": 265,
+        "reasoning_tokens": 278,
+        "total_tokens": 621
+      }
+    },
+    "gemini": {
+      "content": "1. {\"words\": [\"Besprechung\", \"Meetingaufnahme\"], \"phrases\": [\"schalte Diktieren im Meeting aus\", \"Diktiertaste bei Meetingaufnahme deaktivieren\"]}\nAdding the natural German synonym \"Besprechung\" ensures users who don't search for the English term \"Meeting\" can locate this setting.",
+      "latest_interaction_id": "v1_Chd4bEhkYXJLN0xQZmo1Tm9Qc0tfQTJRbxIXeGxIZGFySzdMUGZqNU5vUHNLX0EyUW8",
+      "model": "gemini-3.8-flash",
+      "provider": "gemini",
+      "session": "ew-4069-vocab-de-2026-10-24-gemini",
+      "status": "ok",
+      "usage": {
+        "prompt_tokens": 262,
+        "completion_tokens": 69,
+        "reasoning_tokens": 1342,
+        "total_tokens": 1673,
+        "cost_usd": 0.0109755,
+        "latency_ms": 11445
+      }
+    }
+  }
+}

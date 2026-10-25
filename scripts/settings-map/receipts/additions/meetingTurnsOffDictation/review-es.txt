@@ -1,0 +1,1 @@
+{"language":"es","title":"desactivar el dictado durante las reuniones","words":[],"phrases":["desactivar dictado mientras se graba una reunión","la tecla de dictado no funciona al grabar una reunión"]}

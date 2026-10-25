@@ -6691,6 +6691,28 @@
         }
       }
     },
+    "Dictation is off during meetings." : {
+      "comment" : "Pill: the user turned on Turn off dictation during meetings and a meeting is recording, so the dictation key recorded nothing. Keep it short: a long sentence may not fit the pill, and its fit is checked on screen.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktieren ist während Meetings aus."
+          }
+        }
+      }
+    },
+    "Dictation is off during meetings. Turn it back on in EnviousMeet settings. A dictation that already started before the meeting finishes normally." : {
+      "comment" : "EnviousMeet page: help for Turn off dictation during meetings. The founder's sentence (#4069).",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktieren ist während Meetings aus. Schalte es in den EnviousMeet-Einstellungen wieder ein. Ein Diktat, das schon vor dem Meeting begonnen hat, läuft normal zu Ende."
+          }
+        }
+      }
+    },
     "Dictation itself works normally. Only the on-screen preview is unavailable." : {
       "comment" : "Live Preview settings: status needs mac os26 detail no alternative.",
       "localizations" : {
@@ -19313,6 +19335,17 @@
         }
       }
     },
+    "The dictation key records nothing while a meeting is recording." : {
+      "comment" : "EnviousMeet page: the short line under Turn off dictation during meetings.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Solange ein Meeting aufgenommen wird, startet die Diktiertaste kein Diktat."
+          }
+        }
+      }
+    },
     "The download couldn't be verified. Try again, and if this keeps happening, contact support." : {
       "comment" : "Speech model download: why it failed. Shown in setup and in Settings.",
       "localizations" : {
@@ -20994,6 +21027,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wenn du eine App ausschaltest, fragt EnviousMeet bei Anrufen über diese App nicht mehr nach."
+          }
+        }
+      }
+    },
+    "Turn off dictation during meetings" : {
+      "comment" : "EnviousMeet page: switch that makes the dictation key record nothing while a meeting records.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktieren während Meetings ausschalten"
           }
         }
       }
@@ -22760,6 +22804,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Du bist dafür verantwortlich, andere zu informieren und ihre Zustimmung einzuholen, wo das Gesetz es verlangt. Envious Labs ist nicht verantwortlich für Aufnahmen, die du ohne Zustimmung machst."
+          }
+        }
+      }
+    },
+    "You can change this later in EnviousMeet settings." : {
+      "comment" : "EnviousMeet setup: under a skipped permission or choice.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du kannst das später in den EnviousMeet-Einstellungen ändern."
           }
         }
       }
@@ -33820,17 +33875,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wenn etwas schiefgeht, sind die Hinweise jetzt verständlicher. Bei einem teilweisen Fehler erhältst du eine andere Warnung als bei einem vollständigen Ausfall."
-          }
-        }
-      }
-    },
-    "You can change this later in EnviousMeet settings." : {
-      "comment" : "EnviousMeet setup: under a skipped permission or choice.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Du kannst das später in den EnviousMeet-Einstellungen ändern."
           }
         }
       }

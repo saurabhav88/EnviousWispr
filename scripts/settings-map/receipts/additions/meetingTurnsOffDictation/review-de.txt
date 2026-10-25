@@ -1,0 +1,8 @@
+{
+  "language": "de",
+  "words": [],
+  "phrases": [
+    "schalte das Diktieren bei einer Meetingaufnahme aus",
+    "Diktiertaste funktioniert während der Meetingaufnahme nicht"
+  ]
+}

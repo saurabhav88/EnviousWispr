@@ -1,0 +1,9 @@
+{
+  "language": "sv",
+  "title": "stäng av diktering under möten",
+  "words": [],
+  "phrases": [
+    "blockera diktering medan ett möte spelas in",
+    "dikteringstangenten fungerar inte under mötesinspelning"
+  ]
+}

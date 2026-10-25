@@ -2320,6 +2320,24 @@
    }
   },
   {
+   "id": "meetingTurnsOffDictation",
+   "kind": "setting",
+   "destination": {
+    "page": "meetings",
+    "tab": "general"
+   },
+   "disposition": "mapped",
+   "parent": "meetings.tab.general",
+   "target": "meetingTurnsOffDictation",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "The dictation key records nothing while a meeting is recording."
+   }
+  },
+  {
    "id": "meetingUseCalendarForNames",
    "kind": "setting",
    "destination": {

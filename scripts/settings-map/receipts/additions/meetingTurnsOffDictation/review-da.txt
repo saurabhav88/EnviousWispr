@@ -1,0 +1,1 @@
+{"language":"da","title":"slå diktering fra under møder","words":[],"phrases":["deaktiver diktering mens et møde optages","dikteringstasten virker ikke under mødeoptagelse"]}

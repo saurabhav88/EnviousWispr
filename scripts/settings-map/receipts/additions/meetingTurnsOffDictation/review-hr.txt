@@ -1,0 +1,1 @@
+{"language":"hr","title":"isključi diktiranje tijekom sastanaka","words":[],"phrases":["onemogući diktiranje dok se snima sastanak","tipka za diktiranje ne radi tijekom snimanja sastanka"]}

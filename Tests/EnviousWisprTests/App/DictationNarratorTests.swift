@@ -369,4 +369,18 @@ import Testing
     // unconditional save claim, the assertion above would pass vacuously.
     #expect(DictationNarrator.recoverySucceededSubtitle == "Saved to History")
   }
+
+  /// #4069: founder-chosen wording (2026-10-24, option A). The longer instruction lives in the
+  /// switch's help line. 36 is the approved editing limit from `sharedEngineBusyCopy`, not a
+  /// measured width; the rendered fit is checked by screenshot in Live UAT.
+  @Test("dictation turned off during meetings has its own short sentence")
+  func dictationOffDuringMeetingCopy() {
+    let sentence = DictationNarrator.copy(for: .dictationOffDuringMeeting)
+    #expect(sentence == "Dictation is off during meetings.")
+    #expect(
+      sentence.count <= 36, "\(sentence.count) characters is over the 36-character editing limit")
+    #expect(
+      DictationNarrator.announcement(for: .warning(reason: .dictationOffDuringMeeting))
+        == "Warning: Dictation is off during meetings.")
+  }
 }

@@ -105,6 +105,9 @@ public enum RecordingWarningReason: Equatable, Sendable {
   /// holder is read from the claim, and a case that cannot be constructed from
   /// the data is a claim about reachability that nothing enforces.
   case sharedEngineBusy(holder: SharedEngineHolder)
+  /// #4069: "Turn off dictation during meetings" is on and a meeting is capturing, so this
+  /// press minted nothing. A user's choice, not a busy engine.
+  case dictationOffDuringMeeting
 }
 
 /// Events the recording driver handles.

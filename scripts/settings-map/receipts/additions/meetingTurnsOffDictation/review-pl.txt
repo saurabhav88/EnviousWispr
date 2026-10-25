@@ -1,0 +1,1 @@
+{"language":"pl","title":"wyłącz dyktowanie podczas spotkań","words":[],"phrases":["zablokuj dyktowanie podczas nagrywania spotkania","klawisz dyktowania nie działa podczas nagrywania spotkania"]}

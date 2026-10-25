@@ -153,6 +153,10 @@ final class RecordingStarter {
   /// into the honest not-installed pill. Defaults open (true) — a missing
   /// authority must not block dictation.
   var isSelectedModelInstalled: @MainActor () -> Bool = { true }
+  /// #4069: "Turn off dictation during meetings" is on and a meeting is capturing
+  /// (`MeetingCoordinator.isCapturing`). Read once per START press, before any await. Defaults
+  /// open (false): a missing authority must not block dictation.
+  var isDictationOffForMeeting: @MainActor () -> Bool = { false }
   let endMinting: @MainActor () -> Void
 
   var heartControlRecovery: HeartControlRecovery
@@ -245,6 +249,17 @@ final class RecordingStarter {
     Task {
       await AppLogger.shared.log(
         "record press refused holder=\(holder.rawValue)", level: .info, category: "Pipeline")
+    }
+  }
+
+  /// #4069: the user turned dictation off during meetings and a meeting is capturing. Checked
+  /// after the recovery gate (its notice carries Discard) and before the microphone ask and the
+  /// engine claim, so a refusal neither prompts nor claims anything.
+  private func handleDictationOffDuringMeeting() {
+    recordingOverlay.present(.warning(reason: .dictationOffDuringMeeting))
+    Task {
+      await AppLogger.shared.log(
+        "record press refused reason=meeting_dictation_off", level: .info, category: "Pipeline")
     }
   }
 
@@ -375,13 +390,18 @@ final class RecordingStarter {
       handleRecoveryPressRefused(backend: backend)
       return .noRecording
     }
+    // #4069 — dictation turned off during meetings: before the microphone ask and the claim.
+    if isDictationOffForMeeting() {
+      handleDictationOffDuringMeeting()
+      return .noRecording
+    }
     // #3960 — a microphone macOS never asked about is asked about now, before
     // the engine claim, so the claim is never held across the prompt.
     if askForMicrophoneIfNeeded() { return .noRecording }
     // #2648 — the shared ASR-and-polish resource. Claimed HERE, before any
     // engine work: a refusal must reach the user as a pill at press time, not
-    // after a pre-warm they cannot see the point of. Recovery is refused one
-    // gate above, so a claim that fails here belongs to another workload.
+    // after a pre-warm they cannot see the point of. Recovery is refused in an
+    // earlier gate, so a claim that fails here belongs to another workload.
     let engineToken: EngineLease.Token
     switch engineAdmission.claim() {
     case .granted(let token):
@@ -663,6 +683,12 @@ final class RecordingStarter {
       // `isStartingFromIdle`).
       if recovery.isRecovering() {
         handleRecoveryPressRefused(backend: backend)
+        return
+      }
+      // #4069 — same meeting gate as the PTT path, in the same position. A STOP toggle never
+      // reaches here (guarded by `isStartingFromIdle`).
+      if isDictationOffForMeeting() {
+        handleDictationOffDuringMeeting()
         return
       }
       // #3960 — same microphone ask as the PTT path, in the same position.

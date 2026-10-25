@@ -1,0 +1,1 @@
+{"language":"lt","title":"išjungti diktavimą per susitikimus","words":[],"phrases":["neleisti diktuoti įrašant susitikimą","diktavimo klavišas neveikia įrašant susitikimą"]}
