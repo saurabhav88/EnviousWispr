@@ -10,7 +10,9 @@
     "parser_slice_cases": 119,
     "parser_slice_console_seconds": 24.657,
     "weights": "Qualified B0 summed execution leaves; replace the nine targeted parser-family weights with the one successful E3/E2 verification. No wall-time prediction.",
-    "protected": "All unlisted suites, desktop-effects/ASR bundles, live UI and unreviewed resources remain together. Shutdown and LanguageGate fixtures are unchanged; only their E5 suite allocation is screened. Changed reviewed test files fall back to the protected worker."
+    "protected": "All unlisted suites, desktop-effects/ASR bundles, live UI and unreviewed resources remain together. Shutdown and LanguageGate fixtures are unchanged; only their E5 suite allocation is screened. Changed reviewed test files fall back to the protected worker.",
+    "integration_base_head": "a01dab18ec4999f00e244c557f375aa29dab333d",
+    "integration_note": "Main #4093 already migrated test temporary paths to process-owned cleanup roots. Reviewed source hashes include that migration; measured B0 weights remain estimates."
   },
   "costs": {
     "EnviousWisprTests/TestInventoryFreezeTests": 0.5254440307617188,
@@ -83,7 +85,7 @@
         {
           "suite": "EnviousWisprTests/EngineMutationInventoryFreezeTests",
           "file": "Tests/EnviousWisprTests/Architecture/EngineMutationInventoryFreezeTests.swift",
-          "sha256": "4a5bc5379c8ca036e93271f56f82cf5823906840be8d41da4e477ae41eabed0f"
+          "sha256": "c7848ec2a38592890314f2b02537f1ee1c06275e0bac2b42457d2eb9cbbfc9ab"
         },
         {
           "suite": "EnviousWisprTests/TelemetryEmitterRegistryTests",
@@ -98,7 +100,7 @@
         {
           "suite": "EnviousWisprTests/ProviderSetupCredentialOwnershipTests",
           "file": "Tests/EnviousWisprTests/App/ProviderSetupCredentialTests.swift",
-          "sha256": "ca92d873c542a4ddb2ca4a05fcdb81efc570e8ca29d9f13a2182e3ab0159d633"
+          "sha256": "d3ac18c4ac4a2a8eb086d864364aa46a6d7af71d070a47bf450d3ccea9b25829"
         },
         {
           "suite": "EnviousWisprTests/SettingsMapRegistrationTests",
@@ -113,7 +115,7 @@
         {
           "suite": "EnviousWisprTests/CachedSwiftParserTests",
           "file": "Tests/EnviousWisprTests/Architecture/CachedSwiftParserTests.swift",
-          "sha256": "801636624215b0132dd400e716ae2c116242a2d7ef6f5cd6cf6da0d87ca9c5bf"
+          "sha256": "e31f6d989b20118417d71a1e4b623523b1f3eba38abc72f26efe6fa5d200e7c3"
         },
         {
           "suite": "EnviousWisprTests/ClipboardSettingsWiringTests",
@@ -204,12 +206,12 @@
         {
           "suite": "EnviousWisprTests/SettingsSearchVocabularyTests",
           "file": "Tests/EnviousWisprTests/Settings/SettingsSearchVocabularyTests.swift",
-          "sha256": "bad1577dd337f4c0afe8b8c24c8afbea3fa8a407862dcdc777fd022fccbb99dc"
+          "sha256": "d7f0321a894f675e06c685517be3228be7909388f1b1082cb7e38909b35ad48f"
         },
         {
           "suite": "EnviousWisprTests/SettingsSearchMatchingTests",
           "file": "Tests/EnviousWisprTests/Settings/SettingsSearchMatchingTests.swift",
-          "sha256": "0782e41da855dee1336e79ac6c2a8a9af510065bdf4a4091b78c457d12dc01e8"
+          "sha256": "5becc196d0b243bc044fc43b7c439920720ec08d430f05becfb57381877153af"
         },
         {
           "suite": "EnviousWisprTests/SettingsSearchMeaningAssetsTests",
@@ -219,7 +221,7 @@
         {
           "suite": "EnviousWisprTests/SettingsSearchModelTests",
           "file": "Tests/EnviousWisprTests/Settings/SettingsSearchModelTests.swift",
-          "sha256": "7d705207b2fdebff06a25c13a340eec99e9d5ad350df7d278e9a4ab578d685ce"
+          "sha256": "cbbdfc3949325ddf96071bc0c36936e5c95da72cf6db26a4b988574671628faa"
         }
       ]
     },
@@ -230,7 +232,7 @@
         {
           "suite": "EnviousWisprTests/ParakeetUpgradePolicyTests",
           "file": "Tests/EnviousWisprTests/Pipeline/ParakeetUpgradeCoordinatorTests.swift",
-          "sha256": "da72842835297f0a4a6030e52ef9b6da8f3c5a2dd2cc0dd7fca5d8f9451cb338"
+          "sha256": "461fcf95f98714352ce3a3342ebb13a20ddefcf449245fc39e2684e4739f3ca1"
         }
       ]
     },
@@ -241,7 +243,7 @@
         {
           "suite": "EnviousWisprTests/ModelDeliveryControllerTests",
           "file": "Tests/EnviousWisprTests/ModelDelivery/ModelDeliveryControllerTests.swift",
-          "sha256": "4e23d914ef537bf3d92408dad4687ec158c7a4693cba8e79e63c97a2fbc02184"
+          "sha256": "9cf042bcb9a77040f7ae4da05018c7779ff28740c85b74e7282244718e930fb7"
         }
       ]
     },
@@ -252,7 +254,7 @@
         {
           "suite": "EnviousWisprTests/ManifestFetchTaskTests",
           "file": "Tests/EnviousWisprTests/ModelDelivery/ManifestFetchTaskTests.swift",
-          "sha256": "bd01f85c2c3c057024d97591e62ff822624a287b30a3bbf4fe46e221a3540b50"
+          "sha256": "75c0cf5be8902add8833eb3eae7f762c131bc32146f568729e1221e0c9556434"
         }
       ]
     },
@@ -263,7 +265,7 @@
         {
           "suite": "EnviousWisprTests/EGOneAdapterLifecycleTests",
           "file": "Tests/EnviousWisprTests/LLM/EGOneAdapterLifecycleTests.swift",
-          "sha256": "18aaaec6999368ee553639212d2d8c19c73c4746223d15378d8300d340d02372"
+          "sha256": "98cf4523ede444da8d95fd52112ad7b78bb6ba81fba803203e8295d3f0d5162f"
         }
       ]
     },
@@ -274,7 +276,7 @@
         {
           "suite": "EnviousWisprTests/EGOneOutsideStopRecoveryTests",
           "file": "Tests/EnviousWisprTests/LLM/EGOneAdapterLifecycleTests.swift",
-          "sha256": "18aaaec6999368ee553639212d2d8c19c73c4746223d15378d8300d340d02372"
+          "sha256": "98cf4523ede444da8d95fd52112ad7b78bb6ba81fba803203e8295d3f0d5162f"
         }
       ]
     },
@@ -318,7 +320,7 @@
         {
           "suite": "EnviousWisprTests/ImportFileParserTests",
           "file": "Tests/EnviousWisprTests/PostProcessing/ImportFileParserTests.swift",
-          "sha256": "490adf84af34655b7c333f03a86eadf921e23b357f1a2a47cb590cd393307b69"
+          "sha256": "8e691cf573761ef68d86ec87f600d618ac53b9d381bd893399aa65d617b339b8"
         }
       ]
     },
@@ -329,7 +331,7 @@
         {
           "suite": "EnviousWisprTests/SnippetImportParsersTests",
           "file": "Tests/EnviousWisprTests/PostProcessing/SnippetImportParsersTests.swift",
-          "sha256": "802c6d586258ceac91c9c745f8695b71f8dc7db4ab154ac4b32207243544ba2b"
+          "sha256": "bfdefe40c00ee37d61dd22ddcc344a4a7613c8d136f67db2dee7b6f345b32eaa"
         }
       ]
     },
@@ -384,18 +386,18 @@
         {
           "suite": "EnviousWisprTests/WordCheckRuntimeTerminationTests",
           "file": "Tests/EnviousWisprTests/App/WordCheckRuntimeTerminationTests.swift",
-          "sha256": "9305f937bd44f2ae2d4261af62d14da0b44aa962702d3ece836bfeed823a8707"
+          "sha256": "53fc552863f9d4e794fac1ccfcb67d4ce3b660db5a56d5a7253ecdf3918884c8"
         }
       ]
     },
     {
       "name": "isolated/LanguageGateBenchmarkTests",
-      "reason": "Unchanged benchmark: deterministic text processing; its fixed report directory has one suite owner and the account queue excludes other CI jobs. Allocation only, no E4 optimization.",
+      "reason": "Unchanged benchmark body inherited from main: deterministic processing and process-owned report directory. E5 allocation only; no E4 fixture optimization.",
       "suites": [
         {
           "suite": "EnviousWisprTests/LanguageGateBenchmarkTests",
           "file": "Tests/EnviousWisprTests/Pipeline/LanguageGateBenchmarkTests.swift",
-          "sha256": "ba9a2a1e31eca71c98b3d6831fa2d150dbfa23a77c82ebc87be66b44a9aebc00"
+          "sha256": "e4a5c7ef16eb34830a6279e6c474931f7e65333c61a7dc7cfba87dc4565b1a5a"
         }
       ]
     },
@@ -406,18 +408,7 @@
         {
           "suite": "EnviousWisprTests/MeetingCoordinatorTests",
           "file": "Tests/EnviousWisprTests/App/MeetingCoordinatorTests.swift",
-          "sha256": "adf11b2e4afab02c7e9c004b774216cf6276af0afd3aaf43a0141e4acc97aadb"
-        }
-      ]
-    },
-    {
-      "name": "isolated/ModelDeliveryHomeTests",
-      "reason": "UUID install roots/defaults and injected engine actions; source review required before admission.",
-      "suites": [
-        {
-          "suite": "EnviousWisprTests/ModelDeliveryHomeTests",
-          "file": "Tests/EnviousWisprTests/App/ModelDeliveryHomeTests.swift",
-          "sha256": "f837fb8bd1f71e7449df0c0facdde3594e0879b2f4dcb992bf78b489da488475"
+          "sha256": "b40c10f1047f049e02b5ff90c94f0ca8c20fdd0e7f6db34fa863771e36ce34f2"
         }
       ]
     },

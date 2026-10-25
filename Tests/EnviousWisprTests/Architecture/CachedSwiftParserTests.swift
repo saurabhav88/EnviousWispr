@@ -1,12 +1,13 @@
 import Darwin
 import Foundation
+import EnviousWisprAppKitTestSupport
 import SwiftSyntax
 import Testing
 
 @Suite("Shared source preparation keeps current file identity (#4089)", .tags(.harnessContract))
 struct CachedSwiftParserTests {
   private func fixture() throws -> (URL, URL) {
-    let root = FileManager.default.temporaryDirectory.appendingPathComponent("ast-cache-\(UUID())")
+    let root = TestTemporaryDirectory.url.appendingPathComponent("ast-cache-\(UUID())")
     let sources = root.appendingPathComponent("Sources")
     try FileManager.default.createDirectory(at: sources, withIntermediateDirectories: true)
     return (root, sources.appendingPathComponent("File.swift"))
