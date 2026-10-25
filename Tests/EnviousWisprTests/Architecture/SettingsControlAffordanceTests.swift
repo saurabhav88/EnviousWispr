@@ -167,7 +167,7 @@ struct SettingsControlAffordanceTests {
       try Self.settingsSources().first { $0.path.hasSuffix("LivePreviewSettingsView.swift") },
       "LivePreviewSettingsView.swift is absent from the settings source scan")
     let finder = AccessibilityLabelFinder(viewMode: .sourceAccurate)
-    finder.walk(Parser.parse(source: file.text))
+    finder.walk(CachedSwiftParser.parse(source: file.text))
     let labels = finder.calls.compactMap { call -> StringLiteralExprSyntax? in
       guard let literal = call.arguments.first?.expression.as(StringLiteralExprSyntax.self),
         literal.trimmedDescription.contains("Change dictation language:")

@@ -33,7 +33,7 @@ struct SmartInsertionSettingRoutingTests {
     // replaced with the `DictationSettingsCopy.Clipboard.smartInsertionTitle` resource.
     // The protection is the same and now parsed: exactly one row titled Smart insertion,
     // holding the page's only switch bound to the setting.
-    let rows = ClipboardSettingsWiringTests.rows(in: Parser.parse(source: source))
+    let rows = ClipboardSettingsWiringTests.rows(in: CachedSwiftParser.parse(source: source))
     // #3482: the row names itself by its Settings Map id.
     let titled = rows.filter { $0.title == ".id(.smartInsertion)" }
     #expect(titled.count == 1, "expected exactly one Smart insertion row, found \(titled.count)")
@@ -41,7 +41,7 @@ struct SmartInsertionSettingRoutingTests {
     #expect(titled.first?.binding == "$settings.smartInsertion", "bound to \(titled.first?.binding ?? "nothing")")
 
     // Every switch on the page, inside a shared row or not.
-    let bound = ClipboardSettingsWiringTests.allToggleBindings(in: Parser.parse(source: source))
+    let bound = ClipboardSettingsWiringTests.allToggleBindings(in: CachedSwiftParser.parse(source: source))
       .filter { $0 == "$settings.smartInsertion" }
     #expect(bound.count == 1, "expected exactly one switch bound to the setting, found \(bound.count)")
 

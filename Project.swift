@@ -171,11 +171,24 @@ func targetSettings(
 // executed 5,631 tests and Release 5,197, a 434 gap. That gap is structural, not
 // a regression — `#if DEBUG` tests do not exist in the Release binary at all.
 // Compare Release against a Release baseline, never against Debug.
-let testTargetSettings = targetSettings(
-  releaseExtra: [
-    "SWIFT_OPTIMIZATION_LEVEL": "-Onone",
-    "SWIFT_COMPILATION_MODE": "singlefile",
-  ]
+let testReleaseSettings: SettingsDictionary = [
+  "SWIFT_OPTIMIZATION_LEVEL": "-Onone",
+  "SWIFT_COMPILATION_MODE": "singlefile",
+]
+let testTargetSettings = targetSettings(releaseExtra: testReleaseSettings)
+
+// #4089: Xcode supplies optimized, compiler-matched parser libraries. Link them only in
+// the source-scanning test bundle; first-party Debug modules remain -Onone (#3925).
+let sourceAnalysisTestSettings = targetSettings(
+  baseExtra: [
+    "SWIFT_INCLUDE_PATHS": .array(["$(inherited)", "$(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host"]),
+    "LIBRARY_SEARCH_PATHS": .array(["$(inherited)", "$(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host"]),
+    "OTHER_LDFLAGS": .array([
+      "$(inherited)", "-lSwiftParser", "-lSwiftSyntax",
+      "-Wl,-rpath,$(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host",
+    ]),
+  ],
+  releaseExtra: testReleaseSettings
 )
 
 // Per-config IDENTITY (bundle id + Sparkle feed) is set on every config. The
@@ -762,10 +775,8 @@ let project = Project(
         // above (see Package.swift for the matching SPM dependency).
         // `SwiftOperators` was removed in the council-approved contract
         // pivot (no longer resolving callees, so no folding needed).
-        .package(product: "SwiftParser"),
-        .package(product: "SwiftSyntax"),
       ],
-      settings: testTargetSettings
+      settings: sourceAnalysisTestSettings
     ),
     .target(
       name: "EnviousWisprASRTests",

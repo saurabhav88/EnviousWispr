@@ -131,7 +131,7 @@ struct KeybindRowDefaultsTests {
   private static func executableSource() throws -> String {
     let url = RepoRoot.sourceURL(
       "Sources/EnviousWisprAppKit/Views/Settings/KeybindsSettingsView.swift")
-    let parsed = Parser.parse(source: try String(contentsOf: url, encoding: .utf8))
+    let parsed = CachedSwiftParser.parse(source: try String(contentsOf: url, encoding: .utf8))
     return CommentStripper().rewrite(parsed).description
   }
 
@@ -150,7 +150,7 @@ struct KeybindRowDefaultsTests {
 
   private static func rowBlock(role: String) throws -> String {
     let finder = RowFinder(viewMode: .sourceAccurate)
-    finder.walk(Parser.parse(source: try executableSource()))
+    finder.walk(CachedSwiftParser.parse(source: try executableSource()))
     let matches = finder.rows.filter { call in
       call.arguments.contains { argument in
         argument.label?.text == "role"
@@ -177,7 +177,7 @@ struct KeybindRowDefaultsTests {
     }
     // And the row asks for exactly its OWN role's fields: a lookup fixed to one role would make
     // every row edit that role's shortcut, with the owner itself still correct.
-    let tree = Parser.parse(source: try Self.executableSource())
+    let tree = CachedSwiftParser.parse(source: try Self.executableSource())
     for field in ["keyCode", "modifiers"] {
       let calls = MicrophoneSettingsWiringTests.calls(
         named: "ShortcutSettings.\(field)Field", in: tree)
@@ -191,7 +191,7 @@ struct KeybindRowDefaultsTests {
   func commentsCannotSatisfyTheRowCheck() throws {
     let finder = RowFinder(viewMode: .sourceAccurate)
     finder.walk(
-      Parser.parse(
+      CachedSwiftParser.parse(
         source: """
           // KeybindSettingsRow(role: .quickAdd)
           /* KeybindSettingsRow(role: .cancel) */

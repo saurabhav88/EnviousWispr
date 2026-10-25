@@ -83,7 +83,7 @@ struct PillSettingsCopyTests {
       }
     }
     let finder = Finder(name: name)
-    finder.walk(Parser.parse(source: source))
+    finder.walk(CachedSwiftParser.parse(source: source))
     return finder.found
   }
 }

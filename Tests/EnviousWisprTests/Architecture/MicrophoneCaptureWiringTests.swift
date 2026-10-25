@@ -43,9 +43,9 @@ struct MicrophoneCaptureWiringTests {
     #expect(calls.count == 1)
     #expect(calls.first?.bindings == ["capturePresentation", "body"])
     let statusCalls = MicrophoneSettingsWiringTests.calls(named: "readCapturePresentation",
-      in: Parser.parse(source: status.trimmedDescription))
+      in: CachedSwiftParser.parse(source: status.trimmedDescription))
     #expect(statusCalls.count == 1, "the sole invocation belongs to MicrophoneInUseStatus")
-    let statusCode = MicrophoneSettingsWiringTests.codeOnly(Parser.parse(source: status.trimmedDescription))
+    let statusCode = MicrophoneSettingsWiringTests.codeOnly(CachedSwiftParser.parse(source: status.trimmedDescription))
     #expect(statusCode.contains("@Environment(\\.microphoneCapturePresentation)privatevarreadCapturePresentation"))
     #expect(statusCode.contains("varsnapshot:MicrophoneCapturePresentation?=nil"))
     #expect(statusCode.contains("letcapturePresentation=snapshot??readCapturePresentation()"))
@@ -69,29 +69,29 @@ struct MicrophoneCaptureWiringTests {
 
   @Test("the structural scan distinguishes deferred, eager and precomputed reads")
   func observationPlacementExtractorControls() {
-    let validSlot = Parser.parse(source:
+    let validSlot = CachedSwiftParser.parse(source:
       "SettingsRow(map: .id(.inputDevice)) { PickerView() }.rowStatus { Status() }")
     #expect(Self.inputStatusSlots(in: validSlot) == ["Status()"])
-    let wrongRow = Parser.parse(source:
+    let wrongRow = CachedSwiftParser.parse(source:
       "SettingsRow(title: Other.title) { PickerView() }.rowStatus { Status() }")
     #expect(Self.inputStatusSlots(in: wrongRow) == [])
     let read = "b.liveRecordingState.audioCapture.isCapturing"
-    let deferred = Self.captureReadFacts(in: Syntax(Parser.parse(source:
+    let deferred = Self.captureReadFacts(in: Syntax(CachedSwiftParser.parse(source:
       "var body: some View { view.environment(\\.microphoneCapturePresentation, { Snapshot(active: \(read)) }) }")))
     #expect(deferred.readers == 1)
     #expect(deferred.deferred == ["isCapturing"])
     #expect(deferred.immediate == [])
-    let eager = Self.captureReadFacts(in: Syntax(Parser.parse(source:
+    let eager = Self.captureReadFacts(in: Syntax(CachedSwiftParser.parse(source:
       "var body: some View { view.environment(\\.microphoneCapturePresentation, Snapshot(active: \(read))) }")))
     #expect(eager.readers == 0)
     #expect(eager.deferred == [])
     #expect(eager.immediate == ["isCapturing"])
-    let precomputed = Self.captureReadFacts(in: Syntax(Parser.parse(source:
+    let precomputed = Self.captureReadFacts(in: Syntax(CachedSwiftParser.parse(source:
       "var body: some View { let snapshot = Snapshot(active: \(read)); return view.environment(\\.microphoneCapturePresentation, { snapshot }) }")))
     #expect(precomputed.readers == 1)
     #expect(precomputed.deferred == [])
     #expect(precomputed.immediate == ["isCapturing"])
-    let captured = Self.captureReadFacts(in: Syntax(Parser.parse(source:
+    let captured = Self.captureReadFacts(in: Syntax(CachedSwiftParser.parse(source:
       "var body: some View { view.environment(\\.microphoneCapturePresentation, { [active = \(read)] in Snapshot(active: active) }) }")))
     #expect(captured.readers == 1)
     #expect(captured.deferred == [])

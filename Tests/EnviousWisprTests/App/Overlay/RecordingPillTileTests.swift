@@ -536,7 +536,7 @@ struct RecordingPillPreviewWiringTests {
     let text = try String(
       contentsOf: RepoRoot.url.appending(path: panel), encoding: .utf8)
     let finder = DirectConstructionFinder("RecordingOverlayView")
-    finder.walk(Parser.parse(source: text))
+    finder.walk(CachedSwiftParser.parse(source: text))
 
     #expect(
       finder.calls.count == 1,
@@ -552,7 +552,7 @@ struct RecordingPillPreviewWiringTests {
     let text = try String(
       contentsOf: RepoRoot.url.appending(path: panel), encoding: .utf8)
     let finder = DirectConstructionFinder("RecordingPillPreview")
-    finder.walk(Parser.parse(source: text))
+    finder.walk(CachedSwiftParser.parse(source: text))
 
     #expect(
       finder.calls.count == 1,
@@ -612,7 +612,7 @@ struct RecordingPillPreviewWiringTests {
     let text = try String(
       contentsOf: RepoRoot.url.appending(path: panel), encoding: .utf8)
     return try #require(
-      Self.structDecl(named: "RecordingPillPreviewTile", in: Parser.parse(source: text)),
+      Self.structDecl(named: "RecordingPillPreviewTile", in: CachedSwiftParser.parse(source: text)),
       "RecordingPillPreviewTile is not in \(panel)")
   }
 
@@ -938,7 +938,7 @@ struct RecordingPillPreviewWiringTests {
     let text = try String(
       contentsOf: RepoRoot.url.appending(path: Self.leaf), encoding: .utf8)
     let view = try #require(
-      Self.structDecl(named: "RecordingOverlayView", in: Parser.parse(source: text)),
+      Self.structDecl(named: "RecordingOverlayView", in: CachedSwiftParser.parse(source: text)),
       "RecordingOverlayView is not in \(Self.leaf) — this guard is pointed at the wrong file")
 
     let stateNames = Self.stateProperties(of: view)
@@ -998,7 +998,7 @@ struct RecordingPillPreviewWiringTests {
   static let pillHost = "Sources/EnviousWisprAppKit/Views/Settings/PillSettingsView.swift"
 
   private static func parse(_ path: String) throws -> SourceFileSyntax {
-    Parser.parse(source: try String(contentsOf: RepoRoot.url.appending(path: path), encoding: .utf8))
+    CachedSwiftParser.parse(source: try String(contentsOf: RepoRoot.url.appending(path: path), encoding: .utf8))
   }
 
   private static func constructions(_ name: String, in tree: some SyntaxProtocol) -> [FunctionCallExprSyntax] {
@@ -1064,7 +1064,7 @@ struct RecordingPillPreviewWiringTests {
 
   @Test("a picker bound to another setting, or outside the row, is seen")
   func positionControl() {
-    let fixture = Parser.parse(
+    let fixture = CachedSwiftParser.parse(
       source: """
         SettingsRow(title: Other.title) {
           BrandedSegmentedPicker(options: [("Top", nil, OverlayPillPosition.top)], selection: $settings.other)
@@ -1170,7 +1170,7 @@ struct RecordingPillPreviewWiringTests {
 
   @Test("a caption that is only hidden copies, or is not drawn, is seen")
   func captionUseControl() throws {
-    let hiddenOnly = Parser.parse(
+    let hiddenOnly = CachedSwiftParser.parse(
       source: """
         struct RecordingPillPreviewTile: View {
           private var caption: some View {
@@ -1185,7 +1185,7 @@ struct RecordingPillPreviewWiringTests {
 
   @Test("a caption showing the summary instead of the short line is seen")
   func captionControl() {
-    let fixture = Parser.parse(
+    let fixture = CachedSwiftParser.parse(
       source: """
         static func captionText(for design: D, highlighted: Bool) -> some View {
           VStack { Text(design.displayName); Text(design.summary) }
@@ -1225,7 +1225,7 @@ struct RecordingPillPreviewWiringTests {
 
   @Test("a card that writes the slot directly is seen")
   func selectionControl() {
-    let fixture = Parser.parse(
+    let fixture = CachedSwiftParser.parse(
       source: """
         RecordingPillPreviewTile(design: d, isSelected: s, isEnabled: true, onSelect: { settings.pillDesign = design })
         """)

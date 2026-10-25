@@ -15,7 +15,7 @@ struct RecordingChimeWiringTests {
     "Sources/EnviousWisprAppKit/Views/Settings/RecordingSoundsSettingsView.swift"
 
   static func parse(_ path: String) throws -> SourceFileSyntax {
-    Parser.parse(
+    CachedSwiftParser.parse(
       source: try String(contentsOf: RepoRoot.url.appending(path: path), encoding: .utf8))
   }
 
@@ -91,7 +91,7 @@ struct RecordingChimeWiringTests {
 
   @Test("a Button nested in the other, Select inside Preview, or any card press handler is seen")
   func cardShapeControl() throws {
-    let fixture = Parser.parse(
+    let fixture = CachedSwiftParser.parse(
       source: """
         struct RecordingChimeCard: View {
           var body: some View {
@@ -144,7 +144,7 @@ struct RecordingChimeWiringTests {
 
   @Test("a fixed pairing or a master-gated Preview is seen")
   func cardWiringControl() {
-    let fixture = Parser.parse(
+    let fixture = CachedSwiftParser.parse(
       source: """
         RecordingChimeCard(
           pairing: pairing, isSelected: false, isPreviewEnabled: playsChimes && !isDictationActive,
@@ -252,7 +252,7 @@ struct RecordingChimeWiringTests {
 
   @Test("a Preview that selects, a second task, or a lost cancellation is seen")
   func pageWiringControl() throws {
-    let fixture = Parser.parse(
+    let fixture = CachedSwiftParser.parse(
       source: """
         struct RecordingSoundsSettingsView: View {
           @State private var activePreviewTask: Task<Void, Never>?
@@ -283,7 +283,7 @@ struct RecordingChimeWiringTests {
 
   @Test("a quoted or commented cancel, or one under the inverted branch, is seen")
   func cancellationControl() throws {
-    let fixture = Parser.parse(
+    let fixture = CachedSwiftParser.parse(
       source: """
         struct RecordingSoundsSettingsView: View {
           @State private var activePreviewTask: Task<Void, Never>?
@@ -309,7 +309,7 @@ struct RecordingChimeWiringTests {
 
   @Test("a cancel after a return, in either place, is not a cancel")
   func cancelAfterAnEarlyExitControl() throws {
-    let fixture = Parser.parse(
+    let fixture = CachedSwiftParser.parse(
       source: """
         struct RecordingSoundsSettingsView: View {
           @State private var activePreviewTask: Task<Void, Never>?
@@ -335,7 +335,7 @@ struct RecordingChimeWiringTests {
 
   @Test("a return inside a nested closure does not hide a real cancel")
   func nestedReturnKeepsTheCancel() throws {
-    let fixture = Parser.parse(
+    let fixture = CachedSwiftParser.parse(
       source: """
         struct RecordingSoundsSettingsView: View {
           @State private var activePreviewTask: Task<Void, Never>?

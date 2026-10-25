@@ -45,7 +45,7 @@ struct SharedEnginePresentationWiringTests {
       "Sources/EnviousWisprAppKit/Views/Settings/SettingsComponents.swift"), encoding: .utf8)
     let start = try #require(source.range(of: "struct SettingsSummaryCard"))
     let end = try #require(source.range(of: "// MARK: - Settings Content Container", range: start.lowerBound..<source.endIndex))
-    let tree = SwiftParser.Parser.parse(source: String(source[start.lowerBound..<end.lowerBound]))
+    let tree = CachedSwiftParser.parse(source: String(source[start.lowerBound..<end.lowerBound]))
     let bodies = tree.tokens(viewMode: .sourceAccurate).compactMap { token -> SwiftSyntax.AccessorBlockSyntax? in
       // #3482: `body` adds the card's Settings Map registration to `content`, which holds the layout.
       guard token.text == "content", let binding = token.parent?.parent?.as(SwiftSyntax.PatternBindingSyntax.self) else { return nil }
@@ -67,7 +67,7 @@ struct SharedEnginePresentationWiringTests {
   func fastRecheckIsReadOnly() throws {
     let source = try String(contentsOf: RepoRoot.sourceURL(
       "Sources/EnviousWisprAppKit/App/ModelDeliveryHome.swift"), encoding: .utf8)
-    let tree = SwiftParser.Parser.parse(source: source)
+    let tree = CachedSwiftParser.parse(source: source)
     let method = try #require(tree.tokens(viewMode: .sourceAccurate).first {
       $0.text == "currentParakeetAdmission" && $0.parent?.is(SwiftSyntax.FunctionDeclSyntax.self) == true
     }?.parent?.as(SwiftSyntax.FunctionDeclSyntax.self))
@@ -80,7 +80,7 @@ struct SharedEnginePresentationWiringTests {
 
   @Test("Reset belongs to Auto-detect and keeps its action, help and identity")
   func resetBelongsToAutoDetect() throws {
-    let tree = SwiftParser.Parser.parse(source: try String(contentsOf: RepoRoot.sourceURL(
+    let tree = CachedSwiftParser.parse(source: try String(contentsOf: RepoRoot.sourceURL(
       "Sources/EnviousWisprAppKit/Views/Settings/SpeechEngineSettingsView.swift"), encoding: .utf8))
     let rows = ClipboardSettingsWiringTests.calls(named: "SettingsRow", in: tree)
     let resetRows = rows.filter { row in

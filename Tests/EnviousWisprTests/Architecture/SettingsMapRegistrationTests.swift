@@ -40,7 +40,7 @@ struct SettingsMapRegistrationTests {
     guard swift.count > 100 else { throw SourceScanError.tooFewFiles(swift.count) }
     return try swift.map { url in
       ParsedSource(
-        path: url.path, tree: Parser.parse(source: try String(contentsOf: url, encoding: .utf8)))
+        path: url.path, tree: try CachedSwiftParser.snapshot(at: url).tree)
     }
   }
 

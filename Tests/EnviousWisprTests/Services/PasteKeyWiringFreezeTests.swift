@@ -40,7 +40,7 @@ struct PasteKeyWiringFreezeTests {
     for path in Self.callers {
       let source = try String(contentsOf: RepoRoot.url.appending(path: path), encoding: .utf8)
       let visitor = PosterCalls(viewMode: .sourceAccurate)
-      visitor.walk(Parser.parse(source: source))
+      visitor.walk(CachedSwiftParser.parse(source: source))
       #expect(visitor.keyArguments.isEmpty == false, "\(path) no longer posts a paste")
       for argument in visitor.keyArguments {
         #expect(argument == "SyntheticCopyChord.commandVKeyCode()", "\(path): \(argument)")

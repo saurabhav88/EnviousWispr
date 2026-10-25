@@ -111,7 +111,7 @@ private final class TargetGuard: SyntaxVisitor {
 
   static func check(_ source: String) -> Report {
     let guardian = TargetGuard(viewMode: .sourceAccurate)
-    guardian.walk(Parser.parse(source: source))
+    guardian.walk(CachedSwiftParser.parse(source: source))
     return guardian.report
   }
 

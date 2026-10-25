@@ -167,7 +167,7 @@ import Testing
   private static func surfaceMembers(
     inParsedSource source: String, protocolName: String, context: String
   ) throws -> (header: String?, members: [MemberSignature]) {
-    let tree = Parser.parse(source: source)
+    let tree = CachedSwiftParser.parse(source: source)
     guard !tree.hasError else {
       throw ScanFailedError(
         context: context, reason: "source did not parse cleanly (tree.hasError)")
@@ -251,7 +251,7 @@ import Testing
   private static func concreteMethodMembers(
     inParsedSource source: String, typeName: String, methodName: String, context: String
   ) throws -> [MemberSignature] {
-    let tree = Parser.parse(source: source)
+    let tree = CachedSwiftParser.parse(source: source)
     guard !tree.hasError else {
       throw ScanFailedError(
         context: context, reason: "source did not parse cleanly (tree.hasError)")

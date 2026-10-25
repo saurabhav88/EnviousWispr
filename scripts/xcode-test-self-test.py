@@ -35,6 +35,7 @@ class RunnerContract(unittest.TestCase):
         # The real receipt owner, against owned classifier and eval-compile
         # stand-ins with the real output contracts (#3729 PR-C).
         shutil.copyfile(RUNNER.with_name('lib') / 'validation-receipt.py', lib / 'validation-receipt.py')
+        shutil.copyfile(RUNNER.with_name('lib') / 'prepare-toolchain-syntax.py', lib / 'prepare-toolchain-syntax.py')
         # Private COPY of the machine queue: a missed rewrite must never acquire
         # the developer's real slot from a self-test fixture.
         queue = (RUNNER.parent / 'local-ci-queue.py').read_text()

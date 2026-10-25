@@ -121,7 +121,7 @@ struct TestInventoryFreezeTests {
   /// in a DIFFERENT file inherits nothing and is reported undeclared. That direction is loud, names the
   /// file, and asks for a tag; no such split exists in this tree.
   private static func suites(inSource source: String, file: String) -> [SuiteRecord] {
-    suites(inTree: Parser.parse(source: source), file: file)
+    suites(inTree: CachedSwiftParser.parse(source: source), file: file)
   }
 
   /// Takes an ALREADY-PARSED tree so a caller that needs two answers from one file pays for one parse.
@@ -539,11 +539,11 @@ struct TestInventoryFreezeTests {
     var parsedTotal = 0
     var rawTotal = 0
     for case let url as URL in walker where url.pathExtension == "swift" {
-      let source = try String(contentsOf: url, encoding: .utf8)
+      let prepared = try CachedSwiftParser.snapshot(at: url)
       let rel = relativePath(of: url.path, under: root)
       // ONE parse, both answers. The two traversals must stay structurally independent — that is the
       // whole point of the attribution guard — but they have no reason to read the file twice.
-      let tree = Parser.parse(source: source)
+      let tree = prepared.tree
       let raw = rawTestAttributeCount(in: Syntax(tree))
       let fileRecords = suites(inTree: tree, file: rel)
       let attributed = fileRecords.reduce(0) { $0 + $1.testCount }
@@ -992,7 +992,7 @@ struct TestInventoryFreezeTests {
     }
     // The reconciliation guard has to agree. A defect the two traversals SHARE is one it cannot see.
     #expect(
-      Self.rawTestAttributeCount(in: Syntax(Parser.parse(source: source))) == expected,
+      Self.rawTestAttributeCount(in: Syntax(CachedSwiftParser.parse(source: source))) == expected,
       "the second traversal disagrees for \(attribute)")
   }
 

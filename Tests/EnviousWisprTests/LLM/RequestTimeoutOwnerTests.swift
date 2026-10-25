@@ -92,7 +92,7 @@ struct RequestTimeoutOwnerTests {
       let url = RepoRoot.sourceURL(path)
       let source = try String(contentsOf: url, encoding: .utf8)
       let visitor = TimeoutAssignmentVisitor(viewMode: .sourceAccurate)
-      visitor.walk(Parser.parse(source: source))
+      visitor.walk(CachedSwiftParser.parse(source: source))
       for text in visitor.assignments {
         let key = "\(path)|\(text.function)|\(text.assignment)"
         if Self.allowedAssignments[key] != nil {
@@ -150,7 +150,7 @@ struct RequestTimeoutOwnerTests {
       }
       """
     let visitor = TimeoutAssignmentVisitor(viewMode: .sourceAccurate)
-    visitor.walk(Parser.parse(source: source))
+    visitor.walk(CachedSwiftParser.parse(source: source))
     #expect(visitor.assignments.count == 1)
     #expect(visitor.assignments.first?.assignment == "request.timeoutInterval = 60")
     #expect(visitor.assignments.first?.function == "send")

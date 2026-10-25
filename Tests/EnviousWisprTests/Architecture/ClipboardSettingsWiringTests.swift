@@ -15,7 +15,7 @@ struct ClipboardSettingsWiringTests {
   static let path = "Sources/EnviousWisprAppKit/Views/Settings/ClipboardSettingsView.swift"
 
   static func tree() throws -> SourceFileSyntax {
-    Parser.parse(
+    CachedSwiftParser.parse(
       source: try String(contentsOf: RepoRoot.url.appending(path: path), encoding: .utf8))
   }
 
@@ -195,7 +195,7 @@ struct ClipboardSettingsWiringTests {
 
   @Test("a switch outside the rows, a no-op fixedSize or a swapped style is seen")
   func toggleControls() {
-    let fixture = Parser.parse(
+    let fixture = CachedSwiftParser.parse(
       source: """
         struct ClipboardSettingsView: View {
           var body: some View {
@@ -217,7 +217,7 @@ struct ClipboardSettingsWiringTests {
 
   @Test("a swapped binding, a duplicate row, or Quick Add inside the noted section is seen")
   func extractorControls() {
-    let fixture = Parser.parse(
+    let fixture = CachedSwiftParser.parse(
       source: """
         SettingsContentView {
           SettingsSectionHeading(resolvedTitle: A) { Text(DictationSettingsCopy.Engine.nextRecordingNote) }

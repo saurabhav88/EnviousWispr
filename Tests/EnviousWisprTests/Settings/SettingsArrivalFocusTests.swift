@@ -430,7 +430,7 @@ struct SettingsArrivalFocusTests {
     let source = try String(
       contentsOf: RepoRoot.sourceURL(
         "Sources/EnviousWisprAppKit/Views/Settings/SettingsArrivalFocus.swift"), encoding: .utf8)
-    let tree = Parser.parse(source: source)
+    let tree = CachedSwiftParser.parse(source: source)
     let names = Set(
       tree.tokens(viewMode: .sourceAccurate).compactMap { token -> String? in
         if case .identifier(let text) = token.tokenKind { return text }

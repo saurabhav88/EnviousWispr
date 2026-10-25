@@ -1553,8 +1553,10 @@ import EnviousWisprAppKitTestSupport
   /// `tree.hasError` is checked explicitly and throws `ScanFailedError`
   /// rather than silently scanning a best-effort recovered tree that could
   /// hide or misplace a reference.
-  private static func hits(inSource source: String, file: String) throws -> [RawHit] {
-    let tree = Parser.parse(source: source)
+  private static func hits(
+    inSource source: String, file: String, preparedTree: SourceFileSyntax? = nil
+  ) throws -> [RawHit] {
+    let tree = preparedTree ?? CachedSwiftParser.parse(source: source)
     guard !tree.hasError else {
       throw ScanFailedError(file: file, reason: "source did not parse cleanly (tree.hasError)")
     }
@@ -1599,13 +1601,14 @@ import EnviousWisprAppKitTestSupport
     }
     while let url = enumerator.nextObject() as? URL {
       guard url.pathExtension == "swift" else { continue }
-      let source: String
+      let prepared: CachedSwiftParser.Snapshot
       do {
-        source = try String(contentsOf: url, encoding: .utf8)
+        prepared = try CachedSwiftParser.snapshot(at: url)
       } catch {
         throw ScanFailedError(file: url.path, reason: "could not be read: \(error)")
       }
-      hits.append(contentsOf: try Self.hits(inSource: source, file: url.path))
+      hits.append(contentsOf: try Self.hits(
+        inSource: prepared.source, file: url.path, preparedTree: prepared.tree))
     }
     if let enumerationError {
       throw ScanFailedError(
@@ -1662,13 +1665,13 @@ import EnviousWisprAppKitTestSupport
     while let url = enumerator.nextObject() as? URL {
       guard url.pathExtension == "swift" else { continue }
       let relative = url.path.replacingOccurrences(of: RepoRoot.url.path + "/", with: "")
-      let source: String
+      let prepared: CachedSwiftParser.Snapshot
       do {
-        source = try String(contentsOf: url, encoding: .utf8)
+        prepared = try CachedSwiftParser.snapshot(at: url)
       } catch {
         throw ScanFailedError(file: url.path, reason: "could not be read: \(error)")
       }
-      let tree = Parser.parse(source: source)
+      let tree = prepared.tree
       guard !tree.hasError else {
         throw ScanFailedError(
           file: url.path, reason: "source did not parse cleanly (tree.hasError)")

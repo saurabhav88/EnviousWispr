@@ -255,9 +255,9 @@ struct ProviderSetupCredentialOwnershipTests {
     else { return [] }
     var found: [(String, String)] = []
     for case let url as URL in walker where url.pathExtension == "swift" {
-      let text = try String(contentsOf: url, encoding: .utf8)
+      let prepared = try CachedSwiftParser.snapshot(at: url)
       let visitor = CallVisitor(names: names)
-      visitor.walk(Parser.parse(source: text))
+      visitor.walk(prepared.tree)
       found += visitor.hits.map { (url.lastPathComponent, $0) }
     }
     return found

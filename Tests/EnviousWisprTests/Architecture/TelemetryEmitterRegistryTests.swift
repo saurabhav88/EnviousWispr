@@ -583,6 +583,8 @@ struct TelemetryEmitterRegistryTests {
         case .expressionSegment:
           guard prefix.hasSuffix(".") else { return nil }
           return prefix + "*"
+        @unknown default:
+          return nil
         }
       }
       return prefix.isEmpty ? nil : prefix
@@ -679,10 +681,14 @@ struct TelemetryEmitterRegistryTests {
 
   /// Pass 1 over every file learns the forwarders; pass 2 over every file collects with the
   /// union, so a forwarder declared in one file and called from another still resolves.
-  static func scan(sources: [(file: String, source: String)]) -> (
+  static func scan(
+    sources: [(file: String, source: String)], preparedTrees: [String: SourceFileSyntax] = [:]
+  ) -> (
     emitters: Set<Emitter>, unresolved: [Unresolved]
   ) {
-    let parsed = sources.map { (file: $0.file, tree: Parser.parse(source: $0.source)) }
+    let parsed = sources.map {
+      (file: $0.file, tree: preparedTrees[$0.file] ?? CachedSwiftParser.parse(source: $0.source))
+    }
     var forwarders: [String: ForwardSlot] = [:]
     var conflictingForwarders: Set<String> = []
     for (file, tree) in parsed {
@@ -739,6 +745,7 @@ struct TelemetryEmitterRegistryTests {
       return ([], [])
     }
     var sources: [(file: String, source: String)] = []
+    var preparedTrees: [String: SourceFileSyntax] = [:]
     for case let url as URL in walker {
       let relative = String(url.path.dropFirst(root.count + 1))
       if try url.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink == true {
@@ -746,9 +753,11 @@ struct TelemetryEmitterRegistryTests {
         continue
       }
       guard url.pathExtension == "swift" else { continue }
-      sources.append((relative, try String(contentsOf: url, encoding: .utf8)))
+      let prepared = try CachedSwiftParser.snapshot(at: url)
+      sources.append((relative, prepared.source))
+      preparedTrees[relative] = prepared.tree
     }
-    return scan(sources: sources.sorted { $0.file < $1.file })
+    return scan(sources: sources.sorted { $0.file < $1.file }, preparedTrees: preparedTrees)
   }
 
   /// The event names `TelemetryVolumePolicy.sampledDecision` switches on: string literals
@@ -757,7 +766,7 @@ struct TelemetryEmitterRegistryTests {
   static func policyCaseNames() throws -> Set<String> {
     let source = try String(contentsOf: RepoRoot.sourceURL(policyFile), encoding: .utf8)
     let locator = FunctionBodyLocator(name: "sampledDecision")
-    locator.walk(Parser.parse(source: source))
+    locator.walk(CachedSwiftParser.parse(source: source))
     guard let body = locator.body else {
       Issue.record("\(policyFile) must declare `sampledDecision`")
       return []
