@@ -13433,7 +13433,7 @@
       }
     },
     "OK" : {
-      "comment" : "AI Polish, notice button.\nButton that closes a message.\nEnviousMeet: closes the Paste message.\nEnviousMeet: closes the Save error.\nHistory: closes the message about a failed action.",
+      "comment" : "AI Polish, notice button.\nButton that closes a message.\nEnviousMeet: closes the Save error.\nHistory: closes the Paste message.\nHistory: closes the message about a failed action.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
