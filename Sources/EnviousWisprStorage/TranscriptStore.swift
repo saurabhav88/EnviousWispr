@@ -67,7 +67,64 @@ public final class TranscriptStore {
   /// and avoids the brief world-readable window that `Data.write(.atomic)`
   /// + post-write chmod creates.
   public func save(_ transcript: Transcript) throws {
-    try Self.write(transcript, into: directory)
+    try operations().save(transcript)
+  }
+
+  /// #4075 S1: the blocking file work of ordinary History commands (save, Keep's promotion,
+  /// delete), as plain values so History's storage worker can run it off the main actor. It
+  /// holds the two folder locations only, never this main-actor store. `save`,
+  /// `promotePending` and `delete(id:)` below run through these same bodies, so each
+  /// operation has one implementation.
+  package struct Operations: Sendable {
+    let directory: URL
+    let pendingDirectory: URL
+
+    /// See `TranscriptStore.save`.
+    package func save(_ transcript: Transcript) throws {
+      try TranscriptStore.write(transcript, into: directory)
+    }
+
+    /// See `TranscriptStore.promotePending`: judged at `now`, permanent written first.
+    package func promotePending(id: UUID, now: Date) throws -> Bool {
+      let pendingURL = pendingDirectory.appendingPathComponent("\(id.uuidString).json")
+      guard
+        let transcript = TranscriptStore.decodeCandidate(
+          at: pendingURL, now: now, retention: AppConstants.pendingTranscriptRetention
+        ).liveTranscript
+      else {
+        // Already promoted, never existed, expired, or invalid. All are no-ops
+        // for an idempotent operation — but the caller is TOLD, so it can leave
+        // its own state alone rather than assuming a promotion happened.
+        return false
+      }
+      try save(transcript.promotedFromPending())
+      try? FileManager.default.removeItem(at: pendingURL)
+      return true
+    }
+
+    /// See `TranscriptStore.delete(id:)`: both copies attempted, then both checked.
+    package func delete(id: UUID) throws {
+      let url = directory.appendingPathComponent("\(id.uuidString).json")
+      let pendingURL = pendingDirectory.appendingPathComponent("\(id.uuidString).json")
+      // Attempt BOTH before inspecting either, so one failure cannot leave the
+      // other copy in place.
+      let failures = [url, pendingURL].compactMap { target -> Error? in
+        do {
+          try FileManager.default.removeItem(at: target)
+          return nil
+        } catch let error as CocoaError where error.code == .fileNoSuchFile {
+          return nil
+        } catch {
+          return FileManager.default.fileExists(atPath: target.path) ? error : nil
+        }
+      }
+      if let failure = failures.first { throw failure }
+    }
+  }
+
+  /// The operations for this store's folders, for History's storage worker.
+  package func operations() -> Operations {
+    Operations(directory: directory, pendingDirectory: pendingDirectory)
   }
 
   /// A writer that saves like `save`, then flushes to stable storage: the file with
@@ -190,20 +247,7 @@ public final class TranscriptStore {
   ///   screen exactly the text this method refused to write.
   @discardableResult
   public func promotePending(id: UUID, now: Date = Date()) throws -> Bool {
-    let pendingURL = pendingDirectory.appendingPathComponent("\(id.uuidString).json")
-    guard
-      let transcript = Self.decodeCandidate(
-        at: pendingURL, now: now, retention: AppConstants.pendingTranscriptRetention
-      ).liveTranscript
-    else {
-      // Already promoted, never existed, expired, or invalid. All are no-ops
-      // for an idempotent operation — but the caller is TOLD, so it can leave
-      // its own state alone rather than assuming a promotion happened.
-      return false
-    }
-    try save(transcript.promotedFromPending())
-    try? FileManager.default.removeItem(at: pendingURL)
-    return true
+    try operations().promotePending(id: id, now: now)
   }
 
   /// Sweep pending rows that are no longer live, and RETURN ONLY THE GENUINELY
@@ -979,21 +1023,7 @@ public final class TranscriptStore {
   /// `deleteAll` needs no equivalent — `pending/` is a child of the directory
   /// it removes wholesale.
   public func delete(id: UUID) throws {
-    let url = directory.appendingPathComponent("\(id.uuidString).json")
-    let pendingURL = pendingDirectory.appendingPathComponent("\(id.uuidString).json")
-    // Attempt BOTH before inspecting either, so one failure cannot leave the
-    // other copy in place.
-    let failures = [url, pendingURL].compactMap { target -> Error? in
-      do {
-        try FileManager.default.removeItem(at: target)
-        return nil
-      } catch let error as CocoaError where error.code == .fileNoSuchFile {
-        return nil
-      } catch {
-        return FileManager.default.fileExists(atPath: target.path) ? error : nil
-      }
-    }
-    if let failure = failures.first { throw failure }
+    try operations().delete(id: id)
   }
 
   /// Delete all transcripts (#4001 H7). The folder is renamed away and an empty one put in its

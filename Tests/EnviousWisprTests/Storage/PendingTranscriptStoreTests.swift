@@ -269,6 +269,65 @@ import EnviousWisprAppKitTestSupport
     #expect(!FileManager.default.fileExists(atPath: misnamed.path))
   }
 
+  /// #4075 S1: History's storage worker runs the store's captured operations off the main
+  /// actor. Run here on a dispatch queue, they save, promote a live row (permanent first,
+  /// pending removed), refuse an expired one, and delete both copies, as the store does.
+  @Test("the store's captured operations save, promote and delete from a background queue")
+  func capturedOperationsRunOffTheMainActor() async throws {
+    let (store, dir) = makeStore()
+    let ops = store.operations()
+    let live = pendingRow(text: "keep me", at: Date())
+    let expired = pendingRow(
+      text: "too late", at: Date().addingTimeInterval(-AppConstants.pendingTranscriptRetention - 60))
+    let ordinary = Transcript(text: "ordinary")
+    try store.savePending(live)
+    try store.savePending(expired)
+    struct Outcome: Sendable {
+      let onMain: Bool
+      let promotedLive: Bool
+      let promotedExpired: Bool
+    }
+    let outcome: Outcome = try await withCheckedThrowingContinuation { continuation in
+      DispatchQueue.global().async {
+        continuation.resume(
+          with: Result {
+            try ops.save(ordinary)
+            let promotedLive = try ops.promotePending(id: live.id, now: Date())
+            let promotedExpired = try ops.promotePending(id: expired.id, now: Date())
+            return Outcome(
+              onMain: Thread.isMainThread, promotedLive: promotedLive,
+              promotedExpired: promotedExpired)
+          })
+      }
+    }
+    #expect(outcome.onMain == false)
+    #expect(outcome.promotedLive)
+    #expect(outcome.promotedExpired == false, "an expired row was promoted")
+    // A fresh store reads what the operations left on disk.
+    let fresh = TranscriptStore(directory: dir)
+    let permanent = try await fresh.loadAll()
+    #expect(Set(permanent.map(\.id)) == [ordinary.id, live.id])
+    #expect(permanent.first { $0.id == live.id }?.escapeRecoveredAt == nil)
+    let pendingFile = dir.appendingPathComponent(AppConstants.pendingTranscriptsDir)
+      .appendingPathComponent("\(live.id.uuidString).json")
+    #expect(FileManager.default.fileExists(atPath: pendingFile.path) == false)
+
+    // Delete removes both copies of a row: the permanent one and a pending twin.
+    try store.savePending(pendingRow(text: "twin", at: Date()))
+    let twin = try #require(try await store.loadPending().first)
+    try store.save(twin.promotedFromPending())
+    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+      DispatchQueue.global().async {
+        continuation.resume(with: Result { try ops.delete(id: twin.id) })
+      }
+    }
+    let twinPending = dir.appendingPathComponent(AppConstants.pendingTranscriptsDir)
+      .appendingPathComponent("\(twin.id.uuidString).json")
+    let twinPermanent = dir.appendingPathComponent("\(twin.id.uuidString).json")
+    #expect(FileManager.default.fileExists(atPath: twinPending.path) == false)
+    #expect(FileManager.default.fileExists(atPath: twinPermanent.path) == false)
+  }
+
   @Test("Keep revalidates: an expired row cannot be promoted by a stale click")
   func promotionRefusesAnExpiredRow() async throws {
     let (store, _) = makeStore()
