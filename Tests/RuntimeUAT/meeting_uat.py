@@ -39,7 +39,9 @@ the speakers, also on an error.
 - live (#3973): live words through Apple speech (or `--live-engine universal`) progress on both
   tracks; a dictation with live preview lands meanwhile; Stop gives the transcript and the live
   words go; saved tracks cover the recording; speech-service RSS and app footprint every 5 s.
-- speechkill (#3973): SIGKILL Apple's `localspeechrecognition` mid-meeting (by executable path):
+- speechkill (#3973): SIGKILL Apple's `localspeechrecognition` mid-meeting (by executable path;
+  refused unless exactly one exists, re-verified just before the kill; it is the user session's
+  one service, so another app recognizing speech at that moment is interrupted too):
   a track says live words stopped, the meeting keeps recording, Stop gives the transcript and
   the saved tracks cover the recording.
 - quit (#3973): Quit (Apple Event) while live words run: the app exits, no crash report, and the
@@ -372,6 +374,20 @@ def speech_service_pids():
     """Apple's speech service processes, by EXECUTABLE PATH (never a bare name)."""
     out = subprocess.run(["ps", "-A", "-o", "pid=,comm="], capture_output=True, text=True).stdout
     return [int(m.group(1)) for m in map(SPEECH_SERVICE_RE.match, out.splitlines()) if m]
+
+
+def the_speech_service(pids):
+    """The one speech-service PID to stop, or Setup naming every candidate. Never chooses
+    between several (tools-and-apps.md RULE: a-harness-that-ACTS-on-a-shared-resource-must-refuse-
+    not-choose)."""
+    if len(pids) != 1:
+        raise Setup(f"need exactly one localspeechrecognition process; found {pids}")
+    return pids[0]
+
+
+def still_the_speech_service(pid):
+    """Re-verified just before the kill: `pid` is still a localspeechrecognition executable."""
+    return pid in speech_service_pids()
 
 
 def rss_mb(pids):
@@ -817,13 +833,15 @@ def scenario_speechkill(run_dir, made, checks):
         first, later = wait_both_tracks_progress("before the kill")
         if not first:
             raise Unsure(f"no live words on both tracks before the kill: {later}")
-        pids = speech_service_pids()
-        if not pids:
-            raise Setup("no localspeechrecognition process to stop")
-        for pid in pids:
-            os.kill(pid, signal.SIGKILL)
+        # One user-session service serves every app's Apple speech: stopping it also interrupts
+        # any other app recognizing speech right now (macOS restarts it on the next request).
+        pid = the_speech_service(speech_service_pids())
+        if not still_the_speech_service(pid):
+            raise Setup(f"localspeechrecognition {pid} changed before the kill")
+        os.kill(pid, signal.SIGKILL)
+        pids = [pid]
         killed_at = time.monotonic()
-        print(f"  killed localspeechrecognition {pids}")
+        print(f"  killed localspeechrecognition {pid}")
         stopped = wait_for("a track stops", lambda: (lambda t: t if any(
             (v or "").startswith("stopped") for v in t.values()) else None)(track_statuses()), 60, 1.0)
         c.check("a live-words track says it stopped", bool(stopped), json.dumps(track_statuses()))
@@ -1166,6 +1184,14 @@ def self_test():
     expect("a hidden turn does not count", not heard)
     heard, _, _ = phrase_heard(POST_KILL_SENTENCE, "the call ended")
     expect("unrelated text does not count", not heard)
+    expect("one speech service is the one to stop", the_speech_service([4242]) == 4242)
+    for candidates in ([], [1, 2]):
+        try:
+            the_speech_service(candidates)
+            refused = False
+        except Setup:
+            refused = True
+        expect(f"{len(candidates)} speech services refuse the kill", refused)
     expect("a matching dictation passes", wer(DICTATIONS[0], DICTATIONS[0].lower()) <= 0.2)
     expect("a mismatched dictation fails", wer(DICTATIONS[0], "Good morning everyone") > 0.2)
     log = ("x LIVE_PREVIEW session ended, feeds=40 shownChars=52\n"
