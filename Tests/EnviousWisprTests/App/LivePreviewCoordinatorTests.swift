@@ -3,6 +3,7 @@ import EnviousWisprCore
 import EnviousWisprPostProcessing
 import Foundation
 import Testing
+import os
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprAudio
@@ -1484,6 +1485,24 @@ struct LivePreviewCoordinatorTests {
     #expect(
       coordinator.hasCorrectorLookupsForTesting,
       "a generation-0 seed carrying real terms must build lookups")
+  }
+
+  @Test("the meeting's vocabulary carries word corrections only while Dictionary is on (#3973)")
+  func meetingVocabularyFollowsDictionarySwitch() {
+    let dictionaryOn = OSAllocatedUnfairLock(initialState: true)
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isPreviewOn: { true },
+      isDictionaryOn: { dictionaryOn.withLock { $0 } },
+      languageMode: { .locked("en") },
+      selectedRoute: previewRoute { _ in .blocked(.unsupportedSystem) })
+    coordinator.correctorVocabulary = CorrectorVocabulary(terms: [word("Qualtrics")], generation: 1)
+    let on = coordinator.vocabularySnapshot()
+    #expect(on.dictionaryEnabled && on.lookups != nil, "control: corrections while on")
+    dictionaryOn.withLock { $0 = false }
+    let off = coordinator.vocabularySnapshot()
+    #expect(!off.dictionaryEnabled)
+    #expect(off.lookups == nil, "Universal reads lookups directly, so off must carry none")
   }
 
   @Test("A new generation rebuilds; the same generation does not")

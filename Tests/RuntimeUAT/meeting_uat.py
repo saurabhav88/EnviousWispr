@@ -208,13 +208,15 @@ def saved_audio_problems(record, recorded_seconds, tracks=CAPTURE_TRACKS):
 def call_text_between(meeting, start_ms, end_ms):
     """The call track's visible words in turns starting in [start_ms, end_ms]."""
     transcript = meeting.get("transcript") or {}
-    visible = set((transcript.get("projection") or {}).get("visibleTurnIDs") or [])
+    # An explicitly empty list hides every turn; only an absent projection shows them all.
+    listed = (transcript.get("projection") or {}).get("visibleTurnIDs")
+    visible = None if listed is None else set(listed)
     out = []
     for turn in transcript.get("turns") or []:
         start = turn.get("startMs")
         if not (turn.get("speakerId") or "").startswith("sys:") or start is None:
             continue
-        if visible and turn.get("id") not in visible:
+        if visible is not None and turn.get("id") not in visible:
             continue
         if start_ms <= start <= end_ms:
             out.append(turn.get("text") or "")
@@ -273,12 +275,14 @@ def call_track_text(meeting, window_end_ms=None):
     """The call track's visible words from a `meeting get --include-text` reply, only turns
     that start before `window_end_ms` when it is given."""
     transcript = meeting.get("transcript") or {}
-    visible = set((transcript.get("projection") or {}).get("visibleTurnIDs") or [])
+    # An explicitly empty list hides every turn; only an absent projection shows them all.
+    listed = (transcript.get("projection") or {}).get("visibleTurnIDs")
+    visible = None if listed is None else set(listed)
     lines, speakers = [], set()
     for turn in transcript.get("turns") or []:
         speaker = turn.get("speakerId") or ""
         # Track speaker prefixes: `mic:` and `sys:` (MeetingTrackKind.speakerPrefix).
-        if not speaker.startswith("sys:") or (visible and turn.get("id") not in visible):
+        if not speaker.startswith("sys:") or (visible is not None and turn.get("id") not in visible):
             continue
         start = turn.get("startMs")
         if window_end_ms is not None and (start is None or start > window_end_ms):
@@ -1189,6 +1193,18 @@ def self_test():
         {"id": "b", "speakerId": "sys:2", "startMs": 90000, "text": POST_KILL_SENTENCE}]}}
     heard, _, _ = phrase_heard(POST_KILL_SENTENCE, call_text_between(hidden, 85000, 100000))
     expect("a hidden turn does not count", not heard)
+    none_visible = {"transcript": {"projection": {"visibleTurnIDs": []}, "turns": [
+        {"id": "b", "speakerId": "sys:2", "startMs": 90000, "text": POST_KILL_SENTENCE}]}}
+    heard, _, _ = phrase_heard(POST_KILL_SENTENCE, call_text_between(none_visible, 85000, 100000))
+    expect("an empty visible list hides every turn", not heard)
+    no_projection = {"transcript": {"turns": [
+        {"id": "b", "speakerId": "sys:2", "startMs": 90000, "text": POST_KILL_SENTENCE}]}}
+    heard, _, _ = phrase_heard(POST_KILL_SENTENCE, call_text_between(no_projection, 85000, 100000))
+    expect("no projection shows every turn", heard)
+    expect("call_track_text: an empty visible list hides every turn",
+           call_track_text(none_visible)[0] == "")
+    expect("call_track_text: no projection shows every turn",
+           call_track_text(no_projection)[0] == POST_KILL_SENTENCE)
     heard, _, _ = phrase_heard(POST_KILL_SENTENCE, "the call ended")
     expect("unrelated text does not count", not heard)
     expect("one speech service is the one to stop", the_speech_service([4242]) == 4242)

@@ -930,9 +930,12 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   /// (read once at a meeting's start).
   func vocabularySnapshot() -> LivePreviewVocabulary {
     rebuildCorrectorLookupsIfNeeded()
+    // #3973: Dictionary off means no word corrections on any engine (Universal reads `lookups`
+    // without checking `dictionaryEnabled`).
+    let dictionaryOn = isDictionaryOn()
     return LivePreviewVocabulary(
-      lookups: correctorLookups, contextualPhrases: contextualPhrases,
-      dictionaryEnabled: isDictionaryOn())
+      lookups: dictionaryOn ? correctorLookups : nil, contextualPhrases: contextualPhrases,
+      dictionaryEnabled: dictionaryOn)
   }
 
   private func rebuildCorrectorLookupsIfNeeded() {
