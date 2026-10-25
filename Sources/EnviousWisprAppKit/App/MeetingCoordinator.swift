@@ -296,6 +296,8 @@ final class MeetingCoordinator {
   /// Live words of the meeting recording now, kept after Stop until its transcript is ready
   /// (#3973). Nil without live words.
   var liveTranscript: MeetingLiveWords.Transcript? { deps.liveWords?.transcript }
+  /// The live-words owner, for the DEBUG door's engine report and override.
+  var liveWords: MeetingLiveWords? { deps.liveWords }
 
   // MARK: - Private state
 

@@ -53,8 +53,16 @@
     /// only; the saved setting is never changed. The explainer and the microphone prompt are
     /// never answered for the caller: `waitingForExplainer` means the page shows the explainer.
     func start(_ args: [String: Any]) async -> Result {
-      guard Set(args.keys).isSubset(of: ["entryPoint", "callSound"]) else {
-        return .failure(.badArgs, "meeting.start takes entryPoint and callSound only")
+      guard Set(args.keys).isSubset(of: ["entryPoint", "callSound", "liveEngine"]) else {
+        return .failure(.badArgs, "meeting.start takes entryPoint, callSound and liveEngine only")
+      }
+      // #3973: `universal` makes this one recording skip Apple speech (runtime UAT).
+      var forceUniversal = false
+      if let value = args["liveEngine"] {
+        guard let name = value as? String, ["auto", "universal"].contains(name) else {
+          return .failure(.badArgs, "liveEngine must be auto or universal")
+        }
+        forceUniversal = name == "universal"
       }
       guard let raw = args["entryPoint"] as? String,
         let entryPoint = MeetingEntryPoint(rawValue: raw)
@@ -68,10 +76,13 @@
         }
         callSound = flag
       }
-      guard let flow = sources.startFlow(), sources.coordinator() != nil else {
+      guard let flow = sources.startFlow(), let coordinator = sources.coordinator() else {
         return unwiredResult
       }
+      coordinator.liveWords?.debugForceUniversalNextRecording = forceUniversal
       let outcome = await flow.requestStart(from: entryPoint, captureCallSound: callSound)
+      // A start that never reached capture leaves nothing for a later meeting.
+      coordinator.liveWords?.debugForceUniversalNextRecording = false
       return .ok(Self.encode(outcome))
     }
 
@@ -495,6 +506,10 @@
       return .ok([
         "live": [
           "meetingID": live.meetingID.uuidString,
+          // #3973: the engine the recording's live words use (null before it is chosen, or
+          // once the recording ended).
+          "engine": coordinator.liveWords?.currentEngine.map { $0 == .apple ? "apple" : "universal" }
+            as Any? ?? NSNull(),
           "lines": live.lines.map { line -> [String: Any] in
             [
               "id": line.id, "track": line.track.rawValue, "kind": Self.name(line.kind),

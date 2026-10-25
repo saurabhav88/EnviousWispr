@@ -722,6 +722,35 @@ struct MeetingRecorderTests {
     #expect(Self.same(try saved(r, .callSound), original), "the writer copied during the call")
   }
 
+  /// #3973 UAT crash (2026-10-25, SIGBUS on the call-sound tap thread's stack guard): every
+  /// delivery read the observer out of the lock's generic storage, and the Debug build wrapped it
+  /// in one more reabstraction thunk each time, so after about 5,500 call chunks one call of it
+  /// overflowed the tap thread's stack. The depth of a delivery must not grow with deliveries.
+  @Test("the live-samples observer is called at the same stack depth on every chunk")
+  func liveSamplesDepthStaysFlat() async throws {
+    let r = try rig(callSound: true)
+    let depths = OSAllocatedUnfairLock(initialState: [Int]())
+    r.recorder.liveSamples = { track, _ in
+      guard track == .callSound else { return }
+      // The address of a local: how far down the stack this call runs (cheap on every chunk).
+      var marker = 0
+      let depth = withUnsafeMutablePointer(to: &marker) { Int(bitPattern: $0) }
+      depths.withLock { $0.append(depth) }
+    }
+    _ = try await r.recorder.start()
+    let chunk = [Float](repeating: 0.1, count: 160)
+    let handler = r.calls()[0].handler
+    for _ in 0..<2_000 {
+      chunk.withUnsafeBufferPointer { handler($0, r.recorder.anchor, false) }
+    }
+    await r.recorder.stop()
+    let seen = depths.withLock { $0 }
+    #expect(seen.count == 2_000, "control: every chunk reached the observer")
+    #expect(
+      seen.first == seen.last,
+      "stack address \(seen.first ?? -1) on the first chunk, \(seen.last ?? -1) on the last")
+  }
+
   @Test("detaching the observer stops deliveries while both tracks keep recording")
   func liveSamplesDetach() async throws {
     let r = try rig()

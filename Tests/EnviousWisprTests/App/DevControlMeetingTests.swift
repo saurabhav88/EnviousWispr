@@ -111,6 +111,8 @@
         ("meeting.start", ["entryPoint": "dock"]),
         ("meeting.start", ["entryPoint": "menu", "callSound": 1]),
         ("meeting.start", ["entryPoint": "menu", "extra": true]),
+        ("meeting.start", ["entryPoint": "menu", "liveEngine": "apple"]),
+        ("meeting.start", ["entryPoint": "menu", "liveEngine": 1]),
         ("meeting.stop", ["meetingID": "not-a-uuid"]),
         ("meeting.stop", ["meetingID": id, "force": true]),
         ("meeting.status", ["x": 1]),
@@ -388,6 +390,7 @@
       let reply = try #require(Self.ok(meetings.live([:])))
       let body = try #require(reply["live"] as? [String: Any])
       #expect(body["meetingID"] as? String == meetingID.uuidString)
+      #expect(body["engine"] as? String == "apple")
       let lines = try #require(body["lines"] as? [[String: Any]])
       #expect(lines.map { $0["text"] as? String } == ["Hello there."])
       #expect(lines.first?["track"] as? String == "microphone")
@@ -396,6 +399,34 @@
       #expect(tracks["microphone"]?["status"] as? String == "running")
       #expect(tracks["callSound"]?["status"] as? String == "off:notCaptured")
       #expect(tracks["microphone"]?["droppedAudio"] as? Bool == false)
+      await live.coordinator.stop()
+      #expect(await live.owner.waitForCleanups(seconds: 10))
+    }
+
+    @Test("the Universal override skips Apple speech for one recording only")
+    func universalOverrideIsOneRecording() async throws {
+      let world = MeetingLiveWordsTests.World()
+      world.apple = .ready(world.appleCandidate())
+      let live = try MeetingLiveWordsIntegrationTests.Rig(world: world, callSound: false)
+      let meetings = DevControlMeetings(
+        sources: .init(coordinator: { live.coordinator }, startFlow: { nil }, transcripts: { nil }))
+      live.owner.debugForceUniversalNextRecording = true
+      await live.coordinator.start(from: .menu)
+      await MeetingLiveWordsTests.until("Universal running", live.owner) {
+        MeetingLiveWordsTests.status($0, .microphone) == .running
+      }
+      let forced = try #require(Self.ok(meetings.live([:]))?["live"] as? [String: Any])
+      #expect(forced["engine"] as? String == "universal")
+      #expect(world.shared.count == 1 && world.appleEngines.isEmpty)
+      #expect(!live.owner.debugForceUniversalNextRecording, "consumed by that recording")
+      await live.coordinator.stop()
+      #expect(await live.owner.waitForCleanups(seconds: 10))
+      await live.coordinator.start(from: .menu)
+      await MeetingLiveWordsTests.until("Apple running", live.owner) {
+        MeetingLiveWordsTests.status($0, .microphone) == .running
+      }
+      let next = try #require(Self.ok(meetings.live([:]))?["live"] as? [String: Any])
+      #expect(next["engine"] as? String == "apple")
       await live.coordinator.stop()
       #expect(await live.owner.waitForCleanups(seconds: 10))
     }

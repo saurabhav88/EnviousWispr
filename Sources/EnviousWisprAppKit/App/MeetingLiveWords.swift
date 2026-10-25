@@ -263,10 +263,16 @@ final class MeetingLiveWords {
       }
     }
     current.vocabulary = vocabulary
-    current.start = Task { [weak self] in
+    var skipApple = false
+    #if DEBUG
+      skipApple = debugForceUniversalNextRecording
+      debugForceUniversalNextRecording = false
+    #endif
+    current.start = Task { [weak self, skipApple] in
       guard let self else { return Leftovers() }
       let leftovers = await self.start(
-        generation: gen, tracks: tracks, language: language, vocabulary: vocabulary)
+        generation: gen, tracks: tracks, language: language, vocabulary: vocabulary,
+        skipApple: skipApple)
       self.startSettled(generation: gen)
       return leftovers
     }
@@ -360,6 +366,16 @@ final class MeetingLiveWords {
     return finished == true
   }
 
+  /// The engine the recording meeting's live words use, once chosen (diagnostics, DEBUG door).
+  var currentEngine: EngineKind? { recording?.engine }
+
+  #if DEBUG
+    /// DEBUG door only (`meeting start --live-engine universal`, runtime UAT): the next recording
+    /// skips Apple speech and uses the Universal engine when it is installed. Consumed by that
+    /// recording's `captureStarted`, so it never outlives one meeting.
+    var debugForceUniversalNextRecording = false
+  #endif
+
   /// A Universal model removal is in progress (tests and diagnostics).
   var isRemovingUniversal: Bool { removingUniversal }
 
@@ -372,14 +388,14 @@ final class MeetingLiveWords {
 
   private func start(
     generation gen: Int, tracks: [MeetingTrackKind], language: LanguageMode,
-    vocabulary: LivePreviewVocabulary
+    vocabulary: LivePreviewVocabulary, skipApple: Bool = false
   ) async -> Leftovers {
     var leftovers = Leftovers()
     // The removal state over the whole resolution: what it was when the read began, and the epoch
     // that any removal crossing the read changes.
     let removingAtResolve = removingUniversal
     let epochAtResolve = removalEpoch
-    let choice = await resolve(language)
+    let choice = await resolve(language, skipApple: skipApple)
     guard isCurrent(gen), let current = recording else { return leftovers }
     switch choice {
     case .off(let reason):
@@ -450,8 +466,8 @@ final class MeetingLiveWords {
 
   /// Plan §3.4: Apple when it is ready (macOS 26+), else the Universal engine when its model is
   /// admitted, else off with the reason the note names.
-  private func resolve(_ language: LanguageMode) async -> Choice {
-    let appleSupported = deps.appleSupported()
+  private func resolve(_ language: LanguageMode, skipApple: Bool = false) async -> Choice {
+    let appleSupported = deps.appleSupported() && !skipApple
     var appleMissingLanguage: String?
     if appleSupported {
       switch await deps.resolveApple(language) {

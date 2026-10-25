@@ -162,8 +162,40 @@ public final class MeetingRecorder {
   /// Whether the current microphone's samples are recorded; false while `beginDelivery` runs.
   private let micAdmission = OSAllocatedUnfairLock<Int?>(initialState: nil)
   /// `liveSamples`, read by both capture threads. `closed` once capture stopped for good.
-  private let liveBox = OSAllocatedUnfairLock(
-    initialState: (observer: LiveSamplesObserver?.none, closed: false))
+  private let liveBox = LiveObserverBox()
+
+  /// The observer behind one unfair lock, in a stored property of its own concrete type.
+  ///
+  /// **Not a tuple in `OSAllocatedUnfairLock`'s generic state** (#3973 UAT crash, 2026-10-25):
+  /// reading a closure out of that generic storage on every chunk made the Debug build wrap it in
+  /// one more reabstraction thunk each time, so after about 5,500 call-sound chunks one call of it
+  /// overflowed the tap thread's stack (SIGBUS on its guard page).
+  /// `MeetingRecorderTests.liveSamplesDepthStaysFlat` pins the depth.
+  private final class LiveObserverBox: @unchecked Sendable {
+    private let lock = OSAllocatedUnfairLock()
+    private var observer: LiveSamplesObserver?
+    private var closed = false
+
+    /// The observer now (capture threads; never waits beyond the unfair lock).
+    func current() -> LiveSamplesObserver? {
+      lock.lock()
+      defer { lock.unlock() }
+      return observer
+    }
+
+    func set(_ newValue: LiveSamplesObserver?) {
+      lock.lock()
+      defer { lock.unlock() }
+      if !closed { observer = newValue }
+    }
+
+    func close() {
+      lock.lock()
+      defer { lock.unlock() }
+      observer = nil
+      closed = true
+    }
+  }
 
   #if DEBUG
     /// The current microphone reopen, so a test can wait for it to end.
@@ -189,13 +221,8 @@ public final class MeetingRecorder {
   /// may still finish (there is no join), so the consumer closes its own admission first. Stop,
   /// Quit and a failed start end deliveries for good; setting it afterwards has no effect.
   public var liveSamples: LiveSamplesObserver? {
-    get { liveBox.withLock { $0.observer } }
-    set {
-      liveBox.withLock {
-        guard !$0.closed else { return }
-        $0.observer = newValue
-      }
-    }
+    get { liveBox.current() }
+    set { liveBox.set(newValue) }
   }
 
   public convenience init(
@@ -259,7 +286,7 @@ public final class MeetingRecorder {
         { samples, hostTime, startsNewRun in
           writer.append(samples, hostTime: hostTime, startsNewRun: startsNewRun)
           // Borrowed for this call only; read under the lock, invoked outside it.
-          if let observe = live.withLock({ $0.observer }) { observe(.callSound, samples) }
+          if let observe = live.current() { observe(.callSound, samples) }
         },
         { [weak self] reason in
           Task { @MainActor in
@@ -361,7 +388,7 @@ public final class MeetingRecorder {
       samples.withUnsafeBufferPointer {
         writer.append($0, hostTime: firstSampleHost, startsNewRun: runBreak)
         // After the writer, inside the borrow: the live consumer copies and returns.
-        if let observe = live.withLock({ $0.observer }) { observe(.microphone, $0) }
+        if let observe = live.current() { observe(.microphone, $0) }
       }
       level.withLock { $0 = audioLevel }
     }
@@ -492,7 +519,7 @@ public final class MeetingRecorder {
   private func admissionOff() { micAdmission.withLock { $0 = nil } }
 
   /// No live deliveries from here on, and `liveSamples` can no longer be set.
-  private func closeLiveSamples() { liveBox.withLock { $0 = (nil, true) } }
+  private func closeLiveSamples() { liveBox.close() }
 
   // MARK: - Failures and writers
 
