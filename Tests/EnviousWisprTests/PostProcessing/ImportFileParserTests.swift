@@ -4,6 +4,7 @@ import Testing
 import UniformTypeIdentifiers
 
 @testable import EnviousWisprPostProcessing
+import EnviousWisprAppKitTestSupport
 
 /// #1683 (PR-U1) — reading a chosen file into import candidates.
 ///
@@ -15,7 +16,7 @@ import UniformTypeIdentifiers
 struct ImportFileParserTests {
 
   private func write(_ contents: Data, as name: String) throws -> URL {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ew-file-import-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     let url = dir.appendingPathComponent(name)

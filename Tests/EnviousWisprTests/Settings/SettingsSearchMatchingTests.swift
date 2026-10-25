@@ -2,6 +2,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
+import EnviousWisprAppKitTestSupport
 
 /// Settings search word matching (#3482 plan §3.2, §3.2a, §3.7a). When this fails, the user types
 /// "mic" or "Tastenkürzel ändern" into Settings search and does not see the setting they meant.
@@ -295,7 +296,7 @@ struct SettingsSearchMatchingTests {
   func loadsEveryPlace() throws {
     let index = try Self.english.get()
     #expect(index.places.map(\.id) == SettingsSearchCatalog.entries.map(\.id))
-    let empty = FileManager.default.temporaryDirectory
+    let empty = TestTemporaryDirectory.url
       .appendingPathComponent("settings-search-empty-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: empty, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: empty) }

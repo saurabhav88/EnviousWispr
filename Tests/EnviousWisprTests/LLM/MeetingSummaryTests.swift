@@ -4,6 +4,7 @@ import os
 
 @testable import EnviousWisprCore
 @testable import EnviousWisprLLM
+import EnviousWisprAppKitTestSupport
 
 /// #3972 R39, R44 (build chunk C12): when these fail, a summary is written by a model that
 /// cannot summarize, a long meeting overflows the model's window or loses words silently, a cut
@@ -509,7 +510,7 @@ struct MeetingSummaryTests {
 
   /// An isolated key folder: never the real Keychain or key files.
   static func keychain() -> KeychainManager {
-    let folder = FileManager.default.temporaryDirectory
+    let folder = TestTemporaryDirectory.url
       .appending(path: "ew-tests-3972-summary-\(UUID().uuidString)")
     return KeychainManager(
       backend: .legacyFiles, legacyStore: FileLegacyKeyStore(storageDirectory: folder))

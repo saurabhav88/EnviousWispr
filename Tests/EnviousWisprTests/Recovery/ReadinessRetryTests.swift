@@ -10,6 +10,7 @@ import Testing
 @testable import EnviousWisprLLM
 @testable import EnviousWisprServices
 @testable import EnviousWisprStorage
+import EnviousWisprAppKitTestSupport
 
 /// #2207. `ActiveEngineOperation.load` used to mean "the load call returned".
 /// `ASRManager.loadModel()` RECORDS readiness rather than requiring it, so a load
@@ -207,7 +208,7 @@ struct ReadinessRetryTelemetryContractTests {
     }
 
     static func tempDir() -> URL {
-      let dir = FileManager.default.temporaryDirectory
+      let dir = TestTemporaryDirectory.url
         .appendingPathComponent("ew-readiness-\(UUID().uuidString)", isDirectory: true)
       try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
       return dir

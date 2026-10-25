@@ -5,6 +5,7 @@ import Testing
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprPostProcessing
+import EnviousWisprAppKitTestSupport
 
 /// #3975 §3.3: deleting an auto-learned word, or removing a learned
 /// sound-alike, is the user's "no" for that pair, counted exactly like one
@@ -27,7 +28,7 @@ import Testing
   }
 
   private func fixture() -> Fixture {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ew-user-refusal-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     let words = CustomWordsCoordinator(

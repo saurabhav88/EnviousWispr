@@ -5,6 +5,7 @@ import Testing
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprLLM
 @testable import EnviousWisprModelDelivery
+import EnviousWisprAppKitTestSupport
 
 /// The analytics vocabulary for `eg1.paused_install_state_changed` (#2109).
 ///
@@ -64,7 +65,7 @@ import Testing
   /// times the user opens the panel.
   @MainActor
   @Test func settingsProbeCyclesDoNotInflateTheCount() async throws {
-    let root = FileManager.default.temporaryDirectory
+    let root = TestTemporaryDirectory.url
       .appendingPathComponent("eg1-tel-\(UUID().uuidString)", isDirectory: true)
     let install = root.appendingPathComponent("Models/eg-1", isDirectory: true)
     let metadata = root.appendingPathComponent("ModelDelivery", isDirectory: true)

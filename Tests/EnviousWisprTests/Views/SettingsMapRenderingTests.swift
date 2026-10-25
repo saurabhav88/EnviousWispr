@@ -14,6 +14,7 @@ import Testing
 @testable import EnviousWisprPostProcessing
 @testable import EnviousWisprServices
 @testable import EnviousWisprStorage
+import EnviousWisprAppKitTestSupport
 
 /// #3482 PR A, plan §3a(c) and §3.6 item 4: render the real Settings pages in every state that
 /// exposes a conditional control, and collect what each page registers with the Settings Map.
@@ -340,7 +341,7 @@ struct SettingsMapRenderingTests {
 
   // MARK: - Isolated environment for the other pages
 
-  static let scratch = FileManager.default.temporaryDirectory
+  static let scratch = TestTemporaryDirectory.url
     .appending(path: "ew-settings-map-render-\(UUID().uuidString)")
 
   /// One isolated home: preferences, key files, words, snippets and runtimes. Nothing reaches

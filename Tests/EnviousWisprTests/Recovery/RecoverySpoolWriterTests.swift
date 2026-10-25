@@ -2,6 +2,7 @@ import EnviousWisprAudio
 import EnviousWisprCore
 import Foundation
 import Testing
+import EnviousWisprAppKitTestSupport
 
 /// The helper-side `RecoverySpoolWriter` (#1063 PR0) is a strict limb: every
 /// failure path drops recovery and leaves the caller (the audio path)
@@ -131,7 +132,7 @@ struct RecoverySpoolWriterTests {
 
   @Test("a clean spool to a real file reports healthy")
   func cleanSpoolStaysHealthy() async {
-    let url = FileManager.default.temporaryDirectory
+    let url = TestTemporaryDirectory.url
       .appendingPathComponent("ewrec-writer-\(UUID().uuidString).ewrec")
     let writer = RecoverySpoolWriter(
       recoverySessionID: "healthy",

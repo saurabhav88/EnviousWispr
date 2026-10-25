@@ -10,6 +10,7 @@
   @testable import EnviousWisprAppKit
   @testable import EnviousWisprPipeline
   @testable import EnviousWisprServices
+  import EnviousWisprAppKitTestSupport
 
   /// #3765: the dev control door's dictation commands and request-bound receipts.
   ///
@@ -731,7 +732,7 @@
       locked: TestRecordingLockedBox
     ) -> DictationRuntime {
       typealias Harness = DictationSettingsRenderHarness
-      let directory = FileManager.default.temporaryDirectory
+      let directory = TestTemporaryDirectory.url
         .appendingPathComponent("dev-control-stop-\(UUID().uuidString)")
       let settings = SettingsManager(
         defaults: TestDefaults.suite("ew.tests.3765.stop.\(UUID().uuidString)")!)

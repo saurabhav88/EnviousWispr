@@ -6,6 +6,7 @@ import Testing
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprModelDelivery
 @testable import EnviousWisprPipeline
+import EnviousWisprAppKitTestSupport
 
 /// #1741 Chunk 6 — pins the gate-refusal contract for `ModelDeliveryHome`'s
 /// two Settings-row mutation sites (Parakeet Cancel/Resume).
@@ -15,7 +16,7 @@ struct ModelDeliveryHomeTests {
 
   /// A bundle holding only the named manifests (and nothing else).
   private static func bundle(with resources: [String]) throws -> Bundle {
-    let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+    let dir = URL(fileURLWithPath: TestTemporaryDirectory.path)
       .appendingPathComponent("ew-3546-bundle-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     let source = try manifestBundle()
@@ -375,7 +376,7 @@ struct ModelDeliveryHomeTests {
   /// the OS reaps, and a `defer` per site would fire while the async work the
   /// constructor kicked off is still running.
   private static func tempAppSupport() throws -> URL {
-    let root = URL(fileURLWithPath: NSTemporaryDirectory())
+    let root = URL(fileURLWithPath: TestTemporaryDirectory.path)
       .appendingPathComponent("ew-2123-mdh-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     return root
@@ -1160,7 +1161,7 @@ struct ModelDeliveryHomeTests {
   /// verdict does not depend on whether this machine has ever used the feature.
   @Test("construction probes delivery state rather than only observing it")
   func launchProbePublishesToAnAttachedObserver() async throws {
-    let root = URL(fileURLWithPath: NSTemporaryDirectory())
+    let root = URL(fileURLWithPath: TestTemporaryDirectory.path)
       .appendingPathComponent("ew-2123-launch-probe-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: root) }
@@ -1254,7 +1255,7 @@ private enum ParakeetHomeFixture {
   }
 
   static func make() throws -> Made {
-    let root = FileManager.default.temporaryDirectory
+    let root = TestTemporaryDirectory.url
       .appendingPathComponent("ew-home-upgrade-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     let appSupport = root.appendingPathComponent("AppSupport", isDirectory: true)
@@ -1427,7 +1428,7 @@ struct WhisperGGUFRegistrationTests {
 
   @Test("both registrations load the bundled manifests and install into their own sibling folders")
   func registrationsInstallIntoDistinctGGUFHomes() throws {
-    let appSupport = URL(fileURLWithPath: NSTemporaryDirectory())
+    let appSupport = URL(fileURLWithPath: TestTemporaryDirectory.path)
       .appendingPathComponent("ew-3735-reg-\(UUID().uuidString)", isDirectory: true)
     let bundle = try Self.manifestBundle()
     let turbo = try ModelDeliveryHome.whisperGGUFRegistration(manifestBundle: bundle, appSupport: appSupport)
@@ -1450,7 +1451,7 @@ struct WhisperGGUFRegistrationTests {
 
   @Test("construction registers the Whisper GGUF models and fetches nothing")
   func constructionRegistersTheGGUFModelsWithoutFetching() throws {
-    let root = URL(fileURLWithPath: NSTemporaryDirectory())
+    let root = URL(fileURLWithPath: TestTemporaryDirectory.path)
       .appendingPathComponent("ew-3735-mdh-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     let home = ModelDeliveryHome(
@@ -1474,7 +1475,7 @@ struct WhisperGGUFRegistrationTests {
   /// cannot silently outlive a model change.
   @Test("the Settings download size is the shipped manifest's size")
   func settingsDownloadSizeMatchesManifest() throws {
-    let appSupport = URL(fileURLWithPath: NSTemporaryDirectory())
+    let appSupport = URL(fileURLWithPath: TestTemporaryDirectory.path)
       .appendingPathComponent("ew-3735-size-\(UUID().uuidString)", isDirectory: true)
     let turbo = try ModelDeliveryHome.whisperGGUFRegistration(
       manifestBundle: try Self.manifestBundle(), appSupport: appSupport)

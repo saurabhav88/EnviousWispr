@@ -5,6 +5,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
+import EnviousWisprAppKitTestSupport
 
 // MARK: - Doubles
 
@@ -690,7 +691,7 @@ struct LearnedCorrectionCoordinatorTests {
     let library = LearnedLibraryFake()
     let telemetry = LearnedTelemetrySpy()
     let presenter = LearnedPresenterSpy()
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ew-learn-memory-\(UUID().uuidString)", isDirectory: true)
     let memory = LearnMemory(
       fileURL: dir.appendingPathComponent(LearnMemory.fileName),

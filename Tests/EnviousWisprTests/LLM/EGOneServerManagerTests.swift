@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprLLM
+import EnviousWisprAppKitTestSupport
 
 /// EG-1 server lifecycle with a FAKE binary (#1271) — spawn, crash,
 /// restart-once, missing-binary/model, port strategy. No real model, no
@@ -19,7 +20,7 @@ struct EGOneServerManagerTests {
   static func fakeServerConfiguration(modelExists: Bool = true) throws
     -> EGOneServerManager.Configuration
   {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("eg1-tests-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     let model = dir.appendingPathComponent("model.gguf")

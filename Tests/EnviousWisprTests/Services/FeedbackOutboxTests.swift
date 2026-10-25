@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprServices
+import EnviousWisprAppKitTestSupport
 
 /// #3269: the bug-report outbox. Temporary folders, a scripted HTTP recorder, a fake network path
 /// and a settable clock; no real network. The scheduled wake never fires on its own here (the
@@ -102,7 +103,7 @@ struct FeedbackOutboxTests {
   static let dsn = FeedbackDSN("https://abc@o1.ingest.sentry.io/42")!
 
   static func tempDirectory() -> URL {
-    FileManager.default.temporaryDirectory
+    TestTemporaryDirectory.url
       .appendingPathComponent("ew-3269-outbox-\(UUID().uuidString)", isDirectory: true)
   }
 

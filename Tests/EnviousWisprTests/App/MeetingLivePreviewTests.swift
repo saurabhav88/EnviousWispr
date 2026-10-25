@@ -6,6 +6,7 @@ import Testing
 @testable import EnviousWisprAudio
 @testable import EnviousWisprCore
 @testable import EnviousWisprPipeline
+import EnviousWisprAppKitTestSupport
 
 /// #3972 R42, R43, R50, R52 (build chunks C9/C10): when these fail, the live words of a meeting
 /// stop appearing, show a minute twice or out of order, keep a speech engine loaded for the
@@ -502,7 +503,7 @@ struct MeetingLivePreviewTests {
         },
         unloadEngine: { await unloading.wait() },
         analyzeSpeakers: { _ in MeetingSpeakerAnalysis(outcome: .single, segments: []) }))
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("preview-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     let url = try MeetingAudioFixture.writeSegment(in: dir, index: 1, startMs: 0, frames: 16_000)

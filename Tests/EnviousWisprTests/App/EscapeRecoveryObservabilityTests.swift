@@ -6,6 +6,7 @@ import Testing
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprPipeline
 @testable import EnviousWisprStorage
+import EnviousWisprAppKitTestSupport
 
 /// The local support trail for Escape Recovery. These cases protect what can be
 /// diagnosed after a press, not whether the user's text was restored.
@@ -131,7 +132,7 @@ struct EscapeRecoveryObservabilityTests {
   }
 
   private func makeStore() -> (TranscriptStore, URL) {
-    let directory = FileManager.default.temporaryDirectory
+    let directory = TestTemporaryDirectory.url
       .appendingPathComponent("ew-2177-observability-\(UUID().uuidString)", isDirectory: true)
     return (TranscriptStore(directory: directory), directory)
   }

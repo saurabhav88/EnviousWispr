@@ -11,6 +11,7 @@ import Testing
 @testable import EnviousWisprAudio
 @testable import EnviousWisprPipeline
 @testable import EnviousWisprStorage
+import EnviousWisprAppKitTestSupport
 
 /// PR-B.3 of #763 — unit tests for `MenuBarController`.
 ///
@@ -1253,7 +1254,7 @@ struct MenuBarControllerTests {
     // (the icon animator's level closure is only wired by `installStatusItem`,
     // which the unit tests do not call).
     let audioCapture: any AudioCaptureInterface = RouterTestAudioCapture()
-    let tempDir = FileManager.default.temporaryDirectory
+    let tempDir = TestTemporaryDirectory.url
       .appendingPathComponent("menu-bar-controller-tests-\(UUID().uuidString)")
     let store = TranscriptStore(directory: tempDir)
     let parakeet = DictationRuntimeFixtures.makeParakeetDriver(

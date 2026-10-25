@@ -2,6 +2,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprPipeline
+import EnviousWisprAppKitTestSupport
 
 /// #3546: the persisted Parakeet upgrade budget. If it breaks, an Ultra target
 /// can retry forever (dictation stuck failing) or lose the record that it
@@ -11,7 +12,7 @@ struct ParakeetUpgradeStateStoreTests {
   private static let key = "parakeet-parakeet-ultra-coreml-95eaa59a-int8"
 
   private func makeDirectory() throws -> URL {
-    let url = FileManager.default.temporaryDirectory
+    let url = TestTemporaryDirectory.url
       .appendingPathComponent("ew-upgrade-store-\(UUID().uuidString)", isDirectory: true)
       .appendingPathComponent("ModelDelivery", isDirectory: true)
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)

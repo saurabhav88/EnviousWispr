@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprPostProcessing
+import EnviousWisprAppKitTestSupport
 
 /// #2997 — the store's one-shot import write.
 ///
@@ -13,7 +14,7 @@ import Testing
 struct SnippetsManagerImportTests {
 
   private func makeManager() -> SnippetsManager {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ew-snippets-import-\(UUID().uuidString)", isDirectory: true)
     return SnippetsManager(fileURL: dir.appendingPathComponent("snippets.json"))
   }
@@ -259,7 +260,7 @@ struct SnippetsManagerImportCeilingTests {
   }
 
   private func makeManager() -> SnippetsManager {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ew-snippets-ceiling-\(UUID().uuidString)", isDirectory: true)
     return SnippetsManager(fileURL: dir.appendingPathComponent("snippets.json"))
   }

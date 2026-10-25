@@ -9,6 +9,7 @@ import Foundation
 @testable import EnviousWisprAudio
 @testable import EnviousWisprPipeline
 @testable import EnviousWisprStorage
+import EnviousWisprAppKitTestSupport
 
 /// PR8 of #763 — shared spies for the three router unit tests. Identical
 /// shape to the existing `SettableAudioCapture` / `NoOpASRManager` fixtures
@@ -119,7 +120,7 @@ enum RouterTestError: Error { case unexpected }
 @MainActor
 enum DictationRuntimeFixtures {
   static func tempStore() -> TranscriptStore {
-    let tempDir = FileManager.default.temporaryDirectory
+    let tempDir = TestTemporaryDirectory.url
       .appendingPathComponent("router-tests-\(UUID().uuidString)")
     return TranscriptStore(directory: tempDir)
   }

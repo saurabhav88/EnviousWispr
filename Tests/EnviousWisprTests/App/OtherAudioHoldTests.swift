@@ -4,6 +4,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
+import EnviousWisprAppKitTestSupport
 
 // #1413 — the take lifecycle of `OtherAudioHold` against fakes. Nothing here
 // touches CoreAudio or Apple events; every assertion is on the fake device's
@@ -133,7 +134,7 @@ private struct Rig {
   let hold: OtherAudioHold
 
   init(pid: Int32 = 4242, alive: @escaping (Int32) -> Bool = { _ in false }) {
-    dir = FileManager.default.temporaryDirectory.appendingPathComponent(
+    dir = TestTemporaryDirectory.url.appendingPathComponent(
       "other-audio-tests-\(UUID().uuidString)", isDirectory: true)
     store = OtherAudioHoldStore(directory: dir)
     let box = LogBox()
@@ -532,7 +533,7 @@ struct OtherAudioHoldTests {
 
   @Test("Orphan without a read-back compares against the intended value; a live pid is left alone")
   func orphanUnconfirmedAndLivePid() async {
-    let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let dir = TestTemporaryDirectory.url.appendingPathComponent(UUID().uuidString)
     let store = OtherAudioHoldStore(directory: dir)
     var unconfirmed = OtherAudioHoldRecord(
       id: UUID(), pid: 77, mode: "mute", createdAt: Date(),
@@ -687,7 +688,7 @@ struct OtherAudioHoldTests {
 
   @Test("An orphan whose properties are already final is left untouched (P12)")
   func orphanFinalLeftAlone() async {
-    let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let dir = TestTemporaryDirectory.url.appendingPathComponent(UUID().uuidString)
     let store = OtherAudioHoldStore(directory: dir)
     var record = OtherAudioHoldRecord(
       id: UUID(), pid: 77, mode: "mute", createdAt: Date(),

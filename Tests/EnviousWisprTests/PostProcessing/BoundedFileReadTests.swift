@@ -2,6 +2,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprPostProcessing
+import EnviousWisprAppKitTestSupport
 
 /// #2997 — the one read-to-ceiling loop three import sites share.
 ///
@@ -18,7 +19,7 @@ struct BoundedFileReadTests {
   }
 
   private func tempFile(_ bytes: Data) throws -> URL {
-    let url = FileManager.default.temporaryDirectory
+    let url = TestTemporaryDirectory.url
       .appendingPathComponent("ew-bounded-\(UUID().uuidString).bin")
     try bytes.write(to: url)
     return url
@@ -65,7 +66,7 @@ struct BoundedFileReadTests {
 
   @Test("A missing file is cannotOpen, never an empty read")
   func missingFileThrowsCannotOpen() {
-    let url = FileManager.default.temporaryDirectory
+    let url = TestTemporaryDirectory.url
       .appendingPathComponent("ew-bounded-missing-\(UUID().uuidString).bin")
     #expect(throws: BoundedFileRead.Failure.cannotOpen) {
       try BoundedFileRead.read(at: url, ceiling: 10)

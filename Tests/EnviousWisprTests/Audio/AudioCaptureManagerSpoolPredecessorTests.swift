@@ -5,6 +5,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprAudio
+import EnviousWisprAppKitTestSupport
 
 // Uses the manager's `#if DEBUG` arming seam, so the whole suite is DEBUG-only.
 #if DEBUG
@@ -64,7 +65,7 @@ import Testing
     }
 
     private static func makeTempDir() throws -> URL {
-      let dir = FileManager.default.temporaryDirectory
+      let dir = TestTemporaryDirectory.url
         .appendingPathComponent("ew-1579-spool-\(UUID().uuidString)")
       try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
       return dir

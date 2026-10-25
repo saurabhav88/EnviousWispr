@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprCore
+import EnviousWisprAppKitTestSupport
 
 /// Validates Phase R3 compile-out: `AppLogger` is dev-only, release sinks are dead code.
 ///
@@ -57,7 +58,7 @@ struct AppLoggerCompileOutTests {
 
     @Test("every file handle appends at write time instead of keeping a stale offset")
     func everyFileHandleUsesAppendSemantics() throws {
-      let directory = FileManager.default.temporaryDirectory
+      let directory = TestTemporaryDirectory.url
         .appendingPathComponent("ew-2159-\(UUID().uuidString)", isDirectory: true)
       try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
       defer { try? FileManager.default.removeItem(at: directory) }

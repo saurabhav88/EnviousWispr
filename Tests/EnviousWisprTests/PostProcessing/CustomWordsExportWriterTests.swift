@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprPostProcessing
+import EnviousWisprAppKitTestSupport
 
 /// #1680 (PR-E1) — export writer. Every test writes to a real temp directory,
 /// so atomicity and permissions are verified against the filesystem.
@@ -10,7 +11,7 @@ import Testing
 struct CustomWordsExportWriterTests {
 
   private func makeDirectory() -> URL {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ew-export-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     return dir

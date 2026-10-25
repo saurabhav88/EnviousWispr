@@ -4,6 +4,7 @@ import Testing
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprStorage
+import EnviousWisprAppKitTestSupport
 
 /// History reopen reuse (#4001 H9). Driven against REAL stores in temp directories: a second
 /// `TranscriptStore` on the same folder stands in for another app copy, so every "changed" case
@@ -13,7 +14,7 @@ import Testing
 struct HistoryReuseTests {
 
   private static func makeTempDir() -> URL {
-    FileManager.default.temporaryDirectory
+    TestTemporaryDirectory.url
       .appendingPathComponent("4001-reuse-\(UUID().uuidString)", isDirectory: true)
   }
 

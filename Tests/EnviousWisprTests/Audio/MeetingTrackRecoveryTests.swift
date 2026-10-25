@@ -3,6 +3,7 @@ import Testing
 
 @testable import EnviousWisprAudio
 @testable import EnviousWisprCore
+import EnviousWisprAppKitTestSupport
 
 /// #3972 R3, R15: when these fail, a meeting recorded before a crash, force quit or power cut
 /// loses audio that reached the disk, or recovery overwrites a file it should have kept.
@@ -79,7 +80,7 @@ struct MeetingTrackRecoveryTests {
 
   @Test("a folder that cannot be listed is a reported problem, never an empty meeting")
   func unreadableFolderIsReported() {
-    let missing = FileManager.default.temporaryDirectory
+    let missing = TestTemporaryDirectory.url
       .appendingPathComponent("MeetingTrackRecoveryTests-missing-\(UUID().uuidString)")
     let report = MeetingTrackRecovery.recover(folder: missing)
     #expect(report.segments.isEmpty)

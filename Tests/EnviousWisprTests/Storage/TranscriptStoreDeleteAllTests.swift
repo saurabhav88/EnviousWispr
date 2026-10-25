@@ -4,6 +4,7 @@ import Testing
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprStorage
+import EnviousWisprAppKitTestSupport
 
 /// Delete All moves the History folder away instead of removing it on the main actor (#4001 H7).
 /// Every store here lives in a PRIVATE parent folder, because Delete All works on the parent's
@@ -25,7 +26,7 @@ struct TranscriptStoreDeleteAllTests {
       }
 
       init() {
-        parent = FileManager.default.temporaryDirectory
+        parent = TestTemporaryDirectory.url
           .appendingPathComponent("4001-deleteall-\(UUID().uuidString)", isDirectory: true)
         try? FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
       }

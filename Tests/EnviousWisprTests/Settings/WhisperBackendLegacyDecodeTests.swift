@@ -4,6 +4,7 @@ import Testing
 @testable import EnviousWisprCore
 @testable import EnviousWisprServices
 @testable import EnviousWisprStorage
+import EnviousWisprAppKitTestSupport
 
 /// #3735: the Whisper engine slot was stored as `"whisperKit"` before the
 /// transcribe.cpp swap and is stored as `"whisper"` after it. A user who
@@ -51,7 +52,7 @@ struct WhisperBackendLegacyDecodeTests {
   /// spelling, read back through the store's own loader.
   @Test("History: old and new rows load, an unknown engine row is skipped")
   func historyRowsThroughTheStore() async throws {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ew-3735-history-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: dir) }
     let store = TranscriptStore(directory: dir)

@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprAudio
+import EnviousWisprAppKitTestSupport
 
 /// #2809: `BundledSpeakerModelLoader` resolves and loads the four offline diarizer models
 /// plus the PLDA JSON directly from a caller-supplied bundle — never through `ModelHub`
@@ -23,7 +24,7 @@ struct BundledSpeakerModelLoaderTests {
   /// A fixture bundle root containing exactly the resources named, symlinked flat at the
   /// top level — matching how Tuist's `.folderReference` actually embeds a built bundle.
   private static func makeFixtureBundle(including names: Set<String>) throws -> Bundle {
-    let root = FileManager.default.temporaryDirectory
+    let root = TestTemporaryDirectory.url
       .appendingPathComponent("BundledSpeakerModelLoaderTests-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
 

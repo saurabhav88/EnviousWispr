@@ -2,6 +2,7 @@
 @testable import EnviousWisprCore
 import Foundation
 import Testing
+import EnviousWisprAppKitTestSupport
 
 /// #1755 chunk 6 — the crash-boundary controller contract (plan §10/§11.1
 /// leg 5). Every test uses an ISOLATED controller with its own temp file
@@ -17,7 +18,7 @@ struct CrashBoundaryFaultControllerTests {
   }
 
   private static func makeFixture() -> Fixture {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ew-crash-boundary-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     let arm = dir.appendingPathComponent("arm").path

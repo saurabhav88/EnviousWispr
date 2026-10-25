@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprPostProcessing
+import EnviousWisprAppKitTestSupport
 
 /// #1680 (PR-E1) — export → compare → commit, against real files.
 ///
@@ -16,7 +17,7 @@ import Testing
 struct CustomWordsBackupRoundTripTests {
 
   private func makeManager() -> (CustomWordsManager, URL) {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ew-roundtrip-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     let url = dir.appendingPathComponent("custom-words.json")

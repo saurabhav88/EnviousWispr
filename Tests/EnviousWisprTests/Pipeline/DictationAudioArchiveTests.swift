@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprPipeline
+import EnviousWisprAppKitTestSupport
 
 #if DEBUG
   /// #1230 — the DEBUG-only per-dictation audio library that replaces the
@@ -14,7 +15,7 @@ import Testing
   struct DictationAudioArchiveTests {
 
     private func tempDir() throws -> URL {
-      let url = FileManager.default.temporaryDirectory
+      let url = TestTemporaryDirectory.url
         .appendingPathComponent("dictation-audio-tests-\(UUID().uuidString)")
       try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
       return url

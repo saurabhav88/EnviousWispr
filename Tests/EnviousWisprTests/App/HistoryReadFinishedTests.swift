@@ -4,6 +4,7 @@ import Testing
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprStorage
+import EnviousWisprAppKitTestSupport
 
 /// `TranscriptCoordinator.historyReadFinished` (#4001 H12): what lets a ready meeting's pane say
 /// "loading" until History's first read attempt ends, and "could not be opened" after it.
@@ -13,7 +14,7 @@ import Testing
 struct HistoryReadFinishedTests {
 
   private static func makeTempDir() -> URL {
-    FileManager.default.temporaryDirectory
+    TestTemporaryDirectory.url
       .appendingPathComponent("4001-readfinished-\(UUID().uuidString)", isDirectory: true)
   }
 

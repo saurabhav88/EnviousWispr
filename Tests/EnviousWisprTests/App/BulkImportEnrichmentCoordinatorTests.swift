@@ -4,6 +4,7 @@ import Testing
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprPostProcessing
+import EnviousWisprAppKitTestSupport
 
 /// Test double for the on-device alias generator. `@unchecked Sendable`
 /// mirrors `ContactsImportCoordinatorTests`'s `FakeAliasSuggester`: the
@@ -105,7 +106,7 @@ private actor DelayRecorder {
 struct BulkImportEnrichmentCoordinatorTests {
 
   private func makeCoordinator() -> (CustomWordsCoordinator, URL) {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ew-bulk-coordinator-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     let url = dir.appendingPathComponent("custom-words.json")
@@ -352,7 +353,7 @@ struct BulkImportEnrichmentCoordinatorTests {
   /// Unlike `makeCoordinator()`, keeps the manager reference so its
   /// `lockSyscall` seam can be rigged after seeding (#1701 finding B).
   private func makeCoordinatorRetainingManager() -> (CustomWordsCoordinator, CustomWordsManager) {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ew-bulk-coordinator-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     let mgr = CustomWordsManager(fileURL: dir.appendingPathComponent("custom-words.json"))

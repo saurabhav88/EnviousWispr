@@ -3,6 +3,7 @@ import Testing
 import os
 
 @testable import EnviousWisprAppKit
+import EnviousWisprAppKitTestSupport
 
 /// #3482 chunk 3: the worker that owns the meaning pass for one Settings window session.
 /// **When this fails, typing in the Settings search either freezes, shows a result for an older
@@ -147,7 +148,7 @@ struct SettingsSearchMeaningWorkerTests {
     let missing = SettingsSearchMeaningWorker.bundled(assets: nil)
     #expect(await missing.ensureLoaded() == .skipped(.assetsMissing))
 
-    let empty = FileManager.default.temporaryDirectory.appendingPathComponent(
+    let empty = TestTemporaryDirectory.url.appendingPathComponent(
       "meaning-empty-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: empty, withIntermediateDirectories: true)
     let noManifest = SettingsSearchMeaningWorker.bundled(

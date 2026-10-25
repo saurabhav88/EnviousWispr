@@ -6,6 +6,7 @@ import os
 
 @testable import EnviousWisprAudio
 @testable import EnviousWisprCore
+import EnviousWisprAppKitTestSupport
 
 /// #3972 R3, R15: when these fail, meeting audio is lost, written to the wrong place on the
 /// timeline, overwritten, or unreadable after a crash.
@@ -13,7 +14,7 @@ import os
 struct MeetingTrackWriterTests {
 
   private func folder() throws -> URL {
-    let url = FileManager.default.temporaryDirectory
+    let url = TestTemporaryDirectory.url
       .appendingPathComponent("MeetingTrackWriterTests-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url

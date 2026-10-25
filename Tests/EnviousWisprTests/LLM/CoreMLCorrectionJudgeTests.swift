@@ -4,6 +4,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprLLM
+import EnviousWisprAppKitTestSupport
 
 /// The shipped Core ML correction judge and its Debug UAT door (#996). The
 /// pure contract tests run everywhere; the artifact-backed tests run only
@@ -170,7 +171,7 @@ struct CoreMLCorrectionJudgeTests {
     // computed once in Python (2026-09-20). The names are chosen so that
     // Python's PurePath order ("a/x.txt" before "a-b/y.txt") differs from
     // plain string order ("a-b/y.txt" first, because "-" < "/").
-    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("ew-tree-\(UUID().uuidString)")
+    let dir = TestTemporaryDirectory.url.appendingPathComponent("ew-tree-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: dir.appendingPathComponent("a"), withIntermediateDirectories: true)
     try FileManager.default.createDirectory(at: dir.appendingPathComponent("a-b"), withIntermediateDirectories: true)
     try Data("B".utf8).write(to: dir.appendingPathComponent("b.txt"))
@@ -201,7 +202,7 @@ struct CoreMLCorrectionJudgeTests {
       "execution_identity": ["checkpoint_sha256": "ck", "tokenizer_sha256": "tk", "config_sha256": "x"],
       "package_sha256": "pk",
     ]
-    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("ew-id-\(UUID().uuidString)")
+    let dir = TestTemporaryDirectory.url.appendingPathComponent("ew-id-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
     // Wrong canonical hash.
@@ -276,7 +277,7 @@ struct CoreMLCorrectionJudgeTests {
 
   @Test("a missing export directory is a typed load failure")
   func missingExport() async {
-    let url = FileManager.default.temporaryDirectory.appendingPathComponent("ew-no-export-\(UUID().uuidString)")
+    let url = TestTemporaryDirectory.url.appendingPathComponent("ew-no-export-\(UUID().uuidString)")
     await #expect(throws: CoreMLCorrectionJudge.LoadFailure.missingFile("training-manifest-shaped.json")) {
       _ = try await CoreMLCorrectionJudge.load(exportDirectory: url)
     }

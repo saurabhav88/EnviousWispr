@@ -4,6 +4,7 @@ import Testing
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprPostProcessing
+import EnviousWisprAppKitTestSupport
 
 /// #1646 (PR-P0) — fail-closed persistence. `loadFile()` distinguishes
 /// missing / loaded / unreadable / corrupted, and every explicit CRUD mutation
@@ -15,7 +16,7 @@ struct CustomWordsManagerPersistenceTests {
   // MARK: - Fixtures
 
   private static func tempDir() -> URL {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("EnviousWispr-p0-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     return dir
@@ -627,7 +628,7 @@ struct CustomWordsManagerPersistenceTests {
 @Suite("CustomWordsCoordinator — launch load failure (#1646)")
 struct CustomWordsCoordinatorLaunchFailureTests {
   private static func tempURL() -> URL {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("EnviousWispr-p0c-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     return dir.appendingPathComponent("custom-words.json")

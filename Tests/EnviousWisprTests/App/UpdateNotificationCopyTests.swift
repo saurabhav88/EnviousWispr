@@ -3,6 +3,7 @@ import Testing
 import UserNotifications
 
 @testable import EnviousWisprAppKit
+import EnviousWisprAppKitTestSupport
 
 /// #3142: the update notification body a user reads, built by the same
 /// `UpdateNotificationPresenter.body(displayVersion:)` that `deliver` posts.
@@ -22,7 +23,7 @@ struct UpdateNotificationCopyTests {
   /// `defaultValue`; a fixture table with a DIFFERENT value proves the keyed lookup wins.
   @Test("Body is looked up by key, and the table value wins over the English default")
   func bodyComesFromTheTable() throws {
-    let lproj = FileManager.default.temporaryDirectory
+    let lproj = TestTemporaryDirectory.url
       .appendingPathComponent("notification-copy-\(UUID().uuidString)/en.lproj")
     try FileManager.default.createDirectory(at: lproj, withIntermediateDirectories: true)
     let table = ["notification.update.ready.body": "Fixture %@ ready"]

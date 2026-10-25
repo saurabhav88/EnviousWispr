@@ -7,6 +7,7 @@ import Testing
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprModelDelivery
 @testable import EnviousWisprPipeline
+import EnviousWisprAppKitTestSupport
 
 /// #3546 chunk 7a: the Parakeet selection-policy owner with no upgrade target.
 /// If it breaks, dictation loads the wrong directory or mode, or a direct load
@@ -389,7 +390,7 @@ struct ParakeetUpgradePolicyTests {
     let tag = UUID().uuidString
     DeliveryStubProtocol.beginScope(pathPrefix: "/\(tag)/")
     ChunkAppendDelegate.protocolClassesForTesting = [DeliveryStubProtocol.self]
-    let root = FileManager.default.temporaryDirectory
+    let root = TestTemporaryDirectory.url
       .appendingPathComponent("ew-upgrade-\(UUID().uuidString)", isDirectory: true)
     let data = root.appendingPathComponent("EnviousWispr", isDirectory: true)
     let models = data.appendingPathComponent("Models", isDirectory: true)

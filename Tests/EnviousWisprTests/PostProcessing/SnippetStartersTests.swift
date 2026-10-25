@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprPostProcessing
+import EnviousWisprAppKitTestSupport
 
 /// #628 — the example snippets a fresh install starts with.
 ///
@@ -13,7 +14,7 @@ import Testing
 struct SnippetStartersSeedingTests {
 
   private func makeStore() -> (SnippetsManager, URL) {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ew-snip-seed-\(UUID().uuidString)", isDirectory: true)
     let url = dir.appendingPathComponent("snippets.json")
     return (SnippetsManager(fileURL: url), url)

@@ -7,6 +7,7 @@ import os
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprLLM
 @testable import EnviousWisprServices
+import EnviousWisprAppKitTestSupport
 
 @Suite("Owned child failure evidence", .tags(.observabilityContract))
 struct ChildProcessFailureTests {
@@ -117,7 +118,7 @@ struct ChildProcessFailureTests {
     await coordinator.setProcessFailureObserver(for: .egOne) { fact in outgoing.withLock { $0.append(fact) } }
     await coordinator.setProcessFailureObserver(for: .s1Mini) { fact in incoming.withLock { $0.append(fact) } }
     // Missing binaries exercise residency without launching or sweeping a process.
-    let missingRoot = FileManager.default.temporaryDirectory
+    let missingRoot = TestTemporaryDirectory.url
       .appendingPathComponent("ew3685-\(UUID().uuidString)", isDirectory: true)
     try #require(!FileManager.default.fileExists(atPath: missingRoot.path))
     let configuration = EGOneServerManager.Configuration(

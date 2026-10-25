@@ -4,6 +4,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
+import EnviousWisprAppKitTestSupport
 
 /// #2997 — the Snippet Import sheet's workflow: load → compare → review → commit.
 ///
@@ -472,7 +473,7 @@ struct SnippetImportFlowModelTests {
 
   @Test("Against a real store: an edit by another process makes the commit stale, the review refreshes from disk, and the reconfirm lands")
   func staleAgainstRealStore() async throws {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ew-snippets-flow-\(UUID().uuidString)", isDirectory: true)
     let manager = SnippetsManager(fileURL: dir.appendingPathComponent("snippets.json"))
     let coordinator = SnippetsCoordinator(manager: manager)

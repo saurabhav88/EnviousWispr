@@ -4,6 +4,7 @@ import Testing
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprStorage
+import EnviousWisprAppKitTestSupport
 
 /// Phase C (#428) — pins the `TranscriptCoordinator` contract around the new
 /// in-memory `append(_:)` and the union-by-ID merge in `load()`.
@@ -20,7 +21,7 @@ struct TranscriptCoordinatorTests {
   // MARK: - Fixtures
 
   private static func makeTempDir() -> URL {
-    let url = FileManager.default.temporaryDirectory
+    let url = TestTemporaryDirectory.url
       .appendingPathComponent("phase-c-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url
@@ -397,7 +398,7 @@ struct TranscriptCoordinatorTests {
 @Suite("TranscriptCoordinator with EnviousMeet", .tags(.productOutcome))
 struct TranscriptCoordinatorMeetingTests {
   private static func makeTempDir() -> URL {
-    let url = FileManager.default.temporaryDirectory
+    let url = TestTemporaryDirectory.url
       .appendingPathComponent("meeting-rows-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url

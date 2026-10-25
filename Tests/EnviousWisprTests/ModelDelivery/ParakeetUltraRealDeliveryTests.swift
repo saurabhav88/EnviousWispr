@@ -6,6 +6,7 @@ import Testing
 
 @testable import EnviousWisprASR
 @testable import EnviousWisprModelDelivery
+import EnviousWisprAppKitTestSupport
 
 /// #3546 real-byte receipt for the shipped Parakeet Ultra manifest: the production
 /// controller downloads it from the real sources (the encoder as two parts from
@@ -69,7 +70,7 @@ struct ParakeetUltraRealDeliveryTests {
       manifest.files.first { $0.path == "Encoder.mlmodelc/weights/weight.bin" })
     #expect(encoder.parts?.count == 2, "our copy serves the encoder as two parts")
 
-    let root = FileManager.default.temporaryDirectory
+    let root = TestTemporaryDirectory.url
       .appendingPathComponent("ew-3546-ultra-real-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: root) }
     let data = root.appendingPathComponent("EnviousWispr", isDirectory: true)

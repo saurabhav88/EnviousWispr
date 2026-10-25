@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprModelDelivery
+import EnviousWisprAppKitTestSupport
 
 // MARK: - Decision F: fetch/install decoupling (schema v1.1, #1363)
 
@@ -147,7 +148,7 @@ private enum InstallPathFixture {
   // (d) marker round-trip with a distinct install name: stage → promote →
   // isAdmitted() true, keyed by resolvedInstallPath on BOTH sides.
   @Test func markerRoundTripWithDistinctInstallName() async throws {
-    let root = FileManager.default.temporaryDirectory
+    let root = TestTemporaryDirectory.url
       .appendingPathComponent("installpath-\(UUID().uuidString)", isDirectory: true)
     let install = root.appendingPathComponent("install", isDirectory: true)
     let staging = root.appendingPathComponent("staging", isDirectory: true)
@@ -182,7 +183,7 @@ private enum InstallPathFixture {
   // Migration adoption: an existing byte-correct file at the INSTALL name
   // validates in place (no fetch needed).
   @Test func existingInstallFileValidatesInPlace() async throws {
-    let root = FileManager.default.temporaryDirectory
+    let root = TestTemporaryDirectory.url
       .appendingPathComponent("adopt-\(UUID().uuidString)", isDirectory: true)
     let install = root.appendingPathComponent("install", isDirectory: true)
     let metadata = root.appendingPathComponent("metadata", isDirectory: true)

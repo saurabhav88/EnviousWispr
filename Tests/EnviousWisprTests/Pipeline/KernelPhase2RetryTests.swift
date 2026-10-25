@@ -5,6 +5,7 @@ import Testing
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprPipeline
+import EnviousWisprAppKitTestSupport
 
 // MARK: - #1707 Phase 2 — one live post-capture decode retry (kernel routing)
 //
@@ -187,7 +188,7 @@ struct KernelPhase2RetryTests {
     // MARK: - #1755 chunk 6 — crash-boundary hook lockstep (kernel side)
 
     private static func makeIsolatedBoundaryController() -> CrashBoundaryFaultController {
-      let dir = FileManager.default.temporaryDirectory
+      let dir = TestTemporaryDirectory.url
         .appendingPathComponent("ew-cb-kernel-\(UUID().uuidString)", isDirectory: true)
       try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
       return CrashBoundaryFaultController(

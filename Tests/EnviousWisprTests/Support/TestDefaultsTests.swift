@@ -1,12 +1,13 @@
 import Foundation
 import Testing
+import EnviousWisprAppKitTestSupport
 
 /// Binds `TestDefaults` (#2998): the registered suites' plists are the ones removed, nothing else is,
 /// and no test file mints a named suite any other way.
 @Suite("TestDefaults: test suites leave no plist behind (#2998)", .tags(.driftGuard))
 struct TestDefaultsTests {
   private static func tempDirectory() throws -> URL {
-    let url = URL(fileURLWithPath: NSTemporaryDirectory())
+    let url = URL(fileURLWithPath: TestTemporaryDirectory.path)
       .appendingPathComponent("ew-2998-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url

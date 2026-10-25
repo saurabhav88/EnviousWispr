@@ -3,6 +3,7 @@ import EnviousWisprCore
 import EnviousWisprStorage
 import Foundation
 import Testing
+import EnviousWisprAppKitTestSupport
 
 /// The host-side `RecoverySpoolStore` (#1063 PR0): reading a writer-produced
 /// spool back, reconstructing the valid continuous prefix, decoding the
@@ -15,7 +16,7 @@ struct RecoverySpoolStoreTests {
   }
 
   private func makeStore() -> RecoverySpoolStore {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ewrec-tests-\(UUID().uuidString)", isDirectory: true)
     return RecoverySpoolStore(directory: dir)
   }

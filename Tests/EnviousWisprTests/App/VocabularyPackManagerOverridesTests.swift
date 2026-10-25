@@ -4,6 +4,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
+import EnviousWisprAppKitTestSupport
 
 /// #2495 — per-word pack overrides (toggle, alias edit, restore), against the
 /// REAL bundled Tech pack rather than a fake one. `VocabularyPackManager` has
@@ -15,7 +16,7 @@ import Testing
 struct VocabularyPackManagerOverridesTests {
 
   private func makeManager() -> (VocabularyPackManager, String) {
-    let url = FileManager.default.temporaryDirectory
+    let url = TestTemporaryDirectory.url
       .appendingPathComponent("vpo-mgr-test-\(UUID().uuidString).json")
     let manager = VocabularyPackManager(overridesStore: VocabularyPackOverridesStore(fileURL: url))
     manager.setEnabled(.tech, true)
@@ -88,7 +89,7 @@ struct VocabularyPackManagerOverridesTests {
 
   @Test("Overrides persist across a fresh manager reading the same file")
   func overridesPersistAcrossRelaunch() {
-    let url = FileManager.default.temporaryDirectory
+    let url = TestTemporaryDirectory.url
       .appendingPathComponent("vpo-mgr-persist-\(UUID().uuidString).json")
     let first = VocabularyPackManager(overridesStore: VocabularyPackOverridesStore(fileURL: url))
     first.setEnabled(.tech, true)
@@ -121,7 +122,7 @@ struct VocabularyPackManagerOverridesTests {
 
   @Test("An override affects only one of two packs carrying the same canonical")
   func duplicateCanonicalOverridesStayPackScoped() throws {
-    let url = FileManager.default.temporaryDirectory
+    let url = TestTemporaryDirectory.url
       .appendingPathComponent("vpo-mgr-duplicate-\(UUID().uuidString).json")
     let manager = VocabularyPackManager(overridesStore: VocabularyPackOverridesStore(fileURL: url))
     manager.setEnabled(.tech, true)

@@ -4,6 +4,7 @@ import Testing
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprCore
 @testable import EnviousWisprStorage
+import EnviousWisprAppKitTestSupport
 
 /// #4001 step 0: how long History's list work takes with dictations, file transcripts and
 /// meetings together, so the refactor is judged on numbers. A measurement, not a gate: it runs
@@ -50,7 +51,7 @@ struct HistoryCostBenchmarkTests {
   }
 
   static func fixture(dictations: Int, meetings: Int, turns: Int) -> Fixture {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ew-4001-bench-\(UUID().uuidString)", isDirectory: true)
     let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
     var rows: [Transcript] = []
