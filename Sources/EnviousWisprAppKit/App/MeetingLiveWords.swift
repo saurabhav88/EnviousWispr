@@ -907,13 +907,17 @@ final class LiveWordsBridge: @unchecked Sendable {
         let last = s.entries.last, last.track == track, last.epoch == epoch,
         case .update(let earlier, let replaced) = last.event
       {
-        let bytes = used + finalized.utf8.count + inProgress.utf8.count - replaced.utf8.count
+        // Joined as the assembler joins two updates' finals, so a merge never runs words together.
+        let merged = LiveWordsAssembler.join(earlier, finalized)
+        let bytes =
+          used + merged.utf8.count - earlier.utf8.count + inProgress.utf8.count
+          - replaced.utf8.count
         guard bytes <= Self.budgetPerTrack else {
           return Self.overflow(&s, track: track, epoch: epoch, atMs: atMs)
         }
         s.entries[s.entries.count - 1] = Entry(
           track: track, epoch: epoch,
-          event: .update(finalized: earlier + finalized, inProgress: inProgress), atMs: atMs)
+          event: .update(finalized: merged, inProgress: inProgress), atMs: atMs)
         s.bytes[track] = bytes
         return true
       }

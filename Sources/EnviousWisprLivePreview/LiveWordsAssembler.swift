@@ -230,7 +230,7 @@ package struct LiveWordsAssembler: Sendable, Equatable {
   /// may not). Never inside Chinese, Japanese, Thai and the other unspaced scripts. The same
   /// rule as `TranscribeCppRollingSession.join` in EnviousWisprASR, which this module cannot
   /// import; change both together.
-  static func join(_ a: String, _ b: String) -> String {
+  package static func join(_ a: String, _ b: String) -> String {
     guard let last = a.last, let first = b.first else { return a + b }
     if last.isWhitespace || first.isWhitespace { return a + b }
     guard first.isLetter || first.isNumber, !isUnspaced(first), !isUnspaced(last) else {

@@ -1214,7 +1214,7 @@ struct MeetingLiveWordsTests {
     bridge.post(.update(finalized: "stale", inProgress: ""), track: .microphone, epoch: 2)
     #expect(
       bridge.take().map { "\($0.track):\($0.event)" } == [
-        "microphone:\(LiveWordsEvent.update(finalized: "ab", inProgress: "y"))",
+        "microphone:\(LiveWordsEvent.update(finalized: "a b", inProgress: "y"))",
         "callSound:\(LiveWordsEvent.update(finalized: "c", inProgress: ""))",
         "microphone:\(LiveWordsEvent.update(finalized: "d", inProgress: ""))",
       ])
@@ -1230,6 +1230,27 @@ struct MeetingLiveWordsTests {
     #expect(mic.last?.event == .ended(.failed("backlog")))
     #expect(entries.last?.event == .update(finalized: "call", inProgress: ""))
     #expect(woken.withLock { $0 } > 0)
+  }
+
+  @Test(
+    "a merged update shows the same text as the two updates applied one by one",
+    arguments: [
+      ("Hello world.", "How are you?"), (" Hello world.", " How are you?"), ("你好。", "再见。"),
+      ("Hello", ", world"),
+    ])
+  func mergeMatchesSeparateUpdates(_ pair: (String, String)) {
+    let bridge = LiveWordsBridge(clock: { 0 }, wake: {})
+    bridge.openEpoch(1, for: .microphone)
+    bridge.post(.update(finalized: pair.0, inProgress: "x"), track: .microphone, epoch: 1)
+    bridge.post(.update(finalized: pair.1, inProgress: ""), track: .microphone, epoch: 1)
+    let merged = bridge.take()
+    #expect(merged.count == 1, "control: the two updates were merged")
+    var viaMerge = LiveWordsAssembler()
+    for entry in merged { viaMerge.apply(entry.event, track: .microphone, atMs: 0) }
+    var oneByOne = LiveWordsAssembler()
+    oneByOne.apply(.update(finalized: pair.0, inProgress: "x"), track: .microphone, atMs: 0)
+    oneByOne.apply(.update(finalized: pair.1, inProgress: ""), track: .microphone, atMs: 0)
+    #expect(viaMerge.lines.map(\.text) == oneByOne.lines.map(\.text))
   }
 
   @Test("lines stay after Stop until the transcript is ready; Delete clears them at once")
