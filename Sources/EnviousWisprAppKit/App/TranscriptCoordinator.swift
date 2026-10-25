@@ -1085,7 +1085,8 @@ final class TranscriptCoordinator {
       // are never split by it. The application rechecks this request itself.
       await admit { [self] in
         applyRead(
-          read, request: request, revisionAtRead: revisionAtRead, generationAtRead: generationAtRead)
+          read, request: request, revisionAtRead: revisionAtRead, generationAtRead: generationAtRead
+        )
       }
     } catch is CancellationError {
       // A newer read replaced this one (#4075 G8); that read publishes.
@@ -1101,66 +1102,66 @@ final class TranscriptCoordinator {
     _ read: TranscriptHistoryRead, request: UInt64, revisionAtRead: Int,
     generationAtRead: Int
   ) {
-      var diskRows = read.permanent
-      // Phase C union-by-ID merge. Preserve any in-memory rows whose IDs
-      // are not yet on disk (append-during-load race window) in their
-      // existing order, then append disk rows. Protects the newest-first
-      // invariant under multiple concurrent completions while a slow
-      // startup load is still running.
-      // #2087: pending rows are ADDITIVE and never authoritative. Keep writes
-      // the permanent copy before deleting the pending file, so a crash
-      // between those two steps leaves the same id in both namespaces — root
-      // wins, and the user sees the row they kept exactly once rather than a
-      // permanent row shadowed by a copy still counting down.
-      let pendingRows = read.pending
-      // The source load's own identity, not the drain's cancellation: `load()` replaces a
-      // request by moving `loadRequestID`.
-      guard request == loadRequestID else { return }
-      guard generationAtRead == diskStateGeneration else {
-        // A later fresh read, started now and not awaited here.
-        load()
-        return
-      }
-      // #2772: a row written SINCE this read began is newer than the disk copy that came
-      // back, and the merge below prefers the disk one whenever the id already exists. An
-      // import writes twice under one id, so without this the raw version read at the
-      // start of a load replaces the cleaned version saved a moment later, and History
-      // shows unpolished words until something else refreshes it. Found by Codex.
-      let newerRows = Dictionary(
-        uniqueKeysWithValues:
-          transcripts
-          .filter { (writtenAtRevision[$0.id] ?? 0) > revisionAtRead }
-          .map { ($0.id, $0) })
-      diskRows = diskRows.map { newerRows[$0.id] ?? $0 }
-      let rootIDs = Set(diskRows.map(\.id))
-      let heldRows = pendingRows.filter { !rootIDs.contains($0.id) }
-      let knownIDs = rootIDs.union(heldRows.map(\.id))
-      // #4075 G9: a row missing from the disk is kept only when it was written after this read
-      // began (its file can land after the scan passed it) or when the read skipped a file. A
-      // row written earlier was on disk before the read, so a complete read that lacks it means
-      // its file was deleted outside this coordinator, and keeping it left the deleted text in
-      // History and offered by Paste Last.
-      let inFlightRows = transcripts.filter {
-        !knownIDs.contains($0.id)
-          && (read.freshness == nil || (writtenAtRevision[$0.id] ?? 0) > revisionAtRead)
-      }
-      // Merged rather than re-sorted: both inputs are already newest-first,
-      // and re-sorting the combined list could reorder permanent rows that
-      // share a `createdAt`. With no held rows this returns `diskRows`
-      // unchanged, so History is byte-identical for anyone who never turns
-      // Escape Recovery on.
-      let merged = inFlightRows + Self.mergeNewestFirst(heldRows, diskRows)
-      let mergedIDs = Set(merged.map(\.id))
-      removedRowIDs.formUnion(transcripts.lazy.map(\.id).filter { !mergedIDs.contains($0) })
-      transcripts = merged
-      // #4001 H9: reusable only when the read itself was certified. A read that skipped a file
-      // it could not open, or that a write overlapped, leaves the next open to read again.
-      historyCache = read.freshness.map(HistoryCache.reusable) ?? .unread
-      #if DEBUG
-        historyFullReadsForTesting += 1
-      #endif
-      reconcileSelectionWithDisplayedSet()
-      startPulseIfNeeded()
+    var diskRows = read.permanent
+    // Phase C union-by-ID merge. Preserve any in-memory rows whose IDs
+    // are not yet on disk (append-during-load race window) in their
+    // existing order, then append disk rows. Protects the newest-first
+    // invariant under multiple concurrent completions while a slow
+    // startup load is still running.
+    // #2087: pending rows are ADDITIVE and never authoritative. Keep writes
+    // the permanent copy before deleting the pending file, so a crash
+    // between those two steps leaves the same id in both namespaces — root
+    // wins, and the user sees the row they kept exactly once rather than a
+    // permanent row shadowed by a copy still counting down.
+    let pendingRows = read.pending
+    // The source load's own identity, not the drain's cancellation: `load()` replaces a
+    // request by moving `loadRequestID`.
+    guard request == loadRequestID else { return }
+    guard generationAtRead == diskStateGeneration else {
+      // A later fresh read, started now and not awaited here.
+      load()
+      return
+    }
+    // #2772: a row written SINCE this read began is newer than the disk copy that came
+    // back, and the merge below prefers the disk one whenever the id already exists. An
+    // import writes twice under one id, so without this the raw version read at the
+    // start of a load replaces the cleaned version saved a moment later, and History
+    // shows unpolished words until something else refreshes it. Found by Codex.
+    let newerRows = Dictionary(
+      uniqueKeysWithValues:
+        transcripts
+        .filter { (writtenAtRevision[$0.id] ?? 0) > revisionAtRead }
+        .map { ($0.id, $0) })
+    diskRows = diskRows.map { newerRows[$0.id] ?? $0 }
+    let rootIDs = Set(diskRows.map(\.id))
+    let heldRows = pendingRows.filter { !rootIDs.contains($0.id) }
+    let knownIDs = rootIDs.union(heldRows.map(\.id))
+    // #4075 G9: a row missing from the disk is kept only when it was written after this read
+    // began (its file can land after the scan passed it) or when the read skipped a file. A
+    // row written earlier was on disk before the read, so a complete read that lacks it means
+    // its file was deleted outside this coordinator, and keeping it left the deleted text in
+    // History and offered by Paste Last.
+    let inFlightRows = transcripts.filter {
+      !knownIDs.contains($0.id)
+        && (read.freshness == nil || (writtenAtRevision[$0.id] ?? 0) > revisionAtRead)
+    }
+    // Merged rather than re-sorted: both inputs are already newest-first,
+    // and re-sorting the combined list could reorder permanent rows that
+    // share a `createdAt`. With no held rows this returns `diskRows`
+    // unchanged, so History is byte-identical for anyone who never turns
+    // Escape Recovery on.
+    let merged = inFlightRows + Self.mergeNewestFirst(heldRows, diskRows)
+    let mergedIDs = Set(merged.map(\.id))
+    removedRowIDs.formUnion(transcripts.lazy.map(\.id).filter { !mergedIDs.contains($0) })
+    transcripts = merged
+    // #4001 H9: reusable only when the read itself was certified. A read that skipped a file
+    // it could not open, or that a write overlapped, leaves the next open to read again.
+    historyCache = read.freshness.map(HistoryCache.reusable) ?? .unread
+    #if DEBUG
+      historyFullReadsForTesting += 1
+    #endif
+    reconcileSelectionWithDisplayedSet()
+    startPulseIfNeeded()
   }
 
   // periphery:ignore - test seam
@@ -1291,7 +1292,6 @@ final class TranscriptCoordinator {
     return true
   }
 
-
   /// #3972 C4a: an EnviousMeet meeting's row, written durably (encode, `F_FULLFSYNC`, directory
   /// sync) OFF the main actor, then shown. EnviousMeet marks the meeting ready only after this
   /// returns, and its deletion awaits the commit that calls this, so no delete races the write.
@@ -1331,7 +1331,6 @@ final class TranscriptCoordinator {
     startPulseIfNeeded()
   }
 
-
   /// Runs `work` on the storage worker and resumes with its result. The main actor is never
   /// blocked waiting for it, and caller cancellation does not withdraw work already sent.
   private func runOnStorageWorker<T: Sendable>(
@@ -1357,9 +1356,15 @@ final class TranscriptCoordinator {
 
   /// A command's result, kept until its caller reads it, before or after the command ends.
   /// Internal, not private, so a test can drive this one implementation directly.
+  ///
+  /// Unsafe continuations on purpose: with `withCheckedContinuation` here, the Release test
+  /// build crashed `LiveMediaPlaybackEffectsTests` (another generic `@MainActor` waiter of the
+  /// same shape) at its own continuation call, `EXC_BAD_ACCESS`, on CI and locally (Xcode 27.1,
+  /// 27A9275; PR #4095). `complete` resumes each waiter once and clears the list, so a waiter is
+  /// never resumed twice.
   @MainActor final class Receipt<Value: Sendable> {
     private var value: Value?
-    private var waiters: [CheckedContinuation<Value, Never>] = []
+    private var waiters: [UnsafeContinuation<Value, Never>] = []
 
     func complete(_ result: Value) {
       value = result
@@ -1370,7 +1375,7 @@ final class TranscriptCoordinator {
 
     func result() async -> Value {
       if let value { return value }
-      return await withCheckedContinuation { waiters.append($0) }
+      return await withUnsafeContinuation { waiters.append($0) }
     }
   }
 
@@ -1445,7 +1450,6 @@ final class TranscriptCoordinator {
     }.get()
   }
 
-
   /// The speaker-fields write (#2810 addendum §3 E), and the one future rename write (phase
   /// 4) will share it. Reads the CURRENT row from `transcripts` at call time — never a value
   /// captured earlier — so "merge into the latest existing row, never overwrite newer
@@ -1503,7 +1507,6 @@ final class TranscriptCoordinator {
     let speakerId: String
     let name: String
   }
-
 
   /// Whether a row is in History right now. The import's "Saved to History" badge asks this
   /// live rather than remembering that a write once succeeded (#2772): a row can be deleted
@@ -1578,7 +1581,6 @@ final class TranscriptCoordinator {
   }
 
   private enum RenameOutcome: Sendable { case saved, removed, notRenamable, failed }
-
 
   /// The rename popover closed on Escape or a blank name (plan §3d). Telemetry only.
   func noteRenameCancelled() {
@@ -1970,8 +1972,6 @@ final class TranscriptCoordinator {
     return Date()
   }
 
-
-
   /// One line per Keep press, on every outcome including the refusals.
   ///
   /// Founder 2026-08-18, on the sibling Undo path: we must be able to tell after
@@ -2187,7 +2187,6 @@ final class TranscriptCoordinator {
     refreshDiskStateThenStopIfIdle()
     return .removed
   }
-
 
   func deleteAll() async {
     guard !Task.isCancelled else { return }
