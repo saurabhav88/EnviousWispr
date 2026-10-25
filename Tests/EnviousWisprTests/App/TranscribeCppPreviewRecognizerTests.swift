@@ -39,6 +39,14 @@ struct TranscribeCppPreviewRecognizerTests {
     private var gates: [CheckedContinuation<Void, Never>] = []
     private var waiters: [(() -> Bool, CheckedContinuation<Void, Never>)] = []
     private var open = false
+    // #3973: loads and unloads held inside the "native" call while their hold is on.
+    private var holdingLoads = false
+    private var holdingUnloads = false
+    private var loadGates: [CheckedContinuation<Void, Never>] = []
+    private var unloadGates: [CheckedContinuation<Void, Never>] = []
+    private var _loadsEntered = 0
+    private var _unloadsEntered = 0
+    private var _exitedAtUnload: [Int] = []
     var failLoads = false
     let text: String
 
@@ -53,17 +61,61 @@ struct TranscribeCppPreviewRecognizerTests {
     var cancelled: Int { lock.withLock { _cancelled } }
     /// The language each decode was asked for, in order.
     var languages: [String?] { lock.withLock { _languages } }
+    /// Loads and unloads that reached the "native" call, held or not.
+    var loadsEntered: Int { lock.withLock { _loadsEntered } }
+    var unloadsEntered: Int { lock.withLock { _unloadsEntered } }
+    /// How many decodes had returned when each unload began: an ordering record.
+    var exitedAtUnload: [Int] { lock.withLock { _exitedAtUnload } }
+
+    /// Holds later loads and unloads inside the call until `releaseLoads`/`releaseUnloads`.
+    func hold(loads: Bool = false, unloads: Bool = false) {
+      lock.withLock {
+        holdingLoads = loads
+        holdingUnloads = unloads
+      }
+    }
 
     func load(modelPath: String, lane: TranscribeCppExecutor.Lane) async throws -> Int {
       let failing = lock.withLock { () -> Bool in
         _lanes.append(lane)
-        guard !failLoads else { return true }
-        _loads += 1
-        nextHandle += 1
-        return false
+        return failLoads
       }
       if failing { throw TranscribeCppExecutor.ExecutorError.modelUnavailable }
-      return lock.withLock { nextHandle }
+      await park(unload: false)
+      return lock.withLock {
+        _loads += 1
+        nextHandle += 1
+        return nextHandle
+      }
+    }
+
+    /// Arrival and releasability publish in one lock step, as for decodes (#3808).
+    private func park(unload: Bool) async {
+      await withCheckedContinuation { c in
+        let pass = lock.withLock { () -> Bool in
+          if unload { _unloadsEntered += 1 } else { _loadsEntered += 1 }
+          guard unload ? holdingUnloads : holdingLoads else { return true }
+          if unload { unloadGates.append(c) } else { loadGates.append(c) }
+          return false
+        }
+        if pass { c.resume() }
+        notify()
+      }
+    }
+
+    func releaseLoads() { resume(\.loadGates, stopping: \.holdingLoads) }
+    func releaseUnloads() { resume(\.unloadGates, stopping: \.holdingUnloads) }
+
+    private func resume(
+      _ gates: ReferenceWritableKeyPath<FakeDriver, [CheckedContinuation<Void, Never>]>,
+      stopping hold: ReferenceWritableKeyPath<FakeDriver, Bool>
+    ) {
+      let parked = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
+        self[keyPath: hold] = false
+        defer { self[keyPath: gates] = [] }
+        return self[keyPath: gates]
+      }
+      for gate in parked { gate.resume() }
     }
 
     func detectLanguage(_ handle: Int, samples: [Float], lane: TranscribeCppExecutor.Lane)
@@ -117,6 +169,8 @@ struct TranscribeCppPreviewRecognizerTests {
     }
 
     func unload(_ handle: Int) async {
+      lock.withLock { _exitedAtUnload.append(_exited) }
+      await park(unload: true)
       lock.withLock { _unloads.append(handle) }
       notify()
     }
@@ -124,6 +178,12 @@ struct TranscribeCppPreviewRecognizerTests {
     /// The preview runtime never settles a lane (only the heart backend's teardown does), and
     /// this fake's loads and unloads complete within the call.
     func awaitSettled(openedOn lane: TranscribeCppExecutor.Lane) async -> Int { 0 }
+
+    /// Ends the oldest held decode.
+    func releaseOne() {
+      let first = lock.withLock { gates.isEmpty ? nil : gates.removeFirst() }
+      first?.resume()
+    }
 
     /// Ends every held decode.
     func releaseAll() {
@@ -139,6 +199,8 @@ struct TranscribeCppPreviewRecognizerTests {
     @Sendable func openAll() {
       lock.withLock { open = true }
       releaseAll()
+      releaseLoads()
+      releaseUnloads()
     }
 
     func until(_ condition: @escaping () -> Bool) async {
@@ -520,10 +582,13 @@ struct TranscribeCppPreviewRecognizerTests {
     }
   }
 
-  private static func runtime(_ driver: FakeDriver) -> TranscribeCppPreviewRuntime {
+  private static func runtime(
+    _ driver: FakeDriver, residency: TranscribeCppPreviewResidency = .init(),
+    joins: Joins? = nil, isAdmitted: @escaping @Sendable () async -> Bool = { true }
+  ) -> TranscribeCppPreviewRuntime {
     TranscribeCppPreviewRuntime(
-      driver: driver, modelPath: "/models/whisper-small-Q8_0.gguf", isAdmitted: { true },
-      cadence: .milliseconds(1), residency: .init())
+      driver: driver, modelPath: "/models/whisper-small-Q8_0.gguf", isAdmitted: isAdmitted,
+      cadence: .milliseconds(1), residency: residency, observe: { joins?.record($0) })
   }
 
   private static func transcriptSession(
@@ -677,6 +742,238 @@ struct TranscribeCppPreviewRecognizerTests {
     #expect(driver.lanes.allSatisfy { $0 == .preview })
     #expect(!driver.languages.isEmpty && driver.languages.allSatisfy { $0 == "de" })
     #expect(outputs.allReleases.first == 17_600, "released up to the committed 1.1 s boundary")
+  }
+
+  // MARK: - #3973: meeting release and drain
+
+  /// The runtime's own join notices: a caller is waiting on another caller's load or release.
+  final class Joins: @unchecked Sendable {
+    private let lock = NSLock()
+    private var seen: [TranscribeCppPreviewRuntime.Join] = []
+    private var waiters: [(TranscribeCppPreviewRuntime.Join, CheckedContinuation<Void, Never>)] = []
+    func record(_ join: TranscribeCppPreviewRuntime.Join) {
+      let ready = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
+        seen.append(join)
+        let met = waiters.filter { $0.0 == join }.map(\.1)
+        waiters.removeAll { $0.0 == join }
+        return met
+      }
+      for waiter in ready { waiter.resume() }
+    }
+    func until(_ join: TranscribeCppPreviewRuntime.Join) async {
+      await withCheckedContinuation { c in
+        let now = lock.withLock { () -> Bool in
+          if seen.contains(join) { return true }
+          waiters.append((join, c))
+          return false
+        }
+        if now { c.resume() }
+      }
+    }
+  }
+
+  private static func session(
+    _ runtime: TranscribeCppPreviewRuntime, _ outputs: Outputs
+  ) async throws -> any WhisperIncrementalSession {
+    try await runtime.makeSession(
+      language: "en", hypothesisRetentionLimit: 2_000, onHypothesis: outputs.text,
+      onAudioReleased: outputs.released)
+  }
+
+  @Test("an idle release frees the model once for every caller, and the runtime never loads again")
+  func idleReleaseFreesOnce() async throws {
+    let driver = FakeDriver()
+    driver.openAll()
+    let residency = TranscribeCppPreviewResidency()
+    let runtime = Self.runtime(driver, residency: residency)
+    try await Self.step("the load", driver) { try await runtime.ensureLoaded() }
+    // A session made before the release and still held after it, as a retained handle.
+    let outputs = Outputs()
+    let retained = try await Self.step("the open", driver) { try await Self.session(runtime, outputs) }
+    try await Self.step("three releases at once", driver) {
+      async let a: Void = runtime.releaseAndDrain()
+      async let b: Void = runtime.releaseAndDrain()
+      async let c: Void = runtime.releaseAndDrain()
+      _ = await (a, b, c)
+    }
+    try await Self.step("a later release", driver) { await runtime.releaseAndDrain() }
+    #expect(driver.unloads == [1], "one physical free")
+    #expect(residency.loadedCount == 0)
+    #expect(await runtime.isLoaded == false)
+    await #expect(throws: TranscribeCppPreviewRuntime.LoadFailure.released) {
+      try await runtime.ensureLoaded()
+    }
+    await #expect(throws: TranscribeCppPreviewRuntime.LoadFailure.released) {
+      _ = try await Self.session(runtime, Outputs())
+    }
+    // The retained session's decodes are refused before native code.
+    let recording = Recording()
+    recording.set(seconds: 1.2)
+    try await Self.step("the start", driver) {
+      await retained.start(audioSamplesProvider: recording.provider)
+    }
+    let rolling = try #require(retained as? TranscribeCppRollingSession)
+    await Self.within("three refused cycles", driver) { await rolling.cyclesCompleted(reach: 3) }
+    try await Self.step("the cancel", driver) { await retained.cancel() }
+    #expect(driver.entered == 0, "no decode against a freed model")
+    #expect(driver.loads == 1)
+  }
+
+  @Test("a release while the artifact admission is still deciding prevents a late load")
+  func releaseDuringAdmission() async throws {
+    let driver = FakeDriver()
+    driver.openAll()
+    let admission = Admission(gated: true)
+    let runtime = Self.runtime(driver) {
+      try? await admission.admit()
+      return true
+    }
+    let load = Task { try await runtime.ensureLoaded() }
+    await Self.within("the admission question", driver) { await admission.reach(1) }
+    try await Self.step("the release", driver) { await runtime.releaseAndDrain() }
+    admission.open()
+    let result = try await Self.step("the refused load", driver) { await load.result }
+    #expect(throws: TranscribeCppPreviewRuntime.LoadFailure.released) { try result.get() }
+    #expect(driver.loadsEntered == 0, "no native load after the release won")
+    #expect(driver.unloads.isEmpty)
+  }
+
+  @Test("a release during a native load joins it, frees the late model and never publishes it")
+  func releaseDuringLoad() async throws {
+    let driver = FakeDriver()
+    driver.openAll()
+    driver.hold(loads: true)
+    let residency = TranscribeCppPreviewResidency()
+    let runtime = Self.runtime(driver, residency: residency)
+    let load = Task { try await runtime.ensureLoaded() }
+    await Self.within("the native load", driver) { await driver.until { driver.loadsEntered >= 1 } }
+    let release = await runtime.beginRelease()
+    // What the driver had done when the release reported completion: an ordering record.
+    let atCompletion = Task { () -> (loads: Int, unloads: [Int]) in
+      await release.value
+      return (driver.loads, driver.unloads)
+    }
+    driver.releaseLoads()
+    let seen = try await Self.step("the release", driver) { await atCompletion.value }
+    #expect(seen.loads == 1 && seen.unloads == [1], "complete only after the late model loaded and was freed")
+    let result = try await Self.step("the refused load", driver) { await load.result }
+    #expect(throws: TranscribeCppPreviewRuntime.LoadFailure.released) { try result.get() }
+    #expect(driver.loads == 1 && driver.unloads == [1], "the late model was freed once")
+    #expect(residency.loadedCount == 0)
+    #expect(await runtime.isLoaded == false)
+  }
+
+  @Test("opens waiting on a shared load never escape a release as usable sessions")
+  func pendingOpensCannotEscape() async throws {
+    let driver = FakeDriver()
+    driver.openAll()
+    driver.hold(loads: true)
+    let joins = Joins()
+    let runtime = Self.runtime(driver, joins: joins)
+    // The first open starts the load; the second joins that same pending load.
+    let first = Task { try await Self.session(runtime, Outputs()) }
+    await Self.within("the native load", driver) { await driver.until { driver.loadsEntered >= 1 } }
+    let second = Task { try await Self.session(runtime, Outputs()) }
+    await Self.within("the second open joining the load", driver) { await joins.until(.load) }
+    let release = await runtime.beginRelease()
+    driver.releaseLoads()
+    await Self.within("the release", driver) { await release.value }
+    for open in [first, second] {
+      let result = try await Self.step("a refused open", driver) { await open.result }
+      #expect(throws: TranscribeCppPreviewRuntime.LoadFailure.released) { _ = try result.get() }
+    }
+    #expect(driver.loadsEntered == 1, "the second open joined the first load")
+    #expect(driver.unloads == [1])
+  }
+
+  @Test("with two tracks decoding, the model is freed only after both native runs returned")
+  func releaseWaitsForEveryDecode() async throws {
+    let driver = FakeDriver()  // decodes held until released one by one
+    let residency = TranscribeCppPreviewResidency()
+    let runtime = Self.runtime(driver, residency: residency)
+    let recording = Recording()
+    recording.set(seconds: 1.2)
+    let a = try await Self.step("open A", driver) { try await Self.session(runtime, Outputs()) }
+    let b = try await Self.step("open B", driver) { try await Self.session(runtime, Outputs()) }
+    try await Self.step("start A", driver) { await a.start(audioSamplesProvider: recording.provider) }
+    try await Self.step("start B", driver) { await b.start(audioSamplesProvider: recording.provider) }
+    await Self.within("both decodes inside", driver) { await driver.until { driver.entered >= 2 } }
+    let release = await runtime.beginRelease()
+    driver.releaseOne()
+    await Self.within("the first decode's return", driver) { await driver.until { driver.exited >= 1 } }
+    driver.releaseOne()
+    await Self.within("the release", driver) { await release.value }
+    #expect(driver.exitedAtUnload == [2], "the free began only after both native runs returned")
+    #expect(driver.unloads == [1])
+    #expect(residency.loadedCount == 0)
+    driver.openAll()
+    try await Self.step("the cancels", driver) {
+      await a.cancel()
+      await b.cancel()
+    }
+    // Both loops have ended: this count is final.
+    #expect(driver.entered == 2, "no decode entered after the release began")
+  }
+
+  @Test("a free that has not returned keeps the release incomplete, even for a cancelled caller")
+  func releaseWaitsForTheUnload() async throws {
+    let driver = FakeDriver()
+    driver.openAll()
+    let residency = TranscribeCppPreviewResidency()
+    let joins = Joins()
+    let runtime = Self.runtime(driver, residency: residency, joins: joins)
+    try await Self.step("the load", driver) { try await runtime.ensureLoaded() }
+    driver.hold(unloads: true)
+    // Each caller records what the driver had freed when its wait returned.
+    let cancelled = Task { () -> [Int] in
+      await runtime.releaseAndDrain()
+      return driver.unloads
+    }
+    await Self.within("the native free", driver) { await driver.until { driver.unloadsEntered >= 1 } }
+    cancelled.cancel()
+    #expect(residency.loadedCount == 1, "still resident while the free is inside native code")
+    let later = Task { () -> [Int] in
+      await runtime.releaseAndDrain()
+      return driver.unloads
+    }
+    await Self.within("the later caller joining the release", driver) { await joins.until(.release) }
+    driver.releaseUnloads()
+    let seen = try await Self.step("both callers", driver) { (await cancelled.value, await later.value) }
+    #expect(seen.0 == [1], "the cancelled caller returned only after the free")
+    #expect(seen.1 == [1], "the joined caller returned only after the free")
+    #expect(driver.unloadsEntered == 1 && driver.unloads == [1], "the cleanup finished, once")
+    #expect(residency.loadedCount == 0)
+  }
+
+  @Test("releasing the meeting runtime leaves a separate dictation runtime loaded")
+  func releaseIsPerRuntime() async throws {
+    let driver = FakeDriver()
+    driver.openAll()
+    let residency = TranscribeCppPreviewResidency()
+    let dictation = Self.runtime(driver, residency: residency)
+    let meeting = Self.runtime(driver, residency: residency)
+    try await Self.step("dictation's load", driver) { try await dictation.ensureLoaded() }
+    try await Self.step("the meeting's load", driver) { try await meeting.ensureLoaded() }
+    try await Self.step("the meeting's release", driver) { await meeting.releaseAndDrain() }
+    #expect(driver.unloads == [2], "only the meeting's model was freed")
+    #expect(residency.loadedCount == 1)
+    #expect(await dictation.isLoaded)
+    try await Self.step("dictation still opens", driver) {
+      _ = try await Self.session(dictation, Outputs())
+    }
+  }
+
+  @Test("a runtime nobody released is still freed once when its last holder lets go")
+  func unreleasedRuntimeStillFreedOnDeinit() async throws {
+    let driver = FakeDriver()
+    driver.openAll()
+    let residency = TranscribeCppPreviewResidency()
+    var runtime: TranscribeCppPreviewRuntime? = Self.runtime(driver, residency: residency)
+    try await Self.step("the load", driver) { [runtime] in try await runtime?.ensureLoaded() }
+    #expect(residency.loadedCount == 1)
+    runtime = nil
+    await Self.within("the free", driver) { await residency.waitUntilNoneLoaded() }
+    #expect(driver.unloads == [1])
   }
 
   @Test("the retained preview audio ceiling is two minutes at 16 kHz (#2117)")

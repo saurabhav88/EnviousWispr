@@ -1457,6 +1457,30 @@ struct TranscribeCppPreviewPriorityTests {
     #expect(published.all.isEmpty)
   }
 
+  @Test("a meeting release lets the running preview decode return, then frees the model once (#3973)")
+  func meetingReleaseWaitsForTheDecode() async throws {
+    let native = FakeNative(results: [Self.small: Self.heard])
+    let executor = TranscribeCppExecutor(makeSession: native.makeSession)
+    await native.observe(executor)
+    let residency = TranscribeCppPreviewResidency()
+    let runtime = Self.runtime(executor, residency: residency)
+    let published = Published()
+    let session = try await runtime.makeSession(
+      language: "en", hypothesisRetentionLimit: 2_000, onHypothesis: published.append,
+      onAudioReleased: { _ in })
+    await session.start { (Self.speech, Self.speech.count) }
+    await native.waitForArrivals(1)
+    let release = await runtime.beginRelease()
+    native.release(Self.small)
+    await Self.within("the release", native) { await release.value }
+    // The run was never aborted: it returned, and only then was its model freed.
+    #expect(native.log == ["enter small", "exit small", "close small"])
+    #expect(native.violations.isEmpty)
+    #expect(residency.loadedCount == 0)
+    await Self.within("the preview's stop", native) { await session.cancel() }
+    #expect(native.log.filter { $0.hasPrefix("enter") }.count == 1, "no decode after the release")
+  }
+
   @Test(
     "the preview model loads on the preview lane, decodes with padding, and is freed once when released"
   )
