@@ -830,13 +830,18 @@ public final class TranscriptStore {
     let dir = directory
     let pendingDir = pendingDirectory
     let retention = AppConstants.pendingTranscriptRetention
+    #if DEBUG
+      let willRead = permanentFileWillReadForTesting
+    #else
+      let willRead: (@Sendable () -> Void)? = nil
+    #endif
     // Detached, not `Task {}`: this type is @MainActor and the read is a disk walk.
     let read = Task.detached(priority: .userInitiated) {
       try Task.checkCancellation()
       let before = Self.freshness(directory: dir, pendingDirectory: pendingDir)
       let permanent: (rows: [Transcript], complete: Bool) =
         FileManager.default.fileExists(atPath: dir.path)
-        ? try await Self.readPermanent(in: dir) : ([], false)
+        ? try await Self.readPermanent(in: dir, willRead: willRead) : ([], false)
       try Task.checkCancellation()
       // Same admission as `loadPending`. An unreadable folder reads as empty there; here it also
       // withholds certification, and a confirmed-absent one is a real empty namespace.
@@ -881,7 +886,7 @@ public final class TranscriptStore {
   /// reused as the whole History. A file that reads but does not decode is excluded for good, as
   /// before, and does not make the read incomplete.
   private nonisolated static func readPermanent(
-    in dir: URL
+    in dir: URL, willRead: (@Sendable () -> Void)? = nil
   ) async throws -> (rows: [Transcript], complete: Bool) {
     let files = try FileManager.default.contentsOfDirectory(
       at: dir, includingPropertiesForKeys: nil)
@@ -890,6 +895,7 @@ public final class TranscriptStore {
     var complete = true
     for url in files where url.pathExtension == "json" {
       try Task.checkCancellation()
+      willRead?()
       let data: Data
       do {
         data = try Data(contentsOf: url)
@@ -1068,6 +1074,9 @@ public final class TranscriptStore {
     var deleteAllReplacementReadyForTesting: (() -> Void)?
     /// The background removal the last Delete All started, so a test can await it.
     private(set) var deletionCleanupForTesting: Task<Void, Never>?
+    /// Runs on a History read's worker before each permanent row file (#4075 G8), so a test can
+    /// pause a read mid-walk and cancel it there.
+    var permanentFileWillReadForTesting: (@Sendable () -> Void)?
     /// The start-up cleanup a store made with `cleansLeftovers` scheduled.
     private(set) var leftoverCleanupForTesting: Task<Void, Never>?
   #endif
