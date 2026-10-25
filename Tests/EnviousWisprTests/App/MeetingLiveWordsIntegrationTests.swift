@@ -8,6 +8,7 @@ import os
 @testable import EnviousWisprCore
 @testable import EnviousWisprLivePreview
 @testable import EnviousWisprPipeline
+@testable import EnviousWisprServices
 @testable import EnviousWisprWhisperPreviewAdapter
 
 /// #3973 G3: live words are display only. The real `MeetingCoordinator`, the real
@@ -425,5 +426,17 @@ struct MeetingLiveWordsIntegrationTests {
       Issue.record("expected modelNotInstalled, got \(missing)")
       return
     }
+  }
+
+  @Test("the meeting's Universal decode waits only while a streaming dictation is under way")
+  func meetingDecodeWaitsOnlyForActiveStreamingDictation() throws {
+    let settings = SettingsManager(defaults: try #require(TestDefaults.suite("ew-3973-\(UUID().uuidString)")))
+    settings.selectedBackend = .parakeet
+    settings.useStreamingASR = true
+    #expect(WhisperPreviewDeliveryWiring.heartIsStreaming(settings: settings), "control: streaming set")
+    #expect(!WhisperPreviewDeliveryWiring.meetingDecodeMustWait(settings: settings, dictationActive: false))
+    #expect(WhisperPreviewDeliveryWiring.meetingDecodeMustWait(settings: settings, dictationActive: true))
+    settings.useStreamingASR = false
+    #expect(!WhisperPreviewDeliveryWiring.meetingDecodeMustWait(settings: settings, dictationActive: true))
   }
 }

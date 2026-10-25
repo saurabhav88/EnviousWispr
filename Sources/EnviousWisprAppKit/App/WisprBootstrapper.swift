@@ -2459,16 +2459,19 @@ package final class WisprBootstrapper {
       }
     }
     // #3973: EnviousMeet's live words: Apple speech on macOS 26 when its pack is installed, else
-    // the downloaded Universal engine, never a download; each Universal decode waits while
-    // dictation's engine streams.
+    // the downloaded Universal engine, never a download; each Universal decode waits while a
+    // dictation runs on a streaming engine.
     let meetingLiveWords = MeetingLiveWords(
       dependencies: .init(
         appleSupported: { ApplePreviewEngineResolver.isSupportedOnThisSystem },
         resolveApple: { mode in await ApplePreviewEngineResolver.route.resolve(mode) },
         resolveUniversal: WhisperPreviewDeliveryWiring.makeMeetingResolver(
           modelDelivery: modelDelivery, settings: settings),
-        isHeartStreaming: { [settings] in
-          await MainActor.run { WhisperPreviewDeliveryWiring.heartIsStreaming(settings: settings) }
+        isHeartStreaming: { [settings, liveRecordingState] in
+          await MainActor.run {
+            WhisperPreviewDeliveryWiring.meetingDecodeMustWait(
+              settings: settings, dictationActive: liveRecordingState.isDictationActive)
+          }
         }))
     // #3973: removing the Universal model lets dictation's preview and the meeting's live
     // words both go before the one residency wait and the delete.

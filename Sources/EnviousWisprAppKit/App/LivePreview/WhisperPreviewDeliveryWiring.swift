@@ -131,6 +131,13 @@ enum WhisperPreviewDeliveryWiring {
   ///
   /// Read live rather than snapshotted because this is asked at the START of each
   /// recording, which is exactly when the answer must be current.
+  /// #3973: a meeting's Universal decode waits only while a dictation is under way and
+  /// dictation's engine streams through it. `heartIsStreaming` alone describes the setting, so
+  /// on its own it would keep a meeting's live words blank while nobody dictates.
+  static func meetingDecodeMustWait(settings: SettingsManager, dictationActive: Bool) -> Bool {
+    dictationActive && heartIsStreaming(settings: settings)
+  }
+
   static func heartIsStreaming(settings: SettingsManager) -> Bool {
     guard settings.useStreamingASR else { return false }
     switch settings.selectedBackend {
