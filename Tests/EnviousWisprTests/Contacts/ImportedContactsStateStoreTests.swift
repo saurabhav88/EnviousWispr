@@ -1,12 +1,13 @@
 import EnviousWisprContacts
 import Foundation
 import Testing
+import EnviousWisprAppKitTestSupport
 
 /// #636 — the import log: opaque IDs only, absent-file → empty, union semantics.
 @Suite("ImportedContactsStateStore — import log (#636)")
 struct ImportedContactsStateStoreTests {
   private static func tempURL() -> URL {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("EnviousWispr-test-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     return dir.appendingPathComponent("imported-contacts-state.json")

@@ -12,6 +12,7 @@
   @testable import EnviousWisprLLM
   @testable import EnviousWisprPostProcessing
   @testable import EnviousWisprStorage
+  import EnviousWisprAppKitTestSupport
 
   /// #3765: the dev control door's command dispatcher (settings commands).
   ///
@@ -593,7 +594,7 @@
 
     @Test("History reads go through the real coordinator: expired rows and deleted rows are gone")
     func historyThroughTheRealCoordinator() async throws {
-      let directory = FileManager.default.temporaryDirectory
+      let directory = TestTemporaryDirectory.url
         .appendingPathComponent("ew-3765-history-\(UUID().uuidString)", isDirectory: true)
       defer { try? FileManager.default.removeItem(at: directory) }
       let store = TranscriptStore(directory: directory)
@@ -951,7 +952,7 @@ func wordCommandsLeaveSettingsAlone() async throws {
       let folder: URL
 
       init() {
-        folder = FileManager.default.temporaryDirectory
+        folder = TestTemporaryDirectory.url
           .appendingPathComponent("ew-3765-words-\(UUID().uuidString)", isDirectory: true)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         url = folder.appendingPathComponent("custom-words.json")
@@ -972,7 +973,7 @@ func wordCommandsLeaveSettingsAlone() async throws {
       storage: (any LegacyKeyFileStorage)? = nil,
       emit: @escaping CredentialWriter.Emit = { _, _, _ in }
     ) -> CredentialWriter {
-      let folder = FileManager.default.temporaryDirectory
+      let folder = TestTemporaryDirectory.url
         .appending(path: "ew-tests-3765-keys-\(UUID().uuidString)")
       let keychain = KeychainManager(
         backend: .legacyFiles, legacyStore: storage ?? FileLegacyKeyStore(storageDirectory: folder))

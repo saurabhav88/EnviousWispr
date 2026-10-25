@@ -11,6 +11,7 @@ import os
 @testable import EnviousWisprPipeline
 @testable import EnviousWisprServices
 @testable import EnviousWisprStorage
+import EnviousWisprAppKitTestSupport
 
 /// #3972 C4a: when these fail, a meeting loads a model the delivery code is replacing, keeps a
 /// model locked after it finished or failed, or History's delete of a meeting leaves its audio.
@@ -172,7 +173,7 @@ struct MeetingWiringTests {
     let wakes: MeetingWakeSignal
 
     init() throws {
-      root = FileManager.default.temporaryDirectory
+      root = TestTemporaryDirectory.url
         .appendingPathComponent("MeetingWiringTests-\(UUID().uuidString)", isDirectory: true)
       store = MeetingStore(root: root)
       try store.prepareRoot()

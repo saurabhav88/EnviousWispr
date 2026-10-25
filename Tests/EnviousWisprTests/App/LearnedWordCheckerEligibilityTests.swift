@@ -6,6 +6,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
+import EnviousWisprAppKitTestSupport
 
 @MainActor
 @Suite("Learned-word checker eligibility (#3105)", .tags(.productOutcome))
@@ -17,7 +18,7 @@ struct LearnedWordCheckerEligibilityTests {
         .deletingLastPathComponent().deletingLastPathComponent()
         .deletingLastPathComponent().deletingLastPathComponent()
       let resources = root.appendingPathComponent("Sources/EnviousWispr/Resources")
-      let temp = URL(fileURLWithPath: NSTemporaryDirectory())
+      let temp = URL(fileURLWithPath: TestTemporaryDirectory.path)
         .appendingPathComponent("ew-3105-scripted-\(UUID().uuidString)", isDirectory: true)
       try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
       let delivery = ModelDeliveryHome(
@@ -68,7 +69,7 @@ struct LearnedWordCheckerEligibilityTests {
     /// `learn_from_edits_uat.py`, `ENGINES` in `auto_dictionary_bench.py`).
     @Test("each engine's adapter door reads only its own keys")
     func adapterDoorPerEngine() throws {
-      let adapter = FileManager.default.temporaryDirectory
+      let adapter = TestTemporaryDirectory.url
         .appendingPathComponent("door-\(UUID().uuidString).gguf")
       try Data([0]).write(to: adapter)
       defer { try? FileManager.default.removeItem(at: adapter) }

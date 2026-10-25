@@ -5,6 +5,7 @@ import Testing
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprServices
 @testable import EnviousWisprStorage
+import EnviousWisprAppKitTestSupport
 
 /// Escape Recovery telemetry (#2087, chunk 11).
 ///
@@ -22,7 +23,7 @@ struct EscapeRecoveryTelemetryTests {
 
   private func makeStore() -> TranscriptStore {
     TranscriptStore(
-      directory: FileManager.default.temporaryDirectory
+      directory: TestTemporaryDirectory.url
         .appendingPathComponent("ew-2087-tel-\(UUID().uuidString)", isDirectory: true))
   }
 
@@ -240,7 +241,7 @@ struct EscapeRecoveryTelemetryTests {
     /// would mean walking the directory every minute for the life of the app.
     @Test("a failed removal keeps the pulse armed and is retried on the next one")
     func failedRemovalStaysArmedAndRetries() async throws {
-      let directory = FileManager.default.temporaryDirectory
+      let directory = TestTemporaryDirectory.url
         .appendingPathComponent("ew-2087-retry-\(UUID().uuidString)", isDirectory: true)
       let store = TranscriptStore(directory: directory)
       let log = EventLog()
@@ -406,7 +407,7 @@ struct EscapeRecoveryTelemetryTests {
     /// not at all.
     @Test("the pulse itself retries a blind sweep once the directory is readable")
     func incompleteWalkKeepsRowsAndPulseRetries() async throws {
-      let directory = FileManager.default.temporaryDirectory
+      let directory = TestTemporaryDirectory.url
         .appendingPathComponent("ew-2087-blind-\(UUID().uuidString)", isDirectory: true)
       let store = TranscriptStore(directory: directory)
       let log = EventLog()
@@ -487,7 +488,7 @@ struct EscapeRecoveryTelemetryTests {
     /// bring the pulse back to the directory. Nothing sweeps by hand.
     @Test("a blind sweep retries even with nothing in memory to remind it")
     func blindSweepWithEmptyMemoryStillRetries() async throws {
-      let directory = FileManager.default.temporaryDirectory
+      let directory = TestTemporaryDirectory.url
         .appendingPathComponent("ew-2087-blind-empty-\(UUID().uuidString)", isDirectory: true)
       let store = TranscriptStore(directory: directory)
       let log = EventLog()

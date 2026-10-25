@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprServices
+import EnviousWisprAppKitTestSupport
 
 /// #1846 — the cross-vendor join key's acceptance contract, its survival through
 /// the REAL final-payload redactor, and the freeze that keeps PostHog's
@@ -166,7 +167,7 @@ struct TelemetryJoinKeyTests {
   /// it, so the fixture exercises the production discovery, read and match path
   /// rather than a parallel simpler stand-in.
   private static func scanFixture(containing line: String) throws -> ScanResult {
-    let root = URL(fileURLWithPath: NSTemporaryDirectory())
+    let root = URL(fileURLWithPath: TestTemporaryDirectory.path)
       .appending(path: "ew-1846-freeze-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: root) }

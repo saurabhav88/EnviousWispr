@@ -37,6 +37,15 @@ public actor CoreMLOutputClassifier: OutputClassifierProtocol {
     model.configuration.computeUnits
   }
 
+  /// Where the fallback compile of a bundled `.mlpackage` lives between loads:
+  /// `<caches>/EnviousWispr/OutputClassifier/<packageDigest>.mlmodelc`.
+  private static func compiledCacheDirectory() -> URL {
+    let caches =
+      FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+      ?? FileManager.default.temporaryDirectory
+    return caches.appendingPathComponent("EnviousWispr/OutputClassifier", isDirectory: true)
+  }
+
   /// Load + verify + self-test from a bundle resource directory (normally
   /// `Bundle.main.resourceURL`). `nonisolated`-by-default async means the heavy
   /// compile/load runs off the caller's actor (off main) per SE-0338.
@@ -97,7 +106,10 @@ public actor CoreMLOutputClassifier: OutputClassifierProtocol {
     // 5. Load the model. Xcode's CoreML build rule compiles the app-target
     //    .mlpackage into OutputClassifier.mlmodelc at BUILD time, so the normal
     //    path loads that directly (no on-device compile). Defensive fallback:
-    //    if only the source .mlpackage shipped, compile it on-device.
+    //    if only the source .mlpackage shipped (SwiftPM builds and tests),
+    //    compile it on-device once into `compiledCacheDirectory()`, keyed by the
+    //    package's tree digest. Compiling per load left one ~86 MB
+    //    `OutputClassifier_<UUID>.mlmodelc` in the temporary directory each time.
     let model: MLModel
     do {
       // #1226: exclude the GPU. Measured on Mac16,8 by loading the compiled model
@@ -123,8 +135,9 @@ public actor CoreMLOutputClassifier: OutputClassifierProtocol {
       if fileManager.fileExists(atPath: compiledModel.path) {
         model = try MLModel(contentsOf: compiledModel, configuration: configuration)
       } else if fileManager.fileExists(atPath: mlpackage.path) {
-        let compiledURL = try await MLModel.compileModel(at: mlpackage)
-        model = try MLModel(contentsOf: compiledURL, configuration: configuration)
+        model = try await CompiledModelCache.model(
+          package: mlpackage, key: try CoreMLCorrectionJudge.treeDigest(of: mlpackage),
+          cacheDirectory: compiledCacheDirectory(), configuration: configuration)
       } else {
         throw OutputClassifierError.disabled(.missingFile)
       }

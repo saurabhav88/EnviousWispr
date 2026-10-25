@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprPostProcessing
+import EnviousWisprAppKitTestSupport
 
 /// #3975: the Self-Learning Dictionary's memory of the user's fixes. When one
 /// of these fails, the user sees a fix they made twice never learned, a word
@@ -15,7 +16,7 @@ struct LearnMemoryTests {
   // MARK: Fixtures
 
   private static func tempDir() -> URL {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("EnviousWispr-learn-memory-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     return dir

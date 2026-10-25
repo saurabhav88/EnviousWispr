@@ -6,6 +6,7 @@ import Testing
 @testable import EnviousWisprPipeline
 @testable import EnviousWisprServices
 @testable import EnviousWisprStorage
+import EnviousWisprAppKitTestSupport
 
 /// #3972 R5, R19: when these fail, a meeting is filed as a dictation, pasted again as "the last
 /// dictation", counted as a practice dictation, or hidden echo lines reach the list, search,
@@ -44,7 +45,7 @@ struct MeetingHistoryPresentationTests {
 
     @MainActor
     init() {
-      let dir = FileManager.default.temporaryDirectory
+      let dir = TestTemporaryDirectory.url
         .appendingPathComponent("meeting-history-\(UUID().uuidString)", isDirectory: true)
       try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
       directory = dir

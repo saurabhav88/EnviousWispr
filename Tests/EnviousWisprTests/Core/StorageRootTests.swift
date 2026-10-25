@@ -2,6 +2,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprCore
+import EnviousWisprAppKitTestSupport
 
 /// When these fail, the user's dictation history, custom words and snippets go
 /// somewhere the app will not look for them again, or the app refuses to start
@@ -24,7 +25,7 @@ struct StorageRootTests {
     let home: URL
 
     init() throws {
-      root = FileManager.default.temporaryDirectory
+      root = TestTemporaryDirectory.url
         .appendingPathComponent("ew-storage-root-\(UUID().uuidString)", isDirectory: true)
       appSupport = root.appendingPathComponent("ApplicationSupport", isDirectory: true)
       home = root.appendingPathComponent("Home", isDirectory: true)
@@ -664,7 +665,7 @@ struct StorageRootClaimRaceTests {
   }
 
   private func makeDirectory() throws -> URL {
-    let url = FileManager.default.temporaryDirectory
+    let url = TestTemporaryDirectory.url
       .appendingPathComponent("ew-claim-race-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url

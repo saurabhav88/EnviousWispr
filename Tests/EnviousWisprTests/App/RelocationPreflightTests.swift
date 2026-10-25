@@ -2,6 +2,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
+import EnviousWisprAppKitTestSupport
 
 // #3252, plan 3.4 / T2, T3, T9 (the coordinator side). The production `runPreflight`, the real
 // `HandoffAuthority` and the real watchdog are exercised; only the side-effecting seams are fakes,
@@ -230,7 +231,7 @@ struct PreflightEffects: Equatable {
 
 @MainActor
 final class PreflightRig {
-  static let destinationURL = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+  static let destinationURL = URL(fileURLWithPath: TestTemporaryDirectory.path, isDirectory: true)
     .appendingPathComponent("ew-3252-fake-destination/EnviousWispr.app")
 
   let mover: StageMover

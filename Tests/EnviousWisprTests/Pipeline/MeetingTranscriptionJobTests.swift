@@ -7,6 +7,7 @@ import os
 @testable import EnviousWisprCore
 @testable import EnviousWisprPipeline
 @testable import EnviousWisprStorage
+import EnviousWisprAppKitTestSupport
 
 /// Blocks the calling thread on `semaphore` for at most `seconds` (a synchronous helper, so an
 /// async closure can hold a thread on purpose in a test). True when signalled, false on timeout.
@@ -111,7 +112,7 @@ struct MeetingTranscriptionJobTests {
   }
 
   private func folder() throws -> URL {
-    let url = FileManager.default.temporaryDirectory
+    let url = TestTemporaryDirectory.url
       .appendingPathComponent("MeetingJobTests-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url

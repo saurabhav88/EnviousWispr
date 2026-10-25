@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprPostProcessing
+import EnviousWisprAppKitTestSupport
 
 /// Phase 3b (#631) — pins the debounced counting writer's distinct behaviors:
 /// below-threshold records stay pending (not persisted) until flush, the
@@ -23,7 +24,7 @@ import Testing
 struct CustomWordsManagerCountingTests {
 
   private static func tempFileURL() -> URL {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("EnviousWispr-test-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     return dir.appendingPathComponent("custom-words.json")

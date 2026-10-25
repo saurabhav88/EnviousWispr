@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprPostProcessing
+import EnviousWisprAppKitTestSupport
 
 /// #628 — the store refusing to destroy data it cannot read.
 ///
@@ -18,7 +19,7 @@ import Testing
 struct SnippetsStoreSafetyTests {
 
   private func makeStore() -> (SnippetsManager, URL) {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ew-snip-safety-\(UUID().uuidString)", isDirectory: true)
     let url = dir.appendingPathComponent("snippets.json")
     return (SnippetsManager(fileURL: url), url)

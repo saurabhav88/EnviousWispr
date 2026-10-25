@@ -8,6 +8,7 @@ import os
 @testable import EnviousWisprCore
 @testable import EnviousWisprPipeline
 @testable import EnviousWisprStorage
+import EnviousWisprAppKitTestSupport
 
 /// #3972 C4a: when these fail, a meeting records twice, a Stop or quit misses a recording that
 /// is still starting, a meeting shows "ready" without its History row, a deleted meeting comes
@@ -286,7 +287,7 @@ struct MeetingCoordinatorTests {
     @ObservationIgnored lazy var coordinator = MeetingCoordinator(dependencies: dependencies())
 
     init() throws {
-      root = FileManager.default.temporaryDirectory
+      root = TestTemporaryDirectory.url
         .appendingPathComponent("MeetingCoordinatorTests-\(UUID().uuidString)", isDirectory: true)
       store = MeetingStore(root: root)
       try store.prepareRoot()

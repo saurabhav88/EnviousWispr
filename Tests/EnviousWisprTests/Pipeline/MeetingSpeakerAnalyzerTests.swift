@@ -6,13 +6,14 @@ import os
 @testable import EnviousWisprAudio
 @testable import EnviousWisprCore
 @testable import EnviousWisprPipeline
+import EnviousWisprAppKitTestSupport
 
 /// #3972 R25: when these fail, a meeting loses its words because speaker labelling failed, a
 /// labelling worker keeps running after its unit ended, or a cancel is reported as a timeout.
 @Suite("MeetingSpeakerAnalyzer", .tags(.productOutcome), .timeLimit(.minutes(1)))
 struct MeetingSpeakerAnalyzerTests {
   private func track() throws -> MeetingTrackAudio {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("SpeakerAnalyzerTests-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     let url = try MeetingAudioFixture.writeSegment(in: dir, index: 1, startMs: 0, frames: 16_000)

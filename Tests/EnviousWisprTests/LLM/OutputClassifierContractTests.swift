@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprLLM
+import EnviousWisprAppKitTestSupport
 
 /// Build-time integrity gates for the shipped classifier artifacts. These lock
 /// the committed model + tokenizer + contract so an accidental swap (or a Swift
@@ -35,7 +36,7 @@ import Testing
   @Test("a tampered contract fails verification (mismatch disables ⇒ fail open)")
   func tamperedContractFailsVerify() throws {
     // Copy the real contract, mutate a field, point the verifier at the copy.
-    let temp = FileManager.default.temporaryDirectory.appending(
+    let temp = TestTemporaryDirectory.url.appending(
       path: "tampered-\(UUID().uuidString).json")
     defer { try? FileManager.default.removeItem(at: temp) }
     let original = try Data(contentsOf: OutputClassifierTestPaths.contract)
@@ -54,7 +55,7 @@ import Testing
 
   @Test("a tampered tokenizer file fails verification")
   func tamperedTokenizerFailsVerify() throws {
-    let tempTok = FileManager.default.temporaryDirectory.appending(
+    let tempTok = TestTemporaryDirectory.url.appending(
       path: "tok-\(UUID().uuidString).json")
     defer { try? FileManager.default.removeItem(at: tempTok) }
     var bytes = try Data(contentsOf: OutputClassifierTestPaths.tokenizerJSON)
@@ -76,7 +77,7 @@ import Testing
     // Minimal resourceURL layout CoreMLOutputClassifier.load expects: only the
     // tokenizer-folder files matter here — the malformed contract fails before
     // the model-load steps are ever reached.
-    let resourceURL = FileManager.default.temporaryDirectory.appending(
+    let resourceURL = TestTemporaryDirectory.url.appending(
       path: "output-classifier-malformed-contract-\(UUID().uuidString)")
     let tokenizerFolder = resourceURL.appending(
       path: OutputClassifierManifest.tokenizerFolderName)

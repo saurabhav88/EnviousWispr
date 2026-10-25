@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
+import EnviousWisprAppKitTestSupport
 
 /// #3482 PR A: the shipped Settings search vocabulary, loaded through the production loader and
 /// validator, against independent expectations: the literal language list below, the map
@@ -326,7 +327,7 @@ struct SettingsSearchVocabularyTests {
   @Test("an added id binds to its review output", arguments: AdditionCase.allCases)
   func additionControls(additionCase: AdditionCase) throws {
     let vocabulary = try Self.fixtureVocabulary()
-    let receipts = FileManager.default.temporaryDirectory
+    let receipts = TestTemporaryDirectory.url
       .appendingPathComponent("vocabulary-additions-\(UUID().uuidString)")
     try FileManager.default.createDirectory(
       at: receipts.appendingPathComponent("additions"), withIntermediateDirectories: true)

@@ -6,6 +6,7 @@
   import Testing
 
   @testable import EnviousWisprAppKit
+  import EnviousWisprAppKitTestSupport
 
   /// #3765: the dev control door, driven by the real Python client over a real Unix socket.
   ///
@@ -37,7 +38,7 @@
     nonisolated private static func runPython(_ script: String) async throws -> ChildOutput {
       let process = Process()
       let pipe = Pipe()
-      let errorsURL = FileManager.default.temporaryDirectory
+      let errorsURL = TestTemporaryDirectory.url
         .appendingPathComponent("ewdc-stderr-\(UUID().uuidString)")
       guard FileManager.default.createFile(atPath: errorsURL.path, contents: nil) else {
         throw CocoaError(.fileWriteUnknown)
@@ -205,7 +206,7 @@
 
     @Test("an unsafe directory or a foreign entry at the socket path is refused")
     func unsafePathsRefuse() throws {
-      let base = FileManager.default.temporaryDirectory
+      let base = TestTemporaryDirectory.url
         .appendingPathComponent("ewdc-\(UUID().uuidString.prefix(8))")
       try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
       defer { try? FileManager.default.removeItem(at: base) }
@@ -844,7 +845,7 @@
       try #require(await door.install() == .ready)
       // The child closes only after the door is inside the first request, signalled by
       // this file, so the close lands while a buffered second request is waiting.
-      let marker = FileManager.default.temporaryDirectory
+      let marker = TestTemporaryDirectory.url
         .appendingPathComponent("ewdc-peer-\(UUID().uuidString)")
       defer { try? FileManager.default.removeItem(at: marker) }
 

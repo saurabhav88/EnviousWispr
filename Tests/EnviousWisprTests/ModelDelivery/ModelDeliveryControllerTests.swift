@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprModelDelivery
+import EnviousWisprAppKitTestSupport
 
 /// Controller-level tests: preflight + reservation ledger, event sequencing
 /// invariants (failed-without-started on preflight rejection; started is
@@ -45,7 +46,7 @@ import Testing
   private func makeRegistration(
     files: [(path: String, content: Data, component: String)]
   ) throws -> DeliveryRegistration {
-    let root = FileManager.default.temporaryDirectory
+    let root = TestTemporaryDirectory.url
       .appendingPathComponent("controller-\(UUID().uuidString)", isDirectory: true)
     let install = root.appendingPathComponent("install", isDirectory: true)
     let metadata = root.appendingPathComponent("metadata", isDirectory: true)
@@ -731,7 +732,7 @@ import Testing
 
   @Test("a legacy migration that would publish waits for a meeting's use", .timeLimit(.minutes(1)))
   func migrationWaitsForMeetingUse() async throws {
-    let root = FileManager.default.temporaryDirectory
+    let root = TestTemporaryDirectory.url
       .appendingPathComponent("controller-mig-\(UUID().uuidString)", isDirectory: true)
     let donor = root.appendingPathComponent("FluidAudio/Models/model", isDirectory: true)
     for f in ManifestFixture.smallFiles {

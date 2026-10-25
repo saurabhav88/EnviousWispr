@@ -11,6 +11,7 @@ import Testing
 @testable import EnviousWisprAudio
 @testable import EnviousWisprPipeline
 @testable import EnviousWisprStorage
+import EnviousWisprAppKitTestSupport
 
 /// Unit tests for `LiveRecordingState` (PR7 of epic #763).
 ///
@@ -130,7 +131,7 @@ struct LiveRecordingStateTests {
     // with a temp directory so the test does not write into the user's
     // production transcript dir or schedule the detached permissions
     // migration that the zero-arg `TranscriptStore()` does at init.
-    let tempDir = FileManager.default.temporaryDirectory
+    let tempDir = TestTemporaryDirectory.url
       .appendingPathComponent("live-recording-state-tests-\(UUID().uuidString)")
     let store = TranscriptStore(directory: tempDir)
     let parakeet = DictationRuntimeFixtures.makeParakeetDriver(

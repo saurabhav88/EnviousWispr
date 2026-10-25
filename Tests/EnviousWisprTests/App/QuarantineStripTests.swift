@@ -2,6 +2,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
+import EnviousWisprAppKitTestSupport
 
 /// #2006 — the quarantine strip is THE fix: a translocated bundle carries
 /// `com.apple.quarantine`, `FileManager` copies preserve it, and macOS then
@@ -31,7 +32,7 @@ struct QuarantineStripTests {
 
   /// A bundle-shaped tree: root, a nested dir, and a nested file.
   private static func makeBundle() throws -> (root: URL, inner: URL) {
-    let root = URL(fileURLWithPath: NSTemporaryDirectory())
+    let root = URL(fileURLWithPath: TestTemporaryDirectory.path)
       .appendingPathComponent("ew-strip-\(UUID().uuidString).app")
     let macos = root.appendingPathComponent("Contents/MacOS")
     try FileManager.default.createDirectory(at: macos, withIntermediateDirectories: true)
@@ -130,7 +131,7 @@ struct QuarantineStripTests {
     let (root, _) = try Self.makeBundle()
     defer { try? FileManager.default.removeItem(at: root) }
 
-    let outside = URL(fileURLWithPath: NSTemporaryDirectory())
+    let outside = URL(fileURLWithPath: TestTemporaryDirectory.path)
       .appendingPathComponent("ew-strip-outside-\(UUID().uuidString)")
     try Data("outside".utf8).write(to: outside)
     defer { try? FileManager.default.removeItem(at: outside) }

@@ -5,6 +5,7 @@ import Testing
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprPostProcessing
+import EnviousWisprAppKitTestSupport
 
 /// Test double for the on-device contacts source. `@unchecked Sendable` is the
 /// established pattern for a test fixture (the coordinator calls it sequentially
@@ -75,7 +76,7 @@ private final class FakeAliasSuggester: AliasSuggesting, @unchecked Sendable {
 @Suite("ContactsImportCoordinator — orchestration (#636)")
 struct ContactsImportCoordinatorTests {
   private static func tempDir() -> URL {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("EnviousWispr-test-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     return dir

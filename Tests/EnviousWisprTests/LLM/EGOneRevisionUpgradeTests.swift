@@ -4,6 +4,7 @@ import Testing
 
 @testable import EnviousWisprLLM
 @testable import EnviousWisprModelDelivery
+import EnviousWisprAppKitTestSupport
 
 /// The SECOND obligation source on `EGOneUpgradeCoordinator` (#2096 §3.2): a prior revision of
 /// the same model was admitted, its bytes are still on disk, and this app ships a different
@@ -36,7 +37,7 @@ import Testing
   // MARK: - Fixtures
 
   private func makeRoot() throws -> URL {
-    let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+    let root = TestTemporaryDirectory.url.appendingPathComponent(
       "eg1-revision-upgrade-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     return root
@@ -595,7 +596,7 @@ import Testing
   /// Points the old store at a symlink outside the app-support tree, which is what
   /// `prepareOnce`'s containment check refuses.
   private func makeOldStoreEscapeContainment(root: URL) throws {
-    let outside = FileManager.default.temporaryDirectory.appendingPathComponent(
+    let outside = TestTemporaryDirectory.url.appendingPathComponent(
       "eg1-outside-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
     let tree = root.appendingPathComponent("EnviousWispr", isDirectory: true)

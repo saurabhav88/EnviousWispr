@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprPostProcessing
+import EnviousWisprAppKitTestSupport
 
 /// #636 — `addBatch` / `removeBatch`: single-save bulk ops mirroring the
 /// per-word `add(word:)` / `remove(id:)` semantics.
@@ -10,7 +11,7 @@ import Testing
 @Suite("CustomWordsManager — addBatch / removeBatch (#636)")
 struct CustomWordsBatchTests {
   private static func tempManager() -> (CustomWordsManager, URL) {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("EnviousWispr-test-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     let url = dir.appendingPathComponent("custom-words.json")

@@ -40,7 +40,7 @@ struct LearnFromEditsCompositionTests {
   private func fixture(
     judgeServes: Bool = false, debugExportPath: String? = nil, osMajor: Int = 27
   ) -> Fixture {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ew-learn-composition-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     let name = "ew.learn.composition.\(UUID().uuidString)"

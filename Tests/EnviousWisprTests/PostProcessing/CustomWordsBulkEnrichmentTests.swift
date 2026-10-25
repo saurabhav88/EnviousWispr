@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprPostProcessing
+import EnviousWisprAppKitTestSupport
 
 /// #1701 Chunk 2 — bulk-import-enrichment persistence: `commitImport`'s
 /// pending-flag/total bookkeeping, the repair self-heal, and the two
@@ -16,7 +17,7 @@ struct CustomWordsBulkEnrichmentTests {
   // MARK: - Harness
 
   private func makeManager() -> (CustomWordsManager, URL) {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ew-bulk-enrichment-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     let url = dir.appendingPathComponent("custom-words.json")

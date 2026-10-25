@@ -3,6 +3,7 @@ import Testing
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprCore
+import EnviousWisprAppKitTestSupport
 
 /// What's New had NO Swift test coverage before #1493 — its only guard was the
 /// weekly `render-release-notes.py --self-test` in ci-drift-check, which was not a
@@ -142,7 +143,7 @@ struct WhatsNewContentTests {
   /// The key format itself, pinned with literals rather than rebuilt from the entries.
   @Test("the catalog seed names fields by entry id and bullet position")
   func catalogSeedKeyFormat() throws {
-    let directory = FileManager.default.temporaryDirectory
+    let directory = TestTemporaryDirectory.url
       .appendingPathComponent("ew-3142-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
@@ -177,7 +178,7 @@ struct WhatsNewContentTests {
   private static func withStringsBundle(
     _ table: [String: String], body: (Bundle) throws -> Void
   ) throws {
-    let root = FileManager.default.temporaryDirectory
+    let root = TestTemporaryDirectory.url
       .appendingPathComponent("ew-3142-\(UUID().uuidString).bundle", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: root) }
     let lproj = root.appendingPathComponent("en.lproj", isDirectory: true)
@@ -238,7 +239,7 @@ struct WhatsNewContentTests {
   /// the value comparison can tell a shorter list from the real one.
   @Test("the renderer comparison rejects a bullets array it cannot fully read")
   func releaseNoteRendererRejectsUnreadableBullets() throws {
-    let directory = FileManager.default.temporaryDirectory
+    let directory = TestTemporaryDirectory.url
       .appendingPathComponent("ew-2484-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
@@ -283,7 +284,7 @@ struct WhatsNewContentTests {
   /// parsed-versus-compiled value check rejects them.
   @Test("the renderer comparison rejects shortened or unresolved descriptions")
   func releaseNoteRendererMutationControl() throws {
-    let directory = FileManager.default.temporaryDirectory
+    let directory = TestTemporaryDirectory.url
       .appendingPathComponent("ew-2105-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }

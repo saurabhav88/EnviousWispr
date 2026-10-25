@@ -5,6 +5,7 @@ import Testing
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprServices
+import EnviousWisprAppKitTestSupport
 
 /// #1873: the `recovery_key_store_failed` capture names the store and the
 /// OSStatus (or, for any other error, its domain#code), never just "failed".
@@ -14,7 +15,7 @@ struct RecoveryCoordinatorKeyStoreExtraTests {
   private func fileStore() -> RecoveryKeyStore {
     RecoveryKeyStore(
       backend: .file,
-      fileDirectory: FileManager.default.temporaryDirectory
+      fileDirectory: TestTemporaryDirectory.url
         .appendingPathComponent("ew-1873-\(UUID().uuidString)", isDirectory: true))
   }
 
@@ -34,7 +35,7 @@ struct RecoveryCoordinatorKeyStoreExtraTests {
   func keychainBackendName() {
     let store = RecoveryKeyStore(
       backend: .keychain(service: "test.service"),
-      fileDirectory: FileManager.default.temporaryDirectory)
+      fileDirectory: TestTemporaryDirectory.url)
     let extra = RecoveryCoordinator.keyStoreFailureExtra(
       RecoveryKeyStoreError.storeFailed(errSecIO), backend: .whisper, store: store)
     #expect(extra["recovery.key_store_backend"] as? String == "keychain")
@@ -43,7 +44,7 @@ struct RecoveryCoordinatorKeyStoreExtraTests {
 
   @Test("a real file-backend failure (directory path occupied by a plain file) reports errSecIO")
   func realFileBackendFailureReportsErrSecIO() throws {
-    let collision = FileManager.default.temporaryDirectory
+    let collision = TestTemporaryDirectory.url
       .appendingPathComponent("ew-1873-collision-\(UUID().uuidString)")
     try Data("not a directory".utf8).write(to: collision)
     defer { try? FileManager.default.removeItem(at: collision) }

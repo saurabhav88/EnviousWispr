@@ -4,6 +4,7 @@ import EnviousWisprServices
 import Foundation
 
 @testable import EnviousWisprAppKit
+import EnviousWisprAppKitTestSupport
 
 // MARK: - Test doubles shared by the watcher, wiring and composition suites (#996)
 
@@ -12,7 +13,7 @@ extension LearnMemory {
   /// live Application Support store.
   @MainActor
   static func forTests() -> LearnMemory {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ew-learn-memory-\(UUID().uuidString)", isDirectory: true)
     return LearnMemory(fileURL: dir.appendingPathComponent(LearnMemory.fileName))
   }

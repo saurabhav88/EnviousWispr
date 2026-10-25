@@ -6,6 +6,7 @@
 
   @testable import EnviousWisprAppKit
   @testable import EnviousWisprStorage
+  import EnviousWisprAppKitTestSupport
 
   /// #4001: when these fail, History shows a stale list (a row added, replaced, deleted, expired,
   /// filtered or searched does not appear or disappear), counts, selection or empties disagree
@@ -36,7 +37,7 @@
 
       init() {
         func make() -> TranscriptCoordinator {
-          let dir = FileManager.default.temporaryDirectory
+          let dir = TestTemporaryDirectory.url
             .appendingPathComponent("ew-4001-cache-\(UUID().uuidString)", isDirectory: true)
           // No pulse ever runs: a pulse sweeps with the wall clock, not `time`.
           return TranscriptCoordinator(

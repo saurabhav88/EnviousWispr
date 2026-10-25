@@ -4,6 +4,7 @@ import Observation
 import Testing
 
 @testable import EnviousWisprAppKit
+import EnviousWisprAppKitTestSupport
 
 /// The Settings search field's behaviour (#3482 plan §3.3, §3.4). When this fails, typing in
 /// Settings search shows a stale or wrong selection, Return opens something the person cannot
@@ -247,7 +248,7 @@ struct SettingsSearchModelTests {
 
   /// A folder that loads as a bundle holding `vocabulary` as the search vocabulary resource.
   static func vocabularyBundle(_ vocabulary: Data) throws -> URL {
-    let folder = FileManager.default.temporaryDirectory
+    let folder = TestTemporaryDirectory.url
       .appendingPathComponent("settings-search-vocabulary-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
     try vocabulary.write(

@@ -4,6 +4,7 @@ import Testing
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprPostProcessing
+import EnviousWisprAppKitTestSupport
 
 /// #1680 — the export action, including the ORDER of its steps.
 ///
@@ -28,7 +29,7 @@ struct CustomWordsExportActionTests {
   }
 
   private func tempURL() -> URL {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ew-export-action-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     return dir.appendingPathComponent("custom-words.json")
@@ -291,7 +292,7 @@ struct CustomWordsExportActionTests {
     // Applying part of it here — length but not the character policy — let the
     // editor author a word export then refused. Both halves now come from the
     // same predicate every authoring path shares.
-    let url = FileManager.default.temporaryDirectory
+    let url = TestTemporaryDirectory.url
       .appendingPathComponent("ew-author-\(UUID().uuidString).json")
     let manager = CustomWordsManager(fileURL: url)
     var live = manager.load() ?? []

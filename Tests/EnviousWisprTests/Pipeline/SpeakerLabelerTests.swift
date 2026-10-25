@@ -5,6 +5,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprPipeline
+import EnviousWisprAppKitTestSupport
 
 /// A one-shot "it started" signal, so a test can wait for a fake worker to actually be
 /// running before cancelling it, instead of guessing a fixed sleep.
@@ -97,7 +98,7 @@ struct SpeakerLabelerTests {
   )
   func realCancellationExitsPromptly() async throws {
     let resourcesRoot = RepoRoot.sourceURL("Sources/EnviousWispr/Resources")
-    let bundleRoot = FileManager.default.temporaryDirectory
+    let bundleRoot = TestTemporaryDirectory.url
       .appendingPathComponent("SpeakerLabelerRealBoundary-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: bundleRoot, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: bundleRoot) }

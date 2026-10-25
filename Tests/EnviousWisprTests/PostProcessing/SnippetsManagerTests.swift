@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprPostProcessing
+import EnviousWisprAppKitTestSupport
 
 /// #628 — the snippet store on disk.
 ///
@@ -14,7 +15,7 @@ import Testing
 struct SnippetsManagerTests {
 
   private func makeManager() -> SnippetsManager {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ew-snippets-\(UUID().uuidString)", isDirectory: true)
     return SnippetsManager(fileURL: dir.appendingPathComponent("snippets.json"))
   }

@@ -4,6 +4,7 @@ import os
 
 @testable import EnviousWisprCore
 @testable import EnviousWisprStorage
+import EnviousWisprAppKitTestSupport
 
 /// #3972 R3, R15: when these fail, a meeting folder is overwritten, a newer build's meeting is
 /// damaged, audio a crash left behind is lost, or an unreadable folder looks empty.
@@ -11,7 +12,7 @@ import os
 struct MeetingStoreTests {
 
   private func makeStore() throws -> (MeetingStore, URL) {
-    let root = FileManager.default.temporaryDirectory
+    let root = TestTemporaryDirectory.url
       .appendingPathComponent("MeetingStoreTests-\(UUID().uuidString)", isDirectory: true)
     return (MeetingStore(root: root), root)
   }

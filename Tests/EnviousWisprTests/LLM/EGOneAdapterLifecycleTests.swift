@@ -7,6 +7,7 @@ import os
 @testable import EnviousWisprLLM
 @testable import EnviousWisprModelDelivery
 @testable import EnviousWisprPipeline
+import EnviousWisprAppKitTestSupport
 
 @Suite("EG-1 adapter server lifecycle (#3105)", .serialized, .tags(.driftGuard))
 struct EGOneAdapterLifecycleTests {
@@ -22,7 +23,7 @@ struct EGOneAdapterLifecycleTests {
     let log: URL
 
     init() throws {
-      root = FileManager.default.temporaryDirectory.appendingPathComponent(
+      root = TestTemporaryDirectory.url.appendingPathComponent(
         "eg1-adapter-lifecycle-\(UUID().uuidString)", isDirectory: true)
       try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
       binary = root.appendingPathComponent("fake-server")

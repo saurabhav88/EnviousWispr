@@ -4,12 +4,13 @@ import Testing
 
 @testable import EnviousWisprAudio
 @testable import EnviousWisprCore
+import EnviousWisprAppKitTestSupport
 
 /// Files and known audio for the meeting audio suites, written with AVFoundation directly so
 /// the reader is checked against files its own writer did not make.
 enum MeetingAudioFixture {
   static func folder(_ label: String) throws -> URL {
-    let url = FileManager.default.temporaryDirectory
+    let url = TestTemporaryDirectory.url
       .appendingPathComponent("\(label)-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url

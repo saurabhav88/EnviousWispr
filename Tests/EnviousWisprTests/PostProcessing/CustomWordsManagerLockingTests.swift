@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprPostProcessing
+import EnviousWisprAppKitTestSupport
 
 /// #1690 — the cross-process lock foundation. Explicit user
 /// mutations acquire the companion `.lock` file NON-BLOCKING: on contention
@@ -13,7 +14,7 @@ import Testing
 @Suite("CustomWordsManager — cross-process lock (#1690)")
 struct CustomWordsManagerLockingTests {
   private static func tempDir() -> URL {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("EnviousWispr-1690-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     return dir

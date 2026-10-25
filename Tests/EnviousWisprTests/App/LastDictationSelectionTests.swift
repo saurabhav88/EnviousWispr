@@ -4,6 +4,7 @@ import Testing
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprStorage
+import EnviousWisprAppKitTestSupport
 
 /// Which text Paste Last Dictation and Copy Last Dictation reuse (#3106).
 ///
@@ -17,7 +18,7 @@ struct LastDictationSelectionTests {
   // MARK: Fixtures
 
   private func makeCoordinator() -> TranscriptCoordinator {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ew-3106-reuse-\(UUID().uuidString)", isDirectory: true)
     return TranscriptCoordinator(store: TranscriptStore(directory: dir))
   }

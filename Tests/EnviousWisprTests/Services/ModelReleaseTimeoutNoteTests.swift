@@ -4,6 +4,7 @@ import Testing
 
 @testable import EnviousWisprASR
 @testable import EnviousWisprServices
+import EnviousWisprAppKitTestSupport
 
 /// #3849: the quit release's last-resort note and its next-launch report.
 ///
@@ -26,7 +27,7 @@ struct ModelReleaseTimeoutNoteTests {
   }
 
   static func directory() -> URL {
-    FileManager.default.temporaryDirectory
+    TestTemporaryDirectory.url
       .appendingPathComponent("ew-3849-note-\(UUID().uuidString)", isDirectory: true)
       .appendingPathComponent("com.enviouswispr.app.dev", isDirectory: true)
   }
@@ -134,7 +135,7 @@ struct ModelReleaseTimeoutNoteTests {
 
   @Test("each build reads only its own namespace")
   func namespacesStayIsolated() throws {
-    let root = FileManager.default.temporaryDirectory
+    let root = TestTemporaryDirectory.url
       .appendingPathComponent("ew-3849-ns-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: root) }
     let dev = root.appendingPathComponent("com.enviouswispr.app.dev", isDirectory: true)
@@ -171,7 +172,7 @@ struct ModelReleaseTimeoutNoteTests {
 
   @Test("a note that cannot be written still ends the process, and says so")
   func writeFailureIsReportedLocally() throws {
-    let root = FileManager.default.temporaryDirectory
+    let root = TestTemporaryDirectory.url
       .appendingPathComponent("ew-3849-blocked-\(UUID().uuidString)")
     defer { try? FileManager.default.removeItem(at: root) }
     // A plain file where the note's folder must be created.

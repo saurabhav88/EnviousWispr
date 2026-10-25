@@ -5,6 +5,7 @@ import Testing
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprPostProcessing
+import EnviousWisprAppKitTestSupport
 
 /// When this fails, long snippet content hides an editor, fill-in or footer action (#2631).
 /// Hosts the real sheet with an isolated store and a real duplicate-trigger save refusal.
@@ -56,7 +57,7 @@ struct SnippetEditSheetLayoutTests {
 
   @Test("Long content and a visible save error keep every sheet action inside its bounds")
   func longContentKeepsFooterInsideSheet() throws {
-    let directory = FileManager.default.temporaryDirectory.appending(path: "ew.snippetLayout.\(UUID())")
+    let directory = TestTemporaryDirectory.url.appending(path: "ew.snippetLayout.\(UUID())")
     let coordinator = SnippetsCoordinator(manager: SnippetsManager(fileURL: directory.appending(path: "snippets.json")))
     let trigger = String(repeating: "meine ausführliche berufliche E-Mail-Signatur ", count: 25)
     let snippet = Snippet(trigger: trigger,

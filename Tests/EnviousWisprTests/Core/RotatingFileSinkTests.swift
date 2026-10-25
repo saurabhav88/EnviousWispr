@@ -3,11 +3,12 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprAudio
+import EnviousWisprAppKitTestSupport
 
 /// Validates Phase R4: `RotatingFileSink` enforces a bounded disk ceiling and
 /// stays correct under concurrent writers (in-process and cross-process).
 ///
-/// Tests use a unique per-test directory under `NSTemporaryDirectory()` so
+/// Tests use a unique per-test directory under `TestTemporaryDirectory.path` so
 /// parallel tests cannot collide and the developer's real
 /// `~/Library/Logs/EnviousWispr/` is never touched.
 @Suite("RotatingFileSink")
@@ -16,7 +17,7 @@ struct RotatingFileSinkTests {
   /// Builds a fresh isolated directory for one test. Cleaned via the
   /// per-test cleanup callback — never assumes a specific path.
   private static func makeIsolatedDirectory(_ tag: String) throws -> URL {
-    let url = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+    let url = URL(fileURLWithPath: TestTemporaryDirectory.path, isDirectory: true)
       .appendingPathComponent(
         "RotatingFileSinkTests-\(tag)-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)

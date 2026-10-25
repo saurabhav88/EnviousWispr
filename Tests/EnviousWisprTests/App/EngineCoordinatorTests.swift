@@ -7,6 +7,7 @@ import Testing
 @testable import EnviousWisprASR
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprModelDelivery
+import EnviousWisprAppKitTestSupport
 
 /// #1171 — deterministic coverage for every race the duct-tape design lost six
 /// review rounds to, expressed against the injectable `EngineCoordinator` (fake
@@ -396,7 +397,7 @@ struct EngineCoordinatorTests {
     "the stored selection decides at construction whether Whisper may load",
     arguments: [ASRBackendType.parakeet, .whisper])
   func initialSelectionControlsWhisperAdmission(selected: ASRBackendType) async throws {
-    let root = FileManager.default.temporaryDirectory
+    let root = TestTemporaryDirectory.url
       .appendingPathComponent("ew-3849-wiring-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: root) }
     let home = ModelDeliveryHome(

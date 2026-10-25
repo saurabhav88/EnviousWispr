@@ -4,6 +4,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
+import EnviousWisprAppKitTestSupport
 
 /// #2997 — what Export writes, Import reads back as the same snippets.
 ///
@@ -24,7 +25,7 @@ struct SnippetsExportRoundTripTests {
       Snippet(trigger: "stamp", expansion: "Filed {{DATE}} at {{time}} from {{CLIPBOARD}}"),
     ]
     let vocabulary = SnippetVocabulary(snippets: snippets, keyword: "hey", generation: 4)
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ew-snippets-roundtrip-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     let destination = dir.appendingPathComponent(SnippetsExportAction.defaultFilename)

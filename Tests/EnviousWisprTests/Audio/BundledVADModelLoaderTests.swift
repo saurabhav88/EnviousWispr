@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprAudio
+import EnviousWisprAppKitTestSupport
 
 /// #1224: `BundledVADModelLoader` resolves and loads the VAD model directly
 /// from a caller-supplied bundle — never through FluidAudio's network-capable
@@ -31,7 +32,7 @@ struct BundledVADModelLoaderTests {
     // Flat, no "VAD/" subdirectory — matches how Tuist's `.folderReference`
     // actually embeds the model at the top level of Contents/Resources in a
     // real built bundle (Codex code-diff review r1 P1).
-    let fixtureRoot = FileManager.default.temporaryDirectory
+    let fixtureRoot = TestTemporaryDirectory.url
       .appendingPathComponent("BundledVADModelLoaderTests-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: fixtureRoot, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: fixtureRoot) }

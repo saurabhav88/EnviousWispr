@@ -3,13 +3,14 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprAudio
+import EnviousWisprAppKitTestSupport
 
 private enum SpeakerAnalyzerFixture {
   static let audioURL = RepoRoot.sourceURL("Tests/Fixtures/speaker-diarization/two-voice-30s.wav")
 
   static func makeBundle() throws -> Bundle {
     let resourcesRoot = RepoRoot.sourceURL("Sources/EnviousWispr/Resources")
-    let root = FileManager.default.temporaryDirectory
+    let root = TestTemporaryDirectory.url
       .appendingPathComponent("OfflineSpeakerAnalyzerRealBoundaryTests-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     for name in [

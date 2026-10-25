@@ -4,6 +4,7 @@ import Testing
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprStorage
+import EnviousWisprAppKitTestSupport
 
 /// #2186: a cancelled dictation is deleted at its moment, whatever the UI is doing.
 ///
@@ -53,7 +54,7 @@ struct EscapeRecoveryDiskExpiryTests {
   private func makeStoreWithDirectory(
     spools: @escaping @Sendable () -> Set<String>? = { [] }
   ) -> (store: TranscriptStore, directory: URL) {
-    let directory = FileManager.default.temporaryDirectory
+    let directory = TestTemporaryDirectory.url
       .appendingPathComponent("ew-2186-\(UUID().uuidString)", isDirectory: true)
     return (
       TranscriptStore(directory: directory, liveSpoolIDs: spools),

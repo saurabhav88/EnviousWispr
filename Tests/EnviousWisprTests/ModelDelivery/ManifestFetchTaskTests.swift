@@ -5,6 +5,7 @@ import Testing
 
 @testable import EnviousWisprModelDelivery
 @testable import EnviousWisprPipeline
+import EnviousWisprAppKitTestSupport
 
 // MARK: - URLProtocol stub (transport-semantics tests)
 
@@ -143,7 +144,7 @@ final class DeliveryStubProtocol: URLProtocol {
 /// responds immediately; no clock waits (test-timing rule).
 @Suite(.serialized, .tags(.productOutcome)) struct ManifestFetchTaskTests {
   private func makeStaging() throws -> URL {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("fetch-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     return dir
@@ -464,7 +465,7 @@ final class DeliveryStubProtocol: URLProtocol {
   @Test func resumeIdentityDiscardMatrix() throws {
     let manifest = try ManifestFixture.manifest(files: ManifestFixture.smallFiles)
     let fetchTask = ManifestFetchTask(
-      manifest: manifest, stagingDirectory: FileManager.default.temporaryDirectory,
+      manifest: manifest, stagingDirectory: TestTemporaryDirectory.url,
       sources: manifest.sources, componentsToFetch: [], verifiedInPlaceBytes: 0,
       onProgress: { _, _ in }, onSourceFailover: { _, _, _ in })
     // (recordedETag, recordedLength, headETag, headLength, existing, expected) -> discard?
@@ -805,7 +806,7 @@ final class DeliveryStubProtocol: URLProtocol {
   /// the adapter's) so it does not race the shared `DeliveryStubProtocol` global.
   @MainActor
   @Test func recoverFromWedgeLeavesInFlightDeliveryRunning() async throws {
-    let root = FileManager.default.temporaryDirectory
+    let root = TestTemporaryDirectory.url
       .appendingPathComponent("wedge-\(UUID().uuidString)", isDirectory: true)
     let install = root.appendingPathComponent("install", isDirectory: true)
     let metadata = root.appendingPathComponent("metadata", isDirectory: true)
@@ -887,7 +888,7 @@ extension ManifestFetchTaskTests {
   /// suite because it drives the shared `DeliveryStubProtocol`.
   @MainActor
   @Test func concurrentPreparationsShareOneDeliveryStage() async throws {
-    let root = FileManager.default.temporaryDirectory
+    let root = TestTemporaryDirectory.url
       .appendingPathComponent("prepare-\(UUID().uuidString)", isDirectory: true)
     let install = root.appendingPathComponent("install", isDirectory: true)
     let metadata = root.appendingPathComponent("metadata", isDirectory: true)
@@ -1612,7 +1613,7 @@ extension ManifestFetchTaskTests {
   private func partsRegistration(
     _ manifest: DeliveryManifest
   ) throws -> DeliveryRegistration {
-    let root = FileManager.default.temporaryDirectory
+    let root = TestTemporaryDirectory.url
       .appendingPathComponent("parts-controller-\(UUID().uuidString)", isDirectory: true)
     let install = root.appendingPathComponent("install", isDirectory: true)
     let metadata = root.appendingPathComponent("metadata", isDirectory: true)

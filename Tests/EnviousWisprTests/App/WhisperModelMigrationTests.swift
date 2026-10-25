@@ -3,6 +3,7 @@ import Testing
 
 @testable import EnviousWisprASR
 @testable import EnviousWisprAppKit
+import EnviousWisprAppKitTestSupport
 
 /// #3735 plan §3.6: every row of the migration state matrix, against real temporary folders.
 /// When one of these fails, an updated user loses their Whisper model without a replacement,
@@ -56,7 +57,7 @@ struct WhisperModelMigrationTests {
     var stateAtFirstDeletion: WhisperModelMigration.ReplacementState?
 
     init(dictationSelected: Bool, previewSelected: Bool = false) throws {
-      root = FileManager.default.temporaryDirectory
+      root = TestTemporaryDirectory.url
         .appendingPathComponent("ew-3735-migration-\(UUID().uuidString)", isDirectory: true)
       metadata = root.appendingPathComponent("ModelDelivery", isDirectory: true)
       legacyDictation = root.appendingPathComponent("Models/whisper", isDirectory: true)
@@ -454,7 +455,7 @@ struct WhisperPreviewCommandRecordTests {
     let repoRoot = URL(filePath: #filePath)
       .deletingLastPathComponent().deletingLastPathComponent()
       .deletingLastPathComponent().deletingLastPathComponent()
-    let root = FileManager.default.temporaryDirectory
+    let root = TestTemporaryDirectory.url
       .appendingPathComponent("ew-3735-preview-doors-\(UUID().uuidString)", isDirectory: true)
     let home = ModelDeliveryHome(
       engineMutationScope: .alwaysAllowedForTesting,

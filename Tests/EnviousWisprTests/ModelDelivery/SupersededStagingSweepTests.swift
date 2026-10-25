@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprModelDelivery
+import EnviousWisprAppKitTestSupport
 
 /// The sweep that reclaims abandoned partial downloads (#2109, #2119).
 ///
@@ -20,7 +21,7 @@ import Testing
   }
 
   private func makeDirs() throws -> (install: URL, metadata: URL, cleanup: () -> Void) {
-    let root = FileManager.default.temporaryDirectory
+    let root = TestTemporaryDirectory.url
       .appendingPathComponent("sweep-\(UUID().uuidString)", isDirectory: true)
     let install = root.appendingPathComponent("install", isDirectory: true)
     let metadata = root.appendingPathComponent("metadata", isDirectory: true)

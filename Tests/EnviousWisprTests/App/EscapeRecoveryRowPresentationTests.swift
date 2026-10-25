@@ -4,6 +4,7 @@ import Testing
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprStorage
+import EnviousWisprAppKitTestSupport
 
 /// What a History row says about an Escape Recovery (#2087, chunk 10).
 ///
@@ -242,7 +243,7 @@ struct EscapeRecoveryRowPresentationTests {
 
     @Test("Copy and Paste hand back nothing once the offer has lapsed")
     func deliveryIsRefusedForALapsedRow() throws {
-      let dir = FileManager.default.temporaryDirectory
+      let dir = TestTemporaryDirectory.url
         .appendingPathComponent("ew-2087-row-\(UUID().uuidString)", isDirectory: true)
       let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
 
@@ -266,7 +267,7 @@ struct EscapeRecoveryRowPresentationTests {
 
     @Test("a row deleted in another pane is refused too")
     func deliveryIsRefusedForADeletedRow() {
-      let dir = FileManager.default.temporaryDirectory
+      let dir = TestTemporaryDirectory.url
         .appendingPathComponent("ew-2087-row-\(UUID().uuidString)", isDirectory: true)
       let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
       let stale = Transcript(

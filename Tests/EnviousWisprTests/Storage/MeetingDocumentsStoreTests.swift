@@ -3,6 +3,7 @@ import Testing
 
 @testable import EnviousWisprCore
 @testable import EnviousWisprStorage
+import EnviousWisprAppKitTestSupport
 
 /// #3972 R46, R53, R56: when these fail, a user's meeting notes are lost, a late save brings a
 /// deleted meeting back, a summary written from old notes looks current, or an older build
@@ -10,7 +11,7 @@ import Testing
 @Suite("Meeting notes and summary files", .tags(.productOutcome))
 struct MeetingDocumentsStoreTests {
   private func makeMeeting() throws -> (MeetingStore, MeetingRecord) {
-    let root = FileManager.default.temporaryDirectory
+    let root = TestTemporaryDirectory.url
       .appendingPathComponent("MeetingDocumentsStoreTests-\(UUID().uuidString)", isDirectory: true)
     let store = MeetingStore(root: root)
     let record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])

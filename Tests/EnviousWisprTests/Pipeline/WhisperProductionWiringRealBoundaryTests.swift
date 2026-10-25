@@ -7,6 +7,7 @@ import Testing
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprPipeline
 @testable import EnviousWisprServices
+import EnviousWisprAppKitTestSupport
 
 /// #3735 chunk 7: the Whisper engine exactly as the app composes it — delivery registration,
 /// `WhisperDeliveryWiring`, the factory's adapter with its memory-pressure binding — decoding
@@ -65,7 +66,7 @@ struct WhisperProductionWiringRealBoundaryTests {
       path: Self.repoRoot.appending(path: "scripts/freeze-suite/clips/normal-speech.wav").path)
     #expect(samples.count > 16_000)
 
-    let root = FileManager.default.temporaryDirectory
+    let root = TestTemporaryDirectory.url
       .appendingPathComponent("ew-3735-wiring-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: root) }
     let flags = try #require(TestDefaults.suite("ew-3735-wiring-flags-\(UUID().uuidString)"))
@@ -150,7 +151,7 @@ struct WhisperProductionWiringRealBoundaryTests {
   func rollingSessionOnTheRealModel() async throws {
     let samples = try AudioConverter().resampleAudioFile(
       path: Self.repoRoot.appending(path: "scripts/freeze-suite/clips/normal-speech.wav").path)
-    let root = FileManager.default.temporaryDirectory
+    let root = TestTemporaryDirectory.url
       .appendingPathComponent("ew-3735-rolling-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: root) }
     let home = ModelDeliveryHome(
