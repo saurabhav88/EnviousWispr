@@ -102,7 +102,7 @@ struct TranscriptTurnsDocument: View, Equatable {
     TurnDocumentView(
       turns: renderedTurns,
       onRename: { id, name in
-        transcriptCoordinator.renameSpeaker(
+        await transcriptCoordinator.renameSpeaker(
           id: inputs.rowID, speakerId: id, name: name, isMeeting: inputs.isMeeting)
       },
       onRenameCancelled: {

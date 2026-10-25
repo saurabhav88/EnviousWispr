@@ -104,7 +104,8 @@ struct TranscriptHistoryView: View {
     .alert("Delete all history?", isPresented: $showDeleteAllConfirmation) {
       Button("Cancel", role: .cancel) {}
       Button("Delete all", role: .destructive) {
-        transcriptCoordinator.deleteAll()
+        // #4075 S1: admitted behind earlier History commands; a failure shows its alert.
+        Task { await transcriptCoordinator.deleteAll() }
       }
     } message: {
       // The coordinator owns this sentence (#2087). Interpolating a count here

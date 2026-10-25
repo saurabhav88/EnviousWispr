@@ -86,6 +86,14 @@ public final class TranscriptStore {
 
     /// See `TranscriptStore.promotePending`: judged at `now`, permanent written first.
     package func promotePending(id: UUID, now: Date) throws -> Bool {
+      try promote(id: id, now: now) != nil
+    }
+
+    /// `promotePending`, returning the pending row it judged live and the permanent row it
+    /// wrote, so the caller publishes and reports what was actually promoted (#4075 S1).
+    package func promote(id: UUID, now: Date) throws -> (
+      pending: Transcript, promoted: Transcript
+    )? {
       let pendingURL = pendingDirectory.appendingPathComponent("\(id.uuidString).json")
       guard
         let transcript = TranscriptStore.decodeCandidate(
@@ -95,30 +103,53 @@ public final class TranscriptStore {
         // Already promoted, never existed, expired, or invalid. All are no-ops
         // for an idempotent operation — but the caller is TOLD, so it can leave
         // its own state alone rather than assuming a promotion happened.
-        return false
+        return nil
       }
-      try save(transcript.promotedFromPending())
+      let promoted = transcript.promotedFromPending()
+      try save(promoted)
       try? FileManager.default.removeItem(at: pendingURL)
-      return true
+      return (transcript, promoted)
     }
 
     /// See `TranscriptStore.delete(id:)`: both copies attempted, then both checked.
     package func delete(id: UUID) throws {
+      _ = try remove(id: id)
+    }
+
+    /// `delete(id:)`, also reporting whether either copy was there before it ran (#4075 S1).
+    /// False only when both paths were confirmed absent beforehand; a path whose state cannot
+    /// be read counts as present, so "nothing to delete" is never a guess.
+    package func remove(id: UUID) throws -> Bool {
       let url = directory.appendingPathComponent("\(id.uuidString).json")
       let pendingURL = pendingDirectory.appendingPathComponent("\(id.uuidString).json")
+      let existed = [url, pendingURL].contains { target in
+        var info = stat()
+        return lstat(target.path, &info) == 0 || errno != ENOENT
+      }
       // Attempt BOTH before inspecting either, so one failure cannot leave the
       // other copy in place.
-      let failures = [url, pendingURL].compactMap { target -> Error? in
+      var failures: [Error] = []
+      for target in [url, pendingURL] {
         do {
           try FileManager.default.removeItem(at: target)
-          return nil
         } catch let error as CocoaError where error.code == .fileNoSuchFile {
-          return nil
+          continue
         } catch {
-          return FileManager.default.fileExists(atPath: target.path) ? error : nil
+          failures.append(error)
         }
       }
-      if let failure = failures.first { throw failure }
+      // #4075 S1: only a CONFIRMED absence clears a failure. `fileExists` reads false for a
+      // path it cannot inspect, which is not proof the copy is gone.
+      for target in [url, pendingURL] {
+        var info = stat()
+        if lstat(target.path, &info) == 0 {
+          throw failures.first ?? CocoaError(.fileWriteUnknown)
+        }
+        if errno != ENOENT {
+          throw failures.first ?? NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+        }
+      }
+      return existed
     }
   }
 

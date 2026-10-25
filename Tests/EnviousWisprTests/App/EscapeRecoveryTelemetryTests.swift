@@ -54,7 +54,7 @@ struct EscapeRecoveryTelemetryTests {
     await coordinator.waitForLoadForTesting()
     let loaded = try #require(coordinator.visibleTranscripts.first)
 
-    coordinator.keep(loaded)
+    await coordinator.keep(loaded)
 
     #expect(log.kept.count == 1)
     let event = try #require(log.kept.first)
@@ -64,6 +64,34 @@ struct EscapeRecoveryTelemetryTests {
     #expect(
       abs(event.ageMs - 7_200_000) < 60_000,
       "and the age since the offer began, not since the app launched")
+  }
+
+  /// #4075 S1: two Keep presses queue behind each other. The first promotes and reports once;
+  /// the second finds the row already permanent and is a no-op, not a refusal.
+  @Test("a second Keep of the same row is already permanent: one kept event, no refusal")
+  func duplicateKeepReportsOnce() async throws {
+    let store = makeStore()
+    let log = EventLog()
+    var outcomes: [String] = []
+    let coordinator = TranscriptCoordinator(
+      store: store,
+      emitEscapeRecoveryKept: { log.kept.append((ageMs: $0, takeID: $1)) },
+      emitEscapeRecoveryExpired: { log.expired.append((ageMs: $0, takeID: $1)) },
+      recordEscapeRecoveryKeep: { outcome, _ in outcomes.append(outcome) })
+    let stamped = Transcript(
+      text: "kept twice", escapeRecoveredAt: Date().addingTimeInterval(-60),
+      escapeRecoveryTakeID: "take-twice")
+    try store.savePending(stamped)
+    coordinator.load()
+    await coordinator.waitForLoadForTesting()
+    let loaded = try #require(coordinator.visibleTranscripts.first)
+    let first = Task { @MainActor in await coordinator.keep(loaded) }
+    let second = Task { @MainActor in await coordinator.keep(loaded) }
+    await first.value
+    await second.value
+    #expect(outcomes == ["kept", "already-permanent"])
+    #expect(log.kept.count == 1)
+    #expect(coordinator.currentRow(id: loaded.id)?.escapeRecoveredAt == nil)
   }
 
   #if DEBUG
@@ -81,7 +109,7 @@ struct EscapeRecoveryTelemetryTests {
       try store.savePending(stale)
       coordinator.setTranscriptsForTesting([stale])
 
-      coordinator.keep(stale)
+      await coordinator.keep(stale)
 
       #expect(log.kept.isEmpty, "nothing was promoted, so nothing may be reported as kept")
     }
@@ -97,7 +125,7 @@ struct EscapeRecoveryTelemetryTests {
     await coordinator.waitForLoadForTesting()
     let ordinary = try #require(coordinator.visibleTranscripts.first)
 
-    coordinator.keep(ordinary)
+    await coordinator.keep(ordinary)
 
     #expect(log.kept.isEmpty)
   }
@@ -934,7 +962,7 @@ struct EscapeRecoveryTelemetryTests {
     coordinator.load()
     await coordinator.waitForLoadForTesting()
 
-    coordinator.keep(try #require(coordinator.visibleTranscripts.first))
+    await coordinator.keep(try #require(coordinator.visibleTranscripts.first))
     await coordinator.sweepExpiredPending()
 
     // Everything that left the coordinator, rendered.

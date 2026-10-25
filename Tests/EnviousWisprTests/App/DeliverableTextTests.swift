@@ -19,7 +19,7 @@ struct DeliverableTextTests {
   func backgroundExportReadsMainActorRow() async throws {
     try await withCoordinator { coordinator in
       let row = Transcript(text: "Share this draft.\nKeep the second line.")
-      try coordinator.saveAndShow(row)
+      try await coordinator.saveAndShow(row)
       let item = DeliverableText {
         MainActor.assertIsolated()
         return coordinator.currentRow(id: row.id)?.displayText
@@ -35,7 +35,7 @@ struct DeliverableTextTests {
   func lazyExportReadsUpdatedRow() async throws {
     try await withCoordinator { coordinator in
       let row = Transcript(text: "Earlier draft")
-      try coordinator.saveAndShow(row)
+      try await coordinator.saveAndShow(row)
       var reads = 0
       let item = DeliverableText {
         reads += 1
@@ -43,7 +43,7 @@ struct DeliverableTextTests {
       }
       #expect(reads == 0, "Creating the Share item must not freeze its text")
       let updated = Transcript(id: row.id, text: "Revised draft")
-      #expect(try coordinator.updateExistingRow(updated))
+      #expect(try await coordinator.updateExistingRow(updated))
 
       let data = try await Self.exportInBackground(item)
       #expect(data == Data("Revised draft".utf8))
@@ -56,11 +56,11 @@ struct DeliverableTextTests {
   func deletedRowRefusesExport() async throws {
     try await withCoordinator { coordinator in
       let row = Transcript(text: "Deleted draft")
-      try coordinator.saveAndShow(row)
+      try await coordinator.saveAndShow(row)
       let item = DeliverableText {
         coordinator.currentRow(id: row.id)?.displayText
       }
-      coordinator.delete(row)
+      await coordinator.delete(row)
       #expect(coordinator.currentRow(id: row.id) == nil)
 
       await #expect(throws: (any Error).self) {
@@ -86,7 +86,7 @@ struct DeliverableTextTests {
   func expiredRowRefusesExport() async throws {
     try await withCoordinator { coordinator in
       let row = Transcript(text: "A recoverable draft")
-      try coordinator.saveAndShow(row)
+      try await coordinator.saveAndShow(row)
       let item = DeliverableText {
         guard let current = coordinator.currentRow(id: row.id) else { return nil }
         return coordinator.textForDelivery(current)
@@ -111,14 +111,14 @@ struct DeliverableTextTests {
   func repeatedExportReadsFreshRow() async throws {
     try await withCoordinator { coordinator in
       let row = Transcript(text: "First version")
-      try coordinator.saveAndShow(row)
+      try await coordinator.saveAndShow(row)
       let item = DeliverableText {
         coordinator.currentRow(id: row.id)?.displayText
       }
       let first = try await Self.exportInBackground(item)
       #expect(first == Data("First version".utf8))
       let updated = Transcript(id: row.id, text: "Second version")
-      #expect(try coordinator.updateExistingRow(updated))
+      #expect(try await coordinator.updateExistingRow(updated))
 
       let second = try await Self.exportInBackground(item)
       #expect(second == Data("Second version".utf8))

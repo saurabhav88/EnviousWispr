@@ -259,6 +259,8 @@ struct MeetingCoordinatorTests {
     /// What `meetingRowIDs` answers per meeting.
     var meetingRows: [UUID: [UUID]] = [:]
     var removeError: Error?
+    /// #4075 S1: when set, a History row removal waits on it (a removal queued in History).
+    var removeGate: Gate?
     /// Every `meeting.ended` row the coordinator sent, in order.
     var ended: [MeetingEndedTelemetry] = []
     /// Runs as each row is sent, to read state at that exact moment.
@@ -336,6 +338,7 @@ struct MeetingCoordinatorTests {
           saved.append(transcript)
         },
         removeTranscriptRow: { [self] id in
+          await removeGate?.wait()
           if let removeError { throw removeError }
           removedRows.append(id)
         },
@@ -1150,6 +1153,57 @@ struct MeetingCoordinatorTests {
     harness.removeError = nil
     #expect(await coordinator.delete(meetingID: record.id))
     #expect(harness.removedRows == [record.transcriptID])
+  }
+
+  /// #4075 S1: the History row removal is awaited now. While it waits, EnviousMeet still owns
+  /// the deletion: quit keeps the durable mark for the next launch, a second delete (Delete
+  /// All's late success) is accepted without a second removal, and the folder goes only after.
+  @Test("a meeting delete waiting on History keeps its mark through quit and a second delete")
+  func deleteWaitingOnHistoryKeepsOwnership() async throws {
+    let harness = try Harness()
+    var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    try harness.store.create(record)
+    record.state = .ready
+    try harness.store.save(record)
+    let coordinator = harness.coordinator
+    coordinator.launch()
+    await Self.eventually("listed") { coordinator.record(id: record.id) != nil }
+    let gate = Gate()
+    harness.removeGate = gate
+    defer { gate.open() }
+    let delete = Task { @MainActor in await coordinator.delete(meetingID: record.id) }
+    await Self.eventually("removal held") { gate.parked }
+    #expect(try harness.store.load(id: record.id).deletionRequested, "the mark is down first")
+    #expect(coordinator.record(id: record.id) != nil, "the meeting stays until its folder goes")
+    #expect(await coordinator.delete(meetingID: record.id), "a second delete is accepted")
+    coordinator.prepareForTermination()
+    #expect(try harness.store.load(id: record.id).deletionRequested, "quit keeps the mark")
+    gate.open()
+    #expect(await delete.value)
+    #expect(harness.removedRows == [record.transcriptID], "the row was removed once")
+    #expect(FileManager.default.fileExists(atPath: harness.store.folder(for: record.id).path) == false)
+  }
+
+  /// #4075 S1: an orphan's rows are taken once after the folder check; a row that appears
+  /// while the removal waits is not part of that deletion.
+  @Test("an orphan delete removes the rows it captured, not ones that arrive while it waits")
+  func orphanDeleteRemovesItsCapturedRows() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    coordinator.launch()
+    let orphan = UUID()
+    let first = UUID()
+    let late = UUID()
+    harness.meetingRows[orphan] = [first]
+    let gate = Gate()
+    harness.removeGate = gate
+    defer { gate.open() }
+    let delete = Task { @MainActor in await coordinator.deleteOrphan(meetingID: orphan) }
+    await Self.eventually("removal held") { gate.parked }
+    harness.meetingRows[orphan] = [first, late]
+    gate.open()
+    #expect(await delete.value)
+    #expect(harness.removedRows == [first])
   }
 
   @Test("damaged audio fails the meeting visibly instead of reading as silence")
@@ -2080,6 +2134,46 @@ struct MeetingCoordinatorTests {
     #expect(gate.timedOut.withLock { $0 } == false)
     // Marked after all: shown, then deleted like any marked meeting.
     await Self.eventually("deleted") { coordinator.record(id: meetingID) == nil }
+    #expect(FileManager.default.fileExists(atPath: harness.store.folder(for: meetingID).path) == false)
+  }
+
+  /// #4075 S1: Delete All's late-success route reaches the same deletion authority, and that
+  /// deletion now waits on History's queued row removal. While it waits the mark stays and
+  /// the meeting is still listed; afterwards the row goes once and the folder after it.
+  @Test("Delete All's late-marked meeting waits on History's row removal, then goes")
+  func lateBoundedSuccessWaitsOnHistoryRemoval() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    await coordinator.start(from: .history)
+    let meeting = try onlyMeeting(harness)
+    let meetingID = meeting.id
+    await coordinator.stop()
+    await Self.eventually("ready") {
+      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
+    }
+    let removal = Gate()
+    harness.removeGate = removal
+    defer { removal.open() }
+    let gate = harness.writeGate
+    gate.arm()
+    defer { gate.release.signal() }
+    // MainActor is blocked by the bounded marking call below. This blocking
+    // waiter must run independently; Task inherits MainActor, a task group
+    // does not offload blocking work, and an @concurrent helper is unnecessary.
+    let refused = Task.detached {
+      Self.waitBlocking(gate.entered) == .success
+    }
+    #expect(coordinator.deleteForHistoryDeleteAll(meetingIDs: [meetingID]) == false)
+    try #require(await refused.value, "the bounded deletion mark never started")
+    gate.release.signal()
+    // The late success routes to `delete(meetingID:)`, which waits on the History removal.
+    await Self.eventually("removal held") { removal.parked }
+    #expect(gate.timedOut.withLock { $0 } == false)
+    #expect(try harness.store.load(id: meetingID).deletionRequested, "the mark stays")
+    #expect(coordinator.record(id: meetingID) != nil, "the meeting stays until its folder goes")
+    removal.open()
+    await Self.eventually("deleted") { coordinator.record(id: meetingID) == nil }
+    #expect(harness.removedRows == [meeting.transcriptID], "the row was removed once")
     #expect(FileManager.default.fileExists(atPath: harness.store.folder(for: meetingID).path) == false)
   }
 

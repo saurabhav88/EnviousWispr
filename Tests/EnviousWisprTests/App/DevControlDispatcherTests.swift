@@ -626,7 +626,7 @@
       #expect(
         payload(await dispatcher.handle(.historyGet, args: ["id": permanent.id.uuidString]))
           != nil)
-      coordinator.delete(permanent)
+      await coordinator.delete(permanent)
       try #require(coordinator.rawTranscriptsForTesting.contains { $0.id == permanent.id } == false)
       #expect(
         code(await dispatcher.handle(.historyGet, args: ["id": permanent.id.uuidString]))

@@ -167,7 +167,7 @@ struct EscapeRecoveryDiskExpiryTests {
       // stale value leaves the pulse alive with nothing to do — a directory walk
       // every minute for the life of the app, which is the stranded retry this
       // file's own comments warn about. Cloud review, P2.
-      coordinator.delete(row)
+      await coordinator.delete(row)
       await coordinator.waitForRefreshForTesting()
 
       #expect(
@@ -299,7 +299,7 @@ struct EscapeRecoveryDiskExpiryTests {
       await coordinator.sweepExpiredPending()
       #expect(coordinator.liveOnDiskPendingCountForTesting == 2, "control: both rows counted")
 
-      coordinator.delete(removed)
+      await coordinator.delete(removed)
       await coordinator.waitForRefreshForTesting()
 
       // Zeroing the cache is what lets the pulse stop, and it is only ever

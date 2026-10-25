@@ -252,11 +252,11 @@ struct MeetingHistoryDetailView: View {
             dropPlayer()
             // History's one deletion path: the selection moves to the item beside this one,
             // then EnviousMeet deletes the meeting (Codex C8 r1).
-            transcripts.delete(
-              .meeting(
-                HistoryMeetingItem(
-                  meetingID: meetingID, record: meetings.record(id: meetingID),
-                  row: meeting.row)))
+            let item = HistoryListItem.meeting(
+              HistoryMeetingItem(
+                meetingID: meetingID, record: meetings.record(id: meetingID),
+                row: meeting.row))
+            Task { await transcripts.delete(item) }
           }
         }
         .accessibilityIdentifier("meetings.detail.confirmDelete")
@@ -574,7 +574,7 @@ struct MeetingTurnsDocument: View, Equatable {
           turns: turns, rawText: rawText, speakerNames: speakerNames,
           mode: .cleaned, timesOn: true, documentFinished: true, diffLookup: { _ in nil })),
       onRename: { speakerId, name in
-        transcripts.renameSpeaker(id: rowID, speakerId: speakerId, name: name, isMeeting: true)
+        await transcripts.renameSpeaker(id: rowID, speakerId: speakerId, name: name, isMeeting: true)
       },
       onPlayFrom: player.map { player in
         { startMs in

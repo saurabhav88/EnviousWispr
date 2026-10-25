@@ -226,7 +226,7 @@ final class MeetingCoordinator {
     /// Saves the meeting's History row durably, its disk work off the main actor; throws when
     /// it could not.
     var saveTranscript: @MainActor (Transcript) async throws -> Void
-    var removeTranscriptRow: @MainActor (UUID) throws -> Void
+    var removeTranscriptRow: @MainActor (UUID) async throws -> Void
     /// The History rows that name this meeting, for a row whose meeting record is gone.
     var meetingRowIDs: @MainActor (UUID) -> [UUID] = { _ in [] }
     var emitEnded: @MainActor (MeetingEndedTelemetry) -> Void
@@ -1487,8 +1487,14 @@ final class MeetingCoordinator {
       deps.log("meeting orphan delete refused reason=folder_present_or_unreadable")
       return false
     }
+    // #4075 S1: the folder check suspended, so the meeting is checked again before any row
+    // goes, and the rows to remove are taken once: this removes that set, not rows arriving
+    // later.
+    guard live[meetingID] == nil, !newerFormatMeetings.contains(where: { $0.id == meetingID })
+    else { return false }
+    let targets = deps.meetingRowIDs(meetingID)
     do {
-      for rowID in deps.meetingRowIDs(meetingID) { try deps.removeTranscriptRow(rowID) }
+      for rowID in targets { try await deps.removeTranscriptRow(rowID) }
     } catch {
       deps.log("meeting orphan delete failed error=\(type(of: error))")
       return false
@@ -1515,7 +1521,9 @@ final class MeetingCoordinator {
       return true
     }
     do {
-      try deps.removeTranscriptRow(record.transcriptID)
+      // #4075 S1: awaited. `delete(meetingID:)` keeps its deleting claim, and the durable
+      // deletion mark and live record stay, until the folder is gone too.
+      try await deps.removeTranscriptRow(record.transcriptID)
       let meetingID = record.id
       try await writer.run { try $0.deleteFolder(meeting: meetingID) }
       live.removeValue(forKey: record.id)
