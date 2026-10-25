@@ -81,7 +81,9 @@ final class DictationRuntime {
     isSelectedModelInstalled: @escaping @MainActor () -> Bool = { true },
     endMinting: @escaping @MainActor () -> Void = {},
     // #3546 A3: a press during the in-session Ultra activation; nil for legacy/tests.
-    isActivatingParakeetUpgrade: (@MainActor () -> Bool)? = nil
+    isActivatingParakeetUpgrade: (@MainActor () -> Bool)? = nil,
+    // #4069: "Turn off dictation during meetings" applies now; false for legacy/tests.
+    isDictationOffForMeeting: @escaping @MainActor () -> Bool = { false }
   ) {
     self.dictationLifecycleCoordinator = dictationLifecycleCoordinator
     self.otherAudioHold = otherAudioHold
@@ -151,6 +153,7 @@ final class DictationRuntime {
     )
     starter.isSelectedModelInstalled = isSelectedModelInstalled
     starter.isActivatingParakeetUpgrade = isActivatingParakeetUpgrade
+    starter.isDictationOffForMeeting = isDictationOffForMeeting
     self.starter = starter
     // #1063 PR1: on a durable transcript save, delete that session's spool + key.
     // Keeps the Pipeline recovery-unaware — the host observes the saved transcript.

@@ -537,6 +537,52 @@ struct MeetingCoordinatorTests {
     #expect(harness.saved.count == 1)
   }
 
+  /// #4069: "Turn off dictation during meetings" follows the real coordinator's capture phase:
+  /// starting, recording and stopping refuse a dictation start; idle and no coordinator pass.
+  @Test("dictation is refused through starting, recording and stopping, and only with the switch on")
+  func dictationRefusalFollowsTheCapturePhase() async throws {
+    let box = MeetingCoordinatorBox()
+    #expect(box.refusesDictation(turnedOff: true) == false, "no coordinator, no meeting")
+
+    // Starting: a recorder that parks in start.
+    let held = try Harness()
+    held.recorderStart = .hold
+    box.coordinator = held.coordinator
+    #expect(box.refusesDictation(turnedOff: true) == false, "idle")
+    let starting = Task { await held.coordinator.start(from: .menu) }
+    await Self.eventually("start parked") { held.recorders.first?.startParked == true }
+    #expect(held.coordinator.phase == .starting)
+    #expect(box.refusesDictation(turnedOff: true))
+    #expect(box.refusesDictation(turnedOff: false) == false, "the switch is off")
+    await held.coordinator.stop()
+    await starting.value
+    #expect(box.refusesDictation(turnedOff: true) == false, "idle after a Stop during start")
+
+    // Recording, then stopping while the files close.
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    box.coordinator = coordinator
+    await coordinator.start(from: .history)
+    guard case .recording = coordinator.phase else {
+      Issue.record("expected recording, got \(coordinator.phase)")
+      return
+    }
+    #expect(box.refusesDictation(turnedOff: true))
+    let closing = Gate()
+    try #require(harness.recorders.first).stopGate = closing
+    let stopping = Task { await coordinator.stop() }
+    await Self.eventually("stopping") { closing.parked }
+    guard case .stopping = coordinator.phase else {
+      Issue.record("expected stopping, got \(coordinator.phase)")
+      return
+    }
+    #expect(box.refusesDictation(turnedOff: true))
+    closing.open()
+    await stopping.value
+    #expect(coordinator.phase == .idle)
+    #expect(box.refusesDictation(turnedOff: true) == false, "idle again after Stop")
+  }
+
   @Test("a Stop while the recorder is still starting reaches that recorder")
   func stopDuringStartReachesRecorder() async throws {
     let harness = try Harness()

@@ -6691,6 +6691,17 @@
         }
       }
     },
+    "Dictation is off during meetings." : {
+      "comment" : "Pill: the user turned on Turn off dictation during meetings and a meeting is recording, so the dictation key recorded nothing. Keep it short: a long sentence may not fit the pill, and its fit is checked on screen.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktieren ist während Meetings aus."
+          }
+        }
+      }
+    },
     "Dictation itself works normally. Only the on-screen preview is unavailable." : {
       "comment" : "Live Preview settings: status needs mac os26 detail no alternative.",
       "localizations" : {
@@ -22764,6 +22775,17 @@
         }
       }
     },
+    "You can change this later in EnviousMeet settings." : {
+      "comment" : "EnviousMeet setup: under a skipped permission or choice.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du kannst das später in den EnviousMeet-Einstellungen ändern."
+          }
+        }
+      }
+    },
     "You can keep dictating while %@ downloads." : {
       "comment" : "AI Polish, local model: while the model downloads. %@ is the model name.",
       "localizations" : {
@@ -33820,17 +33842,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wenn etwas schiefgeht, sind die Hinweise jetzt verständlicher. Bei einem teilweisen Fehler erhältst du eine andere Warnung als bei einem vollständigen Ausfall."
-          }
-        }
-      }
-    },
-    "You can change this later in EnviousMeet settings." : {
-      "comment" : "EnviousMeet setup: under a skipped permission or choice.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Du kannst das später in den EnviousMeet-Einstellungen ändern."
           }
         }
       }

@@ -240,6 +240,14 @@ enum DictationNarrator {
           localized: "Recording interrupted. Text may be cut short.",
           comment: "Pill: recording was interrupted; the end of the text may be missing.")
       }
+    case .dictationOffDuringMeeting:
+      // #4069: founder-chosen wording (2026-10-24, option A). The full sentence, with how to turn
+      // dictation back on, is the switch's help line on the EnviousMeet General tab.
+      return String(
+        localized: "Dictation is off during meetings.",
+        comment:
+          "Pill: the user turned on Turn off dictation during meetings and a meeting is recording, so the dictation key recorded nothing. Keep it short: a long sentence may not fit the pill, and its fit is checked on screen."
+      )
     // #2648. Says what the user has to act on: nothing was recorded, and when
     // to try again. The mechanism is a single inference slot they have never
     // heard of, so the words name the JOB that is using it instead.
