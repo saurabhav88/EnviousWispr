@@ -1410,6 +1410,12 @@ struct ParakeetUpgradePolicyTests {
     arguments: [false, true])
   func supersededRepairLeavesRetryAlone(cancelled: Bool) async throws {
     let rig = try await Self.rig(v3: false, ultra: true)
+    // #4089: StageGate stages selection ownership; transport backoff is not this test's clock.
+    await rig.controller.setBackoffSleepForTesting { _ in
+      try Task.checkCancellation()
+      await Task.yield()
+      try Task.checkCancellation()
+    }
     let prepared = try await rig.coordinator.prepareLoad()
     #expect(Self.physicalLoad(rig, succeeds: false) == .loaded)
     #expect(Self.state(rig)?.attempts == 1, "one load left: the repair runs")
