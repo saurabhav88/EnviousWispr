@@ -1,0 +1,1 @@
+{"language":"fi","title":"poista sanelu käytöstä kokousten ajaksi","words":[],"phrases":["estä sanelu kokouksen tallennuksen aikana","sanelunäppäin ei toimi kokousta tallennettaessa"]}

@@ -12,9 +12,9 @@ Generated from the compiled Settings Map and the validated search vocabulary. Do
 
 The interface ships in English and German. The other 30 languages (ar, bg, cs, da, el, es, et, fi, fr, hi, hr, hu, it, ja, ko, lt, lv, mt, nl, pl, pt, ro, ru, sk, sl, sv, tr, uk, vi, zh) are search metadata only: words and titles people may type, matched against the same places. Titles below read English / German.
 
-284 nodes, 257 searchable, 8224 vocabulary blocks.
+285 nodes, 258 searchable, 8256 vocabulary blocks.
 
-Fingerprints: mapSHA256 `24061e6092271327669c5f228c05fa442970953bb4c084d99aae8975fe7ea7a0`, uiCatalogSHA256 `cd259ebfe7f76b4d58affe1119715e13c080761d6152aa0685b46df0ec512896`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `cae02edd4ef7193550e77b8ada9060b4c4c90ae8facf6fd41d44086d2d974765`
+Fingerprints: mapSHA256 `7a3c26d431fef074f5c021dcd3398b6e61486fcd56c6e9e85376f080ca262d02`, uiCatalogSHA256 `52f3ba2b8cd95185f534256f8b537a507c47e805ddd9928e62f5dddd0f83eef4`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `541bfe42729552d229744bbded16ad9cdac22580911746ce993a2497e48b6bae`
 
 ## Structure
 
@@ -285,6 +285,7 @@ Fingerprints: mapSHA256 `24061e6092271327669c5f228c05fa442970953bb4c084d99aae897
     - [General / Allgemein](#node-meetings-tab-general) `meetings.tab.general` (feature)
       - [Record only my voice / Nur meine Stimme aufnehmen](#node-meetingCaptureCallSound) `meetingCaptureCallSound` (setting)
       - [Write a summary when a meeting ends / Zusammenfassung erstellen, wenn ein Meeting endet](#node-meetingWriteSummary) `meetingWriteSummary` (setting)
+      - [Turn off dictation during meetings / Diktieren während Meetings ausschalten](#node-meetingTurnsOffDictation) `meetingTurnsOffDictation` (setting)
       - [Name meetings from my calendar / Meetings nach meinem Kalender benennen](#node-meetingUseCalendarForNames) `meetingUseCalendarForNames` (setting)
       - [When a call starts / Wenn ein Anruf beginnt](#node-meetingCallDetection) `meetingCallDetection` (setting)
     - [Call Apps / Anruf-Apps](#node-meetings-tab-callApps) `meetings.tab.callApps` (feature)
@@ -2527,6 +2528,28 @@ Fingerprints: mapSHA256 `24061e6092271327669c5f228c05fa442970953bb4c084d99aae897
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: recap, summarize, summarise<br>phrases: automatically summarize meetings; AI meeting recap |
 | Search (de) | words: Meetingzusammenfassung, Besprechungszusammenfassung, Kurzfassung<br>phrases: fass mein Meeting zusammen; erstelle nach dem Meeting automatisch eine Zusammenfassung |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-meetingTurnsOffDictation"></a>
+
+### Turn off dictation during meetings / Diktieren während Meetings ausschalten (`meetingTurnsOffDictation`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | setting |
+| Parent | [`meetings.tab.general`](#node-meetings-tab-general) |
+| Title source | catalog key `Turn off dictation during meetings` |
+| Description | The dictation key records nothing while a meeting is recording. / Solange ein Meeting aufgenommen wird, startet die Diktiertaste kein Diktat. |
+| Description source | catalog key `The dictation key records nothing while a meeting is recording.` |
+| Destination | `meetings` › `general` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`meetingTurnsOffDictation`](#node-meetingTurnsOffDictation) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | phrases: disable dictation while recording a meeting; dictation key does nothing during meeting recording |
+| Search (de) | words: Meetingaufnahme, Besprechung<br>phrases: während einer Meetingaufnahme kein Diktat starten; schalte Diktieren im Meeting aus |
 | Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingUseCalendarForNames"></a>

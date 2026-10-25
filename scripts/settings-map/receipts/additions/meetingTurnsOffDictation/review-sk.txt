@@ -1,0 +1,1 @@
+{"language":"sk","title":"vypnúť diktovanie počas schôdzí","words":[],"phrases":["zakázať diktovanie pri nahrávaní schôdze","kláves diktovania nefunguje počas nahrávania schôdze"]}

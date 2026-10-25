@@ -661,6 +661,13 @@ enum SettingsMap {
       description: .resource(MeetingsCopy.writeSummaryShort),
       parent: .meetingsTabGeneral, destination: .meetings(.general), dictionaryTab: nil,
       visibility: .always, target: .meetingWriteSummary, fallbacks: []),
+    // #4069: "Turn off dictation during meetings", always on the General tab.
+    SettingsMapNode(
+      id: .meetingTurnsOffDictation, structure: .item, item: .setting,
+      title: .resource(MeetingsCopy.turnsOffDictationTitle),
+      description: .resource(MeetingsCopy.turnsOffDictationShort),
+      parent: .meetingsTabGeneral, destination: .meetings(.general), dictionaryTab: nil,
+      visibility: .always, target: .meetingTurnsOffDictation, fallbacks: []),
     // #4017 R5: name meetings from the calendar. Like the two switches above, it is on the page
     // whenever the page shows its settings; until EnviousMeet's setup is finished the page
     // shows the setup instead, and a search arrives on the page itself.

@@ -1,0 +1,1 @@
+{"language":"et","title":"dikteerimise väljalülitamine koosolekute ajal","words":[],"phrases":["keela dikteerimine koosoleku salvestamise ajal","dikteerimisklahv ei tööta koosoleku salvestamise ajal"]}

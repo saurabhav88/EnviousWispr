@@ -1,0 +1,9 @@
+{
+  "language": "sl",
+  "title": "izklopi narekovanje med sestanki",
+  "words": [],
+  "phrases": [
+    "onemogoči narekovanje med snemanjem sestanka",
+    "tipka za narekovanje med snemanjem sestanka ne deluje"
+  ]
+}

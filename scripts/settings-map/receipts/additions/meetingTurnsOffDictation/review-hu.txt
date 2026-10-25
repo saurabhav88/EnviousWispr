@@ -1,0 +1,9 @@
+{
+  "language": "hu",
+  "title": "diktálás kikapcsolása megbeszélések alatt",
+  "words": [],
+  "phrases": [
+    "diktálás letiltása megbeszélés rögzítése közben",
+    "nem működik a diktálás gombja megbeszélés rögzítése közben"
+  ]
+}

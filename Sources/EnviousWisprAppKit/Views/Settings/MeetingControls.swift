@@ -56,6 +56,8 @@ struct MeetingLivePanel: View {
   let startedAt: Date
   @Environment(MeetingCoordinator.self) private var meetings
   @Environment(PermissionsService.self) private var permissions
+  /// #4069: its host (`MeetingHistoryDetailView`) already reads this home.
+  @Environment(SettingsManager.self) private var settings
   /// One shared 10-per-second timeline for both meters, only while recording; reduced motion
   /// slows it to once a second.
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -108,10 +110,17 @@ struct MeetingLivePanel: View {
           }
         }
       }
-      Text(
-        "You can keep dictating while EnviousMeet records.",
-        comment: "EnviousMeet: while a meeting records."
-      )
+      Group {
+        // #4069: true to the switch, which is read at each dictation press.
+        if settings.meetingTurnsOffDictation {
+          Text(DictationNarrator.copy(for: .dictationOffDuringMeeting))
+        } else {
+          Text(
+            "You can keep dictating while EnviousMeet records.",
+            comment: "EnviousMeet: while a meeting records."
+          )
+        }
+      }
       .font(.stHelper)
       .foregroundStyle(.stTextSecondary)
     }
@@ -272,6 +281,25 @@ struct MeetingWriteSummaryRow: View {
         .toggleStyle(BrandedToggleStyle())
         .fixedSize()
         .accessibilityLabel(Text(MeetingsCopy.writeSummaryTitle))
+    }
+  }
+}
+
+/// "Turn off dictation during meetings" (#4069): read at each dictation start press.
+struct MeetingTurnsOffDictationRow: View {
+  @Environment(SettingsManager.self) private var settings
+
+  var body: some View {
+    @Bindable var settings = settings
+    SettingsRow(
+      map: .id(.meetingTurnsOffDictation), icon: "mic.slash",
+      help: MeetingsCopy.turnsOffDictationHelp
+    ) {
+      Toggle("", isOn: $settings.meetingTurnsOffDictation)
+        .labelsHidden()
+        .toggleStyle(BrandedToggleStyle())
+        .fixedSize()
+        .accessibilityLabel(Text(MeetingsCopy.turnsOffDictationTitle))
     }
   }
 }

@@ -6702,6 +6702,17 @@
         }
       }
     },
+    "Dictation is off during meetings. Turn it back on in EnviousMeet settings. A dictation that already started before the meeting finishes normally." : {
+      "comment" : "EnviousMeet page: help for Turn off dictation during meetings. The founder's sentence (#4069).",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktieren ist während Meetings aus. Schalte es in den EnviousMeet-Einstellungen wieder ein. Ein Diktat, das schon vor dem Meeting begonnen hat, läuft normal zu Ende."
+          }
+        }
+      }
+    },
     "Dictation itself works normally. Only the on-screen preview is unavailable." : {
       "comment" : "Live Preview settings: status needs mac os26 detail no alternative.",
       "localizations" : {
@@ -19324,6 +19335,17 @@
         }
       }
     },
+    "The dictation key records nothing while a meeting is recording." : {
+      "comment" : "EnviousMeet page: the short line under Turn off dictation during meetings.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Solange ein Meeting aufgenommen wird, startet die Diktiertaste kein Diktat."
+          }
+        }
+      }
+    },
     "The download couldn't be verified. Try again, and if this keeps happening, contact support." : {
       "comment" : "Speech model download: why it failed. Shown in setup and in Settings.",
       "localizations" : {
@@ -21005,6 +21027,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wenn du eine App ausschaltest, fragt EnviousMeet bei Anrufen über diese App nicht mehr nach."
+          }
+        }
+      }
+    },
+    "Turn off dictation during meetings" : {
+      "comment" : "EnviousMeet page: switch that makes the dictation key record nothing while a meeting records.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktieren während Meetings ausschalten"
           }
         }
       }

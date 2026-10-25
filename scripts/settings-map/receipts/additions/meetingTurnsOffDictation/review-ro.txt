@@ -1,0 +1,1 @@
+{"language":"ro","title":"dezactivează dictarea în timpul ședințelor","words":[],"phrases":["blochează dictarea în timpul înregistrării unei ședințe","tasta de dictare nu funcționează când se înregistrează o ședință"]}

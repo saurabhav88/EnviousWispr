@@ -1,0 +1,9 @@
+{
+  "language": "it",
+  "title": "disattiva la dettatura durante le riunioni",
+  "words": [],
+  "phrases": [
+    "bloccare la dettatura mentre si registra una riunione",
+    "il tasto di dettatura non funziona durante la registrazione di una riunione"
+  ]
+}

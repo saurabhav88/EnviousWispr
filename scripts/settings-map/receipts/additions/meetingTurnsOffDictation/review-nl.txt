@@ -1,0 +1,1 @@
+{"language":"nl","title":"dicteren uitschakelen tijdens vergaderingen","words":[],"phrases":["dicteren blokkeren tijdens een vergaderopname","dicteertoets werkt niet tijdens het opnemen van een vergadering"]}
