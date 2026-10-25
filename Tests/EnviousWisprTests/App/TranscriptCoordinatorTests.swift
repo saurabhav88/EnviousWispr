@@ -340,6 +340,36 @@ struct TranscriptCoordinatorTests {
     #expect(coordinator.visibleTranscripts.isEmpty)
   }
 
+  // MARK: - History Paste reads the row as it is now (#4075 R5)
+
+  @Test("History Paste delivers the row's current text, not the copy taken at the press")
+  func deliveryReadsTheCurrentRow() async throws {
+    let dir = Self.makeTempDir()
+    defer { Self.cleanup(dir) }
+    let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
+    let raw = Self.makeTranscript(text: "raw words")
+    try coordinator.saveAndShow(raw)
+    let pressed = raw  // the copy History Paste captured
+
+    // An import's cleanup lands while History is hidden.
+    let cleaned = Transcript(
+      id: raw.id, text: "Cleaned words.", processingTime: 0.1, backendType: .parakeet,
+      createdAt: raw.createdAt)
+    #expect(try coordinator.updateExistingRow(cleaned))
+    #expect(coordinator.textForDelivery(pressed) == "Cleaned words.")
+
+    // Deleted in that wait: nothing is delivered.
+    coordinator.delete(raw)
+    #expect(coordinator.textForDelivery(pressed) == nil)
+  }
+
+  @Test("a dictation History never held keeps the text it showed")
+  func deliveryOfAnUnheldDictation() {
+    let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: Self.makeTempDir()))
+    let live = Self.makeTranscript(text: "never saved")
+    #expect(coordinator.textForDelivery(live) == "never saved")
+  }
+
   // MARK: - Delete routing (consumer matrix row)
 
   @Test("delete removes from cache and disk")

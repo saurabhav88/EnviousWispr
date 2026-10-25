@@ -448,6 +448,102 @@
         w.cached.meetingPreviewText(of: rows[6]) == MeetingHistoryPresentation.unavailableMessage)
     }
 
+    @Test("the meeting detail shares kept text and preserves the direct projection (#4075)")
+    func detailProjectionReusesKeptText() {
+      let w = World()
+      let c = w.cached
+      var record = Self.record(at: w.time, ready: true)
+      w.sources.records = [record]
+      let row = Self.twoTurnRow(
+        record.id, at: w.time,
+        first: "[Could not transcribe 1:00 to 1:30]",
+        second: "[Could not transcribe from 2:00]")
+      w.setRows([row])
+
+      func check(_ row: Transcript) {
+        let info = row.meetingID.flatMap { c.meetingInfo?($0) }
+        let expected = MeetingHistoryPresentation.project(
+          row, info: info, showEcho: c.isShowingEcho(rowID: row.id))
+        let actual = c.meetingProjection(of: row)
+        #expect(actual == expected)
+        if case .visible(_, let actualText) = actual,
+          case .visible(_, let expectedText) = expected
+        {
+          #expect(Array(actualText.utf8) == Array(expectedText.utf8))
+        }
+      }
+
+      // A cold detail must populate the shared cache. The old direct call
+      // leaves this counter unchanged and fails this assertion.
+      let before = c.meetingTextBuildsForTesting
+      check(row)
+      #expect(c.meetingTextBuildsForTesting == before + 1)
+      let built = c.meetingTextBuildsForTesting
+      _ = c.meetingPreviewText(of: row)
+      check(row)
+      #expect(c.meetingTextBuildsForTesting == built)
+
+      record.echoTurnIDs = ["t0"]
+      w.sources.records = [record]
+      check(row)
+
+      record.echoTurnIDs = ["t0", "t1"]
+      w.sources.records = [record]
+      check(row)
+
+      c.setShowEcho(true, rowID: row.id)
+      check(row)
+      c.setShowEcho(false, rowID: row.id)
+      check(row)
+
+      let empty = Transcript(
+        text: "", backendType: .parakeet, createdAt: w.time,
+        turns: [], meetingID: record.id)
+      check(empty)
+
+      record.state = .processing
+      w.sources.records = [record]
+      check(row)
+      check(Transcript(text: "ordinary"))
+    }
+
+    @Test("the meeting detail never reuses byte-distinct speaker names (#4075)")
+    func detailProjectionFollowsNameBytes() {
+      let w = World()
+      let c = w.cached
+      let record = Self.record(at: w.time, ready: true)
+      w.sources.records = [record]
+      let base = Self.twoTurnRow(record.id, at: w.time)
+
+      func named(_ name: String) -> Transcript {
+        Transcript(
+          id: base.id, text: base.text, backendType: .parakeet,
+          createdAt: base.createdAt, speakerAnalysis: base.speakerAnalysis,
+          speakerNames: ["sys:S1": name], turns: base.turns,
+          meetingID: record.id)
+      }
+
+      let first = named("Ren\u{00E9}e")
+      w.setRows([first])
+      _ = c.meetingProjection(of: first)
+      let built = c.meetingTextBuildsForTesting
+
+      let replaced = named("Rene\u{0301}e")
+      #expect(first.speakerNames == replaced.speakerNames)
+      w.setRows([replaced])
+      let actual = c.meetingProjection(of: replaced)
+      let expected = MeetingHistoryPresentation.project(
+        replaced, info: c.meetingInfo?(record.id), showEcho: false)
+      #expect(c.meetingTextBuildsForTesting == built + 1)
+      if case .visible(_, let actualText) = actual,
+        case .visible(_, let expectedText) = expected
+      {
+        #expect(Array(actualText.utf8) == Array(expectedText.utf8))
+      } else {
+        Issue.record("Expected both projections to be visible")
+      }
+    }
+
     @Test("search and the preview share one kept entry, whichever reads first")
     func searchAndPreviewShareOneEntry() {
       for searchFirst in [true, false] {
