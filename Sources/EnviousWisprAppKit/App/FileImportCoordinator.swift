@@ -685,7 +685,10 @@ final class FileImportCoordinator {
   /// and because the FAILING case is the one that matters: a raw save that throws must stop
   /// the run before polish, per the approved plan, and a test cannot make a real store fail
   /// on demand.
-  private let saveToHistory: @MainActor (Transcript) throws -> Void
+  ///
+  /// #4075 S1: awaited. Once submitted, a save settles with its real outcome even if this run
+  /// is stopped or replaced while it waits; see `saveRawToHistory`.
+  private let saveToHistory: @MainActor (Transcript) async throws -> Void
 
   /// The SECOND write, which may only ever update. Returns false when the row is no longer
   /// in History, which means the user deleted it while the cleanup ran.
@@ -772,17 +775,40 @@ final class FileImportCoordinator {
     rawPrerequisite = (generationAtStart, .notAttempted)
   }
 
+  /// How one raw gate ended for the run that asked.
+  enum RawGateOutcome {
+    /// The raw words are in History for this run; speaker analysis and cleaning may go on.
+    case holds
+    /// This run's raw save failed; the run stops before polish.
+    case failed
+    /// The run was stopped or replaced, before or while its save waited. Not a failure of
+    /// the run on screen, so the caller just leaves.
+    case superseded
+  }
+
   /// The one raw gate. At a run's first check an existing saved row satisfies it; otherwise
   /// it makes one inserting raw save. The answer is kept for the rest of that run.
-  private func rawPrerequisiteHolds(generationAtStart: Int) -> Bool {
-    guard rawPrerequisite.generation == generationAtStart else { return false }
+  private func checkRawPrerequisite(generationAtStart: Int) async -> RawGateOutcome {
+    guard rawPrerequisite.generation == generationAtStart, generationAtStart == generation,
+      !Task.isCancelled
+    else { return .superseded }
     switch rawPrerequisite.state {
-    case .satisfied: return true
-    case .failed: return false
+    case .satisfied: return .holds
+    case .failed: return .failed
     case .notAttempted:
-      let holds = rawIsSavedToHistory || saveRawToHistory()
-      rawPrerequisite.state = holds ? .satisfied : .failed
-      return holds
+      if rawIsSavedToHistory {
+        rawPrerequisite.state = .satisfied
+        return .holds
+      }
+      let saved = await saveRawToHistory(generationAtStart: generationAtStart)
+      // Recorded only while this run still owns the prerequisite: a newer run has its own.
+      if rawPrerequisite.generation == generationAtStart, let saved {
+        rawPrerequisite.state = saved ? .satisfied : .failed
+      }
+      guard generationAtStart == generation, Task.isCancelled == false,
+        let saved
+      else { return .superseded }
+      return saved ? .holds : .failed
     }
   }
 
@@ -790,6 +816,12 @@ final class FileImportCoordinator {
   /// raw words with Copy and Retry, per the approved plan's failure table: losing the words
   /// silently is worse than not cleaning them.
   private(set) var historySaveFailure: String?
+
+  #if DEBUG
+    /// #4075 S1: runs after a submitted raw save's outcome has been applied (true when it
+    /// succeeded), so a test knows the importer handled a late result, not just the store.
+    @ObservationIgnored var rawSaveDidSettleForTesting: (@MainActor (Bool) -> Void)?
+  #endif
 
   /// Whether the user deleted this import from History after it was written there.
   ///
@@ -863,7 +895,7 @@ final class FileImportCoordinator {
     // No defaults (#2772): a coordinator built without History closures would report every
     // run as saved, and the general test factory did exactly that. A caller that means to
     // simulate History says so at the call site.
-    saveToHistory: @escaping @MainActor (Transcript) throws -> Void,
+    saveToHistory: @escaping @MainActor (Transcript) async throws -> Void,
     updateHistoryRow: @escaping @MainActor (Transcript) throws -> Bool,
     mergeSpeakerFields:
       @escaping @MainActor (UUID, TranscriptSpeakerAnalysis, [Turn]?) throws -> Bool,
@@ -2168,9 +2200,14 @@ final class FileImportCoordinator {
       // ADDED earlier gate (#2809 addendum §3 B4): the speaker step only ever runs on words
       // already durable. `polishAll`'s own gate at its entry stays — it also protects the
       // re-polish path, which never reaches here.
-      guard rawPrerequisiteHolds(generationAtStart: generationAtStart) else {
+      let rawOutcome = await checkRawPrerequisite(generationAtStart: generationAtStart)
+      guard generationAtStart == generation, Task.isCancelled == false else { return }
+      switch rawOutcome {
+      case .holds: break
+      case .failed:
         await finishRun(savingDocument: false, asrOutcome: .success)
         return
+      case .superseded: return
       }
       // Launched, never awaited here: the speaker step must not add its own deadline
       // (20s minimum, scaling with file length) to every import's polish latency for a
@@ -2730,9 +2767,14 @@ final class FileImportCoordinator {
     // #4075 S1: one decision per run, shared with `run`'s gate. A deletion between the two
     // gates does not make this one insert again: that is the deletion the update-only rule
     // protects. A new Clean it again run gets a fresh prerequisite, so it still may.
-    guard rawPrerequisiteHolds(generationAtStart: generationAtStart) else {
+    let rawOutcome = await checkRawPrerequisite(generationAtStart: generationAtStart)
+    guard generationAtStart == generation, Task.isCancelled == false else { return }
+    switch rawOutcome {
+    case .holds: break
+    case .failed:
       await finishRun(savingDocument: false, asrOutcome: asrOutcome)
       return
+    case .superseded: return
     }
     guard !pieces.isEmpty else {
       await finishRun(savingDocument: true, asrOutcome: asrOutcome)
@@ -2872,7 +2914,14 @@ final class FileImportCoordinator {
   ///
   /// **A failure STOPS the run**, per the approved plan's failure table. Polishing into a
   /// document nobody can save is how a user loses words while watching a progress bar.
-  private func saveRawToHistory() -> Bool {
+  ///
+  /// #4075 S1: awaited. Returns nil when the run was stopped or replaced before it could
+  /// submit; otherwise the save's real outcome. A save already submitted settles even if
+  /// the run is stopped or replaced while it waits. Its outcome is a fact about the
+  /// DOCUMENT it was for: a success still marks those raw words saved for the same stopped
+  /// document, and nothing is applied to a file chosen since. A newer run on the same
+  /// document keeps its own error and saved row.
+  private func saveRawToHistory(generationAtStart: Int) async -> Bool? {
     guard let file, let configuration = runConfiguration else { return false }
     // Built ONCE. Every later write is this row plus what changed, so `createdAt` and the
     // transcription engine describe the recording rather than the moment of the write.
@@ -2885,16 +2934,29 @@ final class FileImportCoordinator {
         importedFileName: file.name)
     }
     guard let row = originalHistoryRow else { return false }
+    guard generationAtStart == generation, !Task.isCancelled else { return nil }
+    var failure: String?
     do {
-      try saveToHistory(row)
-      savedHistoryRow = row
-      historySaveFailure = nil
-      return true
+      try await saveToHistory(row)
     } catch {
-      historySaveFailure = String(describing: error)
-      return false
+      failure = String(describing: error)
     }
+    let sameDocument = originalHistoryRow?.id == row.id
+    let newerRun = rawPrerequisite.generation != generationAtStart
+    if sameDocument {
+      if let failure {
+        if !newerRun { historySaveFailure = failure }
+      } else if !newerRun || savedHistoryRow == nil {
+        savedHistoryRow = row
+        if !newerRun { historySaveFailure = nil }
+      }
+    }
+    #if DEBUG
+      rawSaveDidSettleForTesting?(failure == nil)
+    #endif
+    return failure == nil
   }
+
 
   /// Updates the SAME row with the cleaned document.
   ///

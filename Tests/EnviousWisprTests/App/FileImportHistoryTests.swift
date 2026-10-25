@@ -50,6 +50,34 @@ struct FileImportHistoryTests {
 
     func exists(_ id: UUID) -> Bool { !rowWasDeleted }
 
+    /// #4075 S1: holds the next inserting save until `releaseHeldSave()`, the way a store
+    /// write already submitted behaves: cancelling the waiting run does not withdraw it.
+    var holdNextSave = false
+    /// Deletes the row right after the next successful save, before its caller resumes.
+    var deleteAfterNextSave = false
+    private var heldSave: CheckedContinuation<Void, Never>?
+    var isHoldingSave: Bool { heldSave != nil }
+
+    /// The awaited save the coordinator calls.
+    func submit(_ transcript: Transcript) async throws {
+      if holdNextSave {
+        holdNextSave = false
+        await withCheckedContinuation { heldSave = $0 }
+      }
+      try save(transcript)
+      if deleteAfterNextSave {
+        deleteAfterNextSave = false
+        rowWasDeleted = true
+      }
+    }
+
+    func releaseHeldSave() {
+      holdNextSave = false
+      let held = heldSave
+      heldSave = nil
+      held?.resume()
+    }
+
     /// The cleaned write, which may only ever update. Returning false is a deletion, not a
     /// failure, so it records neither a write nor a refusal.
     func update(_ transcript: Transcript) throws -> Bool {
@@ -75,25 +103,32 @@ struct FileImportHistoryTests {
     spy: HistorySpy, raw: String = "um one two three", cleaned: String = "One two three.",
     polisherStarts: Bool = true,
     onPart: (@MainActor () -> Void)? = nil,
-    onSpeakerStep: (@MainActor () -> Void)? = nil
+    onSpeakerStep: (@MainActor () -> Void)? = nil,
+    onTranscribe: (@MainActor ([Float]) -> Void)? = nil,
+    onRunTelemetry: (@MainActor () -> Void)? = nil,
+    onEngineReleased: (@MainActor () -> Void)? = nil
   ) -> FileImportCoordinator {
     FileImportCoordinator(
       decode: { _ in Self.decoded() },
-      transcribe: { _, _, _ in
-        ASRResult(text: raw, language: "en", duration: 0, processingTime: 0, backendType: .parakeet)
+      transcribe: { samples, _, _ in
+        onTranscribe?(samples)
+        return ASRResult(
+          text: raw, language: "en", duration: 0, processingTime: 0, backendType: .parakeet)
       },
       speakerLabeler: { _, _ in
         onSpeakerStep?()
         return .failed(.modelsUnavailable)
       },
+      emitRunTelemetry: { _, _, _, _, _, _, _, _ in onRunTelemetry?() },
       engineAdmission: .live(lease: EngineLease(), as: .fileImport),
+      onEngineReleased: { onEngineReleased?() },
       beginRun: {
         FileImportCoordinator.RunConfiguration(
           polishIsCloud: false, localPolishProvider: nil, polishProvider: .egOne,
           ollamaModel: nil, polishModel: "eg-1", backendType: .parakeet)
       },
       prepareLocalPolish: { _ in polisherStarts },
-      saveToHistory: { try spy.save($0) },
+      saveToHistory: { try await spy.submit($0) },
       updateHistoryRow: { try spy.update($0) },
       mergeSpeakerFields: { _, _, _ in true },
       historyRowExists: { spy.exists($0) },
@@ -245,6 +280,207 @@ struct FileImportHistoryTests {
     #expect(spy.writes.last?.polishedText != nil)
     #expect(c.historyRowWasDeleted == false)
     #expect(c.historySaveNotice == nil)
+  }
+
+  #if DEBUG
+    private func isReady(_ c: FileImportCoordinator) -> Bool {
+      if case .ready = c.state { return true } else { return false }
+    }
+
+    /// #4075 S1: the raw save is awaited. While it waits nothing downstream starts, and a
+    /// held save that fails still stops the run after one attempt.
+    @Test("a held raw save starts no speaker analysis or cleaning until it succeeds")
+    func heldRawSaveGatesTheSlowHalf() async throws {
+      for refuses in [false, true] {
+        let spy = HistorySpy()
+        spy.holdNextSave = true
+        defer { spy.releaseHeldSave() }
+        var speakerSteps = 0
+        var cleanedParts = 0
+        var settled: [Bool] = []
+        let c = Self.coordinator(
+          spy: spy, onPart: { cleanedParts += 1 }, onSpeakerStep: { speakerSteps += 1 })
+        c.rawSaveDidSettleForTesting = { settled.append($0) }
+        c.choose(url: Self.anyURL)
+        try #require(await settleUntil { self.isReady(c) })
+        c.start()
+        try #require(await settleUntil { spy.isHoldingSave }, "the raw save never arrived")
+        #expect(speakerSteps == 0)
+        #expect(cleanedParts == 0)
+        #expect(c.isRunning)
+        spy.refuse = refuses
+        spy.releaseHeldSave()
+        try #require(await settleUntil { c.state == .finished }, "the run never finished")
+        #expect(settled == [refuses == false])
+        #expect(spy.inserts == 1)
+        if refuses {
+          #expect(speakerSteps == 0)
+          #expect(cleanedParts == 0)
+          #expect(c.historySaveFailure != nil)
+          #expect(c.isSavedToHistory == false)
+        } else {
+          #expect(speakerSteps == 1)
+          #expect(cleanedParts > 0)
+          #expect(c.isSavedToHistory)
+        }
+      }
+    }
+
+    @Test("Clean it again of a deleted row waits for its raw save before cleaning")
+    func heldRawSaveGatesAReClean() async throws {
+      let spy = HistorySpy()
+      var cleanedParts = 0
+      let c = Self.coordinator(spy: spy, onPart: { cleanedParts += 1 })
+      await run(c)
+      try #require(c.state == .finished, "the first run never finished")
+      spy.rowWasDeleted = true
+      let partsBefore = cleanedParts
+      spy.holdNextSave = true
+      defer { spy.releaseHeldSave() }
+      c.rePolish()
+      try #require(await settleUntil { spy.isHoldingSave }, "the raw save never arrived")
+      #expect(cleanedParts == partsBefore, "the cleanup ran before the raw words were saved")
+      spy.releaseHeldSave()
+      try #require(await settleUntil { c.state == .finished }, "Clean it again never finished")
+      #expect(spy.inserts == 2)
+      #expect(cleanedParts > partsBefore)
+      #expect(c.isSavedToHistory)
+    }
+
+    /// #4075 S1: Stop while the raw save waits. The save still settles for the same stopped
+    /// document: saved if it worked, unsaved if not, and nothing downstream starts.
+    @Test("a Stop while the raw save waits keeps the stopped document's real save result")
+    func stopDuringHeldRawSave() async throws {
+      for refuses in [false, true] {
+        let spy = HistorySpy()
+        spy.holdNextSave = true
+        defer { spy.releaseHeldSave() }
+        var speakerSteps = 0
+        var cleanedParts = 0
+        var settled: [Bool] = []
+        var engineReleases = 0
+        let c = Self.coordinator(
+          spy: spy, onPart: { cleanedParts += 1 }, onSpeakerStep: { speakerSteps += 1 },
+          onEngineReleased: { engineReleases += 1 })
+        c.rawSaveDidSettleForTesting = { settled.append($0) }
+        c.choose(url: Self.anyURL)
+        try #require(await settleUntil { self.isReady(c) })
+        c.start()
+        try #require(await settleUntil { spy.isHoldingSave }, "the raw save never arrived")
+        c.stop()
+        #expect(c.state == .stopped)
+        spy.refuse = refuses
+        spy.releaseHeldSave()
+        try #require(await settleUntil { settled.count == 1 }, "the raw save never settled")
+        try #require(await settleUntil { engineReleases == 1 }, "the old run never ended")
+        #expect(settled == [refuses == false])
+        #expect(c.state == .stopped)
+        #expect(speakerSteps == 0)
+        #expect(cleanedParts == 0)
+        if refuses {
+          #expect(c.isSavedToHistory == false)
+          #expect(c.historySaveFailure != nil)
+        } else {
+          #expect(c.isSavedToHistory, "the stopped document's raw words were saved")
+          #expect(c.historySaveFailure == nil)
+        }
+      }
+    }
+
+    /// #4075 S1: a file chosen while the old raw save waits gets nothing from that save.
+    @Test("a new file chosen while the raw save waits is untouched by that save's result")
+    func replacementDuringHeldRawSave() async throws {
+      for refuses in [false, true] {
+        let spy = HistorySpy()
+        spy.holdNextSave = true
+        defer { spy.releaseHeldSave() }
+        var speakerSteps = 0
+        var settled: [Bool] = []
+        var engineReleases = 0
+        var runTelemetry = 0
+        var transcribed: [[Float]] = []
+        let c = Self.coordinator(
+          spy: spy, onSpeakerStep: { speakerSteps += 1 },
+          onTranscribe: { transcribed.append($0) }, onRunTelemetry: { runTelemetry += 1 },
+          onEngineReleased: { engineReleases += 1 })
+        c.rawSaveDidSettleForTesting = { settled.append($0) }
+        c.choose(url: Self.anyURL)
+        try #require(await settleUntil { self.isReady(c) })
+        c.start()
+        try #require(await settleUntil { spy.isHoldingSave }, "the raw save never arrived")
+        c.stop()
+        c.choose(url: URL(fileURLWithPath: "/tmp/replacement.m4a"))
+        try #require(await settleUntil { self.isReady(c) })
+        let stateBefore = c.state
+        let phaseBefore = c.phase
+        let telemetryBefore = runTelemetry
+        spy.refuse = refuses
+        spy.releaseHeldSave()
+        try #require(await settleUntil { settled.count == 1 }, "the raw save never settled")
+        try #require(await settleUntil { engineReleases == 1 }, "the old run never ended")
+        #expect(runTelemetry == telemetryBefore, "the old run reported a terminal outcome")
+        #expect(c.file?.name == "replacement.m4a")
+        #expect(c.state == stateBefore)
+        #expect(c.phase == phaseBefore)
+        #expect(c.historyID == nil, "the replacement took the old file's History identity")
+        #expect(c.historySaveFailure == nil, "the old save's failure reached the new file")
+        #expect(c.isSavedToHistory == false)
+        #expect(speakerSteps == 0)
+        // The replacement's own audio is intact: its run transcribes real samples.
+        spy.refuse = false
+        c.start()
+        try #require(await settleUntil { c.state == .finished }, "the replacement never finished")
+        #expect(transcribed.count == 2)
+        #expect(transcribed.last?.isEmpty == false, "the replacement's audio was cleared")
+      }
+    }
+
+    /// #4075 S1: Clean it again pressed while the stopped run's raw save still waits. The
+    /// old run still holds the engine, so today's admission refuses it; once that save
+    /// settles, Clean it again works and finds the raw words already saved.
+    @Test("Clean it again during a stopped run's raw save is refused, then works after it settles")
+    func reCleanDuringHeldRawSave() async throws {
+      let spy = HistorySpy()
+      spy.holdNextSave = true
+      defer { spy.releaseHeldSave() }
+      var settled: [Bool] = []
+      var engineReleases = 0
+      let c = Self.coordinator(spy: spy, onEngineReleased: { engineReleases += 1 })
+      c.rawSaveDidSettleForTesting = { settled.append($0) }
+      c.choose(url: Self.anyURL)
+      try #require(await settleUntil { self.isReady(c) })
+      c.start()
+      try #require(await settleUntil { spy.isHoldingSave }, "the raw save never arrived")
+      c.stop()
+      c.rePolish()
+      #expect(c.isRunning == false, "Clean it again started while the old run held the engine")
+      spy.releaseHeldSave()
+      try #require(await settleUntil { settled.count == 1 }, "the raw save never settled")
+      try #require(await settleUntil { engineReleases == 1 }, "the old run kept the engine")
+      c.rePolish()
+      try #require(await settleUntil { c.state == .finished }, "Clean it again never finished")
+      #expect(spy.inserts == 1, "the raw words were already saved; nothing to insert again")
+      #expect(spy.writes.last?.polishedText != nil)
+      #expect(c.isSavedToHistory)
+    }
+  #endif
+
+  /// #4075 S1: the raw save lands and the row is deleted before the run resumes. That run's
+  /// raw decision stays satisfied, so its cleanup gate does not write the row back; a later
+  /// Clean it again still may.
+  @Test("a row deleted as the raw save lands stays deleted for that run")
+  func aDeletionAsTheRawSaveLandsStands() async throws {
+    let spy = HistorySpy()
+    spy.deleteAfterNextSave = true
+    let c = Self.coordinator(spy: spy)
+    await run(c)
+    try #require(c.state == .finished, "the originating run never finished")
+    #expect(spy.inserts == 1, "the run's cleanup gate put back a row the user deleted")
+    #expect(c.historyRowWasDeleted)
+    c.rePolish()
+    try #require(await settleUntil { c.state == .finished }, "Clean it again never finished")
+    #expect(spy.inserts == 2)
+    #expect(c.historyRowWasDeleted == false)
   }
 
   /// The saved badge answers about the words ON SCREEN (#2772).

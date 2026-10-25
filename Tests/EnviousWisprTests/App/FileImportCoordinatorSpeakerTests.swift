@@ -120,7 +120,7 @@ struct FileImportCoordinatorSpeakerTests {
     wordTimingCoverage: ASRWordTimingCoverage? = nil,
     segmentTimings: [ASRSegmentTiming]? = nil,
     speakerLabeler: @escaping @MainActor ([Float], TimeInterval) async -> SpeakerAnalysis,
-    saveToHistory: @escaping @MainActor (Transcript) throws -> Void = { _ in },
+    saveToHistory: @escaping @MainActor (Transcript) async throws -> Void = { _ in },
     updateHistoryRow: @escaping @MainActor (Transcript) throws -> Bool = { _ in true },
     mergeSpeakerFields: @escaping @MainActor (UUID, TranscriptSpeakerAnalysis, [Turn]?) throws ->
       Bool = { _, _, _ in true },

@@ -48,6 +48,10 @@
     @MainActor
     final class SavedRows {
       var rows: [Transcript] = []
+      /// Raw saves that reached the store closure, held or not.
+      var saveArrivals = 0
+      /// What the coordinator reported once it applied a raw save's outcome.
+      var settled: [Bool] = []
     }
 
     /// A decode or transcribe the test holds closed until it chooses to open it.
@@ -84,7 +88,8 @@
       transcribeGate: ManualGate? = nil,
       transcribedText: String = "one two three",
       engineAdmission: EngineAdmissionAccess = .live(lease: EngineLease(), as: .fileImport),
-      saveToHistory: @escaping @MainActor (Transcript) throws -> Void = { _ in }
+      saveToHistory: @escaping @MainActor (Transcript) async throws -> Void = { _ in },
+      onEngineReleased: @escaping @MainActor () -> Void = {}
     ) -> FileImportCoordinator {
       FileImportCoordinator(
         decode: { _ in
@@ -98,6 +103,7 @@
             backendType: .parakeet, wordTimings: nil, wordTimingCoverage: nil)
         },
         engineAdmission: engineAdmission,
+        onEngineReleased: onEngineReleased,
         beginRun: {
           FileImportCoordinator.RunConfiguration(
             polishIsCloud: false, localPolishProvider: nil, polishProvider: .egOne,
@@ -408,6 +414,81 @@
     /// `.stopped`, and a replacement `choose(url:)` bumps it again, so the next poll must
     /// read `superseded` and the door must claim nothing from either run. Night battery
     /// 2026-09-14, #2886 row 5: no test drove this path, so loosening the guard survived.
+    /// #4075 S1: the raw save is awaited, so the door must not report a finished run while
+    /// that save still waits. The reply then carries the save's own result.
+    @Test("a held raw save keeps the finished reply back until it settles, and the reply says how")
+    func heldRawSaveDelaysTheFinishedReply() async throws {
+      struct SaveError: Error {}
+      for refuses in [false, true] {
+        let sink = ReplySink()
+        let saved = SavedRows()
+        let gate = ManualGate()
+        let coordinator = makeCoordinator(saveToHistory: { row in
+          saved.saveArrivals += 1
+          await gate.pass()
+          if refuses { throw SaveError() }
+          saved.rows.append(row)
+        })
+        let door = makeDoor(coordinator, sink: sink)
+        do {
+          door.handle(transcribeRequest(door))
+          _ = await sink.reply(withStatus: "accepted")
+          try #require(
+            await settleUntilObserved { saved.saveArrivals == 1 }, "the raw save never arrived")
+          #expect(coordinator.isRunning)
+          #expect(sink.statuses() == ["accepted"], "a reply went out while the raw save waited")
+          await gate.open()
+          let finished = await sink.reply(withStatus: "finished")
+          #expect(finished["saved"] == (refuses ? "false" : "true"))
+          #expect(sink.statuses() == ["accepted", "finished"])
+        } catch {
+          await gate.open()
+          throw error
+        }
+      }
+    }
+
+    /// #4075 S1: a Stop while the raw save waits is the user's, so the door claims nothing
+    /// and says superseded at once; the old save still settles on its own.
+    @Test("a Stop while the raw save waits reads superseded at once, and the old save still settles")
+    func stopDuringHeldRawSaveIsSuperseded() async throws {
+      let sink = ReplySink()
+      let saved = SavedRows()
+      let gate = ManualGate()
+      var engineReleases = 0
+      let coordinator = makeCoordinator(
+        saveToHistory: { row in
+          saved.saveArrivals += 1
+          await gate.pass()
+          saved.rows.append(row)
+        },
+        onEngineReleased: { engineReleases += 1 })
+      coordinator.rawSaveDidSettleForTesting = { saved.settled.append($0) }
+      let door = makeDoor(coordinator, sink: sink)
+      do {
+        door.handle(transcribeRequest(door))
+        _ = await sink.reply(withStatus: "accepted")
+        try #require(
+          await settleUntilObserved { saved.saveArrivals == 1 }, "the raw save never arrived")
+        coordinator.stop()
+        let superseded = await sink.reply(withStatus: "superseded")
+        #expect(superseded["status"] == "superseded", "\(superseded)")
+        #expect(superseded["history"] == nil)
+        #expect(superseded["saved"] == nil)
+        #expect(saved.settled.isEmpty, "the door waited for the old save before answering")
+        await gate.open()
+        try #require(
+          await settleUntilObserved { saved.settled.count == 1 }, "the old save never settled")
+        try #require(
+          await settleUntilObserved { engineReleases == 1 }, "the old run never ended")
+        #expect(saved.settled == [true])
+        #expect(sink.statuses().contains("finished") == false)
+      } catch {
+        await gate.open()
+        throw error
+      }
+    }
+
     @Test("a Stop after the door's own Start reads superseded on the next poll, with no history claimed")
     func stopAfterStartIsSuperseded() async {
       let sink = ReplySink()
