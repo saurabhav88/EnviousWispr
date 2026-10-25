@@ -1284,12 +1284,22 @@ final class TranscriptCoordinator {
     if let existing = transcripts.firstIndex(where: { $0.id == transcript.id }) {
       transcripts[existing] = transcript
     } else {
-      transcripts.insert(transcript, at: 0)
+      insertByDate(transcript)
     }
     // #2807: the cleaned text can stop matching the search the row was selected under.
     reconcileSelectionWithDisplayedSet()
     startPulseIfNeeded()
     return true
+  }
+
+  /// Puts a newly published row where its date places it, newest first, ahead of rows with
+  /// the same date. A queued write lands after its worker finishes, so a newer dictation can
+  /// already be on top by then; putting the row at the top would show it above that dictation
+  /// until the next disk read (Codex History regrade 3, S7).
+  private func insertByDate(_ transcript: Transcript) {
+    let index =
+      transcripts.firstIndex { $0.createdAt <= transcript.createdAt } ?? transcripts.endIndex
+    transcripts.insert(transcript, at: index)
   }
 
   /// #3972 C4a: an EnviousMeet meeting's row, written durably (encode, `F_FULLFSYNC`, directory
@@ -1325,7 +1335,7 @@ final class TranscriptCoordinator {
     if let existing = transcripts.firstIndex(where: { $0.id == transcript.id }) {
       transcripts[existing] = transcript
     } else {
-      transcripts.insert(transcript, at: 0)
+      insertByDate(transcript)
     }
     reconcileSelectionWithDisplayedSet()
     startPulseIfNeeded()

@@ -661,6 +661,30 @@ struct TranscriptCoordinatorMeetingTests {
       func releaseAll() { for _ in 0..<8 { release.signal() } }
     }
 
+    /// Codex History regrade 3, S7: an import's save held on the worker while a newer
+    /// dictation arrives. The import lands below it, in date order, not on top.
+    @Test("a held save that lands after a newer dictation shows below it")
+    func heldSaveLandsInDateOrder() async throws {
+      let dir = Self.makeTempDir()
+      let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
+      let gate = WorkerGate()
+      defer { gate.releaseAll() }
+      coordinator.ordinaryWriteWillStartForTesting = { gate.hook() }
+      let now = Date()
+      let older = Transcript(
+        id: UUID(), text: "older", processingTime: 0.1, backendType: .parakeet,
+        createdAt: now.addingTimeInterval(-60))
+      let save = Task { @MainActor in try await coordinator.saveAndShow(older) }
+      try #require(await gate.waitForStart(), "the save never reached the worker")
+      let newer = Transcript(
+        id: UUID(), text: "newer", processingTime: 0.1, backendType: .parakeet, createdAt: now)
+      coordinator.append(newer)
+      gate.releaseOne()
+      try await save.value
+      #expect(gate.anyTimedOut == false)
+      #expect(coordinator.visibleTranscripts.map(\.id) == [newer.id, older.id])
+    }
+
     @Test("a held History write leaves the main actor free and holds the next command back")
     func heldWriteHoldsTheNextCommand() async throws {
       let dir = Self.makeTempDir()
