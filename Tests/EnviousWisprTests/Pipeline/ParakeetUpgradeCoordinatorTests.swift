@@ -3,6 +3,7 @@ import EnviousWisprCore
 import EnviousWisprServices
 import Foundation
 import Testing
+import os
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprModelDelivery
@@ -1410,6 +1411,14 @@ struct ParakeetUpgradePolicyTests {
     arguments: [false, true])
   func supersededRepairLeavesRetryAlone(cancelled: Bool) async throws {
     let rig = try await Self.rig(v3: false, ultra: true)
+    // #4089: StageGate stages selection ownership; transport backoff is not this test's clock.
+    let requestedBackoff = OSAllocatedUnfairLock(initialState: [TimeInterval]())
+    await rig.controller.setBackoffSleepForTesting { seconds in
+      requestedBackoff.withLock { $0.append(seconds) }
+      try Task.checkCancellation()
+      await Task.yield()
+      try Task.checkCancellation()
+    }
     let prepared = try await rig.coordinator.prepareLoad()
     #expect(Self.physicalLoad(rig, succeeds: false) == .loaded)
     #expect(Self.state(rig)?.attempts == 1, "one load left: the repair runs")
@@ -1436,6 +1445,19 @@ struct ParakeetUpgradePolicyTests {
     await rig.controller.setBeforeExistingCacheValidationForTesting(nil)
     #expect(
       rig.coordinator.needsExplicitRetry == false, "the newer selection owns the presentation")
+    let delays = requestedBackoff.withLock { $0 }
+    if cancelled == false {
+      #expect(delays.isEmpty == false, "the fixture must exercise the requested backoff")
+    }
+    let scope = rig.ultraBase.deletingLastPathComponent().path + "/"
+    let requests = DeliveryStubProtocol.requests(in: scope).map {
+      $0.replacingOccurrences(of: scope, with: "/<rig>/")
+    }
+    let observation: [String: Any] = [
+      "cancelled": cancelled, "requested_backoff_seconds": delays, "requests": requests,
+    ]
+    let observationData = try JSONSerialization.data(withJSONObject: observation, options: [.sortedKeys])
+    print("CI-E1-OBSERVATION " + String(decoding: observationData, as: UTF8.self))
   }
 
   @Test("Retry during the retirement drain prevents deletion")
