@@ -117,4 +117,86 @@ struct UniversalPreviewContentionPolicyTests {
       #expect(candidate.key.engine.hasSuffix("#test-artifact"), "\(candidate.key.engine)")
     }
   }
+  // MARK: - #3973: the meeting route
+
+  /// Counts readiness questions about the heart; the meeting route must ask none.
+  final class Asked: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    var value: Int { lock.withLock { count } }
+    func note() { lock.withLock { count += 1 } }
+  }
+
+  private static func meetingEnvironment(admitted: Bool, asked: Asked)
+    -> WhisperPreviewEngineResolver.Environment
+  {
+    WhisperPreviewEngineResolver.Environment(
+      artifactIdentity: "test-artifact", modelPath: "/nonexistent/model.gguf",
+      isAdmitted: { admitted },
+      isHeartStreaming: {
+        asked.note()
+        return true
+      })
+  }
+
+  @Test("a meeting gets the Universal engine while the heart streams, without asking about it")
+  func meetingReadyWhileStreaming() async {
+    let asked = Asked()
+    let result = await WhisperPreviewEngineResolver.resolveForMeeting(
+      .locked("en"), environment: Self.meetingEnvironment(admitted: true, asked: asked))
+    guard case .ready(let candidate) = result else {
+      Issue.record("expected ready, got \(result)")
+      return
+    }
+    #expect(asked.value == 0, "the meeting route never reads heart streaming")
+    #expect(candidate.key.engine.hasSuffix("#test-artifact"))
+    // Control: dictation's route on the same environment does ask, and refuses.
+    let dictation = await WhisperPreviewEngineResolver.resolve(
+      .locked("en"), environment: Self.meetingEnvironment(admitted: true, asked: asked))
+    guard case .blocked(.heartIsStreaming) = dictation else {
+      Issue.record("control: expected dictation's heartIsStreaming, got \(dictation)")
+      return
+    }
+    #expect(asked.value == 1)
+  }
+
+  @Test("a meeting without the admitted model is unavailable, streaming or not")
+  func meetingRefusesUnadmitted() async {
+    let asked = Asked()
+    let result = await WhisperPreviewEngineResolver.resolveForMeeting(
+      .auto, environment: Self.meetingEnvironment(admitted: false, asked: asked))
+    guard case .blocked(.modelNotInstalled) = result else {
+      Issue.record("expected modelNotInstalled, got \(result)")
+      return
+    }
+    #expect(asked.value == 0)
+  }
+
+  @Test("dictation still refuses for the streaming heart first, even without the model")
+  func dictationStreamingPrecedence() async {
+    let result = await WhisperPreviewEngineResolver.resolve(
+      .auto, environment: Self.environment(admitted: false, streaming: true))
+    guard case .blocked(.heartIsStreaming) = result else {
+      Issue.record("expected heartIsStreaming before modelNotInstalled, got \(result)")
+      return
+    }
+  }
+
+  @Test("the meeting route keeps the language rule: Auto detects, a regional lock decodes bare")
+  func meetingLanguageSemantics() async {
+    let cases: [(LanguageMode, String?, String)] = [
+      (.auto, nil, ""), (.locked("hi"), "hi", "hi"), (.locked("en-GB"), "en", "en-GB"),
+      (.locked("yue"), "yue", "yue"),
+    ]
+    for (mode, language, commitment) in cases {
+      let result = await WhisperPreviewEngineResolver.resolveForMeeting(
+        mode, environment: Self.meetingEnvironment(admitted: true, asked: Asked()))
+      guard case .ready(let candidate) = result else {
+        Issue.record("\(mode): expected ready, got \(result)")
+        continue
+      }
+      #expect(candidate.language == language, "\(mode)")
+      #expect(candidate.key.commitment == commitment, "\(mode)")
+    }
+  }
 }

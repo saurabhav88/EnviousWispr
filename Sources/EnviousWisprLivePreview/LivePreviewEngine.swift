@@ -52,9 +52,9 @@ package enum LiveWordsEnd: Sendable, Equatable {
 /// so availability has to be something an engine ANSWERS rather than something the
 /// coordinator assumes.
 ///
-/// Deliberately six members, matching exactly what the coordinator already called.
-/// This is a seam, not a design for a future engine: anything an engine needs that
-/// the coordinator never asked for belongs on the engine, not here.
+/// Deliberately small: what the coordinator already called, plus the transcript session
+/// EnviousMeet's live words open (#3973). This is a seam, not a design for a future engine:
+/// anything an engine needs that no caller asks for belongs on the engine, not here.
 ///
 /// `Sendable` rather than `: Actor`. The one conformer today is an actor and actors
 /// are already `Sendable`, so constraining to `Actor` would buy nothing and would
@@ -82,6 +82,23 @@ package protocol LivePreviewEngine: Sendable {
   func openSession(
     vocabulary: LivePreviewVocabulary,
     onText: @escaping @Sendable (String) -> Void
+  ) async throws -> any LivePreviewEngineSession
+
+  /// Open a transcript session (#3973, EnviousMeet's live words): every finalized delta in
+  /// order and the words in progress replaced, through `onEvent`, ending with exactly one
+  /// `.ended` after the last accepted final (contract on `LiveWordsEvent`).
+  ///
+  /// Concurrency is per engine. Apple serves one transcript session per recognizer at a time
+  /// (a newer one supersedes the older one's feeds), so a meeting uses one Apple recognizer per
+  /// track. Universal transcript sessions are independent of each other and of dictation's
+  /// preview turnover, so both tracks open on one recognizer over one shared runtime.
+  ///
+  /// The session's `end()` delivers the accepted finals and joins its cleanup; its terminal is
+  /// `.requested` unless the session had already ended on its own or failed while ending
+  /// (`.failed`), which `end()` never replaces.
+  func openTranscriptSession(
+    vocabulary: LivePreviewVocabulary,
+    onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
   ) async throws -> any LivePreviewEngineSession
 }
 

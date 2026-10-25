@@ -853,7 +853,7 @@ import Testing
       text: "let run = try await driver.transcribe(", classification: .unrelatedDomain),
     CallSite(
       file: "Sources/EnviousWisprASR/TranscribeCppPreviewRuntime.swift", matcher: "transcribe",
-      text: "return try await model.transcribe(samples, language)",
+      text: "let result = try await model.transcribe(samples, language)",
       classification: .unrelatedDomain),
     CallSite(
       file: "Sources/EnviousWisprASR/TranscribeCppPreviewRuntime.swift", matcher: "unload",
@@ -861,6 +861,10 @@ import Testing
     CallSite(
       file: "Sources/EnviousWisprASR/TranscribeCppPreviewRuntime.swift", matcher: "unload",
       text: "Task { await loaded.unload() }", classification: .unrelatedDomain),
+    // #3973: a meeting's explicit release frees the same preview model (never the heart's).
+    CallSite(
+      file: "Sources/EnviousWisprASR/TranscribeCppPreviewRuntime.swift", matcher: "unload",
+      text: "await model?.unload()", classification: .unrelatedDomain),
 
     // MARK: CaptureVADSignalSource — a different subsystem (voice-activity
     // detection), not the ASR engine. Matched only by method-name coincidence.

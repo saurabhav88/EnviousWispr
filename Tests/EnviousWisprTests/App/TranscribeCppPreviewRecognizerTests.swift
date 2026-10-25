@@ -1099,6 +1099,105 @@ struct TranscribeCppPreviewRecognizerTests {
     #expect(received.all.isEmpty, "no terminal for a session that was never returned")
   }
 
+  // MARK: - #3973: the engine contract and the meeting engine
+
+  @Test("a transcript open through the engine protocol reaches the Universal session")
+  func transcriptOpenThroughProtocol() async throws {
+    let driver = FakeDriver()
+    driver.openAll()
+    let engine: any LivePreviewEngine = Self.transcriptRecognizer(driver)
+    let received = Received()
+    let session = try await Self.step("the open", driver) {
+      try await engine.openTranscriptSession(
+        vocabulary: .init(lookups: nil, contextualPhrases: [], dictionaryEnabled: true),
+        onEvent: received.receive)
+    }
+    #expect(session is TranscribeCppPreviewSession, "the concrete transcript session")
+    try await Self.step("the feed", driver) { await session.feed(Self.speech) }
+    await Self.within("the first words", driver) { await received.until(1) }
+    try await Self.step("the end", driver) { await session.end() }
+    #expect(received.all.first == .update(finalized: "", inProgress: "Hello there."))
+    #expect(received.all.last == .ended(.requested))
+  }
+
+  /// Counts runtime constructions by the meeting candidate's factory.
+  final class Built: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    var value: Int { lock.withLock { count } }
+    func note() { lock.withLock { count += 1 } }
+  }
+
+  @Test("both meeting tracks decode on the one runtime the engine owns, and its release frees it once")
+  func meetingEngineSharesOneRuntime() async throws {
+    let driver = FakeDriver()
+    driver.openAll()
+    let residency = TranscribeCppPreviewResidency()
+    let built = Built()
+    let candidate = WhisperPreviewEngineResolver.MeetingCandidate(
+      key: LivePreviewEngineKey(engine: "whisper_preview#test", commitment: "en"),
+      language: "en",
+      makeRuntime: {
+        built.note()
+        return Self.runtime(driver, residency: residency)
+      })
+    #expect(built.value == 0, "a candidate allocates nothing")
+    let engine = candidate.makeEngine(admitTranscriptDecode: {})
+    try await Self.step("the prepare", driver) { try await engine.prepare() }
+    let mic = Received()
+    let call = Received()
+    let vocabulary = LivePreviewVocabulary(lookups: nil, contextualPhrases: [], dictionaryEnabled: true)
+    let micSession = try await Self.step("mic open", driver) {
+      try await engine.recognizer.openTranscriptSession(vocabulary: vocabulary, onEvent: mic.receive)
+    }
+    let callSession = try await Self.step("call open", driver) {
+      try await engine.recognizer.openTranscriptSession(vocabulary: vocabulary, onEvent: call.receive)
+    }
+    try await Self.step("feeds", driver) {
+      await micSession.feed(Self.speech)
+      await callSession.feed(Self.speech)
+    }
+    await Self.within("both tracks' words", driver) {
+      await mic.until(1)
+      await call.until(1)
+    }
+    #expect(built.value == 1 && driver.loads == 1, "one runtime, one model, two tracks")
+    try await Self.step("the ends", driver) {
+      await micSession.end()
+      await callSession.end()
+    }
+    let release = await engine.beginRelease()
+    await Self.within("the release", driver) { await release.value }
+    let again = await engine.beginRelease()
+    await Self.within("a second release", driver) { await again.value }
+    #expect(driver.unloads == [1], "that runtime's model, freed once")
+    #expect(residency.loadedCount == 0)
+  }
+
+  @Test("the meeting engine's decodes still refuse while told to, and recover in place")
+  func meetingEngineAdmissionRecovers() async throws {
+    let driver = FakeDriver()
+    driver.openAll()
+    let admission = Admission(refusing: true)
+    let candidate = WhisperPreviewEngineResolver.MeetingCandidate(
+      key: LivePreviewEngineKey(engine: "whisper_preview#test", commitment: ""),
+      language: nil, makeRuntime: { Self.runtime(driver) })
+    let engine = candidate.makeEngine(admitTranscriptDecode: admission.admit)
+    let received = Received()
+    let session = try await Self.step("the open", driver) {
+      try await engine.recognizer.openTranscriptSession(
+        vocabulary: .init(lookups: nil, contextualPhrases: [], dictionaryEnabled: true),
+        onEvent: received.receive)
+    }
+    try await Self.step("the feed", driver) { await session.feed(Self.speech) }
+    await Self.within("three refusals", driver) { await admission.reach(3) }
+    #expect(driver.entered == 0 && received.all.isEmpty)
+    admission.allow()
+    await Self.within("the first words", driver) { await received.until(1) }
+    try await Self.step("the end", driver) { await session.end() }
+    #expect(received.all.last == .ended(.requested))
+  }
+
   @Test("the retained preview audio ceiling is two minutes at 16 kHz (#2117)")
   func retainedAudioCeilingIsTwoMinutes() {
     #expect(TranscribeCppPreviewSession.maxRetainedSamples == 1_920_000)
