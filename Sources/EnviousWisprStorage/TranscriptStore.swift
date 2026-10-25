@@ -980,11 +980,15 @@ public final class TranscriptStore {
       AppConstants.transcriptsHandoffPrefix + id, isDirectory: true)
     let deleting = parent.appendingPathComponent(
       AppConstants.transcriptsDeletingPrefix + id, isDirectory: true)
-    // Registered before the folder exists, so start-up cleanup never finishes a handoff this
-    // Delete All is still using. Both run on the main actor, so the check and the use cannot
-    // interleave.
-    Self.handoffsInFlight.insert(handoff.path)
-    defer { Self.handoffsInFlight.remove(handoff.path) }
+    // Held from before the handoff exists until this returns, so start-up cleanup in any app
+    // copy sharing the folder never finishes a handoff this Delete All is still using. The
+    // cleanup holds it only for one rename, so waiting here is brief.
+    guard let lock = Self.takeDeleteAllLock(in: parent, wait: true) else {
+      throw CocoaError(
+        .fileWriteUnknown,
+        userInfo: [NSFilePathErrorKey: AppConstants.transcriptsDeleteAllLockName])
+    }
+    defer { close(lock) }
     try renameExclusive(directory, to: handoff, step: .handoff)
     do {
       try prepareReplacement()
@@ -1093,16 +1097,30 @@ public final class TranscriptStore {
     }
   }
 
-  /// Handoff folders a Delete All in this process is using right now (#4075 G1).
-  private static var handoffsInFlight: Set<String> = []
+  /// Opens the Delete All lock file beside the History folder and takes it (#4075 G1). Every
+  /// app copy sharing the folder uses the same file, so a Delete All in one copy and start-up
+  /// cleanup in another never act on the same handoff folder. A `flock` lock belongs to the
+  /// open file, so two opens in one process exclude each other too. Returns the descriptor, or
+  /// nil when the lock is held and `wait` is false, or the file cannot be opened. The kernel
+  /// releases the lock when the descriptor closes or the process ends.
+  private nonisolated static func takeDeleteAllLock(in parent: URL, wait: Bool) -> Int32? {
+    let path = parent.appendingPathComponent(AppConstants.transcriptsDeleteAllLockName).path
+    let fd = open(path, O_RDWR | O_CREAT | O_CLOEXEC, 0o600)
+    guard fd >= 0 else { return nil }
+    guard flock(fd, wait ? LOCK_EX : LOCK_EX | LOCK_NB) == 0 else {
+      close(fd)
+      return nil
+    }
+    return fd
+  }
 
   /// At start, finishes what an interrupted or failed Delete All left (#4001 H7, #4075 G1).
   /// Only a direct child of the parent that is a real folder (not a link) named exactly
   /// `.transcripts-deleting-<UUID>` or `.transcripts-handoff-<UUID>`. A deleting folder is
   /// removed. A handoff folder holds the rows of a Delete All the user confirmed that did not
   /// finish, so it is cleared for removal (renamed to its deleting name) and removed; leaving it
-  /// kept text on disk that History no longer showed. A handoff a Delete All in this process is
-  /// still using is skipped.
+  /// kept text on disk that History no longer showed. While a Delete All holds the lock, in this
+  /// or another app copy, the handoff is left for the next start.
   private nonisolated static func scheduleLeftoverCleanup(besides directory: URL) -> Task<
     Void, Never
   > {
@@ -1124,7 +1142,9 @@ public final class TranscriptStore {
         {
           let deleting = parent.appendingPathComponent(
             AppConstants.transcriptsDeletingPrefix + id.uuidString, isDirectory: true)
-          guard let cleared = await clearForRemoval(url, to: deleting) else { continue }
+          guard let cleared = await clearForRemoval(url, to: deleting, parent: parent) else {
+            continue
+          }
           await AppLogger.shared.log(
             "Finishing a Delete All that did not complete (\(name))",
             level: .info, category: "TranscriptStore")
@@ -1139,34 +1159,29 @@ public final class TranscriptStore {
     }
   }
 
-  /// Renames a leftover handoff folder to its deleting name, on the main actor so a Delete All
-  /// in this process cannot be using it at the same moment. Returns the deleting folder, or nil
-  /// (logged) when the handoff is in use or the rename fails; a failed rename leaves the handoff
-  /// for the next start.
-  private nonisolated static func clearForRemoval(_ handoff: URL, to deleting: URL) async -> URL? {
-    let outcome: Int32? = await MainActor.run {
-      guard !handoffsInFlight.contains(handoff.path) else { return nil }
-      return renamex_np(handoff.path, deleting.path, UInt32(RENAME_EXCL)) == 0 ? 0 : errno
-    }
-    switch outcome {
-    case nil:
+  /// Renames a leftover handoff folder to its deleting name while holding the Delete All lock,
+  /// so no Delete All in any app copy is using it. Returns the deleting folder, or nil (logged)
+  /// when the lock is held or the rename fails; the handoff then waits for the next start.
+  private nonisolated static func clearForRemoval(_ handoff: URL, to deleting: URL, parent: URL)
+    async -> URL?
+  {
+    guard let lock = takeDeleteAllLock(in: parent, wait: false) else {
+      await AppLogger.shared.log(
+        "Left \(handoff.lastPathComponent) for the next start: a Delete All is running",
+        level: .info, category: "TranscriptStore")
       return nil
-    case 0:
-      return deleting
-    case let code?:
+    }
+    let code: Int32 =
+      renamex_np(handoff.path, deleting.path, UInt32(RENAME_EXCL)) == 0 ? 0 : errno
+    close(lock)
+    guard code == 0 else {
       await AppLogger.shared.log(
         "Could not clear \(handoff.lastPathComponent) for removal: errno \(code)",
         level: .info, category: "TranscriptStore")
       return nil
     }
+    return deleting
   }
-
-  #if DEBUG
-    /// Marks a handoff folder as in use by a Delete All, so a test can prove start-up skips it.
-    static func markHandoffInFlightForTesting(_ handoff: URL, _ inFlight: Bool) {
-      if inFlight { handoffsInFlight.insert(handoff.path) } else { handoffsInFlight.remove(handoff.path) }
-    }
-  #endif
 
   /// The UUID after `prefix` when `name` is exactly `prefix` plus a UUID, else nil.
   private nonisolated static func reservedID(_ name: String, prefix: String) -> UUID? {

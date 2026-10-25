@@ -36,7 +36,8 @@ struct TranscriptStoreDeleteAllTests {
 
       func siblings() -> [String] {
         ((try? FileManager.default.contentsOfDirectory(atPath: parent.path)) ?? [])
-          .filter { $0 != "transcripts" }.sorted()
+          .filter { $0 != "transcripts" && $0 != AppConstants.transcriptsDeleteAllLockName }
+          .sorted()
       }
 
       func jsonNames(in folder: URL) -> [String] {
@@ -213,8 +214,8 @@ struct TranscriptStoreDeleteAllTests {
       #expect(box.jsonNames(in: box.directory).isEmpty, "History opens empty, as confirmed")
     }
 
-    @Test("start-up leaves alone a handoff folder a Delete All is still using")
-    func startupSkipsHandoffInUse() async throws {
+    @Test("start-up leaves alone a handoff folder while a Delete All holds the lock")
+    func startupSkipsHandoffWhileLocked() async throws {
       let box = Sandbox()
       defer { box.remove() }
       let fm = FileManager.default
@@ -222,13 +223,23 @@ struct TranscriptStoreDeleteAllTests {
         AppConstants.transcriptsHandoffPrefix + UUID().uuidString, isDirectory: true)
       try fm.createDirectory(at: handoff, withIntermediateDirectories: false)
       try Data("x".utf8).write(to: handoff.appendingPathComponent("a.json"))
-      TranscriptStore.markHandoffInFlightForTesting(handoff, true)
-      defer { TranscriptStore.markHandoffInFlightForTesting(handoff, false) }
+      // Another app copy's Delete All: the same lock file, taken through a separate open.
+      let lockPath = box.parent.appendingPathComponent(
+        AppConstants.transcriptsDeleteAllLockName
+      ).path
+      let holder = open(lockPath, O_RDWR | O_CREAT, 0o600)
+      #expect(holder >= 0)
+      #expect(flock(holder, LOCK_EX) == 0)
 
       let store = box.store(cleansLeftovers: true)
       await store.leftoverCleanupForTesting?.value
-
       #expect(fm.fileExists(atPath: handoff.appendingPathComponent("a.json").path))
+
+      // Released, the next start finishes it.
+      close(holder)
+      let restarted = box.store(cleansLeftovers: true)
+      await restarted.leftoverCleanupForTesting?.value
+      #expect(!fm.fileExists(atPath: handoff.path))
     }
 
     // MARK: - Start-up cleanup
