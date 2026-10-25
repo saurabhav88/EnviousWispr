@@ -138,22 +138,35 @@ package actor TranscribeCppPreviewRuntime {
   /// `language` nil is native detection (Auto): this model detects language itself, and must
   /// never inherit Apple's system-locale guess. The session holds this runtime through its
   /// decode closure, so the model stays loaded while any session can still decode.
+  ///
+  /// #3973, for EnviousMeet's live words: `onTranscript` receives the session's lossless
+  /// transcript events (`Publication.onTranscript`). `admitDecode` is asked before every decode
+  /// of this session, after the window is cut and before native work starts; throwing refuses
+  /// that decode, which the rolling loop treats like any refused decode: the audio stays, and
+  /// the next cycle tries again. Both default to today's behaviour.
   package func makeSession(
     language: String?,
     hypothesisRetentionLimit: Int,
     onHypothesis: @escaping @Sendable (String) -> Void,
-    onAudioReleased: @escaping @Sendable (Int) -> Void
+    onAudioReleased: @escaping @Sendable (Int) -> Void,
+    onTranscript: (@Sendable (TranscriptEvent) -> Void)? = nil,
+    admitDecode: @escaping @Sendable () async throws -> Void = {}
   ) async throws -> any WhisperIncrementalSession {
     let model = try await model()
+    var publication = TranscribeCppRollingSession.Publication(
+      retentionLimit: hypothesisRetentionLimit, onHypothesis: onHypothesis,
+      onAudioReleased: onAudioReleased)
+    publication.onTranscript = onTranscript
     return TranscribeCppRollingSession(
       decode: { [self] samples in
         _ = self  // the session keeps the model's owner alive while it can decode
+        try await admitDecode()
+        // A session cancelled while its admission waited never starts native work.
+        try Task.checkCancellation()
         return try await model.transcribe(samples, language)
       },
       cadence: cadence,
-      publication: .init(
-        retentionLimit: hypothesisRetentionLimit, onHypothesis: onHypothesis,
-        onAudioReleased: onAudioReleased))
+      publication: publication)
   }
 
   /// Whether a model is currently held. Lets a caller assert residency rather than infer it.

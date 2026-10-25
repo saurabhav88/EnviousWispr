@@ -35,6 +35,7 @@ struct TranscribeCppPreviewRecognizerTests {
     private var _entered = 0
     private var _exited = 0
     private var _cancelled = 0
+    private var _languages: [String?] = []
     private var gates: [CheckedContinuation<Void, Never>] = []
     private var waiters: [(() -> Bool, CheckedContinuation<Void, Never>)] = []
     private var open = false
@@ -50,6 +51,8 @@ struct TranscribeCppPreviewRecognizerTests {
     var exited: Int { lock.withLock { _exited } }
     /// Held decodes whose caller was cancelled (the abort reached the boundary).
     var cancelled: Int { lock.withLock { _cancelled } }
+    /// The language each decode was asked for, in order.
+    var languages: [String?] { lock.withLock { _languages } }
 
     func load(modelPath: String, lane: TranscribeCppExecutor.Lane) async throws -> Int {
       let failing = lock.withLock { () -> Bool in
@@ -82,6 +85,7 @@ struct TranscribeCppPreviewRecognizerTests {
           // it (#3808: counting first let a release hit an empty gate and hang `end()`).
           let passThrough = lock.withLock { () -> Bool in
             _lanes.append(lane)
+            _languages.append(language)
             if running > 0 { overlapped = true }
             running += 1
             _entered += 1
@@ -394,6 +398,285 @@ struct TranscribeCppPreviewRecognizerTests {
     #expect(driver.entered >= feeds, "decoding never stopped")
     #expect(maxRetained < 40 * 16_000, "the owner kept a rolling window, not the recording")
     try await Self.step("the end", driver) { await session.end() }
+  }
+
+  // MARK: - #3973: transcript forwarding and per-session decode admission
+
+  /// A growing recording the session pulls, as its owner's provider would return it.
+  final class Recording: @unchecked Sendable {
+    private let lock = NSLock()
+    private var samples: [Float] = []
+    func set(seconds: Double) {
+      let count = Int(seconds * 16_000)
+      lock.withLock {
+        samples = (0..<count).map { i in
+          // Tone then silence per 1.2 s, so the silent-tail filter sees speech followed by quiet.
+          i % 19_200 < 16_000 ? Float(sin(Double(i) * 0.05)) * 0.2 : 0
+        }
+      }
+    }
+    var provider: @Sendable () async -> (samples: [Float], count: Int) {
+      { [self] in lock.withLock { (samples, samples.count) } }
+    }
+  }
+
+  /// Transcript events and displayed texts, with waits on their counts.
+  final class Outputs: @unchecked Sendable {
+    /// Recursive, as in `FakeDriver`: waiter conditions run under this lock and read the public
+    /// accessors, which take it again.
+    private let lock = NSRecursiveLock()
+    private var events: [TranscriptEvent] = []
+    private var texts: [String] = []
+    private var releases: [Int] = []
+    private var waiters: [(() -> Bool, CheckedContinuation<Void, Never>)] = []
+    var allEvents: [TranscriptEvent] { lock.withLock { events } }
+    var allTexts: [String] { lock.withLock { texts } }
+    var allReleases: [Int] { lock.withLock { releases } }
+    func event(_ e: TranscriptEvent) { change { events.append(e) } }
+    func text(_ t: String) { change { texts.append(t) } }
+    func released(_ mark: Int) { change { releases.append(mark) } }
+    private func change(_ body: () -> Void) {
+      let ready = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
+        body()
+        let met = waiters.filter { $0.0() }.map(\.1)
+        waiters.removeAll { $0.0() }
+        return met
+      }
+      for waiter in ready { waiter.resume() }
+    }
+    func until(_ condition: @escaping () -> Bool) async {
+      await withCheckedContinuation { c in
+        let now = lock.withLock { () -> Bool in
+          if condition() { return true }
+          waiters.append((condition, c))
+          return false
+        }
+        if now { c.resume() }
+      }
+    }
+    var finalized: String {
+      allEvents.reduce(into: "") { text, event in
+        if case .update(let finalized, _) = event { text += finalized }
+      }
+    }
+  }
+
+  /// Counts admission calls and refuses while `refusing`; with `gated`, each call waits for
+  /// `open()` and signals its arrival first.
+  final class Admission: @unchecked Sendable {
+    struct Refused: Error {}
+    private let lock = NSLock()
+    private var refusing: Bool
+    private var gated: Bool
+    private var calls = 0
+    private var gate: [CheckedContinuation<Void, Never>] = []
+    private var opened = false
+    private var waiters: [(Int, CheckedContinuation<Void, Never>)] = []
+    init(refusing: Bool = false, gated: Bool = false) {
+      self.refusing = refusing
+      self.gated = gated
+    }
+    var count: Int { lock.withLock { calls } }
+    func allow() { lock.withLock { refusing = false } }
+    @Sendable func open() {
+      let parked = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
+        opened = true
+        defer { gate = [] }
+        return gate
+      }
+      for c in parked { c.resume() }
+    }
+    func reach(_ n: Int) async {
+      await withCheckedContinuation { c in
+        let now = lock.withLock { () -> Bool in
+          if calls >= n { return true }
+          waiters.append((n, c))
+          return false
+        }
+        if now { c.resume() }
+      }
+    }
+    var admit: @Sendable () async throws -> Void {
+      { [self] in
+        let (ready, wait) = lock.withLock { () -> ([CheckedContinuation<Void, Never>], Bool) in
+          calls += 1
+          let ready = waiters.filter { $0.0 <= calls }.map(\.1)
+          waiters.removeAll { $0.0 <= calls }
+          return (ready, gated && !opened)
+        }
+        for c in ready { c.resume() }
+        if wait {
+          await withCheckedContinuation { c in
+            let now = lock.withLock { () -> Bool in
+              if opened { return true }
+              gate.append(c)
+              return false
+            }
+            if now { c.resume() }
+          }
+        }
+        if lock.withLock({ refusing }) { throw Refused() }
+      }
+    }
+  }
+
+  private static func runtime(_ driver: FakeDriver) -> TranscribeCppPreviewRuntime {
+    TranscribeCppPreviewRuntime(
+      driver: driver, modelPath: "/models/whisper-small-Q8_0.gguf", isAdmitted: { true },
+      cadence: .milliseconds(1), residency: .init())
+  }
+
+  private static func transcriptSession(
+    _ runtime: TranscribeCppPreviewRuntime, _ outputs: Outputs, language: String? = "en",
+    transcript: Bool = true, admission: Admission? = nil
+  ) async throws -> any WhisperIncrementalSession {
+    if let admission {
+      return try await runtime.makeSession(
+        language: language, hypothesisRetentionLimit: 2_000, onHypothesis: outputs.text,
+        onAudioReleased: outputs.released, onTranscript: transcript ? outputs.event : nil,
+        admitDecode: admission.admit)
+    }
+    if transcript {
+      return try await runtime.makeSession(
+        language: language, hypothesisRetentionLimit: 2_000, onHypothesis: outputs.text,
+        onAudioReleased: outputs.released, onTranscript: outputs.event)
+    }
+    return try await runtime.makeSession(
+      language: language, hypothesisRetentionLimit: 2_000, onHypothesis: outputs.text,
+      onAudioReleased: outputs.released)
+  }
+
+  @Test("transcript events travel through a runtime-made session, with a finalized delta")
+  func transcriptThroughRuntime() async throws {
+    let driver = FakeDriver()
+    driver.openAll()
+    let outputs = Outputs()
+    let recording = Recording()
+    recording.set(seconds: 1.2)
+    let session = try await Self.transcriptSession(Self.runtime(driver), outputs)
+    try await Self.step("the start", driver) { await session.start(audioSamplesProvider: recording.provider) }
+    await Self.within("the first decode", driver) { await driver.until { driver.entered >= 1 } }
+    recording.set(seconds: 2.4)
+    await Self.within("a finalized delta", driver) {
+      await outputs.until { outputs.finalized.contains("Hello there.") }
+    }
+    try await Self.step("the cancel", driver) { await session.cancel() }
+    #expect(outputs.allEvents.first == .update(finalized: "", inProgress: "Hello there."))
+    #expect(outputs.finalized == "Hello there.", "finalized exactly once")
+  }
+
+  @Test("a session made without the new inputs shows exactly what it showed before")
+  func defaultsPreserveTheDisplay() async throws {
+    var shown: [[String]] = []
+    for transcript in [false, true] {
+      let driver = FakeDriver()
+      driver.openAll()
+      let outputs = Outputs()
+      let recording = Recording()
+      recording.set(seconds: 1.2)
+      let session = try await Self.transcriptSession(
+        Self.runtime(driver), outputs, transcript: transcript)
+      try await Self.step("the start", driver) { await session.start(audioSamplesProvider: recording.provider) }
+      await Self.within("the first decode", driver) { await driver.until { driver.entered >= 1 } }
+      recording.set(seconds: 2.4)
+      await Self.within("the second decode", driver) { await driver.until { driver.exited >= 2 } }
+      try await Self.step("the cancel", driver) { await session.cancel() }
+      shown.append(outputs.allTexts)
+      #expect(transcript || outputs.allEvents.isEmpty, "no transcript owner, no events")
+    }
+    #expect(shown[0] == ["Hello there."], "control: the display text arrived")
+    #expect(shown[0] == shown[1])
+  }
+
+  @Test("a refused decode never reaches native code, and the same session decodes once admitted")
+  func refusedThenAdmitted() async throws {
+    let driver = FakeDriver()
+    driver.openAll()
+    let outputs = Outputs()
+    let recording = Recording()
+    recording.set(seconds: 1.2)
+    let admission = Admission(refusing: true)
+    let session = try await Self.transcriptSession(
+      Self.runtime(driver), outputs, admission: admission)
+    try await Self.step("the start", driver) { await session.start(audioSamplesProvider: recording.provider) }
+    await Self.within("three refusals", driver) { await admission.reach(3) }
+    #expect(driver.entered == 0, "refused decodes never enter native code")
+    admission.allow()
+    await Self.within("the retried decode", driver) {
+      await outputs.until { !outputs.allEvents.isEmpty }
+    }
+    try await Self.step("the cancel", driver) { await session.cancel() }
+    #expect(outputs.allEvents.first == .update(finalized: "", inProgress: "Hello there."))
+    #expect(driver.loads == 1, "the same session and model, never reloaded")
+  }
+
+  @Test("two sessions on one runtime keep their own admission decisions")
+  func admissionIsPerSession() async throws {
+    let driver = FakeDriver()
+    driver.openAll()
+    let runtime = Self.runtime(driver)
+    let refusedOutputs = Outputs()
+    let admittedOutputs = Outputs()
+    let refused = Admission(refusing: true)
+    let admitted = Admission()
+    let recording = Recording()
+    recording.set(seconds: 1.2)
+    let a = try await Self.transcriptSession(runtime, refusedOutputs, admission: refused)
+    let b = try await Self.transcriptSession(runtime, admittedOutputs, admission: admitted)
+    try await Self.step("the start", driver) { await a.start(audioSamplesProvider: recording.provider) }
+    try await Self.step("the start", driver) { await b.start(audioSamplesProvider: recording.provider) }
+    await Self.within("the admitted session's text", driver) {
+      await admittedOutputs.until { !admittedOutputs.allEvents.isEmpty }
+    }
+    await Self.within("refusals on the other session", driver) { await refused.reach(3) }
+    try await Self.step("the cancel", driver) { await a.cancel() }
+    try await Self.step("the cancel", driver) { await b.cancel() }
+    #expect(refusedOutputs.allEvents.isEmpty && refusedOutputs.allTexts.isEmpty)
+    #expect(driver.loads == 1, "one model for both")
+  }
+
+  @Test("a session cancelled while its admission waits never starts the decode")
+  func cancelDuringAdmission() async throws {
+    let driver = FakeDriver()
+    driver.openAll()
+    let outputs = Outputs()
+    let recording = Recording()
+    recording.set(seconds: 1.2)
+    let admission = Admission(gated: true)
+    let session = try await Self.transcriptSession(
+      Self.runtime(driver), outputs, admission: admission)
+    try await Self.step("the start", driver) { await session.start(audioSamplesProvider: recording.provider) }
+    let rolling = try #require(session as? TranscribeCppRollingSession)
+    await Self.within("the waiting admission", driver) { await admission.reach(1) }
+    let cancelling = Task { await session.cancel() }
+    // The cancel has cancelled the loop and is waiting to join it; the parked admission is what
+    // it waits on. Opening it lets the loop resume into a cancelled task.
+    await Self.within("the cancel reaching its drain", driver, { await rolling.drainJoins(reach: 1) })
+    admission.open()
+    await Self.within("the cancel", driver) { await cancelling.value }
+    #expect(driver.entered == 0, "no native decode after a cancel that landed during admission")
+  }
+
+  @Test("the new path keeps the preview lane, the language and the audio-release notices")
+  func preservesLaneLanguageAndRelease() async throws {
+    let driver = FakeDriver()
+    driver.openAll()
+    let outputs = Outputs()
+    let recording = Recording()
+    recording.set(seconds: 17)
+    let session = try await Self.transcriptSession(
+      Self.runtime(driver), outputs, language: "de", admission: Admission())
+    try await Self.step("the start", driver) { await session.start(audioSamplesProvider: recording.provider) }
+    await Self.within("the first decode", driver) { await driver.until { driver.exited >= 1 } }
+    recording.set(seconds: 18.2)
+    // The second decode agrees, commits, and the window trims past 15 s: one release notice.
+    await Self.within("the release notice", driver) {
+      await outputs.until { !outputs.allReleases.isEmpty }
+    }
+    try await Self.step("the cancel", driver) { await session.cancel() }
+    #expect(driver.lanes.allSatisfy { $0 == .preview })
+    #expect(!driver.languages.isEmpty && driver.languages.allSatisfy { $0 == "de" })
+    #expect(outputs.allReleases.first == 17_600, "released up to the committed 1.1 s boundary")
   }
 
   @Test("the retained preview audio ceiling is two minutes at 16 kHz (#2117)")
