@@ -79,20 +79,49 @@ public enum CallEvidenceReader {
     }
   }
 
-  /// Zoom: a "Zoom Meeting" or "Zoom Webinar" window (FluidVoice's rule; the main
+  /// Zoom: a meeting window in any Zoom language (`ZoomCallWindow`, #4036; the main
   /// "Zoom Workplace" window is not a call). Slack: a huddle window.
   private static func callWindow(family: CallAppFamily, appPID: pid_t) -> Evidence {
-    guard let titles = windowTitles(appPID: appPID) else { return .unknown }
-    let lowered = titles.map { $0.lowercased() }
-    let isCall: Bool =
-      switch family {
-      case .zoom: lowered.contains { $0.contains("zoom meeting") || $0.contains("zoom webinar") }
-      // A huddle window's title starts with "Huddle"; a channel named "#huddle-…" does not
-      // count (review r15 F5; the real titles are a live check in #4036).
-      case .slack: lowered.contains { $0.hasPrefix("huddle") }
-      default: false
+    let isCall: Bool
+    switch family {
+    case .zoom:
+      switch zoomMeetingWindow(appPID: appPID) {
+      case .call: isCall = true
+      case .none: isCall = false
+      case .unknown: return .unknown
       }
+    case .slack:
+      guard let titles = windowTitles(appPID: appPID) else { return .unknown }
+      // A huddle window's title starts with "Huddle"; a channel named "#huddle-…" does not
+      // count (review r15 F5). English only: the other languages are open in #4036.
+      isCall = titles.contains { $0.lowercased().hasPrefix("huddle") }
+    default:
+      isCall = false
+    }
     return isCall ? .call(family: family, room: "pid-\(appPID)") : .none
+  }
+
+  /// Reads each Zoom window's identifier, then its title, only until one proves a meeting.
+  private static func zoomMeetingWindow(appPID: pid_t) -> ZoomCallWindow.Verdict {
+    let app = AXUIElementCreateApplication(appPID)
+    AXUIElementSetMessagingTimeout(app, messagingTimeout)
+    guard case .value(let value) = copy(app, kAXWindowsAttribute as CFString),
+      let windows = value as? [AXUIElement]
+    else { return .unknown }
+    return ZoomCallWindow.classify(
+      windowCount: windows.count,
+      identifier: { stringRead(windows[$0], kAXIdentifierAttribute as CFString) },
+      title: { stringRead(windows[$0], kAXTitleAttribute as CFString) })
+  }
+
+  private static func stringRead(_ element: AXUIElement, _ attribute: CFString)
+    -> ZoomCallWindow.Read
+  {
+    switch copy(element, attribute) {
+    case .value(let value): (value as? String).map { .value($0) } ?? .missing
+    case .missing: .missing
+    case .failed: .failed
+    }
   }
 
   /// The front window's web page address: the first `AXWebArea`'s `AXURL` within a bounded
