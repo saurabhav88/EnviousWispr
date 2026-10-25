@@ -402,4 +402,44 @@ struct TranscriptDocumentPresenterTests {
     #expect(key("x") != key("x", markedUp: false))
     #expect(key("x") != key("x", language: "de"))
   }
+
+  @Test("only Marked up builds the per-turn diff pairs (#4075)")
+  @MainActor
+  func diffPairsOnlyForMarkedUp() {
+    func inputs(_ mode: FileImportCoordinator.DocumentView) -> TranscriptTurnsDocument.Inputs {
+      TranscriptTurnsDocument.Inputs(
+        rowID: UUID(), text: Self.rawText, turns: [Self.turn("0-5", "A", 0..<5)],
+        speakerNames: [:], language: "en", isMeeting: false, mode: mode, timesOn: false,
+        documentFinished: true)
+    }
+    var built = 0
+    let pairs = { () -> FileImportCoordinator.TurnDiffInput in
+      built += 1
+      return FileImportCoordinator.TurnDiffInput(
+        pairs: [.init(id: "0-5", original: "hello", cleaned: "Hello!")], language: "en")
+    }
+    for mode in [FileImportCoordinator.DocumentView.cleaned, .original] {
+      #expect(TranscriptTurnsDocument.DiffKey.task(for: inputs(mode), pairs: pairs).input == nil)
+    }
+    #expect(built == 0, "Cleaned and Original never slice the turns for diffs")
+    #expect(TranscriptTurnsDocument.DiffKey.task(for: inputs(.markedUp), pairs: pairs).input != nil)
+    #expect(built == 1)
+  }
+
+  @Test("a meeting's turns view compares equal data and distinguishes document changes (#4075)")
+  @MainActor
+  func meetingTurnsDocumentEquality() {
+    let id = UUID()
+    let turns = [Self.turn("0-5", "A", 0..<5), Self.turn("6-18", "B", 6..<18)]
+    func doc(
+      _ turns: [Turn], text: String = Self.rawText, names: [String: String] = ["A": "Ana"]
+    ) -> MeetingTurnsDocument {
+      MeetingTurnsDocument(
+        rowID: id, turns: turns, rawText: text, speakerNames: names, player: nil)
+    }
+    #expect(doc(turns) == doc(turns))
+    #expect(doc(turns) != doc(Array(turns.prefix(1))))
+    #expect(doc(turns) != doc(turns, text: "hello there friends"))
+    #expect(doc(turns) != doc(turns, names: ["A": "Ben"]))
+  }
 }

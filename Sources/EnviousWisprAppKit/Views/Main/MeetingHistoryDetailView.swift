@@ -496,22 +496,11 @@ struct MeetingHistoryDetailView: View {
         }
         switch projection {
         case .visible(let turns, _):
-          TurnDocumentView(
-            turns: MeetingGapPresentation.localized(
-              TranscriptDocumentPresenter.render(
-                turns: turns, rawText: row.text, speakerNames: row.speakerNames ?? [:],
-                mode: .cleaned, timesOn: true, documentFinished: true, diffLookup: { _ in nil })),
-            onRename: { speakerId, name in
-              transcripts.renameSpeaker(
-                id: row.id, speakerId: speakerId, name: name, isMeeting: true)
-            },
-            onPlayFrom: player.map { player in
-              { startMs in
-                player.seek(toMs: startMs)
-                player.play()
-              }
-            },
-            fallback: { EmptyView() })
+          MeetingTurnsDocument(
+            rowID: row.id, turns: turns, rawText: row.text,
+            speakerNames: row.speakerNames ?? [:], player: player
+          )
+          .equatable()
         case .everythingHidden:
           Text(MeetingHistoryPresentation.everythingHiddenMessage)
             .font(.stBody)
@@ -558,5 +547,41 @@ struct MeetingHistoryDetailView: View {
         break
       }
     }
+  }
+}
+
+/// A ready meeting's visible turns (#4075 G6). Compared on its document data and player
+/// identity so parent updates with unchanged inputs can skip turn preparation.
+struct MeetingTurnsDocument: View, Equatable {
+  let rowID: UUID
+  let turns: [Turn]
+  let rawText: String
+  let speakerNames: [String: String]
+  let player: MeetingPlaybackController?
+  @Environment(TranscriptCoordinator.self) private var transcripts
+
+  nonisolated static func == (a: MeetingTurnsDocument, b: MeetingTurnsDocument) -> Bool {
+    a.rowID == b.rowID && a.player === b.player
+      && MeetingDocumentHash.sameBytes(a.rawText, b.rawText)
+      && MeetingDocumentHash.sameBytes(a.speakerNames, b.speakerNames)
+      && TranscriptTurnsDocument.Inputs.sameTurns(a.turns, b.turns)
+  }
+
+  var body: some View {
+    TurnDocumentView(
+      turns: MeetingGapPresentation.localized(
+        TranscriptDocumentPresenter.render(
+          turns: turns, rawText: rawText, speakerNames: speakerNames,
+          mode: .cleaned, timesOn: true, documentFinished: true, diffLookup: { _ in nil })),
+      onRename: { speakerId, name in
+        transcripts.renameSpeaker(id: rowID, speakerId: speakerId, name: name, isMeeting: true)
+      },
+      onPlayFrom: player.map { player in
+        { startMs in
+          player.seek(toMs: startMs)
+          player.play()
+        }
+      },
+      fallback: { EmptyView() })
   }
 }

@@ -31,6 +31,61 @@ struct HistoryReuseTests {
       text: "held", createdAt: now, escapeRecoveredAt: now, escapeRecoveryTakeID: "TAKE-1")
   }
 
+  // #4075 G8: History cancels a read a newer one replaces. The cancellation reaches the disk
+  // walk, which stops instead of decoding every row file.
+  @Test("a cancelled History read stops instead of reading every row file")
+  func cancelledReadStops() async throws {
+    let dir = Self.makeTempDir()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let store = TranscriptStore(directory: dir)
+    for index in 0..<500 { try store.save(Self.row("row \(index)")) }
+    let read = Task { try await store.readHistory() }
+    read.cancel()
+    await #expect(throws: CancellationError.self) { try await read.value }
+    // Control: the same store reads in full when nothing cancels it.
+    #expect(try await store.readHistory().permanent.count == 500)
+  }
+
+  #if DEBUG
+    /// Counts row files a read reached; the worker thread and the test both touch it.
+    private final class ReadCount: @unchecked Sendable {
+      private let lock = NSLock()
+      private var count = 0
+      func next() -> Int { lock.withLock { count += 1; return count } }
+      var value: Int { lock.withLock { count } }
+    }
+
+    @Test("a History read cancelled mid-walk stops before reading the remaining row files")
+    func cancelledMidWalkStops() async throws {
+      let dir = Self.makeTempDir()
+      defer { try? FileManager.default.removeItem(at: dir) }
+      let store = TranscriptStore(directory: dir)
+      for index in 0..<500 { try store.save(Self.row("row \(index)")) }
+      let reached = ReadCount()
+      let started = DispatchSemaphore(value: 0)
+      let release = DispatchSemaphore(value: 0)
+      store.permanentFileWillReadForTesting = {
+        guard reached.next() == 1 else { return }
+        started.signal()
+        // deadline-fallback: the test signals the release; 10 s only frees a test that never does.
+        _ = release.wait(timeout: .now() + 10)
+      }
+      let read = Task { try await store.readHistory() }
+      // Waited on a dispatch thread, off the main actor the read's caller needs.
+      await withCheckedContinuation { continuation in
+        DispatchQueue.global().async {
+          // deadline-fallback: the walk signals at its first file; 10 s only frees a broken read.
+          _ = started.wait(timeout: .now() + 10)
+          continuation.resume()
+        }
+      }
+      read.cancel()
+      release.signal()
+      await #expect(throws: CancellationError.self) { try await read.value }
+      #expect(reached.value == 1, "the walk stopped at the next file, not after all 500")
+    }
+  #endif
+
   // The coordinator's read and reuse counters exist only in Debug builds.
   #if DEBUG
     private func open(_ coordinator: TranscriptCoordinator) async {
