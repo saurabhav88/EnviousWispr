@@ -14,7 +14,7 @@ struct SettingsShellWiringTests {
   static let settingsDir = "Sources/EnviousWisprAppKit/Views/Settings"
 
   static func parse(_ path: String) throws -> SourceFileSyntax {
-    Parser.parse(
+    CachedSwiftParser.parse(
       source: try String(contentsOf: RepoRoot.url.appending(path: path), encoding: .utf8))
   }
 
@@ -104,12 +104,12 @@ struct SettingsShellWiringTests {
 
   @Test("a misbound switch, a switch outside the heading or a card is seen")
   func dictionaryControl() {
-    let page = Parser.parse(
+    let page = CachedSwiftParser.parse(
       source: """
         DictionarySettingsHeading(isEnabled: $settings.otherSetting)
         Toggle("Enable Dictionary", isOn: $settings.wordCorrectionEnabled)
         """)
-    let heading = Parser.parse(
+    let heading = CachedSwiftParser.parse(
       source: """
         struct DictionarySettingsHeading: View {
           var body: some View {
@@ -299,7 +299,7 @@ struct SettingsShellWiringTests {
 
   @Test("a lost navigation action, a swapped dot source or an update that selects is seen")
   func shellControl() {
-    let fixture = Parser.parse(
+    let fixture = CachedSwiftParser.parse(
       source: """
         struct UnifiedWindowView: View {
           var list: some View {

@@ -81,12 +81,12 @@ struct ClipboardSettingsCopyTests {
     #expect(declared.count >= 14, "parsed \(declared.count); the enum has moved")
     #expect(declared == Set(Self.expected.keys), "declared \(declared.sorted())")
 
-    let page = Parser.parse(
+    let page = CachedSwiftParser.parse(
       source: try String(
         contentsOf: RepoRoot.url.appending(path: ClipboardSettingsWiringTests.path), encoding: .utf8
       ))
     // #3482: the row titles and headings reach the page through the Settings Map.
-    let map = Parser.parse(
+    let map = CachedSwiftParser.parse(
       source: try String(
         contentsOf: RepoRoot.url.appending(
           path: "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift"),

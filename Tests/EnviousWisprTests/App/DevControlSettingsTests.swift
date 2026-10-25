@@ -35,7 +35,7 @@
         contentsOf: repoRoot.appendingPathComponent(
           "Sources/EnviousWisprServices/SettingsManager.swift"),
         encoding: .utf8)
-      let tree = Parser.parse(source: source)
+      let tree = CachedSwiftParser.parse(source: source)
       try #require(tree.hasError == false)
       let owner = try #require(
         tree.statements.compactMap { $0.item.as(ClassDeclSyntax.self) }

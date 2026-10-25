@@ -14,7 +14,7 @@ struct LivePreviewSettingsWiringTests {
   static let path = "Sources/EnviousWisprAppKit/Views/Settings/LivePreviewSettingsView.swift"
 
   static func tree() throws -> SourceFileSyntax {
-    Parser.parse(
+    CachedSwiftParser.parse(
       source: try String(contentsOf: RepoRoot.url.appending(path: path), encoding: .utf8))
   }
 
@@ -49,11 +49,11 @@ struct LivePreviewSettingsWiringTests {
 
   @Test("a status call moved into the choices is seen")
   func statusRegionControl() {
-    let placed = Parser.parse(
+    let placed = CachedSwiftParser.parse(
       source: """
         SettingsSummaryCard(isExpanded: $x) { a() } status: { engineStatus(selected: s, universal: u) } choices: { b() }
         """)
-    let moved = Parser.parse(
+    let moved = CachedSwiftParser.parse(
       source: """
         SettingsSummaryCard(isExpanded: $x) { a() } status: { } choices: { b(); engineStatus(selected: s, universal: u) }
         """)
@@ -72,7 +72,7 @@ struct LivePreviewSettingsWiringTests {
   /// sits in the same place either way), so this reads `SettingsRow.actionRow` itself.
   @Test("an action row's help button is a sibling of its button, never inside it")
   func actionRowHelpIsASibling() throws {
-    let tree = Parser.parse(
+    let tree = CachedSwiftParser.parse(
       source: try String(
         contentsOf: RepoRoot.url.appending(path: Self.componentsPath), encoding: .utf8))
     let shape = try #require(Self.actionRowShape(in: tree), "actionRow not found")
@@ -82,7 +82,7 @@ struct LivePreviewSettingsWiringTests {
 
   @Test("a help button nested in the action row's button is seen")
   func actionRowControl() throws {
-    let nested = Parser.parse(
+    let nested = CachedSwiftParser.parse(
       source: """
         struct R {
           private func actionRow(_ action: @escaping () -> Void) -> some View {
@@ -139,7 +139,7 @@ struct LivePreviewSettingsWiringTests {
     ]
     var checked = 0
     for file in files {
-      let tree = Parser.parse(
+      let tree = CachedSwiftParser.parse(
         source: try String(contentsOf: RepoRoot.url.appending(path: file), encoding: .utf8))
       for toggle in Self.hiddenLabelToggles(in: tree) {
         checked += 1
@@ -189,7 +189,7 @@ struct LivePreviewSettingsWiringTests {
 
   @Test("a labelled switch with hidden labels is seen")
   func hiddenLabelControl() {
-    let fixture = Parser.parse(
+    let fixture = CachedSwiftParser.parse(
       source: """
         Toggle(isOn: $x) { Text("Name") }.labelsHidden().fixedSize()
         Toggle("", isOn: $y).labelsHidden()
@@ -205,7 +205,7 @@ struct LivePreviewSettingsWiringTests {
 
   @Test("a perform call in the cards is attributed to the cards")
   func ownerControl() {
-    let fixture = Parser.parse(
+    let fixture = CachedSwiftParser.parse(
       source: """
         struct V {
           private func engineCard() { perform(.download) }
@@ -217,7 +217,7 @@ struct LivePreviewSettingsWiringTests {
 
   @Test("an onSelect that also downloads is seen")
   func onSelectControl() {
-    let fixture = Parser.parse(
+    let fixture = CachedSwiftParser.parse(
       source: "EngineCard(onSelect: { settings.livePreviewEngine = choice; perform(.download) })")
     #expect(
       Self.closureStatements(label: "onSelect", in: fixture)
@@ -341,7 +341,7 @@ struct LivePreviewSettingsWiringTests {
           siblings.append(name)
           if name == "Button" {
             helpInside += LivePreviewSettingsWiringTests.calls(
-              named: "SettingsInfoButton", in: Parser.parse(source: call.trimmedDescription)
+              named: "SettingsInfoButton", in: CachedSwiftParser.parse(source: call.trimmedDescription)
             ).count
           }
         }

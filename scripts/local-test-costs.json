@@ -1,0 +1,458 @@
+{
+  "schema": 1,
+  "slots": 4,
+  "provenance": {
+    "issue": 4089,
+    "baseline_head": "b9563ad8c42213f28108fce9e92ebd7f963adcbe",
+    "baseline_tree": "483c2b5f2b63f218496ae0f2eea5881505f8dff8",
+    "historical_summary_sha256": "3734112a9b6919a72db93b3a69a920ebf9563a77770cf98c43d5d536ea989cd2",
+    "baseline_cost_population_sha256": "85d9ce66d9fd596c8a2d09fcaadb64b3ddb4909440cbf7c20b4c00288cb7e6c8",
+    "parser_slice_cases": 119,
+    "parser_slice_console_seconds": 24.657,
+    "weights": "Qualified B0 summed execution leaves; replace the nine targeted parser-family weights with the one successful E3/E2 verification. No wall-time prediction.",
+    "protected": "All unlisted suites, desktop-effects/ASR bundles, live UI and unreviewed resources remain together. Shutdown and LanguageGate fixtures are unchanged; only their E5 suite allocation is screened. Changed reviewed test files fall back to the protected worker."
+  },
+  "costs": {
+    "EnviousWisprTests/TestInventoryFreezeTests": 0.5254440307617188,
+    "EnviousWisprTests/ClipboardIsolationFreezeTests": 1.534214973449707,
+    "EnviousWisprTests/EngineMutationInventoryFreezeTests": 0.5960216522216797,
+    "EnviousWisprTests/TelemetryEmitterRegistryTests": 0.36428236961364746,
+    "EnviousWisprTests/DesktopEffectIsolationFreezeTests": 0.7972891330718994,
+    "EnviousWisprTests/ProviderSetupCredentialOwnershipTests": 0.17821788787841797,
+    "EnviousWisprTests/SettingsMapRegistrationTests": 20.445401191711426,
+    "EnviousWisprTests/SentryScopeWriterFreezeTests": 0.1880629062652588,
+    "EnviousWisprTests/CachedSwiftParserTests": 0.005199909210205078,
+    "EnviousWisprTests/ClipboardSettingsWiringTests": 0.028582096099853516,
+    "EnviousWisprTests/EngineProtocolSurfaceFreezeTests": 0.6023142337799072,
+    "EnviousWisprTests/LivePreviewSettingsWiringTests": 0.4929206371307373,
+    "EnviousWisprTests/MarkedUpPassageAccessibilityFreezeTests": 6.812692642211914,
+    "EnviousWisprTests/MicrophoneCaptureWiringTests": 0.275402307510376,
+    "EnviousWisprTests/MicrophoneSettingsWiringTests": 0.07171750068664551,
+    "EnviousWisprTests/ModelPreparingImpressionPlacementTests": 0.06792855262756348,
+    "EnviousWisprTests/RecordingChimeWiringTests": 0.09918999671936035,
+    "EnviousWisprTests/SettingsControlAffordanceTests": 0.5907683372497559,
+    "EnviousWisprTests/SettingsNavigationProducerTests": 1.4286162853240967,
+    "EnviousWisprTests/SettingsShellWiringTests": 0.17749714851379395,
+    "EnviousWisprTests/SettingsSearchBenchParityTests": 12.797623872756958,
+    "EnviousWisprTests/SettingsSearchUnigramTokenizerTests": 10.465254545211792,
+    "EnviousWisprTests/SettingsSearchBothLegsTests": 8.633872747421265,
+    "EnviousWisprTests/SettingsSearchTelemetryTests": 7.407750368118286,
+    "EnviousWisprTests/SettingsSearchMeaningEncoderTests": 5.340547800064087,
+    "EnviousWisprTests/SettingsSearchVocabularyTests": 4.24594521522522,
+    "EnviousWisprTests/SettingsSearchMatchingTests": 2.4562034606933594,
+    "EnviousWisprTests/SettingsSearchMeaningAssetsTests": 1.0030312538146973,
+    "EnviousWisprTests/SettingsSearchModelTests": 0.9959642887115479,
+    "EnviousWisprTests/ParakeetUpgradePolicyTests": 24.32341718673706,
+    "EnviousWisprTests/ModelDeliveryControllerTests": 7.934262752532959,
+    "EnviousWisprTests/ManifestFetchTaskTests": 0.14577913284301758,
+    "EnviousWisprTests/EGOneAdapterLifecycleTests": 11.614131212234497,
+    "EnviousWisprTests/EGOneOutsideStopRecoveryTests": 20.36182951927185,
+    "EnviousWisprTests/InverseTextNormalizerParityTests": 10.383347511291504,
+    "EnviousWisprTests/SpokenPunctuationToggleTests": 8.215462923049927,
+    "EnviousWisprTests/ContactsImportCorrectorBenchmark": 4.638360977172852,
+    "EnviousWisprTests/ImportFileParserTests": 3.0348927974700928,
+    "EnviousWisprTests/SnippetImportParsersTests": 2.9378955364227295,
+    "EnviousWisprTests/LanguageNumberParserTests": 2.903146505355835,
+    "EnviousWisprTests/WordDiffTests": 2.861257553100586,
+    "EnviousWisprTests/ITNGeneratedDataTests": 0.9870517253875732,
+    "EnviousWisprTests/RecognizerMarksTests": 0.9311544895172119,
+    "__protected__": 225.46830427646637,
+    "EnviousWisprTests/WordCheckRuntimeTerminationTests": 70.9241316318512,
+    "EnviousWisprTests/LanguageGateBenchmarkTests": 49.566404819488525,
+    "EnviousWisprTests/MeetingCoordinatorTests": 5.977246046066284,
+    "EnviousWisprTests/ModelDeliveryHomeTests": 7.117426633834839,
+    "EnviousWisprTests/OnboardingSetupKickTests": 6.921501874923706,
+    "EnviousWisprTests/KernelFinalizationWiringTests": 4.802134990692139,
+    "EnviousWisprTests/RecordingSessionKernelScenarioTests": 3.6047263145446777
+  },
+  "blocks": [
+    {
+      "name": "ast",
+      "reason": "Read-only source scanners and private syntax fixtures; inventory writer forces one process.",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/TestInventoryFreezeTests",
+          "file": "Tests/EnviousWisprTests/Architecture/TestInventoryFreezeTests.swift",
+          "sha256": "6c43c51ca916360ca731522858861750e701c326e12442b6dd73ab256d628d62"
+        },
+        {
+          "suite": "EnviousWisprTests/ClipboardIsolationFreezeTests",
+          "file": "Tests/EnviousWisprTests/Architecture/ClipboardIsolationFreezeTests.swift",
+          "sha256": "94003e1fcca376779605dde92518854d23598e9a62e3412de249be434f1fc101"
+        },
+        {
+          "suite": "EnviousWisprTests/EngineMutationInventoryFreezeTests",
+          "file": "Tests/EnviousWisprTests/Architecture/EngineMutationInventoryFreezeTests.swift",
+          "sha256": "4a5bc5379c8ca036e93271f56f82cf5823906840be8d41da4e477ae41eabed0f"
+        },
+        {
+          "suite": "EnviousWisprTests/TelemetryEmitterRegistryTests",
+          "file": "Tests/EnviousWisprTests/Architecture/TelemetryEmitterRegistryTests.swift",
+          "sha256": "25e73705725568025f7d90396ac988ec2a7136be43da2eca661feae182cd0af3"
+        },
+        {
+          "suite": "EnviousWisprTests/DesktopEffectIsolationFreezeTests",
+          "file": "Tests/EnviousWisprTests/Architecture/DesktopEffectIsolationFreezeTests.swift",
+          "sha256": "a0a0173e57f67148b65e91826b7ccda56189a29169fbebe02ad29a398d978a46"
+        },
+        {
+          "suite": "EnviousWisprTests/ProviderSetupCredentialOwnershipTests",
+          "file": "Tests/EnviousWisprTests/App/ProviderSetupCredentialTests.swift",
+          "sha256": "ca92d873c542a4ddb2ca4a05fcdb81efc570e8ca29d9f13a2182e3ab0159d633"
+        },
+        {
+          "suite": "EnviousWisprTests/SettingsMapRegistrationTests",
+          "file": "Tests/EnviousWisprTests/Architecture/SettingsMapRegistrationTests.swift",
+          "sha256": "f5e80c93556f8da6c7b72932cab515fbaef7a64164b8a5fd6509eb5f67730148"
+        },
+        {
+          "suite": "EnviousWisprTests/SentryScopeWriterFreezeTests",
+          "file": "Tests/EnviousWisprTests/Architecture/SentryScopeWriterFreezeTests.swift",
+          "sha256": "7466131002919ed680685dae5bccaa69e58cc485fee82f29678f02a97b2cb976"
+        },
+        {
+          "suite": "EnviousWisprTests/CachedSwiftParserTests",
+          "file": "Tests/EnviousWisprTests/Architecture/CachedSwiftParserTests.swift",
+          "sha256": "801636624215b0132dd400e716ae2c116242a2d7ef6f5cd6cf6da0d87ca9c5bf"
+        },
+        {
+          "suite": "EnviousWisprTests/ClipboardSettingsWiringTests",
+          "file": "Tests/EnviousWisprTests/Architecture/ClipboardSettingsWiringTests.swift",
+          "sha256": "64d94b739ab3ba30d343a12771d9b39ea3e84b106bdc0c4183a554dd8c81329e"
+        },
+        {
+          "suite": "EnviousWisprTests/EngineProtocolSurfaceFreezeTests",
+          "file": "Tests/EnviousWisprTests/Architecture/EngineProtocolSurfaceFreezeTests.swift",
+          "sha256": "1a3abb810a12dc0b19d1b98a94e9cb85781c5ce8765d046018689a1e04bdce16"
+        },
+        {
+          "suite": "EnviousWisprTests/LivePreviewSettingsWiringTests",
+          "file": "Tests/EnviousWisprTests/Architecture/LivePreviewSettingsWiringTests.swift",
+          "sha256": "e9028bfe4e120d5b0e87cb6cd671d970591164032b2fbb1fca036c40e8574a50"
+        },
+        {
+          "suite": "EnviousWisprTests/MarkedUpPassageAccessibilityFreezeTests",
+          "file": "Tests/EnviousWisprTests/Architecture/MarkedUpPassageAccessibilityFreezeTests.swift",
+          "sha256": "ee35ccd8589f271cedfcbd4b996186c893471403d1e368292a83b75da5423164"
+        },
+        {
+          "suite": "EnviousWisprTests/MicrophoneCaptureWiringTests",
+          "file": "Tests/EnviousWisprTests/Architecture/MicrophoneCaptureWiringTests.swift",
+          "sha256": "c67f6ba740a2a3904ff4abd708d40e73227ffbcc8e5d15320ad8e04b1b3da88c"
+        },
+        {
+          "suite": "EnviousWisprTests/MicrophoneSettingsWiringTests",
+          "file": "Tests/EnviousWisprTests/Architecture/MicrophoneSettingsWiringTests.swift",
+          "sha256": "4df22bd296ebb913e75d78885063c0f85bca5fe243d9d9bd5c8baff03f507966"
+        },
+        {
+          "suite": "EnviousWisprTests/ModelPreparingImpressionPlacementTests",
+          "file": "Tests/EnviousWisprTests/Architecture/ModelPreparingImpressionPlacementTests.swift",
+          "sha256": "e5d4e2b350f5c888530c0dd98b23dd38013d2565157524569e9435836b324a7e"
+        },
+        {
+          "suite": "EnviousWisprTests/RecordingChimeWiringTests",
+          "file": "Tests/EnviousWisprTests/Architecture/RecordingChimeWiringTests.swift",
+          "sha256": "4cc31ae21affa607e6a779ac55013de7e7e5d1e765ac01f368b21db288df5e9a"
+        },
+        {
+          "suite": "EnviousWisprTests/SettingsControlAffordanceTests",
+          "file": "Tests/EnviousWisprTests/Architecture/SettingsControlAffordanceTests.swift",
+          "sha256": "e9d9ef8971668d2e358ad882831707cc19c5ecef17b32224976973b13d7e879d"
+        },
+        {
+          "suite": "EnviousWisprTests/SettingsNavigationProducerTests",
+          "file": "Tests/EnviousWisprTests/Architecture/SettingsNavigationProducerTests.swift",
+          "sha256": "13000ee65f9a7fc2a26e04179f4ff0ed7d30b1343d1db300046e02de28291da1"
+        },
+        {
+          "suite": "EnviousWisprTests/SettingsShellWiringTests",
+          "file": "Tests/EnviousWisprTests/Architecture/SettingsShellWiringTests.swift",
+          "sha256": "37bba0d5ba7e459d8b0cb4e9a742fcb7c8e5ec0dfb70d39d76650978fe57396d"
+        }
+      ]
+    },
+    {
+      "name": "search",
+      "reason": "Read-only committed search assets, local indexes/encoders, private clocks or UUID temporary files. Keep meaning-model consumers together.",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/SettingsSearchBenchParityTests",
+          "file": "Tests/EnviousWisprTests/Settings/SettingsSearchBenchParityTests.swift",
+          "sha256": "e99af1c67fff217ce8b8517baab21d529df3ab03667fdb0e01b295f88b5e4ecf"
+        },
+        {
+          "suite": "EnviousWisprTests/SettingsSearchUnigramTokenizerTests",
+          "file": "Tests/EnviousWisprTests/Settings/SettingsSearchUnigramTokenizerTests.swift",
+          "sha256": "2d978551dabe8e15de02f730f0cbcda4d731d40fb819f75dd9574c78e0ad58a8"
+        },
+        {
+          "suite": "EnviousWisprTests/SettingsSearchBothLegsTests",
+          "file": "Tests/EnviousWisprTests/Settings/SettingsSearchBothLegsTests.swift",
+          "sha256": "de4af4059fbe1755818baadad2366c007e59b3243cd043fff783aa2b28a59e60"
+        },
+        {
+          "suite": "EnviousWisprTests/SettingsSearchTelemetryTests",
+          "file": "Tests/EnviousWisprTests/Settings/SettingsSearchTelemetryTests.swift",
+          "sha256": "48334bc13f2d11ed6014fb9586680c6fb1ee63cca7262267616f75e887ad0232"
+        },
+        {
+          "suite": "EnviousWisprTests/SettingsSearchMeaningEncoderTests",
+          "file": "Tests/EnviousWisprTests/Settings/SettingsSearchMeaningEncoderTests.swift",
+          "sha256": "2cd09fbe567f0e7d1504ff63708272ecbcc55d0335766d7a7efc09a7c99e81e1"
+        },
+        {
+          "suite": "EnviousWisprTests/SettingsSearchVocabularyTests",
+          "file": "Tests/EnviousWisprTests/Settings/SettingsSearchVocabularyTests.swift",
+          "sha256": "bad1577dd337f4c0afe8b8c24c8afbea3fa8a407862dcdc777fd022fccbb99dc"
+        },
+        {
+          "suite": "EnviousWisprTests/SettingsSearchMatchingTests",
+          "file": "Tests/EnviousWisprTests/Settings/SettingsSearchMatchingTests.swift",
+          "sha256": "0782e41da855dee1336e79ac6c2a8a9af510065bdf4a4091b78c457d12dc01e8"
+        },
+        {
+          "suite": "EnviousWisprTests/SettingsSearchMeaningAssetsTests",
+          "file": "Tests/EnviousWisprTests/Settings/SettingsSearchMeaningAssetsTests.swift",
+          "sha256": "d5de59a9784869e9aae791e40af43cf8c6495b0e787914222441a5fde11e1f08"
+        },
+        {
+          "suite": "EnviousWisprTests/SettingsSearchModelTests",
+          "file": "Tests/EnviousWisprTests/Settings/SettingsSearchModelTests.swift",
+          "sha256": "7d705207b2fdebff06a25c13a340eec99e9d5ad350df7d278e9a4ab578d685ce"
+        }
+      ]
+    },
+    {
+      "name": "delivery/ParakeetUpgradePolicyTests",
+      "reason": "Independent review: UUID staging/defaults or private fake server/model paths; scoped transport stubs.",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/ParakeetUpgradePolicyTests",
+          "file": "Tests/EnviousWisprTests/Pipeline/ParakeetUpgradeCoordinatorTests.swift",
+          "sha256": "da72842835297f0a4a6030e52ef9b6da8f3c5a2dd2cc0dd7fca5d8f9451cb338"
+        }
+      ]
+    },
+    {
+      "name": "delivery/ModelDeliveryControllerTests",
+      "reason": "Independent review: UUID staging/defaults or private fake server/model paths; scoped transport stubs.",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/ModelDeliveryControllerTests",
+          "file": "Tests/EnviousWisprTests/ModelDelivery/ModelDeliveryControllerTests.swift",
+          "sha256": "4e23d914ef537bf3d92408dad4687ec158c7a4693cba8e79e63c97a2fbc02184"
+        }
+      ]
+    },
+    {
+      "name": "delivery/ManifestFetchTaskTests",
+      "reason": "Independent review: UUID staging/defaults or private fake server/model paths; scoped transport stubs.",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/ManifestFetchTaskTests",
+          "file": "Tests/EnviousWisprTests/ModelDelivery/ManifestFetchTaskTests.swift",
+          "sha256": "bd01f85c2c3c057024d97591e62ff822624a287b30a3bbf4fe46e221a3540b50"
+        }
+      ]
+    },
+    {
+      "name": "delivery/EGOneAdapterLifecycleTests",
+      "reason": "Independent review: UUID staging/defaults or private fake server/model paths; scoped transport stubs.",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/EGOneAdapterLifecycleTests",
+          "file": "Tests/EnviousWisprTests/LLM/EGOneAdapterLifecycleTests.swift",
+          "sha256": "18aaaec6999368ee553639212d2d8c19c73c4746223d15378d8300d340d02372"
+        }
+      ]
+    },
+    {
+      "name": "delivery/EGOneOutsideStopRecoveryTests",
+      "reason": "Independent review: UUID staging/defaults or private fake server/model paths; scoped transport stubs.",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/EGOneOutsideStopRecoveryTests",
+          "file": "Tests/EnviousWisprTests/LLM/EGOneAdapterLifecycleTests.swift",
+          "sha256": "18aaaec6999368ee553639212d2d8c19c73c4746223d15378d8300d340d02372"
+        }
+      ]
+    },
+    {
+      "name": "text/InverseTextNormalizerParityTests",
+      "reason": "Pure text/corpus operations or UUID-owned import fixtures; no live desktop effects.",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/InverseTextNormalizerParityTests",
+          "file": "Tests/EnviousWisprTests/PostProcessing/InverseTextNormalizerParityTests.swift",
+          "sha256": "1bc391d9b5ddf242cffec47afedc5f1ab2ff7db7cc93660b141dbb9de3e86a4f"
+        }
+      ]
+    },
+    {
+      "name": "text/SpokenPunctuationToggleTests",
+      "reason": "Pure text/corpus operations or UUID-owned import fixtures; no live desktop effects.",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/SpokenPunctuationToggleTests",
+          "file": "Tests/EnviousWisprTests/PostProcessing/SpokenPunctuationToggleTests.swift",
+          "sha256": "1bad20861e4e60c02e8c51fd358f9259b2d491985b1af126de67b2bc6ba100da"
+        }
+      ]
+    },
+    {
+      "name": "text/ContactsImportCorrectorBenchmark",
+      "reason": "Pure text/corpus operations or UUID-owned import fixtures; no live desktop effects.",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/ContactsImportCorrectorBenchmark",
+          "file": "Tests/EnviousWisprTests/PostProcessing/ContactsImportCorrectorBenchmark.swift",
+          "sha256": "5ccedf93fa11d9d1732947b133dcfb55e56ab5653ca4d8239624e3b6ef0b49b7"
+        }
+      ]
+    },
+    {
+      "name": "text/ImportFileParserTests",
+      "reason": "Pure text/corpus operations or UUID-owned import fixtures; no live desktop effects.",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/ImportFileParserTests",
+          "file": "Tests/EnviousWisprTests/PostProcessing/ImportFileParserTests.swift",
+          "sha256": "490adf84af34655b7c333f03a86eadf921e23b357f1a2a47cb590cd393307b69"
+        }
+      ]
+    },
+    {
+      "name": "text/SnippetImportParsersTests",
+      "reason": "Pure text/corpus operations or UUID-owned import fixtures; no live desktop effects.",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/SnippetImportParsersTests",
+          "file": "Tests/EnviousWisprTests/PostProcessing/SnippetImportParsersTests.swift",
+          "sha256": "802c6d586258ceac91c9c745f8695b71f8dc7db4ab154ac4b32207243544ba2b"
+        }
+      ]
+    },
+    {
+      "name": "text/LanguageNumberParserTests",
+      "reason": "Pure text/corpus operations or UUID-owned import fixtures; no live desktop effects.",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/LanguageNumberParserTests",
+          "file": "Tests/EnviousWisprTests/PostProcessing/LanguageNumberParserTests.swift",
+          "sha256": "67ee0d89b1172e3dfb7718e2c571298e5e040ed649ae67f531e4e519659245a0"
+        }
+      ]
+    },
+    {
+      "name": "text/WordDiffTests",
+      "reason": "Pure text/corpus operations or UUID-owned import fixtures; no live desktop effects.",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/WordDiffTests",
+          "file": "Tests/EnviousWisprTests/Core/WordDiffTests.swift",
+          "sha256": "08a6931d65c8a3071ea0ff086713b551a690057c960f1e2c92b72da33fee5c00"
+        }
+      ]
+    },
+    {
+      "name": "text/ITNGeneratedDataTests",
+      "reason": "Pure text/corpus operations or UUID-owned import fixtures; no live desktop effects.",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/ITNGeneratedDataTests",
+          "file": "Tests/EnviousWisprTests/PostProcessing/ITNGeneratedDataTests.swift",
+          "sha256": "62386a8b39f6f4510087bf0c15bb34ab7d56c68a53c08432c2b5e2707ac677ac"
+        }
+      ]
+    },
+    {
+      "name": "text/RecognizerMarksTests",
+      "reason": "Pure text/corpus operations or UUID-owned import fixtures; no live desktop effects.",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/RecognizerMarksTests",
+          "file": "Tests/EnviousWisprTests/PostProcessing/RecognizerMarksTests.swift",
+          "sha256": "b57c526fcd1e469d126eacf16e989f1c6469fbf9275e3215da686d6c3764373f"
+        }
+      ]
+    },
+    {
+      "name": "isolated/WordCheckRuntimeTerminationTests",
+      "reason": "Unchanged shutdown fixture: UUID roots/defaults and APFS model clones; allocation only, no V2 optimization.",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/WordCheckRuntimeTerminationTests",
+          "file": "Tests/EnviousWisprTests/App/WordCheckRuntimeTerminationTests.swift",
+          "sha256": "9305f937bd44f2ae2d4261af62d14da0b44aa962702d3ece836bfeed823a8707"
+        }
+      ]
+    },
+    {
+      "name": "isolated/LanguageGateBenchmarkTests",
+      "reason": "Unchanged benchmark: deterministic text processing; its fixed report directory has one suite owner and the account queue excludes other CI jobs. Allocation only, no E4 optimization.",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/LanguageGateBenchmarkTests",
+          "file": "Tests/EnviousWisprTests/Pipeline/LanguageGateBenchmarkTests.swift",
+          "sha256": "ba9a2a1e31eca71c98b3d6831fa2d150dbfa23a77c82ebc87be66b44a9aebc00"
+        }
+      ]
+    },
+    {
+      "name": "isolated/MeetingCoordinatorTests",
+      "reason": "Fresh private coordinator harness, injected callbacks/stores and UUID checkpoint root.",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/MeetingCoordinatorTests",
+          "file": "Tests/EnviousWisprTests/App/MeetingCoordinatorTests.swift",
+          "sha256": "adf11b2e4afab02c7e9c004b774216cf6276af0afd3aaf43a0141e4acc97aadb"
+        }
+      ]
+    },
+    {
+      "name": "isolated/ModelDeliveryHomeTests",
+      "reason": "UUID install roots/defaults and injected engine actions; source review required before admission.",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/ModelDeliveryHomeTests",
+          "file": "Tests/EnviousWisprTests/App/ModelDeliveryHomeTests.swift",
+          "sha256": "f837fb8bd1f71e7449df0c0facdde3594e0879b2f4dcb992bf78b489da488475"
+        }
+      ]
+    },
+    {
+      "name": "isolated/OnboardingSetupKickTests",
+      "reason": "Private defaults-backed manager and injected setup actions.",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/OnboardingSetupKickTests",
+          "file": "Tests/EnviousWisprTests/App/OnboardingSetupKickTests.swift",
+          "sha256": "fd874b61091ff137aa8af1d31325de074ad82b4e592c81b8fea187206159c43b"
+        }
+      ]
+    },
+    {
+      "name": "isolated/KernelFinalizationWiringTests",
+      "reason": "Injected stores/paste closures and private finalization state; source review required.",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/KernelFinalizationWiringTests",
+          "file": "Tests/EnviousWisprTests/Pipeline/KernelFinalizationWiringTests.swift",
+          "sha256": "b9cceea79ac1b2e98e2234ae0a4d41fbc71b8aa09ec4b6cfb3dd6c47e8233ee6"
+        }
+      ]
+    },
+    {
+      "name": "isolated/RecordingSessionKernelScenarioTests",
+      "reason": "Fresh simulator fakes and kernel per scenario; no live microphone.",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/RecordingSessionKernelScenarioTests",
+          "file": "Tests/EnviousWisprTests/Pipeline/Simulator/RecordingSessionKernelScenarioTests.swift",
+          "sha256": "8cf9f69ef55184db7b188f5c6cb2f32d5cbf1beb8fcddfc9a0c855aa46adeb5c"
+        }
+      ]
+    }
+  ]
+}

@@ -202,7 +202,7 @@ struct PasteCascadeLandingContractTests {
 
   /// Nil when no `deliver` function exists (the guard then fails loudly via `#require`).
   static func inspect(_ source: String) -> Report? {
-    let tree = Parser.parse(source: source)
+    let tree = CachedSwiftParser.parse(source: source)
     guard
       let deliver = tree.descendants(FunctionDeclSyntax.self).first(where: {
         $0.name.text == "deliver"

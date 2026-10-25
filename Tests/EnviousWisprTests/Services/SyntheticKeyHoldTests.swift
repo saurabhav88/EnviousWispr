@@ -28,7 +28,7 @@ struct SyntheticKeyHoldTests {
     ] as [(String, String, String?)])
   func holdBetweenPosts(path: String, function: String, firstLabel: String?) throws {
     let text = try String(contentsOf: RepoRoot.sourceURL(path), encoding: .utf8)
-    let tree = Parser.parse(source: text)
+    let tree = CachedSwiftParser.parse(source: text)
     let finder = FunctionFinder(name: function, firstLabel: firstLabel, viewMode: .sourceAccurate)
     finder.walk(tree)
     #expect(

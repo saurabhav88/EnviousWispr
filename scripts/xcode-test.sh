@@ -30,6 +30,8 @@ if [ "${1:-}" = "--self-test" ]; then
   shift
   python3 "$PROJECT_ROOT/scripts/xcode-test-self-test.py" "$@"
   python3 "$PROJECT_ROOT/scripts/local-test-groups-test.py"
+  python3 "$PROJECT_ROOT/scripts/local-test-plan-test.py"
+  python3 "$PROJECT_ROOT/scripts/lib/prepare-toolchain-syntax.py" --self-test
   exec python3 "$PROJECT_ROOT/scripts/local-ci-queue-test.py"
 fi
 # #3524: keep the tracked pre-push hook switched on (scripts/githooks/install.sh owns the
@@ -161,7 +163,7 @@ while [ "$#" -gt 0 ]; do
       esac ;;
     --help|-h)
       echo "usage: scripts/xcode-test.sh [--filter TARGET/SUITE ...] [--configuration Debug|Release|both | --release] [--serial | --grouped] [--log-dir DIR] [--result-bundle-path PATH]"
-      echo "Default: one Debug run with isolated source and serial test groups. --serial restores the previous order. Batch related suites with repeated --filter. Release is for release-cut validation; --release retains legacy both-config behavior."
+      echo "Default: one Debug run with up to four measured-cost worker groups. --serial restores the previous order. Batch related suites with repeated --filter. Release is for release-cut validation; --release retains legacy both-config behavior."
       exit 0 ;;
     --result-bundle-path) option_value "$1" "${2:-}"; RESULT_BUNDLE_PATH="$2"; shift 2 ;;
     # #2165: a per-invocation log directory. `run_lane` SUMS every
@@ -278,6 +280,8 @@ fi
 
 # Generate the Xcode project (gitignored, never committed) — only when a
 # generation input actually changed (#2157 chunk C).
+# #4089: source-built package interfaces otherwise shadow the optimized compiler libraries.
+python3 "$PROJECT_ROOT/scripts/lib/prepare-toolchain-syntax.py" "$DERIVED_DATA"
 ew_ensure_generated "$PROJECT_ROOT"
 echo "==> phase generate: $((SECONDS - PHASE_START))s"
 

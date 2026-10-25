@@ -108,7 +108,7 @@ enum RouterCeilingParser {
   /// in the class body, and a visitor would happily descend into nested types.
   /// That is the only hand-written list walk left in this file.
   static func imports(in source: String) -> Set<String> {
-    ImportFinder.modules(in: Parser.parse(source: source))
+    ImportFinder.modules(in: CachedSwiftParser.parse(source: source))
   }
 
   /// Range of the first occurrence of `statement` in `body`, located over the
@@ -159,7 +159,7 @@ enum RouterCeilingParser {
       }
     }
 
-    for token in Parser.parse(source: body).tokens(viewMode: .sourceAccurate) {
+    for token in CachedSwiftParser.parse(source: body).tokens(viewMode: .sourceAccurate) {
       var position = token.position.utf8Offset
       for piece in token.leadingTrivia {
         let length = piece.sourceLength.utf8Length
@@ -205,7 +205,7 @@ enum RouterCeilingParser {
   // MARK: - Private
 
   private static func parsed(_ source: String, context: String) throws -> SourceFileSyntax {
-    let tree = Parser.parse(source: source)
+    let tree = CachedSwiftParser.parse(source: source)
     guard !tree.hasError else {
       Issue.record("Source did not parse cleanly for \(context)")
       throw ScanFailure(context: context, reason: "source did not parse cleanly (tree.hasError)")
@@ -219,7 +219,7 @@ enum RouterCeilingParser {
   /// as `nonisolated` and `final` are legal and mean what they mean in the real
   /// class.
   private static func members(in body: String) -> [DeclSyntax] {
-    let tree = Parser.parse(source: "final class __CeilingProbe {\n\(body)\n}")
+    let tree = CachedSwiftParser.parse(source: "final class __CeilingProbe {\n\(body)\n}")
     guard let probe = ClassFinder.find(named: "__CeilingProbe", in: tree) else { return [] }
 
     var collected: [DeclSyntax] = []

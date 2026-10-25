@@ -226,7 +226,7 @@ struct CapsuleBackgroundFreezeTests {
     entry: (what: String, declaration: String, expected: Int, path: String, literal: String)
   ) throws {
     let finder = DeclFinder(entry.declaration)
-    finder.walk(Parser.parse(source: try Self.read(entry.path)))
+    finder.walk(CachedSwiftParser.parse(source: try Self.read(entry.path)))
     let body = try #require(
       finder.found,
       """
@@ -298,7 +298,7 @@ struct CapsuleBackgroundFreezeTests {
     // separate weakness #2380 names and holds out of this row deliberately: it
     // needs reachability rather than a wider match, and folding it in here would
     // mix a fix with a redesign.
-    let tree = Parser.parse(source: source)
+    let tree = CachedSwiftParser.parse(source: source)
     let converter = SourceLocationConverter(fileName: Self.capsuleSourcePaths[0], tree: tree)
     let decl = try #require(
       Self.structDecl(named: "OverlayCapsuleBackground", in: tree),

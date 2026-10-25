@@ -161,7 +161,7 @@ struct ModelPreparingImpressionPlacementTests {
 
   static func emitters(in source: String) -> [Emitter] {
     let visitor = Collector()
-    visitor.walk(Parser.parse(source: source))
+    visitor.walk(CachedSwiftParser.parse(source: source))
     return visitor.found
   }
 

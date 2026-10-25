@@ -66,8 +66,11 @@ struct DesktopEffectIsolationFreezeTests {
 
   /// The tap and post references a file makes, read from its syntax tree: the name and the whole
   /// statement it sits in, whitespace collapsed, so a call split across lines is one statement.
-  fileprivate static func tapPostReferences(in text: String) -> [TapPostCollector.Hit] {
-    TapPostCollector.references(in: Parser.parse(source: text), banned: bannedTapPostNames)
+  fileprivate static func tapPostReferences(
+    in text: String, preparedTree: SourceFileSyntax? = nil
+  ) -> [TapPostCollector.Hit] {
+    TapPostCollector.references(
+      in: preparedTree ?? CachedSwiftParser.parse(source: text), banned: bannedTapPostNames)
   }
 
   /// The existing posting sites, each permitted as its exact statement in its own file, as in
@@ -92,8 +95,8 @@ struct DesktopEffectIsolationFreezeTests {
   }
 
   /// Every Swift file in `Sources/` and `Tests/` except the owning desktop module.
-  private static func nonOwnerSwiftSources() throws -> [(path: String, text: String)] {
-    var found: [(String, String)] = []
+  private static func nonOwnerSwiftSources() throws -> [(path: String, text: String, tree: SourceFileSyntax)] {
+    var found: [(String, String, SourceFileSyntax)] = []
     for top in ["Sources", "Tests"] {
       let root = RepoRoot.sourceURL(top)
       let e = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil)
@@ -101,7 +104,8 @@ struct DesktopEffectIsolationFreezeTests {
         guard url.pathExtension == "swift" else { continue }
         let path = top + url.path.dropFirst(root.path.count)
         if ownsTapAndPost(path) { continue }
-        found.append((path, try String(contentsOf: url, encoding: .utf8)))
+        let prepared = try CachedSwiftParser.snapshot(at: url)
+        found.append((path, prepared.source, prepared.tree))
       }
     }
     return found
@@ -113,13 +117,13 @@ struct DesktopEffectIsolationFreezeTests {
   /// not reach a live effect. `Tests/EnviousWisprDesktopEffectsTests/` is
   /// deliberately absent: three suites there construct live drivers on purpose,
   /// and that is the target's reason to exist.
-  private static func unitTestSources() throws -> [(name: String, text: String)] {
+  private static func unitTestSources() throws -> [(name: String, tree: SourceFileSyntax)] {
     let root = RepoRoot.sourceURL("Tests/EnviousWisprTests")
-    var found: [(String, String)] = []
+    var found: [(String, SourceFileSyntax)] = []
     let e = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil)
     while let url = e?.nextObject() as? URL {
       guard url.pathExtension == "swift" else { continue }
-      found.append((url.lastPathComponent, try String(contentsOf: url, encoding: .utf8)))
+      found.append((url.lastPathComponent, try CachedSwiftParser.snapshot(at: url).tree))
     }
     return found
   }
@@ -130,10 +134,9 @@ struct DesktopEffectIsolationFreezeTests {
     #expect(sources.count > 100, "the sweep found almost nothing — it is pointed at the wrong tree")
 
     var offenders: [String] = []
-    for (name, text) in sources {
+    for (name, tree) in sources {
       // Parse rather than grep: a banned name inside a comment or a string is not
       // a reference, and this file's own header names all five.
-      let tree = Parser.parse(source: text)
       let referenced = IdentifierCollector.identifiers(in: tree)
       for symbol in Self.bannedSymbols where referenced.contains(symbol) {
         offenders.append("\(name): \(symbol)")
@@ -162,8 +165,8 @@ struct DesktopEffectIsolationFreezeTests {
       "the tap/post sweep must include the live-adapter test target")
     var offenders: [String] = []
     var permittedSeen: Set<String> = []
-    for (path, text) in sources {
-      for hit in Self.tapPostReferences(in: text) {
+    for (path, text, tree) in sources {
+      for hit in Self.tapPostReferences(in: text, preparedTree: tree) {
         let key = path + "|" + hit.statement
         if Self.permittedTapPost.contains(key) {
           permittedSeen.insert(key)

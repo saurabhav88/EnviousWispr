@@ -2,6 +2,7 @@
 """Process-boundary tests of the real local group supervisor and verdict owners."""
 
 import json
+import hashlib
 import os
 from pathlib import Path
 import shutil
@@ -22,6 +23,7 @@ class GroupContract(unittest.TestCase):
         self.root = Path(self.tmp.name)
         (self.root / "scripts/lib").mkdir(parents=True)
         shutil.copyfile(HERE / "local-test-groups.py", self.root / "scripts/local-test-groups.py")
+        shutil.copyfile(HERE / "local_test_plan.py", self.root / "scripts/local_test_plan.py")
         for name in ("xcode-test-run.sh", "lane-verdict.sh", "lane-verdict.py"):
             shutil.copyfile(HERE / "lib" / name, self.root / "scripts/lib" / name)
         self.products = self.root / "products"
@@ -39,14 +41,14 @@ from pathlib import Path
 args = sys.argv[1:]
 assert args[0] == 'test-without-building', args
 root = Path(os.environ['FIXTURE_ROOT'])
-name = 'source' if any(a.startswith('-only-testing:') for a in args) else 'serial'
+name = Path(args[args.index('-resultBundlePath') + 1]).stem
 (root / (name + '-args.json')).write_text(json.dumps(args))
 (root / (name + '-env.json')).write_text(json.dumps({k: os.environ.get(k) for k in ('TEST_RUNNER_EW_APP_LOG_DIRECTORY', 'TEST_RUNNER_CI')}))
 (root / (name + '.started')).write_text(str(os.getpid()))
 (root / (name + '-group.pid')).write_text(str(os.getpgrp()))
-other = root / (('serial' if name == 'source' else 'source') + '.started')
+peers = os.environ.get('EXPECTED_GROUPS', 'source,serial').split(',')
 deadline = time.monotonic() + 8
-while not other.exists():
+while not all((root / (peer + '.started')).exists() for peer in peers):
     if time.monotonic() > deadline: sys.exit(91)
     time.sleep(0.01)
 if os.environ.get('HOLD_GROUP') == name:
@@ -57,9 +59,9 @@ if os.environ.get('HOLD_GROUP') == name:
     while True: time.sleep(0.05)
 if os.environ.get('FAIL_GROUP') == name: sys.exit(65)
 target = 'EnviousWisprTests'
-suites = ['DesktopEffectIsolationFreezeTests', 'ProviderSetupCredentialOwnershipTests', 'SettingsMapRegistrationTests', 'SentryScopeWriterFreezeTests']
-if os.environ.get('MISSING_SUITE'): suites.pop()
-groups = [(target, suites)] if name == 'source' else [(target, ['StatefulTests']), ('EnviousWisprDesktopEffectsTests', ['DesktopTests']), ('EnviousWisprASRTests', ['ASRTests'])]
+suites = [a.split(':', 1)[1].split('/')[1] for a in args if a.startswith('-only-testing:')]
+if os.environ.get('MISSING_SUITE') and suites: suites.pop()
+groups = [(target, suites)] if name != 'serial' else [(target, ['StatefulTests']), ('EnviousWisprDesktopEffectsTests', ['DesktopTests']), ('EnviousWisprASRTests', ['ASRTests'])]
 if os.environ.get('LEAK_SOURCE') and name == 'serial': groups[0][1].append('DesktopEffectIsolationFreezeTests')
 bundles = []
 for bundle, suite_names in groups:
@@ -100,7 +102,8 @@ if os.environ.get('DROP_PARAMETER'): roots[0]['children'][0]['children'][0]['chi
         self.env = dict(os.environ, PATH=str(self.bin) + os.pathsep + os.environ["PATH"],
                         FIXTURE_ROOT=str(self.root), CI="")
         for key in ("HOLD_GROUP", "FAIL_GROUP", "FAIL_VERDICT", "MISSING_SUITE", "LEAK_SOURCE",
-                    "FAIL_MERGE", "DROP_MERGED_CASE", "DROP_PARAMETER", "DUPLICATE_IDENTITY", "IGNORE_CHILD_TERM"):
+                    "FAIL_MERGE", "DROP_MERGED_CASE", "DROP_PARAMETER", "DUPLICATE_IDENTITY", "IGNORE_CHILD_TERM",
+                    "EXPECTED_GROUPS", "TEST_RUNNER_EW_WRITE_TEST_INVENTORY_BASELINE"):
             self.env.pop(key, None)
         self.command = [sys.executable, str(self.root / "scripts/local-test-groups.py"),
                         "--products", str(self.products), "--scheme", "EnviousWispr",
@@ -138,6 +141,51 @@ if os.environ.get('DROP_PARAMETER'): roots[0]['children'][0]['children'][0]['chi
         self.assertEqual([e["TEST_RUNNER_CI"] for e in envs], ["", ""])
         for args in (source, serial):
             self.assertEqual(args[args.index("-parallel-testing-enabled") + 1], "NO")
+
+    def four_worker_profile(self):
+        (self.root / "Tests").mkdir()
+        profile = {"schema": 1, "slots": 4,
+                   "costs": {"__protected__": 100}, "blocks": []}
+        for name in ("A", "B", "C"):
+            path = self.root / "Tests" / (name + ".swift")
+            path.write_text("struct " + name + " {}\n")
+            suite = "EnviousWisprTests/" + name
+            profile["costs"][suite] = 100
+            profile["blocks"].append({"suites": [{"suite": suite,
+                "file": "Tests/" + path.name,
+                "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}]})
+        (self.root / "scripts/local-test-costs.json").write_text(json.dumps(profile))
+
+    def test_four_workers_use_disjoint_outputs_and_preserve_all_results(self):
+        self.four_worker_profile()
+        names = ["serial", "worker-1", "worker-2", "worker-3"]
+        result = self.run_groups(EXPECTED_GROUPS=",".join(names))
+        self.assertEqual((self.logs / "combined.log").read_text().count("Test run with"), 4)
+        envs = [json.loads((self.root / (n + "-env.json")).read_text()) for n in names]
+        self.assertEqual(len({e["TEST_RUNNER_EW_APP_LOG_DIRECTORY"] for e in envs}), 4)
+        all_selected = []
+        for name in names[1:]:
+            args = json.loads((self.root / (name + "-args.json")).read_text())
+            self.assertEqual(args[args.index("-parallel-testing-enabled") + 1], "NO")
+            all_selected.extend(a.removeprefix("-only-testing:") for a in args
+                                if a.startswith("-only-testing:"))
+        serial = json.loads((self.root / "serial-args.json").read_text())
+        skipped = [a.removeprefix("-skip-testing:") for a in serial if a.startswith("-skip-testing:")]
+        self.assertEqual(sorted(all_selected), sorted(skipped))
+        self.assertEqual(len(set(all_selected)), 3)
+        self.assertIn("all results preserved", result.stdout)
+
+    def test_failure_in_a_new_worker_rejects_the_whole_run(self):
+        self.four_worker_profile()
+        self.run_groups(rc=1, EXPECTED_GROUPS="serial,worker-1,worker-2,worker-3", FAIL_GROUP="worker-2")
+        self.assertFalse((self.logs / "combined.log").exists())
+
+    def test_writer_mode_is_one_process_without_skip_selections(self):
+        self.four_worker_profile()
+        self.run_groups(EXPECTED_GROUPS="serial", TEST_RUNNER_EW_WRITE_TEST_INVENTORY_BASELINE="1")
+        args = json.loads((self.root / "serial-args.json").read_text())
+        self.assertFalse(any(a.startswith(("-skip-testing:", "-only-testing:")) for a in args))
+        self.assertFalse((self.root / "worker-1.started").exists())
 
     def test_either_worker_failure_fails_the_complete_run(self):
         for name in ("source", "serial"):

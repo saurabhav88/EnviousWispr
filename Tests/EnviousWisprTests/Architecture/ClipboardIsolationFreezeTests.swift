@@ -600,8 +600,10 @@ struct ClipboardIsolationFreezeTests {
 
   // MARK: Scanning
 
-  static func violations(inSource source: String, file: String) -> [Violation] {
-    let tree = Parser.parse(source: source)
+  static func violations(
+    inSource source: String, file: String, preparedTree: SourceFileSyntax? = nil
+  ) -> [Violation] {
+    let tree = preparedTree ?? CachedSwiftParser.parse(source: source)
     let visitor = ClipboardVisitor(
       converter: SourceLocationConverter(fileName: file, tree: tree),
       file: file,
@@ -829,7 +831,7 @@ struct ClipboardIsolationFreezeTests {
     writeCallsUsingExecutorBoard: [Bool], routeWritesAreDistinct: Bool,
     allClipboardWritesUseExecutorBoard: [Bool]
   ) {
-    let tree = Parser.parse(source: source)
+    let tree = CachedSwiftParser.parse(source: source)
     let visitor = SystemPasteTierVisitor(viewMode: .sourceAccurate)
     visitor.walk(tree)
     return (
@@ -994,10 +996,11 @@ struct ClipboardIsolationFreezeTests {
       // fixtures are string literals and the parser excludes those STRUCTURALLY, which is the same
       // control the `prosePasses` and `multilineStringPasses` rows assert. Removing the skip therefore
       // costs no false positives and closes a self-exemption.
-      let source = try String(contentsOf: url, encoding: .utf8)
+      let prepared = try CachedSwiftParser.snapshot(at: url)
       scanned += 1
       found += violations(
-        inSource: source, file: url.path.replacingOccurrences(of: prefix, with: ""))
+        inSource: prepared.source, file: url.path.replacingOccurrences(of: prefix, with: ""),
+        preparedTree: prepared.tree)
     }
     return (found, scanned)
   }
@@ -1031,7 +1034,7 @@ struct ClipboardIsolationFreezeTests {
   func pasteRoutesUseCleanupSnapshot() throws {
     let url = RepoRoot.sourceURL("Sources/EnviousWisprPipeline/PasteCascadeExecutor.swift")
     let source = try String(contentsOf: url, encoding: .utf8)
-    let tree = Parser.parse(source: source)
+    let tree = CachedSwiftParser.parse(source: source)
     let visitor = SnapshotRoutingVisitor(viewMode: .sourceAccurate)
     visitor.walk(tree)
 
@@ -1074,7 +1077,7 @@ struct ClipboardIsolationFreezeTests {
 
   @Test("a new automatic paste route cannot omit its cleanup snapshot")
   func automaticRouteWithoutSnapshotIsCaught() {
-    let tree = Parser.parse(
+    let tree = CachedSwiftParser.parse(
       source: """
         func deliver() {
           if firstRoute {
@@ -1094,7 +1097,7 @@ struct ClipboardIsolationFreezeTests {
 
   @Test("a cleanup snapshot must precede its automatic route write")
   func automaticRouteRejectsLateSnapshot() {
-    let tree = Parser.parse(
+    let tree = CachedSwiftParser.parse(
       source: """
         func deliver() {
           PasteService.pasteToActiveApp("one", to: pasteboard)
@@ -1109,7 +1112,7 @@ struct ClipboardIsolationFreezeTests {
 
   @Test("module-qualified route writes stay in the cleanup inventory")
   func moduleQualifiedAutomaticRouteIsCaught() {
-    let tree = Parser.parse(
+    let tree = CachedSwiftParser.parse(
       source: """
         func deliver() {
           EnviousWisprServices.PasteService.copyToClipboardReturningChangeCount(
@@ -1124,7 +1127,7 @@ struct ClipboardIsolationFreezeTests {
 
   @Test("a parenthesized route callee is still classified")
   func parenthesizedCalleeIsCaught() {
-    let tree = Parser.parse(
+    let tree = CachedSwiftParser.parse(
       source: """
         func deliver() {
           (PasteService.copyToClipboardReturningChangeCount)("one", to: pasteboard)
@@ -1141,7 +1144,7 @@ struct ClipboardIsolationFreezeTests {
   /// a check that stopped classifying anything would look clean.
   @Test("the route inventory reads both spellings of the executor's own board")
   func executorBoardSpellingsAreOneExpression() {
-    let tree = Parser.parse(
+    let tree = CachedSwiftParser.parse(
       source: """
         func deliver() {
           if firstRoute {

@@ -198,6 +198,7 @@ scripts/lib/*
 !scripts/lib/ci-phase.sh
 # #3729 PR-C: the validation receipt owner (written by xcode-test.sh, read by pre-push).
 !scripts/lib/validation-receipt.py
+!scripts/lib/prepare-toolchain-syntax.py
 !scripts/lib/mic-in-use.swift
 # #1677: the offline German number-data generator, its pinned upstream sources (with their
 # licences), manifest and tests are tracked; the committed generated Swift is what ships.
@@ -236,6 +237,9 @@ scripts/lib/*
 !scripts/xcode-test.sh
 !scripts/local-test-groups.py
 !scripts/local-test-groups-test.py
+!scripts/local_test_plan.py
+!scripts/local-test-costs.json
+!scripts/local-test-plan-test.py
 !scripts/local-ci-queue.py
 !scripts/local-ci-queue-test.py
 # #2335: end-to-end fake-swift driver for the receipt watchdog. Tracked for the same reason as

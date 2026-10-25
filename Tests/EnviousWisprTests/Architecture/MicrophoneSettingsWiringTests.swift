@@ -15,7 +15,7 @@ struct MicrophoneSettingsWiringTests {
   static let mediaPath = "Sources/EnviousWisprAppKit/Views/Settings/OtherAudioSettingsPanel.swift"
 
   static func source(_ path: String) throws -> SourceFileSyntax {
-    Parser.parse(
+    CachedSwiftParser.parse(
       source: try String(contentsOf: RepoRoot.url.appending(path: path), encoding: .utf8))
   }
 
@@ -50,7 +50,7 @@ struct MicrophoneSettingsWiringTests {
 
   @Test("a different resolver, or the right call in the wrong place, is seen")
   func resolverExtractorControls() {
-    let fixture = Parser.parse(
+    let fixture = CachedSwiftParser.parse(
       source: """
         var body: some View {
           let socketDevice = InputSocket.socketDevice(
@@ -105,7 +105,7 @@ struct MicrophoneSettingsWiringTests {
 
   @Test("a setter elsewhere does not count, and a missing write is seen")
   func extractorControls() {
-    let fixture = Parser.parse(
+    let fixture = CachedSwiftParser.parse(
       source: """
         let other = Binding<String>(get: { "" }, set: { v in settingsManager.preferredInputDeviceIDOverride = v })
         let inputDeviceSelection = Binding<String>(
@@ -119,7 +119,7 @@ struct MicrophoneSettingsWiringTests {
 
   @Test("an onAppear without the listener start is seen")
   func modifierControl() {
-    let fixture = Parser.parse(source: "var body: some View { Text(\"x\").onAppear { refresh() } }")
+    let fixture = CachedSwiftParser.parse(source: "var body: some View { Text(\"x\").onAppear { refresh() } }")
     #expect(Self.modifierBodies(named: "onAppear", in: fixture) == ["refresh()"])
   }
 

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Overlap reviewed source checks with serial stateful tests (#4056).
+"""Balance reviewed private fixtures beside protected stateful tests (#4089).
 
 Execution and verdicts stay in lib/xcode-test-run.sh. This owner coordinates
 processes, derives complementary selections, and preserves a complete result.
-No app-state suite runs concurrently with another app-state suite.
+Unreviewed suites stay together; each worker remains internally serial.
 """
 
 import argparse
@@ -99,6 +99,43 @@ def check_partition(source, remainder):
         raise ValueError("test identities overlap between groups")
 
 
+def balanced_groups(root, group_dir):
+    profile_path = root / "scripts/local-test-costs.json"
+    if not profile_path.exists():
+        # Compatibility with older standalone runner copies: retain the original
+        # reviewed split rather than infer safety from test names or class tags.
+        selectors = [f"{TARGET}/{suite}" for suite in SOURCE_SUITES]
+        return [("source", TARGET, selectors), ("serial", REQUIRED, [])]
+    from local_test_plan import plan_groups
+    profile = json.loads(profile_path.read_text())
+    groups, loads = plan_groups(
+        root, profile,
+        baseline_writer=os.environ.get("TEST_RUNNER_EW_WRITE_TEST_INVENTORY_BASELINE") == "1")
+    (group_dir / "worker-plan.json").write_text(json.dumps(
+        {"estimated_case_seconds": loads, "groups": dict(groups)}, indent=2) + "\n")
+    print("==> Worker estimated case-seconds (not wall time): "
+          + ", ".join(f"{load:.1f}" for load in loads), flush=True)
+    return [(name, REQUIRED if name == "serial" else TARGET, list(names))
+            for name, names in groups]
+
+
+def check_group_partition(inventories, groups):
+    seen = set()
+    selected = {name: set(names) for name, _, names in groups if name != "serial"}
+    all_selected = set().union(*selected.values()) if selected else set()
+    for name, cases in inventories.items():
+        suites = {"/".join(identity.split("/")[:2]) for identity in cases}
+        if name == "serial":
+            if suites & all_selected:
+                raise ValueError(f"selected suites also ran in the serial group: {sorted(suites & all_selected)}")
+        elif suites != selected[name]:
+            raise ValueError(f"{name} suite membership differs: missing={sorted(selected[name] - suites)}, "
+                             f"unexpected={sorted(suites - selected[name])}")
+        if seen & cases.keys():
+            raise ValueError("test identities overlap between groups")
+        seen.update(cases)
+
+
 def observed_exit(proc):
     """Observe completion WITHOUT releasing this child's reserved PID/PGID."""
     status = os.waitid(os.P_PID, proc.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
@@ -174,11 +211,8 @@ def run_groups(opts):
     if output.exists():
         raise ValueError(f"result already exists: {output}")
     group_dir = Path(tempfile.mkdtemp(prefix="test-groups-", dir=log.parent))
-    selectors = [f"{TARGET}/{suite}" for suite in SOURCE_SUITES]
-    groups = (
-        ("source", TARGET, ["-only-testing:" + name for name in selectors]),
-        ("serial", REQUIRED, ["-skip-testing:" + name for name in selectors]),
-    )
+    groups = balanced_groups(root, group_dir)
+    selected = [suite for name, _, suites in groups if name != "serial" for suite in suites]
     cancelled = []
 
     def cancel(signum, _frame):
@@ -193,7 +227,7 @@ def run_groups(opts):
     previous[signal.SIGCHLD] = signal.signal(signal.SIGCHLD, signal.SIG_DFL)
     children, handles = [], []
     try:
-        for name, required, args in groups:
+        for name, required, suites in groups:
             if cancelled:
                 raise InterruptedError(f"interrupted by signal {cancelled[0]}")
             prefix = group_dir / name
@@ -203,6 +237,8 @@ def run_groups(opts):
                        TEST_RUNNER_CI=os.environ.get("CI", ""))
             handle = (group_dir / (name + "-driver.log")).open("w")
             handles.append(handle)
+            args = (["-skip-testing:" + suite for suite in selected] if name == "serial"
+                    else ["-only-testing:" + suite for suite in suites])
             command = [
                 "bash", "-c", '. "$1"; shift; ew_run_tests "$@"', "local-test-group",
                 str(root / "scripts/lib/xcode-test-run.sh"), opts.products, opts.scheme,
@@ -232,15 +268,18 @@ def run_groups(opts):
                 time.sleep(0.05)
         if cancelled:
             raise InterruptedError(f"interrupted by signal {cancelled[0]}")
-        source = read_inventory(group_dir / "source.xcresult")
-        remainder = read_inventory(group_dir / "serial.xcresult")
-        check_partition(source, remainder)
+        inventories = {name: read_inventory(group_dir / (name + ".xcresult"))
+                       for name, _, _ in groups}
+        check_group_partition(inventories, groups)
+        union = {}
+        for cases in inventories.values():
+            union.update(cases)
         if cancelled:
             raise InterruptedError(f"interrupted by signal {cancelled[0]}")
         subprocess.run(["xcrun", "xcresulttool", "merge", "--output-path", str(output),
-                        str(group_dir / "source.xcresult"), str(group_dir / "serial.xcresult")], check=True)
+                        *(str(group_dir / (name + ".xcresult")) for name, _, _ in groups)], check=True)
         merged = read_inventory(output)
-        if merged != source | remainder:
+        if merged != union:
             raise ValueError("merged result does not preserve every original test case and parameter result")
         if cancelled:
             raise InterruptedError(f"interrupted by signal {cancelled[0]}")
@@ -248,8 +287,8 @@ def run_groups(opts):
             for name, _, _ in groups:
                 with (group_dir / (name + ".log")).open("rb") as part:
                     shutil.copyfileobj(part, combined)
-        print(f"==> Debug groups: {len(source)} source + {len(remainder)} serial test cases; "
-              "all results preserved", flush=True)
+        summary = " + ".join(f"{len(inventories[name])} {name}" for name, _, _ in groups)
+        print(f"==> Debug groups: {summary} test cases; all results preserved", flush=True)
     finally:
         # Reap owned groups before the parent runner can release its validation
         # lock, including launch/parse/merge failures and top-level cancellation.

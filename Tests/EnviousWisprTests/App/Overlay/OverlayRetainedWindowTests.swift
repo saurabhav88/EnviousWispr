@@ -68,7 +68,7 @@ struct OverlayRetainedWindowTests {
 
   private static func panelCalls(in text: String) -> (constructs: Int, closes: Int) {
     let finder = PanelCallFinder(viewMode: .sourceAccurate)
-    finder.walk(Parser.parse(source: text))
+    finder.walk(CachedSwiftParser.parse(source: text))
     return (finder.constructs, finder.closes)
   }
 

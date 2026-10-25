@@ -76,13 +76,13 @@ struct RecordingChimeCopyTests {
     #expect(declared.count >= 7, "parsed \(declared.count); the enum has moved")
     #expect(declared == Set(Self.expected.keys), "declared \(declared.sorted())")
 
-    let page = Parser.parse(
+    let page = CachedSwiftParser.parse(
       source: try String(
         contentsOf: RepoRoot.url.appending(
           path: "Sources/EnviousWisprAppKit/Views/Settings/RecordingChimesContent.swift"),
         encoding: .utf8))
     // #3482: the switch title and section heading reach the page through the Settings Map.
-    let map = Parser.parse(
+    let map = CachedSwiftParser.parse(
       source: try String(
         contentsOf: RepoRoot.url.appending(
           path: "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift"),
@@ -96,7 +96,7 @@ struct RecordingChimeCopyTests {
 
   @Test("a member read through the alias or the full name is seen, and a comment is not")
   func memberReaderControl() {
-    let fixture = Parser.parse(
+    let fixture = CachedSwiftParser.parse(
       source: """
         // Copy.ghost
         let a = Copy.sectionHeading

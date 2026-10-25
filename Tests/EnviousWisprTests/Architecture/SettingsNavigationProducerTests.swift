@@ -190,7 +190,7 @@ struct SettingsNavigationProducerTests {
   /// chain of owners that encloses it, innermost first.
   static func navigationCalls(in source: String, callee: String) -> [Call] {
     let visitor = CallCollector(callee: callee)
-    visitor.walk(Parser.parse(source: source))
+    visitor.walk(CachedSwiftParser.parse(source: source))
     return visitor.calls
   }
 
@@ -198,7 +198,7 @@ struct SettingsNavigationProducerTests {
     in source: String, callee: String, label: String
   ) -> [String] {
     let visitor = LabelCollector(callee: callee, label: label)
-    visitor.walk(Parser.parse(source: source))
+    visitor.walk(CachedSwiftParser.parse(source: source))
     return visitor.values
   }
 

@@ -138,8 +138,8 @@ struct SentryScopeWriterFreezeTests {
     }
   }
 
-  static func scan(file: String, source: String) -> [Site] {
-    let tree = Parser.parse(source: source)
+  static func scan(file: String, source: String, preparedTree: SourceFileSyntax? = nil) -> [Site] {
+    let tree = preparedTree ?? CachedSwiftParser.parse(source: source)
     let scanner = Scanner(file: file, tree: tree)
     scanner.walk(tree)
     return scanner.sites
@@ -167,7 +167,8 @@ struct SentryScopeWriterFreezeTests {
         continue
       }
       guard url.pathExtension == "swift" else { continue }
-      sites += scan(file: relative, source: try String(contentsOf: url, encoding: .utf8))
+      let prepared = try CachedSwiftParser.snapshot(at: url)
+      sites += scan(file: relative, source: prepared.source, preparedTree: prepared.tree)
     }
     return sites.sorted()
   }

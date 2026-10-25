@@ -93,7 +93,7 @@ struct MarkedUpPassageAccessibilityFreezeTests {
       guard url.pathExtension == "swift" else { continue }
       scanned += 1
       let visitor = Visitor(viewMode: .sourceAccurate)
-      visitor.walk(Parser.parse(source: try String(contentsOf: url, encoding: .utf8)))
+      visitor.walk(CachedSwiftParser.parse(source: try String(contentsOf: url, encoding: .utf8)))
       calls += visitor.markedUpTextCalls
       modifiers.formUnion(visitor.passageModifiers)
       uses += visitor.passageViewCalls

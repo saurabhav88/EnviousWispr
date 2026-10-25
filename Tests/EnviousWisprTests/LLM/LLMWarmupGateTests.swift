@@ -248,7 +248,7 @@ struct LLMWarmupGateTests {
   @Test("the claim decides and commits inside ONE critical section")
   func claimIsASingleCriticalSection() throws {
     let url = RepoRoot.sourceURL("Sources/EnviousWisprLLM/LLMNetworkSession.swift")
-    let tree = Parser.parse(source: try String(contentsOf: url, encoding: .utf8))
+    let tree = CachedSwiftParser.parse(source: try String(contentsOf: url, encoding: .utf8))
     let visitor = CriticalSectionVisitor(functionName: "claimWarmupSlot", viewMode: .sourceAccurate)
     visitor.walk(tree)
 

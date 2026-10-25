@@ -519,7 +519,7 @@ struct PasteTargetWindowGateWiringTests {
     let text = try String(
       contentsOf: RepoRoot.sourceURL("Sources/EnviousWisprPipeline/PasteCascadeExecutor.swift"),
       encoding: .utf8)
-    let tree = Parser.parse(source: text)
+    let tree = CachedSwiftParser.parse(source: text)
     let calls = Calls()
     calls.walk(tree)
     return (calls, tree)
@@ -672,7 +672,7 @@ struct PasteTargetWindowGateWiringTests {
         }
       """
     let calls = Calls()
-    calls.walk(Parser.parse(source: broken))
+    calls.walk(CachedSwiftParser.parse(source: broken))
     let omnibox = calls.found.filter { $0.callee == "PasteService.freshFocusedElement" }
     try #require(omnibox.count == 1)
     #expect(!Self.onElseOf("gate.ownerPath", omnibox[0].node))
