@@ -6,6 +6,7 @@ import Testing
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprStorage
+import EnviousWisprAppKitTestSupport
 
 /// #2772 finding 11 — imports reach History, and the RAW words get there first.
 ///
@@ -531,7 +532,7 @@ struct FileImportHistoryTests {
 
   @Test("through the real History, an import lands raw then cleaned, and a deletion mid-run stands")
   func importThroughTheRealHistory() async throws {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ew-4075-import-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: dir) }
     let history = TranscriptCoordinator(store: TranscriptStore(directory: dir))
@@ -547,7 +548,7 @@ struct FileImportHistoryTests {
     #expect(c.isSavedToHistory)
 
     // A deletion between the raw save and the cleanup, through the real History: it stands.
-    let dir2 = FileManager.default.temporaryDirectory
+    let dir2 = TestTemporaryDirectory.url
       .appendingPathComponent("ew-4075-import-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: dir2) }
     let history2 = TranscriptCoordinator(store: TranscriptStore(directory: dir2))

@@ -298,7 +298,7 @@ struct MeetingCoordinatorTests {
     /// #4075 S1: a harness on a COPY of another harness's meeting files, for a relaunch that
     /// must not share files with the run it recovers from.
     init(copying source: URL) throws {
-      root = FileManager.default.temporaryDirectory
+      root = TestTemporaryDirectory.url
         .appendingPathComponent("MeetingCoordinatorTests-\(UUID().uuidString)", isDirectory: true)
       try FileManager.default.copyItem(at: source, to: root)
       store = MeetingStore(root: root)
@@ -1387,7 +1387,7 @@ struct MeetingCoordinatorTests {
   @Test("quit during an unacknowledged History commit leaves the meeting for the next launch to finish")
   func quitDuringHistoryCommitRecoversAtLaunch() async throws {
     let harness = try Harness()
-    let historyDir = FileManager.default.temporaryDirectory
+    let historyDir = TestTemporaryDirectory.url
       .appendingPathComponent("ew-4075-meeting-history-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: historyDir) }
     let history = TranscriptCoordinator(store: TranscriptStore(directory: historyDir))
