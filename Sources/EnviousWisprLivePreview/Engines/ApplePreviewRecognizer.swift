@@ -294,6 +294,47 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
     }
   }
 
+  /// A transcript session (#3973): the same analyzer setup, locale claim and feeding as
+  /// `openSession`, with a `LiveTranscriptCollector` that hands over every result as a
+  /// `LiveWordsEvent` and drains on `end()` instead of being cancelled. One recognizer serves
+  /// one transcript session at a time (opening another supersedes this one's feeds).
+  func openTranscriptSession(
+    vocabulary: LivePreviewVocabulary,
+    onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
+  ) async throws -> any LivePreviewEngineSession {
+    let inputs = ApplePreviewHints.inputs(for: vocabulary)
+    try await LocaleClaims.shared.claim(locale, purpose: "session")
+    do {
+      var made: LiveTranscriptCollector?
+      let session = try await startSession(
+        contextualPhrases: inputs.phrases,
+        makeCollector: { module in
+          let collector = LiveTranscriptCollector(
+            lookups: inputs.lookups, onEvent: onEvent,
+            consume: { deliver in
+              for try await result in module.results {
+                deliver(String(result.text.characters), result.isFinal)
+              }
+            })
+          made = collector
+          return CollectorHandle(
+            task: collector.task ?? Task {}, silence: { collector.silence() })
+        })
+      guard let collector = made else { throw LivePreviewError.notPrepared }
+      return AppleTranscriptSessionHandle(
+        recognizer: self, session: session, collector: collector, claimedLocale: locale)
+    } catch {
+      await LocaleClaims.shared.finish(locale)
+      throw error
+    }
+  }
+
+  /// A session's results loop and how to quiet it when its opening is discarded.
+  struct CollectorHandle: Sendable {
+    let task: Task<Void, Never>
+    let silence: @Sendable () -> Void
+  }
+
   /// Open a session. `onText` is called on every result with the text the user
   /// should now see; it is invoked from the collector task and must be cheap.
   ///
@@ -311,6 +352,18 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
     lookups: WordCorrector.Lookups?, contextualPhrases: [String],
     onText: @escaping @Sendable (String) -> Void
   ) async throws -> Session {
+    try await startSession(
+      contextualPhrases: contextualPhrases,
+      makeCollector: { module in
+        CollectorHandle(task: Self.collect(from: module, lookups: lookups, onText: onText), silence: {})
+      })
+  }
+
+  /// The shared opening: `makeCollector` builds the results consumer for each fresh module.
+  private func startSession(
+    contextualPhrases: [String],
+    makeCollector: (DictationTranscriber) -> CollectorHandle
+  ) async throws -> Session {
     guard let target = targetFormat, let source = sourceFormat else {
       throw LivePreviewError.notPrepared
     }
@@ -325,7 +378,7 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
     let opening = try await ApplePreviewSessionSetup.start(
       phrases: contextualPhrases,
       make: {
-        try makeStartResources(source: source, target: target, lookups: lookups, onText: onText)
+        try makeStartResources(source: source, target: target, makeCollector: makeCollector)
       },
       attach: { opening, phrases in
         let context = AnalysisContext()
@@ -346,7 +399,7 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
       })
     return Session(
       token: token, analyzer: opening.analyzer, continuation: opening.continuation,
-      collector: opening.collector,
+      collector: opening.collector.task,
       converter: opening.converter, sourceFormat: source, targetFormat: target,
       fedAnyAudio: FedFlag())
   }
@@ -355,13 +408,13 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
     let analyzer: SpeechAnalyzer
     let stream: AsyncStream<AnalyzerInput>
     let continuation: AsyncStream<AnalyzerInput>.Continuation
-    let collector: Task<Void, Never>
+    let collector: CollectorHandle
     let converter: AVAudioConverter?
   }
 
   private func makeStartResources(
-    source: AVAudioFormat, target: AVAudioFormat, lookups: WordCorrector.Lookups?,
-    onText: @escaping @Sendable (String) -> Void
+    source: AVAudioFormat, target: AVAudioFormat,
+    makeCollector: (DictationTranscriber) -> CollectorHandle
   ) throws -> StartResources {
     // A fresh converter per session, so no resampler tail crosses a boundary and
     // leaks the previous dictation's audio into this one.
@@ -393,7 +446,7 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
       bufferingPolicy: .bufferingNewest(Self.maxQueuedChunks))
     let analyzer = SpeechAnalyzer(modules: [module])
     // The session owns the vocabulary it started with.
-    let collector = Self.collect(from: module, lookups: lookups, onText: onText)
+    let collector = makeCollector(module)
 
     return StartResources(
       analyzer: analyzer, stream: stream, continuation: continuation,
@@ -407,9 +460,12 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
   // away — there is no result anyone will read, and finalizing an analyzer that
   // never received input does not return (trap 2).
   private func discardStartResources(_ opening: StartResources) async {
-    opening.continuation.finish()
-    opening.collector.cancel()
-    await opening.analyzer.cancelAndFinishNow()
+    // Quieted FIRST: closing the input ends the results, and a discarded opening's collector
+    // must report nothing (`LiveTranscriptCollector.discardOpening` owns the order).
+    await LiveTranscriptCollector.discardOpening(
+      silence: opening.collector.silence, finishInput: { opening.continuation.finish() },
+      cancelResults: { opening.collector.task.cancel() },
+      cancelAnalyzer: { await opening.analyzer.cancelAndFinishNow() })
   }
 
   /// Accumulate results into the text a user would actually be looking at.
@@ -537,35 +593,32 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
   /// resources closed here belong to this session and to nothing else, so a late
   /// teardown from an abandoned recording cannot reach the live one.
   func endSession(_ session: Session) async {
-    session.continuation.finish()
-    // Only FINALIZE when the analyzer actually received input — see trap 2. A
-    // finalize on an empty analyzer never returns, which would leak this task for
-    // the life of the process.
-    //
-    // But it must still be ENDED either way. The silent-recording path (press,
-    // say nothing, release) reaches here with nothing fed, and leaving the analyzer
-    // un-ended leaks its analysis and model resources exactly as an abandoned start
-    // does. Review named that leak on the discard path; this is its twin, and a fix
-    // that landed on only one of two symmetric sites would be the partial port this
-    // codebase keeps relearning.
-    if session.fedAnyAudio.value {
-      // `try?` here was the FIFTH member of the abandoned-analyzer class, and the
-      // one that survived a sweep I called complete — because that sweep
-      // enumerated CONSTRUCTION sites and their exits, and this is a different
-      // axis: an ENDING call that can itself fail. A throwing finalize leaves the
-      // analyzer exactly as un-ended as never calling one, and stopping a
-      // recording is the moment the parent task is being cancelled, which is when
-      // it is most likely to throw. Cancel is the fallback because it does not
-      // throw, so the class closes here rather than recursing.
-      do {
-        try await session.analyzer.finalizeAndFinishThroughEndOfInput()
-      } catch {
-        await session.analyzer.cancelAndFinishNow()
-      }
-    } else {
-      await session.analyzer.cancelAndFinishNow()
-    }
+    await finishAnalyzer(session)
     session.collector.cancel()
+  }
+
+  /// Closes the input and ends the analyzer, without touching the results loop.
+  ///
+  /// Only FINALIZE when the analyzer actually received input — see trap 2. A finalize on an
+  /// empty analyzer never returns, which would leak this task for the life of the process. But
+  /// it must still be ENDED either way: the silent-recording path (press, say nothing, release)
+  /// reaches here with nothing fed, and leaving the analyzer un-ended leaks its analysis and
+  /// model resources exactly as an abandoned start does. Review named that leak on the discard
+  /// path; this is its twin.
+  ///
+  /// A throwing finalize falls back to cancel: `try?` there was the FIFTH member of the
+  /// abandoned-analyzer class, and the one that survived a sweep I called complete — because
+  /// that sweep enumerated CONSTRUCTION sites and their exits, and this is a different axis: an
+  /// ENDING call that can itself fail. Stopping a recording is the moment the parent task is
+  /// being cancelled, which is when finalize is most likely to throw. Cancel does not throw, so
+  /// the class closes here rather than recursing. (`LiveTranscriptCollector.endAnalyzer` holds
+  /// the rule, shared with transcript sessions.)
+  func finishAnalyzer(_ session: Session) async {
+    let analyzer = session.analyzer
+    await LiveTranscriptCollector.endAnalyzer(
+      finishInput: { session.continuation.finish() }, fedAnyAudio: session.fedAnyAudio.value,
+      finalize: { try await analyzer.finalizeAndFinishThroughEndOfInput() },
+      cancel: { await analyzer.cancelAndFinishNow() })
   }
 
   // MARK: - Conversion
@@ -628,6 +681,32 @@ struct ApplePreviewSessionHandle: LivePreviewEngineSession {
     // After the analyzer is finished, never before: until then this locale's assets are still
     // being read and evicting the claim would break the recording in flight.
     await LocaleClaims.shared.finish(claimedLocale)
+  }
+}
+
+/// One Apple transcript session (#3973): feeds like `ApplePreviewSessionHandle`, and ends
+/// through its collector's once-only teardown, which joins the results loop before the locale
+/// use is given back.
+@available(macOS 26.0, *)
+struct AppleTranscriptSessionHandle: LivePreviewEngineSession {
+  let recognizer: ApplePreviewRecognizer
+  let session: ApplePreviewRecognizer.Session
+  let collector: LiveTranscriptCollector
+  let claimedLocale: Locale
+
+  func feed(_ samples: [Float]) async {
+    await recognizer.feed(samples, session: session)
+  }
+
+  func end() async {
+    let recognizer = recognizer
+    let session = session
+    let locale = claimedLocale
+    // The analyzer is ended on the recognizer's actor, where its feeding happens.
+    await collector.end(
+      LiveTranscriptCollector.Teardown(
+        endAnalyzer: { await recognizer.finishAnalyzer(session) },
+        release: { await LocaleClaims.shared.finish(locale) }))
   }
 }
 
