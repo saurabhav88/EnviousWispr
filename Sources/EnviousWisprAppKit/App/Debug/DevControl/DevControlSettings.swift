@@ -51,7 +51,7 @@
       .selectedBackend, .recordingMode, .llmProvider, .llmModel, .ollamaModel,
       .fileImportLLMProvider, .fileImportLLMModel, .fileImportOllamaModel,
       .s1MiniStyling, .s1MiniStructure, .s1MiniContext, .autoCopyToClipboard,
-      .meetingCaptureCallSound, .meetingCallSoundExplained, .meetingWriteSummary, .meetingOnboardingComplete, .meetingUseCalendarForNames, .meetingCallDetection, .meetingCallAppsOff, .meetingCallNoCounts, .meetingCallFirstTipShown, .hotkeyEnabled, .vadAutoStop, .vadSilenceTimeout, .vadSensitivity, .vadEnergyGate, .onboardingState,
+      .meetingCaptureCallSound, .meetingCallSoundExplained, .meetingWriteSummary, .meetingTurnsOffDictation, .meetingOnboardingComplete, .meetingUseCalendarForNames, .meetingCallDetection, .meetingCallAppsOff, .meetingCallNoCounts, .meetingCallFirstTipShown, .hotkeyEnabled, .vadAutoStop, .vadSilenceTimeout, .vadSensitivity, .vadEnergyGate, .onboardingState,
       .hasCompletedOnboarding, .cancelKeyCode, .cancelModifiers, .quickAddKeyCode,
       .quickAddModifiers, .pasteLastKeyCode, .pasteLastModifiers, .copyLastKeyCode,
       .copyLastModifiers, .toggleKeyCode, .toggleModifiers, .pushToTalkKeyCode,
@@ -84,7 +84,8 @@
       switch key {
       case .selectedBackend, .recordingMode, .llmProvider, .llmModel, .s1MiniStyling,
         .s1MiniStructure, .s1MiniContext, .autoCopyToClipboard, .meetingCaptureCallSound,
-        .meetingCallSoundExplained, .meetingWriteSummary, .meetingOnboardingComplete,
+        .meetingCallSoundExplained, .meetingWriteSummary, .meetingTurnsOffDictation,
+        .meetingOnboardingComplete,
         .meetingUseCalendarForNames, .meetingCallDetection, .meetingCallAppsOff,
         .meetingCallNoCounts, .meetingCallFirstTipShown, .vadAutoStop, .modelUnloadPolicy,
         .restoreClipboardAfterPaste, .keepDictationsOutOfClipboardHistory,
@@ -134,6 +135,7 @@
       case .meetingCaptureCallSound: return settings.meetingCaptureCallSound
       case .meetingCallSoundExplained: return settings.meetingCallSoundExplained
       case .meetingWriteSummary: return settings.meetingWriteSummary
+      case .meetingTurnsOffDictation: return settings.meetingTurnsOffDictation
       case .meetingOnboardingComplete: return settings.meetingOnboardingComplete
       case .meetingUseCalendarForNames: return settings.meetingUseCalendarForNames
       case .meetingCallDetection: return settings.meetingCallDetection
@@ -278,6 +280,8 @@
         return set(Codec.bool(value)) { settings.meetingCallSoundExplained = $0 }
       case .meetingWriteSummary:
         return set(Codec.bool(value)) { settings.meetingWriteSummary = $0 }
+      case .meetingTurnsOffDictation:
+        return set(Codec.bool(value)) { settings.meetingTurnsOffDictation = $0 }
       case .meetingOnboardingComplete:
         return set(Codec.bool(value)) { settings.meetingOnboardingComplete = $0 }
       case .meetingUseCalendarForNames:
@@ -536,7 +540,8 @@
         return .shortcutField
       case .selectedBackend, .recordingMode, .llmProvider, .s1MiniStyling, .s1MiniStructure,
         .s1MiniContext, .autoCopyToClipboard, .meetingCaptureCallSound, .meetingCallSoundExplained,
-        .meetingWriteSummary, .meetingOnboardingComplete, .meetingUseCalendarForNames,
+        .meetingWriteSummary, .meetingTurnsOffDictation, .meetingOnboardingComplete,
+        .meetingUseCalendarForNames,
         .meetingCallDetection, .meetingCallAppsOff, .meetingCallNoCounts, .meetingCallFirstTipShown,
         .hotkeyEnabled,
         .vadAutoStop, .vadSensitivity,
