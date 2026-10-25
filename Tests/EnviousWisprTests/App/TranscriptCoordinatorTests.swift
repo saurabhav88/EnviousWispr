@@ -227,6 +227,71 @@ struct TranscriptCoordinatorTests {
       #expect(ids.first == newRow.id)
     }
 
+    /// Codex review of the #4075 S7 fix: a row written after the snapshot but OLDER than a
+    /// row the snapshot found goes below it, by date, not in front of everything.
+    @Test("load during an older row's write merges it by date")
+    func testLoadDuringOlderWriteMergesByDate() async throws {
+      let dir = Self.makeTempDir()
+      defer { Self.cleanup(dir) }
+      let now = Date()
+      let diskRow = Self.makeTranscript(text: "disk", createdAt: now)
+      try Self.writeToDisk([diskRow], in: dir)
+      let store = TranscriptStore(directory: dir)
+      let coordinator = TranscriptCoordinator(store: store)
+
+      let older = Self.makeTranscript(text: "older", createdAt: now.addingTimeInterval(-60))
+      coordinator.historyReadDidFinishForTesting = { read in
+        coordinator.historyReadDidFinishForTesting = nil
+        #expect(read.freshness != nil)
+        try store.save(older)
+        coordinator.append(older)
+      }
+      coordinator.load()
+      await coordinator.waitForLoadForTesting()
+
+      #expect(coordinator.visibleTranscripts.map(\.id) == [diskRow.id, older.id])
+    }
+
+    /// Codex review of the #4075 S7 fix: a row written during the read with the SAME date as
+    /// a disk row stays ahead of it, as `append` put it, so Paste Last keeps its pick.
+    @Test("load during a same-date write keeps the written row first")
+    func testLoadDuringSameDateWriteKeepsItFirst() async throws {
+      let dir = Self.makeTempDir()
+      defer { Self.cleanup(dir) }
+      let now = Date()
+      let diskRow = Self.makeTranscript(text: "disk", createdAt: now)
+      try Self.writeToDisk([diskRow], in: dir)
+      let store = TranscriptStore(directory: dir)
+      let coordinator = TranscriptCoordinator(store: store)
+
+      let sameDate = Self.makeTranscript(text: "written", createdAt: now)
+      coordinator.historyReadDidFinishForTesting = { read in
+        coordinator.historyReadDidFinishForTesting = nil
+        #expect(read.freshness != nil)
+        try store.save(sameDate)
+        coordinator.append(sameDate)
+      }
+      coordinator.load()
+      await coordinator.waitForLoadForTesting()
+
+      #expect(coordinator.visibleTranscripts.map(\.id) == [sameDate.id, diskRow.id])
+    }
+
+    /// Codex review of the #4075 S7 fix: a dictation dated before a newer row published
+    /// lands below that row when it is appended.
+    @Test("an append older than the newest row lands below it")
+    func testOlderAppendLandsByDate() async throws {
+      let dir = Self.makeTempDir()
+      defer { Self.cleanup(dir) }
+      let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
+      let now = Date()
+      let newer = Self.makeTranscript(text: "import", createdAt: now)
+      try await coordinator.saveAndShow(newer)
+      let older = Self.makeTranscript(text: "dictation", createdAt: now.addingTimeInterval(-5))
+      coordinator.append(older)
+      #expect(coordinator.visibleTranscripts.map(\.id) == [newer.id, older.id])
+    }
+
     @Test("load during multiple appends preserves append-order at the front")
     func testLoadDuringMultipleAppendsPreservesNewestFirstOrder() async throws {
       let dir = Self.makeTempDir()
@@ -659,6 +724,30 @@ struct TranscriptCoordinatorMeetingTests {
 
       func releaseOne() { release.signal() }
       func releaseAll() { for _ in 0..<8 { release.signal() } }
+    }
+
+    /// Codex History regrade 3, S7: an import's save held on the worker while a newer
+    /// dictation arrives. The import lands below it, in date order, not on top.
+    @Test("a held save that lands after a newer dictation shows below it")
+    func heldSaveLandsInDateOrder() async throws {
+      let dir = Self.makeTempDir()
+      let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
+      let gate = WorkerGate()
+      defer { gate.releaseAll() }
+      coordinator.ordinaryWriteWillStartForTesting = { gate.hook() }
+      let now = Date()
+      let older = Transcript(
+        id: UUID(), text: "older", processingTime: 0.1, backendType: .parakeet,
+        createdAt: now.addingTimeInterval(-60))
+      let save = Task { @MainActor in try await coordinator.saveAndShow(older) }
+      try #require(await gate.waitForStart(), "the save never reached the worker")
+      let newer = Transcript(
+        id: UUID(), text: "newer", processingTime: 0.1, backendType: .parakeet, createdAt: now)
+      coordinator.append(newer)
+      gate.releaseOne()
+      try await save.value
+      #expect(gate.anyTimedOut == false)
+      #expect(coordinator.visibleTranscripts.map(\.id) == [newer.id, older.id])
     }
 
     @Test("a held History write leaves the main actor free and holds the next command back")
