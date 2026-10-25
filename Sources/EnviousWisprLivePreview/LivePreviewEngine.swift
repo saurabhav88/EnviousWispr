@@ -17,6 +17,31 @@ package struct LivePreviewVocabulary: Sendable {
   }
 }
 
+/// One step of a transcript session's output (#3973): what EnviousMeet's live words need, which
+/// the bounded display string of `openSession(onText:)` cannot carry.
+///
+/// Producer obligations (each engine's transcript session meets them; the meeting relies on
+/// them): events arrive in order. `finalized` is text that became final since the previous
+/// update and is never repeated; `inProgress` replaces the previous not-yet-final words.
+/// Consecutive `.update`s may be coalesced (finalized texts joined in order, the latest
+/// `inProgress` kept) but never across a `.discontinuity` or `.ended`. Exactly one `.ended`
+/// arrives, after every finalized delta the session accepted has been delivered.
+package enum LiveWordsEvent: Sendable, Equatable {
+  case update(finalized: String, inProgress: String)
+  /// The engine dropped the agreement state behind the words in progress: they will not be
+  /// finalized, and later words may recognize some of the same audio again.
+  case discontinuity
+  case ended(LiveWordsEnd)
+}
+
+/// Why a transcript session ended.
+package enum LiveWordsEnd: Sendable, Equatable {
+  /// Its owner asked it to end.
+  case requested
+  /// It stopped on its own (the speech service ended, an error, a backlog limit).
+  case failed(String)
+}
+
 /// What the live preview needs from a recognizer, and nothing more (#2077).
 ///
 /// The coordinator used to name `ApplePreviewRecognizer` in nine places, which was
