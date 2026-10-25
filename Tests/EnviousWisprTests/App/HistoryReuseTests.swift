@@ -31,6 +31,21 @@ struct HistoryReuseTests {
       text: "held", createdAt: now, escapeRecoveredAt: now, escapeRecoveryTakeID: "TAKE-1")
   }
 
+  // #4075 G8: History cancels a read a newer one replaces. The cancellation reaches the disk
+  // walk, which stops instead of decoding every row file.
+  @Test("a cancelled History read stops instead of reading every row file")
+  func cancelledReadStops() async throws {
+    let dir = Self.makeTempDir()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let store = TranscriptStore(directory: dir)
+    for index in 0..<500 { try store.save(Self.row("row \(index)")) }
+    let read = Task { try await store.readHistory() }
+    read.cancel()
+    await #expect(throws: CancellationError.self) { try await read.value }
+    // Control: the same store reads in full when nothing cancels it.
+    #expect(try await store.readHistory().permanent.count == 500)
+  }
+
   // The coordinator's read and reuse counters exist only in Debug builds.
   #if DEBUG
     private func open(_ coordinator: TranscriptCoordinator) async {

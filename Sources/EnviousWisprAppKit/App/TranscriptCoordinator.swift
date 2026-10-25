@@ -1124,6 +1124,8 @@ final class TranscriptCoordinator {
       #endif
       reconcileSelectionWithDisplayedSet()
       startPulseIfNeeded()
+    } catch is CancellationError {
+      // A newer read replaced this one (#4075 G8); that read publishes.
     } catch {
       await AppLogger.shared.log(
         "Failed to load transcripts: \(error)",

@@ -621,21 +621,31 @@ public final class TranscriptStore {
   private nonisolated static func pendingListing(
     in directory: URL, now: Date, retention: TimeInterval
   ) -> (candidates: [PendingCandidate], readFailed: Bool)? {
+    pendingListing(
+      in: directory, now: now, retention: retention, checkCancellation: {})
+  }
+
+  private nonisolated static func pendingListing(
+    in directory: URL, now: Date, retention: TimeInterval,
+    checkCancellation: () throws -> Void
+  ) rethrows -> (candidates: [PendingCandidate], readFailed: Bool)? {
+    try checkCancellation()
     guard
       let files = try? FileManager.default.contentsOfDirectory(
         at: directory, includingPropertiesForKeys: nil)
     else { return nil }
     var readFailed = false
-    let candidates =
-      files
+    let candidates = try files
       .filter { $0.pathExtension == "json" }
       .map { url -> PendingCandidate in
+        try checkCancellation()
         guard let data = try? Data(contentsOf: url) else {
           readFailed = true
           return .invalid(url: url)
         }
         return decodeCandidate(data: data, at: url, now: now, retention: retention)
       }
+    try checkCancellation()
     return (candidates, readFailed)
   }
 
@@ -812,30 +822,48 @@ public final class TranscriptStore {
   /// exactly this read: `freshness` is non-nil only when both samples are known and equal and
   /// nothing retryable was skipped. A changed token means some write overlapped the read, so the
   /// read cannot vouch for the folder as it is now.
+  ///
+  /// #4075 G8: cancelling the caller cancels the read. History cancels a read a newer one
+  /// replaces, and without forwarding the detached read went on decoding every row file.
   public func readHistory(now: Date = Date()) async throws -> TranscriptHistoryRead {
+    try Task.checkCancellation()
     let dir = directory
     let pendingDir = pendingDirectory
     let retention = AppConstants.pendingTranscriptRetention
-    return try await Task.detached(priority: .userInitiated) {
+    // Detached, not `Task {}`: this type is @MainActor and the read is a disk walk.
+    let read = Task.detached(priority: .userInitiated) {
+      try Task.checkCancellation()
       let before = Self.freshness(directory: dir, pendingDirectory: pendingDir)
       let permanent: (rows: [Transcript], complete: Bool) =
         FileManager.default.fileExists(atPath: dir.path)
         ? try await Self.readPermanent(in: dir) : ([], false)
+      try Task.checkCancellation()
       // Same admission as `loadPending`. An unreadable folder reads as empty there; here it also
       // withholds certification, and a confirmed-absent one is a real empty namespace.
       let pendingAbsent = before?.pending == .absent
       let listing =
         pendingAbsent
-        ? ([], false) : Self.pendingListing(in: pendingDir, now: now, retention: retention)
+        ? ([], false)
+        : try Self.pendingListing(
+          in: pendingDir, now: now, retention: retention,
+          checkCancellation: { try Task.checkCancellation() })
       let pending = (listing?.candidates ?? []).compactMap(\.liveTranscript).sorted {
         $0.createdAt > $1.createdAt
       }
       let pendingComplete = listing.map { !$0.readFailed } ?? false
       let after = Self.freshness(directory: dir, pendingDirectory: pendingDir)
+      try Task.checkCancellation()
       let certified = permanent.complete && pendingComplete && before != nil && before == after
       return TranscriptHistoryRead(
         permanent: permanent.rows, pending: pending, freshness: certified ? before : nil)
-    }.value
+    }
+    return try await withTaskCancellationHandler {
+      let result = try await read.value
+      try Task.checkCancellation()
+      return result
+    } onCancel: {
+      read.cancel()
+    }
   }
 
   /// The folder tokens as they are now, or nil when they cannot vouch for anything (#4001 H9).
@@ -861,6 +889,7 @@ public final class TranscriptStore {
     var result: [Transcript] = []
     var complete = true
     for url in files where url.pathExtension == "json" {
+      try Task.checkCancellation()
       let data: Data
       do {
         data = try Data(contentsOf: url)
@@ -882,6 +911,7 @@ public final class TranscriptStore {
         )
       }
     }
+    try Task.checkCancellation()
     return (result.sorted { $0.createdAt > $1.createdAt }, complete)
   }
 

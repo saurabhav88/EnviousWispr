@@ -54,11 +54,26 @@ struct TranscriptTurnsDocument: View, Equatable {
   /// Swift `==`, so a byte-different but canonically equal cleaned text would reuse the older
   /// marks; History compares the pairs by bytes instead. The wizard keeps its own cache.
   struct DiffKey: Equatable {
-    let input: FileImportCoordinator.TurnDiffInput
+    /// Nil outside Marked up (#4075 G6): only that view reads the per-turn pairs, so the other
+    /// views never slice every turn to build them.
+    let input: FileImportCoordinator.TurnDiffInput?
     let markedUp: Bool
 
     static func == (a: DiffKey, b: DiffKey) -> Bool {
-      a.markedUp == b.markedUp && sameInput(a.input, b.input)
+      guard a.markedUp == b.markedUp else { return false }
+      switch (a.input, b.input) {
+      case (nil, nil): return true
+      case (let x?, let y?): return sameInput(x, y)
+      default: return false
+      }
+    }
+
+    /// The diff task's id for `inputs`. `pairs` runs only in Marked up.
+    static func task(
+      for inputs: Inputs, pairs: () -> FileImportCoordinator.TurnDiffInput
+    ) -> DiffKey {
+      let markedUp = inputs.mode == .markedUp
+      return DiffKey(input: markedUp ? pairs() : nil, markedUp: markedUp)
     }
 
     static func sameInput(
@@ -98,7 +113,7 @@ struct TranscriptTurnsDocument: View, Equatable {
       },
       fallback: { EmptyView() }
     )
-    .task(id: DiffKey(input: turnDiffInput, markedUp: inputs.mode == .markedUp)) {
+    .task(id: DiffKey.task(for: inputs, pairs: { turnDiffInput })) {
       guard inputs.mode == .markedUp else { return }
       await prepareTurnDiffs()
     }
@@ -133,7 +148,9 @@ struct TranscriptTurnsDocument: View, Equatable {
   /// this row happens to still be selected — even though the turn ids themselves survive).
   /// Matched by bytes (`DiffKey.sameInput`, #4001 H10).
   private var turnDiffs: [String: WordDiff.Result]? {
-    guard let cached = turnDiffCache, DiffKey.sameInput(cached.input, turnDiffInput) else {
+    guard inputs.mode == .markedUp, let cached = turnDiffCache,
+      DiffKey.sameInput(cached.input, turnDiffInput)
+    else {
       return nil
     }
     return cached.results
