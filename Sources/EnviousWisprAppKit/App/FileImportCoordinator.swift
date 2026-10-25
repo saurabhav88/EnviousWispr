@@ -1506,6 +1506,8 @@ final class FileImportCoordinator {
     }
   }
   @ObservationIgnored private var turnsTelemetryEmittedFor: UUID?
+  /// Rows whose turn outcome is being reported right now (#4075 S1).
+  @ObservationIgnored private var turnsTelemetryClaimed: Set<UUID> = []
 
   /// #3903: the last COMPLETED cleanup of this document, kept so a Clean it again that ends
   /// without completing (Stop, a polisher that did not start) puts it back instead of leaving
@@ -2892,7 +2894,12 @@ final class FileImportCoordinator {
     let reportedOutcome: TelemetryService.FileImportTurnsOutcome? =
       saveFailed ? .saveFailed : (rowDeleted ? .rowDeleted : outcome)
     guard let reportedOutcome else { return !saveFailed }
-    let emitted = turnsTelemetryEmittedFor != historyID
+    // #4075 S1: claimed BEFORE the log's await, by the row's own id, so a Stop's settlement and
+    // the run's own write finishing together report the row once, even after another file
+    // replaced it.
+    let emitted =
+      turnsTelemetryEmittedFor != historyID && !turnsTelemetryClaimed.contains(historyID)
+    if emitted { turnsTelemetryClaimed.insert(historyID) }
     await AppLogger.shared.log(
       "[TurnStorage] outcome=\(reportedOutcome.rawValue) turns=\(turnCount ?? 0) fallback=\(fallbackTurnCount) emitted=\(emitted) ms=\(Self.elapsedMs(since: passStart))",
       level: .info, category: "FileImportCoordinator")
@@ -2900,6 +2907,7 @@ final class FileImportCoordinator {
     // #4075 S1: the dedupe mark belongs to the document on screen; a settlement finishing
     // for a replaced document reports its outcome without claiming the new one's mark.
     if self.historyID == historyID { turnsTelemetryEmittedFor = historyID }
+    turnsTelemetryClaimed.remove(historyID)
     emitTurnTelemetry(
       reportedOutcome, reportedOutcome == .stored ? turnCount : nil, fallbackTurnCount)
     return !saveFailed
