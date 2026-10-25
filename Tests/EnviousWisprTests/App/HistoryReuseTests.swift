@@ -185,6 +185,49 @@ struct HistoryReuseTests {
       try other.deleteAll()
       await open(coordinator)
       #expect(coordinator.historyFullReadsForTesting == 2)
+      #expect(texts(coordinator).isEmpty)
+      #expect(coordinator.lastPasteableDictation() == nil)
+      // And it stays gone across another open, which reuses the read.
+      await open(coordinator)
+      #expect(texts(coordinator).isEmpty)
+      #expect(coordinator.lastPasteableDictation() == nil)
+    }
+
+    @Test("a row another store deletes leaves History and Paste Last on the next open")
+    func externalDeleteLeavesHistoryAndPasteLast() async throws {
+      let dir = Self.makeTempDir()
+      defer { try? FileManager.default.removeItem(at: dir) }
+      let other = TranscriptStore(directory: dir)
+      let kept = Self.row("kept", age: 10)
+      let deleted = Self.row("deleted")
+      try other.save(kept)
+      try other.save(deleted)
+      let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
+      await open(coordinator)
+      #expect(coordinator.lastPasteableDictation()?.id == deleted.id)
+
+      try other.delete(id: deleted.id)
+      await open(coordinator)
+
+      #expect(texts(coordinator) == ["kept"])
+      #expect(coordinator.lastPasteableDictation()?.id == kept.id)
+      #expect(coordinator.lastDictationTextForReuse(id: deleted.id) == nil)
+    }
+
+    @Test("a dictation appended after its file was saved survives the next open")
+    func appendedDictationSurvivesOpen() async throws {
+      let dir = Self.makeTempDir()
+      defer { try? FileManager.default.removeItem(at: dir) }
+      let store = TranscriptStore(directory: dir)
+      let coordinator = TranscriptCoordinator(store: store)
+      await open(coordinator)
+      // The heart path's order: save the file, then append the row.
+      let fresh = Self.row("fresh")
+      try store.save(fresh)
+      coordinator.append(fresh)
+      await open(coordinator)
+      #expect(texts(coordinator) == ["fresh"])
+      #expect(coordinator.lastPasteableDictation()?.id == fresh.id)
     }
 
     @Test("a row file that cannot be read keeps the next open reading until it can")

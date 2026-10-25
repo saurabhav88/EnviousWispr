@@ -1067,6 +1067,9 @@ final class TranscriptCoordinator {
       // (`invalidateDiskState`), so a mismatch means re-read rather than trust.
       let generationAtRead = diskStateGeneration
       let read = try await store.readHistory()
+      #if DEBUG
+        try historyReadDidFinishForTesting?(read)
+      #endif
       var diskRows = read.permanent
       // Phase C union-by-ID merge. Preserve any in-memory rows whose IDs
       // are not yet on disk (append-during-load race window) in their
@@ -1098,7 +1101,15 @@ final class TranscriptCoordinator {
       let rootIDs = Set(diskRows.map(\.id))
       let heldRows = pendingRows.filter { !rootIDs.contains($0.id) }
       let knownIDs = rootIDs.union(heldRows.map(\.id))
-      let inFlightRows = transcripts.filter { !knownIDs.contains($0.id) }
+      // #4075 G9: a row missing from the disk is kept only when it was written after this read
+      // began (its file can land after the scan passed it) or when the read skipped a file. A
+      // row written earlier was on disk before the read, so a complete read that lacks it means
+      // its file was deleted outside this coordinator, and keeping it left the deleted text in
+      // History and offered by Paste Last.
+      let inFlightRows = transcripts.filter {
+        !knownIDs.contains($0.id)
+          && (read.freshness == nil || (writtenAtRevision[$0.id] ?? 0) > revisionAtRead)
+      }
       // Merged rather than re-sorted: both inputs are already newest-first,
       // and re-sorting the combined list could reorder permanent rows that
       // share a `createdAt`. With no held rows this returns `diskRows`
@@ -1139,6 +1150,7 @@ final class TranscriptCoordinator {
   /// must not invoke it twice for the same transcript — duplicate-ID
   /// protection would mask heart-path bugs.
   func append(_ transcript: Transcript) {
+    noteWritten(transcript.id)
     transcripts.insert(transcript, at: 0)
     // #2807: a COMPLETED dictation landing in the displayed set with nothing selected is the
     // one moment the live fallback exists for, so it may show again. A held recovery is a
@@ -1192,6 +1204,10 @@ final class TranscriptCoordinator {
     /// Runs on the durable write's worker thread just before it writes, so a test can hold a
     /// write while it is registered in flight.
     @ObservationIgnored var durableWriteWillStartForTesting: (@Sendable () -> Void)?
+    /// Runs after the disk snapshot returns and before it is reconciled, so tests can
+    /// persist and append a row that the completed snapshot could not contain.
+    @ObservationIgnored var historyReadDidFinishForTesting:
+      (@MainActor (TranscriptHistoryRead) throws -> Void)?
   #endif
 
   /// Thrown by an ordinary write to a row whose durable meeting write is still in flight.
@@ -1201,8 +1217,7 @@ final class TranscriptCoordinator {
     guard !durableWritesInFlight.contains(transcript.id) else { throw RowWriteInFlight() }
     try store.save(transcript)
     // Stamped so an in-flight `load()` cannot publish the version it read BEFORE this write.
-    historyWriteRevision += 1
-    writtenAtRevision[transcript.id] = historyWriteRevision
+    noteWritten(transcript.id)
     if let existing = transcripts.firstIndex(where: { $0.id == transcript.id }) {
       transcripts[existing] = transcript
     } else {
@@ -1231,8 +1246,7 @@ final class TranscriptCoordinator {
       #endif
       try write(transcript)
     }.value
-    historyWriteRevision += 1
-    writtenAtRevision[transcript.id] = historyWriteRevision
+    noteWritten(transcript.id)
     if let existing = transcripts.firstIndex(where: { $0.id == transcript.id }) {
       transcripts[existing] = transcript
     } else {
@@ -1262,8 +1276,7 @@ final class TranscriptCoordinator {
     }
     guard !durableWritesInFlight.contains(transcript.id) else { throw RowWriteInFlight() }
     try store.save(transcript)
-    historyWriteRevision += 1
-    writtenAtRevision[transcript.id] = historyWriteRevision
+    noteWritten(transcript.id)
     transcripts[existing] = transcript
     // #2807: the cleaned text can stop matching the search the row was selected under.
     reconcileSelectionWithDisplayedSet()
@@ -1372,6 +1385,14 @@ final class TranscriptCoordinator {
   /// would show the unpolished version until something else refreshed it. Found by Codex.
   private var historyWriteRevision = 0
   private var writtenAtRevision: [UUID: Int] = [:]
+
+  /// Stamps a locally persisted row when it is published in memory. Disk-load publication
+  /// and fixture injection do not stamp rows. A newer stamp protects a local write from
+  /// an older History snapshot (#4075 G9).
+  private func noteWritten(_ id: UUID) {
+    historyWriteRevision += 1
+    writtenAtRevision[id] = historyWriteRevision
+  }
 
   /// EnviousMeet published a change to its meetings (`MeetingCoordinator.onMeetingsPublished`):
   /// a meeting removed elsewhere (a peer, dev control) leaves no stale selection (Codex C8 r1).
@@ -1629,6 +1650,7 @@ final class TranscriptCoordinator {
         recordEscapeRecoveryKeep("kept-unreported", nil)
       }
       guard let index = transcripts.firstIndex(where: { $0.id == transcript.id }) else { return }
+      noteWritten(transcript.id)
       transcripts[index] = transcripts[index].promotedFromPending()
       refreshDiskStateThenStopIfIdle()
     } catch {
