@@ -1,5 +1,6 @@
 import EnviousWisprCore
 import Foundation
+import os
 import Testing
 
 @testable import EnviousWisprAppKit
@@ -424,8 +425,9 @@ struct TranscriptCoordinatorMeetingTests {
 
     try coordinator.removeRow(id: meetingRow.id)
     #expect(coordinator.hasRow(id: meetingRow.id) == false)
-    #expect(FileManager.default.fileExists(
-      atPath: dir.appendingPathComponent("\(meetingRow.id.uuidString).json").path) == false)
+    #expect(
+      FileManager.default.fileExists(
+        atPath: dir.appendingPathComponent("\(meetingRow.id.uuidString).json").path) == false)
     // A row already gone (Delete All ran first) is not an error.
     try coordinator.removeRow(id: meetingRow.id)
     #expect(announced.isEmpty)
@@ -511,6 +513,109 @@ struct TranscriptCoordinatorMeetingTests {
     }
   #endif
 
+  #if DEBUG
+    @Test("a held durable save leaves the main actor free, and the write runs off it")
+    func heldDurableSaveLeavesMainActorFree() async throws {
+      let dir = Self.makeTempDir()
+      let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
+      let row = Transcript(text: "standup notes", backendType: .parakeet, meetingID: UUID())
+      let entered = DispatchSemaphore(value: 0)
+      let release = DispatchSemaphore(value: 0)
+      let releasedByTest = OSAllocatedUnfairLock<Bool?>(initialState: nil)
+      defer { release.signal() }
+      let ranOnMain = OSAllocatedUnfairLock<Bool?>(initialState: nil)
+      coordinator.durableWriteWillStartForTesting = {
+        ranOnMain.withLock { $0 = Thread.isMainThread }
+        entered.signal()
+        // deadline-fallback: bound a missing release; timeout must fail the test
+        let outcome = release.wait(timeout: .now() + 10)
+        releasedByTest.withLock { $0 = outcome == .success }
+      }
+      let write = Task { @MainActor in try await coordinator.saveAndShowDurably(row) }
+      // This semaphore wait blocks: Task inherits MainActor, and a task group does
+      // not offload blocking work. This local detached waiter is awaited immediately;
+      // an @concurrent helper would add an unnecessary declaration for this test.
+      try #require(await Task.detached { Self.waitBlocking(entered) }.value == .success)
+      // The write is held on the worker; an independent main-actor action still completes.
+      let other = Transcript(text: "dictated", backendType: .parakeet)
+      coordinator.append(other)
+      #expect(coordinator.hasRow(id: other.id))
+      #expect(coordinator.hasRow(id: row.id) == false)
+      release.signal()
+      try await write.value
+      #expect(releasedByTest.withLock { $0 } == true)
+      coordinator.durableWriteWillStartForTesting = nil
+      #expect(ranOnMain.withLock { $0 } == false)
+      let onDisk = try JSONDecoder().decode(
+        Transcript.self,
+        from: Data(contentsOf: dir.appendingPathComponent("\(row.id.uuidString).json")))
+      #expect(onDisk.text == "standup notes")
+      #expect(coordinator.currentRow(id: row.id)?.text == "standup notes")
+    }
+
+    @Test("a durable save whose caller is cancelled after it starts still lands and shows")
+    func cancelledDurableSaveStillSettles() async throws {
+      let dir = Self.makeTempDir()
+      let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
+      let row = Transcript(text: "standup notes", backendType: .parakeet, meetingID: UUID())
+      let entered = DispatchSemaphore(value: 0)
+      let release = DispatchSemaphore(value: 0)
+      let releasedByTest = OSAllocatedUnfairLock<Bool?>(initialState: nil)
+      defer { release.signal() }
+      coordinator.durableWriteWillStartForTesting = {
+        entered.signal()
+        // deadline-fallback: bound a missing release; timeout must fail the test
+        let outcome = release.wait(timeout: .now() + 10)
+        releasedByTest.withLock { $0 = outcome == .success }
+      }
+      let write = Task { @MainActor in try await coordinator.saveAndShowDurably(row) }
+      // This semaphore wait blocks: Task inherits MainActor, and a task group does
+      // not offload blocking work. This local detached waiter is awaited immediately;
+      // an @concurrent helper would add an unnecessary declaration for this test.
+      try #require(await Task.detached { Self.waitBlocking(entered) }.value == .success)
+      write.cancel()
+      release.signal()
+      try await write.value
+      #expect(releasedByTest.withLock { $0 } == true)
+      coordinator.durableWriteWillStartForTesting = nil
+      #expect(coordinator.currentRow(id: row.id)?.text == "standup notes")
+      #expect(
+        FileManager.default.fileExists(
+          atPath: dir.appendingPathComponent("\(row.id.uuidString).json").path))
+    }
+  #endif
+
+  @Test("a durable save the disk refuses keeps the shown row, reports the error, and frees the row")
+  func failedDurableSaveKeepsShownRow() async throws {
+    let dir = Self.makeTempDir()
+    let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
+    let id = UUID()
+    let meetingID = UUID()
+    func row(_ text: String) -> Transcript {
+      Transcript(id: id, text: text, backendType: .parakeet, meetingID: meetingID)
+    }
+    try await coordinator.saveAndShowDurably(row("first"))
+    // A read-only folder: the write cannot create its temporary file.
+    try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: dir.path)
+    var failed = false
+    do {
+      try await coordinator.saveAndShowDurably(row("second"))
+    } catch is TranscriptCoordinator.RowWriteInFlight {
+      Issue.record("the refusal was the in-flight guard, not the disk")
+    } catch {
+      failed = true
+    }
+    try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path)
+    #expect(failed)
+    #expect(coordinator.currentRow(id: id)?.text == "first")
+    let url = dir.appendingPathComponent("\(id.uuidString).json")
+    #expect(try JSONDecoder().decode(Transcript.self, from: Data(contentsOf: url)).text == "first")
+    // The row is no longer registered in flight: the next durable save lands.
+    try await coordinator.saveAndShowDurably(row("third"))
+    #expect(coordinator.currentRow(id: id)?.text == "third")
+    #expect(try JSONDecoder().decode(Transcript.self, from: Data(contentsOf: url)).text == "third")
+  }
+
   nonisolated static func waitBlocking(_ semaphore: DispatchSemaphore) -> DispatchTimeoutResult {
     semaphore.wait(timeout: .now() + 10)
   }
@@ -527,7 +632,8 @@ struct TranscriptCoordinatorMeetingTests {
     #expect(decoded.id == row.id)
     #expect(decoded.meetingID == row.meetingID)
     #expect(decoded.text == "standup notes")
-    #expect(try FileManager.default.contentsOfDirectory(atPath: dir.path)
-      .filter { $0.hasSuffix(".tmp") }.isEmpty)
+    #expect(
+      try FileManager.default.contentsOfDirectory(atPath: dir.path)
+        .filter { $0.hasSuffix(".tmp") }.isEmpty)
   }
 }

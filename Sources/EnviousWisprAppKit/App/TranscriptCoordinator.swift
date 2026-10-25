@@ -100,6 +100,10 @@ final class TranscriptCoordinator {
   private(set) var expiryPulse: Int = 0
 
   private let store: TranscriptStore
+  /// #4075 S1: the one serial queue History's blocking file work runs on, off the main actor
+  /// and in the order it was asked for. Work sent here captures only Sendable values and
+  /// storage operations, never `store` itself, which is main-actor state.
+  private let storageWorker = DispatchQueue(label: "com.enviouswispr.history.files", qos: .utility)
   private let pendingPulseInterval: Duration
   private let pendingPulseSleep: @Sendable (Duration) async -> Void
 
@@ -1243,14 +1247,16 @@ final class TranscriptCoordinator {
     #if DEBUG
       let willWrite = durableWriteWillStartForTesting
     #endif
-    // Detached, not `Task {}`: this type is @MainActor and a plain Task inherits it; the write
-    // blocks on two disk flushes. Awaited at once, so it neither outlives nor reorders the commit.
-    try await Task.detached(priority: .utility) {
+    // On the storage worker, not a plain Task: this type is @MainActor and a plain Task inherits
+    // it, while the write encodes and blocks on two disk flushes. Awaited at once, so it neither
+    // outlives nor reorders the commit. Once sent it runs to its end, so a cancelled caller
+    // still gets the real result and the bookkeeping below.
+    try await runOnStorageWorker {
       #if DEBUG
         willWrite?()
       #endif
       try write(transcript)
-    }.value
+    }
     noteWritten(transcript.id)
     if let existing = transcripts.firstIndex(where: { $0.id == transcript.id }) {
       transcripts[existing] = transcript
@@ -1259,6 +1265,16 @@ final class TranscriptCoordinator {
     }
     reconcileSelectionWithDisplayedSet()
     startPulseIfNeeded()
+  }
+
+  /// Runs `work` on the storage worker and resumes with its result. The main actor is never
+  /// blocked waiting for it, and caller cancellation does not withdraw work already sent.
+  private func runOnStorageWorker<T: Sendable>(
+    _ work: @escaping @Sendable () throws -> T
+  ) async throws -> T {
+    try await withCheckedThrowingContinuation { continuation in
+      storageWorker.async { continuation.resume(with: Result { try work() }) }
+    }
   }
 
   /// Save a row that must ALREADY be in History, reporting whether it was.
