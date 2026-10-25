@@ -20923,7 +20923,7 @@
       }
     },
     "Try again" : {
-      "comment" : "History, a meeting: reads the saved notes again.\nLive Preview settings: pack retry.\nTranscribe a File, Done step: button that retries speaker labelling.\nTranscribe a File, Review step: button that retries after a refusal.\nYour Words, Learn from: the self-learning dictionary row: button that retries loading the model.\nYour Words, Learn from: the self-learning dictionary row: retry the word check download.",
+      "comment" : "History, a meeting: reads the saved notes again.\nHistory, a meeting: saves the notes again.\nHistory, a meeting: saves the summary changes again.\nLive Preview settings: pack retry.\nTranscribe a File, Done step: button that retries speaker labelling.\nTranscribe a File, Review step: button that retries after a refusal.\nYour Words, Learn from: the self-learning dictionary row: button that retries loading the model.\nYour Words, Learn from: the self-learning dictionary row: retry the word check download.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -23308,6 +23308,17 @@
         }
       }
     },
+    "Your notes could not be saved." : {
+      "comment" : "History, a meeting: saving the notes failed; the typed notes stay in the app until a save works.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Notizen konnten nicht gespeichert werden."
+          }
+        }
+      }
+    },
     "Your original words are saved to History. This cleaned version is not. Copy or save it before you leave." : {
       "comment" : "Transcribe a File: the original is in History but the cleaned version is not.",
       "localizations" : {
@@ -23555,6 +23566,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Deine Textbausteine konnten nicht gelesen werden"
+          }
+        }
+      }
+    },
+    "Your summary changes could not be saved." : {
+      "comment" : "History, a meeting: saving the user's edits to the summary failed; the edits stay in the app until a save works.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Änderungen an der Zusammenfassung konnten nicht gespeichert werden."
           }
         }
       }

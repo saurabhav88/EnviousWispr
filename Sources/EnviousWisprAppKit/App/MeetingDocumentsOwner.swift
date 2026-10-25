@@ -31,6 +31,8 @@ final class MeetingDocumentsOwner {
     /// Runs after a generated summary's store write and before its result is applied here.
     /// Nothing in the app; a test parks it to order a newer edit's save in between.
     var afterGeneratedWrite: @MainActor () async -> Void = {}
+    /// Nothing in the app; tests park an edit-save result before it updates the draft.
+    var afterEditWrite: @MainActor () async -> Void = {}
   }
 
   enum LoadState: Equatable {
@@ -56,6 +58,10 @@ final class MeetingDocumentsOwner {
     /// result started before the newest typing never replaces it, saved or not.
     var summaryEditRevision = 0
     var load = LoadState.notLoaded
+    /// A notes save failed; stays true until the current draft is fully saved (#4075 G3).
+    var notesSaveFailed = false
+    /// A summary-edit save failed; stays true until the current draft is fully saved (#4075 G3).
+    var summarySaveFailed = false
   }
 
   /// What `ensureNotesDurable` found.
@@ -120,6 +126,14 @@ final class MeetingDocumentsOwner {
   /// Summary edits typed and not yet saved.
   func hasUnsavedSummary(_ meetingID: UUID) -> Bool {
     (entries[meetingID]?.unsavedSummaryEdits ?? 0) > 0
+  }
+
+  /// A notes save failed and the current draft is not yet fully saved (#4075 G3).
+  func notesSaveFailed(_ meetingID: UUID) -> Bool { entries[meetingID]?.notesSaveFailed ?? false }
+
+  /// A summary-edit save failed and the current draft is not yet fully saved (#4075 G3).
+  func summarySaveFailed(_ meetingID: UUID) -> Bool {
+    entries[meetingID]?.summarySaveFailed ?? false
   }
 
   private func generation(_ meetingID: UUID) -> Int { generations[meetingID] ?? 0 }
@@ -287,10 +301,13 @@ final class MeetingDocumentsOwner {
     case .loading:
       return
     }
+    await deps.afterEditWrite()
     guard generation(meetingID) == gen, var current = entries[meetingID] else { return }
     switch result {
     case .failure(let error):
       deps.log("meeting notes save failed error=\(type(of: error))")
+      current.notesSaveFailed = true
+      entries[meetingID] = current
     case .success(let (manifest, read)):
       if let read {
         // The save read the documents: the entry is now fully loaded from that read.
@@ -302,6 +319,8 @@ final class MeetingDocumentsOwner {
       }
       // Typing during the save stays unsaved.
       current.unsavedEdits = max(0, current.unsavedEdits - edits)
+      current.notesSaveFailed =
+        current.notesSaveFailed && current.unsavedEdits > 0
       entries[meetingID] = current
     }
   }
@@ -351,14 +370,19 @@ final class MeetingDocumentsOwner {
     let result = await perform(meetingID) {
       try $0.saveSummary(text, origin: .userEdited, inputs: inputs, meeting: meetingID)
     }
+    await deps.afterEditWrite()
     guard generation(meetingID) == gen, var current = entries[meetingID] else { return }
     switch result {
     case .failure(let error):
       deps.log("meeting summary edit save failed error=\(type(of: error))")
+      current.summarySaveFailed = true
+      entries[meetingID] = current
     case .success(let manifest):
       current.manifest.summary = manifest.summary
       current.manifest.summaryPending = manifest.summaryPending
       current.unsavedSummaryEdits = max(0, current.unsavedSummaryEdits - edits)
+      current.summarySaveFailed =
+        current.summarySaveFailed && current.unsavedSummaryEdits > 0
       entries[meetingID] = current
     }
   }

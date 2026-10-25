@@ -90,6 +90,25 @@ struct MeetingSummaryView: View {
         .disabled(!documents.canEdit(meetingID))
         .accessibilityLabel(Text("Summary", comment: "History, a meeting: the summary box."))
         .accessibilityIdentifier("history.meeting.summary")
+        if documents.summarySaveFailed(meetingID) {
+          HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(
+              "Your summary changes could not be saved.",
+              comment:
+                "History, a meeting: saving the user's edits to the summary failed; the edits stay in the app until a save works."
+            )
+            .font(.stHelper)
+            .foregroundStyle(.stError)
+            .fixedSize(horizontal: false, vertical: true)
+            Button {
+              Task { await documents.flushSummary(meetingID) }
+            } label: {
+              Text("Try again", comment: "History, a meeting: saves the summary changes again.")
+            }
+            .buttonStyle(.link)
+          }
+          .accessibilityIdentifier("history.meeting.summarySaveFailed")
+        }
       } else if activity == nil, configurationProblem == nil {
         Text(
           settings.meetingWriteSummary
