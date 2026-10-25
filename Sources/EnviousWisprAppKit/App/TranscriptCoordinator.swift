@@ -1357,11 +1357,11 @@ final class TranscriptCoordinator {
   /// A command's result, kept until its caller reads it, before or after the command ends.
   /// Internal, not private, so a test can drive this one implementation directly.
   ///
-  /// Unsafe continuations on purpose: with `withCheckedContinuation` here, the Release test
-  /// build crashed `LiveMediaPlaybackEffectsTests` (another generic `@MainActor` waiter of the
-  /// same shape) at its own continuation call, `EXC_BAD_ACCESS`, on CI and locally (Xcode 27.1,
-  /// 27A9275; PR #4095). `complete` resumes each waiter once and clears the list, so a waiter is
-  /// never resumed twice.
+  /// Unsafe continuations on purpose (#3925): with `withCheckedContinuation` here, this `-O`
+  /// module carried its own copy of that emit-into-client function, and the Release test lane
+  /// crashed `LiveMediaPlaybackEffectsTests` (`-Onone`) inside its own call to it,
+  /// `EXC_BAD_ACCESS`, on CI and locally (Xcode 27.1, 27A9275; PR #4095). `complete` resumes
+  /// each waiter once and clears the list, so a waiter is never resumed twice.
   @MainActor final class Receipt<Value: Sendable> {
     private var value: Value?
     private var waiters: [UnsafeContinuation<Value, Never>] = []
