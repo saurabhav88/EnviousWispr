@@ -128,11 +128,11 @@ final class LastDictationAction {
     var now: @MainActor () -> ContinuousClock.Instant
   }
 
-  /// How often the two waits look, and how long they may take. The poll is cheap (one flags read,
-  /// one frontmost read); the deadlines are fail-safes, not expected durations, measured on `now`.
+  /// How often the modifier and clipboard waits look, and how long the modifier wait may take. The
+  /// poll is cheap (one flags read); the deadline is a fail-safe, not an expected duration, measured
+  /// on `now`. The activation wait's values live in `FrontApplicationConfirmation` (#4101).
   static let pollInterval: Duration = .milliseconds(10)
   static let modifierReleaseDeadline: Duration = .seconds(1)
-  static let activationDeadline: Duration = .milliseconds(500)
 
   private let environment: Environment
 
@@ -284,21 +284,16 @@ final class LastDictationAction {
     case .front:
       // Usually still in front (a chord pressed in place; a status-bar menu does not activate us).
       // When it is not, bring it back and wait for that to be observed.
-      if !isFrontmost(target) {
-        _ = environment.activate(target)
-        switch await DeadlinePoll.wait(
-          within: Self.activationDeadline, every: Self.pollInterval, now: environment.now,
-          sleep: environment.sleep, { self.isFrontmost(target) })
-        {
-        case .met: break
-        case .expired: return environment.isTerminated(target) ? .targetGone : .focusLost
-        case .cancelled: return .cancelled
-        }
+      switch await frontConfirmation.bringToFront(target) {
+      case .confirmed: break
+      case .targetGone: return .targetGone
+      case .focusLost: return .focusLost
+      case .cancelled: return .cancelled
       }
 
       // And again after the activation wait, the last await before the write.
       if let refusal = recheck(rowID: rowID, target: target, source: source) { return refusal }
-      guard isFrontmost(target) else { return .focusLost }
+      guard frontConfirmation.isFrontmost(target) else { return .focusLost }
     case .focusOwner(let snapshot):
       // A keyboard owner is never activated: activating it would move the focus the paste is for.
       // Its confirmation is the last Accessibility query, saved before the common rechecks so a
@@ -381,8 +376,13 @@ final class LastDictationAction {
     }
   }
 
-  private func isFrontmost(_ application: NSRunningApplication) -> Bool {
-    environment.frontmost()?.processIdentifier == application.processIdentifier
+  /// The activation and confirmation steps History Paste shares (#4101), on this action's own
+  /// effects.
+  private var frontConfirmation: FrontApplicationConfirmation {
+    FrontApplicationConfirmation(
+      effects: .init(
+        frontmost: environment.frontmost, isTerminated: environment.isTerminated,
+        activate: environment.activate, sleep: environment.sleep, now: environment.now))
   }
 
   private func finish(_ action: Action, _ source: Source, _ outcome: Outcome, route: Route?) {
