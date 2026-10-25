@@ -46,9 +46,9 @@ struct TranscriptCoordinatorMergeTests {
     let store = TranscriptStore(directory: dir)
     let coordinator = TranscriptCoordinator(store: store)
     let original = Self.makeTranscript()
-    try coordinator.saveAndShow(original)
+    try await coordinator.saveAndShow(original)
 
-    let saved = try coordinator.mergeSpeakerFields(
+    let saved = try await coordinator.mergeSpeakerFields(
       id: original.id, analysis: .labeled(count: 1), turns: Self.makeTurns())
     #expect(saved)
     #expect(row(coordinator, original.id)?.speakerAnalysis == .labeled(count: 1))
@@ -69,10 +69,10 @@ struct TranscriptCoordinatorMergeTests {
     let store = TranscriptStore(directory: dir)
     let coordinator = TranscriptCoordinator(store: store)
     let original = Self.makeTranscript()
-    try coordinator.saveAndShow(original)
-    coordinator.delete(original)
+    try await coordinator.saveAndShow(original)
+    await coordinator.delete(original)
 
-    let saved = try coordinator.mergeSpeakerFields(
+    let saved = try await coordinator.mergeSpeakerFields(
       id: original.id, analysis: .labeled(count: 1), turns: Self.makeTurns())
     #expect(saved == false)
 
@@ -81,21 +81,21 @@ struct TranscriptCoordinatorMergeTests {
   }
 
   @Test("a cleanup merge and an explicit rename compose: the rename survives a later cleanup pass")
-  func cleanupMergeAndExplicitRenameCompose() throws {
+  func cleanupMergeAndExplicitRenameCompose() async throws {
     let dir = Self.makeTempDir()
     defer { try? FileManager.default.removeItem(at: dir) }
     let store = TranscriptStore(directory: dir)
     let coordinator = TranscriptCoordinator(store: store)
     let original = Self.makeTranscript()
-    try coordinator.saveAndShow(original)
+    try await coordinator.saveAndShow(original)
 
     // First cleanup pass: default name.
-    _ = try coordinator.mergeSpeakerFields(
+    _ = try await coordinator.mergeSpeakerFields(
       id: original.id, analysis: .labeled(count: 1), turns: Self.makeTurns())
     #expect(row(coordinator, original.id)?.speakerNames == ["A": "Speaker 1"])
 
     // An explicit rename (phase 4, simulated here at the storage layer).
-    _ = try coordinator.mergeSpeakerFields(
+    _ = try await coordinator.mergeSpeakerFields(
       id: original.id, analysis: .labeled(count: 1), turns: Self.makeTurns(),
       explicitRename: ("A", "Zach"))
     #expect(row(coordinator, original.id)?.speakerNames == ["A": "Zach"])
@@ -103,7 +103,7 @@ struct TranscriptCoordinatorMergeTests {
     // A LATER cleanup pass (e.g. a retry) over the SAME surviving speakerId must not
     // clobber the rename back to a freshly-computed default — this is the exact race the
     // addendum's "delayed cleanup vs. explicit rename" contract exists to prevent.
-    _ = try coordinator.mergeSpeakerFields(
+    _ = try await coordinator.mergeSpeakerFields(
       id: original.id, analysis: .labeled(count: 1), turns: Self.makeTurns())
     #expect(row(coordinator, original.id)?.speakerNames == ["A": "Zach"])
   }
@@ -118,7 +118,7 @@ struct TranscriptCoordinatorMergeTests {
     let store = TranscriptStore(directory: dir)
     let coordinator = TranscriptCoordinator(store: store)
     let original = Self.makeTranscript()
-    try coordinator.saveAndShow(original)
+    try await coordinator.saveAndShow(original)
 
     // `.sortedKeys`: `JSONEncoder`'s default key order is UNSPECIFIED and varies between
     // separate `encode()` calls for equal values (confirmed by running this test through
@@ -137,8 +137,8 @@ struct TranscriptCoordinatorMergeTests {
     // simulating one (found by chunk review round 2).
     try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: dir.path)
 
-    #expect(throws: (any Error).self) {
-      try coordinator.mergeSpeakerFields(
+    await #expect(throws: (any Error).self) {
+      try await coordinator.mergeSpeakerFields(
         id: original.id, analysis: .labeled(count: 1), turns: Self.makeTurns())
     }
 
@@ -177,7 +177,7 @@ struct TranscriptCoordinatorMergeTests {
     let store = TranscriptStore(directory: dir)
     let coordinator = TranscriptCoordinator(store: store)
     let original = Self.makeTranscript()
-    try coordinator.saveAndShow(original)
+    try await coordinator.saveAndShow(original)
     // No merge call at all — simulates a turn-cleanup pass that never got to write because
     // the app quit mid-pass. The row must simply stay at its pre-#2810 shape: `nil` speaker
     // fields, never a half-written one, because `mergeSpeakerFields` makes exactly one
@@ -201,18 +201,18 @@ struct TranscriptCoordinatorMergeTests {
     let coordinator = TranscriptCoordinator(
       store: store, emitRenameTelemetry: { telemetry.record($0) })
     let labeled = Self.makeTranscript()
-    try coordinator.saveAndShow(labeled)
-    _ = try coordinator.mergeSpeakerFields(
+    try await coordinator.saveAndShow(labeled)
+    _ = try await coordinator.mergeSpeakerFields(
       id: labeled.id, analysis: .labeled(count: 1), turns: Self.makeTurns())
 
-    let failure = coordinator.renameSpeaker(
+    let failure = await coordinator.renameSpeaker(
       id: labeled.id, speakerId: "A", name: "Zach", isMeeting: false)
     #expect(failure == nil)
     #expect(telemetry.outcomes == [.saved])
 
     let unlabeled = Self.makeTranscript()
-    try coordinator.saveAndShow(unlabeled)
-    let secondFailure = coordinator.renameSpeaker(
+    try await coordinator.saveAndShow(unlabeled)
+    let secondFailure = await coordinator.renameSpeaker(
       id: unlabeled.id, speakerId: "A", name: "Zach", isMeeting: false)
     #expect(secondFailure != nil, "a row with no turns has nothing to rename against")
     #expect(telemetry.outcomes == [.saved, .failed])
@@ -222,7 +222,7 @@ struct TranscriptCoordinatorMergeTests {
   }
 
   @Test("delete announces the deleted row's id, and nothing on a failed delete (#2811)")
-  func deleteAnnouncesTheRow() throws {
+  func deleteAnnouncesTheRow() async throws {
     let dir = Self.makeTempDir()
     defer { try? FileManager.default.removeItem(at: dir) }
     let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
@@ -233,24 +233,24 @@ struct TranscriptCoordinatorMergeTests {
     let recorder = Recorder()
     coordinator.onRowDeleted = { recorder.record($0) }
     let row = Self.makeTranscript()
-    try coordinator.saveAndShow(row)
+    try await coordinator.saveAndShow(row)
 
-    coordinator.delete(row)
+    await coordinator.delete(row)
     #expect(recorder.ids == [row.id])
     #expect(coordinator.currentRow(id: row.id) == nil)
 
     // Delete All takes its own route to the store and must announce every row too.
     let second = Self.makeTranscript()
     let third = Self.makeTranscript()
-    try coordinator.saveAndShow(second)
-    try coordinator.saveAndShow(third)
-    coordinator.deleteAll()
+    try await coordinator.saveAndShow(second)
+    try await coordinator.saveAndShow(third)
+    await coordinator.deleteAll()
     #expect(Set(recorder.ids) == [row.id, second.id, third.id])
     #expect(coordinator.currentRow(id: second.id) == nil)
   }
 
   @Test("noteTurnsDisplayed reports once per document per launch, never per re-selection (#2811)")
-  func turnsDisplayedTelemetryOncePerDocument() throws {
+  func turnsDisplayedTelemetryOncePerDocument() async throws {
     let dir = Self.makeTempDir()
     defer { try? FileManager.default.removeItem(at: dir) }
     @MainActor final class Counter {
@@ -262,8 +262,8 @@ struct TranscriptCoordinatorMergeTests {
       store: TranscriptStore(directory: dir), emitTurnsDisplayedTelemetry: { displayed.bump() })
     let first = Self.makeTranscript()
     let second = Self.makeTranscript()
-    try coordinator.saveAndShow(first)
-    try coordinator.saveAndShow(second)
+    try await coordinator.saveAndShow(first)
+    try await coordinator.saveAndShow(second)
 
     coordinator.noteTurnsDisplayed(id: first.id, isMeeting: false)
     coordinator.noteTurnsDisplayed(id: first.id, isMeeting: false)

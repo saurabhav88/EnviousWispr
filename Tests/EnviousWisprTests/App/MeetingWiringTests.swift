@@ -406,7 +406,7 @@ struct MeetingWiringTests {
       id: record.transcriptID, text: "standup", backendType: .parakeet, meetingID: record.id)
     try await rig.transcripts.saveAndShowDurably(row)
 
-    rig.transcripts.delete(row)
+    await rig.transcripts.delete(row)
     await MeetingCoordinatorTests.eventually("meeting gone") {
       coordinator.meetings.isEmpty && !rig.transcripts.hasRow(id: row.id)
     }
@@ -433,7 +433,7 @@ struct MeetingWiringTests {
       try? FileManager.default.setAttributes(
         [.posixPermissions: 0o700], ofItemAtPath: history.path)
     }
-    rig.transcripts.delete(row)
+    await rig.transcripts.delete(row)
     await MeetingCoordinatorTests.eventually("failure shown") {
       rig.transcripts.actionFailure == .delete
     }
@@ -453,7 +453,7 @@ struct MeetingWiringTests {
       Transcript(
         id: record.transcriptID, text: "standup", backendType: .parakeet, meetingID: record.id))
 
-    rig.transcripts.deleteAll()
+    await rig.transcripts.deleteAll()
     await MeetingCoordinatorTests.eventually("meeting gone") { coordinator.meetings.isEmpty }
     #expect(FileManager.default.fileExists(atPath: rig.store.folder(for: record.id).path) == false)
   }
@@ -478,7 +478,7 @@ struct MeetingWiringTests {
       try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: folder.path)
     }
 
-    rig.transcripts.deleteAll()
+    await rig.transcripts.deleteAll()
     #expect(rig.transcripts.hasRow(id: row.id))
     #expect(try rig.store.segmentFiles(meeting: record.id).count == 1)
     #expect(try rig.store.load(id: record.id).deletionRequested == false)

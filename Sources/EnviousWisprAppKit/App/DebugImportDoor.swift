@@ -216,7 +216,10 @@
           // persistence is its own field read from the coordinator's own answer, and the
           // caller validates the stored row itself. `choose(url:)` clears the row identity,
           // so a refusal before any persist carries neither field.
-          fields["saved"] = coordinator.isSavedToHistory ? "true" : "false"
+          // #4075 S1: and the run's own required writes all succeeded; a failed speaker
+          // write or cleaned update reads false even when the words on screen are stored.
+          fields["saved"] =
+            coordinator.isSavedToHistory && !coordinator.runRequiredWriteFailed ? "true" : "false"
         }
         // `choose(url:)` clears `runConfiguration`, so a non-nil value here was minted by
         // THIS run's `beginRun()`: present on a finish and on a refusal raised after
@@ -351,9 +354,12 @@
           }
         } else {
           switch c.state {
-          case .finished where !c.isSettlingTurns:
+          // #4075 S1: a claimed result also waits for this run's own History writes, which
+          // can still be settling behind a finished or refused screen. A failed write settles
+          // too; `saved` below then reads false.
+          case .finished where !c.isSettlingTurns && !c.isSettlingRunPersistence:
             return Outcome(status: "finished", detail: nil)
-          case .rejected(let reason) where !c.isSettlingTurns:
+          case .rejected(let reason) where !c.isSettlingTurns && !c.isSettlingRunPersistence:
             return Outcome(status: "refused", detail: Self.name(of: reason))
           case .idle:
             return .unexpected("state=idle")

@@ -78,7 +78,7 @@ struct EscapeRecoveryObservabilityTests {
   }
 
   @Test("a Keep pressed after its row lapses records the refusal")
-  func refusedKeepStillLogs() {
+  func refusedKeepStillLogs() async {
     let (store, directory) = makeStore()
     defer { try? FileManager.default.removeItem(at: directory) }
     let box = KeepLogBox()
@@ -87,7 +87,7 @@ struct EscapeRecoveryObservabilityTests {
       recordEscapeRecoveryKeep: { box.logs.append(($0, $1)) })
     let vanished = held(takeID: "take-late")
 
-    coordinator.keep(vanished)
+    await coordinator.keep(vanished)
 
     #expect(box.logs.count == 1)
     #expect(box.logs.first?.outcome == "refused-not-offerable")
@@ -95,7 +95,7 @@ struct EscapeRecoveryObservabilityTests {
   }
 
   @Test("a successful Keep records its join key")
-  func successfulKeepLogs() throws {
+  func successfulKeepLogs() async throws {
     let (store, directory) = makeStore()
     defer { try? FileManager.default.removeItem(at: directory) }
     let box = KeepLogBox()
@@ -106,7 +106,10 @@ struct EscapeRecoveryObservabilityTests {
       emitEscapeRecoveryKept: { _, _ in },
       recordEscapeRecoveryKeep: { box.logs.append(($0, $1)) })
 
-    coordinator.keep(row)
+    // #4075 S1: Keep acts on a row History shows; one it does not hold is refused.
+    coordinator.load()
+    await coordinator.waitForLoadForTesting()
+    await coordinator.keep(row)
 
     #expect(box.logs.count == 1)
     #expect(box.logs.first?.outcome == "kept")
@@ -114,7 +117,7 @@ struct EscapeRecoveryObservabilityTests {
   }
 
   @Test("a successful Keep without a join key records the anomaly")
-  func unreportedKeepLogs() throws {
+  func unreportedKeepLogs() async throws {
     let (store, directory) = makeStore()
     defer { try? FileManager.default.removeItem(at: directory) }
     let box = KeepLogBox()
@@ -124,7 +127,10 @@ struct EscapeRecoveryObservabilityTests {
       store: store,
       recordEscapeRecoveryKeep: { box.logs.append(($0, $1)) })
 
-    coordinator.keep(row)
+    // #4075 S1: Keep acts on a row History shows; one it does not hold is refused.
+    coordinator.load()
+    await coordinator.waitForLoadForTesting()
+    await coordinator.keep(row)
 
     #expect(box.logs.count == 1)
     #expect(box.logs.first?.outcome == "kept-unreported")

@@ -227,7 +227,7 @@ struct TranscriptDetailView: View {
       if case .held = EscapeRecoveryRowPresentation.badge(for: transcript, now: Date()) {
         Button {
           guard keepAllowed else { return }
-          transcriptCoordinator.keep(transcript)
+          Task { await transcriptCoordinator.keep(transcript) }
         } label: {
           Label(EscapeRecoveryRowPresentation.keepLabel, systemImage: "tray.and.arrow.down")
         }
@@ -238,7 +238,7 @@ struct TranscriptDetailView: View {
       Spacer()
 
       Button(role: .destructive) {
-        transcriptCoordinator.delete(transcript)
+        Task { await transcriptCoordinator.delete(transcript) }
       } label: {
         Image(systemName: "trash")
           // The only irreversible control in the bar and the quietest thing in

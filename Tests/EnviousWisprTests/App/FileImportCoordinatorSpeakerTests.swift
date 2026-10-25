@@ -120,13 +120,13 @@ struct FileImportCoordinatorSpeakerTests {
     wordTimingCoverage: ASRWordTimingCoverage? = nil,
     segmentTimings: [ASRSegmentTiming]? = nil,
     speakerLabeler: @escaping @MainActor ([Float], TimeInterval) async -> SpeakerAnalysis,
-    saveToHistory: @escaping @MainActor (Transcript) throws -> Void = { _ in },
-    updateHistoryRow: @escaping @MainActor (Transcript) throws -> Bool = { _ in true },
-    mergeSpeakerFields: @escaping @MainActor (UUID, TranscriptSpeakerAnalysis, [Turn]?) throws ->
+    saveToHistory: @escaping @MainActor (Transcript) async throws -> Void = { _ in },
+    updateHistoryRow: @escaping @MainActor (Transcript) async throws -> Bool = { _ in true },
+    mergeSpeakerFields: @escaping @MainActor (UUID, TranscriptSpeakerAnalysis, [Turn]?) async throws ->
       Bool = { _, _, _ in true },
     writeExplicitRename: @escaping @MainActor (
       UUID, TranscriptSpeakerAnalysis, [Turn]?, (speakerId: String, name: String)
-    ) throws -> Bool = { _, _, _, _ in false },
+    ) async throws -> Bool = { _, _, _, _ in false },
     currentHistoryRow: @escaping @MainActor (UUID) -> Transcript? = { _ in nil },
     historyRowExists: @escaping @MainActor (UUID) -> Bool = { _ in true },
     emitSpeakerTelemetry: @escaping @MainActor (
@@ -734,6 +734,39 @@ struct FileImportCoordinatorSpeakerTests {
       return true
     }
     func current(_ id: UUID) -> Transcript? { rows[id] }
+
+    /// #4075 S1: holds the next explicit rename until `releaseHeldRename()`, like a write
+    /// already sent: cancelling the waiting caller does not withdraw it.
+    var holdNextRename = false
+    /// Makes the next released rename throw instead of writing.
+    var failNextRename = false
+    private(set) var renameCalls = 0
+    private var heldRename: CheckedContinuation<Void, Never>?
+    var isHoldingRename: Bool { heldRename != nil }
+    struct RenameError: Error {}
+
+    func submitRename(
+      _ id: UUID, _ analysis: TranscriptSpeakerAnalysis, _ turns: [Turn]?,
+      _ explicitRename: (speakerId: String, name: String)
+    ) async throws -> Bool {
+      renameCalls += 1
+      if holdNextRename {
+        holdNextRename = false
+        await withCheckedContinuation { heldRename = $0 }
+      }
+      if failNextRename {
+        failNextRename = false
+        throw RenameError()
+      }
+      return rename(id, analysis, turns, explicitRename)
+    }
+
+    func releaseHeldRename() {
+      holdNextRename = false
+      let held = heldRename
+      heldRename = nil
+      held?.resume()
+    }
   }
 
   private func makeStoreBackedCoordinator(
@@ -768,7 +801,7 @@ struct FileImportCoordinatorSpeakerTests {
       saveToHistory: { store.save($0) },
       updateHistoryRow: { store.update($0) },
       mergeSpeakerFields: { try store.mergeSpeakerFields($0, $1, $2) },
-      writeExplicitRename: { store.rename($0, $1, $2, $3) },
+      writeExplicitRename: { try await store.submitRename($0, $1, $2, $3) },
       currentHistoryRow: { store.current($0) },
       emitTurnTelemetry: emitTurnTelemetry, emitRenameTelemetry: emitRenameTelemetry,
       emitSpeakerRetryTelemetry: emitSpeakerRetryTelemetry,
@@ -982,6 +1015,11 @@ struct FileImportCoordinatorSpeakerTests {
   /// A "hello" and B "there friend" become (A, B).
   private static func swappedTurnTexts(_ swaps: [String: String]) -> (a: String, b: String) {
     (swaps["hello"]!, "there \(swaps["friend"]!)")
+  }
+
+  /// #4075 S1: waits for the coordinator's own settlement of a Stop's History writes.
+  private func settleWrites(_ c: FileImportCoordinator) async -> Bool {
+    await settleUntil { c.hasPendingSettlement == false }
   }
 
   private func turnTexts(_ row: Transcript?) -> [String?] {
@@ -1563,6 +1601,30 @@ struct FileImportCoordinatorSpeakerTests {
     var failingUpdates = 0
     weak var coordinator: FileImportCoordinator?
     let gate = ManualGate()
+    /// #4075 S1: holds the next History merge or document update until released, like a
+    /// write already sent: the waiting caller being cancelled does not withdraw it.
+    var holdNextMerge = false
+    var holdNextUpdate = false
+    private var heldWrite: CheckedContinuation<Void, Never>?
+    var isHoldingWrite: Bool { heldWrite != nil }
+    /// The order merges, updates and polisher preparation actually ran in.
+    private(set) var events: [String] = []
+    func note(_ event: String) { events.append(event) }
+
+    func holdIfArmed(merge: Bool) async {
+      if merge ? holdNextMerge : holdNextUpdate {
+        if merge { holdNextMerge = false } else { holdNextUpdate = false }
+        await withCheckedContinuation { heldWrite = $0 }
+      }
+    }
+
+    func releaseHeldWrite() {
+      holdNextMerge = false
+      holdNextUpdate = false
+      let held = heldWrite
+      heldWrite = nil
+      held?.resume()
+    }
   }
 
   private func makeReRunCoordinator(
@@ -1577,6 +1639,8 @@ struct FileImportCoordinatorSpeakerTests {
       },
       saveToHistory: { store.save($0) },
       updateHistoryRow: { row in
+        await script.holdIfArmed(merge: false)
+        script.note("update")
         if script.failingUpdates > 0 {
           script.failingUpdates -= 1
           throw FakeHistoryStore.MergeError()
@@ -1584,6 +1648,8 @@ struct FileImportCoordinatorSpeakerTests {
         return store.update(row)
       },
       mergeSpeakerFields: { id, analysis, turns in
+        await script.holdIfArmed(merge: true)
+        script.note("merge")
         let saved = try store.mergeSpeakerFields(id, analysis, turns)
         if script.rerun, script.stopInsideRerunMerge {
           script.stopInsideRerunMerge = false
@@ -1595,7 +1661,10 @@ struct FileImportCoordinatorSpeakerTests {
       currentHistoryRow: { store.current($0) },
       historyRowExists: { store.current($0) != nil },
       emitTurnTelemetry: { telemetry.record($0, $1, $2) },
-      prepareLocalPolish: { _ in script.rerun ? script.polisherReadyOnRerun : true },
+      prepareLocalPolish: { _ in
+        script.note("prepare")
+        return script.rerun ? script.polisherReadyOnRerun : true
+      },
       processPart: { part, _ in
         script.calls += 1
         if script.calls == script.gateAt {
@@ -1668,7 +1737,7 @@ struct FileImportCoordinatorSpeakerTests {
     c.stop()
     #expect(c.state == .stopped)
     #expect(c.step == .done)
-    for _ in 0..<20 { await Task.yield() }
+    #expect(await settleWrites(c), "the Stop's History writes never settled")
     let after = CleanupSeen(c, store, id)
     #expect(
       after == first, "labeled \(labeled), finished \(finishedBeforeStop): \(after) vs \(first)")
@@ -1676,7 +1745,7 @@ struct FileImportCoordinatorSpeakerTests {
     #expect(store.mergeCalls == mergesAfterFirst, "no raw turns were written over the cleanup")
     #expect(telemetry.events.count == eventsAfterFirst, "the first run already reported the turns")
     await script.gate.open()
-    for _ in 0..<20 { await Task.yield() }
+    #expect(await settleWrites(c), "the Stop's History writes never settled")
     #expect(CleanupSeen(c, store, id) == first, "a late replacement part changes nothing")
   }
 
@@ -1693,7 +1762,7 @@ struct FileImportCoordinatorSpeakerTests {
     script.polisherReadyOnRerun = false
     c.rePolish()
     #expect(await settleUntil { c.state == .rejected(.polisherNotReady) })
-    for _ in 0..<20 { await Task.yield() }
+    #expect(await settleWrites(c), "the Stop's History writes never settled")
     #expect(CleanupSeen(c, store, id) == first, "labeled \(labeled)")
     #expect(store.mergeCalls == mergesAfterFirst, "no raw turns were written over the cleanup")
   }
@@ -1710,7 +1779,7 @@ struct FileImportCoordinatorSpeakerTests {
     script.stopInsideRerunMerge = true
     c.rePolish()
     #expect(await settleUntil { c.state == .stopped }, "the Stop inside the write never landed")
-    for _ in 0..<20 { await Task.yield() }
+    #expect(await settleWrites(c), "the Stop's History writes never settled")
     let after = CleanupSeen(c, store, id)
     #expect(after.partTexts.allSatisfy { $0.hasPrefix("second ") }, "\(after.partTexts)")
     if labeled {
@@ -1738,7 +1807,7 @@ struct FileImportCoordinatorSpeakerTests {
     script.stopInsideRerunMerge = true
     c.rePolish()
     #expect(await settleUntil { c.state == .stopped })
-    for _ in 0..<20 { await Task.yield() }
+    #expect(await settleWrites(c), "the Stop's History writes never settled")
     #expect(c.documentText == first.documentText, "the same words")
     #expect(c.runConfiguration?.polishProvider == .gemini, "the screen credits the re-run")
     #expect(
@@ -1763,7 +1832,7 @@ struct FileImportCoordinatorSpeakerTests {
     #expect(await script.gate.waitUntilArrived(), "the re-run never reached its first part")
     #expect(store.current(id)?.text != nil, "Clean it again wrote the raw row back")
     c.stop()
-    for _ in 0..<20 { await Task.yield() }
+    #expect(await settleWrites(c), "the Stop's History writes never settled")
     #expect(c.documentText == first.documentText, "the screen shows the kept cleanup")
     #expect(
       store.current(id)?.displayText == c.documentText,
@@ -1792,7 +1861,7 @@ struct FileImportCoordinatorSpeakerTests {
     c.rePolish()
     #expect(await script.gate.waitUntilArrived())
     c.stop()
-    for _ in 0..<20 { await Task.yield() }
+    #expect(await settleWrites(c), "the Stop's History writes never settled")
     #expect(c.documentText == b, "the screen shows cleanup B")
     #expect(
       turnTexts(store.current(id)).allSatisfy { $0?.hasPrefix("second ") == true },
@@ -1801,6 +1870,210 @@ struct FileImportCoordinatorSpeakerTests {
     #expect(store.current(id)?.llmProvider == LLMProvider.gemini.rawValue)
     await script.gate.open()
   }
+
+  // MARK: - #4075 S1: awaited cleaned and speaker writes, and the Stop settlement
+
+  /// The finished run's two writes are awaited: Done, and a saved badge, come only after
+  /// each settles, and a failed document update reads as a failure, not as saved.
+  @Test("a run's held speaker write or document update keeps it off Done until it settles")
+  func heldFinalWritesKeepTheRunOffDone() async throws {
+    for (holdMerge, updateFails) in [(true, false), (false, false), (false, true)] {
+      let store = FakeHistoryStore()
+      let script = ReRunScript()
+      defer { script.releaseHeldWrite() }
+      let c = makeReRunCoordinator(
+        script, store: store, labeled: true, telemetry: TurnTelemetryRecorder())
+      if holdMerge { script.holdNextMerge = true } else { script.holdNextUpdate = true }
+      if updateFails { script.failingUpdates = 1 }
+      c.choose(url: Self.anyURL)
+      try #require(
+        await settleUntil {
+          if case .ready = c.state { return true } else { return false }
+        })
+      c.start()
+      try #require(await settleUntil { script.isHoldingWrite }, "the write never arrived")
+      #expect(c.state != .finished, "the run reached Done before its write settled")
+      #expect(c.isSettlingRunPersistence)
+      #expect(c.isSavedToHistory == false)
+      script.releaseHeldWrite()
+      try #require(await settleUntil { c.state == .finished }, "the run never finished")
+      #expect(c.isSettlingRunPersistence == false)
+      if updateFails {
+        #expect(c.historySaveFailure != nil)
+        #expect(c.isSavedToHistory == false)
+      } else {
+        #expect(c.historySaveFailure == nil)
+        #expect(c.isSavedToHistory)
+      }
+    }
+  }
+
+  /// A Stop while the finished run's document update waits: the screen stops at once, the
+  /// run never reaches Done, and the stopped document's History row still ends up holding it.
+  @Test("a Stop while the final document update waits stops at once and the row still lands")
+  func stopDuringHeldFinalUpdate() async throws {
+    let store = FakeHistoryStore()
+    let script = ReRunScript()
+    defer { script.releaseHeldWrite() }
+    let c = makeReRunCoordinator(
+      script, store: store, labeled: true, telemetry: TurnTelemetryRecorder())
+    script.holdNextUpdate = true
+    c.choose(url: Self.anyURL)
+    try #require(
+      await settleUntil {
+        if case .ready = c.state { return true } else { return false }
+      })
+    c.start()
+    try #require(await settleUntil { script.isHoldingWrite }, "the update never arrived")
+    let id = try #require(c.historyID)
+    let shown = c.documentText
+    c.stop()
+    #expect(c.state == .stopped)
+    #expect(c.documentText == shown, "the completed cleanup stays on screen")
+    try #require(
+      await settleUntil { store.current(id)?.displayText == shown },
+      "the stopped document's row never received its cleanup")
+    script.releaseHeldWrite()
+    try #require(await settleUntil { c.isEngineHeld == false }, "the stopped run never ended")
+    #expect(c.state == .stopped, "the stopped run reached Done after all")
+    #expect(c.isSavedToHistory)
+  }
+
+  #if DEBUG
+  /// A Stop's restoration shows the kept cleanup at once while its History writes settle
+  /// behind it; a rename pressed meanwhile waits for them and then lands.
+  @Test("a Stop's restoration shows at once, settles its writes, and a rename waits for them")
+  func restorationSettlesAndRenameWaits() async throws {
+    let store = FakeHistoryStore()
+    let script = ReRunScript()
+    defer { script.releaseHeldWrite() }
+    let c = makeReRunCoordinator(
+      script, store: store, labeled: true, telemetry: TurnTelemetryRecorder())
+    guard let (id, _) = await completeFirstCleanup(c, store, script) else { return }
+    // Cleanup B completes but its turn save fails, so restoring B must write its turns.
+    store.throwOnMergeCall = store.mergeCalls + 1
+    c.rePolish()
+    try #require(await settleUntil { c.state == .finished }, "cleanup B never finished")
+    let b = c.documentText
+    script.gateAt = script.calls + 1
+    c.rePolish()
+    try #require(await script.gate.waitUntilArrived(), "cleanup C never reached its first part")
+    script.holdNextMerge = true
+    c.stop()
+    #expect(c.documentText == b, "the kept cleanup is not on screen at once")
+    // The screen and Copy read cleanup B's turns at once, before History holds them.
+    #expect(
+      c.turns?.allSatisfy { $0.processedText?.hasPrefix("second ") == true } == true,
+      "the screen does not show cleanup B's turns yet: \(c.turns?.map(\.processedText) as Any)")
+    #expect(turnTexts(store.current(id)).allSatisfy { $0?.hasPrefix("first ") == true })
+    try #require(await settleUntil { script.isHoldingWrite }, "the restoration never wrote")
+    #expect(c.isSavedToHistory == false, "the badge claims writes that have not settled")
+    let waitsBefore = c.settlementWaitsForTesting
+    let namesBefore = store.current(id)?.speakerNames
+    let rename = Task { @MainActor in await c.renameSpeaker(id: "A", name: "Zach") }
+    try #require(
+      await settleUntil { c.settlementWaitsForTesting == waitsBefore + 1 },
+      "the rename never reached the settlement")
+    #expect(store.current(id)?.speakerNames == namesBefore, "the rename wrote before the Stop's")
+    script.releaseHeldWrite()
+    let failure = await rename.value
+    #expect(failure == nil)
+    #expect(
+      turnTexts(store.current(id)).allSatisfy { $0?.hasPrefix("second ") == true },
+      "History's turns are not cleanup B's: \(turnTexts(store.current(id)))")
+    #expect(store.current(id)?.speakerNames?["A"] == "Zach", "the rename was lost")
+    try #require(await settleWrites(c))
+    #expect(c.isSavedToHistory)
+    await script.gate.open()
+  }
+
+  /// A rename pressed on a stopped document waits for its settlement; if another file is
+  /// chosen meanwhile, the rename sends nothing at all, to either file.
+  @Test("a rename waiting on a Stop's writes sends nothing if another file is chosen")
+  func renameAfterReplacementDuringSettlementSendsNothing() async throws {
+    let store = FakeHistoryStore()
+    let script = ReRunScript()
+    defer { script.releaseHeldWrite() }
+    let c = makeReRunCoordinator(
+      script, store: store, labeled: true, telemetry: TurnTelemetryRecorder())
+    guard let (id, _) = await completeFirstCleanup(c, store, script) else { return }
+    store.throwOnMergeCall = store.mergeCalls + 1
+    c.rePolish()
+    try #require(await settleUntil { c.state == .finished }, "cleanup B never finished")
+    script.gateAt = script.calls + 1
+    c.rePolish()
+    try #require(await script.gate.waitUntilArrived(), "cleanup C never reached its first part")
+    script.holdNextMerge = true
+    c.stop()
+    try #require(await settleUntil { script.isHoldingWrite }, "the restoration never wrote")
+    let waitsBefore = c.settlementWaitsForTesting
+    let rename = Task { @MainActor in await c.renameSpeaker(id: "A", name: "Zach") }
+    try #require(
+      await settleUntil { c.settlementWaitsForTesting == waitsBefore + 1 },
+      "the rename never reached the settlement")
+    await script.gate.open()
+    try #require(await settleUntil { c.isEngineHeld == false }, "cleanup C never ended")
+    c.choose(url: URL(fileURLWithPath: "/tmp/replacement.m4a"))
+    script.releaseHeldWrite()
+    let failure = await rename.value
+    #expect(failure?.message == RenameFailure.couldNotSaveName)
+    try #require(await settleWrites(c))
+    #expect(store.current(id)?.speakerNames?["A"] != "Zach", "the rename reached the old row")
+    #expect(c.historyID == nil, "the new file took the old row's identity")
+  }
+
+  /// Clean it again on the same document after a Stop starts only after the Stop's writes
+  /// for that row settle; another file chosen meanwhile is untouched by them.
+  @Test("Clean it again after a Stop waits for its writes, and a new file is left alone by them")
+  func reCleanWaitsForSettlementAndReplacementIsUntouched() async throws {
+    for replace in [false, true] {
+      let store = FakeHistoryStore()
+      let script = ReRunScript()
+      defer { script.releaseHeldWrite() }
+      let c = makeReRunCoordinator(
+        script, store: store, labeled: true, telemetry: TurnTelemetryRecorder())
+      guard let (id, _) = await completeFirstCleanup(c, store, script) else { return }
+      store.throwOnMergeCall = store.mergeCalls + 1
+      c.rePolish()
+      try #require(await settleUntil { c.state == .finished }, "cleanup B never finished")
+      script.gateAt = script.calls + 1
+      c.rePolish()
+      try #require(await script.gate.waitUntilArrived(), "cleanup C never reached its first part")
+      script.holdNextMerge = true
+      c.stop()
+      try #require(await settleUntil { script.isHoldingWrite }, "the restoration never wrote")
+      await script.gate.open()
+      try #require(await settleUntil { c.isEngineHeld == false }, "cleanup C never ended")
+      let eventsBefore = script.events.count
+      if replace {
+        c.choose(url: URL(fileURLWithPath: "/tmp/replacement.m4a"))
+        try #require(
+          await settleUntil {
+            if case .ready = c.state { return true } else { return false }
+          })
+        let revisionBefore = c.speakerFieldsRevision
+        script.releaseHeldWrite()
+        try #require(await settleWrites(c), "the Stop's writes never settled")
+        #expect(
+          turnTexts(store.current(id)).allSatisfy { $0?.hasPrefix("second ") == true },
+          "the old row never received its restored turns")
+        #expect(c.historyID == nil, "the new file took the old row's identity")
+        #expect(c.historySaveFailure == nil)
+        #expect(c.speakerFieldsRevision == revisionBefore)
+        #expect(c.file?.name == "replacement.m4a")
+      } else {
+        c.rePolish()
+        #expect(c.isRunning)
+        script.releaseHeldWrite()
+        try #require(await settleUntil { c.state == .finished }, "Clean it again never finished")
+        let after = Array(script.events[eventsBefore...])
+        let firstPrepare = try #require(after.firstIndex(of: "prepare"))
+        let firstMerge = try #require(after.firstIndex(of: "merge"))
+        #expect(firstMerge < firstPrepare, "Clean it again ran before the Stop's write: \(after)")
+      }
+    }
+  }  #endif
+
 
   @Test("when restoring cannot write the turns either, the screen shows the kept turns, unsaved (#3903)")
   func restoreWhoseTurnWriteFailsShowsTheKeptTurnsUnsaved() async {
@@ -1819,7 +2092,7 @@ struct FileImportCoordinatorSpeakerTests {
     c.rePolish()
     #expect(await script.gate.waitUntilArrived())
     c.stop()
-    for _ in 0..<20 { await Task.yield() }
+    #expect(await settleWrites(c), "the Stop's History writes never settled")
     #expect(c.documentText == b)
     #expect(
       c.turns?.allSatisfy { $0.processedText?.hasPrefix("second ") == true } == true,
@@ -1843,7 +2116,7 @@ struct FileImportCoordinatorSpeakerTests {
     c.rePolish()
     #expect(await script.gate.waitUntilArrived())
     c.stop()
-    for _ in 0..<20 { await Task.yield() }
+    #expect(await settleWrites(c), "the Stop's History writes never settled")
     #expect(c.documentText == first.documentText, "the kept cleanup is on screen")
     #expect(store.current(id)?.polishedText == nil, "History still lacks its text")
     #expect(!c.isSavedToHistory, "the badge does not say Saved to History")
@@ -2777,6 +3050,147 @@ struct FileImportCoordinatorSpeakerTests {
 
     let failure = await coordinator.renameSpeaker(id: "A", name: "Zach")
     #expect(failure != nil, "there is nothing to rename against a .single outcome")
+  }
+
+  /// A finished two-speaker import with its labeled row stored, for the held-rename tests.
+  private func finishedLabeledImport(
+    store: FakeHistoryStore,
+    emitRenameTelemetry: @escaping @MainActor (TelemetryService.FileImportRenameOutcome) -> Void
+  ) async throws -> (FileImportCoordinator, UUID) {
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, wordTimings: Self.twoSpeakerWordTimings(),
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: Self.twoSpeakerSegments) },
+      emitRenameTelemetry: emitRenameTelemetry)
+    coordinator.choose(url: Self.anyURL)
+    try #require(
+      await settleUntil {
+        if case .ready = coordinator.state { return true } else { return false }
+      })
+    coordinator.start()
+    try #require(await settleUntil { coordinator.state == .finished }, "the import never finished")
+    let historyID = try #require(coordinator.historyID)
+    try #require(await settleUntil { store.current(historyID)?.turns != nil })
+    try #require(await settleUntil { coordinator.speakerStepState == .finished })
+    return (coordinator, historyID)
+  }
+
+  /// #4075 S1: the rename's write is awaited. It reports its real outcome only after the
+  /// write settles: success, a row deleted while it waited, or a failure that names the
+  /// speaker's name as it is now.
+  @Test("a held rename reports the write's real outcome once it settles")
+  func heldRenameReportsTheRealOutcome() async throws {
+    for ending in ["saved", "deleted", "failed"] {
+      let store = FakeHistoryStore()
+      defer { store.releaseHeldRename() }
+      var outcomes: [TelemetryService.FileImportRenameOutcome] = []
+      let (coordinator, historyID) = try await finishedLabeledImport(
+        store: store, emitRenameTelemetry: { outcomes.append($0) })
+      let revisionBefore = coordinator.speakerFieldsRevision
+      store.holdNextRename = true
+      var returned = false
+      let rename = Task { @MainActor in
+        let failure = await coordinator.renameSpeaker(id: "A", name: "Zach")
+        returned = true
+        return failure
+      }
+      try #require(await settleUntil { store.isHoldingRename }, "the rename never arrived")
+      #expect(returned == false, "the rename answered before its write settled")
+      switch ending {
+      case "deleted":
+        store.delete(historyID)
+      case "failed":
+        // Someone else renamed A while this write waited; the failure must say so.
+        let row = try #require(store.current(historyID))
+        store.save(
+          row.mergingSpeakerFields(
+            analysis: try #require(row.speakerAnalysis), turns: row.turns,
+            explicitRename: ("A", "Latest")))
+        try #require(store.current(historyID)?.speakerNames?["A"] == "Latest")
+        store.failNextRename = true
+      default:
+        break
+      }
+      store.releaseHeldRename()
+      let failure = await rename.value
+      #expect(store.renameCalls == 1)
+      switch ending {
+      case "saved":
+        #expect(failure == nil)
+        #expect(store.current(historyID)?.speakerNames?["A"] == "Zach")
+        #expect(outcomes == [.saved])
+        #expect(coordinator.speakerFieldsRevision == revisionBefore + 1)
+      case "deleted":
+        #expect(failure?.message == RenameFailure.recordingRemoved)
+        #expect(store.current(historyID) == nil, "the refused rename brought the row back")
+        #expect(outcomes == [.failed])
+      default:
+        #expect(failure?.message == RenameFailure.couldNotSaveName)
+        #expect(failure?.currentName == "Latest", "the failure named a stale speaker name")
+        #expect(store.current(historyID)?.speakerNames?["A"] == "Latest")
+        #expect(outcomes == [.failed])
+      }
+    }
+  }
+
+  /// #4075 S1: a new file chosen while an old rename waits. The old rename still settles and
+  /// reports once; the new file's identity and view are untouched.
+  @Test("a rename that settles after another file was chosen leaves that file alone")
+  func heldRenameAfterReplacement() async throws {
+    for fails in [false, true] {
+      let store = FakeHistoryStore()
+      defer { store.releaseHeldRename() }
+      var outcomes: [TelemetryService.FileImportRenameOutcome] = []
+      let (coordinator, historyID) = try await finishedLabeledImport(
+        store: store, emitRenameTelemetry: { outcomes.append($0) })
+      let nameBefore = store.current(historyID)?.speakerNames?["A"]
+      store.holdNextRename = true
+      let rename = Task { @MainActor in
+        await coordinator.renameSpeaker(id: "A", name: "Zach")
+      }
+      try #require(await settleUntil { store.isHoldingRename }, "the rename never arrived")
+      coordinator.choose(url: URL(fileURLWithPath: "/tmp/replacement.m4a"))
+      try #require(
+        await settleUntil {
+          if case .ready = coordinator.state { return true } else { return false }
+        })
+      let revisionBefore = coordinator.speakerFieldsRevision
+      store.failNextRename = fails
+      store.releaseHeldRename()
+      let failure = await rename.value
+      #expect((failure == nil) == (fails == false))
+      #expect(outcomes == [fails ? .failed : .saved])
+      #expect(store.current(historyID)?.speakerNames?["A"] == (fails ? nameBefore : "Zach"))
+      #expect(coordinator.historyID == nil, "the new file took the old row's identity")
+      #expect(coordinator.file?.name == "replacement.m4a")
+      #expect(coordinator.speakerFieldsRevision == revisionBefore)
+      #expect(coordinator.historySaveFailure == nil)
+    }
+  }
+
+  /// #4075 S1: cancellation. A caller cancelled before the write is sent sends none; one
+  /// cancelled after it is sent still gets the write's real result, with no second write.
+  @Test("a cancelled rename sends no write, and a sent one still settles")
+  func cancelledRename() async throws {
+    let store = FakeHistoryStore()
+    defer { store.releaseHeldRename() }
+    let (coordinator, historyID) = try await finishedLabeledImport(
+      store: store, emitRenameTelemetry: { _ in })
+    // Not yet started: this test holds the main actor until it awaits the task.
+    let early = Task { @MainActor in await coordinator.renameSpeaker(id: "A", name: "Early") }
+    early.cancel()
+    let earlyFailure = await early.value
+    #expect(earlyFailure?.message == RenameFailure.couldNotSaveName)
+    #expect(store.renameCalls == 0, "a cancelled rename still sent a write")
+
+    store.holdNextRename = true
+    let late = Task { @MainActor in await coordinator.renameSpeaker(id: "A", name: "Zach") }
+    try #require(await settleUntil { store.isHoldingRename }, "the rename never arrived")
+    late.cancel()
+    store.releaseHeldRename()
+    let lateFailure = await late.value
+    #expect(lateFailure == nil, "a sent write was reported as failed because its caller left")
+    #expect(store.renameCalls == 1)
+    #expect(store.current(historyID)?.speakerNames?["A"] == "Zach")
   }
 
   @Test("exportButtonLabels relabels for Marked up regardless of whether the document has turns")

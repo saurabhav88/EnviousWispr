@@ -147,7 +147,7 @@ enum MeetingWiring {
           try await transcriptCoordinator.saveAndShowDurably(transcript)
         },
         removeTranscriptRow: { [transcriptCoordinator = inputs.transcriptCoordinator] id in
-          try transcriptCoordinator.removeRow(id: id)
+          try await transcriptCoordinator.removeRow(id: id)
         },
         meetingRowIDs: { [transcriptCoordinator = inputs.transcriptCoordinator] meetingID in
           transcriptCoordinator.rowIDs(ofMeeting: meetingID)

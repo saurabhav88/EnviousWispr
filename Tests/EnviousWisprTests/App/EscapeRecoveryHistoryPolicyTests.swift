@@ -177,7 +177,7 @@ struct EscapeRecoveryHistoryPolicyTests {
     await coordinator.waitForLoadForTesting()
     #expect(coordinator.visibleTranscripts.count == 2, "control: both loaded")
 
-    coordinator.deleteAll()
+    await coordinator.deleteAll()
     coordinator.load()
     await coordinator.waitForLoadForTesting()
 
@@ -196,7 +196,7 @@ struct EscapeRecoveryHistoryPolicyTests {
     await coordinator.waitForLoadForTesting()
     let loaded = try #require(coordinator.visibleTranscripts.first, "control: the held row loaded")
 
-    coordinator.delete(loaded)
+    await coordinator.delete(loaded)
 
     #expect(coordinator.visibleTranscripts.isEmpty)
     #expect(
@@ -359,7 +359,7 @@ struct EscapeRecoveryHistoryPolicyTests {
     await coordinator.waitForLoadForTesting()
     let loaded = try #require(coordinator.visibleTranscripts.first)
 
-    coordinator.keep(loaded)
+    await coordinator.keep(loaded)
 
     #expect(
       coordinator.visibleTranscripts.first?.escapeRecoveredAt == nil,
@@ -380,8 +380,8 @@ struct EscapeRecoveryHistoryPolicyTests {
     await coordinator.waitForLoadForTesting()
     let loaded = try #require(coordinator.visibleTranscripts.first)
 
-    coordinator.keep(loaded)
-    coordinator.keep(coordinator.visibleTranscripts[0])
+    await coordinator.keep(loaded)
+    await coordinator.keep(coordinator.visibleTranscripts[0])
 
     #expect(try await store.loadAll().count == 1)
     #expect(coordinator.visibleTranscripts.count == 1)
@@ -527,7 +527,7 @@ struct EscapeRecoveryHistoryPolicyTests {
       try store.savePending(stale)
       coordinator.setTranscriptsForTesting([stale])
 
-      coordinator.keep(stale)
+      await coordinator.keep(stale)
       #expect(coordinator.actionFailure == nil, "expiry refusal is not an action failure")
 
       #expect(
@@ -602,7 +602,7 @@ struct EscapeRecoveryHistoryPolicyTests {
       let ordinary = permanent("never held")
       coordinator.setTranscriptsForTesting([ordinary])
 
-      coordinator.keep(ordinary)
+      await coordinator.keep(ordinary)
 
       #expect(try await store.loadAll().isEmpty, "no write for a row that was never pending")
     }
@@ -635,7 +635,7 @@ struct EscapeRecoveryHistoryPolicyTests {
     }
 
     @Test("Keep stops the pulse once the last held row is gone")
-    func keepStopsThePulse() throws {
+    func keepStopsThePulse() async throws {
       let (store, _) = makeStore()
       let coordinator = TranscriptCoordinator(store: store)
       let stamped = held("last one", age: 60)
@@ -643,7 +643,7 @@ struct EscapeRecoveryHistoryPolicyTests {
       coordinator.setTranscriptsForTesting([stamped])
       #expect(coordinator.hasPendingPulseForTesting, "control: it was running")
 
-      coordinator.keep(stamped)
+      await coordinator.keep(stamped)
 
       #expect(coordinator.hasPendingPulseForTesting == false)
     }

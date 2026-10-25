@@ -204,7 +204,7 @@ struct HistoryReuseTests {
       defer { try? FileManager.default.removeItem(at: dir) }
       let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
       await open(coordinator)
-      try coordinator.saveAndShow(Self.row("local"))
+      try await coordinator.saveAndShow(Self.row("local"))
       #expect(texts(coordinator) == ["local"], "visible at once, without an open")
       await open(coordinator)
       #expect(coordinator.historyFullReadsForTesting == 2)
@@ -216,7 +216,7 @@ struct HistoryReuseTests {
       let dir = Self.makeTempDir()
       defer { try? FileManager.default.removeItem(at: dir) }
       let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
-      try coordinator.saveAndShow(Self.row("early"))
+      try await coordinator.saveAndShow(Self.row("early"))
       #expect(texts(coordinator) == ["early"])
       await open(coordinator)
       #expect(coordinator.historyFullReadsForTesting == 1)

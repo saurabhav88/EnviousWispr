@@ -104,10 +104,10 @@ struct LastDictationSelectionTests {
   // MARK: Re-read at action time
 
   @Test("Acting re-reads the row: an edit is picked up, a deletion or a blanked row is refused")
-  func reReadsTheRowById() throws {
+  func reReadsTheRowById() async throws {
     let coordinator = makeCoordinator()
     let first = dictation("first words", ageSeconds: 10)
-    try coordinator.saveAndShow(first)
+    try await coordinator.saveAndShow(first)
     let offered = try #require(coordinator.lastPasteableDictation())
     #expect(offered.text == "first words")
 
@@ -115,17 +115,17 @@ struct LastDictationSelectionTests {
     let edited = Transcript(
       id: first.id, text: first.text, polishedText: "First words, polished.",
       createdAt: first.createdAt)
-    #expect(try coordinator.updateExistingRow(edited))
+    #expect(try await coordinator.updateExistingRow(edited))
     #expect(coordinator.lastDictationTextForReuse(id: offered.id) == "First words, polished.")
 
     // A row that became blank is no longer reusable, even though its id still exists.
     let blanked = Transcript(
       id: first.id, text: first.text, polishedText: " ", createdAt: first.createdAt)
-    #expect(try coordinator.updateExistingRow(blanked))
+    #expect(try await coordinator.updateExistingRow(blanked))
     #expect(coordinator.lastDictationTextForReuse(id: offered.id) == nil)
 
     // Deleted between render and click: inert.
-    coordinator.delete(blanked)
+    await coordinator.delete(blanked)
     #expect(coordinator.lastDictationTextForReuse(id: offered.id) == nil)
     #expect(coordinator.lastPasteableDictation() == nil)
   }

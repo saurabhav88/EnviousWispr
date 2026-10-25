@@ -1,5 +1,6 @@
 import EnviousWisprCore
 import Foundation
+import os
 import Testing
 
 @testable import EnviousWisprAppKit
@@ -303,9 +304,10 @@ struct TranscriptStoreDeleteAllTests {
 
     // MARK: - A meeting write in flight
 
-    @Test(
-      "a durable write held open across Delete All fails, and its row reaches neither disk nor History"
-    )
+    /// #4075 S1: Delete All is admitted behind a durable meeting write held open on its
+    /// temporary file. The write finishes first; Delete All then removes it with the rest, so
+    /// neither disk nor History keeps the row.
+    @Test("Delete All waits for a durable write held open, then removes it with the rest")
     func durableWriteHeldAcrossDeleteAll() async throws {
       let box = Sandbox()
       defer { box.remove() }
@@ -317,28 +319,38 @@ struct TranscriptStoreDeleteAllTests {
 
       let opened = DispatchSemaphore(value: 0)
       let release = DispatchSemaphore(value: 0)
+      defer { release.signal() }
+      let released = OSAllocatedUnfairLock<Bool?>(initialState: nil)
       store.durableWriteDidOpenForTesting = {
         opened.signal()
-        release.wait()
+        // deadline-fallback: bound a missing release; a timeout fails the test below
+        let outcome = release.wait(timeout: .now() + 10)
+        released.withLock { $0 = outcome == .success }
       }
       let meetingRow = Self.row("meeting")
       let write = Task { try await coordinator.saveAndShowDurably(meetingRow) }
-      await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+      let didOpen = await withCheckedContinuation { (done: CheckedContinuation<Bool, Never>) in
         DispatchQueue.global().async {
-          opened.wait()
-          done.resume()
+          done.resume(returning: opened.wait(timeout: .now() + 10) == .success)
         }
       }
-
-      coordinator.deleteAll()
-      await store.deletionCleanupForTesting?.value
+      try #require(didOpen, "the durable write never opened its temporary file")
+      let admitted = coordinator.commandsAdmittedForTesting
+      let deleteAll = Task { await coordinator.deleteAll() }
+      try #require(
+        await settleUntilObserved { coordinator.commandsAdmittedForTesting == admitted + 1 },
+        "Delete All was never admitted")
       release.signal()
+      try await write.value
+      await deleteAll.value
+      await store.deletionCleanupForTesting?.value
 
-      await #expect(throws: (any Error).self) { try await write.value }
       #expect(coordinator.currentRow(id: meetingRow.id) == nil)
       #expect(coordinator.filteredTranscripts.isEmpty)
       #expect(box.jsonNames(in: box.directory).isEmpty)
       #expect(box.siblings().isEmpty)
+      #expect(coordinator.actionFailure == nil)
+      #expect(released.withLock { $0 } == true, "the held write was released by its timeout")
     }
 
   #endif

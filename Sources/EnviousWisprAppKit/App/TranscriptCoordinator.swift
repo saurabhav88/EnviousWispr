@@ -100,6 +100,10 @@ final class TranscriptCoordinator {
   private(set) var expiryPulse: Int = 0
 
   private let store: TranscriptStore
+  /// #4075 S1: the one serial queue History's blocking file work runs on, off the main actor
+  /// and in the order it was asked for. Work sent here captures only Sendable values and
+  /// storage operations, never `store` itself, which is main-actor state.
+  private let storageWorker = DispatchQueue(label: "com.enviouswispr.history.files", qos: .utility)
   private let pendingPulseInterval: Duration
   private let pendingPulseSleep: @Sendable (Duration) async -> Void
 
@@ -860,6 +864,12 @@ final class TranscriptCoordinator {
   /// for exactly this reason, and the sweep had no business being the one thing
   /// that blocks the window.
   func sweepExpiredPending(now: Date = Date()) async {
+    // #4075 S1: one command spanning the walk and its result, so no write or removal lands
+    // between them.
+    await admit { [self] in await performSweep(now: now) }
+  }
+
+  private func performSweep(now: Date) async {
     // No guard here: the STORE coalesces, so a second caller awaits the sweep
     // in flight and then runs its own pass with its own clock. A flag at this
     // layer would defeat both halves — `await` resuming before the work was
@@ -1070,63 +1080,14 @@ final class TranscriptCoordinator {
       #if DEBUG
         try historyReadDidFinishForTesting?(read)
       #endif
-      var diskRows = read.permanent
-      // Phase C union-by-ID merge. Preserve any in-memory rows whose IDs
-      // are not yet on disk (append-during-load race window) in their
-      // existing order, then append disk rows. Protects the newest-first
-      // invariant under multiple concurrent completions while a slow
-      // startup load is still running.
-      // #2087: pending rows are ADDITIVE and never authoritative. Keep writes
-      // the permanent copy before deleting the pending file, so a crash
-      // between those two steps leaves the same id in both namespaces — root
-      // wins, and the user sees the row they kept exactly once rather than a
-      // permanent row shadowed by a copy still counting down.
-      let pendingRows = read.pending
       guard request == loadRequestID, !Task.isCancelled else { return }
-      guard generationAtRead == diskStateGeneration else {
-        load()
-        return
+      // #4075 S1: applied as a queued command, so a write's disk success and its publication
+      // are never split by it. The application rechecks this request itself.
+      await admit { [self] in
+        applyRead(
+          read, request: request, revisionAtRead: revisionAtRead, generationAtRead: generationAtRead
+        )
       }
-      // #2772: a row written SINCE this read began is newer than the disk copy that came
-      // back, and the merge below prefers the disk one whenever the id already exists. An
-      // import writes twice under one id, so without this the raw version read at the
-      // start of a load replaces the cleaned version saved a moment later, and History
-      // shows unpolished words until something else refreshes it. Found by Codex.
-      let newerRows = Dictionary(
-        uniqueKeysWithValues:
-          transcripts
-          .filter { (writtenAtRevision[$0.id] ?? 0) > revisionAtRead }
-          .map { ($0.id, $0) })
-      diskRows = diskRows.map { newerRows[$0.id] ?? $0 }
-      let rootIDs = Set(diskRows.map(\.id))
-      let heldRows = pendingRows.filter { !rootIDs.contains($0.id) }
-      let knownIDs = rootIDs.union(heldRows.map(\.id))
-      // #4075 G9: a row missing from the disk is kept only when it was written after this read
-      // began (its file can land after the scan passed it) or when the read skipped a file. A
-      // row written earlier was on disk before the read, so a complete read that lacks it means
-      // its file was deleted outside this coordinator, and keeping it left the deleted text in
-      // History and offered by Paste Last.
-      let inFlightRows = transcripts.filter {
-        !knownIDs.contains($0.id)
-          && (read.freshness == nil || (writtenAtRevision[$0.id] ?? 0) > revisionAtRead)
-      }
-      // Merged rather than re-sorted: both inputs are already newest-first,
-      // and re-sorting the combined list could reorder permanent rows that
-      // share a `createdAt`. With no held rows this returns `diskRows`
-      // unchanged, so History is byte-identical for anyone who never turns
-      // Escape Recovery on.
-      let merged = inFlightRows + Self.mergeNewestFirst(heldRows, diskRows)
-      let mergedIDs = Set(merged.map(\.id))
-      removedRowIDs.formUnion(transcripts.lazy.map(\.id).filter { !mergedIDs.contains($0) })
-      transcripts = merged
-      // #4001 H9: reusable only when the read itself was certified. A read that skipped a file
-      // it could not open, or that a write overlapped, leaves the next open to read again.
-      historyCache = read.freshness.map(HistoryCache.reusable) ?? .unread
-      #if DEBUG
-        historyFullReadsForTesting += 1
-      #endif
-      reconcileSelectionWithDisplayedSet()
-      startPulseIfNeeded()
     } catch is CancellationError {
       // A newer read replaced this one (#4075 G8); that read publishes.
     } catch {
@@ -1135,6 +1096,72 @@ final class TranscriptCoordinator {
         level: .info, category: "TranscriptCoordinator"
       )
     }
+  }
+
+  private func applyRead(
+    _ read: TranscriptHistoryRead, request: UInt64, revisionAtRead: Int,
+    generationAtRead: Int
+  ) {
+    var diskRows = read.permanent
+    // Phase C union-by-ID merge. Preserve any in-memory rows whose IDs
+    // are not yet on disk (append-during-load race window) in their
+    // existing order, then append disk rows. Protects the newest-first
+    // invariant under multiple concurrent completions while a slow
+    // startup load is still running.
+    // #2087: pending rows are ADDITIVE and never authoritative. Keep writes
+    // the permanent copy before deleting the pending file, so a crash
+    // between those two steps leaves the same id in both namespaces — root
+    // wins, and the user sees the row they kept exactly once rather than a
+    // permanent row shadowed by a copy still counting down.
+    let pendingRows = read.pending
+    // The source load's own identity, not the drain's cancellation: `load()` replaces a
+    // request by moving `loadRequestID`.
+    guard request == loadRequestID else { return }
+    guard generationAtRead == diskStateGeneration else {
+      // A later fresh read, started now and not awaited here.
+      load()
+      return
+    }
+    // #2772: a row written SINCE this read began is newer than the disk copy that came
+    // back, and the merge below prefers the disk one whenever the id already exists. An
+    // import writes twice under one id, so without this the raw version read at the
+    // start of a load replaces the cleaned version saved a moment later, and History
+    // shows unpolished words until something else refreshes it. Found by Codex.
+    let newerRows = Dictionary(
+      uniqueKeysWithValues:
+        transcripts
+        .filter { (writtenAtRevision[$0.id] ?? 0) > revisionAtRead }
+        .map { ($0.id, $0) })
+    diskRows = diskRows.map { newerRows[$0.id] ?? $0 }
+    let rootIDs = Set(diskRows.map(\.id))
+    let heldRows = pendingRows.filter { !rootIDs.contains($0.id) }
+    let knownIDs = rootIDs.union(heldRows.map(\.id))
+    // #4075 G9: a row missing from the disk is kept only when it was written after this read
+    // began (its file can land after the scan passed it) or when the read skipped a file. A
+    // row written earlier was on disk before the read, so a complete read that lacks it means
+    // its file was deleted outside this coordinator, and keeping it left the deleted text in
+    // History and offered by Paste Last.
+    let inFlightRows = transcripts.filter {
+      !knownIDs.contains($0.id)
+        && (read.freshness == nil || (writtenAtRevision[$0.id] ?? 0) > revisionAtRead)
+    }
+    // Merged rather than re-sorted: both inputs are already newest-first,
+    // and re-sorting the combined list could reorder permanent rows that
+    // share a `createdAt`. With no held rows this returns `diskRows`
+    // unchanged, so History is byte-identical for anyone who never turns
+    // Escape Recovery on.
+    let merged = inFlightRows + Self.mergeNewestFirst(heldRows, diskRows)
+    let mergedIDs = Set(merged.map(\.id))
+    removedRowIDs.formUnion(transcripts.lazy.map(\.id).filter { !mergedIDs.contains($0) })
+    transcripts = merged
+    // #4001 H9: reusable only when the read itself was certified. A read that skipped a file
+    // it could not open, or that a write overlapped, leaves the next open to read again.
+    historyCache = read.freshness.map(HistoryCache.reusable) ?? .unread
+    #if DEBUG
+      historyFullReadsForTesting += 1
+    #endif
+    reconcileSelectionWithDisplayedSet()
+    startPulseIfNeeded()
   }
 
   // periphery:ignore - test seam
@@ -1218,10 +1245,82 @@ final class TranscriptCoordinator {
   /// Thrown by an ordinary write to a row whose durable meeting write is still in flight.
   struct RowWriteInFlight: Error {}
 
-  func saveAndShow(_ transcript: Transcript) throws {
+  func saveAndShow(_ transcript: Transcript) async throws {
+    // #3972 C4a: refused at admission, so ordinary writes admitted before a durable one stay
+    // valid while later ones are refused until it lands.
     guard !durableWritesInFlight.contains(transcript.id) else { throw RowWriteInFlight() }
-    try store.save(transcript)
-    // Stamped so an in-flight `load()` cannot publish the version it read BEFORE this write.
+    try Task.checkCancellation()
+    _ = try await admit { [self] in
+      await capture { try await performWrite(transcript, insertIfAbsent: true) }
+    }.get()
+  }
+
+  /// One ordinary write, run as the head command: the file work on the storage worker, then
+  /// the publication. Update-only when `insertIfAbsent` is false: a row no longer listed is
+  /// not written and the answer is false.
+  private func performWrite(_ transcript: Transcript, insertIfAbsent: Bool) async throws -> Bool {
+    if !insertIfAbsent, !transcripts.contains(where: { $0.id == transcript.id }) {
+      return false
+    }
+    let operations = store.operations()
+    #if DEBUG
+      let willWrite = ordinaryWriteWillStartForTesting
+    #endif
+    #if DEBUG
+      let didWrite = ordinaryWriteDidFinishForTesting
+    #endif
+    try await runOnStorageWorker {
+      #if DEBUG
+        willWrite?()
+      #endif
+      try operations.save(transcript)
+      #if DEBUG
+        didWrite?()
+      #endif
+    }
+    // Stamped with the publication, with no read applied in between, so an in-flight `load()`
+    // cannot publish the version it read BEFORE this write.
+    noteWritten(transcript.id)
+    if let existing = transcripts.firstIndex(where: { $0.id == transcript.id }) {
+      transcripts[existing] = transcript
+    } else {
+      transcripts.insert(transcript, at: 0)
+    }
+    // #2807: the cleaned text can stop matching the search the row was selected under.
+    reconcileSelectionWithDisplayedSet()
+    startPulseIfNeeded()
+    return true
+  }
+
+  /// #3972 C4a: an EnviousMeet meeting's row, written durably (encode, `F_FULLFSYNC`, directory
+  /// sync) OFF the main actor, then shown. EnviousMeet marks the meeting ready only after this
+  /// returns, and its deletion awaits the commit that calls this, so no delete races the write.
+  func saveAndShowDurably(_ transcript: Transcript) async throws {
+    guard !durableWritesInFlight.contains(transcript.id) else { throw RowWriteInFlight() }
+    // Registered at admission and held until its publication or failure, so ordinary writes
+    // admitted after it are refused and those admitted before it stay valid.
+    durableWritesInFlight.insert(transcript.id)
+    try await admit { [self] in
+      defer { durableWritesInFlight.remove(transcript.id) }
+      return await capture { try await performDurableWrite(transcript) }
+    }.get()
+  }
+
+  private func performDurableWrite(_ transcript: Transcript) async throws {
+    let write = store.durableWriter()
+    #if DEBUG
+      let willWrite = durableWriteWillStartForTesting
+    #endif
+    // On the storage worker, not a plain Task: this type is @MainActor and a plain Task inherits
+    // it, while the write encodes and blocks on two disk flushes. Awaited at once, so it neither
+    // outlives nor reorders the commit. Once sent it runs to its end, so a cancelled caller
+    // still gets the real result and the bookkeeping below.
+    try await runOnStorageWorker {
+      #if DEBUG
+        willWrite?()
+      #endif
+      try write(transcript)
+    }
     noteWritten(transcript.id)
     if let existing = transcripts.firstIndex(where: { $0.id == transcript.id }) {
       transcripts[existing] = transcript
@@ -1232,34 +1331,96 @@ final class TranscriptCoordinator {
     startPulseIfNeeded()
   }
 
-  /// #3972 C4a: an EnviousMeet meeting's row, written durably (encode, `F_FULLFSYNC`, directory
-  /// sync) OFF the main actor, then shown. EnviousMeet marks the meeting ready only after this
-  /// returns, and its deletion awaits the commit that calls this, so no delete races the write.
-  func saveAndShowDurably(_ transcript: Transcript) async throws {
-    guard !durableWritesInFlight.contains(transcript.id) else { throw RowWriteInFlight() }
-    durableWritesInFlight.insert(transcript.id)
-    defer { durableWritesInFlight.remove(transcript.id) }
-    let write = store.durableWriter()
-    #if DEBUG
-      let willWrite = durableWriteWillStartForTesting
-    #endif
-    // Detached, not `Task {}`: this type is @MainActor and a plain Task inherits it; the write
-    // blocks on two disk flushes. Awaited at once, so it neither outlives nor reorders the commit.
-    try await Task.detached(priority: .utility) {
-      #if DEBUG
-        willWrite?()
-      #endif
-      try write(transcript)
-    }.value
-    noteWritten(transcript.id)
-    if let existing = transcripts.firstIndex(where: { $0.id == transcript.id }) {
-      transcripts[existing] = transcript
-    } else {
-      transcripts.insert(transcript, at: 0)
+  /// Runs `work` on the storage worker and resumes with its result. The main actor is never
+  /// blocked waiting for it, and caller cancellation does not withdraw work already sent.
+  private func runOnStorageWorker<T: Sendable>(
+    _ work: @escaping @Sendable () throws -> T
+  ) async throws -> T {
+    try await withCheckedThrowingContinuation { continuation in
+      storageWorker.async { continuation.resume(with: Result { try work() }) }
     }
-    reconcileSelectionWithDisplayedSet()
-    startPulseIfNeeded()
   }
+
+  // MARK: - History transaction queue (#4075 S1)
+
+  /// One admitted History command. It prepares against the state earlier commands left, runs
+  /// its storage work, publishes or handles its failure, and completes its own receipt. Only
+  /// the drain runs it. A command never admits another command or waits for one.
+  private typealias HistoryCommand = @MainActor () async -> Void
+
+  /// Admitted commands not yet run, in admission order.
+  @ObservationIgnored private var commands: [HistoryCommand] = []
+  /// The one retained task that runs `commands`, nil when idle. Not the caller: a caller
+  /// cancelled after admission neither withdraws its command nor stops the drain.
+  @ObservationIgnored private var drain: Task<Void, Never>?
+
+  /// A command's result, kept until its caller reads it, before or after the command ends.
+  /// Internal, not private, so a test can drive this one implementation directly.
+  ///
+  /// Unsafe continuations on purpose (#3925): with `withCheckedContinuation` here, this `-O`
+  /// module carried its own copy of that emit-into-client function, and the Release test lane
+  /// crashed `LiveMediaPlaybackEffectsTests` (`-Onone`) inside its own call to it,
+  /// `EXC_BAD_ACCESS`, on CI and locally (Xcode 27.1, 27A9275; PR #4095). `complete` resumes
+  /// each waiter once and clears the list, so a waiter is never resumed twice.
+  @MainActor final class Receipt<Value: Sendable> {
+    private var value: Value?
+    private var waiters: [UnsafeContinuation<Value, Never>] = []
+
+    func complete(_ result: Value) {
+      value = result
+      let ready = waiters
+      waiters = []
+      for waiter in ready { waiter.resume(returning: result) }
+    }
+
+    func result() async -> Value {
+      if let value { return value }
+      return await withUnsafeContinuation { waiters.append($0) }
+    }
+  }
+
+  /// Admits `body` behind every earlier command, synchronously, before the caller first
+  /// suspends, and returns its result once it has run.
+  private func admit<Value: Sendable>(_ body: @escaping @MainActor () async -> Value) async
+    -> Value
+  {
+    let receipt = Receipt<Value>()
+    commands.append { receipt.complete(await body()) }
+    if drain == nil {
+      drain = Task { @MainActor [self] in
+        while !commands.isEmpty {
+          let head = commands.removeFirst()
+          await head()
+        }
+        // The same turn as the empty check above, so nothing can be admitted in between.
+        drain = nil
+      }
+    }
+    #if DEBUG
+      commandsAdmittedForTesting += 1
+    #endif
+    return await receipt.result()
+  }
+
+  private func capture<Value: Sendable>(_ work: () async throws -> Value) async -> Result<
+    Value, any Error
+  > {
+    do { return .success(try await work()) } catch { return .failure(error) }
+  }
+
+  #if DEBUG
+    /// Commands admitted so far, so a test knows a caller reached the queue.
+    private(set) var commandsAdmittedForTesting = 0
+    /// Runs on the storage worker just before an ordinary write, so a test can hold one.
+    @ObservationIgnored var ordinaryWriteWillStartForTesting: (@Sendable () -> Void)?
+    /// Runs on the storage worker just after an ordinary write's file landed, before its
+    /// publication, so a test can hold that window.
+    @ObservationIgnored var ordinaryWriteDidFinishForTesting: (@Sendable () -> Void)?
+    /// Whether a command is running or waiting.
+    var hasQueuedCommandsForTesting: Bool { drain != nil }
+    /// Replaces `Date()` for Keep's press and execution times.
+    @ObservationIgnored var clockForTesting: (@MainActor () -> Date)?
+  #endif
 
   /// Save a row that must ALREADY be in History, reporting whether it was.
   ///
@@ -1275,35 +1436,76 @@ final class TranscriptCoordinator {
   /// The in-memory list is the oracle, not the disk. `delete` and `deleteAll` empty both on
   /// this actor, and the list is what the user is looking at.
   @discardableResult
-  func updateExistingRow(_ transcript: Transcript) throws -> Bool {
-    guard let existing = transcripts.firstIndex(where: { $0.id == transcript.id }) else {
-      return false
-    }
+  func updateExistingRow(_ transcript: Transcript) async throws -> Bool {
     guard !durableWritesInFlight.contains(transcript.id) else { throw RowWriteInFlight() }
-    try store.save(transcript)
-    noteWritten(transcript.id)
-    transcripts[existing] = transcript
-    // #2807: the cleaned text can stop matching the search the row was selected under.
-    reconcileSelectionWithDisplayedSet()
-    startPulseIfNeeded()
-    return true
+    try Task.checkCancellation()
+    return try await admit { [self] in
+      await capture {
+        // #4075 S1: prepared when it runs. A cleaned update owns its text and provenance; the
+        // speaker fields are whatever earlier commands (a rename, a speaker merge) left.
+        guard let current = currentRow(id: transcript.id) else { return false }
+        return try await performWrite(
+          transcript.carryingSpeakerFields(from: current), insertIfAbsent: false)
+      }
+    }.get()
   }
 
   /// The speaker-fields write (#2810 addendum §3 E), and the one future rename write (phase
   /// 4) will share it. Reads the CURRENT row from `transcripts` at call time — never a value
   /// captured earlier — so "merge into the latest existing row, never overwrite newer
   /// names" holds structurally: whichever call runs second reads what the first one left.
-  /// Goes through `updateExistingRow`, inheriting its "never resurrect a deleted row" guard
-  /// for free.
+  /// Update-only like `updateExistingRow`, inheriting its "never resurrect a deleted row"
+  /// guard. #4075 S1: one queued command, so the merge reads the row when it runs.
   @discardableResult
   func mergeSpeakerFields(
     id: UUID, analysis: TranscriptSpeakerAnalysis, turns: [Turn]?,
     explicitRename: (speakerId: String, name: String)? = nil
-  ) throws -> Bool {
-    guard let existing = transcripts.first(where: { $0.id == id }) else { return false }
-    let merged = existing.mergingSpeakerFields(
-      analysis: analysis, turns: turns, explicitRename: explicitRename)
-    return try updateExistingRow(merged)
+  ) async throws -> Bool {
+    guard !durableWritesInFlight.contains(id) else { throw RowWriteInFlight() }
+    try Task.checkCancellation()
+    let rename = explicitRename.map { RenamePair(speakerId: $0.speakerId, name: $0.name) }
+    return try await admit { [self] in
+      await capture {
+        // #4075 S1: read when this command runs, so it merges into what earlier commands left.
+        if let rename {
+          // A rename changes the named speaker only, on the row's analysis and turns as they
+          // are now; the caller's copies may be older than an earlier queued write.
+          switch preparedRename(id: id, rename) {
+          case .removed: return false
+          case .notRenamable: throw RenameNotSupported()
+          case .row(let renamed): return try await performWrite(renamed, insertIfAbsent: false)
+          }
+        }
+        guard let existing = transcripts.first(where: { $0.id == id }) else { return false }
+        let merged = existing.mergingSpeakerFields(analysis: analysis, turns: turns)
+        return try await performWrite(merged, insertIfAbsent: false)
+      }
+    }.get()
+  }
+
+  /// Thrown by a rename of a row that is still listed but no longer has speakers to rename.
+  struct RenameNotSupported: Error {}
+
+  private enum PreparedRename {
+    case row(Transcript)
+    case removed
+    case notRenamable
+  }
+
+  /// The one preparation both renames share, run inside the rename's command.
+  private func preparedRename(id: UUID, _ rename: RenamePair) -> PreparedRename {
+    guard let current = currentRow(id: id) else { return .removed }
+    guard current.turns != nil, let analysis = current.speakerAnalysis else { return .notRenamable }
+    return .row(
+      current.mergingSpeakerFields(
+        analysis: analysis, turns: current.turns,
+        explicitRename: (rename.speakerId, rename.name)))
+  }
+
+  /// A rename's speaker and name, as one Sendable value.
+  private struct RenamePair: Sendable {
+    let speakerId: String
+    let name: String
   }
 
   /// Whether a row is in History right now. The import's "Saved to History" badge asks this
@@ -1333,33 +1535,52 @@ final class TranscriptCoordinator {
   /// emits no file-import telemetry. It comes from the caller because the row may already be
   /// gone when a late callback arrives, and a missing row has no kind to read.
   func renameSpeaker(id transcriptID: UUID, speakerId: String, name: String, isMeeting: Bool)
-    -> RenameFailure?
+    async -> RenameFailure?
   {
     let emitRenameTelemetry: (TelemetryService.FileImportRenameOutcome) -> Void =
       isMeeting ? { _ in } : self.emitRenameTelemetry
-    guard let current = currentRow(id: transcriptID), current.turns != nil,
-      let analysis = current.speakerAnalysis
-    else {
-      emitRenameTelemetry(.failed)
-      return RenameFailure(message: RenameFailure.couldNotSaveName, currentName: nil)
-    }
-    do {
-      let saved = try mergeSpeakerFields(
-        id: transcriptID, analysis: analysis, turns: current.turns,
-        explicitRename: (speakerId, name))
-      guard saved else {
-        emitRenameTelemetry(.failed)
-        return RenameFailure(
-          message: RenameFailure.recordingRemoved, currentName: nil)
-      }
-      emitRenameTelemetry(.saved)
-      return nil
-    } catch {
+    // #3972 C4a: refused at admission while a durable meeting write to this row is queued.
+    guard !durableWritesInFlight.contains(transcriptID), !Task.isCancelled else {
       emitRenameTelemetry(.failed)
       return RenameFailure(
-        message: RenameFailure.couldNotSaveName, currentName: current.speakerNames?[speakerId])
+        message: RenameFailure.couldNotSaveName,
+        currentName: currentRow(id: transcriptID)?.speakerNames?[speakerId])
+    }
+    // #4075 S1: the row's analysis and turns are resolved when the command runs, so the
+    // rename changes the named speaker only, on whatever earlier commands left.
+    let rename = RenamePair(speakerId: speakerId, name: name)
+    let outcome = await admit { [self] () async -> RenameOutcome in
+      switch preparedRename(id: transcriptID, rename) {
+      case .removed: return .removed
+      case .notRenamable: return .notRenamable
+      case .row(let renamed):
+        do {
+          return try await performWrite(renamed, insertIfAbsent: false) ? .saved : .removed
+        } catch {
+          return .failed
+        }
+      }
+    }
+    switch outcome {
+    case .saved:
+      emitRenameTelemetry(.saved)
+      return nil
+    case .removed:
+      emitRenameTelemetry(.failed)
+      return RenameFailure(message: RenameFailure.recordingRemoved, currentName: nil)
+    case .notRenamable:
+      emitRenameTelemetry(.failed)
+      return RenameFailure(message: RenameFailure.couldNotSaveName, currentName: nil)
+    case .failed:
+      emitRenameTelemetry(.failed)
+      // The name as History holds it now, not as it was before the wait.
+      return RenameFailure(
+        message: RenameFailure.couldNotSaveName,
+        currentName: currentRow(id: transcriptID)?.speakerNames?[speakerId])
     }
   }
+
+  private enum RenameOutcome: Sendable { case saved, removed, notRenamable, failed }
 
   /// The rename popover closed on Escape or a blank name (plan §3d). Telemetry only.
   func noteRenameCancelled() {
@@ -1438,10 +1659,10 @@ final class TranscriptCoordinator {
   /// History's delete of one listed item. A meeting goes to EnviousMeet, the deletion
   /// authority of its row and its files (#3972 R12); the selection moves to the item beside it
   /// at once, because the meeting leaves the list only when EnviousMeet has removed it.
-  func delete(_ item: HistoryListItem) {
+  func delete(_ item: HistoryListItem) async {
     switch item {
     case .transcript(let row):
-      delete(row)
+      await delete(row)
     case .meeting(let meeting):
       if selectedItemID == item.id {
         selectedItemID = Self.neighbour(of: item.id, in: listedItems)
@@ -1449,7 +1670,7 @@ final class TranscriptCoordinator {
       if let deleteMeeting {
         deleteMeeting(meeting.meetingID)
       } else if let row = meeting.row {
-        removeRowAnnouncing(row.id)
+        await removeRowAnnouncing(row.id)
       }
     }
   }
@@ -1468,26 +1689,38 @@ final class TranscriptCoordinator {
   /// A History action owned elsewhere failed: a meeting's delete, run by EnviousMeet (#4079).
   func reportActionFailure(_ failure: ActionFailure) { actionFailure = failure }
 
-  func delete(_ transcript: Transcript) {
+  func delete(_ transcript: Transcript) async {
+    // A meeting goes to EnviousMeet before any History command is admitted; its own History
+    // removal joins the queue from there, so the queue is never held across that orchestration.
     if let meetingID = transcript.meetingID, let deleteMeeting {
       deleteMeeting(meetingID)
       return
     }
-    removeRowAnnouncing(transcript.id)
+    await removeRowAnnouncing(transcript.id)
   }
 
-  private func removeRowAnnouncing(_ id: UUID) {
-    do {
-      try removeRow(id: id)
-      onRowDeleted?(id)
-    } catch {
-      actionFailure = .delete
-      Task {
-        await AppLogger.shared.log(
-          "Failed to delete transcript: \(error)",
-          level: .info, category: "TranscriptCoordinator"
-        )
+  /// One removal command with its announcement. A row already absent from History and from
+  /// both folders is a no-op: nothing is published and nothing is announced.
+  private func removeRowAnnouncing(_ id: UUID) async {
+    guard !Task.isCancelled else { return }
+    // #4075 S1: the announcement and the failure are handled inside the command, before the
+    // next command prepares, so a queued re-insertion cannot run ahead of them.
+    await admit { [self] in
+      do {
+        if try await performRemoval(id) == .removed { onRowDeleted?(id) }
+      } catch {
+        reportDeleteFailure(error)
       }
+    }
+  }
+
+  private func reportDeleteFailure(_ error: any Error) {
+    actionFailure = .delete
+    Task {
+      await AppLogger.shared.log(
+        "Failed to delete transcript: \(error)",
+        level: .info, category: "TranscriptCoordinator"
+      )
     }
   }
 
@@ -1651,14 +1884,38 @@ final class TranscriptCoordinator {
   /// The in-memory row is replaced only after the store call returns, and it is
   /// replaced rather than mutated because `Transcript` is immutable. Idempotent:
   /// a second Keep finds no pending file and changes nothing.
-  func keep(_ transcript: Transcript) {
-    guard transcript.escapeRecoveredAt != nil else { return }
+  func keep(_ transcript: Transcript) async {
+    guard transcript.escapeRecoveredAt != nil, !Task.isCancelled else { return }
+    // #4075 S1: the press time, for the kept event's age; eligibility is judged when the
+    // command runs.
+    let pressedAt = now()
+    await admit { [self] in await performKeep(transcript, pressedAt: pressedAt) }
+  }
+
+  private func performKeep(_ transcript: Transcript, pressedAt: Date) async {
+    // A Keep of a row an earlier command removed: refused, never written back.
+    guard let current = currentRow(id: transcript.id) else {
+      recordEscapeRecoveryKeep("refused-not-offerable", transcript.escapeRecoveryTakeID)
+      return
+    }
+    // A second Keep of a row an earlier command already promoted: done, not refused.
+    if current.escapeRecoveredAt == nil {
+      recordEscapeRecoveryKeep("already-permanent", transcript.escapeRecoveryTakeID)
+      return
+    }
+    let operations = store.operations()
+    let id = transcript.id
+    let executedAt = now()
     do {
       // Only on a CONFIRMED promotion. The store silently ignores a row that
       // expired between render and click, and clearing the stamp anyway would
       // put an expired recovery on screen as permanent History — resurrecting
       // in the UI precisely the text the store just refused to write.
-      guard try store.promotePending(id: transcript.id) else {
+      guard
+        let result = try await runOnStorageWorker({
+          try operations.promote(id: id, now: executedAt).map { Promotion($0.pending, $0.promoted) }
+        })
+      else {
         // The refusal is the interesting case and it was the silent one: the
         // user pressed Keep, the row lapsed a moment earlier, and nothing
         // anywhere recorded that the press happened. That is precisely the
@@ -1668,9 +1925,12 @@ final class TranscriptCoordinator {
       }
       // #2087: only on a CONFIRMED promotion, and only with the persisted take
       // id. A `kept` event for a row that was not promoted would overstate the
-      // one ratio this funnel exists to measure.
-      if let takeID = transcript.escapeRecoveryTakeID, let stamped = transcript.escapeRecoveredAt {
-        emitEscapeRecoveryKept(Int(Date().timeIntervalSince(stamped) * 1000), takeID)
+      // one ratio this funnel exists to measure. #4075 S1: the take id and stamp are the
+      // promoted recovery's own, and the age runs to the press, not to the write.
+      if let takeID = result.pending.escapeRecoveryTakeID,
+        let stamped = result.pending.escapeRecoveredAt
+      {
+        emitEscapeRecoveryKept(Int(pressedAt.timeIntervalSince(stamped) * 1000), takeID)
         recordEscapeRecoveryKeep("kept", takeID)
       } else {
         // Promoted, but with nothing to join it to. The user keeps their text
@@ -1678,9 +1938,9 @@ final class TranscriptCoordinator {
         // Keep disappear from the count it belongs in.
         recordEscapeRecoveryKeep("kept-unreported", nil)
       }
-      guard let index = transcripts.firstIndex(where: { $0.id == transcript.id }) else { return }
-      noteWritten(transcript.id)
-      transcripts[index] = transcripts[index].promotedFromPending()
+      guard let index = transcripts.firstIndex(where: { $0.id == id }) else { return }
+      noteWritten(id)
+      transcripts[index] = result.promoted
       refreshDiskStateThenStopIfIdle()
     } catch {
       actionFailure = .keep
@@ -1691,6 +1951,25 @@ final class TranscriptCoordinator {
         )
       }
     }
+  }
+
+  /// What a Keep's storage work confirmed: the pending row it judged live, and the permanent
+  /// row it wrote.
+  private struct Promotion: Sendable {
+    let pending: Transcript
+    let promoted: Transcript
+    init(_ pending: Transcript, _ promoted: Transcript) {
+      self.pending = pending
+      self.promoted = promoted
+    }
+  }
+
+  /// The coordinator's clock for Keep, so a test can tell the press from the execution.
+  private func now() -> Date {
+    #if DEBUG
+      if let clock = clockForTesting { return clock() }
+    #endif
+    return Date()
   }
 
   /// One line per Keep press, on every outcome including the refusals.
@@ -1872,11 +2151,25 @@ final class TranscriptCoordinator {
   /// live fallback suppressed (#2807). Announces nothing: `delete(_:)` announces for History's
   /// own deletes, and EnviousMeet calls this as the deletion authority of a meeting's row
   /// (#3972 R12), so it must not call back. Throws when the file is still there.
-  func removeRow(id: UUID) throws {
+  /// Removes a row without announcing it (EnviousMeet's own removals). One queued command.
+  func removeRow(id: UUID) async throws {
+    try Task.checkCancellation()
+    _ = try await admit { [self] in await capture { try await performRemoval(id) } }.get()
+  }
+
+  enum Removal: Sendable, Equatable { case removed, alreadyAbsent }
+
+  /// The removal command: both copies on the storage worker, then the publication. A row
+  /// absent from History and confirmed absent from both folders is `alreadyAbsent`, and
+  /// changes nothing on screen.
+  private func performRemoval(_ id: UUID) async throws -> Removal {
+    let listed = transcripts.contains { $0.id == id }
+    let operations = store.operations()
+    let existed = try await runOnStorageWorker { try operations.remove(id: id) }
+    guard listed || existed else { return .alreadyAbsent }
     // #2807: the displayed set BEFORE the removal, so the neighbour is the row the user
     // saw beside the one they deleted.
     let displayed = listedItems
-    try store.delete(id: id)
     transcripts.removeAll { $0.id == id }
     removedRowIDs.insert(id)
     echoShownRowIDs.remove(id)
@@ -1892,9 +2185,17 @@ final class TranscriptCoordinator {
     }
     if id == liveFallbackRowID { liveFallbackRowID = nil }
     refreshDiskStateThenStopIfIdle()
+    return .removed
   }
 
-  func deleteAll() {
+  func deleteAll() async {
+    guard !Task.isCancelled else { return }
+    // #4075 S1: admitted behind earlier commands; when it runs, its marking, handoff and
+    // publication run in one go as before. Its meeting marking still waits on the main actor.
+    await admit { [self] in performDeleteAll() }
+  }
+
+  private func performDeleteAll() {
     // #3972 R45: every meeting goes too, also one with no History row yet.
     var meetingIDs = transcripts.compactMap(\.meetingID)
     for record in meetingRecords?() ?? [] where !meetingIDs.contains(record.id) {

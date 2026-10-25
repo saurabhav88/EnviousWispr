@@ -130,7 +130,7 @@
     }
 
     @Test("after every kind of change the kept list equals a list that is never kept")
-    func keptListMatchesNeverKept() {
+    func keptListMatchesNeverKept() async {
       let w = World()
       var rng = SeededGenerator(seed: 4001)
       let retention = AppConstants.pendingTranscriptRetention
@@ -156,14 +156,20 @@
             ])
         case 3:
           if let victim = w.rows.randomElement(using: &rng) {
-            for c in w.both { try? c.removeRow(id: victim.id) }
+            for c in w.both { try? await c.removeRow(id: victim.id) }
+            // #4075 S1: each command now suspends, so both lists settle their post-removal
+            // refresh before they are compared.
+            for c in w.both { await c.waitForRefreshForTesting() }
           }
         case 4:
           // Replaced under the same id, through the save path.
           if let old = w.rows.first(where: { !$0.isMeeting && $0.escapeRecoveredAt == nil }) {
             let new = Transcript(
               id: old.id, text: "replaced \(step) giraffe", createdAt: old.createdAt)
-            for c in w.both { try? c.saveAndShow(new) }
+            for c in w.both { try? await c.saveAndShow(new) }
+            // #4075 S1: each command now suspends, so both lists settle their post-removal
+            // refresh before they are compared.
+            for c in w.both { await c.waitForRefreshForTesting() }
           }
         case 5:
           // Bulk replacement: the same rows in a new order, one dropped.
@@ -236,7 +242,10 @@
           // Deleting the selected row moves the selection to a neighbour of a warmed list.
           _ = w.cached.listedItems
           if case .transcript(let id)? = w.cached.selectedItemID {
-            for c in w.both { try? c.removeRow(id: id) }
+            for c in w.both { try? await c.removeRow(id: id) }
+            // #4075 S1: each command now suspends, so both lists settle their post-removal
+            // refresh before they are compared.
+            for c in w.both { await c.waitForRefreshForTesting() }
           }
         default:
           // Time passes without a pulse, across held rows' expiry and future-skew boundaries.
@@ -339,10 +348,25 @@
       #expect(fired.value, "\(name) did not reach a reader of the kept list")
     }
 
+    /// #4075 S1: the same check for a change made by an awaited History command.
+    func expectObserved(_ name: String, _ w: World, change: () async -> Void) async {
+      let c = w.cached
+      _ = c.listedItems
+      _ = c.listedItems  // the second read is a kept answer
+      let fired = Flag()
+      withObservationTracking {
+        _ = c.listedItems
+      } onChange: {
+        fired.value = true
+      }
+      await change()
+      #expect(fired.value, "\(name) did not reach a reader of the kept list")
+    }
+
     final class Flag: @unchecked Sendable { var value = false }
 
     @Test("a reader of the kept list is told about every input change")
-    func everyInputIsObserved() throws {
+    func everyInputIsObserved() async throws {
       let w = World()
       let c = w.cached
       let record = Self.record(at: w.time, ready: true)
@@ -353,10 +377,10 @@
         Self.meetingRow(record.id, words: "standup", at: w.time),
         Self.meetingRow(orphan, words: "orphan", at: w.time),
       ])
-      expectObserved("a saved row", w) { try? c.saveAndShow(Transcript(text: "new")) }
+      await expectObserved("a saved row", w) { try? await c.saveAndShow(Transcript(text: "new")) }
       let first = try #require(c.rawTranscriptsForTesting.first)
-      expectObserved("a row replaced under its id", w) {
-        try? c.saveAndShow(Transcript(id: first.id, text: "changed", createdAt: first.createdAt))
+      await expectObserved("a row replaced under its id", w) {
+        try? await c.saveAndShow(Transcript(id: first.id, text: "changed", createdAt: first.createdAt))
       }
       expectObserved("a bulk replacement", w) {
         c.setTranscriptsForTesting(c.rawTranscriptsForTesting.reversed())
@@ -377,7 +401,7 @@
       #expect(c.listedItems.contains { $0.id == .meeting(orphan) })
       expectObserved("a matched meeting's notes", w) { w.sources.notes[record.id] = "x" }
       let row = try #require(c.rawTranscriptsForTesting.first { !$0.isMeeting })
-      expectObserved("a deletion", w) { try? c.removeRow(id: row.id) }
+      await expectObserved("a deletion", w) { try? await c.removeRow(id: row.id) }
     }
 
     // MARK: - Meeting preview text (#4001 step 2a)

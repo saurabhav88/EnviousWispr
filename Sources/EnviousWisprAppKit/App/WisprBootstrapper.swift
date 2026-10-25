@@ -2277,22 +2277,22 @@ package final class WisprBootstrapper {
       // writing to disk alone would leave History showing the old list until the next
       // launch, which is indistinguishable from not saving at all.
       saveToHistory: { [transcriptCoordinator] transcript in
-        try transcriptCoordinator.saveAndShow(transcript)
+        try await transcriptCoordinator.saveAndShow(transcript)
       },
       // The cleaned write, which may only update a row that is still there. History is
       // reachable throughout a cleanup, so a deletion between the two writes has to stand.
       updateHistoryRow: { [transcriptCoordinator] transcript in
-        try transcriptCoordinator.updateExistingRow(transcript)
+        try await transcriptCoordinator.updateExistingRow(transcript)
       },
       // The speaker-fields write (#2810 addendum §3 E) — reads the row's CURRENT state at
       // call time, so it can never clobber a rename that landed while cleanup was running.
       mergeSpeakerFields: { [transcriptCoordinator] id, analysis, turns in
-        try transcriptCoordinator.mergeSpeakerFields(id: id, analysis: analysis, turns: turns)
+        try await transcriptCoordinator.mergeSpeakerFields(id: id, analysis: analysis, turns: turns)
       },
       // The rename write (#2811, phase 4) — same underlying method, an explicit rename pair
       // this time.
       writeExplicitRename: { [transcriptCoordinator] id, analysis, turns, explicitRename in
-        try transcriptCoordinator.mergeSpeakerFields(
+        try await transcriptCoordinator.mergeSpeakerFields(
           id: id, analysis: analysis, turns: turns, explicitRename: explicitRename)
       },
       currentHistoryRow: { [transcriptCoordinator] id in transcriptCoordinator.currentRow(id: id) },

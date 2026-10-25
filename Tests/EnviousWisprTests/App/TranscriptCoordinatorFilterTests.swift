@@ -73,14 +73,14 @@ struct TranscriptCoordinatorFilterTests {
   // MARK: Which rows are listed
 
   @Test("All lists both kinds; Dictations and Transcripts each list only their own")
-  func filterListsByKind() throws {
+  func filterListsByKind() async throws {
     let (coordinator, _) = makeCoordinator()
     let d1 = dictation("first dictation", ageSeconds: 30)
     let t1 = transcript("an interview", file: "interview.m4a", ageSeconds: 20)
     let d2 = dictation("second dictation", ageSeconds: 10)
-    try coordinator.saveAndShow(d1)
-    try coordinator.saveAndShow(t1)
-    try coordinator.saveAndShow(d2)
+    try await coordinator.saveAndShow(d1)
+    try await coordinator.saveAndShow(t1)
+    try await coordinator.saveAndShow(d2)
 
     #expect(coordinator.historyFilter == .all, "a fresh coordinator starts at All")
     #expect(ids(coordinator.filteredTranscripts) == [d2.id, t1.id, d1.id])
@@ -93,12 +93,12 @@ struct TranscriptCoordinatorFilterTests {
   }
 
   @Test("search runs inside the filter, and still reaches the imported file name")
-  func searchRunsInsideTheFilter() throws {
+  func searchRunsInsideTheFilter() async throws {
     let (coordinator, _) = makeCoordinator()
     let d = dictation("notes from the marketing call", ageSeconds: 20)
     let t = transcript("we talked about the launch", file: "marketing_sync.wav", ageSeconds: 10)
-    try coordinator.saveAndShow(d)
-    try coordinator.saveAndShow(t)
+    try await coordinator.saveAndShow(d)
+    try await coordinator.saveAndShow(t)
 
     coordinator.searchQuery = "marketing"
     #expect(ids(coordinator.filteredTranscripts) == [t.id, d.id], "both match under All")
@@ -111,7 +111,7 @@ struct TranscriptCoordinatorFilterTests {
   }
 
   @Test("search matches a renamed speaker's name, which does not enter displayText (#2811)")
-  func searchMatchesSpeakerNames() throws {
+  func searchMatchesSpeakerNames() async throws {
     let (coordinator, _) = makeCoordinator()
     let labeled = Transcript(
       text: "hello there friend", language: "en", duration: 61, backendType: .parakeet,
@@ -122,8 +122,8 @@ struct TranscriptCoordinatorFilterTests {
         Turn(id: "6-18", speakerId: "B", startMs: 5000, endMs: 5400, originalTextRange: 6..<18),
       ])
     let unrelated = transcript("a totally different recording", file: "other.m4a")
-    try coordinator.saveAndShow(unrelated)
-    try coordinator.saveAndShow(labeled)
+    try await coordinator.saveAndShow(unrelated)
+    try await coordinator.saveAndShow(labeled)
 
     coordinator.searchQuery = "Zach"
     #expect(
@@ -184,9 +184,9 @@ struct TranscriptCoordinatorFilterTests {
     try store.savePending(held("cancelled", age: 60))
     coordinator.load()
     await coordinator.waitForLoadForTesting()
-    try coordinator.saveAndShow(dictation("one", ageSeconds: 30))
-    try coordinator.saveAndShow(dictation("two", ageSeconds: 20))
-    try coordinator.saveAndShow(transcript("three", file: "three.m4a", ageSeconds: 10))
+    try await coordinator.saveAndShow(dictation("one", ageSeconds: 30))
+    try await coordinator.saveAndShow(dictation("two", ageSeconds: 20))
+    try await coordinator.saveAndShow(transcript("three", file: "three.m4a", ageSeconds: 10))
 
     #expect(coordinator.listedCount == 3, "three completed rows, the held offer is not one")
     #expect(coordinator.dictationCount == 2)
@@ -205,11 +205,11 @@ struct TranscriptCoordinatorFilterTests {
   // MARK: The empty list
 
   @Test("each way of being empty has its own sentence")
-  func emptyStates() throws {
+  func emptyStates() async throws {
     let (coordinator, _) = makeCoordinator()
     #expect(coordinator.emptyState == .nothingYet)
 
-    try coordinator.saveAndShow(dictation("a dictation"))
+    try await coordinator.saveAndShow(dictation("a dictation"))
     #expect(coordinator.emptyState == nil)
 
     coordinator.historyFilter = .transcripts
@@ -220,10 +220,10 @@ struct TranscriptCoordinatorFilterTests {
     #expect(coordinator.emptyState == .noMatches)
 
     coordinator.searchQuery = ""
-    coordinator.deleteAll()
+    await coordinator.deleteAll()
     #expect(coordinator.emptyState == .nothingYet, "an emptied History is back to nothing yet")
 
-    try coordinator.saveAndShow(transcript("a file", file: "file.m4a"))
+    try await coordinator.saveAndShow(transcript("a file", file: "file.m4a"))
     coordinator.historyFilter = .dictations
     #expect(coordinator.emptyState == .noDictations)
   }
@@ -237,12 +237,12 @@ struct TranscriptCoordinatorFilterTests {
   }
 
   @Test("a selected row that the filter stops listing is cleared and the pane goes empty")
-  func filterClearsASelectionItNoLongerLists() throws {
+  func filterClearsASelectionItNoLongerLists() async throws {
     let (coordinator, _) = makeCoordinator()
     let d = dictation("a dictation", ageSeconds: 10)
     let t = transcript("a file", file: "file.m4a")
-    try coordinator.saveAndShow(d)
-    try coordinator.saveAndShow(t)
+    try await coordinator.saveAndShow(d)
+    try await coordinator.saveAndShow(t)
 
     coordinator.selectedItemID = .transcript(d.id)
     #expect(isRow(coordinator.detail, d.id))
@@ -259,11 +259,11 @@ struct TranscriptCoordinatorFilterTests {
   }
 
   @Test("a search that hides the selected row clears it and the pane goes empty")
-  func searchClearsASelectionItNoLongerLists() throws {
+  func searchClearsASelectionItNoLongerLists() async throws {
     let (coordinator, _) = makeCoordinator()
     let d = dictation("apples", ageSeconds: 10)
-    try coordinator.saveAndShow(d)
-    try coordinator.saveAndShow(dictation("pears"))
+    try await coordinator.saveAndShow(d)
+    try await coordinator.saveAndShow(dictation("pears"))
 
     coordinator.selectedItemID = .transcript(d.id)
     coordinator.searchQuery = "pears"
@@ -275,10 +275,10 @@ struct TranscriptCoordinatorFilterTests {
   }
 
   @Test("a selected row that stops being listed without a filter change is empty, not the fallback")
-  func staleSelectionIsEmptyNotFallback() throws {
+  func staleSelectionIsEmptyNotFallback() async throws {
     let (coordinator, _) = makeCoordinator()
     let d = dictation("a dictation")
-    try coordinator.saveAndShow(d)
+    try await coordinator.saveAndShow(d)
     coordinator.selectedItemID = .transcript(d.id)
 
     // Selected ids that no longer resolve arrive from outside this object: a row that expired
@@ -288,10 +288,10 @@ struct TranscriptCoordinatorFilterTests {
   }
 
   @Test("the user deselecting shows nothing rather than the live transcript")
-  func deselectionSuppressesTheFallback() throws {
+  func deselectionSuppressesTheFallback() async throws {
     let (coordinator, _) = makeCoordinator()
     let d = dictation("a dictation")
-    try coordinator.saveAndShow(d)
+    try await coordinator.saveAndShow(d)
 
     coordinator.selectedItemID = .transcript(d.id)
     coordinator.selectedItemID = nil
@@ -299,27 +299,27 @@ struct TranscriptCoordinatorFilterTests {
   }
 
   @Test("deleting the selected row under a filter selects its neighbour in that filter")
-  func deleteSelectsTheNeighbourInTheSameFilter() throws {
+  func deleteSelectsTheNeighbourInTheSameFilter() async throws {
     let (coordinator, _) = makeCoordinator()
     let d1 = dictation("first", ageSeconds: 30)
     let t = transcript("a file", file: "file.m4a", ageSeconds: 20)
     let d2 = dictation("second", ageSeconds: 10)
     let d3 = dictation("third", ageSeconds: 0)
-    for row in [d1, t, d2, d3] { try coordinator.saveAndShow(row) }
+    for row in [d1, t, d2, d3] { try await coordinator.saveAndShow(row) }
 
     coordinator.historyFilter = .dictations
     // Displayed order is newest first: d3, d2, d1. Delete the middle one.
     coordinator.selectedItemID = .transcript(d2.id)
-    coordinator.delete(d2)
+    await coordinator.delete(d2)
     #expect(coordinator.selectedItemID == .transcript(d1.id), "the row after it in the same filter")
     #expect(isRow(coordinator.detail, d1.id))
 
     // Delete the last row: nothing after it, so the one before it.
-    coordinator.delete(d1)
+    await coordinator.delete(d1)
     #expect(coordinator.selectedItemID == .transcript(d3.id))
 
     // Delete the only remaining dictation: nothing to select, and no fallback.
-    coordinator.delete(d3)
+    await coordinator.delete(d3)
     #expect(coordinator.selectedItemID == nil)
     #expect(isEmpty(coordinator.detail))
     #expect(coordinator.emptyState == .noDictations)
@@ -329,35 +329,35 @@ struct TranscriptCoordinatorFilterTests {
   }
 
   @Test("deleting a row that is not selected leaves the selection alone")
-  func deleteOfAnotherRowKeepsTheSelection() throws {
+  func deleteOfAnotherRowKeepsTheSelection() async throws {
     let (coordinator, _) = makeCoordinator()
     let d1 = dictation("first", ageSeconds: 10)
     let d2 = dictation("second")
-    try coordinator.saveAndShow(d1)
-    try coordinator.saveAndShow(d2)
+    try await coordinator.saveAndShow(d1)
+    try await coordinator.saveAndShow(d2)
 
     coordinator.selectedItemID = .transcript(d1.id)
-    coordinator.delete(d2)
+    await coordinator.delete(d2)
     #expect(coordinator.selectedItemID == .transcript(d1.id))
     #expect(isRow(coordinator.detail, d1.id))
   }
 
   @Test("Delete All empties the pane, whatever the live pipeline last produced")
-  func deleteAllShowsNothing() throws {
+  func deleteAllShowsNothing() async throws {
     let (coordinator, _) = makeCoordinator()
-    try coordinator.saveAndShow(dictation("a dictation"))
-    coordinator.deleteAll()
+    try await coordinator.saveAndShow(dictation("a dictation"))
+    await coordinator.deleteAll()
     #expect(isEmpty(coordinator.detail))
     #expect(coordinator.emptyState == .nothingYet)
   }
 
   @Test("a completed dictation landing in the displayed set lets the live transcript show again")
-  func aCompletedDictationRestoresTheFallback() throws {
+  func aCompletedDictationRestoresTheFallback() async throws {
     let (coordinator, _) = makeCoordinator()
     let d = dictation("a dictation")
-    try coordinator.saveAndShow(d)
+    try await coordinator.saveAndShow(d)
     coordinator.selectedItemID = .transcript(d.id)
-    coordinator.delete(d)
+    await coordinator.delete(d)
     #expect(isEmpty(coordinator.detail), "the deletion suppressed the fallback")
 
     let finished = dictation("just finished")
@@ -414,9 +414,9 @@ struct TranscriptCoordinatorFilterTests {
   }
 
   @Test("before any dictation lands, narrowing the list suppresses the fallback")
-  func narrowingWithNoKnownFallbackRowSuppressesIt() throws {
+  func narrowingWithNoKnownFallbackRowSuppressesIt() async throws {
     let (coordinator, _) = makeCoordinator()
-    try coordinator.saveAndShow(transcript("a file", file: "file.m4a"))
+    try await coordinator.saveAndShow(transcript("a file", file: "file.m4a"))
     #expect(isLiveFallback(coordinator.detail), "nothing has narrowed the list")
 
     coordinator.historyFilter = .transcripts
@@ -424,19 +424,19 @@ struct TranscriptCoordinatorFilterTests {
   }
 
   @Test("deleting the dictation the pane is showing through the fallback empties the pane")
-  func deletingTheFallbackRowEmptiesThePane() throws {
+  func deletingTheFallbackRowEmptiesThePane() async throws {
     let (coordinator, _) = makeCoordinator()
     let d = dictation("just finished")
-    try coordinator.saveAndShow(d)
+    try await coordinator.saveAndShow(d)
     coordinator.append(dictation("older, but appended second", ageSeconds: 10))
     let shown = dictation("shown")
     coordinator.append(shown)
     #expect(isRow(coordinator.detail, shown.id))
 
-    coordinator.delete(d)
+    await coordinator.delete(d)
     #expect(isRow(coordinator.detail, shown.id), "another row went, the pane's row is still here")
 
-    coordinator.delete(shown)
+    await coordinator.delete(shown)
     #expect(isEmpty(coordinator.detail))
   }
 
@@ -452,10 +452,10 @@ struct TranscriptCoordinatorFilterTests {
   }
 
   @Test("a cleanup that stops a selected import matching the search clears the selection")
-  func aRowUpdateThatLeavesTheSearchClearsTheSelection() throws {
+  func aRowUpdateThatLeavesTheSearchClearsTheSelection() async throws {
     let (coordinator, _) = makeCoordinator()
     let raw = transcript("um so the plan is", file: "plan.m4a")
-    try coordinator.saveAndShow(raw)
+    try await coordinator.saveAndShow(raw)
     coordinator.searchQuery = "um"
     coordinator.selectedItemID = .transcript(raw.id)
     #expect(isRow(coordinator.detail, raw.id))
@@ -463,7 +463,7 @@ struct TranscriptCoordinatorFilterTests {
     let cleaned = Transcript(
       id: raw.id, text: raw.text, polishedText: "So the plan is.", language: "en", duration: 61,
       backendType: .parakeet, createdAt: raw.createdAt, importedFileName: "plan.m4a")
-    try coordinator.updateExistingRow(cleaned)
+    try await coordinator.updateExistingRow(cleaned)
     #expect(coordinator.selectedItemID == nil, "the row left the displayed set")
     #expect(isEmpty(coordinator.detail))
 
@@ -472,22 +472,22 @@ struct TranscriptCoordinatorFilterTests {
   }
 
   @Test("a held recovery arriving does not bring the live transcript back")
-  func aHeldRecoveryDoesNotRestoreTheFallback() throws {
+  func aHeldRecoveryDoesNotRestoreTheFallback() async throws {
     let (coordinator, _) = makeCoordinator()
     let d = dictation("a dictation")
-    try coordinator.saveAndShow(d)
+    try await coordinator.saveAndShow(d)
     coordinator.selectedItemID = .transcript(d.id)
-    coordinator.delete(d)
+    await coordinator.delete(d)
 
     coordinator.append(held("cancelled", age: 1))
     #expect(isEmpty(coordinator.detail), "a cancellation is not a completion")
   }
 
   @Test("a dictation arriving outside the current filter does not bring the live transcript back")
-  func aDictationOutsideTheFilterDoesNotRestoreTheFallback() throws {
+  func aDictationOutsideTheFilterDoesNotRestoreTheFallback() async throws {
     let (coordinator, _) = makeCoordinator()
     let t = transcript("a file", file: "file.m4a")
-    try coordinator.saveAndShow(t)
+    try await coordinator.saveAndShow(t)
     coordinator.selectedItemID = .transcript(t.id)
     coordinator.historyFilter = .dictations
     #expect(isEmpty(coordinator.detail))
@@ -498,17 +498,17 @@ struct TranscriptCoordinatorFilterTests {
   }
 
   @Test("an import's second write does not bring the live transcript back")
-  func anImportUpdateDoesNotRestoreTheFallback() throws {
+  func anImportUpdateDoesNotRestoreTheFallback() async throws {
     let (coordinator, _) = makeCoordinator()
     let d = dictation("a dictation")
-    try coordinator.saveAndShow(d)
+    try await coordinator.saveAndShow(d)
     coordinator.selectedItemID = .transcript(d.id)
-    coordinator.delete(d)
+    await coordinator.delete(d)
 
     let raw = transcript("raw words", file: "file.m4a")
-    try coordinator.saveAndShow(raw)
+    try await coordinator.saveAndShow(raw)
     #expect(isEmpty(coordinator.detail), "an import is not the dictation the fallback shows")
-    try coordinator.updateExistingRow(raw)
+    try await coordinator.updateExistingRow(raw)
     #expect(isEmpty(coordinator.detail))
   }
 

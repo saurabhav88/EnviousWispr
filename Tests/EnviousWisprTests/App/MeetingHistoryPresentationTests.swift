@@ -84,7 +84,7 @@ struct MeetingHistoryPresentationTests {
   func kindAndCounts() async throws {
     let rig = Rig()
     let dictation = Transcript(text: "a dictation", backendType: .parakeet)
-    try rig.coordinator.saveAndShow(dictation)
+    try await rig.coordinator.saveAndShow(dictation)
     let meeting = try await rig.addMeeting()
     let meetingID = try #require(meeting.meetingID)
 
@@ -152,7 +152,7 @@ struct MeetingHistoryPresentationTests {
     #expect(rig.coordinator.listedItems.isEmpty)
     rig.coordinator.searchQuery = ""
 
-    rig.coordinator.deleteAll()
+    await rig.coordinator.deleteAll()
     #expect(Set(marked) == [recording.id, deleting.id])
   }
 
@@ -163,13 +163,13 @@ struct MeetingHistoryPresentationTests {
     rig.coordinator.deleteMeeting = { asked.append($0) }
     let dictation = Transcript(
       text: "older", backendType: .parakeet, createdAt: Date(timeIntervalSinceNow: -60))
-    try rig.coordinator.saveAndShow(dictation)
+    try await rig.coordinator.saveAndShow(dictation)
     let record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
     rig.records = [record]
     let item = try #require(rig.coordinator.listedItems.first)
     #expect(item.id == .meeting(record.id))
     rig.coordinator.selectedItemID = item.id
-    rig.coordinator.delete(item)
+    await rig.coordinator.delete(item)
     #expect(asked == [record.id])
     #expect(rig.coordinator.selectedItemID == .transcript(dictation.id))
   }
@@ -307,7 +307,7 @@ struct MeetingHistoryPresentationTests {
     let rig = Rig()
     let dictation = Transcript(
       text: "older dictation", backendType: .parakeet, createdAt: Date(timeIntervalSinceNow: -60))
-    try rig.coordinator.saveAndShow(dictation)
+    try await rig.coordinator.saveAndShow(dictation)
     let meeting = try await rig.addMeeting()
     #expect(rig.coordinator.lastPasteableDictation()?.id == dictation.id)
     #expect(rig.coordinator.lastDictationTextForReuse(id: meeting.id) == nil)
@@ -410,7 +410,7 @@ struct MeetingHistoryPresentationTests {
   func deliveryAfterDeletion() async throws {
     let rig = Rig()
     let meeting = try await rig.addMeeting()
-    try rig.coordinator.removeRow(id: meeting.id)
+    try await rig.coordinator.removeRow(id: meeting.id)
     #expect(rig.coordinator.textForDelivery(meeting) == nil)
   }
 
@@ -418,7 +418,7 @@ struct MeetingHistoryPresentationTests {
   func renameWithoutImportTelemetry() async throws {
     let rig = Rig()
     let meeting = try await rig.addMeeting()
-    #expect(
+    await #expect(
       rig.coordinator.renameSpeaker(
         id: meeting.id, speakerId: "sys:1", name: "Ana", isMeeting: true) == nil)
     #expect(rig.coordinator.currentRow(id: meeting.id)?.speakerNames?["sys:1"] == "Ana")
@@ -427,8 +427,8 @@ struct MeetingHistoryPresentationTests {
     rig.coordinator.noteRenameCancelled(isMeeting: true)
     rig.coordinator.noteTurnsDisplayed(id: meeting.id, isMeeting: true)
     // Callbacks that arrive after the meeting's row is gone stay silent too.
-    try rig.coordinator.removeRow(id: meeting.id)
-    #expect(
+    try await rig.coordinator.removeRow(id: meeting.id)
+    await #expect(
       rig.coordinator.renameSpeaker(
         id: meeting.id, speakerId: "sys:1", name: "Bo", isMeeting: true) != nil)
     rig.coordinator.noteRenameCancelled(isMeeting: true)
@@ -441,11 +441,11 @@ struct MeetingHistoryPresentationTests {
       text: "Hello there.", backendType: .parakeet, importedFileName: "call.m4a",
       speakerAnalysis: .labeled(count: 1), speakerNames: ["s1": "A"],
       turns: [Turn(id: "t1", speakerId: "s1", startMs: 0, endMs: 1, originalTextRange: 0..<12)])
-    try rig.coordinator.saveAndShow(imported)
+    try await rig.coordinator.saveAndShow(imported)
     rig.coordinator.noteRenameCancelled(isMeeting: false)
     rig.coordinator.noteTurnsDisplayed(id: imported.id, isMeeting: false)
-    try rig.coordinator.removeRow(id: imported.id)
-    _ = rig.coordinator.renameSpeaker(id: imported.id, speakerId: "s1", name: "B", isMeeting: false)
+    try await rig.coordinator.removeRow(id: imported.id)
+    _ = await rig.coordinator.renameSpeaker(id: imported.id, speakerId: "s1", name: "B", isMeeting: false)
     #expect(rig.events.renames == [.cancelled, .failed])
     #expect(rig.events.displayed == 1)
   }
