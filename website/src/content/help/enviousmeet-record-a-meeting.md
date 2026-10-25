@@ -4,9 +4,9 @@ description: "Record a call or an in-person meeting on your Mac and get a transc
 category: "features"
 section: "EnviousMeet"
 order: 10
-keywords: ["enviousmeet", "record a meeting", "meeting recorder", "record a call", "zoom transcript", "google meet transcript", "teams transcript", "meeting notes", "who said what", "speaker labels", "meeting summary", "call sound", "system audio", "record without a bot", "consent", "calendar meeting names", "meeting audio", "probable echo"]
+keywords: ["enviousmeet", "record a meeting", "meeting recorder", "record a call", "zoom transcript", "google meet transcript", "teams transcript", "meeting notes", "who said what", "speaker labels", "meeting summary", "call sound", "system audio", "record without a bot", "consent", "calendar meeting names", "meeting audio", "probable echo", "turn off dictation during meetings"]
 related: ["enviousmeet-when-a-call-starts", "transcript-history", "transcribe-a-file-speaker-labels", "choosing-an-ai-provider-none-apple-intelligence-ollama-openai-gemini", "privacy-overview"]
-updated: 2026-10-24
+updated: 2026-10-25
 deflection: "show_but_always_send"
 ---
 EnviousMeet records a call or a meeting on your Mac and writes a transcript that shows who said what. No bot joins your call. The audio stays on your Mac, and the transcript is written on your Mac.
@@ -47,6 +47,8 @@ Each permission has its own row on the **Permissions** tab of the EnviousMeet pa
 **Start.** Click the EnviousWispr icon in your menu bar and choose **Start Meeting Recording**. You can also click **Start Recording** in History. The lips in the menu bar glow while a meeting records.
 
 **While it records.** The menu shows what is being recorded: **Recording the call sound**, **Recording your microphone only**, or **Call sound not recorded**. In History, the recording meeting shows its live words and a **Stop Recording** button. You can keep dictating while EnviousMeet records; meeting work waits while you dictate, so your dictation never slows down.
+
+**Turn off dictation during meetings.** This switch is on the **General** tab, and it is off at first. When it is on, the dictation key records nothing while a meeting records, and a short note says **Dictation is off during meetings.** A dictation that started before the meeting finishes normally. To dictate during the meeting, turn the switch off. After you stop the meeting, dictation works again once the meeting is saved.
 
 **Stop.** Choose **Stop Meeting Recording** in the menu, or click **Stop Recording** in History. The menu shows **Saving Meeting Recording** while it finishes.
 
