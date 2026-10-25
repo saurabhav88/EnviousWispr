@@ -11,6 +11,8 @@ import os
 protocol MeetingSharedEngine: Sendable {
   var recognizer: any LivePreviewEngine { get }
   func prepare() async throws
+  /// `prepare` failed only because dictation's engine held the executor; a later try can work.
+  func isTemporary(_ error: any Error) -> Bool
   /// On return nothing can load, open or decode again; the task completes once the model is
   /// physically freed.
   func beginRelease() async -> Task<Void, Never>
@@ -128,6 +130,8 @@ final class MeetingLiveWords {
     var restartQuietRMS: Float = 0.001
     /// How long a restart waits for the old session's end before stopping the track instead.
     var restartEndDeadline: Double = 5
+    /// Between Universal preparation tries while dictation's engine holds the executor.
+    var universalRetryDelay: Duration = .seconds(2)
   }
 
   /// A Universal decode refused for now, retried by the engine.
@@ -439,12 +443,24 @@ final class MeetingLiveWords {
       let engine = makeEngine { if await heart() { throw HeartStreaming() } }
       current.engine = .universal
       current.universal = engine
-      do {
-        try await engine.prepare()
-      } catch {
-        guard isCurrent(gen) else { return leftovers }
-        for track in tracks { finishTrack(track, .off(.couldNotStart), in: current) }
-        return leftovers
+      // A load refused because dictation's engine holds the executor is tried again while this
+      // recording lasts; the tracks stay starting meanwhile. Any other failure is final.
+      while true {
+        do {
+          try await engine.prepare()
+          break
+        } catch {
+          guard isCurrent(gen) else { return leftovers }
+          guard engine.isTemporary(error) else {
+            for track in tracks { finishTrack(track, .off(.couldNotStart), in: current) }
+            return leftovers
+          }
+        }
+        // settle: a backoff between tries; the executor signals nothing when the heart lets go.
+        try? await Task.sleep(for: deps.universalRetryDelay)
+        // A Stop, Delete, Quit or Universal removal meanwhile owns the engine now.
+        guard isCurrent(gen), tracks.contains(where: { current.tracks[$0]?.finished == false })
+        else { return leftovers }
       }
       guard isCurrent(gen) else { return leftovers }
       for track in tracks {

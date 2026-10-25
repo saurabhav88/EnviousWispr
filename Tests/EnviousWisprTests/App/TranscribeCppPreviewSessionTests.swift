@@ -624,6 +624,25 @@ struct LiveWordsTranscriptSessionTests {
     #expect(received.all.count == 3, "end() after the backlog keeps that one terminal")
   }
 
+  @Test("queued finals merge with the assembler's spacing, never running words together")
+  func coalescedFinalsKeepTheirSpace() async {
+    let received = Received(holdFirst: true)
+    let handle = Self.handle(received)
+    handle.publish(.update(finalized: "First.", inProgress: ""))  // held in flight
+    await PreviewWait.within("the first delivery", onExpiry: received.release) {
+      await received.until(1)
+    }
+    handle.publish(.update(finalized: "Hello world.", inProgress: "x"))
+    handle.publish(.update(finalized: "How are you?", inProgress: ""))
+    received.release()
+    await PreviewWait.within("the end", onExpiry: received.release) { await handle.end() }
+    #expect(
+      Array(received.all.prefix(2)) == [
+        .update(finalized: "First.", inProgress: ""),
+        .update(finalized: "Hello world. How are you?", inProgress: ""),
+      ])
+  }
+
   @Test("an oversized final is refused whole: accepted finals drain, then one backlog failure")
   func oversizedFinalRefusedWhole() async {
     let received = Received(holdFirst: true)

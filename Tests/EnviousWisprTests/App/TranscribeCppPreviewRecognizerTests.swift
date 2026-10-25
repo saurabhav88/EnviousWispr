@@ -48,6 +48,8 @@ struct TranscribeCppPreviewRecognizerTests {
     private var _unloadsEntered = 0
     private var _exitedAtUnload: [Int] = []
     var failLoads = false
+    /// #3973: the next loads refused as the executor refuses them while heart work runs.
+    var busyLoads = 0
     let text: String
 
     init(text: String = "Hello there.") { self.text = text }
@@ -81,6 +83,12 @@ struct TranscribeCppPreviewRecognizerTests {
         return failLoads
       }
       if failing { throw TranscribeCppExecutor.ExecutorError.modelUnavailable }
+      let busy = lock.withLock { () -> Bool in
+        guard busyLoads > 0 else { return false }
+        busyLoads -= 1
+        return true
+      }
+      if busy { throw TranscribeCppExecutor.ExecutorError.heartBusy }
       await park(unload: false)
       return lock.withLock {
         _loads += 1
@@ -1081,6 +1089,32 @@ struct TranscribeCppPreviewRecognizerTests {
     try await Self.step("the end", driver) { await session.end() }
     #expect(received.all.last == .ended(.requested))
     #expect(driver.loads == 1)
+  }
+
+  @Test("a load the executor refuses while heart work runs is temporary; the next try loads")
+  func busyLoadIsTemporary() async throws {
+    let driver = FakeDriver()
+    driver.openAll()
+    driver.busyLoads = 1
+    let engine = Self.recognizer(driver, residency: TranscribeCppPreviewResidency())
+    do {
+      try await engine.prepare()
+      Issue.record("expected the busy refusal")
+    } catch {
+      #expect(error as? TranscribeCppPreviewRuntime.LoadFailure == .heartBusy)
+      #expect(TranscribeCppPreviewRuntime.isTemporary(error))
+    }
+    try await engine.prepare()
+    #expect(driver.loads == 1, "the second try loaded the model")
+    let failing = FakeDriver()
+    failing.failLoads = true
+    let broken = Self.recognizer(failing, residency: TranscribeCppPreviewResidency())
+    do {
+      try await broken.prepare()
+      Issue.record("expected the load failure")
+    } catch {
+      #expect(!TranscribeCppPreviewRuntime.isTemporary(error), "a refused model is final")
+    }
   }
 
   @Test("a refused transcript open delivers nothing to its owner")

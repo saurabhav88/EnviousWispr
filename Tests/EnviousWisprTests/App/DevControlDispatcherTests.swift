@@ -60,7 +60,7 @@
       let (settings, dispatcher) = Self.make()
       let listed = try #require(payload(await dispatcher.handle(.settingsList, args: [:])))
       let rows = try #require(listed["settings"] as? [[String: Any]])
-      #expect(rows.count == 80)
+      #expect(rows.count == 81)
 
       settings.fillerRemovalEnabled = false
       let got = try #require(

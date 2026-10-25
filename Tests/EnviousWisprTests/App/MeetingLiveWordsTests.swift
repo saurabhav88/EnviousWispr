@@ -195,6 +195,11 @@ struct MeetingLiveWordsTests {
     var recognizer: any LivePreviewEngine { engine }
     let releaseGate: Gate
     var failPrepare = false
+    /// Prepares that fail as "dictation holds the executor" before one succeeds.
+    var busyPrepares = 0
+    private(set) var prepareCalls = 0
+    struct Busy: Error {}
+    func isTemporary(_ error: any Error) -> Bool { error is Busy }
     private let lock = NSLock()
     private var _releases = 0
     private var release: Task<Void, Never>?
@@ -208,6 +213,11 @@ struct MeetingLiveWordsTests {
     var endsCompletedAtRelease: [Int]? { lock.withLock { _endsCompletedAtRelease } }
     func prepare() async throws {
       await engine.prepareGate.pass()
+      let busy = lock.withLock { () -> Bool in
+        prepareCalls += 1
+        return prepareCalls <= busyPrepares
+      }
+      if busy { throw Busy() }
       if failPrepare { throw Refused() }
     }
     func beginRelease() async -> Task<Void, Never> {
@@ -230,6 +240,8 @@ struct MeetingLiveWordsTests {
     var apple: LivePreviewEngineResolution?
     var universalBlocked: LivePreviewUnavailability?
     var universalPrepareFails = false
+    /// The Universal engine's first prepares fail as "dictation holds the executor".
+    var universalBusyPrepares = 0
     /// Apple engines, by creation order, whose transcript open fails.
     var appleOpenFails: Set<Int> = []
     /// Apple engines, by creation order, whose restart replacement fails to open.
@@ -276,6 +288,7 @@ struct MeetingLiveWordsTests {
         engine: FakeEngine(nextGates()),
         releaseGate: releaseGate)
       shared.failPrepare = universalPrepareFails
+      shared.busyPrepares = universalBusyPrepares
       shared.engine.failOpen = universalOpenFails
       lock.withLock { _shared.append(shared) }
       return shared
@@ -300,7 +313,8 @@ struct MeetingLiveWordsTests {
         makePump: { MeetingLiveAudioPump(cadence: .milliseconds(1)) },
         droppedCheckInterval: .milliseconds(1),
         appleRestartAfterSamples: world.restartAfterSamples,
-        restartEndDeadline: world.restartEndDeadline))
+        restartEndDeadline: world.restartEndDeadline,
+        universalRetryDelay: .milliseconds(1)))
   }
 
   static let vocabulary = LivePreviewVocabulary(
@@ -1230,6 +1244,52 @@ struct MeetingLiveWordsTests {
     #expect(mic.last?.event == .ended(.failed("backlog")))
     #expect(entries.last?.event == .update(finalized: "call", inProgress: ""))
     #expect(woken.withLock { $0 } > 0)
+  }
+
+  @Test("a Universal load refused while dictation holds the executor is tried again, then runs")
+  func busyUniversalPrepareRetries() async throws {
+    let world = World()
+    world.appleSupported = false
+    world.universalBusyPrepares = 3
+    let owner = Self.owner(world)
+    Self.record(owner)
+    await Self.until("running after the busy tries", owner) { Self.bothRunning($0) }
+    let shared = try #require(world.shared.first)
+    #expect(shared.prepareCalls == 4, "three busy tries, then the one that worked")
+    #expect(world.shared.count == 1, "the same engine, never a second runtime")
+    owner.stop()
+    #expect(await owner.waitForCleanups(seconds: 10))
+    #expect(shared.releases == 1)
+  }
+
+  @Test("a Universal load that keeps failing for another reason stops at once")
+  func otherUniversalPrepareFailureIsFinal() async throws {
+    let world = World()
+    world.appleSupported = false
+    world.universalPrepareFails = true
+    let owner = Self.owner(world)
+    Self.record(owner)
+    await Self.until("off", owner) { Self.status($0, .microphone) == .off(.couldNotStart) }
+    #expect(try #require(world.shared.first).prepareCalls == 1)
+    owner.stop()
+    #expect(await owner.waitForCleanups(seconds: 10))
+  }
+
+  @Test("Stop during the busy retries ends them and frees the engine once")
+  func stopDuringBusyRetries() async throws {
+    let world = World()
+    world.appleSupported = false
+    world.universalBusyPrepares = Int.max
+    // Open throughout; passed once per prepare, so its count is the subject's own signal.
+    let tries = Gate(open: true)
+    world.engineGates = { _ in Gates(prepare: tries) }
+    let owner = Self.owner(world)
+    Self.record(owner)
+    await PreviewWait.within("two busy tries") { await tries.reached(2) }
+    let shared = try #require(world.shared.first)
+    owner.stop()
+    #expect(await owner.waitForCleanups(seconds: 10))
+    #expect(shared.releases == 1)
   }
 
   @Test(

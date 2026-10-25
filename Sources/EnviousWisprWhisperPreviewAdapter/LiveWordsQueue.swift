@@ -104,9 +104,12 @@ final class LiveWordsQueue: @unchecked Sendable {
       switch event {
       case .update(let finalized, let inProgress):
         if case .update(let earlier, let replaced)? = s.entries.last {
-          // Coalesce: the deltas in order, the newest in-progress text replacing the old.
-          merging = earlier
-          charge += finalized.utf8.count + inProgress.utf8.count - replaced.utf8.count
+          // Coalesce: the deltas in order, joined as the assembler joins two updates' finals
+          // (#3973), the newest in-progress text replacing the old.
+          let merged = LiveWordsAssembler.join(earlier, finalized)
+          merging = merged
+          charge += merged.utf8.count - earlier.utf8.count + inProgress.utf8.count
+            - replaced.utf8.count
         } else {
           charge += Self.entryCost + finalized.utf8.count + inProgress.utf8.count
         }
@@ -123,7 +126,7 @@ final class LiveWordsQueue: @unchecked Sendable {
       case .update(let finalized, let inProgress):
         if merging != nil { s.entries.removeLast() }
         s.entries.append(
-          .update(finalized: (merging ?? "") + finalized, inProgress: inProgress))
+          .update(finalized: merging ?? finalized, inProgress: inProgress))
       case .discontinuity:
         s.entries.append(.discontinuity)
       }

@@ -26,8 +26,11 @@ package actor TranscribeCppPreviewRuntime {
   package enum LoadFailure: Error, Equatable {
     /// Delivery has not admitted the artifact. Never a download trigger.
     case notAdmitted
-    /// transcribe.cpp refused the model, or heart work held the executor at load time.
+    /// transcribe.cpp refused the model.
     case modelLoadFailed(String)
+    /// #3973: heart work held the executor at load time (refused, or the load was preempted).
+    /// Temporary: a later load can succeed.
+    case heartBusy
     /// #3973: `releaseAndDrain()` began. This runtime never loads, opens or decodes again.
     case released
   }
@@ -128,6 +131,12 @@ package actor TranscribeCppPreviewRuntime {
 
   /// Loads once and keeps it. Throws rather than downloading: an unadmitted artifact is refused
   /// before anything touches the file.
+  /// #3973: whether a load failure is only the heart holding the executor, so the same load
+  /// may be tried again later.
+  package static func isTemporary(_ error: any Error) -> Bool {
+    (error as? LoadFailure) == .heartBusy
+  }
+
   package func ensureLoaded() async throws {
     _ = try await model()
   }
@@ -145,6 +154,10 @@ package actor TranscribeCppPreviewRuntime {
     let task = Task {
       do {
         return try await load(path)
+      } catch TranscribeCppExecutor.ExecutorError.heartBusy,
+        TranscribeCppExecutor.ExecutorError.preempted
+      {
+        throw LoadFailure.heartBusy
       } catch {
         throw LoadFailure.modelLoadFailed(String(describing: error))
       }

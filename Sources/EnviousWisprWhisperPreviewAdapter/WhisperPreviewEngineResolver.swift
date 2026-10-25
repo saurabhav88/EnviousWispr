@@ -207,6 +207,11 @@ package enum WhisperPreviewEngineResolver {
     /// Frees this engine's model for good (`TranscribeCppPreviewRuntime.beginRelease`): on
     /// return every later load, open and decode is refused; the task completes once the model
     /// is physically freed.
+    /// #3973: `prepare` failed only because dictation's engine held the executor.
+    package func isTemporary(_ error: any Error) -> Bool {
+      TranscribeCppPreviewRuntime.isTemporary(error)
+    }
+
     package func beginRelease() async -> Task<Void, Never> {
       await runtime.beginRelease()
     }
