@@ -52,6 +52,9 @@ extension SystemAudioTap: MeetingCallSoundSource {}
 public final class MeetingRecorder {
   public typealias SegmentHandler = @Sendable (MeetingTrackKind, MeetingSegmentInfo) -> Void
   public typealias FailureHandler = @MainActor (MeetingTrackKind, Error) -> Void
+  /// See `liveSamples`.
+  public typealias LiveSamplesObserver = @Sendable (MeetingTrackKind, UnsafeBufferPointer<Float>)
+    -> Void
 
   public struct Configuration: Sendable {
     public let meetingID: UUID
@@ -158,6 +161,9 @@ public final class MeetingRecorder {
   private let micHealthBox = OSAllocatedUnfairLock(initialState: MicrophoneHealth())
   /// Whether the current microphone's samples are recorded; false while `beginDelivery` runs.
   private let micAdmission = OSAllocatedUnfairLock<Int?>(initialState: nil)
+  /// `liveSamples`, read by both capture threads. `closed` once capture stopped for good.
+  private let liveBox = OSAllocatedUnfairLock(
+    initialState: (observer: LiveSamplesObserver?.none, closed: false))
 
   #if DEBUG
     /// The current microphone reopen, so a test can wait for it to end.
@@ -166,6 +172,31 @@ public final class MeetingRecorder {
 
   /// The device the microphone actually bound, as the source reported it.
   public private(set) var boundMicrophoneUID: String?
+
+  /// Hands each recorded chunk to a live consumer (#3973, EnviousMeet's live words), on the
+  /// capture thread, right AFTER the writer took it: the microphone's admitted samples and the
+  /// call sound's. Never pre-roll or a stale microphone's audio (the same admission the writer
+  /// gets). A delivery does not prove the samples reached the file; the writer stays first and
+  /// nothing here changes what it records.
+  ///
+  /// The pointer is borrowed for the duration of the call only. The observer copies what it
+  /// keeps into storage it already owns and returns: no waiting, locking that can block, task
+  /// creation, dispatch, allocation that grows or recognition work, since it runs on the
+  /// real-time capture path.
+  ///
+  /// Set it before `start()` to see the first samples; it survives a microphone reopen. Nil
+  /// detaches: later chunks are not delivered, but a call already running on a capture thread
+  /// may still finish (there is no join), so the consumer closes its own admission first. Stop,
+  /// Quit and a failed start end deliveries for good; setting it afterwards has no effect.
+  public var liveSamples: LiveSamplesObserver? {
+    get { liveBox.withLock { $0.observer } }
+    set {
+      liveBox.withLock {
+        guard !$0.closed else { return }
+        $0.observer = newValue
+      }
+    }
+  }
 
   public convenience init(
     configuration: Configuration, onSegment: @escaping SegmentHandler,
@@ -209,6 +240,7 @@ public final class MeetingRecorder {
       try await openMicrophone(
         targetUID: config.microphoneUID, writer: micWriter, generation: startGeneration)
     } catch {
+      closeLiveSamples()
       self.micWriter = nil
       _ = await micWriter.finish()
       if lifecycle == .starting { lifecycle = .stopped }
@@ -222,9 +254,12 @@ public final class MeetingRecorder {
     var callStatus: MeetingTrackStatus = .off
     if config.captureCallSound {
       let writer = makeWriter(.callSound)
+      let live = liveBox
       let source = sources.makeCallSound(
         { samples, hostTime, startsNewRun in
           writer.append(samples, hostTime: hostTime, startsNewRun: startsNewRun)
+          // Borrowed for this call only; read under the lock, invoked outside it.
+          if let observe = live.withLock({ $0.observer }) { observe(.callSound, samples) }
         },
         { [weak self] reason in
           Task { @MainActor in
@@ -308,6 +343,7 @@ public final class MeetingRecorder {
     let admission = micAdmission
     let health = micHealthBox
     let hostTime = sources.hostTime
+    let live = liveBox
     // Read and cleared by the first admitted buffer only (audio thread; no allocation).
     let pendingRunBreak = OSAllocatedUnfairLock(initialState: startsNewRun)
     source.onSamples = { samples, audioLevel in
@@ -324,6 +360,8 @@ public final class MeetingRecorder {
       }
       samples.withUnsafeBufferPointer {
         writer.append($0, hostTime: firstSampleHost, startsNewRun: runBreak)
+        // After the writer, inside the borrow: the live consumer copies and returns.
+        if let observe = live.withLock({ $0.observer }) { observe(.microphone, $0) }
       }
       level.withLock { $0 = audioLevel }
     }
@@ -441,6 +479,7 @@ public final class MeetingRecorder {
     reopenTask?.cancel()
     reopenTask = nil
     admissionOff()
+    closeLiveSamples()
     microphone?.onSamples = nil
     microphone?.onInterrupted = nil
     microphone?.onStalled = nil
@@ -451,6 +490,9 @@ public final class MeetingRecorder {
   }
 
   private func admissionOff() { micAdmission.withLock { $0 = nil } }
+
+  /// No live deliveries from here on, and `liveSamples` can no longer be set.
+  private func closeLiveSamples() { liveBox.withLock { $0 = (nil, true) } }
 
   // MARK: - Failures and writers
 

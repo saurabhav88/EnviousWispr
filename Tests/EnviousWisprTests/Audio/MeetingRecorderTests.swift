@@ -617,6 +617,212 @@ struct MeetingRecorderTests {
     #expect(r.recorder.microphoneHealth?.droppedFrames == 0)
   }
 
+  // MARK: - Live samples (#3973)
+
+  /// What the live observer saw, copied during each call (the pointer is borrowed).
+  final class Observed: Sendable {
+    let chunks = OSAllocatedUnfairLock<[(MeetingTrackKind, [Float])]>(initialState: [])
+    func of(_ track: MeetingTrackKind) -> [Float] {
+      chunks.withLock { $0.filter { $0.0 == track }.flatMap(\.1) }
+    }
+    var count: Int { chunks.withLock { $0.count } }
+    var observer: MeetingRecorder.LiveSamplesObserver {
+      { [self] track, samples in
+        let copy = Array(samples)  // inside the borrow, before anything else
+        chunks.withLock { $0.append((track, copy)) }
+      }
+    }
+  }
+
+  /// Distinct, position-revealing patterns per track (exact in 16-bit PCM to within 1e-3).
+  private static func micPattern(_ count: Int, from start: Int = 0) -> [Float] {
+    (0..<count).map { Float((start + $0) % 800) / 1_000 + 0.05 }
+  }
+  private static func callPattern(_ count: Int, from start: Int = 0) -> [Float] {
+    (0..<count).map { -Float((start + $0) % 600) / 1_000 - 0.05 }
+  }
+
+  private func speak(_ mic: FakeMicrophone, _ clock: Clock, _ samples: [Float]) {
+    clock.advance(seconds: Double(samples.count) / 16_000)
+    mic.onSamples?(samples, 0.2)
+  }
+
+  private func play(_ r: Rig, _ samples: [Float]) {
+    samples.withUnsafeBufferPointer { r.calls()[0].handler($0, r.recorder.anchor, false) }
+  }
+
+  /// The track as saved by the real writer, from its segment files.
+  private func saved(_ r: Rig, _ track: MeetingTrackKind) throws -> [Float] {
+    let files = r.segments.of(track).map {
+      (r.folder.appendingPathComponent($0.fileName), $0.startMs)
+    }
+    let audio = MeetingTrackAudio(files: files)
+    return try audio.read(from: 0, count: audio.endSample)
+  }
+
+  private static func same(_ a: [Float], _ b: [Float]) -> Bool {
+    a.count == b.count && zip(a, b).allSatisfy { abs($0 - $1) < 1e-3 }
+  }
+
+  @Test("an observer set before start sees each track's recorded samples, after the writer")
+  func liveSamplesSeeBothTracks() async throws {
+    let r = try rig()
+    let observed = Observed()
+    r.recorder.liveSamples = observed.observer
+    _ = try await r.recorder.start()
+    let mic = Self.micPattern(8_000)
+    let call = Self.callPattern(8_000)
+    speak(r.microphones[0], r.clock, mic)
+    play(r, call)
+    await r.recorder.stop()
+    #expect(observed.of(.microphone) == mic, "exact microphone samples, microphone identity")
+    #expect(observed.of(.callSound) == call, "exact call samples, call identity")
+    #expect(Self.same(try saved(r, .microphone), mic))
+    #expect(Self.same(try saved(r, .callSound), call))
+  }
+
+  @Test("recording with a copy-only observer saves exactly what recording without one saves")
+  func liveSamplesLeaveRecordingUnchanged() async throws {
+    var results: [(report: MeetingRecorder.StopReport, mic: [Float], call: [Float])] = []
+    for observe in [false, true] {
+      let r = try rig()
+      let observed = Observed()
+      if observe { r.recorder.liveSamples = observed.observer }
+      _ = try await r.recorder.start()
+      speak(r.microphones[0], r.clock, Self.micPattern(4_000))
+      play(r, Self.callPattern(4_000))
+      speak(r.microphones[0], r.clock, Self.micPattern(4_000, from: 4_000))
+      let report = await r.recorder.stop()
+      results.append((report, try saved(r, .microphone), try saved(r, .callSound)))
+      #expect(observe == (observed.count == 3), "the observer saw every chunk only when set")
+    }
+    #expect(results[0].report == results[1].report)
+    #expect(results[0].mic == results[1].mic && results[0].call == results[1].call)
+    #expect(Self.same(results[0].mic, Self.micPattern(8_000)), "control: real audio was saved")
+  }
+
+  @Test("the observer copies inside the call: reusing the producer's buffer changes nothing")
+  func liveSamplesBorrowedStorage() async throws {
+    let r = try rig(callSound: true)
+    let observed = Observed()
+    r.recorder.liveSamples = observed.observer
+    _ = try await r.recorder.start()
+    let original = Self.callPattern(4_000)
+    // One producer-owned buffer, as the capture thread has: handed over, then reused in place.
+    let buffer = UnsafeMutableBufferPointer<Float>.allocate(capacity: original.count)
+    defer { buffer.deallocate() }
+    _ = buffer.initialize(from: original)
+    let handler = r.calls()[0].handler
+    handler(UnsafeBufferPointer(buffer), r.recorder.anchor, false)
+    // The next chunk overwrites the same memory the recorder was just given.
+    buffer.update(repeating: 0.9)
+    #expect(buffer.allSatisfy { $0 == 0.9 }, "control: the handed-over memory was overwritten")
+    await r.recorder.stop()
+    #expect(observed.of(.callSound) == original, "the observer copied during the call")
+    #expect(Self.same(try saved(r, .callSound), original), "the writer copied during the call")
+  }
+
+  @Test("detaching the observer stops deliveries while both tracks keep recording")
+  func liveSamplesDetach() async throws {
+    let r = try rig()
+    let observed = Observed()
+    r.recorder.liveSamples = observed.observer
+    _ = try await r.recorder.start()
+    let first = Self.micPattern(4_000)
+    speak(r.microphones[0], r.clock, first)
+    r.recorder.liveSamples = nil
+    let second = Self.micPattern(4_000, from: 4_000)
+    speak(r.microphones[0], r.clock, second)
+    play(r, Self.callPattern(4_000))
+    await r.recorder.stop()
+    #expect(observed.of(.microphone) == first && observed.of(.callSound).isEmpty)
+    #expect(Self.same(try saved(r, .microphone), first + second), "recording continued, contiguous")
+    #expect(Self.same(try saved(r, .callSound), Self.callPattern(4_000)))
+  }
+
+  @Test("pre-roll handed over during delivery start never reaches the observer")
+  func liveSamplesSkipPreRoll() async throws {
+    let r = try rig(callSound: false)
+    r.microphones[0].preRoll = [Float](repeating: 0.7, count: 1_600)
+    let observed = Observed()
+    r.recorder.liveSamples = observed.observer
+    _ = try await r.recorder.start()
+    let spoken = Self.micPattern(8_000)
+    speak(r.microphones[0], r.clock, spoken)
+    await r.recorder.stop()
+    #expect(r.recorder.microphoneSourceHealth.framesNotAdmitted == 1_600, "control: pre-roll arrived")
+    #expect(observed.of(.microphone) == spoken)
+  }
+
+  @Test("after a microphone reopen the observer follows the new source and ignores the old one")
+  func liveSamplesFollowReopen() async throws {
+    let r = try rig(microphones: 2, callSound: false)
+    let observed = Observed()
+    r.recorder.liveSamples = observed.observer
+    _ = try await r.recorder.start()
+    let stale = try #require(r.microphones[0].onSamples)
+    let before = Self.micPattern(4_000)
+    speak(r.microphones[0], r.clock, before)
+    r.microphones[0].onInterrupted?(.deviceRemoved)
+    defer { r.reopenGate.open() }
+    #expect(await r.reopenGate.waitUntilParked(), "the reopen never paused")
+    r.clock.advance(seconds: 3)
+    r.reopenGate.open()
+    await r.recorder.reopenTaskForTesting?.value
+    #expect(r.recorder.microphoneSourceHealth.reopens == 1)
+    // The old source's callback, still held by a capture thread, delivers late audio.
+    stale([Float](repeating: 0.6, count: 800), 0.1)
+    let after = Self.micPattern(4_000, from: 4_000)
+    speak(r.microphones[1], r.clock, after)
+    await r.recorder.stop()
+    #expect(observed.of(.microphone) == before + after, "old source refused, new source observed")
+    #expect(r.segments.of(.microphone).map(\.frameCount) == [4_000, 4_000])
+  }
+
+  @Test("stop, quit and a failed start end deliveries for good, late call audio included")
+  func liveSamplesEndWithTheRecorder() async throws {
+    // Stop: the call tap's stop tail and a late microphone callback are not observed.
+    do {
+      let r = try rig()
+      let observed = Observed()
+      r.recorder.liveSamples = observed.observer
+      _ = try await r.recorder.start()
+      r.calls()[0].emitOnStop = Self.callPattern(1_600)
+      let late = try #require(r.microphones[0].onSamples)
+      speak(r.microphones[0], r.clock, Self.micPattern(1_600))
+      await r.recorder.stop()
+      late(Self.micPattern(800), 0.1)
+      play(r, Self.callPattern(800))
+      #expect(observed.count == 1, "only the chunk recorded before Stop")
+      r.recorder.liveSamples = observed.observer
+      #expect(r.recorder.liveSamples == nil, "cannot be set again after Stop")
+    }
+    // Quit: the same, through the synchronous path.
+    do {
+      let r = try rig()
+      let observed = Observed()
+      r.recorder.liveSamples = observed.observer
+      _ = try await r.recorder.start()
+      r.calls()[0].emitOnStop = Self.callPattern(1_600)
+      speak(r.microphones[0], r.clock, Self.micPattern(1_600))
+      _ = r.recorder.stopForQuit(deadline: .now() + .seconds(5))
+      play(r, Self.callPattern(800))
+      #expect(observed.count == 1)
+      #expect(r.recorder.liveSamples == nil)
+    }
+    // Failed start: nothing was recorded and the observer is gone.
+    do {
+      let r = try rig()
+      r.microphones[0].openError = AudioError.formatCreationFailed(source: "test")
+      let observed = Observed()
+      r.recorder.liveSamples = observed.observer
+      await #expect(throws: (any Error).self) { _ = try await r.recorder.start() }
+      #expect(r.recorder.liveSamples == nil && observed.count == 0)
+      r.recorder.liveSamples = observed.observer
+      #expect(r.recorder.liveSamples == nil, "cannot be set again after a failed start")
+    }
+  }
+
   // MARK: - Real microphone
 
   nonisolated static func authorizedBuiltInMicrophoneUID() -> String? {
