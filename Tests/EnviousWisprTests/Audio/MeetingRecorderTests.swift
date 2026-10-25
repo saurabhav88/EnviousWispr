@@ -754,6 +754,7 @@ struct MeetingRecorderTests {
     #expect(observed.of(.microphone) == spoken)
   }
 
+  #if DEBUG  // waits on the recorder's DEBUG-only reopen task
   @Test("after a microphone reopen the observer follows the new source and ignores the old one")
   func liveSamplesFollowReopen() async throws {
     let r = try rig(microphones: 2, callSound: false)
@@ -778,6 +779,8 @@ struct MeetingRecorderTests {
     #expect(observed.of(.microphone) == before + after, "old source refused, new source observed")
     #expect(r.segments.of(.microphone).map(\.frameCount) == [4_000, 4_000])
   }
+
+  #endif
 
   @Test("stop, quit and a failed start end deliveries for good, late call audio included")
   func liveSamplesEndWithTheRecorder() async throws {
