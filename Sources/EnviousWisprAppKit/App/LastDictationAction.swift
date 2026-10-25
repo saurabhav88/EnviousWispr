@@ -394,6 +394,25 @@ final class LastDictationAction {
 
 extension LastDictationAction {
 
+  /// Whether `pid` shows at least one window (#3437). A launcher whose panel was closed can keep
+  /// the system keyboard focus on a hidden element: measured with Raycast, after its panel was
+  /// opened and closed with Escape it had zero windows and still read as the keyboard owner, so a
+  /// paste aimed there landed nowhere while the front app received nothing. An owner with no
+  /// window is therefore not a paste target, and the front app is. Bounded like the focus read; a
+  /// failed read answers false (the front route, today's behaviour).
+  static func showsAWindow(pid: pid_t) -> Bool {
+    let application = AXUIElementCreateApplication(pid)
+    _ = AXUIElementSetMessagingTimeout(
+      application, Float(PasteService.keyboardFocusReadCapSeconds))
+    var value: CFTypeRef?
+    guard
+      AXUIElementCopyAttributeValue(application, kAXWindowsAttribute as CFString, &value)
+        == .success,
+      let windows = value as? [AXUIElement]
+    else { return false }
+    return !windows.isEmpty
+  }
+
   /// The production environment. Every desktop effect is here, so nothing above reaches the real
   /// clipboard, keyboard or focus unless this is the environment it was given.
   static func live(
@@ -419,7 +438,8 @@ extension LastDictationAction {
             let application = NSRunningApplication(processIdentifier: pid),
             PasteService.isEligibleFocusOwner(
               activationPolicy: application.activationPolicy,
-              isTerminated: application.isTerminated)
+              isTerminated: application.isTerminated),
+            showsAWindow(pid: pid)
           else { return nil }
           return KeyboardOwnerSnapshot(application: application, element: element)
         },
