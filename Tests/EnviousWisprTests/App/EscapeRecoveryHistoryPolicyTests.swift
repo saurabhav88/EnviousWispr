@@ -527,6 +527,7 @@ struct EscapeRecoveryHistoryPolicyTests {
       coordinator.setTranscriptsForTesting([stale])
 
       coordinator.keep(stale)
+      #expect(coordinator.actionFailure == nil, "expiry refusal is not an action failure")
 
       #expect(
         try await store.loadAll().isEmpty,

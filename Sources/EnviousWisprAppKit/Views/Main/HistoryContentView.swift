@@ -86,6 +86,37 @@ struct HistoryContentView: View {
     .task {
       transcriptCoordinator.loadIfNeeded()
     }
+    .alert(
+      actionFailureTitle,
+      isPresented: Binding(
+        get: { transcriptCoordinator.actionFailure != nil },
+        set: { if !$0 { transcriptCoordinator.dismissActionFailure() } })
+    ) {
+      Button(String(localized: "OK", comment: "History: closes the message about a failed action.")) {
+        transcriptCoordinator.dismissActionFailure()
+      }
+    }
+  }
+
+  /// #4075 G10: the sentence for the failed action. Empty when none is showing.
+  private var actionFailureTitle: String {
+    switch transcriptCoordinator.actionFailure {
+    case .delete:
+      String(
+        localized: "Couldn't delete this item. Try again.",
+        comment: "History: deleting one dictation or transcript failed; nothing was removed.")
+    case .keep:
+      String(
+        localized: "Couldn't keep this recording. Try again.",
+        comment:
+          "History: Keep on a held Escape Recovery dictation failed; it still counts down.")
+    case .deleteAll:
+      String(
+        localized: "Couldn't delete all history. Try again.",
+        comment: "History: Delete All did not finish.")
+    case nil:
+      ""
+    }
   }
 }
 
