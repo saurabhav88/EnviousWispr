@@ -1,5 +1,6 @@
 import Foundation
 import SQLite3
+import EnviousWisprAppKitTestSupport
 
 /// Builds rival-app stores in their real on-disk shapes for BOTH adapter suites, the word
 /// adapters (`SmartImportSourceTests`) and the snippet adapters
@@ -13,7 +14,7 @@ enum RivalAppStoreFixtures {
 
   /// A fresh temporary directory the caller removes in a `defer`.
   static func makeDirectory() -> URL {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ew-rival-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     return dir

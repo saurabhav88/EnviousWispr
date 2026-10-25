@@ -1329,14 +1329,18 @@ final class MeetingCoordinator {
   }
 
   /// The one deletion authority (R12, R19): History's delete of a meeting row comes here too.
-  func delete(meetingID: UUID) async {
+  /// False when the deletion could not be done now (#4079): the mark could not be saved, the
+  /// row or the folder could not be removed, or an orphan row's folder is still there. History
+  /// then says so. A deletion already running, or one deferred to the next launch behind a
+  /// close that still owns the files, is not a failure.
+  @discardableResult
+  func delete(meetingID: UUID) async -> Bool {
     // History can ask before the launch listing finished; the meeting is known after it.
     if live[meetingID] == nil, let launchTask { await launchTask.value }
     guard live[meetingID] != nil else {
-      await deleteOrphan(meetingID: meetingID)
-      return
+      return await deleteOrphan(meetingID: meetingID)
     }
-    guard !deleting.contains(meetingID), var record = live[meetingID] else { return }
+    guard !deleting.contains(meetingID), var record = live[meetingID] else { return true }
     deleting.insert(meetingID)
     workChanged()
     defer {
@@ -1347,7 +1351,7 @@ final class MeetingCoordinator {
     // cleanup never holds up the deletion.
     deps.liveWords?.delete(meetingID: meetingID)
     record.deletionRequested = true
-    guard await persist(record) else { return }
+    guard await persist(record) else { return false }
     // The notes this session knows, read before they are forgotten (R54 `has_notes`).
     let hadNotes = !documents.notes(meetingID).isEmpty
     // Marked: no draft may be written any more (the store also refuses).
@@ -1367,7 +1371,7 @@ final class MeetingCoordinator {
     // Ends an attempt still open (recording, queued, processing); a finished one already
     // sent its row.
     endAttempt(record, outcome: .deletedBeforeReady, hasNotes: hadNotes)
-    await finishDeletion(record)
+    return await finishDeletion(record)
   }
 
   /// History's Delete All (R19): marks every listed meeting for deletion DURABLY before
@@ -1446,13 +1450,15 @@ final class MeetingCoordinator {
     return errno == ENOENT
   }
 
-  private func finishDeletion(_ record: MeetingRecord) async {
+  /// False when the row or the folder could not be removed now (#4079).
+  @discardableResult
+  private func finishDeletion(_ record: MeetingRecord) async -> Bool {
     if processing?.meetingID == record.id { job?.cancel() }
     await waitUntilNotProcessing(record.id)
     guard !closeOwned.contains(record.id) else {
       // A timed-out close still owns its files: the mark stays and the next launch deletes.
       deps.log("meeting delete deferred reason=close_owned")
-      return
+      return true
     }
     do {
       try deps.removeTranscriptRow(record.transcriptID)
@@ -1461,9 +1467,11 @@ final class MeetingCoordinator {
       live.removeValue(forKey: record.id)
       records.removeValue(forKey: record.id)
       publish()
+      return true
     } catch {
       // The marker stays in the folder; the next launch finishes the deletion.
       deps.log("meeting delete incomplete error=\(type(of: error))")
+      return false
     }
   }
 

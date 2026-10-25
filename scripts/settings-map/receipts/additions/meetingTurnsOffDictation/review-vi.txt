@@ -1,0 +1,1 @@
+{"language":"vi","title":"tắt nhập liệu bằng giọng nói trong cuộc họp","words":[],"phrases":["tắt nhập liệu bằng giọng nói khi đang ghi âm cuộc họp","không nhập được bằng giọng nói khi đang ghi âm cuộc họp"]}

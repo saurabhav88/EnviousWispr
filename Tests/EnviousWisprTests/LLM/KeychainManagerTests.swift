@@ -4,6 +4,7 @@ import Security
 import Testing
 
 @testable import EnviousWisprLLM
+import EnviousWisprAppKitTestSupport
 
 /// #1177 (Telemetry Bible Phase 8): captures the legacy-key-cleanup-failed callback.
 private final class CleanupSinkSpy: @unchecked Sendable {
@@ -642,7 +643,7 @@ struct KeychainManagerTests {
   }
 
   private func makeTempDirectory() throws -> URL {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ew-keychain-tests-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     return dir

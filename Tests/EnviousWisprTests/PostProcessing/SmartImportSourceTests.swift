@@ -4,6 +4,7 @@ import SQLite3
 import Testing
 
 @testable import EnviousWisprPostProcessing
+import EnviousWisprAppKitTestSupport
 
 /// #1686 — reading vocabulary out of other dictation apps.
 ///
@@ -15,7 +16,7 @@ import Testing
 struct SmartImportSourceTests {
 
   private func makeDirectory() -> URL {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ew-smart-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     return dir

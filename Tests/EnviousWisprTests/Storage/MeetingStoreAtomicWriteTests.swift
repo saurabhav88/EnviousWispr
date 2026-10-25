@@ -3,6 +3,7 @@ import Testing
 
 @testable import EnviousWisprCore
 @testable import EnviousWisprStorage
+import EnviousWisprAppKitTestSupport
 
 /// #3996: when these fail, a meeting save that throws can leave the NEW file on disk while
 /// the app rolls back to the old one, so what the user sees and what is saved disagree, or a
@@ -14,7 +15,7 @@ import Testing
 struct MeetingStoreAtomicWriteTests {
 
   private func folder() throws -> URL {
-    let url = FileManager.default.temporaryDirectory
+    let url = TestTemporaryDirectory.url
       .appendingPathComponent(
         "MeetingStoreAtomicWriteTests-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)

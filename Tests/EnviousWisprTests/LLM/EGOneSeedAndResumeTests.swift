@@ -4,6 +4,7 @@ import Testing
 
 @testable import EnviousWisprLLM
 @testable import EnviousWisprModelDelivery
+import EnviousWisprAppKitTestSupport
 
 /// The two behaviours #2109 depends on that a pure-value test cannot reach:
 /// the cold-launch SEED (without which the paused-upgrade state is unreachable
@@ -13,7 +14,7 @@ import Testing
 @Suite struct EGOneSeedAndResumeTests {
 
   private func makeDirs() throws -> (install: URL, metadata: URL, cleanup: () -> Void) {
-    let root = FileManager.default.temporaryDirectory
+    let root = TestTemporaryDirectory.url
       .appendingPathComponent("eg1-seed-\(UUID().uuidString)", isDirectory: true)
     let install = root.appendingPathComponent("Models/eg-1", isDirectory: true)
     let metadata = root.appendingPathComponent("ModelDelivery", isDirectory: true)

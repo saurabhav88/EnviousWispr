@@ -2,6 +2,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprServices
+import EnviousWisprAppKitTestSupport
 
 /// #3269: the local diagnostics diary. Every test uses its own temporary directory and a
 /// controlled clock, so nothing touches the real Application Support folder and nothing sleeps.
@@ -23,7 +24,7 @@ struct DiagnosticsDiaryTests {
   static let takeB = "11111111-2222-4333-8444-555555555555"
 
   private static func tempDirectory() -> URL {
-    FileManager.default.temporaryDirectory
+    TestTemporaryDirectory.url
       .appendingPathComponent("ew-3269-diary-\(UUID().uuidString)", isDirectory: true)
   }
 

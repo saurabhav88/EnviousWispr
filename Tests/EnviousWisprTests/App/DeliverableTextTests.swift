@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprStorage
+import EnviousWisprAppKitTestSupport
 
 @MainActor
 @Suite("History Share transfer (#3566)", .tags(.productOutcome))
@@ -135,7 +136,7 @@ struct DeliverableTextTests {
   private func withCoordinator(
     _ operation: @MainActor (TranscriptCoordinator) async throws -> Void
   ) async throws {
-    let directory = FileManager.default.temporaryDirectory
+    let directory = TestTemporaryDirectory.url
       .appendingPathComponent("ew-share-3566-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }

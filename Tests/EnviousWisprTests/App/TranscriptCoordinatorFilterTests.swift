@@ -4,6 +4,7 @@ import Testing
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprStorage
+import EnviousWisprAppKitTestSupport
 
 /// History tells a dictation from a transcript (#2808, phase 1 of #2807).
 ///
@@ -24,7 +25,7 @@ struct TranscriptCoordinatorFilterTests {
   // MARK: Fixtures
 
   private func makeCoordinator() -> (TranscriptCoordinator, TranscriptStore) {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ew-2808-filter-\(UUID().uuidString)", isDirectory: true)
     let store = TranscriptStore(directory: dir)
     return (TranscriptCoordinator(store: store), store)

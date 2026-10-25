@@ -5,6 +5,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprPipeline
+import EnviousWisprAppKitTestSupport
 
 /// #2648 — the whole file-import path on a REAL recording, through the SHIPPED engine.
 ///
@@ -40,7 +41,7 @@ struct FileImportRealBoundaryTests {
     /// real speech, and deliberately more than 500 words, because a recording that fits in one part
     /// would prove nothing about splitting.
     static func writeSpokenRecording() throws -> (url: URL, wordCount: Int) {
-      let dir = FileManager.default.temporaryDirectory
+      let dir = TestTemporaryDirectory.url
         .appendingPathComponent("file-import-real-\(UUID().uuidString)")
       try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 

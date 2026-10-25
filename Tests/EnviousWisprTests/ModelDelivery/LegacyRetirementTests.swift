@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprModelDelivery
+import EnviousWisprAppKitTestSupport
 
 /// #1386 PR-2a. Covers L3 (deletion authority), L8 (path safety), L9 (cancellation is not a
 /// verdict) from the plan's §1.
@@ -16,7 +17,7 @@ import Testing
   // MARK: - Fixtures
 
   private func makeRoot() throws -> URL {
-    let root = FileManager.default.temporaryDirectory
+    let root = TestTemporaryDirectory.url
       .appendingPathComponent("legacy-retirement-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     return root

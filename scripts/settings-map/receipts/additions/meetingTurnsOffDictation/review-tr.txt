@@ -1,0 +1,9 @@
+{
+  "language": "tr",
+  "title": "toplantılar sırasında dikteyi kapat",
+  "words": [],
+  "phrases": [
+    "toplantı kaydı sırasında dikteyi devre dışı bırak",
+    "toplantı kaydederken dikte tuşu çalışmıyor"
+  ]
+}

@@ -4,6 +4,7 @@ import Testing
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprPostProcessing
+import EnviousWisprAppKitTestSupport
 
 /// #2997 — what the coordinator publishes after an import, and how it reports the store.
 ///
@@ -15,7 +16,7 @@ import Testing
 struct SnippetsCoordinatorImportTests {
 
   private func makeCoordinator() -> (SnippetsCoordinator, SnippetsManager) {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ew-snippets-coordinator-\(UUID().uuidString)", isDirectory: true)
     let manager = SnippetsManager(fileURL: dir.appendingPathComponent("snippets.json"))
     // A first launch seeds starter snippets; the tests want a known list, so clear them.
@@ -219,7 +220,7 @@ struct SnippetsCoordinatorImportTests {
 
   @Test("A contended refresh adopts the writer's fresh disk state and publishes it")
   func refreshWaitsForAWriter() throws {
-    let url = FileManager.default.temporaryDirectory
+    let url = TestTemporaryDirectory.url
       .appendingPathComponent("ew-refresh-\(UUID().uuidString)", isDirectory: true)
       .appendingPathComponent("snippets.json")
     let fixture = RefreshLockFixture(url: url)

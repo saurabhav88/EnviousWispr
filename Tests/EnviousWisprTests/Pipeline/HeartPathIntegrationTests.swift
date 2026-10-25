@@ -10,6 +10,7 @@ import Testing
 
 @testable import EnviousWisprASR
 @testable import EnviousWisprPipeline
+import EnviousWisprAppKitTestSupport
 
 @MainActor
 @Suite("Heart Path Integration — Finalizer layer (mocked ASR + paste)", .tags(.productOutcome))
@@ -408,7 +409,7 @@ internal struct SyntheticAudioFixture {
         Array(repeating: 0, count: frameCount)
       }
 
-    let url = FileManager.default.temporaryDirectory
+    let url = TestTemporaryDirectory.url
       .appendingPathComponent(UUID().uuidString)
       .appendingPathComponent(fileName)
 

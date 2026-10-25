@@ -5,6 +5,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
+import EnviousWisprAppKitTestSupport
 
 /// #2787 — the persisted per-take stage checkpoint and its launch-time report.
 ///
@@ -17,7 +18,7 @@ import Testing
 struct TranscriptionCheckpointStoreTests {
 
   private static func tempDir() -> URL {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ew-checkpoint-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     return dir

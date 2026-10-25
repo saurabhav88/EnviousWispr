@@ -1,0 +1,8 @@
+{
+  "language": "en",
+  "words": [],
+  "phrases": [
+    "disable dictation while recording a meeting",
+    "dictation key does nothing during meeting recording"
+  ]
+}

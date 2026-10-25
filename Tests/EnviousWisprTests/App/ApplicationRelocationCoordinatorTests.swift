@@ -2,6 +2,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
+import EnviousWisprAppKitTestSupport
 
 /// #1451 — App Translocation recovery. Pure-policy + flow tests with fakes for
 /// every side-effecting seam. The detector is exercised through crafted bundle
@@ -153,7 +154,7 @@ struct ApplicationRelocationCoordinatorTests {
 
   static let translocatedURL = URL(
     fileURLWithPath: "/private/var/folders/ab/AppTranslocation/XYZ/d/EnviousWispr.app")
-  static var healthyURL: URL { URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true) }
+  static var healthyURL: URL { URL(fileURLWithPath: TestTemporaryDirectory.path, isDirectory: true) }
 
   struct Harness {
     let coordinator: ApplicationRelocationCoordinator

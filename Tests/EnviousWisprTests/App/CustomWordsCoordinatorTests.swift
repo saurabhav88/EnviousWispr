@@ -4,6 +4,7 @@ import Testing
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprPostProcessing
+import EnviousWisprAppKitTestSupport
 
 /// #1701 Chunk 2 — the AppKit adapter's own observability contract for
 /// bulk-import enrichment: `pendingEnrichmentBatchTotal` round-tripping and
@@ -15,7 +16,7 @@ import Testing
 struct CustomWordsCoordinatorTests {
 
   private func makeCoordinator() -> (CustomWordsCoordinator, URL) {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ew-coordinator-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     let url = dir.appendingPathComponent("custom-words.json")

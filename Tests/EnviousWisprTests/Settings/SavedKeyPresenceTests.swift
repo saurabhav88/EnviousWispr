@@ -5,6 +5,7 @@ import Testing
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprLLM
+import EnviousWisprAppKitTestSupport
 
 /// #3438. Which cloud keys are saved, for the surfaces that warn about an unfinished setup,
 /// and the typed key verdict tied to the key it was earned on. When this is wrong, a person
@@ -18,7 +19,7 @@ struct SavedKeyPresenceTests {
 
   /// A key store in its own temporary folder; never the real Keychain or key files.
   private static func fixtureKeychain() -> KeychainManager {
-    let folder = FileManager.default.temporaryDirectory
+    let folder = TestTemporaryDirectory.url
       .appending(path: "ew-tests-saved-key-presence-\(UUID().uuidString)")
     return KeychainManager(
       backend: .legacyFiles, legacyStore: FileLegacyKeyStore(storageDirectory: folder))

@@ -1,0 +1,9 @@
+{
+  "language": "pt",
+  "title": "desativar o ditado durante as reuniões",
+  "words": [],
+  "phrases": [
+    "bloquear o ditado durante a gravação de uma reunião",
+    "a tecla de ditado não funciona ao gravar uma reunião"
+  ]
+}

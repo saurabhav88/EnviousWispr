@@ -378,6 +378,147 @@ struct MeetingDocumentsOwnerTests {
     #expect(harness.ended.last?.outcome == .startFailed)
   }
 
+  @Test("a failed notes save is shown until a later save works, and the notes are kept (#4075)")
+  func notesSaveFailureIsShownUntilSaved() async throws {
+    let harness = try Harness()
+    var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    record.state = .failed
+    try harness.store.create(record)
+    let coordinator = Self.coordinator(harness)
+    coordinator.launch()
+    await MeetingCoordinatorTests.eventually("listed") { coordinator.record(id: record.id) != nil }
+    let documents = coordinator.documents
+    await documents.load(record.id)
+    // A read-only meeting folder: every write into it fails, as on a full or locked disk.
+    let folder = harness.store.notesURL(for: record.id).deletingLastPathComponent()
+    try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: folder.path)
+    defer {
+      try? FileManager.default.setAttributes(
+        [.posixPermissions: 0o700], ofItemAtPath: folder.path)
+    }
+    #expect(documents.notesSaveFailed(record.id) == false)
+
+    documents.setNotes(record.id, "kept in the app")
+    #expect(await documents.flush(record.id) == false)
+    #expect(documents.notesSaveFailed(record.id))
+    #expect(documents.notes(record.id) == "kept in the app")
+
+    // The disk works again: Try again saves, and the warning goes.
+    try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: folder.path)
+    #expect(await documents.flush(record.id))
+    #expect(documents.notesSaveFailed(record.id) == false)
+    #expect(Self.notesOnDisk(harness, record.id) == "kept in the app")
+  }
+
+  @Test("a failed summary-edit save is shown until a later save works (#4075)")
+  func summarySaveFailureIsShownUntilSaved() async throws {
+    let harness = try Harness()
+    var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    record.state = .failed
+    try harness.store.create(record)
+    let coordinator = Self.coordinator(harness)
+    coordinator.launch()
+    await MeetingCoordinatorTests.eventually("listed") { coordinator.record(id: record.id) != nil }
+    let documents = coordinator.documents
+    await documents.load(record.id)
+    let summaryURL = harness.store.summaryURL(for: record.id)
+    let folder = summaryURL.deletingLastPathComponent()
+    try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: folder.path)
+    defer {
+      try? FileManager.default.setAttributes(
+        [.posixPermissions: 0o700], ofItemAtPath: folder.path)
+    }
+
+    documents.setSummary(record.id, "My own words")
+    #expect(await documents.flushSummary(record.id) == false)
+    #expect(documents.summarySaveFailed(record.id))
+    #expect(documents.summary(record.id) == "My own words")
+
+    try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: folder.path)
+    #expect(await documents.flushSummary(record.id))
+    #expect(documents.summarySaveFailed(record.id) == false)
+    #expect(
+      (try? String(contentsOf: summaryURL, encoding: .utf8))?.contains("My own words") == true)
+  }
+
+  @Test(
+    "an older successful save keeps the warning for newer typing (#4075)",
+    arguments: [false, true]
+  )
+  func warningSurvivesOlderSuccessfulSave(summary: Bool) async throws {
+    let harness = try Harness()
+    var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    record.state = .ready
+    try harness.store.create(record)
+
+    let debounce = DebounceGate()
+    let completion = DebounceGate()
+    defer {
+      debounce.open()
+      completion.open()
+    }
+
+    var writes = 0
+    let documents = MeetingDocumentsOwner(
+      writer: MeetingFileWriter(store: harness.store, writeRecord: { try $0.save($1) }),
+      dependencies: .init(
+        debounce: { await debounce.wait() },
+        log: { _ in },
+        afterEditWrite: {
+          writes += 1
+          if writes == 2 { await completion.wait() }
+        }))
+    try #require(await documents.load(record.id))
+
+    let setText: @MainActor (String) -> Void = { text in
+      if summary {
+        documents.setSummary(record.id, text)
+      } else {
+        documents.setNotes(record.id, text)
+      }
+    }
+    let flush: @MainActor () async -> Bool = {
+      if summary { return await documents.flushSummary(record.id) }
+      return await documents.flush(record.id)
+    }
+    let failed: @MainActor () -> Bool = {
+      summary
+        ? documents.summarySaveFailed(record.id)
+        : documents.notesSaveFailed(record.id)
+    }
+
+    let folder = harness.store.notesURL(for: record.id).deletingLastPathComponent()
+    try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: folder.path)
+    defer {
+      try? FileManager.default.setAttributes(
+        [.posixPermissions: 0o700], ofItemAtPath: folder.path)
+    }
+
+    setText("first")
+    #expect(await flush() == false)
+    try #require(failed())
+
+    try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: folder.path)
+    setText("second")
+    let olderSave = Task { await flush() }
+    await MeetingCoordinatorTests.eventually("older save result parked") {
+      completion.waiting == 1
+    }
+
+    setText("latest")
+    completion.open()
+    #expect(await olderSave.value == false)
+    #expect(failed(), "the older success must not dismiss the warning")
+
+    #expect(await flush())
+    #expect(failed() == false)
+    let url =
+      summary
+      ? harness.store.summaryURL(for: record.id)
+      : harness.store.notesURL(for: record.id)
+    #expect(try String(contentsOf: url, encoding: .utf8) == "latest")
+  }
+
   @Test("unsaved notes hold a relaunch at once, and still after a failed save has drained")
   func relaunchWaitsAfterFailedSave() async throws {
     let harness = try Harness()

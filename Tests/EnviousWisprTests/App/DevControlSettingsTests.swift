@@ -101,7 +101,7 @@
       for row in rows {
         kinds[row["kind"] as? String ?? "?", default: []].append(row["key"] as? String ?? "?")
       }
-      #expect(kinds["direct"]?.count == 47)
+      #expect(kinds["direct"]?.count == 48)
       #expect(kinds["viaOwner"]?.count == 8)
       #expect(kinds["extractedCheck"]?.count == 16)
       #expect(kinds["staging"]?.count == 9)
@@ -231,6 +231,10 @@
         "meetingCallSoundExplained", \.meetingCallSoundExplained,
         fires: .meetingCallSoundExplained),
       bool("meetingWriteSummary", \.meetingWriteSummary, fires: .meetingWriteSummary),
+      // #4069: "Turn off dictation during meetings".
+      bool(
+        "meetingTurnsOffDictation", \.meetingTurnsOffDictation,
+        fires: .meetingTurnsOffDictation),
       // #4017: EnviousMeet's setup lock and calendar names.
       bool(
         "meetingOnboardingComplete", \.meetingOnboardingComplete,

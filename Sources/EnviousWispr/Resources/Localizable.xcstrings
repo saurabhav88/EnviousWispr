@@ -5929,6 +5929,28 @@
         }
       }
     },
+    "Couldn't delete all history. Try again." : {
+      "comment" : "History: Delete All did not finish.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der gesamte Verlauf konnte nicht gelöscht werden. Versuche es erneut."
+          }
+        }
+      }
+    },
+    "Couldn't delete this item. Try again." : {
+      "comment" : "History: deleting one dictation or transcript failed; nothing was removed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Eintrag konnte nicht gelöscht werden. Versuche es erneut."
+          }
+        }
+      }
+    },
     "Couldn't find any %@ snippets on this Mac." : {
       "comment" : "Snippets, import from another app: error. %@ is the other app's name.",
       "localizations" : {
@@ -5969,6 +5991,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Aufnahme konnte nicht gesichert werden. Sie wurde verworfen."
+          }
+        }
+      }
+    },
+    "Couldn't keep this recording. Try again." : {
+      "comment" : "History: Keep on a held Escape Recovery dictation failed; it still counts down.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Aufnahme konnte nicht behalten werden. Versuche es erneut."
           }
         }
       }
@@ -6665,6 +6698,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diktieren deaktiviert — Mikrofonzugriff erforderlich"
+          }
+        }
+      }
+    },
+    "Dictation is off during meetings." : {
+      "comment" : "Pill: the user turned on Turn off dictation during meetings and a meeting is recording, so the dictation key recorded nothing. Keep it short: a long sentence may not fit the pill, and its fit is checked on screen.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktieren ist während Meetings aus."
+          }
+        }
+      }
+    },
+    "Dictation is off during meetings. Turn it back on in EnviousMeet settings. A dictation that already started before the meeting finishes normally." : {
+      "comment" : "EnviousMeet page: help for Turn off dictation during meetings. The founder's sentence (#4069).",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktieren ist während Meetings aus. Schalte es in den EnviousMeet-Einstellungen wieder ein. Ein Diktat, das schon vor dem Meeting begonnen hat, läuft normal zu Ende."
           }
         }
       }
@@ -13378,7 +13433,7 @@
       }
     },
     "OK" : {
-      "comment" : "AI Polish, notice button.\nButton that closes a message.\nEnviousMeet: closes the Paste message.\nEnviousMeet: closes the Save error.",
+      "comment" : "AI Polish, notice button.\nButton that closes a message.\nEnviousMeet: closes the Paste message.\nEnviousMeet: closes the Save error.\nHistory: closes the message about a failed action.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -19423,6 +19478,17 @@
         }
       }
     },
+    "The dictation key records nothing while a meeting is recording." : {
+      "comment" : "EnviousMeet page: the short line under Turn off dictation during meetings.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Solange ein Meeting aufgenommen wird, startet die Diktiertaste kein Diktat."
+          }
+        }
+      }
+    },
     "The download couldn't be verified. Try again, and if this keeps happening, contact support." : {
       "comment" : "Speech model download: why it failed. Shown in setup and in Settings.",
       "localizations" : {
@@ -21000,7 +21066,7 @@
       }
     },
     "Try again" : {
-      "comment" : "History, a meeting: reads the saved notes again.\nLive Preview settings: pack retry.\nTranscribe a File, Done step: button that retries speaker labelling.\nTranscribe a File, Review step: button that retries after a refusal.\nYour Words, Learn from: the self-learning dictionary row: button that retries loading the model.\nYour Words, Learn from: the self-learning dictionary row: retry the word check download.",
+      "comment" : "History, a meeting: reads the saved notes again.\nHistory, a meeting: saves the notes again.\nHistory, a meeting: saves the summary changes again.\nLive Preview settings: pack retry.\nTranscribe a File, Done step: button that retries speaker labelling.\nTranscribe a File, Review step: button that retries after a refusal.\nYour Words, Learn from: the self-learning dictionary row: button that retries loading the model.\nYour Words, Learn from: the self-learning dictionary row: retry the word check download.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -21104,6 +21170,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wenn du eine App ausschaltest, fragt EnviousMeet bei Anrufen über diese App nicht mehr nach."
+          }
+        }
+      }
+    },
+    "Turn off dictation during meetings" : {
+      "comment" : "EnviousMeet page: switch that makes the dictation key record nothing while a meeting records.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktieren während Meetings ausschalten"
           }
         }
       }
@@ -23341,6 +23418,17 @@
         }
       }
     },
+    "Your notes could not be saved." : {
+      "comment" : "History, a meeting: saving the notes failed; the typed notes stay in the app until a save works.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Notizen konnten nicht gespeichert werden."
+          }
+        }
+      }
+    },
     "Your original words are saved to History. This cleaned version is not. Copy or save it before you leave." : {
       "comment" : "Transcribe a File: the original is in History but the cleaned version is not.",
       "localizations" : {
@@ -23588,6 +23676,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Deine Textbausteine konnten nicht gelesen werden"
+          }
+        }
+      }
+    },
+    "Your summary changes could not be saved." : {
+      "comment" : "History, a meeting: saving the user's edits to the summary failed; the edits stay in the app until a save works.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Änderungen an der Zusammenfassung konnten nicht gespeichert werden."
           }
         }
       }

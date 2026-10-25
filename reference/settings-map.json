@@ -1,14 +1,14 @@
 {
   "counts" : {
-    "nodes" : 284,
-    "searchable" : 257,
-    "vocabularyBlocks" : 8224
+    "nodes" : 285,
+    "searchable" : 258,
+    "vocabularyBlocks" : 8256
   },
   "fingerprints" : {
-    "mapSHA256" : "24061e6092271327669c5f228c05fa442970953bb4c084d99aae8975fe7ea7a0",
-    "uiCatalogSHA256" : "ea5826b0328b70c3e55115cb0866800529153b3b90642e8ac8591c723ce39c2f",
+    "mapSHA256" : "7a3c26d431fef074f5c021dcd3398b6e61486fcd56c6e9e85376f080ca262d02",
+    "uiCatalogSHA256" : "48f51a2d2432ba42d9a7e207add6f2bb61c4485a3e14b960f49e8c37cfcfe7a4",
     "vocabularyCanonicalization" : "length-prefixed-v1",
-    "vocabularySHA256" : "cae02edd4ef7193550e77b8ada9060b4c4c90ae8facf6fd41d44086d2d974765"
+    "vocabularySHA256" : "541bfe42729552d229744bbded16ad9cdac22580911746ce993a2497e48b6bae"
   },
   "interfaceLanguages" : [
     "en",
@@ -37621,6 +37621,366 @@
           "words" : [
             "总结",
             "小结"
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.meetings",
+        "meetings.tab.general"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Solange ein Meeting aufgenommen wird, startet die Diktiertaste kein Diktat.",
+        "en" : "The dictation key records nothing while a meeting is recording.",
+        "key" : "The dictation key records nothing while a meeting is recording.",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "destination" : {
+        "page" : "meetings",
+        "tab" : "general"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "meetingTurnsOffDictation",
+      "kind" : "setting",
+      "parent" : "meetings.tab.general",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "meetingTurnsOffDictation",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Diktieren während Meetings ausschalten",
+        "en" : "Turn off dictation during meetings",
+        "key" : "Turn off dictation during meetings",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "تعطيل الإملاء أثناء تسجيل اجتماع",
+            "زر الإملاء لا يعمل أثناء تسجيل الاجتماع"
+          ],
+          "title" : "إيقاف الإملاء أثناء الاجتماعات",
+          "words" : [
+
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "не започвай диктовка, докато се записва среща",
+            "клавишът за диктовка да не работи, докато се записва среща"
+          ],
+          "title" : "изключване на диктовката по време на срещи",
+          "words" : [
+
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "zakázat diktování při nahrávání schůzky",
+            "klávesa diktování při nahrávání schůzky nic nedělá"
+          ],
+          "title" : "vypnout diktování během schůzek",
+          "words" : [
+
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "deaktiver diktering mens et møde optages",
+            "dikteringstasten virker ikke under mødeoptagelse"
+          ],
+          "title" : "slå diktering fra under møder",
+          "words" : [
+
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "während einer Meetingaufnahme kein Diktat starten",
+            "schalte Diktieren im Meeting aus"
+          ],
+          "words" : [
+            "Meetingaufnahme",
+            "Besprechung"
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "να μη γίνεται υπαγόρευση όσο καταγράφεται μια συνάντηση",
+            "το πλήκτρο υπαγόρευσης δεν λειτουργεί κατά την καταγραφή συνάντησης"
+          ],
+          "title" : "απενεργοποίηση υπαγόρευσης κατά τις συναντήσεις",
+          "words" : [
+
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "disable dictation while recording a meeting",
+            "dictation key does nothing during meeting recording"
+          ],
+          "words" : [
+
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "desactivar dictado mientras se graba una reunión",
+            "la tecla de dictado no funciona al grabar una reunión"
+          ],
+          "title" : "desactivar el dictado durante las reuniones",
+          "words" : [
+
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "keela dikteerimine koosoleku salvestamise ajal",
+            "dikteerimisklahv ei tööta koosoleku salvestamise ajal"
+          ],
+          "title" : "dikteerimise väljalülitamine koosolekute ajal",
+          "words" : [
+
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "estä sanelu kokouksen tallennuksen aikana",
+            "sanelunäppäin ei toimi kokousta tallennettaessa"
+          ],
+          "title" : "poista sanelu käytöstä kokousten ajaksi",
+          "words" : [
+
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "bloquer la dictée pendant l’enregistrement d’une réunion",
+            "la touche de dictée ne fonctionne pas pendant l’enregistrement d’une réunion"
+          ],
+          "title" : "désactiver la dictée pendant les réunions",
+          "words" : [
+
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "मीटिंग रिकॉर्ड करते समय डिक्टेशन बंद रखें",
+            "मीटिंग रिकॉर्डिंग के दौरान डिक्टेशन शुरू न हो"
+          ],
+          "title" : "मीटिंग के दौरान डिक्टेशन बंद करें",
+          "words" : [
+
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "onemogući diktiranje dok se snima sastanak",
+            "tipka za diktiranje ne radi tijekom snimanja sastanka"
+          ],
+          "title" : "isključi diktiranje tijekom sastanaka",
+          "words" : [
+
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "diktálás letiltása megbeszélés rögzítése közben",
+            "nem működik a diktálás gombja megbeszélés rögzítése közben"
+          ],
+          "title" : "diktálás kikapcsolása megbeszélések alatt",
+          "words" : [
+
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "bloccare la dettatura mentre si registra una riunione",
+            "il tasto di dettatura non funziona durante la registrazione di una riunione"
+          ],
+          "title" : "disattiva la dettatura durante le riunioni",
+          "words" : [
+
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "会議の録音中は音声入力を使わない",
+            "会議を録音していると音声入力キーが反応しない"
+          ],
+          "title" : "会議の録音中は音声入力を無効にする",
+          "words" : [
+
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "회의 녹음 중 받아쓰기 끄기",
+            "회의 녹음 중 받아쓰기 키가 작동하지 않음"
+          ],
+          "title" : "회의 중 받아쓰기 끄기",
+          "words" : [
+
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "neleisti diktuoti įrašant susitikimą",
+            "diktavimo klavišas neveikia įrašant susitikimą"
+          ],
+          "title" : "išjungti diktavimą per susitikimus",
+          "words" : [
+
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "atspējot diktēšanu sapulces ierakstīšanas laikā",
+            "diktēšanas taustiņš nedarbojas sapulces ierakstīšanas laikā"
+          ],
+          "title" : "izslēgt diktēšanu sapulču laikā",
+          "words" : [
+
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "itfi d-dettatura waqt ir-reġistrazzjoni ta’ laqgħa",
+            "tħallix id-dettatura tibda waqt li tkun qed tiġi rrekordjata laqgħa"
+          ],
+          "title" : "itfi d-dettatura waqt il-laqgħat",
+          "words" : [
+
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "dicteren blokkeren tijdens een vergaderopname",
+            "dicteertoets werkt niet tijdens het opnemen van een vergadering"
+          ],
+          "title" : "dicteren uitschakelen tijdens vergaderingen",
+          "words" : [
+
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "zablokuj dyktowanie podczas nagrywania spotkania",
+            "klawisz dyktowania nie działa podczas nagrywania spotkania"
+          ],
+          "title" : "wyłącz dyktowanie podczas spotkań",
+          "words" : [
+
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "bloquear o ditado durante a gravação de uma reunião",
+            "a tecla de ditado não funciona ao gravar uma reunião"
+          ],
+          "title" : "desativar o ditado durante as reuniões",
+          "words" : [
+
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "blochează dictarea în timpul înregistrării unei ședințe",
+            "tasta de dictare nu funcționează când se înregistrează o ședință"
+          ],
+          "title" : "dezactivează dictarea în timpul ședințelor",
+          "words" : [
+
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "запретить диктовку во время записи встречи",
+            "клавиша диктовки не работает при записи встречи"
+          ],
+          "title" : "отключать диктовку во время встреч",
+          "words" : [
+
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "zakázať diktovanie pri nahrávaní schôdze",
+            "kláves diktovania nefunguje počas nahrávania schôdze"
+          ],
+          "title" : "vypnúť diktovanie počas schôdzí",
+          "words" : [
+
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "onemogoči narekovanje med snemanjem sestanka",
+            "tipka za narekovanje med snemanjem sestanka ne deluje"
+          ],
+          "title" : "izklopi narekovanje med sestanki",
+          "words" : [
+
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "blockera diktering medan ett möte spelas in",
+            "dikteringstangenten fungerar inte under mötesinspelning"
+          ],
+          "title" : "stäng av diktering under möten",
+          "words" : [
+
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "toplantı kaydı sırasında dikteyi devre dışı bırak",
+            "toplantı kaydederken dikte tuşu çalışmıyor"
+          ],
+          "title" : "toplantılar sırasında dikteyi kapat",
+          "words" : [
+
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "заборонити диктування під час запису зустрічі",
+            "клавіша диктування не працює під час запису зустрічі"
+          ],
+          "title" : "вимикати диктування під час зустрічей",
+          "words" : [
+
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "tắt nhập liệu bằng giọng nói khi đang ghi âm cuộc họp",
+            "không nhập được bằng giọng nói khi đang ghi âm cuộc họp"
+          ],
+          "title" : "tắt nhập liệu bằng giọng nói trong cuộc họp",
+          "words" : [
+
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "录制会议时禁用听写",
+            "会议录音时语音输入快捷键没反应"
+          ],
+          "title" : "录制会议时关闭语音输入",
+          "words" : [
+
           ]
         }
       }

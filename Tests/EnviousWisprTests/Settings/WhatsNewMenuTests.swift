@@ -5,6 +5,7 @@ import SwiftUI
 import Testing
 
 @testable import EnviousWisprAppKit
+import EnviousWisprAppKitTestSupport
 
 @MainActor
 @Suite("What's New menu", .tags(.productOutcome))
@@ -35,7 +36,7 @@ struct WhatsNewMenuTests {
 
   @Test("Existing full descriptions use their localized entry keys and English fallback")
   func localizedCopyAndFallback() throws {
-    let root = FileManager.default.temporaryDirectory.appending(path: "ew-gift-\(UUID()).bundle")
+    let root = TestTemporaryDirectory.url.appending(path: "ew-gift-\(UUID()).bundle")
     defer { try? FileManager.default.removeItem(at: root) }
     let resources = root.appending(path: "en.lproj")
     try FileManager.default.createDirectory(at: resources, withIntermediateDirectories: true)

@@ -2,13 +2,14 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprModelDelivery
+import EnviousWisprAppKitTestSupport
 
 /// Admission-gate tests (contract invariants 1-4; D2 §§3-5): the marker is
 /// the only door, presence is never truth, promotion is crash-ordered, and
 /// the #1339 poison classes are caught at component grain.
 @Suite struct CacheAdmissionTests {
   private func makeDirs() throws -> (install: URL, metadata: URL, staging: URL) {
-    let root = FileManager.default.temporaryDirectory
+    let root = TestTemporaryDirectory.url
       .appendingPathComponent("admission-\(UUID().uuidString)", isDirectory: true)
     let install = root.appendingPathComponent("install", isDirectory: true)
     let metadata = root.appendingPathComponent("metadata", isDirectory: true)
@@ -146,7 +147,7 @@ import Testing
   @Test func looseComponentHasNoExtraFilesCheck() {
     // A loose (non-directory) component has nothing to recurse into.
     let (path:path, content:_, component:component) = ManifestFixture.smallFiles[2]
-    let installDirectory = FileManager.default.temporaryDirectory
+    let installDirectory = TestTemporaryDirectory.url
       .appendingPathComponent("admission-loose-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(
       at: installDirectory, withIntermediateDirectories: true)

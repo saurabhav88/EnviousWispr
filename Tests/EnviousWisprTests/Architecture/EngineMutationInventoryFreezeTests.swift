@@ -2,6 +2,7 @@ import Foundation
 import SwiftParser
 import SwiftSyntax
 import Testing
+import EnviousWisprAppKitTestSupport
 
 // MARK: - EngineMutationInventoryFreezeTests (#1741 Chunk 10)
 //
@@ -1909,7 +1910,7 @@ import Testing
     "a directory containing a file that cannot be read fails the scan closed, rather than silently skipping it"
   )
   func adversarialUnreadableFileFailsClosed() throws {
-    let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let tempDir = TestTemporaryDirectory.url.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: tempDir) }
     let fileURL = tempDir.appendingPathComponent("Unreadable.swift")
@@ -1931,7 +1932,7 @@ import Testing
     "a directory that does not exist fails the scan closed, rather than silently returning zero hits"
   )
   func adversarialNonexistentDirectoryFailsClosed() throws {
-    let missingDir = FileManager.default.temporaryDirectory.appendingPathComponent(
+    let missingDir = TestTemporaryDirectory.url.appendingPathComponent(
       "does-not-exist-\(UUID().uuidString)")
     #expect(throws: ScanFailedError.self) {
       try Self.scanRoot(at: missingDir)
@@ -2067,7 +2068,7 @@ import Testing
 
   @Test("a capability construction split across physical lines is still detected")
   func multilineCapabilityConstructionIsDetected() throws {
-    let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let tempDir = TestTemporaryDirectory.url.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: tempDir) }
     let fileURL = tempDir.appendingPathComponent("MultilineConstruction.swift")

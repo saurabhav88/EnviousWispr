@@ -4,6 +4,7 @@ import Testing
 
 @testable import EnviousWisprLLM
 @testable import EnviousWisprModelDelivery
+import EnviousWisprAppKitTestSupport
 
 /// The one-time EG-1 monolith retirement (#1386 PR-1): exact-fingerprint
 /// recognition, the owed marker's lifecycle (born once, cleared only by
@@ -34,7 +35,7 @@ import Testing
   }
 
   private func makeRoot() throws -> URL {
-    let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+    let root = TestTemporaryDirectory.url.appendingPathComponent(
       "eg1-legacy-upgrade-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(
       at: root, withIntermediateDirectories: true)
@@ -706,7 +707,7 @@ import Testing
 
     // The trusted artifact lives in an EXTERNAL directory; PolishModels is a
     // symlink pointing at it.
-    let external = FileManager.default.temporaryDirectory.appendingPathComponent(
+    let external = TestTemporaryDirectory.url.appendingPathComponent(
       "eg1-external-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: external) }
     try FileManager.default.createDirectory(at: external, withIntermediateDirectories: true)
@@ -741,7 +742,7 @@ import Testing
 
     let bytes = Data("trusted".utf8)
 
-    let external = FileManager.default.temporaryDirectory.appendingPathComponent(
+    let external = TestTemporaryDirectory.url.appendingPathComponent(
       "eg1-external-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: external) }
     let externalStore = external.appendingPathComponent("PolishModels", isDirectory: true)
@@ -771,7 +772,7 @@ import Testing
     let (store, suite) = try defaults()
     defer { store.removePersistentDomain(forName: suite) }
 
-    let external = FileManager.default.temporaryDirectory.appendingPathComponent(
+    let external = TestTemporaryDirectory.url.appendingPathComponent(
       "eg1-external-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: external) }
     try FileManager.default.createDirectory(at: external, withIntermediateDirectories: true)

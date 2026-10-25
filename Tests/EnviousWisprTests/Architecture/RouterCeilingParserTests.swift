@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import EnviousWisprAppKitTestSupport
 
 /// Self-test for `RouterCeilingParser` (issue #808). Before #808 the parser
 /// anchored on the first inner brace and returned a method body. These tests
@@ -11,7 +12,7 @@ import Testing
   private func classBody(
     of source: String, named typeName: String = "Probe"
   ) throws -> String {
-    let url = FileManager.default.temporaryDirectory
+    let url = TestTemporaryDirectory.url
       .appendingPathComponent("rcp-\(UUID().uuidString).swift")
     try source.write(to: url, atomically: true, encoding: .utf8)
     defer { try? FileManager.default.removeItem(at: url) }

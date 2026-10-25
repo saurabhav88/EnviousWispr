@@ -41,6 +41,8 @@ struct SettingsDefaultsRoutingTests {
     #expect(settings.meetingCaptureCallSound == true)
     #expect(settings.meetingCallSoundExplained == false)
     #expect(settings.meetingWriteSummary == true)
+    // #4069: dictation keeps working during meetings unless the user turns this on.
+    #expect(settings.meetingTurnsOffDictation == false)
     // #4017: EnviousMeet starts locked, calendar names off.
     #expect(settings.meetingOnboardingComplete == false)
     #expect(settings.meetingUseCalendarForNames == false)
@@ -106,6 +108,26 @@ struct SettingsDefaultsRoutingTests {
     #expect(
       SettingsManager.unifiedDefaultsKeys.filter { $0 == "keepDictationsOutOfClipboardHistory" }
         .count == 1)
+  }
+
+  @Test("#4069: Turn off dictation during meetings is OFF on a fresh install, persists both ways, notifies once, and is unified")
+  func meetingTurnsOffDictationDefaultsOffAndPersists() {
+    let suite = Self.freshSuite()
+    let settings = SettingsManager(defaults: suite)
+    #expect(settings.meetingTurnsOffDictation == false)
+    #expect(suite.object(forKey: "meetingTurnsOffDictation") == nil)
+
+    var seen: [SettingsManager.SettingKey] = []
+    settings.onChange = { seen.append($0) }
+    settings.meetingTurnsOffDictation = true
+
+    #expect(seen == [.meetingTurnsOffDictation])
+    #expect(suite.object(forKey: "meetingTurnsOffDictation") as? Bool == true)
+    #expect(SettingsManager(defaults: suite).meetingTurnsOffDictation == true)
+    settings.meetingTurnsOffDictation = false
+    #expect(SettingsManager(defaults: suite).meetingTurnsOffDictation == false)
+    #expect(
+      SettingsManager.unifiedDefaultsKeys.filter { $0 == "meetingTurnsOffDictation" }.count == 1)
   }
 
   @Test("#3737: Casual mode is OFF on a fresh install, persists ON, notifies once, and is unified")

@@ -3,6 +3,7 @@ import Security
 import Testing
 
 @testable import EnviousWisprServices
+import EnviousWisprAppKitTestSupport
 
 /// The per-session key store (#1063 PR0). The file backend (what unsigned
 /// `swift test` and the dev bundle use) is always exercised; the data-protection
@@ -14,7 +15,7 @@ import Testing
 struct RecoveryKeyStoreTests {
 
   private func makeFileStore() -> RecoveryKeyStore {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ewrec-keys-\(UUID().uuidString)", isDirectory: true)
     return RecoveryKeyStore(backend: .file, fileDirectory: dir)
   }
@@ -91,7 +92,7 @@ struct RecoveryKeyStoreTests {
     let service = "com.enviouswispr.app.recovery-keys.test.\(UUID().uuidString)"
     let store = RecoveryKeyStore(
       backend: .keychain(service: service),
-      fileDirectory: FileManager.default.temporaryDirectory)
+      fileDirectory: TestTemporaryDirectory.url)
     let sessionID = UUID().uuidString
     let key = RecoveryKeyStore.makeKey()
     defer { try? store.delete(for: sessionID) }

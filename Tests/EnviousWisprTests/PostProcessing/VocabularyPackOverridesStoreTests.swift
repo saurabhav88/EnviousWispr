@@ -2,6 +2,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprPostProcessing
+import EnviousWisprAppKitTestSupport
 
 /// #2495 — the sparse per-word override store. Pure disk round-trip; the
 /// merge-with-shipped-defaults logic lives in `VocabularyPackManager` and is
@@ -10,7 +11,7 @@ import Testing
 struct VocabularyPackOverridesStoreTests {
 
   private func tempStore() -> (VocabularyPackOverridesStore, URL) {
-    let url = FileManager.default.temporaryDirectory
+    let url = TestTemporaryDirectory.url
       .appendingPathComponent("vpo-test-\(UUID().uuidString).json")
     return (VocabularyPackOverridesStore(fileURL: url), url)
   }

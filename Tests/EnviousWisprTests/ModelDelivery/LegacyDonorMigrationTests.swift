@@ -4,6 +4,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprModelDelivery
+import EnviousWisprAppKitTestSupport
 
 /// #2697. The promise a user feels: the model files another app put on their Mac
 /// are still there afterwards, byte for byte; they do not pay for a download they
@@ -27,7 +28,7 @@ struct LegacyDonorMigrationTests {
   /// made every directory in advance, so the code could require one to pre-exist
   /// and the suite could not tell.
   private func makeWorld(withDonor: Bool = true) throws -> World {
-    let root = FileManager.default.temporaryDirectory
+    let root = TestTemporaryDirectory.url
       .appendingPathComponent("mig-\(UUID().uuidString)", isDirectory: true)
     let world = World(
       donor: root.appendingPathComponent("FluidAudio/Models/model", isDirectory: true),

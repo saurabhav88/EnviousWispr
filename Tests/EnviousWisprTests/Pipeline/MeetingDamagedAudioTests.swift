@@ -5,6 +5,7 @@ import Testing
 @testable import EnviousWisprCore
 @testable import EnviousWisprPipeline
 @testable import EnviousWisprStorage
+import EnviousWisprAppKitTestSupport
 
 /// #3972 R3, #3995: when these fail, a meeting with a damaged audio file shows no gap where
 /// its words are missing, shows a gap over audio that was transcribed, or guesses the end of
@@ -13,7 +14,7 @@ import Testing
 struct MeetingDamagedAudioTests {
 
   private func folder() throws -> URL {
-    let url = FileManager.default.temporaryDirectory
+    let url = TestTemporaryDirectory.url
       .appendingPathComponent("MeetingDamagedAudioTests-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url

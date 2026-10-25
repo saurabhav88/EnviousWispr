@@ -4,6 +4,7 @@ import Testing
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprStorage
+import EnviousWisprAppKitTestSupport
 
 /// Phase C (#428) — pins the `TranscriptCoordinator` contract around the new
 /// in-memory `append(_:)` and the union-by-ID merge in `load()`.
@@ -20,7 +21,7 @@ struct TranscriptCoordinatorTests {
   // MARK: - Fixtures
 
   private static func makeTempDir() -> URL {
-    let url = FileManager.default.temporaryDirectory
+    let url = TestTemporaryDirectory.url
       .appendingPathComponent("phase-c-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url
@@ -192,53 +193,182 @@ struct TranscriptCoordinatorTests {
 
   // MARK: - Merge algorithm (race guard)
 
-  @Test("load during a concurrent append merges both rows")
-  func testLoadDuringAppendMergesCorrectly() async throws {
-    let dir = Self.makeTempDir()
-    defer { Self.cleanup(dir) }
-    let diskOnly = Self.makeTranscript(text: "disk")
-    try Self.writeToDisk([diskOnly], in: dir)
-    let store = TranscriptStore(directory: dir)
-    let coordinator = TranscriptCoordinator(store: store)
+  // Save and append after the disk snapshot returns, before reconciliation. The snapshot
+  // is certified but predates these writes, so their newer revision must preserve them. An
+  // append before `load()` starts is not this race: its file is already on disk (`append`'s
+  // precondition), so a complete read that lacks it means the file was deleted (#4075 G9).
+  #if DEBUG
+    @Test("load during a concurrent append merges both rows")
+    func testLoadDuringAppendMergesCorrectly() async throws {
+      let dir = Self.makeTempDir()
+      defer { Self.cleanup(dir) }
+      let diskOnly = Self.makeTranscript(text: "disk")
+      try Self.writeToDisk([diskOnly], in: dir)
+      let store = TranscriptStore(directory: dir)
+      let coordinator = TranscriptCoordinator(store: store)
 
-    // Simulate the race: an append arrives before load() finishes.
-    let newRow = Self.makeTranscript(text: "appended")
-    coordinator.append(newRow)
+      let newRow = Self.makeTranscript(text: "appended")
+      coordinator.historyReadDidFinishForTesting = { read in
+        coordinator.historyReadDidFinishForTesting = nil
+        #expect(read.freshness != nil)
+        try store.save(newRow)
+        coordinator.append(newRow)
+      }
+      coordinator.load()
+      await coordinator.waitForLoadForTesting()
+
+      let ids = coordinator.visibleTranscripts.map(\.id)
+      #expect(ids.count == 2)
+      #expect(ids.contains(newRow.id))
+      #expect(ids.contains(diskOnly.id))
+      // In-memory row must come before disk rows to preserve newest-first
+      // under the append-order contract.
+      #expect(ids.first == newRow.id)
+    }
+
+    @Test("load during multiple appends preserves append-order at the front")
+    func testLoadDuringMultipleAppendsPreservesNewestFirstOrder() async throws {
+      let dir = Self.makeTempDir()
+      defer { Self.cleanup(dir) }
+      let diskRow = Self.makeTranscript(text: "disk")
+      try Self.writeToDisk([diskRow], in: dir)
+      let store = TranscriptStore(directory: dir)
+      let coordinator = TranscriptCoordinator(store: store)
+
+      // Three persisted appends after the snapshot, before reconciliation.
+      let r1 = Self.makeTranscript(text: "r1")
+      let r2 = Self.makeTranscript(text: "r2")
+      let r3 = Self.makeTranscript(text: "r3")
+      coordinator.historyReadDidFinishForTesting = { read in
+        coordinator.historyReadDidFinishForTesting = nil
+        #expect(read.freshness != nil)
+        try store.save(r1)
+        coordinator.append(r1)
+        try store.save(r2)
+        coordinator.append(r2)
+        try store.save(r3)
+        coordinator.append(r3)
+      }
+      coordinator.load()
+      await coordinator.waitForLoadForTesting()
+
+      // Pre-merge in-memory order was [r3, r2, r1] (each append inserts at 0).
+      // After merge: in-memory rows first (order preserved), then disk row.
+      let ids = coordinator.visibleTranscripts.map(\.id)
+      #expect(ids == [r3.id, r2.id, r1.id, diskRow.id])
+    }
+  #endif
+
+  // MARK: - Failed actions are shown (#4075 G10)
+
+  @Test("a delete that fails is shown, keeps the row, and the message can be dismissed")
+  func failedDeleteIsShown() async throws {
+    let dir = Self.makeTempDir()
+    defer {
+      try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path)
+      Self.cleanup(dir)
+    }
+    let row = Self.makeTranscript(text: "stays")
+    try Self.writeToDisk([row], in: dir)
+    let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
     coordinator.load()
     await coordinator.waitForLoadForTesting()
+    #expect(coordinator.actionFailure == nil)
 
-    let ids = coordinator.visibleTranscripts.map(\.id)
-    #expect(ids.count == 2)
-    #expect(ids.contains(newRow.id))
-    #expect(ids.contains(diskOnly.id))
-    // In-memory row must come before disk rows to preserve newest-first
-    // under the append-order contract.
-    #expect(ids.first == newRow.id)
+    // A read-only folder: the file cannot be removed.
+    try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: dir.path)
+    coordinator.delete(row)
+    #expect(coordinator.actionFailure == .delete)
+    #expect(coordinator.visibleTranscripts.map(\.id) == [row.id])
+
+    coordinator.dismissActionFailure()
+    #expect(coordinator.actionFailure == nil)
   }
 
-  @Test("load during multiple appends preserves append-order at the front")
-  func testLoadDuringMultipleAppendsPreservesNewestFirstOrder() async throws {
-    let dir = Self.makeTempDir()
-    defer { Self.cleanup(dir) }
-    let diskRow = Self.makeTranscript(text: "disk")
-    try Self.writeToDisk([diskRow], in: dir)
-    let store = TranscriptStore(directory: dir)
-    let coordinator = TranscriptCoordinator(store: store)
+  #if DEBUG
+    @Test("a Delete All that fails is shown and changes nothing")
+    func failedDeleteAllIsShown() async throws {
+      let dir = Self.makeTempDir()
+      defer { Self.cleanup(dir) }
+      let row = Self.makeTranscript(text: "stays")
+      try Self.writeToDisk([row], in: dir)
+      let store = TranscriptStore(directory: dir)
+      let coordinator = TranscriptCoordinator(store: store)
+      coordinator.load()
+      await coordinator.waitForLoadForTesting()
 
-    // Three rapid appends, all before load finishes.
-    let r1 = Self.makeTranscript(text: "r1")
-    let r2 = Self.makeTranscript(text: "r2")
-    let r3 = Self.makeTranscript(text: "r3")
-    coordinator.append(r1)
-    coordinator.append(r2)
-    coordinator.append(r3)
+      store.deleteAllFaultsForTesting = [.handoff]
+      coordinator.deleteAll()
+      #expect(coordinator.actionFailure == .deleteAll)
+      #expect(coordinator.visibleTranscripts.map(\.id) == [row.id])
+    }
+  #endif
+
+  @Test("a Keep that fails is shown and the recording stays held")
+  func failedKeepIsShown() async throws {
+    let dir = Self.makeTempDir()
+    defer {
+      try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path)
+      Self.cleanup(dir)
+    }
+    let store = TranscriptStore(directory: dir)
+    let now = Date()
+    let held = Transcript(
+      text: "held", createdAt: now, escapeRecoveredAt: now, escapeRecoveryTakeID: "TAKE-1")
+    try store.savePending(held)
+    let coordinator = TranscriptCoordinator(store: store)
     coordinator.load()
     await coordinator.waitForLoadForTesting()
 
-    // Pre-merge in-memory order was [r3, r2, r1] (each append inserts at 0).
-    // After merge: in-memory rows first (order preserved), then disk row.
-    let ids = coordinator.visibleTranscripts.map(\.id)
-    #expect(ids == [r3.id, r2.id, r1.id, diskRow.id])
+    // A read-only History folder: the permanent copy cannot be written.
+    try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: dir.path)
+    coordinator.keep(held)
+    #expect(coordinator.actionFailure == .keep)
+    #expect(coordinator.visibleTranscripts.first?.escapeRecoveredAt != nil, "still held")
+  }
+
+  @Test("a successful delete shows no message")
+  func successfulDeleteShowsNothing() async throws {
+    let dir = Self.makeTempDir()
+    defer { Self.cleanup(dir) }
+    let row = Self.makeTranscript(text: "goes")
+    try Self.writeToDisk([row], in: dir)
+    let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
+    coordinator.load()
+    await coordinator.waitForLoadForTesting()
+    coordinator.delete(row)
+    #expect(coordinator.actionFailure == nil)
+    #expect(coordinator.visibleTranscripts.isEmpty)
+  }
+
+  // MARK: - History Paste reads the row as it is now (#4075 R5)
+
+  @Test("History Paste delivers the row's current text, not the copy taken at the press")
+  func deliveryReadsTheCurrentRow() async throws {
+    let dir = Self.makeTempDir()
+    defer { Self.cleanup(dir) }
+    let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
+    let raw = Self.makeTranscript(text: "raw words")
+    try coordinator.saveAndShow(raw)
+    let pressed = raw  // the copy History Paste captured
+
+    // An import's cleanup lands while History is hidden.
+    let cleaned = Transcript(
+      id: raw.id, text: "Cleaned words.", processingTime: 0.1, backendType: .parakeet,
+      createdAt: raw.createdAt)
+    #expect(try coordinator.updateExistingRow(cleaned))
+    #expect(coordinator.textForDelivery(pressed) == "Cleaned words.")
+
+    // Deleted in that wait: nothing is delivered.
+    coordinator.delete(raw)
+    #expect(coordinator.textForDelivery(pressed) == nil)
+  }
+
+  @Test("a dictation History never held keeps the text it showed")
+  func deliveryOfAnUnheldDictation() {
+    let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: Self.makeTempDir()))
+    let live = Self.makeTranscript(text: "never saved")
+    #expect(coordinator.textForDelivery(live) == "never saved")
   }
 
   // MARK: - Delete routing (consumer matrix row)
@@ -268,7 +398,7 @@ struct TranscriptCoordinatorTests {
 @Suite("TranscriptCoordinator with EnviousMeet", .tags(.productOutcome))
 struct TranscriptCoordinatorMeetingTests {
   private static func makeTempDir() -> URL {
-    let url = FileManager.default.temporaryDirectory
+    let url = TestTemporaryDirectory.url
       .appendingPathComponent("meeting-rows-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url
@@ -324,11 +454,15 @@ struct TranscriptCoordinatorMeetingTests {
     }
     // A meeting that could not be marked: nothing is deleted.
     coordinator.deleteAll()
+    #expect(coordinator.actionFailure == .deleteAll)
     #expect(rowExistedWhenMarked == true)
     #expect(coordinator.listedCount == 2)
     #expect(FileManager.default.fileExists(atPath: rowURL.path))
+
+    coordinator.dismissActionFailure()
     allowed = true
     coordinator.deleteAll()
+    #expect(coordinator.actionFailure == nil)
     #expect(coordinator.listedCount == 0)
   }
 

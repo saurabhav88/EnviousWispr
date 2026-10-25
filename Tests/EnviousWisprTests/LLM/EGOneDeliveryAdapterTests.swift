@@ -4,6 +4,7 @@ import Testing
 
 @testable import EnviousWisprLLM
 @testable import EnviousWisprModelDelivery
+import EnviousWisprAppKitTestSupport
 
 /// The EG-1 limb adapter's pure mapping: every delivery state/failure resolves
 /// to an EG-1 UI vocabulary value, and EVERY `DeliveryFailureClass` maps to a
@@ -63,7 +64,7 @@ import Testing
   }
 
   private func makeTempDirs() throws -> (install: URL, metadata: URL, cleanup: () -> Void) {
-    let root = FileManager.default.temporaryDirectory
+    let root = TestTemporaryDirectory.url
       .appendingPathComponent("eg1-adapter-\(UUID().uuidString)", isDirectory: true)
     let install = root.appendingPathComponent("PolishModels", isDirectory: true)
     let metadata = root.appendingPathComponent("ModelDelivery", isDirectory: true)
@@ -293,7 +294,7 @@ import Testing
 
   @MainActor
   private func makeHarness() throws -> Harness {
-    let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+    let root = TestTemporaryDirectory.url.appendingPathComponent(
       "eg1-integration-\(UUID().uuidString)", isDirectory: true)
     let install = root.appendingPathComponent("EnviousWispr/Models/eg-1", isDirectory: true)
     let metadata = root.appendingPathComponent("EnviousWispr/ModelDelivery", isDirectory: true)

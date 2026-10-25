@@ -6,6 +6,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
+import EnviousWisprAppKitTestSupport
 
 /// The word check at quit (#3853). `WisprBootstrapper.applicationWillTerminate` calls
 /// `releaseForTermination()` on the main thread. When this fails, quitting hangs behind a take's
@@ -101,7 +102,7 @@ struct WordCheckRuntimeTerminationTests {
   /// failures included: an exit-test child ends with `exit()` or `_exit()`, so no cleanup of its
   /// own would run, and each real-model fixture holds a ~486 MB clone.
   private static func makeTempRoot() -> URL {
-    URL(fileURLWithPath: NSTemporaryDirectory())
+    URL(fileURLWithPath: TestTemporaryDirectory.path)
       .appendingPathComponent("ew-3853-\(UUID().uuidString)", isDirectory: true)
   }
 

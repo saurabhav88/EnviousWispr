@@ -89,6 +89,7 @@ struct MeetingsView: View {
           BrandedRow { MeetingCallDetectionRow() }
           BrandedRow { MeetingCallSoundRow() }
           BrandedRow { MeetingWriteSummaryRow() }
+          BrandedRow { MeetingTurnsOffDictationRow() }
           BrandedRow { summaryWriterRow }
           BrandedRow(showDivider: false) { MeetingCalendarNamesRow() }
         }
@@ -386,6 +387,15 @@ enum MeetingsCopy {
   static let writeSummaryHelp = LocalizedStringResource(
     "The summary is written from the transcript and your notes by your AI Polish provider. OpenAI, Gemini and Claude receive them under your key. An Ollama hosted model sends them to Ollama's servers. Apple Intelligence and Ollama models on this Mac keep them on your Mac. Turning this off does not stop a summary that has already started. In History you can write a summary for any meeting that has a transcript.",
     comment: "EnviousMeet page: help for Write a summary when a meeting ends.")
+  static let turnsOffDictationTitle = LocalizedStringResource(
+    "Turn off dictation during meetings",
+    comment: "EnviousMeet page: switch that makes the dictation key record nothing while a meeting records.")
+  static let turnsOffDictationShort = LocalizedStringResource(
+    "The dictation key records nothing while a meeting is recording.",
+    comment: "EnviousMeet page: the short line under Turn off dictation during meetings.")
+  static let turnsOffDictationHelp = LocalizedStringResource(
+    "Dictation is off during meetings. Turn it back on in EnviousMeet settings. A dictation that already started before the meeting finishes normally.",
+    comment: "EnviousMeet page: help for Turn off dictation during meetings. The founder's sentence (#4069).")
   static let calendarNamesTitle = LocalizedStringResource(
     "Name meetings from my calendar",
     comment: "EnviousMeet page: switch that names a meeting after the calendar event at its start.")

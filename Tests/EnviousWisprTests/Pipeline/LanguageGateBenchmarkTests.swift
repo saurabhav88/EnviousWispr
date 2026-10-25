@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprPipeline
+import EnviousWisprAppKitTestSupport
 
 /// The language-gate benchmark (#2614): real engine transcripts of foreign-language speech
 /// whose words collide with the English cleanup rules, run through the app's OWN deterministic
@@ -172,7 +173,7 @@ struct LanguageGateBenchmarkTests {
   /// Every outcome, written where a plan or a PR can cite it. The path is printed so the run log
   /// carries it; the file itself is never read by the test.
   static func writeReport(_ outcomes: [Outcome]) throws -> URL {
-    let dir = FileManager.default.temporaryDirectory.appending(path: "language-gate-benchmark")
+    let dir = TestTemporaryDirectory.url.appending(path: "language-gate-benchmark")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     let url = dir.appending(path: "report-\(Int(Date().timeIntervalSince1970)).json")
     let encoder = JSONEncoder()

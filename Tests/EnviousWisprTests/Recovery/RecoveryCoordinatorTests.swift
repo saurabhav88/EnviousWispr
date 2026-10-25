@@ -6,6 +6,7 @@ import Testing
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprServices
+import EnviousWisprAppKitTestSupport
 
 /// The host-side `RecoveryCoordinator` (#1063 PR2 / #1464): arms a recording's
 /// encrypted spool with a DURABLY-stored key, and is the SOLE spool/key destructor
@@ -20,7 +21,7 @@ import Testing
 struct RecoveryCoordinatorTests {
 
   private static func tempDir() -> URL {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ew-recovery-coord-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     return dir
@@ -1676,7 +1677,7 @@ struct RecoveryCoordinatorTests {
 
   @Test("a key-store failure leaves nothing armed")
   func storeFailureLeavesNothingArmed() async throws {
-    let parentFile = FileManager.default.temporaryDirectory
+    let parentFile = TestTemporaryDirectory.url
       .appendingPathComponent("ew-key-parent-\(UUID().uuidString)")
     try Data([0]).write(to: parentFile)
     let unwritableDir = parentFile.appendingPathComponent("keys", isDirectory: true)
@@ -1879,7 +1880,7 @@ struct RecoveryCoordinatorTests {
     // MARK: - #1755 chunk 6 — crash-boundary hook lockstep (coordinator side)
 
     private static func makeBoundaryController() -> CrashBoundaryFaultController {
-      let dir = FileManager.default.temporaryDirectory
+      let dir = TestTemporaryDirectory.url
         .appendingPathComponent("ew-cb-coord-\(UUID().uuidString)", isDirectory: true)
       try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
       return CrashBoundaryFaultController(

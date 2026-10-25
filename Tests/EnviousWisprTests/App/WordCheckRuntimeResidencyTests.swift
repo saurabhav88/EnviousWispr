@@ -6,6 +6,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
+import EnviousWisprAppKitTestSupport
 
 /// Which real runtime entry points put the word check in memory (#3289). When this fails, a Mac
 /// loads about 500 MB at launch, after a settings change, after setup or when the model finishes
@@ -33,7 +34,7 @@ struct WordCheckRuntimeResidencyTests {
   /// builds it). No model files exist there, so any load that starts fails at once; the tests count
   /// load tasks created, which is the decision under test.
   private func makeRuntime() throws -> (WordCheckRuntime, Inputs) {
-    let temp = URL(fileURLWithPath: NSTemporaryDirectory())
+    let temp = URL(fileURLWithPath: TestTemporaryDirectory.path)
       .appendingPathComponent("ew-3289-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
     let flags = try #require(TestDefaults.suite("ew-3289-\(UUID().uuidString)"))

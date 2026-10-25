@@ -1067,6 +1067,9 @@ final class TranscriptCoordinator {
       // (`invalidateDiskState`), so a mismatch means re-read rather than trust.
       let generationAtRead = diskStateGeneration
       let read = try await store.readHistory()
+      #if DEBUG
+        try historyReadDidFinishForTesting?(read)
+      #endif
       var diskRows = read.permanent
       // Phase C union-by-ID merge. Preserve any in-memory rows whose IDs
       // are not yet on disk (append-during-load race window) in their
@@ -1098,13 +1101,24 @@ final class TranscriptCoordinator {
       let rootIDs = Set(diskRows.map(\.id))
       let heldRows = pendingRows.filter { !rootIDs.contains($0.id) }
       let knownIDs = rootIDs.union(heldRows.map(\.id))
-      let inFlightRows = transcripts.filter { !knownIDs.contains($0.id) }
+      // #4075 G9: a row missing from the disk is kept only when it was written after this read
+      // began (its file can land after the scan passed it) or when the read skipped a file. A
+      // row written earlier was on disk before the read, so a complete read that lacks it means
+      // its file was deleted outside this coordinator, and keeping it left the deleted text in
+      // History and offered by Paste Last.
+      let inFlightRows = transcripts.filter {
+        !knownIDs.contains($0.id)
+          && (read.freshness == nil || (writtenAtRevision[$0.id] ?? 0) > revisionAtRead)
+      }
       // Merged rather than re-sorted: both inputs are already newest-first,
       // and re-sorting the combined list could reorder permanent rows that
       // share a `createdAt`. With no held rows this returns `diskRows`
       // unchanged, so History is byte-identical for anyone who never turns
       // Escape Recovery on.
-      transcripts = inFlightRows + Self.mergeNewestFirst(heldRows, diskRows)
+      let merged = inFlightRows + Self.mergeNewestFirst(heldRows, diskRows)
+      let mergedIDs = Set(merged.map(\.id))
+      removedRowIDs.formUnion(transcripts.lazy.map(\.id).filter { !mergedIDs.contains($0) })
+      transcripts = merged
       // #4001 H9: reusable only when the read itself was certified. A read that skipped a file
       // it could not open, or that a write overlapped, leaves the next open to read again.
       historyCache = read.freshness.map(HistoryCache.reusable) ?? .unread
@@ -1113,6 +1127,8 @@ final class TranscriptCoordinator {
       #endif
       reconcileSelectionWithDisplayedSet()
       startPulseIfNeeded()
+    } catch is CancellationError {
+      // A newer read replaced this one (#4075 G8); that read publishes.
     } catch {
       await AppLogger.shared.log(
         "Failed to load transcripts: \(error)",
@@ -1139,6 +1155,7 @@ final class TranscriptCoordinator {
   /// must not invoke it twice for the same transcript — duplicate-ID
   /// protection would mask heart-path bugs.
   func append(_ transcript: Transcript) {
+    noteWritten(transcript.id)
     transcripts.insert(transcript, at: 0)
     // #2807: a COMPLETED dictation landing in the displayed set with nothing selected is the
     // one moment the live fallback exists for, so it may show again. A held recovery is a
@@ -1192,6 +1209,10 @@ final class TranscriptCoordinator {
     /// Runs on the durable write's worker thread just before it writes, so a test can hold a
     /// write while it is registered in flight.
     @ObservationIgnored var durableWriteWillStartForTesting: (@Sendable () -> Void)?
+    /// Runs after the disk snapshot returns and before it is reconciled, so tests can
+    /// persist and append a row that the completed snapshot could not contain.
+    @ObservationIgnored var historyReadDidFinishForTesting:
+      (@MainActor (TranscriptHistoryRead) throws -> Void)?
   #endif
 
   /// Thrown by an ordinary write to a row whose durable meeting write is still in flight.
@@ -1201,8 +1222,7 @@ final class TranscriptCoordinator {
     guard !durableWritesInFlight.contains(transcript.id) else { throw RowWriteInFlight() }
     try store.save(transcript)
     // Stamped so an in-flight `load()` cannot publish the version it read BEFORE this write.
-    historyWriteRevision += 1
-    writtenAtRevision[transcript.id] = historyWriteRevision
+    noteWritten(transcript.id)
     if let existing = transcripts.firstIndex(where: { $0.id == transcript.id }) {
       transcripts[existing] = transcript
     } else {
@@ -1231,8 +1251,7 @@ final class TranscriptCoordinator {
       #endif
       try write(transcript)
     }.value
-    historyWriteRevision += 1
-    writtenAtRevision[transcript.id] = historyWriteRevision
+    noteWritten(transcript.id)
     if let existing = transcripts.firstIndex(where: { $0.id == transcript.id }) {
       transcripts[existing] = transcript
     } else {
@@ -1262,8 +1281,7 @@ final class TranscriptCoordinator {
     }
     guard !durableWritesInFlight.contains(transcript.id) else { throw RowWriteInFlight() }
     try store.save(transcript)
-    historyWriteRevision += 1
-    writtenAtRevision[transcript.id] = historyWriteRevision
+    noteWritten(transcript.id)
     transcripts[existing] = transcript
     // #2807: the cleaned text can stop matching the search the row was selected under.
     reconcileSelectionWithDisplayedSet()
@@ -1373,6 +1391,14 @@ final class TranscriptCoordinator {
   private var historyWriteRevision = 0
   private var writtenAtRevision: [UUID: Int] = [:]
 
+  /// Stamps a locally persisted row when it is published in memory. Disk-load publication
+  /// and fixture injection do not stamp rows. A newer stamp protects a local write from
+  /// an older History snapshot (#4075 G9).
+  private func noteWritten(_ id: UUID) {
+    historyWriteRevision += 1
+    writtenAtRevision[id] = historyWriteRevision
+  }
+
   /// EnviousMeet published a change to its meetings (`MeetingCoordinator.onMeetingsPublished`):
   /// a meeting removed elsewhere (a peer, dev control) leaves no stale selection (Codex C8 r1).
   ///
@@ -1428,6 +1454,20 @@ final class TranscriptCoordinator {
     }
   }
 
+  /// A History action that failed and the user has not dismissed yet (#4075 G10). The History
+  /// window shows it; before, each failure only wrote a log line and a press looked ignored.
+  enum ActionFailure: Equatable {
+    case delete, keep, deleteAll
+  }
+
+  private(set) var actionFailure: ActionFailure?
+
+  /// The History window's alert was dismissed.
+  func dismissActionFailure() { actionFailure = nil }
+
+  /// A History action owned elsewhere failed: a meeting's delete, run by EnviousMeet (#4079).
+  func reportActionFailure(_ failure: ActionFailure) { actionFailure = failure }
+
   func delete(_ transcript: Transcript) {
     if let meetingID = transcript.meetingID, let deleteMeeting {
       deleteMeeting(meetingID)
@@ -1441,6 +1481,7 @@ final class TranscriptCoordinator {
       try removeRow(id: id)
       onRowDeleted?(id)
     } catch {
+      actionFailure = .delete
       Task {
         await AppLogger.shared.log(
           "Failed to delete transcript: \(error)",
@@ -1469,14 +1510,23 @@ final class TranscriptCoordinator {
       return MeetingHistoryPresentation.deliveryText(
         current, projection: meetingProjection(of: current), timesOn: false)
     }
-    guard transcript.escapeRecoveredAt != nil else { return transcript.displayText }
-    let now = Date()
-    guard
-      let current = transcripts.first(where: { $0.id == transcript.id }),
-      Self.isVisible(current, at: now)
-    else { return nil }
-    return current.displayText
+    // #4075 R5: the row as it is now, never the caller's copy. History Paste reads this after
+    // hiding the app, and an import's cleanup or a deletion can land in that wait.
+    if let current = transcripts.first(where: { $0.id == transcript.id }) {
+      return Self.isVisible(current, at: Date()) ? current.displayText : nil
+    }
+    // Not in History. A held recovery that is gone has lapsed, and a row History held and
+    // removed was deleted: both are refused. A dictation History never held (the live pane's
+    // copy when its save failed) keeps the text it showed.
+    guard transcript.escapeRecoveredAt == nil, !removedRowIDs.contains(transcript.id) else {
+      return nil
+    }
+    return transcript.displayText
   }
+
+  /// Rows History held and then removed this session (#4075 R5), so delivery refuses a copy of
+  /// one instead of treating it like a dictation History never held.
+  private var removedRowIDs: Set<UUID> = []
 
   /// The newest dictation the menu bar and the Paste/Copy Last Dictation shortcuts may offer
   /// again (#3106), or nil when there is none.
@@ -1629,9 +1679,11 @@ final class TranscriptCoordinator {
         recordEscapeRecoveryKeep("kept-unreported", nil)
       }
       guard let index = transcripts.firstIndex(where: { $0.id == transcript.id }) else { return }
+      noteWritten(transcript.id)
       transcripts[index] = transcripts[index].promotedFromPending()
       refreshDiskStateThenStopIfIdle()
     } catch {
+      actionFailure = .keep
       Task {
         await AppLogger.shared.log(
           "Failed to keep transcript: \(error)",
@@ -1670,8 +1722,23 @@ final class TranscriptCoordinator {
   /// What a meeting row shows; `.unavailable` for a row that is not a meeting.
   func meetingProjection(of row: Transcript) -> MeetingHistoryPresentation.Projection {
     guard let meetingID = row.meetingID else { return .unavailable }
-    return MeetingHistoryPresentation.project(
-      row, info: meetingInfo?(meetingID), showEcho: isShowingEcho(rowID: row.id))
+    let info = meetingInfo?(meetingID)
+    let showEcho = isShowingEcho(rowID: row.id)
+    // #4075 R6: the plain text comes from the kept meeting text (the same projection search and
+    // the preview read), so a detail redraw does not rebuild the whole meeting's text. Only the
+    // visible turns, a filter, are computed here.
+    let text = meetingText(
+      of: row, info: info, showEcho: showEcho, locale: Locale.current.identifier,
+      localizations: Bundle.main.preferredLocalizations)
+    switch text.kind {
+    case .unavailable: return .unavailable
+    case .everythingHidden: return .everythingHidden
+    case .visible:
+      guard let info else { return .unavailable }
+      let visible = MeetingTranscriptProjection.visible(
+        turns: row.turns ?? [], echoTurnIDs: info.echoTurnIDs, showEcho: showEcho)
+      return .visible(turns: visible.turns, plainText: text.plain)
+    }
   }
 
   /// A meeting row's two-line list preview, the same text `meetingProjection` gives, read from
@@ -1715,7 +1782,12 @@ final class TranscriptCoordinator {
     #if DEBUG
       if listCacheDisabledForTesting { return Self.meetingText(row, inputs) }
     #endif
-    if let kept = searchTextCache[row.id], kept.inputs == inputs { return kept.text }
+    if let kept = searchTextCache[row.id], kept.inputs == inputs,
+      MeetingDocumentHash.sameBytes(kept.inputs.text, inputs.text),
+      MeetingDocumentHash.sameBytes(kept.inputs.speakerNames, inputs.speakerNames)
+    {
+      return kept.text
+    }
     let text = Self.meetingText(row, inputs)
     #if DEBUG
       meetingTextBuildsForTesting += 1
@@ -1806,6 +1878,7 @@ final class TranscriptCoordinator {
     let displayed = listedItems
     try store.delete(id: id)
     transcripts.removeAll { $0.id == id }
+    removedRowIDs.insert(id)
     echoShownRowIDs.remove(id)
     // A meeting's row leaving does not remove the meeting's item (its meeting is still held);
     // only a dictation or an import selection moves.
@@ -1828,6 +1901,7 @@ final class TranscriptCoordinator {
       meetingIDs.append(record.id)
     }
     if !meetingIDs.isEmpty, meetingsWillBeDeletedWithAll?(meetingIDs) == false {
+      actionFailure = .deleteAll
       Task {
         await AppLogger.shared.log(
           "Delete All refused: a meeting could not be marked for deletion",
@@ -1839,6 +1913,7 @@ final class TranscriptCoordinator {
       try store.deleteAll()
       let removedIDs = transcripts.map(\.id)
       transcripts.removeAll()
+      removedRowIDs.formUnion(removedIDs)
       echoShownRowIDs.removeAll()
       // The same announcement `delete(_:)` makes, per row, after the list is already empty
       // (found by cloud review, round 3: this route bypassed it).
@@ -1849,6 +1924,7 @@ final class TranscriptCoordinator {
       liveFallbackRowID = nil
       refreshDiskStateThenStopIfIdle()
     } catch {
+      actionFailure = .deleteAll
       Task {
         await AppLogger.shared.log(
           "Failed to delete all transcripts: \(error)",

@@ -6,6 +6,7 @@ import Testing
 @testable import EnviousWisprCore
 @testable import EnviousWisprLLM
 @testable import EnviousWisprStorage
+import EnviousWisprAppKitTestSupport
 
 /// #3972 R39, R46, R50, R54 (build chunk C13a): when these fail, a meeting gets no summary or
 /// two, a summary overwrites the user's own text or describes a meeting that changed, a local
@@ -93,7 +94,7 @@ struct MeetingSummaryOwnerTests {
     lazy var owner = makeOwner()
 
     init() throws {
-      root = FileManager.default.temporaryDirectory
+      root = TestTemporaryDirectory.url
         .appendingPathComponent("MeetingSummaryOwnerTests-\(UUID().uuidString)", isDirectory: true)
       store = MeetingStore(root: root)
       try store.prepareRoot()

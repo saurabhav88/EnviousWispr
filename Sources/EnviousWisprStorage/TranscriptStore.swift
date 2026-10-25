@@ -621,21 +621,31 @@ public final class TranscriptStore {
   private nonisolated static func pendingListing(
     in directory: URL, now: Date, retention: TimeInterval
   ) -> (candidates: [PendingCandidate], readFailed: Bool)? {
+    pendingListing(
+      in: directory, now: now, retention: retention, checkCancellation: {})
+  }
+
+  private nonisolated static func pendingListing(
+    in directory: URL, now: Date, retention: TimeInterval,
+    checkCancellation: () throws -> Void
+  ) rethrows -> (candidates: [PendingCandidate], readFailed: Bool)? {
+    try checkCancellation()
     guard
       let files = try? FileManager.default.contentsOfDirectory(
         at: directory, includingPropertiesForKeys: nil)
     else { return nil }
     var readFailed = false
-    let candidates =
-      files
+    let candidates = try files
       .filter { $0.pathExtension == "json" }
       .map { url -> PendingCandidate in
+        try checkCancellation()
         guard let data = try? Data(contentsOf: url) else {
           readFailed = true
           return .invalid(url: url)
         }
         return decodeCandidate(data: data, at: url, now: now, retention: retention)
       }
+    try checkCancellation()
     return (candidates, readFailed)
   }
 
@@ -812,30 +822,53 @@ public final class TranscriptStore {
   /// exactly this read: `freshness` is non-nil only when both samples are known and equal and
   /// nothing retryable was skipped. A changed token means some write overlapped the read, so the
   /// read cannot vouch for the folder as it is now.
+  ///
+  /// #4075 G8: cancelling the caller cancels the read. History cancels a read a newer one
+  /// replaces, and without forwarding the detached read went on decoding every row file.
   public func readHistory(now: Date = Date()) async throws -> TranscriptHistoryRead {
+    try Task.checkCancellation()
     let dir = directory
     let pendingDir = pendingDirectory
     let retention = AppConstants.pendingTranscriptRetention
-    return try await Task.detached(priority: .userInitiated) {
+    #if DEBUG
+      let willRead = permanentFileWillReadForTesting
+    #else
+      let willRead: (@Sendable () -> Void)? = nil
+    #endif
+    // Detached, not `Task {}`: this type is @MainActor and the read is a disk walk.
+    let read = Task.detached(priority: .userInitiated) {
+      try Task.checkCancellation()
       let before = Self.freshness(directory: dir, pendingDirectory: pendingDir)
       let permanent: (rows: [Transcript], complete: Bool) =
         FileManager.default.fileExists(atPath: dir.path)
-        ? try await Self.readPermanent(in: dir) : ([], false)
+        ? try await Self.readPermanent(in: dir, willRead: willRead) : ([], false)
+      try Task.checkCancellation()
       // Same admission as `loadPending`. An unreadable folder reads as empty there; here it also
       // withholds certification, and a confirmed-absent one is a real empty namespace.
       let pendingAbsent = before?.pending == .absent
       let listing =
         pendingAbsent
-        ? ([], false) : Self.pendingListing(in: pendingDir, now: now, retention: retention)
+        ? ([], false)
+        : try Self.pendingListing(
+          in: pendingDir, now: now, retention: retention,
+          checkCancellation: { try Task.checkCancellation() })
       let pending = (listing?.candidates ?? []).compactMap(\.liveTranscript).sorted {
         $0.createdAt > $1.createdAt
       }
       let pendingComplete = listing.map { !$0.readFailed } ?? false
       let after = Self.freshness(directory: dir, pendingDirectory: pendingDir)
+      try Task.checkCancellation()
       let certified = permanent.complete && pendingComplete && before != nil && before == after
       return TranscriptHistoryRead(
         permanent: permanent.rows, pending: pending, freshness: certified ? before : nil)
-    }.value
+    }
+    return try await withTaskCancellationHandler {
+      let result = try await read.value
+      try Task.checkCancellation()
+      return result
+    } onCancel: {
+      read.cancel()
+    }
   }
 
   /// The folder tokens as they are now, or nil when they cannot vouch for anything (#4001 H9).
@@ -853,7 +886,7 @@ public final class TranscriptStore {
   /// reused as the whole History. A file that reads but does not decode is excluded for good, as
   /// before, and does not make the read incomplete.
   private nonisolated static func readPermanent(
-    in dir: URL
+    in dir: URL, willRead: (@Sendable () -> Void)? = nil
   ) async throws -> (rows: [Transcript], complete: Bool) {
     let files = try FileManager.default.contentsOfDirectory(
       at: dir, includingPropertiesForKeys: nil)
@@ -861,6 +894,8 @@ public final class TranscriptStore {
     var result: [Transcript] = []
     var complete = true
     for url in files where url.pathExtension == "json" {
+      try Task.checkCancellation()
+      willRead?()
       let data: Data
       do {
         data = try Data(contentsOf: url)
@@ -882,6 +917,7 @@ public final class TranscriptStore {
         )
       }
     }
+    try Task.checkCancellation()
     return (result.sorted { $0.createdAt > $1.createdAt }, complete)
   }
 
@@ -968,8 +1004,9 @@ public final class TranscriptStore {
   /// 2. a checked empty folder (0700, Spotlight marker) is made at the original path;
   /// 3. the handoff becomes `.transcripts-deleting-<id>`, which clears it for removal.
   /// If step 2 or 3 fails, an empty folder made in step 2 is taken away again (only while it
-  /// holds nothing but the marker), the handoff is renamed back, and the first failure is thrown. When it cannot go back, it stays as a handoff folder, which nothing
-  /// removes automatically, so rows are never destroyed by a Delete All that reported failure.
+  /// holds nothing but the marker), the handoff is renamed back, and the first failure is thrown.
+  /// When it cannot go back, it stays as a handoff folder, and the next start finishes the
+  /// removal the user confirmed (#4075 G1).
   /// Returning certifies the empty folder, not that the old files are already gone.
   public func deleteAll() throws {
     guard FileManager.default.fileExists(atPath: directory.path) else { return }
@@ -979,6 +1016,19 @@ public final class TranscriptStore {
       AppConstants.transcriptsHandoffPrefix + id, isDirectory: true)
     let deleting = parent.appendingPathComponent(
       AppConstants.transcriptsDeletingPrefix + id, isDirectory: true)
+    // Held from before the handoff exists until this returns, so start-up cleanup in a
+    // cooperating app copy never finishes a handoff this Delete All is still using. Refuse
+    // contention before changing folders; waiting for another process here would block the
+    // main actor.
+    guard let lock = Self.takeDeleteAllLock(in: parent) else {
+      throw CocoaError(
+        .fileWriteUnknown,
+        userInfo: [
+          NSFilePathErrorKey:
+            parent.appendingPathComponent(AppConstants.transcriptsDeleteAllLockName).path
+        ])
+    }
+    defer { close(lock) }
     try renameExclusive(directory, to: handoff, step: .handoff)
     do {
       try prepareReplacement()
@@ -1024,6 +1074,9 @@ public final class TranscriptStore {
     var deleteAllReplacementReadyForTesting: (() -> Void)?
     /// The background removal the last Delete All started, so a test can await it.
     private(set) var deletionCleanupForTesting: Task<Void, Never>?
+    /// Runs on a History read's worker before each permanent row file (#4075 G8), so a test can
+    /// pause a read mid-walk and cancel it there.
+    var permanentFileWillReadForTesting: (@Sendable () -> Void)?
     /// The start-up cleanup a store made with `cleansLeftovers` scheduled.
     private(set) var leftoverCleanupForTesting: Task<Void, Never>?
   #endif
@@ -1087,10 +1140,28 @@ public final class TranscriptStore {
     }
   }
 
-  /// At start, removes what an interrupted Delete All cleared for removal (#4001 H7). Only a
-  /// direct child of the parent that is a real folder (not a link) named exactly
-  /// `.transcripts-deleting-<UUID>`. A handoff folder is logged and kept: it may hold rows a
-  /// failed Delete All promised to keep.
+  /// Takes the shared Delete All lock without waiting (#4075 G1).
+  /// Cooperating app copies and independent opens in this process exclude each other.
+  /// Returns nil on contention or any open/locking failure. The caller closes a successful
+  /// descriptor. Older app copies that do not acquire this lock are not protected.
+  private nonisolated static func takeDeleteAllLock(in parent: URL) -> Int32? {
+    let path = parent.appendingPathComponent(AppConstants.transcriptsDeleteAllLockName).path
+    let fd = open(path, O_RDWR | O_CREAT | O_CLOEXEC, 0o600)
+    guard fd >= 0 else { return nil }
+    guard flock(fd, LOCK_EX | LOCK_NB) == 0 else {
+      close(fd)
+      return nil
+    }
+    return fd
+  }
+
+  /// At start, finishes what an interrupted or failed Delete All left (#4001 H7, #4075 G1).
+  /// Only a direct child of the parent that is a real folder (not a link) named exactly
+  /// `.transcripts-deleting-<UUID>` or `.transcripts-handoff-<UUID>`. A deleting folder is
+  /// removed. A handoff folder holds the rows of a Delete All the user confirmed that did not
+  /// finish, so it is cleared for removal (renamed to its deleting name) and removed; leaving it
+  /// kept text on disk that History no longer showed. When the shared Delete All lock is
+  /// unavailable, the handoff is left for the next start.
   private nonisolated static func scheduleLeftoverCleanup(besides directory: URL) -> Task<
     Void, Never
   > {
@@ -1107,11 +1178,18 @@ public final class TranscriptStore {
       }
       for name in names {
         let url = parent.appendingPathComponent(name, isDirectory: true)
-        if reservedID(name, prefix: AppConstants.transcriptsHandoffPrefix) != nil, isRealFolder(url)
+        if let id = reservedID(name, prefix: AppConstants.transcriptsHandoffPrefix),
+          isRealFolder(url)
         {
+          let deleting = parent.appendingPathComponent(
+            AppConstants.transcriptsDeletingPrefix + id.uuidString, isDirectory: true)
+          guard let cleared = await clearForRemoval(url, to: deleting, parent: parent) else {
+            continue
+          }
           await AppLogger.shared.log(
-            "Kept \(name): a Delete All did not finish, and its rows are not removed automatically",
+            "Finishing a Delete All that did not complete (\(name))",
             level: .info, category: "TranscriptStore")
+          await removeRetired(cleared)
           continue
         }
         guard reservedID(name, prefix: AppConstants.transcriptsDeletingPrefix) != nil,
@@ -1120,6 +1198,30 @@ public final class TranscriptStore {
         await removeRetired(url)
       }
     }
+  }
+
+  /// Renames a leftover handoff while holding the shared Delete All lock, excluding
+  /// cooperating app copies. Returns nil when lock acquisition or the rename fails;
+  /// the handoff then waits for the next start.
+  private nonisolated static func clearForRemoval(_ handoff: URL, to deleting: URL, parent: URL)
+    async -> URL?
+  {
+    guard let lock = takeDeleteAllLock(in: parent) else {
+      await AppLogger.shared.log(
+        "Left \(handoff.lastPathComponent) for the next start: Delete All lock unavailable",
+        level: .info, category: "TranscriptStore")
+      return nil
+    }
+    let code: Int32 =
+      renamex_np(handoff.path, deleting.path, UInt32(RENAME_EXCL)) == 0 ? 0 : errno
+    close(lock)
+    guard code == 0 else {
+      await AppLogger.shared.log(
+        "Could not clear \(handoff.lastPathComponent) for removal: errno \(code)",
+        level: .info, category: "TranscriptStore")
+      return nil
+    }
+    return deleting
   }
 
   /// The UUID after `prefix` when `name` is exactly `prefix` plus a UUID, else nil.

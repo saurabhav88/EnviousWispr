@@ -396,6 +396,8 @@ final class PipelineSettingsSync {
       // #3972, #4017, #3973: read by EnviousMeet when a meeting starts or ends; not by the
       // pipeline. `.meetingLanguageMode` never touches dictation's language.
       break
+    case .meetingTurnsOffDictation:
+      break  // #4069: read by `RecordingStarter` at each dictation start press; nothing to push.
     case .autoCopyToClipboard, .vadAutoStop, .vadSilenceTimeout, .vadSensitivity,
       .vadEnergyGate, .restoreClipboardAfterPaste, .keepDictationsOutOfClipboardHistory,
       .smartInsertion, .languageMode, .englishSpelling, .useStreamingASR:

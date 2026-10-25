@@ -4,6 +4,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
+import EnviousWisprAppKitTestSupport
 
 /// #996 §4: the shared save helper lifted from Quick Add. The Quick Add
 /// entrypoint and the write-then-confirm keep their exact pre-lift behaviour
@@ -19,7 +20,7 @@ struct CustomWordSaveHelperTests {
   }
 
   private static func isolatedCoordinator() -> CustomWordsCoordinator {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ew-save-helper-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     return CustomWordsCoordinator(

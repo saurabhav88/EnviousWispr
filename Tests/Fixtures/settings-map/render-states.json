@@ -990,6 +990,7 @@
   "mapped": [
    "meetingCallDetection",
    "meetingCaptureCallSound",
+   "meetingTurnsOffDictation",
    "meetingUseCalendarForNames",
    "meetingWriteSummary",
    "meetings.tab.callApps",

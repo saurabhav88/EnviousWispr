@@ -3,13 +3,14 @@ import Testing
 
 @testable import EnviousWisprCore
 @testable import EnviousWisprStorage
+import EnviousWisprAppKitTestSupport
 
 /// #3972 C3b: when these fail, a meeting transcription that was interrupted starts over, or
 /// resumes from a damaged or foreign record and produces wrong or doubled words.
 @Suite("MeetingProcessingCheckpointStore", .tags(.productOutcome))
 struct MeetingProcessingCheckpointStoreTests {
   private func meetingFolder() throws -> URL {
-    let url = FileManager.default.temporaryDirectory
+    let url = TestTemporaryDirectory.url
       .appendingPathComponent("CheckpointStoreTests-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url

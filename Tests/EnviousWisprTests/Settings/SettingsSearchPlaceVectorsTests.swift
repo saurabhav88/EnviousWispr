@@ -2,6 +2,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
+import EnviousWisprAppKitTestSupport
 
 /// #3482 chunk 3: how a typed search's vector is scored against the place vectors. **When this
 /// fails, the meaning pass ranks the wrong settings, or scores places in a language the user did
@@ -104,7 +105,7 @@ struct SettingsSearchPlaceVectorsTests {
     entries: String = #"{"a":{"main":{"en":0},"languages":{}}}"#,
     corruptBinAfterHashing: Bool = false
   ) throws -> Built {
-    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+    let directory = TestTemporaryDirectory.url.appendingPathComponent(
       "place-vectors-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     let bin = Data(repeating: 0x3C, count: binBytes ?? rows * dimension * 2)

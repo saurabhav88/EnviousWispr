@@ -5,6 +5,7 @@ import Testing
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprLLM
+import EnviousWisprAppKitTestSupport
 
 #if DEBUG
 
@@ -178,7 +179,7 @@ import Testing
       // Isolated EMPTY key store in a temp dir — never touch the developer's or
       // CI's real `~/.enviouswispr-keys` (Codex r1). With no key present, the
       // guard returns before any validation runs.
-      let dir = FileManager.default.temporaryDirectory
+      let dir = TestTemporaryDirectory.url
         .appendingPathComponent("P4Guard-\(UUID().uuidString)", isDirectory: true)
       defer { try? FileManager.default.removeItem(at: dir) }
       let keychain = KeychainManager(

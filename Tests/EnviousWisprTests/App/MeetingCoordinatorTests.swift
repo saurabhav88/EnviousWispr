@@ -8,6 +8,7 @@ import os
 @testable import EnviousWisprCore
 @testable import EnviousWisprPipeline
 @testable import EnviousWisprStorage
+import EnviousWisprAppKitTestSupport
 
 /// #3972 C4a: when these fail, a meeting records twice, a Stop or quit misses a recording that
 /// is still starting, a meeting shows "ready" without its History row, a deleted meeting comes
@@ -287,7 +288,7 @@ struct MeetingCoordinatorTests {
     @ObservationIgnored lazy var coordinator = MeetingCoordinator(dependencies: dependencies())
 
     init() throws {
-      root = FileManager.default.temporaryDirectory
+      root = TestTemporaryDirectory.url
         .appendingPathComponent("MeetingCoordinatorTests-\(UUID().uuidString)", isDirectory: true)
       store = MeetingStore(root: root)
       try store.prepareRoot()
@@ -536,6 +537,52 @@ struct MeetingCoordinatorTests {
     }
     #expect(sawCheckpoint)
     #expect(harness.saved.count == 1)
+  }
+
+  /// #4069: "Turn off dictation during meetings" follows the real coordinator's capture phase:
+  /// starting, recording and stopping refuse a dictation start; idle and no coordinator pass.
+  @Test("dictation is refused through starting, recording and stopping, and only with the switch on")
+  func dictationRefusalFollowsTheCapturePhase() async throws {
+    let box = MeetingCoordinatorBox()
+    #expect(box.refusesDictation(turnedOff: true) == false, "no coordinator, no meeting")
+
+    // Starting: a recorder that parks in start.
+    let held = try Harness()
+    held.recorderStart = .hold
+    box.coordinator = held.coordinator
+    #expect(box.refusesDictation(turnedOff: true) == false, "idle")
+    let starting = Task { await held.coordinator.start(from: .menu) }
+    await Self.eventually("start parked") { held.recorders.first?.startParked == true }
+    #expect(held.coordinator.phase == .starting)
+    #expect(box.refusesDictation(turnedOff: true))
+    #expect(box.refusesDictation(turnedOff: false) == false, "the switch is off")
+    await held.coordinator.stop()
+    await starting.value
+    #expect(box.refusesDictation(turnedOff: true) == false, "idle after a Stop during start")
+
+    // Recording, then stopping while the files close.
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    box.coordinator = coordinator
+    await coordinator.start(from: .history)
+    guard case .recording = coordinator.phase else {
+      Issue.record("expected recording, got \(coordinator.phase)")
+      return
+    }
+    #expect(box.refusesDictation(turnedOff: true))
+    let closing = Gate()
+    try #require(harness.recorders.first).stopGate = closing
+    let stopping = Task { await coordinator.stop() }
+    await Self.eventually("stopping") { closing.parked }
+    guard case .stopping = coordinator.phase else {
+      Issue.record("expected stopping, got \(coordinator.phase)")
+      return
+    }
+    #expect(box.refusesDictation(turnedOff: true))
+    closing.open()
+    await stopping.value
+    #expect(coordinator.phase == .idle)
+    #expect(box.refusesDictation(turnedOff: true) == false, "idle again after Stop")
   }
 
   @Test("a Stop while the recorder is still starting reaches that recorder")
@@ -1081,6 +1128,29 @@ struct MeetingCoordinatorTests {
     #expect(try Data(contentsOf: harness.store.recordURL(for: id)) == Data(json.utf8))
     #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted() == before)
     #expect(harness.jobs.isEmpty)
+  }
+
+  @Test("a meeting delete reports whether it finished, so History can say when it did not (#4079)")
+  func deleteReportsItsOutcome() async throws {
+    struct RowRemovalFailed: Error {}
+    let harness = try Harness()
+    var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    try harness.store.create(record)
+    record.state = .ready
+    try harness.store.save(record)
+    let coordinator = harness.coordinator
+    coordinator.launch()
+    await Self.eventually("listed") { coordinator.record(id: record.id) != nil }
+
+    // The History row cannot be removed: the deletion does not finish now.
+    harness.removeError = RowRemovalFailed()
+    #expect(await coordinator.delete(meetingID: record.id) == false)
+    #expect(try harness.store.load(id: record.id).deletionRequested, "the mark stays for launch")
+
+    // It can now: the same delete finishes and reports so.
+    harness.removeError = nil
+    #expect(await coordinator.delete(meetingID: record.id))
+    #expect(harness.removedRows == [record.transcriptID])
   }
 
   @Test("damaged audio fails the meeting visibly instead of reading as silence")

@@ -5,6 +5,7 @@ import Testing
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprStorage
+import EnviousWisprAppKitTestSupport
 
 /// `TranscriptCoordinator.mergeSpeakerFields` (#2810 addendum §3 E, phase 3 of #2807) — the
 /// one write path the turn-cleanup pass and a future phase-4 rename share. Driven against a
@@ -15,7 +16,7 @@ import Testing
 struct TranscriptCoordinatorMergeTests {
 
   private static func makeTempDir() -> URL {
-    FileManager.default.temporaryDirectory
+    TestTemporaryDirectory.url
       .appendingPathComponent("2810-merge-\(UUID().uuidString)", isDirectory: true)
   }
 

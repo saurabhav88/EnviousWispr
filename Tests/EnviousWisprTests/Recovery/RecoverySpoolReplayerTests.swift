@@ -10,6 +10,7 @@ import Testing
 @testable import EnviousWisprLLM
 @testable import EnviousWisprServices
 @testable import EnviousWisprStorage
+import EnviousWisprAppKitTestSupport
 
 /// The per-orphan `RecoverySpoolReplayer` (#1063 PR2 / #1464): decrypt →
 /// transcribe → polish → save a non-auto-pasting "Recovered" transcript, ONE
@@ -109,7 +110,7 @@ struct RecoverySpoolReplayerTests {
   #endif
 
   private static func tempDir() -> URL {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ew-replayer-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     return dir

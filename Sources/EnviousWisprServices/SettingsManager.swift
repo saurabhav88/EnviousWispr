@@ -30,6 +30,8 @@ public final class SettingsManager {
     case meetingCallSoundExplained
     /// #3972: "Write a summary when a meeting ends".
     case meetingWriteSummary
+    /// #4069: "Turn off dictation during meetings".
+    case meetingTurnsOffDictation
     /// #4017: the user finished EnviousMeet's setup; EnviousMeet is locked until then.
     case meetingOnboardingComplete
     /// #4017: "Name meetings from my calendar".
@@ -143,7 +145,7 @@ public final class SettingsManager {
   public nonisolated static let unifiedDefaultsKeys: [String] = [
     "selectedBackend", "recordingMode", "llmProvider", "lastLLMProvider", "llmModel", "ollamaModel",
     "s1MiniStyling", "s1MiniStructure", "s1MiniContext",
-    "autoCopyToClipboard", "meetingCaptureCallSound", "meetingCallSoundExplained", "meetingWriteSummary", "meetingOnboardingComplete", "meetingUseCalendarForNames", "meetingCallDetection", "meetingCallAppsOff", "meetingCallNoCounts", "meetingCallFirstTipShown", "meetingLanguageMode", "hotkeyEnabled", "vadAutoStop", "vadSilenceTimeout",
+    "autoCopyToClipboard", "meetingCaptureCallSound", "meetingCallSoundExplained", "meetingWriteSummary", "meetingTurnsOffDictation", "meetingOnboardingComplete", "meetingUseCalendarForNames", "meetingCallDetection", "meetingCallAppsOff", "meetingCallNoCounts", "meetingCallFirstTipShown", "meetingLanguageMode", "hotkeyEnabled", "vadAutoStop", "vadSilenceTimeout",
     "vadSensitivity", "vadEnergyGate", "onboardingState", "hasCompletedOnboarding",
     "cancelKeyCode", "cancelModifiersRaw", "toggleKeyCode", "toggleModifiersRaw",
     "quickAddKeyCode", "quickAddModifiersRaw",
@@ -544,6 +546,15 @@ public final class SettingsManager {
     didSet {
       defaults.set(meetingWriteSummary, forKey: "meetingWriteSummary")
       onChange?(.meetingWriteSummary)
+    }
+  }
+
+  /// #4069: while a meeting records, a dictation start press records nothing. Read at each start
+  /// press; a dictation already running is never stopped.
+  public var meetingTurnsOffDictation: Bool {
+    didSet {
+      defaults.set(meetingTurnsOffDictation, forKey: "meetingTurnsOffDictation")
+      onChange?(.meetingTurnsOffDictation)
     }
   }
 
@@ -1464,6 +1475,9 @@ public final class SettingsManager {
     meetingWriteSummary =
       defaults.object(forKey: "meetingWriteSummary") as? Bool
       ?? SettingsDefaultValues.meetingWriteSummary
+    meetingTurnsOffDictation =
+      defaults.object(forKey: "meetingTurnsOffDictation") as? Bool
+      ?? SettingsDefaultValues.meetingTurnsOffDictation
     meetingOnboardingComplete =
       defaults.object(forKey: "meetingOnboardingComplete") as? Bool
       ?? SettingsDefaultValues.meetingOnboardingComplete

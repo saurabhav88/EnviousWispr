@@ -9,6 +9,7 @@ import os
 @testable import EnviousWisprAudio
 @testable import EnviousWisprPipeline
 @testable import EnviousWisprStorage
+import EnviousWisprAppKitTestSupport
 
 /// #3972 C3b: the meeting pass on real models. When these fail, a meeting's transcript is empty
 /// or unlabeled on real speech, or a long meeting exhausts memory. Gated on the installed Ultra
@@ -64,7 +65,7 @@ struct MeetingProcessingRealBoundaryTests {
   }
 
   private func folder(_ label: String) throws -> URL {
-    let url = FileManager.default.temporaryDirectory
+    let url = TestTemporaryDirectory.url
       .appendingPathComponent(
         "MeetingRealBoundary-\(label)-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
@@ -76,7 +77,7 @@ struct MeetingProcessingRealBoundaryTests {
   /// `OfflineSpeakerAnalyzerRealBoundaryTests`, whose builder is private to its file).
   private static func speakerModelBundle() throws -> Bundle {
     let resources = RepoRoot.sourceURL("Sources/EnviousWispr/Resources")
-    let root = FileManager.default.temporaryDirectory
+    let root = TestTemporaryDirectory.url
       .appendingPathComponent("MeetingRealBoundary-models-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     for name in [

@@ -5,6 +5,7 @@ import Testing
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprPipeline
+import EnviousWisprAppKitTestSupport
 
 /// The composition seam that lets the kernel write crash provenance (#2087).
 ///
@@ -18,7 +19,7 @@ struct EscapeRecoveryWiringTests {
 
   private func tempStore() -> RecoverySpoolStore {
     RecoverySpoolStore(
-      directory: FileManager.default.temporaryDirectory
+      directory: TestTemporaryDirectory.url
         .appendingPathComponent("ew-wiring-\(UUID().uuidString)", isDirectory: true))
   }
 
@@ -72,7 +73,7 @@ struct EscapeRecoveryWiringTests {
   @Test("an unusable store answers false instead of throwing into the cancel path")
   func unusableStoreFailsClosedQuietly() throws {
     // A directory whose PARENT is a regular file can never be created.
-    let blocker = FileManager.default.temporaryDirectory
+    let blocker = TestTemporaryDirectory.url
       .appendingPathComponent("ew-wiring-blocker-\(UUID().uuidString)")
     try Data([0]).write(to: blocker)
     let doomed = RecoverySpoolStore(directory: blocker.appendingPathComponent("spools"))

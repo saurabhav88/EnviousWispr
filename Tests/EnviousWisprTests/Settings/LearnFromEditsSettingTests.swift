@@ -10,6 +10,7 @@ import Testing
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprServices
+import EnviousWisprAppKitTestSupport
 
 /// The `learnFromEdits` setting (#996 §3.9): ON by default, written to the store
 /// only when the key is absent, and an explicit choice survives reconstruction
@@ -162,7 +163,7 @@ struct LearnFromEditsRowTests {
     let defaults = TestDefaults.suite(name)!
     defaults.removePersistentDomain(forName: name)
     let settings = SettingsManager(defaults: defaults)
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ew-learning-row-\(UUID().uuidString)", isDirectory: true)
     // The default provider only wraps a `CNContactStore`; nothing here asks it
     // for access, so no permission prompt and no Contacts read.

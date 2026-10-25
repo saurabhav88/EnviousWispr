@@ -163,13 +163,14 @@
       case .salvagedBeginning: return "salvagedBeginning"
       case .interruptedTail: return "interruptedTail"
       case .sharedEngineBusy: return "sharedEngineBusy"
+      case .dictationOffDuringMeeting: return "dictationOffDuringMeeting"
       }
     }
 
     /// Every warning case name a complete table must cover.
     static let allWarningCaseNames: Set<String> = [
       "modelNotDownloaded", "polishFailed", "historySaveFailed", "escapeRecoveryUnavailable",
-      "salvagedBeginning", "interruptedTail", "sharedEngineBusy",
+      "salvagedBeginning", "interruptedTail", "sharedEngineBusy", "dictationOffDuringMeeting",
     ]
 
     /// Sample warning reasons. Fake data only.
@@ -184,6 +185,7 @@
         .interruptedTail(disclosure: .deviceRemoved, alsoTrimmedLead: true),
         .interruptedTail(disclosure: .otherInterruption, alsoTrimmedLead: false),
         .interruptedTail(disclosure: .otherInterruption, alsoTrimmedLead: true),
+        .dictationOffDuringMeeting,
       ]
 
     /// Every speech engine whose name appears in a pill sentence.

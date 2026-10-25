@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprPostProcessing
+import EnviousWisprAppKitTestSupport
 
 /// #2997 — pasted text and chosen files becoming snippet candidates, and the contract every
 /// source is validated through.
@@ -586,7 +587,7 @@ struct SnippetImportParsersTests {
   // MARK: - File
 
   private func temporaryFile(_ name: String, _ bytes: Data) throws -> URL {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("SnippetImportParsersTests-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     let url = dir.appendingPathComponent(name)

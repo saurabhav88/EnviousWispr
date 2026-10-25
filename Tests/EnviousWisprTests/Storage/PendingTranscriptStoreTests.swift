@@ -3,6 +3,7 @@ import Testing
 
 @testable import EnviousWisprCore
 @testable import EnviousWisprStorage
+import EnviousWisprAppKitTestSupport
 
 /// Chunk 1 of #2087 — the `pending/` Escape Recovery namespace.
 ///
@@ -16,7 +17,7 @@ import Testing
 @Suite(.tags(.productOutcome)) struct PendingTranscriptStoreTests {
 
   private func makeStore() -> (TranscriptStore, URL) {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ew-pending-\(UUID().uuidString)", isDirectory: true)
     return (TranscriptStore(directory: dir), dir)
   }

@@ -5,6 +5,7 @@ import Testing
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprStorage
+import EnviousWisprAppKitTestSupport
 
 /// History policy for held Escape Recovery rows (#2087, chunk 9).
 ///
@@ -30,7 +31,7 @@ struct EscapeRecoveryHistoryPolicyTests {
   // MARK: Fixtures
 
   private func makeStore() -> (TranscriptStore, URL) {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ew-2087-history-\(UUID().uuidString)", isDirectory: true)
     return (TranscriptStore(directory: dir), dir)
   }
@@ -527,6 +528,7 @@ struct EscapeRecoveryHistoryPolicyTests {
       coordinator.setTranscriptsForTesting([stale])
 
       coordinator.keep(stale)
+      #expect(coordinator.actionFailure == nil, "expiry refusal is not an action failure")
 
       #expect(
         try await store.loadAll().isEmpty,

@@ -4,6 +4,7 @@ import Testing
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprStorage
+import EnviousWisprAppKitTestSupport
 
 /// History reopen reuse (#4001 H9). Driven against REAL stores in temp directories: a second
 /// `TranscriptStore` on the same folder stands in for another app copy, so every "changed" case
@@ -13,7 +14,7 @@ import Testing
 struct HistoryReuseTests {
 
   private static func makeTempDir() -> URL {
-    FileManager.default.temporaryDirectory
+    TestTemporaryDirectory.url
       .appendingPathComponent("4001-reuse-\(UUID().uuidString)", isDirectory: true)
   }
 
@@ -29,6 +30,66 @@ struct HistoryReuseTests {
     let now = Date()
     return Transcript(
       text: "held", createdAt: now, escapeRecoveredAt: now, escapeRecoveryTakeID: "TAKE-1")
+  }
+
+  // #4075 G8: History cancels a read a newer one replaces. The cancellation reaches the disk
+  // walk, which stops instead of decoding every row file.
+  @Test("a cancelled History read stops instead of reading every row file")
+  func cancelledReadStops() async throws {
+    let dir = Self.makeTempDir()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let store = TranscriptStore(directory: dir)
+    for index in 0..<500 { try store.save(Self.row("row \(index)")) }
+    let read = Task { try await store.readHistory() }
+    read.cancel()
+    await #expect(throws: CancellationError.self) { try await read.value }
+    // Control: the same store reads in full when nothing cancels it.
+    #expect(try await store.readHistory().permanent.count == 500)
+  }
+
+  #if DEBUG
+    /// Counts row files a read reached; the worker thread and the test both touch it.
+    private final class ReadCount: @unchecked Sendable {
+      private let lock = NSLock()
+      private var count = 0
+      func next() -> Int { lock.withLock { count += 1; return count } }
+      var value: Int { lock.withLock { count } }
+    }
+
+    @Test("a History read cancelled mid-walk stops before reading the remaining row files")
+    func cancelledMidWalkStops() async throws {
+      let dir = Self.makeTempDir()
+      defer { try? FileManager.default.removeItem(at: dir) }
+      let store = TranscriptStore(directory: dir)
+      for index in 0..<500 { try store.save(Self.row("row \(index)")) }
+      let reached = ReadCount()
+      let started = DispatchSemaphore(value: 0)
+      let release = DispatchSemaphore(value: 0)
+      store.permanentFileWillReadForTesting = {
+        guard reached.next() == 1 else { return }
+        started.signal()
+        // deadline-fallback: the test signals the release; 10 s only frees a test that never does.
+        _ = release.wait(timeout: .now() + 10)
+      }
+      let read = Task { try await store.readHistory() }
+      // Waited on a dispatch thread, off the main actor the read's caller needs.
+      await withCheckedContinuation { continuation in
+        DispatchQueue.global().async {
+          // deadline-fallback: the walk signals at its first file; 10 s only frees a broken read.
+          _ = started.wait(timeout: .now() + 10)
+          continuation.resume()
+        }
+      }
+      read.cancel()
+      release.signal()
+      await #expect(throws: CancellationError.self) { try await read.value }
+      #expect(reached.value == 1, "the walk stopped at the next file, not after all 500")
+    }
+  #endif
+
+  private static func isEmpty(_ detail: HistoryDetail) -> Bool {
+    if case .empty = detail { return true }
+    return false
   }
 
   // The coordinator's read and reuse counters exist only in Debug builds.
@@ -182,9 +243,70 @@ struct HistoryReuseTests {
       try other.savePending(Self.heldRow())
       let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
       await open(coordinator)
+      let shown = try #require(coordinator.filteredTranscripts.first { $0.text == "hello" })
+      coordinator.selectedItemID = .transcript(shown.id)
       try other.deleteAll()
       await open(coordinator)
       #expect(coordinator.historyFullReadsForTesting == 2)
+      #expect(texts(coordinator).isEmpty)
+      #expect(coordinator.lastPasteableDictation() == nil)
+      // #4075 R8: the selection and the pane let go of the deleted row, and Paste refuses it.
+      #expect(coordinator.selectedItemID == nil)
+      #expect(Self.isEmpty(coordinator.detail))
+      #expect(coordinator.textForDelivery(shown) == nil)
+      // And it stays gone across another open, which reuses the read.
+      await open(coordinator)
+      #expect(texts(coordinator).isEmpty)
+      #expect(coordinator.lastPasteableDictation() == nil)
+      #expect(coordinator.selectedItemID == nil)
+      #expect(Self.isEmpty(coordinator.detail))
+      #expect(coordinator.textForDelivery(shown) == nil)
+    }
+
+    @Test("a row another store deletes leaves History and Paste Last on the next open")
+    func externalDeleteLeavesHistoryAndPasteLast() async throws {
+      let dir = Self.makeTempDir()
+      defer { try? FileManager.default.removeItem(at: dir) }
+      let other = TranscriptStore(directory: dir)
+      let kept = Self.row("kept", age: 10)
+      let deleted = Self.row("deleted")
+      try other.save(kept)
+      try other.save(deleted)
+      let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
+      await open(coordinator)
+      #expect(coordinator.lastPasteableDictation()?.id == deleted.id)
+      coordinator.selectedItemID = .transcript(deleted.id)
+
+      try other.delete(id: deleted.id)
+      await open(coordinator)
+
+      #expect(texts(coordinator) == ["kept"])
+      #expect(coordinator.lastPasteableDictation()?.id == kept.id)
+      #expect(coordinator.lastDictationTextForReuse(id: deleted.id) == nil)
+      // #4075 R8, R5: the selection moves off the deleted row, and History Paste refuses it.
+      #expect(coordinator.selectedItemID == nil)
+      #expect(Self.isEmpty(coordinator.detail))
+      #expect(coordinator.textForDelivery(deleted) == nil)
+      await open(coordinator)
+      #expect(coordinator.selectedItemID == nil)
+      #expect(Self.isEmpty(coordinator.detail))
+      #expect(coordinator.textForDelivery(deleted) == nil)
+    }
+
+    @Test("a dictation appended after its file was saved survives the next open")
+    func appendedDictationSurvivesOpen() async throws {
+      let dir = Self.makeTempDir()
+      defer { try? FileManager.default.removeItem(at: dir) }
+      let store = TranscriptStore(directory: dir)
+      let coordinator = TranscriptCoordinator(store: store)
+      await open(coordinator)
+      // The heart path's order: save the file, then append the row.
+      let fresh = Self.row("fresh")
+      try store.save(fresh)
+      coordinator.append(fresh)
+      await open(coordinator)
+      #expect(texts(coordinator) == ["fresh"])
+      #expect(coordinator.lastPasteableDictation()?.id == fresh.id)
     }
 
     @Test("a row file that cannot be read keeps the next open reading until it can")

@@ -56,13 +56,18 @@
    "id": "meetings.tab.permissions",
    "review": "additions/meetings.tab.permissions.json",
    "reviewSHA256": "18a28e61403cedff995b02d0cda95d98162e4d460caa2afe94e078d6be6cdc7a"
+  },
+  {
+   "id": "meetingTurnsOffDictation",
+   "review": "additions/meetingTurnsOffDictation.json",
+   "reviewSHA256": "c49019bc63a1b7e9e54eee650a0ed982914e498038d4ba107d82d7ef76109fb7"
   }
  ],
  "retiredIDs": [],
  "resource": {
   "path": "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json",
-  "sha256": "cae02edd4ef7193550e77b8ada9060b4c4c90ae8facf6fd41d44086d2d974765",
-  "bytes": 1664408
+  "sha256": "541bfe42729552d229744bbded16ad9cdac22580911746ce993a2497e48b6bae",
+  "bytes": 1671620
  },
  "sources": [
   {
@@ -346,7 +351,7 @@
  "languages": [
   {
    "language": "ar",
-   "contentSHA256": "be0e383dfd523f020e1b5471df12c0d9b9eee43d52bb36c8094782ca7a6647f4",
+   "contentSHA256": "a0719ca0cc7e17e8bf98523ef32b29fc927660cb346d3680062ce70b7d9c3e1b",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -694,13 +699,32 @@
       "sha256": "8a440313537851fdb6646dc6c8bd64ad97124cc4778d8c9cc8c92de28d5fa31a"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTurnsOffDictation",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the record keybind, the call-sound switch, media during dictation and When a call starts); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingTurnsOffDictation/draft.json",
+      "sha256": "5ca6029436250b97daaace2ba7e06acc6327914566de6a076759def1e72fa4e8"
+     },
+     "prompt": {
+      "path": "additions/meetingTurnsOffDictation/review-driver.py.txt",
+      "sha256": "52b692a1537688312b33296de8496bbaf675cee8e173d3211a0d734ce70eecf2"
+     },
+     "output": {
+      "path": "additions/meetingTurnsOffDictation/review-ar.txt",
+      "sha256": "a408aaa6d155a379a32df42fd5f1ae938df69c7056725142c457b7d60f2d5414"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "bg",
-   "contentSHA256": "2620f10f21e999d0bf6a75eafe3753978474c61f2c90fd4f2e232a5d884b7799",
+   "contentSHA256": "56efa5839c686d2212a4ebbd12fee6b61003b3ce1b368828fafe9e736620af56",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1039,13 +1063,32 @@
       "sha256": "9af401f20bfbc2502d27bb9ca954a72150dcc61e0493ce3881111a3080257148"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTurnsOffDictation",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the record keybind, the call-sound switch, media during dictation and When a call starts); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingTurnsOffDictation/draft.json",
+      "sha256": "5ca6029436250b97daaace2ba7e06acc6327914566de6a076759def1e72fa4e8"
+     },
+     "prompt": {
+      "path": "additions/meetingTurnsOffDictation/review-driver.py.txt",
+      "sha256": "52b692a1537688312b33296de8496bbaf675cee8e173d3211a0d734ce70eecf2"
+     },
+     "output": {
+      "path": "additions/meetingTurnsOffDictation/review-bg.txt",
+      "sha256": "c3582d5badc315d08d232c30429a0bf9a7af1e4abebae87fe1cae2d0dd4cc136"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "cs",
-   "contentSHA256": "b840eaf121d63604a7eecc398ca22e1cd32ecac04916ce867783e0efc1df0dc8",
+   "contentSHA256": "59e2a230f4f7f1065d3bd89e46bc3523b2291f79f9d1c7346f26e01053589bd1",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1384,13 +1427,32 @@
       "sha256": "35c735a31fc6c91c79bf1431b6a28c54f902f6d1d9cf2903341715d52271f422"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTurnsOffDictation",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the record keybind, the call-sound switch, media during dictation and When a call starts); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingTurnsOffDictation/draft.json",
+      "sha256": "5ca6029436250b97daaace2ba7e06acc6327914566de6a076759def1e72fa4e8"
+     },
+     "prompt": {
+      "path": "additions/meetingTurnsOffDictation/review-driver.py.txt",
+      "sha256": "52b692a1537688312b33296de8496bbaf675cee8e173d3211a0d734ce70eecf2"
+     },
+     "output": {
+      "path": "additions/meetingTurnsOffDictation/review-cs.txt",
+      "sha256": "4d557a58d50d90775e123623f7c074212d7d5a7aa6b159061eebd295d15cc293"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "da",
-   "contentSHA256": "222a5796185c848ddfc1a1f6f0e4ac92b94836243204d9e71c568b04bcfd0ea0",
+   "contentSHA256": "c52f7553852951b641a9dbbf6c82c75b27185150fc11ee40e5a6cd95fd067810",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1729,13 +1791,32 @@
       "sha256": "bb9df6d7054b15ce4b6e30f59367aa066e04eb0f00cda95530e22ba25f8f3448"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTurnsOffDictation",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the record keybind, the call-sound switch, media during dictation and When a call starts); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingTurnsOffDictation/draft.json",
+      "sha256": "5ca6029436250b97daaace2ba7e06acc6327914566de6a076759def1e72fa4e8"
+     },
+     "prompt": {
+      "path": "additions/meetingTurnsOffDictation/review-driver.py.txt",
+      "sha256": "52b692a1537688312b33296de8496bbaf675cee8e173d3211a0d734ce70eecf2"
+     },
+     "output": {
+      "path": "additions/meetingTurnsOffDictation/review-da.txt",
+      "sha256": "f83cbfc1d082d42ac006217b91dc017742c6043ad2834a3053c3d689b2cf4e55"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "de",
-   "contentSHA256": "3e89576ceb30c37c0ccf3405820a5ea527cda80af0d73cc713165a8128fa3f44",
+   "contentSHA256": "c98a8a64bc1636cbe2f86ffd33e30715d9daad118f21e257b9c15ae98a4c0489",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2140,13 +2221,36 @@
       "path": "additions/meetingCallApps-4058/council-de.json",
       "sha256": "5804aa1467669d8815b2a4c70a498b655d9333d9dadff4e55ceddc7f228abff8"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTurnsOffDictation",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the record keybind, the call-sound switch, media during dictation and When a call starts); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingTurnsOffDictation/draft.json",
+      "sha256": "5ca6029436250b97daaace2ba7e06acc6327914566de6a076759def1e72fa4e8"
+     },
+     "prompt": {
+      "path": "additions/meetingTurnsOffDictation/review-driver.py.txt",
+      "sha256": "52b692a1537688312b33296de8496bbaf675cee8e173d3211a0d734ce70eecf2"
+     },
+     "output": {
+      "path": "additions/meetingTurnsOffDictation/review-de.txt",
+      "sha256": "a0cfe6ab7eb78005081606e383614d44afd35db3e0bff0c23bc41a17ed5ebb71"
+     },
+     "disposition": "merged from the German council (additions/meetingTurnsOffDictation.json): GPT and Gemini both replaced the reviewed block; adopted their shared word Meetingaufnahme, Gemini's Besprechung (the German word for a meeting) and one phrase from each; dropped GPT's Meetings and Diktieren (too general, they fit every dictation setting) and the reviewed phrase that said the key does not work (GPT: too broad, and a running dictation is not switched off)",
+     "council": {
+      "path": "additions/meetingTurnsOffDictation/council-de.json",
+      "sha256": "548324ced88ca04641ffd6b30a07184b0429fdbfa5433eb5be04f1bc50ced70b"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "el",
-   "contentSHA256": "5a016bfc1e5ff9199cf9c3a1a47469ab3a3d2de212234c82ffe7c454bcf68cfa",
+   "contentSHA256": "b2bd7a77b37485463b27fa8939ea93c21e54b0642e4981f65804852cee8c180f",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2494,13 +2598,32 @@
       "sha256": "c9976e099b0c2defad4e4cfcc378de73d291847dd6615179240a6e50d2f45958"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTurnsOffDictation",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the record keybind, the call-sound switch, media during dictation and When a call starts); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingTurnsOffDictation/draft.json",
+      "sha256": "5ca6029436250b97daaace2ba7e06acc6327914566de6a076759def1e72fa4e8"
+     },
+     "prompt": {
+      "path": "additions/meetingTurnsOffDictation/review-driver.py.txt",
+      "sha256": "52b692a1537688312b33296de8496bbaf675cee8e173d3211a0d734ce70eecf2"
+     },
+     "output": {
+      "path": "additions/meetingTurnsOffDictation/review-el.txt",
+      "sha256": "29cff0c4b4e873f9178b7792543856e16652c82f49d87055d955d697723a031c"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "en",
-   "contentSHA256": "e46cf132159ca245a0196b766de704154632fd12df5ce073354a75b356c8c30d",
+   "contentSHA256": "97a9cd2672317eead50e762ba9336f07c9cc0ae08ce7295d35bfe2fe810731ef",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2854,13 +2977,32 @@
       "sha256": "369aec486271c9e3b047059435a806035d3bce21e2e49f56770c0ba2b066ec58"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTurnsOffDictation",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the record keybind, the call-sound switch, media during dictation and When a call starts); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingTurnsOffDictation/draft.json",
+      "sha256": "5ca6029436250b97daaace2ba7e06acc6327914566de6a076759def1e72fa4e8"
+     },
+     "prompt": {
+      "path": "additions/meetingTurnsOffDictation/review-driver.py.txt",
+      "sha256": "52b692a1537688312b33296de8496bbaf675cee8e173d3211a0d734ce70eecf2"
+     },
+     "output": {
+      "path": "additions/meetingTurnsOffDictation/review-en.txt",
+      "sha256": "ede6409ae43e8f22e89620d3c90a8ef3284311f59e10db1a03dd7705845f0261"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "es",
-   "contentSHA256": "ec5ca27b76d3ff5f8558d7f8eccc94730ce189210a5cd1f12a28c55cc8776729",
+   "contentSHA256": "f1e278fe1303d624e3a8cfa520f8683b8439a1fc9f95cdbc3e1f9d2361b2d99f",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3208,13 +3350,32 @@
       "sha256": "e0ff16d00b2e86d856c3668c4a4f0c01ab176039b1dd5c0bc5d33755262f4535"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTurnsOffDictation",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the record keybind, the call-sound switch, media during dictation and When a call starts); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingTurnsOffDictation/draft.json",
+      "sha256": "5ca6029436250b97daaace2ba7e06acc6327914566de6a076759def1e72fa4e8"
+     },
+     "prompt": {
+      "path": "additions/meetingTurnsOffDictation/review-driver.py.txt",
+      "sha256": "52b692a1537688312b33296de8496bbaf675cee8e173d3211a0d734ce70eecf2"
+     },
+     "output": {
+      "path": "additions/meetingTurnsOffDictation/review-es.txt",
+      "sha256": "fc9b706cde70a87a904ba779619b14719a0de7aca46bb57c70f9c13055cb1611"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "et",
-   "contentSHA256": "c8db755c5e88b02c8d81a73c5e0befbafbae107fffd0ff3827c8d356d6514411",
+   "contentSHA256": "9840cfc49940030fb3e63b26986ed95e48ea8754349ae6fbbe1f002477a99f53",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3553,13 +3714,32 @@
       "sha256": "e0d3847d6f0a8122114f08bc549c9b7f594301f32e2d562d8d371c00c763c1d8"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTurnsOffDictation",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the record keybind, the call-sound switch, media during dictation and When a call starts); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingTurnsOffDictation/draft.json",
+      "sha256": "5ca6029436250b97daaace2ba7e06acc6327914566de6a076759def1e72fa4e8"
+     },
+     "prompt": {
+      "path": "additions/meetingTurnsOffDictation/review-driver.py.txt",
+      "sha256": "52b692a1537688312b33296de8496bbaf675cee8e173d3211a0d734ce70eecf2"
+     },
+     "output": {
+      "path": "additions/meetingTurnsOffDictation/review-et.txt",
+      "sha256": "233038626e9815b409ae03e09354b5cb049a2a1038fdb887b63894e29bbbd1d6"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fi",
-   "contentSHA256": "7a8d202f0788734e4755df86167e17f6a97f83d5b6c638440365cfe52c4dcc53",
+   "contentSHA256": "126abff73a7adcbe25d577a975cd443372bed530622847858d060ee95c0ea920",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3898,13 +4078,32 @@
       "sha256": "1e7f8c993e99b25e8a64f92f1abb4f771b38bff34c8abac9507ca0bb391291b7"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTurnsOffDictation",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the record keybind, the call-sound switch, media during dictation and When a call starts); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingTurnsOffDictation/draft.json",
+      "sha256": "5ca6029436250b97daaace2ba7e06acc6327914566de6a076759def1e72fa4e8"
+     },
+     "prompt": {
+      "path": "additions/meetingTurnsOffDictation/review-driver.py.txt",
+      "sha256": "52b692a1537688312b33296de8496bbaf675cee8e173d3211a0d734ce70eecf2"
+     },
+     "output": {
+      "path": "additions/meetingTurnsOffDictation/review-fi.txt",
+      "sha256": "050bf38dc9c75d74ab2f41c9e00e70a1b81f13a7f187fd4909c7b98db88278bb"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fr",
-   "contentSHA256": "534cbbb0f9b7ce3f5fc1fd34ea82a33d1eaf673f20744bddab4802d7fc4c89d7",
+   "contentSHA256": "991650dceb7e179b71f855af8a27df32b0c30b8dde0e730c43a6fc36512a955e",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4243,13 +4442,32 @@
       "sha256": "d8e0c7438dd29e09d6751c92757fa9df04ff5dec86c49753387592dc2376242a"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTurnsOffDictation",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the record keybind, the call-sound switch, media during dictation and When a call starts); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingTurnsOffDictation/draft.json",
+      "sha256": "5ca6029436250b97daaace2ba7e06acc6327914566de6a076759def1e72fa4e8"
+     },
+     "prompt": {
+      "path": "additions/meetingTurnsOffDictation/review-driver.py.txt",
+      "sha256": "52b692a1537688312b33296de8496bbaf675cee8e173d3211a0d734ce70eecf2"
+     },
+     "output": {
+      "path": "additions/meetingTurnsOffDictation/review-fr.txt",
+      "sha256": "68d7bdb7a3e6a318349b37137ef7a858764c5258cf54a796402c674f574ec123"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hi",
-   "contentSHA256": "2b21c5bc31dfdcb2024850cdf89500795214b0b26e210d63471be05301446b34",
+   "contentSHA256": "8f973fb35029db8b99b5beb2a4c4601286b8918d9edcf4dbc3117afcb01fefa0",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4588,13 +4806,32 @@
       "sha256": "c528b8b17b055312dea8775706963107a82c2f5d181a82afbe5d45e3d96aa995"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTurnsOffDictation",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the record keybind, the call-sound switch, media during dictation and When a call starts); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingTurnsOffDictation/draft.json",
+      "sha256": "5ca6029436250b97daaace2ba7e06acc6327914566de6a076759def1e72fa4e8"
+     },
+     "prompt": {
+      "path": "additions/meetingTurnsOffDictation/review-driver.py.txt",
+      "sha256": "52b692a1537688312b33296de8496bbaf675cee8e173d3211a0d734ce70eecf2"
+     },
+     "output": {
+      "path": "additions/meetingTurnsOffDictation/review-hi.txt",
+      "sha256": "779f3b7d1b3c9d502e61c94e78629e3a1c211f451cb61b38538ea4eaa44bf077"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hr",
-   "contentSHA256": "ed8b8a5dfea8ad71dfb97e72cea06deca35b797d3e72d8ab88240fa8e52ed2a4",
+   "contentSHA256": "66e878ebe08a241507abbfa1b167287a18bc2030f33160fa9aaaab20c4934e3d",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4933,13 +5170,32 @@
       "sha256": "7bd3139c83122212a16b67609bb29798a6decc2532ac49b80f23b0c39c954e47"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTurnsOffDictation",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the record keybind, the call-sound switch, media during dictation and When a call starts); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingTurnsOffDictation/draft.json",
+      "sha256": "5ca6029436250b97daaace2ba7e06acc6327914566de6a076759def1e72fa4e8"
+     },
+     "prompt": {
+      "path": "additions/meetingTurnsOffDictation/review-driver.py.txt",
+      "sha256": "52b692a1537688312b33296de8496bbaf675cee8e173d3211a0d734ce70eecf2"
+     },
+     "output": {
+      "path": "additions/meetingTurnsOffDictation/review-hr.txt",
+      "sha256": "8ab1ee49c3436d4bbef9d85d1a864ba9563b1579cf1dcbb8cc76f98ff063727d"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hu",
-   "contentSHA256": "c41e25970987ba82f754f1b6c97c1a2974edc0d6aaf2c05c275f314317cecfdc",
+   "contentSHA256": "d8f89c02cdf6f19a99bedee43ccf066d6002ecc48a6dc28eacc0e7a10737f5a3",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5278,13 +5534,32 @@
       "sha256": "f68c54f0b9d6f9dd52afc72944bdcb24d50f37cf02c49336ca20bba30b7e2598"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTurnsOffDictation",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the record keybind, the call-sound switch, media during dictation and When a call starts); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingTurnsOffDictation/draft.json",
+      "sha256": "5ca6029436250b97daaace2ba7e06acc6327914566de6a076759def1e72fa4e8"
+     },
+     "prompt": {
+      "path": "additions/meetingTurnsOffDictation/review-driver.py.txt",
+      "sha256": "52b692a1537688312b33296de8496bbaf675cee8e173d3211a0d734ce70eecf2"
+     },
+     "output": {
+      "path": "additions/meetingTurnsOffDictation/review-hu.txt",
+      "sha256": "402c9f0ee35927d0c40df18fe854e53daf1cb9bc1a7ff8a8b30a88ab20c57b20"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "it",
-   "contentSHA256": "05c342eecbea15141d77abfe3efd8f83aa2853d4717505002783ee850bb3d40d",
+   "contentSHA256": "ba0e5acbbeda5a7ff6603b9aa8cf61988bdef4c4d4c42bc54a1a919cd9922a78",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5632,13 +5907,32 @@
       "sha256": "f0d638f162d88ffda3dae65a73411454f4a23f3030d47a52ac1e06c8216a49ed"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTurnsOffDictation",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the record keybind, the call-sound switch, media during dictation and When a call starts); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingTurnsOffDictation/draft.json",
+      "sha256": "5ca6029436250b97daaace2ba7e06acc6327914566de6a076759def1e72fa4e8"
+     },
+     "prompt": {
+      "path": "additions/meetingTurnsOffDictation/review-driver.py.txt",
+      "sha256": "52b692a1537688312b33296de8496bbaf675cee8e173d3211a0d734ce70eecf2"
+     },
+     "output": {
+      "path": "additions/meetingTurnsOffDictation/review-it.txt",
+      "sha256": "e97517c85a3681febf6723714e5218142fa8b93629a0027d3e0b9e78498836c4"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ja",
-   "contentSHA256": "c71a21471ef61f1b50b3afe0bc144d5b668e639eaf47126ddd73de24af5575c4",
+   "contentSHA256": "41fce4e67e8dbedefe385b8de2c8fa54032c3883d352de017da3778848690951",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5977,13 +6271,32 @@
       "sha256": "a684c444d37fc985423ef6f69ec126ac5be77d2a190c0c5745d69fe17305d285"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTurnsOffDictation",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the record keybind, the call-sound switch, media during dictation and When a call starts); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingTurnsOffDictation/draft.json",
+      "sha256": "5ca6029436250b97daaace2ba7e06acc6327914566de6a076759def1e72fa4e8"
+     },
+     "prompt": {
+      "path": "additions/meetingTurnsOffDictation/review-driver.py.txt",
+      "sha256": "52b692a1537688312b33296de8496bbaf675cee8e173d3211a0d734ce70eecf2"
+     },
+     "output": {
+      "path": "additions/meetingTurnsOffDictation/review-ja.txt",
+      "sha256": "7302f2724d2dea77c419d854dedaa83cacf2ae11e1f458165997be3a5fcad94e"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ko",
-   "contentSHA256": "29e69bcb2f564e2cec4c6f17ccd8d36d942555c6a77dd3d6c55d394f3832a776",
+   "contentSHA256": "ff881c77523693ff10661608bab713993473884256eb7cd04a4d31b2a5b36108",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -6322,13 +6635,32 @@
       "sha256": "add5dc8fdd9e36a932dbeab3a902b9ae1c9717c6b40bbd98617ab7c328daf8ea"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTurnsOffDictation",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the record keybind, the call-sound switch, media during dictation and When a call starts); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingTurnsOffDictation/draft.json",
+      "sha256": "5ca6029436250b97daaace2ba7e06acc6327914566de6a076759def1e72fa4e8"
+     },
+     "prompt": {
+      "path": "additions/meetingTurnsOffDictation/review-driver.py.txt",
+      "sha256": "52b692a1537688312b33296de8496bbaf675cee8e173d3211a0d734ce70eecf2"
+     },
+     "output": {
+      "path": "additions/meetingTurnsOffDictation/review-ko.txt",
+      "sha256": "64168d2e126d13073da0767470723d7e0a490f432e07cec896e4ad7db81c9aa2"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lt",
-   "contentSHA256": "2a6850824e9a4fbdc4b6557935137d285cd963ee9fe5445d68c59273322b436c",
+   "contentSHA256": "f269b0632fd8df6d21cc096cd87ae490098ce24a5c3a30ea5eabe83c8782311e",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -6676,13 +7008,32 @@
       "sha256": "5504c9735bf0f64034167a76a7e2d816b76a8551ac6dc798ddcba442f9b0a5bf"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTurnsOffDictation",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the record keybind, the call-sound switch, media during dictation and When a call starts); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingTurnsOffDictation/draft.json",
+      "sha256": "5ca6029436250b97daaace2ba7e06acc6327914566de6a076759def1e72fa4e8"
+     },
+     "prompt": {
+      "path": "additions/meetingTurnsOffDictation/review-driver.py.txt",
+      "sha256": "52b692a1537688312b33296de8496bbaf675cee8e173d3211a0d734ce70eecf2"
+     },
+     "output": {
+      "path": "additions/meetingTurnsOffDictation/review-lt.txt",
+      "sha256": "3bcb3dfbb4a8b85767068dc200364502f0f62515c4823592fa0ecc1ec1332f62"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lv",
-   "contentSHA256": "e8f8b341d1fec84990a1506433d9aafa8d4e5418c5a0d6ab0f68069301c0f52f",
+   "contentSHA256": "9d45db2af88090630a35d56c1e32fb4526751a6f684ecdac194bcd629f9df18b",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -7021,13 +7372,32 @@
       "sha256": "7f1452144a8699e81b9cd8cf978e45b77405ba73f352b509f3bd4bd0925667e3"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTurnsOffDictation",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the record keybind, the call-sound switch, media during dictation and When a call starts); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingTurnsOffDictation/draft.json",
+      "sha256": "5ca6029436250b97daaace2ba7e06acc6327914566de6a076759def1e72fa4e8"
+     },
+     "prompt": {
+      "path": "additions/meetingTurnsOffDictation/review-driver.py.txt",
+      "sha256": "52b692a1537688312b33296de8496bbaf675cee8e173d3211a0d734ce70eecf2"
+     },
+     "output": {
+      "path": "additions/meetingTurnsOffDictation/review-lv.txt",
+      "sha256": "33a2e210723793ecc8b0b62c95f534a8ec8741c3c8c5d053dfd6b7546d33e467"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "mt",
-   "contentSHA256": "89c68fcc3164bfe2a5a87652c275a0931adc4e465a2199fecdffde0932745b79",
+   "contentSHA256": "2d1cd5fcf6cca54c2510045478c976a5eb211917308c2d380030235107d714e3",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -7375,13 +7745,32 @@
       "sha256": "632ff2398147ce300773022eddb70d89a20d9f64af023c26aa30092a655a69a3"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTurnsOffDictation",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the record keybind, the call-sound switch, media during dictation and When a call starts); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingTurnsOffDictation/draft.json",
+      "sha256": "5ca6029436250b97daaace2ba7e06acc6327914566de6a076759def1e72fa4e8"
+     },
+     "prompt": {
+      "path": "additions/meetingTurnsOffDictation/review-driver.py.txt",
+      "sha256": "52b692a1537688312b33296de8496bbaf675cee8e173d3211a0d734ce70eecf2"
+     },
+     "output": {
+      "path": "additions/meetingTurnsOffDictation/review-mt.txt",
+      "sha256": "ef0fef9f33102551706c55e6fa5dbcb6ce4ef1e9800624be06abca5f400dec48"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "nl",
-   "contentSHA256": "97dd90e76b3bc61049dcdc0a8b5428b89feaf306b050c7107ca3dfb69d9f6fa7",
+   "contentSHA256": "5a6295fd140b41b9d29d2e9671c213351afb15564374a47de75afb6dd1a0377f",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -7720,13 +8109,32 @@
       "sha256": "13cb0cbaf6f98adc582fab84adb2c6af6a5c1cff7e18e54625b11b902b202e35"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTurnsOffDictation",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the record keybind, the call-sound switch, media during dictation and When a call starts); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingTurnsOffDictation/draft.json",
+      "sha256": "5ca6029436250b97daaace2ba7e06acc6327914566de6a076759def1e72fa4e8"
+     },
+     "prompt": {
+      "path": "additions/meetingTurnsOffDictation/review-driver.py.txt",
+      "sha256": "52b692a1537688312b33296de8496bbaf675cee8e173d3211a0d734ce70eecf2"
+     },
+     "output": {
+      "path": "additions/meetingTurnsOffDictation/review-nl.txt",
+      "sha256": "3b8b30666500f5ffd5ea9d7183b4434395d6d36a557f97f3df31045b38f7688f"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pl",
-   "contentSHA256": "eb5bd1cfbcabda628d37f688597fedb3910c303b3e9ac45f56a6b6c2dd253bc4",
+   "contentSHA256": "47966e423b491047a8d2b54b251a154148734f89c6fadaffea9e3d068b22c433",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -8065,13 +8473,32 @@
       "sha256": "0e9c1bbe73458d114c0ec0ff2d2ced46414ded0839723d3c3f6a516192159210"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTurnsOffDictation",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the record keybind, the call-sound switch, media during dictation and When a call starts); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingTurnsOffDictation/draft.json",
+      "sha256": "5ca6029436250b97daaace2ba7e06acc6327914566de6a076759def1e72fa4e8"
+     },
+     "prompt": {
+      "path": "additions/meetingTurnsOffDictation/review-driver.py.txt",
+      "sha256": "52b692a1537688312b33296de8496bbaf675cee8e173d3211a0d734ce70eecf2"
+     },
+     "output": {
+      "path": "additions/meetingTurnsOffDictation/review-pl.txt",
+      "sha256": "30f5d879dba7c232603b6f160740dee88014859b346d9887737cc73b6b89685b"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pt",
-   "contentSHA256": "bb091000eab1400d84a449a59c24f169cff81f04220d462d38799f97bacc6e40",
+   "contentSHA256": "c37b944e02d11e82aee3aae26cb79d18ac6887c00299ba256a019af6631c5842",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -8418,13 +8845,32 @@
       "sha256": "f81f636ae10cad42519d83f41936a92356180ea24032e68289b66915ef2f9de9"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTurnsOffDictation",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the record keybind, the call-sound switch, media during dictation and When a call starts); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingTurnsOffDictation/draft.json",
+      "sha256": "5ca6029436250b97daaace2ba7e06acc6327914566de6a076759def1e72fa4e8"
+     },
+     "prompt": {
+      "path": "additions/meetingTurnsOffDictation/review-driver.py.txt",
+      "sha256": "52b692a1537688312b33296de8496bbaf675cee8e173d3211a0d734ce70eecf2"
+     },
+     "output": {
+      "path": "additions/meetingTurnsOffDictation/review-pt.txt",
+      "sha256": "776bf44dc6c015afe390c77d40c146cd8df04bf82a623c3659f477960e15160e"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ro",
-   "contentSHA256": "6c2b7b893234bda67b851ebd1abd5a88a5171ae22adbf65643474c27c480fbbc",
+   "contentSHA256": "a5b44d6efb907bc2dc49c7e7bb32a3dc989dc95e7e333a56093789e4b0dfe64d",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -8763,13 +9209,32 @@
       "sha256": "363511f3a633bd262b90a5e8e6bd85126f9b69a9bd8f9573ad25e9c04cc25962"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTurnsOffDictation",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the record keybind, the call-sound switch, media during dictation and When a call starts); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingTurnsOffDictation/draft.json",
+      "sha256": "5ca6029436250b97daaace2ba7e06acc6327914566de6a076759def1e72fa4e8"
+     },
+     "prompt": {
+      "path": "additions/meetingTurnsOffDictation/review-driver.py.txt",
+      "sha256": "52b692a1537688312b33296de8496bbaf675cee8e173d3211a0d734ce70eecf2"
+     },
+     "output": {
+      "path": "additions/meetingTurnsOffDictation/review-ro.txt",
+      "sha256": "52ab6babbb7a38038a5cdaf85f285e35f94ffb9d6ba8b2da64b4e650aa91047b"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ru",
-   "contentSHA256": "e9edeb20036410ddb135cb07f6c720e5b9bce87270e8962681f3e5a3bebf3e81",
+   "contentSHA256": "9b4ef892dd604a2d6714bdb4014f0a87b34a4c634a8f748a555ca64f89f182b0",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -9108,13 +9573,32 @@
       "sha256": "bab3201faa9623ff538b6327181fecdc5710e297b4c5207cc7ff151d732814dc"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTurnsOffDictation",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the record keybind, the call-sound switch, media during dictation and When a call starts); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingTurnsOffDictation/draft.json",
+      "sha256": "5ca6029436250b97daaace2ba7e06acc6327914566de6a076759def1e72fa4e8"
+     },
+     "prompt": {
+      "path": "additions/meetingTurnsOffDictation/review-driver.py.txt",
+      "sha256": "52b692a1537688312b33296de8496bbaf675cee8e173d3211a0d734ce70eecf2"
+     },
+     "output": {
+      "path": "additions/meetingTurnsOffDictation/review-ru.txt",
+      "sha256": "16eacf02bcb0a9119ecf07a1266ca8992b600502513ba2a88ad5810e13bd7fb8"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sk",
-   "contentSHA256": "5213380c2094d989208b0bb1f0a6e7fdee703eb145bfaeaed75f972a5fcf2295",
+   "contentSHA256": "2f64d3232ce23975b223770a5206588b26e4763577a1eb213bb2314c6f6f1c12",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -9453,13 +9937,32 @@
       "sha256": "5dd5a6e55bccde83d40a3792f772b4f425f52f4d4ec83b1f205e07f6b502e7b7"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTurnsOffDictation",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the record keybind, the call-sound switch, media during dictation and When a call starts); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingTurnsOffDictation/draft.json",
+      "sha256": "5ca6029436250b97daaace2ba7e06acc6327914566de6a076759def1e72fa4e8"
+     },
+     "prompt": {
+      "path": "additions/meetingTurnsOffDictation/review-driver.py.txt",
+      "sha256": "52b692a1537688312b33296de8496bbaf675cee8e173d3211a0d734ce70eecf2"
+     },
+     "output": {
+      "path": "additions/meetingTurnsOffDictation/review-sk.txt",
+      "sha256": "706fab30f71d03ed8c9342844f45e3de91d059cba4e907358172da353b102e07"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sl",
-   "contentSHA256": "82fb7cfb50a9929d77a1ddacbf4f2b3ce6ac3ad2eae010eaed3490b587e49e27",
+   "contentSHA256": "fed48bbb97cc51495aa48c4fd0da3669400c15716ce815ad6b2e2359d3f26697",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -9807,13 +10310,32 @@
       "sha256": "a35e89a155f89b88c1797ce89c115e4002ed980445bb8fb68d2e18bec986c64a"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTurnsOffDictation",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the record keybind, the call-sound switch, media during dictation and When a call starts); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingTurnsOffDictation/draft.json",
+      "sha256": "5ca6029436250b97daaace2ba7e06acc6327914566de6a076759def1e72fa4e8"
+     },
+     "prompt": {
+      "path": "additions/meetingTurnsOffDictation/review-driver.py.txt",
+      "sha256": "52b692a1537688312b33296de8496bbaf675cee8e173d3211a0d734ce70eecf2"
+     },
+     "output": {
+      "path": "additions/meetingTurnsOffDictation/review-sl.txt",
+      "sha256": "60495063981a0f3a8049e3fdfbc784dfb18171ed0207c74716cface6750d2c67"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sv",
-   "contentSHA256": "65b7d4837b9695f43fdcf5e0968b215e0ed86902390c9324a5437fa3432f12df",
+   "contentSHA256": "bce4b3d5deb96ad4caba8e966eb69f95080833da239ab9b726174717f6315086",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -10152,13 +10674,32 @@
       "sha256": "918ddf433ee3b5d18ac324d381b0aaa41932f95463cb07d31285476baa8f4e90"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTurnsOffDictation",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the record keybind, the call-sound switch, media during dictation and When a call starts); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingTurnsOffDictation/draft.json",
+      "sha256": "5ca6029436250b97daaace2ba7e06acc6327914566de6a076759def1e72fa4e8"
+     },
+     "prompt": {
+      "path": "additions/meetingTurnsOffDictation/review-driver.py.txt",
+      "sha256": "52b692a1537688312b33296de8496bbaf675cee8e173d3211a0d734ce70eecf2"
+     },
+     "output": {
+      "path": "additions/meetingTurnsOffDictation/review-sv.txt",
+      "sha256": "6d14792dc07c44d6b89cda0c7e93a9c0473dc9ea2b43a58b48bcff73a23e1cee"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "tr",
-   "contentSHA256": "e71702abbfdf52f8c01c2af0b903720ded1f5794619e65a0b2dc9a1aeabaf5d7",
+   "contentSHA256": "8d008df795d714a9c000739998d563c8eb6d209b11fdc2074ac32bf065b0cc28",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -10497,13 +11038,32 @@
       "sha256": "c4217dc08a96c4a7ea9252b89d02c593858c1e07fc7873fffae66a74f4d568b8"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTurnsOffDictation",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the record keybind, the call-sound switch, media during dictation and When a call starts); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingTurnsOffDictation/draft.json",
+      "sha256": "5ca6029436250b97daaace2ba7e06acc6327914566de6a076759def1e72fa4e8"
+     },
+     "prompt": {
+      "path": "additions/meetingTurnsOffDictation/review-driver.py.txt",
+      "sha256": "52b692a1537688312b33296de8496bbaf675cee8e173d3211a0d734ce70eecf2"
+     },
+     "output": {
+      "path": "additions/meetingTurnsOffDictation/review-tr.txt",
+      "sha256": "5f9589a18d65e758eefb729992c933944ebf477dd47d6375bc1900d2254a4c4d"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "uk",
-   "contentSHA256": "9922e80e9dd19791c1a85b220ac57a3c160892cb2eca48f93f2c632470afee8f",
+   "contentSHA256": "38dbe53b0610bfa914bd7ad1f9de5b8cb777ca8c7933c05fd0430ac7974da3f2",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -10851,13 +11411,32 @@
       "sha256": "e17ad474ffa1cd1c04ae889ddf4c8b8544b63269a1804e74265a50494afe81d8"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTurnsOffDictation",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the record keybind, the call-sound switch, media during dictation and When a call starts); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingTurnsOffDictation/draft.json",
+      "sha256": "5ca6029436250b97daaace2ba7e06acc6327914566de6a076759def1e72fa4e8"
+     },
+     "prompt": {
+      "path": "additions/meetingTurnsOffDictation/review-driver.py.txt",
+      "sha256": "52b692a1537688312b33296de8496bbaf675cee8e173d3211a0d734ce70eecf2"
+     },
+     "output": {
+      "path": "additions/meetingTurnsOffDictation/review-uk.txt",
+      "sha256": "d900a45f78535ec379f652916bc7c6cd1dbccc31f8d204b9a15a250d9c8da9a8"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "vi",
-   "contentSHA256": "ba5c4dbda4c98abf3900e1d3f06e3574d551b641d642523e6035431597642084",
+   "contentSHA256": "63abdc5327f935395de87705dcc119812143a805f256b4308cc7560c1c23971e",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -11196,13 +11775,32 @@
       "sha256": "9d840760bc72922ed72c69d1b587d989aaebb4339826f42842faad97fb96dfa3"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTurnsOffDictation",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the record keybind, the call-sound switch, media during dictation and When a call starts); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingTurnsOffDictation/draft.json",
+      "sha256": "5ca6029436250b97daaace2ba7e06acc6327914566de6a076759def1e72fa4e8"
+     },
+     "prompt": {
+      "path": "additions/meetingTurnsOffDictation/review-driver.py.txt",
+      "sha256": "52b692a1537688312b33296de8496bbaf675cee8e173d3211a0d734ce70eecf2"
+     },
+     "output": {
+      "path": "additions/meetingTurnsOffDictation/review-vi.txt",
+      "sha256": "4aa4dbe0ffc785ea3884d0c34604ad97408298fc465af42889a6ed4e989045a2"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "zh",
-   "contentSHA256": "76a7e8d75698a81875a654582ebb842aad0d79545ef7f9be690669a188f63812",
+   "contentSHA256": "b20dbb8f7680befd2184ab467fa94da63c9fef0366a3ff66b5c438858c362beb",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -11541,6 +12139,25 @@
       "sha256": "c822cc65cfd3ed6177780d310de57e324df9f0e064276b16d972d1ae66084650"
      },
      "disposition": "adopted as returned by the review (additions/meetingCallApps.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTurnsOffDictation",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the record keybind, the call-sound switch, media during dictation and When a call starts); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-10-24",
+     "draft": {
+      "path": "additions/meetingTurnsOffDictation/draft.json",
+      "sha256": "5ca6029436250b97daaace2ba7e06acc6327914566de6a076759def1e72fa4e8"
+     },
+     "prompt": {
+      "path": "additions/meetingTurnsOffDictation/review-driver.py.txt",
+      "sha256": "52b692a1537688312b33296de8496bbaf675cee8e173d3211a0d734ce70eecf2"
+     },
+     "output": {
+      "path": "additions/meetingTurnsOffDictation/review-zh.txt",
+      "sha256": "4852642c19a3463bbd5e5f0621e2ec58e7fc1b6aea8e748046e51ddc2df7cac3"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
     }
    ],
    "phraseExemptions": []
@@ -11803,7 +12420,8 @@
   "meetingCallApps": "eb11e2f297db44ad67d311a6f01032ebc6301374dc95cddc41ffb59d04e2a289",
   "meetings.tab.callApps": "d3596e3b3103efb3058bf9e1253e2fe28aebff3b81cc3dac6346c7545e877266",
   "meetings.tab.general": "eb61dcc5ade549cbc95f3534cb1266185805c18a5a4bc409678408f601e8cce6",
-  "meetings.tab.permissions": "659b60cb068e578a1d1dad89d85db0622749e04467fcbbd65dbb456c912351f6"
+  "meetings.tab.permissions": "659b60cb068e578a1d1dad89d85db0622749e04467fcbbd65dbb456c912351f6",
+  "meetingTurnsOffDictation": "9ce3308699af05c81b68e00dbdfd7c2b09a97c2749d9c32caf36c4135b589eb2"
  },
  "reviewedSourceNote": "Per searchable id, the SHA-256 of the English title and description its translations were reviewed against (reference/settings-map.json; SettingsSearchVocabularyTests.sourceFingerprint). First recorded 2026-10-07 at be0086b6 from the export the Phase 0 and council reviews covered. When a test names an id here, re-review that id's translated blocks, then record the hash the test prints. Limit: dynamic titles are bound by resolver name, not template wording."
 }

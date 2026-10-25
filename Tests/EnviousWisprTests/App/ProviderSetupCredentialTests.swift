@@ -7,6 +7,7 @@ import Testing
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprLLM
+import EnviousWisprAppKitTestSupport
 
 /// #3765: the AI Polish screen's API key Save and Clear, pressed through the same actions the
 /// buttons call (`ProviderSetupKeyActions`), with the screen state on a real
@@ -31,7 +32,7 @@ struct ProviderSetupKeyActionTests {
   private static func owners(failing: Bool = false, asked: Asked = Asked())
     -> ProviderSetupKeyActions.Owners
   {
-    let folder = FileManager.default.temporaryDirectory
+    let folder = TestTemporaryDirectory.url
       .appending(path: "ew-tests-key-actions-\(UUID().uuidString)")
     let storage: any LegacyKeyFileStorage =
       failing ? FailingStorage() : FileLegacyKeyStore(storageDirectory: folder)

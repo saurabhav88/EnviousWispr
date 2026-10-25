@@ -94,6 +94,14 @@ import Testing
     return notice.text == DictationNarrator.copy(for: .sharedEngineBusy(holder: holder))
   }
 
+  /// #4069: the "dictation is off during meetings" refusal, read as the sentence a person sees.
+  private static func showsDictationOffDuringMeeting(_ overlay: OverlayDirector) -> Bool {
+    guard case .notice(let notice)? = overlay.renderModel.state.presentation?.content else {
+      return false
+    }
+    return notice.text == DictationNarrator.copy(for: .dictationOffDuringMeeting)
+  }
+
   private static func showsRecording(_ overlay: OverlayDirector) -> Bool {
     if case .recording? = overlay.renderModel.state.presentation?.content { return true }
     return false
@@ -113,7 +121,8 @@ import Testing
     isRecovering: Bool = false,
     recoveringDuringArm: Bool = false,
     micStatus: AVAuthorizationStatus = .authorized,
-    micPrompt: MicPromptStub? = nil
+    micPrompt: MicPromptStub? = nil,
+    duringRecoveryArm: (@MainActor () -> Void)? = nil
   ) -> Fixture {
     // The overlay used to post an `NSAccessibility` notification against
     // `NSApp.mainWindow` on every `.recording` push, and `NSApp` is an
@@ -185,6 +194,7 @@ import Testing
       @MainActor (SettingsManager, ASRBackendType, Bool) async -> (
         recoverySessionID: String, payload: Data
       )? = { _, _, _ in
+        duringRecoveryArm?()
         if releaseDuringRecoveryArm { await finalizer.userStop() }
         if recoveringDuringArm {
           recovering = true
@@ -1045,6 +1055,123 @@ import Testing
     #expect(Self.showsRecoveryOffer(fx.overlay), "recovery owns this refusal, not the shared claim")
     #expect(fx.engineLease.isBusy == false)
   }
+
+
+  // MARK: - #4069 Turn off dictation during meetings
+
+  /// A start press while the switch is on and a meeting captures records nothing, says why,
+  /// and is refused before the microphone ask and the engine claim. One route per engine.
+  @Test(arguments: [false, true])
+  func meetingPolicyRefusesBeforeTheMicrophoneAndTheClaim(useToggle: Bool) async {
+    let prompt = MicPromptStub(status: .notDetermined)
+    let fx = Self.makeFixture(micPrompt: prompt)
+    fx.asr.activeBackendType = useToggle ? .whisper : .parakeet
+    fx.asr.isModelLoaded = true
+    fx.starter.isDictationOffForMeeting = { true }
+
+    if useToggle {
+      await fx.starter.toggle(source: .toggleHotkey)
+    } else {
+      #expect(await fx.starter.start() == .noRecording)
+    }
+
+    #expect(fx.kernelDriver.state == .idle)
+    #expect(fx.whisperKernelDriver.state == .idle)
+    #expect(Self.showsDictationOffDuringMeeting(fx.overlay))
+    #expect(fx.starter.microphoneAskTask == nil, "a refused press never asks for the microphone")
+    #expect(prompt.requestCount == 0)
+    #expect(fx.engineLease.admissionEpoch == 0, "a refused press never claims the engine")
+  }
+
+  /// Recovery's notice carries Discard, the only way out of a stuck replay, so it wins.
+  @Test(arguments: [false, true])
+  func recoveryRefusalWinsOverTheMeetingPolicy(useToggle: Bool) async {
+    let fx = Self.makeFixture(isRecovering: true)
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = true
+    fx.starter.isDictationOffForMeeting = { true }
+
+    if useToggle {
+      await fx.starter.toggle(source: .toggleHotkey)
+    } else {
+      _ = await fx.starter.start()
+    }
+
+    #expect(Self.showsRecoveryOffer(fx.overlay))
+    #expect(Self.showsDictationOffDuringMeeting(fx.overlay) == false)
+  }
+
+  /// The switch is read at each press: turning it off lets the very next press past the gate.
+  @Test(arguments: [false, true])
+  func theMeetingPolicyIsReadAtEachPress(useToggle: Bool) async {
+    let fx = Self.makeFixture()
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = true
+    var off = true
+    fx.starter.isDictationOffForMeeting = { off }
+    func press() async {
+      if useToggle {
+        await fx.starter.toggle(source: .toggleHotkey)
+      } else {
+        _ = await fx.starter.start()
+      }
+    }
+
+    fx.lastRecordingResult.polishError = "from the previous take"
+    await press()
+    #expect(Self.showsDictationOffDuringMeeting(fx.overlay))
+    #expect(fx.lastRecordingResult.polishError != nil, "the refused press stopped at the gate")
+
+    off = false
+    await press()
+    // Same positive oracle as the shared-claim rows: clearing the previous take's polish error
+    // happens only past every early gate.
+    #expect(
+      fx.lastRecordingResult.polishError == nil,
+      "a press after the switch was turned off was still refused")
+  }
+
+  /// Entry-only (plan §5): a press admitted before the meeting began capturing goes on even
+  /// when capture starts during its own start-up. Staged on the recovery-arm await: capture
+  /// begins there, and so does a launch recovery, whose post-arm re-check is the positive
+  /// signal that the press went on past the arm toward minting a session.
+  @Test func aPressAdmittedBeforeCaptureIsNotRecalled() async {
+    var capturing = false
+    var reads = 0
+    let fx = Self.makeFixture(
+      recoveringDuringArm: true, duringRecoveryArm: { capturing = true })
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = true
+    fx.starter.isDictationOffForMeeting = {
+      reads += 1
+      return capturing
+    }
+
+    _ = await fx.starter.start()
+
+    #expect(capturing, "capture began during the recovery arm")
+    #expect(reads == 1, "the meeting policy is read once, at the press")
+    #expect(Self.showsRecoveryOffer(fx.overlay), "the press reached the post-arm re-check")
+    #expect(Self.showsDictationOffDuringMeeting(fx.overlay) == false)
+  }
+
+  #if DEBUG
+    /// A start press joining a session already running is never refused. `start()` only: a
+    /// STOP toggle cannot be staged here (see the note above the recovery-precedence rows), so
+    /// Live UAT checks it: dictation running, meeting capturing, switch on, toggle stops it.
+    @Test func aRunningSessionIsNeverRefusedByTheMeetingPolicy() async throws {
+      let fx = Self.makeFixture()
+      fx.asr.activeBackendType = .parakeet
+      fx.starter.isDictationOffForMeeting = { true }
+      fx.kernelDriver.kernelForTesting.testForceState(.live)
+      let expected = try #require(fx.kernelDriver.continuingSessionID)
+
+      let outcome = await fx.starter.start()
+
+      #expect(outcome == .recording(expected))
+      #expect(Self.showsDictationOffDuringMeeting(fx.overlay) == false)
+    }
+  #endif
 
 }
 

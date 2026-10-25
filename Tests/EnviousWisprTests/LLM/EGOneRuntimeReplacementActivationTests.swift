@@ -5,6 +5,7 @@ import Testing
 
 @testable import EnviousWisprLLM
 @testable import EnviousWisprModelDelivery
+import EnviousWisprAppKitTestSupport
 
 /// The post-replacement activation trigger (#1386 PR-1 addendum r4, PR #1500
 /// cloud P1): `activateAfterAutomaticReplacementIfNeeded()` starts EG-1 only
@@ -86,7 +87,7 @@ import Testing
 
   @MainActor
   private func makeHarness(egOneActive: Bool) throws -> Harness {
-    let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+    let root = TestTemporaryDirectory.url.appendingPathComponent(
       "eg1-activation-\(UUID().uuidString)", isDirectory: true)
     let install = root.appendingPathComponent("EnviousWispr/Models/eg-1", isDirectory: true)
     let metadata = root.appendingPathComponent("EnviousWispr/ModelDelivery", isDirectory: true)

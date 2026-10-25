@@ -5,6 +5,7 @@ import Testing
 
 @testable import EnviousWisprModelDelivery
 @testable import EnviousWisprTranscribeCpp
+import EnviousWisprAppKitTestSupport
 
 /// #3735 real-byte receipt for the two transcribe.cpp Whisper manifests: the production
 /// controller downloads each from the real sources (turbo as three parts from our copy),
@@ -63,7 +64,7 @@ struct WhisperGGUFRealDeliveryTests {
     #expect(manifest.files.count == 1)
     #expect(file.parts?.count == expectedParts)
 
-    let root = FileManager.default.temporaryDirectory
+    let root = TestTemporaryDirectory.url
       .appendingPathComponent("ew-3735-whisper-real-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: root) }
     let data = root.appendingPathComponent("EnviousWispr", isDirectory: true)

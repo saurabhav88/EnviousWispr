@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprPostProcessing
+import EnviousWisprAppKitTestSupport
 
 /// #1665 (PR-F2b) — atomic import commit. Every test drives a real manager
 /// against a temp file, so "one write or none" is verified against disk, not
@@ -14,7 +15,7 @@ struct CustomWordsImportCommitTests {
   // MARK: - Harness
 
   private func makeManager() -> (CustomWordsManager, URL) {
-    let dir = FileManager.default.temporaryDirectory
+    let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ew-import-commit-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     let url = dir.appendingPathComponent("custom-words.json")

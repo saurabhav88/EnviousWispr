@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprModelDelivery
+import EnviousWisprAppKitTestSupport
 
 /// #3105: each engine's signed checker contract and its separate admission.
 @Suite("Learned-word checker delivery (#3105)", .tags(.driftGuard))
@@ -163,7 +164,7 @@ struct LearnedWordCheckerDeliveryTests {
     }
     let old = try tiny(fixture)
     let new = try tiny(Self.resource("eg1-checker-delivery-manifest"))
-    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let root = TestTemporaryDirectory.url.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }
     let install = root.appendingPathComponent("Models/eg-1-checker")
     let metadata = root.appendingPathComponent("ModelDelivery")
@@ -258,7 +259,7 @@ struct LearnedWordCheckerDeliveryTests {
   @Test func corruptWrongSizeAndStaleMarkerRefuseCheckerAdmission() async throws {
     let good = Data("adapter".utf8)
     let checker = try Self.tinyChecker(good)
-    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let root = TestTemporaryDirectory.url.appendingPathComponent(UUID().uuidString)
     let install = root.appendingPathComponent("Models/eg-1-checker")
     let metadata = root.appendingPathComponent("ModelDelivery")
     let staging = root.appendingPathComponent("staging")
@@ -296,7 +297,7 @@ struct LearnedWordCheckerDeliveryTests {
       from: ManifestFixture.manifestJSON(
         files: [("base-shard.gguf", bytes, "base-shard.gguf")], family: "eg_one"))
     let checker = try Self.tinyChecker(Data("adapter".utf8))
-    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let root = TestTemporaryDirectory.url.appendingPathComponent(UUID().uuidString)
     let models = root.appendingPathComponent("Models")
     let baseDir = models.appendingPathComponent("eg-1")
     let checkerDir = models.appendingPathComponent("eg-1-checker")

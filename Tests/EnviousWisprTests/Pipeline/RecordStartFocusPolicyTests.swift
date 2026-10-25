@@ -119,7 +119,7 @@ struct RecordStartFocusPolicyTests {
     ]
     for (policy, terminated, eligible) in table {
       #expect(
-        KernelSessionContext.isEligibleOwner(activationPolicy: policy, isTerminated: terminated)
+        PasteService.isEligibleFocusOwner(activationPolicy: policy, isTerminated: terminated)
           == eligible, "policy \(policy.rawValue) terminated \(terminated)")
     }
   }

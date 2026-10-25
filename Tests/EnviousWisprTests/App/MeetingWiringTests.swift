@@ -11,6 +11,7 @@ import os
 @testable import EnviousWisprPipeline
 @testable import EnviousWisprServices
 @testable import EnviousWisprStorage
+import EnviousWisprAppKitTestSupport
 
 /// #3972 C4a: when these fail, a meeting loads a model the delivery code is replacing, keeps a
 /// model locked after it finished or failed, or History's delete of a meeting leaves its audio.
@@ -172,7 +173,7 @@ struct MeetingWiringTests {
     let wakes: MeetingWakeSignal
 
     init() throws {
-      root = FileManager.default.temporaryDirectory
+      root = TestTemporaryDirectory.url
         .appendingPathComponent("MeetingWiringTests-\(UUID().uuidString)", isDirectory: true)
       store = MeetingStore(root: root)
       try store.prepareRoot()
@@ -410,6 +411,33 @@ struct MeetingWiringTests {
       coordinator.meetings.isEmpty && !rig.transcripts.hasRow(id: row.id)
     }
     #expect(FileManager.default.fileExists(atPath: rig.store.folder(for: record.id).path) == false)
+  }
+
+  @Test("a meeting delete from History that cannot finish shows History's failure message (#4079)")
+  func historyMeetingDeleteFailureIsShown() async throws {
+    let rig = try Rig()
+    let coordinator = MeetingWiring.make(rig.inputs)
+    var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    try rig.store.create(record)
+    record.state = .ready
+    try rig.store.save(record)
+    coordinator.launch()
+    let row = Transcript(
+      id: record.transcriptID, text: "standup", backendType: .parakeet, meetingID: record.id)
+    try await rig.transcripts.saveAndShowDurably(row)
+
+    // A read-only History folder: the meeting's row file cannot be removed.
+    let history = rig.root.appendingPathComponent("history")
+    try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: history.path)
+    defer {
+      try? FileManager.default.setAttributes(
+        [.posixPermissions: 0o700], ofItemAtPath: history.path)
+    }
+    rig.transcripts.delete(row)
+    await MeetingCoordinatorTests.eventually("failure shown") {
+      rig.transcripts.actionFailure == .delete
+    }
+    #expect(rig.transcripts.hasRow(id: row.id))
   }
 
   @Test("History's Delete All marks the meeting, then EnviousMeet removes its folder")

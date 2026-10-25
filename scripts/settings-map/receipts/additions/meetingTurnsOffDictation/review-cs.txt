@@ -1,0 +1,9 @@
+{
+  "language": "cs",
+  "title": "vypnout diktování během schůzek",
+  "words": [],
+  "phrases": [
+    "zakázat diktování při nahrávání schůzky",
+    "klávesa diktování při nahrávání schůzky nic nedělá"
+  ]
+}

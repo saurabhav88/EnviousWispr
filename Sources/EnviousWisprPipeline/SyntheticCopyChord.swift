@@ -18,7 +18,7 @@ import EnviousWisprServices
 /// `CombinedSessionState`, on the founder's own machine, where every click afterwards became a
 /// Command-click until a clearing event was posted. Nothing in a normal test run notices, because
 /// the damage is to a global the test does not read.
-enum SyntheticCopyChord {
+package enum SyntheticCopyChord {
 
   /// The result of one attempt, as three states rather than a Bool.
   ///
@@ -159,19 +159,70 @@ enum SyntheticCopyChord {
   ///
   /// Returns nil rather than a guess when the layout cannot be read; the caller decides what to do
   /// with that, and what it does is documented at the call site rather than hidden here.
+  @MainActor
   static func copyKeyCode() -> CGKeyCode? {
     keyCode(for: "c")
   }
 
+  /// Command+V at one process, bracketed by `flagsChanged` events so Command is never left latched
+  /// (see `post`). The key is the one that means "v" under Command on the active layout, so a Dvorak
+  /// user's panel gets Paste and never another shortcut; an unreadable layout posts nothing (the
+  /// creation-failure path). True when posted; posted is not delivered, and the caller's landing
+  /// check, or the destination itself, judges the outcome. Shared by the dictation owner path
+  /// (#3423) and Paste Last's chord when a launcher panel holds the keyboard (#3437).
+  @MainActor
+  package static func postCommandV(at pid: pid_t) -> Bool {
+    guard let key = keyCode(for: "v") else { return false }
+    return post(at: pid, copyKeyCode: key) != .notPosted
+  }
+
+  /// The key every front-path Command+V presses (#3437): the one that means "v" under Command
+  /// on the active layout, so a Dvorak user gets Paste and never Command+K (physical V types "k"
+  /// there). When the layout cannot be read, or no key types "v", it falls back to physical V,
+  /// which is what every paste pressed before this, so a rare layout read failure never turns a
+  /// working paste into a failed one. Read per paste, never cached: a layout switch between two
+  /// pastes takes effect on the next one.
+  @MainActor
+  package static func commandVKeyCode() -> CGKeyCode {
+    commandVKeyCode(resolving: { keyCode(for: "v") })
+  }
+
+  /// `commandVKeyCode()` with the layout read injected, so a test reaches the fallback without
+  /// changing the machine's input source.
+  @MainActor
+  static func commandVKeyCode(
+    resolving resolve: () -> CGKeyCode?,
+    logFallback: @escaping @Sendable () -> Void = {
+      Task {
+        await AppLogger.shared.log(
+          "paste_key layout_unreadable: pressing physical V", level: .info,
+          category: "PasteService")
+      }
+    }
+  ) -> CGKeyCode {
+    if let key = resolve() { return key }
+    logFallback()
+    return CGKeyCode(kVK_ANSI_V)
+  }
+
   /// Which virtual key means `desired` under Command on the active ASCII-capable layout; the
   /// resolution `copyKeyCode()` documents, for any letter (#3423 uses it for Paste's "v").
+  /// Main actor: the TextInputSources calls must run on the main thread in a UI application.
+  @MainActor
   static func keyCode(for desired: Character) -> CGKeyCode? {
     guard let source = TISCopyCurrentASCIICapableKeyboardLayoutInputSource()?.takeRetainedValue(),
       let rawLayout = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData)
     else { return nil }
 
     let layoutData = Unmanaged<CFData>.fromOpaque(rawLayout).takeUnretainedValue() as Data
-    let keyboardType = UInt32(LMGetKbdType())
+    return keyCode(for: desired, layoutData: layoutData, keyboardType: UInt32(LMGetKbdType()))
+  }
+
+  /// The pure half of `keyCode(for:)`: which key types `desired` under Command (else unmodified)
+  /// in the given layout data. No live input-source read, so tests can feed any installed layout.
+  static func keyCode(
+    for desired: Character, layoutData: Data, keyboardType: UInt32
+  ) -> CGKeyCode? {
 
     // **Resolved under the COMMAND layer, because that is the layer the key will be pressed in.**
     //

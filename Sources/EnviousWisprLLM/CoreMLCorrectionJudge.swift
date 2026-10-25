@@ -311,53 +311,21 @@ package actor CoreMLCorrectionJudge: CorrectionJudging {
   }
 
   /// Load the compiled model from the cache, or compile the package into the
-  /// cache first. Compile output lands in a temporary sibling and is moved
-  /// into place atomically, so a crash mid-compile leaves no half cache.
+  /// cache first (`CompiledModelCache`). Delivery's eviction cannot reach
+  /// this cache (it lives outside the install directory), so the cache prunes
+  /// superseded compiles itself. Any failure but cancellation is
+  /// `modelLoadFailed`.
   private static func compiledModel(
     package: URL, packageSHA256: String, cacheDirectory: URL, configuration: MLModelConfiguration
   ) async throws -> MLModel {
-    let fm = FileManager.default
-    let cached = cacheDirectory.appendingPathComponent("\(packageSHA256).mlmodelc", isDirectory: true)
-    if fm.fileExists(atPath: cached.path) {
-      if let model = try? MLModel(contentsOf: cached, configuration: configuration) {
-        pruneSupersededCompiledModels(in: cacheDirectory, keeping: cached)
-        return model
-      }
-      try? fm.removeItem(at: cached)
-    }
     do {
-      try fm.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
-      let compiled = try await MLModel.compileModel(at: package)
-      let staging = cacheDirectory.appendingPathComponent(
-        "\(packageSHA256).\(UUID().uuidString).tmp", isDirectory: true)
-      try fm.moveItem(at: compiled, to: staging)
-      do {
-        try fm.moveItem(at: staging, to: cached)
-      } catch {
-        // A concurrent load won the race; theirs is byte-equivalent.
-        try? fm.removeItem(at: staging)
-        guard fm.fileExists(atPath: cached.path) else { throw error }
-      }
-      let model = try MLModel(contentsOf: cached, configuration: configuration)
-      pruneSupersededCompiledModels(in: cacheDirectory, keeping: cached)
-      return model
+      return try await CompiledModelCache.model(
+        package: package, key: packageSHA256, cacheDirectory: cacheDirectory,
+        configuration: configuration)
     } catch is CancellationError {
       throw CancellationError()
     } catch {
       throw LoadFailure.modelLoadFailed
-    }
-  }
-
-  /// A new revision compiles beside the previous one; delivery's eviction
-  /// cannot reach this cache (it lives outside the install directory), so the
-  /// superseded siblings are pruned once the new compile has LOADED (cloud
-  /// review P2). A prune failure is logged by absence only: the next load
-  /// tries again, and removal deletes the whole directory.
-  private static func pruneSupersededCompiledModels(in cacheDirectory: URL, keeping current: URL) {
-    let fm = FileManager.default
-    guard let entries = try? fm.contentsOfDirectory(atPath: cacheDirectory.path) else { return }
-    for name in entries where name.hasSuffix(".mlmodelc") && name != current.lastPathComponent {
-      try? fm.removeItem(at: cacheDirectory.appendingPathComponent(name, isDirectory: true))
     }
   }
 

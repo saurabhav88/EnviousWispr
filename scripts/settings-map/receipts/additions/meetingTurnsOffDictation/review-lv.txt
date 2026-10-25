@@ -1,0 +1,9 @@
+{
+  "language": "lv",
+  "title": "izslēgt diktēšanu sapulču laikā",
+  "words": [],
+  "phrases": [
+    "atspējot diktēšanu sapulces ierakstīšanas laikā",
+    "diktēšanas taustiņš nedarbojas sapulces ierakstīšanas laikā"
+  ]
+}

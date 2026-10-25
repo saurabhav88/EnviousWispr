@@ -2,6 +2,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprServices
+import EnviousWisprAppKitTestSupport
 
 /// #3153: what the Send Feedback form accepts, and (#3269) what it saves to the outbox.
 @Suite("Feedback reporter (#3153)", .tags(.productOutcome))
@@ -185,7 +186,7 @@ struct FeedbackReporterTests {
   }
 
   private static func tempDirectory() -> URL {
-    FileManager.default.temporaryDirectory
+    TestTemporaryDirectory.url
       .appendingPathComponent("ew-3269-reporter-\(UUID().uuidString)", isDirectory: true)
   }
 

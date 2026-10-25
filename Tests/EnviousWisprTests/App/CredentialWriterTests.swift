@@ -5,6 +5,7 @@ import Testing
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprLLM
+import EnviousWisprAppKitTestSupport
 
 /// #3765: storing and clearing one provider's API key, the path the AI Polish screen's Save
 /// and Clear buttons and the dev control door both take.
@@ -19,7 +20,7 @@ struct CredentialWriterTests {
   private static func fixtureKeychain(storage: (any LegacyKeyFileStorage)? = nil)
     -> KeychainManager
   {
-    let folder = FileManager.default.temporaryDirectory
+    let folder = TestTemporaryDirectory.url
       .appending(path: "ew-tests-credential-writer-\(UUID().uuidString)")
     return KeychainManager(
       backend: .legacyFiles, legacyStore: storage ?? FileLegacyKeyStore(storageDirectory: folder))
@@ -186,7 +187,7 @@ struct CredentialWriterTelemetryTests {
     for failing in [false, true] {
       for provider in CredentialProvider.allCases {
         let events = Events()
-        let folder = FileManager.default.temporaryDirectory
+        let folder = TestTemporaryDirectory.url
           .appending(path: "ew-tests-credential-events-\(UUID().uuidString)")
         let storage: any LegacyKeyFileStorage =
           failing ? FailingStorage() : FileLegacyKeyStore(storageDirectory: folder)

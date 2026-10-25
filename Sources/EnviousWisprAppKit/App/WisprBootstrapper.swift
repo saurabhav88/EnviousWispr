@@ -1731,6 +1731,10 @@ package final class WisprBootstrapper {
       // #3546 A3: a press during the in-session Ultra activation gets the upgrade pills.
       isActivatingParakeetUpgrade: { [weak engineCoordinator] in
         engineCoordinator?.isActivatingParakeetUpgrade ?? false
+      },
+      // #4069: the coordinator is assigned to the box later in this init, so read it live.
+      isDictationOffForMeeting: { [settings, meetingBox] in
+        meetingBox.refusesDictation(turnedOff: settings.meetingTurnsOffDictation)
       }
     )
 
@@ -3277,4 +3281,10 @@ final class MeetingCoordinatorBox {
   weak var startFlow: MeetingStartFlow?
   /// #4012: call detection, for the DEBUG `call.simulate` command.
   weak var callDetection: CallDetectionCoordinator?
+
+  /// #4069: whether "Turn off dictation during meetings" refuses a dictation start now: the
+  /// switch is on and a meeting is starting, recording or stopping. No coordinator, no meeting.
+  func refusesDictation(turnedOff: Bool) -> Bool {
+    turnedOff && (coordinator?.isCapturing ?? false)
+  }
 }
