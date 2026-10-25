@@ -1449,6 +1449,17 @@ final class TranscriptCoordinator {
     }
   }
 
+  /// A History action that failed and the user has not dismissed yet (#4075 G10). The History
+  /// window shows it; before, each failure only wrote a log line and a press looked ignored.
+  enum ActionFailure: Equatable {
+    case delete, keep, deleteAll
+  }
+
+  private(set) var actionFailure: ActionFailure?
+
+  /// The History window's alert was dismissed.
+  func dismissActionFailure() { actionFailure = nil }
+
   func delete(_ transcript: Transcript) {
     if let meetingID = transcript.meetingID, let deleteMeeting {
       deleteMeeting(meetingID)
@@ -1462,6 +1473,7 @@ final class TranscriptCoordinator {
       try removeRow(id: id)
       onRowDeleted?(id)
     } catch {
+      actionFailure = .delete
       Task {
         await AppLogger.shared.log(
           "Failed to delete transcript: \(error)",
@@ -1654,6 +1666,7 @@ final class TranscriptCoordinator {
       transcripts[index] = transcripts[index].promotedFromPending()
       refreshDiskStateThenStopIfIdle()
     } catch {
+      actionFailure = .keep
       Task {
         await AppLogger.shared.log(
           "Failed to keep transcript: \(error)",
@@ -1850,6 +1863,7 @@ final class TranscriptCoordinator {
       meetingIDs.append(record.id)
     }
     if !meetingIDs.isEmpty, meetingsWillBeDeletedWithAll?(meetingIDs) == false {
+      actionFailure = .deleteAll
       Task {
         await AppLogger.shared.log(
           "Delete All refused: a meeting could not be marked for deletion",
@@ -1871,6 +1885,7 @@ final class TranscriptCoordinator {
       liveFallbackRowID = nil
       refreshDiskStateThenStopIfIdle()
     } catch {
+      actionFailure = .deleteAll
       Task {
         await AppLogger.shared.log(
           "Failed to delete all transcripts: \(error)",

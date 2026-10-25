@@ -258,6 +258,88 @@ struct TranscriptCoordinatorTests {
     }
   #endif
 
+  // MARK: - Failed actions are shown (#4075 G10)
+
+  @Test("a delete that fails is shown, keeps the row, and the message can be dismissed")
+  func failedDeleteIsShown() async throws {
+    let dir = Self.makeTempDir()
+    defer {
+      try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path)
+      Self.cleanup(dir)
+    }
+    let row = Self.makeTranscript(text: "stays")
+    try Self.writeToDisk([row], in: dir)
+    let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
+    coordinator.load()
+    await coordinator.waitForLoadForTesting()
+    #expect(coordinator.actionFailure == nil)
+
+    // A read-only folder: the file cannot be removed.
+    try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: dir.path)
+    coordinator.delete(row)
+    #expect(coordinator.actionFailure == .delete)
+    #expect(coordinator.visibleTranscripts.map(\.id) == [row.id])
+
+    coordinator.dismissActionFailure()
+    #expect(coordinator.actionFailure == nil)
+  }
+
+  #if DEBUG
+    @Test("a Delete All that fails is shown and changes nothing")
+    func failedDeleteAllIsShown() async throws {
+      let dir = Self.makeTempDir()
+      defer { Self.cleanup(dir) }
+      let row = Self.makeTranscript(text: "stays")
+      try Self.writeToDisk([row], in: dir)
+      let store = TranscriptStore(directory: dir)
+      let coordinator = TranscriptCoordinator(store: store)
+      coordinator.load()
+      await coordinator.waitForLoadForTesting()
+
+      store.deleteAllFaultsForTesting = [.handoff]
+      coordinator.deleteAll()
+      #expect(coordinator.actionFailure == .deleteAll)
+      #expect(coordinator.visibleTranscripts.map(\.id) == [row.id])
+    }
+  #endif
+
+  @Test("a Keep that fails is shown and the recording stays held")
+  func failedKeepIsShown() async throws {
+    let dir = Self.makeTempDir()
+    defer {
+      try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path)
+      Self.cleanup(dir)
+    }
+    let store = TranscriptStore(directory: dir)
+    let now = Date()
+    let held = Transcript(
+      text: "held", createdAt: now, escapeRecoveredAt: now, escapeRecoveryTakeID: "TAKE-1")
+    try store.savePending(held)
+    let coordinator = TranscriptCoordinator(store: store)
+    coordinator.load()
+    await coordinator.waitForLoadForTesting()
+
+    // A read-only History folder: the permanent copy cannot be written.
+    try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: dir.path)
+    coordinator.keep(held)
+    #expect(coordinator.actionFailure == .keep)
+    #expect(coordinator.visibleTranscripts.first?.escapeRecoveredAt != nil, "still held")
+  }
+
+  @Test("a successful delete shows no message")
+  func successfulDeleteShowsNothing() async throws {
+    let dir = Self.makeTempDir()
+    defer { Self.cleanup(dir) }
+    let row = Self.makeTranscript(text: "goes")
+    try Self.writeToDisk([row], in: dir)
+    let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
+    coordinator.load()
+    await coordinator.waitForLoadForTesting()
+    coordinator.delete(row)
+    #expect(coordinator.actionFailure == nil)
+    #expect(coordinator.visibleTranscripts.isEmpty)
+  }
+
   // MARK: - Delete routing (consumer matrix row)
 
   @Test("delete removes from cache and disk")
@@ -341,11 +423,15 @@ struct TranscriptCoordinatorMeetingTests {
     }
     // A meeting that could not be marked: nothing is deleted.
     coordinator.deleteAll()
+    #expect(coordinator.actionFailure == .deleteAll)
     #expect(rowExistedWhenMarked == true)
     #expect(coordinator.listedCount == 2)
     #expect(FileManager.default.fileExists(atPath: rowURL.path))
+
+    coordinator.dismissActionFailure()
     allowed = true
     coordinator.deleteAll()
+    #expect(coordinator.actionFailure == nil)
     #expect(coordinator.listedCount == 0)
   }
 

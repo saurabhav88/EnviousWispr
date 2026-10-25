@@ -5951,6 +5951,28 @@
         }
       }
     },
+    "Couldn't delete all history. Try again." : {
+      "comment" : "History: Delete All did not finish.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der gesamte Verlauf konnte nicht gelöscht werden. Versuche es erneut."
+          }
+        }
+      }
+    },
+    "Couldn't delete this item. Try again." : {
+      "comment" : "History: deleting one dictation or transcript failed; nothing was removed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Eintrag konnte nicht gelöscht werden. Versuche es erneut."
+          }
+        }
+      }
+    },
     "Couldn't find any %@ snippets on this Mac." : {
       "comment" : "Snippets, import from another app: error. %@ is the other app's name.",
       "localizations" : {
@@ -5991,6 +6013,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Aufnahme konnte nicht gesichert werden. Sie wurde verworfen."
+          }
+        }
+      }
+    },
+    "Couldn't keep this recording. Try again." : {
+      "comment" : "History: Keep on a held Escape Recovery dictation failed; it still counts down.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Aufnahme konnte nicht behalten werden. Versuche es erneut."
           }
         }
       }
@@ -13290,7 +13323,7 @@
       }
     },
     "OK" : {
-      "comment" : "AI Polish, notice button.\nButton that closes a message.\nEnviousMeet: closes the Paste message.\nEnviousMeet: closes the Save error.",
+      "comment" : "AI Polish, notice button.\nButton that closes a message.\nEnviousMeet: closes the Paste message.\nEnviousMeet: closes the Save error.\nHistory: closes the message about a failed action.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
