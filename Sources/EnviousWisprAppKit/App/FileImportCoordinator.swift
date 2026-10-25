@@ -1629,7 +1629,11 @@ final class FileImportCoordinator {
           )
         }
       }
-    let polished = rawIsSavedToHistory ? polishedCandidate() : nil
+    // Captured whatever History holds now: Clean it again of a deleted row may still have its
+    // raw save queued, and that save recreates the row before this settlement's update runs.
+    // The update-only write is what decides, after the writes ahead of it (cloud review of
+    // PR #4095).
+    let polished = polishedCandidate()
     let generationAtRestore = generation
     restorationPending = true
     // The screen and Copy show the kept turns at once; History catches up in the settlement.
@@ -1717,7 +1721,9 @@ final class FileImportCoordinator {
       stillOwned: { [self] in
         generation == generationAtWrite && self.historyID == historyID && !Task.isCancelled
       })
-    if !written, generation == generationAtWrite { requiredWriteFailedGeneration = generationAtWrite }
+    if !written, generation == generationAtWrite {
+      requiredWriteFailedGeneration = generationAtWrite
+    }
   }
 
   /// #4075 S1: the same write from inputs captured by its caller, so a Stop's settlement
@@ -2826,7 +2832,6 @@ final class FileImportCoordinator {
     }
   }
 
-
   /// The rename popover closed on Escape or a blank name (plan §3d). Telemetry only; nothing
   /// to write and nothing to revert, since neither path ever reached `renameSpeaker`.
   func noteRenameCancelled() {
@@ -2979,7 +2984,9 @@ final class FileImportCoordinator {
       // #4075 S1: the refusal shows at once; its History writes still owe this run a result.
       persistenceSettlingGeneration = generationAtStart
       defer {
-        if persistenceSettlingGeneration == generationAtStart { persistenceSettlingGeneration = nil }
+        if persistenceSettlingGeneration == generationAtStart {
+          persistenceSettlingGeneration = nil
+        }
       }
       // #3903: a Clean it again refused here keeps the completed cleanup it would have
       // replaced, on screen and in History.
@@ -3028,7 +3035,9 @@ final class FileImportCoordinator {
         return append(index, outcome)
       }
     } catch is CancellationError {
-      guard Task.isCancelled == false, generationAtStart == generation, rejectedDelivery else { return }
+      guard Task.isCancelled == false, generationAtStart == generation, rejectedDelivery else {
+        return
+      }
     } catch {
       // The processor could not finish its roster. Preserve accepted results and
       // disclose the remaining source as unpolished, without a processing retry.
@@ -3041,7 +3050,8 @@ final class FileImportCoordinator {
       // words. A gap in the document would be the silent failure. This part WAS an
       // attempt (the call threw rather than declining), so it counts toward `.failed`,
       // never `.skipped`.
-      guard append(index, FileImportRunner.PartOutcome(text: pieces[index], polishedText: nil)) else { return }
+      guard append(index, FileImportRunner.PartOutcome(text: pieces[index], polishedText: nil))
+      else { return }
     }
     guard Task.isCancelled == false, generationAtStart == generation else { return }
     await finishRun(savingDocument: true, asrOutcome: asrOutcome)
@@ -3163,7 +3173,6 @@ final class FileImportCoordinator {
     return failure == nil
   }
 
-
   /// Updates the SAME row with the cleaned document.
   ///
   /// Best effort, unlike the raw save: by this point the words are already durable, so a
@@ -3232,7 +3241,6 @@ final class FileImportCoordinator {
       }
     }
   }
-
 
   /// When this document was made, from the History row the run created. The Done header
   /// dates the RECORDING with it; reading `Date()` there described today, so a transcript

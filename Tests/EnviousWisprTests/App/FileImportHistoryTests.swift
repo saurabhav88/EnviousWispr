@@ -574,6 +574,42 @@ struct FileImportHistoryTests {
     #expect(c2.historyRowWasDeleted)
   }
 
+  #if DEBUG
+    /// #4075 S1, cloud review of PR #4095: Clean it again of a deleted row queues its raw
+    /// save; a Stop before that save lands restores the kept cleanup. The settlement's cleaned
+    /// update runs after the raw save, so History holds the cleanup the screen shows.
+    @Test("a Stop while Clean it again's raw save of a deleted row waits still saves the kept cleanup")
+    func stopDuringReCleanRawSaveOfADeletedRow() async throws {
+      let dir = TestTemporaryDirectory.url
+        .appendingPathComponent("ew-4075-import-\(UUID().uuidString)", isDirectory: true)
+      defer { try? FileManager.default.removeItem(at: dir) }
+      let history = TranscriptCoordinator(store: TranscriptStore(directory: dir))
+      let c = Self.coordinatorOnRealHistory(history)
+      await run(c)
+      try #require(c.state == .finished, "the import never finished")
+      let id = try #require(c.historyID)
+      let row = try #require(history.currentRow(id: id))
+      await history.delete(row)
+      try #require(history.hasRow(id: id) == false, "the delete did not land")
+
+      let gate = TranscriptCoordinatorMeetingTests.WorkerGate()
+      defer { gate.releaseAll() }
+      history.ordinaryWriteWillStartForTesting = { gate.hook() }
+      c.rePolish()
+      try #require(await gate.waitForStart(), "Clean it again's raw save never reached the worker")
+      c.stop()
+      #expect(history.hasRow(id: id) == false, "the raw save landed before the Stop")
+      gate.releaseAll()
+      try #require(
+        await settleUntil { c.hasPendingSettlement == false }, "the restoration never settled")
+      #expect(gate.anyTimedOut == false)
+      let fresh = try await TranscriptStore(directory: dir).loadAll()
+      let saved = try #require(fresh.first { $0.id == id }, "the raw save did not recreate the row")
+      #expect(saved.polishedText == "One two three.", "History kept the raw words")
+      #expect(c.isSavedToHistory)
+    }
+  #endif
+
   /// The saved badge answers about the words ON SCREEN (#2772).
   ///
   /// Staged with the raw write landed and the cleaned write refused, which leaves History
