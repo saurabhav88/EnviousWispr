@@ -976,6 +976,129 @@ struct TranscribeCppPreviewRecognizerTests {
     #expect(driver.unloads == [1])
   }
 
+  // MARK: - #3973: transcript sessions through the recognizer
+
+  typealias Received = LiveWordsTranscriptSessionTests.Received
+
+  private static func transcriptRecognizer(
+    _ driver: FakeDriver, admit: @escaping @Sendable () async throws -> Void = {}
+  ) -> WhisperPreviewRecognizer {
+    WhisperPreviewRecognizer(
+      runtime: Self.runtime(driver), language: "en", admitTranscriptDecode: admit)
+  }
+
+  private static func openTranscript(
+    _ recognizer: WhisperPreviewRecognizer, _ received: Received, _ driver: FakeDriver
+  ) async throws -> any LivePreviewEngineSession {
+    try await Self.step("the transcript open", driver) {
+      try await recognizer.openTranscriptSession(
+        vocabulary: .init(lookups: nil, contextualPhrases: [], dictionaryEnabled: true),
+        onEvent: received.receive)
+    }
+  }
+
+  private static func finalized(_ events: [LiveWordsEvent]) -> String {
+    events.reduce(into: "") { text, event in
+      if case .update(let finalized, _) = event { text += finalized }
+    }
+  }
+
+  @Test("a transcript session finalizes the words once and ends with one requested terminal")
+  func transcriptSessionThroughRecognizer() async throws {
+    let driver = FakeDriver()
+    driver.openAll()
+    let received = Received()
+    let recognizer = Self.transcriptRecognizer(driver)
+    let session = try await Self.openTranscript(recognizer, received, driver)
+    try await Self.step("feed 1", driver) { await session.feed(Self.speech) }
+    await Self.within("the first decode", driver) { await driver.until { driver.exited >= 1 } }
+    try await Self.step("feed 2", driver) { await session.feed(Self.speech) }
+    await Self.within("the finalized words", driver) {
+      await received.until { Self.finalized($0) == "Hello there." }
+    }
+    try await Self.step("the end", driver) { await session.end() }
+    let events = received.all
+    #expect(Self.finalized(events) == "Hello there.", "finalized exactly once: \(events)")
+    #expect(events.last == .ended(.requested))
+    #expect(events.filter { if case .ended = $0 { true } else { false } }.count == 1)
+    if case .update(_, let inProgress)? = events.dropLast().last {
+      #expect(inProgress.isEmpty, "the in-progress words were replaced, not left beside the final")
+    }
+  }
+
+  @Test("two transcript sessions on one runtime run independently, and a dictation open ends neither")
+  func transcriptSessionsAreIndependent() async throws {
+    let driver = FakeDriver()
+    driver.openAll()
+    let recognizer = Self.transcriptRecognizer(driver)
+    let a = Received()
+    let b = Received()
+    let sessionA = try await Self.openTranscript(recognizer, a, driver)
+    let sessionB = try await Self.openTranscript(recognizer, b, driver)
+    try await Self.step("feed A", driver) { await sessionA.feed(Self.speech) }
+    try await Self.step("feed B", driver) { await sessionB.feed(Self.speech) }
+    await Self.within("both tracks' first words", driver) {
+      await a.until(1)
+      await b.until(1)
+    }
+    try await Self.step("end A", driver) { await sessionA.end() }
+    #expect(a.all.last == .ended(.requested))
+    // Dictation's open takes the turnover and ends ITS predecessor; B is not one.
+    let dictation = try await Self.step("a dictation open", driver) {
+      try await recognizer.openSession(
+        vocabulary: .init(lookups: nil, contextualPhrases: [], dictionaryEnabled: true),
+        onText: { _ in })
+    }
+    let beforeB = b.all.count
+    try await Self.step("feed B again", driver) { await sessionB.feed(Self.speech) }
+    await Self.within("B's finalized words after A ended", driver) {
+      await b.until { $0.count > beforeB && !Self.finalized(Array($0[beforeB...])).isEmpty }
+    }
+    #expect(!b.all.contains { if case .ended = $0 { true } else { false } }, "B still running")
+    #expect(a.all.filter { if case .ended = $0 { true } else { false } }.count == 1)
+    #expect(driver.loads == 1, "one model for both tracks and dictation")
+    try await Self.step("the ends", driver) {
+      await sessionB.end()
+      await dictation.end()
+    }
+    #expect(b.all.last == .ended(.requested))
+  }
+
+  @Test("a transcript session's refused decodes never reach native code and recover in place")
+  func transcriptAdmissionRecovers() async throws {
+    let driver = FakeDriver()
+    driver.openAll()
+    let admission = Admission(refusing: true)
+    let recognizer = Self.transcriptRecognizer(driver, admit: admission.admit)
+    let received = Received()
+    let session = try await Self.openTranscript(recognizer, received, driver)
+    try await Self.step("the feed", driver) { await session.feed(Self.speech) }
+    await Self.within("three refusals", driver) { await admission.reach(3) }
+    #expect(driver.entered == 0 && received.all.isEmpty, "refused decodes publish nothing")
+    admission.allow()
+    await Self.within("the first words", driver) { await received.until(1) }
+    #expect(received.all.first == .update(finalized: "", inProgress: "Hello there."))
+    try await Self.step("the end", driver) { await session.end() }
+    #expect(received.all.last == .ended(.requested))
+    #expect(driver.loads == 1)
+  }
+
+  @Test("a refused transcript open delivers nothing to its owner")
+  func failedTranscriptOpenDeliversNothing() async throws {
+    let driver = FakeDriver()
+    driver.openAll()
+    driver.failLoads = true
+    let recognizer = Self.transcriptRecognizer(driver)
+    let received = Received()
+    await #expect(throws: TranscribeCppPreviewRuntime.LoadFailure.self) {
+      _ = try await recognizer.openTranscriptSession(
+        vocabulary: .init(lookups: nil, contextualPhrases: [], dictionaryEnabled: true),
+        onEvent: received.receive)
+    }
+    // The open discarded its queue (its consumer exited) before throwing: this is final.
+    #expect(received.all.isEmpty, "no terminal for a session that was never returned")
+  }
+
   @Test("the retained preview audio ceiling is two minutes at 16 kHz (#2117)")
   func retainedAudioCeilingIsTwoMinutes() {
     #expect(TranscribeCppPreviewSession.maxRetainedSamples == 1_920_000)

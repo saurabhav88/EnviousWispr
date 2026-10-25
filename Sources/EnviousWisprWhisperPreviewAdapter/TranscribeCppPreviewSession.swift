@@ -17,6 +17,12 @@ import os
 /// **A preview stop discards.** `end()` only cancels the rolling session, which aborts and
 /// joins its in-flight decode; it never runs the heart's authoritative flush or the batch
 /// fallback, because nothing the preview decodes ever reaches the document.
+///
+/// **Two outputs** (#3973). Dictation's display session (`init(lookups:onText:)`) publishes the
+/// latest bounded text. A transcript session (`init(lookups:onEvent:)`, EnviousMeet's live
+/// words) delivers every finalized delta in order through a `LiveWordsQueue`, and ends with
+/// exactly one `.ended`: `.requested` from `end()`, `.failed("ceiling")` when the retained audio
+/// reaches the ceiling, `.failed("backlog")` from the queue's budget; the first one wins.
 package final class TranscribeCppPreviewSession: LivePreviewEngineSession, @unchecked Sendable {
 
   /// Ceiling on RETAINED preview audio, in samples: 2 minutes at 16 kHz mono (~7.7 MB).
@@ -76,8 +82,11 @@ package final class TranscribeCppPreviewSession: LivePreviewEngineSession, @unch
   }
   private let state = OSAllocatedUnfairLock(initialState: State())
 
-  private let continuation: AsyncStream<String>.Continuation
-  private let publisher: Task<Void, Never>
+  private enum Output {
+    case display(AsyncStream<String>.Continuation, publisher: Task<Void, Never>)
+    case transcript(LiveWordsQueue)
+  }
+  private let output: Output
   /// Test seam: fires when teardown begins, before it joins a pending start (nil in the app).
   private let onTeardownStarted: (@Sendable () -> Void)?
 
@@ -91,13 +100,12 @@ package final class TranscribeCppPreviewSession: LivePreviewEngineSession, @unch
     // display them after they had stopped being true.
     let (stream, continuation) = AsyncStream<String>.makeStream(
       of: String.self, bufferingPolicy: .bufferingNewest(1))
-    self.continuation = continuation
 
     // Custom Words and delivery run HERE, on a task of our own — never inside
     // the callback, which is invoked on the decode actor where any await delays
     // the next decode. `WordCorrector.correct` is a documented pure function,
     // safe off any actor.
-    self.publisher = Task {
+    let publisher = Task {
       let corrector = WordCorrector()
       for await text in stream {
         if Task.isCancelled { return }
@@ -128,6 +136,17 @@ package final class TranscribeCppPreviewSession: LivePreviewEngineSession, @unch
         onText(LivePreviewTextBound.apply(corrector.correct(bounded, using: lookups).corrected))
       }
     }
+    self.output = .display(continuation, publisher: publisher)
+  }
+
+  /// A transcript session (#3973): every event reaches `onEvent` in order, from the queue's
+  /// own consumer task, never from the decode actor.
+  init(
+    lookups: WordCorrector.Lookups?, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void,
+    onTeardownStarted: (@Sendable () -> Void)? = nil
+  ) {
+    self.onTeardownStarted = onTeardownStarted
+    self.output = .transcript(LiveWordsQueue(lookups: lookups, onEvent: onEvent))
   }
 
   /// The callback the runtime hands to the rolling session. **Enqueue only.**
@@ -147,8 +166,22 @@ package final class TranscribeCppPreviewSession: LivePreviewEngineSession, @unch
     // an empty followed quickly by real text is usually overwritten before the
     // consumer wakes, so the defect only appears when contention lets the
     // consumer run in between. The isolated test passed; the loaded one did not.
-    guard !text.isEmpty else { return }
+    guard !text.isEmpty, case .display(let continuation, _) = output else { return }
     continuation.yield(text)
+  }
+
+  /// The runtime's transcript callback for a transcript session. **Enqueue only**, like
+  /// `enqueue`: the queue takes a lock and never waits on its consumer.
+  nonisolated func publish(_ event: TranscriptEvent) {
+    guard case .transcript(let queue) = output else { return }
+    queue.publish(event)
+  }
+
+  /// A transcript session that was never handed to its owner (the open failed): delivers
+  /// nothing, not even a terminal, and releases everything.
+  func discard() async {
+    if case .transcript(let queue) = output { await queue.silence() }
+    await end()
   }
 
   /// Start the decode loop against this handle's own growing buffer. Separate
@@ -201,6 +234,10 @@ package final class TranscribeCppPreviewSession: LivePreviewEngineSession, @unch
       guard !s.ended, !s.capped else { return false }
       guard s.samples.count + newSamples.count <= Self.maxRetainedSamples else {
         s.capped = true
+        // In the same transition: a transcript owner is told its live words stop here, after
+        // the accepted finals, and no publication can slip in before the ceiling terminal.
+        // The queue's lock nests inside this one and never calls the owner.
+        if case .transcript(let queue) = output { queue.fail("ceiling") }
         return true
       }
       s.samples.append(contentsOf: newSamples)
@@ -239,7 +276,9 @@ package final class TranscribeCppPreviewSession: LivePreviewEngineSession, @unch
   /// Finish exactly once and release everything.
   ///
   /// Ends the stream FIRST so the publisher drains and cannot deliver text after
-  /// the caller has moved on, then cancels the decode loop. Every session must
+  /// the caller has moved on, then cancels the decode loop. A transcript session closes its
+  /// queue's input first instead, and after the decode loop has stopped delivers the accepted
+  /// events and its one terminal before this returns. Every session must
   /// reach this: #1988 found four abandonment sites, three of them only by review.
   package func end() async {
     // **Idempotent AND awaitable.** A second caller must WAIT for the same
@@ -251,6 +290,10 @@ package final class TranscribeCppPreviewSession: LivePreviewEngineSession, @unch
     let teardown: Task<Void, Never> = state.withLock { s in
       if let existing = s.teardown { return existing }
       s.ended = true
+      // A transcript session refuses publications from this transition on, so a decode landing
+      // before the teardown task runs can neither add words nor turn this stop into a backlog
+      // failure. Accepted finals stay queued and drain below. (Nested queue lock; no callback.)
+      if case .transcript(let queue) = output { queue.closeInput() }
       s.samples = []
       let live = s.session
       s.session = nil
@@ -259,13 +302,20 @@ package final class TranscribeCppPreviewSession: LivePreviewEngineSession, @unch
       // than an assumption, and costs one nil check.
       let capStop = s.decodeStop
       let starting = s.attaching
-      let task = Task { [continuation, publisher, onTeardownStarted] in
-        continuation.finish()
-        publisher.cancel()
+      let task = Task { [output, onTeardownStarted] in
+        switch output {
+        case .display(let continuation, let publisher):
+          continuation.finish()
+          publisher.cancel()
+        case .transcript:
+          break  // input already closed above, with `ended`
+        }
         onTeardownStarted?()
         await starting?.value  // the cancel must follow the start it undoes
         await live?.cancel()
         await capStop?.value
+        // Decoding has physically stopped: deliver what was accepted, then the one terminal.
+        if case .transcript(let queue) = output { await queue.finish() }
       }
       s.teardown = task
       return task
