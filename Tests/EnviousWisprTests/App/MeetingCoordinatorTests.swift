@@ -1128,6 +1128,29 @@ struct MeetingCoordinatorTests {
     #expect(harness.jobs.isEmpty)
   }
 
+  @Test("a meeting delete reports whether it finished, so History can say when it did not (#4079)")
+  func deleteReportsItsOutcome() async throws {
+    struct RowRemovalFailed: Error {}
+    let harness = try Harness()
+    var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    try harness.store.create(record)
+    record.state = .ready
+    try harness.store.save(record)
+    let coordinator = harness.coordinator
+    coordinator.launch()
+    await Self.eventually("listed") { coordinator.record(id: record.id) != nil }
+
+    // The History row cannot be removed: the deletion does not finish now.
+    harness.removeError = RowRemovalFailed()
+    #expect(await coordinator.delete(meetingID: record.id) == false)
+    #expect(try harness.store.load(id: record.id).deletionRequested, "the mark stays for launch")
+
+    // It can now: the same delete finishes and reports so.
+    harness.removeError = nil
+    #expect(await coordinator.delete(meetingID: record.id))
+    #expect(harness.removedRows == [record.transcriptID])
+  }
+
   @Test("damaged audio fails the meeting visibly instead of reading as silence")
   func unreadableAudioFails() async throws {
     let harness = try Harness()

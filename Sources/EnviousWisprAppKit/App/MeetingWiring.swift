@@ -150,8 +150,14 @@ enum MeetingWiring {
         log: inputs.log,
         workChanged: inputs.workChanged,
         isDictationIdle: inputs.isDictationIdle))
-    inputs.transcriptCoordinator.deleteMeeting = { [weak coordinator] meetingID in
-      Task { await coordinator?.delete(meetingID: meetingID) }
+    inputs.transcriptCoordinator.deleteMeeting = {
+      [weak coordinator, weak transcripts = inputs.transcriptCoordinator] meetingID in
+      Task {
+        // #4079: a meeting delete that could not finish now says so in History.
+        if await coordinator?.delete(meetingID: meetingID) == false {
+          transcripts?.reportActionFailure(.delete)
+        }
+      }
     }
     inputs.transcriptCoordinator.meetingRecords = { [weak coordinator] in
       coordinator?.meetings ?? []

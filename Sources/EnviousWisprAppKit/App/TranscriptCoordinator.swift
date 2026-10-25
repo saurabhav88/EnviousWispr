@@ -1465,6 +1465,9 @@ final class TranscriptCoordinator {
   /// The History window's alert was dismissed.
   func dismissActionFailure() { actionFailure = nil }
 
+  /// A History action owned elsewhere failed: a meeting's delete, run by EnviousMeet (#4079).
+  func reportActionFailure(_ failure: ActionFailure) { actionFailure = failure }
+
   func delete(_ transcript: Transcript) {
     if let meetingID = transcript.meetingID, let deleteMeeting {
       deleteMeeting(meetingID)

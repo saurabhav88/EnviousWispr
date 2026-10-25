@@ -412,6 +412,33 @@ struct MeetingWiringTests {
     #expect(FileManager.default.fileExists(atPath: rig.store.folder(for: record.id).path) == false)
   }
 
+  @Test("a meeting delete from History that cannot finish shows History's failure message (#4079)")
+  func historyMeetingDeleteFailureIsShown() async throws {
+    let rig = try Rig()
+    let coordinator = MeetingWiring.make(rig.inputs)
+    var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    try rig.store.create(record)
+    record.state = .ready
+    try rig.store.save(record)
+    coordinator.launch()
+    let row = Transcript(
+      id: record.transcriptID, text: "standup", backendType: .parakeet, meetingID: record.id)
+    try await rig.transcripts.saveAndShowDurably(row)
+
+    // A read-only History folder: the meeting's row file cannot be removed.
+    let history = rig.root.appendingPathComponent("history")
+    try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: history.path)
+    defer {
+      try? FileManager.default.setAttributes(
+        [.posixPermissions: 0o700], ofItemAtPath: history.path)
+    }
+    rig.transcripts.delete(row)
+    await MeetingCoordinatorTests.eventually("failure shown") {
+      rig.transcripts.actionFailure == .delete
+    }
+    #expect(rig.transcripts.hasRow(id: row.id))
+  }
+
   @Test("History's Delete All marks the meeting, then EnviousMeet removes its folder")
   func historyDeleteAllRoutesThroughMeetings() async throws {
     let rig = try Rig()
