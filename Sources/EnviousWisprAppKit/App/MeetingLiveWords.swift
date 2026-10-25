@@ -62,6 +62,10 @@ final class MeetingLiveWords {
   enum StopReason: Equatable, Sendable {
     /// The engine ended the track on its own (`.ended(.failed)`).
     case engineFailed
+    /// An Apple restart's old session did not finish within its deadline (decision 17).
+    case restartTimedOut
+    /// An Apple restart's replacement session could not open.
+    case restartFailed
   }
 
   enum Status: Equatable, Sendable {
@@ -114,6 +118,12 @@ final class MeetingLiveWords {
     var makePump: () -> MeetingLiveAudioPump = { MeetingLiveAudioPump() }
     /// How often the dropped-audio flag is refreshed while recording, events or not.
     var droppedCheckInterval: Duration = .milliseconds(500)
+    /// Decision 17: an Apple session restarts after this much audio fed to it (600 s at 16 kHz),
+    /// at the first 100 ms window quieter than `restartQuietRMS`.
+    var appleRestartAfterSamples = 600 * 16_000
+    var restartQuietRMS: Float = 0.001
+    /// How long a restart waits for the old session's end before stopping the track instead.
+    var restartEndDeadline: Double = 5
   }
 
   /// A Universal decode refused for now, retried by the engine.
@@ -137,7 +147,11 @@ final class MeetingLiveWords {
     let pump: MeetingLiveAudioPump
     /// The current session's epoch in the bridge (0 before the first open).
     var epoch = 0
-    var session: (any LivePreviewEngineSession)?
+    var session: (any LivePreviewEngineSession)? {
+      didSet { target.set(session, epoch: epoch) }
+    }
+    /// What the pump's consumer feeds: the current session and its epoch.
+    let target = SessionTarget()
     /// Off or stopped: nothing more opens or runs on this track in this recording.
     var finished = false
     init(pump: MeetingLiveAudioPump) { self.pump = pump }
@@ -151,6 +165,7 @@ final class MeetingLiveWords {
     var engine: EngineKind?
     var apple: [MeetingTrackKind: any LivePreviewEngine] = [:]
     var universal: (any MeetingSharedEngine)?
+    var vocabulary: LivePreviewVocabulary?
     var assembler = LiveWordsAssembler()
     var start: Task<Leftovers, Never>?
     /// The start has returned: no open is pending, every handle it got is installed or ending.
@@ -238,6 +253,7 @@ final class MeetingLiveWords {
         try? await Task.sleep(for: interval)
       }
     }
+    current.vocabulary = vocabulary
     current.start = Task { [weak self] in
       guard let self else { return Leftovers() }
       let leftovers = await self.start(
@@ -416,13 +432,103 @@ final class MeetingLiveWords {
       return
     }
     slot.session = session
-    guard slot.pump.startConsumer(feed: { chunk in await session.feed(chunk) }) else {
+    let target = slot.target
+    let feed: @Sendable ([Float]) async -> Void
+    if current.engine == .apple {
+      feed = restartingFeed(track, generation: gen, target: target)
+    } else {
+      feed = { chunk in
+        if let session = target.current?.session { await session.feed(chunk) }
+      }
+    }
+    guard slot.pump.startConsumer(feed: feed) else {
       slot.session = nil
       endNow(session, in: current)
       finishTrack(track, .off(.couldNotStart), in: current)
       return
     }
     setStatus(.running, track)
+  }
+
+  // MARK: - Apple restart (decision 17)
+
+  /// The pump consumer's feed for an Apple track. It counts the audio fed to the current
+  /// session; once that passes `appleRestartAfterSamples`, the first 100 ms window under
+  /// `restartQuietRMS` ends that session's feeding there, the restart runs (this consumer waits,
+  /// so the pump keeps buffering), and the rest of the chunk and everything after it goes to the
+  /// replacement. Every sample is fed once, in order.
+  private func restartingFeed(
+    _ track: MeetingTrackKind, generation gen: Int, target: SessionTarget
+  ) -> @Sendable ([Float]) async -> Void {
+    let feeder = RestartFeeder(
+      meter: RestartMeter(threshold: deps.appleRestartAfterSamples, quietRMS: deps.restartQuietRMS))
+    return { [weak self] chunk in
+      let owner = self
+      await feeder.run(
+        chunk,
+        send: { part in
+          guard let current = target.current else { return false }  // the track stopped
+          await current.session.feed(part)
+          return true
+        },
+        restart: {
+          guard let epoch = target.current?.epoch else { return }
+          await owner?.restartTrack(track, generation: gen, epoch: epoch)
+        })
+    }
+  }
+
+  /// Ends the track's session, waits for it at most `restartEndDeadline`, applies what it
+  /// delivered (its `.ended` freezes the words still in progress as uncertain), then opens a
+  /// new session on the same recognizer under a new epoch. A timeout closes the old epoch,
+  /// freezes its words in progress and stops the track; the old end stays owned by the
+  /// recording's teardown until it physically returns, and no second analyzer is opened.
+  private func restartTrack(_ track: MeetingTrackKind, generation gen: Int, epoch: Int) async {
+    guard isCurrent(gen), let current = recording, let slot = current.tracks[track],
+      slot.epoch == epoch, !slot.finished, let old = slot.session,
+      let engine = current.apple[track], let vocabulary = current.vocabulary,
+      let bridge = current.bridge
+    else { return }
+    slot.session = nil  // nothing more is fed to the old session
+    let ending = Task { await old.end() }
+    current.endings.append(ending)
+    let ended = await withDeadline(seconds: deps.restartEndDeadline) { await ending.value }
+    guard isCurrent(gen), recording?.tracks[track] === slot, slot.epoch == epoch, !slot.finished
+    else { return }
+    guard ended != nil else {
+      bridge.close(track)  // late events from the old session are refused
+      drainEvents(generation: gen)
+      current.assembler.apply(.discontinuity, track: track, atMs: bridge.now())
+      transcript?.lines = current.assembler.lines
+      finishTrack(track, .stopped(.restartTimedOut), in: current)
+      return
+    }
+    // The old session's finals (and its `.ended`) are all accepted by now: apply them before
+    // the epoch moves on.
+    drainEvents(generation: gen)
+    guard !slot.finished else { return }
+    slot.epoch += 1
+    let next = slot.epoch
+    bridge.openEpoch(next, for: track)
+    let session: any LivePreviewEngineSession
+    do {
+      session = try await engine.openTranscriptSession(
+        vocabulary: vocabulary,
+        onEvent: { event in bridge.post(event, track: track, epoch: next) })
+    } catch {
+      // The track had been running: its live words stop here (no retry in this meeting).
+      guard isCurrent(gen) else { return }
+      finishTrack(track, .stopped(.restartFailed), in: current)
+      return
+    }
+    guard isCurrent(gen), recording?.tracks[track] === slot, slot.epoch == next, !slot.finished
+    else {
+      // Stopped meanwhile: this consumer is joined by the recording's cleanup, so ending the
+      // late handle here is owned until it returns.
+      await session.end()
+      return
+    }
+    slot.session = session
   }
 
   // MARK: - Track endings
@@ -666,6 +772,9 @@ final class LiveWordsBridge: @unchecked Sendable {
     self.wake = wake
   }
 
+  /// The meeting clock, as events are stamped with it.
+  func now() -> Int { clock() }
+
   /// Accepts `epoch` for `track` from now on (closing the track's previous epoch).
   func openEpoch(_ epoch: Int, for track: MeetingTrackKind) {
     state.withLock { $0.open[track] = epoch }
@@ -748,5 +857,97 @@ final class LiveWordsBridge: @unchecked Sendable {
       Entry(track: track, epoch: epoch, event: .ended(.failed("backlog")), atMs: atMs))
     s.open[track] = nil
     return true
+  }
+}
+
+/// What a track's pump consumer feeds: the current session and its bridge epoch.
+final class SessionTarget: @unchecked Sendable {
+  struct Current {
+    let session: any LivePreviewEngineSession
+    let epoch: Int
+  }
+  private let state = OSAllocatedUnfairLock<Current?>(initialState: nil)
+  var current: Current? { state.withLock { $0 } }
+  func set(_ session: (any LivePreviewEngineSession)?, epoch: Int) {
+    let value = session.map { Current(session: $0, epoch: epoch) }
+    state.withLock { $0 = value }
+  }
+}
+
+/// Decision 17's trigger for one track, used only by that track's pump consumer. It counts the
+/// samples fed to the current session and, from the threshold on, measures consecutive 100 ms
+/// windows across feeds (a window may span several chunks), so the restart point does not depend
+/// on how the pump happens to divide the audio.
+final class RestartMeter: @unchecked Sendable {
+  static let window = 1_600  // 100 ms at 16 kHz
+  private let threshold: Int
+  private let quietRMS: Float
+  private var fedSamples = 0
+  private var windowFill = 0
+  private var windowSquares: Float = 0
+
+  init(threshold: Int, quietRMS: Float) {
+    self.threshold = threshold
+    self.quietRMS = quietRMS
+  }
+
+  /// A new session: count from zero again.
+  func reset() {
+    fedSamples = 0
+    windowFill = 0
+    windowSquares = 0
+  }
+
+  /// Consumes `chunk[start...]` and returns the index just past the first quiet window that
+  /// completes in it (the restart point), or nil when none does. Everything up to the returned
+  /// index (or the whole rest) counts as fed.
+  func advance(through chunk: [Float], from start: Int) -> Int? {
+    var i = start
+    while i < chunk.count {
+      if fedSamples < threshold {
+        let n = min(threshold - fedSamples, chunk.count - i)
+        fedSamples += n
+        i += n
+        continue
+      }
+      windowSquares += chunk[i] * chunk[i]
+      windowFill += 1
+      fedSamples += 1
+      i += 1
+      if windowFill == Self.window {
+        let quiet = (windowSquares / Float(Self.window)).squareRoot() < quietRMS
+        windowFill = 0
+        windowSquares = 0
+        if quiet { return i }
+      }
+    }
+    return nil
+  }
+}
+
+/// Feeds one Apple track's chunks: up to the meter's restart point to the current session, then
+/// the restart, then the rest to whichever session is current afterwards. Every sample is sent
+/// once, in order; `send` returns false once the track has no session (it stopped).
+final class RestartFeeder: @unchecked Sendable {
+  private let meter: RestartMeter
+
+  init(meter: RestartMeter) { self.meter = meter }
+
+  func run(
+    _ chunk: [Float], send: @Sendable ([Float]) async -> Bool,
+    restart: @Sendable () async -> Void
+  ) async {
+    var start = 0
+    while start < chunk.count {
+      let quietEnd = meter.advance(through: chunk, from: start)
+      let end = quietEnd ?? chunk.count
+      if end > start {
+        guard await send(Array(chunk[start..<end])) else { return }
+      }
+      start = end
+      guard quietEnd != nil else { return }
+      meter.reset()
+      await restart()
+    }
   }
 }

@@ -92,9 +92,11 @@ struct MeetingLiveWordsTests {
       changed { _fed += samples }
       await feedGate.pass()
     }
+    /// Like Apple's collector: an end delivers `.ended(.requested)` after the last event.
     func end() async {
       changed { _ends += 1 }
       await endGate.pass()
+      onEvent(.ended(.requested))
       changed { _endsCompleted += 1 }
     }
     func emit(_ event: LiveWordsEvent) { onEvent(event) }
@@ -130,6 +132,8 @@ struct MeetingLiveWordsTests {
     var open = Gate(open: true)
     var end = Gate(open: true)
     var feed = Gate(open: true)
+    /// Opens after the first one (an Apple restart's replacement).
+    var reopen = Gate(open: true)
   }
 
   final class FakeEngine: LivePreviewEngine, @unchecked Sendable {
@@ -137,8 +141,11 @@ struct MeetingLiveWordsTests {
     let openGate: Gate
     let endGate: Gate
     let feedGate: Gate
+    let reopenGate: Gate
     var failPrepare = false
     var failOpen = false
+    /// Opens after the first one fail (an Apple restart's replacement).
+    var failReopen = false
     private let lock = NSLock()
     private var _sessions: [FakeSession] = []
     private var _vocabularies: [LivePreviewVocabulary] = []
@@ -150,6 +157,7 @@ struct MeetingLiveWordsTests {
       self.openGate = gates.open
       self.endGate = gates.end
       self.feedGate = gates.feed
+      self.reopenGate = gates.reopen
     }
     var sessions: [FakeSession] { lock.withLock { _sessions } }
     /// Each open's event callback, recorded as the open begins (before it can return).
@@ -168,12 +176,13 @@ struct MeetingLiveWordsTests {
     func openTranscriptSession(
       vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
     ) async throws -> any LivePreviewEngineSession {
-      lock.withLock {
+      let first = lock.withLock { () -> Bool in
         _vocabularies.append(vocabulary)
         _openEvents.append(onEvent)
+        return _openEvents.count == 1
       }
-      await openGate.pass()
-      if failOpen { throw Refused() }
+      await (first ? openGate : reopenGate).pass()
+      if failOpen || (!first && failReopen) { throw Refused() }
       let session = FakeSession(onEvent: onEvent, endGate: endGate, feedGate: feedGate)
       lock.withLock { _sessions.append(session) }
       await opened.pass()
@@ -223,6 +232,8 @@ struct MeetingLiveWordsTests {
     var universalPrepareFails = false
     /// Apple engines, by creation order, whose transcript open fails.
     var appleOpenFails: Set<Int> = []
+    /// Apple engines, by creation order, whose restart replacement fails to open.
+    var appleReopenFails: Set<Int> = []
     var universalOpenFails = false
     /// The gates for the n-th engine this world makes (Apple recognizers and shared engines
     /// counted together, in creation order).
@@ -236,6 +247,8 @@ struct MeetingLiveWordsTests {
       return engineGates(n)
     }
     let releaseGate = Gate(open: true)
+    var restartAfterSamples = 600 * 16_000
+    var restartEndDeadline: Double = 5
     private var _appleEngines: [FakeEngine] = []
     private var _shared: [FakeShared] = []
     private var _languages: [LanguageMode] = []
@@ -249,6 +262,7 @@ struct MeetingLiveWordsTests {
         let engine = FakeEngine(self.nextGates())
         self.lock.withLock {
           engine.failOpen = self.appleOpenFails.contains(self._appleEngines.count)
+          engine.failReopen = self.appleReopenFails.contains(self._appleEngines.count)
           self._appleEngines.append(engine)
         }
         return engine
@@ -281,7 +295,9 @@ struct MeetingLiveWordsTests {
         },
         isHeartStreaming: { false },
         makePump: { MeetingLiveAudioPump(cadence: .milliseconds(1)) },
-        droppedCheckInterval: .milliseconds(1)))
+        droppedCheckInterval: .milliseconds(1),
+        appleRestartAfterSamples: world.restartAfterSamples,
+        restartEndDeadline: world.restartEndDeadline))
   }
 
   private static let vocabulary = LivePreviewVocabulary(
@@ -897,6 +913,289 @@ struct MeetingLiveWordsTests {
       #expect(await owner.waitForCleanups(seconds: 10))
       #expect(shared.releases == 1 && handle.ends == 1, "once each (stop midway: \(stopMidway))")
     }
+  }
+
+  // MARK: - Apple restart (decision 17)
+
+  private static func voiced(_ count: Int, from start: Int = 0) -> [Float] {
+    (0..<count).map { 0.1 + Float(start + $0) * 1e-6 }
+  }
+  private static let quiet = [Float](repeating: 0, count: 1_600)
+
+  private static func speak(
+    _ observer: MeetingRecorder.LiveSamplesObserver, _ track: MeetingTrackKind, _ samples: [Float]
+  ) {
+    samples.withUnsafeBufferPointer { observer(track, $0) }
+  }
+
+  @Test("no restart before the audio threshold, and voiced audio postpones it to the first quiet window")
+  func restartWaitsForThresholdAndQuiet() async throws {
+    let world = World()
+    world.restartAfterSamples = 3_200
+    world.apple = .ready(world.appleCandidate())
+    let owner = Self.owner(world)
+    let observer = Self.record(owner)
+    await Self.until("running", owner) { Self.bothRunning($0) }
+    let engine = world.appleEngines[0]
+    let old = try #require(engine.sessions.first)
+    Self.speak(observer, .microphone, Self.quiet)  // quiet, but before the threshold
+    await PreviewWait.within("the quiet audio fed") { await old.until { old.fed.count == 1_600 } }
+    Self.speak(observer, .microphone, Self.voiced(3_200))  // past the threshold, all voiced
+    await PreviewWait.within("the voiced audio fed") { await old.until { old.fed.count == 4_800 } }
+    #expect(engine.openEvents.count == 1, "no restart without a quiet window")
+    Self.speak(observer, .microphone, Self.quiet)
+    await PreviewWait.within("the restart's open") { await engine.opened.reached(2) }
+    #expect(old.fed.count == 6_400, "the quiet window went to the old session")
+    #expect(old.ends == 1)
+    owner.stop()
+  }
+
+  @Test("a restart keeps the old finals, freezes words in progress, and feeds every sample once")
+  func restartPreservesWordsAndAudio() async throws {
+    let world = World()
+    world.restartAfterSamples = 1_600
+    world.apple = .ready(world.appleCandidate())
+    let owner = Self.owner(world)
+    let observer = Self.record(owner)
+    await Self.until("running", owner) { Self.bothRunning($0) }
+    let engine = world.appleEngines[0]
+    let call = try #require(world.appleEngines[1].sessions.first)
+    let old = try #require(engine.sessions.first)
+    old.emit(.update(finalized: "Before.", inProgress: " maybe"))
+    let first = Self.voiced(1_600)
+    let after = Self.voiced(800, from: 5_000)
+    Self.speak(observer, .microphone, first + Self.quiet + after)
+    await PreviewWait.within("the replacement") { await engine.opened.reached(2) }
+    let new = engine.sessions[1]
+    await PreviewWait.within("the rest of the audio") {
+      await new.until { new.fed.count == after.count }
+    }
+    #expect(old.fed == first + Self.quiet, "the old session got everything up to the quiet window")
+    #expect(new.fed == after, "the replacement got the rest, once, in order")
+    new.emit(.update(finalized: " After.", inProgress: ""))
+    old.emit(.update(finalized: " Late.", inProgress: ""))  // the old epoch is closed
+    call.emit(.update(finalized: "Call goes on.", inProgress: ""))
+    await Self.until("the new and the call words", owner) { o in
+      let texts = (o.transcript?.lines ?? []).map(\.text)
+      return texts.contains("After.") && texts.contains("Call goes on.")
+    }
+    let lines = owner.transcript?.lines ?? []
+    #expect(lines.contains { $0.text == "Before." && $0.kind == .confirmed })
+    #expect(lines.contains { $0.text.contains("maybe") && $0.kind == .uncertain }, "frozen")
+    #expect(!lines.contains { $0.text.contains("Late.") }, "late old-epoch words refused")
+    #expect(world.appleEngines[1].openEvents.count == 1, "the call track did not restart")
+    #expect(Self.bothRunning(owner))
+    owner.stop()
+  }
+
+  @Test("an old end past the deadline stops that track: no second analyzer, words kept, end owned")
+  func restartDeadlineStopsTrack() async throws {
+    let world = World()
+    world.restartAfterSamples = 1_600
+    world.restartEndDeadline = 0.05  // the expiry is the outcome under test
+    let end = Gate()
+    defer { end.open() }
+    world.engineGates = { $0 == 0 ? Gates(end: end) : Gates() }
+    world.apple = .ready(world.appleCandidate())
+    let owner = Self.owner(world)
+    let observer = Self.record(owner)
+    await Self.until("running", owner) { Self.bothRunning($0) }
+    let engine = world.appleEngines[0]
+    try #require(engine.sessions.first).emit(.update(finalized: "Kept.", inProgress: ""))
+    Self.speak(observer, .microphone, Self.voiced(1_600) + Self.quiet)
+    await Self.until("mic stopped by the deadline", owner, release: end.open) {
+      Self.status($0, .microphone) == .stopped(.restartTimedOut)
+    }
+    #expect(engine.openEvents.count == 1, "no second analyzer")
+    #expect(Self.status(owner, .callSound) == .running)
+    #expect((owner.transcript?.lines ?? []).contains { $0.text == "Kept." })
+    owner.stop()
+    #expect(owner.closingEngines == [.apple], "the old end is still owned")
+    end.open()
+    #expect(await owner.waitForCleanups(seconds: 10))
+    #expect(engine.sessions.first?.endsCompleted == 1)
+  }
+
+  enum Exit: CaseIterable { case stop, delete, quit }
+
+  private static func exit(_ owner: MeetingLiveWords, _ exit: Exit) throws {
+    switch exit {
+    case .stop: owner.stop()
+    case .delete: owner.delete(meetingID: try Self.id(of: owner))
+    case .quit: owner.quit()
+    }
+  }
+
+  @Test(
+    "Stop, Delete or Quit during a restart's end or its replacement open installs nothing and ends late handles once",
+    arguments: Exit.allCases)
+  func exitDuringRestart(_ exit: Exit) async throws {
+    // The old session is still ending.
+    do {
+      let world = World()
+      world.restartAfterSamples = 1_600
+      let end = Gate()
+      world.engineGates = { $0 == 0 ? Gates(end: end) : Gates() }
+      world.apple = .ready(world.appleCandidate())
+      let owner = Self.owner(world)
+      let observer = Self.record(owner)
+      await Self.until("running", owner, release: end.open) { Self.bothRunning($0) }
+      let engine = world.appleEngines[0]
+      let old = try #require(engine.sessions.first)
+      Self.speak(observer, .microphone, Self.voiced(1_600) + Self.quiet)
+      await PreviewWait.within("the old end", onExpiry: end.open) { await old.until { old.ends == 1 } }
+      try Self.exit(owner, exit)
+      end.open()
+      #expect(await owner.waitForCleanups(seconds: 10))
+      #expect(engine.openEvents.count == 1, "no replacement after the exit")
+      #expect(old.ends == 1)
+    }
+    // The replacement open is held.
+    do {
+      let world = World()
+      world.restartAfterSamples = 1_600
+      let reopen = Gate()
+      world.engineGates = { $0 == 0 ? Gates(reopen: reopen) : Gates() }
+      world.apple = .ready(world.appleCandidate())
+      let owner = Self.owner(world)
+      let observer = Self.record(owner)
+      await Self.until("running", owner, release: reopen.open) { Self.bothRunning($0) }
+      let engine = world.appleEngines[0]
+      Self.speak(observer, .microphone, Self.voiced(1_600) + Self.quiet)
+      await PreviewWait.within("the replacement open", onExpiry: reopen.open) {
+        await reopen.reached(1)
+      }
+      try Self.exit(owner, exit)
+      reopen.open()
+      await PreviewWait.within("the late handle") { await engine.opened.reached(2) }
+      let late = engine.sessions[1]
+      #expect(await owner.waitForCleanups(seconds: 10))
+      #expect(late.ends == 1, "ended once")
+      #expect(late.fed.isEmpty, "never fed")
+      #expect(engine.sessions[0].ends == 1)
+    }
+  }
+
+  @Test("a replacement that cannot open stops the track; its words stay and the other track goes on")
+  func replacementOpenFails() async throws {
+    let world = World()
+    world.restartAfterSamples = 1_600
+    world.appleReopenFails = [0]
+    world.apple = .ready(world.appleCandidate())
+    let owner = Self.owner(world)
+    let observer = Self.record(owner)
+    await Self.until("running", owner) { Self.bothRunning($0) }
+    let engine = world.appleEngines[0]
+    let old = try #require(engine.sessions.first)
+    old.emit(.update(finalized: "Said before.", inProgress: ""))
+    Self.speak(observer, .microphone, Self.voiced(1_600) + Self.quiet)
+    await Self.until("mic stopped", owner) {
+      Self.status($0, .microphone) == .stopped(.restartFailed)
+    }
+    #expect(Self.status(owner, .callSound) == .running)
+    #expect((owner.transcript?.lines ?? []).contains { $0.text == "Said before." })
+    #expect(engine.openEvents.count == 2, "one replacement attempt, no retry")
+    // The retired pump takes no more audio for this track.
+    Self.speak(observer, .microphone, Self.voiced(1_600, from: 9_000))
+    owner.stop()
+    #expect(await owner.waitForCleanups(seconds: 10))
+    #expect(engine.sessions.count == 1 && old.ends == 1, "the old session ended once")
+    #expect(old.fed.count == 3_200, "nothing reached it after the restart point")
+  }
+
+  @Test("finals delivered while the old session is ending are kept before the epoch changes")
+  func finalsDuringHeldEnd() async throws {
+    let world = World()
+    world.restartAfterSamples = 1_600
+    let end = Gate()
+    world.engineGates = { $0 == 0 ? Gates(end: end) : Gates() }
+    world.apple = .ready(world.appleCandidate())
+    let owner = Self.owner(world)
+    let observer = Self.record(owner)
+    await Self.until("running", owner, release: end.open) { Self.bothRunning($0) }
+    let engine = world.appleEngines[0]
+    let old = try #require(engine.sessions.first)
+    Self.speak(observer, .microphone, Self.voiced(1_600) + Self.quiet)
+    await PreviewWait.within("the old end", onExpiry: end.open) { await old.until { old.ends == 1 } }
+    old.emit(.update(finalized: "Flushed at the end.", inProgress: ""))  // while ending
+    end.open()
+    await PreviewWait.within("the replacement") { await engine.opened.reached(2) }
+    await Self.until("the flushed final", owner) { o in
+      (o.transcript?.lines ?? []).contains { $0.text == "Flushed at the end." }
+    }
+    #expect(Self.status(owner, .microphone) == .running)
+    owner.stop()
+  }
+
+  /// The per-session sample sequences `RestartFeeder` sends for `chunks`, restarting into a new
+  /// session at each restart point.
+  private static func sessions(
+    _ chunks: [[Float]], threshold: Int
+  ) async -> [[Float]] {
+    let feeder = RestartFeeder(meter: RestartMeter(threshold: threshold, quietRMS: 0.001))
+    let sent = OSAllocatedUnfairLock<[[Float]]>(initialState: [[]])
+    for chunk in chunks {
+      await feeder.run(
+        chunk,
+        send: { part in
+          sent.withLock { $0[$0.count - 1] += part }
+          return true
+        },
+        restart: { sent.withLock { $0.append([]) } })
+    }
+    return sent.withLock { $0 }
+  }
+
+  @Test("continuous quiet audio in chunks smaller than 100 ms still restarts")
+  func quietAcrossSmallChunks() async {
+    let audio = Self.voiced(1_600) + [Float](repeating: 0, count: 4_000)
+    let chunks = stride(from: 0, to: audio.count, by: 400).map {
+      Array(audio[$0..<min($0 + 400, audio.count)])
+    }
+    let sent = await Self.sessions(chunks, threshold: 1_600)
+    #expect(sent.count >= 2, "a restart happened")
+    #expect(sent[0] == Array(audio[0..<3_200]), "restart at the end of the first quiet window")
+    #expect(sent.flatMap { $0 } == audio, "every sample once, in order")
+  }
+
+  @Test("how the audio is split never moves the restart point or the samples each session gets")
+  func splitDoesNotMatter() async {
+    // Each silent stretch is 200 ms, so a whole 100 ms window fits in it wherever the windows
+    // start.
+    let audio =
+      Self.voiced(2_500) + Self.voiced(700, from: 3_000) + [Float](repeating: 0, count: 3_200)
+      + Self.voiced(1_000, from: 9_000) + [Float](repeating: 0, count: 3_200)
+      + Self.voiced(300, from: 20_000)
+    let whole = await Self.sessions([audio], threshold: 2_000)
+    for cuts in [[1_000, 2_300, 4_000], [1_999, 2_001, 4_799, 4_801], [7, 3_201, 6_400]] {
+      var chunks: [[Float]] = []
+      var from = 0
+      for cut in cuts + [audio.count] {
+        chunks.append(Array(audio[from..<cut]))
+        from = cut
+      }
+      #expect(await Self.sessions(chunks, threshold: 2_000) == whole, "cuts \(cuts)")
+    }
+    #expect(whole.count >= 2, "at least one restart (threshold reached, then a quiet window)")
+    #expect(whole.flatMap { $0 } == audio)
+  }
+
+  @Test("Universal sessions never restart")
+  func universalNeverRestarts() async throws {
+    let world = World()
+    world.appleSupported = false
+    world.restartAfterSamples = 1_600
+    let owner = Self.owner(world)
+    let observer = Self.record(owner)
+    await Self.until("running", owner) { Self.bothRunning($0) }
+    let shared = try #require(world.shared.first)
+    let mic = try #require(shared.engine.sessions.first)
+    let audio = Self.voiced(1_600) + Self.quiet + Self.quiet + Self.voiced(1_600)
+    Self.speak(observer, .microphone, audio)
+    await PreviewWait.within("all fed") { await mic.until { mic.fed.count == audio.count } }
+    #expect(shared.engine.openEvents.count == 2, "one session per track, never a replacement")
+    #expect(mic.ends == 0)
+    owner.stop()
   }
 
   @Test("the bridge keeps arrival order, coalesces only a track's adjacent updates, and bounds each track")
