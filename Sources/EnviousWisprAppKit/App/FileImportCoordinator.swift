@@ -695,14 +695,14 @@ final class FileImportCoordinator {
   ///
   /// Separate from `saveToHistory` because they are different operations, not one operation
   /// with a flag: the first CREATES and must be allowed to, the second may not.
-  private let updateHistoryRow: @MainActor (Transcript) throws -> Bool
+  private let updateHistoryRow: @MainActor (Transcript) async throws -> Bool
 
   /// The speaker-fields write (#2810 addendum §3 E), separate from `updateHistoryRow` because
   /// it merges speaker fields against the row's CURRENT state at call time — never a value
   /// captured earlier — which is what makes it safe against a rename racing this write.
   /// Returns false when the row is no longer in History, same meaning as `updateHistoryRow`.
   private let mergeSpeakerFields:
-    @MainActor (UUID, TranscriptSpeakerAnalysis, [Turn]?) throws -> Bool
+    @MainActor (UUID, TranscriptSpeakerAnalysis, [Turn]?) async throws -> Bool
 
   /// The rename write (#2811, phase 4 of #2807) — a SEPARATE closure from `mergeSpeakerFields`
   /// rather than a widened one, so every existing turn-storage call site (which never renames)
@@ -899,9 +899,9 @@ final class FileImportCoordinator {
     // run as saved, and the general test factory did exactly that. A caller that means to
     // simulate History says so at the call site.
     saveToHistory: @escaping @MainActor (Transcript) async throws -> Void,
-    updateHistoryRow: @escaping @MainActor (Transcript) throws -> Bool,
+    updateHistoryRow: @escaping @MainActor (Transcript) async throws -> Bool,
     mergeSpeakerFields:
-      @escaping @MainActor (UUID, TranscriptSpeakerAnalysis, [Turn]?) throws -> Bool,
+      @escaping @MainActor (UUID, TranscriptSpeakerAnalysis, [Turn]?) async throws -> Bool,
     // Defaulted, unlike the four closures above (#2772's "no defaults" rule protects the
     // MAIN import write path — every new import always calls those four; rename and retry
     // are opt-in UI actions most tests never exercise, so a harmless default here does not
@@ -953,6 +953,7 @@ final class FileImportCoordinator {
     retainedCleanup = nil
     unsavedRestoredTurns = nil
     showsRestoredCleanup = false
+    restorationPending = false
     rawTranscript = ""
     decodedSamples = []
     // Same reason as `startOver`: a different file must not read as though the LAST
@@ -1394,6 +1395,7 @@ final class FileImportCoordinator {
     retainedCleanup = nil
     unsavedRestoredTurns = nil
     showsRestoredCleanup = false
+    restorationPending = false
     rawTranscript = ""
     decodedSamples = []
     runConfiguration = nil
@@ -1532,8 +1534,61 @@ final class FileImportCoordinator {
   /// badge asks whether History holds THAT cleanup. Cleared by the next run and the document.
   @ObservationIgnored private var showsRestoredCleanup = false
 
+  /// #4075 S1: the restored cleanup's History writes have not settled yet, so the saved badge
+  /// does not yet claim History holds it. Observed, so the badge redraws when they settle.
+  private var restorationPending = false
+
+  /// #4075 S1: the History writes a Stop (or a refused Clean it again) owes the document it
+  /// left on screen, run by a retained task so the screen changes at once while the writes
+  /// settle on their own. Each new settlement is chained after the previous one. Its body
+  /// calls the History closures directly and never waits on a settlement itself, so nothing
+  /// it waits on can wait back on it. Same-document work that would write the same row
+  /// (Clean it again, a rename, a speaker retry) awaits it first.
+  @ObservationIgnored private var settlement: Task<Void, Never>?
+
+  private func installSettlement(_ body: @escaping @MainActor () async -> Void) {
+    let previous = settlement
+    let task = Task { @MainActor in
+      await previous?.value
+      await body()
+    }
+    settlement = task
+    Task { @MainActor [weak self] in
+      await task.value
+      if self?.settlement == task { self?.settlement = nil }
+    }
+  }
+
+  /// Waits for any installed settlement. Callers revalidate their own identity afterwards.
+  private func awaitSettlement() async {
+    guard let pending = settlement else { return }
+    #if DEBUG
+      settlementWaitsForTesting += 1
+    #endif
+    await pending.value
+  }
+
+  /// Whether a Stop's or restoration's History writes are still settling. Read by tests
+  /// to wait on the coordinator's own completion rather than on a number of yields.
+  var hasPendingSettlement: Bool { settlement != nil }
+
+  #if DEBUG
+    /// Waits that reached an installed settlement, so a test knows a caller is held there.
+    private(set) var settlementWaitsForTesting = 0
+  #endif
+
+  /// #4075 S1: the generation whose required History writes are still settling, so its
+  /// finished or refused screen is not yet its final word on History. Read by
+  /// `DebugImportDoor` before it claims a run's result. Settled includes a failed write.
+  private(set) var persistenceSettlingGeneration: Int?
+
+  var isSettlingRunPersistence: Bool { persistenceSettlingGeneration == generation }
+
   /// Puts the retained cleanup back when it belongs to this document and these turns.
   /// Returns false, changing nothing, when there is none to keep.
+  ///
+  /// #4075 S1: the screen is restored here, synchronously. The History writes that make the
+  /// row describe it again are captured now and run by a retained settlement.
   private func restoreRetainedCleanup() -> Bool {
     guard let kept = retainedCleanup, kept.historyID == historyID,
       kept.rawTranscript == rawTranscript,
@@ -1542,6 +1597,8 @@ final class FileImportCoordinator {
     parts = kept.parts
     pendingPieces = kept.pendingPieces
     runConfiguration = kept.configuration
+    showsRestoredCleanup = true
+    guard let historyID else { return true }
     // History is read, not remembered: a Stop between this cleanup's turn write and its final
     // save, a failed save, two cleanups with the same words under different providers, or a
     // deleted row Clean it again wrote back raw all leave History short of this cleanup
@@ -1550,26 +1607,68 @@ final class FileImportCoordinator {
     // The same for the turns, which the labeled screen and Copy read from History: a later
     // cleanup whose turn save failed leaves another generation's turns there (Codex diff
     // review, round 4). The kept cleanup's own final turns are written back when they differ.
-    if let historyID, let result = pendingSpeakerResult, let turns = result.turns {
-      let final = FileImportDocumentMath.finalTurns(turns, parts: parts, cleanupCompleted: true)
-      if currentHistoryRow(historyID)?.turns != final {
-        if (try? mergeSpeakerFields(historyID, result.analysis, final)) == true {
-          if originalHistoryRow?.id == historyID {
-            originalHistoryRow = originalHistoryRow?.mergingSpeakerFields(
-              analysis: result.analysis, turns: final)
-          }
-        } else {
-          // The write failed too: the screen and Copy show the kept turns anyway, and the
-          // saved badge says History does not hold them (second-pass review).
-          unsavedRestoredTurns = final
+    // #4075 S1: both comparisons run when the settlement runs, against History then.
+    let turns: (analysis: TranscriptSpeakerAnalysis, final: [Turn])? =
+      pendingSpeakerResult.flatMap { result in
+        result.turns.map {
+          (
+            result.analysis,
+            FileImportDocumentMath.finalTurns($0, parts: parts, cleanupCompleted: true)
+          )
         }
-        // `turns` reads through a closure Observation cannot see; this tells the screen.
+      }
+    let polished = rawIsSavedToHistory ? polishedCandidate() : nil
+    let generationAtRestore = generation
+    restorationPending = true
+    // The screen and Copy show the kept turns at once; History catches up in the settlement.
+    if let turns {
+      unsavedRestoredTurns = turns.final
+      // `turns` reads through a closure Observation cannot see; this tells the screen.
+      speakerFieldsRevision += 1
+    }
+    // Strong on purpose: the settlement finishes its captured writes whatever happens to
+    // the screen that asked for them.
+    installSettlement { [self] in
+      await settleRestoration(
+        historyID: historyID, turns: turns, polished: polished,
+        generationAtRestore: generationAtRestore)
+      if self.historyID == historyID, generation == generationAtRestore {
+        restorationPending = false
+      }
+    }
+    return true
+  }
+
+  /// The restoration's writes for its captured row. Document facts land only while that row
+  /// is still the document on screen; the screen's own notes only while no newer run began.
+  private func settleRestoration(
+    historyID: UUID, turns: (analysis: TranscriptSpeakerAnalysis, final: [Turn])?,
+    polished: Transcript?, generationAtRestore: Int
+  ) async {
+    if let turns {
+      var held = currentHistoryRow(historyID)?.turns == turns.final
+      if !held {
+        held = (try? await mergeSpeakerFields(historyID, turns.analysis, turns.final)) == true
+        if held, originalHistoryRow?.id == historyID {
+          originalHistoryRow = originalHistoryRow?.mergingSpeakerFields(
+            analysis: turns.analysis, turns: turns.final)
+        }
+      }
+      // A failed write keeps the kept turns on screen and Copy, and the saved badge says
+      // History does not hold them (second-pass review). A confirmed one hands the screen
+      // back to History.
+      if held, self.historyID == historyID, generation == generationAtRestore,
+        unsavedRestoredTurns == turns.final
+      {
+        unsavedRestoredTurns = nil
         speakerFieldsRevision += 1
       }
     }
-    if !historyHoldsDocument { savePolishedToHistory() }
-    showsRestoredCleanup = true
-    return true
+    if let polished,
+      (currentHistoryRow(historyID).map { Self.row($0, holds: polished) } ?? false) == false
+    {
+      await writePolished(polished, historyID: historyID, generationAtWrite: generationAtRestore)
+    }
   }
 
   /// Whether the History row already holds exactly what `savePolishedToHistory` would write
@@ -1583,6 +1682,12 @@ final class FileImportCoordinator {
       && row.llmModel == (polished ? runConfiguration?.polishModel : nil)
   }
 
+  /// Whether `row` already carries `candidate`'s cleaned text and credit.
+  private static func row(_ row: Transcript, holds candidate: Transcript) -> Bool {
+    row.processedText == candidate.processedText && row.polishedText == candidate.polishedText
+      && row.llmProvider == candidate.llmProvider && row.llmModel == candidate.llmModel
+  }
+
   private func resetSpeakerResult() {
     pendingSpeakerResult = nil
     turnsTelemetryEmittedFor = nil
@@ -1593,12 +1698,30 @@ final class FileImportCoordinator {
   /// turns writes its analysis and its terminal telemetry outcome.
   private func writeSpeakerFields(cleanupOutcome: TelemetryService.FileImportTurnsOutcome) async {
     guard let historyID, let result = pendingSpeakerResult else { return }
+    // An ordinary source (a run or a retry) stops submitting once it is stopped, replaced or
+    // cancelled; a settlement passes its own `stillOwned` and always finishes.
+    let generationAtWrite = generation
+    await writeSpeakerFields(
+      historyID: historyID, result: result, parts: parts, cleanupOutcome: cleanupOutcome,
+      stillOwned: { [self] in
+        generation == generationAtWrite && self.historyID == historyID && !Task.isCancelled
+      })
+  }
+
+  /// #4075 S1: the same write from inputs captured by its caller, so a Stop's settlement
+  /// writes the document it stopped even after another file replaced it.
+  private func writeSpeakerFields(
+    historyID: UUID, result: SpeakerStepResult, parts: [Part],
+    cleanupOutcome: TelemetryService.FileImportTurnsOutcome,
+    stillOwned: @escaping @MainActor () -> Bool
+  ) async {
     let passStart = CFAbsoluteTimeGetCurrent()
     guard let turns = result.turns else {
       await mergeAndReport(
         historyID: historyID, analysis: result.analysis, turns: nil,
-        outcome: result.terminalOutcome, turnCount: nil, fallbackTurnCount: 0, passStart: passStart)
-      releaseRetryInputsIfNoLongerRetryable()
+        outcome: result.terminalOutcome, turnCount: nil, fallbackTurnCount: 0, passStart: passStart,
+        stillOwned: stillOwned)
+      if self.historyID == historyID { releaseRetryInputsIfNoLongerRetryable() }
       return
     }
     // Only a completed cleanup writes cleaned words. A Stop or a refused polisher writes the
@@ -1610,10 +1733,12 @@ final class FileImportCoordinator {
     let disclosed = final.filter { !$0.wasPolished }.count
     await mergeAndReport(
       historyID: historyID, analysis: result.analysis, turns: final, outcome: cleanupOutcome,
-      turnCount: final.count, fallbackTurnCount: disclosed, passStart: passStart)
+      turnCount: final.count, fallbackTurnCount: disclosed, passStart: passStart,
+      stillOwned: stillOwned)
     // The retry inputs are judged against the WRITTEN row (found by the staging session's
     // test-row read): before this write the row has no analysis and the audio would be kept.
-    releaseRetryInputsIfNoLongerRetryable()
+    // #4075 S1: only for the document this write was for; another file's inputs are its own.
+    if self.historyID == historyID { releaseRetryInputsIfNoLongerRetryable() }
   }
 
   /// Retained PCM for a possible "Try again" (#2811 §3 Design "retained retry state"
@@ -2028,11 +2153,15 @@ final class FileImportCoordinator {
     // written raw and disclosed, and that raw labeled document is what Done shows and Copy
     // hands over; `isSavedToHistory` asks about the raw words for a stopped run. On a re-run
     // over a completed cleanup the earlier cleanup stands instead (#3903, above).
-    if pendingSpeakerResult != nil, historyID != nil {
-      let generationAtStop = generation
-      Task { @MainActor [weak self] in
-        guard let self, generationAtStop == self.generation else { return }
-        await self.writeSpeakerFields(cleanupOutcome: .stopped)
+    // #4075 S1: captured now and run by a retained settlement, so the write lands for THIS
+    // document even if another file is chosen before it settles, and Clean it again on this
+    // document waits for it.
+    if let result = pendingSpeakerResult, let historyID {
+      // Strong on purpose, like the restoration's settlement above.
+      installSettlement { [self] in
+        await writeSpeakerFields(
+          historyID: historyID, result: result, parts: [], cleanupOutcome: .stopped,
+          stillOwned: { true })
       }
     }
   }
@@ -2082,6 +2211,7 @@ final class FileImportCoordinator {
     parts = []
     unsavedRestoredTurns = nil
     showsRestoredCleanup = false
+    restorationPending = false
     // The OLD cut must not place the new run's passages while this run is still preparing.
     // Cleared here and set again by `polishAll` from the new split.
     pendingPieces = []
@@ -2103,6 +2233,9 @@ final class FileImportCoordinator {
         self?.finishEngineHold()
       }
       guard let self else { return }
+      // #4075 S1: a Stop's writes for this document land before this run writes the row.
+      await awaitSettlement()
+      guard generationAtStart == generation, Task.isCancelled == false else { return }
       // #2772: wait for THIS run's polisher before asking it to polish anything. The screen
       // is already on Working, so the wait is behind a progress bar rather than in front of
       // a page that still says Review.
@@ -2539,7 +2672,13 @@ final class FileImportCoordinator {
       segments: retainedSegmentTimings, rawText: rawTranscript)
     speakerStepState = .inProgress
     speakerStepTask = Task { [weak self] in
-      await self?.runRetryAnalysis(
+      // #4075 S1: a Stop's writes for this row land before the retry writes it.
+      await self?.awaitSettlement()
+      guard let self, Task.isCancelled == false, historyIDAtStart == self.historyID else {
+        if let self, historyIDAtStart == self.historyID { self.speakerStepState = .finished }
+        return
+      }
+      await self.runRetryAnalysis(
         analysisSamples: analysisSamples, timings: timings, historyIDAtStart: historyIDAtStart)
       // Read AFTER the retry's own write, from the STORED outcome (§3 Design "failure
       // authority" correction) — never the in-memory analyzer-only `speakerAnalysis`, and
@@ -2550,7 +2689,7 @@ final class FileImportCoordinator {
       // row as "still failed" and blame the analyzer for a retry the user abandoned.
       // The retry's write lands at the end of the re-clean it starts; report from the ROW
       // after that, so a write that failed is not reported as a recovery (second-pass review).
-      guard let self, !Task.isCancelled, historyIDAtStart == self.historyID else { return }
+      guard !Task.isCancelled, historyIDAtStart == self.historyID else { return }
       if let running = self.runTask { await running.value }
       guard !Task.isCancelled, historyIDAtStart == self.historyID,
         let current = self.currentHistoryRow(historyIDAtStart)
@@ -2618,7 +2757,16 @@ final class FileImportCoordinator {
   /// Design correction 2). Callable from either screen; both are ordinary, symmetric callers
   /// of the same underlying write.
   func renameSpeaker(id: String, name: String) async -> RenameFailure? {
-    guard let historyIDForWrite = historyID, let current = currentHistoryRow(historyIDForWrite),
+    // #4075 S1: the rename belongs to the row it was pressed on, captured before any wait. A
+    // Stop's writes for that row land first, so the rename reads what they left; if another
+    // file replaced it meanwhile, or the caller was cancelled, nothing is sent.
+    let pressedOn = historyID
+    await awaitSettlement()
+    guard pressedOn == historyID, Task.isCancelled == false else {
+      emitRenameTelemetry(.failed)
+      return RenameFailure(message: RenameFailure.couldNotSaveName, currentName: nil)
+    }
+    guard let historyIDForWrite = pressedOn, let current = currentHistoryRow(historyIDForWrite),
       current.turns != nil, let analysis = current.speakerAnalysis
     else {
       emitRenameTelemetry(.failed)
@@ -2693,12 +2841,14 @@ final class FileImportCoordinator {
   private func mergeAndReport(
     historyID: UUID, analysis: TranscriptSpeakerAnalysis, turns: [Turn]?,
     outcome: TelemetryService.FileImportTurnsOutcome?, turnCount: Int?, fallbackTurnCount: Int,
-    passStart: CFAbsoluteTime
+    passStart: CFAbsoluteTime, stillOwned: @escaping @MainActor () -> Bool
   ) async {
+    // #4075 S1: an ordinary source that was stopped, replaced or cancelled sends nothing new.
+    guard stillOwned() else { return }
     let saveFailed: Bool
     let rowDeleted: Bool
     do {
-      let saved = try mergeSpeakerFields(historyID, analysis, turns)
+      let saved = try await mergeSpeakerFields(historyID, analysis, turns)
       saveFailed = false
       rowDeleted = !saved
       // Keeps this coordinator's OWN in-memory snapshot in step with what was just
@@ -2735,7 +2885,9 @@ final class FileImportCoordinator {
       "[TurnStorage] outcome=\(reportedOutcome.rawValue) turns=\(turnCount ?? 0) fallback=\(fallbackTurnCount) emitted=\(emitted) ms=\(Self.elapsedMs(since: passStart))",
       level: .info, category: "FileImportCoordinator")
     guard emitted else { return }
-    turnsTelemetryEmittedFor = historyID
+    // #4075 S1: the dedupe mark belongs to the document on screen; a settlement finishing
+    // for a replaced document reports its outcome without claiming the new one's mark.
+    if self.historyID == historyID { turnsTelemetryEmittedFor = historyID }
     emitTurnTelemetry(
       reportedOutcome, reportedOutcome == .stored ? turnCount : nil, fallbackTurnCount)
   }
@@ -2806,9 +2958,15 @@ final class FileImportCoordinator {
     guard localPolisherIsReady else {
       reportRunTelemetry(outcome: .success, asrOutcome: asrOutcome, polishOutcome: .notReady)
       showRejection(.polisherNotReady)
+      // #4075 S1: the refusal shows at once; its History writes still owe this run a result.
+      persistenceSettlingGeneration = generationAtStart
+      defer {
+        if persistenceSettlingGeneration == generationAtStart { persistenceSettlingGeneration = nil }
+      }
       // #3903: a Clean it again refused here keeps the completed cleanup it would have
       // replaced, on screen and in History.
       if restoreRetainedCleanup() {
+        await awaitSettlement()
         await AppLogger.shared.log(
           "[TurnStorage] outcome=polisher_not_ready kept=previous_cleanup",
           level: .info, category: "FileImportCoordinator")
@@ -2887,13 +3045,21 @@ final class FileImportCoordinator {
   ) async {
     let generationAtFinish = generation
     var polishedSaveFailed = false
+    // #4075 S1: the screen moves to Done only after these writes; until then this run's
+    // result is not final for `DebugImportDoor` either.
+    persistenceSettlingGeneration = generationAtFinish
+    defer {
+      if persistenceSettlingGeneration == generationAtFinish { persistenceSettlingGeneration = nil }
+    }
     if savingDocument {
       // #2851 follow-up: the turns are written ONCE, here, carrying their cleaned words;
       // `savePolishedToHistory` then re-reads the live row and carries them forward.
-      // #3903: kept BEFORE the write, with no suspension between them: the History merge runs
-      // synchronously at the start of `writeSpeakerFields`, so a Stop that lands during the
-      // write's later awaits restores THIS cleanup, the one History now holds (Codex diff
-      // review). A failed merge still keeps it (§3.1: the snapshot does not depend on History).
+      // #3903: kept BEFORE the write, with no suspension between them, so a Stop that lands
+      // while the write waits restores THIS cleanup (Codex diff review). #4075 S1: that
+      // write is now awaited, so the Stop's settlement compares History when it runs and
+      // writes this cleanup's turns itself if the run's write has not landed; the run then
+      // returns at the generation guard below. A failed merge still keeps it (§3.1: the
+      // snapshot does not depend on History).
       if let historyID {
         retainedCleanup = RetainedCleanup(
           historyID: historyID, rawTranscript: rawTranscript,
@@ -2901,8 +3067,9 @@ final class FileImportCoordinator {
           configuration: runConfiguration)
       }
       await writeSpeakerFields(cleanupOutcome: .stored)
-      guard generationAtFinish == generation else { return }
-      savePolishedToHistory()
+      guard generationAtFinish == generation, Task.isCancelled == false else { return }
+      await savePolishedToHistory()
+      guard generationAtFinish == generation, Task.isCancelled == false else { return }
       // #3069 (cloud review): `savePolishedToHistory` is best-effort and does not throw — it
       // records the failure in `historySaveFailure` and lets the raw transcript stand, which
       // is correct for the USER (nothing was lost). But that means `savingDocument == true`
@@ -2984,16 +3151,33 @@ final class FileImportCoordinator {
   /// Best effort, unlike the raw save: by this point the words are already durable, so a
   /// failure costs the cleanup and not the transcript. It records the failure rather than
   /// letting the Done screen claim a write that did not happen.
-  private func savePolishedToHistory() {
-    guard let originalHistoryRow, rawIsSavedToHistory else { return }
+  private func savePolishedToHistory() async {
+    guard let historyID, rawIsSavedToHistory, let polished = polishedCandidate() else { return }
+    await writePolished(polished, historyID: historyID, generationAtWrite: generation)
+  }
+
+  /// The row `savePolishedToHistory` writes for the document on screen, before the live
+  /// row's speaker fields are carried onto it.
+  private func polishedCandidate() -> Transcript? {
+    guard let originalHistoryRow else { return nil }
     // Same question the Done header's credit asks, and the same answer: `wasPolished`, not
     // the frozen configuration. A row that credits an engine for a clean that never ran is
     // the on-screen defect, persisted.
-    var polished = originalHistoryRow.withImportResult(
+    return originalHistoryRow.withImportResult(
       documentText,
       wasPolished: parts.contains(where: \.wasPolished),
       llmProvider: runConfiguration?.polishProvider.rawValue,
       llmModel: runConfiguration?.polishModel)
+  }
+
+  /// Writes a cleaned row for `historyID`, update-only. The saved row is read back from
+  /// History, never the candidate, so a field History merged in is part of what counts as
+  /// saved. Its outcome reaches the document only while that row is still on screen, and the
+  /// failure notice only while no newer run began.
+  private func writePolished(_ candidate: Transcript, historyID: UUID, generationAtWrite: Int)
+    async
+  {
+    var polished = candidate
     // #2811, phase 4: `originalHistoryRow` is this coordinator's own cached snapshot, and
     // `withImportResult` never touches speaker fields — it carries whatever `originalHistoryRow`
     // already had forward VERBATIM. A rename (from either this wizard or History) or a
@@ -3002,22 +3186,32 @@ final class FileImportCoordinator {
     // carrying ITS speaker fields forward instead closes that gap regardless of which surface
     // wrote most recently (§3 Design "revised fix" — a single fix at the one place that
     // performs this write, not a per-writer patch).
-    if let historyID, let liveRow = currentHistoryRow(historyID) {
+    if let liveRow = currentHistoryRow(historyID) {
       polished = polished.carryingSpeakerFields(from: liveRow)
     }
+    let outcome: Result<Bool, any Error>
     do {
-      guard try updateHistoryRow(polished) else {
-        // The user deleted this import from History while it was being cleaned. Their
-        // deletion stands; the words are still on screen, and Copy and Save still work.
-        // Nothing to record: `historyRowWasDeleted` reads History itself.
-        return
-      }
-      savedHistoryRow = polished
-      historySaveFailure = nil
+      outcome = .success(try await updateHistoryRow(polished))
     } catch {
-      historySaveFailure = String(describing: error)
+      outcome = .failure(error)
+    }
+    guard self.historyID == historyID else { return }
+    switch outcome {
+    case .success(false):
+      // The user deleted this import from History while it was being cleaned. Their
+      // deletion stands; the words are still on screen, and Copy and Save still work.
+      // Nothing to record: `historyRowWasDeleted` reads History itself.
+      return
+    case .success(true):
+      // A record that this write succeeded, for the deletion notice. Whether the screen is
+      // saved is asked of History itself (`isSavedToHistory`).
+      savedHistoryRow = polished
+      if generation == generationAtWrite { historySaveFailure = nil }
+    case .failure(let error):
+      if generation == generationAtWrite { historySaveFailure = String(describing: error) }
     }
   }
+
 
   /// When this document was made, from the History row the run created. The Done header
   /// dates the RECORDING with it; reading `Date()` there described today, so a transcript
@@ -3033,25 +3227,32 @@ final class FileImportCoordinator {
   var isSavedToHistory: Bool {
     // A write that succeeded and a row that exists are different facts, and this asks the
     // second. See `historyRowExists`.
-    guard let savedHistoryRow, let historyID, historyRowExists(historyID) else { return false }
+    // #4075 S1: History's current row is the authority, not a copy of what was sent: a
+    // field History merged in is part of what counts as saved.
+    guard savedHistoryRow != nil, let historyID, historyRowExists(historyID),
+      let row = currentHistoryRow(historyID)
+    else { return false }
     // When the screen is showing the raw words the right question is whether THOSE are
     // saved. Comparing display text alone raised a false alarm on a real sequence: finish a
     // cleanup, press Clean it again, stop before the first part. `parts` is empty so the
     // screen falls back to the raw transcript, while the saved row's display text is the
     // PREVIOUS cleaned version — a mismatch over words that are safely stored. Found by
     // Codex. The Show original words toggle is the same question asked by the user.
-    if screenShowsRawWords { return savedHistoryRow.text == rawTranscript }
+    if screenShowsRawWords { return row.text == rawTranscript }
     // #3903: a restored cleanup on screen is saved when History holds its turns (none left
     // unsaved) and its text and credit; the stopped-run shortcut below is about raw words.
-    if showsRestoredCleanup { return unsavedRestoredTurns == nil && historyHoldsDocument }
+    // #4075 S1: not before the restoration's own writes have settled.
+    if showsRestoredCleanup {
+      return !restorationPending && unsavedRestoredTurns == nil && historyHoldsDocument
+    }
     // A stopped labeled document shows its turns RAW once the Stop's write LANDED (#2851
     // follow-up), so the question is then whether the raw words are saved. Until that write
     // lands, or if it failed, the screen still shows the partial cleaned document, and the
     // comparison below says truthfully that it is not saved (cloud review of PR #2898).
-    if state == .stopped, currentHistoryRow(historyID)?.turns != nil {
-      return savedHistoryRow.text == rawTranscript
+    if state == .stopped, row.turns != nil {
+      return row.text == rawTranscript
     }
-    return savedHistoryRow.displayText == documentText
+    return row.displayText == documentText
   }
 
   /// What to tell the user when the document on screen is not the one in History, or nil when

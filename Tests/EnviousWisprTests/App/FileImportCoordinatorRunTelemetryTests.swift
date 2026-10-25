@@ -116,7 +116,7 @@ struct FileImportCoordinatorRunTelemetryTests {
         LLMProvider?, String?
       ) -> Void = { _, _, _, _, _, _, _, _ in },
     captureASRFailure: @escaping @MainActor (any Error, ASRBackendType) -> Void = { _, _ in },
-    updateHistoryRow: @escaping @MainActor (Transcript) throws -> Bool = { _ in true }
+    updateHistoryRow: @escaping @MainActor (Transcript) async throws -> Bool = { _ in true }
   ) -> FileImportCoordinator {
     FileImportCoordinator(
       decode: { _ in Self.decoded(seconds: 1.0) },

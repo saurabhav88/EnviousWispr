@@ -50,6 +50,11 @@ struct FileImportHistoryTests {
 
     func exists(_ id: UUID) -> Bool { !rowWasDeleted }
 
+    /// History's current row: the last write for that id, unless the user deleted it.
+    func current(_ id: UUID) -> Transcript? {
+      rowWasDeleted ? nil : writes.last { $0.id == id }
+    }
+
     /// #4075 S1: holds the next inserting save until `releaseHeldSave()`, the way a store
     /// write already submitted behaves: cancelling the waiting run does not withdraw it.
     var holdNextSave = false
@@ -131,6 +136,7 @@ struct FileImportHistoryTests {
       saveToHistory: { try await spy.submit($0) },
       updateHistoryRow: { try spy.update($0) },
       mergeSpeakerFields: { _, _, _ in true },
+      currentHistoryRow: { spy.current($0) },
       historyRowExists: { spy.exists($0) },
       processParts: serialFileImportTestProcessor { _, _ in
         onPart?()
@@ -861,6 +867,7 @@ struct FileImportHistoryTests {
       saveToHistory: { try spy.save($0) },
       updateHistoryRow: { try spy.update($0) },
       mergeSpeakerFields: { _, _, _ in true },
+      currentHistoryRow: { spy.current($0) },
       historyRowExists: { spy.exists($0) },
       // Every part comes back with NO polished text, which is what a bypassed or entirely
       // failed polish produces.

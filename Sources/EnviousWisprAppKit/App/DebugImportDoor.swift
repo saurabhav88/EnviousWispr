@@ -351,9 +351,12 @@
           }
         } else {
           switch c.state {
-          case .finished where !c.isSettlingTurns:
+          // #4075 S1: a claimed result also waits for this run's own History writes, which
+          // can still be settling behind a finished or refused screen. A failed write settles
+          // too; `saved` below then reads false.
+          case .finished where !c.isSettlingTurns && !c.isSettlingRunPersistence:
             return Outcome(status: "finished", detail: nil)
-          case .rejected(let reason) where !c.isSettlingTurns:
+          case .rejected(let reason) where !c.isSettlingTurns && !c.isSettlingRunPersistence:
             return Outcome(status: "refused", detail: Self.name(of: reason))
           case .idle:
             return .unexpected("state=idle")
