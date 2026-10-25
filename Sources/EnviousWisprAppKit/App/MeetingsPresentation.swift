@@ -90,6 +90,10 @@ enum MeetingsPresentation {
       return String(
         localized: "Live words are not available for this meeting.",
         comment: "History, a recording meeting: live words could not start.")
+    case .off(.modelBeingRemoved), .stopped(.modelRemoved):
+      return String(
+        localized: "Live words stopped while the Universal engine is being removed.",
+        comment: "History, a recording meeting: live words stopped because the Universal engine is being removed in Dictation Settings.")
     case .stopped:
       return String(
         localized: "Live words stopped for \(name). The recording continues.",

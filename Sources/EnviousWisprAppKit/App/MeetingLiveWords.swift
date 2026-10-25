@@ -55,6 +55,8 @@ final class MeetingLiveWords {
     case previousStillClosing
     /// The engine could not be prepared or the session could not open.
     case couldNotStart
+    /// The Universal model is being removed (Dictation Settings, Live Preview).
+    case modelBeingRemoved
     /// Any other refusal.
     case unavailable
   }
@@ -66,6 +68,8 @@ final class MeetingLiveWords {
     case restartTimedOut
     /// An Apple restart's replacement session could not open.
     case restartFailed
+    /// The Universal model's removal began while this track ran on it.
+    case modelRemoved
   }
 
   enum Status: Equatable, Sendable {
@@ -142,6 +146,11 @@ final class MeetingLiveWords {
   /// Cleanups still running, by engine; their engine refuses a new recording until they finish.
   @ObservationIgnored private var closing: [EngineKind: Int] = [:]
   @ObservationIgnored private var cleanups: [ObjectIdentifier: Cleanup] = [:]
+  /// Between `beginModelRemoval` and `endModelRemoval`: no Universal engine is made or opened.
+  @ObservationIgnored private var removingUniversal = false
+  /// Counts removals begun. A Universal readiness read before a removal began is stale after it,
+  /// even once the removal has ended (the model it named may be gone).
+  @ObservationIgnored private var removalEpoch = 0
 
   private final class TrackSlot {
     let pump: MeetingLiveAudioPump
@@ -289,6 +298,57 @@ final class MeetingLiveWords {
     if transcript?.meetingID == meetingID { transcript = nil }
   }
 
+  // MARK: - Universal model removal (plan §3.2)
+
+  /// Removal of the Universal model begins. Synchronous: from here no Universal engine is made,
+  /// prepared or opened for a meeting, and a recording whose live words use it hands its
+  /// sessions, pending start, pump consumers and model to a cleanup now. The recording goes on;
+  /// its accepted words stay; Apple live words are untouched. Idempotent.
+  func beginModelRemoval() {
+    if !removingUniversal { removalEpoch += 1 }
+    removingUniversal = true
+    guard let current = recording, current.engine == .universal else { return }
+    let final = current.bridge?.closeAllAndTake() ?? []
+    apply(final, to: current)
+    var sessions: [any LivePreviewEngineSession] = []
+    for (track, slot) in current.tracks where !slot.finished {
+      slot.finished = true
+      // A pending open returns into a new epoch, so its handle goes to the start's leftovers,
+      // which the cleanup ends.
+      slot.epoch += 1
+      retirePump(slot, in: current)
+      if let session = slot.session { sessions.append(session) }
+      slot.session = nil
+      setStatus(.stopped(.modelRemoved), track)
+    }
+    hand(
+      Cleanup(
+        sessions: sessions, joins: current.endings + current.consumers, start: current.start,
+        universal: current.universal),
+      engine: .universal)
+    current.endings = []
+    current.consumers = []
+    current.start = nil
+    current.universal = nil
+    // Everything Universal is in that cleanup; a later Stop of this recording holds nothing, so
+    // it must not refuse the next recording's engine meanwhile.
+    current.engine = nil
+  }
+
+  /// Returns once every meeting cleanup that holds the Universal engine has physically freed it
+  /// (sessions ended, pending work joined, the model released). Never bounded: removal deletes
+  /// the files only after this returns.
+  func drainForModelRemoval() async {
+    let tasks = cleanups.values.filter { $0.engine == .universal }.map(\.task)
+    for task in tasks { await task.value }
+  }
+
+  /// Removal is over (the files are gone, or the delete was refused): a later recording resolves
+  /// the Universal engine again from what is installed. The current recording keeps its state.
+  func endModelRemoval() {
+    removingUniversal = false
+  }
+
   /// Waits for every running cleanup, at most `seconds`. True when all finished; false leaves
   /// them running (they still free everything, and their engines stay refused until then).
   func waitForCleanups(seconds: Double) async -> Bool {
@@ -299,6 +359,9 @@ final class MeetingLiveWords {
     }
     return finished == true
   }
+
+  /// A Universal model removal is in progress (tests and diagnostics).
+  var isRemovingUniversal: Bool { removingUniversal }
 
   /// Engines a new recording cannot use yet (tests and diagnostics).
   var closingEngines: Set<EngineKind> { Set(closing.filter { $0.value > 0 }.keys) }
@@ -312,6 +375,10 @@ final class MeetingLiveWords {
     vocabulary: LivePreviewVocabulary
   ) async -> Leftovers {
     var leftovers = Leftovers()
+    // The removal state over the whole resolution: what it was when the read began, and the epoch
+    // that any removal crossing the read changes.
+    let removingAtResolve = removingUniversal
+    let epochAtResolve = removalEpoch
     let choice = await resolve(language)
     guard isCurrent(gen), let current = recording else { return leftovers }
     switch choice {
@@ -341,6 +408,13 @@ final class MeetingLiveWords {
         guard isCurrent(gen) else { return leftovers }
       }
     case .universal(let makeEngine):
+      // No engine from a readiness read that began during a removal, returned during one, or that
+      // a removal crossed (the recording keeps its live words off; a later recording resolves
+      // afresh). Checked in the same main-actor step that allocates.
+      guard !removingAtResolve, !removingUniversal, removalEpoch == epochAtResolve else {
+        for track in tracks { finishTrack(track, .off(.modelBeingRemoved), in: current) }
+        return leftovers
+      }
       guard (closing[.universal] ?? 0) == 0 else {
         for track in tracks { finishTrack(track, .off(.previousStillClosing), in: current) }
         return leftovers
@@ -645,16 +719,23 @@ final class MeetingLiveWords {
       slot.session = nil
     }
     if clearOutput { transcript = nil }
-    let engine = current.engine
-    if let engine { closing[engine, default: 0] += 1 }
-    let cleanup = Cleanup(
-      sessions: sessions, joins: current.endings + current.consumers, start: current.start,
-      universal: current.universal)
+    hand(
+      Cleanup(
+        sessions: sessions, joins: current.endings + current.consumers, start: current.start,
+        universal: current.universal),
+      engine: current.engine)
     current.endings = []
     current.consumers = []
     current.start = nil
     current.universal = nil
     current.apple = [:]
+  }
+
+  /// Runs `cleanup`; its engine refuses a new recording (`.previousStillClosing`) until the
+  /// cleanup physically finished.
+  private func hand(_ cleanup: Cleanup, engine: EngineKind?) {
+    cleanup.engine = engine
+    if let engine { closing[engine, default: 0] += 1 }
     let key = ObjectIdentifier(cleanup)
     cleanups[key] = cleanup
     cleanup.run { [weak self] in
@@ -675,6 +756,8 @@ final class MeetingLiveWords {
     private var start: Task<Leftovers, Never>?
     private var universal: (any MeetingSharedEngine)?
     private(set) var task: Task<Void, Never> = Task {}
+    /// The engine whose resources this cleanup frees (nil when none was chosen).
+    fileprivate(set) var engine: EngineKind?
 
     init(
       sessions: [any LivePreviewEngineSession], joins: [Task<Void, Never>],

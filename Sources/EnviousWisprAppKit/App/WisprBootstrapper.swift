@@ -2466,6 +2466,10 @@ package final class WisprBootstrapper {
         isHeartStreaming: { [settings] in
           await MainActor.run { WhisperPreviewDeliveryWiring.heartIsStreaming(settings: settings) }
         }))
+    // #3973: removing the Universal model lets dictation's preview and the meeting's live
+    // words both go before the one residency wait and the delete.
+    PreviewModelRemoval.install(
+      on: modelDelivery, dictation: livePreview, meeting: meetingLiveWords)
     var meetingInputs = MeetingWiring.Inputs(
         store: MeetingStore(),
         settings: settings, permissions: permissions, otherAudioHold: otherAudioHold,

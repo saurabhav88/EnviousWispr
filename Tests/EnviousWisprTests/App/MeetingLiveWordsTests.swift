@@ -247,6 +247,8 @@ struct MeetingLiveWordsTests {
       return engineGates(n)
     }
     let releaseGate = Gate(open: true)
+    /// Each Universal resolution passes it before it answers (held: the answer waits).
+    var universalResolveGate = Gate(open: true)
     var restartAfterSamples = 600 * 16_000
     var restartEndDeadline: Double = 5
     private var _appleEngines: [FakeEngine] = []
@@ -290,6 +292,7 @@ struct MeetingLiveWordsTests {
         },
         resolveUniversal: { mode in
           world.noteLanguage(mode)
+          await world.universalResolveGate.pass()
           if let blocked = world.universalBlocked { return .blocked(blocked) }
           return .ready(makeEngine: { _ in world.makeShared() })
         },
@@ -300,12 +303,12 @@ struct MeetingLiveWordsTests {
         restartEndDeadline: world.restartEndDeadline))
   }
 
-  private static let vocabulary = LivePreviewVocabulary(
+  static let vocabulary = LivePreviewVocabulary(
     lookups: nil, contextualPhrases: ["Envious"], dictionaryEnabled: true)
 
   /// Starts a recording on `tracks`; returns its observer.
   @discardableResult
-  private static func record(
+  static func record(
     _ owner: MeetingLiveWords, _ id: UUID = UUID(),
     tracks: Set<MeetingTrackKind> = [.microphone, .callSound],
     language: LanguageMode = .locked("de"), clock: @escaping @Sendable () -> Int = { 1_000 }

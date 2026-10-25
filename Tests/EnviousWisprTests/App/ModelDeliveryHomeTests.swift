@@ -352,7 +352,7 @@ struct ModelDeliveryHomeTests {
   /// manifest files `ModelDeliveryHome` loads in production. Same repo-root
   /// discovery as `ParakeetShippedManifestTests.repoRoot`
   /// (`Tests/EnviousWisprTests/ModelDelivery/DeliveryManifestTests.swift`).
-  private static func manifestBundle() throws -> Bundle {
+  static func manifestBundle() throws -> Bundle {
     let repoRoot = URL(fileURLWithPath: #filePath)
       .deletingLastPathComponent()  // (file)
       .deletingLastPathComponent()  // App
@@ -374,7 +374,7 @@ struct ModelDeliveryHomeTests {
   /// Not deleted afterwards: these live under the system temp directory, which
   /// the OS reaps, and a `defer` per site would fire while the async work the
   /// constructor kicked off is still running.
-  private static func tempAppSupport() throws -> URL {
+  static func tempAppSupport() throws -> URL {
     let root = URL(fileURLWithPath: NSTemporaryDirectory())
       .appendingPathComponent("ew-2123-mdh-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -1416,7 +1416,7 @@ struct ParakeetHomeTaskWaitTests {
 @MainActor
 @Suite("ModelDeliveryHome — transcribe.cpp Whisper registrations (#3735)", .tags(.productOutcome))
 struct WhisperGGUFRegistrationTests {
-  private static func manifestBundle() throws -> Bundle {
+  static func manifestBundle() throws -> Bundle {
     let repoRoot = URL(fileURLWithPath: #filePath)
       .deletingLastPathComponent()  // (file)
       .deletingLastPathComponent()  // App

@@ -535,12 +535,14 @@
         case .previousStillClosing: return "off:previousStillClosing"
         case .couldNotStart: return "off:couldNotStart"
         case .unavailable: return "off:unavailable"
+        case .modelBeingRemoved: return "off:modelBeingRemoved"
         }
       case .stopped(let reason):
         switch reason {
         case .engineFailed: return "stopped:engineFailed"
         case .restartTimedOut: return "stopped:restartTimedOut"
         case .restartFailed: return "stopped:restartFailed"
+        case .modelRemoved: return "stopped:modelRemoved"
         }
       }
     }
