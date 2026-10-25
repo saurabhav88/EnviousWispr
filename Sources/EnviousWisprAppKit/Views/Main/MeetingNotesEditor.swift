@@ -56,6 +56,25 @@ struct MeetingNotesEditor: View {
         }
         .accessibilityIdentifier("history.meeting.copyNotes")
       }
+      if documents.notesSaveFailed(meetingID) {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+          Text(
+            "Your notes could not be saved.",
+            comment:
+              "History, a meeting: saving the notes failed; the typed notes stay in the app until a save works."
+          )
+          .font(.stHelper)
+          .foregroundStyle(.stError)
+          .fixedSize(horizontal: false, vertical: true)
+          Button {
+            Task { await documents.flush(meetingID) }
+          } label: {
+            Text("Try again", comment: "History, a meeting: saves the notes again.")
+          }
+          .buttonStyle(.link)
+        }
+        .accessibilityIdentifier("history.meeting.notesSaveFailed")
+      }
       if documents.loadState(meetingID) == .failed {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
           Text(
