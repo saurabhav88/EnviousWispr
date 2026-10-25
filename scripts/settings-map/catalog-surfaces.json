@@ -33,6 +33,15 @@
   "mac-page-meetings": [
    "page.meetings"
   ],
+  "mac-tab-meetings-general": [
+   "meetings.tab.general"
+  ],
+  "mac-tab-meetings-call-apps": [
+   "meetings.tab.callApps"
+  ],
+  "mac-tab-meetings-permissions": [
+   "meetings.tab.permissions"
+  ],
   "mac-ctl-meeting-call-sound": [
    "meetingCaptureCallSound"
   ],
@@ -757,6 +766,21 @@
    "kind": "control",
    "parent": "mac-page-meetings",
    "label": "Ask to record calls in"
+  },
+  "mac-tab-meetings-general": {
+   "kind": "section",
+   "parent": "mac-page-meetings",
+   "label": "General [tab]"
+  },
+  "mac-tab-meetings-call-apps": {
+   "kind": "section",
+   "parent": "mac-page-meetings",
+   "label": "Call Apps [tab]"
+  },
+  "mac-tab-meetings-permissions": {
+   "kind": "section",
+   "parent": "mac-page-meetings",
+   "label": "Permissions [tab]"
   }
  }
 }
