@@ -755,6 +755,37 @@ final class FileImportCoordinator {
     return historyRowExists(historyID)
   }
 
+  /// #4075 S1: whether THIS run's raw words reached History, decided once per run and read
+  /// by both raw gates (`run` and `polishAll`). Separate from `rawIsSavedToHistory`, which
+  /// asks about membership now. A run whose raw save succeeded stays satisfied even if the
+  /// user then deletes the row, so its second gate cannot write the row back; only a new
+  /// explicit Clean it again run starts fresh and may recreate it. Keyed by the generation
+  /// the run started at, so a stale continuation cannot decide a newer run's prerequisite,
+  /// and Stop (which moves the generation without starting a run) does not reset it.
+  private enum RawHistoryPrerequisite { case notAttempted, satisfied, failed }
+  private var rawPrerequisite: (generation: Int, state: RawHistoryPrerequisite) = (
+    -1, .notAttempted
+  )
+
+  /// Starts a fresh raw prerequisite for the run that begins at `generationAtStart`.
+  private func beginRawPrerequisite(generationAtStart: Int) {
+    rawPrerequisite = (generationAtStart, .notAttempted)
+  }
+
+  /// The one raw gate. At a run's first check an existing saved row satisfies it; otherwise
+  /// it makes one inserting raw save. The answer is kept for the rest of that run.
+  private func rawPrerequisiteHolds(generationAtStart: Int) -> Bool {
+    guard rawPrerequisite.generation == generationAtStart else { return false }
+    switch rawPrerequisite.state {
+    case .satisfied: return true
+    case .failed: return false
+    case .notAttempted:
+      let holds = rawIsSavedToHistory || saveRawToHistory()
+      rawPrerequisite.state = holds ? .satisfied : .failed
+      return holds
+    }
+  }
+
   /// Set when the raw save fails. The run stops before polish and the Done screen offers the
   /// raw words with Copy and Retry, per the approved plan's failure table: losing the words
   /// silently is worse than not cleaning them.
@@ -1805,6 +1836,7 @@ final class FileImportCoordinator {
 
     advanceGeneration()
     let generationAtStart = generation
+    beginRawPrerequisite(generationAtStart: generationAtStart)
     step = .working
     // The engine may need switching or warming, which takes long enough to be
     // worth naming rather than showing a bar at 0% with no explanation.
@@ -2011,6 +2043,7 @@ final class FileImportCoordinator {
 
     advanceGeneration()
     let generationAtStart = generation
+    beginRawPrerequisite(generationAtStart: generationAtStart)
     parts = []
     unsavedRestoredTurns = nil
     showsRestoredCleanup = false
@@ -2135,7 +2168,7 @@ final class FileImportCoordinator {
       // ADDED earlier gate (#2809 addendum §3 B4): the speaker step only ever runs on words
       // already durable. `polishAll`'s own gate at its entry stays — it also protects the
       // re-polish path, which never reaches here.
-      guard rawIsSavedToHistory || saveRawToHistory() else {
+      guard rawPrerequisiteHolds(generationAtStart: generationAtStart) else {
         await finishRun(savingDocument: false, asrOutcome: .success)
         return
       }
@@ -2694,7 +2727,10 @@ final class FileImportCoordinator {
     // deliberate and not the case the update-only rule exists for. Pressing Clean it again is
     // asking for the work on this document; the rule protects a deletion made while work was
     // already running, where the user is not looking at the page and gets no say.
-    guard rawIsSavedToHistory || saveRawToHistory() else {
+    // #4075 S1: one decision per run, shared with `run`'s gate. A deletion between the two
+    // gates does not make this one insert again: that is the deletion the update-only rule
+    // protects. A new Clean it again run gets a fresh prerequisite, so it still may.
+    guard rawPrerequisiteHolds(generationAtStart: generationAtStart) else {
       await finishRun(savingDocument: false, asrOutcome: asrOutcome)
       return
     }

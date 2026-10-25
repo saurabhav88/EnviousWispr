@@ -30,7 +30,11 @@ struct FileImportHistoryTests {
 
     struct Refused: Error {}
 
+    /// Inserting saves attempted, refused or not. `update` never counts here.
+    private(set) var inserts = 0
+
     func save(_ transcript: Transcript) throws {
+      inserts += 1
       if refuse {
         refusals += 1
         throw Refused()
@@ -70,12 +74,17 @@ struct FileImportHistoryTests {
   private static func coordinator(
     spy: HistorySpy, raw: String = "um one two three", cleaned: String = "One two three.",
     polisherStarts: Bool = true,
-    onPart: (@MainActor () -> Void)? = nil
+    onPart: (@MainActor () -> Void)? = nil,
+    onSpeakerStep: (@MainActor () -> Void)? = nil
   ) -> FileImportCoordinator {
     FileImportCoordinator(
       decode: { _ in Self.decoded() },
       transcribe: { _, _, _ in
         ASRResult(text: raw, language: "en", duration: 0, processingTime: 0, backendType: .parakeet)
+      },
+      speakerLabeler: { _, _ in
+        onSpeakerStep?()
+        return .failed(.modelsUnavailable)
       },
       engineAdmission: .live(lease: EngineLease(), as: .fileImport),
       beginRun: {
@@ -190,6 +199,51 @@ struct FileImportHistoryTests {
     #expect(!c.historyRowWasDeleted, "the notice still says the row is gone")
     #expect(spy.writes.count == 3, "raw, then raw again, then cleaned")
     #expect(c.isSavedToHistory)
+    #expect(c.historySaveNotice == nil)
+  }
+
+  /// #4075 S1: a deletion made after the raw save and before the cleanup's own raw gate must
+  /// stand. Each run decides its raw save once; the cleanup's gate used to look at History
+  /// again, find the row gone and insert it back, undoing a deletion made while the run was
+  /// busy finding speakers. Clean it again is a new run and may still write the row back.
+  @Test("a deletion between the raw save and the cleanup does not bring the row back")
+  func aDeletionBetweenTheRawGatesStands() async throws {
+    let spy = HistorySpy()
+    var rawSavedAtDeletion: Bool?
+    var deleted = false
+    let c = Self.coordinator(
+      spy: spy,
+      onSpeakerStep: {
+        // Only the first run's speaker step deletes; a re-clean does not run one.
+        guard !deleted else { return }
+        deleted = true
+        rawSavedAtDeletion = spy.writes.count == 1 && spy.inserts == 1
+        spy.rowWasDeleted = true
+      })
+    await run(c)
+    try #require(c.state == .finished, "the originating run never finished")
+
+    #expect(rawSavedAtDeletion == true, "the deletion was not staged after the raw save")
+    #expect(spy.inserts == 1, "the cleanup's raw gate put back a row the user deleted")
+    #expect(spy.writes.count == 1)
+    #expect(c.historyRowWasDeleted)
+    #expect(c.historySaveFailure == nil, "a deletion is not a failure and offers no retry")
+    #expect(c.documentText.isEmpty == false, "the words must stay on screen")
+    #expect(
+      c.historySaveNotice
+        == "You deleted this from History, so it is not saved there. Copy or save it before you leave."
+    )
+
+    // Clean it again is a new request for this document: it writes the row back once, under
+    // the same identity, and the cleaned update lands on it.
+    let firstID = try #require(spy.writes.first?.id)
+    c.rePolish()
+    try #require(await settleUntil { c.state == .finished }, "Clean it again never finished")
+    #expect(spy.inserts == 2, "Clean it again did not write the deleted row back")
+    #expect(spy.writes.count == 3, "raw, raw again, then cleaned")
+    #expect(spy.writes.allSatisfy { $0.id == firstID })
+    #expect(spy.writes.last?.polishedText != nil)
+    #expect(c.historyRowWasDeleted == false)
     #expect(c.historySaveNotice == nil)
   }
 
@@ -449,14 +503,21 @@ struct FileImportHistoryTests {
   /// The approved plan's failure table, and the direction matters: cleaning into a document
   /// nobody can save is how a user loses words while watching a progress bar.
   @Test("a refused first write stops the run before any cleaning")
-  func arefusedFirstWriteStopsTheRun() async {
+  func arefusedFirstWriteStopsTheRun() async throws {
     let spy = HistorySpy()
     spy.refuse = true
-    let c = Self.coordinator(spy: spy)
+    var speakerSteps = 0
+    var cleanedParts = 0
+    let c = Self.coordinator(
+      spy: spy, onPart: { cleanedParts += 1 }, onSpeakerStep: { speakerSteps += 1 })
     await run(c)
+    try #require(c.state == .finished, "the originating run never finished")
 
     #expect(spy.writes.isEmpty, "a write succeeded after the store refused")
     #expect(spy.refusals == 1, "the run retried a write it was told to stop on")
+    #expect(spy.inserts == 1, "the second raw gate tried the refused save again")
+    #expect(speakerSteps == 0, "speaker analysis ran on words that were not saved")
+    #expect(cleanedParts == 0, "the cleanup ran on words that were not saved")
     #expect(c.parts.isEmpty, "the run cleaned parts after failing to save the words")
     #expect(!c.isSavedToHistory, "the screen would claim a save that did not happen")
     #expect(c.hasDocument, "the raw words must still be on screen to copy")
