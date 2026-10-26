@@ -55,7 +55,8 @@ final class MeetingParakeetRoute {
     var isModelLoaded: @MainActor () -> Bool
     var isLoadOrUnloadInFlight: @MainActor () -> Bool
     var publishedSelection: @MainActor () -> ParakeetModelSelection?
-    var transcribeShared: @MainActor ([Float]) async throws -> ASRResult
+    /// #4105: both routes take the pass's transcript language (a code; nil is Auto).
+    var transcribeShared: @MainActor (_ samples: [Float], _ language: String?) async throws -> ASRResult
     var disarmEngineTimers: @MainActor () -> Void
     var rearmEngineTimers: @MainActor () -> Void
     var recoveryRecheck: @MainActor () -> Void
@@ -64,7 +65,7 @@ final class MeetingParakeetRoute {
     /// The install claim that resolves the meeting's own cache-only selection.
     var ownClaim: MeetingModelClaim
     var ownLoad: @MainActor (ParakeetModelSelection) async throws -> Void
-    var ownTranscribe: @MainActor ([Float]) async throws -> ASRResult
+    var ownTranscribe: @MainActor (_ samples: [Float], _ language: String?) async throws -> ASRResult
     var ownUnload: @MainActor () async -> Void
     var ownWaitForAvailability: @MainActor () async throws -> Void
     /// Told when the own route gives its residency back outside `endModelUse` (an acquisition
@@ -227,10 +228,10 @@ final class MeetingParakeetRoute {
     }
   }
 
-  func transcribe(_ samples: [Float]) async throws -> ASRResult {
+  func transcribe(_ samples: [Float], language: String?) async throws -> ASRResult {
     switch route {
-    case .shared: try await deps.transcribeShared(samples)
-    case .own: try await deps.ownTranscribe(samples)
+    case .shared: try await deps.transcribeShared(samples, language)
+    case .own: try await deps.ownTranscribe(samples, language)
     case nil: throw MeetingWiringError.noModelClaim
     }
   }

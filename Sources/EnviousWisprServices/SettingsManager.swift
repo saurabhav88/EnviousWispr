@@ -618,9 +618,10 @@ public final class SettingsManager {
   /// #3973 (decision 16): the language EnviousMeet transcribes a meeting in, Auto by default.
   /// The meeting's own setting: never read from, migrated from or written with dictation's
   /// `languageMode`, `whisperKitLanguage` or `englishSpelling`. Persisted in `languageMode`'s
-  /// shape; an absent, undecodable or unsupported value loads as Auto. A meeting freezes it at
-  /// start. No Settings row yet (it arrives with the Models tab, PR 2), so the Settings Map has
-  /// no place for it.
+  /// shape; an absent, undecodable or unsupported value loads as Auto. #4105: a meeting reads it
+  /// once at Start and stores it on its record, so processing, recovery and retry use that
+  /// value and a later change belongs to the next meeting. Auto leaves the language to the
+  /// engine. Live words never read it (they have `meetingLiveWordsEngine`/`Language`).
   public var meetingLanguageMode: LanguageMode {
     didSet {
       if let data = try? JSONEncoder().encode(meetingLanguageMode) {

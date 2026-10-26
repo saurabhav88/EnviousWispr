@@ -25,8 +25,9 @@ package final class MeetingTranscriptionJob {
     package var beginModelUse: @MainActor () async throws -> Void
     package var endModelUse: @MainActor () async -> Void
     package var loadEngine: @MainActor () async throws -> Void
-    /// Transcribes 16 kHz mono samples; word times relative to the first sample.
-    package var transcribe: @MainActor ([Float]) async throws -> ASRResult
+    /// Transcribes 16 kHz mono samples in the pass's language (a code; nil is Auto); word times
+    /// relative to the first sample.
+    package var transcribe: @MainActor (_ samples: [Float], _ language: String?) async throws -> ASRResult
     package var unloadEngine: @MainActor () async -> Void
     /// Loads the bundled speaker models, analyses the whole track, releases the models (R25).
     package var analyzeSpeakers: @Sendable (MeetingTrackAudio) async -> MeetingSpeakerAnalysis
@@ -69,7 +70,7 @@ package final class MeetingTranscriptionJob {
       beginModelUse: @escaping @MainActor () async throws -> Void,
       endModelUse: @escaping @MainActor () async -> Void,
       loadEngine: @escaping @MainActor () async throws -> Void,
-      transcribe: @escaping @MainActor ([Float]) async throws -> ASRResult,
+      transcribe: @escaping @MainActor ([Float], String?) async throws -> ASRResult,
       unloadEngine: @escaping @MainActor () async -> Void,
       analyzeSpeakers: @escaping @Sendable (MeetingTrackAudio) async -> MeetingSpeakerAnalysis,
       isTemporaryEngineContention: @escaping @Sendable (Error) -> Bool = { _ in false },
@@ -183,6 +184,9 @@ package final class MeetingTranscriptionJob {
   private let dependencies: Dependencies
   private let configuration: Configuration
   private var cancelled = false
+  /// #4105: the running pass's transcript language (a code; nil is Auto), from the meeting
+  /// record. Every piece of the pass decodes with it.
+  private var passLanguage: String?
   private var unitInFlight = false
   private var engineResident = false
   private var engineLoaded = false
@@ -374,13 +378,18 @@ package final class MeetingTranscriptionJob {
   /// gap marker in timeline order, like a piece that failed twice, even for a track with no
   /// readable audio at all.
   package func run(
-    tracks: [MeetingTrackKind: MeetingTrackAudio], checkpoint access: CheckpointAccess? = nil,
+    tracks: [MeetingTrackKind: MeetingTrackAudio], language: String?,
+    checkpoint access: CheckpointAccess? = nil,
     missingAudio: [MeetingTrackKind: [MissingAudio]] = [:],
     onStage: @escaping @MainActor (Stage) -> Void
   ) async throws -> Result {
     guard !running else { throw JobError.alreadyRunning }
     running = true
-    defer { running = false }
+    passLanguage = language?.isEmpty == false ? language : nil
+    defer {
+      running = false
+      passLanguage = nil
+    }
     let started = Date()
     let order: [MeetingTrackKind] = [.callSound, .microphone].filter {
       tracks[$0]?.isEmpty == false
@@ -400,8 +409,10 @@ package final class MeetingTranscriptionJob {
       // fails closed: no reuse and no checkpoint for this pass.
       let config = configuration
       let meetingID = access.meetingID
+      let language = passLanguage
       let key = try? await Task.detached(priority: .utility) {
-        try Self.key(meetingID: meetingID, tracks: tracks, order: order, config)
+        try Self.key(
+          meetingID: meetingID, tracks: tracks, order: order, language: language, config)
       }.value
       if let key {
         if let stored = await access.load(), stored.key == key,
@@ -734,7 +745,7 @@ package final class MeetingTranscriptionJob {
   /// file cannot be read, so a pass never reuses work against inputs it could not verify.
   nonisolated static func key(
     meetingID: UUID, tracks: [MeetingTrackKind: MeetingTrackAudio], order: [MeetingTrackKind],
-    _ configuration: Configuration
+    language: String?, _ configuration: Configuration
   ) throws -> MeetingProcessingCheckpoint.Key {
     MeetingProcessingCheckpoint.Key(
       meetingID: meetingID, processingVersion: processingVersion,
@@ -742,6 +753,7 @@ package final class MeetingTranscriptionJob {
       pieceSearchSeconds: configuration.pieceSearchSeconds,
       seamPaddingSeconds: configuration.seamPaddingSeconds,
       cutsPieces: configuration.cutsPieces,
+      transcriptLanguage: language,
       inputs: try order.map { kind in
         MeetingProcessingCheckpoint.TrackInventory(
           track: kind,
@@ -800,6 +812,7 @@ package final class MeetingTranscriptionJob {
   {
     let rate = MeetingAudioFormat.sampleRate
     let cutsPieces = configuration.cutsPieces
+    let language = passLanguage
     let pad = cutsPieces ? Int(configuration.seamPaddingSeconds * rate) : 0
     let paddedStart = max(run.startSample, start - pad)
     let paddedEnd = min(run.endSample, end + pad)
@@ -809,7 +822,7 @@ package final class MeetingTranscriptionJob {
           try self.requireModelSource()
           let samples = try await self.readOffMain(
             audio: audio, from: paddedStart, count: paddedEnd - paddedStart)
-          let result = try await self.dependencies.transcribe(samples)
+          let result = try await self.dependencies.transcribe(samples, language)
           guard cutsPieces else {
             return Self.wholeRunPiece(result: result, startMs: Self.ms(start), endMs: Self.ms(end))
           }

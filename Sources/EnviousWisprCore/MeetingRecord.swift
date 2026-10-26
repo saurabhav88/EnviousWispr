@@ -155,6 +155,23 @@ public struct MeetingRecord: Sendable, Equatable, Codable, Identifiable {
   /// and stored as text: absent on hand-started and older meetings, and a value from a newer
   /// build never stops this one from reading the record.
   public var callAppRaw: String?
+  /// #4105: the final transcript's language, frozen from `meetingLanguageMode` at Start and
+  /// written before the record's first save, so processing, launch recovery and retry all use
+  /// the Start value. A language code for a locked language; absent means Auto (also for
+  /// meetings recorded before this field). Stored as text, like `callAppRaw`.
+  public var transcriptLanguage: String?
+
+  /// `transcriptLanguage` as a mode: Auto when absent or empty.
+  public var transcriptLanguageMode: LanguageMode {
+    get { transcriptLanguage.flatMap { $0.isEmpty ? nil : LanguageMode.locked($0) } ?? .auto }
+    set {
+      if case .locked(let code) = newValue, !code.isEmpty {
+        transcriptLanguage = code
+      } else {
+        transcriptLanguage = nil
+      }
+    }
+  }
 
   /// The call app this meeting was started for, when this build knows it.
   public var callApp: CallAppFamily? {
@@ -185,6 +202,7 @@ public struct MeetingRecord: Sendable, Equatable, Codable, Identifiable {
     self.failureCode = nil
     self.wasInterrupted = nil
     self.callAppRaw = nil
+    self.transcriptLanguage = nil
   }
 
   /// Nothing was captured, the user's notes are kept (#3972 R53, R56). Raises the format so an

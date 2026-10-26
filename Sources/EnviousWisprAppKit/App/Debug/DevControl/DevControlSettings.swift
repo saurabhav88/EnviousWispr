@@ -87,8 +87,8 @@
         .meetingCallSoundExplained, .meetingWriteSummary, .meetingTurnsOffDictation,
         .meetingOnboardingComplete,
         .meetingUseCalendarForNames, .meetingCallDetection, .meetingCallAppsOff,
-        .meetingCallNoCounts, .meetingCallFirstTipShown, .meetingLiveWordsEngine,
-        .meetingLiveWordsLanguage, .vadAutoStop, .modelUnloadPolicy,
+        .meetingCallNoCounts, .meetingCallFirstTipShown, .meetingLanguageMode,
+        .meetingLiveWordsEngine, .meetingLiveWordsLanguage, .vadAutoStop, .modelUnloadPolicy,
         .restoreClipboardAfterPaste, .keepDictationsOutOfClipboardHistory,
         .quickAddClipboardFallback, .smartInsertion, .escapeRecoveryEnabled,
         .wordCorrectionEnabled, .fillerRemovalEnabled, .emojiFormatterEnabled,
@@ -108,7 +108,7 @@
         .fileImportLLMModel, .fileImportOllamaModel, .ollamaModel, .inputChannelByDeviceUID:
         return make(.extractedCheck)
       case .hotkeyEnabled, .vadSensitivity, .vadEnergyGate, .crashRecoveryEnabled,
-        .onboardingState, .meetingLanguageMode:
+        .onboardingState:
         return make(.staging)
       case .whisperKitLanguage, .pushToTalkKeyCode, .pushToTalkModifiers:
         return make(.staging, legacy: true)

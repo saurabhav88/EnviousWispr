@@ -101,10 +101,10 @@
       for row in rows {
         kinds[row["kind"] as? String ?? "?", default: []].append(row["key"] as? String ?? "?")
       }
-      #expect(kinds["direct"]?.count == 50)
+      #expect(kinds["direct"]?.count == 51)
       #expect(kinds["viaOwner"]?.count == 8)
       #expect(kinds["extractedCheck"]?.count == 16)
-      #expect(kinds["staging"]?.count == 9)
+      #expect(kinds["staging"]?.count == 8)
       #expect(kinds.keys.sorted() == ["direct", "extractedCheck", "staging", "viaOwner"])
     }
 

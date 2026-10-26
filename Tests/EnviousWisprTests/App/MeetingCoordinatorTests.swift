@@ -107,6 +107,8 @@ struct MeetingCoordinatorTests {
     private(set) var cancelled = false
     private(set) var runs = 0
     private(set) var receivedTracks: [MeetingTrackKind: MeetingTrackAudio] = [:]
+    /// #4105: the transcript language each run was given, in order.
+    private(set) var receivedLanguages: [String?] = []
     private(set) var receivedMissingAudio: [MeetingTrackKind: [MeetingTranscriptionJob.MissingAudio]] =
       [:]
     var isEngineResident = false
@@ -122,13 +124,14 @@ struct MeetingCoordinatorTests {
     }
 
     func run(
-      tracks: [MeetingTrackKind: MeetingTrackAudio],
+      tracks: [MeetingTrackKind: MeetingTrackAudio], language: String?,
       checkpoint access: MeetingTranscriptionJob.CheckpointAccess?,
       missingAudio: [MeetingTrackKind: [MeetingTranscriptionJob.MissingAudio]],
       onStage: @escaping @MainActor (MeetingTranscriptionJob.Stage) -> Void
     ) async throws -> MeetingTranscriptionJob.Result {
       runs += 1
       receivedTracks = tracks
+      receivedLanguages.append(language)
       receivedMissingAudio = missingAudio
       onStage(.composing)
       return try await behavior(access)
@@ -282,6 +285,8 @@ struct MeetingCoordinatorTests {
     var titleGate: Gate?
     var titleLookups: [Date] = []
     var freeBytes: Int64? = 50_000_000_000
+    /// #4105: the transcript language Settings holds now (`meetingLanguageMode`).
+    var language: LanguageMode = .auto
     var activitiesBegun = 0
     var activitiesEnded = 0
     var logs: [String] = []
@@ -313,6 +318,12 @@ struct MeetingCoordinatorTests {
     /// The closures hold the harness strongly on purpose: a pass still draining after a test's
     /// last assertion must never read a freed harness. One harness per test, never reused.
     func dependencies() -> MeetingCoordinator.Dependencies {
+      var dependencies = makeDependencies()
+      dependencies.meetingLanguage = { [self] in language }
+      return dependencies
+    }
+
+    private func makeDependencies() -> MeetingCoordinator.Dependencies {
       MeetingCoordinator.Dependencies(
         store: store,
         makeRecorder: { [self] configuration, onSegment, _ in
@@ -429,7 +440,8 @@ struct MeetingCoordinatorTests {
     MeetingProcessingCheckpoint(
       key: .init(
         meetingID: meetingID, processingVersion: 1, pieceTargetSeconds: 60,
-        pieceSearchSeconds: 15, seamPaddingSeconds: 1, cutsPieces: true, inputs: []),
+        pieceSearchSeconds: 15, seamPaddingSeconds: 1, cutsPieces: true, transcriptLanguage: nil,
+        inputs: []),
       engineIdentity: "ultra:rev", tracks: [:])
   }
 
@@ -781,6 +793,78 @@ struct MeetingCoordinatorTests {
       relaunched.record(id: meetingID)?.state == .ready
     }
     #expect(harness.saved.count == 1)
+  }
+
+  // MARK: - Transcript language (#4105)
+
+  /// #4105 (plan R1.7): when these fail, a meeting is transcribed in a language other than the
+  /// one Settings held when it started: after a crash, while it waited in the queue, or on
+  /// Transcribe again.
+  @Test("the Start language is in the first saved record, and a crash before the next save keeps it")
+  func startLanguageSurvivesACrashBeforeThePostCaptureSave() async throws {
+    let harness = try Harness()
+    harness.language = .locked("de")
+    harness.recorderStart = .hold
+    let coordinator = harness.coordinator
+    let starting = Task { await coordinator.start(from: .history) }
+    // Capture is parked: the record on disk is the one Start created, before any later save.
+    await Self.eventually("capture started") { harness.recorders.count == 1 }
+    harness.language = .locked("fr")
+    let meetingID = try onlyMeeting(harness).id
+    let created = try harness.store.load(id: meetingID)
+    #expect(created.state == .recording)
+    #expect(created.transcriptLanguage == "de")
+
+    // A crash now: the next launch recovers that record and transcribes it in German, whatever
+    // Settings holds.
+    let relaunched = try Harness(copying: harness.root)
+    relaunched.language = .locked("fr")
+    relaunched.coordinator.launch()
+    await Self.eventually("ready after launch") {
+      relaunched.coordinator.record(id: meetingID)?.state == .ready
+    }
+    #expect(relaunched.jobs.flatMap(\.receivedLanguages) == ["de"])
+
+    await coordinator.stop()
+    _ = await starting.value
+  }
+
+  @Test("a queued meeting and Transcribe again use the Start language, not the current setting")
+  func queuedAndRetriedPassesUseTheStartLanguage() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    let hold = Gate()
+    harness.jobBehavior = { _ in
+      await hold.wait()
+      return Self.result()
+    }
+    // Meeting A (Auto) is processing and held; meeting B (German) waits in the queue.
+    await coordinator.start(from: .history)
+    await coordinator.stop()
+    await Self.eventually("A processing") { hold.parked }
+    harness.language = .locked("de")
+    guard case .recording(let meetingB) = await coordinator.start(from: .history) else {
+      Issue.record("meeting B did not start")
+      hold.open()
+      return
+    }
+    await coordinator.stop()
+    #expect(coordinator.record(id: meetingB)?.state == .queued)
+    harness.language = .locked("fr")
+    hold.open()
+    await Self.eventually("both ready") {
+      coordinator.record(id: meetingB)?.state == .ready && coordinator.processing == nil
+    }
+    #expect(harness.jobs.map(\.receivedLanguages) == [[nil], ["de"]])
+
+    // Transcribe again after Settings moved on: still German.
+    harness.language = .auto
+    harness.jobBehavior = { _ in Self.result() }
+    #expect(await coordinator.retry(meetingID: meetingB))
+    await Self.eventually("ready again") {
+      coordinator.record(id: meetingB)?.state == .ready && coordinator.processing == nil
+    }
+    #expect(harness.jobs.last?.receivedLanguages == ["de"])
   }
 
   @Test("a failed close marks the track failed but keeps its audio for processing")

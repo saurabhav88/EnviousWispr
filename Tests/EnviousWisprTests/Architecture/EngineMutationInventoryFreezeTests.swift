@@ -447,7 +447,7 @@ import EnviousWisprAppKitTestSupport
       classification: .structurallySafe),
     CallSite(
       file: "Sources/EnviousWisprPipeline/MeetingTranscriptionJob.swift", matcher: "transcribe",
-      text: "let result = try await self.dependencies.transcribe(samples)",
+      text: "let result = try await self.dependencies.transcribe(samples, language)",
       classification: .structurallySafe),
     // The checkpoint's SHA-256 digest (`CryptoKit`), not an engine finalize.
     CallSite(
@@ -459,8 +459,7 @@ import EnviousWisprAppKitTestSupport
     // one job. Never dictation's backend; never `EngineLease`.
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/MeetingWiring.swift", matcher: "transcribe",
-      text:
-        "ownTranscribe: { samples in try await engine.transcribe(samples: samples, language: nil) },",
+      text: "try await engine.transcribe(samples: samples, language: language)",
       classification: .structurallySafe),
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/MeetingWiring.swift", matcher: "unload",
@@ -471,7 +470,7 @@ import EnviousWisprAppKitTestSupport
     // `unloadEngine` releases that lease; it unloads no model.
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/MeetingWiring.swift", matcher: "transcribe",
-      text: "transcribe: { samples in try await route.transcribe(samples) },",
+      text: "try await route.transcribe(samples, language: language)",
       classification: .structurallySafe),
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/MeetingWiring.swift", matcher: "unloadEngine",
@@ -481,7 +480,7 @@ import EnviousWisprAppKitTestSupport
       text: "transcribeShared: shared.transcribe,", classification: .structurallySafe),
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/WisprBootstrapper.swift", matcher: "transcribe",
-      text: "try await activeEngine.transcribe(samples, .default, nil)",
+      text: "return try await activeEngine.transcribe(samples, options, nil)",
       classification: .structurallySafe),
     // #3972 C13a: the meeting SUMMARY provider set-up (keychain read, Ollama version check,
     // connector choice). An AI Polish text model, not the ASR engine; it holds no adapter and no

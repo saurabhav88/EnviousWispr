@@ -43,7 +43,7 @@ import os
         dependencies: .init(
           isDictationIdle: { true }, waitUntilDictationIdle: {}, beginModelUse: {}, endModelUse: {},
           loadEngine: {},
-          transcribe: { samples in
+          transcribe: { samples, _ in
             onTranscribe()
             return transcribe(samples)
           },
@@ -87,7 +87,7 @@ import os
     @MainActor
     static func runChild(folder: URL, stopAfter: Int) async throws {
       _ = try await job().run(
-        tracks: [.microphone: try audio(in: folder)],
+        tracks: [.microphone: try audio(in: folder)], language: nil,
         checkpoint: access(folder: folder) { count in
           print("EW_JOB_SAVED \(count)")
           fflush(stdout)

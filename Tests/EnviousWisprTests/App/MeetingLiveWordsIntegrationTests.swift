@@ -95,7 +95,7 @@ struct MeetingLiveWordsIntegrationTests {
             dependencies: .init(
               isDictationIdle: { true }, waitUntilDictationIdle: {}, beginModelUse: {},
               endModelUse: {}, loadEngine: { await started.pass() },
-              transcribe: { [self] samples in
+              transcribe: { [self] samples, _ in
                 decoded.append(samples)
                 return ASRResult(
                   text: "words", language: nil, duration: Double(samples.count) / 16_000,

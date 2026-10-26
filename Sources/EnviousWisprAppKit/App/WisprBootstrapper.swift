@@ -2548,8 +2548,11 @@ package final class WisprBootstrapper {
           isModelLoaded: { [asrManager] in asrManager.isModelLoaded },
           isLoadOrUnloadInFlight: { [concreteASRManager] in concreteASRManager.isLoadOrUnloadInFlight },
           publishedSelection: { [concreteASRManager] in concreteASRManager.publishedSelection },
-          transcribe: { [activeEngine] samples in
-            try await activeEngine.transcribe(samples, .default, nil)
+          transcribe: { [activeEngine] samples, language in
+            // #4105: the meeting's transcript language, never dictation's setting.
+            var options = TranscriptionOptions.default
+            options.language = language
+            return try await activeEngine.transcribe(samples, options, nil)
           },
           disarmEngineTimers: disarmEngineTimers,
           rearmEngineTimers: rearmEngineTimers,

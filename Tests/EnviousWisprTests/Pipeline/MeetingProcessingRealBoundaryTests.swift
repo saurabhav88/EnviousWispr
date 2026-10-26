@@ -108,7 +108,9 @@ struct MeetingProcessingRealBoundaryTests {
       dependencies: .init(
         isDictationIdle: { true }, waitUntilDictationIdle: {}, beginModelUse: {}, endModelUse: {},
         loadEngine: { try await engine.load(selection: selection) },
-        transcribe: { try await engine.transcribe(samples: $0, language: nil) },
+        transcribe: { samples, language in
+          try await engine.transcribe(samples: samples, language: language)
+        },
         unloadEngine: { await engine.unload() },
         analyzeSpeakers: { audio in
           await MeetingSpeakerAnalyzer.analyze(
@@ -141,7 +143,7 @@ struct MeetingProcessingRealBoundaryTests {
     defer { try? FileManager.default.removeItem(at: dir) }
     let audio = try segments(from: fixture, into: dir)
     let (job, engine) = try realJob()
-    let result = try await job.run(tracks: [.callSound: audio]) { _ in }
+    let result = try await job.run(tracks: [.callSound: audio], language: nil) { _ in }
     let words = result.composition.text.split(whereSeparator: \.isWhitespace).count
     print(
       "MEETING_REAL two-voice words=\(words) speakers=\(result.composition.speakerCount) outcome=\(result.speakerOutcomes[.callSound].map(\.rawValue) ?? "none")"
@@ -212,7 +214,7 @@ struct MeetingProcessingRealBoundaryTests {
     let (job, _) = try realJob()
     let started = Date()
     let result = try await job.run(
-      tracks: [.callSound: audio],
+      tracks: [.callSound: audio], language: nil,
       checkpoint: .init(
         meetingID: meetingID,
         load: {

@@ -26,7 +26,7 @@ extension MeetingRecorder: MeetingRecording {}
 @MainActor
 protocol MeetingProcessing: AnyObject {
   func run(
-    tracks: [MeetingTrackKind: MeetingTrackAudio],
+    tracks: [MeetingTrackKind: MeetingTrackAudio], language: String?,
     checkpoint access: MeetingTranscriptionJob.CheckpointAccess?,
     missingAudio: [MeetingTrackKind: [MeetingTranscriptionJob.MissingAudio]],
     onStage: @escaping @MainActor (MeetingTranscriptionJob.Stage) -> Void
@@ -271,8 +271,9 @@ final class MeetingCoordinator {
     var makeJob: @MainActor () -> MeetingProcessing
     /// Live words while a meeting records (#3973): nil shows none.
     var liveWords: MeetingLiveWords?
-    /// The meeting transcript's language (`meetingLanguageMode`, decision 16). #4105: live words
-    /// no longer read it; they have their own engine and language (`MeetingLiveWordsChoice`).
+    /// The meeting transcript's language (`meetingLanguageMode`, decision 16), read once per
+    /// Start and stored on the record (#4105). Live words never read it; they have their own
+    /// engine and language (`MeetingLiveWordsChoice`).
     var meetingLanguage: @MainActor () -> LanguageMode = { .auto }
     /// Custom Words for live words, read once at each recording's start.
     var liveVocabulary: @MainActor () -> LivePreviewVocabulary = {
@@ -676,6 +677,9 @@ final class MeetingCoordinator {
   {
     guard phase == .idle, !quitting else { return .notIdle }
     let captureCall = captureCallSound ?? deps.captureCallSound()
+    // #4105: the transcript language this Start asked for, read before any wait so a change
+    // during the waits belongs to the next meeting.
+    let transcriptLanguage = deps.meetingLanguage()
     notice = nil
     guard deps.microphoneAuthorized() else {
       notice = .microphoneDenied
@@ -724,6 +728,8 @@ final class MeetingCoordinator {
       trackStatus: [.microphone: .captured, .callSound: captureCall ? .captured : .off])
     // #4012: the call app a detected Start was for, so the fallback name says "Zoom call".
     record.callApp = callApp
+    // #4105: in the record before its first save, so recovery and retry use this value.
+    record.transcriptLanguageMode = transcriptLanguage
     let meetingID = record.id
     do {
       let created = record
@@ -1197,8 +1203,10 @@ final class MeetingCoordinator {
       })
     let result: MeetingTranscriptionJob.Result
     do {
+      // #4105: the language the meeting was started with, from its record only.
       result = try await job.run(
-        tracks: tracks, checkpoint: access, missingAudio: missingAudio
+        tracks: tracks, language: record.transcriptLanguage, checkpoint: access,
+        missingAudio: missingAudio
       ) { [weak self] stage in
         self?.processing?.stage = stage
       }

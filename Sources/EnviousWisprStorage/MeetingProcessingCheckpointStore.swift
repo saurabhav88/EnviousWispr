@@ -23,6 +23,13 @@ public struct MeetingProcessingCheckpointStore: Sendable {
   }
 
   public func load() -> Loaded {
+    load(acceptingFormatVersion: MeetingProcessingCheckpoint.currentFormatVersion)
+  }
+
+  /// `load()` as a build that reads only `acceptingFormatVersion` would: the rollback check
+  /// (#4105) drives this same reader with the old version, so it proves what an older build
+  /// does with a newer file.
+  package func load(acceptingFormatVersion: Int) -> Loaded {
     let data: Data
     do {
       data = try Data(contentsOf: fileURL)
@@ -33,7 +40,7 @@ public struct MeetingProcessingCheckpointStore: Sendable {
     }
     guard
       let checkpoint = try? JSONDecoder().decode(MeetingProcessingCheckpoint.self, from: data),
-      checkpoint.formatVersion == MeetingProcessingCheckpoint.currentFormatVersion
+      checkpoint.formatVersion == acceptingFormatVersion
     else { return .unusable }
     return .checkpoint(checkpoint)
   }
