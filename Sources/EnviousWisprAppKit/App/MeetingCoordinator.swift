@@ -886,8 +886,9 @@ final class MeetingCoordinator {
       // note typed during the removal is never dropped.
       while true {
         let notes = await documents.ensureNotesDurable(meetingID)
+        // The durable mark decides, like `isStillOwned` (#4102).
         guard !quitting, !deleting.contains(meetingID), var current = live[meetingID],
-          !current.deletionRequested
+          records[meetingID]?.deletionRequested != true
         else { return }
         current.trackStatus[.microphone] = .failed
         switch notes {
@@ -918,7 +919,7 @@ final class MeetingCoordinator {
             deps.log("meeting start cleanup failed error=\(type(of: error))")
             // A quit or a deletion meanwhile owns the meeting now.
             guard !quitting, !deleting.contains(meetingID), var failed = live[meetingID],
-              !failed.deletionRequested
+              records[meetingID]?.deletionRequested != true
             else { return }
             documents.reopen(meetingID, token: fence)
             failed.state = .failed
@@ -1294,11 +1295,16 @@ final class MeetingCoordinator {
     }
   }
 
-  /// False once the meeting is being deleted (or marked for it) or the app is quitting: a late
-  /// step then writes nothing. Synchronous, so no deletion can land between this check and the
-  /// cache update of the write after it.
+  /// False once the meeting is being deleted (or durably marked for it) or the app is quitting: a
+  /// late step then writes nothing. Synchronous, so no deletion can land between this check and
+  /// the cache update of the write after it.
+  ///
+  /// The mark is read from the durable copy, not `live` (#4102 cloud review): Delete All's mark
+  /// sits in `live` while it is awaited, and a step that gave up on it would strand the meeting
+  /// if the mark then failed or was withdrawn. A step that carries on writes on the live copy,
+  /// mark included, so a mark that lands that way still deletes the meeting (`persist`).
   private func isStillOwned(_ meetingID: UUID) -> Bool {
-    !quitting && !deleting.contains(meetingID) && live[meetingID]?.deletionRequested != true
+    !quitting && !deleting.contains(meetingID) && records[meetingID]?.deletionRequested != true
   }
 
   /// The History row a finished meeting is saved as (R5, R19). Always `.labeled` so History keeps

@@ -2568,6 +2568,46 @@ struct MeetingCoordinatorTests {
   }
   #endif
 
+  /// #4102 cloud review: a pass that finishes while Delete All's mark is still unconfirmed must
+  /// not throw its result away on that provisional mark. When this is wrong and the mark then
+  /// fails, the meeting is left unmarked in `.processing` with no pass to finish it until a
+  /// manual retry or relaunch. Here the finished result carries the mark the user asked for, so
+  /// the meeting is deleted. About one second: the mark must still be running at the real
+  /// Delete All deadline.
+  @Test("a pass that finishes during an unconfirmed Delete All mark is not stranded when the mark fails")
+  func passDuringFailedMarkNotStranded() async throws {
+    let harness = try Harness()
+    let job = Gate()
+    defer { job.open() }
+    harness.jobBehavior = { _ in
+      await job.wait()
+      return Self.result()
+    }
+    let coordinator = harness.coordinator
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    await coordinator.stop()
+    await Self.eventually("pass running") { job.parked }
+    await Self.drainMeetingFiles()
+    let gate = harness.writeGate
+    gate.arm()
+    gate.failNext(1)
+    defer { gate.release.signal() }
+    let deletingAll = Task { await coordinator.deleteForHistoryDeleteAll(meetingIDs: [meetingID]) }
+    try #require(
+      await Task.detached { Self.waitBlocking(gate.entered) }.value == .success,
+      "the mark never started")
+    // The pass finishes while the mark is held: its result is built on the marked live copy.
+    job.open()
+    #expect(await deletingAll.value == false, "the mark was still running at its deadline")
+    gate.release.signal()
+    await Self.eventually("not left processing") {
+      coordinator.record(id: meetingID) == nil && coordinator.processing == nil
+    }
+    #expect(gate.timedOut.withLock { $0 } == false)
+    #expect(FileManager.default.fileExists(atPath: harness.store.folder(for: meetingID).path) == false)
+  }
+
   // MARK: - Work facts
 
   @Test("model work and in-flight work follow the pass, and each change is announced")
