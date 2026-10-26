@@ -389,7 +389,8 @@ struct LivePreviewNoAutoDownloadTests {
       bodies["func prepare() async throws {"]?.contains("LocaleClaims.shared.claim(") == true,
       "control: the wrapper body must be real code")
     #expect(
-      bodies["func performPrepare() async throws {"]?.contains("DictationTranscriber") == true,
+      bodies["func performPrepare() async throws {"]?.contains("AppleTranscriberFactory.makeModule")
+        == true,
       "control: the warm-up body must be real code — this is the half that was slipping out")
   }
 

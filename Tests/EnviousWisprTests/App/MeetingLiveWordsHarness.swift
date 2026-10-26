@@ -10,15 +10,16 @@ import os
 
 /// #3973 G1 measurement harness (off unless `EW_MLW_DIR` is set). Plays a two-track meeting
 /// (`mic.wav` = You, `call.wav` = the call) in real time, 100 ms chunks on the wall clock, into the
-/// shipped `MeetingLiveWords` owner with the production engines: Apple speech through
-/// `ApplePreviewEngineResolver.route`, or the Universal engine through the production meeting
+/// shipped `MeetingLiveWords` owner with the production engines: Apple's meeting module through
+/// `ApplePreviewEngineResolver.resolveMeeting` (#4105), or the Universal engine through the production meeting
 /// route (`WhisperPreviewDeliveryWiring.meetingResolver`) over the installed model. The owner's
 /// pumps, restart, bridge and assembler all run as in a meeting. Every 250 ms the harness writes each
 /// track's live text (its lines, joined) when it changed, and every 5 s the process footprint, in
 /// the event format `score.py` reads (docs/audits/2026-10-24-live-words-proof/REPORT.md).
 ///
 /// Env (prefix with `TEST_RUNNER_` through `scripts/xcode-test.sh`): EW_MLW_DIR (meeting folder
-/// with mic.wav, call.wav), EW_MLW_ENGINE (apple | universal), EW_MLW_LANG (en | de), EW_MLW_OUT
+/// with mic.wav, call.wav), EW_MLW_ENGINE (apple | universal), EW_MLW_LANGUAGE (BCP-47 tag such as
+/// en-US, required: the meeting row has no Auto), EW_MLW_OUT
 /// (events file, never overwritten), EW_MLW_MODEL (Universal gguf path).
 @MainActor
 @Suite(
@@ -64,7 +65,7 @@ struct MeetingLiveWordsHarness {
     let env = ProcessInfo.processInfo.environment
     let dir = URL(fileURLWithPath: try #require(env["EW_MLW_DIR"]))
     let engine = try #require(env["EW_MLW_ENGINE"])
-    let lang = env["EW_MLW_LANG"] ?? "en"
+    let lang = try #require(env["EW_MLW_LANGUAGE"], "EW_MLW_LANGUAGE is required (BCP-47)")
     let outURL = URL(fileURLWithPath: try #require(env["EW_MLW_OUT"]))
     try #require(!FileManager.default.fileExists(atPath: outURL.path), "refusing to overwrite")
     let mic = try Self.loadWAV(dir.appending(path: "mic.wav"))
@@ -87,7 +88,7 @@ struct MeetingLiveWordsHarness {
       "idle_footprint_mb": Self.footprintMB(), "path": "MeetingLiveWords",
     ])
 
-    let mode: LanguageMode = .locked(lang == "de" ? "de-DE" : "en-US")
+    let mode: LanguageMode = .locked(lang)
     let universal: @Sendable (LanguageMode) async -> MeetingLiveWords.UniversalResolution
     switch engine {
     case "apple":
@@ -105,7 +106,7 @@ struct MeetingLiveWordsHarness {
     let owner = MeetingLiveWords(
       dependencies: .init(
         appleSupported: { engine == "apple" && ApplePreviewEngineResolver.isSupportedOnThisSystem },
-        resolveApple: { mode in await ApplePreviewEngineResolver.route.resolve(mode) },
+        resolveApple: { _ in await ApplePreviewEngineResolver.resolveMeeting(languageTag: lang) },
         resolveUniversal: universal,
         isHeartStreaming: { false }))
 
