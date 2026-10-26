@@ -145,7 +145,7 @@ struct TranscriptCoordinatorFilterTests {
     try store.savePending(heldRow)
     try store.save(transcript("a file", file: "file.m4a", ageSeconds: 10))
     coordinator.load()
-    await coordinator.waitForLoadForTesting()
+    await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
 
     #expect(ids(coordinator.filteredTranscripts).contains(heldRow.id), "under All")
 
@@ -164,7 +164,7 @@ struct TranscriptCoordinatorFilterTests {
     let heldRow = held("cancelled words", age: 60)
     try store.savePending(heldRow)
     coordinator.load()
-    await coordinator.waitForLoadForTesting()
+    await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
 
     for filter in HistoryFilter.allCases {
       coordinator.historyFilter = filter
@@ -183,7 +183,7 @@ struct TranscriptCoordinatorFilterTests {
     let (coordinator, store) = makeCoordinator()
     try store.savePending(held("cancelled", age: 60))
     coordinator.load()
-    await coordinator.waitForLoadForTesting()
+    await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
     try await coordinator.saveAndShow(dictation("one", ageSeconds: 30))
     try await coordinator.saveAndShow(dictation("two", ageSeconds: 20))
     try await coordinator.saveAndShow(transcript("three", file: "three.m4a", ageSeconds: 10))

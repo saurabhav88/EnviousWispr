@@ -594,7 +594,7 @@ struct FileImportHistoryTests {
 
       let gate = TranscriptCoordinatorMeetingTests.WorkerGate()
       defer { gate.releaseAll() }
-      history.ordinaryWriteWillStartForTesting = { gate.hook() }
+      history.transactionExecutorForTesting.ordinaryWriteWillStartForTesting = { gate.hook() }
       c.rePolish()
       try #require(await gate.waitForStart(), "Clean it again's raw save never reached the worker")
       c.stop()

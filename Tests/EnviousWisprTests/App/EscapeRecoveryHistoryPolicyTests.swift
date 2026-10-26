@@ -64,7 +64,7 @@ struct EscapeRecoveryHistoryPolicyTests {
     try store.save(stamped.promotedFromPending())
 
     coordinator.load()
-    await coordinator.waitForLoadForTesting()
+    await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
 
     let matching = coordinator.visibleTranscripts.filter { $0.id == stamped.id }
     #expect(matching.count == 1, "the user sees the row they kept exactly once")
@@ -90,7 +90,7 @@ struct EscapeRecoveryHistoryPolicyTests {
     let expected = try await store.loadAll().map(\.id)
 
     coordinator.load()
-    await coordinator.waitForLoadForTesting()
+    await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
 
     #expect(
       coordinator.visibleTranscripts.map(\.id) == expected,
@@ -108,7 +108,7 @@ struct EscapeRecoveryHistoryPolicyTests {
     try store.savePending(held("middle", age: 60, createdAt: now.addingTimeInterval(-150)))
 
     coordinator.load()
-    await coordinator.waitForLoadForTesting()
+    await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
 
     #expect(coordinator.visibleTranscripts.map(\.displayText) == ["newest", "middle", "oldest"])
   }
@@ -132,7 +132,7 @@ struct EscapeRecoveryHistoryPolicyTests {
     try store.savePending(held("offered", age: 60, createdAt: instant))
 
     coordinator.load()
-    await coordinator.waitForLoadForTesting()
+    await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
 
     #expect(coordinator.visibleTranscripts.map(\.displayText) == ["completed", "offered"])
   }
@@ -161,7 +161,7 @@ struct EscapeRecoveryHistoryPolicyTests {
     try store.savePending(held("aged out", age: window + 60))
 
     coordinator.load()
-    await coordinator.waitForLoadForTesting()
+    await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
 
     #expect(
       coordinator.visibleTranscripts.isEmpty, "the store refuses to offer it in the first place")
@@ -174,12 +174,12 @@ struct EscapeRecoveryHistoryPolicyTests {
     try store.savePending(held("held", age: 60))
     try store.save(permanent("ordinary"))
     coordinator.load()
-    await coordinator.waitForLoadForTesting()
+    await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
     #expect(coordinator.visibleTranscripts.count == 2, "control: both loaded")
 
     await coordinator.deleteAll()
     coordinator.load()
-    await coordinator.waitForLoadForTesting()
+    await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
 
     #expect(
       coordinator.visibleTranscripts.isEmpty,
@@ -193,7 +193,7 @@ struct EscapeRecoveryHistoryPolicyTests {
     let stamped = held("deleted on purpose", age: 60)
     try store.savePending(stamped)
     coordinator.load()
-    await coordinator.waitForLoadForTesting()
+    await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
     let loaded = try #require(coordinator.visibleTranscripts.first, "control: the held row loaded")
 
     await coordinator.delete(loaded)
@@ -204,7 +204,7 @@ struct EscapeRecoveryHistoryPolicyTests {
       "a root-only delete would leave the file and reload it at next launch")
 
     coordinator.load()
-    await coordinator.waitForLoadForTesting()
+    await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
     #expect(coordinator.visibleTranscripts.isEmpty, "and the reload confirms it stayed deleted")
   }
 
@@ -266,7 +266,7 @@ struct EscapeRecoveryHistoryPolicyTests {
     let coordinator = TranscriptCoordinator(store: store)
     try store.savePending(held("held", age: 60))
     coordinator.load()
-    await coordinator.waitForLoadForTesting()
+    await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
 
     #expect(coordinator.listedCount == 0, "a held row is not a dictation")
     #expect(
@@ -293,7 +293,7 @@ struct EscapeRecoveryHistoryPolicyTests {
     try store.save(permanent("one"))
     try store.savePending(held("two", age: 60))
     coordinator.load()
-    await coordinator.waitForLoadForTesting()
+    await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
 
     #expect(
       coordinator.deleteAllConfirmationMessage
@@ -356,7 +356,7 @@ struct EscapeRecoveryHistoryPolicyTests {
     let stamped = held("worth keeping", age: 300)
     try store.savePending(stamped)
     coordinator.load()
-    await coordinator.waitForLoadForTesting()
+    await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
     let loaded = try #require(coordinator.visibleTranscripts.first)
 
     await coordinator.keep(loaded)
@@ -377,7 +377,7 @@ struct EscapeRecoveryHistoryPolicyTests {
     let coordinator = TranscriptCoordinator(store: store)
     try store.savePending(held("twice", age: 60))
     coordinator.load()
-    await coordinator.waitForLoadForTesting()
+    await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
     let loaded = try #require(coordinator.visibleTranscripts.first)
 
     await coordinator.keep(loaded)
@@ -394,7 +394,7 @@ struct EscapeRecoveryHistoryPolicyTests {
     try store.savePending(held("quarterly numbers", age: 60))
     try store.save(permanent("quarterly report"))
     coordinator.load()
-    await coordinator.waitForLoadForTesting()
+    await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
 
     #expect(coordinator.listedCount == 1, "a held row is an offer, not a dictation")
 

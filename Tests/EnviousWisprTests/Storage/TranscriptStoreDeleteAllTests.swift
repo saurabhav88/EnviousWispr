@@ -315,7 +315,7 @@ struct TranscriptStoreDeleteAllTests {
       try store.save(Self.row("old"))
       let coordinator = TranscriptCoordinator(store: store)
       coordinator.load()
-      await coordinator.waitForLoadForTesting()
+      await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
 
       let opened = DispatchSemaphore(value: 0)
       let release = DispatchSemaphore(value: 0)
@@ -335,10 +335,10 @@ struct TranscriptStoreDeleteAllTests {
         }
       }
       try #require(didOpen, "the durable write never opened its temporary file")
-      let admitted = coordinator.commandsAdmittedForTesting
+      let admitted = coordinator.transactionExecutorForTesting.commandsAdmittedForTesting
       let deleteAll = Task { await coordinator.deleteAll() }
       try #require(
-        await settleUntilObserved { coordinator.commandsAdmittedForTesting == admitted + 1 },
+        await settleUntilObserved { coordinator.transactionExecutorForTesting.commandsAdmittedForTesting == admitted + 1 },
         "Delete All was never admitted")
       release.signal()
       try await write.value

@@ -108,7 +108,7 @@ struct EscapeRecoveryObservabilityTests {
 
     // #4075 S1: Keep acts on a row History shows; one it does not hold is refused.
     coordinator.load()
-    await coordinator.waitForLoadForTesting()
+    await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
     await coordinator.keep(row)
 
     #expect(box.logs.count == 1)
@@ -129,7 +129,7 @@ struct EscapeRecoveryObservabilityTests {
 
     // #4075 S1: Keep acts on a row History shows; one it does not hold is refused.
     coordinator.load()
-    await coordinator.waitForLoadForTesting()
+    await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
     await coordinator.keep(row)
 
     #expect(box.logs.count == 1)

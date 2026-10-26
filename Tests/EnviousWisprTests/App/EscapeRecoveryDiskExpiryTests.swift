@@ -134,7 +134,7 @@ struct EscapeRecoveryDiskExpiryTests {
       #expect(
         log.expired.isEmpty, "control: a live row must not be swept or reported")
       #expect(
-        coordinator.liveOnDiskPendingCountForTesting == 1,
+        coordinator.diskReconcilerForTesting.liveOnDiskPendingCountForTesting == 1,
         "the sweep must report what is still counting down ON DISK")
       #expect(
         coordinator.hasPendingPulseForTesting,
@@ -160,7 +160,7 @@ struct EscapeRecoveryDiskExpiryTests {
       coordinator.setTranscriptsForTesting([row])
       await coordinator.sweepExpiredPending()
       #expect(coordinator.hasPendingPulseForTesting, "control: the countdown is running")
-      #expect(coordinator.liveOnDiskPendingCountForTesting == 1, "control: disk truth cached")
+      #expect(coordinator.diskReconcilerForTesting.liveOnDiskPendingCountForTesting == 1, "control: disk truth cached")
 
       // The user removes it. `liveOnDiskPendingCount` is a CACHE of the last
       // sweep and this changes the directory it describes, so stopping on the
@@ -171,7 +171,7 @@ struct EscapeRecoveryDiskExpiryTests {
       await coordinator.waitForRefreshForTesting()
 
       #expect(
-        coordinator.liveOnDiskPendingCountForTesting == 0,
+        coordinator.diskReconcilerForTesting.liveOnDiskPendingCountForTesting == 0,
         "the cache must be re-read from disk after a removal, not trusted")
       #expect(
         !coordinator.hasPendingPulseForTesting,
@@ -297,7 +297,7 @@ struct EscapeRecoveryDiskExpiryTests {
           escapeRecoveryTakeID: "take-carried-over"))
       coordinator.setTranscriptsForTesting([removed])
       await coordinator.sweepExpiredPending()
-      #expect(coordinator.liveOnDiskPendingCountForTesting == 2, "control: both rows counted")
+      #expect(coordinator.diskReconcilerForTesting.liveOnDiskPendingCountForTesting == 2, "control: both rows counted")
 
       await coordinator.delete(removed)
       await coordinator.waitForRefreshForTesting()
@@ -307,7 +307,7 @@ struct EscapeRecoveryDiskExpiryTests {
       // looked again would be indistinguishable from this on the single-row
       // case, which is why that case cannot bind the re-read.
       #expect(
-        coordinator.liveOnDiskPendingCountForTesting == 1,
+        coordinator.diskReconcilerForTesting.liveOnDiskPendingCountForTesting == 1,
         """
         #2186: after removing one held row the app assumed the directory was empty. A dictation \
         cancelled in an earlier session is still on disk and still counting down, and nothing is \
@@ -340,14 +340,14 @@ struct EscapeRecoveryDiskExpiryTests {
       // indistinguishable from a guard that works.
       //
       // One-shot: cleared before it acts, or the walk it arms re-enters here.
-      coordinator.onSweepWalkFinishedForTesting = { [weak coordinator] in
-        coordinator?.onSweepWalkFinishedForTesting = nil
-        coordinator?.simulateRemovalDuringWalkForTesting()
+      coordinator.diskReconcilerForTesting.onSweepWalkFinishedForTesting = { [weak coordinator] in
+        coordinator?.diskReconcilerForTesting.onSweepWalkFinishedForTesting = nil
+        coordinator?.diskReconcilerForTesting.simulateRemovalDuringWalkForTesting()
       }
       await coordinator.sweepExpiredPending()
 
       #expect(
-        coordinator.liveOnDiskPendingCountForTesting == 0,
+        coordinator.diskReconcilerForTesting.liveOnDiskPendingCountForTesting == 0,
         """
         #2186 cloud review P2: a walk that finished BEFORE the user's removal wrote its count back \
         anyway. That count describes a directory that no longer exists, so the countdown stays \
@@ -416,7 +416,7 @@ struct EscapeRecoveryDiskExpiryTests {
               escapeRecoveredAt: Date().addingTimeInterval(
                 -(AppConstants.pendingTranscriptRetention + 1)),
               escapeRecoveryTakeID: "take-carried-over"))
-          coordinator.setDiskExpiryDeadlineForTesting(.distantPast)
+          coordinator.diskReconcilerForTesting.setDiskExpiryDeadlineForTesting(.distantPast)
           return
         }
         if iteration >= 20 {
@@ -623,7 +623,7 @@ struct EscapeRecoveryDiskExpiryTests {
     await coordinator.sweepExpiredPending()
 
     #if DEBUG
-      #expect(coordinator.liveOnDiskPendingCountForTesting == 0)
+      #expect(coordinator.diskReconcilerForTesting.liveOnDiskPendingCountForTesting == 0)
       #expect(
         !coordinator.hasPendingPulseForTesting,
         "nothing is counting down, so nothing should be watching")

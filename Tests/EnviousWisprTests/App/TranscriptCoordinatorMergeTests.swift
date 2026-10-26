@@ -35,7 +35,7 @@ struct TranscriptCoordinatorMergeTests {
   private func freshlyLoaded(from dir: URL) async -> TranscriptCoordinator {
     let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
     coordinator.load()
-    await coordinator.waitForLoadForTesting()
+    await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
     return coordinator
   }
 

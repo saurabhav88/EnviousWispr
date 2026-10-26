@@ -184,7 +184,7 @@ struct TranscriptCoordinatorTests {
     let coordinator = TranscriptCoordinator(store: store)
 
     coordinator.load()
-    await coordinator.waitForLoadForTesting()
+    await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
 
     #expect(coordinator.visibleTranscripts.count == 3)
     let loadedIDs = Set(coordinator.visibleTranscripts.map(\.id))
@@ -209,14 +209,14 @@ struct TranscriptCoordinatorTests {
       let coordinator = TranscriptCoordinator(store: store)
 
       let newRow = Self.makeTranscript(text: "appended")
-      coordinator.historyReadDidFinishForTesting = { read in
-        coordinator.historyReadDidFinishForTesting = nil
+      coordinator.diskReconcilerForTesting.historyReadDidFinishForTesting = { read in
+        coordinator.diskReconcilerForTesting.historyReadDidFinishForTesting = nil
         #expect(read.freshness != nil)
         try store.save(newRow)
         coordinator.append(newRow)
       }
       coordinator.load()
-      await coordinator.waitForLoadForTesting()
+      await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
 
       let ids = coordinator.visibleTranscripts.map(\.id)
       #expect(ids.count == 2)
@@ -240,14 +240,14 @@ struct TranscriptCoordinatorTests {
       let coordinator = TranscriptCoordinator(store: store)
 
       let older = Self.makeTranscript(text: "older", createdAt: now.addingTimeInterval(-60))
-      coordinator.historyReadDidFinishForTesting = { read in
-        coordinator.historyReadDidFinishForTesting = nil
+      coordinator.diskReconcilerForTesting.historyReadDidFinishForTesting = { read in
+        coordinator.diskReconcilerForTesting.historyReadDidFinishForTesting = nil
         #expect(read.freshness != nil)
         try store.save(older)
         coordinator.append(older)
       }
       coordinator.load()
-      await coordinator.waitForLoadForTesting()
+      await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
 
       #expect(coordinator.visibleTranscripts.map(\.id) == [diskRow.id, older.id])
     }
@@ -265,14 +265,14 @@ struct TranscriptCoordinatorTests {
       let coordinator = TranscriptCoordinator(store: store)
 
       let sameDate = Self.makeTranscript(text: "written", createdAt: now)
-      coordinator.historyReadDidFinishForTesting = { read in
-        coordinator.historyReadDidFinishForTesting = nil
+      coordinator.diskReconcilerForTesting.historyReadDidFinishForTesting = { read in
+        coordinator.diskReconcilerForTesting.historyReadDidFinishForTesting = nil
         #expect(read.freshness != nil)
         try store.save(sameDate)
         coordinator.append(sameDate)
       }
       coordinator.load()
-      await coordinator.waitForLoadForTesting()
+      await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
 
       #expect(coordinator.visibleTranscripts.map(\.id) == [sameDate.id, diskRow.id])
     }
@@ -305,8 +305,8 @@ struct TranscriptCoordinatorTests {
       let r1 = Self.makeTranscript(text: "r1")
       let r2 = Self.makeTranscript(text: "r2")
       let r3 = Self.makeTranscript(text: "r3")
-      coordinator.historyReadDidFinishForTesting = { read in
-        coordinator.historyReadDidFinishForTesting = nil
+      coordinator.diskReconcilerForTesting.historyReadDidFinishForTesting = { read in
+        coordinator.diskReconcilerForTesting.historyReadDidFinishForTesting = nil
         #expect(read.freshness != nil)
         try store.save(r1)
         coordinator.append(r1)
@@ -316,7 +316,7 @@ struct TranscriptCoordinatorTests {
         coordinator.append(r3)
       }
       coordinator.load()
-      await coordinator.waitForLoadForTesting()
+      await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
 
       // Pre-merge in-memory order was [r3, r2, r1] (each append inserts at 0).
       // After merge: in-memory rows first (order preserved), then disk row.
@@ -338,7 +338,7 @@ struct TranscriptCoordinatorTests {
     try Self.writeToDisk([row], in: dir)
     let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
     coordinator.load()
-    await coordinator.waitForLoadForTesting()
+    await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
     #expect(coordinator.actionFailure == nil)
 
     // #4075 S1: the presentation the failed removal must not touch.
@@ -370,7 +370,7 @@ struct TranscriptCoordinatorTests {
       let store = TranscriptStore(directory: dir)
       let coordinator = TranscriptCoordinator(store: store)
       coordinator.load()
-      await coordinator.waitForLoadForTesting()
+      await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
 
       store.deleteAllFaultsForTesting = [.handoff]
       await coordinator.deleteAll()
@@ -393,7 +393,7 @@ struct TranscriptCoordinatorTests {
     try store.savePending(held)
     let coordinator = TranscriptCoordinator(store: store)
     coordinator.load()
-    await coordinator.waitForLoadForTesting()
+    await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
 
     // A read-only History folder: the permanent copy cannot be written.
     try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: dir.path)
@@ -410,7 +410,7 @@ struct TranscriptCoordinatorTests {
     try Self.writeToDisk([row], in: dir)
     let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
     coordinator.load()
-    await coordinator.waitForLoadForTesting()
+    await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
     await coordinator.delete(row)
     #expect(coordinator.actionFailure == nil)
     #expect(coordinator.visibleTranscripts.isEmpty)
@@ -457,7 +457,7 @@ struct TranscriptCoordinatorTests {
     let store = TranscriptStore(directory: dir)
     let coordinator = TranscriptCoordinator(store: store)
     coordinator.load()
-    await coordinator.waitForLoadForTesting()
+    await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
 
     await coordinator.delete(row)
     #expect(coordinator.visibleTranscripts.isEmpty)
@@ -570,17 +570,28 @@ struct TranscriptCoordinatorMeetingTests {
         return true
       }
 
-      let admittedBefore = coordinator.commandsAdmittedForTesting
+      let admittedBefore = coordinator.transactionExecutorForTesting.commandsAdmittedForTesting
+      let saveAdmitted = BoundedWait.Signal()
+      let secondAdmitted = BoundedWait.Signal()
+      coordinator.transactionExecutorForTesting.didAdmitForTesting = { count in
+        if count == admittedBefore + 2 { saveAdmitted.fire() }
+        if count == admittedBefore + 3 { secondAdmitted.fire() }
+      }
+      defer {
+        coordinator.transactionExecutorForTesting.didAdmitForTesting = nil
+      }
       let first = Task { await coordinator.deleteAll() }
       await MeetingCoordinatorTests.eventually("first Delete All marking") { firstMarking.parked }
       let saving = Task { try await coordinator.saveAndShow(later) }
-      await MeetingCoordinatorTests.eventually("save admitted") {
-        coordinator.commandsAdmittedForTesting == admittedBefore + 2
-      }
+      try await BoundedWait.until(saveAdmitted)
+      try #require(
+        coordinator.transactionExecutorForTesting.commandsAdmittedForTesting == admittedBefore + 2,
+        "the save was never admitted")
       let second = Task { await coordinator.deleteAll() }
-      await MeetingCoordinatorTests.eventually("second Delete All admitted") {
-        coordinator.commandsAdmittedForTesting == admittedBefore + 3
-      }
+      try await BoundedWait.until(secondAdmitted)
+      try #require(
+        coordinator.transactionExecutorForTesting.commandsAdmittedForTesting == admittedBefore + 3,
+        "the second Delete All was never admitted")
       let started = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
       records.append(started)
       #expect(coordinator.hasRow(id: later.id) == false, "the save waits behind Delete All")
@@ -614,7 +625,7 @@ struct TranscriptCoordinatorMeetingTests {
       try await coordinator.saveAndShowDurably(row("first"))
       let entered = DispatchSemaphore(value: 0)
       let release = DispatchSemaphore(value: 0)
-      coordinator.durableWriteWillStartForTesting = {
+      coordinator.transactionExecutorForTesting.durableWriteWillStartForTesting = {
         entered.signal()
         _ = release.wait(timeout: .now() + 10)
       }
@@ -627,7 +638,7 @@ struct TranscriptCoordinatorMeetingTests {
       #expect(coordinator.currentRow(id: id)?.text == "first")
       release.signal()
       try await write.value
-      coordinator.durableWriteWillStartForTesting = nil
+      coordinator.transactionExecutorForTesting.durableWriteWillStartForTesting = nil
       let url = dir.appendingPathComponent("\(id.uuidString).json")
       let onDisk = try JSONDecoder().decode(Transcript.self, from: Data(contentsOf: url))
       let listed = try #require(coordinator.currentRow(id: id))
@@ -654,7 +665,7 @@ struct TranscriptCoordinatorMeetingTests {
       let releasedByTest = OSAllocatedUnfairLock<Bool?>(initialState: nil)
       defer { release.signal() }
       let ranOnMain = OSAllocatedUnfairLock<Bool?>(initialState: nil)
-      coordinator.durableWriteWillStartForTesting = {
+      coordinator.transactionExecutorForTesting.durableWriteWillStartForTesting = {
         ranOnMain.withLock { $0 = Thread.isMainThread }
         entered.signal()
         // deadline-fallback: bound a missing release; timeout must fail the test
@@ -674,7 +685,7 @@ struct TranscriptCoordinatorMeetingTests {
       release.signal()
       try await write.value
       #expect(releasedByTest.withLock { $0 } == true)
-      coordinator.durableWriteWillStartForTesting = nil
+      coordinator.transactionExecutorForTesting.durableWriteWillStartForTesting = nil
       #expect(ranOnMain.withLock { $0 } == false)
       let onDisk = try JSONDecoder().decode(
         Transcript.self,
@@ -692,7 +703,7 @@ struct TranscriptCoordinatorMeetingTests {
       let release = DispatchSemaphore(value: 0)
       let releasedByTest = OSAllocatedUnfairLock<Bool?>(initialState: nil)
       defer { release.signal() }
-      coordinator.durableWriteWillStartForTesting = {
+      coordinator.transactionExecutorForTesting.durableWriteWillStartForTesting = {
         entered.signal()
         // deadline-fallback: bound a missing release; timeout must fail the test
         let outcome = release.wait(timeout: .now() + 10)
@@ -707,7 +718,7 @@ struct TranscriptCoordinatorMeetingTests {
       release.signal()
       try await write.value
       #expect(releasedByTest.withLock { $0 } == true)
-      coordinator.durableWriteWillStartForTesting = nil
+      coordinator.transactionExecutorForTesting.durableWriteWillStartForTesting = nil
       #expect(coordinator.currentRow(id: row.id)?.text == "standup notes")
       #expect(
         FileManager.default.fileExists(
@@ -790,7 +801,7 @@ struct TranscriptCoordinatorMeetingTests {
       let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
       let gate = WorkerGate()
       defer { gate.releaseAll() }
-      coordinator.ordinaryWriteWillStartForTesting = { gate.hook() }
+      coordinator.transactionExecutorForTesting.ordinaryWriteWillStartForTesting = { gate.hook() }
       let now = Date()
       let older = Transcript(
         id: UUID(), text: "older", processingTime: 0.1, backendType: .parakeet,
@@ -814,15 +825,15 @@ struct TranscriptCoordinatorMeetingTests {
       defer { gate.releaseAll() }
       let ranOnMain = OSAllocatedUnfairLock<Bool?>(initialState: nil)
       gate.onStart.withLock { $0 = { _ in ranOnMain.withLock { $0 = Thread.isMainThread } } }
-      coordinator.ordinaryWriteWillStartForTesting = { gate.hook() }
+      coordinator.transactionExecutorForTesting.ordinaryWriteWillStartForTesting = { gate.hook() }
       let a = Transcript(text: "first", backendType: .parakeet)
       let b = Transcript(text: "second", backendType: .parakeet)
       let writeA = Task { @MainActor in try await coordinator.saveAndShow(a) }
       try #require(await gate.waitForStart(), "write A never reached the worker")
-      let admittedBefore = coordinator.commandsAdmittedForTesting
+      let admittedBefore = coordinator.transactionExecutorForTesting.commandsAdmittedForTesting
       let writeB = Task { @MainActor in try await coordinator.saveAndShow(b) }
       try #require(
-        await settleUntilObserved { coordinator.commandsAdmittedForTesting == admittedBefore + 1 },
+        await settleUntilObserved { coordinator.transactionExecutorForTesting.commandsAdmittedForTesting == admittedBefore + 1 },
         "write B was never admitted")
       // A is held on the worker: the main actor still runs, and B has not started.
       let other = Transcript(text: "dictated", backendType: .parakeet)
@@ -841,7 +852,7 @@ struct TranscriptCoordinatorMeetingTests {
       let fresh = try await TranscriptStore(directory: dir).loadAll()
       #expect(Set(fresh.map(\.id)) == [a.id, b.id])
       #expect(coordinator.currentRow(id: b.id)?.text == "second")
-      #expect(coordinator.hasQueuedCommandsForTesting == false, "the drain did not go idle")
+      #expect(coordinator.transactionExecutorForTesting.hasQueuedCommandsForTesting == false, "the drain did not go idle")
     }
 
     @Test("a cancelled caller's admitted write still lands, and a failed write does not stop the next")
@@ -850,7 +861,7 @@ struct TranscriptCoordinatorMeetingTests {
       let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
       let gate = WorkerGate()
       defer { gate.releaseAll() }
-      coordinator.ordinaryWriteWillStartForTesting = { gate.hook() }
+      coordinator.transactionExecutorForTesting.ordinaryWriteWillStartForTesting = { gate.hook() }
       // Cancelled after admission: the write still lands and is shown.
       let kept = Transcript(text: "kept", backendType: .parakeet)
       let cancelled = Task { @MainActor in try await coordinator.saveAndShow(kept) }
@@ -880,7 +891,7 @@ struct TranscriptCoordinatorMeetingTests {
       try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path)
       #expect(coordinator.hasRow(id: failing.id) == false)
       #expect(coordinator.currentRow(id: next.id)?.text == "next")
-      #expect(coordinator.hasQueuedCommandsForTesting == false)
+      #expect(coordinator.transactionExecutorForTesting.hasQueuedCommandsForTesting == false)
       #expect(gate.anyTimedOut == false, "a held write was released by its timeout")
     }
 
@@ -890,20 +901,20 @@ struct TranscriptCoordinatorMeetingTests {
       let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
       let gate = WorkerGate()
       defer { gate.releaseAll() }
-      coordinator.ordinaryWriteWillStartForTesting = { gate.hook() }
+      coordinator.transactionExecutorForTesting.ordinaryWriteWillStartForTesting = { gate.hook() }
       let earlier = Transcript(text: "earlier", backendType: .parakeet)
       let write = Task { @MainActor in try await coordinator.saveAndShow(earlier) }
       try #require(await gate.waitForStart(), "the earlier write never reached the worker")
-      let admitted = coordinator.commandsAdmittedForTesting
+      let admitted = coordinator.transactionExecutorForTesting.commandsAdmittedForTesting
       let deleteAll = Task { @MainActor in await coordinator.deleteAll() }
       try #require(
-        await settleUntilObserved { coordinator.commandsAdmittedForTesting == admitted + 1 },
+        await settleUntilObserved { coordinator.transactionExecutorForTesting.commandsAdmittedForTesting == admitted + 1 },
         "Delete All was never admitted")
       gate.releaseOne()
       try await write.value
       await deleteAll.value
       #expect(coordinator.hasRow(id: earlier.id) == false, "Delete All ran before the write")
-      coordinator.ordinaryWriteWillStartForTesting = nil
+      coordinator.transactionExecutorForTesting.ordinaryWriteWillStartForTesting = nil
       let later = Transcript(text: "later", backendType: .parakeet)
       try await coordinator.saveAndShow(later)
       let fresh = try await TranscriptStore(directory: dir).loadAll()
@@ -943,19 +954,19 @@ struct TranscriptCoordinatorMeetingTests {
         await Task.detached { Self.waitBlocking(scanEntered) == .success }.value,
         "the scan never started")
       // The scan is under way; now a write starts and is held on the worker.
-      coordinator.ordinaryWriteWillStartForTesting = { gate.hook() }
+      coordinator.transactionExecutorForTesting.ordinaryWriteWillStartForTesting = { gate.hook() }
       let row = Transcript(text: "written during the scan", backendType: .parakeet)
       let write = Task { @MainActor in try await coordinator.saveAndShow(row) }
       try #require(await gate.waitForStart(), "the write never reached the worker")
-      let admitted = coordinator.commandsAdmittedForTesting
+      let admitted = coordinator.transactionExecutorForTesting.commandsAdmittedForTesting
       scanRelease.signal()
       try #require(
-        await settleUntilObserved { coordinator.commandsAdmittedForTesting == admitted + 1 },
+        await settleUntilObserved { coordinator.transactionExecutorForTesting.commandsAdmittedForTesting == admitted + 1 },
         "the scan's application was never queued")
       #expect(coordinator.hasRow(id: row.id) == false, "the write was shown before it landed")
       gate.releaseOne()
       try await write.value
-      await coordinator.waitForLoadForTesting()
+      await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
       #expect(coordinator.rawTranscriptsForTesting.filter { $0.id == row.id }.count == 1)
       #expect(coordinator.currentRow(id: row.id)?.text == "written during the scan")
       #expect(scanReleased.withLock { $0 } == true, "the scan was released by its timeout")
@@ -968,15 +979,15 @@ struct TranscriptCoordinatorMeetingTests {
       let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
       let gate = WorkerGate()
       defer { gate.releaseAll() }
-      coordinator.ordinaryWriteWillStartForTesting = { gate.hook() }
+      coordinator.transactionExecutorForTesting.ordinaryWriteWillStartForTesting = { gate.hook() }
       let first = Transcript(text: "first", backendType: .parakeet)
       let queued = Transcript(text: "queued", backendType: .parakeet)
       let a = Task { @MainActor in try await coordinator.saveAndShow(first) }
       try #require(await gate.waitForStart(), "write A never reached the worker")
-      let admitted = coordinator.commandsAdmittedForTesting
+      let admitted = coordinator.transactionExecutorForTesting.commandsAdmittedForTesting
       let b = Task { @MainActor in try await coordinator.saveAndShow(queued) }
       try #require(
-        await settleUntilObserved { coordinator.commandsAdmittedForTesting == admitted + 1 })
+        await settleUntilObserved { coordinator.transactionExecutorForTesting.commandsAdmittedForTesting == admitted + 1 })
       b.cancel()
       gate.releaseOne()
       try #require(await gate.waitForStart(), "the cancelled caller's write was withdrawn")
@@ -998,19 +1009,19 @@ struct TranscriptCoordinatorMeetingTests {
       try await coordinator.saveAndShow(raw)
       let gate = WorkerGate()
       defer { gate.releaseAll() }
-      coordinator.ordinaryWriteWillStartForTesting = { gate.hook() }
+      coordinator.transactionExecutorForTesting.ordinaryWriteWillStartForTesting = { gate.hook() }
       // A History rename is admitted first and held; the cleaned update, built from the raw
       // row without the name, is admitted behind it.
       let rename = Task { @MainActor in
         await coordinator.renameSpeaker(id: raw.id, speakerId: "mic:1", name: "Ana", isMeeting: false)
       }
       try #require(await gate.waitForStart(), "the rename never reached the worker")
-      let admitted = coordinator.commandsAdmittedForTesting
+      let admitted = coordinator.transactionExecutorForTesting.commandsAdmittedForTesting
       let cleaned = raw.withImportResult(
         "Hello.", wasPolished: true, llmProvider: "openai", llmModel: "m")
       let update = Task { @MainActor in try await coordinator.updateExistingRow(cleaned) }
       try #require(
-        await settleUntilObserved { coordinator.commandsAdmittedForTesting == admitted + 1 })
+        await settleUntilObserved { coordinator.transactionExecutorForTesting.commandsAdmittedForTesting == admitted + 1 })
       gate.releaseOne()
       try #require(await gate.waitForStart(), "the cleaned update never reached the worker")
       gate.releaseOne()
@@ -1028,14 +1039,14 @@ struct TranscriptCoordinatorMeetingTests {
           id: raw.id, analysis: .labeled(count: 1), turns: [newTurn])
       }
       try #require(await gate.waitForStart(), "the merge never reached the worker")
-      let admittedRename = coordinator.commandsAdmittedForTesting
+      let admittedRename = coordinator.transactionExecutorForTesting.commandsAdmittedForTesting
       let importRename = Task { @MainActor in
         try await coordinator.mergeSpeakerFields(
           id: raw.id, analysis: .labeled(count: 1), turns: [turn],
           explicitRename: ("mic:1", "Bea"))
       }
       try #require(
-        await settleUntilObserved { coordinator.commandsAdmittedForTesting == admittedRename + 1 })
+        await settleUntilObserved { coordinator.transactionExecutorForTesting.commandsAdmittedForTesting == admittedRename + 1 })
       gate.releaseOne()
       try #require(await gate.waitForStart(), "the import rename never reached the worker")
       gate.releaseOne()
@@ -1058,14 +1069,14 @@ struct TranscriptCoordinatorMeetingTests {
       }
       let gate = WorkerGate()
       defer { gate.releaseAll() }
-      coordinator.ordinaryWriteWillStartForTesting = { gate.hook() }
+      coordinator.transactionExecutorForTesting.ordinaryWriteWillStartForTesting = { gate.hook() }
       // Ordinary first, held; the durable write is admitted behind it and lands last.
       let ordinary = Task { @MainActor in try await coordinator.saveAndShow(row("ordinary")) }
       try #require(await gate.waitForStart(), "the ordinary write never reached the worker")
-      let admitted = coordinator.commandsAdmittedForTesting
+      let admitted = coordinator.transactionExecutorForTesting.commandsAdmittedForTesting
       let durable = Task { @MainActor in try await coordinator.saveAndShowDurably(row("durable")) }
       try #require(
-        await settleUntilObserved { coordinator.commandsAdmittedForTesting == admitted + 1 },
+        await settleUntilObserved { coordinator.transactionExecutorForTesting.commandsAdmittedForTesting == admitted + 1 },
         "the durable write was never admitted")
       // Admitted after the durable write: refused at once.
       await #expect(throws: TranscriptCoordinator.RowWriteInFlight.self) {
@@ -1097,20 +1108,20 @@ struct TranscriptCoordinatorMeetingTests {
           if number == 2 { announcedAtReinsert.withLock { $0 = announced.withLock { $0 } } }
         }
       }
-      coordinator.ordinaryWriteWillStartForTesting = { gate.hook() }
+      coordinator.transactionExecutorForTesting.ordinaryWriteWillStartForTesting = { gate.hook() }
       // An unrelated write holds the head, so the order of the two below is their admission.
       let head = Task { @MainActor in
         try await coordinator.saveAndShow(Transcript(text: "head", backendType: .parakeet))
       }
       try #require(await gate.waitForStart(), "the head never reached the worker")
-      let beforeDelete = coordinator.commandsAdmittedForTesting
+      let beforeDelete = coordinator.transactionExecutorForTesting.commandsAdmittedForTesting
       let delete = Task { @MainActor in await coordinator.delete(row) }
       try #require(
-        await settleUntilObserved { coordinator.commandsAdmittedForTesting == beforeDelete + 1 },
+        await settleUntilObserved { coordinator.transactionExecutorForTesting.commandsAdmittedForTesting == beforeDelete + 1 },
         "the delete was never admitted")
       let reinsert = Task { @MainActor in try await coordinator.saveAndShow(row) }
       try #require(
-        await settleUntilObserved { coordinator.commandsAdmittedForTesting == beforeDelete + 2 },
+        await settleUntilObserved { coordinator.transactionExecutorForTesting.commandsAdmittedForTesting == beforeDelete + 2 },
         "the re-insertion was never admitted")
       gate.releaseOne()
       try #require(await gate.waitForStart(), "the re-insertion never reached the worker")
@@ -1134,20 +1145,20 @@ struct TranscriptCoordinatorMeetingTests {
       try await coordinator.saveAndShow(row)
       let gate = WorkerGate()
       defer { gate.releaseAll() }
-      coordinator.ordinaryWriteWillStartForTesting = { gate.hook() }
+      coordinator.transactionExecutorForTesting.ordinaryWriteWillStartForTesting = { gate.hook() }
       let head = Task { @MainActor in
         try await coordinator.saveAndShow(Transcript(text: "head", backendType: .parakeet))
       }
       try #require(await gate.waitForStart(), "the head never reached the worker")
-      let before = coordinator.commandsAdmittedForTesting
+      let before = coordinator.transactionExecutorForTesting.commandsAdmittedForTesting
       let delete = Task { @MainActor in await coordinator.delete(row) }
       try #require(
-        await settleUntilObserved { coordinator.commandsAdmittedForTesting == before + 1 })
+        await settleUntilObserved { coordinator.transactionExecutorForTesting.commandsAdmittedForTesting == before + 1 })
       let rename = Task { @MainActor in
         await coordinator.renameSpeaker(id: row.id, speakerId: "mic:1", name: "Ana", isMeeting: false)
       }
       try #require(
-        await settleUntilObserved { coordinator.commandsAdmittedForTesting == before + 2 })
+        await settleUntilObserved { coordinator.transactionExecutorForTesting.commandsAdmittedForTesting == before + 2 })
       gate.releaseOne()
       try await head.value
       await delete.value
@@ -1158,7 +1169,7 @@ struct TranscriptCoordinatorMeetingTests {
 
     @Test("a command's result is kept when it finishes before anyone asks for it")
     func receiptKeepsAResultCompletedBeforeTheWaiter() async throws {
-      let receipt = TranscriptCoordinator.Receipt<Int>()
+      let receipt = HistoryTransactionExecutor.Receipt<Int>()
       receipt.complete(42)
       var read: Int?
       let reader = Task { @MainActor in read = await receipt.result() }
@@ -1194,28 +1205,28 @@ struct TranscriptCoordinatorMeetingTests {
       try #require(
         await Task.detached { Self.waitBlocking(scanEntered) == .success }.value,
         "the scan never started")
-      coordinator.ordinaryWriteWillStartForTesting = { gate.hook() }
+      coordinator.transactionExecutorForTesting.ordinaryWriteWillStartForTesting = { gate.hook() }
       let write = Task { @MainActor in
         try await coordinator.saveAndShow(Transcript(text: "held", backendType: .parakeet))
       }
       try #require(await gate.waitForStart(), "the write never reached the worker")
-      let admitted = coordinator.commandsAdmittedForTesting
+      let admitted = coordinator.transactionExecutorForTesting.commandsAdmittedForTesting
       scanRelease.signal()
       try #require(
-        await settleUntilObserved { coordinator.commandsAdmittedForTesting == admitted + 1 },
+        await settleUntilObserved { coordinator.transactionExecutorForTesting.commandsAdmittedForTesting == admitted + 1 },
         "the first read's application was never queued")
-      let readsBefore = coordinator.historyFullReadsForTesting
-      let endsBefore = coordinator.historyReadEndsForTesting
+      let readsBefore = coordinator.diskReconcilerForTesting.historyFullReadsForTesting
+      let endsBefore = coordinator.diskReconcilerForTesting.historyReadEndsForTesting
       // A newer read replaces the queued one before it runs.
       coordinator.load()
-      coordinator.ordinaryWriteWillStartForTesting = nil
+      coordinator.transactionExecutorForTesting.ordinaryWriteWillStartForTesting = nil
       gate.releaseOne()
       try await write.value
-      await coordinator.waitForLoadForTesting()
+      await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
       #expect(
-        coordinator.historyFullReadsForTesting == readsBefore + 1,
+        coordinator.diskReconcilerForTesting.historyFullReadsForTesting == readsBefore + 1,
         "the replaced read published as well as its replacement")
-      #expect(coordinator.historyReadEndsForTesting == endsBefore + 1)
+      #expect(coordinator.diskReconcilerForTesting.historyReadEndsForTesting == endsBefore + 1)
       #expect(scanReleased.withLock { $0 } == true, "the scan was released by its timeout")
       #expect(gate.anyTimedOut == false, "a held write was released by its timeout")
     }
@@ -1226,7 +1237,7 @@ struct TranscriptCoordinatorMeetingTests {
       let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
       let gate = WorkerGate()
       defer { gate.releaseAll() }
-      coordinator.ordinaryWriteDidFinishForTesting = { gate.hook() }
+      coordinator.transactionExecutorForTesting.ordinaryWriteDidFinishForTesting = { gate.hook() }
       let row = Transcript(text: "landed", backendType: .parakeet)
       let write = Task { @MainActor in try await coordinator.saveAndShow(row) }
       try #require(await gate.waitForStart(), "the write's file never landed")
@@ -1234,10 +1245,10 @@ struct TranscriptCoordinatorMeetingTests {
         FileManager.default.fileExists(
           atPath: dir.appendingPathComponent("\(row.id.uuidString).json").path))
       #expect(coordinator.hasRow(id: row.id) == false)
-      let admitted = coordinator.commandsAdmittedForTesting
+      let admitted = coordinator.transactionExecutorForTesting.commandsAdmittedForTesting
       let deleteAll = Task { @MainActor in await coordinator.deleteAll() }
       try #require(
-        await settleUntilObserved { coordinator.commandsAdmittedForTesting == admitted + 1 },
+        await settleUntilObserved { coordinator.transactionExecutorForTesting.commandsAdmittedForTesting == admitted + 1 },
         "Delete All was never admitted")
       gate.releaseOne()
       try await write.value
@@ -1258,7 +1269,7 @@ struct TranscriptCoordinatorMeetingTests {
       try await coordinator.saveAndShow(raw)
       let gate = WorkerGate()
       defer { gate.releaseAll() }
-      coordinator.ordinaryWriteWillStartForTesting = { gate.hook() }
+      coordinator.transactionExecutorForTesting.ordinaryWriteWillStartForTesting = { gate.hook() }
       // Rename first (held), then a background speaker merge: the name survives the merge.
       let rename = Task { @MainActor in
         await coordinator.renameSpeaker(id: raw.id, speakerId: "mic:1", name: "Ana", isMeeting: false)
@@ -1266,13 +1277,13 @@ struct TranscriptCoordinatorMeetingTests {
       try #require(await gate.waitForStart(), "the rename never reached the worker")
       let newTurn = Turn(
         id: "t2", speakerId: "mic:1", startMs: 0, endMs: 1200, originalTextRange: 0..<5)
-      let admitted = coordinator.commandsAdmittedForTesting
+      let admitted = coordinator.transactionExecutorForTesting.commandsAdmittedForTesting
       let merge = Task { @MainActor in
         try await coordinator.mergeSpeakerFields(
           id: raw.id, analysis: .labeled(count: 1), turns: [newTurn])
       }
       try #require(
-        await settleUntilObserved { coordinator.commandsAdmittedForTesting == admitted + 1 })
+        await settleUntilObserved { coordinator.transactionExecutorForTesting.commandsAdmittedForTesting == admitted + 1 })
       gate.releaseOne()
       try #require(await gate.waitForStart(), "the merge never reached the worker")
       gate.releaseOne()
@@ -1288,12 +1299,12 @@ struct TranscriptCoordinatorMeetingTests {
         "Hello.", wasPolished: true, llmProvider: "openai", llmModel: "m")
       let update = Task { @MainActor in try await coordinator.updateExistingRow(cleaned) }
       try #require(await gate.waitForStart(), "the cleaned update never reached the worker")
-      let admittedRename = coordinator.commandsAdmittedForTesting
+      let admittedRename = coordinator.transactionExecutorForTesting.commandsAdmittedForTesting
       let rename2 = Task { @MainActor in
         await coordinator.renameSpeaker(id: raw.id, speakerId: "mic:1", name: "Bea", isMeeting: false)
       }
       try #require(
-        await settleUntilObserved { coordinator.commandsAdmittedForTesting == admittedRename + 1 })
+        await settleUntilObserved { coordinator.transactionExecutorForTesting.commandsAdmittedForTesting == admittedRename + 1 })
       gate.releaseOne()
       try #require(await gate.waitForStart(), "the second rename never reached the worker")
       gate.releaseOne()
@@ -1324,33 +1335,33 @@ struct TranscriptCoordinatorMeetingTests {
         let held = Transcript(text: "held", escapeRecoveredAt: stamp, escapeRecoveryTakeID: "take")
         try store.savePending(held)
         coordinator.load()
-        await coordinator.waitForLoadForTesting()
+        await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
         let loaded = try #require(coordinator.currentRow(id: held.id))
         let lapsed = stamp.addingTimeInterval(AppConstants.pendingTranscriptRetention + 60)
         coordinator.clockForTesting = { sweepFirst ? lapsed : Date() }
         let gate = WorkerGate()
         defer { gate.releaseAll() }
-        coordinator.ordinaryWriteWillStartForTesting = { gate.hook() }
+        coordinator.transactionExecutorForTesting.ordinaryWriteWillStartForTesting = { gate.hook() }
         let head = Task { @MainActor in
           try await coordinator.saveAndShow(Transcript(text: "head", backendType: .parakeet))
         }
         try #require(await gate.waitForStart(), "the head never reached the worker")
-        let before = coordinator.commandsAdmittedForTesting
+        let before = coordinator.transactionExecutorForTesting.commandsAdmittedForTesting
         let first: Task<Void, Never>
         let second: Task<Void, Never>
         if sweepFirst {
           first = Task { @MainActor in await coordinator.sweepExpiredPending(now: lapsed) }
           try #require(
-            await settleUntilObserved { coordinator.commandsAdmittedForTesting == before + 1 })
+            await settleUntilObserved { coordinator.transactionExecutorForTesting.commandsAdmittedForTesting == before + 1 })
           second = Task { @MainActor in await coordinator.keep(loaded) }
         } else {
           first = Task { @MainActor in await coordinator.keep(loaded) }
           try #require(
-            await settleUntilObserved { coordinator.commandsAdmittedForTesting == before + 1 })
+            await settleUntilObserved { coordinator.transactionExecutorForTesting.commandsAdmittedForTesting == before + 1 })
           second = Task { @MainActor in await coordinator.sweepExpiredPending(now: lapsed) }
         }
         try #require(
-          await settleUntilObserved { coordinator.commandsAdmittedForTesting == before + 2 })
+          await settleUntilObserved { coordinator.transactionExecutorForTesting.commandsAdmittedForTesting == before + 2 })
         gate.releaseOne()
         try await head.value
         await first.value
@@ -1389,22 +1400,22 @@ struct TranscriptCoordinatorMeetingTests {
           text: "held", escapeRecoveredAt: stamp, escapeRecoveryTakeID: "take")
         try store.savePending(held)
         coordinator.load()
-        await coordinator.waitForLoadForTesting()
+        await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
         let loaded = try #require(coordinator.currentRow(id: held.id))
         // A held write ahead of Keep separates the press from the run.
         let gate = WorkerGate()
         defer { gate.releaseAll() }
-        coordinator.ordinaryWriteWillStartForTesting = { gate.hook() }
+        coordinator.transactionExecutorForTesting.ordinaryWriteWillStartForTesting = { gate.hook() }
         let blocker = Task { @MainActor in
           try await coordinator.saveAndShow(Transcript(text: "blocker", backendType: .parakeet))
         }
         try #require(await gate.waitForStart(), "the blocker never reached the worker")
         var clock = stamp.addingTimeInterval(pressAfter)
         coordinator.clockForTesting = { clock }
-        let admitted = coordinator.commandsAdmittedForTesting
+        let admitted = coordinator.transactionExecutorForTesting.commandsAdmittedForTesting
         let keep = Task { @MainActor in await coordinator.keep(loaded) }
         try #require(
-          await settleUntilObserved { coordinator.commandsAdmittedForTesting == admitted + 1 },
+          await settleUntilObserved { coordinator.transactionExecutorForTesting.commandsAdmittedForTesting == admitted + 1 },
           "Keep was never admitted")
         clock = stamp.addingTimeInterval(runAfter)
         gate.releaseOne()
@@ -1476,7 +1487,7 @@ struct TranscriptCoordinatorMeetingTests {
       try await coordinator.saveAndShow(second)
       let gate = WorkerGate()
       defer { gate.releaseAll() }
-      coordinator.ordinaryWriteWillStartForTesting = { gate.hook() }
+      coordinator.transactionExecutorForTesting.ordinaryWriteWillStartForTesting = { gate.hook() }
       let edited = Transcript(id: first.id, text: "first zebra edited", backendType: .parakeet, createdAt: first.createdAt)
       let write = Task { @MainActor in try await coordinator.updateExistingRow(edited) }
       try #require(await gate.waitForStart(), "the write never reached the worker")
@@ -1505,20 +1516,20 @@ struct TranscriptCoordinatorMeetingTests {
         text: "held", escapeRecoveredAt: Date().addingTimeInterval(-60), escapeRecoveryTakeID: "take")
       try store.savePending(held)
       coordinator.load()
-      await coordinator.waitForLoadForTesting()
+      await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
       let loaded = try #require(coordinator.currentRow(id: held.id))
       let gate = WorkerGate()
       defer { gate.releaseAll() }
-      coordinator.ordinaryWriteWillStartForTesting = { gate.hook() }
+      coordinator.transactionExecutorForTesting.ordinaryWriteWillStartForTesting = { gate.hook() }
       let head = Task { @MainActor in
         try await coordinator.saveAndShow(Transcript(text: "head", backendType: .parakeet))
       }
       try #require(await gate.waitForStart(), "the head never reached the worker")
-      let before = coordinator.commandsAdmittedForTesting
+      let before = coordinator.transactionExecutorForTesting.commandsAdmittedForTesting
       let delete = Task { @MainActor in await coordinator.delete(loaded) }
-      try #require(await settleUntilObserved { coordinator.commandsAdmittedForTesting == before + 1 })
+      try #require(await settleUntilObserved { coordinator.transactionExecutorForTesting.commandsAdmittedForTesting == before + 1 })
       let keep = Task { @MainActor in await coordinator.keep(loaded) }
-      try #require(await settleUntilObserved { coordinator.commandsAdmittedForTesting == before + 2 })
+      try #require(await settleUntilObserved { coordinator.transactionExecutorForTesting.commandsAdmittedForTesting == before + 2 })
       gate.releaseOne()
       try await head.value
       await delete.value
@@ -1538,24 +1549,24 @@ struct TranscriptCoordinatorMeetingTests {
       try await coordinator.saveAndShow(row)
       let gate = WorkerGate()
       defer { gate.releaseAll() }
-      coordinator.ordinaryWriteWillStartForTesting = { gate.hook() }
+      coordinator.transactionExecutorForTesting.ordinaryWriteWillStartForTesting = { gate.hook() }
       let head = Task { @MainActor in
         try await coordinator.saveAndShow(Transcript(text: "head", backendType: .parakeet))
       }
       try #require(await gate.waitForStart(), "the head never reached the worker")
-      let before = coordinator.commandsAdmittedForTesting
+      let before = coordinator.transactionExecutorForTesting.commandsAdmittedForTesting
       let edited = Transcript(id: row.id, text: "edited", backendType: .parakeet, createdAt: row.createdAt)
       let updateFirst = Task { @MainActor in try await coordinator.updateExistingRow(edited) }
-      try #require(await settleUntilObserved { coordinator.commandsAdmittedForTesting == before + 1 })
+      try #require(await settleUntilObserved { coordinator.transactionExecutorForTesting.commandsAdmittedForTesting == before + 1 })
       let delete = Task { @MainActor in await coordinator.delete(row) }
-      try #require(await settleUntilObserved { coordinator.commandsAdmittedForTesting == before + 2 })
+      try #require(await settleUntilObserved { coordinator.transactionExecutorForTesting.commandsAdmittedForTesting == before + 2 })
       let updateAfter = Task { @MainActor in try await coordinator.updateExistingRow(edited) }
-      try #require(await settleUntilObserved { coordinator.commandsAdmittedForTesting == before + 3 })
+      try #require(await settleUntilObserved { coordinator.transactionExecutorForTesting.commandsAdmittedForTesting == before + 3 })
       let deleteAll = Task { @MainActor in await coordinator.deleteAll() }
-      try #require(await settleUntilObserved { coordinator.commandsAdmittedForTesting == before + 4 })
+      try #require(await settleUntilObserved { coordinator.transactionExecutorForTesting.commandsAdmittedForTesting == before + 4 })
       let survivor = Transcript(text: "survivor", backendType: .parakeet)
       let late = Task { @MainActor in try await coordinator.saveAndShow(survivor) }
-      try #require(await settleUntilObserved { coordinator.commandsAdmittedForTesting == before + 5 })
+      try #require(await settleUntilObserved { coordinator.transactionExecutorForTesting.commandsAdmittedForTesting == before + 5 })
       gate.releaseAll()
       try await head.value
       #expect(try await updateFirst.value, "the update admitted before the delete did not land")
@@ -1592,12 +1603,12 @@ struct TranscriptCoordinatorMeetingTests {
         scanReleased.withLock { $0 = outcome == .success }
       }
       var snapshotHeldRow: Bool?
-      coordinator.historyReadDidFinishForTesting = { read in
+      coordinator.diskReconcilerForTesting.historyReadDidFinishForTesting = { read in
         if snapshotHeldRow == nil { snapshotHeldRow = read.permanent.contains { $0.id == row.id } }
       }
       let gate = WorkerGate()
       defer { gate.releaseAll() }
-      let readsBefore = coordinator.historyFullReadsForTesting
+      let readsBefore = coordinator.diskReconcilerForTesting.historyFullReadsForTesting
       coordinator.load()
       // This semaphore wait blocks: Task inherits MainActor, and a task group does
       // not offload blocking work. This local detached waiter is awaited immediately;
@@ -1606,32 +1617,32 @@ struct TranscriptCoordinatorMeetingTests {
         await Task.detached { Self.waitBlocking(scanEntered) == .success }.value,
         "the scan never started")
       // A write holds the queue's head; the delete is admitted behind it, before the scan ends.
-      coordinator.ordinaryWriteWillStartForTesting = { gate.hook() }
+      coordinator.transactionExecutorForTesting.ordinaryWriteWillStartForTesting = { gate.hook() }
       let head = Task { @MainActor in
         try await coordinator.saveAndShow(Transcript(text: "head", backendType: .parakeet))
       }
       try #require(await gate.waitForStart(), "the head never reached the worker")
-      let before = coordinator.commandsAdmittedForTesting
+      let before = coordinator.transactionExecutorForTesting.commandsAdmittedForTesting
       let delete = Task { @MainActor in await coordinator.delete(row) }
       try #require(
-        await settleUntilObserved { coordinator.commandsAdmittedForTesting == before + 1 },
+        await settleUntilObserved { coordinator.transactionExecutorForTesting.commandsAdmittedForTesting == before + 1 },
         "the delete was never admitted")
       // The scan now reads the row's file and queues its application behind the delete.
       scanRelease.signal()
       try #require(
-        await settleUntilObserved { coordinator.commandsAdmittedForTesting == before + 2 },
+        await settleUntilObserved { coordinator.transactionExecutorForTesting.commandsAdmittedForTesting == before + 2 },
         "the scan's application was never queued")
       #expect(snapshotHeldRow == true, "the scan's snapshot did not hold the row")
-      coordinator.ordinaryWriteWillStartForTesting = nil
+      coordinator.transactionExecutorForTesting.ordinaryWriteWillStartForTesting = nil
       gate.releaseOne()
       try await head.value
       await delete.value
-      await coordinator.waitForLoadForTesting()
+      await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
       #expect(coordinator.hasRow(id: row.id) == false, "the stale scan brought the deleted row back")
       #expect(
-        coordinator.historyFullReadsForTesting == readsBefore + 1,
+        coordinator.diskReconcilerForTesting.historyFullReadsForTesting == readsBefore + 1,
         "the stale read published, or no fresh read replaced it")
-      #expect(coordinator.hasQueuedCommandsForTesting == false, "the queue did not go idle")
+      #expect(coordinator.transactionExecutorForTesting.hasQueuedCommandsForTesting == false, "the queue did not go idle")
       #expect(scanReleased.withLock { $0 } == true, "the scan was released by its timeout")
       #expect(gate.anyTimedOut == false, "a held write was released by its timeout")
     }
@@ -1641,12 +1652,12 @@ struct TranscriptCoordinatorMeetingTests {
       let dir = Self.makeTempDir()
       let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
       let row = Transcript(text: "never", backendType: .parakeet)
-      let admitted = coordinator.commandsAdmittedForTesting
+      let admitted = coordinator.transactionExecutorForTesting.commandsAdmittedForTesting
       // Not yet started: this test holds the main actor until it awaits the task.
       let save = Task { @MainActor in try await coordinator.saveAndShow(row) }
       save.cancel()
       await #expect(throws: CancellationError.self) { try await save.value }
-      #expect(coordinator.commandsAdmittedForTesting == admitted)
+      #expect(coordinator.transactionExecutorForTesting.commandsAdmittedForTesting == admitted)
       #expect(coordinator.hasRow(id: row.id) == false)
     }
   #endif

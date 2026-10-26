@@ -99,11 +99,14 @@ final class TranscriptCoordinator {
   /// off, or no recovery held — has no timer at all.
   private(set) var expiryPulse: Int = 0
 
-  private let store: TranscriptStore
-  /// #4075 S1: the one serial queue History's blocking file work runs on, off the main actor
-  /// and in the order it was asked for. Work sent here captures only Sendable values and
-  /// storage operations, never `store` itself, which is main-actor state.
-  private let storageWorker = DispatchQueue(label: "com.enviouswispr.history.files", qos: .utility)
+  @ObservationIgnored private let transactionExecutor: HistoryTransactionExecutor
+  @ObservationIgnored private let diskReconciler: HistoryDiskReconciler
+
+  #if DEBUG
+    var transactionExecutorForTesting: HistoryTransactionExecutor { transactionExecutor }
+  #endif
+
+  var diskReconcilerForTesting: HistoryDiskReconciler { diskReconciler }
   private let pendingPulseInterval: Duration
   private let pendingPulseSleep: @Sendable (Duration) async -> Void
 
@@ -157,23 +160,10 @@ final class TranscriptCoordinator {
   /// Rows whose probable echo is shown (#3972 R19). Per row and in memory only: one row's
   /// choice never reaches another, and every row starts hidden.
   private(set) var echoShownRowIDs: Set<UUID> = []
-  private var loadTask: Task<Void, Never>?
-  /// #4001 H9: which read owns History's state. Bumped by every new read or reuse check, so a
-  /// superseded one cannot publish rows, certify the cache or clear `loadInFlight`.
-  private var loadRequestID: UInt64 = 0
-  private var loadInFlight = false
   /// #4001 H12: a History read that was still the current one has ended at least once this
   /// launch, successfully or not. It says an attempt finished, never that the rows are complete
   /// or that a given row is there. Never reset: later reads refresh rows in place.
   private(set) var historyReadFinished = false
-  /// #4001 H9: whether the rows held now are the whole store as of `accepted`. Set only by a
-  /// certified complete read; dropped by any read that starts, and by a reuse check that finds
-  /// the folders changed.
-  private enum HistoryCache: Equatable {
-    case unread
-    case reusable(TranscriptStoreFreshness)
-  }
-  private var historyCache: HistoryCache = .unread
   private var pulseTask: Task<Void, Never>?
 
   /// Rows that are still OFFERED, at read time (#2087).
@@ -676,95 +666,6 @@ final class TranscriptCoordinator {
     return transcripts.filter { $0.escapeRecoveredAt != nil && Self.isVisible($0, at: now) }.count
   }
 
-  /// How many files the LAST sweep meant to remove and could not — disk truth,
-  /// straight from `PendingSweepResult.unremovable`.
-  ///
-  /// The store promises a failed removal is retried on the next sweep, and this
-  /// is what keeps that promise: without it the pulse stopped as soon as nothing
-  /// was counting down, so the retry never came and the file plus its expiry
-  /// event waited for History to reload.
-  ///
-  /// Deliberately NOT `lapsedPendingCount`. That reads this object's own list,
-  /// which can outlive the file it describes — `load()` preserves in-memory rows
-  /// absent from both namespaces — so retrying on it means retrying forever, a
-  /// directory walk every minute for the life of the app. Only the sweep can say
-  /// whether a file is still there.
-  private var unremovablePendingCount = 0
-
-  /// Rows still counting down ON DISK, from the last COMPLETE sweep (#2186).
-  ///
-  /// The countdown used to arm only from `livePendingCount`, which reads
-  /// `transcripts`, which only `load()` fills — and `load()` is reached only from
-  /// the History view. So a row carried over from a PREVIOUS session
-  /// was invisible to the timer for the entire session: nothing deleted it at
-  /// its moment, and it waited for a relaunch. Founder, 2026-08-20: "As long as
-  /// the application is running, the timer should be ticking… and then it just
-  /// deletes."
-  ///
-  /// Written only when `walkComplete`, because the store's count means nothing
-  /// otherwise — a walk that could not enumerate the directory reports zero,
-  /// which would read as "nothing is counting down" and stop the pulse on the
-  /// one occasion it must keep running. An incomplete walk leaves this ALONE and
-  /// `lastSweepIncomplete` keeps the pulse alive on its own.
-  private var liveOnDiskPendingCount = 0
-
-  /// Expired rows the last sweep KEPT because their spool survives (#2186).
-  /// A retry owed, not a failure and not a countdown.
-  private var pendingRetainedForSpool = 0
-
-  /// Whether the last sweep failed to READ the directory, or threw.
-  ///
-  /// Separate from the count because it means the opposite of what the count
-  /// would say on its own: a walk that never happened reports zero unremovable
-  /// files, which is the same number a completely successful walk reports. Held
-  /// so the pulse keeps retrying rather than concluding it is finished on the
-  /// strength of a measurement that was never taken.
-  private var lastSweepIncomplete = false
-
-  /// Something may still need clearing: a lapsed row this object can see, a file
-  /// the last sweep could not remove, or a sweep that could not look.
-  ///
-  /// The lapsed half is what makes the FIRST walk happen after a row ages out.
-  /// It settles because a sweep that removes everything it can also drops any
-  /// lapsed row it did not find, so this returns to zero after one pass.
-  private var pendingSweepIsDue: Bool {
-    lapsedPendingCount > 0 || unremovablePendingCount > 0 || lastSweepIncomplete
-      || liveOnDiskLapsedByNow || pendingRetainedForSpool > 0
-  }
-
-  /// #2186: a disk row that has crossed its deadline SINCE the last sweep.
-  ///
-  /// `lapsedPendingCount` cannot see it — that reads `transcripts`, and a row
-  /// carried over from a previous session is not in memory unless History
-  /// loaded it. Without this the pulse would arm (because live rows exist on
-  /// disk) and then never find anything due, so it would spin until it stopped
-  /// and delete nothing at the moment it was supposed to.
-  ///
-  /// Deliberately time-based rather than a stored flag: the pulse's whole job is
-  /// to notice a deadline passing while nothing else changes, and only a clock
-  /// read can do that. The sweep it triggers is what corrects the count.
-  private var liveOnDiskLapsedByNow: Bool {
-    guard liveOnDiskPendingCount > 0 else { return false }
-    return Date() >= nextDiskExpiryDeadline ?? .distantFuture
-  }
-
-  /// When the soonest disk row is due, from the last complete sweep (#2186).
-  private var nextDiskExpiryDeadline: Date?
-
-  /// Whether the pulse has any reason to keep running.
-  ///
-  /// ONE authority for arming, for the in-loop stop and for `stopPulseIfIdle`,
-  /// because three copies of this predicate drifting apart is exactly how the
-  /// retry got stranded.
-  ///
-  /// A lapsed row in memory is deliberately NOT part of this, and the loop's
-  /// order is what makes that safe: it sweeps first, then asks this. So a stale
-  /// row costs exactly one walk — the sweep drops it — rather than keeping the
-  /// pulse alive over a file that is already gone.
-  private var pendingPulseHasWork: Bool {
-    livePendingCount > 0 || unremovablePendingCount > 0 || lastSweepIncomplete
-      || liveOnDiskPendingCount > 0 || pendingRetainedForSpool > 0
-  }
 
   /// A held row is visible only while `PendingAdmission` calls it live.
   /// Permanent rows carry no stamp and are always visible.
@@ -803,7 +704,10 @@ final class TranscriptCoordinator {
       { _ in },
     emitTurnsDisplayedTelemetry: @escaping () -> Void = {}
   ) {
-    self.store = store
+    let transactionExecutor = HistoryTransactionExecutor(store: store)
+    self.transactionExecutor = transactionExecutor
+    self.diskReconciler = HistoryDiskReconciler(
+      store: store, transactionExecutor: transactionExecutor)
     self.pendingPulseInterval = pendingPulseInterval
     self.pendingPulseSleep = pendingPulseSleep ?? { try? await Task.sleep(for: $0) }
     self.emitEscapeRecoveryKept =
@@ -867,59 +771,12 @@ final class TranscriptCoordinator {
   func sweepExpiredPending(now: Date = Date()) async {
     // #4075 S1: one command spanning the walk and its result, so no write or removal lands
     // between them.
-    await admit { [self] in await performSweep(now: now) }
+    await transactionExecutor.admit { [self] in await performSweep(now: now) }
   }
 
   private func performSweep(now: Date) async {
-    // No guard here: the STORE coalesces, so a second caller awaits the sweep
-    // in flight and then runs its own pass with its own clock. A flag at this
-    // layer would defeat both halves — `await` resuming before the work was
-    // done, and a row that lapsed DURING the in-flight sweep never being
-    // re-examined by the later clock that can see it.
-    // Captured BEFORE the await, so a removal that lands while this walk is in
-    // flight makes the walk stale by construction rather than by timing.
-    let generation = diskStateGeneration
     do {
-      let swept = try await store.deleteExpiredPending(now: now)
-      #if DEBUG
-        // The ONE window this guard exists for: the walk has finished and has
-        // not yet written its result. A Live removal here is what makes the
-        // result stale, and it cannot be staged from outside — the two tasks
-        // resume in whatever order the runtime picks, so a test that raced them
-        // would prove nothing on the run where it happened to win.
-        onSweepWalkFinishedForTesting?()
-      #endif
-      // The four fields below DESCRIBE the directory, and this walk looked at a
-      // directory a later removal has since changed — so its whole picture is
-      // superseded, not merely its count. Applying any part of it writes a state
-      // that never existed. The deletions and telemetry beneath this block are
-      // FACTS about files that really went, so they are recorded either way, and
-      // the newer walk arms the pulse from the state it actually finds.
-      let describesCurrentDirectory = generation == diskStateGeneration
-      // Replaced, never accumulated: this is the state of the directory after
-      // the pass that just ran, so a file that finally went must stop counting.
-      if describesCurrentDirectory {
-        unremovablePendingCount = swept.unremovable
-        lastSweepIncomplete = !swept.walkComplete
-      }
-      // #2186: DISK truth, and only from a walk that could actually look.
-      // `walkComplete == false` means the store counted nothing, so its zero is
-      // "I could not see" rather than "nothing is counting down" — writing it
-      // here would stop the timer on the one occasion it must keep going.
-      // `lastSweepIncomplete` above already keeps the pulse alive in that case.
-      if swept.walkComplete, describesCurrentDirectory {
-        liveOnDiskPendingCount = swept.remainingLive
-        nextDiskExpiryDeadline = swept.nextLiveDeadline
-      }
-      // #2186: rows the sweep KEPT because their spool is still on disk. Not a
-      // failure and not a live countdown — a retry owed. Without it the sweep
-      // reads as finished (nothing deleted, nothing unremovable, walk complete),
-      // the pulse stops, and the row waits for a relaunch instead of going on
-      // the pass after recovery clears its spool. Same stranded retry the
-      // `unremovable` count already exists to prevent, by a second route.
-      if describesCurrentDirectory {
-        pendingRetainedForSpool = swept.retainedForSpool
-      }
+      let swept = try await diskReconciler.sweep(now: now)
       // Evict on EVERY deletion, not only the telemetry-eligible ones. A
       // future-skewed or corrupt row is deleted without a receipt, and leaving
       // it in memory kept `lapsedPendingCount` above zero — so the pulse
@@ -977,9 +834,6 @@ final class TranscriptCoordinator {
       // after a newer walk succeeded would mark the directory unread when it had
       // just been read. `startPulseIfNeeded` below is unconditional, so a genuine
       // failure still leaves a retry armed either way.
-      if generation == diskStateGeneration {
-        lastSweepIncomplete = true
-      }
       startPulseIfNeeded()
       // History is a limb, not the heart. A failed sweep leaves rows the
       // read-time filter already hides.
@@ -997,187 +851,27 @@ final class TranscriptCoordinator {
   // object goes away the next wake finds nothing and returns. Nothing is
   // retained in the meantime.
 
-  /// History's open (#4001 H9). Joins a read already running, reuses the rows already held when
-  /// the store's folders have not changed since the last complete read, and otherwise reads the
-  /// store as `load()` does. Only a complete read sets what "unchanged" is measured against;
-  /// every write, this app's included, changes a folder token, so the next open reads again.
   func loadIfNeeded() {
-    guard !loadInFlight else { return }
-    guard case .reusable(let accepted) = historyCache else {
-      load()
-      return
-    }
-    loadRequestID &+= 1
-    let request = loadRequestID
-    loadInFlight = true
-    loadTask = Task {
-      defer { finishLoad(request) }
-      let current = await store.freshness()
-      guard request == loadRequestID, !Task.isCancelled else { return }
-      guard let current, current == accepted, case .reusable(accepted) = historyCache else {
-        historyCache = .unread
-        await readStore(request)
-        return
-      }
-      #if DEBUG
-        historyCacheHitsForTesting += 1
-      #endif
-      // Cleanup still runs on every open. A sweep that deletes a file changes the pending token,
-      // so the open after it reads the store again.
-      await sweepExpiredPending()
-    }
+    diskReconciler.loadIfNeeded(effects: readEffects)
   }
 
-  /// A full read of the store, replacing any read in flight. History's opens go through
-  /// `loadIfNeeded()`.
   func load() {
-    loadTask?.cancel()
-    loadRequestID &+= 1
-    let request = loadRequestID
-    loadInFlight = true
-    historyCache = .unread
-    loadTask = Task {
-      defer { finishLoad(request) }
-      await readStore(request)
-    }
+    diskReconciler.load(effects: readEffects)
   }
 
-  /// Ends `request`'s hold on the in-flight flag, and only its own: a superseded read finishing
-  /// late must not mark a newer read as done.
-  private func finishLoad(_ request: UInt64) {
-    if request == loadRequestID {
-      loadInFlight = false
-      historyReadFinished = true
-      #if DEBUG
-        historyReadEndsForTesting += 1
-      #endif
-    }
-  }
-
-  private func readStore(_ request: UInt64) async {
-    // #2087: sweep BEFORE reading, so the load cannot pick up a row this pass
-    // is about to delete. Reclaims disk and produces the `expired` half of the
-    // ratio that judges the feature.
-    //
-    // Placed here rather than at process launch deliberately: this is the
-    // path that already does History disk I/O, and read-time expiry means an
-    // unswept row is invisible regardless — so the sweep governs disk and
-    // telemetry, never what the user can see. That is also why a missed sweep
-    // is not a user-facing bug.
-    await sweepExpiredPending()
-    guard request == loadRequestID, !Task.isCancelled else { return }
-    do {
-      // #2772: taken BEFORE the read, so a write that lands while it is in flight can be
-      // recognised as newer than what the disk handed back.
-      let revisionAtRead = historyWriteRevision
-      // And the deletion generation, for the opposite race: a row DELETED while this read
-      // was suspended is still in the picture the disk handed back, and the merge below
-      // would reinstate it. For an import that is worse than a stale list, because the
-      // cleanup's update then finds the row and rewrites its file — the deletion
-      // `updateExistingRow` exists to respect. Every removal bumps this synchronously
-      // (`invalidateDiskState`), so a mismatch means re-read rather than trust.
-      let generationAtRead = diskStateGeneration
-      let read = try await store.readHistory()
-      #if DEBUG
-        try historyReadDidFinishForTesting?(read)
-      #endif
-      guard request == loadRequestID, !Task.isCancelled else { return }
-      // #4075 S1: applied as a queued command, so a write's disk success and its publication
-      // are never split by it. The application rechecks this request itself.
-      await admit { [self] in
-        applyRead(
-          read, request: request, revisionAtRead: revisionAtRead, generationAtRead: generationAtRead
-        )
-      }
-    } catch is CancellationError {
-      // A newer read replaced this one (#4075 G8); that read publishes.
-    } catch {
-      await AppLogger.shared.log(
-        "Failed to load transcripts: \(error)",
-        level: .info, category: "TranscriptCoordinator"
-      )
-    }
-  }
-
-  private func applyRead(
-    _ read: TranscriptHistoryRead, request: UInt64, revisionAtRead: Int,
-    generationAtRead: Int
-  ) {
-    var diskRows = read.permanent
-    // Phase C union-by-ID merge. Preserve any in-memory rows whose IDs
-    // are not yet on disk (append-during-load race window) in their
-    // existing order, then append disk rows. Protects the newest-first
-    // invariant under multiple concurrent completions while a slow
-    // startup load is still running.
-    // #2087: pending rows are ADDITIVE and never authoritative. Keep writes
-    // the permanent copy before deleting the pending file, so a crash
-    // between those two steps leaves the same id in both namespaces — root
-    // wins, and the user sees the row they kept exactly once rather than a
-    // permanent row shadowed by a copy still counting down.
-    let pendingRows = read.pending
-    // The source load's own identity, not the drain's cancellation: `load()` replaces a
-    // request by moving `loadRequestID`.
-    guard request == loadRequestID else { return }
-    guard generationAtRead == diskStateGeneration else {
-      // A later fresh read, started now and not awaited here.
-      load()
-      return
-    }
-    // #2772: a row written SINCE this read began is newer than the disk copy that came
-    // back, and the merge below prefers the disk one whenever the id already exists. An
-    // import writes twice under one id, so without this the raw version read at the
-    // start of a load replaces the cleaned version saved a moment later, and History
-    // shows unpolished words until something else refreshes it. Found by Codex.
-    let newerRows = Dictionary(
-      uniqueKeysWithValues:
-        transcripts
-        .filter { (writtenAtRevision[$0.id] ?? 0) > revisionAtRead }
-        .map { ($0.id, $0) })
-    diskRows = diskRows.map { newerRows[$0.id] ?? $0 }
-    let rootIDs = Set(diskRows.map(\.id))
-    let heldRows = pendingRows.filter { !rootIDs.contains($0.id) }
-    let knownIDs = rootIDs.union(heldRows.map(\.id))
-    // #4075 G9: a row missing from the disk is kept only when it was written after this read
-    // began (its file can land after the scan passed it) or when the read skipped a file. A
-    // row written earlier was on disk before the read, so a complete read that lacks it means
-    // its file was deleted outside this coordinator, and keeping it left the deleted text in
-    // History and offered by Paste Last.
-    let inFlightRows = transcripts.filter {
-      !knownIDs.contains($0.id)
-        && (read.freshness == nil || (writtenAtRevision[$0.id] ?? 0) > revisionAtRead)
-    }
-    // Merged rather than re-sorted: all three inputs are already newest-first,
-    // and re-sorting the combined list could reorder permanent rows that
-    // share a `createdAt`. With no held or in-flight rows this returns
-    // `diskRows` unchanged, so History is byte-identical for anyone who never
-    // turns Escape Recovery on. In-flight rows are merged by date too, not put
-    // first: a queued save can publish an older row than one this read found
-    // (Codex review of the #4075 S7 fix). In-flight rows go second so they win ties, as
-    // `append` and a save put a new row ahead of rows with the same date.
-    let merged = Self.mergeNewestFirst(
-      Self.mergeNewestFirst(heldRows, diskRows), inFlightRows)
-    let mergedIDs = Set(merged.map(\.id))
-    removedRowIDs.formUnion(transcripts.lazy.map(\.id).filter { !mergedIDs.contains($0) })
-    transcripts = merged
-    // #4001 H9: reusable only when the read itself was certified. A read that skipped a file
-    // it could not open, or that a write overlapped, leaves the next open to read again.
-    historyCache = read.freshness.map(HistoryCache.reusable) ?? .unread
-    #if DEBUG
-      historyFullReadsForTesting += 1
-    #endif
-    reconcileSelectionWithDisplayedSet()
-    startPulseIfNeeded()
-  }
-
-  // periphery:ignore - test seam
-  func waitForLoadForTesting() async {
-    // A read that finds the store changed under it starts another one, so wait for the read
-    // that is current once nothing replaces it, not only the one running when this was called.
-    var awaited: Task<Void, Never>?
-    while let running = loadTask, running != awaited {
-      awaited = running
-      await running.value
-    }
+  private var readEffects: HistoryDiskReconciler.ReadEffects {
+    HistoryDiskReconciler.ReadEffects(
+      rows: { [self] in transcripts },
+      applyRows: { [self] rows, removedIDs in
+        removedRowIDs.formUnion(removedIDs)
+        transcripts = rows
+      },
+      didApplyRead: { [self] in
+        reconcileSelectionWithDisplayedSet()
+        startPulseIfNeeded()
+      },
+      sweepBeforeRead: { [self] in await sweepExpiredPending() },
+      didFinishCurrentRead: { [self] in historyReadFinished = true })
   }
 
   /// Append a just-completed transcript to the in-memory cache.
@@ -1187,7 +881,7 @@ final class TranscriptCoordinator {
   /// must not invoke it twice for the same transcript — duplicate-ID
   /// protection would mask heart-path bugs.
   func append(_ transcript: Transcript) {
-    noteWritten(transcript.id)
+    diskReconciler.noteWritten(transcript.id)
     // By date, not at the top: a dictation is dated before its delivery suspends, so a newer
     // queued save can publish first (Codex review of the #4075 S7 fix).
     insertByDate(transcript)
@@ -1218,6 +912,10 @@ final class TranscriptCoordinator {
     startPulseIfNeeded()
   }
 
+
+  /// Thrown by an ordinary write to a row whose durable meeting write is still in flight.
+  struct RowWriteInFlight: Error {}
+
   /// Save a row to disk AND show it, replacing an existing row with the same id.
   ///
   /// #2772: a file import writes TWICE under one id — the raw words the moment transcription
@@ -1228,37 +926,13 @@ final class TranscriptCoordinator {
   ///
   /// Throws, deliberately. The import STOPS before polishing when the first write fails,
   /// which it cannot do if this swallows the error.
-  /// #3972 C4a: a row whose durable meeting write is in flight. Ordinary writes to it are
-  /// refused until it lands, so neither write can publish over the other on disk or in the list.
-  private var durableWritesInFlight: Set<UUID> = []
-
-  #if DEBUG
-    /// #4001 H9: opens that reused the held rows, and full reads that completed. Counted apart so
-    /// a test can tell reuse from a read that happened to return the same rows.
-    private(set) var historyCacheHitsForTesting = 0
-    private(set) var historyFullReadsForTesting = 0
-    /// #4001 H12: reads that ended while still current, so a test can tell that a superseded read
-    /// did not set `historyReadFinished`.
-    private(set) var historyReadEndsForTesting = 0
-    /// Runs on the durable write's worker thread just before it writes, so a test can hold a
-    /// write while it is registered in flight.
-    @ObservationIgnored var durableWriteWillStartForTesting: (@Sendable () -> Void)?
-    /// Runs after the disk snapshot returns and before it is reconciled, so tests can
-    /// persist and append a row that the completed snapshot could not contain.
-    @ObservationIgnored var historyReadDidFinishForTesting:
-      (@MainActor (TranscriptHistoryRead) throws -> Void)?
-  #endif
-
-  /// Thrown by an ordinary write to a row whose durable meeting write is still in flight.
-  struct RowWriteInFlight: Error {}
-
   func saveAndShow(_ transcript: Transcript) async throws {
     // #3972 C4a: refused at admission, so ordinary writes admitted before a durable one stay
     // valid while later ones are refused until it lands.
-    guard !durableWritesInFlight.contains(transcript.id) else { throw RowWriteInFlight() }
+    guard !transactionExecutor.isDurableWriteInFlight(transcript.id) else { throw RowWriteInFlight() }
     try Task.checkCancellation()
-    _ = try await admit { [self] in
-      await capture { try await performWrite(transcript, insertIfAbsent: true) }
+    _ = try await transactionExecutor.admit { [self] in
+      await transactionExecutor.capture { try await performWrite(transcript, insertIfAbsent: true) }
     }.get()
   }
 
@@ -1269,25 +943,10 @@ final class TranscriptCoordinator {
     if !insertIfAbsent, !transcripts.contains(where: { $0.id == transcript.id }) {
       return false
     }
-    let operations = store.operations()
-    #if DEBUG
-      let willWrite = ordinaryWriteWillStartForTesting
-    #endif
-    #if DEBUG
-      let didWrite = ordinaryWriteDidFinishForTesting
-    #endif
-    try await runOnStorageWorker {
-      #if DEBUG
-        willWrite?()
-      #endif
-      try operations.save(transcript)
-      #if DEBUG
-        didWrite?()
-      #endif
-    }
+    try await transactionExecutor.write(transcript)
     // Stamped with the publication, with no read applied in between, so an in-flight `load()`
     // cannot publish the version it read BEFORE this write.
-    noteWritten(transcript.id)
+    diskReconciler.noteWritten(transcript.id)
     if let existing = transcripts.firstIndex(where: { $0.id == transcript.id }) {
       transcripts[existing] = transcript
     } else {
@@ -1313,32 +972,19 @@ final class TranscriptCoordinator {
   /// sync) OFF the main actor, then shown. EnviousMeet marks the meeting ready only after this
   /// returns, and its deletion awaits the commit that calls this, so no delete races the write.
   func saveAndShowDurably(_ transcript: Transcript) async throws {
-    guard !durableWritesInFlight.contains(transcript.id) else { throw RowWriteInFlight() }
+    guard !transactionExecutor.isDurableWriteInFlight(transcript.id) else { throw RowWriteInFlight() }
     // Registered at admission and held until its publication or failure, so ordinary writes
     // admitted after it are refused and those admitted before it stay valid.
-    durableWritesInFlight.insert(transcript.id)
-    try await admit { [self] in
-      defer { durableWritesInFlight.remove(transcript.id) }
-      return await capture { try await performDurableWrite(transcript) }
+    transactionExecutor.reserveDurableWrite(transcript.id)
+    try await transactionExecutor.admit { [self] in
+      defer { transactionExecutor.finishDurableWrite(transcript.id) }
+      return await transactionExecutor.capture { try await performDurableWrite(transcript) }
     }.get()
   }
 
   private func performDurableWrite(_ transcript: Transcript) async throws {
-    let write = store.durableWriter()
-    #if DEBUG
-      let willWrite = durableWriteWillStartForTesting
-    #endif
-    // On the storage worker, not a plain Task: this type is @MainActor and a plain Task inherits
-    // it, while the write encodes and blocks on two disk flushes. Awaited at once, so it neither
-    // outlives nor reorders the commit. Once sent it runs to its end, so a cancelled caller
-    // still gets the real result and the bookkeeping below.
-    try await runOnStorageWorker {
-      #if DEBUG
-        willWrite?()
-      #endif
-      try write(transcript)
-    }
-    noteWritten(transcript.id)
+    try await transactionExecutor.writeDurably(transcript)
+    diskReconciler.noteWritten(transcript.id)
     if let existing = transcripts.firstIndex(where: { $0.id == transcript.id }) {
       transcripts[existing] = transcript
     } else {
@@ -1348,93 +994,7 @@ final class TranscriptCoordinator {
     startPulseIfNeeded()
   }
 
-  /// Runs `work` on the storage worker and resumes with its result. The main actor is never
-  /// blocked waiting for it, and caller cancellation does not withdraw work already sent.
-  private func runOnStorageWorker<T: Sendable>(
-    _ work: @escaping @Sendable () throws -> T
-  ) async throws -> T {
-    try await withCheckedThrowingContinuation { continuation in
-      storageWorker.async { continuation.resume(with: Result { try work() }) }
-    }
-  }
-
-  // MARK: - History transaction queue (#4075 S1)
-
-  /// One admitted History command. It prepares against the state earlier commands left, runs
-  /// its storage work, publishes or handles its failure, and completes its own receipt. Only
-  /// the drain runs it. A command never admits another command or waits for one.
-  private typealias HistoryCommand = @MainActor () async -> Void
-
-  /// Admitted commands not yet run, in admission order.
-  @ObservationIgnored private var commands: [HistoryCommand] = []
-  /// The one retained task that runs `commands`, nil when idle. Not the caller: a caller
-  /// cancelled after admission neither withdraws its command nor stops the drain.
-  @ObservationIgnored private var drain: Task<Void, Never>?
-
-  /// A command's result, kept until its caller reads it, before or after the command ends.
-  /// Internal, not private, so a test can drive this one implementation directly.
-  ///
-  /// Unsafe continuations on purpose (#3925): with `withCheckedContinuation` here, this `-O`
-  /// module carried its own copy of that emit-into-client function, and the Release test lane
-  /// crashed `LiveMediaPlaybackEffectsTests` (`-Onone`) inside its own call to it,
-  /// `EXC_BAD_ACCESS`, on CI and locally (Xcode 27.1, 27A9275; PR #4095). `complete` resumes
-  /// each waiter once and clears the list, so a waiter is never resumed twice.
-  @MainActor final class Receipt<Value: Sendable> {
-    private var value: Value?
-    private var waiters: [UnsafeContinuation<Value, Never>] = []
-
-    func complete(_ result: Value) {
-      value = result
-      let ready = waiters
-      waiters = []
-      for waiter in ready { waiter.resume(returning: result) }
-    }
-
-    func result() async -> Value {
-      if let value { return value }
-      return await withUnsafeContinuation { waiters.append($0) }
-    }
-  }
-
-  /// Admits `body` behind every earlier command, synchronously, before the caller first
-  /// suspends, and returns its result once it has run.
-  private func admit<Value: Sendable>(_ body: @escaping @MainActor () async -> Value) async
-    -> Value
-  {
-    let receipt = Receipt<Value>()
-    commands.append { receipt.complete(await body()) }
-    if drain == nil {
-      drain = Task { @MainActor [self] in
-        while !commands.isEmpty {
-          let head = commands.removeFirst()
-          await head()
-        }
-        // The same turn as the empty check above, so nothing can be admitted in between.
-        drain = nil
-      }
-    }
-    #if DEBUG
-      commandsAdmittedForTesting += 1
-    #endif
-    return await receipt.result()
-  }
-
-  private func capture<Value: Sendable>(_ work: () async throws -> Value) async -> Result<
-    Value, any Error
-  > {
-    do { return .success(try await work()) } catch { return .failure(error) }
-  }
-
   #if DEBUG
-    /// Commands admitted so far, so a test knows a caller reached the queue.
-    private(set) var commandsAdmittedForTesting = 0
-    /// Runs on the storage worker just before an ordinary write, so a test can hold one.
-    @ObservationIgnored var ordinaryWriteWillStartForTesting: (@Sendable () -> Void)?
-    /// Runs on the storage worker just after an ordinary write's file landed, before its
-    /// publication, so a test can hold that window.
-    @ObservationIgnored var ordinaryWriteDidFinishForTesting: (@Sendable () -> Void)?
-    /// Whether a command is running or waiting.
-    var hasQueuedCommandsForTesting: Bool { drain != nil }
     /// Replaces `Date()` for Keep's press and execution times.
     @ObservationIgnored var clockForTesting: (@MainActor () -> Date)?
   #endif
@@ -1454,10 +1014,10 @@ final class TranscriptCoordinator {
   /// this actor, and the list is what the user is looking at.
   @discardableResult
   func updateExistingRow(_ transcript: Transcript) async throws -> Bool {
-    guard !durableWritesInFlight.contains(transcript.id) else { throw RowWriteInFlight() }
+    guard !transactionExecutor.isDurableWriteInFlight(transcript.id) else { throw RowWriteInFlight() }
     try Task.checkCancellation()
-    return try await admit { [self] in
-      await capture {
+    return try await transactionExecutor.admit { [self] in
+      await transactionExecutor.capture {
         // #4075 S1: prepared when it runs. A cleaned update owns its text and provenance; the
         // speaker fields are whatever earlier commands (a rename, a speaker merge) left.
         guard let current = currentRow(id: transcript.id) else { return false }
@@ -1478,11 +1038,11 @@ final class TranscriptCoordinator {
     id: UUID, analysis: TranscriptSpeakerAnalysis, turns: [Turn]?,
     explicitRename: (speakerId: String, name: String)? = nil
   ) async throws -> Bool {
-    guard !durableWritesInFlight.contains(id) else { throw RowWriteInFlight() }
+    guard !transactionExecutor.isDurableWriteInFlight(id) else { throw RowWriteInFlight() }
     try Task.checkCancellation()
     let rename = explicitRename.map { RenamePair(speakerId: $0.speakerId, name: $0.name) }
-    return try await admit { [self] in
-      await capture {
+    return try await transactionExecutor.admit { [self] in
+      await transactionExecutor.capture {
         // #4075 S1: read when this command runs, so it merges into what earlier commands left.
         if let rename {
           // A rename changes the named speaker only, on the row's analysis and turns as they
@@ -1557,7 +1117,7 @@ final class TranscriptCoordinator {
     let emitRenameTelemetry: (TelemetryService.FileImportRenameOutcome) -> Void =
       isMeeting ? { _ in } : self.emitRenameTelemetry
     // #3972 C4a: refused at admission while a durable meeting write to this row is queued.
-    guard !durableWritesInFlight.contains(transcriptID), !Task.isCancelled else {
+    guard !transactionExecutor.isDurableWriteInFlight(transcriptID), !Task.isCancelled else {
       emitRenameTelemetry(.failed)
       return RenameFailure(
         message: RenameFailure.couldNotSaveName,
@@ -1566,7 +1126,7 @@ final class TranscriptCoordinator {
     // #4075 S1: the row's analysis and turns are resolved when the command runs, so the
     // rename changes the named speaker only, on whatever earlier commands left.
     let rename = RenamePair(speakerId: speakerId, name: name)
-    let outcome = await admit { [self] () async -> RenameOutcome in
+    let outcome = await transactionExecutor.admit { [self] () async -> RenameOutcome in
       switch preparedRename(id: transcriptID, rename) {
       case .removed: return .removed
       case .notRenamable: return .notRenamable
@@ -1620,22 +1180,6 @@ final class TranscriptCoordinator {
     emitTurnsDisplayedTelemetry()
   }
 
-  /// Counts writes, so a disk read that began earlier can be told it is stale.
-  ///
-  /// `load()` prefers the DISK row whenever an id already exists, which is right for a
-  /// launch and wrong for a write that landed while it was reading: an import's raw row read
-  /// at the start of a load would replace the cleaned row saved a moment later, and History
-  /// would show the unpolished version until something else refreshed it. Found by Codex.
-  private var historyWriteRevision = 0
-  private var writtenAtRevision: [UUID: Int] = [:]
-
-  /// Stamps a locally persisted row when it is published in memory. Disk-load publication
-  /// and fixture injection do not stamp rows. A newer stamp protects a local write from
-  /// an older History snapshot (#4075 G9).
-  private func noteWritten(_ id: UUID) {
-    historyWriteRevision += 1
-    writtenAtRevision[id] = historyWriteRevision
-  }
 
   /// EnviousMeet published a change to its meetings (`MeetingCoordinator.onMeetingsPublished`):
   /// a meeting removed elsewhere (a peer, dev control) leaves no stale selection (Codex C8 r1).
@@ -1722,7 +1266,7 @@ final class TranscriptCoordinator {
     guard !Task.isCancelled else { return }
     // #4075 S1: the announcement and the failure are handled inside the command, before the
     // next command prepares, so a queued re-insertion cannot run ahead of them.
-    await admit { [self] in
+    await transactionExecutor.admit { [self] in
       do {
         if try await performRemoval(id) == .removed { onRowDeleted?(id) }
       } catch {
@@ -1906,7 +1450,7 @@ final class TranscriptCoordinator {
     // #4075 S1: the press time, for the kept event's age; eligibility is judged when the
     // command runs.
     let pressedAt = now()
-    await admit { [self] in await performKeep(transcript, pressedAt: pressedAt) }
+    await transactionExecutor.admit { [self] in await performKeep(transcript, pressedAt: pressedAt) }
   }
 
   private func performKeep(_ transcript: Transcript, pressedAt: Date) async {
@@ -1920,7 +1464,6 @@ final class TranscriptCoordinator {
       recordEscapeRecoveryKeep("already-permanent", transcript.escapeRecoveryTakeID)
       return
     }
-    let operations = store.operations()
     let id = transcript.id
     let executedAt = now()
     do {
@@ -1929,9 +1472,7 @@ final class TranscriptCoordinator {
       // put an expired recovery on screen as permanent History — resurrecting
       // in the UI precisely the text the store just refused to write.
       guard
-        let result = try await runOnStorageWorker({
-          try operations.promote(id: id, now: executedAt).map { Promotion($0.pending, $0.promoted) }
-        })
+        let result = try await transactionExecutor.promote(id: id, now: executedAt)
       else {
         // The refusal is the interesting case and it was the silent one: the
         // user pressed Keep, the row lapsed a moment earlier, and nothing
@@ -1956,7 +1497,7 @@ final class TranscriptCoordinator {
         recordEscapeRecoveryKeep("kept-unreported", nil)
       }
       guard let index = transcripts.firstIndex(where: { $0.id == id }) else { return }
-      noteWritten(id)
+      diskReconciler.noteWritten(id)
       transcripts[index] = result.promoted
       refreshDiskStateThenStopIfIdle()
     } catch {
@@ -1970,16 +1511,6 @@ final class TranscriptCoordinator {
     }
   }
 
-  /// What a Keep's storage work confirmed: the pending row it judged live, and the permanent
-  /// row it wrote.
-  private struct Promotion: Sendable {
-    let pending: Transcript
-    let promoted: Transcript
-    init(_ pending: Transcript, _ promoted: Transcript) {
-      self.pending = pending
-      self.promoted = promoted
-    }
-  }
 
   /// The coordinator's clock for Keep, so a test can tell the press from the execution.
   private func now() -> Date {
@@ -2171,7 +1702,9 @@ final class TranscriptCoordinator {
   /// Removes a row without announcing it (EnviousMeet's own removals). One queued command.
   func removeRow(id: UUID) async throws {
     try Task.checkCancellation()
-    _ = try await admit { [self] in await capture { try await performRemoval(id) } }.get()
+    _ = try await transactionExecutor.admit { [self] in
+      await transactionExecutor.capture { try await performRemoval(id) }
+    }.get()
   }
 
   enum Removal: Sendable, Equatable { case removed, alreadyAbsent }
@@ -2181,8 +1714,7 @@ final class TranscriptCoordinator {
   /// changes nothing on screen.
   private func performRemoval(_ id: UUID) async throws -> Removal {
     let listed = transcripts.contains { $0.id == id }
-    let operations = store.operations()
-    let existed = try await runOnStorageWorker { try operations.remove(id: id) }
+    let existed = try await transactionExecutor.remove(id: id)
     guard listed || existed else { return .alreadyAbsent }
     // #2807: the displayed set BEFORE the removal, so the neighbour is the row the user
     // saw beside the one they deleted.
@@ -2210,7 +1742,7 @@ final class TranscriptCoordinator {
     // #4075 S1: admitted behind earlier commands. Its marking, handoff and publication are one
     // command: History's queue stays held while the meeting marks are awaited (#4102), so later
     // saves, removals and a second Delete All wait behind it, while the main actor keeps running.
-    await admit { [self] in await performDeleteAll() }
+    await transactionExecutor.admit { [self] in await performDeleteAll() }
   }
 
   private func performDeleteAll() async {
@@ -2231,7 +1763,7 @@ final class TranscriptCoordinator {
       return
     }
     do {
-      try store.deleteAll()
+      try transactionExecutor.deleteAll()
       let removedIDs = transcripts.map(\.id)
       transcripts.removeAll()
       removedRowIDs.formUnion(removedIDs)
@@ -2268,48 +1800,11 @@ final class TranscriptCoordinator {
 
   // MARK: - Escape Recovery expiry pulse (#2087)
 
-  /// Interleave two newest-first lists without disturbing either's order.
-  ///
-  /// On a TIE the permanent row goes first, deliberately: a held row is an
-  /// unresolved offer, and an offer should not displace a dictation the user
-  /// actually completed at the same instant.
-  ///
-  /// A plain `sorted` over the concatenation is the obvious alternative and is
-  /// rejected for a narrower reason than it first appears. `Array.sorted` is
-  /// NOT documented as stable, so its behaviour on tied `createdAt` values is
-  /// unspecified — today's implementation happens to preserve input order, and
-  /// nothing promises the next toolchain will. That makes the tie case a
-  /// silent, toolchain-dependent reordering of shipped History, caused by an
-  /// opt-in feature the user may never have turned on. This merge specifies the
-  /// answer instead of inheriting it.
-  ///
-  /// Honest limit: because the current sort IS stable in practice, the two
-  /// implementations differ observably only in which row wins a tie — which is
-  /// exactly what `heldRowLosesATieWithAPermanentRow` pins.
-  private static func mergeNewestFirst(
-    _ held: [Transcript], _ permanent: [Transcript]
-  ) -> [Transcript] {
-    guard !held.isEmpty else { return permanent }
-    var result: [Transcript] = []
-    result.reserveCapacity(held.count + permanent.count)
-    var h = 0
-    var p = 0
-    while h < held.count, p < permanent.count {
-      if held[h].createdAt > permanent[p].createdAt {
-        result.append(held[h])
-        h += 1
-      } else {
-        result.append(permanent[p])
-        p += 1
-      }
-    }
-    result.append(contentsOf: held[h...])
-    result.append(contentsOf: permanent[p...])
-    return result
-  }
 
   private func startPulseIfNeeded() {
-    guard pulseTask == nil, pendingPulseHasWork else { return }
+    guard pulseTask == nil,
+      diskReconciler.pendingPulseHasWork(liveInMemory: livePendingCount)
+    else { return }
     pulseTask = Task { [weak self, pendingPulseInterval, pendingPulseSleep] in
       while !Task.isCancelled {
         await pendingPulseSleep(pendingPulseInterval)
@@ -2329,14 +1824,16 @@ final class TranscriptCoordinator {
         // happen after the wait, so they are always equal, and it only appeared
         // to work because the row sometimes expired BETWEEN them. A test that
         // removed the wall clock is what exposed it.
-        if self.pendingSweepIsDue {
+        if self.diskReconciler.pendingSweepIsDue(
+          lapsedInMemory: self.lapsedPendingCount, now: Date())
+        {
           await self.sweepExpiredPending()
         }
         // AFTER the sweep above, never before: this asks whether a countdown is
         // running or a file resisted removal, and the sweep is what settles the
         // second half. Stopping on the live count alone is what stranded a
         // failed removal, because the retry it was promised never came.
-        if !self.pendingPulseHasWork {
+        if !self.diskReconciler.pendingPulseHasWork(liveInMemory: self.livePendingCount) {
           self.pulseTask = nil
           return
         }
@@ -2345,7 +1842,7 @@ final class TranscriptCoordinator {
   }
 
   private func stopPulseIfIdle() {
-    guard !pendingPulseHasWork else { return }
+    guard !diskReconciler.pendingPulseHasWork(liveInMemory: livePendingCount) else { return }
     pulseTask?.cancel()
     pulseTask = nil
   }
@@ -2376,7 +1873,7 @@ final class TranscriptCoordinator {
     // round-2 P2), and believing its old value is what made it stale. Zeroing
     // can only stop the pulse EARLY; the refresh below re-arms within moments if
     // another row is still counting down, and only the directory can say.
-    invalidateDiskState()
+    diskReconciler.invalidateDiskState()
     stopPulseIfIdle()
     refreshTask = Task { [weak self] in
       await self?.sweepExpiredPending()
@@ -2384,36 +1881,6 @@ final class TranscriptCoordinator {
     }
   }
 
-  /// Drops what this coordinator believes about the pending directory, and
-  /// supersedes any walk already in flight over it.
-  ///
-  /// Both halves belong to one removal and are why this is a function rather
-  /// than four assignments at the call site: zeroing without bumping leaves an
-  /// older walk free to write its stale picture back, and bumping without
-  /// zeroing leaves the removed row counting until the refresh lands.
-  private func invalidateDiskState() {
-    liveOnDiskPendingCount = 0
-    nextDiskExpiryDeadline = nil
-    pendingRetainedForSpool = 0
-    diskStateGeneration &+= 1
-  }
-
-  /// Bumped by every pending REMOVAL, and read by `sweepExpiredPending` across
-  /// its one `await`, so a walk that started before a removal cannot write its
-  /// picture of the directory over a newer one's.
-  ///
-  /// Cloud review, P2: the store serialises the walks, but each sweep writes its
-  /// result back on the main actor AFTER resuming, and resumptions are not
-  /// ordered — so without this, two quick removals can let the first walk's
-  /// stale count land on top of the second walk's empty one and strand the pulse
-  /// until a row that no longer exists reaches its former deadline.
-  ///
-  /// A generation rather than cancellation: the walk itself is still doing real
-  /// work — it deletes files and its deletions must be recorded whoever wins —
-  /// and only the four fields DESCRIBING the directory go stale. Those four are
-  /// gated together rather than one at a time; they are one snapshot, and a
-  /// partial application is a directory state that never existed.
-  private var diskStateGeneration = 0
 
   /// Held so a test can await the refresh rather than guess at a duration —
   /// a signal the subject itself fires, never a sleep or a yield count.
@@ -2442,35 +1909,6 @@ final class TranscriptCoordinator {
     // periphery:ignore - test seam
     var lapsedPendingCountForTesting: Int { lapsedPendingCount }
 
-    /// #2186: the disk deadline the pulse waits for.
-    ///
-    /// A seam rather than a wall-clock wait. The production deadline comes from
-    /// the store's own walk, and a test that made a row expire a fraction of a
-    /// second in the future and let the loop spin until it did would be flaky by
-    /// construction — the same defect `pulseSweepsOnDetection` records having
-    /// already been fixed once in this file.
-    // periphery:ignore - test seam
-    func setDiskExpiryDeadlineForTesting(_ date: Date?) {
-      nextDiskExpiryDeadline = date
-    }
-
-    // periphery:ignore - test seam
-    var liveOnDiskPendingCountForTesting: Int { liveOnDiskPendingCount }
-
-    /// Fired once the pending walk has finished and BEFORE its result is
-    /// written back — the only window in which a removal can make that result
-    /// stale. A seam rather than a raced pair of tasks: the two resume in an
-    /// order the runtime picks, so a racing test proves nothing on the run where
-    /// it happens to win.
-    var onSweepWalkFinishedForTesting: (@MainActor () -> Void)?
-
-    /// What a removal does to this coordinator's picture of the directory, with
-    /// the refresh it would also arm left off — so a test can put a removal in
-    /// the window above without a second walk racing in to correct the answer.
-    // periphery:ignore - test seam
-    func simulateRemovalDuringWalkForTesting() {
-      invalidateDiskState()
-    }
 
     /// Awaits the post-removal disk refresh. Captured before awaiting because
     /// the task clears nothing but may be replaced by a later removal.
@@ -2512,7 +1950,7 @@ final class TranscriptCoordinator {
   // periphery:ignore - test seam
   func setTranscriptsForTesting(_ rows: [Transcript]) {
     transcripts = rows
-    historyCache = .unread
+    diskReconciler.invalidateReadCache()
     startPulseIfNeeded()
   }
 }

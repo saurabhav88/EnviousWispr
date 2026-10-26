@@ -28,7 +28,7 @@ struct HistoryReadFinishedTests {
     #expect(!coordinator.historyReadFinished)
     coordinator.loadIfNeeded()
     #expect(!coordinator.historyReadFinished, "not while the read is still running")
-    await coordinator.waitForLoadForTesting()
+    await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
     #expect(coordinator.historyReadFinished)
   }
 
@@ -47,9 +47,9 @@ struct HistoryReadFinishedTests {
       try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: dir.path)
       let coordinator = TranscriptCoordinator(store: store)
       coordinator.load()
-      await coordinator.waitForLoadForTesting()
+      await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
       // The read really failed: it published nothing and never reached the merge.
-      #expect(coordinator.historyFullReadsForTesting == 0)
+      #expect(coordinator.diskReconcilerForTesting.historyFullReadsForTesting == 0)
       #expect(coordinator.filteredTranscripts.isEmpty)
       #expect(coordinator.historyReadFinished)
     }
@@ -61,9 +61,9 @@ struct HistoryReadFinishedTests {
     defer { try? FileManager.default.removeItem(at: dir) }
     let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
     coordinator.loadIfNeeded()
-    await coordinator.waitForLoadForTesting()
+    await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
     coordinator.loadIfNeeded()
-    await coordinator.waitForLoadForTesting()
+    await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
     #expect(coordinator.historyReadFinished)
   }
 
@@ -76,9 +76,9 @@ struct HistoryReadFinishedTests {
       coordinator.load()
       coordinator.load()
       #expect(!coordinator.historyReadFinished)
-      await coordinator.waitForLoadForTesting()
+      await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
       #expect(coordinator.historyReadFinished)
-      #expect(coordinator.historyReadEndsForTesting == 1, "the replaced read never counted")
+      #expect(coordinator.diskReconcilerForTesting.historyReadEndsForTesting == 1, "the replaced read never counted")
     }
   #endif
 }

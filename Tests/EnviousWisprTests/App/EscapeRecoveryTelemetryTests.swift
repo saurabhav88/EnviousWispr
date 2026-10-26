@@ -51,7 +51,7 @@ struct EscapeRecoveryTelemetryTests {
       escapeRecoveryTakeID: "take-abc")
     try store.savePending(stamped)
     coordinator.load()
-    await coordinator.waitForLoadForTesting()
+    await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
     let loaded = try #require(coordinator.visibleTranscripts.first)
 
     await coordinator.keep(loaded)
@@ -83,7 +83,7 @@ struct EscapeRecoveryTelemetryTests {
       escapeRecoveryTakeID: "take-twice")
     try store.savePending(stamped)
     coordinator.load()
-    await coordinator.waitForLoadForTesting()
+    await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
     let loaded = try #require(coordinator.visibleTranscripts.first)
     let first = Task { @MainActor in await coordinator.keep(loaded) }
     let second = Task { @MainActor in await coordinator.keep(loaded) }
@@ -122,7 +122,7 @@ struct EscapeRecoveryTelemetryTests {
     let coordinator = makeCoordinator(log, store: store)
     try store.save(Transcript(text: "ordinary"))
     coordinator.load()
-    await coordinator.waitForLoadForTesting()
+    await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
     let ordinary = try #require(coordinator.visibleTranscripts.first)
 
     await coordinator.keep(ordinary)
@@ -176,7 +176,7 @@ struct EscapeRecoveryTelemetryTests {
         escapeRecoveryTakeID: "take-swept"))
 
     coordinator.load()
-    await coordinator.waitForLoadForTesting()
+    await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
 
     #expect(
       log.expired.map(\.takeID) == ["take-swept"],
@@ -331,7 +331,7 @@ struct EscapeRecoveryTelemetryTests {
       // in memory at all — `loadPending` refuses a lapsed row — which is
       // precisely why the pulse cannot decide this from its own list.
       coordinator.load()
-      await coordinator.waitForLoadForTesting()
+      await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
 
       #expect(
         coordinator.rawTranscriptsForTesting.isEmpty,
@@ -486,7 +486,7 @@ struct EscapeRecoveryTelemetryTests {
       }
 
       coordinator.load()
-      await coordinator.waitForLoadForTesting()
+      await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
       await coordinator.waitForPulseForTesting()
 
       #expect(seen.overran == false, "the pulse must reach its own exit, not the test's backstop")
@@ -561,7 +561,7 @@ struct EscapeRecoveryTelemetryTests {
       }
 
       coordinator.load()
-      await coordinator.waitForLoadForTesting()
+      await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
       await coordinator.waitForPulseForTesting()
 
       #expect(seen.overran == false, "the pulse must reach its own exit, not the test's backstop")
@@ -719,7 +719,7 @@ struct EscapeRecoveryTelemetryTests {
           escapeRecoveryTakeID: "take-live"))
 
       coordinator.load()
-      await coordinator.waitForLoadForTesting()
+      await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
 
       #expect(log.expired.map(\.takeID) == ["take-gone"], "control: the expired one was swept")
       #expect(
@@ -960,7 +960,7 @@ struct EscapeRecoveryTelemetryTests {
       escapeRecoveryTakeID: "take-priv")
     try store.savePending(stamped)
     coordinator.load()
-    await coordinator.waitForLoadForTesting()
+    await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
 
     await coordinator.keep(try #require(coordinator.visibleTranscripts.first))
     await coordinator.sweepExpiredPending()
