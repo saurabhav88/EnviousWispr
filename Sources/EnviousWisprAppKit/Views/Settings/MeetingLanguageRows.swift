@@ -22,7 +22,9 @@ struct MeetingLiveWordsRow: View {
     }
     .rowStatus { statusLine }
     .rowSupplementaryControl(belowWidth: 560) { action }
-    .task { await model.appear() }
+    // Runs on appear and again whenever the stored choice changes, so a choice a meeting Start
+    // saves while Settings stays open shows here (appear is a no-op save once a choice exists).
+    .task(id: model.choiceGeneration) { await model.appear() }
   }
 
   private var enginePicker: some View {

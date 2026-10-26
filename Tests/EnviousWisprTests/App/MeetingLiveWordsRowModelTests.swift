@@ -1,8 +1,10 @@
+import AppKit
 import EnviousWisprASR
 import EnviousWisprCore
 import EnviousWisprLivePreview
 import EnviousWisprModelDelivery
 import Foundation
+import SwiftUI
 import Testing
 
 @testable import EnviousWisprAppKit
@@ -536,6 +538,41 @@ struct MeetingLiveWordsRowModelTests {
     #expect(rig.settings.meetingLiveWordsLanguage == "en-US", "live words unchanged")
     rig.model.transcriptLanguage = .locked("en")
     #expect(rig.model.languagesDiffer == false, "en-US and en are the same language")
+  }
+
+  // MARK: - The shown row follows a choice saved elsewhere
+
+  @Test("an open Live words row shows the choice a meeting Start saves while Settings stays open")
+  func openRowFollowsAChoiceStartSaves() async throws {
+    let rig = Rig(dictation: .locked("de"))  // German is not ready yet: nothing is saved
+    let host = NSHostingView(rootView: MeetingLiveWordsRow().environment(rig.model))
+    host.frame = CGRect(x: 0, y: 0, width: 700, height: 200)
+    let window = NSWindow(
+      contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+    window.contentView = host
+    defer { window.contentView = nil }
+
+    // deadline-fallback: a hang guard; each wait ends on the row's own state.
+    func waitFor(_ done: () -> Bool) async throws {
+      let deadline = ContinuousClock.now + .seconds(10)
+      while !done(), ContinuousClock.now < deadline {
+        host.layoutSubtreeIfNeeded()
+        try await Task.sleep(for: .milliseconds(20))
+      }
+    }
+    try await waitFor { rig.model.snapshot != nil }
+    try #require(rig.model.snapshot != nil, "the row read the stored choice on appear")
+    try #require(rig.model.selectedEngine == nil, "nothing ready, nothing saved")
+
+    // German becomes ready, then a meeting Start saves the first guess through the shared
+    // initializer, as MeetingCoordinator does, with Settings still open.
+    rig.mac.lock.withLock { rig.mac.installed.append("de-DE") }
+    _ = await rig.choice.materializeIfUnset()
+    #expect(rig.settings.meetingLiveWordsEngine == .apple)
+
+    try await waitFor { rig.model.selectedEngine == .apple }
+    #expect(rig.model.selectedEngine == .apple, "the open row shows the engine Start saved")
+    #expect(rig.model.selectedLanguage == "de-DE", "and its language")
   }
 }
 

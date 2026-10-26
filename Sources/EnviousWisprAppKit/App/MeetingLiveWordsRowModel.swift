@@ -209,6 +209,10 @@ final class MeetingLiveWordsRowModel {
     }
   }
 
+  /// Advances on every write to the stored engine or language, whoever writes it (a meeting
+  /// Start saving the first guess while Settings stays open, too); the row re-reads on it.
+  var choiceGeneration: UInt64 { environment.settings.meetingLiveWordsChoiceGeneration }
+
   /// The stored engine and language (what the pickers show as selected).
   var selectedEngine: LivePreviewEngineChoice? { snapshot?.storedEngine }
   var selectedLanguage: String? { snapshot?.storedLanguage }
