@@ -2592,6 +2592,7 @@ package final class WisprBootstrapper {
           modelDelivery.whisperPreviewHandle == nil ? nil : modelDelivery.whisperPreviewState
         },
         startUniversalDownload: { [modelDelivery] in modelDelivery.startPreviewDownload() },
+        universalDownloadRefused: { [modelDelivery] in modelDelivery.previewDownloadRefused },
         cancelUniversalDownload: { [modelDelivery] in modelDelivery.cancelPreviewDownload() }))
     let meetingStartFlow = MeetingStartFlow(
       dependencies: .init(

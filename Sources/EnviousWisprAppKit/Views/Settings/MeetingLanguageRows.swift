@@ -159,7 +159,11 @@ struct MeetingLiveWordsRow: View {
     if let refusal = model.downloadRefusal {
       status(refusal)
     } else if model.universalDownloadUnavailable, model.selectedEngine != .apple {
-      status(String(localized: MeetingsCopy.liveWordsDownloadUnavailable))
+      // The refusal, with Download kept beside it: a press after the cause is fixed retries.
+      HStack(spacing: 8) {
+        status(String(localized: MeetingsCopy.liveWordsDownloadUnavailable))
+        Button(String(localized: title)) { model.download() }
+      }
     } else {
       Button(String(localized: title)) { model.download() }
     }

@@ -69,6 +69,8 @@ struct MeetingLiveWordsRowModelTests {
     var state: DeliveryState? = .notReady
     /// What `startPreviewDownload` answers: false when it refuses (no delivery, kill switch).
     var scheduled = true
+    /// What `previewDownloadRefused` reads: set by a refused press, cleared by a scheduled one.
+    var refused = false
     var starts = 0
     var cancels = 0
   }
@@ -132,8 +134,10 @@ struct MeetingLiveWordsRowModelTests {
           appleCatalog: catalog, universalState: { universal.state },
           startUniversalDownload: {
             universal.starts += 1
+            universal.refused = !universal.scheduled
             return universal.scheduled
           },
+          universalDownloadRefused: { universal.refused },
           cancelUniversalDownload: { universal.cancels += 1 }))
     }
   }
@@ -456,9 +460,16 @@ struct MeetingLiveWordsRowModelTests {
     #expect(rig.model.download() == .unavailable)
     #expect(rig.model.universalDownloadUnavailable)
     #expect(rig.model.status == .notDownloaded(engine: .universal, language: "de"))
+    // Reopening Settings keeps the message and the Download beside it.
+    await rig.model.appear()
+    #expect(rig.model.universalDownloadUnavailable)
+    #expect(rig.model.status == .notDownloaded(engine: .universal, language: "de"))
     rig.universal.scheduled = true
-    #expect(rig.model.download() == .started)
+    #expect(rig.model.download() == .started, "the retry after the cause is fixed")
     #expect(rig.model.universalDownloadUnavailable == false)
+    // A refusal that arrives once the scheduled work ran (an unwritable replacement record).
+    rig.universal.refused = true
+    #expect(rig.model.universalDownloadUnavailable)
   }
 
   @Test("Universal Download and Cancel go to the existing delivery commands")
@@ -551,6 +562,7 @@ extension MeetingLiveWordsRowModel {
             inventory: LocaleInventory(
               reserved: { [] }, reserve: { _ in false }, release: { _ in false },
               maximumReserved: { 0 }))),
-        universalState: { nil }, startUniversalDownload: { true }, cancelUniversalDownload: {}))
+        universalState: { nil }, startUniversalDownload: { true }, universalDownloadRefused: { false },
+        cancelUniversalDownload: {}))
   }
 }

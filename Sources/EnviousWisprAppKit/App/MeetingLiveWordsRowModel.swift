@@ -33,6 +33,9 @@ final class MeetingLiveWordsRowModel {
     /// transfer, its progress and Cancel, never a second copy. Start answers whether it was
     /// scheduled (false: no delivery in this build, or turned off remotely).
     let startUniversalDownload: @MainActor () -> Bool
+    /// The delivery refused the last Download press, now or once its work ran
+    /// (`ModelDeliveryHome.previewDownloadRefused`).
+    let universalDownloadRefused: @MainActor () -> Bool
     let cancelUniversalDownload: @MainActor () -> Void
   }
 
@@ -85,10 +88,6 @@ final class MeetingLiveWordsRowModel {
   private(set) var appleFailedTag: String?
   /// The Apple install in flight, readable so a test can join it.
   private(set) var appleDownloadTask: Task<Void, Never>?
-
-  /// The last Universal Download press could not be scheduled; cleared by the next press that
-  /// is.
-  private(set) var universalDownloadUnavailable = false
 
   /// Every refresh publishes only if no newer one started.
   private var refreshGeneration = 0
@@ -319,10 +318,12 @@ final class MeetingLiveWordsRowModel {
   }
 
   private func startUniversalDownload() -> DownloadOutcome {
-    let scheduled = environment.startUniversalDownload()
-    universalDownloadUnavailable = !scheduled
-    return scheduled ? .started : .unavailable
+    environment.startUniversalDownload() ? .started : .unavailable
   }
+
+  /// The delivery refused the last Universal Download press, at once or once its work ran; the
+  /// row says so beside its Download, which stays there for a retry.
+  var universalDownloadUnavailable: Bool { environment.universalDownloadRefused() }
 
   private func startAppleDownload(_ tag: String) -> DownloadOutcome {
     guard appleDownloadingTag == nil else { return .busy }
