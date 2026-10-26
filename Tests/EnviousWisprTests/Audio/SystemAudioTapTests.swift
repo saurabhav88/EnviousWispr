@@ -247,6 +247,15 @@ struct SystemAudioTapTests {
     #expect(
       try CoreAudioCallSoundBackend.captureFormat(nominalRate: 24_000, inputStreams: [stream48])
         == .init(sampleRate: 24_000, bufferChannels: [2]))
+    #if DEBUG
+      try nominalRateThroughTheBackend()
+    #endif
+  }
+
+  #if DEBUG
+  /// The same rule through the backend's own reads (needs the DEBUG aggregate seam).
+  private func nominalRateThroughTheBackend() throws {
+    guard #available(macOS 14.2, *) else { return }
     let nominal = OSAllocatedUnfairLock<Double?>(initialState: 24_000)
     let backend = CoreAudioCallSoundBackend(
       addListener: { _, _, _, _ in noErr }, removeListener: { _, _, _, _ in noErr },
@@ -269,6 +278,7 @@ struct SystemAudioTapTests {
       try backend.committedCaptureFormat()
     }
   }
+  #endif
 
   @Test("no usable nominal rate or input layout means no capture, never a fallback rate")
   func unusableConfigurationsAreRefused() throws {
