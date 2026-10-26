@@ -4,7 +4,7 @@
     python3 Tests/RuntimeUAT/meeting_uat.py crash --run-dir <dir>
     python3 Tests/RuntimeUAT/meeting_uat.py latency --run-dir <dir> [--takes 20]
     python3 Tests/RuntimeUAT/meeting_uat.py memory --run-dir <dir> [--minutes 10]
-    python3 Tests/RuntimeUAT/meeting_uat.py live --run-dir <dir> [--live-engine apple|universal] [--audio <wav>]
+    python3 Tests/RuntimeUAT/meeting_uat.py live --run-dir <dir> [--live-engine auto|apple|universal] [--audio <wav>]
     python3 Tests/RuntimeUAT/meeting_uat.py speechkill --run-dir <dir>
     python3 Tests/RuntimeUAT/meeting_uat.py quit --run-dir <dir>
     python3 Tests/RuntimeUAT/meeting_uat.py --self-test
@@ -37,8 +37,9 @@ the speakers, also on an error.
   words proven active; `--takes` during a meeting's after-recording pass where the pass lasts.
   Median within +10 %, p90 within +20 % (R51); p95 reported. Missing takes: COULD NOT TELL.
 - live (#3973, #4105): live words through the chosen engine (`--live-engine apple`, the default, or
-  `universal`; the door forces it for that meeting) on `--audio` (a recording to replay, kept out of
-  the run's artifacts) or the synthetic conversation; they progress on both
+  `universal`, which the door forces for that meeting; `auto` starts like a user, with the engine
+  the Live words row stored) on `--audio` (a recording to replay, kept out of the run's artifacts)
+  or the synthetic conversation, played once to the end before the dictation; they progress on both
   tracks; a dictation with live preview lands meanwhile; Stop gives the transcript and the live
   words go; saved tracks cover the recording; speech-service RSS and app footprint every 5 s.
 - speechkill (#3973): SIGKILL Apple's `localspeechrecognition` mid-meeting (by executable path;
@@ -752,6 +753,29 @@ def check_saved_audio(c, meeting_id, recorded_seconds):
     return record
 
 
+def wav_seconds(path):
+    with wave.open(path, "rb") as clip:
+        return clip.getnframes() / clip.getframerate()
+
+
+def sample_through_playback(player, started, length, read, sleep=time.sleep, clock=time.monotonic):
+    """#4105: a pause never wipes what was already shown. Reads each track's live text every
+    2 s until the one playback ends (at least 30 s after Start), bounded by the recording's
+    length plus 60 s. Returns (samples, shrinks over 20 characters, afplay exit or None)."""
+    shrank, samples = [], 0
+    previous = read()
+    deadline = started + length + 60
+    while (player.poll() is None or clock() - started < 30) and clock() < deadline:
+        sleep(2)  # deadline-fallback: the sampling period of a real-time check
+        samples += 1
+        now = read()
+        for track in ("microphone", "callSound"):
+            if now[track] < previous[track] - 20:
+                shrank.append((track, previous[track], now[track]))
+        previous = now
+    return samples, shrank, player.poll()
+
+
 def isolated_dictation(c, players, audio, sentence):
     """A push-to-talk dictation with dictation's live preview on, heard alone: the meeting's
     playback stops first and resumes after. Checks the transcript against the spoken sentence,
@@ -781,34 +805,33 @@ def isolated_dictation(c, players, audio, sentence):
 
 def scenario_live(run_dir, made, checks, engine, audio=None):
     """#3973, #4105: live words through the chosen engine on both tracks while the meeting
-    records, never shrinking over the pauses, a dictation with its own live preview during it,
-    then the normal transcript."""
+    records over one whole playback, never shrinking in 2 s samples, a dictation with its own
+    live preview during it, then the normal transcript."""
     import audio_rig
     import wispr_eyes as w
     c = checks
     work = tempfile.mkdtemp(prefix="meeting-live-", dir=run_dir)
     if audio is None:
         audio, _, _ = make_conversation(work)
+    length = wav_seconds(audio)
     with audio_rig.AudioRig(), Players() as players, Sampler(this_build_pid()) as sampler:
+        # `auto` starts the way a user does: the engine stored by the Live words row decides.
+        want = engine if engine != "auto" else door_ok(
+            "settings", "get", "meetingLiveWordsEngine").get("value")
         meeting_id = start_meeting(call_sound=True, live_engine=engine)
         started = time.monotonic()
         made.append(meeting_id)
-        players.loop(audio)
-        want = engine
+        # One uninterrupted playback of the whole recording, so its later speech reaches the
+        # app; the dictation below interrupts playback only after this one has ended.
+        player = players.play(audio)
         chosen = wait_for("engine", lambda: live_state().get("engine"), 60, 1.0)
         c.check("the live words use the expected engine", chosen == want, f"{chosen} (want {want})")
         first, later = wait_both_tracks_progress("live")
-        # #4105: a pause never wipes what was already shown (samples 2 s apart over 30 s).
-        shrank = []
-        previous = track_text_lengths()
-        for _ in range(15):
-            time.sleep(2)  # deadline-fallback: the sampling period of a real-time check
-            now = track_text_lengths()
-            for track in ("microphone", "callSound"):
-                if now[track] < previous[track] - 20:
-                    shrank.append((track, previous[track], now[track]))
-            previous = now
-        c.check("live words never shrink over the pauses", not shrank, json.dumps(shrank))
+        samples, shrank, played = sample_through_playback(player, started, length, track_text_lengths)
+        c.check("the recording played once to the end without a break", played == 0,
+                f"afplay exit {played} after {time.monotonic() - started:.0f} s of {length:.0f} s")
+        c.check("live words never shrink in 2 s samples across the whole playback",
+                samples > 0 and not shrank, json.dumps({"samples": samples, "shrank": shrank}))
         c.check("live words appear on both tracks", bool(first), json.dumps(first or later))
         c.check("both tracks' live text keeps growing", bool(first) and later["microphone"] >
                 first["microphone"] and later["callSound"] > first["callSound"],
@@ -1171,6 +1194,41 @@ def self_test():
             failures.append(name)
 
     expect("identical text has no errors", wer("Hello, World!", "hello world") == 0.0)
+    # #4105: sampling covers the whole single playback and reports how it ended.
+    class FakeClock:
+        def __init__(self):
+            self.t = 0.0
+
+        def __call__(self):
+            return self.t
+
+        def sleep(self, seconds):
+            self.t += seconds
+
+    class FakePlayer:
+        def __init__(self, clock, ends_at, code=0):
+            self.clock, self.ends_at, self.code = clock, ends_at, code
+
+        def poll(self):
+            return self.code if self.clock() >= self.ends_at else None
+
+    def run(ends_at, code=0, texts=None):
+        clock = FakeClock()
+        texts = texts or (lambda t: {"microphone": int(t), "callSound": int(t)})
+        return sample_through_playback(FakePlayer(clock, ends_at, code), 0.0, 200.0,
+                                       lambda: texts(clock()), sleep=clock.sleep, clock=clock)
+
+    samples, shrank, played = run(200.0)
+    expect("a 200 s playback is sampled to its end", samples == 100 and played == 0 and not shrank)
+    samples, _, played = run(10.0)
+    expect("a short playback is still sampled for 30 s", samples == 15 and played == 0)
+    samples, _, played = run(10_000.0)
+    expect("a hung playback stops at length + 60 s and is not 0", samples == 130 and played is None)
+    _, _, played = run(50.0, code=1)
+    expect("a failed playback reports its exit", played == 1)
+    _, shrank, _ = run(200.0, texts=lambda t: {"microphone": 0 if 100 <= t < 102 else 500,
+                                               "callSound": 500})
+    expect("a wipe in the middle is caught", shrank == [("microphone", 500, 0)])
     # #3973: saved audio, post-kill speech and the dictation witness.
     good = {"durationMs": 60000, "failureCode": None, "tracks": {
         "microphone": {"status": "captured", "frames": 960000, "gaps": 0},
@@ -1448,7 +1506,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("scenario", nargs="?", choices=[
         "feature", "crash", "latency", "memory", "live", "speechkill", "quit"])
-    parser.add_argument("--live-engine", choices=["apple", "universal"], default="apple")
+    parser.add_argument("--live-engine", choices=["auto", "apple", "universal"], default="apple")
     parser.add_argument("--audio", help="live: a WAV to replay instead of the synthetic conversation")
     parser.add_argument("--run-dir")
     parser.add_argument("--takes", type=int, default=20)
