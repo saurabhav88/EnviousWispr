@@ -28,10 +28,24 @@ public final class SystemAudioTap: @unchecked Sendable {
   public typealias SampleHandler = CallSoundPipeline.SampleHandler
 
   public enum Event: Sendable {
-    /// The output device or tap format changed and capture was rebuilt.
+    /// The output device, the aggregate's rate or the buffer layout changed and capture was
+    /// rebuilt. A completed rebuild, not yet a verified recovery.
     case rebuilt
     /// A rebuild failed; capture has stopped. Carries the failure's description.
     case rebuildFailed(String)
+  }
+
+  /// #4117: what a fresh reading found different from the capture's commitment.
+  public enum RebuildReason: String, Sendable, CaseIterable {
+    case outputDevice
+    case nominalRate
+    case layout
+    /// The reading itself failed. Never taken as "unchanged": the rebuild reads again and
+    /// reports a failure if it still cannot.
+    case unreadable
+    /// A required watch could not follow a new stream (or the stream list could not be read):
+    /// the rebuild installs every watch again, or fails.
+    case watchFailed
   }
 
   public enum TapError: Error, Equatable {
@@ -45,6 +59,8 @@ public final class SystemAudioTap: @unchecked Sendable {
   public struct Health: Sendable, Equatable {
     public var pipeline = CallSoundPipeline.Health()
     public var rebuilds = 0
+    /// #4117: completed rebuilds, by what changed.
+    public var rebuildReasons: [RebuildReason: Int] = [:]
     public var rebuildFailures = 0
     /// Core Audio calls in a teardown or listener change that returned an error.
     public var teardownFailures = 0
@@ -71,9 +87,17 @@ public final class SystemAudioTap: @unchecked Sendable {
   /// #4117: one per successful build, so every diagnostic line names the capture it describes.
   private var generation = 0
   private var diagnostics = CallSoundCaptureDiagnostics()
-  private var configuredRate: Double = 0
-  /// The buffer layout this generation committed to (#4117), kept apart from live diagnostics.
-  private var committedChannels: [UInt32]?
+  /// What this generation was built against (#4117): output device, rate and buffer layout.
+  /// Kept apart from live diagnostics; only a build sets it.
+  private var committed: CallSoundCapture?
+  private var configuredRate: Double { committed?.format.sampleRate ?? 0 }
+  /// The generation with a change check, or a layout rebuild, already queued (#4117), so
+  /// duplicate notices and repeated refusals queue one each.
+  private var checkQueuedFor: Int?
+  private var rebuildQueuedFor: Int?
+  #if DEBUG
+    private var idleWaitersForTesting: [DispatchSemaphore] = []
+  #endif
   /// The measured-rate windows already reported for this generation.
   private var reportedWindows = 0
   /// An invalid-only measurement status was already reported for this generation.
@@ -121,18 +145,18 @@ public final class SystemAudioTap: @unchecked Sendable {
       guard !stopped else { throw TapError.stopped }
       guard !running else { throw TapError.alreadyStarted }
       try buildOnQueue(trigger: "start")
-      let forward: @Sendable () -> Void = { [weak self] in
-        self?.queue.async { self?.rebuildOnQueue() }
-      }
       let notice: @Sendable (CallSoundNotice) -> Void = { [weak self] notice in
         self?.queue.async { self?.noteNotification(notice) }
       }
-      if backend.installListeners(queue: listenerQueue, onChange: forward, onNotice: notice) {
+      if backend.installListeners(queue: listenerQueue, onNotice: notice) {
         listening = true
         // #4117: the build line was read before any listener existed; this one says which
         // notifications are actually watched.
         diagnostics = backend.captureDiagnostics()
         log("CALL_SOUND observed gen=\(generation) trigger=installed " + diagnostics.describe())
+        // The first commitment was read before any listener existed, so a change in between
+        // sent no notice: compare once now.
+        queueChangeCheck()
       } else {
         counters.withLock { $0.listenerFailures += 1 }
         teardownOnQueue()
@@ -146,15 +170,20 @@ public final class SystemAudioTap: @unchecked Sendable {
   /// not be called on the tap's queue. Repeatable.
   public func stop() {
     dispatchPrecondition(condition: .notOnQueue(queue))
-    queue.sync {
-      guard !stopped else { return }
-      stopped = true
-      if listening {
-        if !backend.removeListeners() { counters.withLock { $0.listenerFailures += 1 } }
-        listening = false
-      }
-      teardownOnQueue()
+    queue.sync { stopOnQueue() }
+  }
+
+  private func stopOnQueue() {
+    #if DEBUG
+      defer { signalIdleForTesting() }
+    #endif
+    guard !stopped else { return }
+    stopped = true
+    if listening {
+      if !backend.removeListeners() { counters.withLock { $0.listenerFailures += 1 } }
+      listening = false
     }
+    teardownOnQueue()
   }
 
   // MARK: - Queue work
@@ -162,10 +191,9 @@ public final class SystemAudioTap: @unchecked Sendable {
   private func buildOnQueue(trigger: String) throws {
     pipeline.setAccepting(false)
     do {
-      let format = try backend.start(ingest: pipeline.ingestBlock)
-      try pipeline.configure(format)
-      configuredRate = format.sampleRate
-      committedChannels = format.bufferChannels
+      let capture = try backend.start(ingest: pipeline.ingestBlock)
+      try pipeline.configure(capture.format)
+      committed = capture
       pipeline.setAccepting(true)
     } catch {
       teardownOnQueue()
@@ -197,13 +225,26 @@ public final class SystemAudioTap: @unchecked Sendable {
           + "mapping=\(diagnostics.mapping(to: layout))")
     }
     // #4117 §3.1: callbacks without the committed layout were refused in `ingest`, so none of
-    // their samples were kept. Stop the call-sound track through the existing failure path (the
-    // microphone track goes on) rather than record audio of unknown shape.
+    // their samples were kept. When a fresh reading differs from the commitment (another
+    // layout, device or rate) or cannot be read, rebuild for it, queued after this drain; a
+    // rebuild that cannot use it fails as below. When the reading still matches, the callbacks
+    // have a shape nothing describes: stop the call-sound track through the existing failure
+    // path (the microphone track goes on) rather than record audio of unknown shape.
     if let refused = pipeline.takeRefusedLayout() {
+      let committedChannels = committed?.format.bufferChannels
+      let current = try? backend.currentCapture()
+      let reason: RebuildReason? =
+        if let current { committed?.change(to: current) } else { .unreadable }
       log(
         "CALL_SOUND refused gen=\(generation) callbacks=\(refused.callbacks) "
           + "count=\(refused.layout.buffers) channels=\(refused.layout.channels) "
-          + "committed=\(committedChannels.map { "\($0)" } ?? "any")")
+          + "committed=\(committedChannels.map { "\($0)" } ?? "any") "
+          + "reported=\(current.flatMap { $0.format.bufferChannels }.map { "\($0)" } ?? "unreadable") "
+          + "action=\(reason.map { "rebuild:\($0.rawValue)" } ?? "stop")")
+      if let reason {
+        queueRebuild(reason: reason)
+        return
+      }
       teardownOnQueue()
       counters.withLock { $0.rebuildFailures += 1 }
       onEvent(.rebuildFailed("call-sound buffer layout \(refused.layout.channels)"))
@@ -227,19 +268,74 @@ public final class SystemAudioTap: @unchecked Sendable {
         + "\(observation.inputLoss) discontinuitiesTotal=\(pipeline.health.discontinuities)")
   }
 
-  /// Tap queue: a Core Audio property notification arrived (#4117: which ones arrive is part of
-  /// what the premise check records). Logs where it came from, then re-reads the formats (and
-  /// re-watches a changed stream list) so the line after it shows the state it announced.
-  /// Diagnostics only: it never rebuilds.
+  /// Tap queue: a Core Audio property notification arrived (#4117). Logs where it came from,
+  /// then re-reads the formats (and re-watches a changed stream list) so the line after it
+  /// shows the state it announced. A notice from a capture already torn down is ignored. Any
+  /// other queues one comparison with the commitment; the notice itself never rebuilds.
   private func noteNotification(_ notice: CallSoundNotice) {
     log(
       "CALL_SOUND notify gen=\(generation) \(notice.describe()) currentBuild=\(diagnostics.build) "
         + "running=\(running)")
-    guard running else { return }
-    diagnostics = backend.refreshDiagnostics()
+    guard running, !stopped, let committed else { return }
+    // Build 0 is the system object, which outlives every capture.
+    guard notice.build == 0 || notice.build == committed.build else {
+      log("CALL_SOUND ignored gen=\(generation) build=\(notice.build) reason=retired")
+      return
+    }
+    let watching = backend.reconcileWatch()
+    diagnostics = backend.captureDiagnostics()
     log("CALL_SOUND observed gen=\(generation) " + diagnostics.describe())
+    // A stream nothing watches could change format unseen: rebuild rather than go on.
+    guard watching else {
+      rebuildOnQueue(reason: .watchFailed)
+      return
+    }
+    queueChangeCheck()
   }
 
+  /// Queues one comparison for this generation, after any notices already queued, so a burst
+  /// (the nominal rate, then the stream format) is read once, in its final state.
+  private func queueChangeCheck() {
+    guard checkQueuedFor != generation else { return }
+    checkQueuedFor = generation
+    let queued = generation
+    queue.async { [weak self] in self?.checkForChange(queuedFor: queued) }
+  }
+
+  /// Tap queue: re-reads the output device, the aggregate's nominal rate and the validated
+  /// buffer layout, and rebuilds when any differs from the commitment. A stream's virtual rate
+  /// is not compared: it kept reading 48 kHz while AirPods delivered 24 kHz.
+  private func checkForChange(queuedFor queued: Int) {
+    #if DEBUG
+      defer { signalIdleForTesting() }
+    #endif
+    if checkQueuedFor == queued { checkQueuedFor = nil }
+    guard !stopped, running, queued == generation, let committed else { return }
+    let reason: RebuildReason
+    do {
+      guard let changed = committed.change(to: try backend.currentCapture()) else { return }
+      reason = changed
+    } catch {
+      reason = .unreadable
+    }
+    rebuildOnQueue(reason: reason)
+  }
+
+  /// Queues a rebuild for this generation, run after the current drain, never inside it.
+  private func queueRebuild(reason: RebuildReason) {
+    guard rebuildQueuedFor != generation else { return }
+    rebuildQueuedFor = generation
+    let queued = generation
+    queue.async { [weak self] in
+      guard let self else { return }
+      #if DEBUG
+        defer { self.signalIdleForTesting() }
+      #endif
+      if self.rebuildQueuedFor == queued { self.rebuildQueuedFor = nil }
+      guard queued == self.generation else { return }
+      self.rebuildOnQueue(reason: reason)
+    }
+  }
 
   /// Releases the Core Audio objects, then hands over what was already captured with the old
   /// converter (its tail included), so a rebuild never mixes two formats in one run.
@@ -254,24 +350,57 @@ public final class SystemAudioTap: @unchecked Sendable {
     running = false
   }
 
-  private func rebuildOnQueue() {
+  /// The only full rebuild: retires this generation (admission off, its listeners and objects
+  /// gone, its accepted audio and converter tail handed over), then builds and commits the next.
+  private func rebuildOnQueue(reason: RebuildReason) {
     guard !stopped, running else { return }
     teardownOnQueue()
     do {
-      try buildOnQueue(trigger: "rebuild")
-      counters.withLock { $0.rebuilds += 1 }
+      try buildOnQueue(trigger: "rebuild reason=\(reason.rawValue)")
+      counters.withLock {
+        $0.rebuilds += 1
+        $0.rebuildReasons[reason, default: 0] += 1
+      }
       onEvent(.rebuilt)
     } catch {
       counters.withLock { $0.rebuildFailures += 1 }
+      log("CALL_SOUND rebuildFailed gen=\(generation) reason=\(reason.rawValue)")
       onEvent(.rebuildFailed(String(describing: error)))
     }
   }
 
   #if DEBUG
-    /// Queues a rebuild exactly as a Core Audio listener does.
-    func requestRebuildForTesting() { queue.async { [self] in rebuildOnQueue() } }
     /// Runs one drain on the tap queue and returns after it.
     func drainForTesting() { queue.sync { drainOnQueue() } }
+    /// Signals waiters once no change check or rebuild is still queued. Tap queue only; each
+    /// exit of a queued check, rebuild or stop calls it.
+    private func signalIdleForTesting() {
+      guard checkQueuedFor == nil, rebuildQueuedFor == nil else { return }
+      let ready = idleWaitersForTesting
+      idleWaitersForTesting.removeAll()
+      for waiter in ready { waiter.signal() }
+    }
+
+    /// True once the tap signals that no change check or rebuild is queued; false when it has
+    /// not by `deadline` (a hang guard, not a latency bound), even if the queue is blocked.
+    func settleForTesting(deadline seconds: TimeInterval = 10) -> Bool {
+      dispatchPrecondition(condition: .notOnQueue(queue))
+      let finished = DispatchSemaphore(value: 0)
+      queue.async { [self] in
+        idleWaitersForTesting.append(finished)
+        signalIdleForTesting()
+      }
+      return finished.wait(timeout: .now() + seconds) == .success
+    }
+    /// Blocks the tap queue until the returned release runs, so a test can queue work in a
+    /// known order behind it.
+    func holdQueueForTesting() -> @Sendable () -> Void {
+      let gate = DispatchSemaphore(value: 0)
+      queue.async { gate.wait() }
+      return { gate.signal() }
+    }
+    /// Queues `stop` behind whatever is already queued, as a caller on another thread would.
+    func enqueueStopForTesting() { queue.async { [self] in stopOnQueue() } }
   #endif
 }
 
@@ -488,7 +617,9 @@ public final class CallSoundPipeline: @unchecked Sendable {
     }
     guard let refused else { return nil }
     let count = min(refused.0, 8)
-    return (BufferLayout(buffers: refused.0, channels: (0..<count).map { refused.1[$0] }), refused.2)
+    return (
+      BufferLayout(buffers: refused.0, channels: (0..<count).map { refused.1[$0] }), refused.2
+    )
   }
 
   /// Tap queue: the buffer layout `ingest` read, when it is new since configure or changed since
@@ -790,27 +921,54 @@ enum SystemAudioTapFormatError: Error {
 /// them in tests.
 protocol CallSoundBackend: AnyObject {
   /// Creates and starts the tap, aggregate and IOProc, delivering buffers to `ingest` with
-  /// whether the host time is the buffer's valid acquisition time. On a throw, everything it
-  /// created is already released.
+  /// whether the host time is the buffer's valid acquisition time. Returns what this capture
+  /// commits to. Once listeners are installed, it watches the new objects too, and throws when
+  /// a required watch cannot be registered. On a throw, everything it created is already
+  /// released.
   func start(
     ingest: @escaping @Sendable (UnsafePointer<AudioBufferList>, UInt64, Bool) -> Void
-  ) throws -> CallSoundPipeline.InputFormat
-  /// Stops and releases everything in Apple's order. Returns how many calls failed. Repeatable.
+  ) throws -> CallSoundCapture
+  /// Stops and releases everything in Apple's order, removing the listeners on each object
+  /// before destroying it. Returns how many calls failed. Repeatable.
   func stop() -> Int
-  /// Watches the default output device and the tap's format (`onChange` rebuilds), and, for
-  /// diagnostics only, the aggregate's rate and input streams (`onNotice` names the property;
-  /// the two rebuild triggers report there too). Both run on `queue`.
+  /// Watches the default output device (for the life of the tap) and, per build, the tap's
+  /// format, the aggregate's nominal rate and input-stream list, and each input stream's
+  /// virtual format. False, with every registration rolled back, when any cannot be
+  /// registered. `onNotice` names the property, on `queue`; it never rebuilds by itself.
   func installListeners(
-    queue: DispatchQueue, onChange: @escaping @Sendable () -> Void,
-    onNotice: @escaping @Sendable (CallSoundNotice) -> Void
+    queue: DispatchQueue, onNotice: @escaping @Sendable (CallSoundNotice) -> Void
   ) -> Bool
   func removeListeners() -> Bool
+  /// #4117: what a capture built now would commit to: the default output device now, and the
+  /// running aggregate's nominal rate and validated layout. Throws when any cannot be read or
+  /// used. Tap queue only.
+  func currentCapture() throws -> CallSoundCapture
   /// #4117: what the running capture reports about its formats. Never throws; a value it could
   /// not read is nil.
   func captureDiagnostics() -> CallSoundCaptureDiagnostics
-  /// #4117: re-watches the aggregate's current input streams (a changed stream list), then
-  /// reads the formats again. Tap queue only; diagnostics only.
-  func refreshDiagnostics() -> CallSoundCaptureDiagnostics
+  /// #4117: re-watches the aggregate's current input streams (a changed stream list). False
+  /// when the list cannot be read or a stream's format watch cannot be registered: a stream
+  /// nobody watches could change format unseen. Tap queue only.
+  func reconcileWatch() -> Bool
+}
+
+/// #4117: what one capture was built against. `outputUID` is the device the aggregate was
+/// built around, never re-read from the current default; `format` is the rate and layout
+/// committed from the aggregate. A fresh reading that differs in any of the three rebuilds.
+struct CallSoundCapture: Equatable, Sendable {
+  /// The backend build that produced it; notices from other builds are retired.
+  var build: Int
+  var outputUID: String
+  var format: CallSoundPipeline.InputFormat
+
+  /// What differs in `current`, the device first; nil when nothing does.
+  @available(macOS 14.2, *)
+  func change(to current: CallSoundCapture) -> SystemAudioTap.RebuildReason? {
+    if current.outputUID != outputUID { return .outputDevice }
+    if current.format.sampleRate != format.sampleRate { return .nominalRate }
+    if current.format.bufferChannels != format.bufferChannels { return .layout }
+    return nil
+  }
 }
 
 /// #4117: one Core Audio notification, as it was registered: the backend build it belongs to
@@ -865,17 +1023,20 @@ struct CallSoundCaptureDiagnostics: Equatable, Sendable {
     let nominal = aggregateNominalRate.map { CallSoundPipeline.rateText($0) } ?? "unreadable"
     let streams =
       inputStreams.map { list in
-        "[" + list.map { s in
-          let rate = s.sampleRate.map { CallSoundPipeline.rateText($0) + "Hz" }
-            ?? "unreadable(\(s.readStatus))"
-          return "\(s.id):\(rate)/\(s.channels)ch/\(Self.fourCC(s.formatID))"
-            + "/flags=\(s.formatFlags)/bits=\(s.bitsPerChannel)/bpf=\(s.bytesPerFrame)"
-        }.joined(separator: ",") + "]"
+        "["
+          + list.map { s in
+            let rate =
+              s.sampleRate.map { CallSoundPipeline.rateText($0) + "Hz" }
+              ?? "unreadable(\(s.readStatus))"
+            return "\(s.id):\(rate)/\(s.channels)ch/\(Self.fourCC(s.formatID))"
+              + "/flags=\(s.formatFlags)/bits=\(s.bitsPerChannel)/bpf=\(s.bytesPerFrame)"
+          }.joined(separator: ",") + "]"
       } ?? "unreadable"
     let watch =
       watchProblems.isEmpty
       ? "ok"
-      : "[" + watchProblems.map { "\($0.text) x\($0.count) \($0.current ? "current" : "resolved")" }
+      : "["
+        + watchProblems.map { "\($0.text) x\($0.count) \($0.current ? "current" : "resolved")" }
         .joined(separator: "; ") + "]"
     return "build=\(build) tapRate=\(tap) aggregateNominalRate=\(nominal) inputStreams=\(streams) "
       + "watch=\(watch)"
@@ -966,7 +1127,6 @@ final class CoreAudioCallSoundBackend: CallSoundBackend {
   private var listeners:
     [(AudioObjectID, AudioObjectPropertyAddress, AudioObjectPropertyListenerBlock)] = []
   private var listenerQueue: DispatchQueue?
-  private var onChange: (@Sendable () -> Void)?
   private var onNotice: (@Sendable (CallSoundNotice) -> Void)?
   /// #4117: counts starts; notices and diagnostics carry it.
   private var build = 0
@@ -983,7 +1143,7 @@ final class CoreAudioCallSoundBackend: CallSoundBackend {
 
   func start(
     ingest: @escaping @Sendable (UnsafePointer<AudioBufferList>, UInt64, Bool) -> Void
-  ) throws -> CallSoundPipeline.InputFormat {
+  ) throws -> CallSoundCapture {
     guard tapID == kAudioObjectUnknown, aggregateID == kAudioObjectUnknown else {
       throw SystemAudioTap.TapError.alreadyStarted
     }
@@ -1031,18 +1191,17 @@ final class CoreAudioCallSoundBackend: CallSoundBackend {
         AudioDeviceCreateIOProcIDWithBlock(&ioProcID, aggregateID, nil, block), "create_io_proc")
       try Self.check(AudioDeviceStart(aggregateID, ioProcID), "start_aggregate")
       deviceStarted = true
-      // A rebuilt tap is a new object: watch its format too once listeners are installed.
-      if onChange != nil,
-        !add(tapID, Self.address(kAudioTapPropertyFormat), name: "tapFormat", build: build)
-      {
-        throw SystemAudioTap.TapError.status(operation: "install_format_listener", value: -1)
+      // A rebuilt tap and aggregate are new objects: once listeners are installed, watch them
+      // too, before the commitment below is read, so no change after it goes unnoticed.
+      if onNotice != nil, !addBuildWatch() {
+        throw SystemAudioTap.TapError.status(operation: "install_build_listeners", value: -1)
       }
-      // So is the aggregate: watch its rate and streams again (diagnostics only, #4117).
-      if onNotice != nil { addAggregateWatch() }
       // #4117 R3: the rate comes from the aggregate's nominal rate, read now that it runs. The
       // tap format (checked above for a usable PCM layout) and the input streams' virtual
-      // formats kept reading 48 kHz while AirPods in the call profile delivered 24 kHz.
-      return try committedCaptureFormat()
+      // formats kept reading 48 kHz while AirPods in the call profile delivered 24 kHz. The
+      // output identity is the one the aggregate was built around.
+      return CallSoundCapture(
+        build: build, outputUID: outputUID, format: try committedCaptureFormat())
     } catch {
       _ = stop()
       throw error
@@ -1050,11 +1209,8 @@ final class CoreAudioCallSoundBackend: CallSoundBackend {
   }
 
   func stop() -> Int {
-    var failures = 0
-    // #4117: listeners naming the aggregate or its streams go before those objects do.
-    for stream in watchedStreams { failures += removeListeners(on: stream) }
-    watchedStreams = []
-    if aggregateID != kAudioObjectUnknown { failures += removeListeners(on: aggregateID) }
+    // #4117: listeners naming the tap, the aggregate or its streams go before those objects do.
+    var failures = removeBuildListeners()
     if aggregateID != kAudioObjectUnknown {
       if deviceStarted {
         if AudioDeviceStop(aggregateID, ioProcID) != noErr { failures += 1 }
@@ -1068,8 +1224,6 @@ final class CoreAudioCallSoundBackend: CallSoundBackend {
       aggregateID = AudioObjectID(kAudioObjectUnknown)
     }
     if tapID != kAudioObjectUnknown {
-      // The format listener names this tap; it goes with it.
-      failures += removeListeners(on: tapID)
       if AudioHardwareDestroyProcessTap(tapID) != noErr { failures += 1 }
       tapID = AudioObjectID(kAudioObjectUnknown)
     }
@@ -1077,22 +1231,16 @@ final class CoreAudioCallSoundBackend: CallSoundBackend {
   }
 
   func installListeners(
-    queue: DispatchQueue, onChange: @escaping @Sendable () -> Void,
-    onNotice: @escaping @Sendable (CallSoundNotice) -> Void
+    queue: DispatchQueue, onNotice: @escaping @Sendable (CallSoundNotice) -> Void
   ) -> Bool {
     listenerQueue = queue
-    self.onChange = onChange
     self.onNotice = onNotice
     let system = AudioObjectID(kAudioObjectSystemObject)
-    var installed = add(
-      system, Self.address(kAudioHardwarePropertyDefaultOutputDevice), name: "defaultOutput",
+    // Build 0: the system object outlives every build, so its notices are never retired.
+    var installed = watch(
+      system, Self.address(kAudioHardwarePropertyDefaultOutputDevice), "defaultOutput",
       build: 0)
-    if installed, tapID != kAudioObjectUnknown {
-      installed = add(tapID, Self.address(kAudioTapPropertyFormat), name: "tapFormat", build: build)
-    }
-    if installed, aggregateID != kAudioObjectUnknown {
-      addAggregateWatch()
-    }
+    if installed { installed = addBuildWatch() }
     if !installed {
       // Roll back every registration that succeeded, so a failed install leaves none behind.
       _ = removeListeners()
@@ -1108,9 +1256,19 @@ final class CoreAudioCallSoundBackend: CallSoundBackend {
     }
     listeners.removeAll()
     watchedStreams = []
-    onChange = nil
     onNotice = nil
     return failures == 0
+  }
+
+  /// Removes every listener on this build's objects (streams, aggregate, tap), keeping the
+  /// system object's. Returns how many removals failed.
+  func removeBuildListeners() -> Int {
+    var failures = 0
+    for stream in watchedStreams { failures += removeListeners(on: stream) }
+    watchedStreams = []
+    if aggregateID != kAudioObjectUnknown { failures += removeListeners(on: aggregateID) }
+    if tapID != kAudioObjectUnknown { failures += removeListeners(on: tapID) }
+    return failures
   }
 
   private func removeListeners(on object: AudioObjectID) -> Int {
@@ -1124,65 +1282,65 @@ final class CoreAudioCallSoundBackend: CallSoundBackend {
     return failures
   }
 
-  /// A rebuild trigger: reports itself, then asks for the rebuild.
-  private func add(
-    _ object: AudioObjectID, _ address: AudioObjectPropertyAddress, name: String, build: Int
-  ) -> Bool {
-    guard let onChange, let listenerQueue else { return false }
-    let onNotice = self.onNotice
-    let notice = CallSoundNotice(
-      build: build, object: object, selector: address.mSelector, scope: address.mScope,
-      name: name)
-    return register(object, address, queue: listenerQueue) {
-      onNotice?(notice)
-      onChange()
+  /// #4117: the watches on this build's objects, all required: the tap's format, the
+  /// aggregate's nominal rate and input-stream list, and each input stream's virtual format
+  /// (a stream can change sample representation with the same buffer layout, which the
+  /// callback layout check cannot see). Removed with their objects.
+  private func addBuildWatch() -> Bool {
+    if tapID != kAudioObjectUnknown,
+      !watch(tapID, Self.address(kAudioTapPropertyFormat), "tapFormat")
+    {
+      return false
     }
-  }
-
-  /// #4117, diagnostics only: the aggregate's nominal rate, its input stream list, and each
-  /// input stream's virtual format report their name and nothing else. Every step fails soft:
-  /// a diagnostic must never stop capture, and a notification that is not watched simply never
-  /// appears in the log. What did register is removed with the aggregate.
-  private func addAggregateWatch() {
-    watchPassive(aggregateID, Self.address(kAudioDevicePropertyNominalSampleRate), "aggregateNominalRate")
-    watchPassive(
-      aggregateID, Self.address(kAudioDevicePropertyStreams, scope: kAudioObjectPropertyScopeInput),
-      "aggregateInputStreams")
-    reconcileStreamWatch()
+    guard aggregateID != kAudioObjectUnknown else { return true }
+    guard
+      watch(
+        aggregateID, Self.address(kAudioDevicePropertyNominalSampleRate), "aggregateNominalRate",
+      ),
+      watch(
+        aggregateID,
+        Self.address(kAudioDevicePropertyStreams, scope: kAudioObjectPropertyScopeInput),
+        "aggregateInputStreams")
+    else { return false }
+    return reconcileStreamWatch()
   }
 
   /// Watches exactly the aggregate's current input streams: drops listeners on streams that
-  /// left, adds them on streams that arrived. An unreadable list is recorded, and keeps what is
-  /// watched.
-  private func reconcileStreamWatch() {
-    guard onNotice != nil, aggregateID != kAudioObjectUnknown else { return }
+  /// left, adds them on streams that arrived. False, with the problem recorded, when the list
+  /// cannot be read or a new stream's watch cannot be registered.
+  private func reconcileStreamWatch() -> Bool {
+    guard onNotice != nil, aggregateID != kAudioObjectUnknown else { return true }
     guard let current = streamLister(aggregateID) else {
       noteProblem("inputStreams unreadable")
-      return
+      return false
     }
     resolveProblem("inputStreams unreadable")
     for gone in watchedStreams where !current.contains(gone) {
       if removeListeners(on: gone) > 0 { noteProblem("unwatch stream \(gone) failed") }
     }
     watchedStreams.removeAll { !current.contains($0) }
+    var complete = true
     for stream in current where !watchedStreams.contains(stream) {
-      if watchPassive(
-        stream, Self.address(kAudioStreamPropertyVirtualFormat), "streamVirtualFormat")
-      {
+      if watch(stream, Self.address(kAudioStreamPropertyVirtualFormat), "streamVirtualFormat") {
         watchedStreams.append(stream)
+      } else {
+        complete = false
       }
     }
+    return complete
   }
 
-  /// A diagnostic listener: reports itself, never rebuilds. A failure is recorded, not thrown.
-  @discardableResult
-  private func watchPassive(
-    _ object: AudioObjectID, _ address: AudioObjectPropertyAddress, _ name: String
+  /// One listener: reports its notice on the listener queue and nothing else; the tap decides
+  /// what a notice means. `build` defaults to the current build. A watch that fails is
+  /// recorded and returns false, for the caller to roll back or rebuild.
+  private func watch(
+    _ object: AudioObjectID, _ address: AudioObjectPropertyAddress, _ name: String,
+    build: Int? = nil
   ) -> Bool {
     guard let onNotice, let listenerQueue else { return false }
     let notice = CallSoundNotice(
-      build: build, object: object, selector: address.mSelector, scope: address.mScope,
-      name: name)
+      build: build ?? self.build, object: object, selector: address.mSelector,
+      scope: address.mScope, name: name)
     let status = register(object, address, queue: listenerQueue) { onNotice(notice) }
     let problem = "register \(name) object=\(object) failed"
     if status { resolveProblem(problem) } else { noteProblem(problem) }
@@ -1233,22 +1391,27 @@ final class CoreAudioCallSoundBackend: CallSoundBackend {
         flags & kAudioFormatFlagIsFloat != 0, flags & kAudioFormatFlagIsBigEndian == 0,
         stream.bitsPerChannel == 32, stream.channels > 0, stream.bytesPerFrame == bytesPerFrame
       else { throw SystemAudioTap.TapError.unusableFormat }
-      bufferChannels += nonInterleaved
+      bufferChannels +=
+        nonInterleaved
         ? Array(repeating: 1, count: Int(stream.channels)) : [stream.channels]
     }
     return CallSoundPipeline.InputFormat(sampleRate: rate, bufferChannels: bufferChannels)
   }
 
-  func refreshDiagnostics() -> CallSoundCaptureDiagnostics {
-    reconcileStreamWatch()
-    return captureDiagnostics()
+  func reconcileWatch() -> Bool { reconcileStreamWatch() }
+
+  func currentCapture() throws -> CallSoundCapture {
+    let outputUID = try Self.deviceUID(try Self.defaultOutputDevice())
+    return CallSoundCapture(
+      build: build, outputUID: outputUID, format: try committedCaptureFormat())
   }
 
   func captureDiagnostics() -> CallSoundCaptureDiagnostics {
     // The tap's format is read now, never the start-time value (#4117: a refresh after a
     // tap-format notice must show the new one). The converter keeps its configured rate.
     let tapRate = tapID == kAudioObjectUnknown ? nil : tapRateReader(tapID)
-    var result = CallSoundCaptureDiagnostics(build: build, tapRate: tapRate, watchProblems: watchProblems)
+    var result = CallSoundCaptureDiagnostics(
+      build: build, tapRate: tapRate, watchProblems: watchProblems)
     guard aggregateID != kAudioObjectUnknown else { return result }
     result.aggregateNominalRate = nominalRateReader(aggregateID)
     result.inputStreams = streamLister(aggregateID).map { ids in

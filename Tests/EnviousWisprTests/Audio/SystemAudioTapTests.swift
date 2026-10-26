@@ -375,25 +375,53 @@ struct SystemAudioTapTests {
     var failStartNumber: Int?
     var failListeners = false
     var ingest: (@Sendable (UnsafePointer<AudioBufferList>, UInt64, Bool) -> Void)?
-    var onChange: (@Sendable () -> Void)?
     var onNotice: (@Sendable (CallSoundNotice) -> Void)?
     var rate: Double = 48_000
     /// The buffer layout `start` commits to (nil commits none).
     var bufferChannels: [UInt32]?
+    var outputUID = "speakers"
+    /// `currentCapture` cannot read the device.
+    var failCurrent = false
+    /// Changes the rate while listeners install: a change no notice reports.
+    var rateAtInstall: Double?
+    var currentReads = 0
     /// One mono Float32 input stream, the layout `deliver` hands over.
     var diagnostics = CallSoundCaptureDiagnostics(
       inputStreams: [SystemAudioTapTests.floatStream(channels: 1)])
 
     func start(
       ingest: @escaping @Sendable (UnsafePointer<AudioBufferList>, UInt64, Bool) -> Void
-    ) throws -> CallSoundPipeline.InputFormat {
+    ) throws -> CallSoundCapture {
       lock.lock()
       defer { lock.unlock() }
       starts += 1
       if failStartNumber == starts { throw FakeError.startFailed }
       running = true
       self.ingest = ingest
-      return .init(sampleRate: rate, bufferChannels: bufferChannels)
+      return capture
+    }
+
+    /// Lock held.
+    private var capture: CallSoundCapture {
+      .init(
+        build: starts, outputUID: outputUID,
+        format: .init(sampleRate: rate, bufferChannels: bufferChannels))
+    }
+
+    func currentCapture() throws -> CallSoundCapture {
+      lock.lock()
+      defer { lock.unlock() }
+      currentReads += 1
+      if failCurrent { throw FakeError.startFailed }
+      return capture
+    }
+
+    /// Fires a notice as a Core Audio listener does; `build` defaults to the current build.
+    func notify(_ name: String, build: Int? = nil) {
+      let (handler, current) = lock.withLock { (onNotice, starts) }
+      handler?(
+        CallSoundNotice(
+          build: build ?? current, object: 7, selector: 0, scope: 0, name: name))
     }
 
     func captureDiagnostics() -> CallSoundCaptureDiagnostics {
@@ -402,7 +430,9 @@ struct SystemAudioTapTests {
       return diagnostics
     }
 
-    func refreshDiagnostics() -> CallSoundCaptureDiagnostics { captureDiagnostics() }
+    /// False makes a stream-list change find a stream it cannot watch.
+    var watchComplete = true
+    func reconcileWatch() -> Bool { lock.withLock { watchComplete } }
 
     func stop() -> Int {
       lock.lock()
@@ -413,13 +443,12 @@ struct SystemAudioTapTests {
     }
 
     func installListeners(
-      queue: DispatchQueue, onChange: @escaping @Sendable () -> Void,
-      onNotice: @escaping @Sendable (CallSoundNotice) -> Void
+      queue: DispatchQueue, onNotice: @escaping @Sendable (CallSoundNotice) -> Void
     ) -> Bool {
       lock.lock()
       defer { lock.unlock() }
-      self.onChange = onChange
       self.onNotice = onNotice
+      if let rateAtInstall { rate = rateAtInstall }
       return !failListeners
     }
 
@@ -450,7 +479,7 @@ struct SystemAudioTapTests {
   }
 
   #if DEBUG
-    @Test("stop wins over a queued rebuild and a late listener: nothing restarts, nothing hangs")
+    @Test("stop queued ahead of a pending recovery wins: the recovery never restarts capture")
     func stopBeatsQueuedRebuild() throws {
       guard #available(macOS 14.2, *) else { return }
       let backend = FakeBackend()
@@ -458,16 +487,70 @@ struct SystemAudioTapTests {
       let events = Events()
       let tap = tap(backend, output, events)
       try tap.start()
-      tap.requestRebuildForTesting()
+      #expect(tap.settleForTesting())
+      // Order on the tap queue, held shut: the notice, then stop. The notice queues its
+      // comparison only when it runs, so the comparison lands behind stop.
+      let release = tap.holdQueueForTesting()
+      backend.lock.withLock { backend.rate = 24_000 }
+      backend.notify("aggregateNominalRate")
+      tap.enqueueStopForTesting()
+      release()
+      #expect(tap.settleForTesting())
+      #expect(backend.snapshot.starts == 1)
+      #expect(!backend.snapshot.running)
+      #expect(events.list.withLock { $0 }.isEmpty)
+      #expect(throws: SystemAudioTap.TapError.stopped) { try tap.start() }
+      tap.stop()
+    }
+
+    @Test("the settle wait gives up on a blocked tap queue, then completes once it is released")
+    func settleWaitIsBounded() throws {
+      guard #available(macOS 14.2, *) else { return }
+      let backend = FakeBackend()
+      let tap = tap(backend, Output(), Events())
+      try tap.start()
+      let release = tap.holdQueueForTesting()
+      #expect(!tap.settleForTesting(deadline: 0), "a blocked queue never reads as settled")
+      release()
+      #expect(tap.settleForTesting())
+      tap.stop()
+    }
+
+    @Test("notices after stop returns restart nothing")
+    func lateNoticesAfterStop() throws {
+      guard #available(macOS 14.2, *) else { return }
+      let backend = FakeBackend()
+      let output = Output()
+      let events = Events()
+      let tap = tap(backend, output, events)
+      try tap.start()
+      backend.lock.withLock { backend.rate = 24_000 }
+      backend.notify("aggregateNominalRate")
       tap.stop()
       let startsAtStop = backend.snapshot.starts
-      // A listener firing after stop, and another queued rebuild, must not resurrect capture.
-      backend.onChange?()
-      tap.requestRebuildForTesting()
+      // Listeners firing after stop, object-bound and system, must not resurrect capture.
+      backend.lock.withLock { backend.outputUID = "airpods" }
+      backend.notify("aggregateNominalRate")
+      backend.notify("defaultOutput", build: 0)
+      #expect(tap.settleForTesting())
       tap.drainForTesting()
       #expect(backend.snapshot.starts == startsAtStop)
-      #expect(!backend.snapshot.running)
-      #expect(throws: SystemAudioTap.TapError.stopped) { try tap.start() }
+      #expect(backend.snapshot.running == false)
+    }
+
+    @Test("a new stream nothing can watch rebuilds the capture rather than record it unwatched")
+    func unwatchableStreamRebuilds() throws {
+      guard #available(macOS 14.2, *) else { return }
+      let backend = FakeBackend()
+      let output = Output()
+      let events = Events()
+      let tap = tap(backend, output, events)
+      try tap.start()
+      backend.lock.withLock { backend.watchComplete = false }
+      backend.notify("aggregateInputStreams")
+      #expect(tap.settleForTesting())
+      #expect(events.list.withLock { $0 } == ["rebuilt"])
+      #expect(tap.health.rebuildReasons == [.watchFailed: 1])
       tap.stop()
     }
 
@@ -486,9 +569,17 @@ struct SystemAudioTapTests {
           sine(480, rate: 48_000, from: i * 480), to: first,
           host: 1_000_000 + ticks(Double(i * 480) / 48_000))
       }
+      // What AirPods did when the call opened their microphone: the nominal rate, then the
+      // stream's format, reported (twice here); the stream still says 48 kHz.
       backend.lock.withLock { backend.rate = 24_000 }
-      tap.requestRebuildForTesting()
-      tap.drainForTesting()
+      backend.notify("aggregateNominalRate")
+      backend.notify("streamVirtualFormat")
+      backend.notify("aggregateNominalRate")
+      #expect(tap.settleForTesting())
+      #expect(backend.snapshot.starts == 2, "one rebuild for the whole burst")
+      backend.notify("streamVirtualFormat")
+      #expect(tap.settleForTesting())
+      #expect(backend.snapshot.starts == 2, "a later notice in the new state changes nothing")
       let second = try #require(backend.ingest)
       // One second at 24 kHz in 480-frame buffers (20 ms each), the call-profile shape.
       for i in 0..<50 {
@@ -499,6 +590,7 @@ struct SystemAudioTapTests {
       tap.drainForTesting()
       tap.stop()
       #expect(events.list.withLock { $0 } == ["rebuilt"])
+      #expect(tap.health.rebuildReasons == [.nominalRate: 1])
       let total = output.samples.withLock { $0 }.count
       #expect(abs(total - (8_000 + 16_000)) <= 64, "0.5 s + 1 s at 16 kHz: \(total)")
       #expect(tap.health.pipeline.discontinuities == 0, "no per-buffer run breaks at 24 kHz")
@@ -556,10 +648,17 @@ struct SystemAudioTapTests {
       let events = Events()
       let tap = tap(backend, output, events)
       try tap.start()
-      tap.requestRebuildForTesting()
-      tap.drainForTesting()
+      backend.lock.withLock { backend.rate = 24_000 }
+      backend.notify("aggregateNominalRate")
+      #expect(tap.settleForTesting())
+      // More notices after the failure find nothing running.
+      backend.notify("aggregateNominalRate", build: 2)
+      backend.notify("defaultOutput", build: 0)
+      #expect(tap.settleForTesting())
       #expect(events.list.withLock { $0 } == ["rebuildFailed"])
       #expect(tap.health.rebuildFailures == 1)
+      #expect(tap.health.rebuilds == 0)
+      #expect(backend.snapshot.starts == 2)
       #expect(!backend.snapshot.running)
       tap.stop()
     }
@@ -575,8 +674,9 @@ struct SystemAudioTapTests {
       let ingest = try #require(backend.ingest)
       let samples = [Float](repeating: 0.25, count: 4_800)
       try deliver(samples, to: ingest, host: 1_000_000)
-      tap.requestRebuildForTesting()
-      tap.drainForTesting()
+      backend.lock.withLock { backend.outputUID = "airpods" }
+      backend.notify("defaultOutput", build: 0)
+      #expect(tap.settleForTesting())
       #expect(events.list.withLock { $0 } == ["rebuilt"])
       #expect(backend.snapshot.starts == 2)
       #expect(abs(output.samples.withLock { $0 }.count - 1_600) <= 32)
@@ -602,11 +702,131 @@ struct SystemAudioTapTests {
         })
       backend.setTapObjectForTesting(AudioObjectID(4_242))
       let installed = backend.installListeners(
-        queue: DispatchQueue(label: "test.listeners"), onChange: {}, onNotice: { _ in })
+        queue: DispatchQueue(label: "test.listeners"), onNotice: { _ in })
       #expect(!installed)
       #expect(adds.withLock { $0 } == 2)
       #expect(removes.withLock { $0 } == 1, "the system listener that installed is removed")
       #expect(backend.listenerCountForTesting == 0)
+    }
+
+    @Test("a stream format notice with the device, rate and layout unchanged never rebuilds")
+    func virtualFormatNoticeAloneDoesNotRebuild() throws {
+      guard #available(macOS 14.2, *) else { return }
+      let backend = FakeBackend()
+      let output = Output()
+      let events = Events()
+      let tap = tap(backend, output, events)
+      try tap.start()
+      backend.lock.withLock {
+        backend.diagnostics = CallSoundCaptureDiagnostics(
+          inputStreams: [SystemAudioTapTests.floatStream(channels: 1, rate: 24_000)])
+      }
+      backend.notify("streamVirtualFormat")
+      #expect(tap.settleForTesting())
+      #expect(backend.snapshot.starts == 1)
+      #expect(backend.lock.withLock { backend.currentReads } >= 1, "the notice was compared")
+      #expect(events.list.withLock { $0 }.isEmpty)
+      tap.stop()
+    }
+
+    @Test("a new output device rebuilds at the same rate; the system watch keeps working after it")
+    func outputChangeRebuildsAndRetiredNoticesAreIgnored() throws {
+      guard #available(macOS 14.2, *) else { return }
+      let backend = FakeBackend()
+      let output = Output()
+      let events = Events()
+      let tap = tap(backend, output, events)
+      try tap.start()
+      backend.lock.withLock { backend.outputUID = "airpods" }
+      backend.notify("defaultOutput", build: 0)
+      #expect(tap.settleForTesting())
+      #expect(backend.snapshot.starts == 2)
+
+      // A notice from the torn-down first build, even with a real change pending, is ignored.
+      backend.lock.withLock { backend.rate = 24_000 }
+      backend.notify("aggregateNominalRate", build: 1)
+      #expect(tap.settleForTesting())
+      #expect(backend.snapshot.starts == 2, "a retired build's notice never rebuilds")
+
+      // The system watch, installed once, still reports after the rebuild.
+      backend.lock.withLock { backend.outputUID = "speakers" }
+      backend.notify("defaultOutput", build: 0)
+      #expect(tap.settleForTesting())
+      #expect(backend.snapshot.starts == 3)
+      #expect(events.list.withLock { $0 } == ["rebuilt", "rebuilt"])
+      #expect(tap.health.rebuildReasons == [.outputDevice: 2])
+      tap.stop()
+    }
+
+    @Test("a change between the first commitment and the listeners is still found")
+    func changeBeforeListenersIsFound() throws {
+      guard #available(macOS 14.2, *) else { return }
+      let backend = FakeBackend()
+      backend.rateAtInstall = 24_000
+      let output = Output()
+      let events = Events()
+      let tap = tap(backend, output, events)
+      try tap.start()
+      #expect(tap.settleForTesting())
+      #expect(backend.snapshot.starts == 2)
+      #expect(tap.health.rebuildReasons == [.nominalRate: 1])
+      tap.stop()
+    }
+
+    @Test("a reading that fails is never taken as unchanged: it rebuilds, and a failed rebuild is final")
+    func unreadableReadingRebuilds() throws {
+      guard #available(macOS 14.2, *) else { return }
+      let backend = FakeBackend()
+      let output = Output()
+      let events = Events()
+      let tap = tap(backend, output, events)
+      try tap.start()
+      backend.lock.withLock { backend.failCurrent = true }
+      backend.notify("aggregateInputStreams")
+      #expect(tap.settleForTesting())
+      #expect(events.list.withLock { $0 } == ["rebuilt"])
+      #expect(tap.health.rebuildReasons == [.unreadable: 1])
+
+      backend.lock.withLock { backend.failStartNumber = 3 }
+      backend.notify("aggregateInputStreams")
+      #expect(tap.settleForTesting())
+      #expect(events.list.withLock { $0 } == ["rebuilt", "rebuildFailed"])
+      #expect(!backend.snapshot.running)
+      tap.stop()
+    }
+
+    @Test("a layout the device now reports rebuilds; the refused callback's samples never arrive")
+    func supportedLayoutChangeRebuilds() throws {
+      guard #available(macOS 14.2, *) else { return }
+      let backend = FakeBackend()
+      backend.bufferChannels = [1]
+      let output = Output()
+      let events = Events()
+      let tap = tap(backend, output, events)
+      try tap.start()
+      let first = try #require(backend.ingest)
+      // 0.1 s of valid mono audio, then the device turns stereo.
+      try deliver([Float](repeating: 0.25, count: 4_800), to: first, host: 1_000_000)
+      backend.lock.withLock { backend.bufferChannels = [2] }
+      try deliver(
+        [Float](repeating: 0.9, count: 1_920), to: first, host: 2_000_000, channels: 2)
+      try deliver(
+        [Float](repeating: 0.9, count: 1_920), to: first, host: 3_000_000, channels: 2)
+      tap.drainForTesting()
+      #expect(tap.settleForTesting())
+      #expect(events.list.withLock { $0 } == ["rebuilt"], "one rebuild for both refusals")
+      #expect(tap.health.rebuildReasons == [.layout: 1])
+      let second = try #require(backend.ingest)
+      for i in 0..<10 {
+        try deliver(
+          sine(960, rate: 48_000, from: i * 480), to: second,
+          host: 90_000_000 + ticks(Double(i) * 0.01), channels: 2)
+      }
+      tap.drainForTesting()
+      tap.stop()
+      let samples = output.samples.withLock { $0 }
+      #expect(abs(samples.count - (1_600 + 1_600)) <= 64, "the mono audio and 0.1 s of stereo: \(samples.count)")
+      #expect(samples.allSatisfy { abs($0) < 0.6 }, "nothing of the 0.9 refused callbacks")
     }
   #endif
 
@@ -650,16 +870,17 @@ struct SystemAudioTapTests {
     #expect(tap.health.pipeline.framesCaptured == 0)
   }
 
+  /// One callback of one interleaved buffer; `samples` holds `channels` values per frame.
   private func deliver(
     _ samples: [Float], to ingest: @Sendable (UnsafePointer<AudioBufferList>, UInt64, Bool) -> Void,
-    host: UInt64
+    host: UInt64, channels: UInt32 = 1
   ) throws {
     let list = AudioBufferList.allocate(maximumBuffers: 1)
     defer { free(list.unsafeMutablePointer) }
     var copy = samples
     copy.withUnsafeMutableBufferPointer { memory in
       list[0] = AudioBuffer(
-        mNumberChannels: 1, mDataByteSize: UInt32(memory.count * 4),
+        mNumberChannels: channels, mDataByteSize: UInt32(memory.count * 4),
         mData: UnsafeMutableRawPointer(memory.baseAddress))
       ingest(UnsafePointer(list.unsafeMutablePointer), host, true)
     }
@@ -871,23 +1092,39 @@ struct SystemAudioTapDiagnosticsTests {
       var failPassive = false
       func start(
         ingest: @escaping @Sendable (UnsafePointer<AudioBufferList>, UInt64, Bool) -> Void
-      ) throws -> CallSoundPipeline.InputFormat {
+      ) throws -> CallSoundCapture {
         lock.withLock {
           starts += 1
           self.ingest = ingest
+          return capture
         }
-        return .init(sampleRate: rate)
       }
+      /// Lock held.
+      private var capture: CallSoundCapture {
+        .init(build: starts, outputUID: outputUID, format: .init(sampleRate: rate))
+      }
+      var outputUID = "speakers"
+      /// Moves the output to another device and reports it, as the system object does.
+      func switchOutput(to uid: String) {
+        let handler = lock.withLock {
+          outputUID = uid
+          return onNotice
+        }
+        handler?(
+          CallSoundNotice(
+            build: 0, object: 1, selector: kAudioHardwarePropertyDefaultOutputDevice,
+            scope: kAudioObjectPropertyScopeGlobal, name: "defaultOutput"))
+      }
+      func currentCapture() throws -> CallSoundCapture { lock.withLock { capture } }
       func stop() -> Int { 0 }
       func installListeners(
-        queue: DispatchQueue, onChange: @escaping @Sendable () -> Void,
-        onNotice: @escaping @Sendable (CallSoundNotice) -> Void
+        queue: DispatchQueue, onNotice: @escaping @Sendable (CallSoundNotice) -> Void
       ) -> Bool {
         lock.withLock {
           self.onNotice = onNotice
           if failPassive {
             diagnostics.watchProblems = [
-              .init(text: "register aggregateNominalRate object=9 failed", count: 1, current: true)
+              .init(text: "register streamVirtualFormat object=9 failed", count: 1, current: true)
             ]
           }
         }
@@ -895,11 +1132,9 @@ struct SystemAudioTapDiagnosticsTests {
       }
       func removeListeners() -> Bool { true }
       func captureDiagnostics() -> CallSoundCaptureDiagnostics { lock.withLock { diagnostics } }
-      func refreshDiagnostics() -> CallSoundCaptureDiagnostics {
-        lock.withLock {
-          refreshes += 1
-          return diagnostics
-        }
+      func reconcileWatch() -> Bool {
+        lock.withLock { refreshes += 1 }
+        return true
       }
     }
 
@@ -954,11 +1189,16 @@ struct SystemAudioTapDiagnosticsTests {
         sink.matching("CALL_SOUND observed").last?.contains("aggregateNominalRate=16000.0") == true,
         "the line after a notice shows the state it announced")
       #expect(backend.lock.withLock { backend.refreshes } == 1)
-      #expect(backend.lock.withLock { backend.starts } == 1, "a diagnostic notice never rebuilds")
+      #expect(tap.settleForTesting())
+      #expect(
+        backend.lock.withLock { backend.starts } == 1,
+        "a notice whose reading matches the commitment never rebuilds")
 
-      tap.requestRebuildForTesting()
-      tap.drainForTesting()
-      #expect(sink.matching("CALL_SOUND build").last?.contains("gen=2 trigger=rebuild") == true)
+      backend.switchOutput(to: "airpods")
+      #expect(tap.settleForTesting())
+      #expect(
+        sink.matching("CALL_SOUND build").last?.contains("gen=2 trigger=rebuild reason=outputDevice")
+          == true)
       tap.stop()
     }
 
@@ -1019,8 +1259,8 @@ struct SystemAudioTapDiagnosticsTests {
       try callbacks(count: 30, start: 7_000_000, valid: true)
       tap.drainForTesting()
       #expect(sink.matching("CALL_SOUND measured gen=1 rate=24000.0").count == 1)
-      tap.requestRebuildForTesting()
-      tap.drainForTesting()
+      backend.switchOutput(to: "airpods")
+      #expect(tap.settleForTesting())
       try callbacks(count: 10, start: 90_000_000, valid: false)
       tap.drainForTesting()
       #expect(
@@ -1031,7 +1271,7 @@ struct SystemAudioTapDiagnosticsTests {
       tap.stop()
     }
 
-    @Test("a diagnostic listener that fails to register is recorded, not mistaken for silence")
+    @Test("a stream format watch that cannot register fails the install, recorded and rolled back")
     func failedRegistrationIsRecorded() throws {
       guard #available(macOS 14.2, *) else { return }
       let backend = CoreAudioCallSoundBackend(
@@ -1044,19 +1284,46 @@ struct SystemAudioTapDiagnosticsTests {
       backend.setTapObjectForTesting(AudioObjectID(4_242))
       backend.setAggregateObjectForTesting(AudioObjectID(UInt32.max - 7))
       let installed = backend.installListeners(
-        queue: DispatchQueue(label: "test.listeners"), onChange: {}, onNotice: { _ in })
-      #expect(installed)
+        queue: DispatchQueue(label: "test.listeners"), onNotice: { _ in })
+      #expect(!installed)
       #expect(
         backend.captureDiagnostics().watchProblems == [
           .init(text: "register streamVirtualFormat object=31 failed", count: 1, current: true)
         ])
+      #expect(backend.listenerCountForTesting == 0)
+    }
+
+    @Test("a new stream that cannot be watched, or an unreadable stream list, is reported, not kept quiet")
+    func newStreamWatchFailureIsReported() throws {
+      guard #available(macOS 14.2, *) else { return }
+      let streams = OSAllocatedUnfairLock<[AudioObjectID]?>(initialState: [21])
+      let log = OSAllocatedUnfairLock<[AudioObjectID]>(initialState: [])
+      let backend = CoreAudioCallSoundBackend(
+        addListener: { object, address, _, _ in
+          let selector = address.pointee.mSelector
+          if selector == kAudioStreamPropertyVirtualFormat { log.withLock { $0.append(object) } }
+          return selector == kAudioStreamPropertyVirtualFormat && object == 22
+            ? OSStatus(kAudioHardwareUnspecifiedError) : noErr
+        },
+        removeListener: { _, _, _, _ in noErr },
+        streamLister: { _ in streams.withLock { $0 } })
+      backend.setTapObjectForTesting(AudioObjectID(4_242))
+      backend.setAggregateObjectForTesting(AudioObjectID(UInt32.max - 7))
+      let installed = backend.installListeners(
+        queue: DispatchQueue(label: "test.listeners"), onNotice: { _ in })
+      #expect(installed)
+      streams.withLock { $0 = [21, 22] }
+      #expect(!backend.reconcileWatch(), "stream 22 arrived and could not be watched")
+      #expect(log.withLock { $0 } == [21, 22])
+      streams.withLock { $0 = nil }
+      #expect(!backend.reconcileWatch(), "an unreadable list is not an unchanged one")
       #expect(backend.removeListeners())
     }
 
     @Test("a repeated failure is one counted entry, and shows resolved once the read succeeds")
     func repeatedProblemsAreBounded() throws {
       guard #available(macOS 14.2, *) else { return }
-      let failing = OSAllocatedUnfairLock(initialState: true)
+      let failing = OSAllocatedUnfairLock(initialState: false)
       let backend = CoreAudioCallSoundBackend(
         addListener: { _, _, _, _ in noErr }, removeListener: { _, _, _, _ in noErr },
         streamLister: { _ in failing.withLock { $0 } ? nil : [5] },
@@ -1064,16 +1331,20 @@ struct SystemAudioTapDiagnosticsTests {
       backend.setTapObjectForTesting(AudioObjectID(4_242))
       backend.setAggregateObjectForTesting(AudioObjectID(UInt32.max - 7))
       let installed = backend.installListeners(
-        queue: DispatchQueue(label: "test.listeners"), onChange: {}, onNotice: { _ in })
+        queue: DispatchQueue(label: "test.listeners"), onNotice: { _ in })
       #expect(installed)
-      _ = backend.refreshDiagnostics()
-      let stillFailing = backend.refreshDiagnostics()
+      failing.withLock { $0 = true }
+      for _ in 0..<3 { #expect(!backend.reconcileWatch()) }
       #expect(
-        stillFailing.watchProblems == [.init(text: "inputStreams unreadable", count: 3, current: true)])
+        backend.captureDiagnostics().watchProblems == [
+          .init(text: "inputStreams unreadable", count: 3, current: true)
+        ])
       failing.withLock { $0 = false }
-      let recovered = backend.refreshDiagnostics()
+      #expect(backend.reconcileWatch())
       #expect(
-        recovered.watchProblems == [.init(text: "inputStreams unreadable", count: 3, current: false)])
+        backend.captureDiagnostics().watchProblems == [
+          .init(text: "inputStreams unreadable", count: 3, current: false)
+        ])
       #expect(backend.removeListeners())
     }
 
@@ -1087,7 +1358,7 @@ struct SystemAudioTapDiagnosticsTests {
       backend.setTapObjectForTesting(AudioObjectID(4_242))
       #expect(backend.captureDiagnostics().tapRate == 48_000)
       rate.withLock { $0 = 24_000 }
-      #expect(backend.refreshDiagnostics().tapRate == 24_000)
+      #expect(backend.captureDiagnostics().tapRate == 24_000)
       rate.withLock { $0 = nil }
       #expect(backend.captureDiagnostics().describe().contains("tapRate=unreadable"))
     }
@@ -1104,7 +1375,7 @@ struct SystemAudioTapDiagnosticsTests {
       try tap.start()
       #expect(sink.matching("CALL_SOUND build").first?.hasSuffix("watch=ok") == true)
       let installed = try #require(sink.matching("CALL_SOUND observed gen=1 trigger=installed").first)
-      #expect(installed.hasSuffix("watch=[register aggregateNominalRate object=9 failed x1 current]"))
+      #expect(installed.hasSuffix("watch=[register streamVirtualFormat object=9 failed x1 current]"))
       tap.stop()
     }
 
@@ -1131,11 +1402,11 @@ struct SystemAudioTapDiagnosticsTests {
       backend.setTapObjectForTesting(AudioObjectID(4_242))
       backend.setAggregateObjectForTesting(AudioObjectID(UInt32.max - 7))
       let installed = backend.installListeners(
-        queue: DispatchQueue(label: "test.listeners"), onChange: {}, onNotice: { _ in })
+        queue: DispatchQueue(label: "test.listeners"), onNotice: { _ in })
       #expect(installed)
       #expect(added.withLock { $0 } == [21, 22])
       streams.withLock { $0 = [22, 23] }
-      _ = backend.refreshDiagnostics()
+      #expect(backend.reconcileWatch())
       #expect(removed.withLock { $0 } == [21])
       #expect(added.withLock { $0 } == [21, 22, 23])
       #expect(backend.listenerCountForTesting == 6, "output, tap format, rate, stream list, 22, 23")
@@ -1143,53 +1414,99 @@ struct SystemAudioTapDiagnosticsTests {
       #expect(backend.listenerCountForTesting == 0)
     }
 
-    @Test("diagnostic listeners on the aggregate are installed with the rebuild triggers and all removed together")
-    func aggregateListenerBookkeeping() throws {
+    /// Every add and remove a backend makes, as (object, selector, scope).
+    private final class Registrations: Sendable {
+      let adds = OSAllocatedUnfairLock<[String]>(initialState: [])
+      let removes = OSAllocatedUnfairLock<[String]>(initialState: [])
+      /// Registrations of this selector fail.
+      let failing = OSAllocatedUnfairLock<AudioObjectPropertySelector?>(initialState: nil)
+      static func text(_ object: AudioObjectID, _ address: AudioObjectPropertyAddress) -> String {
+        "\(object):\(CallSoundCaptureDiagnostics.fourCC(address.mSelector)):"
+          + CallSoundCaptureDiagnostics.fourCC(address.mScope)
+      }
+      @available(macOS 14.2, *)
+      func backend(streams: [AudioObjectID]) -> CoreAudioCallSoundBackend {
+        CoreAudioCallSoundBackend(
+          addListener: { [self] object, address, _, _ in
+            let entry = Self.text(object, address.pointee)
+            let selector = address.pointee.mSelector
+            adds.withLock { $0.append(entry) }
+            return failing.withLock { $0 } == selector
+              ? OSStatus(kAudioHardwareUnspecifiedError) : noErr
+          },
+          removeListener: { [self] object, address, _, _ in
+            let entry = Self.text(object, address.pointee)
+            removes.withLock { $0.append(entry) }
+            return noErr
+          },
+          streamLister: { _ in streams })
+      }
+    }
+
+    @Test("each watch names its object, property and scope; a build's watches go before the system's")
+    func listenerBookkeeping() throws {
       guard #available(macOS 14.2, *) else { return }
-      let adds = OSAllocatedUnfairLock<[AudioObjectPropertySelector]>(initialState: [])
-      let removes = OSAllocatedUnfairLock(initialState: 0)
-      let backend = CoreAudioCallSoundBackend(
-        addListener: { _, address, _, _ in
-          let selector = address.pointee.mSelector
-          adds.withLock { $0.append(selector) }
-          return noErr
-        },
-        removeListener: { _, _, _, _ in
-          removes.withLock { $0 += 1 }
-          return noErr
-        })
+      let log = Registrations()
+      let backend = log.backend(streams: [21, 22])
+      let aggregate = AudioObjectID(UInt32.max - 7)
       backend.setTapObjectForTesting(AudioObjectID(4_242))
-      // An ID no device has: its stream list cannot be read, so no stream is watched.
-      backend.setAggregateObjectForTesting(AudioObjectID(UInt32.max - 7))
-      let installed = backend.installListeners(
-        queue: DispatchQueue(label: "test.listeners"), onChange: {}, onNotice: { _ in })
+      backend.setAggregateObjectForTesting(aggregate)
+      let installed = backend.installListeners(queue: DispatchQueue(label: "test.listeners"), onNotice: { _ in })
       #expect(installed)
+      let expectedAdds = [
+        "1:dOut:glob", "4242:tfmt:glob", "\(aggregate):nsrt:glob", "\(aggregate):stm#:inpt",
+        "21:sfmt:glob", "22:sfmt:glob",
+      ]
+      #expect(log.adds.withLock { $0 } == expectedAdds)
+      // What stop runs before destroying any object: streams, aggregate, tap; never the system.
+      #expect(backend.removeBuildListeners() == 0)
       #expect(
-        adds.withLock { $0 } == [
-          kAudioHardwarePropertyDefaultOutputDevice, kAudioTapPropertyFormat,
-          kAudioDevicePropertyNominalSampleRate, kAudioDevicePropertyStreams,
+        log.removes.withLock { $0 } == [
+          "21:sfmt:glob", "22:sfmt:glob", "\(aggregate):nsrt:glob", "\(aggregate):stm#:inpt",
+          "4242:tfmt:glob",
         ])
+      #expect(backend.listenerCountForTesting == 1, "the default-output watch outlives the build")
       #expect(backend.removeListeners())
-      #expect(removes.withLock { $0 } == 4)
+      #expect(log.removes.withLock { $0 }.last == "1:dOut:glob")
       #expect(backend.listenerCountForTesting == 0)
     }
 
-    @Test("a diagnostic listener that fails to register never stops capture; the rebuild triggers stay")
-    func diagnosticListenerFailureIsSoft() throws {
+    @Test("a required watch that cannot register fails the install and removes every watch that did")
+    func requiredWatchFailureRollsBack() throws {
       guard #available(macOS 14.2, *) else { return }
-      let backend = CoreAudioCallSoundBackend(
-        addListener: { _, address, _, _ in
-          address.pointee.mSelector == kAudioDevicePropertyNominalSampleRate
-            ? OSStatus(kAudioHardwareUnspecifiedError) : noErr
-        },
-        removeListener: { _, _, _, _ in noErr })
-      backend.setTapObjectForTesting(AudioObjectID(4_242))
-      backend.setAggregateObjectForTesting(AudioObjectID(UInt32.max - 7))
-      let installed = backend.installListeners(
-        queue: DispatchQueue(label: "test.listeners"), onChange: {}, onNotice: { _ in })
-      #expect(installed, "a failed diagnostic registration is not an install failure")
-      #expect(backend.listenerCountForTesting == 3, "default output, tap format, stream list")
-      #expect(backend.removeListeners())
+      for selector in [
+        kAudioDevicePropertyNominalSampleRate, kAudioDevicePropertyStreams,
+        kAudioStreamPropertyVirtualFormat,
+      ] {
+        let log = Registrations()
+        log.failing.withLock { $0 = selector }
+        let backend = log.backend(streams: [21])
+        backend.setTapObjectForTesting(AudioObjectID(4_242))
+        backend.setAggregateObjectForTesting(AudioObjectID(UInt32.max - 7))
+        let installed = backend.installListeners(
+          queue: DispatchQueue(label: "test.listeners"), onNotice: { _ in })
+        #expect(!installed)
+        let added = log.adds.withLock { $0 }
+        // Everything that registered before the failure, in order, and nothing after it.
+        #expect(log.removes.withLock { $0 } == Array(added.dropLast()))
+        #expect(backend.listenerCountForTesting == 0)
+      }
+    }
+
+    @Test("the comparison names the output device first, then the rate, then the layout")
+    func changeComparison() {
+      guard #available(macOS 14.2, *) else { return }
+      let base = CallSoundCapture(
+        build: 1, outputUID: "a", format: .init(sampleRate: 48_000, bufferChannels: [2]))
+      var other = base
+      other.build = 2
+      #expect(base.change(to: other) == nil, "the build alone is not a change")
+      other.format = .init(sampleRate: 48_000, bufferChannels: [1, 1])
+      #expect(base.change(to: other) == .layout)
+      other.format = .init(sampleRate: 24_000, bufferChannels: [1, 1])
+      #expect(base.change(to: other) == .nominalRate)
+      other.outputUID = "b"
+      #expect(base.change(to: other) == .outputDevice)
     }
   #endif
 }
