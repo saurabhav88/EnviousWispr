@@ -150,7 +150,7 @@ struct MeetingDocumentsOwnerTests {
     #expect(coordinator.documents.hasUnsavedNotes(meetingID) == false)
   }
 
-  @Test("quit saves an unsaved draft inside its deadline, read first or not")
+  @Test("quit saves unsaved notes and summary inside its deadline, read first or not")
   func quitFlushes() async throws {
     let harness = try Harness()
     let gate = DebounceGate()
@@ -164,6 +164,9 @@ struct MeetingDocumentsOwnerTests {
     }
     await coordinator.documents.load(first)
     coordinator.documents.setNotes(first, "Follow up with legal")
+    coordinator.documents.setSummary(first, "Reviewed at quit")
+    #expect(coordinator.documents.hasUnsavedSummary(first))
+    #expect(try harness.store.loadDocuments(meeting: first).summary != "Reviewed at quit")
 
     // A second meeting whose notes were never read this session, with notes on disk; its
     // read stays queued behind the held file queue when quit starts.
@@ -177,6 +180,7 @@ struct MeetingDocumentsOwnerTests {
     coordinator.prepareForTermination(deadline: .now() + 5)
 
     #expect(Self.notesOnDisk(harness, first) == "Follow up with legal")
+    #expect(try harness.store.loadDocuments(meeting: first).summary == "Reviewed at quit")
     #expect(Self.notesOnDisk(harness, second.id) == "typed at quit")
     #expect(try harness.store.loadDocuments(meeting: second.id).manifest.notes?.revision ?? 0 > 3)
   }

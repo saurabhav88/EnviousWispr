@@ -436,6 +436,7 @@ struct MeetingCoordinatorTests {
   /// Waits for `condition` through Observation, with a deadline that only fails the test.
   static func eventually(
     _ label: String, timeout: Duration = .seconds(10),
+    drainFiles: Bool = true,
     _ condition: @escaping @MainActor () -> Bool,
     sourceLocation: SourceLocation = #_sourceLocation
   ) async {
@@ -453,8 +454,8 @@ struct MeetingCoordinatorTests {
     #expect(expired.value == false, "waited out the deadline: \(label)", sourceLocation: sourceLocation)
     #expect(condition(), "never satisfied: \(label)", sourceLocation: sourceLocation)
     // The live copy changes before its write lands: let queued meeting writes finish, so the
-    // disk reads after this see them.
-    await drainMeetingFiles()
+    // disk reads after this see them. Off while the test itself holds the writer queue.
+    if drainFiles { await drainMeetingFiles() }
   }
 
   @MainActor
@@ -879,12 +880,51 @@ struct MeetingCoordinatorTests {
     await coordinator.stop()
     await Self.eventually("ready") { coordinator.record(id: meetingID)?.state == .ready }
 
-    coordinator.deleteForHistoryDeleteAll(meetingIDs: [meetingID])
-    // Synchronous: durable before History empties its own store.
+    #expect(await coordinator.deleteForHistoryDeleteAll(meetingIDs: [meetingID]))
+    // Durable when the awaited marking answers, before History empties its own store.
     #expect(try harness.store.load(id: meetingID).deletionRequested)
     await Self.eventually("gone") { coordinator.meetings.isEmpty }
     #expect(
       FileManager.default.fileExists(atPath: harness.store.folder(for: meetingID).path) == false)
+  }
+
+  @MainActor
+  final class SettledFlag {
+    var settled = false
+  }
+
+  /// #4102: the window keeps working while Delete All's mark is held. The main-actor work is
+  /// what releases the held mark, so a Delete All that blocked the main actor would sit out its
+  /// second, refuse, and settle before that work ran.
+  @Test("Delete All's held mark leaves the main actor free, and work it runs releases the mark")
+  func deleteAllMarkKeepsMainActorFree() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    await coordinator.stop()
+    await Self.eventually("ready") {
+      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
+    }
+    let gate = harness.writeGate
+    gate.arm()
+    defer { gate.release.signal() }
+    let flag = SettledFlag()
+    let deleting = Task { @MainActor in
+      let marked = await coordinator.deleteForHistoryDeleteAll(meetingIDs: [meetingID])
+      flag.settled = true
+      return marked
+    }
+    try #require(
+      await Task.detached { Self.waitBlocking(gate.entered) }.value == .success,
+      "the mark never reached the writer")
+    await Task { @MainActor in
+      #expect(flag.settled == false, "Delete All settled before the main actor could run")
+      gate.release.signal()
+    }.value
+    #expect(await deleting.value, "the mark landed inside its second")
+    #expect(gate.timedOut.withLock { $0 } == false)
+    #expect(try harness.store.load(id: meetingID).deletionRequested)
   }
 
   @Test("deleting only the audio keeps the meeting and stops a queued one from processing")
@@ -1869,7 +1909,7 @@ struct MeetingCoordinatorTests {
     let harness = try Harness()
     let coordinator = harness.coordinator
     let meetingID = try await stalledByInventorySave(harness)
-    #expect(coordinator.deleteForHistoryDeleteAll(meetingIDs: [meetingID]))
+    #expect(await coordinator.deleteForHistoryDeleteAll(meetingIDs: [meetingID]))
     #expect(coordinator.canTranscribeAgain(meetingID) == false)
     #expect(await coordinator.retry(meetingID: meetingID) == false)
     await Self.eventually("deleted") { coordinator.record(id: meetingID) == nil }
@@ -2071,6 +2111,7 @@ struct MeetingCoordinatorTests {
     #expect(coordinator.record(id: meetingID)?.title == "Third")
   }
 
+  #if DEBUG
   @Test("a bounded deletion mark that succeeds first survives an edit made before the older write answers")
   func boundedMarkSurvivesEdit() async throws {
     let harness = try Harness()
@@ -2084,19 +2125,28 @@ struct MeetingCoordinatorTests {
     }
     let gate = harness.writeGate
     gate.arm()
+    // A's answer is held explicitly until Delete All's newer mark has answered and the next
+    // edit has landed (#4102): marking suspends now, so ordering cannot rest on a blocked main
+    // actor. The mark and the edit never match this filter (the mark is a bounded write).
+    let olderAnswer = Gate()
+    defer { olderAnswer.open() }
+    coordinator.writeWillAnswerForTesting = { record in
+      if record.title == "Older" { await olderAnswer.wait() }
+    }
     let renaming = Task { await coordinator.rename(meetingID: meetingID, title: "Older") }
     #expect(await Task.detached { Self.waitBlocking(gate.entered) }.value == .success)
-    // A is released now. The test does not yield until after Delete All and the next edit have
-    // started, so A's main-actor acknowledgement cannot run before them, whenever A lands.
     gate.release.signal()
-    #expect(coordinator.deleteForHistoryDeleteAll(meetingIDs: [meetingID]))
+    await Self.eventually("A landed, its answer held") { olderAnswer.parked }
+    #expect(await coordinator.deleteForHistoryDeleteAll(meetingIDs: [meetingID]))
     await coordinator.rename(meetingID: meetingID, title: "Edited")
+    olderAnswer.open()
     await renaming.value
     await Self.drainMeetingFiles()
     let edits = gate.written.withLock { $0 }.filter { $0.title == "Edited" }
     #expect(edits.isEmpty == false)
     #expect(edits.allSatisfy { $0.deletionRequested }, "the edit kept the mark")
   }
+  #endif
 
   @Test("a bounded write that never started is withdrawn: disk, shown state and the next change agree")
   func withdrawnBoundedWrite() async throws {
@@ -2113,7 +2163,7 @@ struct MeetingCoordinatorTests {
     let renaming = Task { await coordinator.rename(meetingID: meetingID, title: "Before") }
     #expect(await Task.detached { Self.waitBlocking(gate.entered) }.value == .success)
     // The mark queues behind the held rename and cannot start within its second.
-    #expect(coordinator.deleteForHistoryDeleteAll(meetingIDs: [meetingID]) == false)
+    #expect(await coordinator.deleteForHistoryDeleteAll(meetingIDs: [meetingID]) == false)
     gate.release.signal()
     #expect(gate.timedOut.withLock { $0 } == false)
     await renaming.value
@@ -2144,7 +2194,7 @@ struct MeetingCoordinatorTests {
     gate.arm()
     let renaming = Task { await coordinator.rename(meetingID: meetingID, title: "Before") }
     #expect(await Task.detached { Self.waitBlocking(gate.entered) }.value == .success)
-    #expect(coordinator.deleteForHistoryDeleteAll(meetingIDs: [meetingID]) == false)
+    #expect(await coordinator.deleteForHistoryDeleteAll(meetingIDs: [meetingID]) == false)
     gate.release.signal()
     #expect(gate.timedOut.withLock { $0 } == false)
     await renaming.value
@@ -2226,7 +2276,7 @@ struct MeetingCoordinatorTests {
       _ = Self.waitBlocking(gate.entered)
       return true
     }
-    #expect(coordinator.deleteForHistoryDeleteAll(meetingIDs: [meetingID]) == false)
+    #expect(await coordinator.deleteForHistoryDeleteAll(meetingIDs: [meetingID]) == false)
     #expect(await refused.value)
     gate.release.signal()
     #expect(gate.timedOut.withLock { $0 } == false)
@@ -2255,13 +2305,11 @@ struct MeetingCoordinatorTests {
     let gate = harness.writeGate
     gate.arm()
     defer { gate.release.signal() }
-    // MainActor is blocked by the bounded marking call below. This blocking
-    // waiter must run independently; Task inherits MainActor, a task group
-    // does not offload blocking work, and an @concurrent helper is unnecessary.
+    // A blocking semaphore wait, so it runs detached, off the main actor the marking awaits on.
     let refused = Task.detached {
       Self.waitBlocking(gate.entered) == .success
     }
-    #expect(coordinator.deleteForHistoryDeleteAll(meetingIDs: [meetingID]) == false)
+    #expect(await coordinator.deleteForHistoryDeleteAll(meetingIDs: [meetingID]) == false)
     try #require(await refused.value, "the bounded deletion mark never started")
     gate.release.signal()
     // The late success routes to `delete(meetingID:)`, which waits on the History removal.
@@ -2292,6 +2340,272 @@ struct MeetingCoordinatorTests {
     await Self.eventually("failure reported") { coordinator.notice == .storageFailed }
     #expect(coordinator.record(id: meetingID)?.state == .recording)
     #expect(try harness.store.load(id: meetingID).state == .recording)
+  }
+
+  /// Two finished meetings, in creation order.
+  private func twoReadyMeetings(_ harness: Harness) async throws -> (UUID, UUID) {
+    let coordinator = harness.coordinator
+    var ids: [UUID] = []
+    for _ in 0..<2 {
+      await coordinator.start(from: .history)
+      let id = try #require(coordinator.meetings.first { !ids.contains($0.id) }?.id)
+      ids.append(id)
+      await coordinator.stop()
+      await Self.eventually("ready") {
+        coordinator.record(id: id)?.state == .ready && coordinator.processing == nil
+      }
+    }
+    return (ids[0], ids[1])
+  }
+
+  #if DEBUG
+  /// #4102: one second for the whole Delete All. A deadline taken per meeting would give each
+  /// later meeting a fresh second, so History could hold its queue for a second per meeting.
+  @Test("Delete All gives every meeting's mark the same deadline")
+  func deleteAllSharesOneDeadline() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    let (first, second) = try await twoReadyMeetings(harness)
+    #expect(await coordinator.deleteForHistoryDeleteAll(meetingIDs: [first, second]))
+    let deadlines = coordinator.deleteAllMarkDeadlinesForTesting
+    #expect(deadlines.count == 2)
+    #expect(Set(deadlines.map(\.uptimeNanoseconds)).count == 1, "one deadline for both marks")
+    await Self.eventually("both deleted") { coordinator.meetings.isEmpty }
+  }
+  #endif
+
+  /// #4102 §2.1: one mark that fails refuses History's bulk removal, but a meeting already
+  /// marked still goes on its own, so its audio is never left without a row.
+  @Test("one failed mark refuses Delete All, and the meeting marked before it is still deleted")
+  func deleteAllMixedMarks() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    let (first, second) = try await twoReadyMeetings(harness)
+    harness.writeGate.failWrites { $0.id == second && $0.deletionRequested }
+    #expect(await coordinator.deleteForHistoryDeleteAll(meetingIDs: [first, second]) == false)
+    #expect(coordinator.notice == .storageFailed)
+    await Self.eventually("the marked one deleted") { coordinator.record(id: first) == nil }
+    #expect(FileManager.default.fileExists(atPath: harness.store.folder(for: first).path) == false)
+    #expect(try harness.store.load(id: second).deletionRequested == false)
+    #expect(coordinator.record(id: second)?.deletionRequested == false)
+  }
+
+  /// #4102: the suspending path's late failure (lateBoundedFailure covers quit's blocking one).
+  /// When this is wrong, a mark that never landed starts a deletion, or the shown meeting keeps
+  /// a mark the disk does not have. About one second: the mark must still be running at the
+  /// real one-second Delete All deadline, which has no test seam on purpose (like the other
+  /// held-mark tests here).
+  @Test("Delete All's mark still running at its deadline that then fails rolls back and deletes nothing")
+  func deleteAllLateFailure() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    await coordinator.stop()
+    await Self.eventually("ready") {
+      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
+    }
+    let gate = harness.writeGate
+    gate.arm()
+    gate.failNext(1)
+    defer { gate.release.signal() }
+    let entered = Task.detached { Self.waitBlocking(gate.entered) == .success }
+    #expect(await coordinator.deleteForHistoryDeleteAll(meetingIDs: [meetingID]) == false)
+    try #require(await entered.value, "the mark never started")
+    gate.release.signal()
+    await Self.eventually("failure reported") { coordinator.notice == .storageFailed }
+    await Self.drainMeetingFiles()
+    #expect(gate.timedOut.withLock { $0 } == false)
+    #expect(coordinator.record(id: meetingID)?.deletionRequested == false)
+    #expect(try harness.store.load(id: meetingID).deletionRequested == false)
+    #expect(harness.removedRows.isEmpty, "nothing was deleted")
+  }
+
+  /// #4102 §5: a second Delete All can arrive while the first one's meetings are still being
+  /// deleted; marking an already marked meeting again is allowed and removes nothing twice.
+  @Test("a second Delete All while the first one's meeting is still deleting is accepted")
+  func deleteAllTwice() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    await coordinator.start(from: .history)
+    let meeting = try onlyMeeting(harness)
+    await coordinator.stop()
+    await Self.eventually("ready") {
+      coordinator.record(id: meeting.id)?.state == .ready && coordinator.processing == nil
+    }
+    let removal = Gate()
+    harness.removeGate = removal
+    defer { removal.open() }
+    #expect(await coordinator.deleteForHistoryDeleteAll(meetingIDs: [meeting.id]))
+    await Self.eventually("first deletion waiting on its row") { removal.parked }
+    #expect(await coordinator.deleteForHistoryDeleteAll(meetingIDs: [meeting.id]))
+    removal.open()
+    await Self.eventually("deleted") { coordinator.record(id: meeting.id) == nil }
+    await Self.drainMeetingFiles()
+    #expect(coordinator.record(id: meeting.id) == nil, "not brought back")
+    #expect(harness.removedRows == [meeting.transcriptID], "the row was removed once")
+    #expect(FileManager.default.fileExists(atPath: harness.store.folder(for: meeting.id).path) == false)
+  }
+
+  #if DEBUG
+  /// #4102 §5: while a mark is held, an edit of that meeting is built on the marked copy, and a
+  /// meeting started meanwhile is not one of Delete All's targets.
+  @Test("during a held Delete All mark, an edit keeps the mark and a new meeting is left alone")
+  func editAndNewMeetingDuringMark() async throws {
+    let harness = try Harness()
+    // The deletion that follows the mark stops at its row, so the marked meeting stays to read.
+    harness.removeError = CocoaError(.fileWriteNoPermission)
+    let coordinator = harness.coordinator
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    await coordinator.stop()
+    await Self.eventually("ready") {
+      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
+    }
+    let gate = harness.writeGate
+    gate.arm()
+    defer { gate.release.signal() }
+    let deleting = Task { await coordinator.deleteForHistoryDeleteAll(meetingIDs: [meetingID]) }
+    try #require(
+      await Task.detached { Self.waitBlocking(gate.entered) }.value == .success,
+      "the mark never started")
+    let renaming = Task { await coordinator.rename(meetingID: meetingID, title: "During") }
+    let starting = Task { await coordinator.start(from: .history) }
+    await Self.eventually("edit and Start entered while marking", drainFiles: false) {
+      coordinator.liveRecordForTesting(meetingID)?.title == "During"
+        && coordinator.phase == .starting
+    }
+    gate.release.signal()
+    #expect(await deleting.value)
+    await renaming.value
+    await starting.value
+    await Self.drainMeetingFiles()
+    let disk = try harness.store.load(id: meetingID)
+    #expect(disk.title == "During")
+    #expect(disk.deletionRequested, "the edit kept the mark")
+    let newer = try #require(coordinator.meetings.first { $0.id != meetingID })
+    #expect(newer.deletionRequested == false)
+    #expect(try harness.store.load(id: newer.id).deletionRequested == false)
+  }
+  #endif
+
+  #if DEBUG
+  /// #4102 §5: a meeting the user deletes on its own while Delete All's mark is held goes once
+  /// and is never brought back by the mark's answer or Delete All's own deletion.
+  @Test("a meeting deleted on its own during a held Delete All mark goes once and stays gone")
+  func individualDeleteDuringMark() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    await coordinator.start(from: .history)
+    let meeting = try onlyMeeting(harness)
+    await coordinator.stop()
+    await Self.eventually("ready") {
+      coordinator.record(id: meeting.id)?.state == .ready && coordinator.processing == nil
+    }
+    let gate = harness.writeGate
+    gate.arm()
+    defer { gate.release.signal() }
+    let deletingAll = Task { await coordinator.deleteForHistoryDeleteAll(meetingIDs: [meeting.id]) }
+    try #require(
+      await Task.detached { Self.waitBlocking(gate.entered) }.value == .success,
+      "the mark never started")
+    let deletingOne = Task { await coordinator.delete(meetingID: meeting.id) }
+    await Self.eventually("individual deletion entered while marking", drainFiles: false) {
+      coordinator.isDeletingForTesting(meeting.id)
+    }
+    gate.release.signal()
+    #expect(await deletingAll.value)
+    _ = await deletingOne.value
+    await Self.eventually("deleted") { coordinator.record(id: meeting.id) == nil }
+    await Self.drainMeetingFiles()
+    #expect(coordinator.record(id: meeting.id) == nil, "not brought back")
+    #expect(coordinator.meetings.isEmpty)
+    #expect(harness.removedRows == [meeting.transcriptID], "the row was removed once")
+    #expect(FileManager.default.fileExists(atPath: harness.store.folder(for: meeting.id).path) == false)
+  }
+  #endif
+
+  #if DEBUG
+  /// #4102 second pass: Delete All's mark is in the live copy while it waits, so a segment save
+  /// can copy it and land after the mark itself was withdrawn. That durable mark must still
+  /// delete the meeting; otherwise History hides a meeting that keeps recording until relaunch.
+  /// About one second: the mark must be withdrawn at the real Delete All deadline.
+  @Test("a segment save that lands Delete All's withdrawn mark still deletes the recording meeting")
+  func inheritedMarkStillDeletes() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    let recorder = try #require(harness.recorders.first)
+    let gate = harness.writeGate
+    gate.arm()
+    defer { gate.release.signal() }
+    // An earlier segment save holds the queue past Delete All's second.
+    recorder.onSegment(
+      .microphone,
+      MeetingSegmentInfo(index: 1, fileName: "mic-00001-s000000000.caf", startMs: 0, frameCount: 16_000))
+    try #require(
+      await Task.detached { Self.waitBlocking(gate.entered) }.value == .success,
+      "the first segment save never started")
+    let deletingAll = Task { await coordinator.deleteForHistoryDeleteAll(meetingIDs: [meetingID]) }
+    await Self.eventually("mark waiting", drainFiles: false) {
+      coordinator.liveRecordForTesting(meetingID)?.deletionRequested == true
+    }
+    // The next segment save copies the marked live record and queues behind the mark.
+    recorder.onSegment(
+      .microphone,
+      MeetingSegmentInfo(
+        index: 2, fileName: "mic-00002-s000001000.caf", startMs: 1_000, frameCount: 16_000))
+    await Self.eventually("second segment queued with the mark", drainFiles: false) {
+      coordinator.liveRecordForTesting(meetingID)?.segments[.microphone]?.count == 2
+    }
+    #expect(await deletingAll.value == false, "the mark was withdrawn at its deadline")
+    gate.release.signal()
+    await Self.eventually("deleted") { coordinator.record(id: meetingID) == nil }
+    #expect(coordinator.isRecording == false)
+    #expect(gate.timedOut.withLock { $0 } == false)
+    #expect(FileManager.default.fileExists(atPath: harness.store.folder(for: meetingID).path) == false)
+  }
+  #endif
+
+  /// #4102 cloud review: a pass that finishes while Delete All's mark is still unconfirmed must
+  /// not throw its result away on that provisional mark. When this is wrong and the mark then
+  /// fails, the meeting is left unmarked in `.processing` with no pass to finish it until a
+  /// manual retry or relaunch. Here the finished result carries the mark the user asked for, so
+  /// the meeting is deleted. About one second: the mark must still be running at the real
+  /// Delete All deadline.
+  @Test("a pass that finishes during an unconfirmed Delete All mark is not stranded when the mark fails")
+  func passDuringFailedMarkNotStranded() async throws {
+    let harness = try Harness()
+    let job = Gate()
+    defer { job.open() }
+    harness.jobBehavior = { _ in
+      await job.wait()
+      return Self.result()
+    }
+    let coordinator = harness.coordinator
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    await coordinator.stop()
+    await Self.eventually("pass running") { job.parked }
+    await Self.drainMeetingFiles()
+    let gate = harness.writeGate
+    gate.arm()
+    gate.failNext(1)
+    defer { gate.release.signal() }
+    let deletingAll = Task { await coordinator.deleteForHistoryDeleteAll(meetingIDs: [meetingID]) }
+    try #require(
+      await Task.detached { Self.waitBlocking(gate.entered) }.value == .success,
+      "the mark never started")
+    // The pass finishes while the mark is held: its result is built on the marked live copy.
+    job.open()
+    #expect(await deletingAll.value == false, "the mark was still running at its deadline")
+    gate.release.signal()
+    await Self.eventually("not left processing") {
+      coordinator.record(id: meetingID) == nil && coordinator.processing == nil
+    }
+    #expect(gate.timedOut.withLock { $0 } == false)
+    #expect(FileManager.default.fileExists(atPath: harness.store.folder(for: meetingID).path) == false)
   }
 
   // MARK: - Work facts

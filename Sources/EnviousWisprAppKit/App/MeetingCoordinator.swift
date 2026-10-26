@@ -45,8 +45,9 @@ extension MeetingTranscriptionJob: MeetingProcessing {}
 /// The one serial queue every ordinary meeting file operation runs on (#3972 C4a): record
 /// writes, creation, listing, audio and folder removal. Off the main actor, and in the order
 /// they were asked for, so a later write of a meeting can never be overtaken by an earlier one.
-/// The quit path and History's Delete All use `runBounded`, which waits behind the writes
-/// already queued, but never past a deadline.
+/// The quit path uses `runBounded`, which blocks behind the writes already queued, but never
+/// past a deadline; History's Delete All uses `runWithin`, the same wait suspended instead of
+/// blocked, so the window keeps working while a meeting write is slow (#4102).
 final class MeetingFileWriter: Sendable {
   /// One queue for every meeting file in the process, so even two writers (a test's relaunch)
   /// keep one order. Internal so a test can wait for it to drain.
@@ -84,7 +85,7 @@ final class MeetingFileWriter: Sendable {
   }
 
   /// How a bounded operation ended for its caller.
-  enum BoundedOutcome {
+  enum BoundedOutcome: Sendable {
     case finished(Result<Void, Error>)
     /// The deadline passed before it started; it was withdrawn and never runs.
     case withdrawn
@@ -92,22 +93,29 @@ final class MeetingFileWriter: Sendable {
     case stillRunning
   }
 
-  /// Runs `work` after everything already queued, waiting for it no later than `deadline`
-  /// (quit, Delete All). Never an unbounded join: a stalled earlier write cannot hold the
-  /// caller. An operation not started by the deadline is withdrawn; one already running
-  /// reports its result to `late` when it ends.
-  func runBounded(
-    until deadline: DispatchTime, _ work: @escaping @Sendable (MeetingStore) throws -> Void,
-    late: @escaping @Sendable (Result<Void, Error>) -> Void
-  ) -> BoundedOutcome {
+  /// Where a bounded operation's deadline is judged (#4102): its own queue, never the writer
+  /// queue (which may be running the very write being timed) and never the main actor.
+  private static let deadlineQueue = DispatchQueue(
+    label: "com.enviouswispr.meetings.deadlines", qos: .utility)
+
+  /// The stages of one bounded operation. The waiting caller (`runBounded`) and the suspending
+  /// caller (`runWithin`) share it, so both withdraw, abandon and report late the same way.
+  /// Internal, not private, so a test can drive the deadline against completion in either order.
+  final class BoundedOperation: Sendable {
     enum Stage {
       case queued, running, withdrawn, runningAbandoned
       case done(Result<Void, Error>)
     }
-    let stage = OSAllocatedUnfairLock<Stage>(initialState: .queued)
-    let done = DispatchSemaphore(value: 0)
-    pending.withLock { $0 += 1 }
-    queue.async { [store, pending] in
+    private let stage = OSAllocatedUnfairLock<Stage>(initialState: .queued)
+
+    /// Runs on the writer queue. A withdrawn operation never runs `work`. One that finishes
+    /// while its caller still waits calls `inTime`; one whose caller gave up reports to `late`.
+    /// `pending` drops once either way, when this block is done.
+    func execute(
+      store: MeetingStore, pending: OSAllocatedUnfairLock<Int>,
+      _ work: @Sendable (MeetingStore) throws -> Void, inTime: () -> Void,
+      late: @Sendable (Result<Void, Error>) -> Void
+    ) {
       let proceed = stage.withLock { current -> Bool in
         guard case .queued = current else { return false }
         current = .running
@@ -124,27 +132,87 @@ final class MeetingFileWriter: Sendable {
         return false
       }
       pending.withLock { $0 -= 1 }
-      if reportLate { late(result) } else { done.signal() }
+      if reportLate { late(result) } else { inTime() }
     }
-    if done.wait(timeout: deadline) == .success,
-      case .done(let result) = stage.withLock({ $0 })
-    {
+
+    /// The result, once the operation finished while its caller still waited.
+    var finishedResult: Result<Void, Error>? {
+      if case .done(let result) = stage.withLock({ $0 }) { return result }
+      return nil
+    }
+
+    /// The deadline passed: withdraw a queued operation, abandon a running one, or answer the
+    /// result of one that finished just as the wait gave up.
+    func deadlinePassed() -> BoundedOutcome {
+      stage.withLock { current -> BoundedOutcome in
+        switch current {
+        case .queued:
+          current = .withdrawn
+          return .withdrawn
+        case .running:
+          current = .runningAbandoned
+          return .stillRunning
+        case .done(let result):
+          // Finished just as the wait gave up.
+          return .finished(result)
+        case .withdrawn, .runningAbandoned:
+          return .stillRunning
+        }
+      }
+    }
+  }
+
+  /// Runs `work` after everything already queued, waiting for it no later than `deadline`
+  /// (quit, which cannot suspend). Never an unbounded join: a stalled earlier write cannot hold
+  /// the caller. An operation not started by the deadline is withdrawn; one already running
+  /// reports its result to `late` when it ends.
+  func runBounded(
+    until deadline: DispatchTime, _ work: @escaping @Sendable (MeetingStore) throws -> Void,
+    late: @escaping @Sendable (Result<Void, Error>) -> Void
+  ) -> BoundedOutcome {
+    let operation = BoundedOperation()
+    let done = DispatchSemaphore(value: 0)
+    pending.withLock { $0 += 1 }
+    queue.async { [store, pending] in
+      operation.execute(store: store, pending: pending, work, inTime: { done.signal() }, late: late)
+    }
+    if done.wait(timeout: deadline) == .success, let result = operation.finishedResult {
       return .finished(result)
     }
-    return stage.withLock { current -> BoundedOutcome in
-      switch current {
-      case .queued:
-        current = .withdrawn
-        return .withdrawn
-      case .running:
-        current = .runningAbandoned
-        return .stillRunning
-      case .done(let result):
-        // Finished just as the wait gave up.
-        return .finished(result)
-      case .withdrawn, .runningAbandoned:
-        return .stillRunning
+    return operation.deadlinePassed()
+  }
+
+  /// `runBounded` for a caller that may suspend (#4102, History's Delete All): the same queue,
+  /// the same stages and the same deadline, but the caller is resumed rather than blocked, so
+  /// the main actor keeps running while a meeting write is slow. The deadline is judged on its
+  /// own queue, so it answers even while the writer queue is still busy. Resumed exactly once:
+  /// `answered` lets only the first of the two answers through.
+  ///
+  /// An unsafe continuation on purpose (#3925): `withCheckedContinuation` in this `-O` module
+  /// crashed the `-Onone` Release test lane in `TranscriptCoordinator.Receipt` (PR #4095).
+  func runWithin(
+    until deadline: DispatchTime, _ work: @escaping @Sendable (MeetingStore) throws -> Void,
+    late: @escaping @Sendable (Result<Void, Error>) -> Void
+  ) async -> BoundedOutcome {
+    let operation = BoundedOperation()
+    pending.withLock { $0 += 1 }
+    return await withUnsafeContinuation { (continuation: UnsafeContinuation<BoundedOutcome, Never>) in
+      let answered = OSAllocatedUnfairLock(initialState: false)
+      let answer: @Sendable (BoundedOutcome) -> Void = { outcome in
+        let first = answered.withLock { done -> Bool in
+          guard !done else { return false }
+          done = true
+          return true
+        }
+        if first { continuation.resume(returning: outcome) }
       }
+      queue.async { [store, pending] in
+        operation.execute(
+          store: store, pending: pending, work,
+          inTime: { if let result = operation.finishedResult { answer(.finished(result)) } },
+          late: late)
+      }
+      Self.deadlineQueue.asyncAfter(deadline: deadline) { answer(operation.deadlinePassed()) }
     }
   }
 
@@ -159,6 +227,15 @@ final class MeetingFileWriter: Sendable {
   ) -> BoundedOutcome {
     let write = writeRecord
     return runBounded(until: deadline, { try write($0, record) }, late: late)
+  }
+
+  /// `saveBounded` for a caller that may suspend (#4102).
+  func saveWithin(
+    _ record: MeetingRecord, until deadline: DispatchTime,
+    late: @escaping @Sendable (Result<Void, Error>) -> Void
+  ) async -> BoundedOutcome {
+    let write = writeRecord
+    return await runWithin(until: deadline, { try write($0, record) }, late: late)
   }
 }
 
@@ -568,6 +645,19 @@ final class MeetingCoordinator {
   /// Told after `meetings` changes, so History drops a selection whose meeting is gone.
   @ObservationIgnored var onMeetingsPublished: (@MainActor () -> Void)?
 
+  #if DEBUG
+    /// The deadline each Delete All mark was given, in order (#4102), so a test can see one
+    /// deadline shared by every meeting rather than read the clock.
+    @ObservationIgnored private(set) var deleteAllMarkDeadlinesForTesting: [DispatchTime] = []
+    /// Runs after an ordinary write landed and before its answer is applied, so a test can
+    /// hold that answer behind later writes in a chosen order (#4102).
+    @ObservationIgnored var writeWillAnswerForTesting: (@MainActor (MeetingRecord) async -> Void)?
+    /// The live copy and an open deletion, so a test can see a change has reached the
+    /// coordinator before it releases a held write (#4102).
+    func liveRecordForTesting(_ id: UUID) -> MeetingRecord? { live[id] }
+    func isDeletingForTesting(_ id: UUID) -> Bool { deleting.contains(id) }
+  #endif
+
   // MARK: - Start and stop
 
   /// Starts a meeting. `captureCallSound` is the call-sound choice the Start was admitted with
@@ -796,8 +886,9 @@ final class MeetingCoordinator {
       // note typed during the removal is never dropped.
       while true {
         let notes = await documents.ensureNotesDurable(meetingID)
+        // The durable mark decides, like `isStillOwned` (#4102).
         guard !quitting, !deleting.contains(meetingID), var current = live[meetingID],
-          !current.deletionRequested
+          records[meetingID]?.deletionRequested != true
         else { return }
         current.trackStatus[.microphone] = .failed
         switch notes {
@@ -828,7 +919,7 @@ final class MeetingCoordinator {
             deps.log("meeting start cleanup failed error=\(type(of: error))")
             // A quit or a deletion meanwhile owns the meeting now.
             guard !quitting, !deleting.contains(meetingID), var failed = live[meetingID],
-              !failed.deletionRequested
+              records[meetingID]?.deletionRequested != true
             else { return }
             documents.reopen(meetingID, token: fence)
             failed.state = .failed
@@ -1204,11 +1295,16 @@ final class MeetingCoordinator {
     }
   }
 
-  /// False once the meeting is being deleted (or marked for it) or the app is quitting: a late
-  /// step then writes nothing. Synchronous, so no deletion can land between this check and the
-  /// cache update of the write after it.
+  /// False once the meeting is being deleted (or durably marked for it) or the app is quitting: a
+  /// late step then writes nothing. Synchronous, so no deletion can land between this check and
+  /// the cache update of the write after it.
+  ///
+  /// The mark is read from the durable copy, not `live` (#4102 cloud review): Delete All's mark
+  /// sits in `live` while it is awaited, and a step that gave up on it would strand the meeting
+  /// if the mark then failed or was withdrawn. A step that carries on writes on the live copy,
+  /// mark included, so a mark that lands that way still deletes the meeting (`persist`).
   private func isStillOwned(_ meetingID: UUID) -> Bool {
-    !quitting && !deleting.contains(meetingID) && live[meetingID]?.deletionRequested != true
+    !quitting && !deleting.contains(meetingID) && records[meetingID]?.deletionRequested != true
   }
 
   /// The History row a finished meeting is saved as (R5, R19). Always `.labeled` so History keeps
@@ -1376,14 +1472,17 @@ final class MeetingCoordinator {
 
   /// History's Delete All (R19): marks every listed meeting for deletion DURABLY before
   /// returning (History empties its own store right after), then finishes each deletion.
-  /// Synchronous, like the quit path: each mark waits behind queued writes, all within one
-  /// second. Returns false when any meeting could not be marked in time; History then deletes
-  /// nothing.
-  func deleteForHistoryDeleteAll(meetingIDs: [UUID]) -> Bool {
+  /// Each mark waits behind queued writes, all within one second shared by every meeting; the
+  /// wait suspends, so the main actor keeps running (#4102). History's queue stays held across
+  /// it, so later History commands wait. Returns false when any meeting could not be marked in
+  /// time; History then refuses its bulk handoff, though meetings already marked are still
+  /// deleted one by one, rows included.
+  func deleteForHistoryDeleteAll(meetingIDs: [UUID]) async -> Bool {
     let deadline = DispatchTime.now() + 1
     var marked: [UUID] = []
     var allMarked = true
     for meetingID in meetingIDs {
+      // The live copy now, not one read before another meeting's mark suspended (#4102).
       guard var record = live[meetingID] else {
         // No folder means nothing to delete; a folder this session could not read cannot be
         // marked.
@@ -1393,10 +1492,13 @@ final class MeetingCoordinator {
         continue
       }
       record.deletionRequested = true
-      if persistBounded(
+      #if DEBUG
+        deleteAllMarkDeadlinesForTesting.append(deadline)
+      #endif
+      if await persistWithin(
         record, until: deadline,
         lateSuccess: { [weak self] in
-          // Marked after all: finish its deletion (History kept every row this time).
+          // Marked after all: finish its deletion (History refused its bulk handoff this time).
           Task { await self?.delete(meetingID: meetingID) }
         })
       {
@@ -1405,7 +1507,8 @@ final class MeetingCoordinator {
         allMarked = false
       }
     }
-    // Marked meetings are deleted either way; History keeps every row if any mark failed.
+    // Marked meetings are deleted either way, each on its own task: its row removal joins
+    // History's queue, which this Delete All still holds, so it is never awaited here.
     for meetingID in marked { Task { await delete(meetingID: meetingID) } }
     return allMarked
   }
@@ -1559,7 +1662,21 @@ final class MeetingCoordinator {
     let sequence = beginWrite(record)
     do {
       try await writer.save(record)
+      #if DEBUG
+        await writeWillAnswerForTesting?(record)
+      #endif
       writeSucceeded(record, sequence: sequence)
+      // A deletion mark this write carried is durable now, so the meeting must go. It may be
+      // one it copied from a Delete All mark still on its way that was then withdrawn or failed
+      // (#4102 second pass): left alone, History would hide a meeting whose audio stays, and a
+      // recording one would keep recording, until the next launch. A deletion already running
+      // (its own marking write included) is left to finish.
+      if record.deletionRequested, live[record.id]?.deletionRequested == true,
+        !deleting.contains(record.id), !quitting
+      {
+        let meetingID = record.id
+        Task { [weak self] in _ = await self?.delete(meetingID: meetingID) }
+      }
       return true
     } catch {
       writeFailed(error, record: record, sequence: sequence)
@@ -1567,17 +1684,43 @@ final class MeetingCoordinator {
     }
   }
 
-  /// `persist` bounded by `deadline` on the caller's thread, for the quit path and Delete All.
-  /// True only when it landed in time. A write withdrawn before it started counts as failed
-  /// and rolls back. A write still running at the deadline keeps the live copy and reports
-  /// once when it ends: a success is then shown (and `lateSuccess` runs), a failure rolls back.
+  /// `persist` bounded by `deadline` on the caller's thread, for the quit path, which cannot
+  /// suspend. True only when it landed in time. A write withdrawn before it started counts as
+  /// failed and rolls back. A write still running at the deadline keeps the live copy and
+  /// reports once when it ends: a success is then shown (and `lateSuccess` runs), a failure
+  /// rolls back.
   @discardableResult
   private func persistBounded(
     _ record: MeetingRecord, until deadline: DispatchTime,
     lateSuccess: (@MainActor () -> Void)? = nil
   ) -> Bool {
     let sequence = beginWrite(record)
-    let outcome = writer.saveBounded(record, until: deadline) { [weak self] result in
+    let outcome = writer.saveBounded(
+      record, until: deadline,
+      late: lateSettlement(record, sequence: sequence, lateSuccess: lateSuccess))
+    return settle(outcome, record: record, sequence: sequence)
+  }
+
+  /// `persistBounded` for Delete All, which suspends instead of blocking (#4102): the same
+  /// deadline, answers and late report.
+  private func persistWithin(
+    _ record: MeetingRecord, until deadline: DispatchTime,
+    lateSuccess: (@MainActor () -> Void)? = nil
+  ) async -> Bool {
+    let sequence = beginWrite(record)
+    let outcome = await writer.saveWithin(
+      record, until: deadline,
+      late: lateSettlement(record, sequence: sequence, lateSuccess: lateSuccess))
+    return settle(outcome, record: record, sequence: sequence)
+  }
+
+  /// The report of a bounded write that was still running at its deadline. It may reach the
+  /// main actor before or after the caller's own answer; `settle` leaves a still-running write
+  /// unanswered, so either order settles it once.
+  private func lateSettlement(
+    _ record: MeetingRecord, sequence: Int, lateSuccess: (@MainActor () -> Void)?
+  ) -> @Sendable (Result<Void, Error>) -> Void {
+    { [weak self] result in
       Task { @MainActor in
         guard let self else { return }
         switch result {
@@ -1589,6 +1732,12 @@ final class MeetingCoordinator {
         }
       }
     }
+  }
+
+  /// A bounded write's answer to its caller: true only when it landed in time.
+  private func settle(
+    _ outcome: MeetingFileWriter.BoundedOutcome, record: MeetingRecord, sequence: Int
+  ) -> Bool {
     switch outcome {
     case .finished(.success):
       writeSucceeded(record, sequence: sequence)

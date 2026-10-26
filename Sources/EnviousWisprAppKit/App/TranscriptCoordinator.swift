@@ -145,9 +145,10 @@ final class TranscriptCoordinator {
   /// #3972 R19: called by Delete All with every meeting id among the rows, BEFORE the store is
   /// emptied, so each meeting is marked for deletion first and a crash cannot leave a finished
   /// meeting whose History row is gone.
-  /// Returns false when any meeting could not be marked; Delete All then removes nothing, so no
-  /// meeting is left with audio but no row and no mark to finish its deletion.
-  @ObservationIgnored var meetingsWillBeDeletedWithAll: (@MainActor ([UUID]) -> Bool)?
+  /// Returns false when any meeting could not be marked; Delete All then refuses its bulk
+  /// removal, so no meeting is left with audio but no row and no mark to finish its deletion.
+  /// Async (#4102): the marks are awaited, not waited for on the main actor.
+  @ObservationIgnored var meetingsWillBeDeletedWithAll: (@MainActor ([UUID]) async -> Bool)?
   /// #3972 R5/R19: a meeting's History facts (echo turns, title, speaker outcomes), by meeting
   /// id, from EnviousMeet's in-memory durable copy. Observable on that side, so a view that
   /// reads it redraws when the meeting changes. Nil (tests, or before wiring) and an unknown
@@ -2206,18 +2207,21 @@ final class TranscriptCoordinator {
 
   func deleteAll() async {
     guard !Task.isCancelled else { return }
-    // #4075 S1: admitted behind earlier commands; when it runs, its marking, handoff and
-    // publication run in one go as before. Its meeting marking still waits on the main actor.
-    await admit { [self] in performDeleteAll() }
+    // #4075 S1: admitted behind earlier commands. Its marking, handoff and publication are one
+    // command: History's queue stays held while the meeting marks are awaited (#4102), so later
+    // saves, removals and a second Delete All wait behind it, while the main actor keeps running.
+    await admit { [self] in await performDeleteAll() }
   }
 
-  private func performDeleteAll() {
+  private func performDeleteAll() async {
     // #3972 R45: every meeting goes too, also one with no History row yet.
     var meetingIDs = transcripts.compactMap(\.meetingID)
     for record in meetingRecords?() ?? [] where !meetingIDs.contains(record.id) {
       meetingIDs.append(record.id)
     }
-    if !meetingIDs.isEmpty, meetingsWillBeDeletedWithAll?(meetingIDs) == false {
+    if !meetingIDs.isEmpty, let marking = meetingsWillBeDeletedWithAll,
+      await marking(meetingIDs) == false
+    {
       actionFailure = .deleteAll
       Task {
         await AppLogger.shared.log(

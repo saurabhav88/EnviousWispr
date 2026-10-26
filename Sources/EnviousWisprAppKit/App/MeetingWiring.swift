@@ -182,7 +182,7 @@ enum MeetingWiring {
     }
     inputs.transcriptCoordinator.meetingsWillBeDeletedWithAll = { [weak coordinator] ids in
       // No coordinator means no meeting can be marked: History then deletes nothing.
-      coordinator?.deleteForHistoryDeleteAll(meetingIDs: ids) ?? false
+      await coordinator?.deleteForHistoryDeleteAll(meetingIDs: ids) ?? false
     }
     coordinator.summaries = makeSummaries(inputs, coordinator: coordinator, lane: lane)
     return coordinator
