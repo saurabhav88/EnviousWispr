@@ -91,14 +91,77 @@ public enum CallEvidenceReader {
       case .unknown: return .unknown
       }
     case .slack:
-      guard let titles = windowTitles(appPID: appPID) else { return .unknown }
-      // A huddle window's title starts with "Huddle"; a channel named "#huddle-…" does not
-      // count (review r15 F5). English only: the other languages are open in #4036.
-      isCall = titles.contains { $0.lowercased().hasPrefix("huddle") }
+      switch slackHuddleWindow(appPID: appPID) {
+      case .call: isCall = true
+      case .none: isCall = false
+      case .unknown: return .unknown
+      }
     default:
       isCall = false
     }
     return isCall ? .call(family: family, room: "pid-\(appPID)") : .none
+  }
+
+  /// Slack's Leave control is independent of its UI language and channel/window name (#4036).
+  private static func slackHuddleWindow(appPID: pid_t) -> SlackHuddleWindow.Verdict {
+    let wake = AccessibilityWake.wake(pid: appPID, messagingTimeout: Double(messagingTimeout))
+    guard wake.roleError == .success, !wake.roleReadExhausted,
+      let manual = wake.manual, !manual || wake.manualEnabled
+    else { return .unknown }
+    let app = AXUIElementCreateApplication(appPID)
+    guard AXUIElementSetMessagingTimeout(app, messagingTimeout) == .success,
+      case .value(let value) = copy(app, kAXWindowsAttribute as CFString),
+      let windows = value as? [AXUIElement]
+    else { return .unknown }
+    return SlackHuddleWindow.classify(
+      windowCount: windows.count,
+      identifier: { slackHuddleControl(in: windows[$0]) },
+      title: {
+        switch copy(windows[$0], kAXTitleAttribute as CFString) {
+        case .value(let value): (value as? String).map { .value($0) } ?? .failed
+        case .missing: .missing
+        case .failed: .failed
+        }
+      })
+  }
+
+  /// The saved Slack trees reach depth 27. Unsearched children never mean no huddle.
+  private static func slackHuddleControl(in window: AXUIElement) -> SlackHuddleWindow.Read {
+    var queue: [(AXUIElement, Int)] = [(window, 0)]
+    var visited = 0
+    var complete = true
+    while !queue.isEmpty, visited < 800 {
+      let (node, level) = queue.removeFirst()
+      visited += 1
+      switch copy(node, kAXRoleAttribute as CFString) {
+      case .value(let role) where (role as? String) == "AXButton":
+        switch copy(node, "AXDOMClassList" as CFString) {
+        case .value(let value):
+          switch SlackHuddleWindow.classRead(value) {
+          case .value(let token): return .value(token)
+          case .failed: complete = false
+          case .missing: break
+          }
+        case .missing: break
+        case .failed: complete = false
+        }
+      case .value(let role) where role is String: break
+      default: complete = false
+      }
+      switch copy(node, kAXChildrenAttribute as CFString) {
+      case .value(let value):
+        guard let children = value as? [AXUIElement] else { complete = false; continue }
+        guard level < 32 else {
+          if !children.isEmpty { complete = false }
+          continue
+        }
+        queue.append(contentsOf: children.map { ($0, level + 1) })
+      case .missing: break
+      case .failed: complete = false
+      }
+    }
+    if !queue.isEmpty { complete = false }
+    return complete ? .missing : .failed
   }
 
   /// Reads each Zoom window's identifier, then its title, only until one proves a meeting.
