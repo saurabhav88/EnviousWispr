@@ -1,0 +1,38 @@
+{
+  "run_id": "run-1793006626-0df5cae2",
+  "run_dir": "/Users/m4pro_sv/.local/state/council/runs/run-1793006626-0df5cae2",
+  "providers": {
+    "openai": {
+      "content": "1. {\"words\": [], \"phrases\": [\"\u00e4ndere die Sprache der Mitschrift w\u00e4hrend des Meetings\", \"w\u00e4hle die Engine f\u00fcr die Mitschrift w\u00e4hrend des Meetings\"]} \u2014 Beide Suchphrasen zielen auf den Text w\u00e4hrend des Meetings und enthalten keine Bindestriche.\n2. {\"words\": [], \"phrases\": [\"Apple f\u00fcr die Mitschrift w\u00e4hrend des Meetings verwenden\"]} \u2014 Die Phrase nennt Apple und grenzt die Einstellung von der Diktierfunktion ab.\n3. {\"words\": [], \"phrases\": [\"nutze Universal f\u00fcr die Mitschrift w\u00e4hrend des Meetings\"]} \u2014 Die Phrase nennt Universal und grenzt die Einstellung von der Diktierfunktion ab.\n4. OK \u2014 Beide Phrasen beziehen sich eindeutig auf das nach dem Meeting erstellte Transkript.",
+      "latest_response_id": "resp_012128d851688a15006adf1c22d94c8196bab49393c86d708b",
+      "model": "gpt-6-sol",
+      "provider": "openai",
+      "session": "ew-4105-german-2026-10-26-gpt",
+      "status": "ok",
+      "usage": {
+        "completion_tokens": 557,
+        "cost_usd": 0.005693,
+        "latency_ms": 7008,
+        "prompt_tokens": 3465,
+        "reasoning_tokens": 390,
+        "total_tokens": 4022
+      }
+    },
+    "gemini": {
+      "content": "1. **{\"words\": [], \"phrases\": [\"\u00e4ndere die Sprache f\u00fcr das Live Transkript w\u00e4hrend der Meetingaufnahme\", \"w\u00e4hle die Engine f\u00fcr das Live Transkript im Meeting\"]}**\nRemoved the hyphens from \u201eLive-Transkript\u201c to comply with the no-dashes rule.\n\n2. **{\"words\": [], \"phrases\": [\"verwende Apple f\u00fcr das Live Transkript im Meeting\"]}**\nChanged the infinitive \u201everwenden\u201c to the du-form imperative \u201everwende\u201c, aligned the terminology with the row name, and removed the hyphen.\n\n3. **{\"words\": [], \"phrases\": [\"nutze Universal f\u00fcr das Live Transkript im Meeting\"]}**\nRemoved the hyphen from \u201eLive-Transkript\u201c to comply with the no-dashes rule.\n\n4. **4. OK**",
+      "latest_interaction_id": "v1_ChdYUFRlYXRDb0xjTG01Tm9QbU9UODRBYxIXSXh6ZmFyYldFdDY1eGRJUGdQcUstQTg",
+      "model": "gemini-3.8-flash",
+      "provider": "gemini",
+      "session": "ew-4105-german-2026-10-26-gemini",
+      "status": "ok",
+      "usage": {
+        "prompt_tokens": 13678,
+        "completion_tokens": 180,
+        "reasoning_tokens": 4796,
+        "total_tokens": 18654,
+        "cost_usd": 0.057837,
+        "latency_ms": 41282
+      }
+    }
+  }
+}

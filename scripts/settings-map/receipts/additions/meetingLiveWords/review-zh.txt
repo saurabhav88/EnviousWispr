@@ -1,0 +1,42 @@
+{
+  "meetingLiveWords": {
+    "language": "zh",
+    "title": "会议实时转写",
+    "words": [
+      "会议实时文字",
+      "会议实时转录"
+    ],
+    "phrases": [
+      "更改会议实时转写的语言",
+      "选择会议实时转写引擎"
+    ]
+  },
+  "meetingLiveWords.apple": {
+    "language": "zh",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "用Apple实时转写会议"
+    ]
+  },
+  "meetingLiveWords.universal": {
+    "language": "zh",
+    "title": "Universal",
+    "words": [],
+    "phrases": [
+      "用Universal实时转写会议"
+    ]
+  },
+  "meetingTranscriptLanguage": {
+    "language": "zh",
+    "title": "会后转写语言",
+    "words": [
+      "会后转写",
+      "会后逐字稿"
+    ],
+    "phrases": [
+      "更改会后完整逐字稿的语言",
+      "自动识别会后转写文本的语言"
+    ]
+  }
+}

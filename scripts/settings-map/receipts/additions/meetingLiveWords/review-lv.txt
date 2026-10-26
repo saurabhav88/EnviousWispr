@@ -1,0 +1,39 @@
+{
+  "meetingLiveWords": {
+    "language": "lv",
+    "title": "sapulces teksts reāllaikā",
+    "words": [],
+    "phrases": [
+      "mainīt sapulces reāllaika teksta valodu",
+      "izvēlēties dzini sapulces tekstam reāllaikā",
+      "lejupielādēt valodas modeli sapulces tekstam reāllaikā"
+    ]
+  },
+  "meetingLiveWords.apple": {
+    "language": "lv",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "izmantot Apple sapulces tekstam reāllaikā"
+    ]
+  },
+  "meetingLiveWords.universal": {
+    "language": "lv",
+    "title": "Universal",
+    "words": [],
+    "phrases": [
+      "izmantot Universal sapulces tekstam reāllaikā"
+    ]
+  },
+  "meetingTranscriptLanguage": {
+    "language": "lv",
+    "title": "sapulces atšifrējuma valoda",
+    "words": [
+      "pilnā atšifrējuma valoda"
+    ],
+    "phrases": [
+      "mainīt pēc sapulces veidotā atšifrējuma valodu",
+      "automātiski noteikt pilnā sapulces atšifrējuma valodu"
+    ]
+  }
+}

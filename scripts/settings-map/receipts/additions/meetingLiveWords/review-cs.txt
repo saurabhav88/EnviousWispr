@@ -1,0 +1,36 @@
+{
+  "meetingLiveWords": {
+    "language": "cs",
+    "title": "živý přepis",
+    "words": [],
+    "phrases": [
+      "změnit jazyk živého přepisu schůzky",
+      "vybrat rozpoznávání řeči pro živý přepis schůzky"
+    ]
+  },
+  "meetingLiveWords.apple": {
+    "language": "cs",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "Apple pro živý přepis schůzky"
+    ]
+  },
+  "meetingLiveWords.universal": {
+    "language": "cs",
+    "title": "Universal",
+    "words": [],
+    "phrases": [
+      "Universal pro živý přepis schůzky"
+    ]
+  },
+  "meetingTranscriptLanguage": {
+    "language": "cs",
+    "title": "jazyk přepisu",
+    "words": [],
+    "phrases": [
+      "změnit jazyk úplného přepisu po skončení schůzky",
+      "automaticky rozpoznat jazyk úplného přepisu schůzky"
+    ]
+  }
+}

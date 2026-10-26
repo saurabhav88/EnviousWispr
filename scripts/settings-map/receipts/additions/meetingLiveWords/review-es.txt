@@ -1,0 +1,39 @@
+{
+  "meetingLiveWords": {
+    "language": "es",
+    "title": "transcripción en directo",
+    "words": [
+      "texto en directo de reuniones"
+    ],
+    "phrases": [
+      "cambiar el idioma del texto en directo de la reunión",
+      "elegir motor para transcribir la reunión en directo"
+    ]
+  },
+  "meetingLiveWords.apple": {
+    "language": "es",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "usar Apple para transcribir la reunión en directo"
+    ]
+  },
+  "meetingLiveWords.universal": {
+    "language": "es",
+    "title": "Universal",
+    "words": [],
+    "phrases": [
+      "usar Universal para la transcripción en directo de la reunión"
+    ]
+  },
+  "meetingTranscriptLanguage": {
+    "language": "es",
+    "title": "idioma de la transcripción",
+    "words": [],
+    "phrases": [
+      "cambiar el idioma de la transcripción completa de la reunión",
+      "detectar automáticamente el idioma de la transcripción final de la reunión",
+      "idioma de la transcripción que se genera al terminar la reunión"
+    ]
+  }
+}

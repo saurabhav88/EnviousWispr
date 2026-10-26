@@ -668,6 +668,23 @@ enum SettingsMap {
       description: .resource(MeetingsCopy.turnsOffDictationShort),
       parent: .meetingsTabGeneral, destination: .meetings(.general), dictionaryTab: nil,
       visibility: .always, target: .meetingTurnsOffDictation, fallbacks: []),
+    // #4105: live words' engine and language, and the transcript's language, on the General
+    // tab. The engines are the Live words row's choices. Its Download (and Try Again, Cancel)
+    // is an action of the row, not a place of its own: a search for downloading live words
+    // arrives at the row, which says whether a download is needed and refuses one during a
+    // meeting (plan R1.10).
+    SettingsMapNode(
+      id: .meetingLiveWords, structure: .item, item: .setting,
+      title: .resource(MeetingsCopy.liveWordsTitle),
+      description: .resource(MeetingsCopy.liveWordsShort),
+      parent: .meetingsTabGeneral, destination: .meetings(.general), dictionaryTab: nil,
+      visibility: .always, target: .meetingLiveWords, fallbacks: []),
+    SettingsMapNode(
+      id: .meetingTranscriptLanguage, structure: .item, item: .setting,
+      title: .resource(MeetingsCopy.transcriptLanguageTitle),
+      description: .resource(MeetingsCopy.transcriptLanguageShort),
+      parent: .meetingsTabGeneral, destination: .meetings(.general), dictionaryTab: nil,
+      visibility: .always, target: .meetingTranscriptLanguage, fallbacks: []),
     // #4017 R5: name meetings from the calendar. Like the two switches above, it is on the page
     // whenever the page shows its settings; until EnviousMeet's setup is finished the page
     // shows the setup instead, and a search arrives on the page itself.
@@ -1331,6 +1348,10 @@ enum SettingsMap {
       SpokenPunctuationStartWordEditor.languages.compactMap { code in
         SettingsMapChoiceIDs.startWordLanguage(code).map { ($0, .dynamic(.startWordLanguage), .runtime) }
       })
+    + choices(
+      of: .meetingLiveWords, destination: .meetings(.general), dictionaryTab: nil,
+      visibility: .always, fallbacks: [],
+      LivePreviewEngineChoice.allCases.map { ($0.meetingLiveWordsMapID, $0.meetingLiveWordsTitle, nil) })
     + choices(
       of: .unloadModelAfter, destination: .dictation(.engine), dictionaryTab: nil,
       visibility: .always, fallbacks: [],

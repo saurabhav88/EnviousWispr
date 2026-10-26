@@ -350,6 +350,17 @@ struct SettingsArrivalFocusTests {
     ("dictionary.learnFrom", [.selfLearningDictionary, .contactsSyncOnLaunch, .importContacts], [.learnFrom]),
     ("appSettings.permissions", [], [.sectionPermissions]),
     ("transcribeFile", [], [.transcribeFileSteps]),
+    // #4105: both menus of each row are pickers.
+    (
+      "meetings.general",
+      [
+        .meetingCallDetection, .meetingCaptureCallSound, .meetingWriteSummary,
+        .meetingTurnsOffDictation, .meetingUseCalendarForNames, .meetingLiveWords,
+        .meetingTranscriptLanguage, .meetingsTabGeneral, .meetingsTabCallApps,
+        .meetingsTabPermissions,
+      ],
+      []
+    ),
   ]
 
   /// Real controls the per-page lists above leave out: the tab strips, per-row buttons, links,

@@ -1,0 +1,37 @@
+{
+  "meetingLiveWords": {
+    "language": "uk",
+    "title": "текст зустрічі наживо",
+    "words": [],
+    "phrases": [
+      "змінити мову тексту під час запису зустрічі",
+      "вибрати рушій розпізнавання мовлення для тексту зустрічі наживо",
+      "завантажити модель мови для тексту зустрічі наживо"
+    ]
+  },
+  "meetingLiveWords.apple": {
+    "language": "uk",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "Apple для розшифрування зустрічі в реальному часі"
+    ]
+  },
+  "meetingLiveWords.universal": {
+    "language": "uk",
+    "title": "Universal",
+    "words": [],
+    "phrases": [
+      "вибрати Universal для тексту зустрічі наживо"
+    ]
+  },
+  "meetingTranscriptLanguage": {
+    "language": "uk",
+    "title": "мова стенограми",
+    "words": [],
+    "phrases": [
+      "змінити мову повної стенограми після завершення зустрічі",
+      "автоматично визначати мову стенограми зустрічі"
+    ]
+  }
+}

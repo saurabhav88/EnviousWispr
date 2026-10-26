@@ -228,6 +228,15 @@ final class MeetingLiveWordsRowModel {
     return options.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
   }
 
+  /// A language's name as the row shows it: Apple's localized name for its tag, Universal's
+  /// catalogue name for its code.
+  func languageName(engine: LivePreviewEngineChoice, code: String) -> String {
+    switch engine {
+    case .apple: ApplePackCatalog.localizedName(for: code)
+    case .universal: LanguageCatalog.entry(for: code).displayName
+    }
+  }
+
   /// "Available after the meeting." while a meeting records or processes; nil otherwise.
   var downloadRefusal: String? {
     environment.isMeetingActive() ? MeetingDownloadAdmission.refusal : nil
@@ -237,13 +246,17 @@ final class MeetingLiveWordsRowModel {
 
   /// Switches the engine, keeping the language when the new engine has it (the shared policy:
   /// an installed Apple region first, else Apple's equivalent; Universal's base code), else
-  /// clearing it. A newer selection made during the lookup wins.
+  /// clearing it. With no language stored yet, the engine is preselected with the dictation
+  /// language's match, so the row never shows an engine with an empty language while a guess
+  /// would be used, and the pair is the user's choice from then on (Codex chunk 7 r1). A newer
+  /// selection made during the lookup wins.
   func selectEngine(_ engine: LivePreviewEngineChoice) async {
     guard engine != .apple || isAppleAvailable else { return }
     selectionGeneration += 1
     let mine = selectionGeneration
     let settings = environment.settings
-    let current = settings.meetingLiveWordsLanguage
+    let current =
+      settings.meetingLiveWordsLanguage ?? MeetingLiveWordsChoice.guessCode(settings.languageMode)
     let inventory = await environment.choice.inventory()
     let kept = await MeetingLiveWordsChoice.switchedLanguage(
       to: engine, from: current, inventory: inventory,

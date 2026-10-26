@@ -107,3 +107,20 @@ enum SettingsMapChoiceIDs {
     }
   }
 }
+
+// #4105: the Live words row's engine menu, in the order the menu lists them.
+extension LivePreviewEngineChoice {
+  var meetingLiveWordsMapID: SettingsMapID {
+    switch self {
+    case .apple: .meetingLiveWordsApple
+    case .universal: .meetingLiveWordsUniversal
+    }
+  }
+
+  var meetingLiveWordsTitle: SettingsMapTitle {
+    switch self {
+    case .apple: .verbatim(LivePreviewEngineCopy.appleTitle)
+    case .universal: .resource(LivePreviewEngineCopy.universalTitleResource)
+    }
+  }
+}

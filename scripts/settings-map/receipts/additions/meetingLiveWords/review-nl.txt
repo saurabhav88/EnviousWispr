@@ -1,0 +1,36 @@
+{
+  "meetingLiveWords": {
+    "language": "nl",
+    "title": "live transcriptie",
+    "words": [],
+    "phrases": [
+      "taal van live transcriptie bij vergaderingen wijzigen",
+      "engine voor live transcriptie van vergaderingen kiezen"
+    ]
+  },
+  "meetingLiveWords.apple": {
+    "language": "nl",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "Apple gebruiken voor live transcriptie van de vergadering"
+    ]
+  },
+  "meetingLiveWords.universal": {
+    "language": "nl",
+    "title": "Universal",
+    "words": [],
+    "phrases": [
+      "Universal gebruiken voor live transcriptie van de vergadering"
+    ]
+  },
+  "meetingTranscriptLanguage": {
+    "language": "nl",
+    "title": "taal van het transcript",
+    "words": [],
+    "phrases": [
+      "taal van het vergaderingstranscript wijzigen",
+      "taal kiezen voor het volledige transcript na de vergadering"
+    ]
+  }
+}

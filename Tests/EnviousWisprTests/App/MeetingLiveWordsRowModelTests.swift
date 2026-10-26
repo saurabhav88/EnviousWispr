@@ -225,6 +225,22 @@ struct MeetingLiveWordsRowModelTests {
     #expect(rig.settings.meetingLiveWordsLanguage == "en-GB", "an exact Apple pick stays exact")
   }
 
+  @Test("choosing an engine on a row not set up saves it with the preselected language, kept after dictation changes")
+  func engineFromUnsetPreselectsLanguage() async throws {
+    let rig = Rig(dictation: .locked("de"))
+    await rig.model.appear()
+    #expect(rig.model.status == .notSetUp(suggestion: .init(engine: .apple, language: "de-DE")))
+    await rig.model.selectEngine(.universal)
+    #expect(rig.settings.meetingLiveWordsEngine == .universal)
+    #expect(rig.settings.meetingLiveWordsLanguage == "de", "the language menu shows German")
+    #expect(rig.model.status == .notDownloaded(engine: .universal, language: "de"))
+    #expect(rig.model.download() == .started)
+    rig.settings.languageMode = .locked("fr")
+    await rig.model.refresh()
+    #expect(rig.settings.meetingLiveWordsLanguage == "de", "dictation's language no longer steers it")
+    #expect(rig.model.selectedLanguage == "de")
+  }
+
   @Test("an engine switch still looking up its language never overwrites a newer pick")
   func staleEngineSwitchLoses() async throws {
     let rig = Rig()
@@ -442,6 +458,31 @@ struct MeetingLiveWordsRowModelTests {
     #expect(rig.mac.installCalls.isEmpty)
   }
 
+  // MARK: - The engine menu
+
+  /// SwiftUI fills its accessibility tree lazily, only under a real accessibility client, so a
+  /// hosted menu's items are not readable in a test (measured in RenderedPillHarness, 2026-08-25).
+  /// The menu draws exactly `engineItems`, so this checks what it draws; the greyed item on
+  /// screen is a Live UAT row.
+  @Test("Apple is listed but greyed where this Mac cannot run it, and choosing it changes nothing")
+  func unavailableAppleIsDisabled() async throws {
+    #expect(
+      MeetingLiveWordsRow.engineItems(appleAvailable: false) == [
+        .init(
+          choice: .apple, label: String(localized: MeetingsCopy.appleNotOnThisMac),
+          isEnabled: false),
+        .init(choice: .universal, label: LivePreviewEngineCopy.universalTitle, isEnabled: true),
+      ])
+    #expect(MeetingLiveWordsRow.engineItems(appleAvailable: true).allSatisfy { $0.isEnabled })
+    let rig = Rig()
+    rig.mac.appleAvailable = false
+    rig.settings.commitMeetingLiveWordsChoice(engine: .universal, language: "de")
+    await rig.model.refresh()
+    await rig.model.selectEngine(.apple)
+    #expect(rig.settings.meetingLiveWordsEngine == .universal, "an unavailable Apple is refused")
+    #expect(rig.settings.meetingLiveWordsLanguage == "de")
+  }
+
   // MARK: - Transcript language
 
   @Test(
@@ -465,5 +506,32 @@ struct MeetingLiveWordsRowModelTests {
     #expect(rig.settings.meetingLiveWordsLanguage == "en-US", "live words unchanged")
     rig.model.transcriptLanguage = .locked("en")
     #expect(rig.model.languagesDiffer == false, "en-US and en are the same language")
+  }
+}
+
+/// A row model for rendering Settings in tests: a fixed inventory, no installer, no transfer.
+extension MeetingLiveWordsRowModel {
+  @MainActor
+  static func renderFixture(settings: SettingsManager, appleAvailable: Bool = true)
+    -> MeetingLiveWordsRowModel
+  {
+    let inventory = MeetingLiveWordsChoice.Inventory(
+      appleAvailable: appleAvailable, appleSupportedTags: appleAvailable ? ["de-DE", "en-US"] : [],
+      appleInstalledTags: appleAvailable ? ["en-US"] : [], universalInstalled: false,
+      universalCodes: ["de", "en"])
+    let choice = MeetingLiveWordsChoice.Initializer(
+      environment: .init(
+        settings: settings, inventory: { inventory },
+        appleEquivalent: { ["de": "de-DE", "en": "en-US"][MeetingLiveWordsChoice.baseCode($0)] }))
+    return MeetingLiveWordsRowModel(
+      environment: .init(
+        choice: choice, settings: settings, isMeetingActive: { false },
+        appleCatalog: ApplePackCatalog(
+          dependencies: .init(supportedTags: { [] }, installedTags: { [] }, install: { _ in }),
+          claims: LocaleClaims(
+            inventory: LocaleInventory(
+              reserved: { [] }, reserve: { _ in false }, release: { _ in false },
+              maximumReserved: { 0 }))),
+        universalState: { nil }, startUniversalDownload: {}, cancelUniversalDownload: {}))
   }
 }

@@ -1,0 +1,38 @@
+{
+  "meetingLiveWords": {
+    "language": "mt",
+    "title": "traskrizzjoni diretta",
+    "words": [
+      "traskrizzjoni diretta tal-laqgħa"
+    ],
+    "phrases": [
+      "ibdel il-lingwa tat-traskrizzjoni diretta tal-laqgħa",
+      "agħżel il-magna għat-traskrizzjoni diretta tal-laqgħa"
+    ]
+  },
+  "meetingLiveWords.apple": {
+    "language": "mt",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "uża Apple għat-traskrizzjoni diretta tal-laqgħa"
+    ]
+  },
+  "meetingLiveWords.universal": {
+    "language": "mt",
+    "title": "Universal",
+    "words": [],
+    "phrases": [
+      "agħżel Universal għat-traskrizzjoni diretta tal-laqgħa"
+    ]
+  },
+  "meetingTranscriptLanguage": {
+    "language": "mt",
+    "title": "lingwa tat-traskrizzjoni",
+    "words": [],
+    "phrases": [
+      "ibdel il-lingwa tat-traskrizzjoni sħiħa wara l-laqgħa",
+      "lingwa tat-test sħiħ wara l-laqgħa"
+    ]
+  }
+}

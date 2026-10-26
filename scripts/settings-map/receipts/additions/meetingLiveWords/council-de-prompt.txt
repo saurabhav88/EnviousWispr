@@ -1,0 +1,12 @@
+You are reviewing German Settings-search vocabulary for a macOS dictation app (EnviousWispr). Each block lists short "words" and everyday "phrases" a German user might type into the app's Settings search to find one place. Use du-form, no dashes, lowercase except nouns. The interface title is supplied separately and is not part of the block. The four places are siblings: each block must fit its own place better than the other three.
+
+1. Place: the row „Live-Transkript“ on the General tab of the EnviousMeet page: an engine menu (Apple or Universal), a language menu, a status line and a Laden (Download) button for the chosen language's speech model. It sets which engine and language show the live text of a meeting while it is recorded. Nothing downloads until Laden is pressed, and no download starts during a meeting. It does not change dictation's live preview or language, and not the language of the full transcript.
+   Block: {"words": [], "phrases": ["ändere die Sprache für das Live-Transkript während der Meetingaufnahme", "wähle die Engine für das Live-Transkript im Meeting"]}
+2. Place: the choice „Apple“ in the Live-Transkript engine menu: live meeting text from this Mac's Apple speech recognition (macOS 26, one download per language). Not dictation's Apple live preview.
+   Block: {"words": [], "phrases": ["Apple für die Live-Mitschrift im Meeting verwenden"]}
+3. Place: the choice „Universal“ in the Live-Transkript engine menu: live meeting text from the app's Universal engine (any supported Mac, many languages, one download). Not dictation's Universal live preview.
+   Block: {"words": [], "phrases": ["nutze Universal für das Live-Transkript im Meeting"]}
+4. Place: the menu „Transkriptsprache“ on the EnviousMeet General tab: Sprache automatisch erkennen, or one language, for the full transcript written after a meeting. A change applies to the next meeting. It does not change the live text during a meeting, dictation's language or the app's interface language.
+   Block: {"words": [], "phrases": ["ändere die Sprache für das vollständige Transkript nach dem Meeting", "in welcher Sprache wird das vollständige Transkript nach dem Meeting erstellt"]}
+
+For each block answer "N. OK" or "N. <corrected JSON block>" plus a one-sentence reason. Keep 0 to 6 words and 1 to 3 phrases.

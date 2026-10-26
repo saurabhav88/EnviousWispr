@@ -1,0 +1,40 @@
+{
+  "meetingLiveWords": {
+    "language": "tr",
+    "title": "canlı transkripsiyon",
+    "words": [
+      "canlı toplantı dökümü"
+    ],
+    "phrases": [
+      "toplantı sırasında gösterilen metnin dilini değiştir",
+      "toplantının canlı transkripsiyon motorunu seç"
+    ]
+  },
+  "meetingLiveWords.apple": {
+    "language": "tr",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "toplantı sırasında canlı metin için Apple kullan"
+    ]
+  },
+  "meetingLiveWords.universal": {
+    "language": "tr",
+    "title": "Universal",
+    "words": [],
+    "phrases": [
+      "toplantı sırasında canlı metin için Universal seç"
+    ]
+  },
+  "meetingTranscriptLanguage": {
+    "language": "tr",
+    "title": "döküm dili",
+    "words": [
+      "toplantı döküm dili"
+    ],
+    "phrases": [
+      "toplantı bittikten sonra oluşturulan dökümün dilini değiştir",
+      "toplantı sonrası tam metnin dili"
+    ]
+  }
+}

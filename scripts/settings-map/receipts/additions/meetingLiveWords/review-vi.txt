@@ -1,0 +1,36 @@
+{
+  "meetingLiveWords": {
+    "language": "vi",
+    "title": "chép lời trực tiếp",
+    "words": [],
+    "phrases": [
+      "đổi ngôn ngữ chép lời trực tiếp của cuộc họp",
+      "chọn công cụ chép lời trực tiếp cho cuộc họp"
+    ]
+  },
+  "meetingLiveWords.apple": {
+    "language": "vi",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "dùng Apple để chép lời cuộc họp theo thời gian thực"
+    ]
+  },
+  "meetingLiveWords.universal": {
+    "language": "vi",
+    "title": "Universal",
+    "words": [],
+    "phrases": [
+      "chọn Universal để chép lời cuộc họp theo thời gian thực"
+    ]
+  },
+  "meetingTranscriptLanguage": {
+    "language": "vi",
+    "title": "ngôn ngữ bản chép lời",
+    "words": [],
+    "phrases": [
+      "đổi ngôn ngữ bản chép lời cuộc họp",
+      "ngôn ngữ bản chép lời đầy đủ sau cuộc họp"
+    ]
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "meetingLiveWords": {
+    "language": "ar",
+    "title": "النص المباشر",
+    "words": [
+      "نص الاجتماع المباشر"
+    ],
+    "phrases": [
+      "تغيير لغة النص المباشر للاجتماع",
+      "اختيار محرك النص المباشر للاجتماع",
+      "تنزيل نموذج لغة للنص المباشر للاجتماع"
+    ]
+  },
+  "meetingLiveWords.apple": {
+    "language": "ar",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "استخدام Apple لعرض نص الاجتماع مباشرة"
+    ]
+  },
+  "meetingLiveWords.universal": {
+    "language": "ar",
+    "title": "Universal",
+    "words": [],
+    "phrases": [
+      "استخدام Universal لعرض نص الاجتماع مباشرة"
+    ]
+  },
+  "meetingTranscriptLanguage": {
+    "language": "ar",
+    "title": "لغة النص المفرّغ",
+    "words": [
+      "لغة التفريغ الكامل للاجتماع"
+    ],
+    "phrases": [
+      "تغيير لغة النص الكامل بعد انتهاء الاجتماع",
+      "تحديد لغة تفريغ الاجتماع التالي تلقائيا"
+    ]
+  }
+}

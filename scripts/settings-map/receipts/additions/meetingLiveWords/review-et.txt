@@ -1,0 +1,36 @@
+{
+  "meetingLiveWords": {
+    "language": "et",
+    "title": "reaalajas tekst",
+    "words": [],
+    "phrases": [
+      "muuda koosoleku reaalajas teksti keelt",
+      "vali koosoleku reaalajas teksti mootor"
+    ]
+  },
+  "meetingLiveWords.apple": {
+    "language": "et",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "vali koosoleku reaalajas teksti mootoriks Apple"
+    ]
+  },
+  "meetingLiveWords.universal": {
+    "language": "et",
+    "title": "Universal",
+    "words": [],
+    "phrases": [
+      "vali koosoleku reaalajas teksti mootoriks Universal"
+    ]
+  },
+  "meetingTranscriptLanguage": {
+    "language": "et",
+    "title": "transkriptsiooni keel",
+    "words": [],
+    "phrases": [
+      "muuda koosoleku järel valmiva transkriptsiooni keelt",
+      "tuvasta koosoleku lõpliku transkriptsiooni keel automaatselt"
+    ]
+  }
+}

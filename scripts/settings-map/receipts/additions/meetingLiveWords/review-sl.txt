@@ -1,0 +1,36 @@
+{
+  "meetingLiveWords": {
+    "language": "sl",
+    "title": "prepis v živo",
+    "words": [],
+    "phrases": [
+      "spremeni jezik prepisa sestanka v živo",
+      "izberi pogon za prepis sestanka v živo"
+    ]
+  },
+  "meetingLiveWords.apple": {
+    "language": "sl",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "Apple za sprotni prepis sestanka"
+    ]
+  },
+  "meetingLiveWords.universal": {
+    "language": "sl",
+    "title": "Universal",
+    "words": [],
+    "phrases": [
+      "izberi Universal za sprotni prepis sestanka"
+    ]
+  },
+  "meetingTranscriptLanguage": {
+    "language": "sl",
+    "title": "jezik prepisa",
+    "words": [],
+    "phrases": [
+      "spremeni jezik celotnega prepisa po sestanku",
+      "jezik celotnega prepisa po sestanku"
+    ]
+  }
+}

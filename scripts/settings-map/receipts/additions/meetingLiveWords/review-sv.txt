@@ -1,0 +1,40 @@
+{
+  "meetingLiveWords": {
+    "language": "sv",
+    "title": "transkribering i realtid",
+    "words": [
+      "mötestext i realtid"
+    ],
+    "phrases": [
+      "ändra språk för mötets transkribering i realtid",
+      "välj motor för mötets transkribering i realtid"
+    ]
+  },
+  "meetingLiveWords.apple": {
+    "language": "sv",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "använd Apple för att transkribera mötet i realtid"
+    ]
+  },
+  "meetingLiveWords.universal": {
+    "language": "sv",
+    "title": "Universal",
+    "words": [],
+    "phrases": [
+      "använd Universal för att transkribera mötet i realtid"
+    ]
+  },
+  "meetingTranscriptLanguage": {
+    "language": "sv",
+    "title": "språk för mötestranskript",
+    "words": [
+      "transkriptspråk"
+    ],
+    "phrases": [
+      "ändra språk för hela transkriptet efter mötet",
+      "identifiera språket automatiskt för mötestranskriptet"
+    ]
+  }
+}

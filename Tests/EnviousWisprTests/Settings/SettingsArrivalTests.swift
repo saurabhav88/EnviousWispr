@@ -1048,6 +1048,105 @@ struct SettingsArrivalTests {
     }
   }
 
+  /// The real EnviousMeet page on one tab, for an arrival (#4105).
+  struct MeetingsPage: View {
+    let box: RevealBox
+    let reveal: SettingsReveal?
+    @State var tab: MeetingsTab
+    let environment: (AnyView) -> AnyView
+
+    var body: some View {
+      environment(AnyView(MeetingsView(selection: $tab)))
+        .environment(\.settingsArrivalContent, SettingsArrivalContent(page: .meetings))
+        .onPreferenceChange(SettingsRevealAnchorKey.self) { places in
+          MainActor.assumeIsolated { box.mounted = Set(places.keys) }
+        }
+        .modifier(SettingsArrivalModifier())
+        .environment(\.settingsReveal, reveal)
+        .environment(\.settingsArrivalStillCurrent) { _ in box.current }
+        .environment(\.settingsArrivalDecided) { box.record($0) }
+        .environment(\.settingsRevealAcknowledge) { token in
+          box.acknowledged = token
+          box.acknowledgementSink.yield(token)
+        }
+    }
+  }
+
+  /// Hosts the real EnviousMeet General tab in a narrow window and reveals `entryID`; returns
+  /// the acknowledged token and the rung it landed on.
+  static func meetingsArrival(at entryID: String, appleAvailable: Bool) async throws -> (
+    acknowledged: Int?, landed: SettingsArrivalRung?
+  ) {
+    let (_, environment) = try SettingsMapRenderingTests.meetingsEnvironment(
+      appleAvailable: appleAvailable)
+    let box = RevealBox()
+    func page(_ reveal: SettingsReveal?) -> some View {
+      MeetingsPage(box: box, reveal: reveal, tab: .general, environment: environment)
+        .frame(width: 560, height: 420)
+    }
+    let host = NSHostingView(rootView: page(nil))
+    host.frame = CGRect(x: 0, y: 0, width: 560, height: 420)
+    let window = NSWindow(
+      contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+    window.contentView = host
+    defer { window.contentView = nil }
+    host.layoutSubtreeIfNeeded()
+    window.displayIfNeeded()
+    await SettingsArrivalFocusTests.afterQueuedMainWork()
+    host.rootView = page(try Self.reveal(entryID, token: 11))
+    // test-fixture-timer: an offscreen host only lays out when asked; this pumps layout (and the
+    // scroll the arrival starts) while the test waits on the acknowledgement event itself.
+    let pump = Task { @MainActor in
+      while !Task.isCancelled {
+        host.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
+        try? await Task.sleep(for: .milliseconds(20))
+      }
+    }
+    let guardTask = Task { @MainActor in
+      // deadline-fallback: a hang guard around the event stream; the wait is the event itself.
+      try? await Task.sleep(for: .seconds(10))
+      guard !Task.isCancelled else { return }
+      box.acknowledgementSink.finish()
+    }
+    for await _ in box.acknowledgements { break }
+    pump.cancel()
+    guardTask.cancel()
+    if box.acknowledged == nil {
+      Issue.record("no arrival at \(entryID); page published \(box.mounted.map(\.rawValue).sorted())")
+    }
+    return (box.acknowledged, box.landings.last)
+  }
+
+  /// #4105: a search result for Live words, its engine choices or Transcript language opens the
+  /// real EnviousMeet General tab, below the fold of a narrow window, and lands on the row,
+  /// with Apple unavailable too.
+  @Test("Live words, its engines and Transcript language arrive at their rows on the real page")
+  func meetingLanguageRowsArrive() async throws {
+    _ = SettingsMap.takeRecordedFaults()
+    let cases: [(String, Bool, SettingsMapID)] = [
+      ("meetingLiveWords", true, .meetingLiveWords),
+      ("meetingLiveWords.apple", true, .meetingLiveWords),
+      ("meetingLiveWords.apple", false, .meetingLiveWords),
+      ("meetingLiveWords.universal", false, .meetingLiveWords),
+      ("meetingTranscriptLanguage", false, .meetingTranscriptLanguage),
+    ]
+    for (entry, appleAvailable, row) in cases {
+      let result = try await Self.meetingsArrival(at: entry, appleAvailable: appleAvailable)
+      #expect(result.acknowledged == 11, "\(entry), Apple \(appleAvailable)")
+      #expect(result.landed?.id == row, "\(entry), Apple \(appleAvailable): \(String(describing: result.landed))")
+    }
+    // German: what the shipped German search answers first is what arrives.
+    let german = try SettingsSearchBothLegsTests.model("de")
+    for (query, row) in [("Live-Transkript", SettingsMapID.meetingLiveWords),
+                         ("Transkriptsprache", .meetingTranscriptLanguage)] {
+      let first = try #require(await SettingsSearchBothLegsTests.search(german, query).first)
+      let result = try await Self.meetingsArrival(at: first, appleAvailable: false)
+      #expect(result.landed?.id == row, "\(query) → \(first): \(String(describing: result.landed))")
+    }
+    #expect(SettingsMap.takeRecordedFaults().isEmpty)
+  }
+
   /// The scroll view holding the most content: the Dictionary's word list.
   static func tallestScrollView(in view: NSView) -> NSScrollView? {
     var all: [NSScrollView] = []

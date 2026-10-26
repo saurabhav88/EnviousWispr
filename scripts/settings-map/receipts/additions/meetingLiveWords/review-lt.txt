@@ -1,0 +1,36 @@
+{
+  "meetingLiveWords": {
+    "language": "lt",
+    "title": "transkripcija realiuoju laiku",
+    "words": [],
+    "phrases": [
+      "pakeisti susitikimo transkripcijos realiuoju laiku kalbą",
+      "pasirinkti susitikimo transkripcijos realiuoju laiku variklį"
+    ]
+  },
+  "meetingLiveWords.apple": {
+    "language": "lt",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "Apple susitikimo transkripcijai realiuoju laiku"
+    ]
+  },
+  "meetingLiveWords.universal": {
+    "language": "lt",
+    "title": "Universal",
+    "words": [],
+    "phrases": [
+      "naudoti Universal variklį susitikimo transkripcijai realiuoju laiku"
+    ]
+  },
+  "meetingTranscriptLanguage": {
+    "language": "lt",
+    "title": "transkripcijos kalba",
+    "words": [],
+    "phrases": [
+      "pakeisti po susitikimo parengiamos transkripcijos kalbą",
+      "visos susitikimo transkripcijos kalba"
+    ]
+  }
+}

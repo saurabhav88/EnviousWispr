@@ -3121,6 +3121,7 @@ private struct MainWindowRoot: View {
       .environment(b.meetingCoordinator)
       .environment(b.meetingStartFlow)
       .environment(b.meetingOnboardingModel)
+      .environment(b.meetingLiveWordsRow)
       .environment(b.liveRecordingState)
       .environment(b.lastRecordingResult)
       .environment(b.backendMetadata)

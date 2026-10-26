@@ -1,14 +1,14 @@
 {
   "counts" : {
-    "nodes" : 285,
-    "searchable" : 258,
-    "vocabularyBlocks" : 8256
+    "nodes" : 289,
+    "searchable" : 262,
+    "vocabularyBlocks" : 8384
   },
   "fingerprints" : {
-    "mapSHA256" : "7a3c26d431fef074f5c021dcd3398b6e61486fcd56c6e9e85376f080ca262d02",
-    "uiCatalogSHA256" : "df3bab8e6ab517ecaf557716da28ba31a43af2b9ce4bb1831e27b400497becbb",
+    "mapSHA256" : "aa5b13393e001909472a4b8679de2fcd0e1699188ccedb3c410609fb7d6333a4",
+    "uiCatalogSHA256" : "47c24c4ffbd300cf16cbc2f8fda74ca2887a969ff9845831db49ea702c979840",
     "vocabularyCanonicalization" : "length-prefixed-v1",
-    "vocabularySHA256" : "541bfe42729552d229744bbded16ad9cdac22580911746ce993a2497e48b6bae"
+    "vocabularySHA256" : "3273414fce296c2df8ccc686342e09b2d3855db129220ec053e2c269cf77bd14"
   },
   "interfaceLanguages" : [
     "en",
@@ -37981,6 +37981,735 @@
           "title" : "录制会议时关闭语音输入",
           "words" : [
 
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.meetings",
+        "meetings.tab.general"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Engine und Sprache für das Live-Transkript während einer Meeting-Aufnahme.",
+        "en" : "The engine and language for words shown while a meeting records.",
+        "key" : "The engine and language for words shown while a meeting records.",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "destination" : {
+        "page" : "meetings",
+        "tab" : "general"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "meetingLiveWords",
+      "kind" : "setting",
+      "parent" : "meetings.tab.general",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "meetingLiveWords",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Live-Transkript",
+        "en" : "Live words",
+        "key" : "Live words",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "تغيير لغة النص المباشر للاجتماع",
+            "اختيار محرك النص المباشر للاجتماع",
+            "تنزيل نموذج لغة للنص المباشر للاجتماع"
+          ],
+          "title" : "النص المباشر",
+          "words" : [
+            "نص الاجتماع المباشر"
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "език на текста, който се показва по време на срещата",
+            "избор на модел за текста на срещата в реално време",
+            "изтегляне на модел за текста на срещата в реално време"
+          ],
+          "title" : "текст на срещата в реално време",
+          "words" : [
+
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "změnit jazyk živého přepisu schůzky",
+            "vybrat rozpoznávání řeči pro živý přepis schůzky"
+          ],
+          "title" : "živý přepis",
+          "words" : [
+
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "skift sprog for livetransskription af møder",
+            "vælg motor til livetransskription af møder"
+          ],
+          "title" : "livetransskription",
+          "words" : [
+            "livetekst til møder"
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "ändere die Sprache für das Live-Transkript während der Meetingaufnahme",
+            "wähle die Engine für das Live-Transkript im Meeting",
+            "ändere die Sprache der Mitschrift während des Meetings"
+          ],
+          "words" : [
+
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "αλλαγή γλώσσας για το ζωντανό κείμενο της συνάντησης",
+            "επιλογή μηχανής για τη ζωντανή απομαγνητοφώνηση στο EnviousMeet"
+          ],
+          "title" : "ζωντανή απομαγνητοφώνηση",
+          "words" : [
+
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "change meeting live transcript language",
+            "choose engine for live meeting transcription"
+          ],
+          "words" : [
+            "live meeting transcript",
+            "real-time meeting text"
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "cambiar el idioma del texto en directo de la reunión",
+            "elegir motor para transcribir la reunión en directo"
+          ],
+          "title" : "transcripción en directo",
+          "words" : [
+            "texto en directo de reuniones"
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "muuda koosoleku reaalajas teksti keelt",
+            "vali koosoleku reaalajas teksti mootor"
+          ],
+          "title" : "reaalajas tekst",
+          "words" : [
+
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "vaihda kokouksen reaaliaikaisen litteroinnin kieli",
+            "valitse kokouksen reaaliaikaisen litteroinnin moottori"
+          ],
+          "title" : "reaaliaikainen litterointi",
+          "words" : [
+
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "changer la langue du texte affiché pendant l’enregistrement d’une réunion",
+            "choisir le moteur de transcription en direct des réunions"
+          ],
+          "title" : "transcription en direct",
+          "words" : [
+
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "मीटिंग के दौरान दिखने वाले शब्दों की भाषा बदलें",
+            "मीटिंग के लाइव ट्रांसक्रिप्शन का इंजन चुनें"
+          ],
+          "title" : "लाइव ट्रांसक्रिप्शन",
+          "words" : [
+            "मीटिंग का लाइव टेक्स्ट"
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "promijeni jezik prijepisa sastanka uživo",
+            "odaberi mehanizam za prijepis sastanka uživo"
+          ],
+          "title" : "prijepis uživo",
+          "words" : [
+
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "megbeszélés élő átiratának nyelvét módosítanám",
+            "motort választanék a megbeszélés élő átírásához",
+            "nyelvi modellt töltenék le a megbeszélés élő átírásához"
+          ],
+          "title" : "élő átirat",
+          "words" : [
+
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "cambiare la lingua del testo mostrato durante la riunione",
+            "scegliere il motore per la trascrizione in tempo reale della riunione"
+          ],
+          "title" : "trascrizione in tempo reale",
+          "words" : [
+
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "会議のリアルタイム文字起こしの言語を変える",
+            "会議のリアルタイム文字起こしのエンジンを選ぶ"
+          ],
+          "title" : "リアルタイム文字起こし",
+          "words" : [
+            "会議のライブ文字起こし"
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "회의 중 표시되는 실시간 텍스트 언어 바꾸기",
+            "회의 실시간 텍스트 엔진 선택",
+            "회의 실시간 텍스트용 언어 모델 다운로드"
+          ],
+          "title" : "실시간 회의 텍스트",
+          "words" : [
+
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "pakeisti susitikimo transkripcijos realiuoju laiku kalbą",
+            "pasirinkti susitikimo transkripcijos realiuoju laiku variklį"
+          ],
+          "title" : "transkripcija realiuoju laiku",
+          "words" : [
+
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "mainīt sapulces reāllaika teksta valodu",
+            "izvēlēties dzini sapulces tekstam reāllaikā",
+            "lejupielādēt valodas modeli sapulces tekstam reāllaikā"
+          ],
+          "title" : "sapulces teksts reāllaikā",
+          "words" : [
+
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "ibdel il-lingwa tat-traskrizzjoni diretta tal-laqgħa",
+            "agħżel il-magna għat-traskrizzjoni diretta tal-laqgħa"
+          ],
+          "title" : "traskrizzjoni diretta",
+          "words" : [
+            "traskrizzjoni diretta tal-laqgħa"
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "taal van live transcriptie bij vergaderingen wijzigen",
+            "engine voor live transcriptie van vergaderingen kiezen"
+          ],
+          "title" : "live transcriptie",
+          "words" : [
+
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "zmień język transkrypcji spotkania na żywo",
+            "wybierz silnik transkrypcji spotkania na żywo"
+          ],
+          "title" : "transkrypcja na żywo",
+          "words" : [
+            "tekst spotkania na żywo"
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "mudar o idioma da transcrição da reunião em tempo real",
+            "escolher o motor de transcrição em tempo real da reunião"
+          ],
+          "title" : "transcrição em tempo real",
+          "words" : [
+            "transcrição ao vivo da reunião"
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "schimbă limba transcrierii în timp real a întâlnirii",
+            "alege motorul pentru transcrierea în timp real a întâlnirii"
+          ],
+          "title" : "transcriere în timp real",
+          "words" : [
+
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "изменить язык текста, который появляется во время записи встречи",
+            "выбрать движок для расшифровки встречи в реальном времени"
+          ],
+          "title" : "расшифровка встречи в реальном времени",
+          "words" : [
+            "текст во время записи встречи"
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "zmeniť jazyk živého prepisu stretnutia",
+            "vybrať engine pre živý prepis stretnutia"
+          ],
+          "title" : "živý prepis",
+          "words" : [
+            "živý prepis stretnutia"
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "spremeni jezik prepisa sestanka v živo",
+            "izberi pogon za prepis sestanka v živo"
+          ],
+          "title" : "prepis v živo",
+          "words" : [
+
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "ändra språk för mötets transkribering i realtid",
+            "välj motor för mötets transkribering i realtid"
+          ],
+          "title" : "transkribering i realtid",
+          "words" : [
+            "mötestext i realtid"
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "toplantı sırasında gösterilen metnin dilini değiştir",
+            "toplantının canlı transkripsiyon motorunu seç"
+          ],
+          "title" : "canlı transkripsiyon",
+          "words" : [
+            "canlı toplantı dökümü"
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "змінити мову тексту під час запису зустрічі",
+            "вибрати рушій розпізнавання мовлення для тексту зустрічі наживо",
+            "завантажити модель мови для тексту зустрічі наживо"
+          ],
+          "title" : "текст зустрічі наживо",
+          "words" : [
+
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "đổi ngôn ngữ chép lời trực tiếp của cuộc họp",
+            "chọn công cụ chép lời trực tiếp cho cuộc họp"
+          ],
+          "title" : "chép lời trực tiếp",
+          "words" : [
+
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "更改会议实时转写的语言",
+            "选择会议实时转写引擎"
+          ],
+          "title" : "会议实时转写",
+          "words" : [
+            "会议实时文字",
+            "会议实时转录"
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.meetings",
+        "meetings.tab.general"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Die Sprache des vollständigen Transkripts, das nach einem Meeting erstellt wird.",
+        "en" : "The language of the full transcript written after a meeting.",
+        "key" : "The language of the full transcript written after a meeting.",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "destination" : {
+        "page" : "meetings",
+        "tab" : "general"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "meetingTranscriptLanguage",
+      "kind" : "setting",
+      "parent" : "meetings.tab.general",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "meetingTranscriptLanguage",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Transkriptsprache",
+        "en" : "Transcript language",
+        "key" : "Transcript language",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "تغيير لغة النص الكامل بعد انتهاء الاجتماع",
+            "تحديد لغة تفريغ الاجتماع التالي تلقائيا"
+          ],
+          "title" : "لغة النص المفرّغ",
+          "words" : [
+            "لغة التفريغ الكامل للاجتماع"
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "смяна на езика на транскрипцията от срещата",
+            "език на пълния текст след срещата"
+          ],
+          "title" : "език на транскрипцията",
+          "words" : [
+            "стенограма"
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "změnit jazyk úplného přepisu po skončení schůzky",
+            "automaticky rozpoznat jazyk úplného přepisu schůzky"
+          ],
+          "title" : "jazyk přepisu",
+          "words" : [
+
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "vælg sprog for den fulde transskription efter mødet",
+            "registrér automatisk sproget til mødets fulde transskription"
+          ],
+          "title" : "sprog for transskription",
+          "words" : [
+
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "ändere die Sprache für das vollständige Transkript nach dem Meeting",
+            "in welcher Sprache wird das vollständige Transkript nach dem Meeting erstellt"
+          ],
+          "words" : [
+
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "αλλαγή γλώσσας της πλήρους απομαγνητοφώνησης της συνάντησης",
+            "γλώσσα του πλήρους κειμένου μετά τη συνάντηση"
+          ],
+          "title" : "γλώσσα απομαγνητοφώνησης",
+          "words" : [
+
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "change meeting transcript language",
+            "language of the full transcript after a meeting"
+          ],
+          "words" : [
+
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "cambiar el idioma de la transcripción completa de la reunión",
+            "detectar automáticamente el idioma de la transcripción final de la reunión",
+            "idioma de la transcripción que se genera al terminar la reunión"
+          ],
+          "title" : "idioma de la transcripción",
+          "words" : [
+
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "muuda koosoleku järel valmiva transkriptsiooni keelt",
+            "tuvasta koosoleku lõpliku transkriptsiooni keel automaatselt"
+          ],
+          "title" : "transkriptsiooni keel",
+          "words" : [
+
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "vaihda kokouksen lopullisen litteroinnin kieli",
+            "kokouksen jälkeen tehtävän litteroinnin kieli"
+          ],
+          "title" : "litteroinnin kieli",
+          "words" : [
+
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "choisir la langue de la transcription complète des prochaines réunions",
+            "langue du texte intégral après la réunion"
+          ],
+          "title" : "langue de la transcription",
+          "words" : [
+
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "मीटिंग के बाद बनने वाली पूरी ट्रांसक्रिप्ट की भाषा बदलें",
+            "मीटिंग की पूरी ट्रांसक्रिप्ट के लिए भाषा अपने आप पहचानें"
+          ],
+          "title" : "ट्रांसक्रिप्ट की भाषा",
+          "words" : [
+
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "promijeni jezik prijepisa koji se izrađuje nakon sastanka",
+            "jezik cijelog prijepisa nakon sastanka"
+          ],
+          "title" : "jezik prijepisa",
+          "words" : [
+
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "megbeszélés után készülő teljes átirat nyelvét módosítanám",
+            "a megbeszélés teljes átiratához automatikus nyelvfelismerést szeretnék"
+          ],
+          "title" : "átirat nyelve",
+          "words" : [
+
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "cambiare la lingua della trascrizione della riunione",
+            "lingua del testo completo dopo la riunione"
+          ],
+          "title" : "lingua della trascrizione",
+          "words" : [
+
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "会議終了後に作成される文字起こしの言語を変える",
+            "会議の全文文字起こしの言語を自動検出する"
+          ],
+          "title" : "文字起こしの言語",
+          "words" : [
+
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "회의 녹취록 언어 바꾸기",
+            "회의 후 작성되는 전체 녹취록의 언어"
+          ],
+          "title" : "전사 언어",
+          "words" : [
+            "녹취록"
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "pakeisti po susitikimo parengiamos transkripcijos kalbą",
+            "visos susitikimo transkripcijos kalba"
+          ],
+          "title" : "transkripcijos kalba",
+          "words" : [
+
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "mainīt pēc sapulces veidotā atšifrējuma valodu",
+            "automātiski noteikt pilnā sapulces atšifrējuma valodu"
+          ],
+          "title" : "sapulces atšifrējuma valoda",
+          "words" : [
+            "pilnā atšifrējuma valoda"
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "ibdel il-lingwa tat-traskrizzjoni sħiħa wara l-laqgħa",
+            "lingwa tat-test sħiħ wara l-laqgħa"
+          ],
+          "title" : "lingwa tat-traskrizzjoni",
+          "words" : [
+
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "taal van het vergaderingstranscript wijzigen",
+            "taal kiezen voor het volledige transcript na de vergadering"
+          ],
+          "title" : "taal van het transcript",
+          "words" : [
+
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "zmień język pełnej transkrypcji po spotkaniu",
+            "automatycznie wykrywaj język transkrypcji po spotkaniu"
+          ],
+          "title" : "język transkrypcji",
+          "words" : [
+
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "mudar o idioma da transcrição completa da reunião",
+            "idioma do texto completo após a reunião"
+          ],
+          "title" : "idioma da transcrição",
+          "words" : [
+            "idioma da transcrição completa"
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "schimbă limba transcrierii complete de după întâlnire",
+            "detectează automat limba transcrierii complete a întâlnirii"
+          ],
+          "title" : "limba transcrierii",
+          "words" : [
+
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "выбрать язык полной расшифровки встречи",
+            "язык полного текста после встречи"
+          ],
+          "title" : "язык расшифровки",
+          "words" : [
+            "язык полной расшифровки"
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "zmeniť jazyk úplného prepisu stretnutia",
+            "jazyk prepisu vytvoreného po skončení stretnutia"
+          ],
+          "title" : "jazyk prepisu",
+          "words" : [
+            "jazyk úplného prepisu"
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "spremeni jezik celotnega prepisa po sestanku",
+            "jezik celotnega prepisa po sestanku"
+          ],
+          "title" : "jezik prepisa",
+          "words" : [
+
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "ändra språk för hela transkriptet efter mötet",
+            "identifiera språket automatiskt för mötestranskriptet"
+          ],
+          "title" : "språk för mötestranskript",
+          "words" : [
+            "transkriptspråk"
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "toplantı bittikten sonra oluşturulan dökümün dilini değiştir",
+            "toplantı sonrası tam metnin dili"
+          ],
+          "title" : "döküm dili",
+          "words" : [
+            "toplantı döküm dili"
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "змінити мову повної стенограми після завершення зустрічі",
+            "автоматично визначати мову стенограми зустрічі"
+          ],
+          "title" : "мова стенограми",
+          "words" : [
+
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "đổi ngôn ngữ bản chép lời cuộc họp",
+            "ngôn ngữ bản chép lời đầy đủ sau cuộc họp"
+          ],
+          "title" : "ngôn ngữ bản chép lời",
+          "words" : [
+
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "更改会后完整逐字稿的语言",
+            "自动识别会后转写文本的语言"
+          ],
+          "title" : "会后转写语言",
+          "words" : [
+            "会后转写",
+            "会后逐字稿"
           ]
         }
       }
@@ -79316,6 +80045,645 @@
           "words" : [
             "意语标点口令",
             "意语标点前缀"
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.meetings",
+        "meetings.tab.general",
+        "meetingLiveWords"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : null,
+      "destination" : {
+        "page" : "meetings",
+        "tab" : "general"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "meetingLiveWords.apple",
+      "kind" : "choice",
+      "parent" : "meetingLiveWords",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "meetingLiveWords",
+      "title" : {
+        "note" : "a shared product name, the same in every language",
+        "source" : "verbatim",
+        "text" : "Apple"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "استخدام Apple لعرض نص الاجتماع مباشرة"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "Apple за текста на срещата в реално време"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "Apple pro živý přepis schůzky"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "brug Apple til livetransskription af møder"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "verwende Apple für das Live-Transkript im Meeting"
+          ],
+          "words" : [
+
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "Apple για ζωντανή απομαγνητοφώνηση της συνάντησης"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "use Apple for live meeting transcription"
+          ],
+          "words" : [
+
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "usar Apple para transcribir la reunión en directo"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "vali koosoleku reaalajas teksti mootoriks Apple"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "käytä Apple-moottoria kokouksen reaaliaikaiseen litterointiin"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "utiliser Apple pour transcrire la réunion en direct"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "मीटिंग की बातें तुरंत लिखने के लिए Apple चुनें"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "Apple za prijepis sastanka uživo"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "Apple az értekezlet élő átírásához"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "usare Apple per trascrivere la riunione in tempo reale"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "会議のリアルタイム文字起こしにAppleを使う"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "Apple 음성 인식으로 회의 내용 실시간 표시"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "Apple susitikimo transkripcijai realiuoju laiku"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "izmantot Apple sapulces tekstam reāllaikā"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "uża Apple għat-traskrizzjoni diretta tal-laqgħa"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "Apple gebruiken voor live transcriptie van de vergadering"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "Apple do transkrypcji spotkania na żywo"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "usar Apple para transcrever a reunião em tempo real"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "Apple pentru transcrierea întâlnirii în timp real"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "Apple для расшифровки встречи в реальном времени"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "Apple na živý prepis stretnutia"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "Apple za sprotni prepis sestanka"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "använd Apple för att transkribera mötet i realtid"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "toplantı sırasında canlı metin için Apple kullan"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "Apple для розшифрування зустрічі в реальному часі"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "dùng Apple để chép lời cuộc họp theo thời gian thực"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "用Apple实时转写会议"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.meetings",
+        "meetings.tab.general",
+        "meetingLiveWords"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : null,
+      "destination" : {
+        "page" : "meetings",
+        "tab" : "general"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "meetingLiveWords.universal",
+      "kind" : "choice",
+      "parent" : "meetingLiveWords",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "meetingLiveWords",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Universal",
+        "en" : "Universal",
+        "key" : "Universal",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "استخدام Universal لعرض نص الاجتماع مباشرة"
+          ],
+          "title" : "Universal",
+          "words" : [
+
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "Universal за текста на срещата в реално време"
+          ],
+          "title" : "Universal",
+          "words" : [
+
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "Universal pro živý přepis schůzky"
+          ],
+          "title" : "Universal",
+          "words" : [
+
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "brug Universal til livetransskription af møder"
+          ],
+          "title" : "Universal",
+          "words" : [
+
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "nutze Universal für das Live-Transkript im Meeting"
+          ],
+          "words" : [
+
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "Universal για ζωντανή απομαγνητοφώνηση της συνάντησης"
+          ],
+          "title" : "Universal",
+          "words" : [
+
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "use Universal for live meeting transcription"
+          ],
+          "words" : [
+
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "usar Universal para la transcripción en directo de la reunión"
+          ],
+          "title" : "Universal",
+          "words" : [
+
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "vali koosoleku reaalajas teksti mootoriks Universal"
+          ],
+          "title" : "Universal",
+          "words" : [
+
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "käytä Universal-moottoria kokouksen reaaliaikaiseen litterointiin"
+          ],
+          "title" : "Universal",
+          "words" : [
+
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "choisir Universal pour la transcription en direct de la réunion"
+          ],
+          "title" : "Universal",
+          "words" : [
+
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "मीटिंग के लाइव ट्रांसक्रिप्शन के लिए Universal चुनें"
+          ],
+          "title" : "Universal",
+          "words" : [
+
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "odaberi Universal za prijepis sastanka uživo"
+          ],
+          "title" : "Universal",
+          "words" : [
+
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "Universal az értekezlet élő átírásához"
+          ],
+          "title" : "Universal",
+          "words" : [
+
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "usare Universal per trascrivere la riunione in tempo reale"
+          ],
+          "title" : "Universal",
+          "words" : [
+
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "会議のリアルタイム文字起こしにUniversalを使う"
+          ],
+          "title" : "Universal",
+          "words" : [
+
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "Universal 엔진으로 회의 내용 실시간 표시"
+          ],
+          "title" : "Universal",
+          "words" : [
+
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "naudoti Universal variklį susitikimo transkripcijai realiuoju laiku"
+          ],
+          "title" : "Universal",
+          "words" : [
+
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "izmantot Universal sapulces tekstam reāllaikā"
+          ],
+          "title" : "Universal",
+          "words" : [
+
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "agħżel Universal għat-traskrizzjoni diretta tal-laqgħa"
+          ],
+          "title" : "Universal",
+          "words" : [
+
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "Universal gebruiken voor live transcriptie van de vergadering"
+          ],
+          "title" : "Universal",
+          "words" : [
+
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "wybierz Universal do transkrypcji spotkania na żywo"
+          ],
+          "title" : "Universal",
+          "words" : [
+
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "usar Universal para a transcrição da reunião em tempo real"
+          ],
+          "title" : "Universal",
+          "words" : [
+
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "alege Universal pentru transcrierea în timp real a întâlnirii"
+          ],
+          "title" : "Universal",
+          "words" : [
+
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "выбрать Universal для расшифровки встречи в реальном времени"
+          ],
+          "title" : "Universal",
+          "words" : [
+
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "Universal na živý prepis stretnutia"
+          ],
+          "title" : "Universal",
+          "words" : [
+
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "izberi Universal za sprotni prepis sestanka"
+          ],
+          "title" : "Universal",
+          "words" : [
+
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "använd Universal för att transkribera mötet i realtid"
+          ],
+          "title" : "Universal",
+          "words" : [
+
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "toplantı sırasında canlı metin için Universal seç"
+          ],
+          "title" : "Universal",
+          "words" : [
+
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "вибрати Universal для тексту зустрічі наживо"
+          ],
+          "title" : "Universal",
+          "words" : [
+
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "chọn Universal để chép lời cuộc họp theo thời gian thực"
+          ],
+          "title" : "Universal",
+          "words" : [
+
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "用Universal实时转写会议"
+          ],
+          "title" : "Universal",
+          "words" : [
+
           ]
         }
       }

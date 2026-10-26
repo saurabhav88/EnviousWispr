@@ -1,0 +1,36 @@
+{
+  "meetingLiveWords": {
+    "language": "fi",
+    "title": "reaaliaikainen litterointi",
+    "words": [],
+    "phrases": [
+      "vaihda kokouksen reaaliaikaisen litteroinnin kieli",
+      "valitse kokouksen reaaliaikaisen litteroinnin moottori"
+    ]
+  },
+  "meetingLiveWords.apple": {
+    "language": "fi",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "käytä Apple-moottoria kokouksen reaaliaikaiseen litterointiin"
+    ]
+  },
+  "meetingLiveWords.universal": {
+    "language": "fi",
+    "title": "Universal",
+    "words": [],
+    "phrases": [
+      "käytä Universal-moottoria kokouksen reaaliaikaiseen litterointiin"
+    ]
+  },
+  "meetingTranscriptLanguage": {
+    "language": "fi",
+    "title": "litteroinnin kieli",
+    "words": [],
+    "phrases": [
+      "vaihda kokouksen lopullisen litteroinnin kieli",
+      "kokouksen jälkeen tehtävän litteroinnin kieli"
+    ]
+  }
+}

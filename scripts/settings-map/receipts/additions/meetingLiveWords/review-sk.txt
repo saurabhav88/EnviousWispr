@@ -1,0 +1,40 @@
+{
+  "meetingLiveWords": {
+    "language": "sk",
+    "title": "živý prepis",
+    "words": [
+      "živý prepis stretnutia"
+    ],
+    "phrases": [
+      "zmeniť jazyk živého prepisu stretnutia",
+      "vybrať engine pre živý prepis stretnutia"
+    ]
+  },
+  "meetingLiveWords.apple": {
+    "language": "sk",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "Apple na živý prepis stretnutia"
+    ]
+  },
+  "meetingLiveWords.universal": {
+    "language": "sk",
+    "title": "Universal",
+    "words": [],
+    "phrases": [
+      "Universal na živý prepis stretnutia"
+    ]
+  },
+  "meetingTranscriptLanguage": {
+    "language": "sk",
+    "title": "jazyk prepisu",
+    "words": [
+      "jazyk úplného prepisu"
+    ],
+    "phrases": [
+      "zmeniť jazyk úplného prepisu stretnutia",
+      "jazyk prepisu vytvoreného po skončení stretnutia"
+    ]
+  }
+}

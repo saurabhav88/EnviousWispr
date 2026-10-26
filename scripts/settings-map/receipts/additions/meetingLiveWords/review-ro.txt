@@ -1,0 +1,36 @@
+{
+  "meetingLiveWords": {
+    "language": "ro",
+    "title": "transcriere în timp real",
+    "words": [],
+    "phrases": [
+      "schimbă limba transcrierii în timp real a întâlnirii",
+      "alege motorul pentru transcrierea în timp real a întâlnirii"
+    ]
+  },
+  "meetingLiveWords.apple": {
+    "language": "ro",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "Apple pentru transcrierea întâlnirii în timp real"
+    ]
+  },
+  "meetingLiveWords.universal": {
+    "language": "ro",
+    "title": "Universal",
+    "words": [],
+    "phrases": [
+      "alege Universal pentru transcrierea în timp real a întâlnirii"
+    ]
+  },
+  "meetingTranscriptLanguage": {
+    "language": "ro",
+    "title": "limba transcrierii",
+    "words": [],
+    "phrases": [
+      "schimbă limba transcrierii complete de după întâlnire",
+      "detectează automat limba transcrierii complete a întâlnirii"
+    ]
+  }
+}
