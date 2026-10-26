@@ -795,6 +795,33 @@ struct MeetingCoordinatorTests {
     #expect(harness.saved.count == 1)
   }
 
+  /// #4105: when this fails, a live words download can start while a meeting records or its
+  /// transcript is being made, or stays refused after it is ready.
+  @Test("a meeting counts as active from Start until its final pass ends")
+  func meetingActivityForDownloads() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    let hold = Gate()
+    harness.jobBehavior = { _ in
+      await hold.wait()
+      return Self.result()
+    }
+    #expect(coordinator.isMeetingActive == false)
+    guard case .recording(let meetingID) = await coordinator.start(from: .history) else {
+      Issue.record("the meeting did not start")
+      return
+    }
+    #expect(coordinator.isMeetingActive, "recording")
+    await coordinator.stop()
+    await Self.eventually("processing") { hold.parked }
+    #expect(coordinator.isMeetingActive, "its final pass runs")
+    hold.open()
+    await Self.eventually("ready") {
+      coordinator.record(id: meetingID)?.state == .ready && !coordinator.hasFinalPassWork
+    }
+    #expect(coordinator.isMeetingActive == false)
+  }
+
   // MARK: - Transcript language (#4105)
 
   /// #4105 (plan R1.7): when these fail, a meeting is transcribed in a language other than the

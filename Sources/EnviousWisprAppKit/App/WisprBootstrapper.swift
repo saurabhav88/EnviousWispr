@@ -43,6 +43,9 @@ package final class WisprBootstrapper {
   let meetingStartFlow: MeetingStartFlow
   /// #4017: EnviousMeet's setup visit, kept for the app run so leaving the page keeps the place.
   let meetingOnboardingModel: MeetingOnboardingModel
+  /// #4105: the Live words row's state and downloads, kept for the app run so closing Settings
+  /// never drops a transfer's owner. Shares the choice owner meeting Start uses.
+  let meetingLiveWordsRow: MeetingLiveWordsRowModel
   /// #4012: notices calls and asks to record them.
   let callDetection: CallDetectionCoordinator
   let meetingMemoryPressure: MeetingMemoryPressure
@@ -2580,6 +2583,16 @@ package final class WisprBootstrapper {
     let meetingCoordinator = MeetingWiring.make(meetingInputs)
     meetingBox.coordinator = meetingCoordinator
     self.meetingCoordinator = meetingCoordinator
+    self.meetingLiveWordsRow = MeetingLiveWordsRowModel(
+      environment: .init(
+        choice: meetingLiveWordsChoice, settings: settings,
+        isMeetingActive: { [weak meetingCoordinator] in meetingCoordinator?.isMeetingActive ?? false },
+        appleCatalog: MeetingLiveWordsRowModel.liveMeetingCatalog(),
+        universalState: { [modelDelivery] in
+          modelDelivery.whisperPreviewHandle == nil ? nil : modelDelivery.whisperPreviewState
+        },
+        startUniversalDownload: { [modelDelivery] in modelDelivery.startPreviewDownload() },
+        cancelUniversalDownload: { [modelDelivery] in modelDelivery.cancelPreviewDownload() }))
     let meetingStartFlow = MeetingStartFlow(
       dependencies: .init(
         isSetUp: { [settings] in settings.meetingOnboardingComplete },

@@ -397,6 +397,9 @@ final class MeetingCoordinator {
   /// deletion, being deleted or still closing and stops on low disk, so a meeting the queue
   /// cannot run never holds summaries back.
   var hasFinalPassWork: Bool { processing != nil || queueTask != nil }
+  /// #4105: a meeting is starting, recording, stopping, or its final pass runs or is draining
+  /// the queue. A live words download is refused meanwhile (`MeetingDownloadAdmission`).
+  var isMeetingActive: Bool { phase != .idle || hasFinalPassWork }
   /// Each meeting as last written successfully: what `meetings` and `record(id:)` show, so a
   /// lifecycle step is visible only once it is durable.
   private var records: [UUID: MeetingRecord] = [:]

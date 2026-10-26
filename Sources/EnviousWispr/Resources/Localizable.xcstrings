@@ -3913,6 +3913,17 @@
         }
       }
     },
+    "Available after the meeting." : {
+      "comment" : "EnviousMeet settings, Live words row: why Download is unavailable while a meeting records or is being transcribed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nach dem Meeting verfügbar."
+          }
+        }
+      }
+    },
     "Azerbaijani" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {

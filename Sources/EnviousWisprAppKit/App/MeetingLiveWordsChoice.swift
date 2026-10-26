@@ -288,6 +288,11 @@ extension MeetingLiveWordsChoice {
       return resolution
     }
 
+    /// This Mac's inventory and Apple's equivalence lookup, the same ones Start resolves with, so
+    /// the Live words row lists and switches with exactly what a meeting would use (#4105).
+    func inventory() async -> Inventory { await environment.inventory() }
+    var appleEquivalent: @Sendable (String) async -> String? { environment.appleEquivalent }
+
     /// The stored values and what they resolve to, read together.
     struct Snapshot {
       let storedEngine: LivePreviewEngineChoice?
