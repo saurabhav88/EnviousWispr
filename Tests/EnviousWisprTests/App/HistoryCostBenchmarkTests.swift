@@ -20,13 +20,13 @@ import EnviousWisprAppKitTestSupport
 /// History list (`TranscriptHistoryView`) in a window and times each update through SwiftUI layout
 /// and drawing on the main thread. Both report a distribution of 30 samples (min, median, p95,
 /// max); the render rows also count updates longer than one 60 Hz frame (16.7 ms) and than
-/// 100 ms, and add two residuals per sample: a render right after the timed one
-/// (`leftover`) and one after the main queue drained (`deferred`). Both equal the cost of a render
-/// with nothing to do (the list is drawn into a bitmap every time); a larger `deferred` would mean
-/// SwiftUI work escaped the timed interval. Limits: a forced off-screen update, so the window
-/// server's compositing, frame scheduling and input queuing are not timed and `over_one_frame`
-/// means forced work over 16.7 ms, not a dropped frame; the detail pane is not drawn; one Mac,
-/// not the M1 floor. Run: `TEST_RUNNER_EW_HISTORY_BENCH=1 TEST_RUNNER_EW_HISTORY_BENCH_OUT=<file>
+/// 100 ms. Each sample also records a render right after the timed one (`leftover`), the time to
+/// cross one main-queue marker (`queue_gap`, waiting plus any work done meanwhile; not a stall
+/// metric) and a render after it (`deferred`). Small residuals do not prove the timed render held
+/// every update: actual per-update stalls need a trace. Limits: a forced off-screen update, so
+/// the window server's compositing, frame scheduling and input queuing are not timed, and
+/// `over_one_frame` means forced work over 16.7 ms, not a dropped frame; the detail pane is not
+/// drawn; one Mac, not the M1 floor. Run: `TEST_RUNNER_EW_HISTORY_BENCH=1 TEST_RUNNER_EW_HISTORY_BENCH_OUT=<file>
 /// scripts/xcode-test.sh --filter EnviousWisprTests/HistoryCostBenchmarkTests`; the render rows go
 /// to `<file>.render.tsv`.
 @Suite(
@@ -294,17 +294,28 @@ struct HistoryCostBenchmarkTests {
       host.cacheDisplay(in: host.bounds, to: bitmap)
     }
 
-    /// The current drawing, for a control that a change reached the screen.
-    func picture() -> Data? {
+    /// The list's own viewport, header excluded: a control that a change reached the list.
+    func listPicture() throws -> Data {
       render()
-      return bitmap.tiffRepresentation
+      var scrolls: [NSScrollView] = []
+      func collect(_ view: NSView) {
+        if let scroll = view as? NSScrollView { scrolls.append(scroll) }
+        view.subviews.forEach(collect)
+      }
+      collect(host)
+      try #require(scrolls.count == 1, "expected one History list viewport")
+      let clip = scrolls[0].contentView
+      let area = host.convert(clip.bounds, from: clip).intersection(host.bounds)
+      try #require(!area.isEmpty, "History list viewport is empty")
+      let rep = try #require(host.bitmapImageRepForCachingDisplay(in: area))
+      host.cacheDisplay(in: area, to: rep)
+      return try #require(rep.tiffRepresentation)
     }
 
     func close() { window.contentView = nil }
   }
 
-  /// Runs after everything already queued on the main queue: SwiftUI work deferred past the
-  /// forced render lands before the next look.
+  /// Crosses one main-queue marker. This does not establish SwiftUI completion.
   static func afterQueuedMainWork() async {
     await withCheckedContinuation { continuation in
       DispatchQueue.main.async { continuation.resume() }
@@ -330,19 +341,23 @@ struct HistoryCostBenchmarkTests {
       try #require(ids.count == 2, "the fixture lists at least two items")
 
       /// One step: `setup` puts the list in its starting state (untimed), `change` is what a
-      /// person does. Each sample times `change` plus the forced render, then times a second
-      /// render at once (work the first one left behind) and one more after the main queue
-      /// drained (work SwiftUI deferred). Both residuals near zero mean the timed interval held
-      /// the whole update. The pictures before and after must differ, so the step drew something.
+      /// person does. Each sample times `change` plus the forced render. Residuals measure
+      /// additional forced renders; the queue gap includes waiting and work performed during
+      /// suspension, and is not a main-thread stall metric. Small residuals do not establish that
+      /// the timed render contained every update. The list viewport must change, and must not
+      /// change when nothing does.
       func step(_ name: String, setup: () -> Void, _ change: () -> Void) async throws {
         let clock = ContinuousClock()
         setup()
-        let before = sidebar.picture()
+        let before = try sidebar.listPicture()
+        let unchanged = try sidebar.listPicture()
+        #expect(before == unchanged, "\(name): unchanged list has stable pixels")
         change()
-        let after = sidebar.picture()
-        #expect(before != after, "\(name) changed the drawing at \(dictations)")
+        let after = try sidebar.listPicture()
+        #expect(before != after, "\(name): list viewport changed at \(dictations)")
         var timed: [Double] = []
         var leftover: [Double] = []
+        var queueGap: [Double] = []
         var deferred: [Double] = []
         for _ in 0..<Self.sampleCount {
           setup()
@@ -356,19 +371,25 @@ struct HistoryCostBenchmarkTests {
           sidebar.render()
           leftover.append(Self.milliseconds(clock.now - changed))
           timed.append(Self.milliseconds(changed - start))
+          let gapStart = clock.now
           await Self.afterQueuedMainWork()
           let late = clock.now
+          queueGap.append(Self.milliseconds(late - gapStart))
           sidebar.render()
           deferred.append(Self.milliseconds(clock.now - late))
         }
         let stats = Stats(timed)
         let rest = Stats(leftover)
         let later = Stats(deferred)
+        let gap = Stats(queueGap)
         lines.append(
           [
             name, "\(dictations)", stats.columns, "\(stats.count(over: 1_000.0 / 60))",
             "\(stats.count(over: 100))", String(format: "%.2f", rest.percentile(50)),
-            String(format: "%.2f", later.percentile(50)), String(format: "%.2f", later.sorted.last ?? 0),
+            String(format: "%.2f", gap.percentile(50)),
+            String(format: "%.2f", gap.sorted.last ?? 0),
+            String(format: "%.2f", later.percentile(50)),
+            String(format: "%.2f", later.sorted.last ?? 0),
           ].joined(separator: "\t"))
       }
 
@@ -392,7 +413,7 @@ struct HistoryCostBenchmarkTests {
     }
     let header = [
       "step", "dictations", "min", "median", "p95", "max", "over_one_frame", "over_100ms",
-      "leftover_median", "deferred_median", "deferred_max",
+      "leftover_median", "queue_gap_median", "queue_gap_max", "deferred_median", "deferred_max",
     ].joined(separator: "\t")
     try ([header] + lines).joined(separator: "\n").appending("\n")
       .write(toFile: out + ".render.tsv", atomically: true, encoding: .utf8)
