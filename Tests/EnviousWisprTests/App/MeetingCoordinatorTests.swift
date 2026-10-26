@@ -1548,7 +1548,7 @@ struct MeetingCoordinatorTests {
     let release = DispatchSemaphore(value: 0)
     defer { release.signal() }
     let released = OSAllocatedUnfairLock<Bool?>(initialState: nil)
-    history.durableWriteWillStartForTesting = {
+    history.transactionExecutorForTesting.durableWriteWillStartForTesting = {
       entered.signal()
       // deadline-fallback: bound a missing release; a timeout fails the test below
       let outcome = release.wait(timeout: .now() + 10)

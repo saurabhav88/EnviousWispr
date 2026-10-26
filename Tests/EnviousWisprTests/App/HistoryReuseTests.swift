@@ -96,7 +96,7 @@ struct HistoryReuseTests {
   #if DEBUG
     private func open(_ coordinator: TranscriptCoordinator) async {
       coordinator.loadIfNeeded()
-      await coordinator.waitForLoadForTesting()
+      await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
     }
 
     private func texts(_ coordinator: TranscriptCoordinator) -> [String] {
@@ -116,8 +116,8 @@ struct HistoryReuseTests {
 
       for _ in 0..<5 { await open(coordinator) }
 
-      #expect(coordinator.historyFullReadsForTesting == 1)
-      #expect(coordinator.historyCacheHitsForTesting == 4)
+      #expect(coordinator.diskReconcilerForTesting.historyFullReadsForTesting == 1)
+      #expect(coordinator.diskReconcilerForTesting.historyCacheHitsForTesting == 4)
       #expect(texts(coordinator) == ["two", "one"])
       #expect(
         !FileManager.default.fileExists(
@@ -131,8 +131,8 @@ struct HistoryReuseTests {
       let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
       await open(coordinator)
       await open(coordinator)
-      #expect(coordinator.historyFullReadsForTesting == 1)
-      #expect(coordinator.historyCacheHitsForTesting == 1)
+      #expect(coordinator.diskReconcilerForTesting.historyFullReadsForTesting == 1)
+      #expect(coordinator.diskReconcilerForTesting.historyCacheHitsForTesting == 1)
     }
 
     @Test("two opens before the first finishes share one read")
@@ -143,9 +143,9 @@ struct HistoryReuseTests {
       let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
       coordinator.loadIfNeeded()
       coordinator.loadIfNeeded()
-      await coordinator.waitForLoadForTesting()
-      #expect(coordinator.historyFullReadsForTesting == 1)
-      #expect(coordinator.historyCacheHitsForTesting == 0)
+      await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
+      #expect(coordinator.diskReconcilerForTesting.historyFullReadsForTesting == 1)
+      #expect(coordinator.diskReconcilerForTesting.historyCacheHitsForTesting == 0)
     }
 
     @Test("an explicit load always reads the store")
@@ -155,8 +155,8 @@ struct HistoryReuseTests {
       let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
       await open(coordinator)
       coordinator.load()
-      await coordinator.waitForLoadForTesting()
-      #expect(coordinator.historyFullReadsForTesting == 2)
+      await coordinator.diskReconcilerForTesting.waitForLoadForTesting()
+      #expect(coordinator.diskReconcilerForTesting.historyFullReadsForTesting == 2)
     }
 
     // MARK: - Changes force a read
@@ -173,10 +173,10 @@ struct HistoryReuseTests {
       try other.save(Self.row("second"))
       await open(coordinator)
 
-      #expect(coordinator.historyFullReadsForTesting == 2)
+      #expect(coordinator.diskReconcilerForTesting.historyFullReadsForTesting == 2)
       #expect(texts(coordinator) == ["second", "first"])
       await open(coordinator)
-      #expect(coordinator.historyCacheHitsForTesting == 1, "and the new read is reused in turn")
+      #expect(coordinator.diskReconcilerForTesting.historyCacheHitsForTesting == 1, "and the new read is reused in turn")
     }
 
     @Test("rapid replacements of one row by another store are all detected")
@@ -194,8 +194,8 @@ struct HistoryReuseTests {
         await open(coordinator)
         #expect(texts(coordinator) == ["v\(version)"])
       }
-      #expect(coordinator.historyFullReadsForTesting == 4)
-      #expect(coordinator.historyCacheHitsForTesting == 0)
+      #expect(coordinator.diskReconcilerForTesting.historyFullReadsForTesting == 4)
+      #expect(coordinator.diskReconcilerForTesting.historyCacheHitsForTesting == 0)
     }
 
     @Test("this app's own write makes the next open read the store")
@@ -207,7 +207,7 @@ struct HistoryReuseTests {
       try await coordinator.saveAndShow(Self.row("local"))
       #expect(texts(coordinator) == ["local"], "visible at once, without an open")
       await open(coordinator)
-      #expect(coordinator.historyFullReadsForTesting == 2)
+      #expect(coordinator.diskReconcilerForTesting.historyFullReadsForTesting == 2)
       #expect(texts(coordinator) == ["local"])
     }
 
@@ -219,7 +219,7 @@ struct HistoryReuseTests {
       try await coordinator.saveAndShow(Self.row("early"))
       #expect(texts(coordinator) == ["early"])
       await open(coordinator)
-      #expect(coordinator.historyFullReadsForTesting == 1)
+      #expect(coordinator.diskReconcilerForTesting.historyFullReadsForTesting == 1)
       #expect(texts(coordinator) == ["early"])
     }
 
@@ -231,7 +231,7 @@ struct HistoryReuseTests {
       await open(coordinator)
       try TranscriptStore(directory: dir).savePending(Self.heldRow())
       await open(coordinator)
-      #expect(coordinator.historyFullReadsForTesting == 2)
+      #expect(coordinator.diskReconcilerForTesting.historyFullReadsForTesting == 2)
     }
 
     @Test("Delete All, which also removes the pending folder, forces a read")
@@ -247,7 +247,7 @@ struct HistoryReuseTests {
       coordinator.selectedItemID = .transcript(shown.id)
       try other.deleteAll()
       await open(coordinator)
-      #expect(coordinator.historyFullReadsForTesting == 2)
+      #expect(coordinator.diskReconcilerForTesting.historyFullReadsForTesting == 2)
       #expect(texts(coordinator).isEmpty)
       #expect(coordinator.lastPasteableDictation() == nil)
       // #4075 R8: the selection and the pane let go of the deleted row, and Paste refuses it.
@@ -323,7 +323,7 @@ struct HistoryReuseTests {
 
       await open(coordinator)
       await open(coordinator)
-      #expect(coordinator.historyFullReadsForTesting == 2, "an incomplete read is never reused")
+      #expect(coordinator.diskReconcilerForTesting.historyFullReadsForTesting == 2, "an incomplete read is never reused")
       #expect(texts(coordinator).isEmpty)
 
       try FileManager.default.removeItem(at: file)
@@ -331,7 +331,7 @@ struct HistoryReuseTests {
       await open(coordinator)
       #expect(texts(coordinator) == ["blocked"])
       await open(coordinator)
-      #expect(coordinator.historyCacheHitsForTesting == 1)
+      #expect(coordinator.diskReconcilerForTesting.historyCacheHitsForTesting == 1)
     }
   #endif
 
