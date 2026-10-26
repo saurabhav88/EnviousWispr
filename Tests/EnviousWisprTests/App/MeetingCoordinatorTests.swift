@@ -285,6 +285,8 @@ struct MeetingCoordinatorTests {
     var titleGate: Gate?
     var titleLookups: [Date] = []
     var freeBytes: Int64? = 50_000_000_000
+    /// #4118: how many times the coordinator read the free space (once per segment update).
+    var freeBytesReads = 0
     /// #4105: the transcript language Settings holds now (`meetingLanguageMode`).
     var language: LanguageMode = .auto
     var activitiesBegun = 0
@@ -345,7 +347,10 @@ struct MeetingCoordinatorTests {
           await settleGate?.wait()
           return settles
         },
-        freeDiskBytes: { [self] in freeBytes },
+        freeDiskBytes: { [self] in
+          freeBytesReads += 1
+          return freeBytes
+        },
         meetingTitleAtStart: { [self] startedAt in
           titleLookups.append(startedAt)
           await titleGate?.wait()
@@ -1247,17 +1252,36 @@ struct MeetingCoordinatorTests {
     await Self.drainMeetingFiles()
     let before = harness.writeGate.written.withLock { $0.count }
 
-    // 2,000 call-sound pieces of 10 ms, 20 ms apart, then one 80 s later so a save is due.
-    var expected: [MeetingSegmentInfo] = (1...2_000).map {
+    func piece(_ index: Int, startMs: Int) -> MeetingSegmentInfo {
       MeetingSegmentInfo(
-        index: $0, fileName: "system-\($0).caf", startMs: ($0 - 1) * 20, frameCount: 160)
+        index: index, fileName: "system-\(index).caf", startMs: startMs, frameCount: 160)
     }
-    expected.append(
-      MeetingSegmentInfo(index: 2_001, fileName: "system-2001.caf", startMs: 120_000, frameCount: 160))
-    for info in expected { recorder.onSegment(.callSound, info) }
-    await Self.eventually("the newest segment's checkpoint is shown") {
-      coordinator.record(id: meetingID)?.recordedDurationMs == 120_010
+    func recordingWrites() -> [MeetingRecord] {
+      harness.writeGate.written.withLock { Array($0.dropFirst(before)) }
+        .filter { $0.state == .recording }
     }
+    // Burst A: 1,000 call-sound pieces of 10 ms, 20 ms apart (to 19.99 s): the first save.
+    let readsBeforeA = harness.freeBytesReads
+    let burstA = (1...1_000).map { piece($0, startMs: ($0 - 1) * 20) }
+    for info in burstA { recorder.onSegment(.callSound, info) }
+    await Self.eventually("burst A saved and its update done") {
+      coordinator.record(id: meetingID)?.recordedDurationMs == 19_990
+        && harness.freeBytesReads > readsBeforeA
+    }
+    // Burst B ends 25 s after A's save: its update runs (one free-space read) and saves nothing.
+    let readsBeforeB = harness.freeBytesReads
+    let burstB = (1_001...2_250).map { piece($0, startMs: ($0 - 1) * 20) }
+    for info in burstB { recorder.onSegment(.callSound, info) }
+    await Self.eventually("burst B's update ran") { harness.freeBytesReads > readsBeforeB }
+    await Self.drainMeetingFiles()
+    #expect(recordingWrites().count == 1, "a save came before 30 s of recorded audio")
+    // One more piece ends 30.02 s after A's save: the second save.
+    let last = piece(2_251, startMs: 50_000)
+    recorder.onSegment(.callSound, last)
+    await Self.eventually("the newest piece saved") {
+      coordinator.record(id: meetingID)?.recordedDurationMs == 50_010
+    }
+    let expected = burstA + burstB + [last]
 
     // Low disk keeps the queue from starting the pass, whose folder scan would replace the list.
     harness.freeBytes = 0
@@ -1265,8 +1289,7 @@ struct MeetingCoordinatorTests {
     await Self.drainMeetingFiles()
     let writes = harness.writeGate.written.withLock { Array($0.dropFirst(before)) }
     let recording = writes.filter { $0.state == .recording }
-    #expect(recording.isEmpty == false)
-    #expect(recording.count <= 5)
+    #expect(recording.count == 2)
     #expect(recording.allSatisfy { $0.segments.values.reduce(0) { $0 + $1.count } <= 2 })
     let stopped = try #require(writes.first { $0.state == .queued })
     #expect(stopped.segments[.callSound] == expected)

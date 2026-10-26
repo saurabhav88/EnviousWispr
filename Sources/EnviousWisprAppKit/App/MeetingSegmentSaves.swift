@@ -5,9 +5,10 @@ import os
 /// whole `meeting.json`, which lists every segment, so a burst of short segments cost O(n²)
 /// (34 GB of writes in 9 minutes in a real call). Here the full list stays in memory and is
 /// handed over once, at Stop or quit; while recording, the record carries only a checkpoint
-/// (the newest segment per track, enough for the duration History shows), saved at most once
-/// per `spacingMs` of recorded audio. The audio files stay the recovery authority: the pass
-/// rebuilds the list from the folder.
+/// (the newest segment per track, enough for the duration History shows); segment closes
+/// trigger a save at most once per `spacingMs` of recorded audio (other saves, such as a
+/// rename, still write when asked, with the same small checkpoint). The audio files stay the
+/// recovery authority: the pass rebuilds the list from the folder.
 ///
 /// Segments are taken in on the recorder's callback thread under a lock, so a quit, which
 /// blocks the main actor, still sees every segment closed before `finish()`.
