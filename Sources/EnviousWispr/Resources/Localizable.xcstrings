@@ -6001,7 +6001,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die Aufnahme konnte nicht behalten werden. Versuche es erneut."
+            "value" : "Diese Aufnahme konnte nicht behalten werden. Versuche es erneut."
           }
         }
       }
