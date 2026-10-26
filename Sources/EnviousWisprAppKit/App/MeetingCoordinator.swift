@@ -46,7 +46,8 @@ extension MeetingTranscriptionJob: MeetingProcessing {}
 /// writes, creation, listing, audio and folder removal. Off the main actor, and in the order
 /// they were asked for, so a later write of a meeting can never be overtaken by an earlier one.
 /// The quit path and History's Delete All use `runBounded`, which waits behind the writes
-/// already queued, but never past a deadline.
+/// already queued, but never past a deadline; `runWithin` is the same wait for a caller that
+/// may suspend instead of blocking.
 final class MeetingFileWriter: Sendable {
   /// One queue for every meeting file in the process, so even two writers (a test's relaunch)
   /// keep one order. Internal so a test can wait for it to drain.
@@ -84,7 +85,7 @@ final class MeetingFileWriter: Sendable {
   }
 
   /// How a bounded operation ended for its caller.
-  enum BoundedOutcome {
+  enum BoundedOutcome: Sendable {
     case finished(Result<Void, Error>)
     /// The deadline passed before it started; it was withdrawn and never runs.
     case withdrawn
@@ -92,22 +93,29 @@ final class MeetingFileWriter: Sendable {
     case stillRunning
   }
 
-  /// Runs `work` after everything already queued, waiting for it no later than `deadline`
-  /// (quit, Delete All). Never an unbounded join: a stalled earlier write cannot hold the
-  /// caller. An operation not started by the deadline is withdrawn; one already running
-  /// reports its result to `late` when it ends.
-  func runBounded(
-    until deadline: DispatchTime, _ work: @escaping @Sendable (MeetingStore) throws -> Void,
-    late: @escaping @Sendable (Result<Void, Error>) -> Void
-  ) -> BoundedOutcome {
+  /// Where a bounded operation's deadline is judged (#4102): its own queue, never the writer
+  /// queue (which may be running the very write being timed) and never the main actor.
+  private static let deadlineQueue = DispatchQueue(
+    label: "com.enviouswispr.meetings.deadlines", qos: .utility)
+
+  /// The stages of one bounded operation. The waiting caller (`runBounded`) and the suspending
+  /// caller (`runWithin`) share it, so both withdraw, abandon and report late the same way.
+  /// Internal, not private, so a test can drive the deadline against completion in either order.
+  final class BoundedOperation: Sendable {
     enum Stage {
       case queued, running, withdrawn, runningAbandoned
       case done(Result<Void, Error>)
     }
-    let stage = OSAllocatedUnfairLock<Stage>(initialState: .queued)
-    let done = DispatchSemaphore(value: 0)
-    pending.withLock { $0 += 1 }
-    queue.async { [store, pending] in
+    private let stage = OSAllocatedUnfairLock<Stage>(initialState: .queued)
+
+    /// Runs on the writer queue. A withdrawn operation never runs `work`. One that finishes
+    /// while its caller still waits calls `inTime`; one whose caller gave up reports to `late`.
+    /// `pending` drops once either way, when this block is done.
+    func execute(
+      store: MeetingStore, pending: OSAllocatedUnfairLock<Int>,
+      _ work: @Sendable (MeetingStore) throws -> Void, inTime: () -> Void,
+      late: @Sendable (Result<Void, Error>) -> Void
+    ) {
       let proceed = stage.withLock { current -> Bool in
         guard case .queued = current else { return false }
         current = .running
@@ -124,27 +132,87 @@ final class MeetingFileWriter: Sendable {
         return false
       }
       pending.withLock { $0 -= 1 }
-      if reportLate { late(result) } else { done.signal() }
+      if reportLate { late(result) } else { inTime() }
     }
-    if done.wait(timeout: deadline) == .success,
-      case .done(let result) = stage.withLock({ $0 })
-    {
+
+    /// The result, once the operation finished while its caller still waited.
+    var finishedResult: Result<Void, Error>? {
+      if case .done(let result) = stage.withLock({ $0 }) { return result }
+      return nil
+    }
+
+    /// The deadline passed: withdraw a queued operation, abandon a running one, or answer the
+    /// result of one that finished just as the wait gave up.
+    func deadlinePassed() -> BoundedOutcome {
+      stage.withLock { current -> BoundedOutcome in
+        switch current {
+        case .queued:
+          current = .withdrawn
+          return .withdrawn
+        case .running:
+          current = .runningAbandoned
+          return .stillRunning
+        case .done(let result):
+          // Finished just as the wait gave up.
+          return .finished(result)
+        case .withdrawn, .runningAbandoned:
+          return .stillRunning
+        }
+      }
+    }
+  }
+
+  /// Runs `work` after everything already queued, waiting for it no later than `deadline`
+  /// (quit, Delete All). Never an unbounded join: a stalled earlier write cannot hold the
+  /// caller. An operation not started by the deadline is withdrawn; one already running
+  /// reports its result to `late` when it ends.
+  func runBounded(
+    until deadline: DispatchTime, _ work: @escaping @Sendable (MeetingStore) throws -> Void,
+    late: @escaping @Sendable (Result<Void, Error>) -> Void
+  ) -> BoundedOutcome {
+    let operation = BoundedOperation()
+    let done = DispatchSemaphore(value: 0)
+    pending.withLock { $0 += 1 }
+    queue.async { [store, pending] in
+      operation.execute(store: store, pending: pending, work, inTime: { done.signal() }, late: late)
+    }
+    if done.wait(timeout: deadline) == .success, let result = operation.finishedResult {
       return .finished(result)
     }
-    return stage.withLock { current -> BoundedOutcome in
-      switch current {
-      case .queued:
-        current = .withdrawn
-        return .withdrawn
-      case .running:
-        current = .runningAbandoned
-        return .stillRunning
-      case .done(let result):
-        // Finished just as the wait gave up.
-        return .finished(result)
-      case .withdrawn, .runningAbandoned:
-        return .stillRunning
+    return operation.deadlinePassed()
+  }
+
+  /// `runBounded` for a caller that may suspend (#4102, History's Delete All): the same queue,
+  /// the same stages and the same deadline, but the caller is resumed rather than blocked, so
+  /// the main actor keeps running while a meeting write is slow. The deadline is judged on its
+  /// own queue, so it answers even while the writer queue is still busy. Resumed exactly once:
+  /// `answered` lets only the first of the two answers through.
+  ///
+  /// An unsafe continuation on purpose (#3925): `withCheckedContinuation` in this `-O` module
+  /// crashed the `-Onone` Release test lane in `TranscriptCoordinator.Receipt` (PR #4095).
+  func runWithin(
+    until deadline: DispatchTime, _ work: @escaping @Sendable (MeetingStore) throws -> Void,
+    late: @escaping @Sendable (Result<Void, Error>) -> Void
+  ) async -> BoundedOutcome {
+    let operation = BoundedOperation()
+    pending.withLock { $0 += 1 }
+    return await withUnsafeContinuation { (continuation: UnsafeContinuation<BoundedOutcome, Never>) in
+      let answered = OSAllocatedUnfairLock(initialState: false)
+      let answer: @Sendable (BoundedOutcome) -> Void = { outcome in
+        let first = answered.withLock { done -> Bool in
+          guard !done else { return false }
+          done = true
+          return true
+        }
+        if first { continuation.resume(returning: outcome) }
       }
+      queue.async { [store, pending] in
+        operation.execute(
+          store: store, pending: pending, work,
+          inTime: { if let result = operation.finishedResult { answer(.finished(result)) } },
+          late: late)
+      }
+      Self.deadlineQueue.asyncAfter(deadline: deadline) { answer(operation.deadlinePassed()) }
     }
   }
 
@@ -159,6 +227,15 @@ final class MeetingFileWriter: Sendable {
   ) -> BoundedOutcome {
     let write = writeRecord
     return runBounded(until: deadline, { try write($0, record) }, late: late)
+  }
+
+  /// `saveBounded` for a caller that may suspend (#4102).
+  func saveWithin(
+    _ record: MeetingRecord, until deadline: DispatchTime,
+    late: @escaping @Sendable (Result<Void, Error>) -> Void
+  ) async -> BoundedOutcome {
+    let write = writeRecord
+    return await runWithin(until: deadline, { try write($0, record) }, late: late)
   }
 }
 
