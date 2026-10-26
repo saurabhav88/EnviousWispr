@@ -282,6 +282,10 @@ struct MeetingCoordinatorTests {
     var detectedAnswers: [Bool] = []
     /// When set, each detected-Start check waits for it.
     var detectedGate: Gate?
+    /// #4124: the newest recorder's failure handler, as the coordinator gave it.
+    var recorderFailure: MeetingRecorder.FailureHandler?
+    /// #4124: runs inside each detected-Start check before it answers.
+    var onDetectedCheck: (@MainActor () async -> Void)?
     var titleGate: Gate?
     var titleLookups: [Date] = []
     var freeBytes: Int64? = 50_000_000_000
@@ -326,9 +330,10 @@ struct MeetingCoordinatorTests {
     private func makeDependencies() -> MeetingCoordinator.Dependencies {
       MeetingCoordinator.Dependencies(
         store: store,
-        makeRecorder: { [self] configuration, onSegment, _ in
+        makeRecorder: { [self] configuration, onSegment, onFailure in
           let recorder = FakeRecorder(configuration: configuration, start: recorderStart)
           recorder.onSegment = onSegment
+          recorderFailure = onFailure
           recorders.append(recorder)
           return recorder
         },
@@ -353,6 +358,7 @@ struct MeetingCoordinatorTests {
         },
         detectedStartWanted: { [self] in
           await detectedGate?.wait()
+          await onDetectedCheck?()
           return detectedAnswers.isEmpty ? detectedWanted : detectedAnswers.removeFirst()
         },
         saveTranscript: { [self] transcript in
@@ -905,6 +911,66 @@ struct MeetingCoordinatorTests {
     await coordinator.stop()
     await Self.eventually("ready") { coordinator.record(id: meetingID)?.state == .ready }
     #expect(try harness.store.load(id: meetingID).trackStatus[.microphone] == .failed)
+  }
+
+  @Test(
+    "#4124: a call-sound failure reported while capture starts stays failed",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4124", "startup result overwrote it"))
+  func earlyCallSoundFailureSurvivesTheStartupResult() async throws {
+    let harness = try Harness()
+    harness.callSound = true
+    harness.recorderStart = .succeed(callSound: .captured)
+    let coordinator = harness.coordinator
+    // The check after capture is the last wait before Start applies the recorder's result: the
+    // call-sound track fails there, as a tap rebuild that fails right after start would.
+    harness.onDetectedCheck = { [harness] in
+      guard let fail = harness.recorderFailure else { return }
+      harness.recorderFailure = nil
+      fail(.callSound, MeetingRecorder.CallSoundError.captureStopped("rebuild_failed"))
+      await Self.eventually("failure applied", drainFiles: false) {
+        coordinator.callSoundStatus == .failed
+      }
+    }
+    let outcome = await coordinator.start(from: .detected, callApp: .zoom)
+    guard case .recording(let meetingID) = outcome else {
+      Issue.record("the Start did not record: \(outcome)")
+      return
+    }
+    #expect(coordinator.callSoundStatus == .failed)
+    #expect(coordinator.notice == .callSoundFailed)
+    #expect(coordinator.record(id: meetingID)?.trackStatus[.callSound] == .failed)
+    await Self.drainMeetingFiles()
+    #expect(try harness.store.load(id: meetingID).trackStatus[.callSound] == .failed)
+  }
+
+  @Test(
+    "#4124: an early call-sound failure whose save failed still ends failed",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4124", "rollback restored captured"))
+  func earlyCallSoundFailureSurvivesAFailedSave() async throws {
+    let harness = try Harness()
+    harness.callSound = true
+    harness.recorderStart = .succeed(callSound: .captured)
+    let coordinator = harness.coordinator
+    // The failure's own save fails, so the live record rolls back to "captured" before Start
+    // applies the recorder's result.
+    harness.onDetectedCheck = { [harness] in
+      guard let fail = harness.recorderFailure else { return }
+      harness.recorderFailure = nil
+      harness.writeGate.failNext(1)
+      fail(.callSound, MeetingRecorder.CallSoundError.captureStopped("rebuild_failed"))
+      await Self.eventually("failed save rolled back", drainFiles: false) {
+        coordinator.notice == .storageFailed
+      }
+    }
+    let outcome = await coordinator.start(from: .detected, callApp: .zoom)
+    guard case .recording(let meetingID) = outcome else {
+      Issue.record("the Start did not record: \(outcome)")
+      return
+    }
+    #expect(coordinator.callSoundStatus == .failed)
+    #expect(coordinator.record(id: meetingID)?.trackStatus[.callSound] == .failed)
+    await Self.drainMeetingFiles()
+    #expect(try harness.store.load(id: meetingID).trackStatus[.callSound] == .failed)
   }
 
   // MARK: - Deletion
