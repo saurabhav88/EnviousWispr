@@ -370,6 +370,9 @@ final class MeetingCoordinator {
   private(set) var queueWaitsForSpace = false
   private(set) var notice: Notice?
   private(set) var callSoundStatus: MeetingTrackStatus?
+  /// #4124: the starting meeting's call-sound track failed before Start applied the recorder's
+  /// result. Kept apart from the live record, which a failed save rolls back.
+  @ObservationIgnored private var callSoundFailedWhileStarting = false
   /// The microphone the current recording actually bound.
   private(set) var boundMicrophoneUID: String?
   /// Live words of the meeting recording now, kept after Stop until its transcript is ready
@@ -697,6 +700,7 @@ final class MeetingCoordinator {
     startGeneration += 1
     let generation = startGeneration
     phase = .starting
+    callSoundFailedWhileStarting = false
     workChanged()
     guard await deps.settleDictationHold() else {
       // A Stop or quit while waiting already owns the outcome.
@@ -830,10 +834,10 @@ final class MeetingCoordinator {
       return .superseded(meetingID: nil)
     }
     record = live[meetingID] ?? record
-    // #4124: a call-sound failure the recorder reported during the waits above is already in
-    // the live record; the startup answer never turns it back into "captured".
+    // #4124: a call-sound failure the recorder reported during the waits above wins over the
+    // startup answer, even when saving that failure failed and rolled the live record back.
     let callSound: MeetingTrackStatus =
-      record.trackStatus[.callSound] == .failed ? .failed : result.callSound
+      callSoundFailedWhileStarting ? .failed : result.callSound
     record.trackStatus[.callSound] = callSound
     callSoundStatus = callSound
     if callSound == .failed { notice = .callSoundFailed }
@@ -1045,6 +1049,7 @@ final class MeetingCoordinator {
     deps.log("meeting track failed track=\(track.rawValue) error=\(type(of: error))")
     guard !quitting, meetingID == activeMeetingID, var record = live[meetingID] else { return }
     record.trackStatus[track] = .failed
+    if track == .callSound, phase == .starting { callSoundFailedWhileStarting = true }
     if track == .microphone {
       notice = .recordingStoppedFileError
     } else {
