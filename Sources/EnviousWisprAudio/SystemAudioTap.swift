@@ -72,6 +72,8 @@ public final class SystemAudioTap: @unchecked Sendable {
   private var generation = 0
   private var diagnostics = CallSoundCaptureDiagnostics()
   private var configuredRate: Double = 0
+  /// The buffer layout this generation committed to (#4117), kept apart from live diagnostics.
+  private var committedChannels: [UInt32]?
   /// The measured-rate windows already reported for this generation.
   private var reportedWindows = 0
   /// An invalid-only measurement status was already reported for this generation.
@@ -163,6 +165,7 @@ public final class SystemAudioTap: @unchecked Sendable {
       let format = try backend.start(ingest: pipeline.ingestBlock)
       try pipeline.configure(format)
       configuredRate = format.sampleRate
+      committedChannels = format.bufferChannels
       pipeline.setAccepting(true)
     } catch {
       teardownOnQueue()
@@ -192,6 +195,19 @@ public final class SystemAudioTap: @unchecked Sendable {
       log(
         "CALL_SOUND buffers gen=\(generation) count=\(layout.buffers) channels=\(layout.channels) "
           + "mapping=\(diagnostics.mapping(to: layout))")
+    }
+    // #4117 §3.1: callbacks without the committed layout were refused in `ingest`, so none of
+    // their samples were kept. Stop the call-sound track through the existing failure path (the
+    // microphone track goes on) rather than record audio of unknown shape.
+    if let refused = pipeline.takeRefusedLayout() {
+      log(
+        "CALL_SOUND refused gen=\(generation) callbacks=\(refused.callbacks) "
+          + "count=\(refused.layout.buffers) channels=\(refused.layout.channels) "
+          + "committed=\(committedChannels.map { "\($0)" } ?? "any")")
+      teardownOnQueue()
+      counters.withLock { $0.rebuildFailures += 1 }
+      onEvent(.rebuildFailed("call-sound buffer layout \(refused.layout.channels)"))
+      return
     }
     // The observation belongs to this generation only (reset at configure).
     let observation = pipeline.inputRateObservation
@@ -290,6 +306,11 @@ public final class CallSoundPipeline: @unchecked Sendable {
 
   struct InputFormat: Equatable, Sendable {
     let sampleRate: Double
+    /// #4117: the buffer layout this capture committed to (each buffer's channel count, any
+    /// number of buffers). A callback with any other layout is refused before its samples are
+    /// kept.
+    /// Nil admits any readable layout (tests and callers that commit none).
+    var bufferChannels: [UInt32]? = nil
   }
 
   /// #4117: the input rate measured from the buffers' own acquisition times. Independent of the
@@ -417,6 +438,14 @@ public final class CallSoundPipeline: @unchecked Sendable {
     var layoutChanged = false
     var layoutBuffers = 0
     var layoutChannels = SIMD8<UInt32>()
+    /// #4117: the committed layout (`expectedBuffers` < 0 admits any) and the callbacks refused
+    /// because they did not have it, with the first refused layout.
+    var expectedBuffers = -1
+    /// Filled at configure (allocation happens there); the callback only reads it.
+    var expectedChannels: [UInt32] = []
+    var refusedCallbacks = 0
+    var refusedBuffers = 0
+    var refusedChannels = SIMD8<UInt32>()
   }
 
   private let onSamples: SampleHandler
@@ -448,6 +477,19 @@ public final class CallSoundPipeline: @unchecked Sendable {
 
   /// #4117: what the input-rate meter has observed in the current generation.
   var inputRateObservation: InputRateObservation { rateObservation.withLock { $0 } }
+
+  /// Tap queue: the first callback layout refused since configure (with the refused count), or
+  /// nil when every callback had the committed layout. The layout lists the first eight
+  /// buffers' channels; `buffers` is the full count.
+  func takeRefusedLayout() -> (layout: BufferLayout, callbacks: Int)? {
+    let refused = handoff.withLock { state -> (Int, SIMD8<UInt32>, Int)? in
+      state.refusedCallbacks > 0
+        ? (state.refusedBuffers, state.refusedChannels, state.refusedCallbacks) : nil
+    }
+    guard let refused else { return nil }
+    let count = min(refused.0, 8)
+    return (BufferLayout(buffers: refused.0, channels: (0..<count).map { refused.1[$0] }), refused.2)
+  }
 
   /// Tap queue: the buffer layout `ingest` read, when it is new since configure or changed since
   /// last reported.
@@ -496,6 +538,14 @@ public final class CallSoundPipeline: @unchecked Sendable {
       state.lossPending = false
       state.layoutSeen = false
       state.layoutChanged = false
+      state.refusedCallbacks = 0
+      if let committed = format.bufferChannels {
+        state.expectedBuffers = committed.count
+        state.expectedChannels = committed
+      } else {
+        state.expectedBuffers = -1
+        state.expectedChannels = []
+      }
     }
     scratchSamples = []
     scratchSamples.reserveCapacity(capacity)
@@ -551,6 +601,25 @@ public final class CallSoundPipeline: @unchecked Sendable {
       }
       guard readable else {
         state.unreadableBuffers += 1
+        state.lossPending = true
+        return
+      }
+      // #4117: a callback without the committed layout is refused whole, before any sample is
+      // kept: its channels cannot be read at the committed rate and format.
+      var matchesCommitted = state.expectedBuffers < 0 || buffers.count == state.expectedBuffers
+      if matchesCommitted, state.expectedBuffers >= 0 {
+        for (index, buffer) in buffers.enumerated()
+        where buffer.mNumberChannels != state.expectedChannels[index] {
+          matchesCommitted = false
+          break
+        }
+      }
+      if !matchesCommitted {
+        if state.refusedCallbacks == 0 {
+          state.refusedBuffers = buffers.count
+          state.refusedChannels = layoutChannels
+        }
+        state.refusedCallbacks += 1
         state.lossPending = true
         return
       }
@@ -860,12 +929,18 @@ final class CoreAudioCallSoundBackend: CallSoundBackend {
       .inputStreams(of:),
     tapRateReader: @escaping (AudioObjectID) -> Double? = { tap in
       try? CoreAudioCallSoundBackend.readTapFormat(tap).mSampleRate
-    }
+    },
+    nominalRateReader: @escaping (AudioObjectID) -> Double? = CoreAudioCallSoundBackend
+      .nominalRate(of:),
+    streamFormatReader: @escaping (AudioObjectID) -> (OSStatus, AudioStreamBasicDescription) =
+      CoreAudioCallSoundBackend.virtualFormat(of:)
   ) {
     self.addListener = addListener
     self.removeListener = removeListener
     self.streamLister = streamLister
     self.tapRateReader = tapRateReader
+    self.nominalRateReader = nominalRateReader
+    self.streamFormatReader = streamFormatReader
   }
 
   /// Records a problem once, counting repeats; it holds until `resolve`.
@@ -898,6 +973,10 @@ final class CoreAudioCallSoundBackend: CallSoundBackend {
   private var watchProblems: [CallSoundCaptureDiagnostics.WatchProblem] = []
   /// Reads the tap's format now; a parameter only so a test can change it.
   private let tapRateReader: (AudioObjectID) -> Double?
+  /// #4117 R3: the aggregate's nominal rate and each input stream's virtual format; parameters
+  /// only so a test can stage what the hardware reported.
+  private let nominalRateReader: (AudioObjectID) -> Double?
+  private let streamFormatReader: (AudioObjectID) -> (OSStatus, AudioStreamBasicDescription)
   /// The aggregate's input streams this generation watches, so their listeners go before the
   /// aggregate is destroyed.
   private var watchedStreams: [AudioObjectID] = []
@@ -960,7 +1039,10 @@ final class CoreAudioCallSoundBackend: CallSoundBackend {
       }
       // So is the aggregate: watch its rate and streams again (diagnostics only, #4117).
       if onNotice != nil { addAggregateWatch() }
-      return CallSoundPipeline.InputFormat(sampleRate: format.mSampleRate)
+      // #4117 R3: the rate comes from the aggregate's nominal rate, read now that it runs. The
+      // tap format (checked above for a usable PCM layout) and the input streams' virtual
+      // formats kept reading 48 kHz while AirPods in the call profile delivered 24 kHz.
+      return try committedCaptureFormat()
     } catch {
       _ = stop()
       throw error
@@ -1118,6 +1200,45 @@ final class CoreAudioCallSoundBackend: CallSoundBackend {
     return true
   }
 
+  /// #4117 R3: the capture configuration this generation commits to, rate and buffer layout
+  /// from one snapshot: the aggregate's nominal rate, after its input streams are confirmed to
+  /// be the Float32 PCM `ingest` reads. Throws rather than fall back to any other rate. Later
+  /// diagnostic reads never change it.
+  func committedCaptureFormat() throws -> CallSoundPipeline.InputFormat {
+    let observed = captureDiagnostics()
+    return try Self.captureFormat(
+      nominalRate: observed.aggregateNominalRate, inputStreams: observed.inputStreams)
+  }
+
+  /// The single rule behind `committedCaptureFormat`, pure so every disposition is testable.
+  static func captureFormat(
+    nominalRate: Double?, inputStreams: [CallSoundCaptureDiagnostics.Stream]?
+  ) throws -> CallSoundPipeline.InputFormat {
+    guard let rate = nominalRate, rate.isFinite, rate > 0 else {
+      throw SystemAudioTap.TapError.status(operation: "read_nominal_rate", value: -1)
+    }
+    guard let streams = inputStreams, !streams.isEmpty else {
+      throw SystemAudioTap.TapError.unusableFormat
+    }
+    // What `ingest` reads: native-endian 32-bit Float samples, packed with no padding;
+    // interleaved streams arrive as one buffer of all channels, non-interleaved ones as one
+    // single-channel buffer per channel. Several streams are mixed, as before (#4117 ruling:
+    // stream selection is a separate question).
+    var bufferChannels: [UInt32] = []
+    for stream in streams {
+      let flags = stream.formatFlags
+      let nonInterleaved = flags & kAudioFormatFlagIsNonInterleaved != 0
+      let bytesPerFrame = nonInterleaved ? UInt32(4) : 4 * stream.channels
+      guard stream.sampleRate != nil, stream.formatID == kAudioFormatLinearPCM,
+        flags & kAudioFormatFlagIsFloat != 0, flags & kAudioFormatFlagIsBigEndian == 0,
+        stream.bitsPerChannel == 32, stream.channels > 0, stream.bytesPerFrame == bytesPerFrame
+      else { throw SystemAudioTap.TapError.unusableFormat }
+      bufferChannels += nonInterleaved
+        ? Array(repeating: 1, count: Int(stream.channels)) : [stream.channels]
+    }
+    return CallSoundPipeline.InputFormat(sampleRate: rate, bufferChannels: bufferChannels)
+  }
+
   func refreshDiagnostics() -> CallSoundCaptureDiagnostics {
     reconcileStreamWatch()
     return captureDiagnostics()
@@ -1129,18 +1250,10 @@ final class CoreAudioCallSoundBackend: CallSoundBackend {
     let tapRate = tapID == kAudioObjectUnknown ? nil : tapRateReader(tapID)
     var result = CallSoundCaptureDiagnostics(build: build, tapRate: tapRate, watchProblems: watchProblems)
     guard aggregateID != kAudioObjectUnknown else { return result }
-    var nominal = Float64(0)
-    var size = UInt32(MemoryLayout<Float64>.size)
-    var property = Self.address(kAudioDevicePropertyNominalSampleRate)
-    if AudioObjectGetPropertyData(aggregateID, &property, 0, nil, &size, &nominal) == noErr {
-      result.aggregateNominalRate = nominal
-    }
+    result.aggregateNominalRate = nominalRateReader(aggregateID)
     result.inputStreams = streamLister(aggregateID).map { ids in
       ids.map { id in
-        var format = AudioStreamBasicDescription()
-        var size = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
-        var property = Self.address(kAudioStreamPropertyVirtualFormat)
-        let status = AudioObjectGetPropertyData(id, &property, 0, nil, &size, &format)
+        let (status, format) = streamFormatReader(id)
         return .init(
           id: id, sampleRate: status == noErr ? format.mSampleRate : nil, readStatus: status,
           formatID: format.mFormatID, formatFlags: format.mFormatFlags,
@@ -1155,6 +1268,24 @@ final class CoreAudioCallSoundBackend: CallSoundBackend {
     /// Pretends an aggregate exists, so its listeners can be driven without one.
     func setAggregateObjectForTesting(_ id: AudioObjectID) { aggregateID = id }
   #endif
+
+  static func nominalRate(of device: AudioObjectID) -> Double? {
+    var nominal = Float64(0)
+    var size = UInt32(MemoryLayout<Float64>.size)
+    var property = address(kAudioDevicePropertyNominalSampleRate)
+    guard AudioObjectGetPropertyData(device, &property, 0, nil, &size, &nominal) == noErr else {
+      return nil
+    }
+    return nominal
+  }
+
+  static func virtualFormat(of stream: AudioObjectID) -> (OSStatus, AudioStreamBasicDescription) {
+    var format = AudioStreamBasicDescription()
+    var size = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
+    var property = address(kAudioStreamPropertyVirtualFormat)
+    let status = AudioObjectGetPropertyData(stream, &property, 0, nil, &size, &format)
+    return (status, format)
+  }
 
   /// The device's input streams, in its order; nil when the list cannot be read.
   static func inputStreams(of device: AudioObjectID) -> [AudioObjectID]? {

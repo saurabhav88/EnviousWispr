@@ -201,6 +201,168 @@ struct SystemAudioTapTests {
     #expect(p.health.framesCaptured == 0)
   }
 
+  /// A readable Float32 PCM input stream as the aggregate reports it.
+  static func floatStream(channels: UInt32, rate: Double = 48_000, id: UInt32 = 1)
+    -> CallSoundCaptureDiagnostics.Stream
+  {
+    .init(
+      id: id, sampleRate: rate, formatID: kAudioFormatLinearPCM,
+      formatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked, channels: channels,
+      bitsPerChannel: 32, bytesPerFrame: 4 * channels)
+  }
+
+  // MARK: - Capture rate (#4117 R3)
+
+  @Test("every supported rate gives the right signal at real speed with callbacks of varying length")
+  func ratesWithVariableCallbacks() throws {
+    let lengths = [128, 1_024, 480, 256, 512, 333]
+    for rate in [16_000.0, 24_000, 44_100, 48_000, 96_000] {
+      let output = Output()
+      let p = try pipeline(rate: rate, output)
+      let total = Int(rate)
+      var at = 0
+      var i = 0
+      while at < total {
+        let n = min(lengths[i % lengths.count], total - at)
+        ingest(
+          p, buffers: [sine(n, rate: rate, from: at)], channels: [1],
+          host: 2_000_000 + ticks(Double(at) / rate))
+        at += n
+        i += 1
+      }
+      p.drain()
+      p.finishRun()
+      let got = output.samples.withLock { $0 }
+      #expect(abs(got.count - 16_000) <= 48, "rate \(rate): \(got.count) samples for one second")
+      #expect(errorAgainstIdeal(got) < 0.02, "rate \(rate)")
+      #expect(p.health.discontinuities == 0, "rate \(rate): one continuous run")
+    }
+  }
+
+  @Test("the capture rate is the aggregate's nominal rate, even when the stream and tap say 48 kHz")
+  func nominalRateIsTheAuthority() throws {
+    guard #available(macOS 14.2, *) else { return }
+    let stream48 = Self.floatStream(channels: 2, rate: 48_000)
+    // The founder's AirPods in the call profile: nominal 24 kHz, stream virtual format 48 kHz.
+    #expect(
+      try CoreAudioCallSoundBackend.captureFormat(nominalRate: 24_000, inputStreams: [stream48])
+        == .init(sampleRate: 24_000, bufferChannels: [2]))
+    let nominal = OSAllocatedUnfairLock<Double?>(initialState: 24_000)
+    let backend = CoreAudioCallSoundBackend(
+      addListener: { _, _, _, _ in noErr }, removeListener: { _, _, _, _ in noErr },
+      streamLister: { _ in [5] }, tapRateReader: { _ in 48_000 },
+      nominalRateReader: { _ in nominal.withLock { $0 } },
+      streamFormatReader: { _ in
+        (
+          noErr,
+          AudioStreamBasicDescription(
+            mSampleRate: 48_000, mFormatID: kAudioFormatLinearPCM,
+            mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked, mBytesPerPacket: 8,
+            mFramesPerPacket: 1, mBytesPerFrame: 8, mChannelsPerFrame: 2, mBitsPerChannel: 32,
+            mReserved: 0)
+        )
+      })
+    backend.setAggregateObjectForTesting(AudioObjectID(UInt32.max - 7))
+    #expect(try backend.committedCaptureFormat() == .init(sampleRate: 24_000, bufferChannels: [2]))
+    nominal.withLock { $0 = nil }
+    #expect(throws: SystemAudioTap.TapError.status(operation: "read_nominal_rate", value: -1)) {
+      try backend.committedCaptureFormat()
+    }
+  }
+
+  @Test("no usable nominal rate or input layout means no capture, never a fallback rate")
+  func unusableConfigurationsAreRefused() throws {
+    guard #available(macOS 14.2, *) else { return }
+    let ok = Self.floatStream(channels: 2)
+    for bad in [nil, 0, -48_000, .nan, .infinity] as [Double?] {
+      #expect(throws: SystemAudioTap.TapError.status(operation: "read_nominal_rate", value: -1)) {
+        try CoreAudioCallSoundBackend.captureFormat(nominalRate: bad, inputStreams: [ok])
+      }
+    }
+    var unreadable = ok
+    unreadable.sampleRate = nil
+    var integer = ok
+    integer.formatFlags = kAudioFormatFlagIsSignedInteger
+    integer.bitsPerChannel = 16
+    var double = ok
+    double.bitsPerChannel = 64
+    var silent = ok
+    silent.channels = 0
+    var compressed = ok
+    compressed.formatID = kAudioFormatMPEG4AAC
+    var bigEndian = ok
+    bigEndian.formatFlags |= kAudioFormatFlagIsBigEndian
+    var padded = ok
+    padded.bytesPerFrame = 12
+    for streams in [
+      nil, [], [unreadable], [integer], [double], [silent], [compressed], [ok, integer],
+      [bigEndian], [padded],
+    ] as [[CallSoundCaptureDiagnostics.Stream]?] {
+      #expect(throws: SystemAudioTap.TapError.unusableFormat) {
+        try CoreAudioCallSoundBackend.captureFormat(nominalRate: 24_000, inputStreams: streams)
+      }
+    }
+  }
+
+  @Test("the committed buffer layout follows each stream's interleaving")
+  func committedLayoutFollowsInterleaving() throws {
+    guard #available(macOS 14.2, *) else { return }
+    var planar = Self.floatStream(channels: 2)
+    planar.formatFlags |= kAudioFormatFlagIsNonInterleaved
+    planar.bytesPerFrame = 4
+    #expect(
+      try CoreAudioCallSoundBackend.captureFormat(
+        nominalRate: 16_000, inputStreams: [planar, Self.floatStream(channels: 1, id: 2)])
+        == .init(sampleRate: 16_000, bufferChannels: [1, 1, 1]))
+  }
+
+  @Test("more than eight buffers are captured whole; a mismatch past the eighth is still refused")
+  func manyBuffersAreCheckedInFull() throws {
+    guard #available(macOS 14.2, *) else { return }
+    var planar = Self.floatStream(channels: 10)
+    planar.formatFlags |= kAudioFormatFlagIsNonInterleaved
+    planar.bytesPerFrame = 4
+    let format = try CoreAudioCallSoundBackend.captureFormat(nominalRate: 48_000, inputStreams: [planar])
+    #expect(format.bufferChannels == Array(repeating: 1, count: 10))
+    let output = Output()
+    let p = CallSoundPipeline(onSamples: output.handler)
+    try p.configure(format)
+    p.setAccepting(true)
+    let tone = sine(480, rate: 48_000)
+    ingest(p, buffers: Array(repeating: tone, count: 10), channels: Array(repeating: 1, count: 10), host: 1_000)
+    p.drain()
+    #expect(p.takeRefusedLayout() == nil, "ten mono buffers match the committed ten")
+    // The tenth buffer has two channels: refused before any sample is kept.
+    ingest(
+      p, buffers: Array(repeating: tone, count: 9) + [tone.flatMap { [$0, $0] }],
+      channels: Array(repeating: 1, count: 9) + [2], host: 1_000 + ticks(0.01))
+    p.drain()
+    p.finishRun()
+    let refused = try #require(p.takeRefusedLayout())
+    #expect(refused.callbacks == 1 && refused.layout.buffers == 10)
+    #expect(abs(output.samples.withLock { $0 }.count - 160) <= 32, "only the first callback's 10 ms")
+  }
+
+  @Test("a callback without the committed layout keeps none of its samples")
+  func refusedCallbackKeepsNothing() throws {
+    let output = Output()
+    let p = CallSoundPipeline(onSamples: output.handler)
+    try p.configure(.init(sampleRate: 48_000, bufferChannels: [2]))
+    p.setAccepting(true)
+    // A 1-channel callback of 960 frames, then a valid 2-channel one of 480 frames.
+    ingest(p, buffers: [[Float](repeating: 0.4, count: 960)], channels: [1], host: 1_000)
+    ingest(
+      p, buffers: [sine(480, rate: 48_000).flatMap { [$0, $0] }], channels: [2],
+      host: 1_000 + ticks(0.01))
+    p.drain()
+    p.finishRun()
+    let refused = try #require(p.takeRefusedLayout())
+    #expect(refused.callbacks == 1 && refused.layout == .init(buffers: 1, channels: [1]))
+    let delivered = output.samples.withLock { $0 }
+    #expect(abs(delivered.count - 160) <= 32, "only the valid 10 ms: \(delivered.count) samples")
+    #expect(!delivered.contains { abs($0 - 0.4) < 0.001 }, "no sample of the refused callback")
+  }
+
   // MARK: - Lifecycle
 
   private enum FakeError: Error { case startFailed }
@@ -216,7 +378,11 @@ struct SystemAudioTapTests {
     var onChange: (@Sendable () -> Void)?
     var onNotice: (@Sendable (CallSoundNotice) -> Void)?
     var rate: Double = 48_000
-    var diagnostics = CallSoundCaptureDiagnostics()
+    /// The buffer layout `start` commits to (nil commits none).
+    var bufferChannels: [UInt32]?
+    /// One mono Float32 input stream, the layout `deliver` hands over.
+    var diagnostics = CallSoundCaptureDiagnostics(
+      inputStreams: [SystemAudioTapTests.floatStream(channels: 1)])
 
     func start(
       ingest: @escaping @Sendable (UnsafePointer<AudioBufferList>, UInt64, Bool) -> Void
@@ -227,7 +393,7 @@ struct SystemAudioTapTests {
       if failStartNumber == starts { throw FakeError.startFailed }
       running = true
       self.ingest = ingest
-      return .init(sampleRate: rate)
+      return .init(sampleRate: rate, bufferChannels: bufferChannels)
     }
 
     func captureDiagnostics() -> CallSoundCaptureDiagnostics {
@@ -303,6 +469,82 @@ struct SystemAudioTapTests {
       #expect(!backend.snapshot.running)
       #expect(throws: SystemAudioTap.TapError.stopped) { try tap.start() }
       tap.stop()
+    }
+
+    @Test("a rebuild at a new nominal rate drains the old audio, then records the new rate at real speed")
+    func rebuildConfiguresTheNewRate() throws {
+      guard #available(macOS 14.2, *) else { return }
+      let backend = FakeBackend()
+      let output = Output()
+      let events = Events()
+      let tap = tap(backend, output, events)
+      try tap.start()
+      let first = try #require(backend.ingest)
+      // Half a second at 48 kHz in 480-frame buffers.
+      for i in 0..<50 {
+        try deliver(
+          sine(480, rate: 48_000, from: i * 480), to: first,
+          host: 1_000_000 + ticks(Double(i * 480) / 48_000))
+      }
+      backend.lock.withLock { backend.rate = 24_000 }
+      tap.requestRebuildForTesting()
+      tap.drainForTesting()
+      let second = try #require(backend.ingest)
+      // One second at 24 kHz in 480-frame buffers (20 ms each), the call-profile shape.
+      for i in 0..<50 {
+        try deliver(
+          sine(480, rate: 24_000, from: i * 480), to: second,
+          host: 90_000_000 + ticks(Double(i * 480) / 24_000))
+      }
+      tap.drainForTesting()
+      tap.stop()
+      #expect(events.list.withLock { $0 } == ["rebuilt"])
+      let total = output.samples.withLock { $0 }.count
+      #expect(abs(total - (8_000 + 16_000)) <= 64, "0.5 s + 1 s at 16 kHz: \(total)")
+      #expect(tap.health.pipeline.discontinuities == 0, "no per-buffer run breaks at 24 kHz")
+      #expect(output.newRuns.withLock { $0 }.filter { $0 }.count == 1, "one new run, at the rebuild")
+    }
+
+    @Test("a callback without the committed layout stops the call-sound track and keeps nothing of it")
+    func refusedLayoutStopsCallSound() throws {
+      guard #available(macOS 14.2, *) else { return }
+      let backend = FakeBackend()
+      backend.bufferChannels = [2]
+      let output = Output()
+      let events = Events()
+      let tap = tap(backend, output, events)
+      try tap.start()
+      let ingest = try #require(backend.ingest)
+      try deliver([Float](repeating: 0.4, count: 960), to: ingest, host: 1_000)  // 1 channel
+      tap.drainForTesting()
+      #expect(events.list.withLock { $0 } == ["rebuildFailed"])
+      #expect(!backend.snapshot.running)
+      #expect(tap.health.rebuildFailures == 1)
+      #expect(output.samples.withLock { $0 }.isEmpty, "nothing of the refused callback reaches the track")
+      tap.stop()
+    }
+
+    @Test("later diagnostic readings never change the committed layout")
+    func committedLayoutIgnoresLaterDiagnostics() throws {
+      guard #available(macOS 14.2, *) else { return }
+      let backend = FakeBackend()
+      backend.bufferChannels = [1]
+      let output = Output()
+      let events = Events()
+      let tap = tap(backend, output, events)
+      try tap.start()
+      backend.lock.withLock {
+        backend.diagnostics = CallSoundCaptureDiagnostics(inputStreams: [Self.floatStream(channels: 2)])
+      }
+      let ingest = try #require(backend.ingest)
+      for i in 0..<10 {
+        try deliver(sine(480, rate: 48_000, from: i * 480), to: ingest, host: 5_000 + ticks(Double(i) * 0.01))
+      }
+      tap.drainForTesting()
+      #expect(events.list.withLock { $0 }.isEmpty, "the 1-channel callbacks match what start committed")
+      #expect(backend.snapshot.running)
+      tap.stop()
+      #expect(abs(output.samples.withLock { $0 }.count - 1_600) <= 32)
     }
 
     @Test("a failed rebuild is reported once and leaves capture stopped")
@@ -620,7 +862,8 @@ struct SystemAudioTapDiagnosticsTests {
       let lock = NSLock()
       var starts = 0
       var rate: Double = 48_000
-      var diagnostics = CallSoundCaptureDiagnostics()
+      var diagnostics = CallSoundCaptureDiagnostics(
+        inputStreams: [SystemAudioTapTests.floatStream(channels: 1)])
       var ingest: (@Sendable (UnsafePointer<AudioBufferList>, UInt64, Bool) -> Void)?
       var onNotice: (@Sendable (CallSoundNotice) -> Void)?
       var refreshes = 0
