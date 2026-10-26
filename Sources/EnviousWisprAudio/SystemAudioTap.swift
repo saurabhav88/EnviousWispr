@@ -178,8 +178,9 @@ public final class SystemAudioTap: @unchecked Sendable {
         diagnostics = backend.captureDiagnostics()
         log("CALL_SOUND observed gen=\(generation) trigger=installed " + diagnostics.describe())
         // The first commitment was read before any listener existed, so a change in between
-        // sent no notice: compare once now.
-        queueChangeCheck()
+        // sent no notice: compare once now, inside start, so a capture that cannot follow the
+        // change makes start throw instead of failing after start reported success.
+        try revalidateAtStart()
       } else {
         counters.withLock { $0.listenerFailures += 1 }
         teardownOnQueue()
@@ -367,6 +368,29 @@ public final class SystemAudioTap: @unchecked Sendable {
       return
     }
     queueChangeCheck()
+  }
+
+  /// Tap queue, inside `start`: the comparison `checkForChange` makes, done before `start`
+  /// returns. A difference (or an unreadable reading) builds again at once; when that build
+  /// fails, every listener goes and `start` throws. No event is sent: `start` reports it.
+  private func revalidateAtStart() throws {
+    guard let committed else { return }
+    let reason: RebuildReason?
+    do {
+      reason = committed.change(to: try backend.currentCapture())
+    } catch {
+      reason = .unreadable
+    }
+    guard let reason else { return }
+    log("CALL_SOUND revalidate gen=\(generation) reason=\(reason.rawValue)")
+    teardownOnQueue()
+    do {
+      try buildOnQueue(trigger: "start reason=\(reason.rawValue)")
+    } catch {
+      if !backend.removeListeners() { counters.withLock { $0.listenerFailures += 1 } }
+      listening = false
+      throw error
+    }
   }
 
   /// Queues one comparison for this generation, after any notices already queued, so a burst

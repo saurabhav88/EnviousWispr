@@ -452,7 +452,11 @@ struct SystemAudioTapTests {
       return !failListeners
     }
 
-    func removeListeners() -> Bool { true }
+    var removeListenerCalls = 0
+    func removeListeners() -> Bool {
+      lock.withLock { removeListenerCalls += 1 }
+      return true
+    }
 
     var snapshot: (starts: Int, running: Bool) {
       lock.lock()
@@ -569,6 +573,7 @@ struct SystemAudioTapTests {
       let events = Events()
       let tap = tap(backend, Output(), events)
       try tap.start()
+      #expect(tap.settleForTesting())
       try feedTiming(try #require(backend.ingest), count: 80, start: 1, step: 0.02)
       tap.drainForTesting()
       #expect(tap.settleForTesting())
@@ -592,6 +597,7 @@ struct SystemAudioTapTests {
       let clock = Clock()
       let tap = tap(backend, Output(), events, clock: clock)
       try tap.start()
+      #expect(tap.settleForTesting())
       try feedTiming(try #require(backend.ingest), count: 80, start: 1, step: 0.02)
       backend.lock.withLock { backend.rate = 24_000 }
       tap.drainForTesting()
@@ -619,6 +625,7 @@ struct SystemAudioTapTests {
       let events = Events()
       let tap = tap(backend, output, events)
       try tap.start()
+      #expect(tap.settleForTesting())
       try feedTiming(try #require(backend.ingest), count: 80, start: 1, step: 0.02)
       tap.drainForTesting()
       #expect(tap.settleForTesting())
@@ -646,6 +653,7 @@ struct SystemAudioTapTests {
       let clock = Clock()
       let tap = tap(backend, output, events, clock: clock)
       try tap.start()
+      #expect(tap.settleForTesting())
       try feedTiming(try #require(backend.ingest), count: 80, start: 1, step: 0.02)
       backend.lock.withLock { backend.rate = 24_000 }
       tap.drainForTesting()
@@ -723,6 +731,7 @@ struct SystemAudioTapTests {
         let events = Events()
         let tap = tap(backend, Output(), events)
         try tap.start()
+        #expect(tap.settleForTesting())
         try feedTiming(try #require(backend.ingest), count: 80, start: 1, step: 0.02)
         tap.drainForTesting()
         #expect(tap.settleForTesting())
@@ -984,10 +993,25 @@ struct SystemAudioTapTests {
       let events = Events()
       let tap = tap(backend, output, events)
       try tap.start()
-      #expect(tap.settleForTesting())
+      // Found inside start: start returns on the rebuilt capture, and sends no event.
       #expect(backend.snapshot.starts == 2)
-      #expect(tap.health.rebuildReasons == [.nominalRate: 1])
+      #expect(backend.snapshot.running)
+      #expect(events.list.withLock { $0 }.isEmpty)
       tap.stop()
+    }
+
+    @Test("a change before the listeners that cannot be followed makes start throw, leaving nothing running")
+    func changeBeforeListenersThatFailsThrows() throws {
+      guard #available(macOS 14.2, *) else { return }
+      let backend = FakeBackend()
+      backend.rateAtInstall = 24_000
+      backend.failStartNumber = 2
+      let events = Events()
+      let tap = tap(backend, Output(), events)
+      #expect(throws: FakeError.self) { try tap.start() }
+      #expect(!backend.snapshot.running)
+      #expect(backend.lock.withLock { backend.removeListenerCalls } == 1)
+      #expect(events.list.withLock { $0 }.isEmpty, "start reports it; no late failure event")
     }
 
     @Test("a reading that fails is never taken as unchanged: it rebuilds, and a failed rebuild is final")
