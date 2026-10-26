@@ -185,9 +185,8 @@ struct CallDetectionPolicyTests {
     #expect(s.interaction == .none)
   }
 
-  @Test("Slack asks for a verified huddle, never for an idle channel or unreadable evidence",
-    arguments: ["English", "German", "French"])
-  func slackHuddleAsks(language: String) {
+  @Test("Slack asks for a verified huddle, never for an idle channel or unreadable evidence")
+  func slackHuddleAsks() {
     let control = SlackHuddleWindow.classRead(["leaveButton__wzISw"])
     for (signal, title, shouldAsk) in [
       (control, "huddle-test - Qualtrics - Slack", true),
@@ -203,7 +202,7 @@ struct CallDetectionPolicyTests {
       }
       var s = Story()
       s.read([.init(pid: 300, rule: .callWindow(.slack), input: .active, evidence: evidence)])
-      #expect(isAsk(s.interaction, .slack) == shouldAsk, "\(language): \(title)")
+      #expect(isAsk(s.interaction, .slack) == shouldAsk, "\(title)")
     }
   }
 
