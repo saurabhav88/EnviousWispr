@@ -830,16 +830,20 @@ final class MeetingCoordinator {
       return .superseded(meetingID: nil)
     }
     record = live[meetingID] ?? record
-    record.trackStatus[.callSound] = result.callSound
-    callSoundStatus = result.callSound
-    if result.callSound == .failed { notice = .callSoundFailed }
-    if result.callSound == .unsupported { notice = .callSoundUnavailable }
+    // #4124: a call-sound failure the recorder reported during the waits above is already in
+    // the live record; the startup answer never turns it back into "captured".
+    let callSound: MeetingTrackStatus =
+      record.trackStatus[.callSound] == .failed ? .failed : result.callSound
+    record.trackStatus[.callSound] = callSound
+    callSoundStatus = callSound
+    if callSound == .failed { notice = .callSoundFailed }
+    if callSound == .unsupported { notice = .callSoundUnavailable }
     boundMicrophoneUID = recorder.boundMicrophoneUID
     deps.log("meeting recording started bound=\(boundMicrophoneUID ?? "unknown")")
     if let token = deps.beginActivity() { activity = token }
     phase = .recording(meetingID: meetingID, startedAt: record.createdAt)
     var captured: Set<MeetingTrackKind> = [.microphone]
-    if result.callSound == .captured { captured.insert(.callSound) }
+    if callSound == .captured { captured.insert(.callSound) }
     deps.liveWords?.captureStarted(
       meetingID: meetingID, captured: captured, vocabulary: liveVocabulary,
       clock: { Int((ContinuousClock.now - liveClockStart) / .milliseconds(1)) })
