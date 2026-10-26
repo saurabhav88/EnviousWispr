@@ -1,0 +1,36 @@
+{
+  "meetingLiveWords": {
+    "language": "el",
+    "title": "ζωντανή απομαγνητοφώνηση",
+    "words": [],
+    "phrases": [
+      "αλλαγή γλώσσας για το ζωντανό κείμενο της συνάντησης",
+      "επιλογή μηχανής για τη ζωντανή απομαγνητοφώνηση στο EnviousMeet"
+    ]
+  },
+  "meetingLiveWords.apple": {
+    "language": "el",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "Apple για ζωντανή απομαγνητοφώνηση της συνάντησης"
+    ]
+  },
+  "meetingLiveWords.universal": {
+    "language": "el",
+    "title": "Universal",
+    "words": [],
+    "phrases": [
+      "Universal για ζωντανή απομαγνητοφώνηση της συνάντησης"
+    ]
+  },
+  "meetingTranscriptLanguage": {
+    "language": "el",
+    "title": "γλώσσα απομαγνητοφώνησης",
+    "words": [],
+    "phrases": [
+      "αλλαγή γλώσσας της πλήρους απομαγνητοφώνησης της συνάντησης",
+      "γλώσσα του πλήρους κειμένου μετά τη συνάντηση"
+    ]
+  }
+}

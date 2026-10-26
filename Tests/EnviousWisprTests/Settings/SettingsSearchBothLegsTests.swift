@@ -76,6 +76,31 @@ struct SettingsSearchBothLegsTests {
     }
   }
 
+  /// #4105: the EnviousMeet Live words and Transcript language rows, by their names in English
+  /// and German, through the shipped search with both legs.
+  @Test("Live words and Transcript language are found first by their names in English and German")
+  func meetingLanguageRowsAreFound() async throws {
+    let english = try Self.model("en")
+    let german = try Self.model("de")
+    let rows: [(SettingsSearchModel, String, String)] = [
+      (english, "live words", "meetingLiveWords"),
+      (german, "Live-Transkript", "meetingLiveWords"),
+      (english, "transcript language", "meetingTranscriptLanguage"),
+      (german, "Transkriptsprache", "meetingTranscriptLanguage"),
+    ]
+    for (model, query, expected) in rows {
+      let ids = await Self.search(model, query)
+      #expect(ids.first == expected, "\(query): \(Array(ids.prefix(5)))")
+    }
+    // The engine choices are found under their row.
+    let apple = await Self.search(english, "apple live words in meetings")
+    #expect(apple.prefix(5).contains("meetingLiveWords.apple"), "apple: \(Array(apple.prefix(5)))")
+    let universal = await Self.search(german, "Universal für das Live-Transkript im Meeting")
+    #expect(
+      universal.prefix(5).contains("meetingLiveWords.universal"),
+      "universal: \(Array(universal.prefix(5)))")
+  }
+
   @Test("the word-leg rows keep their answers with the meaning pass on")
   func wordRowsHold() async throws {
     let english = try Self.model("en")

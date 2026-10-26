@@ -43,12 +43,16 @@ struct MeetingLiveWordsPresentationTests {
       (.running, nil),
       (.off(.notCaptured), nil),
       (
-        .off(.universalNotDownloaded),
-        "Live words need the Universal engine. Download it in Dictation Settings, Live Preview."
+        .off(.notSetUp),
+        "Live words are not set up. Choose an engine in EnviousMeet settings, General, Live words."
       ),
       (
-        .off(.appleLanguageAndUniversalMissing(languageName: "German")),
-        "Live words need Apple's German language or the Universal engine. Download either in Dictation Settings, Live Preview."
+        .off(.engineNotDownloaded(engine: .universal, languageName: "German")),
+        "Live words need the Universal engine. Download it in EnviousMeet settings, General, Live words."
+      ),
+      (
+        .off(.engineNotDownloaded(engine: .apple, languageName: "German")),
+        "Live words need Apple's German model. Download it in EnviousMeet settings, General, Live words."
       ),
       (
         .off(.previousStillClosing),
@@ -86,11 +90,11 @@ struct MeetingLiveWordsPresentationTests {
         == [Self.intro, Self.removal, Self.echo])
     #expect(
       P.liveStatusLines(
-        Self.live(.off(.universalNotDownloaded), .off(.universalNotDownloaded)),
+        Self.live(.off(.engineNotDownloaded(engine: .universal, languageName: "German")), .off(.engineNotDownloaded(engine: .universal, languageName: "German"))),
         callSoundRecorded: true)
         == [
           Self.intro,
-          "Live words need the Universal engine. Download it in Dictation Settings, Live Preview.",
+          "Live words need the Universal engine. Download it in EnviousMeet settings, General, Live words.",
           Self.echo,
         ])
     // Different outcomes per track: each said, microphone first.
@@ -119,7 +123,7 @@ struct MeetingLiveWordsPresentationTests {
     #expect(P.emptyLiveWords(Self.live(.starting, .starting)) == Self.noWordsYet)
     #expect(P.emptyLiveWords(Self.live(.running, .off(.notCaptured))) == Self.noWordsYet)
     #expect(P.emptyLiveWords(Self.live(.running, .running, lines: [Self.line])) == nil)
-    #expect(P.emptyLiveWords(Self.live(.off(.universalNotDownloaded), .off(.notCaptured))) == nil)
+    #expect(P.emptyLiveWords(Self.live(.off(.engineNotDownloaded(engine: .universal, languageName: "German")), .off(.notCaptured))) == nil)
     #expect(P.emptyLiveWords(Self.live(.stopped(.modelRemoved), .stopped(.modelRemoved))) == nil)
     #expect(P.emptyLiveWords(Self.live(.stopped(.engineFailed), .off(.couldNotStart))) == nil)
   }
@@ -155,15 +159,21 @@ struct MeetingLiveWordsPresentationTests {
       ended(Self.live(.off(.previousStillClosing), .off(.previousStillClosing)), false)
         == [Self.endedIntro, "Live words were not available for this meeting."])
     #expect(
-      ended(Self.live(.off(.universalNotDownloaded), .off(.notCaptured)), false)
+      ended(Self.live(.off(.engineNotDownloaded(engine: .universal, languageName: "German")), .off(.notCaptured)), false)
         == [
           Self.endedIntro,
-          "Live words need the Universal engine. Download it in Dictation Settings, Live Preview.",
+          "Live words needed the Universal engine, which was not downloaded.",
         ])
+    #expect(
+      ended(Self.live(.off(.engineNotDownloaded(engine: .apple, languageName: "German")), .off(.notCaptured)), false)
+        == [Self.endedIntro, "Live words needed Apple's German model, which was not downloaded."])
+    #expect(
+      ended(Self.live(.off(.notSetUp), .off(.notCaptured)), false)
+        == [Self.endedIntro, "Live words were not set up for this meeting."])
     // No sentence after Stop speaks of a recording that goes on or words still to come.
     let every: [MeetingLiveWords.Status] = [
-      .starting, .running, .off(.notCaptured), .off(.universalNotDownloaded),
-      .off(.appleLanguageAndUniversalMissing(languageName: "German")), .off(.previousStillClosing),
+      .starting, .running, .off(.notCaptured), .off(.notSetUp), .off(.engineNotDownloaded(engine: .universal, languageName: "German")),
+      .off(.engineNotDownloaded(engine: .apple, languageName: "German")), .off(.previousStillClosing),
       .off(.couldNotStart), .off(.unavailable), .off(.modelBeingRemoved), .stopped(.engineFailed),
       .stopped(.restartTimedOut), .stopped(.restartFailed), .stopped(.modelRemoved),
     ]

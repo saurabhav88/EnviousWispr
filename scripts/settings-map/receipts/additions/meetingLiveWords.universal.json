@@ -1,0 +1,227 @@
+{
+ "id": "meetingLiveWords.universal",
+ "blocks": {
+  "ar": {
+   "title": "Universal",
+   "words": [],
+   "phrases": [
+    "استخدام Universal لعرض نص الاجتماع مباشرة"
+   ]
+  },
+  "bg": {
+   "title": "Universal",
+   "words": [],
+   "phrases": [
+    "Universal за текста на срещата в реално време"
+   ]
+  },
+  "cs": {
+   "title": "Universal",
+   "words": [],
+   "phrases": [
+    "Universal pro živý přepis schůzky"
+   ]
+  },
+  "da": {
+   "title": "Universal",
+   "words": [],
+   "phrases": [
+    "brug Universal til livetransskription af møder"
+   ]
+  },
+  "de": {
+   "words": [],
+   "phrases": [
+    "nutze Universal für das Live-Transkript im Meeting"
+   ]
+  },
+  "el": {
+   "title": "Universal",
+   "words": [],
+   "phrases": [
+    "Universal για ζωντανή απομαγνητοφώνηση της συνάντησης"
+   ]
+  },
+  "en": {
+   "words": [],
+   "phrases": [
+    "use Universal for live meeting transcription"
+   ]
+  },
+  "es": {
+   "title": "Universal",
+   "words": [],
+   "phrases": [
+    "usar Universal para la transcripción en directo de la reunión"
+   ]
+  },
+  "et": {
+   "title": "Universal",
+   "words": [],
+   "phrases": [
+    "vali koosoleku reaalajas teksti mootoriks Universal"
+   ]
+  },
+  "fi": {
+   "title": "Universal",
+   "words": [],
+   "phrases": [
+    "käytä Universal-moottoria kokouksen reaaliaikaiseen litterointiin"
+   ]
+  },
+  "fr": {
+   "title": "Universal",
+   "words": [],
+   "phrases": [
+    "choisir Universal pour la transcription en direct de la réunion"
+   ]
+  },
+  "hi": {
+   "title": "Universal",
+   "words": [],
+   "phrases": [
+    "मीटिंग के लाइव ट्रांसक्रिप्शन के लिए Universal चुनें"
+   ]
+  },
+  "hr": {
+   "title": "Universal",
+   "words": [],
+   "phrases": [
+    "odaberi Universal za prijepis sastanka uživo"
+   ]
+  },
+  "hu": {
+   "title": "Universal",
+   "words": [],
+   "phrases": [
+    "Universal az értekezlet élő átírásához"
+   ]
+  },
+  "it": {
+   "title": "Universal",
+   "words": [],
+   "phrases": [
+    "usare Universal per trascrivere la riunione in tempo reale"
+   ]
+  },
+  "ja": {
+   "title": "Universal",
+   "words": [],
+   "phrases": [
+    "会議のリアルタイム文字起こしにUniversalを使う"
+   ]
+  },
+  "ko": {
+   "title": "Universal",
+   "words": [],
+   "phrases": [
+    "Universal 엔진으로 회의 내용 실시간 표시"
+   ]
+  },
+  "lt": {
+   "title": "Universal",
+   "words": [],
+   "phrases": [
+    "naudoti Universal variklį susitikimo transkripcijai realiuoju laiku"
+   ]
+  },
+  "lv": {
+   "title": "Universal",
+   "words": [],
+   "phrases": [
+    "izmantot Universal sapulces tekstam reāllaikā"
+   ]
+  },
+  "mt": {
+   "title": "Universal",
+   "words": [],
+   "phrases": [
+    "agħżel Universal għat-traskrizzjoni diretta tal-laqgħa"
+   ]
+  },
+  "nl": {
+   "title": "Universal",
+   "words": [],
+   "phrases": [
+    "Universal gebruiken voor live transcriptie van de vergadering"
+   ]
+  },
+  "pl": {
+   "title": "Universal",
+   "words": [],
+   "phrases": [
+    "wybierz Universal do transkrypcji spotkania na żywo"
+   ]
+  },
+  "pt": {
+   "title": "Universal",
+   "words": [],
+   "phrases": [
+    "usar Universal para a transcrição da reunião em tempo real"
+   ]
+  },
+  "ro": {
+   "title": "Universal",
+   "words": [],
+   "phrases": [
+    "alege Universal pentru transcrierea în timp real a întâlnirii"
+   ]
+  },
+  "ru": {
+   "title": "Universal",
+   "words": [],
+   "phrases": [
+    "выбрать Universal для расшифровки встречи в реальном времени"
+   ]
+  },
+  "sk": {
+   "title": "Universal",
+   "words": [],
+   "phrases": [
+    "Universal na živý prepis stretnutia"
+   ]
+  },
+  "sl": {
+   "title": "Universal",
+   "words": [],
+   "phrases": [
+    "izberi Universal za sprotni prepis sestanka"
+   ]
+  },
+  "sv": {
+   "title": "Universal",
+   "words": [],
+   "phrases": [
+    "använd Universal för att transkribera mötet i realtid"
+   ]
+  },
+  "tr": {
+   "title": "Universal",
+   "words": [],
+   "phrases": [
+    "toplantı sırasında canlı metin için Universal seç"
+   ]
+  },
+  "uk": {
+   "title": "Universal",
+   "words": [],
+   "phrases": [
+    "вибрати Universal для тексту зустрічі наживо"
+   ]
+  },
+  "vi": {
+   "title": "Universal",
+   "words": [],
+   "phrases": [
+    "chọn Universal để chép lời cuộc họp theo thời gian thực"
+   ]
+  },
+  "zh": {
+   "title": "Universal",
+   "words": [],
+   "phrases": [
+    "用Universal实时转写会议"
+   ]
+  }
+ }
+}

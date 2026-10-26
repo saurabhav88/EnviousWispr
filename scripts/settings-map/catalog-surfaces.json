@@ -51,6 +51,14 @@
   "mac-ctl-meeting-turns-off-dictation": [
    "meetingTurnsOffDictation"
   ],
+  "mac-ctl-meeting-live-words": [
+   "meetingLiveWords",
+   "meetingLiveWords.apple",
+   "meetingLiveWords.universal"
+  ],
+  "mac-ctl-meeting-transcript-language": [
+   "meetingTranscriptLanguage"
+  ],
   "mac-ctl-meeting-calendar-names": [
    "meetingUseCalendarForNames"
   ],
@@ -751,6 +759,16 @@
    "kind": "control",
    "parent": "mac-page-meetings",
    "label": "Turn off dictation during meetings"
+  },
+  "mac-ctl-meeting-live-words": {
+   "kind": "control",
+   "parent": "mac-page-meetings",
+   "label": "Live words"
+  },
+  "mac-ctl-meeting-transcript-language": {
+   "kind": "control",
+   "parent": "mac-page-meetings",
+   "label": "Transcript language"
   },
   "mac-ctl-meeting-calendar-names": {
    "kind": "control",

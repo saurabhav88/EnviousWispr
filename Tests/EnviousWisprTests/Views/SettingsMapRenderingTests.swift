@@ -803,7 +803,16 @@ struct SettingsMapRenderingTests {
   static func meetings(_ label: String) async throws -> Rendered {
     let parts = label.split(separator: ".").map(String.init)
     let tab = try #require(MeetingsTab(rawValue: parts.count > 1 ? parts[1] : ""), "\(label) names no tab")
-    // #4017: the settings show once EnviousMeet's setup is finished (`.meetingSetUp`).
+    let (home, environment) = try meetingsEnvironment()
+    let list = try await registrations(environment(AnyView(MeetingsView(selection: .constant(tab)))))
+    return Rendered(list: list, destination: .meetings(tab), alwaysOnThisPage: [])
+  }
+
+  /// What the EnviousMeet page needs around it, with no meetings and its setup finished
+  /// (`.meetingSetUp`, #4017); `appleAvailable` is the Live words row's Apple engine (#4105).
+  static func meetingsEnvironment(appleAvailable: Bool = true) throws
+    -> (Home, (AnyView) -> AnyView)
+  {
     let home = try Home(seed: { $0.set(true, forKey: "meetingOnboardingComplete") })
     let harness = try MeetingCoordinatorTests.Harness()
     let flow = MeetingStartFlow(
@@ -814,11 +823,17 @@ struct SettingsMapRenderingTests {
     let transcripts = TranscriptCoordinator(
       store: TranscriptStore(directory: home.directory.appendingPathComponent("meetings-history")),
       emitRenameTelemetry: { _ in }, emitTurnsDisplayedTelemetry: {})
-    let view = MeetingsView(selection: .constant(tab))
-      .environment(harness.coordinator).environment(flow).environment(transcripts)
-      .environment(PermissionsService()).environment(NavigationCoordinator())
-    let list = try await registrations(home.polish(view))
-    return Rendered(list: list, destination: .meetings(tab), alwaysOnThisPage: [])
+    let row = MeetingLiveWordsRowModel.renderFixture(
+      settings: home.settings, appleAvailable: appleAvailable)
+    return (
+      home,
+      { view in
+        home.polish(
+          view.environment(harness.coordinator).environment(flow).environment(transcripts)
+            .environment(PermissionsService()).environment(NavigationCoordinator())
+            .environment(row))
+      }
+    )
   }
 
   // MARK: - The fixture

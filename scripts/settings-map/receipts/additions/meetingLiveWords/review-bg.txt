@@ -1,0 +1,39 @@
+{
+  "meetingLiveWords": {
+    "language": "bg",
+    "title": "текст на срещата в реално време",
+    "words": [],
+    "phrases": [
+      "език на текста, който се показва по време на срещата",
+      "избор на модел за текста на срещата в реално време",
+      "изтегляне на модел за текста на срещата в реално време"
+    ]
+  },
+  "meetingLiveWords.apple": {
+    "language": "bg",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "Apple за текста на срещата в реално време"
+    ]
+  },
+  "meetingLiveWords.universal": {
+    "language": "bg",
+    "title": "Universal",
+    "words": [],
+    "phrases": [
+      "Universal за текста на срещата в реално време"
+    ]
+  },
+  "meetingTranscriptLanguage": {
+    "language": "bg",
+    "title": "език на транскрипцията",
+    "words": [
+      "стенограма"
+    ],
+    "phrases": [
+      "смяна на езика на транскрипцията от срещата",
+      "език на пълния текст след срещата"
+    ]
+  }
+}

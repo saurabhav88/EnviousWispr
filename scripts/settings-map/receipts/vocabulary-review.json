@@ -61,13 +61,33 @@
    "id": "meetingTurnsOffDictation",
    "review": "additions/meetingTurnsOffDictation.json",
    "reviewSHA256": "c49019bc63a1b7e9e54eee650a0ed982914e498038d4ba107d82d7ef76109fb7"
+  },
+  {
+   "id": "meetingLiveWords",
+   "review": "additions/meetingLiveWords.json",
+   "reviewSHA256": "3eb620286630bd0c0284f52668e5d7ceaec4ca523c8d8876803708933091ae8b"
+  },
+  {
+   "id": "meetingLiveWords.apple",
+   "review": "additions/meetingLiveWords.apple.json",
+   "reviewSHA256": "81de242355b96aec4a980a0f5dfe9a8d4dae8d0a7deaa4d7b6cf507b2b301594"
+  },
+  {
+   "id": "meetingLiveWords.universal",
+   "review": "additions/meetingLiveWords.universal.json",
+   "reviewSHA256": "34dc9b4b9f299f0bd3abd042ce92bff7132b28d1c470747fa296b20b601d00d0"
+  },
+  {
+   "id": "meetingTranscriptLanguage",
+   "review": "additions/meetingTranscriptLanguage.json",
+   "reviewSHA256": "552a802f865a7e728c7d130b5c98616d712bc2de283f52692b53f68ffe87312e"
   }
  ],
  "retiredIDs": [],
  "resource": {
   "path": "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json",
-  "sha256": "541bfe42729552d229744bbded16ad9cdac22580911746ce993a2497e48b6bae",
-  "bytes": 1671620
+  "sha256": "3273414fce296c2df8ccc686342e09b2d3855db129220ec053e2c269cf77bd14",
+  "bytes": 1693646
  },
  "sources": [
   {
@@ -351,7 +371,7 @@
  "languages": [
   {
    "language": "ar",
-   "contentSHA256": "a0719ca0cc7e17e8bf98523ef32b29fc927660cb346d3680062ce70b7d9c3e1b",
+   "contentSHA256": "3a91aaf97a763c63d5bb50143190ea79759f8fc1b7c714023c0743d9b399822e",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -718,13 +738,89 @@
       "sha256": "a408aaa6d155a379a32df42fd5f1ae938df69c7056725142c457b7d60f2d5414"
      },
      "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.json",
+      "sha256": "f9aa4bc6117cfd4f7f72e524748506b4d176ff83ab68e7c9a0793676d29fc78d"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-ar.txt",
+      "sha256": "62174ae6876047160a53875b5341f55844b040c35e35fb23c1a0f8b989e8de0a"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.apple",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.apple.json",
+      "sha256": "732552a38a2755dc770d1f747dcf66e0e1fbb4e05e0d09790b52f2fd61b1a9ad"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-ar.txt",
+      "sha256": "62174ae6876047160a53875b5341f55844b040c35e35fb23c1a0f8b989e8de0a"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.universal",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.universal.json",
+      "sha256": "3effe9844337f5852333806c77a84869a3e1c54caff5034395cb0ee816ba4aa2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-ar.txt",
+      "sha256": "62174ae6876047160a53875b5341f55844b040c35e35fb23c1a0f8b989e8de0a"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.universal.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptLanguage",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingTranscriptLanguage.json",
+      "sha256": "3922024102a1f1fa3e09a7c79a14ed6ebe8ce6a8816ac759cb2287d083aac703"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-ar.txt",
+      "sha256": "62174ae6876047160a53875b5341f55844b040c35e35fb23c1a0f8b989e8de0a"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "bg",
-   "contentSHA256": "56efa5839c686d2212a4ebbd12fee6b61003b3ce1b368828fafe9e736620af56",
+   "contentSHA256": "4f1366e1638e9301a78fb8119f4c340789ae2782ed8f9568ab358c4b9c3511bc",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1082,13 +1178,89 @@
       "sha256": "c3582d5badc315d08d232c30429a0bf9a7af1e4abebae87fe1cae2d0dd4cc136"
      },
      "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.json",
+      "sha256": "f9aa4bc6117cfd4f7f72e524748506b4d176ff83ab68e7c9a0793676d29fc78d"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-bg.txt",
+      "sha256": "63350bc38567618bab1dad7dcb61d6ddc27a56e9c5059e0e6243dc84fede6dfc"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.apple",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.apple.json",
+      "sha256": "732552a38a2755dc770d1f747dcf66e0e1fbb4e05e0d09790b52f2fd61b1a9ad"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-bg.txt",
+      "sha256": "63350bc38567618bab1dad7dcb61d6ddc27a56e9c5059e0e6243dc84fede6dfc"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.universal",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.universal.json",
+      "sha256": "3effe9844337f5852333806c77a84869a3e1c54caff5034395cb0ee816ba4aa2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-bg.txt",
+      "sha256": "63350bc38567618bab1dad7dcb61d6ddc27a56e9c5059e0e6243dc84fede6dfc"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.universal.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptLanguage",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingTranscriptLanguage.json",
+      "sha256": "3922024102a1f1fa3e09a7c79a14ed6ebe8ce6a8816ac759cb2287d083aac703"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-bg.txt",
+      "sha256": "63350bc38567618bab1dad7dcb61d6ddc27a56e9c5059e0e6243dc84fede6dfc"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "cs",
-   "contentSHA256": "59e2a230f4f7f1065d3bd89e46bc3523b2291f79f9d1c7346f26e01053589bd1",
+   "contentSHA256": "94c306298f7db4947642b09c61cd5055d1842d2698f88ecb6383fdf4914cbf6a",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1446,13 +1618,89 @@
       "sha256": "4d557a58d50d90775e123623f7c074212d7d5a7aa6b159061eebd295d15cc293"
      },
      "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.json",
+      "sha256": "f9aa4bc6117cfd4f7f72e524748506b4d176ff83ab68e7c9a0793676d29fc78d"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-cs.txt",
+      "sha256": "d0b4e7628d6aa2930e5bf74584642140e42cb052edccc2b49c816d389a26beef"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.apple",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.apple.json",
+      "sha256": "732552a38a2755dc770d1f747dcf66e0e1fbb4e05e0d09790b52f2fd61b1a9ad"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-cs.txt",
+      "sha256": "d0b4e7628d6aa2930e5bf74584642140e42cb052edccc2b49c816d389a26beef"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.universal",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.universal.json",
+      "sha256": "3effe9844337f5852333806c77a84869a3e1c54caff5034395cb0ee816ba4aa2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-cs.txt",
+      "sha256": "d0b4e7628d6aa2930e5bf74584642140e42cb052edccc2b49c816d389a26beef"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.universal.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptLanguage",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingTranscriptLanguage.json",
+      "sha256": "3922024102a1f1fa3e09a7c79a14ed6ebe8ce6a8816ac759cb2287d083aac703"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-cs.txt",
+      "sha256": "d0b4e7628d6aa2930e5bf74584642140e42cb052edccc2b49c816d389a26beef"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "da",
-   "contentSHA256": "c52f7553852951b641a9dbbf6c82c75b27185150fc11ee40e5a6cd95fd067810",
+   "contentSHA256": "a6650c007711bf76845229c2e173fdebaa11b51f9c75702ef6946e45a0183ca0",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1810,13 +2058,89 @@
       "sha256": "f83cbfc1d082d42ac006217b91dc017742c6043ad2834a3053c3d689b2cf4e55"
      },
      "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.json",
+      "sha256": "f9aa4bc6117cfd4f7f72e524748506b4d176ff83ab68e7c9a0793676d29fc78d"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-da.txt",
+      "sha256": "83e6958c4e46030218d94a06474612f84dcafb90ebd8fa70bd9e6944a850bbf7"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.apple",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.apple.json",
+      "sha256": "732552a38a2755dc770d1f747dcf66e0e1fbb4e05e0d09790b52f2fd61b1a9ad"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-da.txt",
+      "sha256": "83e6958c4e46030218d94a06474612f84dcafb90ebd8fa70bd9e6944a850bbf7"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.universal",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.universal.json",
+      "sha256": "3effe9844337f5852333806c77a84869a3e1c54caff5034395cb0ee816ba4aa2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-da.txt",
+      "sha256": "83e6958c4e46030218d94a06474612f84dcafb90ebd8fa70bd9e6944a850bbf7"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.universal.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptLanguage",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingTranscriptLanguage.json",
+      "sha256": "3922024102a1f1fa3e09a7c79a14ed6ebe8ce6a8816ac759cb2287d083aac703"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-da.txt",
+      "sha256": "83e6958c4e46030218d94a06474612f84dcafb90ebd8fa70bd9e6944a850bbf7"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "de",
-   "contentSHA256": "c98a8a64bc1636cbe2f86ffd33e30715d9daad118f21e257b9c15ae98a4c0489",
+   "contentSHA256": "cfd5e5bf8c4fef4c30312521d981ecebc87570cca2ad59c00a88a190a9559ada",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2244,13 +2568,105 @@
       "path": "additions/meetingTurnsOffDictation/council-de.json",
       "sha256": "548324ced88ca04641ffd6b30a07184b0429fdbfa5433eb5be04f1bc50ced70b"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.json",
+      "sha256": "f9aa4bc6117cfd4f7f72e524748506b4d176ff83ab68e7c9a0793676d29fc78d"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-de.txt",
+      "sha256": "49965595785cd0fe88fd0e5b819b2d80f89e0a64183c0945cbdfa1c7b371945e"
+     },
+     "disposition": "merged from the German council (additions/meetingLiveWords.json): kept the reviewed block and added GPT's phrase with Mitschrift (the everyday German word for a running transcript); kept the hyphen in Live-Transkript, the row's own German title (both reviewers removed it reading the brief's no-dashes rule, which is about dashes, not compound hyphens)",
+     "council": {
+      "path": "additions/meetingLiveWords/council-de.json",
+      "sha256": "80d93477534418f3654b410327685c960d9a2b7c59c919d254ce83083bd32a34"
+     }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.apple",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.apple.json",
+      "sha256": "732552a38a2755dc770d1f747dcf66e0e1fbb4e05e0d09790b52f2fd61b1a9ad"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-de.txt",
+      "sha256": "49965595785cd0fe88fd0e5b819b2d80f89e0a64183c0945cbdfa1c7b371945e"
+     },
+     "disposition": "merged from the German council (additions/meetingLiveWords.apple.json): Gemini's du-form imperative verwende and the row's term Live-Transkript (hyphen kept as above); GPT's Mitschrift wording not used here so the choice names the row",
+     "council": {
+      "path": "additions/meetingLiveWords/council-de.json",
+      "sha256": "80d93477534418f3654b410327685c960d9a2b7c59c919d254ce83083bd32a34"
+     }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.universal",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.universal.json",
+      "sha256": "3effe9844337f5852333806c77a84869a3e1c54caff5034395cb0ee816ba4aa2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-de.txt",
+      "sha256": "49965595785cd0fe88fd0e5b819b2d80f89e0a64183c0945cbdfa1c7b371945e"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.universal.json); the council's only change was removing the Live-Transkript hyphen, not adopted",
+     "council": {
+      "path": "additions/meetingLiveWords/council-de.json",
+      "sha256": "80d93477534418f3654b410327685c960d9a2b7c59c919d254ce83083bd32a34"
+     }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptLanguage",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingTranscriptLanguage.json",
+      "sha256": "3922024102a1f1fa3e09a7c79a14ed6ebe8ce6a8816ac759cb2287d083aac703"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-de.txt",
+      "sha256": "49965595785cd0fe88fd0e5b819b2d80f89e0a64183c0945cbdfa1c7b371945e"
+     },
+     "disposition": "adopted as returned by the review; GPT and Gemini both answered OK (additions/meetingTranscriptLanguage.json)",
+     "council": {
+      "path": "additions/meetingLiveWords/council-de.json",
+      "sha256": "80d93477534418f3654b410327685c960d9a2b7c59c919d254ce83083bd32a34"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "el",
-   "contentSHA256": "b2bd7a77b37485463b27fa8939ea93c21e54b0642e4981f65804852cee8c180f",
+   "contentSHA256": "6cf1f71c1159df01434fc50a84c0c10f5f066aff9cb3415e60d603335f83d5b5",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2617,13 +3033,89 @@
       "sha256": "29cff0c4b4e873f9178b7792543856e16652c82f49d87055d955d697723a031c"
      },
      "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.json",
+      "sha256": "f9aa4bc6117cfd4f7f72e524748506b4d176ff83ab68e7c9a0793676d29fc78d"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-el.txt",
+      "sha256": "079581762bf0227c7164e026ff99c9c84c39b3c0f29eace2b4880a501305a583"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.apple",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.apple.json",
+      "sha256": "732552a38a2755dc770d1f747dcf66e0e1fbb4e05e0d09790b52f2fd61b1a9ad"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-el.txt",
+      "sha256": "079581762bf0227c7164e026ff99c9c84c39b3c0f29eace2b4880a501305a583"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.universal",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.universal.json",
+      "sha256": "3effe9844337f5852333806c77a84869a3e1c54caff5034395cb0ee816ba4aa2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-el.txt",
+      "sha256": "079581762bf0227c7164e026ff99c9c84c39b3c0f29eace2b4880a501305a583"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.universal.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptLanguage",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingTranscriptLanguage.json",
+      "sha256": "3922024102a1f1fa3e09a7c79a14ed6ebe8ce6a8816ac759cb2287d083aac703"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-el.txt",
+      "sha256": "079581762bf0227c7164e026ff99c9c84c39b3c0f29eace2b4880a501305a583"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "en",
-   "contentSHA256": "97a9cd2672317eead50e762ba9336f07c9cc0ae08ce7295d35bfe2fe810731ef",
+   "contentSHA256": "0f8d87ee7b19d9d46a68109e5d84967703653fbc59ccfd79acf9175d8cd02074",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2996,13 +3488,89 @@
       "sha256": "ede6409ae43e8f22e89620d3c90a8ef3284311f59e10db1a03dd7705845f0261"
      },
      "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.json",
+      "sha256": "f9aa4bc6117cfd4f7f72e524748506b4d176ff83ab68e7c9a0793676d29fc78d"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-en.txt",
+      "sha256": "1885bf108128777b0a475bf232c621a34326629221676b534e508e005990bb9f"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.apple",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.apple.json",
+      "sha256": "732552a38a2755dc770d1f747dcf66e0e1fbb4e05e0d09790b52f2fd61b1a9ad"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-en.txt",
+      "sha256": "1885bf108128777b0a475bf232c621a34326629221676b534e508e005990bb9f"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.universal",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.universal.json",
+      "sha256": "3effe9844337f5852333806c77a84869a3e1c54caff5034395cb0ee816ba4aa2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-en.txt",
+      "sha256": "1885bf108128777b0a475bf232c621a34326629221676b534e508e005990bb9f"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.universal.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptLanguage",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingTranscriptLanguage.json",
+      "sha256": "3922024102a1f1fa3e09a7c79a14ed6ebe8ce6a8816ac759cb2287d083aac703"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-en.txt",
+      "sha256": "1885bf108128777b0a475bf232c621a34326629221676b534e508e005990bb9f"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "es",
-   "contentSHA256": "f1e278fe1303d624e3a8cfa520f8683b8439a1fc9f95cdbc3e1f9d2361b2d99f",
+   "contentSHA256": "0f082fee2f7409ef9cbd4e7da113b079d2ffe80925578be441afa288943b7213",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3369,13 +3937,89 @@
       "sha256": "fc9b706cde70a87a904ba779619b14719a0de7aca46bb57c70f9c13055cb1611"
      },
      "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.json",
+      "sha256": "f9aa4bc6117cfd4f7f72e524748506b4d176ff83ab68e7c9a0793676d29fc78d"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-es.txt",
+      "sha256": "811da231982050fae6327dcdb2020ca0a58ab6835bd5a600edb9eb75db82583e"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.apple",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.apple.json",
+      "sha256": "732552a38a2755dc770d1f747dcf66e0e1fbb4e05e0d09790b52f2fd61b1a9ad"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-es.txt",
+      "sha256": "811da231982050fae6327dcdb2020ca0a58ab6835bd5a600edb9eb75db82583e"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.universal",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.universal.json",
+      "sha256": "3effe9844337f5852333806c77a84869a3e1c54caff5034395cb0ee816ba4aa2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-es.txt",
+      "sha256": "811da231982050fae6327dcdb2020ca0a58ab6835bd5a600edb9eb75db82583e"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.universal.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptLanguage",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingTranscriptLanguage.json",
+      "sha256": "3922024102a1f1fa3e09a7c79a14ed6ebe8ce6a8816ac759cb2287d083aac703"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-es.txt",
+      "sha256": "811da231982050fae6327dcdb2020ca0a58ab6835bd5a600edb9eb75db82583e"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "et",
-   "contentSHA256": "9840cfc49940030fb3e63b26986ed95e48ea8754349ae6fbbe1f002477a99f53",
+   "contentSHA256": "4c71685a21f81a046d940fd4dcaad3932c005d12b59259a7b16fca267ed275ac",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3733,13 +4377,89 @@
       "sha256": "233038626e9815b409ae03e09354b5cb049a2a1038fdb887b63894e29bbbd1d6"
      },
      "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.json",
+      "sha256": "f9aa4bc6117cfd4f7f72e524748506b4d176ff83ab68e7c9a0793676d29fc78d"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-et.txt",
+      "sha256": "b7450b8bc6587651673916b858beaf2111b666406d9bd1943e0726bfbec3cd95"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.apple",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.apple.json",
+      "sha256": "732552a38a2755dc770d1f747dcf66e0e1fbb4e05e0d09790b52f2fd61b1a9ad"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-et.txt",
+      "sha256": "b7450b8bc6587651673916b858beaf2111b666406d9bd1943e0726bfbec3cd95"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.universal",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.universal.json",
+      "sha256": "3effe9844337f5852333806c77a84869a3e1c54caff5034395cb0ee816ba4aa2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-et.txt",
+      "sha256": "b7450b8bc6587651673916b858beaf2111b666406d9bd1943e0726bfbec3cd95"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.universal.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptLanguage",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingTranscriptLanguage.json",
+      "sha256": "3922024102a1f1fa3e09a7c79a14ed6ebe8ce6a8816ac759cb2287d083aac703"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-et.txt",
+      "sha256": "b7450b8bc6587651673916b858beaf2111b666406d9bd1943e0726bfbec3cd95"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fi",
-   "contentSHA256": "126abff73a7adcbe25d577a975cd443372bed530622847858d060ee95c0ea920",
+   "contentSHA256": "f8e5602642da8234cd68d6adac33fab81b5d98442afc81ebf71a9cb1744c2307",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4097,13 +4817,89 @@
       "sha256": "050bf38dc9c75d74ab2f41c9e00e70a1b81f13a7f187fd4909c7b98db88278bb"
      },
      "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.json",
+      "sha256": "f9aa4bc6117cfd4f7f72e524748506b4d176ff83ab68e7c9a0793676d29fc78d"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-fi.txt",
+      "sha256": "3e0f2c1735c5498f92da445d104c8201596784a76da192e9f56b176f9ad2c23b"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.apple",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.apple.json",
+      "sha256": "732552a38a2755dc770d1f747dcf66e0e1fbb4e05e0d09790b52f2fd61b1a9ad"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-fi.txt",
+      "sha256": "3e0f2c1735c5498f92da445d104c8201596784a76da192e9f56b176f9ad2c23b"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.universal",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.universal.json",
+      "sha256": "3effe9844337f5852333806c77a84869a3e1c54caff5034395cb0ee816ba4aa2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-fi.txt",
+      "sha256": "3e0f2c1735c5498f92da445d104c8201596784a76da192e9f56b176f9ad2c23b"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.universal.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptLanguage",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingTranscriptLanguage.json",
+      "sha256": "3922024102a1f1fa3e09a7c79a14ed6ebe8ce6a8816ac759cb2287d083aac703"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-fi.txt",
+      "sha256": "3e0f2c1735c5498f92da445d104c8201596784a76da192e9f56b176f9ad2c23b"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fr",
-   "contentSHA256": "991650dceb7e179b71f855af8a27df32b0c30b8dde0e730c43a6fc36512a955e",
+   "contentSHA256": "16cafca5f7fe8f5bc231ed83375921060ec2514ba444baef60535cdf6ac2a159",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4461,13 +5257,89 @@
       "sha256": "68d7bdb7a3e6a318349b37137ef7a858764c5258cf54a796402c674f574ec123"
      },
      "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.json",
+      "sha256": "f9aa4bc6117cfd4f7f72e524748506b4d176ff83ab68e7c9a0793676d29fc78d"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-fr.txt",
+      "sha256": "a8726c6af132db48edd39be9fa3ec81329ff58e6f77ce6e6d378e995585f2012"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.apple",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.apple.json",
+      "sha256": "732552a38a2755dc770d1f747dcf66e0e1fbb4e05e0d09790b52f2fd61b1a9ad"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-fr.txt",
+      "sha256": "a8726c6af132db48edd39be9fa3ec81329ff58e6f77ce6e6d378e995585f2012"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.universal",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.universal.json",
+      "sha256": "3effe9844337f5852333806c77a84869a3e1c54caff5034395cb0ee816ba4aa2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-fr.txt",
+      "sha256": "a8726c6af132db48edd39be9fa3ec81329ff58e6f77ce6e6d378e995585f2012"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.universal.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptLanguage",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingTranscriptLanguage.json",
+      "sha256": "3922024102a1f1fa3e09a7c79a14ed6ebe8ce6a8816ac759cb2287d083aac703"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-fr.txt",
+      "sha256": "a8726c6af132db48edd39be9fa3ec81329ff58e6f77ce6e6d378e995585f2012"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hi",
-   "contentSHA256": "8f973fb35029db8b99b5beb2a4c4601286b8918d9edcf4dbc3117afcb01fefa0",
+   "contentSHA256": "f2c2df1332b18ff7dd414ea9411805ddc3217fa609166da63034225d171099d2",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4825,13 +5697,89 @@
       "sha256": "779f3b7d1b3c9d502e61c94e78629e3a1c211f451cb61b38538ea4eaa44bf077"
      },
      "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.json",
+      "sha256": "f9aa4bc6117cfd4f7f72e524748506b4d176ff83ab68e7c9a0793676d29fc78d"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-hi.txt",
+      "sha256": "6e4ff888f5a7f6357ed6adc9a392dbcd012ffc97d0697a40adeb3e04d055b4a6"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.apple",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.apple.json",
+      "sha256": "732552a38a2755dc770d1f747dcf66e0e1fbb4e05e0d09790b52f2fd61b1a9ad"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-hi.txt",
+      "sha256": "6e4ff888f5a7f6357ed6adc9a392dbcd012ffc97d0697a40adeb3e04d055b4a6"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.universal",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.universal.json",
+      "sha256": "3effe9844337f5852333806c77a84869a3e1c54caff5034395cb0ee816ba4aa2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-hi.txt",
+      "sha256": "6e4ff888f5a7f6357ed6adc9a392dbcd012ffc97d0697a40adeb3e04d055b4a6"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.universal.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptLanguage",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingTranscriptLanguage.json",
+      "sha256": "3922024102a1f1fa3e09a7c79a14ed6ebe8ce6a8816ac759cb2287d083aac703"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-hi.txt",
+      "sha256": "6e4ff888f5a7f6357ed6adc9a392dbcd012ffc97d0697a40adeb3e04d055b4a6"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hr",
-   "contentSHA256": "66e878ebe08a241507abbfa1b167287a18bc2030f33160fa9aaaab20c4934e3d",
+   "contentSHA256": "9366660491a786da7fb622a3b9d3db54f8dbbdb8b219216f8fc2d093f8aaf2b6",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5189,13 +6137,89 @@
       "sha256": "8ab1ee49c3436d4bbef9d85d1a864ba9563b1579cf1dcbb8cc76f98ff063727d"
      },
      "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.json",
+      "sha256": "f9aa4bc6117cfd4f7f72e524748506b4d176ff83ab68e7c9a0793676d29fc78d"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-hr.txt",
+      "sha256": "83c0b0597c2e06f8adf2c1c45d8912baed44c70615b56af0acc0e9dd829ad229"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.apple",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.apple.json",
+      "sha256": "732552a38a2755dc770d1f747dcf66e0e1fbb4e05e0d09790b52f2fd61b1a9ad"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-hr.txt",
+      "sha256": "83c0b0597c2e06f8adf2c1c45d8912baed44c70615b56af0acc0e9dd829ad229"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.universal",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.universal.json",
+      "sha256": "3effe9844337f5852333806c77a84869a3e1c54caff5034395cb0ee816ba4aa2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-hr.txt",
+      "sha256": "83c0b0597c2e06f8adf2c1c45d8912baed44c70615b56af0acc0e9dd829ad229"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.universal.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptLanguage",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingTranscriptLanguage.json",
+      "sha256": "3922024102a1f1fa3e09a7c79a14ed6ebe8ce6a8816ac759cb2287d083aac703"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-hr.txt",
+      "sha256": "83c0b0597c2e06f8adf2c1c45d8912baed44c70615b56af0acc0e9dd829ad229"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hu",
-   "contentSHA256": "d8f89c02cdf6f19a99bedee43ccf066d6002ecc48a6dc28eacc0e7a10737f5a3",
+   "contentSHA256": "7bf7c8e70058e4c5cdff668dc83488187191d09b60b7ff36f2a0f1f2adee6a31",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5553,13 +6577,89 @@
       "sha256": "402c9f0ee35927d0c40df18fe854e53daf1cb9bc1a7ff8a8b30a88ab20c57b20"
      },
      "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.json",
+      "sha256": "f9aa4bc6117cfd4f7f72e524748506b4d176ff83ab68e7c9a0793676d29fc78d"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-hu.txt",
+      "sha256": "0417d5679db872faaaa9f2cfabdc7aab9920acb325bdd7b763c7f1bccf360f73"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.apple",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.apple.json",
+      "sha256": "732552a38a2755dc770d1f747dcf66e0e1fbb4e05e0d09790b52f2fd61b1a9ad"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-hu.txt",
+      "sha256": "0417d5679db872faaaa9f2cfabdc7aab9920acb325bdd7b763c7f1bccf360f73"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.universal",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.universal.json",
+      "sha256": "3effe9844337f5852333806c77a84869a3e1c54caff5034395cb0ee816ba4aa2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-hu.txt",
+      "sha256": "0417d5679db872faaaa9f2cfabdc7aab9920acb325bdd7b763c7f1bccf360f73"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.universal.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptLanguage",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingTranscriptLanguage.json",
+      "sha256": "3922024102a1f1fa3e09a7c79a14ed6ebe8ce6a8816ac759cb2287d083aac703"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-hu.txt",
+      "sha256": "0417d5679db872faaaa9f2cfabdc7aab9920acb325bdd7b763c7f1bccf360f73"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "it",
-   "contentSHA256": "ba0e5acbbeda5a7ff6603b9aa8cf61988bdef4c4d4c42bc54a1a919cd9922a78",
+   "contentSHA256": "d83ea89ef97d0f8a18804bcd81d4adba510958e3c8e9b37b4f890566c9ea60ac",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5926,13 +7026,89 @@
       "sha256": "e97517c85a3681febf6723714e5218142fa8b93629a0027d3e0b9e78498836c4"
      },
      "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.json",
+      "sha256": "f9aa4bc6117cfd4f7f72e524748506b4d176ff83ab68e7c9a0793676d29fc78d"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-it.txt",
+      "sha256": "c417cb5deeb7e197e6c44e9a54161c264cb8af48fb4edfa4427edfa03253bfe2"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.apple",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.apple.json",
+      "sha256": "732552a38a2755dc770d1f747dcf66e0e1fbb4e05e0d09790b52f2fd61b1a9ad"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-it.txt",
+      "sha256": "c417cb5deeb7e197e6c44e9a54161c264cb8af48fb4edfa4427edfa03253bfe2"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.universal",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.universal.json",
+      "sha256": "3effe9844337f5852333806c77a84869a3e1c54caff5034395cb0ee816ba4aa2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-it.txt",
+      "sha256": "c417cb5deeb7e197e6c44e9a54161c264cb8af48fb4edfa4427edfa03253bfe2"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.universal.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptLanguage",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingTranscriptLanguage.json",
+      "sha256": "3922024102a1f1fa3e09a7c79a14ed6ebe8ce6a8816ac759cb2287d083aac703"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-it.txt",
+      "sha256": "c417cb5deeb7e197e6c44e9a54161c264cb8af48fb4edfa4427edfa03253bfe2"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ja",
-   "contentSHA256": "41fce4e67e8dbedefe385b8de2c8fa54032c3883d352de017da3778848690951",
+   "contentSHA256": "6bcd5452cc8da151f23b768a274e96d98ae7e337d4d889c317f221b28b70658c",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -6290,13 +7466,89 @@
       "sha256": "7302f2724d2dea77c419d854dedaa83cacf2ae11e1f458165997be3a5fcad94e"
      },
      "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.json",
+      "sha256": "f9aa4bc6117cfd4f7f72e524748506b4d176ff83ab68e7c9a0793676d29fc78d"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-ja.txt",
+      "sha256": "5c8a3e0b0589a345d37ece43012378f910e8ea434376913cbbb39a38110cf47a"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.apple",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.apple.json",
+      "sha256": "732552a38a2755dc770d1f747dcf66e0e1fbb4e05e0d09790b52f2fd61b1a9ad"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-ja.txt",
+      "sha256": "5c8a3e0b0589a345d37ece43012378f910e8ea434376913cbbb39a38110cf47a"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.universal",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.universal.json",
+      "sha256": "3effe9844337f5852333806c77a84869a3e1c54caff5034395cb0ee816ba4aa2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-ja.txt",
+      "sha256": "5c8a3e0b0589a345d37ece43012378f910e8ea434376913cbbb39a38110cf47a"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.universal.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptLanguage",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingTranscriptLanguage.json",
+      "sha256": "3922024102a1f1fa3e09a7c79a14ed6ebe8ce6a8816ac759cb2287d083aac703"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-ja.txt",
+      "sha256": "5c8a3e0b0589a345d37ece43012378f910e8ea434376913cbbb39a38110cf47a"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ko",
-   "contentSHA256": "ff881c77523693ff10661608bab713993473884256eb7cd04a4d31b2a5b36108",
+   "contentSHA256": "d455e2e7add67c7b6f63af4a5fab9c533201b6a0d803903a2cfb87a4b3af7dd9",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -6654,13 +7906,89 @@
       "sha256": "64168d2e126d13073da0767470723d7e0a490f432e07cec896e4ad7db81c9aa2"
      },
      "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.json",
+      "sha256": "f9aa4bc6117cfd4f7f72e524748506b4d176ff83ab68e7c9a0793676d29fc78d"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-ko.txt",
+      "sha256": "1ff75464d7aa8d3aff1b7094629fce0e703e8394c9ddb9629f1c0f565a607bf2"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.apple",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.apple.json",
+      "sha256": "732552a38a2755dc770d1f747dcf66e0e1fbb4e05e0d09790b52f2fd61b1a9ad"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-ko.txt",
+      "sha256": "1ff75464d7aa8d3aff1b7094629fce0e703e8394c9ddb9629f1c0f565a607bf2"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.universal",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.universal.json",
+      "sha256": "3effe9844337f5852333806c77a84869a3e1c54caff5034395cb0ee816ba4aa2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-ko.txt",
+      "sha256": "1ff75464d7aa8d3aff1b7094629fce0e703e8394c9ddb9629f1c0f565a607bf2"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.universal.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptLanguage",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingTranscriptLanguage.json",
+      "sha256": "3922024102a1f1fa3e09a7c79a14ed6ebe8ce6a8816ac759cb2287d083aac703"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-ko.txt",
+      "sha256": "1ff75464d7aa8d3aff1b7094629fce0e703e8394c9ddb9629f1c0f565a607bf2"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lt",
-   "contentSHA256": "f269b0632fd8df6d21cc096cd87ae490098ce24a5c3a30ea5eabe83c8782311e",
+   "contentSHA256": "703e99fb7954683cef5a8c70c1c46d1221bf5d33f307c6fa58a52dbb83655123",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -7027,13 +8355,89 @@
       "sha256": "3bcb3dfbb4a8b85767068dc200364502f0f62515c4823592fa0ecc1ec1332f62"
      },
      "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.json",
+      "sha256": "f9aa4bc6117cfd4f7f72e524748506b4d176ff83ab68e7c9a0793676d29fc78d"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-lt.txt",
+      "sha256": "ad3ba698875675998f60113306c4b1d8aecb5afe9545e48ea04740ed982fa525"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.apple",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.apple.json",
+      "sha256": "732552a38a2755dc770d1f747dcf66e0e1fbb4e05e0d09790b52f2fd61b1a9ad"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-lt.txt",
+      "sha256": "ad3ba698875675998f60113306c4b1d8aecb5afe9545e48ea04740ed982fa525"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.universal",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.universal.json",
+      "sha256": "3effe9844337f5852333806c77a84869a3e1c54caff5034395cb0ee816ba4aa2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-lt.txt",
+      "sha256": "ad3ba698875675998f60113306c4b1d8aecb5afe9545e48ea04740ed982fa525"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.universal.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptLanguage",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingTranscriptLanguage.json",
+      "sha256": "3922024102a1f1fa3e09a7c79a14ed6ebe8ce6a8816ac759cb2287d083aac703"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-lt.txt",
+      "sha256": "ad3ba698875675998f60113306c4b1d8aecb5afe9545e48ea04740ed982fa525"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lv",
-   "contentSHA256": "9d45db2af88090630a35d56c1e32fb4526751a6f684ecdac194bcd629f9df18b",
+   "contentSHA256": "add423eb58d6d208ff3e4d3213f60db68a5655b42f500c07081969d43ed9dfa4",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -7391,13 +8795,89 @@
       "sha256": "33a2e210723793ecc8b0b62c95f534a8ec8741c3c8c5d053dfd6b7546d33e467"
      },
      "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.json",
+      "sha256": "f9aa4bc6117cfd4f7f72e524748506b4d176ff83ab68e7c9a0793676d29fc78d"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-lv.txt",
+      "sha256": "52448de2517feb76e7445d6932060e3174b3cd1051e94d1bc4e33b0a69ea2339"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.apple",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.apple.json",
+      "sha256": "732552a38a2755dc770d1f747dcf66e0e1fbb4e05e0d09790b52f2fd61b1a9ad"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-lv.txt",
+      "sha256": "52448de2517feb76e7445d6932060e3174b3cd1051e94d1bc4e33b0a69ea2339"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.universal",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.universal.json",
+      "sha256": "3effe9844337f5852333806c77a84869a3e1c54caff5034395cb0ee816ba4aa2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-lv.txt",
+      "sha256": "52448de2517feb76e7445d6932060e3174b3cd1051e94d1bc4e33b0a69ea2339"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.universal.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptLanguage",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingTranscriptLanguage.json",
+      "sha256": "3922024102a1f1fa3e09a7c79a14ed6ebe8ce6a8816ac759cb2287d083aac703"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-lv.txt",
+      "sha256": "52448de2517feb76e7445d6932060e3174b3cd1051e94d1bc4e33b0a69ea2339"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "mt",
-   "contentSHA256": "2d1cd5fcf6cca54c2510045478c976a5eb211917308c2d380030235107d714e3",
+   "contentSHA256": "19ddcdafe27c38a5f4590875fffb67453396cafd361f6bf4587f1282c4e52673",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -7764,13 +9244,89 @@
       "sha256": "ef0fef9f33102551706c55e6fa5dbcb6ce4ef1e9800624be06abca5f400dec48"
      },
      "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.json",
+      "sha256": "f9aa4bc6117cfd4f7f72e524748506b4d176ff83ab68e7c9a0793676d29fc78d"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-mt.txt",
+      "sha256": "94b5eb09031fb26bddfc977b02b9c100568e35be3d56f2c22d6dce746fd02d3b"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.apple",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.apple.json",
+      "sha256": "732552a38a2755dc770d1f747dcf66e0e1fbb4e05e0d09790b52f2fd61b1a9ad"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-mt.txt",
+      "sha256": "94b5eb09031fb26bddfc977b02b9c100568e35be3d56f2c22d6dce746fd02d3b"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.universal",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.universal.json",
+      "sha256": "3effe9844337f5852333806c77a84869a3e1c54caff5034395cb0ee816ba4aa2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-mt.txt",
+      "sha256": "94b5eb09031fb26bddfc977b02b9c100568e35be3d56f2c22d6dce746fd02d3b"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.universal.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptLanguage",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingTranscriptLanguage.json",
+      "sha256": "3922024102a1f1fa3e09a7c79a14ed6ebe8ce6a8816ac759cb2287d083aac703"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-mt.txt",
+      "sha256": "94b5eb09031fb26bddfc977b02b9c100568e35be3d56f2c22d6dce746fd02d3b"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "nl",
-   "contentSHA256": "5a6295fd140b41b9d29d2e9671c213351afb15564374a47de75afb6dd1a0377f",
+   "contentSHA256": "5ee8f9509d45f4d4ea05cf85bd2f3ad415a26088d8fcd0ce4b6dbde341069a08",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -8128,13 +9684,89 @@
       "sha256": "3b8b30666500f5ffd5ea9d7183b4434395d6d36a557f97f3df31045b38f7688f"
      },
      "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.json",
+      "sha256": "f9aa4bc6117cfd4f7f72e524748506b4d176ff83ab68e7c9a0793676d29fc78d"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-nl.txt",
+      "sha256": "715aa4be46b11c1a5209bec4e397641deb8592c1c6d1371ff6eb16e0616c4aff"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.apple",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.apple.json",
+      "sha256": "732552a38a2755dc770d1f747dcf66e0e1fbb4e05e0d09790b52f2fd61b1a9ad"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-nl.txt",
+      "sha256": "715aa4be46b11c1a5209bec4e397641deb8592c1c6d1371ff6eb16e0616c4aff"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.universal",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.universal.json",
+      "sha256": "3effe9844337f5852333806c77a84869a3e1c54caff5034395cb0ee816ba4aa2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-nl.txt",
+      "sha256": "715aa4be46b11c1a5209bec4e397641deb8592c1c6d1371ff6eb16e0616c4aff"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.universal.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptLanguage",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingTranscriptLanguage.json",
+      "sha256": "3922024102a1f1fa3e09a7c79a14ed6ebe8ce6a8816ac759cb2287d083aac703"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-nl.txt",
+      "sha256": "715aa4be46b11c1a5209bec4e397641deb8592c1c6d1371ff6eb16e0616c4aff"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pl",
-   "contentSHA256": "47966e423b491047a8d2b54b251a154148734f89c6fadaffea9e3d068b22c433",
+   "contentSHA256": "9a21e5d9aae71315cf0e368758e762708564e6b6403d24b0c1906eb6ffd8245b",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -8492,13 +10124,89 @@
       "sha256": "30f5d879dba7c232603b6f160740dee88014859b346d9887737cc73b6b89685b"
      },
      "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.json",
+      "sha256": "f9aa4bc6117cfd4f7f72e524748506b4d176ff83ab68e7c9a0793676d29fc78d"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-pl.txt",
+      "sha256": "8bc596a9f500ad0a2e20441b522fd0a6a899dc6c69d64a35c7370dd015f89ea2"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.apple",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.apple.json",
+      "sha256": "732552a38a2755dc770d1f747dcf66e0e1fbb4e05e0d09790b52f2fd61b1a9ad"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-pl.txt",
+      "sha256": "8bc596a9f500ad0a2e20441b522fd0a6a899dc6c69d64a35c7370dd015f89ea2"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.universal",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.universal.json",
+      "sha256": "3effe9844337f5852333806c77a84869a3e1c54caff5034395cb0ee816ba4aa2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-pl.txt",
+      "sha256": "8bc596a9f500ad0a2e20441b522fd0a6a899dc6c69d64a35c7370dd015f89ea2"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.universal.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptLanguage",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingTranscriptLanguage.json",
+      "sha256": "3922024102a1f1fa3e09a7c79a14ed6ebe8ce6a8816ac759cb2287d083aac703"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-pl.txt",
+      "sha256": "8bc596a9f500ad0a2e20441b522fd0a6a899dc6c69d64a35c7370dd015f89ea2"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pt",
-   "contentSHA256": "c37b944e02d11e82aee3aae26cb79d18ac6887c00299ba256a019af6631c5842",
+   "contentSHA256": "d6a1444108e6af54e6d1a37ef6b245a42097c27254dd5d206c723994424f20d2",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -8864,13 +10572,89 @@
       "sha256": "776bf44dc6c015afe390c77d40c146cd8df04bf82a623c3659f477960e15160e"
      },
      "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.json",
+      "sha256": "f9aa4bc6117cfd4f7f72e524748506b4d176ff83ab68e7c9a0793676d29fc78d"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-pt.txt",
+      "sha256": "b9bd0b85b0a96f02f433c28eded3ea4d7c1ff296b4f32316fbbe44830846d223"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.apple",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.apple.json",
+      "sha256": "732552a38a2755dc770d1f747dcf66e0e1fbb4e05e0d09790b52f2fd61b1a9ad"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-pt.txt",
+      "sha256": "b9bd0b85b0a96f02f433c28eded3ea4d7c1ff296b4f32316fbbe44830846d223"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.universal",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.universal.json",
+      "sha256": "3effe9844337f5852333806c77a84869a3e1c54caff5034395cb0ee816ba4aa2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-pt.txt",
+      "sha256": "b9bd0b85b0a96f02f433c28eded3ea4d7c1ff296b4f32316fbbe44830846d223"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.universal.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptLanguage",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingTranscriptLanguage.json",
+      "sha256": "3922024102a1f1fa3e09a7c79a14ed6ebe8ce6a8816ac759cb2287d083aac703"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-pt.txt",
+      "sha256": "b9bd0b85b0a96f02f433c28eded3ea4d7c1ff296b4f32316fbbe44830846d223"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ro",
-   "contentSHA256": "a5b44d6efb907bc2dc49c7e7bb32a3dc989dc95e7e333a56093789e4b0dfe64d",
+   "contentSHA256": "55f3fc049cb4674e967a62221d2371470f789852852f00573dd7b5b79fe81d46",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -9228,13 +11012,89 @@
       "sha256": "52ab6babbb7a38038a5cdaf85f285e35f94ffb9d6ba8b2da64b4e650aa91047b"
      },
      "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.json",
+      "sha256": "f9aa4bc6117cfd4f7f72e524748506b4d176ff83ab68e7c9a0793676d29fc78d"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-ro.txt",
+      "sha256": "e04a4d1627439ba24b4c187a85278c4c8d333b1d31a951775a4c9832d7dfa38f"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.apple",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.apple.json",
+      "sha256": "732552a38a2755dc770d1f747dcf66e0e1fbb4e05e0d09790b52f2fd61b1a9ad"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-ro.txt",
+      "sha256": "e04a4d1627439ba24b4c187a85278c4c8d333b1d31a951775a4c9832d7dfa38f"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.universal",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.universal.json",
+      "sha256": "3effe9844337f5852333806c77a84869a3e1c54caff5034395cb0ee816ba4aa2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-ro.txt",
+      "sha256": "e04a4d1627439ba24b4c187a85278c4c8d333b1d31a951775a4c9832d7dfa38f"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.universal.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptLanguage",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingTranscriptLanguage.json",
+      "sha256": "3922024102a1f1fa3e09a7c79a14ed6ebe8ce6a8816ac759cb2287d083aac703"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-ro.txt",
+      "sha256": "e04a4d1627439ba24b4c187a85278c4c8d333b1d31a951775a4c9832d7dfa38f"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ru",
-   "contentSHA256": "9b4ef892dd604a2d6714bdb4014f0a87b34a4c634a8f748a555ca64f89f182b0",
+   "contentSHA256": "c53ec10025c2ae71e3d909255d52d1d1837ef589e8a50ccdb0f3f141c8ed4ed4",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -9592,13 +11452,89 @@
       "sha256": "16eacf02bcb0a9119ecf07a1266ca8992b600502513ba2a88ad5810e13bd7fb8"
      },
      "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.json",
+      "sha256": "f9aa4bc6117cfd4f7f72e524748506b4d176ff83ab68e7c9a0793676d29fc78d"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-ru.txt",
+      "sha256": "09ab9342516d18480a477703f2f158b1b34ddac013739b674dfafe34a9d75884"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.apple",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.apple.json",
+      "sha256": "732552a38a2755dc770d1f747dcf66e0e1fbb4e05e0d09790b52f2fd61b1a9ad"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-ru.txt",
+      "sha256": "09ab9342516d18480a477703f2f158b1b34ddac013739b674dfafe34a9d75884"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.universal",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.universal.json",
+      "sha256": "3effe9844337f5852333806c77a84869a3e1c54caff5034395cb0ee816ba4aa2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-ru.txt",
+      "sha256": "09ab9342516d18480a477703f2f158b1b34ddac013739b674dfafe34a9d75884"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.universal.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptLanguage",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingTranscriptLanguage.json",
+      "sha256": "3922024102a1f1fa3e09a7c79a14ed6ebe8ce6a8816ac759cb2287d083aac703"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-ru.txt",
+      "sha256": "09ab9342516d18480a477703f2f158b1b34ddac013739b674dfafe34a9d75884"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sk",
-   "contentSHA256": "2f64d3232ce23975b223770a5206588b26e4763577a1eb213bb2314c6f6f1c12",
+   "contentSHA256": "35238aa5ccb31ddfca4b55b9de1a14a29eb6cf83e14dc35facb851190021c304",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -9956,13 +11892,89 @@
       "sha256": "706fab30f71d03ed8c9342844f45e3de91d059cba4e907358172da353b102e07"
      },
      "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.json",
+      "sha256": "f9aa4bc6117cfd4f7f72e524748506b4d176ff83ab68e7c9a0793676d29fc78d"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-sk.txt",
+      "sha256": "ce71fbbe64d8a1923ddee84a3744f922c962f05c495be341390d9071f19775f2"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.apple",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.apple.json",
+      "sha256": "732552a38a2755dc770d1f747dcf66e0e1fbb4e05e0d09790b52f2fd61b1a9ad"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-sk.txt",
+      "sha256": "ce71fbbe64d8a1923ddee84a3744f922c962f05c495be341390d9071f19775f2"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.universal",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.universal.json",
+      "sha256": "3effe9844337f5852333806c77a84869a3e1c54caff5034395cb0ee816ba4aa2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-sk.txt",
+      "sha256": "ce71fbbe64d8a1923ddee84a3744f922c962f05c495be341390d9071f19775f2"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.universal.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptLanguage",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingTranscriptLanguage.json",
+      "sha256": "3922024102a1f1fa3e09a7c79a14ed6ebe8ce6a8816ac759cb2287d083aac703"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-sk.txt",
+      "sha256": "ce71fbbe64d8a1923ddee84a3744f922c962f05c495be341390d9071f19775f2"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sl",
-   "contentSHA256": "fed48bbb97cc51495aa48c4fd0da3669400c15716ce815ad6b2e2359d3f26697",
+   "contentSHA256": "fb2793d637a055d8daf6ccd4f2e9fdaa5148872e04eb870ad7b3b9ec17c4dba3",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -10329,13 +12341,89 @@
       "sha256": "60495063981a0f3a8049e3fdfbc784dfb18171ed0207c74716cface6750d2c67"
      },
      "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.json",
+      "sha256": "f9aa4bc6117cfd4f7f72e524748506b4d176ff83ab68e7c9a0793676d29fc78d"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-sl.txt",
+      "sha256": "a541adc4f96a939fe8de596794617b022c047df17e6c951fc523d4b7ca57bfbe"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.apple",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.apple.json",
+      "sha256": "732552a38a2755dc770d1f747dcf66e0e1fbb4e05e0d09790b52f2fd61b1a9ad"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-sl.txt",
+      "sha256": "a541adc4f96a939fe8de596794617b022c047df17e6c951fc523d4b7ca57bfbe"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.universal",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.universal.json",
+      "sha256": "3effe9844337f5852333806c77a84869a3e1c54caff5034395cb0ee816ba4aa2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-sl.txt",
+      "sha256": "a541adc4f96a939fe8de596794617b022c047df17e6c951fc523d4b7ca57bfbe"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.universal.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptLanguage",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingTranscriptLanguage.json",
+      "sha256": "3922024102a1f1fa3e09a7c79a14ed6ebe8ce6a8816ac759cb2287d083aac703"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-sl.txt",
+      "sha256": "a541adc4f96a939fe8de596794617b022c047df17e6c951fc523d4b7ca57bfbe"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sv",
-   "contentSHA256": "bce4b3d5deb96ad4caba8e966eb69f95080833da239ab9b726174717f6315086",
+   "contentSHA256": "e649a3c062b871dece46d82ed247235effcd22944b6e93bad25e4ffdb50ee46e",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -10693,13 +12781,89 @@
       "sha256": "6d14792dc07c44d6b89cda0c7e93a9c0473dc9ea2b43a58b48bcff73a23e1cee"
      },
      "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.json",
+      "sha256": "f9aa4bc6117cfd4f7f72e524748506b4d176ff83ab68e7c9a0793676d29fc78d"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-sv.txt",
+      "sha256": "30ff96c9e0f600f9ca9381b1d99352865b271d6877a147aaf5089e048399e73d"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.apple",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.apple.json",
+      "sha256": "732552a38a2755dc770d1f747dcf66e0e1fbb4e05e0d09790b52f2fd61b1a9ad"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-sv.txt",
+      "sha256": "30ff96c9e0f600f9ca9381b1d99352865b271d6877a147aaf5089e048399e73d"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.universal",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.universal.json",
+      "sha256": "3effe9844337f5852333806c77a84869a3e1c54caff5034395cb0ee816ba4aa2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-sv.txt",
+      "sha256": "30ff96c9e0f600f9ca9381b1d99352865b271d6877a147aaf5089e048399e73d"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.universal.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptLanguage",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingTranscriptLanguage.json",
+      "sha256": "3922024102a1f1fa3e09a7c79a14ed6ebe8ce6a8816ac759cb2287d083aac703"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-sv.txt",
+      "sha256": "30ff96c9e0f600f9ca9381b1d99352865b271d6877a147aaf5089e048399e73d"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "tr",
-   "contentSHA256": "8d008df795d714a9c000739998d563c8eb6d209b11fdc2074ac32bf065b0cc28",
+   "contentSHA256": "31490a2d12b96fcb8484bf42fd8d9008d1b76041e6657b71ab37cfe9584150e7",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -11057,13 +13221,89 @@
       "sha256": "5f9589a18d65e758eefb729992c933944ebf477dd47d6375bc1900d2254a4c4d"
      },
      "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.json",
+      "sha256": "f9aa4bc6117cfd4f7f72e524748506b4d176ff83ab68e7c9a0793676d29fc78d"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-tr.txt",
+      "sha256": "e6042902a5ae63e900f2a247e2d9de28fb9bc03a30ccd43d38ba4faf15f6b036"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.apple",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.apple.json",
+      "sha256": "732552a38a2755dc770d1f747dcf66e0e1fbb4e05e0d09790b52f2fd61b1a9ad"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-tr.txt",
+      "sha256": "e6042902a5ae63e900f2a247e2d9de28fb9bc03a30ccd43d38ba4faf15f6b036"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.universal",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.universal.json",
+      "sha256": "3effe9844337f5852333806c77a84869a3e1c54caff5034395cb0ee816ba4aa2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-tr.txt",
+      "sha256": "e6042902a5ae63e900f2a247e2d9de28fb9bc03a30ccd43d38ba4faf15f6b036"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.universal.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptLanguage",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingTranscriptLanguage.json",
+      "sha256": "3922024102a1f1fa3e09a7c79a14ed6ebe8ce6a8816ac759cb2287d083aac703"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-tr.txt",
+      "sha256": "e6042902a5ae63e900f2a247e2d9de28fb9bc03a30ccd43d38ba4faf15f6b036"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "uk",
-   "contentSHA256": "38dbe53b0610bfa914bd7ad1f9de5b8cb777ca8c7933c05fd0430ac7974da3f2",
+   "contentSHA256": "a7ce0ffce937ca935e8646e8b976aece73134a3868213ecdbd63f6afa8c5acde",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -11430,13 +13670,89 @@
       "sha256": "d900a45f78535ec379f652916bc7c6cd1dbccc31f8d204b9a15a250d9c8da9a8"
      },
      "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.json",
+      "sha256": "f9aa4bc6117cfd4f7f72e524748506b4d176ff83ab68e7c9a0793676d29fc78d"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-uk.txt",
+      "sha256": "db45301d6bf41e254a99f62b9925543d3980280968b484cd1c6e6e5cdbe0397d"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.apple",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.apple.json",
+      "sha256": "732552a38a2755dc770d1f747dcf66e0e1fbb4e05e0d09790b52f2fd61b1a9ad"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-uk.txt",
+      "sha256": "db45301d6bf41e254a99f62b9925543d3980280968b484cd1c6e6e5cdbe0397d"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.universal",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.universal.json",
+      "sha256": "3effe9844337f5852333806c77a84869a3e1c54caff5034395cb0ee816ba4aa2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-uk.txt",
+      "sha256": "db45301d6bf41e254a99f62b9925543d3980280968b484cd1c6e6e5cdbe0397d"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.universal.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptLanguage",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingTranscriptLanguage.json",
+      "sha256": "3922024102a1f1fa3e09a7c79a14ed6ebe8ce6a8816ac759cb2287d083aac703"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-uk.txt",
+      "sha256": "db45301d6bf41e254a99f62b9925543d3980280968b484cd1c6e6e5cdbe0397d"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "vi",
-   "contentSHA256": "63abdc5327f935395de87705dcc119812143a805f256b4308cc7560c1c23971e",
+   "contentSHA256": "9a29143ced1a05502d3a949fa4bd4923a23b80dbfcde589febe1865abe4ea053",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -11794,13 +14110,89 @@
       "sha256": "4aa4dbe0ffc785ea3884d0c34604ad97408298fc465af42889a6ed4e989045a2"
      },
      "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.json",
+      "sha256": "f9aa4bc6117cfd4f7f72e524748506b4d176ff83ab68e7c9a0793676d29fc78d"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-vi.txt",
+      "sha256": "c4c80731fe0a2c5da52c0294d6762bb742238a01d5bf21d9f0144da109f6c34f"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.apple",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.apple.json",
+      "sha256": "732552a38a2755dc770d1f747dcf66e0e1fbb4e05e0d09790b52f2fd61b1a9ad"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-vi.txt",
+      "sha256": "c4c80731fe0a2c5da52c0294d6762bb742238a01d5bf21d9f0144da109f6c34f"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.universal",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.universal.json",
+      "sha256": "3effe9844337f5852333806c77a84869a3e1c54caff5034395cb0ee816ba4aa2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-vi.txt",
+      "sha256": "c4c80731fe0a2c5da52c0294d6762bb742238a01d5bf21d9f0144da109f6c34f"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.universal.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptLanguage",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingTranscriptLanguage.json",
+      "sha256": "3922024102a1f1fa3e09a7c79a14ed6ebe8ce6a8816ac759cb2287d083aac703"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-vi.txt",
+      "sha256": "c4c80731fe0a2c5da52c0294d6762bb742238a01d5bf21d9f0144da109f6c34f"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "zh",
-   "contentSHA256": "b20dbb8f7680befd2184ab467fa94da63c9fef0366a3ff66b5c438858c362beb",
+   "contentSHA256": "61ba6aef68ae29cd3558d1d0794293388cf5152db1e7ab959ba6ee25d728b9da",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -12158,6 +14550,82 @@
       "sha256": "4852642c19a3463bbd5e5f0621e2ec58e7fc1b6aea8e748046e51ddc2df7cac3"
      },
      "disposition": "adopted as returned by the review (additions/meetingTurnsOffDictation.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.json",
+      "sha256": "f9aa4bc6117cfd4f7f72e524748506b4d176ff83ab68e7c9a0793676d29fc78d"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-zh.txt",
+      "sha256": "d977d505bb0f43565e4daeb54ddb188e21833a5189e5902c0d2ad6afdb87c5f6"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.apple",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.apple.json",
+      "sha256": "732552a38a2755dc770d1f747dcf66e0e1fbb4e05e0d09790b52f2fd61b1a9ad"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-zh.txt",
+      "sha256": "d977d505bb0f43565e4daeb54ddb188e21833a5189e5902c0d2ad6afdb87c5f6"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingLiveWords.universal",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingLiveWords.universal.json",
+      "sha256": "3effe9844337f5852333806c77a84869a3e1c54caff5034395cb0ee816ba4aa2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-zh.txt",
+      "sha256": "d977d505bb0f43565e4daeb54ddb188e21833a5189e5902c0d2ad6afdb87c5f6"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWords.universal.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptLanguage",
+     "method": "Codex, one fresh isolated session for this language reviewing the four new EnviousMeet places together (accuracy, naturalness, collisions with each other and with the preview engine, its Apple and Universal choices, the Live Preview language, the app language, Write a summary and the call-sound switch); first drafts by scripts/settings-map/draft-vocabulary.sh, one isolated session per place for all languages",
+     "date": "2026-10-26",
+     "draft": {
+      "path": "additions/meetingLiveWords/draft-meetingTranscriptLanguage.json",
+      "sha256": "3922024102a1f1fa3e09a7c79a14ed6ebe8ce6a8816ac759cb2287d083aac703"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWords/review-driver.py.txt",
+      "sha256": "ff410060a4f6514144dbe3da72f709ebf739a2b119efdb596597414c08dfce77"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords/review-zh.txt",
+      "sha256": "d977d505bb0f43565e4daeb54ddb188e21833a5189e5902c0d2ad6afdb87c5f6"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
     }
    ],
    "phraseExemptions": []
@@ -12421,7 +14889,11 @@
   "meetings.tab.callApps": "d3596e3b3103efb3058bf9e1253e2fe28aebff3b81cc3dac6346c7545e877266",
   "meetings.tab.general": "eb61dcc5ade549cbc95f3534cb1266185805c18a5a4bc409678408f601e8cce6",
   "meetings.tab.permissions": "659b60cb068e578a1d1dad89d85db0622749e04467fcbbd65dbb456c912351f6",
-  "meetingTurnsOffDictation": "9ce3308699af05c81b68e00dbdfd7c2b09a97c2749d9c32caf36c4135b589eb2"
+  "meetingTurnsOffDictation": "9ce3308699af05c81b68e00dbdfd7c2b09a97c2749d9c32caf36c4135b589eb2",
+  "meetingLiveWords": "9e915d19a4086e95aef2223ab2f4d302a1877fbfda1b62c1f6c8c8d28b12716a",
+  "meetingLiveWords.apple": "f0c4896f86584c8eb2002ee647d666324d0cfce50440b66b2fc92e317bd713a8",
+  "meetingLiveWords.universal": "c1acb29da84332b353c621c52d433c95655b48cfc27b5dedcd0832d5a7642028",
+  "meetingTranscriptLanguage": "8f1068d3be1a5a74a76c5fc44f4de759b203370dc7e2d8347da334451717ee6d"
  },
  "reviewedSourceNote": "Per searchable id, the SHA-256 of the English title and description its translations were reviewed against (reference/settings-map.json; SettingsSearchVocabularyTests.sourceFingerprint). First recorded 2026-10-07 at be0086b6 from the export the Phase 0 and council reviews covered. When a test names an id here, re-review that id's translated blocks, then record the hash the test prints. Limit: dynamic titles are bound by resolver name, not template wording."
 }

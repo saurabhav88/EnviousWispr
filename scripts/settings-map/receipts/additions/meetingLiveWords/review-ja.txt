@@ -1,0 +1,38 @@
+{
+  "meetingLiveWords": {
+    "language": "ja",
+    "title": "リアルタイム文字起こし",
+    "words": [
+      "会議のライブ文字起こし"
+    ],
+    "phrases": [
+      "会議のリアルタイム文字起こしの言語を変える",
+      "会議のリアルタイム文字起こしのエンジンを選ぶ"
+    ]
+  },
+  "meetingLiveWords.apple": {
+    "language": "ja",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "会議のリアルタイム文字起こしにAppleを使う"
+    ]
+  },
+  "meetingLiveWords.universal": {
+    "language": "ja",
+    "title": "Universal",
+    "words": [],
+    "phrases": [
+      "会議のリアルタイム文字起こしにUniversalを使う"
+    ]
+  },
+  "meetingTranscriptLanguage": {
+    "language": "ja",
+    "title": "文字起こしの言語",
+    "words": [],
+    "phrases": [
+      "会議終了後に作成される文字起こしの言語を変える",
+      "会議の全文文字起こしの言語を自動検出する"
+    ]
+  }
+}

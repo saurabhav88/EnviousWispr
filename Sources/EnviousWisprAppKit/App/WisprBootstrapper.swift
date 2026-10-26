@@ -43,6 +43,9 @@ package final class WisprBootstrapper {
   let meetingStartFlow: MeetingStartFlow
   /// #4017: EnviousMeet's setup visit, kept for the app run so leaving the page keeps the place.
   let meetingOnboardingModel: MeetingOnboardingModel
+  /// #4105: the Live words row's state and downloads, kept for the app run so closing Settings
+  /// never drops a transfer's owner. Shares the choice owner meeting Start uses.
+  let meetingLiveWordsRow: MeetingLiveWordsRowModel
   /// #4012: notices calls and asks to record them.
   let callDetection: CallDetectionCoordinator
   let meetingMemoryPressure: MeetingMemoryPressure
@@ -2468,13 +2471,33 @@ package final class WisprBootstrapper {
         }
       }
     }
-    // #3973: EnviousMeet's live words: Apple speech on macOS 26 when its pack is installed, else
-    // the downloaded Universal engine, never a download; each Universal decode waits while a
-    // dictation runs on a streaming engine.
+    // #3973, #4105: EnviousMeet's live words run on the engine and language the user chose
+    // (Apple's meeting module or the Universal engine), frozen at each Start, never a download
+    // and never Apple's dictation module; each Universal decode waits while a dictation runs on a
+    // streaming engine. One choice owner serves Start and the Live words row.
+    let universalAdmitted = WhisperPreviewDeliveryWiring.makeUniversalAdmitted(
+      modelDelivery: modelDelivery, settings: settings)
+    let meetingLiveWordsChoice = MeetingLiveWordsChoice.Initializer(
+      environment: .init(
+        settings: settings,
+        inventory: { await MeetingLiveWordsChoice.liveInventory(universalAdmitted: universalAdmitted) },
+        appleEquivalent: MeetingLiveWordsChoice.liveAppleEquivalent))
     let meetingLiveWords = MeetingLiveWords(
       dependencies: .init(
-        appleSupported: { ApplePreviewEngineResolver.isSupportedOnThisSystem },
-        resolveApple: { mode in await ApplePreviewEngineResolver.route.resolve(mode) },
+        resolveChoice: { [meetingLiveWordsChoice] forcing in
+          let resolution =
+            if let forcing {
+              await meetingLiveWordsChoice.resolve(forcing: forcing)
+            } else {
+              await meetingLiveWordsChoice.materializeIfUnset()
+            }
+          await AppLogger.shared.log(
+            "MEETING_LIVE_WORDS choice \(MeetingLiveWordsChoice.logDescription(resolution))"
+              + (forcing.map { " forced=\($0.rawValue)" } ?? ""),
+            category: "Meetings")
+          return resolution
+        },
+        resolveApple: { tag in await ApplePreviewEngineResolver.resolveMeeting(languageTag: tag) },
         resolveUniversal: WhisperPreviewDeliveryWiring.makeMeetingResolver(
           modelDelivery: modelDelivery, settings: settings),
         isHeartStreaming: { [settings, liveRecordingState] in
@@ -2482,7 +2505,8 @@ package final class WisprBootstrapper {
             WhisperPreviewDeliveryWiring.meetingDecodeMustWait(
               settings: settings, dictationActive: liveRecordingState.isDictationActive)
           }
-        }))
+        }),
+      choiceOwner: meetingLiveWordsChoice)
     // #3973: removing the Universal model lets dictation's preview and the meeting's live
     // words both go before the one residency wait and the delete.
     PreviewModelRemoval.install(
@@ -2527,8 +2551,11 @@ package final class WisprBootstrapper {
           isModelLoaded: { [asrManager] in asrManager.isModelLoaded },
           isLoadOrUnloadInFlight: { [concreteASRManager] in concreteASRManager.isLoadOrUnloadInFlight },
           publishedSelection: { [concreteASRManager] in concreteASRManager.publishedSelection },
-          transcribe: { [activeEngine] samples in
-            try await activeEngine.transcribe(samples, .default, nil)
+          transcribe: { [activeEngine] samples, language in
+            // #4105: the meeting's transcript language, never dictation's setting.
+            var options = TranscriptionOptions.default
+            options.language = language
+            return try await activeEngine.transcribe(samples, options, nil)
           },
           disarmEngineTimers: disarmEngineTimers,
           rearmEngineTimers: rearmEngineTimers,
@@ -2556,6 +2583,17 @@ package final class WisprBootstrapper {
     let meetingCoordinator = MeetingWiring.make(meetingInputs)
     meetingBox.coordinator = meetingCoordinator
     self.meetingCoordinator = meetingCoordinator
+    self.meetingLiveWordsRow = MeetingLiveWordsRowModel(
+      environment: .init(
+        choice: meetingLiveWordsChoice, settings: settings,
+        isMeetingActive: { [weak meetingCoordinator] in meetingCoordinator?.isMeetingActive ?? false },
+        appleCatalog: MeetingLiveWordsRowModel.liveMeetingCatalog(),
+        universalState: { [modelDelivery] in
+          modelDelivery.whisperPreviewHandle == nil ? nil : modelDelivery.whisperPreviewState
+        },
+        startUniversalDownload: { [modelDelivery] in modelDelivery.startPreviewDownload() },
+        universalDownloadRefused: { [modelDelivery] in modelDelivery.previewDownloadRefused },
+        cancelUniversalDownload: { [modelDelivery] in modelDelivery.cancelPreviewDownload() }))
     let meetingStartFlow = MeetingStartFlow(
       dependencies: .init(
         isSetUp: { [settings] in settings.meetingOnboardingComplete },
@@ -3084,6 +3122,7 @@ private struct MainWindowRoot: View {
       .environment(b.meetingCoordinator)
       .environment(b.meetingStartFlow)
       .environment(b.meetingOnboardingModel)
+      .environment(b.meetingLiveWordsRow)
       .environment(b.liveRecordingState)
       .environment(b.lastRecordingResult)
       .environment(b.backendMetadata)

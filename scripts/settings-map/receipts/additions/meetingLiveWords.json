@@ -1,0 +1,296 @@
+{
+ "id": "meetingLiveWords",
+ "blocks": {
+  "ar": {
+   "title": "النص المباشر",
+   "words": [
+    "نص الاجتماع المباشر"
+   ],
+   "phrases": [
+    "تغيير لغة النص المباشر للاجتماع",
+    "اختيار محرك النص المباشر للاجتماع",
+    "تنزيل نموذج لغة للنص المباشر للاجتماع"
+   ]
+  },
+  "bg": {
+   "title": "текст на срещата в реално време",
+   "words": [],
+   "phrases": [
+    "език на текста, който се показва по време на срещата",
+    "избор на модел за текста на срещата в реално време",
+    "изтегляне на модел за текста на срещата в реално време"
+   ]
+  },
+  "cs": {
+   "title": "živý přepis",
+   "words": [],
+   "phrases": [
+    "změnit jazyk živého přepisu schůzky",
+    "vybrat rozpoznávání řeči pro živý přepis schůzky"
+   ]
+  },
+  "da": {
+   "title": "livetransskription",
+   "words": [
+    "livetekst til møder"
+   ],
+   "phrases": [
+    "skift sprog for livetransskription af møder",
+    "vælg motor til livetransskription af møder"
+   ]
+  },
+  "de": {
+   "words": [],
+   "phrases": [
+    "ändere die Sprache für das Live-Transkript während der Meetingaufnahme",
+    "wähle die Engine für das Live-Transkript im Meeting",
+    "ändere die Sprache der Mitschrift während des Meetings"
+   ]
+  },
+  "el": {
+   "title": "ζωντανή απομαγνητοφώνηση",
+   "words": [],
+   "phrases": [
+    "αλλαγή γλώσσας για το ζωντανό κείμενο της συνάντησης",
+    "επιλογή μηχανής για τη ζωντανή απομαγνητοφώνηση στο EnviousMeet"
+   ]
+  },
+  "en": {
+   "words": [
+    "live meeting transcript",
+    "real-time meeting text"
+   ],
+   "phrases": [
+    "change meeting live transcript language",
+    "choose engine for live meeting transcription"
+   ]
+  },
+  "es": {
+   "title": "transcripción en directo",
+   "words": [
+    "texto en directo de reuniones"
+   ],
+   "phrases": [
+    "cambiar el idioma del texto en directo de la reunión",
+    "elegir motor para transcribir la reunión en directo"
+   ]
+  },
+  "et": {
+   "title": "reaalajas tekst",
+   "words": [],
+   "phrases": [
+    "muuda koosoleku reaalajas teksti keelt",
+    "vali koosoleku reaalajas teksti mootor"
+   ]
+  },
+  "fi": {
+   "title": "reaaliaikainen litterointi",
+   "words": [],
+   "phrases": [
+    "vaihda kokouksen reaaliaikaisen litteroinnin kieli",
+    "valitse kokouksen reaaliaikaisen litteroinnin moottori"
+   ]
+  },
+  "fr": {
+   "title": "transcription en direct",
+   "words": [],
+   "phrases": [
+    "changer la langue du texte affiché pendant l’enregistrement d’une réunion",
+    "choisir le moteur de transcription en direct des réunions"
+   ]
+  },
+  "hi": {
+   "title": "लाइव ट्रांसक्रिप्शन",
+   "words": [
+    "मीटिंग का लाइव टेक्स्ट"
+   ],
+   "phrases": [
+    "मीटिंग के दौरान दिखने वाले शब्दों की भाषा बदलें",
+    "मीटिंग के लाइव ट्रांसक्रिप्शन का इंजन चुनें"
+   ]
+  },
+  "hr": {
+   "title": "prijepis uživo",
+   "words": [],
+   "phrases": [
+    "promijeni jezik prijepisa sastanka uživo",
+    "odaberi mehanizam za prijepis sastanka uživo"
+   ]
+  },
+  "hu": {
+   "title": "élő átirat",
+   "words": [],
+   "phrases": [
+    "megbeszélés élő átiratának nyelvét módosítanám",
+    "motort választanék a megbeszélés élő átírásához",
+    "nyelvi modellt töltenék le a megbeszélés élő átírásához"
+   ]
+  },
+  "it": {
+   "title": "trascrizione in tempo reale",
+   "words": [],
+   "phrases": [
+    "cambiare la lingua del testo mostrato durante la riunione",
+    "scegliere il motore per la trascrizione in tempo reale della riunione"
+   ]
+  },
+  "ja": {
+   "title": "リアルタイム文字起こし",
+   "words": [
+    "会議のライブ文字起こし"
+   ],
+   "phrases": [
+    "会議のリアルタイム文字起こしの言語を変える",
+    "会議のリアルタイム文字起こしのエンジンを選ぶ"
+   ]
+  },
+  "ko": {
+   "title": "실시간 회의 텍스트",
+   "words": [],
+   "phrases": [
+    "회의 중 표시되는 실시간 텍스트 언어 바꾸기",
+    "회의 실시간 텍스트 엔진 선택",
+    "회의 실시간 텍스트용 언어 모델 다운로드"
+   ]
+  },
+  "lt": {
+   "title": "transkripcija realiuoju laiku",
+   "words": [],
+   "phrases": [
+    "pakeisti susitikimo transkripcijos realiuoju laiku kalbą",
+    "pasirinkti susitikimo transkripcijos realiuoju laiku variklį"
+   ]
+  },
+  "lv": {
+   "title": "sapulces teksts reāllaikā",
+   "words": [],
+   "phrases": [
+    "mainīt sapulces reāllaika teksta valodu",
+    "izvēlēties dzini sapulces tekstam reāllaikā",
+    "lejupielādēt valodas modeli sapulces tekstam reāllaikā"
+   ]
+  },
+  "mt": {
+   "title": "traskrizzjoni diretta",
+   "words": [
+    "traskrizzjoni diretta tal-laqgħa"
+   ],
+   "phrases": [
+    "ibdel il-lingwa tat-traskrizzjoni diretta tal-laqgħa",
+    "agħżel il-magna għat-traskrizzjoni diretta tal-laqgħa"
+   ]
+  },
+  "nl": {
+   "title": "live transcriptie",
+   "words": [],
+   "phrases": [
+    "taal van live transcriptie bij vergaderingen wijzigen",
+    "engine voor live transcriptie van vergaderingen kiezen"
+   ]
+  },
+  "pl": {
+   "title": "transkrypcja na żywo",
+   "words": [
+    "tekst spotkania na żywo"
+   ],
+   "phrases": [
+    "zmień język transkrypcji spotkania na żywo",
+    "wybierz silnik transkrypcji spotkania na żywo"
+   ]
+  },
+  "pt": {
+   "title": "transcrição em tempo real",
+   "words": [
+    "transcrição ao vivo da reunião"
+   ],
+   "phrases": [
+    "mudar o idioma da transcrição da reunião em tempo real",
+    "escolher o motor de transcrição em tempo real da reunião"
+   ]
+  },
+  "ro": {
+   "title": "transcriere în timp real",
+   "words": [],
+   "phrases": [
+    "schimbă limba transcrierii în timp real a întâlnirii",
+    "alege motorul pentru transcrierea în timp real a întâlnirii"
+   ]
+  },
+  "ru": {
+   "title": "расшифровка встречи в реальном времени",
+   "words": [
+    "текст во время записи встречи"
+   ],
+   "phrases": [
+    "изменить язык текста, который появляется во время записи встречи",
+    "выбрать движок для расшифровки встречи в реальном времени"
+   ]
+  },
+  "sk": {
+   "title": "živý prepis",
+   "words": [
+    "živý prepis stretnutia"
+   ],
+   "phrases": [
+    "zmeniť jazyk živého prepisu stretnutia",
+    "vybrať engine pre živý prepis stretnutia"
+   ]
+  },
+  "sl": {
+   "title": "prepis v živo",
+   "words": [],
+   "phrases": [
+    "spremeni jezik prepisa sestanka v živo",
+    "izberi pogon za prepis sestanka v živo"
+   ]
+  },
+  "sv": {
+   "title": "transkribering i realtid",
+   "words": [
+    "mötestext i realtid"
+   ],
+   "phrases": [
+    "ändra språk för mötets transkribering i realtid",
+    "välj motor för mötets transkribering i realtid"
+   ]
+  },
+  "tr": {
+   "title": "canlı transkripsiyon",
+   "words": [
+    "canlı toplantı dökümü"
+   ],
+   "phrases": [
+    "toplantı sırasında gösterilen metnin dilini değiştir",
+    "toplantının canlı transkripsiyon motorunu seç"
+   ]
+  },
+  "uk": {
+   "title": "текст зустрічі наживо",
+   "words": [],
+   "phrases": [
+    "змінити мову тексту під час запису зустрічі",
+    "вибрати рушій розпізнавання мовлення для тексту зустрічі наживо",
+    "завантажити модель мови для тексту зустрічі наживо"
+   ]
+  },
+  "vi": {
+   "title": "chép lời trực tiếp",
+   "words": [],
+   "phrases": [
+    "đổi ngôn ngữ chép lời trực tiếp của cuộc họp",
+    "chọn công cụ chép lời trực tiếp cho cuộc họp"
+   ]
+  },
+  "zh": {
+   "title": "会议实时转写",
+   "words": [
+    "会议实时文字",
+    "会议实时转录"
+   ],
+   "phrases": [
+    "更改会议实时转写的语言",
+    "选择会议实时转写引擎"
+   ]
+  }
+ }
+}

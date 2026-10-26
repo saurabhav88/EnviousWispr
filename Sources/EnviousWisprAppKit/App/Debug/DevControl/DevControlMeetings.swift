@@ -28,6 +28,9 @@
     /// Turns `meeting.get` returns per page, and the most one page may ask.
     static let defaultTurnLimit = 200
     static let maxTurnLimit = 500
+
+    /// A `meeting.start` is awaiting its outcome; another is refused until it returns.
+    private var startInFlight = false
     /// The most stored transcript text `meeting.get` returns whole; larger asks page the turns.
     static let maxTextBytes = 256 * 1024
 
@@ -56,13 +59,15 @@
       guard Set(args.keys).isSubset(of: ["entryPoint", "callSound", "liveEngine"]) else {
         return .failure(.badArgs, "meeting.start takes entryPoint, callSound and liveEngine only")
       }
-      // #3973: `universal` makes this one recording skip Apple speech (runtime UAT).
-      var forceUniversal = false
+      // #3973, #4105: `apple` or `universal` makes this one recording's live words use that
+      // engine (the stored language matched to it; never stored, never downloaded); `auto` uses
+      // the stored choice.
+      var forcing: LivePreviewEngineChoice?
       if let value = args["liveEngine"] {
-        guard let name = value as? String, ["auto", "universal"].contains(name) else {
-          return .failure(.badArgs, "liveEngine must be auto or universal")
+        guard let name = value as? String, ["auto", "apple", "universal"].contains(name) else {
+          return .failure(.badArgs, "liveEngine must be auto, apple or universal")
         }
-        forceUniversal = name == "universal"
+        forcing = LivePreviewEngineChoice(rawValue: name)
       }
       guard let raw = args["entryPoint"] as? String,
         let entryPoint = MeetingEntryPoint(rawValue: raw)
@@ -79,10 +84,17 @@
       guard let flow = sources.startFlow(), let coordinator = sources.coordinator() else {
         return unwiredResult
       }
-      coordinator.liveWords?.debugForceUniversalNextRecording = forceUniversal
+      // One door Start at a time: the override is one shared slot, so an overlapping Start would
+      // overwrite or clear the first attempt's engine (Codex chunk 4 review).
+      guard !startInFlight else {
+        return .failure(.busy, "another meeting.start is still running")
+      }
+      startInFlight = true
+      defer { startInFlight = false }
+      coordinator.liveWords?.debugEngineOverrideNextRecording = forcing
       let outcome = await flow.requestStart(from: entryPoint, captureCallSound: callSound)
       // A start that never reached capture leaves nothing for a later meeting.
-      coordinator.liveWords?.debugForceUniversalNextRecording = false
+      coordinator.liveWords?.debugEngineOverrideNextRecording = nil
       return .ok(Self.encode(outcome))
     }
 
@@ -498,6 +510,40 @@
       }
     }
 
+    /// `{}` (#4105): the live words choice a meeting would use now, read without saving a guess:
+    /// `engine`, `language` and `state` (`ready`, `notDownloaded`, `notSetUp`, with an optional
+    /// `suggestion` for not set up), plus the stored values.
+    func liveWordsStatus(_ args: [String: Any]) async -> Result {
+      guard args.isEmpty else {
+        return .failure(.badArgs, "meeting.liveWordsStatus takes no arguments")
+      }
+      guard let coordinator = sources.coordinator(), let owner = coordinator.liveWords?.choiceOwner
+      else { return unwiredResult }
+      let snapshot = await owner.peek()
+      var body: [String: Any] = [
+        "storedEngine": snapshot.storedEngine?.rawValue as Any? ?? NSNull(),
+        "storedLanguage": snapshot.storedLanguage as Any? ?? NSNull(),
+      ]
+      switch snapshot.resolution {
+      case .ready(let engine, let language):
+        body["state"] = "ready"
+        body["engine"] = engine.rawValue
+        body["language"] = language
+      case .notDownloaded(let engine, let language):
+        body["state"] = "notDownloaded"
+        body["engine"] = engine.rawValue
+        body["language"] = language
+      case .notSetUp(let suggestion):
+        body["state"] = "notSetUp"
+        body["engine"] = NSNull()
+        body["language"] = NSNull()
+        body["suggestion"] =
+          suggestion.map { ["engine": $0.engine.rawValue, "language": $0.language] } as Any?
+          ?? NSNull()
+      }
+      return .ok(body)
+    }
+
     /// `{}`: the live words of the meeting recording now (memory only, R59), or null.
     func live(_ args: [String: Any]) -> Result {
       guard args.isEmpty else { return .failure(.badArgs, "meeting.live takes no arguments") }
@@ -510,6 +556,8 @@
           // once the recording ended).
           "engine": coordinator.liveWords?.currentEngine.map { $0 == .apple ? "apple" : "universal" }
             as Any? ?? NSNull(),
+          // #4105: the language code the recording's live words run in (null before chosen).
+          "language": coordinator.liveWords?.currentLanguage as Any? ?? NSNull(),
           "lines": live.lines.map { line -> [String: Any] in
             [
               "id": line.id, "track": line.track.rawValue, "kind": Self.name(line.kind),
@@ -545,8 +593,9 @@
       case .off(let reason):
         switch reason {
         case .notCaptured: return "off:notCaptured"
-        case .universalNotDownloaded: return "off:universalNotDownloaded"
-        case .appleLanguageAndUniversalMissing: return "off:appleLanguageAndUniversalMissing"
+        case .notSetUp: return "off:notSetUp"
+        case .engineNotDownloaded(let engine, _):
+          return "off:engineNotDownloaded:\(engine == .apple ? "apple" : "universal")"
         case .previousStillClosing: return "off:previousStillClosing"
         case .couldNotStart: return "off:couldNotStart"
         case .unavailable: return "off:unavailable"

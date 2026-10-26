@@ -1,0 +1,259 @@
+{
+ "id": "meetingLiveWords.universal",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "عام",
+   "words": [],
+   "phrases": [
+    "استخدام الخيار العام للتفريغ المباشر للاجتماع"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "универсален",
+   "words": [],
+   "phrases": [
+    "универсален режим за транскрипция на срещата на живо"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "univerzální",
+   "words": [],
+   "phrases": [
+    "univerzální přepis schůzky v reálném čase"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "universel",
+   "words": [],
+   "phrases": [
+    "vælg universel til liveudskrift af mødet"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [],
+   "phrases": [
+    "nutze Universal für das Live-Transkript im Meeting"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "καθολική",
+   "words": [],
+   "phrases": [
+    "καθολική επιλογή για ζωντανή απομαγνητοφώνηση συνάντησης"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [],
+   "phrases": [
+    "use universal for live meeting transcription"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "universal",
+   "words": [],
+   "phrases": [
+    "usar universal para la transcripción en directo de la reunión"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "universaalne",
+   "words": [],
+   "phrases": [
+    "vali koosoleku reaalajas transkriptsiooniks universaalne"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "yleiskäyttöinen",
+   "words": [],
+   "phrases": [
+    "valitse yleiskäyttöinen kokouksen reaaliaikaiseen litterointiin"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "universel",
+   "words": [],
+   "phrases": [
+    "choisir universel pour la transcription en direct de la réunion"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "सार्वभौमिक",
+   "words": [],
+   "phrases": [
+    "मीटिंग के लाइव ट्रांसक्रिप्शन के लिए सार्वभौमिक विकल्प चुनें"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "univerzalno",
+   "words": [],
+   "phrases": [
+    "odaberi univerzalno za prijepis sastanka uživo"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "univerzális",
+   "words": [],
+   "phrases": [
+    "univerzális beállítás az értekezlet élő átiratához"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "universale",
+   "words": [],
+   "phrases": [
+    "usa universale per la trascrizione in diretta della riunione"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "汎用",
+   "words": [],
+   "phrases": [
+    "会議のリアルタイム文字起こしで汎用を選ぶ"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "범용",
+   "words": [],
+   "phrases": [
+    "회의 실시간 받아쓰기에 범용 선택"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "universalus",
+   "words": [],
+   "phrases": [
+    "universalus susitikimo transkribavimo realiuoju laiku režimas"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "universāls",
+   "words": [],
+   "phrases": [
+    "universāls režīms sapulces transkripcijai reāllaikā"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "universali",
+   "words": [],
+   "phrases": [
+    "agħżel universali għat-traskrizzjoni diretta tal-laqgħa"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "universeel",
+   "words": [],
+   "phrases": [
+    "kies universeel voor live transcriptie van de vergadering"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "uniwersalny",
+   "words": [],
+   "phrases": [
+    "wybierz uniwersalny do transkrypcji spotkania na żywo"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "universal",
+   "words": [],
+   "phrases": [
+    "usar universal para a transcrição da reunião em tempo real"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "universal",
+   "words": [],
+   "phrases": [
+    "alege universal pentru transcrierea în timp real a întâlnirii"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "универсальный",
+   "words": [],
+   "phrases": [
+    "выбрать универсальный режим для расшифровки встречи в реальном времени"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "univerzálny",
+   "words": [],
+   "phrases": [
+    "univerzálny prepis stretnutia v reálnom čase"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "univerzalno",
+   "words": [],
+   "phrases": [
+    "izberi univerzalno za sprotni prepis sestanka"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "universell",
+   "words": [],
+   "phrases": [
+    "välj universell för direkttranskribering av mötet"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "evrensel",
+   "words": [],
+   "phrases": [
+    "toplantının canlı dökümü için evrensel seç"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "універсальний",
+   "words": [],
+   "phrases": [
+    "вибрати універсальний режим для транскрипції зустрічі в реальному часі"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "đa dụng",
+   "words": [],
+   "phrases": [
+    "chọn đa dụng để chép lời cuộc họp theo thời gian thực"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "通用",
+   "words": [],
+   "phrases": [
+    "会议实时转写选择通用"
+   ]
+  }
+ ]
+}

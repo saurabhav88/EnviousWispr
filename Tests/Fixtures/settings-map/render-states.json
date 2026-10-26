@@ -990,6 +990,8 @@
   "mapped": [
    "meetingCallDetection",
    "meetingCaptureCallSound",
+   "meetingLiveWords",
+   "meetingTranscriptLanguage",
    "meetingTurnsOffDictation",
    "meetingUseCalendarForNames",
    "meetingWriteSummary",

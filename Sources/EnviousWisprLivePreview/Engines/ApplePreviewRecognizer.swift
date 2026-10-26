@@ -63,6 +63,10 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
 
   private let locale: Locale
 
+  /// Which Apple module this recognizer runs (#4105). Dictation's live preview is `.dictation`;
+  /// EnviousMeet live words are `.meeting`. Every module is built by `AppleTranscriberFactory`.
+  let kind: AppleTranscriberKind
+
   private var targetFormat: AVAudioFormat?
   private var sourceFormat: AVAudioFormat?
 
@@ -83,8 +87,9 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
   /// the current one" for the caller's benefit.
   private var currentToken: UInt64 = 0
 
-  init(locale: Locale) {
+  init(locale: Locale, kind: AppleTranscriberKind = .dictation) {
     self.locale = locale
+    self.kind = kind
   }
 
   // MARK: - Preparation
@@ -114,6 +119,9 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
   /// future OS tightening this.
   /// Re-measure before contradicting: `scratchpad/speechprobe/` in the #1988
   /// session, or rebuild the probe from this doc comment.
+  /// The meeting module (`SpeechTranscriber`, #4105) transcribed in the test host on 2026-10-25
+  /// with no authorization request; that is not the signed-app measurement above, and the #4105
+  /// live check on the dev app is what confirms it there.
   ///
   /// **This method MUST NOT download, install, remove or repair model bytes (#2080).** It opens
   /// and warms what is already installed, nothing more.
@@ -169,8 +177,10 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
 
     // Built to negotiate the audio format, NOT to install anything. Constructing a
     // `DictationTranscriber` is inert; only `assetInstallationRequest` + `downloadAndInstall`
-    // fetch bytes, and neither appears in this method any more.
-    let probe = DictationTranscriber(locale: locale, preset: .progressiveLongDictation)
+    // fetch bytes, and neither appears in this method any more. (#4105: the module comes from
+    // `AppleTranscriberFactory`, `DictationTranscriber` for dictation, `SpeechTranscriber` for a
+    // meeting; building either is equally inert.)
+    let probe = AppleTranscriberFactory.makeModule(kind, locale: locale).speechModule
 
     guard
       let source = AVAudioFormat(
@@ -194,7 +204,7 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
     // for — measured on the benchmark corpus as the difference between a first
     // clip that looks broken (3573 ms to first text) and one that does not (630 ms).
     // Deliberately never finalized: see trap 2.
-    let warmModule = DictationTranscriber(locale: locale, preset: .progressiveLongDictation)
+    let warmModule = AppleTranscriberFactory.makeModule(kind, locale: locale).speechModule
     let warmAnalyzer = SpeechAnalyzer(modules: [warmModule])
     do {
       try await warmAnalyzer.prepareToAnalyze(in: target)
@@ -225,8 +235,17 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
   /// and nil for a code Apple does not know. A hand-rolled filter over
   /// `supportedLocales` was written first and thrown away: it would have had to
   /// guess at regional equivalence the vendor already answers authoritatively.
-  static func resolveLocale(code: String) async -> Locale? {
-    await DictationTranscriber.supportedLocale(equivalentTo: Locale(identifier: code))
+  static func resolveLocale(code: String, kind: AppleTranscriberKind = .dictation) async
+    -> Locale?
+  {
+    await AppleTranscriberFactory.supportedLocale(kind, equivalentTo: Locale(identifier: code))
+  }
+
+  /// The source and target formats `prepare()` negotiated, for tests that must prove a session
+  /// really converted audio (#4105). Nil before preparation.
+  func preparedFormats() -> (source: AVAudioFormat, target: AVAudioFormat)? {
+    guard let sourceFormat, let targetFormat else { return nil }
+    return (sourceFormat, targetFormat)
   }
 
   // MARK: - Session
@@ -311,11 +330,7 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
         makeCollector: { module in
           let collector = LiveTranscriptCollector(
             lookups: inputs.lookups, onEvent: onEvent,
-            consume: { deliver in
-              for try await result in module.results {
-                deliver(String(result.text.characters), result.isFinal)
-              }
-            })
+            consume: module.consume)
           made = collector
           return CollectorHandle(
             task: collector.task ?? Task {}, silence: { collector.silence() })
@@ -362,7 +377,7 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
   /// The shared opening: `makeCollector` builds the results consumer for each fresh module.
   private func startSession(
     contextualPhrases: [String],
-    makeCollector: (DictationTranscriber) -> CollectorHandle
+    makeCollector: (AppleTranscriberFactory.Module) -> CollectorHandle
   ) async throws -> Session {
     guard let target = targetFormat, let source = sourceFormat else {
       throw LivePreviewError.notPrepared
@@ -372,6 +387,9 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
 
     await AppLogger.shared.log(
       "LIVE_PREVIEW hints requested count=\(contextualPhrases.count)", category: "LivePreview")
+    // Its own line: the line above is a dictation witness parsed by exact format.
+    await AppLogger.shared.log(
+      "LIVE_PREVIEW session module=\(kind.rawValue)", category: "LivePreview")
     // Superseded while `start` was suspended: this session's resources are ours
     // alone, so close them rather than handing back something whose every later
     // call would be rejected.
@@ -414,7 +432,7 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
 
   private func makeStartResources(
     source: AVAudioFormat, target: AVAudioFormat,
-    makeCollector: (DictationTranscriber) -> CollectorHandle
+    makeCollector: (AppleTranscriberFactory.Module) -> CollectorHandle
   ) throws -> StartResources {
     // A fresh converter per session, so no resampler tail crosses a boundary and
     // leaks the previous dictation's audio into this one.
@@ -433,7 +451,7 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
     } else {
       throw LivePreviewError.audioFormatUnavailable
     }
-    let module = DictationTranscriber(locale: locale, preset: .progressiveLongDictation)
+    let module = AppleTranscriberFactory.makeModule(kind, locale: locale)
     // **Bounded, because an unbounded queue makes a limb able to hurt the heart.**
     // The default policy is `.unbounded`: if Apple's analyzer stalls or falls behind
     // real time, the feed loop keeps handing it a chunk every 100 ms forever and the
@@ -444,7 +462,7 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
     // stopping the preview outright would.
     let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream(
       bufferingPolicy: .bufferingNewest(Self.maxQueuedChunks))
-    let analyzer = SpeechAnalyzer(modules: [module])
+    let analyzer = SpeechAnalyzer(modules: [module.speechModule])
     // The session owns the vocabulary it started with.
     let collector = makeCollector(module)
 
@@ -486,33 +504,32 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
   /// `WordCorrector.correct(_:using:)` is a documented pure function, safe to call
   /// off any actor, and `Lookups` is `Sendable`, so the snapshot crosses the
   /// boundary as a value rather than as a reference the main actor keeps mutating.
-  private static func collect(
-    from transcriber: DictationTranscriber, lookups: WordCorrector.Lookups?,
+  static func collect(
+    from transcriber: AppleTranscriberFactory.Module, lookups: WordCorrector.Lookups?,
     onText: @escaping @Sendable (String) -> Void
   ) -> Task<Void, Never> {
     Task {
-      var committed = ""
-      var inFlight = ""
+      // Mutated only from `deliver`, which `consume` calls one result at a time inside this task.
+      let text = AssembledText()
       let corrector = WordCorrector()
       // A thrown error ends the stream. The text already on screen stays on
       // screen: a preview that freezes mid-sentence is a far better failure than
       // one that blanks, and the dictation itself is unaffected either way.
       do {
-        for try await result in transcriber.results {
-          let piece = String(result.text.characters)
-          if result.isFinal {
+        try await transcriber.consume { piece, isFinal in
+          if isFinal {
             // Bounded HERE, where the text is built. Accumulating the whole
             // transcript and trimming downstream would keep every word of a
             // 60-minute dictation alive and copy all of it across an actor
             // boundary several times a second.
-            committed = LivePreviewTextBound.apply(committed + piece)
-            inFlight = ""
+            text.committed = LivePreviewTextBound.apply(text.committed + piece)
+            text.inFlight = ""
           } else {
             // Bounded on STORAGE, not only on emission. Apple can keep returning
             // non-final results for a long uninterrupted stretch, and an unbounded
             // `inFlight` violates the retention invariant for as long as that
             // lasts even though every emitted string is trimmed.
-            inFlight = LivePreviewTextBound.apply(piece)
+            text.inFlight = LivePreviewTextBound.apply(piece)
           }
           // Bounded on BOTH sides of correction, and neither is redundant.
           //
@@ -535,11 +552,17 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
           onText(
             LivePreviewTextBound.apply(
               Self.corrected(
-                LivePreviewTextBound.apply(committed + inFlight),
+                LivePreviewTextBound.apply(text.committed + text.inFlight),
                 corrector: corrector, lookups: lookups)))
         }
       } catch {}
     }
+  }
+
+  /// `collect`'s running text: finished segments plus the one in flight.
+  private final class AssembledText: @unchecked Sendable {
+    var committed = ""
+    var inFlight = ""
   }
 
   /// Apply this session's Custom Words snapshot, or return `text` untouched.
@@ -764,7 +787,7 @@ package enum ApplePreviewEngineResolver {
     // but this Mac does not have its model, and downloading ~140 MB is the user's decision, taken
     // on the Live Preview settings page. Reported by name so the pill can say which language,
     // rather than a generic sentence that leaves the user hunting.
-    let installedTags = await DictationTranscriber.installedLocales.map {
+    let installedTags = await AppleTranscriberFactory.installedLocales(.dictation).map {
       $0.identifier(.bcp47)
     }
     guard
@@ -786,6 +809,47 @@ package enum ApplePreviewEngineResolver {
         makeEngine: { ApplePreviewRecognizer(locale: readyLocale) }
       ))
   }
+
+  /// EnviousMeet live words on Apple's meeting module (#4105): an explicit BCP-47 tag (the meeting
+  /// row has no Auto), checked against the meeting module's own inventory. Never downloads (#2080):
+  /// a missing model is `.installRequired` for the meeting row to offer.
+  package static func resolveMeeting(languageTag: String) async -> LivePreviewEngineResolution {
+    guard #available(macOS 26.0, *) else {
+      return .blocked(.unsupportedSystem)
+    }
+    guard AppleTranscriberFactory.isAvailable(.meeting) else {
+      await log("meeting module unavailable on this Mac")
+      return .blocked(.unsupportedSystem)
+    }
+    await log("resolving meeting language tag=\(languageTag)")
+    guard
+      let locale = await ApplePreviewRecognizer.resolveLocale(code: languageTag, kind: .meeting)
+    else {
+      await log("no meeting locale for tag=\(languageTag)")
+      return .blocked(.unsupportedLanguage)
+    }
+    let installedTags = await AppleTranscriberFactory.installedLocales(.meeting).map {
+      $0.identifier(.bcp47)
+    }
+    guard
+      let readyTag = satisfyingTag(
+        requestedCode: languageTag, resolvedTag: locale.identifier(.bcp47),
+        installedTags: installedTags)
+    else {
+      let name = ApplePackCatalog.localizedName(for: locale.identifier(.bcp47))
+      await log("meeting model not installed for \(locale.identifier(.bcp47))")
+      return .blocked(.installRequired(languageName: name))
+    }
+    let readyLocale = Locale(identifier: readyTag)
+    return .ready(
+      LivePreviewEngineCandidate(
+        key: LivePreviewEngineKey(engine: meetingEngineID, commitment: readyTag),
+        makeEngine: { ApplePreviewRecognizer(locale: readyLocale, kind: .meeting) }
+      ))
+  }
+
+  /// Stable identity for the meeting module in a `LivePreviewEngineKey`.
+  static let meetingEngineID = "apple-meeting"
 
   /// Which installed pack satisfies this request, if any — and therefore which locale the engine
   /// commits to. Pure, so the regional behaviour below is testable without Apple's inventory.

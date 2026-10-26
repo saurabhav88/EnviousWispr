@@ -1,0 +1,37 @@
+{
+  "meetingLiveWords": {
+    "language": "hu",
+    "title": "élő átirat",
+    "words": [],
+    "phrases": [
+      "megbeszélés élő átiratának nyelvét módosítanám",
+      "motort választanék a megbeszélés élő átírásához",
+      "nyelvi modellt töltenék le a megbeszélés élő átírásához"
+    ]
+  },
+  "meetingLiveWords.apple": {
+    "language": "hu",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "Apple az értekezlet élő átírásához"
+    ]
+  },
+  "meetingLiveWords.universal": {
+    "language": "hu",
+    "title": "Universal",
+    "words": [],
+    "phrases": [
+      "Universal az értekezlet élő átírásához"
+    ]
+  },
+  "meetingTranscriptLanguage": {
+    "language": "hu",
+    "title": "átirat nyelve",
+    "words": [],
+    "phrases": [
+      "megbeszélés után készülő teljes átirat nyelvét módosítanám",
+      "a megbeszélés teljes átiratához automatikus nyelvfelismerést szeretnék"
+    ]
+  }
+}

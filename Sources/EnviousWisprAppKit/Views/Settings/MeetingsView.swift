@@ -93,6 +93,11 @@ struct MeetingsView: View {
           BrandedRow { summaryWriterRow }
           BrandedRow(showDivider: false) { MeetingCalendarNamesRow() }
         }
+        // #4105: live words and the transcript's language, one section.
+        BrandedSection {
+          BrandedRow { MeetingLiveWordsRow() }
+          BrandedRow(showDivider: false) { MeetingTranscriptLanguageRow() }
+        }
         VStack(alignment: .leading, spacing: 8) {
           Text(MeetingsCopy.keptUntilDeleted)
             .font(.stHelper)
@@ -396,6 +401,72 @@ enum MeetingsCopy {
   static let turnsOffDictationHelp = LocalizedStringResource(
     "Dictation is off during meetings. Turn it back on in EnviousMeet settings. A dictation that already started before the meeting finishes normally.",
     comment: "EnviousMeet page: help for Turn off dictation during meetings. The founder's sentence (#4069).")
+  // #4105: Live words and Transcript language.
+  static let liveWordsTitle = LocalizedStringResource(
+    "Live words",
+    comment: "EnviousMeet page: row that picks the engine and language for the words shown while a meeting records. German: Live-Transkript.")
+  static let liveWordsShort = LocalizedStringResource(
+    "The engine and language for words shown while a meeting records.",
+    comment: "EnviousMeet page: the short line under Live words.")
+  static let liveWordsHelp = LocalizedStringResource(
+    "Live words show what is said into your microphone and in the call while a meeting records. Apple uses this Mac's speech recognition and needs macOS 26 and a download for each language. Universal works on any supported Mac and needs one download. Nothing downloads until you press Download, and Download here is off while a meeting records or is being transcribed. The full transcript is written after the meeting and does not depend on live words.",
+    comment: "EnviousMeet page: help for Live words.")
+  static let chooseEngine = LocalizedStringResource(
+    "Choose an engine",
+    comment: "EnviousMeet page, Live words: the engine menu before an engine is chosen.")
+  static let appleNotOnThisMac = LocalizedStringResource(
+    "Apple (not on this Mac)",
+    comment: "EnviousMeet page, Live words: the Apple engine in the engine menu when this Mac cannot run it (macOS 26 needed). Apple is a product name.")
+  static let chooseLanguage = LocalizedStringResource(
+    "Choose a language",
+    comment: "EnviousMeet page, Live words: the language menu before a language is chosen.")
+  static let liveWordsChecking = LocalizedStringResource(
+    "Checking",
+    comment: "EnviousMeet page, Live words: while the app reads which languages this Mac has.")
+  static let liveWordsNotSetUp = LocalizedStringResource(
+    "Not set up yet.",
+    comment: "EnviousMeet page, Live words: no engine and language are chosen.")
+  static func liveWordsSuggested(_ language: String) -> String {
+    String(
+      localized: "Not set up yet. Download \(language) to start.",
+      comment: "EnviousMeet page, Live words: nothing chosen yet; the placeholder is the language the app suggests from dictation's language.")
+  }
+  static func liveWordsNotDownloaded(_ language: String) -> String {
+    String(
+      localized: "\(language) is not downloaded.",
+      comment: "EnviousMeet page, Live words: the chosen language's model is not on this Mac. The placeholder is a language name.")
+  }
+  static func liveWordsDownloading(_ language: String) -> String {
+    String(
+      localized: "Downloading \(language)",
+      comment: "EnviousMeet page, Live words: the chosen language's model is downloading. The placeholder is a language name.")
+  }
+  static let liveWordsFailed = LocalizedStringResource(
+    "The download did not finish.",
+    comment: "EnviousMeet page, Live words: the last download of the chosen language failed; Try Again is beside it.")
+  static let liveWordsDownloadUnavailable = LocalizedStringResource(
+    "Download is not available right now.",
+    comment: "EnviousMeet page, Live words: the Universal engine download could not start (it is turned off for this version).")
+  static let liveWordsAppleUnavailable = LocalizedStringResource(
+    "Apple's meeting speech is not available on this Mac. Choose Universal.",
+    comment: "EnviousMeet page, Live words: Apple was chosen but this Mac cannot run it (macOS 26 needed).")
+  static let transcriptLanguageTitle = LocalizedStringResource(
+    "Transcript language",
+    comment: "EnviousMeet page: row that picks the language of the full meeting transcript.")
+  static let transcriptLanguageShort = LocalizedStringResource(
+    "The language of the full transcript written after a meeting.",
+    comment: "EnviousMeet page: the short line under Transcript language.")
+  static let transcriptLanguageHelp = LocalizedStringResource(
+    "With Auto, no language is set and the engine transcribes as it does by default. Choose a language when your meetings are always in it. A change applies to the next meeting; a meeting already recorded keeps its language.",
+    comment: "EnviousMeet page: help for Transcript language. Auto sets no language; it does not detect one.")
+  /// The transcript menu's Auto: no language is set (Parakeet's Auto sets no language hint; it
+  /// does not detect the language), so the label never promises detection.
+  static let transcriptLanguageAuto = LocalizedStringResource(
+    "Auto",
+    comment: "EnviousMeet page, Transcript language: the menu item that sets no language.")
+  static let languagesDiffer = LocalizedStringResource(
+    "Live words and the transcript use different languages.",
+    comment: "EnviousMeet page: note under Transcript language when its language is not the live words language. It does not block either choice.")
   static let calendarNamesTitle = LocalizedStringResource(
     "Name meetings from my calendar",
     comment: "EnviousMeet page: switch that names a meeting after the calendar event at its start.")

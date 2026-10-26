@@ -1,0 +1,36 @@
+{
+  "meetingLiveWords": {
+    "language": "hr",
+    "title": "prijepis uživo",
+    "words": [],
+    "phrases": [
+      "promijeni jezik prijepisa sastanka uživo",
+      "odaberi mehanizam za prijepis sastanka uživo"
+    ]
+  },
+  "meetingLiveWords.apple": {
+    "language": "hr",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "Apple za prijepis sastanka uživo"
+    ]
+  },
+  "meetingLiveWords.universal": {
+    "language": "hr",
+    "title": "Universal",
+    "words": [],
+    "phrases": [
+      "odaberi Universal za prijepis sastanka uživo"
+    ]
+  },
+  "meetingTranscriptLanguage": {
+    "language": "hr",
+    "title": "jezik prijepisa",
+    "words": [],
+    "phrases": [
+      "promijeni jezik prijepisa koji se izrađuje nakon sastanka",
+      "jezik cijelog prijepisa nakon sastanka"
+    ]
+  }
+}

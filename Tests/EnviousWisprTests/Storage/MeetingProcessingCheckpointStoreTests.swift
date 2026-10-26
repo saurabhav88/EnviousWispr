@@ -19,7 +19,7 @@ struct MeetingProcessingCheckpointStoreTests {
   private func checkpoint(pieces: Int = 2) -> MeetingProcessingCheckpoint {
     let key = MeetingProcessingCheckpoint.Key(
       meetingID: UUID(), processingVersion: 1, pieceTargetSeconds: 60, pieceSearchSeconds: 15,
-      seamPaddingSeconds: 1, cutsPieces: true,
+      seamPaddingSeconds: 1, cutsPieces: true, transcriptLanguage: nil,
       inputs: [
         .init(
           track: .microphone,
@@ -99,23 +99,72 @@ struct MeetingProcessingCheckpointStoreTests {
       """
     try FileManager.default.createDirectory(at: store.directory, withIntermediateDirectories: true)
     try Data(legacy.utf8).write(to: store.fileURL)
-    guard case .checkpoint(let loaded) = store.load() else {
+    // #4105: this build writes format 2, so it redoes a format 1 pass; the format 1 reader still
+    // decodes the old key's missing fields as before.
+    #expect(store.load() == .unusable)
+    guard case .checkpoint(let loaded) = store.load(acceptingFormatVersion: 1) else {
       Issue.record("a legacy checkpoint did not load")
       return
     }
+    #expect(loaded.key.transcriptLanguage == nil, "an old key reads as Auto")
     #expect(loaded.key.cutsPieces == true)
     #expect(loaded.key.processingVersion == 1)
     #expect(loaded.tracks[.microphone]?.pieces.count == 1)
     var wholeRun = MeetingProcessingCheckpoint.Key(
       meetingID: loaded.key.meetingID, processingVersion: 2, pieceTargetSeconds: 60,
-      pieceSearchSeconds: 15, seamPaddingSeconds: 1, cutsPieces: false,
+      pieceSearchSeconds: 15, seamPaddingSeconds: 1, cutsPieces: false, transcriptLanguage: nil,
       inputs: loaded.key.inputs)
     #expect(loaded.key != wholeRun)
     // Version alone also differs; with the version equal, the mode still keeps them apart.
     wholeRun = MeetingProcessingCheckpoint.Key(
       meetingID: loaded.key.meetingID, processingVersion: 1, pieceTargetSeconds: 60,
-      pieceSearchSeconds: 15, seamPaddingSeconds: 1, cutsPieces: false,
+      pieceSearchSeconds: 15, seamPaddingSeconds: 1, cutsPieces: false, transcriptLanguage: nil,
       inputs: loaded.key.inputs)
     #expect(loaded.key != wholeRun)
+  }
+
+  /// #4105 (plan R2.1): the transcript language is part of the key, and a checkpoint written by
+  /// this build is format 2, which a build reading only format 1 rejects and redoes.
+  @Test("a locked-language checkpoint is format 2: a format 1 reader rejects it, this build resumes it")
+  func lockedLanguageCheckpointIsFormatTwo() throws {
+    let store = MeetingProcessingCheckpointStore(meetingFolder: try meetingFolder())
+    let base = checkpoint().key
+    let german = MeetingProcessingCheckpoint.Key(
+      meetingID: base.meetingID, processingVersion: base.processingVersion,
+      pieceTargetSeconds: base.pieceTargetSeconds, pieceSearchSeconds: base.pieceSearchSeconds,
+      seamPaddingSeconds: base.seamPaddingSeconds, cutsPieces: base.cutsPieces,
+      transcriptLanguage: "de", inputs: base.inputs)
+    let saved = MeetingProcessingCheckpoint(
+      key: german, engineIdentity: "ultra:rev", tracks: checkpoint().tracks)
+    try store.save(saved)
+    let json = try #require(String(data: try Data(contentsOf: store.fileURL), encoding: .utf8))
+    #expect(json.contains(#""formatVersion":2"#))
+    #expect(json.contains(#""transcriptLanguage":"de""#))
+    // An older build (format 1 reader) never reuses the German words.
+    #expect(store.load(acceptingFormatVersion: 1) == .unusable)
+    // Upgraded again: the checkpoint loads, and its key matches only a German pass.
+    #expect(store.load() == .checkpoint(saved))
+    #expect(german != base, "Auto and German keys differ")
+  }
+
+  @Test("Auto has one spelling in the key: absent, nil and empty all compare equal")
+  func autoKeysCompareEqual() throws {
+    let base = checkpoint().key
+    func key(_ language: String?) -> MeetingProcessingCheckpoint.Key {
+      .init(
+        meetingID: base.meetingID, processingVersion: base.processingVersion,
+        pieceTargetSeconds: base.pieceTargetSeconds, pieceSearchSeconds: base.pieceSearchSeconds,
+        seamPaddingSeconds: base.seamPaddingSeconds, cutsPieces: base.cutsPieces,
+        transcriptLanguage: language, inputs: base.inputs)
+    }
+    #expect(key(nil) == key(""))
+    #expect(key(nil) == base)
+    let withEmpty = try JSONSerialization.jsonObject(
+      with: try JSONEncoder().encode(key("de"))) as? [String: Any]
+    var edited = try #require(withEmpty)
+    edited["transcriptLanguage"] = ""
+    let decoded = try JSONDecoder().decode(
+      MeetingProcessingCheckpoint.Key.self, from: try JSONSerialization.data(withJSONObject: edited))
+    #expect(decoded == key(nil), "an empty stored language reads as Auto")
   }
 }

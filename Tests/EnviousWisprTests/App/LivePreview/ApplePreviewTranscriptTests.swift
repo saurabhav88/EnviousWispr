@@ -365,4 +365,129 @@ struct ApplePreviewTranscriptTests {
     #expect(await claims.useCount("en-US") == 0)
     #expect(await table.released == ["en-US"])
   }
+
+  /// #4105 real boundary (off unless `EW_APPLE_LIVE_WAV` names a 16 kHz mono 16-bit WAV of
+  /// English speech): dictation's preview and a meeting's two tracks run at the same time on the
+  /// real modules, sharing English through `LocaleClaims.shared`. Takes REAL machine-wide claims,
+  /// which is why it is env-gated like the meeting harness. Each session must produce words from
+  /// audio that really went through format conversion, and the English claim must be back at zero
+  /// once the last one ends. Every opened session is ended on every exit.
+  @Test(
+    "Dictation and a meeting's two tracks run together on the real modules",
+    .enabled(if: ProcessInfo.processInfo.environment["EW_APPLE_LIVE_WAV"] != nil))
+  func dictationAndMeetingTogether() async throws {
+    guard #available(macOS 26.0, *) else { return }
+    let path = try #require(ProcessInfo.processInfo.environment["EW_APPLE_LIVE_WAV"])
+    let data = try Data(contentsOf: URL(fileURLWithPath: path))
+    let samples: [Float] = data.subdata(in: 44..<data.count).withUnsafeBytes { raw in
+      raw.bindMemory(to: Int16.self).map { Float($0) / 32768 }
+    }
+    let speech = Array(samples.prefix(16_000 * 20))
+    let english = Locale(identifier: "en-US")
+    let vocabulary = LivePreviewVocabulary(
+      lookups: nil, contextualPhrases: [], dictionaryEnabled: false)
+
+    /// What each session showed: dictation's whole text (each update replaces it), or a track's
+    /// finalized deltas accumulated (`LiveWordsEvent` delivers each finalized delta once) plus its
+    /// latest words in progress.
+    final class Shown: @unchecked Sendable {
+      let lock = NSLock()
+      var text: [String: String] = [:]
+      var inProgress: [String: String] = [:]
+      func set(_ key: String, _ value: String) { lock.withLock { text[key] = value } }
+      func update(_ key: String, finalized: String, inProgress latest: String) {
+        lock.withLock {
+          text[key, default: ""] += finalized
+          inProgress[key] = latest
+        }
+      }
+      func words(_ key: String) -> Int {
+        lock.withLock {
+          ((text[key] ?? "") + " " + (inProgress[key] ?? ""))
+            .split(whereSeparator: { !$0.isLetter }).count
+        }
+      }
+    }
+    let shown = Shown()
+
+    let dictation = ApplePreviewRecognizer(locale: english)
+    let you = ApplePreviewRecognizer(locale: english, kind: .meeting)
+    let call = ApplePreviewRecognizer(locale: english, kind: .meeting)
+    var sessions: [any LivePreviewEngineSession] = []
+    do {
+      try await dictation.prepare()
+      try await you.prepare()
+      try await call.prepare()
+      for engine in [dictation, you, call] {
+        let formats = try #require(await engine.preparedFormats())
+        #expect(formats.source != formats.target, "audio is converted to Apple's format")
+      }
+      sessions.append(
+        try await dictation.openSession(
+          vocabulary: vocabulary, onText: { shown.set("dictation", $0) }))
+      for (name, engine) in [("you", you), ("call", call)] {
+        sessions.append(
+          try await engine.openTranscriptSession(
+            vocabulary: vocabulary,
+            onEvent: { event in
+              if case .update(let finalized, let inProgress) = event {
+                shown.update(name, finalized: finalized, inProgress: inProgress)
+              }
+            }))
+      }
+      #expect(await LocaleClaims.shared.useCount("en-US") == 3)
+
+      // Real time, 100 ms chunks, the cadence the pumps feed at.
+      var index = 0
+      let clock = ContinuousClock()
+      let start = clock.now
+      while index < speech.count {
+        let chunk = Array(speech[index..<min(index + 1_600, speech.count)])
+        for session in sessions { await session.feed(chunk) }
+        index += 1_600
+        // settle: wall-clock pacing of a real-time feed, not a wait for state.
+        try await clock.sleep(until: start + .milliseconds(index / 16))
+      }
+    } catch {
+      for session in sessions { await session.end() }
+      throw error
+    }
+    for session in sessions { await session.end() }
+
+    #expect(shown.words("dictation") >= 5, "dictation's preview showed words")
+    #expect(shown.words("you") >= 5, "the meeting's first track showed words")
+    #expect(shown.words("call") >= 5, "the meeting's second track showed words")
+    #expect(
+      await LocaleClaims.shared.useCount("en-US") == 0, "English went back after the last end")
+  }
+
+  /// #4105: the Apple preview's assembly now runs through the factory's `consume` closure. Its
+  /// text must stay bounded on long speech, and a pause must not wipe what was said.
+  @Test(
+    "The Apple preview text stays bounded and survives a pause",
+    .enabled(if: ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26))
+  func appleCollectorBoundsAndKeepsSegments() async {
+    guard #available(macOS 26.0, *) else { return }
+    let long = String(repeating: "word ", count: 1_000)  // 5,000 characters, over the bound
+    let module = AppleTranscriberFactory.Module(
+      speechModule: AppleTranscriberFactory.makeModule(.dictation, locale: Locale(identifier: "en-US"))
+        .speechModule,
+      consume: { deliver in
+        deliver("hello there.", true)
+        deliver("new segment", false)  // after a pause: only the new segment's words
+        deliver(long, true)
+      })
+    final class Seen: @unchecked Sendable {
+      let lock = NSLock()
+      var texts: [String] = []
+      func add(_ text: String) { lock.withLock { texts.append(text) } }
+    }
+    let seen = Seen()
+    await ApplePreviewRecognizer.collect(from: module, lookups: nil, onText: { seen.add($0) }).value
+    let texts = seen.lock.withLock { seen.texts }
+    #expect(texts.count == 3)
+    #expect(texts[1] == "hello there.new segment", "the pause kept the finished segment")
+    #expect(texts.allSatisfy { $0.count <= LivePreviewTextBound.maxCharacters })
+    #expect(texts[2].hasSuffix("word "))
+  }
 }

@@ -519,6 +519,7 @@ struct WhisperPreviewCommandRecordTests {
 
     #expect(f.door.fetches == 2)
     #expect(first.state(of: .preview) == .admitted)
+    #expect(f.home.previewDownloadRefused == false, "#4105: an accepted press is not a refusal")
   }
 
   @Test("Download then Cancel with no suspension between: nothing fetches, the decline survives")
@@ -584,6 +585,8 @@ struct WhisperPreviewCommandRecordTests {
     #expect(f.home.removalStepsForTests.isEmpty)
     #expect(f.door.fetches == 0)
     #expect(try String(contentsOf: recordURL, encoding: .utf8) == "{not json")
+    // #4105: the press was scheduled, then refused by the record: the refusal is visible.
+    #expect(f.home.previewDownloadRefused)
   }
 
   @Test("an unbound record refuses every door")

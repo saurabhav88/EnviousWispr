@@ -2338,6 +2338,70 @@
    }
   },
   {
+   "id": "meetingLiveWords",
+   "kind": "setting",
+   "destination": {
+    "page": "meetings",
+    "tab": "general"
+   },
+   "disposition": "mapped",
+   "parent": "meetings.tab.general",
+   "target": "meetingLiveWords",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "The engine and language for words shown while a meeting records."
+   }
+  },
+  {
+   "id": "meetingLiveWords.apple",
+   "kind": "choice",
+   "destination": {
+    "page": "meetings",
+    "tab": "general"
+   },
+   "disposition": "mapped",
+   "parent": "meetingLiveWords",
+   "target": "meetingLiveWords",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null
+  },
+  {
+   "id": "meetingLiveWords.universal",
+   "kind": "choice",
+   "destination": {
+    "page": "meetings",
+    "tab": "general"
+   },
+   "disposition": "mapped",
+   "parent": "meetingLiveWords",
+   "target": "meetingLiveWords",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null
+  },
+  {
+   "id": "meetingTranscriptLanguage",
+   "kind": "setting",
+   "destination": {
+    "page": "meetings",
+    "tab": "general"
+   },
+   "disposition": "mapped",
+   "parent": "meetings.tab.general",
+   "target": "meetingTranscriptLanguage",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "The language of the full transcript written after a meeting."
+   }
+  },
+  {
    "id": "meetingUseCalendarForNames",
    "kind": "setting",
    "destination": {

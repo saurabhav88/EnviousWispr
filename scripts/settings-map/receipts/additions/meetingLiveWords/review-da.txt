@@ -1,0 +1,38 @@
+{
+  "meetingLiveWords": {
+    "language": "da",
+    "title": "livetransskription",
+    "words": [
+      "livetekst til møder"
+    ],
+    "phrases": [
+      "skift sprog for livetransskription af møder",
+      "vælg motor til livetransskription af møder"
+    ]
+  },
+  "meetingLiveWords.apple": {
+    "language": "da",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "brug Apple til livetransskription af møder"
+    ]
+  },
+  "meetingLiveWords.universal": {
+    "language": "da",
+    "title": "Universal",
+    "words": [],
+    "phrases": [
+      "brug Universal til livetransskription af møder"
+    ]
+  },
+  "meetingTranscriptLanguage": {
+    "language": "da",
+    "title": "sprog for transskription",
+    "words": [],
+    "phrases": [
+      "vælg sprog for den fulde transskription efter mødet",
+      "registrér automatisk sproget til mødets fulde transskription"
+    ]
+  }
+}

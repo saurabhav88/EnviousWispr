@@ -315,7 +315,10 @@ and the visible projection; --include-text adds the stored text up to 256 KB.
 meeting notes-set types and saves a meeting's notes (--text) as the Notes tab does;
 notes-get reads them back. summary-write is the Summary tab's Write summary / Write again
 (--replace confirms replacing an edited summary); it returns at the start, so poll
-summary-get. meeting live prints the recording meeting's live words (memory only).
+summary-get. meeting live prints the recording meeting's live words (memory only);
+meeting live-words-status prints the live words engine and language a meeting would use
+now, without saving a guess. meeting start --live-engine apple|universal forces that engine
+for one meeting.
 call simulate fakes call apps holding the microphone (--holders JSON list of {bundleID,
 input, evidence, url?, pid?}); the rules, the panel and every Start run as in production.
 --clear returns to the real microphone; --press presses a button the call panel shows;
@@ -431,7 +434,7 @@ def build_parser():
     call_sound.add_argument("--call-sound", dest="call_sound", action="store_const", const=True)
     call_sound.add_argument("--no-call-sound", dest="call_sound", action="store_const",
                             const=False)
-    meeting_start.add_argument("--live-engine", choices=["auto", "universal"])
+    meeting_start.add_argument("--live-engine", choices=["auto", "apple", "universal"])
     meeting.add_parser("status")
     meeting.add_parser("list").add_argument("--limit", type=int)
     meeting_get = meeting.add_parser("get")
@@ -450,6 +453,7 @@ def build_parser():
     summary_write.add_argument("id")
     summary_write.add_argument("--replace", action="store_true")
     meeting.add_parser("live")
+    meeting.add_parser("live-words-status")
 
     call = sub.add_parser("call", help="EnviousMeet call detection (simulated)").add_subparsers(
         dest="action", required=True, metavar="ACTION")
@@ -577,6 +581,8 @@ def route(args):
         return "meeting.summary.write", wire, True
     if key == ("meeting", "live"):
         return "meeting.live", {}, False
+    if key == ("meeting", "live-words-status"):
+        return "meeting.liveWordsStatus", {}, False
     if key == ("call", "simulate"):
         if args.clear:
             return "call.simulate", {"clear": True}, True

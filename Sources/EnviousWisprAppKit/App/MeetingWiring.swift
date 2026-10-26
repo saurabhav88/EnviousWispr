@@ -89,8 +89,9 @@ enum MeetingWiring {
     let isModelLoaded: @MainActor () -> Bool
     let isLoadOrUnloadInFlight: @MainActor () -> Bool
     let publishedSelection: @MainActor () -> ParakeetModelSelection?
-    /// `ActiveEngineOperation.transcribe` with the language left to the engine.
-    let transcribe: @MainActor ([Float]) async throws -> ASRResult
+    /// `ActiveEngineOperation.transcribe` with the meeting's transcript language (a code; nil
+    /// leaves the language to the engine, #4105).
+    let transcribe: @MainActor (_ samples: [Float], _ language: String?) async throws -> ASRResult
     let disarmEngineTimers: @MainActor () -> Void
     let rearmEngineTimers: @MainActor () -> Void
     let recoveryRecheck: @MainActor () -> Void
@@ -277,7 +278,9 @@ enum MeetingWiring {
             gate: inputs.modelUseGate, resolve: { shared.publishedSelection() }),
           ownClaim: claim,
           ownLoad: { selection in try await engine.load(selection: selection) },
-          ownTranscribe: { samples in try await engine.transcribe(samples: samples, language: nil) },
+          ownTranscribe: { samples, language in
+            try await engine.transcribe(samples: samples, language: language)
+          },
           ownUnload: { await engine.unload() },
           ownWaitForAvailability: { try await engine.waitUntilOfflineModeAvailable() },
           ownResidencyEnded: workChanged,
@@ -294,7 +297,9 @@ enum MeetingWiring {
             workChanged()
           },
           loadEngine: { try await route.loadEngine() },
-          transcribe: { samples in try await route.transcribe(samples) },
+          transcribe: { samples, language in
+            try await route.transcribe(samples, language: language)
+          },
           unloadEngine: { await route.unloadEngine() },
           analyzeSpeakers: { audio in
             await analyzeSpeakers(audio, analyze: analyze, workChanged: workChanged)

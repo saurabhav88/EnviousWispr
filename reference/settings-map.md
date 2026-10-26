@@ -12,9 +12,9 @@ Generated from the compiled Settings Map and the validated search vocabulary. Do
 
 The interface ships in English and German. The other 30 languages (ar, bg, cs, da, el, es, et, fi, fr, hi, hr, hu, it, ja, ko, lt, lv, mt, nl, pl, pt, ro, ru, sk, sl, sv, tr, uk, vi, zh) are search metadata only: words and titles people may type, matched against the same places. Titles below read English / German.
 
-285 nodes, 258 searchable, 8256 vocabulary blocks.
+289 nodes, 262 searchable, 8384 vocabulary blocks.
 
-Fingerprints: mapSHA256 `7a3c26d431fef074f5c021dcd3398b6e61486fcd56c6e9e85376f080ca262d02`, uiCatalogSHA256 `806991f09417d5370143277f138e7216958ef7fae0bf4ceff47cdd57c0c6e95c`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `541bfe42729552d229744bbded16ad9cdac22580911746ce993a2497e48b6bae`
+Fingerprints: mapSHA256 `aa5b13393e001909472a4b8679de2fcd0e1699188ccedb3c410609fb7d6333a4`, uiCatalogSHA256 `613b9ad888e0e78f7ccb4f783d814f1bd4221c8248617ff4dd363f9cf88f2a9c`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `3273414fce296c2df8ccc686342e09b2d3855db129220ec053e2c269cf77bd14`
 
 ## Structure
 
@@ -286,6 +286,10 @@ Fingerprints: mapSHA256 `7a3c26d431fef074f5c021dcd3398b6e61486fcd56c6e9e85376f08
       - [Record only my voice / Nur meine Stimme aufnehmen](#node-meetingCaptureCallSound) `meetingCaptureCallSound` (setting)
       - [Write a summary when a meeting ends / Zusammenfassung erstellen, wenn ein Meeting endet](#node-meetingWriteSummary) `meetingWriteSummary` (setting)
       - [Turn off dictation during meetings / Diktieren während Meetings ausschalten](#node-meetingTurnsOffDictation) `meetingTurnsOffDictation` (setting)
+      - [Live words / Live-Transkript](#node-meetingLiveWords) `meetingLiveWords` (setting)
+        - [Apple](#node-meetingLiveWords-apple) `meetingLiveWords.apple` (choice)
+        - [Universal / Universal](#node-meetingLiveWords-universal) `meetingLiveWords.universal` (choice)
+      - [Transcript language / Transkriptsprache](#node-meetingTranscriptLanguage) `meetingTranscriptLanguage` (setting)
       - [Name meetings from my calendar / Meetings nach meinem Kalender benennen](#node-meetingUseCalendarForNames) `meetingUseCalendarForNames` (setting)
       - [When a call starts / Wenn ein Anruf beginnt](#node-meetingCallDetection) `meetingCallDetection` (setting)
     - [Call Apps / Anruf-Apps](#node-meetings-tab-callApps) `meetings.tab.callApps` (feature)
@@ -2550,6 +2554,50 @@ Fingerprints: mapSHA256 `7a3c26d431fef074f5c021dcd3398b6e61486fcd56c6e9e85376f08
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: disable dictation while recording a meeting; dictation key does nothing during meeting recording |
 | Search (de) | words: Meetingaufnahme, Besprechung<br>phrases: während einer Meetingaufnahme kein Diktat starten; schalte Diktieren im Meeting aus |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-meetingLiveWords"></a>
+
+### Live words / Live-Transkript (`meetingLiveWords`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | setting |
+| Parent | [`meetings.tab.general`](#node-meetings-tab-general) |
+| Title source | catalog key `Live words` |
+| Description | The engine and language for words shown while a meeting records. / Engine und Sprache für das Live-Transkript während einer Meeting-Aufnahme. |
+| Description source | catalog key `The engine and language for words shown while a meeting records.` |
+| Destination | `meetings` › `general` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`meetingLiveWords`](#node-meetingLiveWords) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | words: live meeting transcript, real-time meeting text<br>phrases: change meeting live transcript language; choose engine for live meeting transcription |
+| Search (de) | phrases: ändere die Sprache für das Live-Transkript während der Meetingaufnahme; wähle die Engine für das Live-Transkript im Meeting; ändere die Sprache der Mitschrift während des Meetings |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-meetingTranscriptLanguage"></a>
+
+### Transcript language / Transkriptsprache (`meetingTranscriptLanguage`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | setting |
+| Parent | [`meetings.tab.general`](#node-meetings-tab-general) |
+| Title source | catalog key `Transcript language` |
+| Description | The language of the full transcript written after a meeting. / Die Sprache des vollständigen Transkripts, das nach einem Meeting erstellt wird. |
+| Description source | catalog key `The language of the full transcript written after a meeting.` |
+| Destination | `meetings` › `general` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`meetingTranscriptLanguage`](#node-meetingTranscriptLanguage) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | phrases: change meeting transcript language; language of the full transcript after a meeting |
+| Search (de) | phrases: ändere die Sprache für das vollständige Transkript nach dem Meeting; in welcher Sprache wird das vollständige Transkript nach dem Meeting erstellt |
 | Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingUseCalendarForNames"></a>
@@ -4981,6 +5029,48 @@ Fingerprints: mapSHA256 `7a3c26d431fef074f5c021dcd3398b6e61486fcd56c6e9e85376f08
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: select Italian for the punctuation start word; show the Italian punctuation trigger |
 | Search (de) | phrases: wähle Italienisch für das Startwort vor Satzzeichen; zeig mir das Auslösewort für italienische Satzzeichen |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-meetingLiveWords-apple"></a>
+
+### Apple (`meetingLiveWords.apple`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | choice |
+| Parent | [`meetingLiveWords`](#node-meetingLiveWords) |
+| Title source | product name |
+| Description | none |
+| Destination | `meetings` › `general` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`meetingLiveWords`](#node-meetingLiveWords) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | phrases: use Apple for live meeting transcription |
+| Search (de) | phrases: verwende Apple für das Live-Transkript im Meeting |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-meetingLiveWords-universal"></a>
+
+### Universal / Universal (`meetingLiveWords.universal`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | choice |
+| Parent | [`meetingLiveWords`](#node-meetingLiveWords) |
+| Title source | catalog key `Universal` |
+| Description | none |
+| Destination | `meetings` › `general` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`meetingLiveWords`](#node-meetingLiveWords) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | phrases: use Universal for live meeting transcription |
+| Search (de) | phrases: nutze Universal für das Live-Transkript im Meeting |
 | Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-unloadModel-never"></a>

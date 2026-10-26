@@ -1,0 +1,356 @@
+{
+ "id": "meetingTranscriptLanguage",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "لغة النص المفرّغ",
+   "words": [
+    "تفريغ"
+   ],
+   "phrases": [
+    "تغيير لغة نص الاجتماع",
+    "لغة التفريغ الكامل بعد الاجتماع"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "език на транскрипцията",
+   "words": [
+    "стенограма"
+   ],
+   "phrases": [
+    "смяна на езика на транскрипцията от срещата",
+    "език на пълния текст след срещата"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "jazyk přepisu",
+   "words": [
+    "transkript"
+   ],
+   "phrases": [
+    "změnit jazyk přepisu schůzky",
+    "jazyk úplného přepisu po schůzce"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "sprog for transskription",
+   "words": [
+    "udskrift"
+   ],
+   "phrases": [
+    "ændr sproget i mødets udskrift",
+    "sprog for hele transskriptionen efter mødet"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [
+    "Transkript",
+    "Sprache",
+    "Verschriftlichung"
+   ],
+   "phrases": [
+    "Sprache des Meetingtranskripts ändern",
+    "in welcher Sprache wird mein Meeting transkribiert"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "γλώσσα απομαγνητοφώνησης",
+   "words": [
+    "μεταγραφή"
+   ],
+   "phrases": [
+    "αλλαγή γλώσσας απομαγνητοφώνησης της συνάντησης",
+    "γλώσσα του πλήρους κειμένου μετά τη συνάντηση"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [
+    "transcription"
+   ],
+   "phrases": [
+    "change meeting transcript language",
+    "language of the full transcript after a meeting"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "idioma de la transcripción",
+   "words": [
+    "lengua"
+   ],
+   "phrases": [
+    "cambiar el idioma de la transcripción de la reunión",
+    "idioma del texto completo después de la reunión"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "transkriptsiooni keel",
+   "words": [
+    "ümberkirjutus"
+   ],
+   "phrases": [
+    "muuda koosoleku transkriptsiooni keelt",
+    "koosoleku järel valmiva täisteksti keel"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "litteroinnin kieli",
+   "words": [
+    "transkriptio"
+   ],
+   "phrases": [
+    "vaihda kokouksen litteroinnin kieli",
+    "kokouksen jälkeen tehtävän litteroinnin kieli"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "langue de la transcription",
+   "words": [],
+   "phrases": [
+    "changer la langue de la transcription de la réunion",
+    "langue du texte intégral après la réunion"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "ट्रांसक्रिप्ट की भाषा",
+   "words": [
+    "लिप्यंतरण"
+   ],
+   "phrases": [
+    "मीटिंग की ट्रांसक्रिप्ट की भाषा बदलें",
+    "मीटिंग के बाद पूरे लिखित पाठ की भाषा"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "jezik prijepisa",
+   "words": [
+    "transkript"
+   ],
+   "phrases": [
+    "promijeni jezik prijepisa sastanka",
+    "jezik cijelog prijepisa nakon sastanka"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "átirat nyelve",
+   "words": [
+    "leirat"
+   ],
+   "phrases": [
+    "megbeszélés átiratának nyelve",
+    "teljes leirat nyelvének módosítása"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "lingua della trascrizione",
+   "words": [],
+   "phrases": [
+    "cambiare la lingua della trascrizione della riunione",
+    "lingua del testo completo dopo la riunione"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "文字起こしの言語",
+   "words": [
+    "書き起こし",
+    "トランスクリプト"
+   ],
+   "phrases": [
+    "会議の文字起こしの言語を変える",
+    "会議後に作成される全文の言語"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "전사 언어",
+   "words": [
+    "녹취록"
+   ],
+   "phrases": [
+    "회의 녹취록 언어 바꾸기",
+    "회의 후 작성되는 전체 녹취록의 언어"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "transkripcijos kalba",
+   "words": [],
+   "phrases": [
+    "pakeisti susitikimo transkripcijos kalbą",
+    "viso teksto kalba po susitikimo"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "transkripcijas valoda",
+   "words": [
+    "atšifrējums"
+   ],
+   "phrases": [
+    "mainīt sapulces transkripcijas valodu",
+    "pilnā atšifrējuma valoda pēc sapulces"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "lingwa tat-traskrizzjoni",
+   "words": [],
+   "phrases": [
+    "ibdel il-lingwa tat-traskrizzjoni tal-laqgħa",
+    "lingwa tat-test sħiħ wara l-laqgħa"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "taal van het transcript",
+   "words": [
+    "transcriptie",
+    "uitschrift"
+   ],
+   "phrases": [
+    "taal van het vergaderingstranscript wijzigen",
+    "taal van de volledige uitgeschreven tekst na de vergadering"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "język transkrypcji",
+   "words": [
+    "stenogram"
+   ],
+   "phrases": [
+    "zmień język transkrypcji spotkania",
+    "język pełnego zapisu po spotkaniu"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "idioma da transcrição",
+   "words": [
+    "língua"
+   ],
+   "phrases": [
+    "mudar o idioma da transcrição da reunião",
+    "idioma do texto completo após a reunião"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "limba transcrierii",
+   "words": [
+    "transcripție"
+   ],
+   "phrases": [
+    "schimbă limba transcrierii întâlnirii",
+    "limba textului integral după întâlnire"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "язык расшифровки",
+   "words": [
+    "транскрипция",
+    "стенограмма"
+   ],
+   "phrases": [
+    "изменить язык расшифровки встречи",
+    "язык полного текста после встречи"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "jazyk prepisu",
+   "words": [
+    "transkript"
+   ],
+   "phrases": [
+    "zmeniť jazyk prepisu stretnutia",
+    "jazyk úplného prepisu po stretnutí"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "jezik prepisa",
+   "words": [
+    "transkripcija"
+   ],
+   "phrases": [
+    "spremeni jezik prepisa sestanka",
+    "jezik celotnega prepisa po sestanku"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "språk för transkription",
+   "words": [
+    "utskrift",
+    "transkribering"
+   ],
+   "phrases": [
+    "ändra språk för mötets transkription",
+    "språk för hela utskriften efter mötet"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "döküm dili",
+   "words": [
+    "transkript",
+    "deşifre"
+   ],
+   "phrases": [
+    "toplantı dökümünün dilini değiştir",
+    "toplantı sonrası tam metnin dili"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "мова розшифрування",
+   "words": [
+    "транскрипція",
+    "стенограма"
+   ],
+   "phrases": [
+    "змінити мову розшифрування зустрічі",
+    "мова повного тексту після зустрічі"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "ngôn ngữ bản chép lời",
+   "words": [
+    "phiên âm"
+   ],
+   "phrases": [
+    "đổi ngôn ngữ bản chép lời cuộc họp",
+    "ngôn ngữ bản chép lời đầy đủ sau cuộc họp"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "转写语言",
+   "words": [
+    "转录",
+    "逐字稿"
+   ],
+   "phrases": [
+    "更改会议逐字稿的语言",
+    "会后完整转写文本的语言"
+   ]
+  }
+ ]
+}

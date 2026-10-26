@@ -1,0 +1,40 @@
+{
+  "meetingLiveWords": {
+    "language": "pt",
+    "title": "transcrição em tempo real",
+    "words": [
+      "transcrição ao vivo da reunião"
+    ],
+    "phrases": [
+      "mudar o idioma da transcrição da reunião em tempo real",
+      "escolher o motor de transcrição em tempo real da reunião"
+    ]
+  },
+  "meetingLiveWords.apple": {
+    "language": "pt",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "usar Apple para transcrever a reunião em tempo real"
+    ]
+  },
+  "meetingLiveWords.universal": {
+    "language": "pt",
+    "title": "Universal",
+    "words": [],
+    "phrases": [
+      "usar Universal para a transcrição da reunião em tempo real"
+    ]
+  },
+  "meetingTranscriptLanguage": {
+    "language": "pt",
+    "title": "idioma da transcrição",
+    "words": [
+      "idioma da transcrição completa"
+    ],
+    "phrases": [
+      "mudar o idioma da transcrição completa da reunião",
+      "idioma do texto completo após a reunião"
+    ]
+  }
+}

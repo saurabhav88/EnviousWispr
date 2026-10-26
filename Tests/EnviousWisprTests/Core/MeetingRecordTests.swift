@@ -23,6 +23,32 @@ struct MeetingRecordTests {
     #expect(decoded.recordedDurationMs == 60_000)
   }
 
+  /// #4105: the transcript language a meeting was started with survives a save and reload; a
+  /// record written before the field reads as Auto.
+  @Test("the transcript language round-trips, and an older record without it reads as Auto")
+  func transcriptLanguage() throws {
+    var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    #expect(record.transcriptLanguageMode == .auto)
+    record.transcriptLanguageMode = .locked("de")
+    let data = try JSONEncoder().encode(record)
+    let decoded = try JSONDecoder().decode(MeetingRecord.self, from: data)
+    #expect(decoded.transcriptLanguage == "de")
+    #expect(decoded.transcriptLanguageMode == .locked("de"))
+    #expect(decoded.formatVersion == MeetingRecord.currentFormatVersion, "no format bump")
+
+    var object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+    object.removeValue(forKey: "transcriptLanguage")
+    let older = try JSONDecoder().decode(
+      MeetingRecord.self, from: try JSONSerialization.data(withJSONObject: object))
+    #expect(older.transcriptLanguage == nil)
+    #expect(older.transcriptLanguageMode == .auto)
+
+    record.transcriptLanguageMode = .auto
+    #expect(record.transcriptLanguage == nil)
+    record.transcriptLanguageMode = .locked("")
+    #expect(record.transcriptLanguage == nil, "an empty lock is Auto")
+  }
+
   @Test("segment names carry track, index and start, and parse back; malformed names are rejected")
   func namingRoundTrip() {
     let name = MeetingSegmentNaming.fileName(

@@ -1,0 +1,259 @@
+{
+ "id": "meetingLiveWords.apple",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "استخدام Apple لنسخ الاجتماع مباشرة"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "Apple за транскрипция на срещата в реално време"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "Apple pro živý přepis schůzky"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "brug Apple til live transskription af mødet"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [],
+   "phrases": [
+    "Apple für die Live-Mitschrift im Meeting verwenden"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "Apple για ζωντανή απομαγνητοφώνηση της συνάντησης"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [],
+   "phrases": [
+    "use Apple for live meeting transcription"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "usar Apple para transcribir la reunión en directo"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "Apple koosoleku reaalajas transkribeerimiseks"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "Apple kokouksen reaaliaikaiseen litterointiin"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "utiliser Apple pour transcrire la réunion en direct"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "मीटिंग की बातें तुरंत लिखने के लिए Apple चुनें"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "Apple za prijepis sastanka uživo"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "Apple az értekezlet élő átírásához"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "usare Apple per trascrivere la riunione in tempo reale"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "会議のリアルタイム文字起こしにAppleを使う"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "회의 실시간 받아쓰기에 Apple 사용"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "Apple susitikimo transkripcijai realiuoju laiku"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "Apple sapulces transkripcijai reāllaikā"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "uża Apple għat-traskrizzjoni diretta tal-laqgħa"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "Apple gebruiken voor live transcriptie van de vergadering"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "Apple do transkrypcji spotkania na żywo"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "usar Apple para transcrever a reunião em tempo real"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "Apple pentru transcrierea întâlnirii în timp real"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "Apple для расшифровки встречи в реальном времени"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "Apple na živý prepis stretnutia"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "Apple za sprotni prepis sestanka"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "använd Apple för att transkribera mötet i realtid"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "toplantıyı anlık yazıya dökmek için Apple kullan"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "Apple для розшифрування зустрічі в реальному часі"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "dùng Apple để chép lời cuộc họp theo thời gian thực"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "用Apple实时转写会议"
+   ]
+  }
+ ]
+}

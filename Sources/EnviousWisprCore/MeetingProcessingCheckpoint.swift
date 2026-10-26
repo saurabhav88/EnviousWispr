@@ -7,10 +7,13 @@ import Foundation
 /// A checkpoint is reused only when its `key` matches the pass exactly: the same meeting, the
 /// same audio (each segment's name, start, frame count, byte size and content hash, not paths
 /// alone), the same
-/// processing settings and version. Pieces are also tied to the speech model that produced them;
-/// a different model discards them.
+/// processing settings and version, and the same transcript language. Pieces are also tied to
+/// the speech model that produced them; a different model discards them.
 public struct MeetingProcessingCheckpoint: Codable, Equatable, Sendable {
-  public static let currentFormatVersion = 1
+  /// 2 adds `Key.transcriptLanguage` (#4105). A build that reads only format 1 rejects a
+  /// format 2 file and redoes the pass, so a rollback never reuses words decoded in a language
+  /// it cannot see in the key.
+  public static let currentFormatVersion = 2
 
   public struct Key: Codable, Equatable, Sendable {
     public let meetingID: UUID
@@ -21,12 +24,15 @@ public struct MeetingProcessingCheckpoint: Codable, Equatable, Sendable {
     /// #4052: false when each contiguous run was decoded whole. A key written before this field
     /// existed decodes as `true` (it came from cut pieces), so it never matches a whole-run pass.
     public let cutsPieces: Bool
+    /// #4105: the language code the pass decodes with; nil is Auto. Words decoded in another
+    /// language never resume this pass. Absent in older keys, which were all Auto.
+    public let transcriptLanguage: String?
     public let inputs: [TrackInventory]
 
     public init(
       meetingID: UUID, processingVersion: Int, pieceTargetSeconds: Double,
       pieceSearchSeconds: Double, seamPaddingSeconds: Double, cutsPieces: Bool,
-      inputs: [TrackInventory]
+      transcriptLanguage: String?, inputs: [TrackInventory]
     ) {
       self.meetingID = meetingID
       self.processingVersion = processingVersion
@@ -34,12 +40,14 @@ public struct MeetingProcessingCheckpoint: Codable, Equatable, Sendable {
       self.pieceSearchSeconds = pieceSearchSeconds
       self.seamPaddingSeconds = seamPaddingSeconds
       self.cutsPieces = cutsPieces
+      // One spelling of Auto, so an Auto key always equals another Auto key.
+      self.transcriptLanguage = transcriptLanguage?.isEmpty == false ? transcriptLanguage : nil
       self.inputs = inputs
     }
 
     private enum CodingKeys: String, CodingKey {
       case meetingID, processingVersion, pieceTargetSeconds, pieceSearchSeconds
-      case seamPaddingSeconds, cutsPieces, inputs
+      case seamPaddingSeconds, cutsPieces, transcriptLanguage, inputs
     }
 
     public init(from decoder: any Decoder) throws {
@@ -51,6 +59,9 @@ public struct MeetingProcessingCheckpoint: Codable, Equatable, Sendable {
       seamPaddingSeconds = try c.decode(Double.self, forKey: .seamPaddingSeconds)
       // Absent in keys written before #4052, which always cut pieces.
       cutsPieces = try c.decodeIfPresent(Bool.self, forKey: .cutsPieces) ?? true
+      // Absent in keys written before #4105, which were all Auto.
+      let language = try c.decodeIfPresent(String.self, forKey: .transcriptLanguage)
+      transcriptLanguage = language?.isEmpty == false ? language : nil
       inputs = try c.decode([TrackInventory].self, forKey: .inputs)
     }
   }

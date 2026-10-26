@@ -1,0 +1,35 @@
+{
+  "meetingLiveWords": {
+    "language": "en",
+    "words": [
+      "live meeting transcript",
+      "real-time meeting text"
+    ],
+    "phrases": [
+      "change meeting live transcript language",
+      "choose engine for live meeting transcription"
+    ]
+  },
+  "meetingLiveWords.apple": {
+    "language": "en",
+    "words": [],
+    "phrases": [
+      "use Apple for live meeting transcription"
+    ]
+  },
+  "meetingLiveWords.universal": {
+    "language": "en",
+    "words": [],
+    "phrases": [
+      "use Universal for live meeting transcription"
+    ]
+  },
+  "meetingTranscriptLanguage": {
+    "language": "en",
+    "words": [],
+    "phrases": [
+      "change meeting transcript language",
+      "language of the full transcript after a meeting"
+    ]
+  }
+}

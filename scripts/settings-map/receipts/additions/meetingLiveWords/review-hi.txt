@@ -1,0 +1,38 @@
+{
+  "meetingLiveWords": {
+    "language": "hi",
+    "title": "लाइव ट्रांसक्रिप्शन",
+    "words": [
+      "मीटिंग का लाइव टेक्स्ट"
+    ],
+    "phrases": [
+      "मीटिंग के दौरान दिखने वाले शब्दों की भाषा बदलें",
+      "मीटिंग के लाइव ट्रांसक्रिप्शन का इंजन चुनें"
+    ]
+  },
+  "meetingLiveWords.apple": {
+    "language": "hi",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "मीटिंग की बातें तुरंत लिखने के लिए Apple चुनें"
+    ]
+  },
+  "meetingLiveWords.universal": {
+    "language": "hi",
+    "title": "Universal",
+    "words": [],
+    "phrases": [
+      "मीटिंग के लाइव ट्रांसक्रिप्शन के लिए Universal चुनें"
+    ]
+  },
+  "meetingTranscriptLanguage": {
+    "language": "hi",
+    "title": "ट्रांसक्रिप्ट की भाषा",
+    "words": [],
+    "phrases": [
+      "मीटिंग के बाद बनने वाली पूरी ट्रांसक्रिप्ट की भाषा बदलें",
+      "मीटिंग की पूरी ट्रांसक्रिप्ट के लिए भाषा अपने आप पहचानें"
+    ]
+  }
+}

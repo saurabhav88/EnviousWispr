@@ -1,0 +1,38 @@
+{
+  "meetingLiveWords": {
+    "language": "pl",
+    "title": "transkrypcja na żywo",
+    "words": [
+      "tekst spotkania na żywo"
+    ],
+    "phrases": [
+      "zmień język transkrypcji spotkania na żywo",
+      "wybierz silnik transkrypcji spotkania na żywo"
+    ]
+  },
+  "meetingLiveWords.apple": {
+    "language": "pl",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "Apple do transkrypcji spotkania na żywo"
+    ]
+  },
+  "meetingLiveWords.universal": {
+    "language": "pl",
+    "title": "Universal",
+    "words": [],
+    "phrases": [
+      "wybierz Universal do transkrypcji spotkania na żywo"
+    ]
+  },
+  "meetingTranscriptLanguage": {
+    "language": "pl",
+    "title": "język transkrypcji",
+    "words": [],
+    "phrases": [
+      "zmień język pełnej transkrypcji po spotkaniu",
+      "automatycznie wykrywaj język transkrypcji po spotkaniu"
+    ]
+  }
+}

@@ -106,16 +106,33 @@ enum MeetingsPresentation {
     switch status {
     case .starting, .running, .off(.notCaptured):
       return nil
-    case .off(.universalNotDownloaded):
+    case .off(.notSetUp) where recordingEnded:
+      return String(
+        localized: "Live words were not set up for this meeting.",
+        comment: "History, a stopped meeting: no live words engine was chosen when it started.")
+    case .off(.notSetUp):
       return String(
         localized:
-          "Live words need the Universal engine. Download it in Dictation Settings, Live Preview.",
-        comment: "History, a recording meeting: no live words on this Mac until the Universal engine is downloaded.")
-    case .off(.appleLanguageAndUniversalMissing(let language)):
+          "Live words are not set up. Choose an engine in EnviousMeet settings, General, Live words.",
+        comment: "History, a recording meeting: no live words engine and language are chosen yet.")
+    case .off(.engineNotDownloaded(.apple, let language)) where recordingEnded:
+      return String(
+        localized: "Live words needed Apple's \(language) model, which was not downloaded.",
+        comment: "History, a stopped meeting: Apple's meeting speech model for the chosen language was missing. The placeholder is a language name.")
+    case .off(.engineNotDownloaded(.apple, let language)):
       return String(
         localized:
-          "Live words need Apple's \(language) language or the Universal engine. Download either in Dictation Settings, Live Preview.",
-        comment: "History, a recording meeting: no live words until a language or the Universal engine is downloaded. The placeholder is a language name.")
+          "Live words need Apple's \(language) model. Download it in EnviousMeet settings, General, Live words.",
+        comment: "History, a recording meeting: Apple's meeting speech model for the chosen language is not downloaded. The placeholder is a language name.")
+    case .off(.engineNotDownloaded(.universal, _)) where recordingEnded:
+      return String(
+        localized: "Live words needed the Universal engine, which was not downloaded.",
+        comment: "History, a stopped meeting: the Universal engine chosen for live words was not downloaded.")
+    case .off(.engineNotDownloaded(.universal, _)):
+      return String(
+        localized:
+          "Live words need the Universal engine. Download it in EnviousMeet settings, General, Live words.",
+        comment: "History, a recording meeting: the Universal engine chosen for live words is not downloaded.")
     case .off(.previousStillClosing) where recordingEnded:
       return String(
         localized: "Live words were not available for this meeting.",

@@ -26,7 +26,7 @@ extension MeetingRecorder: MeetingRecording {}
 @MainActor
 protocol MeetingProcessing: AnyObject {
   func run(
-    tracks: [MeetingTrackKind: MeetingTrackAudio],
+    tracks: [MeetingTrackKind: MeetingTrackAudio], language: String?,
     checkpoint access: MeetingTranscriptionJob.CheckpointAccess?,
     missingAudio: [MeetingTrackKind: [MeetingTranscriptionJob.MissingAudio]],
     onStage: @escaping @MainActor (MeetingTranscriptionJob.Stage) -> Void
@@ -271,7 +271,9 @@ final class MeetingCoordinator {
     var makeJob: @MainActor () -> MeetingProcessing
     /// Live words while a meeting records (#3973): nil shows none.
     var liveWords: MeetingLiveWords?
-    /// The language live words use, read once at each recording's start (decision 16).
+    /// The meeting transcript's language (`meetingLanguageMode`, decision 16), read once per
+    /// Start and stored on the record (#4105). Live words never read it; they have their own
+    /// engine and language (`MeetingLiveWordsChoice`).
     var meetingLanguage: @MainActor () -> LanguageMode = { .auto }
     /// Custom Words for live words, read once at each recording's start.
     var liveVocabulary: @MainActor () -> LivePreviewVocabulary = {
@@ -395,6 +397,9 @@ final class MeetingCoordinator {
   /// deletion, being deleted or still closing and stops on low disk, so a meeting the queue
   /// cannot run never holds summaries back.
   var hasFinalPassWork: Bool { processing != nil || queueTask != nil }
+  /// #4105: a meeting is starting, recording, stopping, or its final pass runs or is draining
+  /// the queue. A live words download is refused meanwhile (`MeetingDownloadAdmission`).
+  var isMeetingActive: Bool { phase != .idle || hasFinalPassWork }
   /// Each meeting as last written successfully: what `meetings` and `record(id:)` show, so a
   /// lifecycle step is visible only once it is durable.
   private var records: [UUID: MeetingRecord] = [:]
@@ -675,6 +680,9 @@ final class MeetingCoordinator {
   {
     guard phase == .idle, !quitting else { return .notIdle }
     let captureCall = captureCallSound ?? deps.captureCallSound()
+    // #4105: the transcript language this Start asked for, read before any wait so a change
+    // during the waits belongs to the next meeting.
+    let transcriptLanguage = deps.meetingLanguage()
     notice = nil
     guard deps.microphoneAuthorized() else {
       notice = .microphoneDenied
@@ -723,6 +731,8 @@ final class MeetingCoordinator {
       trackStatus: [.microphone: .captured, .callSound: captureCall ? .captured : .off])
     // #4012: the call app a detected Start was for, so the fallback name says "Zoom call".
     record.callApp = callApp
+    // #4105: in the record before its first save, so recovery and retry use this value.
+    record.transcriptLanguageMode = transcriptLanguage
     let meetingID = record.id
     do {
       let created = record
@@ -775,7 +785,6 @@ final class MeetingCoordinator {
     // #3973: live words' inputs are this recording's, read once now. Their pumps and the
     // recorder's observer exist before capture starts, so the first samples are buffered;
     // engines start only once capture did.
-    let liveLanguage = deps.meetingLanguage()
     let liveVocabulary = deps.liveVocabulary()
     let liveClockStart = ContinuousClock.now
     recorder.liveSamples = deps.liveWords?.prepareCapture(meetingID: meetingID)
@@ -832,7 +841,7 @@ final class MeetingCoordinator {
     var captured: Set<MeetingTrackKind> = [.microphone]
     if result.callSound == .captured { captured.insert(.callSound) }
     deps.liveWords?.captureStarted(
-      meetingID: meetingID, captured: captured, language: liveLanguage, vocabulary: liveVocabulary,
+      meetingID: meetingID, captured: captured, vocabulary: liveVocabulary,
       clock: { Int((ContinuousClock.now - liveClockStart) / .milliseconds(1)) })
     await persist(record)
     return .recording(meetingID: meetingID)
@@ -1197,8 +1206,10 @@ final class MeetingCoordinator {
       })
     let result: MeetingTranscriptionJob.Result
     do {
+      // #4105: the language the meeting was started with, from its record only.
       result = try await job.run(
-        tracks: tracks, checkpoint: access, missingAudio: missingAudio
+        tracks: tracks, language: record.transcriptLanguage, checkpoint: access,
+        missingAudio: missingAudio
       ) { [weak self] stage in
         self?.processing?.stage = stage
       }

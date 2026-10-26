@@ -47,6 +47,9 @@ struct MeetingParakeetRouteTests {
     var modelSourceUsable = true
     var readyCalls = 0
     var sharedDecodes = 0
+    /// #4105: the language each decode was given, per route.
+    var sharedLanguages: [String?] = []
+    var ownLanguages: [String?] = []
     var ownLoads: [ParakeetModelSelection] = []
     var ownDecodes = 0
     var ownUnloads = 0
@@ -97,8 +100,9 @@ struct MeetingParakeetRouteTests {
           isModelLoaded: { [unowned self] in loaded },
           isLoadOrUnloadInFlight: { [unowned self] in inFlight },
           publishedSelection: { [unowned self] in loaded ? published : nil },
-          transcribeShared: { [unowned self] samples in
+          transcribeShared: { [unowned self] samples, language in
             sharedDecodes += 1
+            sharedLanguages.append(language)
             return Self.result(samples)
           },
           disarmEngineTimers: { [unowned self] in disarms += 1 },
@@ -113,8 +117,9 @@ struct MeetingParakeetRouteTests {
           sharedClaim: sharedClaim,
           ownClaim: MeetingModelClaim(gate: gate, resolve: { [unowned self] in ownSelection }),
           ownLoad: { [unowned self] selection in ownLoads.append(selection) },
-          ownTranscribe: { [unowned self] samples in
+          ownTranscribe: { [unowned self] samples, language in
             ownDecodes += 1
+            ownLanguages.append(language)
             return Self.result(samples)
           },
           ownUnload: { [unowned self] in ownUnloads += 1 },
@@ -155,8 +160,10 @@ struct MeetingParakeetRouteTests {
     #expect(rig.disarms == 1)
     #expect(await rig.gate.isInUse(Self.key(rig.published!)))
     try await route.loadEngine()
-    _ = try await route.transcribe([0, 0, 0])
-    #expect(rig.sharedDecodes == 1)
+    _ = try await route.transcribe([0, 0, 0], language: "de")
+    _ = try await route.transcribe([0], language: nil)
+    #expect(rig.sharedDecodes == 2)
+    #expect(rig.sharedLanguages == ["de", nil], "the pass's language, and Auto as nil")
     #expect(rig.ownLoads.isEmpty, "no second Parakeet on the shared route")
     #expect(route.isOwnParakeetResident == false)
     #expect(route.engineIdentity == "ultra:r1")
@@ -192,8 +199,10 @@ struct MeetingParakeetRouteTests {
     try await route.loadEngine()
     #expect(rig.ownLoads == [rig.ownSelection!])
     #expect(route.isOwnParakeetResident)
-    _ = try await route.transcribe([0])
-    #expect(rig.ownDecodes == 1)
+    _ = try await route.transcribe([0], language: "fr")
+    _ = try await route.transcribe([0], language: nil)
+    #expect(rig.ownDecodes == 2)
+    #expect(rig.ownLanguages == ["fr", nil], "the pass's language, and Auto as nil")
     #expect(rig.sharedDecodes == 0)
     await route.unloadEngine()
     #expect(rig.ownUnloads == 1)
@@ -333,7 +342,7 @@ struct MeetingParakeetRouteTests {
     try await task.value
     #expect(route.isOwnParakeetResident)
     try await route.loadEngine()
-    _ = try await route.transcribe([0])
+    _ = try await route.transcribe([0], language: nil)
     await route.unloadEngine()
     #expect(route.isOwnParakeetResident, "until the claim is given back")
     await route.endModelUse()

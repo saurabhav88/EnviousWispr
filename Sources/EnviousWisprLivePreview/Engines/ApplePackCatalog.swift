@@ -154,22 +154,31 @@ package actor ApplePackCatalog {
 #if canImport(Speech)
   @available(macOS 26.0, *)
   extension ApplePackCatalog.Dependencies {
-    /// The real Apple asset catalogue. Enumeration and installation only — claiming the locale is
-    /// `LocaleClaims`' job, reached from `install(tag:)`, so this seam carries no claim policy at
-    /// all and cannot drift from the recognizer's copy the way the deleted one did.
-    package static var live: ApplePackCatalog.Dependencies {
+    /// The real Apple asset catalogue for one module kind (#4105): dictation's live preview
+    /// packs, or EnviousMeet's meeting module, whose assets are separate (an installed dictation
+    /// language does not install the meeting module). Enumeration and installation only —
+    /// claiming the locale is `LocaleClaims`' job, reached from `install(tag:)`, so this seam
+    /// carries no claim policy at all and cannot drift from the recognizer's copy the way the
+    /// deleted one did. Modules come from `AppleTranscriberFactory`.
+    package static func live(_ kind: AppleTranscriberKind) -> ApplePackCatalog.Dependencies {
       .init(
         supportedTags: {
-          await DictationTranscriber.supportedLocales.map { $0.identifier(.bcp47) }
+          // Unavailable hardware lists nothing, so no row can offer a download that cannot run.
+          guard AppleTranscriberFactory.isAvailable(kind) else { return [] }
+          return await AppleTranscriberFactory.supportedLocales(kind).map { $0.identifier(.bcp47) }
         },
         installedTags: {
-          await DictationTranscriber.installedLocales.map { $0.identifier(.bcp47) }
+          guard AppleTranscriberFactory.isAvailable(kind) else { return [] }
+          return await AppleTranscriberFactory.installedLocales(kind).map { $0.identifier(.bcp47) }
         },
         install: { tag in
-          let locale = Locale(identifier: tag)
-          let module = DictationTranscriber(locale: locale, preset: .progressiveLongDictation)
+          guard AppleTranscriberFactory.isAvailable(kind) else {
+            throw ApplePackCatalogError.moduleUnavailable
+          }
+          let module = AppleTranscriberFactory.makeModule(kind, locale: Locale(identifier: tag))
           guard
-            let request = try await AssetInventory.assetInstallationRequest(supporting: [module])
+            let request = try await AssetInventory.assetInstallationRequest(
+              supporting: [module.speechModule])
           else { return }  // Already present; Apple returns nil when there is nothing to fetch.
           try await request.downloadAndInstall()
         }
@@ -177,3 +186,9 @@ package actor ApplePackCatalog {
     }
   }
 #endif
+
+/// Why an install could not start.
+package enum ApplePackCatalogError: Error, Equatable {
+  /// This Mac cannot run the requested module (`SpeechTranscriber.isAvailable` is false).
+  case moduleUnavailable
+}

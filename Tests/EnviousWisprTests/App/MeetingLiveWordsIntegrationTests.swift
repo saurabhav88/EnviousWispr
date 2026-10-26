@@ -48,12 +48,15 @@ struct MeetingLiveWordsIntegrationTests {
     let realJob: Bool
     lazy var coordinator = MeetingCoordinator(dependencies: dependencies())
 
-    init(world: World, callSound: Bool = true, realJob: Bool = false) throws {
+    init(
+      world: World, callSound: Bool = true, realJob: Bool = false,
+      choiceOwner: MeetingLiveWordsChoice.Initializer? = nil
+    ) throws {
       harness = try MeetingCoordinatorTests.Harness()
       harness.callSound = callSound
       self.realJob = realJob
       self.world = world
-      owner = MeetingLiveWordsTests.owner(world)
+      owner = MeetingLiveWordsTests.owner(world, choiceOwner: choiceOwner)
       let started = passStarted
       harness.jobBehavior = { _ in
         await started.pass()
@@ -92,7 +95,7 @@ struct MeetingLiveWordsIntegrationTests {
             dependencies: .init(
               isDictationIdle: { true }, waitUntilDictationIdle: {}, beginModelUse: {},
               endModelUse: {}, loadEngine: { await started.pass() },
-              transcribe: { [self] samples in
+              transcribe: { [self] samples, _ in
                 decoded.append(samples)
                 return ASRResult(
                   text: "words", language: nil, duration: Double(samples.count) / 16_000,
@@ -230,18 +233,19 @@ struct MeetingLiveWordsIntegrationTests {
     if held != .preparation { #expect(sessions.count == 2) }
   }
 
-  @Test("the meeting's own language is frozen at start, and only captured tracks get live words")
+  @Test("the live words choice is frozen at start, and only captured tracks get live words")
   func frozenLanguageAndCapturedTracks() async throws {
     let world = World()
     world.apple = .ready(world.appleCandidate())
+    world.choice = .ready(engine: .apple, language: "ja-JP")
     let rig = try Rig(world: world, callSound: false)
-    rig.language = .locked("ja")
+    rig.language = .locked("fr")  // the transcript's language never steers live words
     await rig.coordinator.start(from: .menu)
-    rig.language = .locked("fr")  // a later change belongs to the next meeting
+    world.choice = .ready(engine: .apple, language: "fr-FR")  // belongs to the next meeting
     await MeetingLiveWordsTests.until("mic running", rig.owner) {
       MeetingLiveWordsTests.status($0, .microphone) == .running
     }
-    #expect(world.languages == [.locked("ja")])
+    #expect(world.languages == [.locked("ja-JP")])
     #expect(MeetingLiveWordsTests.status(rig.owner, .callSound) == .off(.notCaptured))
     #expect(world.appleEngines.count == 1, "no recognizer for the call sound it did not record")
     await rig.coordinator.stop()

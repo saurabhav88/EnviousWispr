@@ -77,6 +77,8 @@
  "MeetingControls.swift | SettingsRow | map .id(.meetingTurnsOffDictation)",
  "MeetingControls.swift | SettingsRow | map .id(.meetingUseCalendarForNames)",
  "MeetingControls.swift | SettingsRow | map .id(.meetingWriteSummary)",
+ "MeetingLanguageRows.swift | SettingsRow | map .id(.meetingLiveWords)",
+ "MeetingLanguageRows.swift | SettingsRow | map .id(.meetingTranscriptLanguage)",
  "MeetingsView.swift | SettingsRow | exempt .statusLine",
  "MeetingsView.swift | SettingsRow | exempt .statusLine",
  "MeetingsView.swift | SettingsRow | exempt .statusLine",

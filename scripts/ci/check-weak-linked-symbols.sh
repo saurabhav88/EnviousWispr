@@ -40,22 +40,27 @@ ABSENT_AT_BASELINE_FRAMEWORKS="FoundationModels"
 # **The list must cover every post-baseline type the app actually imports.** Three of these were
 # watched and four were not, so a strong binding on `AnalyzerInput`, `SpeechModule`,
 # `SpeechModuleResult` or `AssetInstallationRequest` would have aborted dyld on macOS 14 with
-# this gate green. Measured on the current binary (demangled undefined symbols, weak/strong):
+# this gate green. Measured on the binary at the time (demangled undefined symbols, weak/strong):
 #
 #     SpeechAnalyzer 15/0 strong      AnalyzerInput             5/0 strong
 #     DictationTranscriber 18/0       SpeechModule              9/0 strong
 #     AssetInventory 10/0             SpeechModuleResult        2/0 strong
 #                                     AssetInstallationRequest  4/0 strong
 #
-# `SpeechDetector` and `SpeechTranscriber` are deliberately ABSENT: they match zero symbols here,
-# and a pattern matching nothing is fatal by design further down, so adding them on the guess that
-# we might use them later would break the build today.
+# Re-measured with #4105 (Debug dylib, 2026-10-26), all weak: SpeechAnalyzer 17,
+# DictationTranscriber 17, SpeechTranscriber 18, AssetInventory 10, AnalyzerInput 5,
+# SpeechModule 11, SpeechModuleResult 3, AssetInstallationRequest 4.
+#
+# `SpeechTranscriber` joined with #4105 (EnviousMeet live words on Apple's meeting module), in the
+# same change that first links it. `SpeechDetector` stays deliberately ABSENT: it matches zero
+# symbols here, and a pattern matching nothing is fatal by design further down, so adding it on
+# the guess that we might use it later would break the build today.
 #
 # Maintenance hazard, stated rather than assumed away: this list is hand-maintained, so adopting a
 # further macOS 26 Speech type without adding it here reopens exactly the gap this line closes.
 # Nothing detects that automatically; the check is to re-run the measurement above when the Speech
 # usage changes.
-NEWER_SYMBOL_PATTERNS="SpeechAnalyzer DictationTranscriber AssetInventory AnalyzerInput SpeechModule SpeechModuleResult AssetInstallationRequest"
+NEWER_SYMBOL_PATTERNS="SpeechAnalyzer DictationTranscriber SpeechTranscriber AssetInventory AnalyzerInput SpeechModule SpeechModuleResult AssetInstallationRequest"
 
 # A framework we link normally. Its symbols MUST come back strong. This is the instrument's
 # own control: if it ever reports weak, `nm` output has changed shape and every "0 strong

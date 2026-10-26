@@ -1,0 +1,36 @@
+{
+  "meetingLiveWords": {
+    "language": "it",
+    "title": "trascrizione in tempo reale",
+    "words": [],
+    "phrases": [
+      "cambiare la lingua del testo mostrato durante la riunione",
+      "scegliere il motore per la trascrizione in tempo reale della riunione"
+    ]
+  },
+  "meetingLiveWords.apple": {
+    "language": "it",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "usare Apple per trascrivere la riunione in tempo reale"
+    ]
+  },
+  "meetingLiveWords.universal": {
+    "language": "it",
+    "title": "Universal",
+    "words": [],
+    "phrases": [
+      "usare Universal per trascrivere la riunione in tempo reale"
+    ]
+  },
+  "meetingTranscriptLanguage": {
+    "language": "it",
+    "title": "lingua della trascrizione",
+    "words": [],
+    "phrases": [
+      "cambiare la lingua della trascrizione della riunione",
+      "lingua del testo completo dopo la riunione"
+    ]
+  }
+}

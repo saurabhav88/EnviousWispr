@@ -1231,11 +1231,23 @@ final class ModelDeliveryHome {
     }
   }
 
-  func startPreviewDownload() {
-    guard let handle = whisperPreviewHandle else { return }
+  /// The last preview Download press was refused, now or once its work ran (no delivery, an
+  /// unbound or unwritable replacement record, the kill switch off). Cleared by the next press
+  /// that is scheduled, so a retry after the cause is fixed works (#4105: the Live words row says
+  /// so instead of showing a Download that did nothing).
+  private(set) var previewDownloadRefused = false
+
+  /// Whether the download was scheduled; false when it was refused before any work.
+  @discardableResult
+  func startPreviewDownload() -> Bool {
+    guard let handle = whisperPreviewHandle else {
+      previewDownloadRefused = true
+      return false
+    }
     guard let previewReplacement else {
       logPreviewRefusal("download")
-      return
+      previewDownloadRefused = true
+      return false
     }
     guard handle.isEnabled() else {
       // Logged rather than silent: a Download button that does nothing is
@@ -1247,13 +1259,19 @@ final class ModelDeliveryHome {
             + "(modelDelivery.whisper.enabled = false)",
           level: .info, category: "Delivery")
       }
-      return
+      previewDownloadRefused = true
+      return false
     }
+    previewDownloadRefused = false
     let epoch = previewDownloadIntentEpoch
     previewDownloadTaskForTests = Task { [weak self] in
       guard let self, self.previewDownloadIntentEpoch == epoch else { return }
-      if await previewReplacement.download() == false { self.logPreviewRefusal("download") }
+      if await previewReplacement.download() == false {
+        self.logPreviewRefusal("download")
+        self.previewDownloadRefused = true
+      }
     }
+    return true
   }
 
   /// The last Download press's work, so a test can wait for it to end.
