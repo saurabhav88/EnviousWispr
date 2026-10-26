@@ -101,9 +101,11 @@ final class TranscriptCoordinator {
 
   @ObservationIgnored private let transactionExecutor: HistoryTransactionExecutor
   @ObservationIgnored private let diskReconciler: HistoryDiskReconciler
+  @ObservationIgnored private let meetingDocuments = HistoryMeetingDocumentCache()
 
   #if DEBUG
     var transactionExecutorForTesting: HistoryTransactionExecutor { transactionExecutor }
+    var meetingDocumentCacheForTesting: HistoryMeetingDocumentCache { meetingDocuments }
   #endif
 
   var diskReconcilerForTesting: HistoryDiskReconciler { diskReconciler }
@@ -214,7 +216,7 @@ final class TranscriptCoordinator {
     if let kept = listCache, kept.key == key { return kept }
     let kept = KeptList(key: key, items: buildListedItems(at: now, from: key))
     listCache = kept
-    pruneSearchTextCache()
+    meetingDocuments.prune(keeping: transcripts)
     return kept
   }
 
@@ -320,8 +322,6 @@ final class TranscriptCoordinator {
     /// Builds the list and the meeting search text afresh on every read: the reference the
     /// cache tests compare against.
     @ObservationIgnored var listCacheDisabledForTesting = false
-    /// How many times a meeting's text was projected rather than read from the kept entry.
-    @ObservationIgnored var meetingTextBuildsForTesting = 0
     /// #4001 H4: full list builds, so a test can tell a skipped read from a cache hit.
     @ObservationIgnored private(set) var listBuildsForTesting = 0
   #endif
@@ -1554,9 +1554,9 @@ final class TranscriptCoordinator {
     // #4075 R6: the plain text comes from the kept meeting text (the same projection search and
     // the preview read), so a detail redraw does not rebuild the whole meeting's text. Only the
     // visible turns, a filter, are computed here.
-    let text = meetingText(
+    let text = meetingDocuments.text(
       of: row, info: info, showEcho: showEcho, locale: Locale.current.identifier,
-      localizations: Bundle.main.preferredLocalizations)
+      localizations: Bundle.main.preferredLocalizations, bypass: meetingDocumentsBypass)
     switch text.kind {
     case .unavailable: return .unavailable
     case .everythingHidden: return .everythingHidden
@@ -1575,9 +1575,10 @@ final class TranscriptCoordinator {
     guard let meetingID = row.meetingID else {
       return MeetingHistoryPresentation.unavailableMessage
     }
-    let text = meetingText(
+    let text = meetingDocuments.text(
       of: row, info: meetingInfo?(meetingID), showEcho: isShowingEcho(rowID: row.id),
-      locale: Locale.current.identifier, localizations: Bundle.main.preferredLocalizations)
+      locale: Locale.current.identifier, localizations: Bundle.main.preferredLocalizations,
+      bypass: meetingDocumentsBypass)
     switch text.kind {
     case .visible: return text.plain
     case .everythingHidden: return MeetingHistoryPresentation.everythingHiddenMessage
@@ -1591,108 +1592,29 @@ final class TranscriptCoordinator {
     localizations: [String]
   ) -> String {
     guard row.isMeeting else { return row.displayText }
-    let text = meetingText(
-      of: row, info: info, showEcho: showEcho, locale: locale, localizations: localizations)
+    let text = meetingDocuments.text(
+      of: row, info: info, showEcho: showEcho, locale: locale, localizations: localizations,
+      bypass: meetingDocumentsBypass)
     return text.kind == .visible ? text.plain : ""
   }
 
-  /// #4001: a meeting's visible text and which projection it came from, kept per row while what
-  /// it is made from is unchanged, so neither a search keystroke nor a row's preview projects
-  /// every meeting again. Search and the preview read this one entry.
-  private func meetingText(
-    of row: Transcript, info: MeetingHistoryInfo?, showEcho: Bool, locale: String,
-    localizations: [String]
-  ) -> MeetingText {
-    let inputs = SearchTextInputs(
-      text: row.text, turns: row.turns ?? [], speakerNames: row.speakerNames ?? [:],
-      info: info, showEcho: showEcho, locale: locale, localizations: localizations)
+  /// Whether the meeting document cache is bypassed: only the DEBUG reference build of the list
+  /// (`listCacheDisabledForTesting`), never Release.
+  private var meetingDocumentsBypass: Bool {
     #if DEBUG
-      if listCacheDisabledForTesting { return Self.meetingText(row, inputs) }
-    #endif
-    if let kept = searchTextCache[row.id], kept.inputs == inputs,
-      MeetingDocumentHash.sameBytes(kept.inputs.text, inputs.text),
-      MeetingDocumentHash.sameBytes(kept.inputs.speakerNames, inputs.speakerNames)
-    {
-      return kept.text
-    }
-    let text = Self.meetingText(row, inputs)
-    #if DEBUG
-      meetingTextBuildsForTesting += 1
-    #endif
-    searchTextCache[row.id] = (inputs, text)
-    return text
-  }
-
-  /// #4001 step 2b-C: the visible text a meeting summary is written from and judged against,
-  /// echo always hidden; nil when nothing is visible. The same projection as search and the
-  /// preview, kept in its own cache so the display's echo choice never evicts it. A kept text
-  /// is reused only for byte-identical words and names, because the summary's fingerprints
-  /// hash bytes. The caller reads the row and the meeting facts live, before this lookup.
-  func summaryVisibleText(of row: Transcript, info: MeetingHistoryInfo?) -> String? {
-    let inputs = SearchTextInputs(
-      text: row.text, turns: row.turns ?? [], speakerNames: row.speakerNames ?? [:],
-      info: info, showEcho: false, locale: Locale.current.identifier,
-      localizations: Bundle.main.preferredLocalizations)
-    let text: MeetingText
-    #if DEBUG
-      let bypass = listCacheDisabledForTesting
+      listCacheDisabledForTesting
     #else
-      let bypass = false
+      false
     #endif
-    if !bypass, let kept = summaryTextCache[row.id], kept.inputs == inputs,
-      MeetingDocumentHash.sameBytes(kept.inputs.text, inputs.text),
-      MeetingDocumentHash.sameBytes(kept.inputs.speakerNames, inputs.speakerNames)
-    {
-      text = kept.text
-    } else {
-      text = Self.meetingText(row, inputs)
-      #if DEBUG
-        meetingTextBuildsForTesting += 1
-      #endif
-      if !bypass { summaryTextCache[row.id] = (inputs, text) }
-    }
-    return text.kind == .visible && !text.plain.isEmpty ? text.plain : nil
   }
 
-  @ObservationIgnored private var summaryTextCache:
-    [UUID: (inputs: SearchTextInputs, text: MeetingText)] = [:]
-
-  private static func meetingText(_ row: Transcript, _ inputs: SearchTextInputs) -> MeetingText {
-    switch MeetingHistoryPresentation.project(row, info: inputs.info, showEcho: inputs.showEcho) {
-    case .visible(_, let plain): MeetingText(kind: .visible, plain: plain)
-    case .everythingHidden: MeetingText(kind: .everythingHidden, plain: "")
-    case .unavailable: MeetingText(kind: .unavailable, plain: "")
-    }
-  }
-
-  /// Which projection a kept meeting text came from: an empty `.visible` text is not a hidden
-  /// or unavailable meeting, so the kind is kept beside the text, not read from it.
-  private struct MeetingText {
-    enum Kind { case visible, everythingHidden, unavailable }
-    let kind: Kind
-    let plain: String
-  }
-
-  /// What a meeting's searchable text is made from (`Transcript` is not Equatable).
-  private struct SearchTextInputs: Equatable {
-    let text: String
-    let turns: [Turn]
-    let speakerNames: [String: String]
-    let info: MeetingHistoryInfo?
-    let showEcho: Bool
-    let locale: String
-    let localizations: [String]
-  }
-
-  @ObservationIgnored private var searchTextCache:
-    [UUID: (inputs: SearchTextInputs, text: MeetingText)] = [:]
-
-  /// Drops kept text of rows that no longer exist; a changed row is caught by its inputs.
-  private func pruneSearchTextCache() {
-    guard !searchTextCache.isEmpty || !summaryTextCache.isEmpty else { return }
-    let ids = Set(transcripts.map(\.id))
-    searchTextCache = searchTextCache.filter { ids.contains($0.key) }
-    summaryTextCache = summaryTextCache.filter { ids.contains($0.key) }
+  /// A meeting summary's source text: the visible text, echo always hidden, nil when nothing is
+  /// visible (`HistoryMeetingDocumentCache.summaryVisibleText`). The caller reads the row and the
+  /// meeting facts live, before this lookup.
+  func summaryVisibleText(of row: Transcript, info: MeetingHistoryInfo?) -> String? {
+    meetingDocuments.summaryVisibleText(
+      of: row, info: info, locale: Locale.current.identifier,
+      localizations: Bundle.main.preferredLocalizations, bypass: meetingDocumentsBypass)
   }
 
   /// Removes one row from disk and from the list, keeping the selection on a neighbour and the

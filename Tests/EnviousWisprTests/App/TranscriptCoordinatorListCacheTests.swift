@@ -500,13 +500,13 @@
 
       // A cold detail must populate the shared cache. The old direct call
       // leaves this counter unchanged and fails this assertion.
-      let before = c.meetingTextBuildsForTesting
+      let before = c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting
       check(row)
-      #expect(c.meetingTextBuildsForTesting == before + 1)
-      let built = c.meetingTextBuildsForTesting
+      #expect(c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting == before + 1)
+      let built = c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting
       _ = c.meetingPreviewText(of: row)
       check(row)
-      #expect(c.meetingTextBuildsForTesting == built)
+      #expect(c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting == built)
 
       record.echoTurnIDs = ["t0"]
       w.sources.records = [record]
@@ -551,7 +551,7 @@
       let first = named("Ren\u{00E9}e")
       w.setRows([first])
       _ = c.meetingProjection(of: first)
-      let built = c.meetingTextBuildsForTesting
+      let built = c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting
 
       let replaced = named("Rene\u{0301}e")
       #expect(first.speakerNames == replaced.speakerNames)
@@ -559,7 +559,7 @@
       let actual = c.meetingProjection(of: replaced)
       let expected = MeetingHistoryPresentation.project(
         replaced, info: c.meetingInfo?(record.id), showEcho: false)
-      #expect(c.meetingTextBuildsForTesting == built + 1)
+      #expect(c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting == built + 1)
       if case .visible(_, let actualText) = actual,
         case .visible(_, let expectedText) = expected
       {
@@ -584,10 +584,12 @@
           c.searchQuery = ""
         }
         if searchFirst { search() } else { _ = c.meetingPreviewText(of: row) }
-        let built = c.meetingTextBuildsForTesting
+        let built = c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting
         #expect(built == 1, "searchFirst \(searchFirst): one projection for the first read")
         if searchFirst { _ = c.meetingPreviewText(of: row) } else { search() }
-        #expect(c.meetingTextBuildsForTesting == built, "searchFirst \(searchFirst): reused")
+        #expect(
+          c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting == built,
+          "searchFirst \(searchFirst): reused")
         // Hidden and unavailable meetings never match a search on their hidden words.
         w.sources.infoOverride[record.id] = MeetingHistoryInfo(echoTurnIDs: ["t0", "t1"])
         c.searchQuery = "friday"
@@ -656,14 +658,16 @@
       w.setRows([row])
       func expectToldAbout(_ name: String, change: () -> Void) {
         _ = c.meetingPreviewText(of: row)
-        let built = c.meetingTextBuildsForTesting
+        let built = c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting
         let fired = Flag()
         withObservationTracking {
           _ = c.meetingPreviewText(of: row)
         } onChange: {
           fired.value = true
         }
-        #expect(c.meetingTextBuildsForTesting == built, "\(name): the tracked read was a kept one")
+        #expect(
+          c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting == built,
+          "\(name): the tracked read was a kept one")
         change()
         #expect(fired.value, "\(name) did not reach a reader of a kept preview")
       }
@@ -737,14 +741,18 @@
       w.setRows([first])
       let info = c.meetingInfo?(record.id)
       let a = c.summaryVisibleText(of: first, info: info)
-      let built = c.meetingTextBuildsForTesting
+      let built = c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting
       _ = c.summaryVisibleText(of: first, info: info)
-      #expect(c.meetingTextBuildsForTesting == built, "the same bytes reuse the kept text")
+      #expect(
+        c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting == built,
+        "the same bytes reuse the kept text")
       let replaced = row(named: "Rene\u{0301}e", id: id)
       #expect(replaced.speakerNames == first.speakerNames, "equal to ==")
       w.setRows([replaced])
       let b = c.summaryVisibleText(of: replaced, info: info)
-      #expect(c.meetingTextBuildsForTesting == built + 1, "different bytes are projected again")
+      #expect(
+        c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting == built + 1,
+        "different bytes are projected again")
       #expect(a == b, "they look the same to ==")
       #expect(
         b.map { Array($0.utf8) }
@@ -762,12 +770,14 @@
       w.setRows([row])
       let info = c.meetingInfo?(record.id)
       _ = c.summaryVisibleText(of: row, info: info)
-      let built = c.meetingTextBuildsForTesting
+      let built = c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting
       w.setRows([])
       _ = c.listedItems  // a rebuild prunes
       w.setRows([row])
       _ = c.summaryVisibleText(of: row, info: info)
-      #expect(c.meetingTextBuildsForTesting == built + 1, "the removed row's kept text was dropped")
+      #expect(
+        c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting == built + 1,
+        "the removed row's kept text was dropped")
     }
   }
 
