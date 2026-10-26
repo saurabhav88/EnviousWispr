@@ -127,5 +127,25 @@ struct MeetingLiveWordsChoiceTests {
     #expect(!Choice.languagesDiffer(liveWords: "en-US", transcript: .locked("en")))
     #expect(Choice.languagesDiffer(liveWords: "en-US", transcript: .locked("de")))
     #expect(!Choice.languagesDiffer(liveWords: nil, transcript: .locked("de")))
+    #expect(
+      !Choice.languagesDiffer(liveWords: "nb-NO", transcript: .locked("no")),
+      "Norwegian Bokmal on the Mac and the catalogue's Norwegian are one language")
+  }
+
+  @Test("A Mac in Norwegian Bokmal guesses the catalogue's Norwegian for Universal")
+  func aliasedMacLanguageReachesUniversal() async {
+    var inventory = Self.inventory
+    inventory.universalCodes.insert("no")
+    inventory.universalInstalled = true
+    #expect(
+      await resolve(nil, nil, guess: .locked("nb-NO"), inventory: inventory)
+        == .ready(engine: .universal, language: "no"))
+    #expect(
+      await resolve(.universal, "nb-NO", inventory: inventory)
+        == .ready(engine: .universal, language: "no"), "a stored alias reads the same way")
+    #expect(
+      await Choice.switchedLanguage(
+        to: .universal, from: "nb-NO", inventory: inventory, appleEquivalent: Self.equivalent)
+        == "no", "switching from Apple's Bokmal keeps Norwegian")
   }
 }

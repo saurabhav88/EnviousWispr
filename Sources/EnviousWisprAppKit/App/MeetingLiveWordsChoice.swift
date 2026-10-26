@@ -49,6 +49,13 @@ enum MeetingLiveWordsChoice {
     Locale(identifier: tag).language.languageCode?.identifier.lowercased() ?? tag.lowercased()
   }
 
+  /// The language catalogue's code for a tag: the base code with the catalogue's aliases
+  /// applied, so a Mac in Norwegian Bokmål (`nb-NO`) reads as the catalogue's `no`. Universal's
+  /// languages and the transcript's are catalogue codes; Apple matches its own tags by base code.
+  static func catalogueCode(_ tag: String) -> String {
+    LanguageLockOptions.catalogueCode(forPackTag: tag) ?? baseCode(tag)
+  }
+
   // MARK: - Resolution
 
   /// The choice for these stored values. `guess` is dictation's language (Auto means the Mac's
@@ -94,7 +101,7 @@ enum MeetingLiveWordsChoice {
         ? .ready(engine: .apple, language: language)
         : .notDownloaded(engine: .apple, language: language)
     case .universal:
-      let code = baseCode(language)
+      let code = catalogueCode(language)
       guard inventory.universalCodes.contains(code) else { return .notSetUp(suggestion: nil) }
       return inventory.universalInstalled
         ? .ready(engine: .universal, language: code)
@@ -130,8 +137,8 @@ enum MeetingLiveWordsChoice {
       guard let resolved, inventory.appleSupportedTags.contains(resolved) else { return nil }
       return resolved
     case .universal:
-      let base = baseCode(code)
-      return inventory.universalCodes.contains(base) ? base : nil
+      let catalogue = catalogueCode(code)
+      return inventory.universalCodes.contains(catalogue) ? catalogue : nil
     }
   }
 
@@ -220,10 +227,11 @@ enum MeetingLiveWordsChoice {
   }
 
   /// Whether the "different languages" note shows (plan R2.4): only when the transcript language
-  /// is locked and its base language differs from the live words language. Auto never shows it.
+  /// is locked and its language differs from the live words language, compared as catalogue
+  /// codes (`nb-NO` and `no` are one language). Auto never shows it.
   static func languagesDiffer(liveWords: String?, transcript: LanguageMode) -> Bool {
     guard let liveWords, case .locked(let code) = transcript else { return false }
-    return baseCode(liveWords) != baseCode(code)
+    return catalogueCode(liveWords) != catalogueCode(code)
   }
 }
 
