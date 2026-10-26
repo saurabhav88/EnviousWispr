@@ -842,9 +842,9 @@ def scenario_live(run_dir, made, checks, engine, audio=None):
         audio, _, _ = make_conversation(work)
     length = wav_seconds(audio)
     with audio_rig.AudioRig(), Players() as players, Sampler(this_build_pid()) as sampler:
-        # `auto` starts the way a user does: the engine stored by the Live words row decides.
-        want = engine if engine != "auto" else door_ok(
-            "settings", "get", "meetingLiveWordsEngine").get("value")
+        # `auto` starts the way a user does: the stored choice decides, or when none is saved yet
+        # the first ready guess Start will save; `live-words-status` resolves both the same way.
+        want = engine if engine != "auto" else door_ok("meeting", "live-words-status").get("engine")
         # The transcript language at Start; the record keeps it (#4105 R1.7).
         mode = door_ok("settings", "get", "meetingLanguageMode").get("value") or {}
         want_language = mode.get("code") if mode.get("mode") == "locked" else None
