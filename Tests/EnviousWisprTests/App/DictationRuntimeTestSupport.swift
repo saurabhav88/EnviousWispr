@@ -132,7 +132,8 @@ enum DictationRuntimeFixtures {
   static func makeParakeetDriver(
     audioCapture: any AudioCaptureInterface,
     asrManager: any ASRManagerInterface,
-    store: TranscriptStore
+    store: TranscriptStore,
+    keychainManager: KeychainManager = KeychainManager()
   ) -> KernelDictationDriver {
     let vad = KernelDictationDriverFactory.makeSharedVADSignalSource(
       audioCapture: audioCapture)
@@ -143,7 +144,7 @@ enum DictationRuntimeFixtures {
         parakeetUpgrade: .legacyForTesting(),
         vadSignalSource: vad,
         transcriptStore: store,
-        keychainManager: KeychainManager(),
+        keychainManager: keychainManager,
         captureTelemetry: CaptureTelemetryState(),
         pasteCompletionRegistry: PasteCompletionRegistry(),
         engineMutationScope: .alwaysAllowedForTesting, isSharedEngineHeldByOtherWorkload: { false }
@@ -166,7 +167,8 @@ enum DictationRuntimeFixtures {
   static func makeWhisperPipeline(
     audioCapture: any AudioCaptureInterface,
     store: TranscriptStore,
-    sharedVAD: CaptureVADSignalSource? = nil
+    sharedVAD: CaptureVADSignalSource? = nil,
+    keychainManager: KeychainManager = KeychainManager()
   ) -> KernelDictationDriver {
     let vad =
       sharedVAD
@@ -181,7 +183,7 @@ enum DictationRuntimeFixtures {
         languageDetector: detector,
         vadSignalSource: vad,
         transcriptStore: store,
-        keychainManager: KeychainManager(),
+        keychainManager: keychainManager,
         captureTelemetry: CaptureTelemetryState(),
         pasteCompletionRegistry: PasteCompletionRegistry(),
         engineMutationScope: .alwaysAllowedForTesting,
