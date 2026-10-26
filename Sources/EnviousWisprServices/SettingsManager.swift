@@ -45,6 +45,11 @@ public final class SettingsManager {
     case meetingCallFirstTipShown
     /// #3973 (decision 16): the language EnviousMeet transcribes in; its own, never dictation's.
     case meetingLanguageMode
+    /// #4105: the engine meeting live words run on (Apple's meeting module or Universal); unset
+    /// until the user picks one or the first ready guess is saved.
+    case meetingLiveWordsEngine
+    /// #4105: the BCP-47 language meeting live words run in; unset like the engine.
+    case meetingLiveWordsLanguage
     case hotkeyEnabled
     case vadAutoStop
     case vadSilenceTimeout
@@ -145,7 +150,7 @@ public final class SettingsManager {
   public nonisolated static let unifiedDefaultsKeys: [String] = [
     "selectedBackend", "recordingMode", "llmProvider", "lastLLMProvider", "llmModel", "ollamaModel",
     "s1MiniStyling", "s1MiniStructure", "s1MiniContext",
-    "autoCopyToClipboard", "meetingCaptureCallSound", "meetingCallSoundExplained", "meetingWriteSummary", "meetingTurnsOffDictation", "meetingOnboardingComplete", "meetingUseCalendarForNames", "meetingCallDetection", "meetingCallAppsOff", "meetingCallNoCounts", "meetingCallFirstTipShown", "meetingLanguageMode", "hotkeyEnabled", "vadAutoStop", "vadSilenceTimeout",
+    "autoCopyToClipboard", "meetingCaptureCallSound", "meetingCallSoundExplained", "meetingWriteSummary", "meetingTurnsOffDictation", "meetingOnboardingComplete", "meetingUseCalendarForNames", "meetingCallDetection", "meetingCallAppsOff", "meetingCallNoCounts", "meetingCallFirstTipShown", "meetingLanguageMode", "meetingLiveWordsEngine", "meetingLiveWordsLanguage", "hotkeyEnabled", "vadAutoStop", "vadSilenceTimeout",
     "vadSensitivity", "vadEnergyGate", "onboardingState", "hasCompletedOnboarding",
     "cancelKeyCode", "cancelModifiersRaw", "toggleKeyCode", "toggleModifiersRaw",
     "quickAddKeyCode", "quickAddModifiersRaw",
@@ -623,6 +628,56 @@ public final class SettingsManager {
       }
       onChange?(.meetingLanguageMode)
     }
+  }
+
+  /// #4105 (decisions file item 18): the engine EnviousMeet's live words use, `.apple` for Apple's
+  /// meeting module (`SpeechTranscriber`) or `.universal`. Nil until chosen: nothing is guessed
+  /// into storage except by `MeetingLiveWordsChoice.Initializer`, which saves a guess only once it
+  /// resolves to a ready engine. Every write, same value included, advances
+  /// `meetingLiveWordsChoiceGeneration`.
+  public var meetingLiveWordsEngine: LivePreviewEngineChoice? {
+    didSet {
+      if let meetingLiveWordsEngine {
+        defaults.set(meetingLiveWordsEngine.rawValue, forKey: "meetingLiveWordsEngine")
+      } else {
+        defaults.removeObject(forKey: "meetingLiveWordsEngine")
+      }
+      meetingLiveWordsChoiceGeneration &+= 1
+      if !isCommittingMeetingLiveWordsChoice { onChange?(.meetingLiveWordsEngine) }
+    }
+  }
+
+  /// #4105: the language EnviousMeet's live words use, an exact BCP-47 tag for Apple (`en-US`) or
+  /// a base code for Universal (`en`). Nil until chosen; never Auto. Separate from
+  /// `meetingLanguageMode`, which is the transcript's language.
+  public var meetingLiveWordsLanguage: String? {
+    didSet {
+      if let meetingLiveWordsLanguage {
+        defaults.set(meetingLiveWordsLanguage, forKey: "meetingLiveWordsLanguage")
+      } else {
+        defaults.removeObject(forKey: "meetingLiveWordsLanguage")
+      }
+      meetingLiveWordsChoiceGeneration &+= 1
+      if !isCommittingMeetingLiveWordsChoice { onChange?(.meetingLiveWordsLanguage) }
+    }
+  }
+
+  /// Advances on every write to either live words choice key (#4105 R3), so a guess computed
+  /// across a suspension can tell whether the user changed anything meanwhile. Not persisted.
+  public private(set) var meetingLiveWordsChoiceGeneration: UInt64 = 0
+
+  /// True only inside `commitMeetingLiveWordsChoice`, so observers never see half the pair.
+  private var isCommittingMeetingLiveWordsChoice = false
+
+  /// Writes both live words choice keys together, then notifies once per key, so no observer
+  /// runs between the two writes (#4105 R3).
+  public func commitMeetingLiveWordsChoice(engine: LivePreviewEngineChoice, language: String) {
+    isCommittingMeetingLiveWordsChoice = true
+    meetingLiveWordsEngine = engine
+    meetingLiveWordsLanguage = language
+    isCommittingMeetingLiveWordsChoice = false
+    onChange?(.meetingLiveWordsEngine)
+    onChange?(.meetingLiveWordsLanguage)
   }
 
   public var hotkeyEnabled: Bool {
@@ -1498,6 +1553,13 @@ public final class SettingsManager {
       defaults.data(forKey: "meetingLanguageMode")
       .flatMap { try? JSONDecoder().decode(LanguageMode.self, from: $0) }
       .map(Self.validatedLanguageMode) ?? SettingsDefaultValues.meetingLanguageMode
+    // #4105: absent or unknown values load as unset; nothing is written on load.
+    meetingLiveWordsEngine =
+      defaults.string(forKey: "meetingLiveWordsEngine").flatMap(LivePreviewEngineChoice.init)
+      ?? SettingsDefaultValues.meetingLiveWordsEngine
+    meetingLiveWordsLanguage =
+      defaults.string(forKey: "meetingLiveWordsLanguage").flatMap { $0.isEmpty ? nil : $0 }
+      ?? SettingsDefaultValues.meetingLiveWordsLanguage
     hotkeyEnabled = SettingsDefaultValues.hotkeyEnabled  // toggle removed; always enabled
     vadAutoStop =
       defaults.object(forKey: "vadAutoStop") as? Bool ?? SettingsDefaultValues.vadAutoStop

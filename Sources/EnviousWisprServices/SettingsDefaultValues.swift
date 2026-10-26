@@ -67,6 +67,10 @@ enum SettingsDefaultValues {
   static let meetingCallFirstTipShown = false
   /// #3973 (decision 16): EnviousMeet's own language, Auto (detect) until the user picks one.
   static let meetingLanguageMode: LanguageMode = .auto
+  /// #4105: meeting live words have no engine and no language until chosen or a ready guess is
+  /// saved (decisions file item 18).
+  static let meetingLiveWordsEngine: LivePreviewEngineChoice? = nil
+  static let meetingLiveWordsLanguage: String? = nil
   static let hotkeyEnabled = true
 
   static let vadAutoStop = false

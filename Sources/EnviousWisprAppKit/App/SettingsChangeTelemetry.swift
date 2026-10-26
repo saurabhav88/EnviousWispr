@@ -170,6 +170,8 @@ enum SettingsProjection {
     // #3973: no settings delta in PR 1 (no screen writes it yet); its Language row arrives with
     // PR 2, which decides its telemetry.
     case .meetingLanguageMode: return []
+    // #4105: no settings delta; EnviousMeet telemetry is out of this change's scope (plan §8).
+    case .meetingLiveWordsEngine, .meetingLiveWordsLanguage: return []
     case .hotkeyEnabled: return [.hotkeyEnabled]
     case .vadAutoStop: return [.vadAutoStop]
     case .vadSilenceTimeout: return [.vadSilenceTimeout]

@@ -51,7 +51,7 @@
       .selectedBackend, .recordingMode, .llmProvider, .llmModel, .ollamaModel,
       .fileImportLLMProvider, .fileImportLLMModel, .fileImportOllamaModel,
       .s1MiniStyling, .s1MiniStructure, .s1MiniContext, .autoCopyToClipboard,
-      .meetingCaptureCallSound, .meetingCallSoundExplained, .meetingWriteSummary, .meetingTurnsOffDictation, .meetingOnboardingComplete, .meetingUseCalendarForNames, .meetingCallDetection, .meetingCallAppsOff, .meetingCallNoCounts, .meetingCallFirstTipShown, .meetingLanguageMode, .hotkeyEnabled, .vadAutoStop, .vadSilenceTimeout, .vadSensitivity, .vadEnergyGate, .onboardingState,
+      .meetingCaptureCallSound, .meetingCallSoundExplained, .meetingWriteSummary, .meetingTurnsOffDictation, .meetingOnboardingComplete, .meetingUseCalendarForNames, .meetingCallDetection, .meetingCallAppsOff, .meetingCallNoCounts, .meetingCallFirstTipShown, .meetingLanguageMode, .meetingLiveWordsEngine, .meetingLiveWordsLanguage, .hotkeyEnabled, .vadAutoStop, .vadSilenceTimeout, .vadSensitivity, .vadEnergyGate, .onboardingState,
       .hasCompletedOnboarding, .cancelKeyCode, .cancelModifiers, .quickAddKeyCode,
       .quickAddModifiers, .pasteLastKeyCode, .pasteLastModifiers, .copyLastKeyCode,
       .copyLastModifiers, .toggleKeyCode, .toggleModifiers, .pushToTalkKeyCode,
@@ -87,7 +87,8 @@
         .meetingCallSoundExplained, .meetingWriteSummary, .meetingTurnsOffDictation,
         .meetingOnboardingComplete,
         .meetingUseCalendarForNames, .meetingCallDetection, .meetingCallAppsOff,
-        .meetingCallNoCounts, .meetingCallFirstTipShown, .vadAutoStop, .modelUnloadPolicy,
+        .meetingCallNoCounts, .meetingCallFirstTipShown, .meetingLiveWordsEngine,
+        .meetingLiveWordsLanguage, .vadAutoStop, .modelUnloadPolicy,
         .restoreClipboardAfterPaste, .keepDictationsOutOfClipboardHistory,
         .quickAddClipboardFallback, .smartInsertion, .escapeRecoveryEnabled,
         .wordCorrectionEnabled, .fillerRemovalEnabled, .emojiFormatterEnabled,
@@ -182,6 +183,8 @@
       case .whisperKitLanguage: return settings.whisperKitLanguage
       case .languageMode: return Codec.encode(settings.languageMode)
       case .meetingLanguageMode: return Codec.encode(settings.meetingLanguageMode)
+      case .meetingLiveWordsEngine: return settings.meetingLiveWordsEngine?.rawValue ?? NSNull()
+      case .meetingLiveWordsLanguage: return settings.meetingLiveWordsLanguage ?? NSNull()
       case .englishSpelling: return settings.englishSpelling.rawValue
       case .selectedInputDeviceUID: return settings.selectedInputDeviceUID
       case .preferredInputDeviceIDOverride: return settings.preferredInputDeviceIDOverride
@@ -380,6 +383,23 @@
         return set(Codec.languageMode(value)) { settings.languageMode = $0 }
       case .meetingLanguageMode:
         return set(Codec.languageMode(value)) { settings.meetingLanguageMode = $0 }
+      // #4105: null clears the choice back to unset.
+      case .meetingLiveWordsEngine:
+        if value is NSNull {
+          settings.meetingLiveWordsEngine = nil
+          return .written(forced: forced)
+        }
+        return set(Codec.raw(value, LivePreviewEngineChoice.self)) {
+          settings.meetingLiveWordsEngine = $0
+        }
+      case .meetingLiveWordsLanguage:
+        if value is NSNull {
+          settings.meetingLiveWordsLanguage = nil
+          return .written(forced: forced)
+        }
+        return set(Codec.string(value).flatMap { $0.isEmpty ? nil : $0 }) {
+          settings.meetingLiveWordsLanguage = $0
+        }
       case .englishSpelling:
         return set(Codec.raw(value, EnglishSpelling.self)) { settings.englishSpelling = $0 }
       case .selectedInputDeviceUID:
@@ -546,7 +566,7 @@
         .meetingWriteSummary, .meetingTurnsOffDictation, .meetingOnboardingComplete,
         .meetingUseCalendarForNames,
         .meetingCallDetection, .meetingCallAppsOff, .meetingCallNoCounts, .meetingCallFirstTipShown,
-        .meetingLanguageMode, .hotkeyEnabled,
+        .meetingLanguageMode, .meetingLiveWordsEngine, .meetingLiveWordsLanguage, .hotkeyEnabled,
         .vadAutoStop, .vadSensitivity,
         .vadEnergyGate, .onboardingState, .hasCompletedOnboarding, .pushToTalkKeyCode,
         .pushToTalkModifiers, .modelUnloadPolicy, .restoreClipboardAfterPaste,

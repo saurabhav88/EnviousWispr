@@ -70,6 +70,9 @@ struct SettingsDefaultsRoutingTests {
     #expect(settings.showMenuBarUpdateAlert == true)
     // #3973: EnviousMeet's own language detects until the user picks one.
     #expect(settings.meetingLanguageMode == .auto)
+    // #4105: meeting live words have no engine or language until chosen or a ready guess is saved.
+    #expect(settings.meetingLiveWordsEngine == nil)
+    #expect(settings.meetingLiveWordsLanguage == nil)
   }
 
   @Test("the Ollama default and the Core fallback cannot drift apart")

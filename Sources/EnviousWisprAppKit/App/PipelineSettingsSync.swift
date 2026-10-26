@@ -392,7 +392,8 @@ final class PipelineSettingsSync {
       audioCapture.warmEnginePolicy = settings.warmEnginePolicy
     case .meetingCaptureCallSound, .meetingCallSoundExplained, .meetingWriteSummary,
       .meetingOnboardingComplete, .meetingUseCalendarForNames, .meetingCallDetection,
-      .meetingCallAppsOff, .meetingCallNoCounts, .meetingCallFirstTipShown, .meetingLanguageMode:
+      .meetingCallAppsOff, .meetingCallNoCounts, .meetingCallFirstTipShown, .meetingLanguageMode,
+      .meetingLiveWordsEngine, .meetingLiveWordsLanguage:
       // #3972, #4017, #3973: read by EnviousMeet when a meeting starts or ends; not by the
       // pipeline. `.meetingLanguageMode` never touches dictation's language.
       break
