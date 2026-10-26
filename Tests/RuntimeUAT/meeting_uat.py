@@ -4,7 +4,7 @@
     python3 Tests/RuntimeUAT/meeting_uat.py crash --run-dir <dir>
     python3 Tests/RuntimeUAT/meeting_uat.py latency --run-dir <dir> [--takes 20]
     python3 Tests/RuntimeUAT/meeting_uat.py memory --run-dir <dir> [--minutes 10]
-    python3 Tests/RuntimeUAT/meeting_uat.py live --run-dir <dir> [--live-engine universal]
+    python3 Tests/RuntimeUAT/meeting_uat.py live --run-dir <dir> [--live-engine apple|universal] [--audio <wav>]
     python3 Tests/RuntimeUAT/meeting_uat.py speechkill --run-dir <dir>
     python3 Tests/RuntimeUAT/meeting_uat.py quit --run-dir <dir>
     python3 Tests/RuntimeUAT/meeting_uat.py --self-test
@@ -36,7 +36,9 @@ the speakers, also on an error.
 - latency: `--takes` dictations with no meeting; `--takes` while a meeting records with live
   words proven active; `--takes` during a meeting's after-recording pass where the pass lasts.
   Median within +10 %, p90 within +20 % (R51); p95 reported. Missing takes: COULD NOT TELL.
-- live (#3973): live words through Apple speech (or `--live-engine universal`) progress on both
+- live (#3973, #4105): live words through the chosen engine (`--live-engine apple`, the default, or
+  `universal`; the door forces it for that meeting) on `--audio` (a recording to replay, kept out of
+  the run's artifacts) or the synthetic conversation; they progress on both
   tracks; a dictation with live preview lands meanwhile; Stop gives the transcript and the live
   words go; saved tracks cover the recording; speech-service RSS and app footprint every 5 s.
 - speechkill (#3973): SIGKILL Apple's `localspeechrecognition` mid-meeting (by executable path;
@@ -777,23 +779,36 @@ def isolated_dictation(c, players, audio, sentence):
             f"feeds, shownChars = {witness} (app.log since {take_start.isoformat()})")
 
 
-def scenario_live(run_dir, made, checks, engine):
-    """#3973: live words through the chosen engine on both tracks while the meeting records,
-    a dictation with its own live preview during it, then the normal transcript."""
+def scenario_live(run_dir, made, checks, engine, audio=None):
+    """#3973, #4105: live words through the chosen engine on both tracks while the meeting
+    records, never shrinking over the pauses, a dictation with its own live preview during it,
+    then the normal transcript."""
     import audio_rig
     import wispr_eyes as w
     c = checks
     work = tempfile.mkdtemp(prefix="meeting-live-", dir=run_dir)
-    audio, _, _ = make_conversation(work)
+    if audio is None:
+        audio, _, _ = make_conversation(work)
     with audio_rig.AudioRig(), Players() as players, Sampler(this_build_pid()) as sampler:
-        meeting_id = start_meeting(call_sound=True, live_engine="universal" if engine == "universal" else None)
+        meeting_id = start_meeting(call_sound=True, live_engine=engine)
         started = time.monotonic()
         made.append(meeting_id)
         players.loop(audio)
-        want = "universal" if engine == "universal" else "apple"
+        want = engine
         chosen = wait_for("engine", lambda: live_state().get("engine"), 60, 1.0)
         c.check("the live words use the expected engine", chosen == want, f"{chosen} (want {want})")
         first, later = wait_both_tracks_progress("live")
+        # #4105: a pause never wipes what was already shown (samples 2 s apart over 30 s).
+        shrank = []
+        previous = track_text_lengths()
+        for _ in range(15):
+            time.sleep(2)  # deadline-fallback: the sampling period of a real-time check
+            now = track_text_lengths()
+            for track in ("microphone", "callSound"):
+                if now[track] < previous[track] - 20:
+                    shrank.append((track, previous[track], now[track]))
+            previous = now
+        c.check("live words never shrink over the pauses", not shrank, json.dumps(shrank))
         c.check("live words appear on both tracks", bool(first), json.dumps(first or later))
         c.check("both tracks' live text keeps growing", bool(first) and later["microphone"] >
                 first["microphone"] and later["callSound"] > first["callSound"],
@@ -829,7 +844,7 @@ def scenario_speechkill(run_dir, made, checks):
     work = tempfile.mkdtemp(prefix="meeting-kill-", dir=run_dir)
     audio, _, _ = make_conversation(work)
     with audio_rig.AudioRig(), Players() as players:
-        meeting_id = start_meeting(call_sound=True)
+        meeting_id = start_meeting(call_sound=True, live_engine="apple")
         started = time.monotonic()
         made.append(meeting_id)
         players.loop(audio)
@@ -1124,7 +1139,7 @@ def run_scenario(args, delete=None):
         elif args.scenario == "latency":
             scenario_latency(args.run_dir, made, checks, args.takes)
         elif args.scenario == "live":
-            scenario_live(args.run_dir, made, checks, args.live_engine)
+            scenario_live(args.run_dir, made, checks, args.live_engine, audio=args.audio)
         elif args.scenario == "speechkill":
             scenario_speechkill(args.run_dir, made, checks)
         elif args.scenario == "quit":
@@ -1433,7 +1448,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("scenario", nargs="?", choices=[
         "feature", "crash", "latency", "memory", "live", "speechkill", "quit"])
-    parser.add_argument("--live-engine", choices=["auto", "universal"], default="auto")
+    parser.add_argument("--live-engine", choices=["apple", "universal"], default="apple")
+    parser.add_argument("--audio", help="live: a WAV to replay instead of the synthetic conversation")
     parser.add_argument("--run-dir")
     parser.add_argument("--takes", type=int, default=20)
     parser.add_argument("--minutes", type=float, default=10.0)
