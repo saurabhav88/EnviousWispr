@@ -2525,6 +2525,49 @@ struct MeetingCoordinatorTests {
   }
   #endif
 
+  #if DEBUG
+  /// #4102 second pass: Delete All's mark is in the live copy while it waits, so a segment save
+  /// can copy it and land after the mark itself was withdrawn. That durable mark must still
+  /// delete the meeting; otherwise History hides a meeting that keeps recording until relaunch.
+  /// About one second: the mark must be withdrawn at the real Delete All deadline.
+  @Test("a segment save that lands Delete All's withdrawn mark still deletes the recording meeting")
+  func inheritedMarkStillDeletes() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    let recorder = try #require(harness.recorders.first)
+    let gate = harness.writeGate
+    gate.arm()
+    defer { gate.release.signal() }
+    // An earlier segment save holds the queue past Delete All's second.
+    recorder.onSegment(
+      .microphone,
+      MeetingSegmentInfo(index: 1, fileName: "mic-00001-s000000000.caf", startMs: 0, frameCount: 16_000))
+    try #require(
+      await Task.detached { Self.waitBlocking(gate.entered) }.value == .success,
+      "the first segment save never started")
+    let deletingAll = Task { await coordinator.deleteForHistoryDeleteAll(meetingIDs: [meetingID]) }
+    await Self.eventually("mark waiting", drainFiles: false) {
+      coordinator.liveRecordForTesting(meetingID)?.deletionRequested == true
+    }
+    // The next segment save copies the marked live record and queues behind the mark.
+    recorder.onSegment(
+      .microphone,
+      MeetingSegmentInfo(
+        index: 2, fileName: "mic-00002-s000001000.caf", startMs: 1_000, frameCount: 16_000))
+    await Self.eventually("second segment queued with the mark", drainFiles: false) {
+      coordinator.liveRecordForTesting(meetingID)?.segments[.microphone]?.count == 2
+    }
+    #expect(await deletingAll.value == false, "the mark was withdrawn at its deadline")
+    gate.release.signal()
+    await Self.eventually("deleted") { coordinator.record(id: meetingID) == nil }
+    #expect(coordinator.isRecording == false)
+    #expect(gate.timedOut.withLock { $0 } == false)
+    #expect(FileManager.default.fileExists(atPath: harness.store.folder(for: meetingID).path) == false)
+  }
+  #endif
+
   // MARK: - Work facts
 
   @Test("model work and in-flight work follow the pass, and each change is announced")

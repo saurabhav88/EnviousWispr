@@ -1660,6 +1660,17 @@ final class MeetingCoordinator {
         await writeWillAnswerForTesting?(record)
       #endif
       writeSucceeded(record, sequence: sequence)
+      // A deletion mark this write carried is durable now, so the meeting must go. It may be
+      // one it copied from a Delete All mark still on its way that was then withdrawn or failed
+      // (#4102 second pass): left alone, History would hide a meeting whose audio stays, and a
+      // recording one would keep recording, until the next launch. A deletion already running
+      // (its own marking write included) is left to finish.
+      if record.deletionRequested, live[record.id]?.deletionRequested == true,
+        !deleting.contains(record.id), !quitting
+      {
+        let meetingID = record.id
+        Task { [weak self] in _ = await self?.delete(meetingID: meetingID) }
+      }
       return true
     } catch {
       writeFailed(error, record: record, sequence: sequence)
