@@ -10946,24 +10946,68 @@
         }
       }
     },
-    "Live words need Apple's %@ language or the Universal engine. Download either in Dictation Settings, Live Preview." : {
-      "comment" : "History, a recording meeting: no live words until a language or the Universal engine is downloaded. The placeholder is a language name.",
+    "Live words are not set up. Choose an engine in EnviousMeet settings, General, Live words." : {
+      "comment" : "History, a recording meeting: no live words engine and language are chosen yet.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Für das Live-Transkript wird die Sprache „%@“ von Apple oder die Engine „Universal“ benötigt. Lade eine davon unter „Live-Vorschau“ in den Diktateinstellungen herunter."
+            "value" : "Das Live-Transkript ist nicht eingerichtet. Wähle in den EnviousMeet-Einstellungen unter „Allgemein“ im Bereich „Live-Transkript“ eine Engine."
           }
         }
       }
     },
-    "Live words need the Universal engine. Download it in Dictation Settings, Live Preview." : {
-      "comment" : "History, a recording meeting: no live words on this Mac until the Universal engine is downloaded.",
+    "Live words need Apple's %@ model. Download it in EnviousMeet settings, General, Live words." : {
+      "comment" : "History, a recording meeting: Apple's meeting speech model for the chosen language is not downloaded. The placeholder is a language name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Für das Live-Transkript wird die Engine „Universal“ benötigt. Lade sie unter „Live-Vorschau“ in den Diktateinstellungen herunter."
+            "value" : "Für das Live-Transkript wird Apples Modell für %@ benötigt. Lade es in den EnviousMeet-Einstellungen unter „Allgemein“ im Bereich „Live-Transkript“ herunter."
+          }
+        }
+      }
+    },
+    "Live words need the Universal engine. Download it in EnviousMeet settings, General, Live words." : {
+      "comment" : "History, a recording meeting: the Universal engine chosen for live words is not downloaded.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für das Live-Transkript wird die Engine „Universal“ benötigt. Lade sie in den EnviousMeet-Einstellungen unter „Allgemein“ im Bereich „Live-Transkript“ herunter."
+          }
+        }
+      }
+    },
+    "Live words needed Apple's %@ model, which was not downloaded." : {
+      "comment" : "History, a stopped meeting: Apple's meeting speech model for the chosen language was missing. The placeholder is a language name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für das Live-Transkript wurde Apples Modell für %@ benötigt, das nicht heruntergeladen war."
+          }
+        }
+      }
+    },
+    "Live words needed the Universal engine, which was not downloaded." : {
+      "comment" : "History, a stopped meeting: the Universal engine chosen for live words was not downloaded.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für das Live-Transkript wurde die Engine „Universal“ benötigt, die nicht heruntergeladen war."
+          }
+        }
+      }
+    },
+    "Live words were not set up for this meeting." : {
+      "comment" : "History, a stopped meeting: no live words engine was chosen when it started.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für dieses Meeting war kein Live-Transkript eingerichtet."
           }
         }
       }

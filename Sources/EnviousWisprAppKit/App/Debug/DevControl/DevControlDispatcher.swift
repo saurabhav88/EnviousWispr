@@ -53,6 +53,8 @@
       case meetingSummaryGet = "meeting.summary.get"
       case meetingSummaryWrite = "meeting.summary.write"
       case meetingLive = "meeting.live"
+      /// #4105: the live words choice a meeting would use now (read only).
+      case meetingLiveWordsStatus = "meeting.liveWordsStatus"
       case callSimulate = "call.simulate"
     }
 
@@ -269,6 +271,8 @@
         return await meetings.summaryWrite(args)
       case .meetingLive:
         return meetings.live(args)
+      case .meetingLiveWordsStatus:
+        return await meetings.liveWordsStatus(args)
       case .callSimulate:
         return calls.simulate(args)
       }

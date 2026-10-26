@@ -49,10 +49,12 @@ final class MeetingLiveWords {
   enum OffReason: Equatable, Sendable {
     /// This track is not being recorded.
     case notCaptured
-    /// Below macOS 26 the Universal engine is the only option, and it is not downloaded.
-    case universalNotDownloaded
-    /// Apple has no installed pack for this language and the Universal engine is not downloaded.
-    case appleLanguageAndUniversalMissing(languageName: String)
+    /// #4105: no live words engine and language are chosen, and no ready one could be guessed.
+    /// The note points to EnviousMeet > General > Live words.
+    case notSetUp
+    /// #4105: the chosen engine has no model for the chosen language on this Mac; nothing is
+    /// downloaded for it, and no other engine is used instead.
+    case engineNotDownloaded(engine: EngineKind, languageName: String)
     /// The previous recording's resources for this engine are still being freed.
     case previousStillClosing
     /// The engine could not be prepared or the session could not open.
@@ -114,9 +116,14 @@ final class MeetingLiveWords {
   }
 
   struct Dependencies {
-    /// macOS 26 or later (`ApplePreviewEngineResolver.isSupportedOnThisSystem`).
-    var appleSupported: () -> Bool
-    var resolveApple: @Sendable (LanguageMode) async -> LivePreviewEngineResolution
+    /// #4105: the meeting's live words choice, frozen once per recording: the stored engine and
+    /// language (`MeetingLiveWordsChoice.Initializer`, which saves a first ready guess), or with an
+    /// engine forced by the DEBUG door. Never downloads.
+    var resolveChoice: @MainActor (_ forcing: LivePreviewEngineChoice?) async ->
+      MeetingLiveWordsChoice.Resolution
+    /// Apple's meeting module for an exact language tag
+    /// (`ApplePreviewEngineResolver.resolveMeeting`).
+    var resolveApple: @Sendable (String) async -> LivePreviewEngineResolution
     var resolveUniversal: @Sendable (LanguageMode) async -> UniversalResolution
     /// True while dictation's engine decodes continuously: each Universal decode then waits its
     /// turn (a temporary refusal the engine retries), never the meeting's readiness.
@@ -139,8 +146,13 @@ final class MeetingLiveWords {
 
   private let deps: Dependencies
 
-  init(dependencies: Dependencies) {
+  /// #4105: the one owner of the stored live words choice and its first guess. Meeting Start
+  /// reaches it through `deps.resolveChoice`; the Live words row reads the same instance here.
+  let choiceOwner: MeetingLiveWordsChoice.Initializer?
+
+  init(dependencies: Dependencies, choiceOwner: MeetingLiveWordsChoice.Initializer? = nil) {
     self.deps = dependencies
+    self.choiceOwner = choiceOwner
   }
 
   // MARK: - Recording state
@@ -176,6 +188,8 @@ final class MeetingLiveWords {
     var tracks: [MeetingTrackKind: TrackSlot]
     var bridge: LiveWordsBridge?
     var engine: EngineKind?
+    /// #4105: the language the frozen choice runs in (DEBUG door, diagnostics).
+    var language: String?
     var apple: [MeetingTrackKind: any LivePreviewEngine] = [:]
     var universal: (any MeetingSharedEngine)?
     var vocabulary: LivePreviewVocabulary?
@@ -237,10 +251,11 @@ final class MeetingLiveWords {
   }
 
   /// Capture started on `captured` tracks. Resolves the engine (never a download), prepares it
-  /// and opens one transcript session per captured track. `language`, `vocabulary` and `clock`
-  /// are this recording's, frozen: nothing re-reads a setting later.
+  /// and opens one transcript session per captured track. The live words choice (read once in
+  /// `start`), `vocabulary` and `clock` are this recording's, frozen: nothing re-reads a setting
+  /// later.
   func captureStarted(
-    meetingID: UUID, captured: Set<MeetingTrackKind>, language: LanguageMode,
+    meetingID: UUID, captured: Set<MeetingTrackKind>,
     vocabulary: LivePreviewVocabulary, clock: @escaping @Sendable () -> Int
   ) {
     guard let current = recording, current.meetingID == meetingID, current.start == nil else {
@@ -267,16 +282,15 @@ final class MeetingLiveWords {
       }
     }
     current.vocabulary = vocabulary
-    var skipApple = false
+    var forcing: LivePreviewEngineChoice?
     #if DEBUG
-      skipApple = debugForceUniversalNextRecording
-      debugForceUniversalNextRecording = false
+      forcing = debugEngineOverrideNextRecording
+      debugEngineOverrideNextRecording = nil
     #endif
-    current.start = Task { [weak self, skipApple] in
+    current.start = Task { [weak self, forcing] in
       guard let self else { return Leftovers() }
       let leftovers = await self.start(
-        generation: gen, tracks: tracks, language: language, vocabulary: vocabulary,
-        skipApple: skipApple)
+        generation: gen, tracks: tracks, vocabulary: vocabulary, forcing: forcing)
       self.startSettled(generation: gen)
       return leftovers
     }
@@ -373,11 +387,15 @@ final class MeetingLiveWords {
   /// The engine the recording meeting's live words use, once chosen (diagnostics, DEBUG door).
   var currentEngine: EngineKind? { recording?.engine }
 
+  /// The language the recording meeting's live words run in, once chosen (DEBUG door).
+  var currentLanguage: String? { recording?.language }
+
   #if DEBUG
-    /// DEBUG door only (`meeting start --live-engine universal`, runtime UAT): the next recording
-    /// skips Apple speech and uses the Universal engine when it is installed. Consumed by that
-    /// recording's `captureStarted`, so it never outlives one meeting.
-    var debugForceUniversalNextRecording = false
+    /// DEBUG door only (`meeting start --live-engine apple|universal`, runtime UAT): the next
+    /// recording uses this engine with the stored language matched to it, never storing it and
+    /// never downloading. Consumed by that recording's `captureStarted`, and cleared by the door
+    /// when a Start is refused, so it never outlives one attempt.
+    var debugEngineOverrideNextRecording: LivePreviewEngineChoice?
   #endif
 
   /// A Universal model removal is in progress (tests and diagnostics).
@@ -391,15 +409,18 @@ final class MeetingLiveWords {
   private func isCurrent(_ gen: Int) -> Bool { recording?.generation == gen }
 
   private func start(
-    generation gen: Int, tracks: [MeetingTrackKind], language: LanguageMode,
-    vocabulary: LivePreviewVocabulary, skipApple: Bool = false
+    generation gen: Int, tracks: [MeetingTrackKind],
+    vocabulary: LivePreviewVocabulary, forcing: LivePreviewEngineChoice? = nil
   ) async -> Leftovers {
     var leftovers = Leftovers()
     // The removal state over the whole resolution: what it was when the read began, and the epoch
     // that any removal crossing the read changes.
     let removingAtResolve = removingUniversal
     let epochAtResolve = removalEpoch
-    let choice = await resolve(language, skipApple: skipApple)
+    // #4105: the choice is frozen here, once, for both tracks and every restart of this recording.
+    let frozen = await deps.resolveChoice(forcing)
+    guard isCurrent(gen) else { return leftovers }
+    let choice = await resolve(frozen)
     guard isCurrent(gen), let current = recording else { return leftovers }
     switch choice {
     case .off(let reason):
@@ -480,30 +501,50 @@ final class MeetingLiveWords {
     case off(OffReason)
   }
 
-  /// Plan §3.4: Apple when it is ready (macOS 26+), else the Universal engine when its model is
-  /// admitted, else off with the reason the note names.
-  private func resolve(_ language: LanguageMode, skipApple: Bool = false) async -> Choice {
-    let appleSupported = deps.appleSupported() && !skipApple
-    var appleMissingLanguage: String?
-    if appleSupported {
-      switch await deps.resolveApple(language) {
+  /// #4105: the frozen choice's engine, or off with the reason the note names. The chosen engine
+  /// only: a choice that cannot run here leaves live words off (the recording continues), never
+  /// another engine and never Apple's dictation module (founder, decisions file item 18).
+  private func resolve(_ frozen: MeetingLiveWordsChoice.Resolution) async -> Choice {
+    switch frozen {
+    case .notSetUp:
+      return .off(.notSetUp)
+    case .notDownloaded(let engine, let language):
+      return .off(
+        .engineNotDownloaded(engine: Self.kind(engine), languageName: Self.languageName(language)))
+    case .ready(.apple, let tag):
+      recording?.language = tag
+      switch await deps.resolveApple(tag) {
       case .ready(let candidate): return .apple(candidate)
-      case .blocked(.installRequired(let name)): appleMissingLanguage = name
-      case .blocked: break
+      case .blocked(.installRequired(let name)):
+        return .off(.engineNotDownloaded(engine: .apple, languageName: name))
+      case .blocked(.unsupportedSystem), .blocked(.unsupportedLanguage):
+        return .off(.notSetUp)
+      case .blocked:
+        return .off(.unavailable)
+      }
+    case .ready(.universal, let code):
+      recording?.language = code
+      switch await deps.resolveUniversal(.locked(code)) {
+      case .ready(let makeEngine): return .universal(makeEngine)
+      case .blocked(.modelNotInstalled):
+        return .off(
+          .engineNotDownloaded(engine: .universal, languageName: Self.languageName(code)))
+      case .blocked:
+        return .off(.unavailable)
       }
     }
-    switch await deps.resolveUniversal(language) {
-    case .ready(let makeEngine):
-      return .universal(makeEngine)
-    case .blocked(.modelNotInstalled):
-      if !appleSupported { return .off(.universalNotDownloaded) }
-      if let name = appleMissingLanguage {
-        return .off(.appleLanguageAndUniversalMissing(languageName: name))
-      }
-      return .off(.unavailable)
-    case .blocked:
-      return .off(.unavailable)
+  }
+
+  private static func kind(_ engine: LivePreviewEngineChoice) -> EngineKind {
+    switch engine {
+    case .apple: .apple
+    case .universal: .universal
     }
+  }
+
+  /// A language tag or code as the user reads it (`French (Canada)`, `German`).
+  static func languageName(_ tag: String) -> String {
+    ApplePackCatalog.localizedName(for: tag)
   }
 
   private func open(

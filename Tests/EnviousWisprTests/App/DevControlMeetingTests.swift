@@ -96,10 +96,11 @@
       #expect(Self.code(await unwired.summaryGet(["meetingID": id])) == "notWired")
       #expect(Self.code(await unwired.summaryWrite(["meetingID": id])) == "notWired")
       #expect(Self.code(unwired.live([:])) == "notWired")
+      #expect(Self.code(await unwired.liveWordsStatus([:])) == "notWired")
       let meetingCommands = DevControlDispatcher.Command.allCases.filter {
         $0.rawValue.hasPrefix("meeting.")
       }
-      #expect(meetingCommands.count == 13)
+      #expect(meetingCommands.count == 14)
     }
 
     @Test("malformed arguments are refused before any owner is called")
@@ -111,7 +112,7 @@
         ("meeting.start", ["entryPoint": "dock"]),
         ("meeting.start", ["entryPoint": "menu", "callSound": 1]),
         ("meeting.start", ["entryPoint": "menu", "extra": true]),
-        ("meeting.start", ["entryPoint": "menu", "liveEngine": "apple"]),
+        ("meeting.start", ["entryPoint": "menu", "liveEngine": "dictation"]),
         ("meeting.start", ["entryPoint": "menu", "liveEngine": 1]),
         ("meeting.stop", ["meetingID": "not-a-uuid"]),
         ("meeting.stop", ["meetingID": id, "force": true]),
@@ -129,6 +130,7 @@
         ("meeting.summary.get", ["meetingID": "nope"]),
         ("meeting.summary.write", ["meetingID": id, "replace": "yes"]),
         ("meeting.live", ["meetingID": id]),
+        ("meeting.liveWordsStatus", ["x": 1]),
       ]
       for (name, args) in refusals {
         #expect(Self.code(await rig.call(name, args)) == "badArgs", "\(name) \(args)")
@@ -403,14 +405,162 @@
       #expect(await live.owner.waitForCleanups(seconds: 10))
     }
 
-    @Test("the Universal override skips Apple speech for one recording only")
+    @Test("live words status reports the saved choice and what it resolves to")
+    func liveWordsStatusReportsTheChoice() async throws {
+      let settings = MeetingLiveWordsChoiceInitializerTests.freshSettings()
+      settings.commitMeetingLiveWordsChoice(engine: .universal, language: "de")
+      let choice = MeetingLiveWordsChoice.Initializer(
+        environment: .init(
+          settings: settings,
+          inventory: {
+            .init(
+              appleAvailable: true, appleSupportedTags: ["de-DE"], appleInstalledTags: [],
+              universalInstalled: true, universalCodes: ["de"])
+          },
+          appleEquivalent: { _ in "de-DE" }))
+      let live = try MeetingLiveWordsIntegrationTests.Rig(
+        world: MeetingLiveWordsTests.World(), callSound: false, choiceOwner: choice)
+      let meetings = DevControlMeetings(
+        sources: .init(coordinator: { live.coordinator }, startFlow: { nil }, transcripts: { nil }))
+      let body = try #require(Self.ok(await meetings.liveWordsStatus([:])))
+      #expect(body["state"] as? String == "ready")
+      #expect(body["engine"] as? String == "universal")
+      #expect(body["language"] as? String == "de")
+      #expect(body["storedEngine"] as? String == "universal")
+      #expect(body["storedLanguage"] as? String == "de")
+    }
+
+    @Test("live words status reports stored values and resolution from one settings read")
+    func liveWordsStatusIsOneSnapshot() async throws {
+      let settings = MeetingLiveWordsChoiceInitializerTests.freshSettings()
+      settings.commitMeetingLiveWordsChoice(engine: .apple, language: "de-DE")
+      let inventory = Self.GatedInventory(
+        .init(
+          appleAvailable: true, appleSupportedTags: ["de-DE"], appleInstalledTags: ["de-DE"],
+          universalInstalled: true, universalCodes: ["de"]))
+      let choice = MeetingLiveWordsChoice.Initializer(
+        environment: .init(
+          settings: settings, inventory: { await inventory.read() },
+          appleEquivalent: { _ in "de-DE" }))
+      let live = try MeetingLiveWordsIntegrationTests.Rig(
+        world: MeetingLiveWordsTests.World(), callSound: false, choiceOwner: choice)
+      let meetings = DevControlMeetings(
+        sources: .init(coordinator: { live.coordinator }, startFlow: { nil }, transcripts: { nil }))
+      // Only plain strings leave the task (a door reply is not Sendable).
+      let status = Task { () -> [String?] in
+        let body = Self.ok(await meetings.liveWordsStatus([:]))
+        return ["engine", "language", "storedEngine", "storedLanguage"].map {
+          body?[$0] as? String
+        }
+      }
+      try await BoundedWait.until(inventory.entered)
+      // The user switches engines while the status read is suspended.
+      settings.commitMeetingLiveWordsChoice(engine: .universal, language: "de")
+      inventory.open.fire()
+      let fields = try await BoundedWait.result(of: status).get()
+      #expect(fields == ["universal", "de", "universal", "de"])
+    }
+
+    typealias GatedInventory = MeetingLiveWordsChoiceInitializerTests.GatedInventory
+
+    @Test("an overlapping meeting.start is refused and keeps the first attempt's engine")
+    func overlappingStartKeepsTheOverride() async throws {
+      let world = MeetingLiveWordsTests.World()
+      world.apple = .ready(world.appleCandidate())
+      world.choice = .ready(engine: .universal, language: "de")
+      let live = try MeetingLiveWordsIntegrationTests.Rig(world: world, callSound: false)
+      let held = MeetingLiveWordsTests.Gate()
+      let flow = MeetingStartFlow(
+        dependencies: .init(
+          isSetUp: { true }, captureCallSound: { false }, isExplained: { true },
+          markExplained: {}, canStart: { live.coordinator.phase == .idle },
+          start: { entry, callSound, _ in
+            await held.pass()
+            return await live.coordinator.start(from: entry, captureCallSound: callSound)
+          },
+          microphoneNeedsAsking: { false }, requestMicrophone: {}, showMeetingPage: {}))
+      let meetings = DevControlMeetings(
+        sources: .init(coordinator: { live.coordinator }, startFlow: { flow }, transcripts: { nil }))
+
+      let first = Task {
+        Self.ok(await meetings.start(["entryPoint": "menu", "liveEngine": "apple"])) != nil
+      }
+      await PreviewWait.within("the first Start held", onExpiry: held.open) { await held.reached(1) }
+      // A refused Start returns at once; one that went ahead would wait on the held gate, so the
+      // bound turns that into a failure here instead of the suite's time limit.
+      let second = Task {
+        Self.code(await meetings.start(["entryPoint": "menu", "liveEngine": "universal"]))
+      }
+      let code = try await BoundedWait.result(
+        of: second, deadline: .seconds(5), onExpiry: held.open
+      ).get()
+      #expect(code == "busy")
+      #expect(live.owner.debugEngineOverrideNextRecording == .apple, "the first override kept")
+      held.open()
+      #expect(try await BoundedWait.result(of: first).get(), "the first Start succeeded")
+      await MeetingLiveWordsTests.until("Apple running", live.owner) {
+        MeetingLiveWordsTests.status($0, .microphone) == .running
+      }
+      #expect(world.forcings == [.apple])
+      #expect(world.appleEngines.count == 1 && world.shared.isEmpty)
+      await live.coordinator.stop()
+      #expect(await live.owner.waitForCleanups(seconds: 10))
+    }
+
+    @Test("liveEngine on meeting.start forces one attempt; a refused Start leaves nothing behind")
+    func startLiveEngineIsOneAttempt() async throws {
+      let world = MeetingLiveWordsTests.World()
+      world.apple = .ready(world.appleCandidate())
+      world.choice = .ready(engine: .universal, language: "de")
+      let live = try MeetingLiveWordsIntegrationTests.Rig(world: world, callSound: false)
+      var setUp = true
+      let flow = MeetingStartFlow(
+        dependencies: .init(
+          isSetUp: { setUp }, captureCallSound: { false }, isExplained: { true },
+          markExplained: {}, canStart: { live.coordinator.phase == .idle },
+          start: { entry, callSound, _ in
+            await live.coordinator.start(from: entry, captureCallSound: callSound)
+          },
+          microphoneNeedsAsking: { false }, requestMicrophone: {}, showMeetingPage: {}))
+      let meetings = DevControlMeetings(
+        sources: .init(coordinator: { live.coordinator }, startFlow: { flow }, transcripts: { nil }))
+
+      // Forced Apple over a saved Universal choice, for this attempt only.
+      _ = try #require(Self.ok(await meetings.start(["entryPoint": "menu", "liveEngine": "apple"])))
+      await MeetingLiveWordsTests.until("Apple running", live.owner) {
+        MeetingLiveWordsTests.status($0, .microphone) == .running
+      }
+      #expect(world.forcings == [.apple])
+      #expect(world.appleEngines.count == 1 && world.shared.isEmpty)
+      await live.coordinator.stop()
+      #expect(await live.owner.waitForCleanups(seconds: 10))
+
+      // A Start the flow refuses never reaches capture; its override is cleared anyway.
+      setUp = false
+      _ = await meetings.start(["entryPoint": "menu", "liveEngine": "apple"])
+      #expect(live.owner.debugEngineOverrideNextRecording == nil)
+      #expect(world.forcings == [.apple], "no live words attempt for the refused Start")
+
+      // The next ordinary Start follows the saved choice.
+      setUp = true
+      _ = try #require(Self.ok(await meetings.start(["entryPoint": "menu", "liveEngine": "auto"])))
+      await MeetingLiveWordsTests.until("Universal running", live.owner) {
+        MeetingLiveWordsTests.status($0, .microphone) == .running
+      }
+      #expect(world.forcings == [.apple, nil])
+      #expect(world.shared.count == 1)
+      await live.coordinator.stop()
+      #expect(await live.owner.waitForCleanups(seconds: 10))
+    }
+
+    @Test("the engine override applies to one recording only")
     func universalOverrideIsOneRecording() async throws {
       let world = MeetingLiveWordsTests.World()
       world.apple = .ready(world.appleCandidate())
       let live = try MeetingLiveWordsIntegrationTests.Rig(world: world, callSound: false)
       let meetings = DevControlMeetings(
         sources: .init(coordinator: { live.coordinator }, startFlow: { nil }, transcripts: { nil }))
-      live.owner.debugForceUniversalNextRecording = true
+      live.owner.debugEngineOverrideNextRecording = .universal
       await live.coordinator.start(from: .menu)
       await MeetingLiveWordsTests.until("Universal running", live.owner) {
         MeetingLiveWordsTests.status($0, .microphone) == .running
@@ -418,7 +568,7 @@
       let forced = try #require(Self.ok(meetings.live([:]))?["live"] as? [String: Any])
       #expect(forced["engine"] as? String == "universal")
       #expect(world.shared.count == 1 && world.appleEngines.isEmpty)
-      #expect(!live.owner.debugForceUniversalNextRecording, "consumed by that recording")
+      #expect(live.owner.debugEngineOverrideNextRecording == nil, "consumed by that recording")
       await live.coordinator.stop()
       #expect(await live.owner.waitForCleanups(seconds: 10))
       await live.coordinator.start(from: .menu)

@@ -71,6 +71,18 @@ enum WhisperPreviewDeliveryWiring {
     return meetingResolver(environment)
   }
 
+  /// #4105: whether the Universal model is downloaded and admitted, for the meeting live words
+  /// choice. False in a build with no Universal registration.
+  static func makeUniversalAdmitted(
+    modelDelivery: ModelDeliveryHome,
+    settings: SettingsManager
+  ) -> @Sendable () async -> Bool {
+    guard let environment = environment(modelDelivery: modelDelivery, settings: settings) else {
+      return { false }
+    }
+    return environment.isAdmitted
+  }
+
   /// The meeting route over one environment, as `MeetingLiveWords` consumes it.
   static func meetingResolver(
     _ environment: WhisperPreviewEngineResolver.Environment

@@ -238,6 +238,19 @@ struct MeetingLiveWordsTests {
     private let lock = NSLock()
     var appleSupported = true
     var apple: LivePreviewEngineResolution?
+    /// #4105: the frozen live words choice; nil derives the old shape (Apple when `apple` is
+    /// ready on a supported Mac, else Universal) in `liveLanguage`.
+    var choice: MeetingLiveWordsChoice.Resolution?
+    var liveLanguage = "de"
+    private var _forcings: [LivePreviewEngineChoice?] = []
+    var forcings: [LivePreviewEngineChoice?] { lock.withLock { _forcings } }
+    func resolveChoice(_ forcing: LivePreviewEngineChoice?) -> MeetingLiveWordsChoice.Resolution {
+      lock.withLock { _forcings.append(forcing) }
+      if let forcing { return .ready(engine: forcing, language: liveLanguage) }
+      if let choice { return choice }
+      if appleSupported, case .ready = apple { return .ready(engine: .apple, language: liveLanguage) }
+      return .ready(engine: .universal, language: liveLanguage)
+    }
     var universalBlocked: LivePreviewUnavailability?
     var universalPrepareFails = false
     /// The Universal engine's first prepares fail as "dictation holds the executor".
@@ -261,6 +274,8 @@ struct MeetingLiveWordsTests {
     let releaseGate = Gate(open: true)
     /// Each Universal resolution passes it before it answers (held: the answer waits).
     var universalResolveGate = Gate(open: true)
+    /// Held: the live words choice lookup at Start waits here.
+    var choiceGate = Gate(open: true)
     var restartAfterSamples = 600 * 16_000
     var restartEndDeadline: Double = 5
     private var _appleEngines: [FakeEngine] = []
@@ -295,12 +310,17 @@ struct MeetingLiveWordsTests {
     }
   }
 
-  static func owner(_ world: World) -> MeetingLiveWords {
+  static func owner(
+    _ world: World, choiceOwner: MeetingLiveWordsChoice.Initializer? = nil
+  ) -> MeetingLiveWords {
     MeetingLiveWords(
       dependencies: .init(
-        appleSupported: { world.appleSupported },
-        resolveApple: { mode in
-          world.noteLanguage(mode)
+        resolveChoice: { forcing in
+          await world.choiceGate.pass()
+          return world.resolveChoice(forcing)
+        },
+        resolveApple: { tag in
+          world.noteLanguage(.locked(tag))
           return world.apple ?? .blocked(.unsupportedLanguage)
         },
         resolveUniversal: { mode in
@@ -314,7 +334,8 @@ struct MeetingLiveWordsTests {
         droppedCheckInterval: .milliseconds(1),
         appleRestartAfterSamples: world.restartAfterSamples,
         restartEndDeadline: world.restartEndDeadline,
-        universalRetryDelay: .milliseconds(1)))
+        universalRetryDelay: .milliseconds(1)),
+      choiceOwner: choiceOwner)
   }
 
   static let vocabulary = LivePreviewVocabulary(
@@ -325,12 +346,11 @@ struct MeetingLiveWordsTests {
   static func record(
     _ owner: MeetingLiveWords, _ id: UUID = UUID(),
     tracks: Set<MeetingTrackKind> = [.microphone, .callSound],
-    language: LanguageMode = .locked("de"), clock: @escaping @Sendable () -> Int = { 1_000 }
+    clock: @escaping @Sendable () -> Int = { 1_000 }
   ) -> MeetingRecorder.LiveSamplesObserver {
     let observer = owner.prepareCapture(meetingID: id)
     owner.captureStarted(
-      meetingID: id, captured: tracks, language: language, vocabulary: vocabulary,
-      clock: clock)
+      meetingID: id, captured: tracks, vocabulary: vocabulary, clock: clock)
     return observer
   }
 
@@ -365,70 +385,95 @@ struct MeetingLiveWordsTests {
 
   // MARK: - Resolution
 
-  @Test("the engine follows the plan's matrix: Apple when ready, else Universal, else off")
+  @Test("the chosen engine runs; a choice that cannot run leaves live words off, never another engine")
   func resolutionMatrix() async throws {
-    // macOS 26, Apple ready: one Apple recognizer per track.
+    // Apple chosen and ready: one Apple meeting recognizer per track, asked for the exact tag.
     do {
       let world = World()
+      world.choice = .ready(engine: .apple, language: "de-DE")
       world.apple = .ready(world.appleCandidate())
       let owner = Self.owner(world)
       Self.record(owner)
       await Self.until("both running on Apple", owner) { Self.bothRunning($0) }
       #expect(world.appleEngines.count == 2 && world.shared.isEmpty)
+      #expect(world.languages == [.locked("de-DE")])
+      #expect(owner.currentLanguage == "de-DE")
       owner.stop()
     }
-    // macOS 26, Apple pack missing, Universal ready: Universal, one engine for both tracks.
+    // Apple chosen, its model missing at Start: off naming the language; Universal is never asked.
     do {
       let world = World()
+      world.choice = .ready(engine: .apple, language: "de-DE")
       world.apple = .blocked(.installRequired(languageName: "German"))
+      let owner = Self.owner(world)
+      Self.record(owner)
+      let off = MeetingLiveWords.Status.off(.engineNotDownloaded(engine: .apple, languageName: "German"))
+      await Self.until("off: Apple's German model", owner) { Self.status($0, .microphone) == off }
+      #expect(Self.status(owner, .callSound) == off)
+      #expect(world.shared.isEmpty && world.appleEngines.isEmpty)
+      #expect(world.languages == [.locked("de-DE")], "Universal is never asked")
+      owner.stop()
+    }
+    // Universal chosen: one engine for both tracks, asked for the base code.
+    do {
+      let world = World()
+      world.choice = .ready(engine: .universal, language: "de")
       let owner = Self.owner(world)
       Self.record(owner)
       await Self.until("both running on Universal", owner) { Self.bothRunning($0) }
       #expect(world.shared.count == 1 && world.appleEngines.isEmpty)
       #expect(world.shared.first?.engine.sessions.count == 2)
+      #expect(world.languages == [.locked("de")])
       owner.stop()
     }
-    // macOS 26, Apple pack missing, Universal not downloaded: off, naming the language.
+    // Universal chosen, model gone at Start: off; Apple is never used instead.
     do {
       let world = World()
-      world.apple = .blocked(.installRequired(languageName: "German"))
-      world.universalBlocked = .modelNotInstalled
-      let owner = Self.owner(world)
-      Self.record(owner)
-      let off = MeetingLiveWords.Status.off(
-        .appleLanguageAndUniversalMissing(languageName: "German"))
-      await Self.until("off with both remedies", owner) { Self.status($0, .microphone) == off }
-      #expect(Self.status(owner, .callSound) == off)
-      #expect(world.shared.isEmpty && world.appleEngines.isEmpty)
-      owner.stop()
-    }
-    // Below macOS 26, Universal ready.
-    do {
-      let world = World()
-      world.appleSupported = false
-      let owner = Self.owner(world)
-      Self.record(owner)
-      await Self.until("Universal on an older Mac", owner) { Self.bothRunning($0) }
-      #expect(world.shared.count == 1)
-      #expect(world.languages == [.locked("de")], "Apple is never asked below macOS 26")
-      owner.stop()
-    }
-    // Below macOS 26, Universal not downloaded.
-    do {
-      let world = World()
-      world.appleSupported = false
+      world.choice = .ready(engine: .universal, language: "de")
+      world.apple = .ready(world.appleCandidate())
       world.universalBlocked = .modelNotInstalled
       let owner = Self.owner(world)
       Self.record(owner)
       await Self.until("off: download the Universal engine", owner) {
-        Self.status($0, .microphone) == .off(.universalNotDownloaded)
+        if case .off(.engineNotDownloaded(.universal, _)) = Self.status($0, .microphone) {
+          return true
+        }
+        return false
       }
+      #expect(world.appleEngines.isEmpty)
       owner.stop()
     }
-    // macOS 26, Apple cannot do the language and Universal refuses otherwise.
+    // Chosen but not downloaded (known before Start): off without asking any engine.
     do {
       let world = World()
-      world.apple = .blocked(.unsupportedLanguage)
+      world.choice = .notDownloaded(engine: .apple, language: "fr-CA")
+      let owner = Self.owner(world)
+      Self.record(owner)
+      await Self.until("off: not downloaded", owner) {
+        if case .off(.engineNotDownloaded(.apple, _)) = Self.status($0, .microphone) {
+          return true
+        }
+        return false
+      }
+      #expect(world.languages.isEmpty)
+      owner.stop()
+    }
+    // Nothing chosen: off, not set up.
+    do {
+      let world = World()
+      world.choice = .notSetUp(suggestion: nil)
+      let owner = Self.owner(world)
+      Self.record(owner)
+      await Self.until("off: not set up", owner) {
+        Self.status($0, .microphone) == .off(.notSetUp)
+      }
+      #expect(world.languages.isEmpty)
+      owner.stop()
+    }
+    // Universal refuses for another reason: off, unavailable.
+    do {
+      let world = World()
+      world.choice = .ready(engine: .universal, language: "de")
       world.universalBlocked = .engineUnavailableInThisBuild
       let owner = Self.owner(world)
       Self.record(owner)
@@ -439,14 +484,59 @@ struct MeetingLiveWordsTests {
     }
   }
 
-  @Test("the meeting's own language and vocabulary reach the engines, frozen at start")
+  @Test("a choice lookup still running when its recording stops or is replaced opens nothing")
+  func staleChoiceLookupOpensNothing() async throws {
+    // Stopped while the lookup is held.
+    do {
+      let world = World()
+      world.apple = .ready(world.appleCandidate())
+      let held = Gate()
+      world.choiceGate = held
+      let owner = Self.owner(world)
+      Self.record(owner)
+      await PreviewWait.within("the lookup held", onExpiry: held.open) { await held.reached(1) }
+      owner.stop()
+      held.open()
+      #expect(await owner.waitForCleanups(seconds: 10))
+      #expect(world.appleEngines.isEmpty && world.shared.isEmpty)
+      #expect(world.languages.isEmpty, "no engine was asked for the stopped recording")
+    }
+    // Replaced by a new recording while the first lookup is held.
+    do {
+      let world = World()
+      world.apple = .ready(world.appleCandidate())
+      let held = Gate()
+      world.choiceGate = held
+      let owner = Self.owner(world)
+      Self.record(owner)
+      await PreviewWait.within("the first lookup held", onExpiry: held.open) {
+        await held.reached(1)
+      }
+      let second = UUID()
+      Self.record(owner, second)
+      await PreviewWait.within("the second lookup held", onExpiry: held.open) {
+        await held.reached(2)
+      }
+      held.open()
+      await Self.until("the second recording running", owner) { Self.bothRunning($0) }
+      #expect(owner.transcript?.meetingID == second)
+      #expect(world.appleEngines.count == 2, "one recognizer per track, for the second only")
+      #expect(world.languages.count == 1, "the first lookup asked no engine")
+      owner.stop()
+      #expect(await owner.waitForCleanups(seconds: 10))
+    }
+  }
+
+  @Test("the live words language and vocabulary reach the engines, frozen at start")
   func frozenInputs() async throws {
     let world = World()
+    world.choice = .ready(engine: .apple, language: "ja-JP")
     world.apple = .ready(world.appleCandidate())
     let owner = Self.owner(world)
-    Self.record(owner, language: .locked("ja"))
+    Self.record(owner)
     await Self.until("running", owner) { Self.bothRunning($0) }
-    #expect(world.languages == [.locked("ja")], "resolved once, with the meeting's language")
+    #expect(world.forcings.count == 1, "the choice is read once, at start")
+    #expect(world.languages == [.locked("ja-JP")], "resolved once, with the chosen language")
     for engine in world.appleEngines {
       #expect(engine.vocabularies.map(\.contextualPhrases) == [["Envious"]])
     }
@@ -466,8 +556,8 @@ struct MeetingLiveWordsTests {
     early.withUnsafeBufferPointer { observer(.microphone, $0) }
     #expect(world.languages.isEmpty && world.appleEngines.isEmpty, "nothing resolved yet")
     owner.captureStarted(
-      meetingID: id, captured: [.microphone, .callSound], language: .auto,
-      vocabulary: Self.vocabulary, clock: { 0 })
+      meetingID: id, captured: [.microphone, .callSound], vocabulary: Self.vocabulary,
+      clock: { 0 })
     await Self.until("running", owner) { Self.bothRunning($0) }
     let mic = try #require(world.appleEngines.first?.sessions.first)
     await PreviewWait.within("the buffered audio reaching the session") {
@@ -486,8 +576,7 @@ struct MeetingLiveWordsTests {
     _ = owner.prepareCapture(meetingID: id)
     owner.captureFailed(meetingID: id)
     owner.captureStarted(
-      meetingID: id, captured: [.microphone], language: .auto, vocabulary: Self.vocabulary,
-      clock: { 0 })
+      meetingID: id, captured: [.microphone], vocabulary: Self.vocabulary, clock: { 0 })
     #expect(owner.transcript == nil)
     #expect(world.languages.isEmpty && world.appleEngines.isEmpty)
   }
@@ -650,7 +739,8 @@ struct MeetingLiveWordsTests {
     let release = Gate()
     let owner = MeetingLiveWords(
       dependencies: .init(
-        appleSupported: { false }, resolveApple: { _ in .blocked(.unsupportedSystem) },
+        resolveChoice: { _ in .ready(engine: .universal, language: "de") },
+        resolveApple: { _ in .blocked(.unsupportedSystem) },
         resolveUniversal: { _ in
           .ready(makeEngine: { _ in
             let shared = FakeShared(engine: FakeEngine(), releaseGate: release)
@@ -678,7 +768,8 @@ struct MeetingLiveWordsTests {
     let release = Gate()
     let owner = MeetingLiveWords(
       dependencies: .init(
-        appleSupported: { false }, resolveApple: { _ in .blocked(.unsupportedSystem) },
+        resolveChoice: { _ in .ready(engine: .universal, language: "de") },
+        resolveApple: { _ in .blocked(.unsupportedSystem) },
         resolveUniversal: { _ in
           .ready(makeEngine: { _ in
             let shared = FakeShared(engine: FakeEngine(), releaseGate: release)

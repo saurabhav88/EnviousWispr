@@ -182,6 +182,44 @@ enum MeetingLiveWordsChoice {
     ApplePreviewEngineResolver.languageCode(for: mode)
   }
 
+  /// This Mac's inventory, read live (#4105): Apple's meeting module lists from LivePreview
+  /// (enumeration only, no claim, no download) and Universal's admission and languages.
+  static func liveInventory(universalAdmitted: @Sendable () async -> Bool) async -> Inventory {
+    var apple = (available: false, supported: [String](), installed: [String]())
+    if #available(macOS 26.0, *), AppleTranscriberFactory.isAvailable(.meeting) {
+      apple.available = true
+      apple.supported = await AppleTranscriberFactory.supportedLocales(.meeting).map {
+        $0.identifier(.bcp47)
+      }
+      apple.installed = await AppleTranscriberFactory.installedLocales(.meeting).map {
+        $0.identifier(.bcp47)
+      }
+    }
+    return Inventory(
+      appleAvailable: apple.available, appleSupportedTags: apple.supported,
+      appleInstalledTags: apple.installed, universalInstalled: await universalAdmitted(),
+      universalCodes: Set(LanguageCatalog.all.map(\.code)))
+  }
+
+  /// Apple's equivalent meeting-module tag for a code, or nil (`supportedLocale(equivalentTo:)`).
+  static let liveAppleEquivalent: @Sendable (String) async -> String? = { code in
+    guard #available(macOS 26.0, *) else { return nil }
+    return await AppleTranscriberFactory.supportedLocale(.meeting, equivalentTo: Locale(identifier: code))?
+      .identifier(.bcp47)
+  }
+
+  /// The resolution as one log field: engine, language code and readiness; never text.
+  static func logDescription(_ resolution: Resolution) -> String {
+    switch resolution {
+    case .ready(let engine, let language): "engine=\(engine.rawValue) language=\(language) state=ready"
+    case .notDownloaded(let engine, let language):
+      "engine=\(engine.rawValue) language=\(language) state=notDownloaded"
+    case .notSetUp(let suggestion):
+      "state=notSetUp"
+        + (suggestion.map { " suggestion=\($0.engine.rawValue):\($0.language)" } ?? "")
+    }
+  }
+
   /// Whether the "different languages" note shows (plan R2.4): only when the transcript language
   /// is locked and its base language differs from the live words language. Auto never shows it.
   static func languagesDiffer(liveWords: String?, transcript: LanguageMode) -> Bool {
@@ -250,18 +288,52 @@ extension MeetingLiveWordsChoice {
       return resolution
     }
 
+    /// The stored values and what they resolve to, read together.
+    struct Snapshot {
+      let storedEngine: LivePreviewEngineChoice?
+      let storedLanguage: String?
+      let resolution: Resolution
+    }
+
+    /// The choice now, without saving anything (the DEBUG status door). The stored values and
+    /// the resolution come from the same settings generation (Codex chunk 4 review).
+    func peek() async -> Snapshot {
+      await snapshot(inventory: await environment.inventory())
+    }
+
+    /// The DEBUG door's forced engine for one meeting: the stored language, else the guess,
+    /// matched to that engine by the shared policy. Saves nothing and never downloads.
+    func resolve(forcing engine: LivePreviewEngineChoice) async -> Resolution {
+      let settings = environment.settings
+      let inventory = await environment.inventory()
+      let from = settings.meetingLiveWordsLanguage ?? MeetingLiveWordsChoice.guessCode(settings.languageMode)
+      guard
+        let language = await MeetingLiveWordsChoice.language(
+          for: engine, from: from, inventory: inventory,
+          appleEquivalent: environment.appleEquivalent)
+      else { return .notSetUp(suggestion: nil) }
+      return MeetingLiveWordsChoice.explicit(engine: engine, language: language, inventory: inventory)
+    }
+
     /// The stored choice as it resolves now (a user change that landed during the lookup).
     /// Resolving can suspend again, so it repeats until no write landed during it: the result
     /// always describes the latest stored choice (Codex chunk 3 review).
     private func current(inventory: Inventory) async -> Resolution {
+      await snapshot(inventory: inventory).resolution
+    }
+
+    private func snapshot(inventory: Inventory) async -> Snapshot {
       let settings = environment.settings
       while true {
         let generation = settings.meetingLiveWordsChoiceGeneration
+        let engine = settings.meetingLiveWordsEngine
+        let language = settings.meetingLiveWordsLanguage
         let resolution = await MeetingLiveWordsChoice.resolve(
-          engine: settings.meetingLiveWordsEngine, language: settings.meetingLiveWordsLanguage,
-          guess: settings.languageMode, inventory: inventory,
-          appleEquivalent: environment.appleEquivalent)
-        if settings.meetingLiveWordsChoiceGeneration == generation { return resolution }
+          engine: engine, language: language, guess: settings.languageMode,
+          inventory: inventory, appleEquivalent: environment.appleEquivalent)
+        if settings.meetingLiveWordsChoiceGeneration == generation {
+          return Snapshot(storedEngine: engine, storedLanguage: language, resolution: resolution)
+        }
       }
     }
   }

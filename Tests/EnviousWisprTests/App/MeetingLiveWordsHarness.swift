@@ -88,7 +88,6 @@ struct MeetingLiveWordsHarness {
       "idle_footprint_mb": Self.footprintMB(), "path": "MeetingLiveWords",
     ])
 
-    let mode: LanguageMode = .locked(lang)
     let universal: @Sendable (LanguageMode) async -> MeetingLiveWords.UniversalResolution
     switch engine {
     case "apple":
@@ -105,8 +104,10 @@ struct MeetingLiveWordsHarness {
     }
     let owner = MeetingLiveWords(
       dependencies: .init(
-        appleSupported: { engine == "apple" && ApplePreviewEngineResolver.isSupportedOnThisSystem },
-        resolveApple: { _ in await ApplePreviewEngineResolver.resolveMeeting(languageTag: lang) },
+        resolveChoice: { _ in
+          .ready(engine: engine == "apple" ? .apple : .universal, language: lang)
+        },
+        resolveApple: { tag in await ApplePreviewEngineResolver.resolveMeeting(languageTag: tag) },
         resolveUniversal: universal,
         isHeartStreaming: { false }))
 
@@ -115,7 +116,7 @@ struct MeetingLiveWordsHarness {
     let observer = owner.prepareCapture(meetingID: meetingID)
     let start = clock.now
     owner.captureStarted(
-      meetingID: meetingID, captured: [.microphone, .callSound], language: mode,
+      meetingID: meetingID, captured: [.microphone, .callSound],
       vocabulary: LivePreviewVocabulary(
         lookups: nil, contextualPhrases: [], dictionaryEnabled: false),
       clock: { Int(Self.seconds(clock.now - start) * 1000) })

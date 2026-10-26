@@ -271,7 +271,8 @@ final class MeetingCoordinator {
     var makeJob: @MainActor () -> MeetingProcessing
     /// Live words while a meeting records (#3973): nil shows none.
     var liveWords: MeetingLiveWords?
-    /// The language live words use, read once at each recording's start (decision 16).
+    /// The meeting transcript's language (`meetingLanguageMode`, decision 16). #4105: live words
+    /// no longer read it; they have their own engine and language (`MeetingLiveWordsChoice`).
     var meetingLanguage: @MainActor () -> LanguageMode = { .auto }
     /// Custom Words for live words, read once at each recording's start.
     var liveVocabulary: @MainActor () -> LivePreviewVocabulary = {
@@ -775,7 +776,6 @@ final class MeetingCoordinator {
     // #3973: live words' inputs are this recording's, read once now. Their pumps and the
     // recorder's observer exist before capture starts, so the first samples are buffered;
     // engines start only once capture did.
-    let liveLanguage = deps.meetingLanguage()
     let liveVocabulary = deps.liveVocabulary()
     let liveClockStart = ContinuousClock.now
     recorder.liveSamples = deps.liveWords?.prepareCapture(meetingID: meetingID)
@@ -832,7 +832,7 @@ final class MeetingCoordinator {
     var captured: Set<MeetingTrackKind> = [.microphone]
     if result.callSound == .captured { captured.insert(.callSound) }
     deps.liveWords?.captureStarted(
-      meetingID: meetingID, captured: captured, language: liveLanguage, vocabulary: liveVocabulary,
+      meetingID: meetingID, captured: captured, vocabulary: liveVocabulary,
       clock: { Int((ContinuousClock.now - liveClockStart) / .milliseconds(1)) })
     await persist(record)
     return .recording(meetingID: meetingID)

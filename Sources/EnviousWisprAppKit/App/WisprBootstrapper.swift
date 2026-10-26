@@ -2468,13 +2468,33 @@ package final class WisprBootstrapper {
         }
       }
     }
-    // #3973: EnviousMeet's live words: Apple speech on macOS 26 when its pack is installed, else
-    // the downloaded Universal engine, never a download; each Universal decode waits while a
-    // dictation runs on a streaming engine.
+    // #3973, #4105: EnviousMeet's live words run on the engine and language the user chose
+    // (Apple's meeting module or the Universal engine), frozen at each Start, never a download
+    // and never Apple's dictation module; each Universal decode waits while a dictation runs on a
+    // streaming engine. One choice owner serves Start and the Live words row.
+    let universalAdmitted = WhisperPreviewDeliveryWiring.makeUniversalAdmitted(
+      modelDelivery: modelDelivery, settings: settings)
+    let meetingLiveWordsChoice = MeetingLiveWordsChoice.Initializer(
+      environment: .init(
+        settings: settings,
+        inventory: { await MeetingLiveWordsChoice.liveInventory(universalAdmitted: universalAdmitted) },
+        appleEquivalent: MeetingLiveWordsChoice.liveAppleEquivalent))
     let meetingLiveWords = MeetingLiveWords(
       dependencies: .init(
-        appleSupported: { ApplePreviewEngineResolver.isSupportedOnThisSystem },
-        resolveApple: { mode in await ApplePreviewEngineResolver.route.resolve(mode) },
+        resolveChoice: { [meetingLiveWordsChoice] forcing in
+          let resolution =
+            if let forcing {
+              await meetingLiveWordsChoice.resolve(forcing: forcing)
+            } else {
+              await meetingLiveWordsChoice.materializeIfUnset()
+            }
+          await AppLogger.shared.log(
+            "MEETING_LIVE_WORDS choice \(MeetingLiveWordsChoice.logDescription(resolution))"
+              + (forcing.map { " forced=\($0.rawValue)" } ?? ""),
+            category: "Meetings")
+          return resolution
+        },
+        resolveApple: { tag in await ApplePreviewEngineResolver.resolveMeeting(languageTag: tag) },
         resolveUniversal: WhisperPreviewDeliveryWiring.makeMeetingResolver(
           modelDelivery: modelDelivery, settings: settings),
         isHeartStreaming: { [settings, liveRecordingState] in
@@ -2482,7 +2502,8 @@ package final class WisprBootstrapper {
             WhisperPreviewDeliveryWiring.meetingDecodeMustWait(
               settings: settings, dictationActive: liveRecordingState.isDictationActive)
           }
-        }))
+        }),
+      choiceOwner: meetingLiveWordsChoice)
     // #3973: removing the Universal model lets dictation's preview and the meeting's live
     // words both go before the one residency wait and the delete.
     PreviewModelRemoval.install(
