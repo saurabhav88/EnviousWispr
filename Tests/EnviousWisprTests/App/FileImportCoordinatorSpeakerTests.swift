@@ -2072,7 +2072,8 @@ struct FileImportCoordinatorSpeakerTests {
         #expect(firstMerge < firstPrepare, "Clean it again ran before the Stop's write: \(after)")
       }
     }
-  }  #endif
+  }
+  #endif
 
 
   @Test("when restoring cannot write the turns either, the screen shows the kept turns, unsaved (#3903)")
