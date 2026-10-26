@@ -46,6 +46,8 @@ public final class SystemAudioTap: @unchecked Sendable {
     /// A required watch could not follow a new stream (or the stream list could not be read):
     /// the rebuild installs every watch again, or fails.
     case watchFailed
+    /// The buffers' own timing disagreed with the configured rate for three qualified windows.
+    case rateMismatch
   }
 
   public enum TapError: Error, Equatable {
@@ -65,6 +67,12 @@ public final class SystemAudioTap: @unchecked Sendable {
     /// Core Audio calls in a teardown or listener change that returned an error.
     public var teardownFailures = 0
     public var listenerFailures = 0
+    /// #4117: sustained mismatches whose rebuild the 5 s recovery interval held back; mismatch
+    /// rebuilds confirmed by a later qualified window that agreed; and mismatches that remained
+    /// after a mismatch rebuild, which stopped the call-sound track.
+    public var suppressedMismatchRecoveries = 0
+    public var verifiedRecoveries = 0
+    public var persistentMismatches = 0
   }
 
   private let backend: CallSoundBackend
@@ -78,6 +86,11 @@ public final class SystemAudioTap: @unchecked Sendable {
   private let onEvent: @Sendable (Event) -> Void
   /// Content-free `CALL_SOUND` diagnostic lines (#4117), written on the tap queue.
   private let log: @Sendable (String) -> Void
+  /// #4117: seconds on a monotonic clock, for the mismatch recovery interval; a parameter only
+  /// so a test can move it.
+  private let now: @Sendable () -> TimeInterval
+  /// Provisional (plan §3.5): at most one mismatch rebuild per this many seconds.
+  static let mismatchRecoveryInterval: TimeInterval = 5
 
   // Queue-confined.
   private var running = false
@@ -102,6 +115,14 @@ public final class SystemAudioTap: @unchecked Sendable {
   private var reportedWindows = 0
   /// An invalid-only measurement status was already reported for this generation.
   private var reportedInvalidOnly = false
+  /// #4117 mismatch recovery. Kept across rebuilds: no build resets them, so a rebuild (for a
+  /// mismatch or a notice) can neither erase the recovery interval nor verify a recovery.
+  private var lastMismatchRecovery: TimeInterval?
+  /// The generation that requested a mismatch rebuild not yet confirmed by a qualified window
+  /// that agrees in a later generation.
+  private var mismatchRecoveryFrom: Int?
+  /// A suppressed request was already logged for this generation.
+  private var reportedSuppressed = false
 
   public convenience init(
     onSamples: @escaping SampleHandler, onEvent: @escaping @Sendable (Event) -> Void
@@ -115,13 +136,15 @@ public final class SystemAudioTap: @unchecked Sendable {
     backend: CallSoundBackend, onSamples: @escaping SampleHandler,
     onEvent: @escaping @Sendable (Event) -> Void, drainInterval: DispatchTimeInterval,
     handoffSeconds: Double = 2,
-    log: @escaping @Sendable (String) -> Void = SystemAudioTap.appLog
+    log: @escaping @Sendable (String) -> Void = SystemAudioTap.appLog,
+    now: @escaping @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
   ) {
     self.backend = backend
     self.pipeline = CallSoundPipeline(onSamples: onSamples, handoffSeconds: handoffSeconds)
     self.onEvent = onEvent
     self.drainInterval = drainInterval
     self.log = log
+    self.now = now
   }
 
   static let appLog: @Sendable (String) -> Void = { line in
@@ -203,6 +226,7 @@ public final class SystemAudioTap: @unchecked Sendable {
     generation += 1
     reportedWindows = 0
     reportedInvalidOnly = false
+    reportedSuppressed = false
     diagnostics = backend.captureDiagnostics()
     log(
       "CALL_SOUND build gen=\(generation) trigger=\(trigger) configuredRate=\(CallSoundPipeline.rateText(configuredRate)) "
@@ -252,6 +276,23 @@ public final class SystemAudioTap: @unchecked Sendable {
     }
     // The observation belongs to this generation only (reset at configure).
     let observation = pipeline.inputRateObservation
+    // #4117 §3.5: outcomes in the order the buffers were acquired, so a mismatch that remained
+    // after a rebuild is met before any later agreement. A mismatch rebuild is verified only by
+    // a qualified window that agrees, in a generation after the one that asked for it; invalid
+    // or missing timing proves nothing.
+    for outcome in pipeline.takeRateOutcomes() {
+      switch outcome {
+      case .agreement:
+        guard let from = mismatchRecoveryFrom, generation > from else { continue }
+        mismatchRecoveryFrom = nil
+        counters.withLock { $0.verifiedRecoveries += 1 }
+        log(
+          "CALL_SOUND verified gen=\(generation) configured=\(CallSoundPipeline.rateText(configuredRate))")
+      case .sustainedMismatch(let measured):
+        handleSustainedMismatch(measured: measured)
+      }
+      guard running else { return }
+    }
     let windows = observation.windowsMeasured
     let invalid = observation.invalidTimestamp + observation.nonIncreasing + observation.inputLoss
     // The first window of each capture, then about every 30 s of valid measurement; or, once,
@@ -265,7 +306,42 @@ public final class SystemAudioTap: @unchecked Sendable {
     log(
       "CALL_SOUND measured gen=\(generation) rate=\(measured) configured=\(CallSoundPipeline.rateText(configuredRate)) "
         + "windows=\(windows) invalid=\(observation.invalidTimestamp)/\(observation.nonIncreasing)/"
-        + "\(observation.inputLoss) discontinuitiesTotal=\(pipeline.health.discontinuities)")
+        + "\(observation.inputLoss) discontinuitiesTotal=\(pipeline.health.discontinuities) "
+        + "qualified=\(observation.windowsQualified) rejected=\(observation.windowsRejected)")
+  }
+
+  /// Tap queue, after a drain: the buffers' timing disagreed with the configured rate for three
+  /// qualified windows. Once per recovery interval it queues a rebuild, which reads the
+  /// aggregate's nominal rate again (never the measured one). A mismatch that remains after
+  /// such a rebuild stops the call-sound track (the microphone track goes on) instead of
+  /// rebuilding without end.
+  private func handleSustainedMismatch(measured: Double) {
+    let line =
+      "CALL_SOUND mismatch gen=\(generation) measured=\(CallSoundPipeline.rateText(measured)) "
+      + "configured=\(CallSoundPipeline.rateText(configuredRate))"
+    if let from = mismatchRecoveryFrom, generation > from {
+      log(line + " action=stop reason=persistent")
+      teardownOnQueue()
+      counters.withLock { $0.persistentMismatches += 1 }
+      onEvent(
+        .rebuildFailed(
+          "call-sound rate mismatch persists: measured \(CallSoundPipeline.rateText(measured)) "
+            + "configured \(CallSoundPipeline.rateText(configuredRate))"))
+      return
+    }
+    let time = now()
+    if let last = lastMismatchRecovery, time - last < Self.mismatchRecoveryInterval {
+      counters.withLock { $0.suppressedMismatchRecoveries += 1 }
+      if !reportedSuppressed {
+        reportedSuppressed = true
+        log(line + " action=suppressed reason=interval")
+      }
+      return
+    }
+    lastMismatchRecovery = time
+    mismatchRecoveryFrom = generation
+    log(line + " action=rebuild")
+    queueRebuild(reason: .rateMismatch)
   }
 
   /// Tap queue: a Core Audio property notification arrived (#4117). Logs where it came from,
@@ -401,6 +477,8 @@ public final class SystemAudioTap: @unchecked Sendable {
     }
     /// Queues `stop` behind whatever is already queued, as a caller on another thread would.
     func enqueueStopForTesting() { queue.async { [self] in stopOnQueue() } }
+    /// Queues one drain behind whatever is already queued, as the drain timer does.
+    func enqueueDrainForTesting() { queue.async { [self] in drainOnQueue() } }
   #endif
 }
 
@@ -431,6 +509,9 @@ public final class CallSoundPipeline: @unchecked Sendable {
     public var conversionFailures = 0
     /// Runs ended because the next buffer's time did not continue the last one.
     public var discontinuities = 0
+    /// #4117: sustained disagreements found: three consecutive qualified windows, each more
+    /// than 5% from the configured rate and within 5% of their shared median.
+    public var rateMismatches = 0
   }
 
   struct InputFormat: Equatable, Sendable {
@@ -449,6 +530,12 @@ public final class CallSoundPipeline: @unchecked Sendable {
     /// The last completed window's frames per second in this generation; nil until one completes.
     var lastRate: Double?
     var windowsMeasured = 0
+    /// Completed windows whose timing qualified them as a rate, and those rejected (too few
+    /// intervals, a timing outlier, or a cadence that disagrees with the window's rate).
+    var windowsQualified = 0
+    var windowsRejected = 0
+    /// Qualified windows within 5% of the configured rate.
+    var windowsAgreeing = 0
     /// Observations abandoned, by reason: no valid acquisition time, a time at or before the
     /// previous one, and input lost or cut short before the handoff.
     var invalidTimestamp = 0
@@ -464,55 +551,107 @@ public final class CallSoundPipeline: @unchecked Sendable {
 
   /// Frames over acquisition time, windowed. For buffer starts H0...Hn it compares the frames of
   /// buffers 0...n-1 with Hn - H0: the last buffer's frames are excluded because its duration is
-  /// not known yet.
+  /// not known yet. The buffer that closes a window starts the next, so no frame counts twice.
+  ///
+  /// #4117 R3: a window is a rate only when its own timing is regular. Each interval's step per
+  /// frame, qi = (Hi+1 - Hi) / Ni, uses the earlier buffer's full frame count, so buffers of
+  /// different lengths do not upset it. A window needs three intervals, no step above four times
+  /// the median step (a startup gap read 5,374 Hz on the founder's AirPods), and a window rate
+  /// within 5% of 1 / median step (smaller recurring gaps bias the rate without being outliers).
+  /// None of this uses the configured rate. The bounds are provisional (plan §3.5).
   struct InputRateMeter {
+    static let minimumIntervals = 3
+    static let outlierFactor = 4.0
+    static let cadenceTolerance = 0.05
+
+    enum Rejection: String, Sendable { case tooFewIntervals, timingOutlier, cadenceDisagrees }
+
+    /// One completed window: its frames-per-second rate and whether its timing qualified it.
+    struct Window: Equatable, Sendable {
+      var rate: Double
+      var intervals: Int
+      var rejection: Rejection?
+      var qualified: Bool { rejection == nil }
+    }
+
+    /// What one buffer did, in acquisition order: an invalidation before it, a window it
+    /// completed, an invalidation after it (a truncated closing buffer).
+    struct Event: Equatable, Sendable {
+      var invalidatedBefore = false
+      var window: Window?
+      var invalidatedAfter = false
+    }
+
     let windowSeconds: Double
     private(set) var observation = InputRateObservation()
     private var startHost: UInt64?
     private var lastHost: UInt64 = 0
     private var framesBeforeLast = 0
     private var lastFrames = 0
+    /// Seconds per frame of each interval in the current window; tap queue only.
+    private var steps: [Double] = []
 
-    init(windowSeconds: Double = 0.5) { self.windowSeconds = windowSeconds }
+    init(windowSeconds: Double = 0.5) {
+      self.windowSeconds = windowSeconds
+      steps.reserveCapacity(256)
+    }
 
     /// Starts over, keeping the counters: a new capture generation or an invalid observation.
     mutating func reset() {
       startHost = nil
       framesBeforeLast = 0
       lastFrames = 0
+      steps.removeAll(keepingCapacity: true)
     }
 
-    /// Returns the window's rate when this buffer completes one.
     mutating func observe(
       frames: Int, hostTime: UInt64, valid: Bool, afterLoss: Bool, truncated: Bool
-    ) -> Double? {
+    ) -> Event {
+      var event = Event()
       guard valid else {
         observation.invalidTimestamp += 1
         reset()
-        return nil
+        event.invalidatedBefore = true
+        return event
       }
       if afterLoss {
         observation.inputLoss += 1
         reset()
+        event.invalidatedBefore = true
       }
-      var completed: Double?
       if let start = startHost {
         guard hostTime > lastHost else {
           observation.nonIncreasing += 1
           reset()
-          begin(frames: frames, hostTime: hostTime)
-          return nil
+          event.invalidatedBefore = true
+          // A truncated buffer may not anchor the next window either.
+          if truncated {
+            observation.inputLoss += 1
+            event.invalidatedAfter = true
+          } else {
+            begin(frames: frames, hostTime: hostTime)
+          }
+          return event
+        }
+        if lastFrames > 0 {
+          steps.append(CallSoundPipeline.seconds(hostTime - lastHost) / Double(lastFrames))
         }
         framesBeforeLast += lastFrames
         let span = CallSoundPipeline.seconds(hostTime - start)
         if span >= windowSeconds {
-          let rate = Double(framesBeforeLast) / span
-          observation.lastRate = rate
+          let window = Self.qualify(frames: framesBeforeLast, span: span, steps: steps)
+          observation.lastRate = window.rate
           observation.windowsMeasured += 1
-          completed = rate
+          if window.qualified {
+            observation.windowsQualified += 1
+          } else {
+            observation.windowsRejected += 1
+          }
+          event.window = window
           // This buffer starts the next window.
           startHost = hostTime
           framesBeforeLast = 0
+          steps.removeAll(keepingCapacity: true)
         }
         lastHost = hostTime
         lastFrames = frames
@@ -523,15 +662,81 @@ public final class CallSoundPipeline: @unchecked Sendable {
         // Part of this buffer never reached the handoff; it may not anchor a measurement.
         observation.inputLoss += 1
         reset()
+        event.invalidatedAfter = true
       }
-      return completed
+      return event
     }
+
+    /// The window rule, pure: `steps` are the intervals' seconds per frame.
+    static func qualify(frames: Int, span: Double, steps: [Double]) -> Window {
+      let rate = Double(frames) / span
+      guard steps.count >= minimumIntervals else {
+        return Window(rate: rate, intervals: steps.count, rejection: .tooFewIntervals)
+      }
+      let median = Self.median(steps)
+      guard median > 0, !steps.contains(where: { $0 > outlierFactor * median }) else {
+        return Window(rate: rate, intervals: steps.count, rejection: .timingOutlier)
+      }
+      let cadence = 1 / median
+      guard abs(rate - cadence) / cadence <= cadenceTolerance else {
+        return Window(rate: rate, intervals: steps.count, rejection: .cadenceDisagrees)
+      }
+      return Window(rate: rate, intervals: steps.count, rejection: nil)
+    }
+
+    static func median(_ values: [Double]) -> Double {
+      let sorted = values.sorted()
+      let middle = sorted.count / 2
+      return sorted.count % 2 == 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2
+    }
+
+    /// A qualified window agreed with the configured rate (counted by the pipeline, which knows
+    /// that rate).
+    mutating func noteAgreement() { observation.windowsAgreeing += 1 }
 
     private mutating func begin(frames: Int, hostTime: UInt64) {
       startHost = hostTime
       lastHost = hostTime
       framesBeforeLast = 0
       lastFrames = frames
+      steps.removeAll(keepingCapacity: true)
+    }
+  }
+
+  /// #4117 §3.4: consecutive qualified windows that disagree with the configured rate. Three in
+  /// a row, each more than 5% from the configured rate and all within 5% of their shared median,
+  /// are a sustained mismatch. A healthy window, a rejected window or an invalidation clears it;
+  /// a mismatching window that does not agree with the others starts a new streak. The bounds
+  /// are provisional (plan §3.5).
+  struct MismatchStreak {
+    static let required = 3
+    static let disagreement = 0.05
+    static let agreement = 0.05
+
+    enum Outcome: Equatable, Sendable {
+      case agrees
+      case mismatch(count: Int)
+      /// The streak's shared median rate; the streak starts over after it.
+      case sustained(Double)
+    }
+
+    private(set) var rates: [Double] = []
+
+    mutating func clear() { rates.removeAll(keepingCapacity: true) }
+
+    mutating func add(_ rate: Double, configured: Double) -> Outcome {
+      guard abs(rate - configured) / configured > Self.disagreement else {
+        clear()
+        return .agrees
+      }
+      let candidate = rates + [rate]
+      let median = InputRateMeter.median(candidate)
+      rates =
+        candidate.allSatisfy({ abs($0 - median) / median <= Self.agreement }) ? candidate : [rate]
+      guard rates.count >= Self.required else { return .mismatch(count: rates.count) }
+      let shared = InputRateMeter.median(rates)
+      clear()
+      return .sustained(shared)
     }
   }
 
@@ -595,6 +800,10 @@ public final class CallSoundPipeline: @unchecked Sendable {
   private var runBreakPending = false
   private var deliveredAnyRun = false
   private var meter = InputRateMeter()
+  private var streak = MismatchStreak()
+  /// #4117: what recovery needs from this generation's windows, in acquisition order, not yet
+  /// taken by the tap.
+  private var rateOutcomes: [RateOutcome] = []
   private let rateObservation = OSAllocatedUnfairLock(initialState: InputRateObservation())
 
   init(onSamples: @escaping SampleHandler, handoffSeconds: Double = 2) {
@@ -688,7 +897,25 @@ public final class CallSoundPipeline: @unchecked Sendable {
     runStartHost = nil
     // #4117: a new capture generation measures afresh, and says so at once.
     meter = InputRateMeter()
+    streak.clear()
+    rateOutcomes.removeAll(keepingCapacity: true)
+    rateOutcomes.reserveCapacity(64)
     rateObservation.withLock { $0 = InputRateObservation() }
+  }
+
+  /// #4117: a qualified window that agreed with the configured rate, or a sustained mismatch
+  /// (its shared median rate).
+  enum RateOutcome: Equatable, Sendable {
+    case agreement
+    case sustainedMismatch(Double)
+  }
+
+  /// Tap queue: the agreements and sustained mismatches found since the last call in this
+  /// generation, in acquisition order. Taking them is what reports them; reading observations
+  /// never does.
+  func takeRateOutcomes() -> [RateOutcome] {
+    defer { rateOutcomes.removeAll(keepingCapacity: true) }
+    return rateOutcomes
   }
 
   func setAccepting(_ accepting: Bool) { handoff.withLock { $0.accepting = accepting } }
@@ -804,10 +1031,12 @@ public final class CallSoundPipeline: @unchecked Sendable {
     // earlier one ends.
     let tolerance = Self.ticks(seconds: 0.004)
     for chunk in scratchChunks {
-      // #4117: measured before, and independently of, the run logic below.
-      _ = meter.observe(
-        frames: chunk.inputFrames, hostTime: chunk.hostTime, valid: chunk.hostTimeValid,
-        afterLoss: chunk.afterLoss, truncated: chunk.truncated)
+      // #4117: measured before, and independently of, the run logic below, so the run breaks a
+      // genuine mismatch causes never invalidate its windows.
+      evaluate(
+        meter.observe(
+          frames: chunk.inputFrames, hostTime: chunk.hostTime, valid: chunk.hostTimeValid,
+          afterLoss: chunk.afterLoss, truncated: chunk.truncated))
       if runStartHost != nil {
         let gap =
           chunk.hostTime > runExpectedHost
@@ -827,6 +1056,27 @@ public final class CallSoundPipeline: @unchecked Sendable {
         convert(UnsafeBufferPointer(rebasing: all[chunk.offset..<(chunk.offset + chunk.frames)]))
       }
     }
+  }
+
+  /// #4117: one buffer's meter event against the streak, in acquisition order.
+  private func evaluate(_ event: InputRateMeter.Event) {
+    if event.invalidatedBefore { streak.clear() }
+    if let window = event.window {
+      if !window.qualified {
+        streak.clear()
+      } else {
+        switch streak.add(window.rate, configured: sampleRate) {
+        case .agrees:
+          meter.noteAgreement()
+          rateOutcomes.append(.agreement)
+        case .mismatch: break
+        case .sustained(let rate):
+          rateOutcomes.append(.sustainedMismatch(rate))
+          stats.withLock { $0.rateMismatches += 1 }
+        }
+      }
+    }
+    if event.invalidatedAfter { streak.clear() }
   }
 
   /// Ends the current run: the converter's held-back tail is delivered and the converter reset,

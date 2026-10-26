@@ -465,8 +465,16 @@ struct SystemAudioTapTests {
     let list = OSAllocatedUnfairLock<[String]>(initialState: [])
   }
 
+  /// A clock a test moves by hand.
+  private final class Clock: Sendable {
+    let seconds = OSAllocatedUnfairLock(initialState: 100.0)
+    var now: @Sendable () -> TimeInterval { { self.seconds.withLock { $0 } } }
+  }
+
   @available(macOS 14.2, *)
-  private func tap(_ backend: FakeBackend, _ output: Output, _ events: Events) -> SystemAudioTap {
+  private func tap(
+    _ backend: FakeBackend, _ output: Output, _ events: Events, clock: Clock = Clock()
+  ) -> SystemAudioTap {
     SystemAudioTap(
       backend: backend, onSamples: output.handler,
       onEvent: { event in
@@ -475,7 +483,19 @@ struct SystemAudioTapTests {
         case .rebuildFailed: events.list.withLock { $0.append("rebuildFailed") }
         }
       },
-      drainInterval: .seconds(3_600))
+      drainInterval: .seconds(3_600), now: clock.now)
+  }
+
+  /// `count` buffers of 480 mono frames, `step` seconds apart from `start` seconds: 20 ms is
+  /// the call-profile shape (24 kHz), 10 ms is 48 kHz.
+  private func feedTiming(
+    _ ingest: @Sendable (UnsafePointer<AudioBufferList>, UInt64, Bool) -> Void, count: Int,
+    start: Double, step: Double
+  ) throws {
+    for i in 0..<count {
+      try deliver(
+        [Float](repeating: 0.1, count: 480), to: ingest, host: ticks(start + Double(i) * step))
+    }
   }
 
   #if DEBUG
@@ -514,6 +534,203 @@ struct SystemAudioTapTests {
       release()
       #expect(tap.settleForTesting())
       tap.stop()
+    }
+
+    @Test("call-profile timing at 48 kHz configured rebuilds once; the corrected rate is then verified")
+    func mismatchRebuildsThenVerifies() throws {
+      guard #available(macOS 14.2, *) else { return }
+      let backend = FakeBackend()
+      let output = Output()
+      let events = Events()
+      let tap = tap(backend, output, events)
+      try tap.start()
+      #expect(tap.settleForTesting())
+      // Six windows of 24 kHz timing in one drain: one rebuild, not two.
+      try feedTiming(try #require(backend.ingest), count: 160, start: 1, step: 0.02)
+      // What the rebuild will read: the aggregate now reports 24 kHz.
+      backend.lock.withLock { backend.rate = 24_000 }
+      tap.drainForTesting()
+      #expect(tap.settleForTesting())
+      #expect(backend.snapshot.starts == 2)
+      #expect(tap.health.rebuildReasons == [.rateMismatch: 1])
+      #expect(tap.health.pipeline.rateMismatches == 2, "both sustained mismatches counted")
+      #expect(tap.health.verifiedRecoveries == 0, "a completed rebuild is not yet verified")
+      try feedTiming(try #require(backend.ingest), count: 30, start: 10, step: 0.02)
+      tap.drainForTesting()
+      #expect(tap.health.verifiedRecoveries == 1)
+      #expect(events.list.withLock { $0 } == ["rebuilt"])
+      tap.stop()
+    }
+
+    @Test("in one drain after a mismatch rebuild, a remaining mismatch then agreement still stops")
+    func persistentMismatchBeforeAgreementStops() throws {
+      guard #available(macOS 14.2, *) else { return }
+      let backend = FakeBackend()
+      let events = Events()
+      let tap = tap(backend, Output(), events)
+      try tap.start()
+      try feedTiming(try #require(backend.ingest), count: 80, start: 1, step: 0.02)
+      tap.drainForTesting()
+      #expect(tap.settleForTesting())
+      // Still 48 kHz configured: three mismatching windows, then 48 kHz timing that agrees.
+      let ingest = try #require(backend.ingest)
+      try feedTiming(ingest, count: 80, start: 10, step: 0.02)
+      try feedTiming(ingest, count: 110, start: 11.6, step: 0.01)
+      tap.drainForTesting()
+      #expect(tap.settleForTesting())
+      #expect(events.list.withLock { $0 } == ["rebuilt", "rebuildFailed"])
+      #expect(tap.health.persistentMismatches == 1)
+      #expect(tap.health.verifiedRecoveries == 0, "the later agreement came after the failure")
+      tap.stop()
+    }
+
+    @Test("in one drain after a mismatch rebuild, agreement then a new mismatch verifies, then asks again")
+    func agreementBeforeNewMismatchVerifies() throws {
+      guard #available(macOS 14.2, *) else { return }
+      let backend = FakeBackend()
+      let events = Events()
+      let clock = Clock()
+      let tap = tap(backend, Output(), events, clock: clock)
+      try tap.start()
+      try feedTiming(try #require(backend.ingest), count: 80, start: 1, step: 0.02)
+      backend.lock.withLock { backend.rate = 24_000 }
+      tap.drainForTesting()
+      #expect(tap.settleForTesting())
+      clock.seconds.withLock { $0 += 6 }
+      // 24 kHz timing (one agreeing window), then 12 kHz timing (480 frames every 40 ms) for
+      // three windows; 86 buffers stay inside the 2 s handoff at 24 kHz.
+      let ingest = try #require(backend.ingest)
+      try feedTiming(ingest, count: 26, start: 10, step: 0.02)
+      try feedTiming(ingest, count: 60, start: 10.52, step: 0.04)
+      tap.drainForTesting()
+      #expect(tap.settleForTesting())
+      #expect(tap.health.verifiedRecoveries == 1)
+      #expect(tap.health.persistentMismatches == 0, "verified first, so this is a new mismatch")
+      #expect(backend.snapshot.starts == 3)
+      #expect(tap.health.rebuildReasons == [.rateMismatch: 2])
+      tap.stop()
+    }
+
+    @Test("a mismatch that remains after its rebuild stops the call-sound track once, no loop")
+    func persistentMismatchStops() throws {
+      guard #available(macOS 14.2, *) else { return }
+      let backend = FakeBackend()
+      let output = Output()
+      let events = Events()
+      let tap = tap(backend, output, events)
+      try tap.start()
+      try feedTiming(try #require(backend.ingest), count: 80, start: 1, step: 0.02)
+      tap.drainForTesting()
+      #expect(tap.settleForTesting())
+      #expect(backend.snapshot.starts == 2)
+      // The aggregate still says 48 kHz and the buffers still arrive at 24 kHz.
+      try feedTiming(try #require(backend.ingest), count: 80, start: 10, step: 0.02)
+      tap.drainForTesting()
+      #expect(tap.settleForTesting())
+      #expect(events.list.withLock { $0 } == ["rebuilt", "rebuildFailed"])
+      #expect(tap.health.persistentMismatches == 1)
+      #expect(tap.health.verifiedRecoveries == 0)
+      #expect(!backend.snapshot.running)
+      backend.notify("defaultOutput", build: 0)
+      #expect(tap.settleForTesting())
+      #expect(backend.snapshot.starts == 2, "nothing rebuilds after the stop")
+      tap.stop()
+    }
+
+    @Test("a second mismatch within 5 s of a mismatch rebuild waits; after 5 s it rebuilds")
+    func recoveryIntervalSurvivesRebuilds() throws {
+      guard #available(macOS 14.2, *) else { return }
+      let backend = FakeBackend()
+      let output = Output()
+      let events = Events()
+      let clock = Clock()
+      let tap = tap(backend, output, events, clock: clock)
+      try tap.start()
+      try feedTiming(try #require(backend.ingest), count: 80, start: 1, step: 0.02)
+      backend.lock.withLock { backend.rate = 24_000 }
+      tap.drainForTesting()
+      #expect(tap.settleForTesting())
+      try feedTiming(try #require(backend.ingest), count: 30, start: 10, step: 0.02)
+      tap.drainForTesting()
+      #expect(tap.health.verifiedRecoveries == 1)
+
+      // 2 s later the timing moves to 48 kHz while 24 kHz is configured.
+      clock.seconds.withLock { $0 += 2 }
+      // Three whole windows at 10 ms steps need about 160 buffers; the handoff holds 2 s at the
+      // configured 24 kHz, so drain halfway.
+      try feedTiming(try #require(backend.ingest), count: 80, start: 20, step: 0.01)
+      tap.drainForTesting()
+      try feedTiming(try #require(backend.ingest), count: 80, start: 20.8, step: 0.01)
+      tap.drainForTesting()
+      #expect(tap.settleForTesting())
+      #expect(backend.snapshot.starts == 2, "held back by the interval kept across the rebuild")
+      #expect(tap.health.suppressedMismatchRecoveries == 1)
+
+      clock.seconds.withLock { $0 += 4 }
+      try feedTiming(try #require(backend.ingest), count: 80, start: 30, step: 0.01)
+      tap.drainForTesting()
+      try feedTiming(try #require(backend.ingest), count: 80, start: 30.8, step: 0.01)
+      backend.lock.withLock { backend.rate = 48_000 }
+      tap.drainForTesting()
+      #expect(tap.settleForTesting())
+      #expect(backend.snapshot.starts == 3)
+      #expect(tap.health.rebuildReasons == [.rateMismatch: 2])
+      tap.stop()
+    }
+
+    @Test("a notice rebuild in the same turn wins; the queued mismatch rebuild is retired")
+    func mismatchAndNoticeRebuildOnce() throws {
+      guard #available(macOS 14.2, *) else { return }
+      let backend = FakeBackend()
+      let output = Output()
+      let events = Events()
+      let tap = tap(backend, output, events)
+      try tap.start()
+      #expect(tap.settleForTesting())
+      try feedTiming(try #require(backend.ingest), count: 80, start: 1, step: 0.02)
+      backend.lock.withLock { backend.outputUID = "airpods" }
+      backend.notify("defaultOutput", build: 0)
+      tap.drainForTesting()
+      #expect(tap.settleForTesting())
+      #expect(backend.snapshot.starts == 2)
+      #expect(tap.health.rebuildReasons == [.outputDevice: 1])
+      #expect(tap.health.verifiedRecoveries == 0, "the notice rebuild verifies nothing")
+      tap.stop()
+    }
+
+    @Test("stop queued ahead of a mismatch rebuild wins; a failed mismatch rebuild reports once")
+    func stopAndFailureBeatMismatchRecovery() throws {
+      guard #available(macOS 14.2, *) else { return }
+      do {
+        let backend = FakeBackend()
+        let events = Events()
+        let tap = tap(backend, Output(), events)
+        try tap.start()
+        #expect(tap.settleForTesting())
+        try feedTiming(try #require(backend.ingest), count: 80, start: 1, step: 0.02)
+        let release = tap.holdQueueForTesting()
+        tap.enqueueDrainForTesting()
+        tap.enqueueStopForTesting()
+        release()
+        #expect(tap.settleForTesting())
+        #expect(backend.snapshot.starts == 1)
+        #expect(events.list.withLock { $0 }.isEmpty)
+        tap.stop()
+      }
+      do {
+        let backend = FakeBackend()
+        backend.failStartNumber = 2
+        let events = Events()
+        let tap = tap(backend, Output(), events)
+        try tap.start()
+        try feedTiming(try #require(backend.ingest), count: 80, start: 1, step: 0.02)
+        tap.drainForTesting()
+        #expect(tap.settleForTesting())
+        #expect(events.list.withLock { $0 } == ["rebuildFailed"])
+        #expect(tap.health.rebuildFailures == 1)
+        #expect(!backend.snapshot.running)
+        tap.stop()
+      }
     }
 
     @Test("notices after stop returns restart nothing")
@@ -1266,7 +1483,7 @@ struct SystemAudioTapDiagnosticsTests {
       #expect(
         sink.matching("CALL_SOUND measured gen=2")
           == [
-            "CALL_SOUND measured gen=2 rate=unavailable configured=48000.0 windows=0 invalid=10/0/0 discontinuitiesTotal=38"
+            "CALL_SOUND measured gen=2 rate=unavailable configured=48000.0 windows=0 invalid=10/0/0 discontinuitiesTotal=38 qualified=0 rejected=0"
           ])
       tap.stop()
     }
@@ -1509,4 +1726,290 @@ struct SystemAudioTapDiagnosticsTests {
       #expect(base.change(to: other) == .outputDevice)
     }
   #endif
+}
+
+/// #4117: when these fail, the call-sound track either keeps recording at the wrong speed
+/// (a real mismatch never found) or is rebuilt or stopped for a timing glitch that was not a
+/// rate change.
+@Suite("Call-sound rate check (#4117)", .tags(.productOutcome))
+struct CallSoundRateCheckTests {
+  typealias Meter = CallSoundPipeline.InputRateMeter
+  typealias Streak = CallSoundPipeline.MismatchStreak
+
+  private func ticks(_ seconds: Double) -> UInt64 { CallSoundPipeline.ticks(seconds: seconds) }
+
+  /// Buffers of `lengths` frames whose starts follow `rate` (plus `extra[i]` seconds before
+  /// buffer i), from 1 s; returns every event in order.
+  private func run(
+    _ meter: inout Meter, lengths: [Int], rate: Double, extra: [Int: Double] = [:],
+    start: Double = 1
+  ) -> [Meter.Event] {
+    var time = start
+    var events: [Meter.Event] = []
+    for (i, frames) in lengths.enumerated() {
+      time += extra[i] ?? 0
+      events.append(
+        meter.observe(
+          frames: frames, hostTime: ticks(time), valid: true, afterLoss: false, truncated: false))
+      time += Double(frames) / rate
+    }
+    return events
+  }
+
+  private func windows(_ events: [Meter.Event]) -> [Meter.Window] { events.compactMap(\.window) }
+
+  @Test("the call-profile shape (480 frames every 20 ms) qualifies as 24 kHz, window after window")
+  func callProfileQualifies() {
+    var meter = Meter()
+    let found = windows(run(&meter, lengths: Array(repeating: 480, count: 80), rate: 24_000))
+    #expect(found.count == 3)
+    for window in found {
+      #expect(window.qualified)
+      #expect(abs(window.rate - 24_000) < 24)
+    }
+  }
+
+  @Test("seven 128-frame buffers then one of 1,024 qualify at the true rate, healthy or not")
+  func variableBuffersQualify() {
+    let pattern = Array(repeating: 128, count: 7) + [1_024]
+    for rate in [48_000.0, 24_000] {
+      var meter = Meter()
+      let found = windows(
+        run(&meter, lengths: Array(repeating: pattern, count: 60).flatMap { $0 }, rate: rate))
+      #expect(found.count >= 3)
+      #expect(found.allSatisfy { $0.qualified && abs($0.rate - rate) / rate < 0.01 })
+    }
+  }
+
+  @Test("a startup gap makes its window an outlier; later windows qualify")
+  func startupGapIsRejected() {
+    var meter = Meter()
+    // 0.15 s of silence before the second buffer: a step 15 times the 10 ms cadence.
+    let found = windows(
+      run(&meter, lengths: Array(repeating: 480, count: 160), rate: 48_000, extra: [1: 0.15]))
+    #expect(found.first?.rejection == .timingOutlier)
+    #expect(found.dropFirst().allSatisfy { $0.qualified })
+  }
+
+  @Test("recurring small gaps bias the rate without being outliers, and are rejected")
+  func recurringGapsAreRejected() {
+    var meter = Meter()
+    // Every fourth buffer starts 10 ms late: a 2x step, under the 4x bound, but the window rate
+    // falls about 20% below the cadence.
+    let extra = Dictionary(uniqueKeysWithValues: stride(from: 4, to: 160, by: 4).map { ($0, 0.01) })
+    let found = windows(
+      run(&meter, lengths: Array(repeating: 480, count: 160), rate: 48_000, extra: extra))
+    #expect(!found.isEmpty)
+    #expect(found.allSatisfy { $0.rejection == .cadenceDisagrees })
+  }
+
+  @Test("healthy jitter of a few percent per buffer still qualifies")
+  func jitterQualifies() {
+    var meter = Meter()
+    // Alternating 2% early and late, never accumulating.
+    let extra = Dictionary(
+      uniqueKeysWithValues: (1..<160).map { ($0, $0 % 2 == 0 ? -0.0002 : 0.0002) })
+    let found = windows(
+      run(&meter, lengths: Array(repeating: 480, count: 160), rate: 48_000, extra: extra))
+    #expect(found.count >= 3)
+    #expect(found.allSatisfy { $0.qualified })
+  }
+
+  @Test("too few intervals in a window is not a rate")
+  func tooFewIntervals() {
+    var meter = Meter()
+    // 0.25 s buffers: the window closes after two intervals.
+    let found = windows(run(&meter, lengths: Array(repeating: 12_000, count: 6), rate: 48_000))
+    #expect(!found.isEmpty)
+    #expect(found.allSatisfy { $0.rejection == .tooFewIntervals })
+  }
+
+  @Test("the window rule's bounds, at and just past each edge")
+  func qualificationBoundaries() {
+    // Steps in seconds per frame; a cadence of 1 frame per second makes the arithmetic exact.
+    #expect(Meter.qualify(frames: 4, span: 4, steps: [1, 1, 1, 4]).rejection != .timingOutlier)
+    #expect(Meter.qualify(frames: 4, span: 4, steps: [1, 1, 1, 4.01]).rejection == .timingOutlier)
+    #expect(Meter.qualify(frames: 1_049, span: 1_000, steps: [1, 1, 1]).qualified)
+    #expect(
+      Meter.qualify(frames: 1_051, span: 1_000, steps: [1, 1, 1]).rejection == .cadenceDisagrees)
+    #expect(Meter.qualify(frames: 3, span: 3, steps: [1, 1]).rejection == .tooFewIntervals)
+    #expect(Meter.median([3, 1, 2]) == 2)
+    #expect(Meter.median([4, 1, 3, 2]) == 2.5)
+  }
+
+  @Test("disagreement is more than 5% from the configured rate; three must agree with their median")
+  func streakBoundaries() {
+    var streak = Streak()
+    #expect(streak.add(50_390, configured: 48_000) == .agrees, "4.98% is healthy")
+    #expect(streak.add(50_410, configured: 48_000) == .mismatch(count: 1), "5.02% disagrees")
+    streak.clear()
+    // Spread 9.6% end to end, but each within 5% of the shared median: one streak.
+    #expect(streak.add(24_000, configured: 48_000) == .mismatch(count: 1))
+    #expect(streak.add(25_150, configured: 48_000) == .mismatch(count: 2))
+    #expect(streak.add(26_300, configured: 48_000) == .sustained(25_150))
+    // 26,600 is 5.6% from the median 25,200: the streak starts over at it.
+    #expect(streak.add(24_000, configured: 48_000) == .mismatch(count: 1))
+    #expect(streak.add(25_200, configured: 48_000) == .mismatch(count: 2))
+    #expect(streak.add(26_600, configured: 48_000) == .mismatch(count: 1))
+    #expect(streak.rates == [26_600])
+  }
+
+  @Test("an incompatible estimate restarts the streak; a healthy one clears it")
+  func streakRestartsAndClears() {
+    var streak = Streak()
+    #expect(streak.add(24_000, configured: 48_000) == .mismatch(count: 1))
+    #expect(streak.add(24_000, configured: 48_000) == .mismatch(count: 2))
+    #expect(streak.add(16_000, configured: 48_000) == .mismatch(count: 1))
+    #expect(streak.add(16_000, configured: 48_000) == .mismatch(count: 2))
+    #expect(streak.add(48_000, configured: 48_000) == .agrees)
+    #expect(streak.rates.isEmpty)
+    #expect(streak.add(16_000, configured: 48_000) == .mismatch(count: 1))
+    #expect(streak.add(16_000, configured: 48_000) == .mismatch(count: 2))
+    #expect(streak.add(16_000, configured: 48_000) == .sustained(16_000))
+  }
+
+  // MARK: - Through the pipeline
+
+  private func pipeline(rate: Double) throws -> CallSoundPipeline {
+    let p = CallSoundPipeline(onSamples: { _, _, _ in })
+    try p.configure(.init(sampleRate: rate, bufferChannels: [1]))
+    p.setAccepting(true)
+    return p
+  }
+
+  private func ingest(
+    _ p: CallSoundPipeline, frames: Int, host: UInt64, valid: Bool = true, channels: UInt32 = 1
+  ) {
+    let list = AudioBufferList.allocate(maximumBuffers: 1)
+    defer { free(list.unsafeMutablePointer) }
+    let memory = UnsafeMutableBufferPointer<Float>.allocate(capacity: frames * Int(channels))
+    memory.initialize(repeating: 0.1)
+    defer { memory.deallocate() }
+    list[0] = AudioBuffer(
+      mNumberChannels: channels, mDataByteSize: UInt32(frames * Int(channels) * 4),
+      mData: UnsafeMutableRawPointer(memory.baseAddress))
+    p.ingest(UnsafePointer(list.unsafeMutablePointer), hostTime: host, hostTimeValid: valid)
+  }
+
+  /// `count` call-profile buffers (480 frames, 20 ms apart) from `start` seconds.
+  private func callProfile(_ p: CallSoundPipeline, count: Int, start: Double) {
+    for i in 0..<count {
+      ingest(p, frames: 480, host: ticks(start + Double(i) * 0.02))
+    }
+  }
+
+  private func sustained(_ outcomes: [CallSoundPipeline.RateOutcome]) -> Bool {
+    outcomes.contains { if case .sustainedMismatch = $0 { true } else { false } }
+  }
+
+  /// The outcomes with each sustained rate rounded to the nearest kHz, so tests can compare
+  /// order exactly.
+  private func shape(_ outcomes: [CallSoundPipeline.RateOutcome]) -> [String] {
+    outcomes.map {
+      switch $0 {
+      case .agreement: "agree"
+      case .sustainedMismatch(let rate): "mismatch \(Int((rate / 1_000).rounded()))k"
+      }
+    }
+  }
+
+  @Test("sustained mismatches and agreements are reported in the order the buffers came")
+  func outcomesKeepAcquisitionOrder() throws {
+    // Mismatch, an invalid time, mismatch again: two sustained outcomes.
+    let p = try pipeline(rate: 48_000)
+    callProfile(p, count: 80, start: 1)
+    ingest(p, frames: 480, host: ticks(2.6), valid: false)
+    callProfile(p, count: 80, start: 2.62)
+    p.drain()
+    #expect(shape(p.takeRateOutcomes()) == ["mismatch 24k", "mismatch 24k"])
+    // Mismatch, then 1.2 s at 48 kHz (agreement), then mismatch again.
+    let q = try pipeline(rate: 48_000)
+    callProfile(q, count: 80, start: 1)
+    q.drain()
+    for i in 0..<120 { ingest(q, frames: 480, host: ticks(2.6 + Double(i) * 0.01)) }
+    q.drain()
+    callProfile(q, count: 120, start: 3.8)
+    q.drain()
+    let order = shape(q.takeRateOutcomes())
+    #expect(order.first == "mismatch 24k")
+    #expect(order.last == "mismatch 24k")
+    #expect(order.dropFirst().dropLast().allSatisfy { $0 == "agree" } && order.count >= 3)
+  }
+
+  @Test("a truncated buffer after a time that went backward anchors nothing")
+  func truncatedAfterBackwardTimeAnchorsNothing() {
+    var meter = Meter()
+    _ = meter.observe(frames: 480, hostTime: ticks(1), valid: true, afterLoss: false, truncated: false)
+    _ = meter.observe(
+      frames: 480, hostTime: ticks(1.01), valid: true, afterLoss: false, truncated: false)
+    // Backward and cut short, with many frames: anchored, it would skew the next window.
+    let bad = meter.observe(
+      frames: 48_000, hostTime: ticks(1.005), valid: true, afterLoss: false, truncated: true)
+    #expect(bad.invalidatedBefore && bad.invalidatedAfter)
+    let found = windows(run(&meter, lengths: Array(repeating: 480, count: 60), rate: 48_000, start: 1.02))
+    let first = try? #require(found.first)
+    #expect(first?.qualified == true)
+    #expect(abs((first?.rate ?? 0) - 48_000) < 48)
+  }
+
+  @Test("three windows in one drain, at 48 kHz configured: one sustained mismatch at 24 kHz")
+  func sustainedMismatchInOneDrain() throws {
+    let p = try pipeline(rate: 48_000)
+    callProfile(p, count: 80, start: 1)
+    p.drain()
+    let observation = p.inputRateObservation
+    #expect(observation.windowsQualified == 3)
+    #expect(p.health.discontinuities > 70, "every buffer breaks the converter's run")
+    let outcomes = p.takeRateOutcomes()
+    #expect(outcomes.count == 1)
+    guard case .sustainedMismatch(let found)? = outcomes.first else {
+      Issue.record("expected one sustained mismatch: \(outcomes)")
+      return
+    }
+    #expect(abs(found - 24_000) < 24)
+    #expect(p.takeRateOutcomes().isEmpty, "taking it reports it once")
+    #expect(p.health.rateMismatches == 1)
+    _ = p.inputRateObservation
+    #expect(p.takeRateOutcomes().isEmpty, "reading the observation never advances the streak")
+  }
+
+  @Test("a healthy, an invalid or a refused observation between mismatching windows clears the streak")
+  func interruptionsClearTheStreak() throws {
+    // Two mismatching windows, then the interruption, then two more: never three in a row.
+    let interruptions: [(String, (CallSoundPipeline, Double) -> Void)] = [
+      ("invalid time", { p, t in self.ingest(p, frames: 480, host: self.ticks(t), valid: false) }),
+      ("refused layout", { p, t in self.ingest(p, frames: 480, host: self.ticks(t), channels: 2) }),
+      ("backward time", { p, _ in self.ingest(p, frames: 480, host: self.ticks(0.5)) }),
+    ]
+    for (name, interrupt) in interruptions {
+      let p = try pipeline(rate: 48_000)
+      callProfile(p, count: 52, start: 1)
+      interrupt(p, 2.04)
+      callProfile(p, count: 52, start: 2.06)
+      p.drain()
+      #expect(!sustained(p.takeRateOutcomes()), "\(name)")
+      #expect(p.inputRateObservation.windowsQualified >= 3, "\(name): the windows still measured")
+    }
+    // A healthy window between: 48 kHz timing at 48 kHz configured.
+    let p = try pipeline(rate: 48_000)
+    callProfile(p, count: 52, start: 1)
+    p.drain()  // the handoff holds 2 s at 48 kHz; drain so nothing is dropped
+    // 1.2 s at 48 kHz: at least one whole window inside it agrees.
+    for i in 0..<120 { ingest(p, frames: 480, host: ticks(2.04 + Double(i) * 0.01)) }
+    callProfile(p, count: 52, start: 3.24)
+    p.drain()
+    #expect(!sustained(p.takeRateOutcomes()))
+    #expect(p.inputRateObservation.windowsAgreeing >= 1)
+  }
+
+  @Test("a new configuration starts the streak over")
+  func configureResetsTheStreak() throws {
+    let p = try pipeline(rate: 48_000)
+    callProfile(p, count: 52, start: 1)
+    p.drain()
+    try p.configure(.init(sampleRate: 48_000, bufferChannels: [1]))
+    callProfile(p, count: 30, start: 3)
+    p.drain()
+    #expect(!sustained(p.takeRateOutcomes()), "two windows before and one after are not three")
+  }
 }
