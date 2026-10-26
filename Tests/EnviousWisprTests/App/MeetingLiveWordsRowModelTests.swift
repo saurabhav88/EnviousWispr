@@ -67,6 +67,8 @@ struct MeetingLiveWordsRowModelTests {
 
   final class FakeUniversal {
     var state: DeliveryState? = .notReady
+    /// What `startPreviewDownload` answers: false when it refuses (no delivery, kill switch).
+    var scheduled = true
     var starts = 0
     var cancels = 0
   }
@@ -128,7 +130,10 @@ struct MeetingLiveWordsRowModelTests {
         environment: .init(
           choice: choice, settings: settings, isMeetingActive: meetingActive,
           appleCatalog: catalog, universalState: { universal.state },
-          startUniversalDownload: { universal.starts += 1 },
+          startUniversalDownload: {
+            universal.starts += 1
+            return universal.scheduled
+          },
           cancelUniversalDownload: { universal.cancels += 1 }))
     }
   }
@@ -442,6 +447,20 @@ struct MeetingLiveWordsRowModelTests {
     #expect(rig.model.download() == .started)
   }
 
+  @Test("a Universal Download the delivery refuses says so, and a later accepted one clears it")
+  func refusedUniversalDownloadIsReported() async throws {
+    let rig = Rig()
+    rig.settings.commitMeetingLiveWordsChoice(engine: .universal, language: "de")
+    await rig.model.refresh()
+    rig.universal.scheduled = false
+    #expect(rig.model.download() == .unavailable)
+    #expect(rig.model.universalDownloadUnavailable)
+    #expect(rig.model.status == .notDownloaded(engine: .universal, language: "de"))
+    rig.universal.scheduled = true
+    #expect(rig.model.download() == .started)
+    #expect(rig.model.universalDownloadUnavailable == false)
+  }
+
   @Test("Universal Download and Cancel go to the existing delivery commands")
   func universalCommands() async throws {
     let rig = Rig()
@@ -532,6 +551,6 @@ extension MeetingLiveWordsRowModel {
             inventory: LocaleInventory(
               reserved: { [] }, reserve: { _ in false }, release: { _ in false },
               maximumReserved: { 0 }))),
-        universalState: { nil }, startUniversalDownload: {}, cancelUniversalDownload: {}))
+        universalState: { nil }, startUniversalDownload: { true }, cancelUniversalDownload: {}))
   }
 }

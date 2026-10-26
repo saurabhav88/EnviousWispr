@@ -1,8 +1,9 @@
 import Foundation
 
-/// #4105 (plan R1.3): the one rule for when a live words download may start. Nothing downloads
-/// while a meeting records or processes, so a meeting never competes with a transfer for the
-/// network, the disk or the Mac's attention. A transfer accepted before a meeting started keeps
+/// #4105 (plan R1.3): the one rule for when a live words download may start from EnviousMeet's
+/// Live words row: never while a meeting records or processes, so a meeting never competes with
+/// a transfer it started. Dictation's own Live Preview download is outside this rule (plan R1.3
+/// scopes it to the meeting commands), so the row's copy promises only its own Download. A transfer accepted before a meeting started keeps
 /// going: it was not started during the meeting, and Start never waits for it.
 ///
 /// Every meeting download command asks this, in the same main-actor step that starts the

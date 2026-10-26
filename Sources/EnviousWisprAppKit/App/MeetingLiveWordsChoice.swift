@@ -64,12 +64,11 @@ enum MeetingLiveWordsChoice {
     case (let engine?, let language?):
       // An explicit choice: exact, never swapped.
       return explicit(engine: engine, language: language, inventory: inventory)
-    case (let engine?, nil):
-      // Engine chosen, language not: the guess in that engine's terms; the engine stays.
-      let language = await language(
-        for: engine, from: guessCode(guess), inventory: inventory, appleEquivalent: appleEquivalent)
-      guard let language else { return .notSetUp(suggestion: nil) }
-      return explicit(engine: engine, language: language, inventory: inventory)
+    case (_?, nil):
+      // Engine chosen, language not (a switch cleared one the new engine lacks): not set up
+      // until the user picks one. Running a guessed language here would show "Choose a
+      // language" while meetings used another (second-pass review #4105).
+      return .notSetUp(suggestion: nil)
     case (nil, let language?):
       // Language chosen, engine not: the first engine that has it, Apple first.
       return await firstEngine(

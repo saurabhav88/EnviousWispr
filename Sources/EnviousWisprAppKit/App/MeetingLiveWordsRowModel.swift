@@ -30,8 +30,9 @@ final class MeetingLiveWordsRowModel {
     /// this build has no Universal delivery.
     let universalState: @MainActor () -> DeliveryState?
     /// `ModelDeliveryHome.startPreviewDownload` / `cancelPreviewDownload`: the existing
-    /// transfer, its progress and Cancel, never a second copy.
-    let startUniversalDownload: @MainActor () -> Void
+    /// transfer, its progress and Cancel, never a second copy. Start answers whether it was
+    /// scheduled (false: no delivery in this build, or turned off remotely).
+    let startUniversalDownload: @MainActor () -> Bool
     let cancelUniversalDownload: @MainActor () -> Void
   }
 
@@ -59,6 +60,9 @@ final class MeetingLiveWordsRowModel {
     case busy
     /// Nothing to download for the current choice.
     case notNeeded
+    /// The Universal download could not be scheduled (no delivery in this build, or turned off
+    /// remotely); the row says so instead of offering it again.
+    case unavailable
   }
 
   struct LanguageOption: Equatable, Identifiable {
@@ -81,6 +85,10 @@ final class MeetingLiveWordsRowModel {
   private(set) var appleFailedTag: String?
   /// The Apple install in flight, readable so a test can join it.
   private(set) var appleDownloadTask: Task<Void, Never>?
+
+  /// The last Universal Download press could not be scheduled; cleared by the next press that
+  /// is.
+  private(set) var universalDownloadUnavailable = false
 
   /// Every refresh publishes only if no newer one started.
   private var refreshGeneration = 0
@@ -292,16 +300,13 @@ final class MeetingLiveWordsRowModel {
     case .notDownloaded(.apple, let tag), .failed(.apple, let tag):
       return startAppleDownload(tag)
     case .notDownloaded(.universal, _), .failed(.universal, _):
-      environment.startUniversalDownload()
-      return .started
+      return startUniversalDownload()
     case .notSetUp(let suggestion?):
       // Not set up yet: download the guess's model; the choice is saved once it is ready (the
       // Apple task saves it; for Universal, the next appearance or Start does).
       switch suggestion.engine {
       case .apple: return startAppleDownload(suggestion.language)
-      case .universal:
-        environment.startUniversalDownload()
-        return .started
+      case .universal: return startUniversalDownload()
       }
     case .loading, .notSetUp(nil), .ready, .downloading, .appleUnavailable:
       return .notNeeded
@@ -311,6 +316,12 @@ final class MeetingLiveWordsRowModel {
   /// Cancels the Universal download (Apple's installer offers no Cancel).
   func cancelDownload() {
     if case .downloading(.universal, _, _) = status { environment.cancelUniversalDownload() }
+  }
+
+  private func startUniversalDownload() -> DownloadOutcome {
+    let scheduled = environment.startUniversalDownload()
+    universalDownloadUnavailable = !scheduled
+    return scheduled ? .started : .unavailable
   }
 
   private func startAppleDownload(_ tag: String) -> DownloadOutcome {

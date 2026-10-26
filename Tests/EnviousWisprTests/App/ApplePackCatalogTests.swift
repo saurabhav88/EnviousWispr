@@ -1,4 +1,5 @@
 import Foundation
+import Speech
 import Testing
 
 @testable import EnviousWisprLivePreview
@@ -335,19 +336,18 @@ struct ApplePackCatalogTests {
     let tags: ([Locale]) -> [String] = { $0.map { $0.identifier(.bcp47) } }
     let meeting = ApplePackCatalog.Dependencies.live(.meeting)
     let dictation = ApplePackCatalog.Dependencies.live(.dictation)
-    let meetingAvailable = AppleTranscriberFactory.isAvailable(.meeting)
+    // The expected lists come from the Speech SDK itself, never through the factory under test, so
+    // a factory branch wired to the other module fails here (second-pass review #4105).
+    let meetingAvailable = SpeechTranscriber.isAvailable
 
     #expect(
       await meeting.supportedTags()
-        == (meetingAvailable ? tags(await AppleTranscriberFactory.supportedLocales(.meeting)) : []))
+        == (meetingAvailable ? tags(await SpeechTranscriber.supportedLocales) : []))
     #expect(
       await meeting.installedTags()
-        == (meetingAvailable ? tags(await AppleTranscriberFactory.installedLocales(.meeting)) : []))
-    #expect(
-      await dictation.supportedTags() == tags(await AppleTranscriberFactory.supportedLocales(.dictation)))
-    #expect(
-      await dictation.installedTags()
-        == tags(await AppleTranscriberFactory.installedLocales(.dictation)))
+        == (meetingAvailable ? tags(await SpeechTranscriber.installedLocales) : []))
+    #expect(await dictation.supportedTags() == tags(await DictationTranscriber.supportedLocales))
+    #expect(await dictation.installedTags() == tags(await DictationTranscriber.installedLocales))
     // The two modules really are different sets on this OS (measured 2026-10-25: 45 vs 54), so a
     // catalogue wired to the wrong module cannot pass by accident.
     if meetingAvailable {

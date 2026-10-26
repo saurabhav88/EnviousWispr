@@ -1231,11 +1231,15 @@ final class ModelDeliveryHome {
     }
   }
 
-  func startPreviewDownload() {
-    guard let handle = whisperPreviewHandle else { return }
+  /// Whether the download was scheduled: false when this build has no preview delivery, the
+  /// replacement record is unbound, or the remote kill switch is off (#4105: the Live words row
+  /// says so instead of showing a Download that did nothing).
+  @discardableResult
+  func startPreviewDownload() -> Bool {
+    guard let handle = whisperPreviewHandle else { return false }
     guard let previewReplacement else {
       logPreviewRefusal("download")
-      return
+      return false
     }
     guard handle.isEnabled() else {
       // Logged rather than silent: a Download button that does nothing is
@@ -1247,13 +1251,14 @@ final class ModelDeliveryHome {
             + "(modelDelivery.whisper.enabled = false)",
           level: .info, category: "Delivery")
       }
-      return
+      return false
     }
     let epoch = previewDownloadIntentEpoch
     previewDownloadTaskForTests = Task { [weak self] in
       guard let self, self.previewDownloadIntentEpoch == epoch else { return }
       if await previewReplacement.download() == false { self.logPreviewRefusal("download") }
     }
+    return true
   }
 
   /// The last Download press's work, so a test can wait for it to end.

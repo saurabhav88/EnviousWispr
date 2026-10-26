@@ -172,11 +172,13 @@ struct MeetingLiveWordsChoiceInitializerTests {
         appleEquivalent: { await gated.lookup($0) }))
 
     let task = Task { await subject.materializeIfUnset() }
-    // 1. The guess lookup is suspended; the user picks Apple, no language yet.
+    // 1. The guess lookup is suspended; the user picks an engine and clears it again, so the
+    //    stored values are unset once more but the choice moved on.
     try await BoundedWait.until(gated.entered[0])
     settings.meetingLiveWordsEngine = .apple
+    settings.meetingLiveWordsEngine = nil
     gated.open[0].fire()
-    // 2. The re-check for Apple is suspended; the user switches to Universal German.
+    // 2. The re-check's own guess lookup is suspended; the user picks Universal German.
     try await BoundedWait.until(gated.entered[1])
     settings.meetingLiveWordsEngine = .universal
     settings.meetingLiveWordsLanguage = "de"

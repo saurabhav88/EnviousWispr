@@ -7170,6 +7170,17 @@
         }
       }
     },
+    "Download is not available right now." : {
+      "comment" : "EnviousMeet page, Live words: the Universal engine download could not start (it is turned off for this version).",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Download ist gerade nicht verfügbar."
+          }
+        }
+      }
+    },
     "Download more models" : {
       "comment" : "AI Polish, Ollama: title of the card that opens the model list.",
       "localizations" : {
@@ -11100,13 +11111,13 @@
         }
       }
     },
-    "Live words show what is said into your microphone and in the call while a meeting records. Apple uses this Mac's speech recognition and needs macOS 26 and a download for each language. Universal works on any supported Mac and needs one download. Nothing downloads until you press Download, and no new download starts during a meeting. The full transcript is written after the meeting and does not depend on live words." : {
+    "Live words show what is said into your microphone and in the call while a meeting records. Apple uses this Mac's speech recognition and needs macOS 26 and a download for each language. Universal works on any supported Mac and needs one download. Nothing downloads until you press Download, and Download here is off while a meeting records or is being transcribed. The full transcript is written after the meeting and does not depend on live words." : {
       "comment" : "EnviousMeet page: help for Live words.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das Live-Transkript zeigt während einer Meeting-Aufnahme, was über dein Mikrofon und im Anruf gesagt wird. Apple nutzt die Spracherkennung dieses Macs und benötigt macOS 26 sowie einen Download pro Sprache. Universal funktioniert auf jedem unterstützten Mac und benötigt nur einen Download. Erst wenn du auf „Laden“ klickst, wird etwas heruntergeladen; während eines Meetings startet kein neuer Download. Das vollständige Transkript wird nach dem Meeting erstellt und hängt nicht vom Live-Transkript ab."
+            "value" : "Das Live-Transkript zeigt während einer Meeting-Aufnahme, was über dein Mikrofon und im Anruf gesagt wird. Apple nutzt die Spracherkennung dieses Macs und benötigt macOS 26 sowie einen Download pro Sprache. Universal funktioniert auf jedem unterstützten Mac und benötigt nur einen Download. Erst wenn du auf „Laden“ klickst, wird etwas heruntergeladen; solange ein Meeting aufgenommen oder transkribiert wird, ist „Laden“ hier nicht verfügbar. Das vollständige Transkript wird nach dem Meeting erstellt und hängt nicht vom Live-Transkript ab."
           }
         }
       }

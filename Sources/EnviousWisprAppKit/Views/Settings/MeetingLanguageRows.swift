@@ -158,6 +158,8 @@ struct MeetingLiveWordsRow: View {
   @ViewBuilder private func downloadButton(_ title: LocalizedStringResource) -> some View {
     if let refusal = model.downloadRefusal {
       status(refusal)
+    } else if model.universalDownloadUnavailable, model.selectedEngine != .apple {
+      status(String(localized: MeetingsCopy.liveWordsDownloadUnavailable))
     } else {
       Button(String(localized: title)) { model.download() }
     }

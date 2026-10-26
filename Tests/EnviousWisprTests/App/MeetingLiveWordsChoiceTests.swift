@@ -97,8 +97,10 @@ struct MeetingLiveWordsChoiceTests {
 
   @Test("Partial choices keep what the user stored")
   func partialChoices() async {
-    // Engine only: the guess in that engine's terms; the engine stays Universal.
-    #expect(await resolve(.universal, nil) == .notDownloaded(engine: .universal, language: "en"))
+    // Engine only (a switch cleared the language): not set up until a language is picked; a
+    // guessed language never runs behind "Choose a language".
+    #expect(await resolve(.universal, nil) == .notSetUp(suggestion: nil))
+    #expect(await resolve(.apple, nil) == .notSetUp(suggestion: nil))
     // Language only: the first engine that has it, the tag kept exact.
     #expect(await resolve(nil, "en-US") == .ready(engine: .apple, language: "en-US"))
     #expect(
