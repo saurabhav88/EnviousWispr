@@ -453,6 +453,17 @@ def meeting_folder(meeting_id):
     return found[0] if len(found) == 1 else None
 
 
+def saved_transcript_language(meeting_id):
+    """The record's own `transcriptLanguage` from its meeting.json (None when absent = Auto);
+    "unreadable" when the file cannot be read, so it never matches an expectation."""
+    folder = meeting_folder(meeting_id)
+    try:
+        with open(os.path.join(folder, "meeting.json")) as fh:
+            return json.load(fh).get("transcriptLanguage") or None
+    except (OSError, TypeError, ValueError):
+        return "unreadable"
+
+
 def audio_files(meeting_id):
     folder = meeting_folder(meeting_id)
     if not folder:
@@ -818,6 +829,9 @@ def scenario_live(run_dir, made, checks, engine, audio=None):
         # `auto` starts the way a user does: the engine stored by the Live words row decides.
         want = engine if engine != "auto" else door_ok(
             "settings", "get", "meetingLiveWordsEngine").get("value")
+        # The transcript language at Start; the record keeps it (#4105 R1.7).
+        mode = door_ok("settings", "get", "meetingLanguageMode").get("value") or {}
+        want_language = mode.get("code") if mode.get("mode") == "locked" else None
         meeting_id = start_meeting(call_sound=True, live_engine=engine)
         started = time.monotonic()
         made.append(meeting_id)
@@ -846,6 +860,9 @@ def scenario_live(run_dir, made, checks, engine, audio=None):
         c.check("call live words grow in the 15 s after the dictation",
                 resumed["callSound"] > after["callSound"],
                 f"{after} -> {resumed}")
+        # Console only, never the receipt: the words may be private (`--audio`).
+        for line in live_lines():
+            print(f"  live {line.get('track')}: {(line.get('text') or '')[-300:]}")
         players.stop_all()
         recorded = time.monotonic() - started
         ready = stop_and_wait_ready(meeting_id)
@@ -855,6 +872,9 @@ def scenario_live(run_dir, made, checks, engine, audio=None):
             json.dumps(live_state())[:200])
     if ready:
         check_saved_audio(c, meeting_id, recorded)
+    stored = saved_transcript_language(meeting_id)
+    c.check("the saved meeting keeps the transcript language set at Start",
+            stored == want_language, f"{stored!r} (want {want_language!r})")
     checks.rows.append({"memory": sampler.summary()})
     print(f"  memory: {json.dumps(sampler.summary())}")
 

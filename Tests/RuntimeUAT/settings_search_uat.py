@@ -28,7 +28,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-# The seven probes of plan section 11.1, plus three EnviousMeet tab probes (#4058). `row_has` is extra text the result row must also show
+# The seven probes of plan section 11.1, three EnviousMeet tab probes (#4058) and three #4105 rows. `row_has` is extra text the result row must also show
 # when the title alone is ambiguous. `landings` are the (rung, anchor id) pairs this probe
 # accepts, from the Settings Map: the result's own target (a choice's target is its parent
 # control), or for a row the current state can hide, its declared fallbacks and section.
@@ -78,6 +78,20 @@ PROBES = [
      "query": "enviousmeet permissions", "title": "Permissions", "row_has": "EnviousMeet",
      "entry": "meetings.tab.permissions", "dest_page": "EnviousMeet", "dest_tab": "Permissions",
      "landings": {("target", "meetings.tab.permissions")}},
+    # #4105: the Live words and Transcript language rows, and an engine choice, which lands
+    # on its row (the choice's target is its parent control).
+    {"name": "live-words-from-keybinds", "page": "Keybinds", "tab": None,
+     "query": "live words", "title": "Live words", "row_has": None,
+     "entry": "meetingLiveWords", "dest_page": "EnviousMeet", "dest_tab": "General",
+     "landings": {("target", "meetingLiveWords")}},
+    {"name": "transcript-language-from-meet-call-apps", "page": "EnviousMeet", "tab": "Call Apps",
+     "query": "transcript language", "title": "Transcript language", "row_has": None,
+     "entry": "meetingTranscriptLanguage", "dest_page": "EnviousMeet", "dest_tab": "General",
+     "landings": {("target", "meetingTranscriptLanguage")}},
+    {"name": "live-words-universal-from-engine", "page": "Dictation Settings", "tab": "Engine",
+     "query": "universal live words", "title": "Universal", "row_has": "Live words",
+     "entry": "meetingLiveWords.universal", "dest_page": "EnviousMeet", "dest_tab": "General",
+     "landings": {("target", "meetingLiveWords")}},
 ]
 
 ARRIVAL = re.compile(r"arrival landed=(\w+) entry=(\S+) at=(\S+)( upgrade=true)?")
@@ -266,7 +280,7 @@ def _self_test():
           verdict(save, True, [("section", "aiPolish.providerSection", False)], "AI Polish", None)[0] == "PASS")
     check("Save: an undeclared landing fails",
           verdict(save, True, [("landing", "page.aiPolish", False)], "AI Polish", None)[0] == "FAIL")
-    check("ten probes with unique names", len(PROBES) == 10 and len({p["name"] for p in PROBES}) == 10)
+    check("thirteen probes with unique names", len(PROBES) == 13 and len({p["name"] for p in PROBES}) == 13)
     print("self-test:", "FAIL" if failures else "PASS")
     return 1 if failures else 0
 
