@@ -241,6 +241,13 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
     await AppleTranscriberFactory.supportedLocale(kind, equivalentTo: Locale(identifier: code))
   }
 
+  /// The source and target formats `prepare()` negotiated, for tests that must prove a session
+  /// really converted audio (#4105). Nil before preparation.
+  func preparedFormats() -> (source: AVAudioFormat, target: AVAudioFormat)? {
+    guard let sourceFormat, let targetFormat else { return nil }
+    return (sourceFormat, targetFormat)
+  }
+
   // MARK: - Session
 
   /// One live preview session and everything it owns.
@@ -497,7 +504,7 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
   /// `WordCorrector.correct(_:using:)` is a documented pure function, safe to call
   /// off any actor, and `Lookups` is `Sendable`, so the snapshot crosses the
   /// boundary as a value rather than as a reference the main actor keeps mutating.
-  private static func collect(
+  static func collect(
     from transcriber: AppleTranscriberFactory.Module, lookups: WordCorrector.Lookups?,
     onText: @escaping @Sendable (String) -> Void
   ) -> Task<Void, Never> {

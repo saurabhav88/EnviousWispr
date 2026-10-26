@@ -324,6 +324,74 @@ struct ApplePackCatalogTests {
       calls.filter { $0 == "installed" }.count >= 1,
       "must re-read installed state after installing, got: \(calls)")
   }
+
+  /// #4105: each catalogue kind lists and installs its own module's assets. Read-only against the
+  /// real system (enumeration takes no claim, per this type's doc), so it runs on macOS 26 hosts.
+  @Test(
+    "The meeting catalogue reads the meeting module's languages, not dictation's",
+    .enabled(if: ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26))
+  func catalogueKindsReadTheirOwnModule() async {
+    guard #available(macOS 26.0, *) else { return }
+    let tags: ([Locale]) -> [String] = { $0.map { $0.identifier(.bcp47) } }
+    let meeting = ApplePackCatalog.Dependencies.live(.meeting)
+    let dictation = ApplePackCatalog.Dependencies.live(.dictation)
+    let meetingAvailable = AppleTranscriberFactory.isAvailable(.meeting)
+
+    #expect(
+      await meeting.supportedTags()
+        == (meetingAvailable ? tags(await AppleTranscriberFactory.supportedLocales(.meeting)) : []))
+    #expect(
+      await meeting.installedTags()
+        == (meetingAvailable ? tags(await AppleTranscriberFactory.installedLocales(.meeting)) : []))
+    #expect(
+      await dictation.supportedTags() == tags(await AppleTranscriberFactory.supportedLocales(.dictation)))
+    #expect(
+      await dictation.installedTags()
+        == tags(await AppleTranscriberFactory.installedLocales(.dictation)))
+    // The two modules really are different sets on this OS (measured 2026-10-25: 45 vs 54), so a
+    // catalogue wired to the wrong module cannot pass by accident.
+    if meetingAvailable {
+      #expect(Set(await meeting.supportedTags()) != Set(await dictation.supportedTags()))
+    }
+  }
+
+
+  /// #4105 (plan R1.2): a cancelled download keeps its claim until Apple's install call actually
+  /// returns, then gives it back; cancelling the waiting task alone frees nothing early.
+  @Test("A cancelled install holds the language until the install call returns")
+  func cancelledInstallHoldsClaimUntilReturn() async throws {
+    let journal = Journal()
+    let claims = makeClaims(journal: journal)
+    let entered = BoundedWait.Signal()
+    let release = BoundedWait.Signal()
+    let catalog = ApplePackCatalog(
+      dependencies: .init(
+        supportedTags: { ["de-DE"] }, installedTags: { [] },
+        install: { _ in
+          entered.fire()
+          // The installer ignores cancellation until it returns, as Apple's transfer does.
+          try? await BoundedWait.until(release)
+          try Task.checkCancellation()
+        }),
+      claims: claims)
+
+    let task = Task { try await catalog.install(tag: "de-DE") }
+    do {
+      try await BoundedWait.until(entered)
+    } catch {
+      release.fire()
+      _ = await task.result
+      throw error
+    }
+    task.cancel()
+    #expect(await claims.useCount("de-DE") == 1, "still installing: the claim stays")
+
+    release.fire()
+    let outcome = try await BoundedWait.result(of: task, onExpiry: { release.fire() })
+    #expect(throws: CancellationError.self) { try outcome.get() }
+    #expect(await claims.useCount("de-DE") == 0)
+    #expect(await journal.calls.contains("release:de-DE"))
+  }
 }
 
 /// #2080 — the consent guarantee, asserted where it can actually be proven.

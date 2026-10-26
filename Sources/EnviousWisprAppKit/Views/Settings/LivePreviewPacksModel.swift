@@ -73,7 +73,7 @@ final class LivePreviewPacksModel {
   /// window, and a factory the owner cannot reach is no use to it.
   static func liveCatalog() -> ApplePackCatalog {
     if #available(macOS 26.0, *) {
-      return ApplePackCatalog(dependencies: .live, claims: .shared)
+      return ApplePackCatalog(dependencies: .live(.dictation), claims: .shared)
     }
     // Unreachable: the page gates on `isSupportedOnThisSystem`. Kept total rather than
     // force-unwrapping a version check, and an empty catalogue renders the honest

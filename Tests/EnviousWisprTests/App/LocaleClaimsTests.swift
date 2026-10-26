@@ -308,6 +308,33 @@ struct LocaleClaimsTests {
     #expect(await fake.reserved.isEmpty)
   }
 
+  /// #4105: dictation's live preview and EnviousMeet's meeting module use different Apple assets
+  /// but the SAME locale claim, so one count must span them. A meeting's two tracks each hold a
+  /// session; a meeting-module download holds one more.
+  @Test("Dictation, two meeting tracks and a download share one count per language")
+  func dictationAndMeetingShareOneCount() async throws {
+    let fake = FakeInventory()
+    let subject = await claims(fake)
+    let english = Locale(identifier: "en-US")
+
+    try await subject.claim(english, purpose: "session")  // dictation preview
+    try await subject.claim(english, purpose: "session")  // meeting: You
+    try await subject.claim(english, purpose: "session")  // meeting: the call
+    try await subject.claim(english, purpose: "download")  // meeting module download
+    try await subject.claim(Locale(identifier: "de-DE"), purpose: "session")
+    #expect(await subject.useCount("en-US") == 4)
+    #expect(await subject.useCount("de-DE") == 1)
+
+    for _ in 0..<3 { await subject.finish(english) }
+    #expect(await fake.reserved.contains("en-US"), "the download is still using English")
+
+    await subject.finish(Locale(identifier: "de-DE"))
+    #expect(await fake.reserved == ["en-US"], "German went back on its own")
+
+    await subject.finish(english)
+    #expect(await fake.reserved.isEmpty)
+  }
+
   @Test("An unbalanced finish cannot drive the count negative or release twice")
   func unbalancedFinishIsHarmless() async throws {
     let fake = FakeInventory()
