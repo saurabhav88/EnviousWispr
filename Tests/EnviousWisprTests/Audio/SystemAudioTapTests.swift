@@ -943,6 +943,7 @@ struct SystemAudioTapTests {
       let events = Events()
       let tap = tap(backend, output, events)
       try tap.start()
+      let readsAtStart = backend.lock.withLock { backend.currentReads }
       backend.lock.withLock {
         backend.diagnostics = CallSoundCaptureDiagnostics(
           inputStreams: [SystemAudioTapTests.floatStream(channels: 1, rate: 24_000)])
@@ -950,7 +951,9 @@ struct SystemAudioTapTests {
       backend.notify("streamVirtualFormat")
       #expect(tap.settleForTesting())
       #expect(backend.snapshot.starts == 1)
-      #expect(backend.lock.withLock { backend.currentReads } >= 1, "the notice was compared")
+      #expect(
+        backend.lock.withLock { backend.currentReads } == readsAtStart + 1,
+        "the notice itself was compared")
       #expect(events.list.withLock { $0 }.isEmpty)
       tap.stop()
     }
