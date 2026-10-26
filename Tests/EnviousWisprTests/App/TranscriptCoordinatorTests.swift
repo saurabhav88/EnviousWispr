@@ -543,6 +543,62 @@ struct TranscriptCoordinatorMeetingTests {
   }
 
   #if DEBUG
+    /// #4102: Delete All holds History's queue while it awaits the meeting marks. A save asked
+    /// for meanwhile lands after it and survives it; a second Delete All runs last, sees that
+    /// save's row, and is given the still-listed meeting again plus one started meanwhile.
+    @Test("while Delete All awaits its marks, a later save and a second Delete All wait in order")
+    func deleteAllHoldsQueueWhileMarking() async throws {
+      let dir = Self.makeTempDir()
+      let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
+      let meeting = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+      try await coordinator.saveAndShowDurably(
+        Transcript(text: "standup", backendType: .parakeet, meetingID: meeting.id))
+      var records = [meeting]
+      coordinator.meetingRecords = { records }
+      let later = Transcript(text: "said while marking", backendType: .parakeet)
+      let firstMarking = MeetingCoordinatorTests.Gate()
+      defer { firstMarking.open() }
+      var calls: [[UUID]] = []
+      var laterListedAtSecond: Bool?
+      coordinator.meetingsWillBeDeletedWithAll = { ids in
+        calls.append(ids)
+        if calls.count == 1 {
+          await firstMarking.wait()
+        } else {
+          laterListedAtSecond = coordinator.hasRow(id: later.id)
+        }
+        return true
+      }
+
+      let admittedBefore = coordinator.commandsAdmittedForTesting
+      let first = Task { await coordinator.deleteAll() }
+      await MeetingCoordinatorTests.eventually("first Delete All marking") { firstMarking.parked }
+      let saving = Task { try await coordinator.saveAndShow(later) }
+      await MeetingCoordinatorTests.eventually("save admitted") {
+        coordinator.commandsAdmittedForTesting == admittedBefore + 2
+      }
+      let second = Task { await coordinator.deleteAll() }
+      await MeetingCoordinatorTests.eventually("second Delete All admitted") {
+        coordinator.commandsAdmittedForTesting == admittedBefore + 3
+      }
+      let started = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+      records.append(started)
+      #expect(coordinator.hasRow(id: later.id) == false, "the save waits behind Delete All")
+
+      firstMarking.open()
+      await first.value
+      try await saving.value
+      await second.value
+      #expect(calls.count == 2)
+      #expect(calls.first == [meeting.id], "targets taken when the first Delete All began")
+      #expect(Set(calls.last ?? []) == [meeting.id, started.id])
+      #expect(laterListedAtSecond == true, "the later save survived the first Delete All")
+      #expect(coordinator.actionFailure == nil)
+      // The fake meeting list still lists both meetings (nothing here deletes them); every row
+      // is gone.
+      #expect(coordinator.hasRow(id: later.id) == false, "the second Delete All removed it")
+    }
+
     @Test("a rename while the row's durable write is held is refused; disk and list then match")
     func renameRefusedDuringDurableWrite() async throws {
       let dir = Self.makeTempDir()

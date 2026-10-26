@@ -45,9 +45,9 @@ extension MeetingTranscriptionJob: MeetingProcessing {}
 /// The one serial queue every ordinary meeting file operation runs on (#3972 C4a): record
 /// writes, creation, listing, audio and folder removal. Off the main actor, and in the order
 /// they were asked for, so a later write of a meeting can never be overtaken by an earlier one.
-/// The quit path and History's Delete All use `runBounded`, which waits behind the writes
-/// already queued, but never past a deadline; `runWithin` is the same wait for a caller that
-/// may suspend instead of blocking.
+/// The quit path uses `runBounded`, which blocks behind the writes already queued, but never
+/// past a deadline; History's Delete All uses `runWithin`, the same wait suspended instead of
+/// blocked, so the window keeps working while a meeting write is slow (#4102).
 final class MeetingFileWriter: Sendable {
   /// One queue for every meeting file in the process, so even two writers (a test's relaunch)
   /// keep one order. Internal so a test can wait for it to drain.
@@ -163,8 +163,8 @@ final class MeetingFileWriter: Sendable {
   }
 
   /// Runs `work` after everything already queued, waiting for it no later than `deadline`
-  /// (quit, Delete All). Never an unbounded join: a stalled earlier write cannot hold the
-  /// caller. An operation not started by the deadline is withdrawn; one already running
+  /// (quit, which cannot suspend). Never an unbounded join: a stalled earlier write cannot hold
+  /// the caller. An operation not started by the deadline is withdrawn; one already running
   /// reports its result to `late` when it ends.
   func runBounded(
     until deadline: DispatchTime, _ work: @escaping @Sendable (MeetingStore) throws -> Void,
@@ -644,6 +644,19 @@ final class MeetingCoordinator {
 
   /// Told after `meetings` changes, so History drops a selection whose meeting is gone.
   @ObservationIgnored var onMeetingsPublished: (@MainActor () -> Void)?
+
+  #if DEBUG
+    /// The deadline each Delete All mark was given, in order (#4102), so a test can see one
+    /// deadline shared by every meeting rather than read the clock.
+    @ObservationIgnored private(set) var deleteAllMarkDeadlinesForTesting: [DispatchTime] = []
+    /// Runs after an ordinary write landed and before its answer is applied, so a test can
+    /// hold that answer behind later writes in a chosen order (#4102).
+    @ObservationIgnored var writeWillAnswerForTesting: (@MainActor (MeetingRecord) async -> Void)?
+    /// The live copy and an open deletion, so a test can see a change has reached the
+    /// coordinator before it releases a held write (#4102).
+    func liveRecordForTesting(_ id: UUID) -> MeetingRecord? { live[id] }
+    func isDeletingForTesting(_ id: UUID) -> Bool { deleting.contains(id) }
+  #endif
 
   // MARK: - Start and stop
 
@@ -1453,14 +1466,17 @@ final class MeetingCoordinator {
 
   /// History's Delete All (R19): marks every listed meeting for deletion DURABLY before
   /// returning (History empties its own store right after), then finishes each deletion.
-  /// Synchronous, like the quit path: each mark waits behind queued writes, all within one
-  /// second. Returns false when any meeting could not be marked in time; History then deletes
-  /// nothing.
-  func deleteForHistoryDeleteAll(meetingIDs: [UUID]) -> Bool {
+  /// Each mark waits behind queued writes, all within one second shared by every meeting; the
+  /// wait suspends, so the main actor keeps running (#4102). History's queue stays held across
+  /// it, so later History commands wait. Returns false when any meeting could not be marked in
+  /// time; History then refuses its bulk handoff, though meetings already marked are still
+  /// deleted one by one, rows included.
+  func deleteForHistoryDeleteAll(meetingIDs: [UUID]) async -> Bool {
     let deadline = DispatchTime.now() + 1
     var marked: [UUID] = []
     var allMarked = true
     for meetingID in meetingIDs {
+      // The live copy now, not one read before another meeting's mark suspended (#4102).
       guard var record = live[meetingID] else {
         // No folder means nothing to delete; a folder this session could not read cannot be
         // marked.
@@ -1470,10 +1486,13 @@ final class MeetingCoordinator {
         continue
       }
       record.deletionRequested = true
-      if persistBounded(
+      #if DEBUG
+        deleteAllMarkDeadlinesForTesting.append(deadline)
+      #endif
+      if await persistWithin(
         record, until: deadline,
         lateSuccess: { [weak self] in
-          // Marked after all: finish its deletion (History kept every row this time).
+          // Marked after all: finish its deletion (History refused its bulk handoff this time).
           Task { await self?.delete(meetingID: meetingID) }
         })
       {
@@ -1482,7 +1501,8 @@ final class MeetingCoordinator {
         allMarked = false
       }
     }
-    // Marked meetings are deleted either way; History keeps every row if any mark failed.
+    // Marked meetings are deleted either way, each on its own task: its row removal joins
+    // History's queue, which this Delete All still holds, so it is never awaited here.
     for meetingID in marked { Task { await delete(meetingID: meetingID) } }
     return allMarked
   }
@@ -1636,6 +1656,9 @@ final class MeetingCoordinator {
     let sequence = beginWrite(record)
     do {
       try await writer.save(record)
+      #if DEBUG
+        await writeWillAnswerForTesting?(record)
+      #endif
       writeSucceeded(record, sequence: sequence)
       return true
     } catch {
@@ -1644,17 +1667,43 @@ final class MeetingCoordinator {
     }
   }
 
-  /// `persist` bounded by `deadline` on the caller's thread, for the quit path and Delete All.
-  /// True only when it landed in time. A write withdrawn before it started counts as failed
-  /// and rolls back. A write still running at the deadline keeps the live copy and reports
-  /// once when it ends: a success is then shown (and `lateSuccess` runs), a failure rolls back.
+  /// `persist` bounded by `deadline` on the caller's thread, for the quit path, which cannot
+  /// suspend. True only when it landed in time. A write withdrawn before it started counts as
+  /// failed and rolls back. A write still running at the deadline keeps the live copy and
+  /// reports once when it ends: a success is then shown (and `lateSuccess` runs), a failure
+  /// rolls back.
   @discardableResult
   private func persistBounded(
     _ record: MeetingRecord, until deadline: DispatchTime,
     lateSuccess: (@MainActor () -> Void)? = nil
   ) -> Bool {
     let sequence = beginWrite(record)
-    let outcome = writer.saveBounded(record, until: deadline) { [weak self] result in
+    let outcome = writer.saveBounded(
+      record, until: deadline,
+      late: lateSettlement(record, sequence: sequence, lateSuccess: lateSuccess))
+    return settle(outcome, record: record, sequence: sequence)
+  }
+
+  /// `persistBounded` for Delete All, which suspends instead of blocking (#4102): the same
+  /// deadline, answers and late report.
+  private func persistWithin(
+    _ record: MeetingRecord, until deadline: DispatchTime,
+    lateSuccess: (@MainActor () -> Void)? = nil
+  ) async -> Bool {
+    let sequence = beginWrite(record)
+    let outcome = await writer.saveWithin(
+      record, until: deadline,
+      late: lateSettlement(record, sequence: sequence, lateSuccess: lateSuccess))
+    return settle(outcome, record: record, sequence: sequence)
+  }
+
+  /// The report of a bounded write that was still running at its deadline. It may reach the
+  /// main actor before or after the caller's own answer; `settle` leaves a still-running write
+  /// unanswered, so either order settles it once.
+  private func lateSettlement(
+    _ record: MeetingRecord, sequence: Int, lateSuccess: (@MainActor () -> Void)?
+  ) -> @Sendable (Result<Void, Error>) -> Void {
+    { [weak self] result in
       Task { @MainActor in
         guard let self else { return }
         switch result {
@@ -1666,6 +1715,12 @@ final class MeetingCoordinator {
         }
       }
     }
+  }
+
+  /// A bounded write's answer to its caller: true only when it landed in time.
+  private func settle(
+    _ outcome: MeetingFileWriter.BoundedOutcome, record: MeetingRecord, sequence: Int
+  ) -> Bool {
     switch outcome {
     case .finished(.success):
       writeSucceeded(record, sequence: sequence)

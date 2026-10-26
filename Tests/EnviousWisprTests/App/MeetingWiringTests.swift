@@ -479,6 +479,7 @@ struct MeetingWiringTests {
     }
 
     await rig.transcripts.deleteAll()
+    #expect(rig.transcripts.actionFailure == .deleteAll, "the refusal is shown")
     #expect(rig.transcripts.hasRow(id: row.id))
     #expect(try rig.store.segmentFiles(meeting: record.id).count == 1)
     #expect(try rig.store.load(id: record.id).deletionRequested == false)
