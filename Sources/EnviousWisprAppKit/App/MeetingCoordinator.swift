@@ -989,9 +989,8 @@ final class MeetingCoordinator {
     }
     startGeneration += 1
     phase = .stopping(meetingID: meetingID)
-    // #3973: live words end now and never hold up the Stop: admission closes, their sessions
-    // go to a cleanup of their own, and nothing below waits for it. The lines stay until the
-    // transcript is ready.
+    // #3973, #4097: Stop retires live words without waiting; their cleanup drains kept events
+    // and closes admission. The lines stay until the transcript is ready.
     deps.liveWords?.stop()
     self.recorder?.liveSamples = nil
     // Stays reachable until the files are closed, so a quit meanwhile takes it over.
@@ -1676,8 +1675,8 @@ final class MeetingCoordinator {
     summaries?.prepareForTermination()
     queueTask?.cancel()
     job?.cancel()
-    // Live words close admission and start their cleanup; the process exit frees any native
-    // model still loaded (`TranscribeCppProcessExit`).
+    // #4097: Quit starts live-word cleanup without waiting; process exit frees any native model
+    // still loaded (`TranscribeCppProcessExit`).
     deps.liveWords?.quit()
     guard let recorder, let meetingID = activeMeetingID, var record = live[meetingID] else {
       // Notes save whether or not anything records (R46), inside the same deadline.
