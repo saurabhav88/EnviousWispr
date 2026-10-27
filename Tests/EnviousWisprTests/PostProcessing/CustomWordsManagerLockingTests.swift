@@ -29,9 +29,10 @@ struct CustomWordsManagerLockingTests {
       .filter { $0.hasPrefix("custom-words.backup-") }
   }
 
-  /// A local mirror of the production `CustomWordsFile` schema, needed
-  /// because that type is `private` to `CustomWordsManager.swift` and not
-  /// reachable even via `@testable import`. Field-for-field identical, so
+  /// A local mirror of the production `CustomWordsFile` schema. It was written
+  /// when that type was `private` to `CustomWordsManager.swift`; #4086 moved it to
+  /// `CustomWordsFileStore.swift`, and the mirror stays independent so these bytes
+  /// never come from the production encoder under test. Field-for-field identical, so
   /// bytes this encodes decode identically through the real production
   /// decoder — used to simulate a sibling process's fresh on-disk write.
   private struct SiblingFileFixture: Encodable {
@@ -868,28 +869,35 @@ struct CustomWordsManagerLockingTests {
   /// `functionBody(in:declaring:)`, not vague whole-file keyword presence.
   @Test
   func singleLockAuthorityStructureHoldsAcrossTheWholeFile() throws {
+    // #4086 moved every disk touch into `CustomWordsFileStore`, verbatim. The lock, load,
+    // save, quarantine and backup assertions now read that owner; `load()` and
+    // `commitImport` still live in the manager and are read there.
     let source = try String(
+      contentsOf: RepoRoot.sourceURL(
+        "Sources/EnviousWisprPostProcessing/CustomWordsFileStore.swift"),
+      encoding: .utf8)
+    let managerSource = try String(
       contentsOf: RepoRoot.sourceURL(
         "Sources/EnviousWisprPostProcessing/CustomWordsManager.swift"),
       encoding: .utf8)
 
     let loadSlice = try functionBody(
-      in: source, declaring: "public func load() -> [CustomWord]?")
+      in: managerSource, declaring: "public func load() -> [CustomWord]?")
     // #1701 Chunk 2: the missing/loaded/unreadable/needsRepair cascade —
     // including load()'s blocking repair path — moved out of load() into
     // this shared helper, verbatim, so loadSnapshot() and
     // loadPendingEnrichmentWords() can reuse the identical resolution
     // without duplicating it. load() itself is now a thin two-line wrapper.
     let resolveCurrentFileSlice = try functionBody(
-      in: source, declaring: "private func resolveCurrentFile() -> CustomWordsFile?")
+      in: source, declaring: "func resolveCurrentFile() -> CustomWordsFile?")
     let transactionSlice = try functionBody(
-      in: source, declaring: "private func performLockedTransaction<T>(")
+      in: source, declaring: "func performLockedTransaction<T>(")
     let loadFileWhileLockedSlice = try functionBody(
       in: source, declaring: "private func loadFileWhileLocked() -> CustomWordsLoadResult")
     let saveFileWhileLockedSlice = try functionBody(
       in: source, declaring: "private func saveFileWhileLocked(_ file: CustomWordsFile) throws")
     let commitImportSlice = try functionBody(
-      in: source, declaring: "package func commitImport(")
+      in: managerSource, declaring: "package func commitImport(")
 
     // 1. Exactly one declaration of withExclusiveFileLock.
     #expect(
@@ -915,7 +923,7 @@ struct CustomWordsManagerLockingTests {
     #expect(resolveCurrentFileSlice.contains("withExclusiveFileLock(blocking: true)"))
     #expect(resolveCurrentFileSlice.contains("loadFileWhileLocked()"))
     #expect(
-      loadSlice.contains("resolveCurrentFile()"),
+      loadSlice.contains("store.resolveCurrentFile()"),
       "load() must delegate to resolveCurrentFile(), not inline the cascade.")
 
     // 4. performLockedTransaction's slice shape — the mutation loader and
@@ -968,16 +976,17 @@ struct CustomWordsManagerLockingTests {
     // transaction — after entering performLockedTransaction, before the
     // transform hands back shouldSave: true.
     #expect(
-      source.components(separatedBy: "private func writePreImportBackup() {").count - 1 == 1,
+      source.components(separatedBy: "func writePreImportBackup() {").count - 1 == 1,
       "Expected exactly one writePreImportBackup declaration.")
     #expect(
-      source.components(separatedBy: "writePreImportBackup()").count - 1 == 2,
-      "Expected exactly one writePreImportBackup declaration and one call repo-wide.")
+      source.components(separatedBy: "writePreImportBackup()").count - 1 == 1
+        && managerSource.components(separatedBy: "writePreImportBackup()").count - 1 == 1,
+      "Expected exactly one writePreImportBackup declaration (store) and one call (manager).")
     let transactionStartRange = try #require(
-      commitImportSlice.range(of: "outcome = try performLockedTransaction"),
+      commitImportSlice.range(of: "outcome = try store.performLockedTransaction"),
       "commitImport must enter performLockedTransaction before creating its backup.")
     let backupCallRange = try #require(
-      commitImportSlice.range(of: "writePreImportBackup()"),
+      commitImportSlice.range(of: "store.writePreImportBackup()"),
       "commitImport must call writePreImportBackup().")
     #expect(
       transactionStartRange.lowerBound < backupCallRange.lowerBound,

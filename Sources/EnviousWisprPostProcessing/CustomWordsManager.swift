@@ -160,7 +160,9 @@ package enum CustomWordsInitialLoadFailure: Sendable, Equatable {
 /// are tracked as tombstones so they don't resurface after updates.
 @MainActor
 public final class CustomWordsManager {
-  private let fileURL: URL
+  private let store: CustomWordsFileStore
+  /// The on-disk schema every word-policy transform edits; owned by the store (#4086).
+  private typealias CustomWordsFile = CustomWordsFileStore.CustomWordsFile
 
   /// Where the live word list is kept.
   ///
@@ -174,7 +176,7 @@ public final class CustomWordsManager {
   /// The learning memory lives beside this dictionary (#3975), so a
   /// temp-file manager in a test gets a temp-file memory too.
   package var learnMemoryURL: URL {
-    fileURL.deletingLastPathComponent().appendingPathComponent(LearnMemory.fileName)
+    store.fileURL.deletingLastPathComponent().appendingPathComponent(LearnMemory.fileName)
   }
 
   nonisolated package static var liveFileURL: URL? {
@@ -185,23 +187,7 @@ public final class CustomWordsManager {
   }
 
   public init() {
-    guard
-      let baseURL = FileManager.default.urls(
-        for: .applicationSupportDirectory, in: .userDomainMask
-      ).first
-    else {
-      // Application Support is always available on macOS, but guard defensively.
-      let fallback = FileManager.default.temporaryDirectory.appendingPathComponent(
-        "EnviousWispr", isDirectory: true)
-      Self.prepareAppSupportDirectory(at: fallback)
-      fileURL = fallback.appendingPathComponent("custom-words.json")
-      Self.tightenFileIfPresent(at: fileURL)
-      return
-    }
-    let appSupport = baseURL.appendingPathComponent("EnviousWispr", isDirectory: true)
-    Self.prepareAppSupportDirectory(at: appSupport)
-    fileURL = appSupport.appendingPathComponent("custom-words.json")
-    Self.tightenFileIfPresent(at: fileURL)
+    store = CustomWordsFileStore()
   }
 
   /// Test seam (#648): inject an explicit file URL so unit tests can hit a
@@ -210,24 +196,7 @@ public final class CustomWordsManager {
   /// round-trip coverage was missing from Phase 3b; this seam closes it.
   // periphery:ignore - test seam
   package init(fileURL: URL) {
-    self.fileURL = fileURL
-    let directory = fileURL.deletingLastPathComponent()
-    Self.prepareAppSupportDirectory(at: directory)
-    Self.tightenFileIfPresent(at: fileURL)
-  }
-
-  /// Create the EnviousWispr Application Support directory at 0700 and drop a
-  /// `.metadata_never_index` Spotlight marker. Re-enforced on every init in
-  /// case a backup restore or user action loosened permissions. Soft-fails on
-  /// any filesystem operation. (V3 audit #561 / #562.)
-  private static func prepareAppSupportDirectory(at url: URL) {
-    DurableJSONFile.prepareDirectory(at: url)
-  }
-
-  /// Force `custom-words.json` to 0600 if it already exists. Migrates installs
-  /// that pre-date this hardening.
-  private static func tightenFileIfPresent(at url: URL) {
-    DurableJSONFile.tightenFileIfPresent(at: url)
+    store = CustomWordsFileStore(fileURL: fileURL)
   }
 
   // MARK: - Built-in Defaults
@@ -369,157 +338,23 @@ public final class CustomWordsManager {
       )),
   ]
 
-  // MARK: - Schema
-
-  /// Versioned wrapper for the custom words file.
-  private struct CustomWordsFile: Codable, Sendable {
-    var version: Int = 1
-    var builtinsVersion: Int = 1
-    var deletedBuiltinIds: [String] = []
-    var words: [CustomWord] = []
-    /// Durable bulk-import-enrichment total (#1701 Chunk 2) — the progress
-    /// card's denominator. `nil` = no run in progress. A missing key on a
-    /// pre-#1701 file decodes as `nil` automatically: this is a stored
-    /// `Optional` property with no explicit `CodingKeys` on this type, so
-    /// synthesized `Decodable` already treats an absent key as `nil`, exactly
-    /// the correct legacy behavior (no run can possibly be "in progress" in a
-    /// library persisted before this feature existed).
-    var pendingEnrichmentBatchTotal: Int?
-  }
-
-  /// `loadFileWhileLocked()`'s result (#1646) — distinguishes the three
-  /// conditions the old `CustomWordsFile?` collapsed into one `nil`, so
-  /// callers can fail closed instead of treating every failure as "the
-  /// library is empty".
-  private enum CustomWordsLoadResult {
-    case missing  // path does not exist — legitimate first-run state
-    case loaded(CustomWordsFile)  // decoded (current or migrated legacy format)
-    case unreadable(underlying: Error)  // exists, but the I/O read itself failed
-    case corrupted  // exists, readable, undecodable — archived aside
-  }
-
-  /// `load()`'s lock-free classification (#1690) — distinguishes only
-  /// "definitely fine as-is" from "hand this to the locked repair cascade".
-  /// It never makes the finer legacy-vs-corrupted distinction itself; that
-  /// stays the real cascade's job, decided fresh under the lock.
-  private enum ReadOnlyLoadResult {
-    case missing
-    case loaded(CustomWordsFile)  // decodes as current format — no write ever needed
-    case unreadable(underlying: Error)  // I/O read itself failed — no write ever needed
-    case needsRepair  // readable bytes exist but aren't current-format
-  }
-
   // MARK: - Public API
 
   /// Why the most recent `load()` returned nil; nil after a successful load
-  /// or a legitimate first run (#1646). The coordinator reads this once at
-  /// launch to show an honest banner instead of a silent empty list.
-  package private(set) var lastLoadFailure: CustomWordsInitialLoadFailure?
+  /// or a legitimate first run (#1646). Owned by `CustomWordsFileStore`.
+  package var lastLoadFailure: CustomWordsInitialLoadFailure? { store.lastLoadFailure }
 
-  /// Test seam: fires once, immediately after `loadFileReadOnly()` confirms
-  /// the canonical file exists but before it attempts to read it — lets a
-  /// test deterministically simulate a sibling process's file vanishing in
-  /// that exact window (#1690 cloud review), which no other seam in this
-  /// file can reach since this fast path is deliberately lock-free.
-  /// Production never sets this.
-  package var afterFileExistsCheckForTesting: (() -> Void)?
-
-  /// Classifies the current on-disk state without ever creating/opening the
-  /// lock file, migrating, saving, quarantining, moving, or otherwise
-  /// mutating disk (#1690). Missing, current-format, and unreadable are the
-  /// fast path `load()` returns from immediately, with no lock involved at
-  /// all. `.needsRepair` is the rare signal that legacy migration or
-  /// corruption quarantine may be needed — decided for real only under the
-  /// lock, by `loadFileWhileLocked()`'s existing cascade, never duplicated
-  /// here.
-  private func loadFileReadOnly() -> ReadOnlyLoadResult {
-    guard FileManager.default.fileExists(atPath: fileURL.path) else { return .missing }
-    afterFileExistsCheckForTesting?()
-    let data: Data
-    do {
-      data = try Data(contentsOf: fileURL)
-    } catch {
-      // The file existed a moment ago but reading it just failed. If it has
-      // now vanished entirely, a sibling process's quarantine (or some other
-      // deletion) raced this read; that ambiguity must be resolved under the
-      // lock like any other needs-repair case, never silently reported as a
-      // stable first-run state that could mask a corruption signal a moment
-      // later (#1690 cloud review).
-      guard FileManager.default.fileExists(atPath: fileURL.path) else {
-        return .needsRepair
-      }
-      return .unreadable(underlying: error)
-    }
-    if let file = try? JSONDecoder().decode(CustomWordsFile.self, from: data) {
-      return .loaded(file)
-    }
-    return .needsRepair
-  }
-
-  /// Shared resolution behind `load()` and `loadSnapshot()` (#1701 Chunk 2) —
-  /// one cascade, so the two callers can never disagree about what "the
-  /// current file" is. Sets `lastLoadFailure` exactly as the pre-#1701
-  /// `load()` body did; returns nil on the same unrecoverable conditions.
-  private func resolveCurrentFile() -> CustomWordsFile? {
-    switch loadFileReadOnly() {
-    case .missing:
-      lastLoadFailure = nil
-      return CustomWordsFile()
-    case .loaded(let file):
-      lastLoadFailure = nil
-      return file
-    case .unreadable:
-      lastLoadFailure = .unreadable
-      return nil
-    case .needsRepair:
-      // Rare path: migration or quarantine. `loadFileWhileLocked()` requires
-      // an already-held companion lock, acquired here BLOCKING — the
-      // deliberate exception to every other caller's non-blocking policy
-      // (#1690). Once the lock is acquired, the existing cascade re-reads
-      // the current truth in one shot and returns exactly the right one of
-      // its four outcomes, matching pre-#1690 single-process behavior
-      // exactly, now guaranteed to only ever run while the lock is held.
-      // There is no cross-call retry state to track.
-      do {
-        let result = try withExclusiveFileLock(blocking: true) { loadFileWhileLocked() }
-        switch result {
-        case .missing:
-          // This same call already observed readable, non-current-format
-          // bytes moments ago (that is why we are in the `.needsRepair` branch
-          // at all). The app never deletes the canonical file except during
-          // quarantine, so a fresh `.missing` result here, under the lock,
-          // means a sibling process completed quarantine while we waited —
-          // never a clean first run.
-          lastLoadFailure = .corrupted
-          return nil
-        case .loaded(let file):
-          lastLoadFailure = nil
-          return file
-        case .unreadable:
-          lastLoadFailure = .unreadable
-          return nil
-        case .corrupted:
-          lastLoadFailure = .corrupted
-          return nil
-        }
-      } catch {
-        // Only a genuine lock-file-open or flock-syscall failure reaches
-        // here — blocking acquisition never fails with "busy," it only ever
-        // waits. Reuses the existing `.unreadable` contract on purpose: the
-        // coordinator already treats it as "leave the current list
-        // untouched, return false" / "fall back to an empty list," exactly
-        // what this rare failure needs.
-        lastLoadFailure = .unreadable
-        return nil
-      }
-    }
+  /// Test seam forwarded to `CustomWordsFileStore.afterFileExistsCheckForTesting`.
+  package var afterFileExistsCheckForTesting: (() -> Void)? {
+    get { store.afterFileExistsCheckForTesting }
+    set { store.afterFileExistsCheckForTesting = newValue }
   }
 
   /// Load the effective word list: built-in defaults (minus tombstones) + user words.
   /// Returns nil only on unrecoverable I/O failure or a corrupted (archived)
   /// file — `lastLoadFailure` says which (#1646).
   public func load() -> [CustomWord]? {
-    guard let file = resolveCurrentFile() else { return nil }
+    guard let file = store.resolveCurrentFile() else { return nil }
     return mergedWords(file: file)
   }
 
@@ -529,7 +364,7 @@ public final class CustomWordsManager {
   /// `load()` stays a words-only convenience for every untouched consumer;
   /// this is additive, sharing the identical resolution cascade.
   package func loadSnapshot() -> CustomWordsLibrarySnapshot? {
-    guard let file = resolveCurrentFile() else { return nil }
+    guard let file = store.resolveCurrentFile() else { return nil }
     return CustomWordsLibrarySnapshot(
       words: mergedWords(file: file),
       pendingEnrichmentBatchTotal: file.pendingEnrichmentBatchTotal)
@@ -540,7 +375,7 @@ public final class CustomWordsManager {
   /// a separately-tracked in-memory job list. Returns nil only on the same
   /// unrecoverable read failure `load()`/`loadSnapshot()` report.
   package func loadPendingEnrichmentWords() -> [CustomWord]? {
-    guard let file = resolveCurrentFile() else { return nil }
+    guard let file = store.resolveCurrentFile() else { return nil }
     return mergedWords(file: file).filter(\.enrichmentPending)
   }
 
@@ -557,7 +392,7 @@ public final class CustomWordsManager {
   /// the true current denominator. Called by the background coordinator
   /// before it begins draining.
   package func repairPendingEnrichmentTotalIfNeeded() throws -> Int? {
-    try performLockedTransaction { file -> (value: Int?, shouldSave: Bool) in
+    try store.performLockedTransaction { file -> (value: Int?, shouldSave: Bool) in
       let livePendingCount = file.words.filter(\.enrichmentPending).count
       if livePendingCount == 0 {
         guard file.pendingEnrichmentBatchTotal != nil else { return (nil, false) }
@@ -572,73 +407,10 @@ public final class CustomWordsManager {
     }
   }
 
-  /// The strict read every explicit mutation uses (#1646), now exclusively
-  /// through `performLockedTransaction` (#1690). `.missing` is a legitimate
-  /// first run (fresh empty file); an unreadable or corrupted existing file
-  /// throws so the mutation writes nothing and the caller's in-memory list
-  /// stays untouched. Lock-free internally — the caller MUST already hold
-  /// the companion-file lock before calling this.
-  private func loadFileForMutationWhileLocked() throws -> CustomWordsFile {
-    switch loadFileWhileLocked() {
-    case .missing:
-      return CustomWordsFile()
-    case .loaded(let file):
-      return file
-    case .unreadable:
-      throw CustomWordsPersistenceError.unreadableExistingFile
-    case .corrupted:
-      throw CustomWordsPersistenceError.corruptedExistingFile
-    }
-  }
-
-  // MARK: - Cross-Process Locking (#1690)
-
-  /// Test seam: the `flock` acquisition syscall, injectable so a test can
-  /// force a non-contention failure (e.g. `errno = EIO`) without needing a
-  /// real second process. Production code always uses the real syscall.
-  package var lockSyscall: (Int32, Int32) -> Int32 = { flock($0, $1) }
-
-  /// The single cross-process lock authority for every disk mutation. Opens
-  /// a stable companion file next to `fileURL` and takes `flock` on it,
-  /// never on `fileURL` itself.
-  ///
-  /// Non-blocking by default so explicit mutations fail closed rather than
-  /// freezing this `@MainActor` class. Blocking acquisition is reserved for
-  /// the approved repair-aware load path.
-  private func withExclusiveFileLock<T>(
-    blocking: Bool = false, _ body: () throws -> T
-  ) throws -> T {
-    // The companion-file `flock` mechanism moved to `DurableJSONFile.withExclusiveLock` when
-    // #628 gave a second user-owned store the same need. Still exactly ONE declaration here,
-    // and this function keeps what is genuinely this type's: the mapping onto
-    // `CustomWordsPersistenceError`, which callers throughout this file catch by case.
-    do {
-      return try DurableJSONFile.withExclusiveLock(
-        on: fileURL, blocking: blocking, lockSyscall: lockSyscall, body)
-    } catch DurableJSONFile.LockFailure.busy {
-      throw CustomWordsPersistenceError.libraryBusy
-    } catch DurableJSONFile.LockFailure.unavailable {
-      throw CustomWordsPersistenceError.coordinationUnavailable
-    }
-  }
-
-  /// Wraps an explicit mutation's load-transform-save in one non-blocking
-  /// lock hold. `transform` returns whether the result actually needs a
-  /// disk write, so a transform that made no change (e.g. an all-skip
-  /// batch or import) can correctly skip the write, matching pre-lock
-  /// behavior. Every one of the six ordinary CRUD mutations, the automatic
-  /// usage flush, and the import commit route through this (#1690).
-  private func performLockedTransaction<T>(
-    _ transform: (inout CustomWordsFile) throws -> (value: T, shouldSave: Bool)
-  ) throws -> T {
-    try withExclusiveFileLock {
-      var file = try loadFileForMutationWhileLocked()
-      let outcome = try transform(&file)
-      if outcome.shouldSave {
-        try saveFileWhileLocked(file)
-      }
-      return outcome.value
-    }
+  /// Test seam forwarded to `CustomWordsFileStore.lockSyscall`.
+  package var lockSyscall: (Int32, Int32) -> Int32 {
+    get { store.lockSyscall }
+    set { store.lockSyscall = newValue }
   }
 
   /// Phase 3b (#631): debounced writer that bumps `frequencyUsed` and
@@ -714,7 +486,7 @@ public final class CustomWordsManager {
     guard !snapshot.isEmpty else { return }
 
     do {
-      try performLockedTransaction { file -> (value: Void, shouldSave: Bool) in
+      try store.performLockedTransaction { file -> (value: Void, shouldSave: Bool) in
         var changed = false
         for (id, increment) in snapshot {
           guard let idx = file.words.firstIndex(where: { $0.id == id }) else { continue }
@@ -812,7 +584,7 @@ public final class CustomWordsManager {
       })
     else { return }
 
-    let merged = try performLockedTransaction {
+    let merged = try store.performLockedTransaction {
       file -> (value: [CustomWord], shouldSave: Bool) in
       // If this matches a deleted built-in, restore it instead of adding a user word
       if let builtin = Self.builtinDefaults.first(where: {
@@ -859,7 +631,7 @@ public final class CustomWordsManager {
   public func addBatch(_ incoming: [CustomWord], to words: inout [CustomWord]) throws
     -> [UUID]
   {
-    let (createdIDs, merged) = try performLockedTransaction {
+    let (createdIDs, merged) = try store.performLockedTransaction {
       file -> (value: ([UUID], [CustomWord]), shouldSave: Bool) in
       // Seed dedupe from BOTH the in-memory merged list and the on-disk file so a
       // stale `words` snapshot can't produce a duplicate at batch scale.
@@ -900,7 +672,7 @@ public final class CustomWordsManager {
 
   public func remove(id: UUID, from words: inout [CustomWord]) throws {
     let word = words.first { $0.id == id }
-    let merged = try performLockedTransaction {
+    let merged = try store.performLockedTransaction {
       file -> (value: [CustomWord], shouldSave: Bool) in
       // If this matches a built-in, tombstone it
       if let word = word,
@@ -927,7 +699,7 @@ public final class CustomWordsManager {
   public func removeBatch(ids: [UUID], from words: inout [CustomWord]) throws {
     guard !ids.isEmpty else { return }
     let idSet = Set(ids)
-    let merged = try performLockedTransaction {
+    let merged = try store.performLockedTransaction {
       file -> (value: [CustomWord], shouldSave: Bool) in
       // Tombstone any built-ins whose canonical matches a removed word (mirror
       // remove(id:)). Import-created words are user words, so this is normally
@@ -968,7 +740,7 @@ public final class CustomWordsManager {
     let trimmedCanonical = canonical.trimmingCharacters(in: .whitespacesAndNewlines)
     let trimmedAlias = alias.trimmingCharacters(in: .whitespacesAndNewlines)
     guard Self.isStorable(trimmedAlias) else { throw CustomWordsPersistenceError.unusableValue }
-    return try performLockedTransaction {
+    return try store.performLockedTransaction {
       file -> (value: RestoredBuiltinLearnOutcome, shouldSave: Bool) in
       guard
         let builtin = Self.builtinDefaults.first(where: {
@@ -1004,7 +776,7 @@ public final class CustomWordsManager {
   /// disk state; idempotent (an absent override writes nothing); unrelated
   /// words and tombstones survive. Returns the merged library.
   package func removeUserOverride(id: UUID) throws -> [CustomWord] {
-    try performLockedTransaction { file -> (value: [CustomWord], shouldSave: Bool) in
+    try store.performLockedTransaction { file -> (value: [CustomWord], shouldSave: Bool) in
       // Only an override of a SHIPPED built-in (same UUID): an ordinary user
       // word is not this method's to remove, whatever the caller believed.
       guard Self.builtinDefaults.contains(where: { $0.word.id == id }),
@@ -1024,7 +796,7 @@ public final class CustomWordsManager {
   /// hold. Unrelated words and tombstones written meanwhile survive, because
   /// the transaction starts from fresh disk state.
   package func redeleteRestoredBuiltin(id: UUID) throws -> [CustomWord] {
-    try performLockedTransaction { file -> (value: [CustomWord], shouldSave: Bool) in
+    try store.performLockedTransaction { file -> (value: [CustomWord], shouldSave: Bool) in
       guard let builtin = Self.builtinDefaults.first(where: { $0.word.id == id }) else {
         return (mergedWords(file: file), false)
       }
@@ -1056,7 +828,7 @@ public final class CustomWordsManager {
   ) throws -> CustomWordsImportCommitReceipt {
     let outcome: (CustomWordsImportCommitReceipt, [CustomWord]?)
     do {
-      outcome = try performLockedTransaction {
+      outcome = try store.performLockedTransaction {
         file -> (value: (CustomWordsImportCommitReceipt, [CustomWord]?), shouldSave: Bool) in
         // (1) Stale check against the EFFECTIVE list Review was built from —
         // now against the freshly, LOCKED load, so it is more current than
@@ -1209,7 +981,7 @@ public final class CustomWordsManager {
         // separately fetched read (#1690). A backup failure logs and
         // proceeds: correctness comes from the atomic write and the strict
         // loader, not from the backup existing.
-        writePreImportBackup()
+        store.writePreImportBackup()
 
         // (7) Compute the post-write publication shape now; `performLockedTransaction`
         // saves `file` right after this closure returns, so this IS what will be on disk.
@@ -1287,7 +1059,7 @@ public final class CustomWordsManager {
   package func applyEnrichmentResults(
     _ results: [CustomWordEnrichmentResult]
   ) throws -> CustomWordsEnrichmentCheckpointOutcome {
-    try performLockedTransaction {
+    try store.performLockedTransaction {
       file -> (value: CustomWordsEnrichmentCheckpointOutcome, shouldSave: Bool) in
       var touchedIDs: [UUID] = []
       var candidatesByID: [UUID: [String]] = [:]
@@ -1374,7 +1146,8 @@ public final class CustomWordsManager {
   /// list — and clears the durable total to nil in the same transaction.
   /// Returns the resulting snapshot so the caller can atomically adopt both.
   package func cancelEnrichment() throws -> CustomWordsLibrarySnapshot {
-    try performLockedTransaction { file -> (value: CustomWordsLibrarySnapshot, shouldSave: Bool) in
+    try store.performLockedTransaction {
+      file -> (value: CustomWordsLibrarySnapshot, shouldSave: Bool) in
       var changed = false
       for idx in file.words.indices where file.words[idx].enrichmentPending {
         file.words[idx].enrichmentPending = false
@@ -1622,38 +1395,6 @@ public final class CustomWordsManager {
     return (result, dropped)
   }
 
-  /// Timestamped copy of the current file before a changing commit. Purely a
-  /// convenience recovery path — failures are logged, never fatal. No retention
-  /// policy in v1; an accumulating set of backups is an accepted, named scope cut.
-  ///
-  /// Never overwrites an existing backup. Two commits inside the same second
-  /// would otherwise collide on the filename, and destroying the earlier
-  /// pre-import state is the one thing this recovery path must not do.
-  private func writePreImportBackup() {
-    let fm = FileManager.default
-    guard fm.fileExists(atPath: fileURL.path) else { return }
-    let stamp = ISO8601DateFormatter().string(from: Date())
-      .replacingOccurrences(of: ":", with: "-")
-    let directory = fileURL.deletingLastPathComponent()
-    var backupURL = directory.appendingPathComponent("custom-words.backup-\(stamp).json")
-    var suffix = 2
-    while fm.fileExists(atPath: backupURL.path), suffix < 1000 {
-      backupURL = directory.appendingPathComponent(
-        "custom-words.backup-\(stamp)-\(suffix).json")
-      suffix += 1
-    }
-    do {
-      try fm.copyItem(at: fileURL, to: backupURL)
-    } catch {
-      Task {
-        await AppLogger.shared.log(
-          "CustomWordsManager: pre-import backup failed: \(error.localizedDescription)",
-          level: .info, category: "CustomWords"
-        )
-      }
-    }
-  }
-
   public func update(word: CustomWord, in words: inout [CustomWord]) throws {
     guard let index = words.firstIndex(where: { $0.id == word.id }) else { return }
     let trimmed = word.canonical.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1690,7 +1431,7 @@ public final class CustomWordsManager {
     // already do this, so any OTHER change a sibling process saved while
     // this lock was held stays visible instead of being silently dropped
     // until the next reload or mutation.
-    let merged = try performLockedTransaction {
+    let merged = try store.performLockedTransaction {
       file -> (value: [CustomWord], shouldSave: Bool) in
       let existingIdx = file.words.firstIndex(where: { $0.id == word.id })
 
@@ -1742,7 +1483,7 @@ public final class CustomWordsManager {
   /// with `words` untouched if nothing matched.
   public func updateBatch(_ updates: [CustomWord], to words: inout [CustomWord]) throws {
     guard !updates.isEmpty else { return }
-    let merged = try performLockedTransaction {
+    let merged = try store.performLockedTransaction {
       file -> (value: [CustomWord]?, shouldSave: Bool) in
       var changed = false
       for word in updates {
@@ -1759,137 +1500,6 @@ public final class CustomWordsManager {
     }
     guard let merged else { return }
     words = merged
-  }
-
-  // MARK: - Private File I/O
-
-  /// Single read path — normalizes legacy formats to CustomWordsFile. The
-  /// result distinguishes missing / loaded / unreadable / corrupted (#1646)
-  /// so callers can fail closed instead of treating every failure as
-  /// "empty". Lock-free internally and must never call
-  /// `withExclusiveFileLock` itself — every caller MUST already hold the
-  /// companion-file lock before calling this (#1690): `load()`'s rare
-  /// repair path (acquired blocking) and `loadFileForMutationWhileLocked()`
-  /// (reached only through the non-blocking `performLockedTransaction`).
-  private func loadFileWhileLocked() -> CustomWordsLoadResult {
-    guard FileManager.default.fileExists(atPath: fileURL.path) else { return .missing }
-    let data: Data
-    do {
-      data = try Data(contentsOf: fileURL)
-    } catch {
-      Task {
-        await AppLogger.shared.log(
-          "Failed to read custom words file — failing closed to prevent data loss",
-          level: .info, category: "CustomWords"
-        )
-      }
-      return .unreadable(underlying: error)
-    }
-
-    // Try new versioned wrapper first
-    if let file = try? JSONDecoder().decode(CustomWordsFile.self, from: data) {
-      return .loaded(file)
-    }
-
-    // Migrate from old [CustomWord] array format
-    if let oldWords = try? JSONDecoder().decode([CustomWord].self, from: data) {
-      let file = CustomWordsFile(words: oldWords)
-      try? saveFileWhileLocked(file)
-      Task {
-        await AppLogger.shared.log(
-          "Migrated \(oldWords.count) custom words from [CustomWord] to versioned format",
-          level: .info, category: "CustomWords"
-        )
-      }
-      return .loaded(file)
-    }
-
-    // Migrate from old [String] array format
-    if let oldStrings = try? JSONDecoder().decode([String].self, from: data) {
-      let migrated =
-        oldStrings
-        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-        .filter { !$0.isEmpty }
-        .map { CustomWord(canonical: $0) }
-      let file = CustomWordsFile(words: migrated)
-      try? saveFileWhileLocked(file)
-      Task {
-        await AppLogger.shared.log(
-          "Migrated \(oldStrings.count) custom words from [String] to versioned format",
-          level: .info, category: "CustomWords"
-        )
-      }
-      return .loaded(file)
-    }
-
-    // Corrupted — archive to a unique sidecar so the next read starts fresh.
-    // `.corrupted` is reported only when the archive actually succeeded; a
-    // failed archive leaves the original bytes in place, so the caller keeps
-    // failing closed (`.unreadable`) instead of being promised a self-heal
-    // that can't happen. Unique name: a second, later corruption event must
-    // not collide with an earlier sidecar (#1646).
-    let backup = fileURL.deletingLastPathComponent()
-      .appendingPathComponent("custom-words.json.corrupted-\(UUID().uuidString)")
-    do {
-      try FileManager.default.moveItem(at: fileURL, to: backup)
-    } catch {
-      Task {
-        await AppLogger.shared.log(
-          "Custom words file corrupted and archive failed — failing closed",
-          level: .info, category: "CustomWords"
-        )
-      }
-      return .unreadable(underlying: error)
-    }
-    Task {
-      await AppLogger.shared.log(
-        "Custom words file corrupted, backed up to \(backup.lastPathComponent)",
-        level: .info, category: "CustomWords"
-      )
-    }
-    return .corrupted
-  }
-
-  /// Persist the custom-words file at 0600.
-  ///
-  /// Writes to a temp file at 0600 first via `Foundation.open(... 0o600)`
-  /// then renames into place. Mirrors `KeychainManager.store` to avoid the
-  /// brief world-readable window that `Data.write(.atomic)` + post-write
-  /// chmod creates. (V3 audit #561.)
-  ///
-  /// The guard set here is `CustomWordsExportWriter`'s, ported whole rather
-  /// than piecemeal (#1690). That writer had already paid for each one; this
-  /// one kept an older shape on the belief — written into that file's own
-  /// header — that "the live custom-words.json has exactly one writer, so a
-  /// fixed .tmp sibling is safe there." Two instances of the app break that,
-  /// and the cost is the user's entire vocabulary:
-  ///
-  ///  - **Unique temp name**, not a fixed `.custom-words.json.tmp`. With a
-  ///    shared name plus `O_TRUNC`, a second writer wipes the first's partial
-  ///    bytes and whichever publish lands last wins. That is not a torn file;
-  ///    it is one instance's library silently replacing another's, which is
-  ///    exactly what the artifact quarantined on 2026-07-19 looked like —
-  ///    valid JSON containing one word that did not belong there.
-  ///  - **`O_EXCL`**, so a colliding temp fails loudly instead of truncating
-  ///    somebody else's write in progress.
-  ///  - **One `rename(2)`** instead of `fileExists` then
-  ///    `replaceItemAt`/`moveItem`. That branch was check-then-act, and
-  ///    `replaceItemAt` also preserves the DESTINATION's metadata, so a live
-  ///    file that had become 0644 would stay world-readable through every
-  ///    subsequent save. `rename` is atomic, refuses a directory by the kernel
-  ///    (EISDIR), and keeps the temp file's own 0600.
-  ///
-  /// Lock-free internally and must never acquire the lock itself (#1690) —
-  /// every caller MUST already hold the companion-file lock: the non-blocking
-  /// `performLockedTransaction` and the two legacy migrations inside
-  /// `loadFileWhileLocked()` (reached only while a caller of THAT holds the
-  /// lock).
-  private func saveFileWhileLocked(_ file: CustomWordsFile) throws {
-    // The write sequence — unique temp, 0600, F_FULLFSYNC, atomic rename, best-effort
-    // directory sync — moved to `DurableJSONFile` when #628 added a second user-owned store.
-    // Same primitive, same order, same reasoning; it lives in one place so the next fix lands
-    // once. `DurableJSONFile`'s header carries the reasoning that used to sit here.
-    try DurableJSONFile.write(file, to: fileURL, tempPrefix: ".custom-words.json")
   }
 
   // MARK: - Runtime Merge
