@@ -841,7 +841,8 @@ final class MeetingLiveWords {
   /// late handles' ends, an early release), every retired pump consumer, the start task and the
   /// sessions it opens late, and the Universal engine (handed over, or created by the start).
   /// For kept output, `late` applies what the sessions deliver while they end: after each end or
-  /// join returns, and once more (closing admission) after all of them, before the release.
+  /// join returns, and once more (closing admission) after all of them, before any Universal
+  /// release this cleanup starts (an earlier release already under way is joined).
   @MainActor
   final class Cleanup {
     private var sessions: [any LivePreviewEngineSession]
