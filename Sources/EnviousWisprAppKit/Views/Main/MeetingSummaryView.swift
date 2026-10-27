@@ -12,7 +12,6 @@ struct MeetingSummaryView: View {
   let meetingID: UUID
   @Environment(MeetingCoordinator.self) private var meetings
   @Environment(SettingsManager.self) private var settings
-  @Environment(NavigationCoordinator.self) private var navigation
   /// The SHA-256 of the user's own summary awaiting the replace confirmation.
   @State private var confirmingReplace: String?
 
@@ -76,6 +75,13 @@ struct MeetingSummaryView: View {
           .foregroundStyle(.stTextSecondary)
           .fixedSize(horizontal: false, vertical: true)
           .accessibilityIdentifier("history.meeting.summaryOutOfDate")
+        }
+        if MeetingSummaryLongMeetingHint.shows(
+          writtenInParts: documents.manifest(meetingID)?.summary?.writtenInParts,
+          summaryProviderID: documents.manifest(meetingID)?.summary?.inputs?.providerID,
+          currentProvider: settings.llmProvider)
+        {
+          MeetingSummaryLongMeetingHint()
         }
         TextEditor(
           text: Binding(
@@ -201,15 +207,7 @@ struct MeetingSummaryView: View {
         .fixedSize(horizontal: false, vertical: true)
         .accessibilityIdentifier("history.meeting.summaryProblem")
       if Self.opensAIPolish(problem) {
-        Button {
-          navigation.request(.aiPolish)
-        } label: {
-          Text(
-            "Open AI Polish settings",
-            comment: "History, a meeting: opens the AI Polish settings to fix the summary provider."
-          )
-        }
-        .buttonStyle(.link)
+        AIPolishSettingsLink()
       }
     }
   }

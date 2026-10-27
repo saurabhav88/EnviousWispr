@@ -904,6 +904,18 @@ struct MeetingSummaryTests {
 
   // MARK: - Written in parts (#4044)
 
+  @Test("the cloud defaults named by the long-meeting hint retain large planning windows")
+  func longMeetingHintDefaultCapacity() {
+    // #4044: "The default OpenAI, Gemini and Claude models fit much longer meetings in one
+    // piece." This binds their minimum planning capacity.
+    for provider: LLMProvider in [.openAI, .gemini, .claude] {
+      let model = LLMProvider.defaultModel(for: provider)
+      #expect(
+        MeetingSummaryProviders.hostedContextTokens(provider, model: model) >= 128_000,
+        "\(provider.rawValue) default \(model) no longer supports the hint's capacity claim")
+    }
+  }
+
   @Test("the saved parts fact follows the successful plan")
   func writtenPartsFact() async throws {
     let short = Calls()
