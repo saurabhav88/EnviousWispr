@@ -83,7 +83,7 @@ public enum CallEvidenceReader {
     case .callWindow(let family):
       guard let app = runningApp(family: family, holderPID: holderPID)
       else { return .init(startEvidence: .unknown) }
-      return .init(startEvidence: callWindow(family: family, appPID: app.processIdentifier))
+      return callWindowSnapshot(family: family, appPID: app.processIdentifier)
     case .browser(let browser):
       guard let app = browserApp(browser, holderPID: holderPID)
       else { return .init(startEvidence: .unknown) }
@@ -278,49 +278,63 @@ public enum CallEvidenceReader {
   package static func callWindow(
     family: CallAppFamily, appPID: pid_t, access: Access = .live
   ) -> Evidence {
-    let isCall: Bool
+    callWindowSnapshot(family: family, appPID: appPID, access: access).startEvidence
+  }
+
+  package static func callWindowSnapshot(
+    family: CallAppFamily, appPID: pid_t, access: Access = .live
+  ) -> Snapshot {
     switch family {
-    case .zoom:
-      switch zoomMeetingWindow(appPID: appPID, access: access) {
-      case .call: isCall = true
-      case .none: isCall = false
-      case .unknown: return .unknown
-      }
-    case .slack:
-      switch slackHuddleWindow(appPID: appPID, access: access) {
-      case .call: isCall = true
-      case .none: isCall = false
-      case .unknown: return .unknown
-      }
-    default:
-      isCall = false
+    case .zoom: return zoomMeetingWindow(appPID: appPID, access: access)
+    case .slack: return slackHuddleWindow(appPID: appPID, access: access)
+    default: return .init(startEvidence: .none)
     }
-    return isCall ? .call(family: family, room: "pid-\(appPID)") : .none
   }
 
   /// Slack's Leave control is independent of its UI language and channel/window name (#4036).
-  private static func slackHuddleWindow(appPID: pid_t, access: Access) -> SlackHuddleWindow.Verdict {
+  private static func slackHuddleWindow(appPID: pid_t, access: Access) -> Snapshot {
     // Same one-second budget as CallEvidenceRead.bounded; do not leave its shared lane busy.
     let deadline = scanDeadline(access)
     let wake = access.wake(appPID, Double(messagingTimeout))
     guard wake.roleError == .success, !wake.roleReadExhausted,
       let manual = wake.manual, !manual || wake.manualEnabled,
       access.now() < deadline
-    else { return .unknown }
+    else { return .init(startEvidence: .unknown) }
     let app = AXUIElementCreateApplication(appPID)
     guard case .value(let value) = boundedCopy(app, kAXWindowsAttribute as CFString, until: deadline, access: access),
       let windows = value as? [AXUIElement]
-    else { return .unknown }
-    return SlackHuddleWindow.classify(
-      windowCount: windows.count,
-      identifier: { slackHuddleControl(in: windows[$0], until: deadline, access: access) },
-      title: {
-        switch boundedCopy(windows[$0], kAXTitleAttribute as CFString, until: deadline, access: access) {
-        case .value(let value): (value as? String).map { .value($0) } ?? .failed
-        case .missing: .missing
-        case .failed, .unavailable: .failed
-        }
-      })
+    else { return .init(startEvidence: .unknown) }
+    let call = Evidence.call(family: .slack, room: "pid-\(appPID)")
+    var failed = false
+    for window in windows {
+      guard access.now() < deadline else { return .init(startEvidence: .unknown) }
+      var exact = false
+      let verdict = SlackHuddleWindow.classify(
+        windowCount: 1,
+        identifier: { _ in
+          let read = slackHuddleControl(in: window, until: deadline, access: access)
+          if case .value(let value) = read, value == SlackHuddleWindow.leaveClass { exact = true }
+          return read
+        },
+        title: { _ in
+          switch boundedCopy(window, kAXTitleAttribute as CFString, until: deadline, access: access) {
+          case .value(let value): (value as? String).map { .value($0) } ?? .failed
+          case .missing: .missing
+          case .failed, .unavailable: .failed
+          }
+        })
+      if exact {
+        return .init(startEvidence: call, continuity: .ongoing(family: .slack, room: "pid-\(appPID)"))
+      }
+      switch verdict {
+      // Preserve immediate admission at the outer worker boundary. Optional lookahead
+      // can exhaust that worker's budget and discard an already justified prompt.
+      case .call: return .init(startEvidence: call)
+      case .unknown: failed = true
+      case .none: break
+      }
+    }
+    return .init(startEvidence: failed ? .unknown : .none)
   }
 
   private static func slackHuddleControl(
@@ -409,33 +423,40 @@ public enum CallEvidenceReader {
   }
 
   /// Reads each Zoom window's identifier, then its title, only until one proves a meeting.
-  private static func zoomMeetingWindow(appPID: pid_t, access: Access) -> ZoomCallWindow.Verdict {
+  private static func zoomMeetingWindow(appPID: pid_t, access: Access) -> Snapshot {
     let deadline = scanDeadline(access)
     let app = AXUIElementCreateApplication(appPID)
     guard case .value(let value) = boundedCopy(
       app, kAXWindowsAttribute as CFString, until: deadline, access: access),
       let windows = value as? [AXUIElement]
-    else { return .unknown }
+    else { return .init(startEvidence: .unknown) }
+    let call = Evidence.call(family: .zoom, room: "pid-\(appPID)")
     var failed = false
     for window in windows {
-      guard access.now() < deadline else { return .unknown }
+      guard access.now() < deadline else { return .init(startEvidence: .unknown) }
       // The classifier's count-one form preserves identifier-first/positive-wins behavior;
       // this reader owns iteration so an expired budget stops the remaining windows too.
-      switch ZoomCallWindow.classify(
+      var exact = false
+      let verdict = ZoomCallWindow.classify(
         windowCount: 1,
         identifier: { _ in
-          stringRead(window, kAXIdentifierAttribute as CFString, until: deadline, access: access)
+          let read = stringRead(window, kAXIdentifierAttribute as CFString, until: deadline, access: access)
+          if case .value(let value) = read, value == ZoomCallWindow.meetingIdentifier { exact = true }
+          return read
         },
         title: { _ in
           stringRead(window, kAXTitleAttribute as CFString, until: deadline, access: access)
         })
-      {
-      case .call: return .call
+      if exact {
+        return .init(startEvidence: call, continuity: .ongoing(family: .zoom, room: "pid-\(appPID)"))
+      }
+      switch verdict {
+      case .call: return .init(startEvidence: call)
       case .unknown: failed = true
       case .none: break
       }
     }
-    return failed ? .unknown : .none
+    return .init(startEvidence: failed ? .unknown : .none)
   }
 
   private static func stringRead(

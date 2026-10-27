@@ -506,6 +506,109 @@ struct CallEvidenceReaderTests {
     return fixture
   }
 
+  @Test("Exact Zoom and Slack proof supplies attributed ongoing continuity",
+    arguments: [CallAppFamily.zoom, .slack])
+  func exactCallWindowSnapshot(_ family: CallAppFamily) {
+    let fixture = family == .zoom ? Fixture()
+      : slackFixture(control: .value([SlackHuddleWindow.leaveClass] as CFArray))
+    let snapshot = Reader.callWindowSnapshot(family: family, appPID: fixture.pid, access: fixture.access)
+    #expect(snapshot == .init(startEvidence: .call(family: family, room: "pid-70000"),
+      continuity: .ongoing(family: family, room: "pid-70000")))
+    #expect(fixture.messages.filter { $0 == "AXWindows" }.count == 1)
+    #expect(fixture.refused.isEmpty)
+    #expect(Reader.callWindow(family: family, appPID: fixture.pid, access: fixture.access)
+      == snapshot.startEvidence)
+    #expect(fixture.messages.filter { $0 == "AXWindows" }.count == 2,
+      "each legacy or snapshot entry performs one scan")
+  }
+
+  @Test("Title-only native admission does not become independent ongoing proof",
+    arguments: [CallAppFamily.zoom, .slack])
+  func callWindowTitleIsOnlyAdmission(_ family: CallAppFamily) {
+    let fixture = family == .zoom ? Fixture() : slackFixture(control: .missing)
+    fixture.identifier = nil
+    fixture.title = family == .zoom ? "Réunion Zoom" : "Huddle"
+    #expect(Reader.callWindowSnapshot(family: family, appPID: fixture.pid, access: fixture.access)
+      == .init(startEvidence: .call(family: family, room: "pid-70000")))
+  }
+
+  @Test("Later exact native proof wins earlier failed windows",
+    arguments: [CallAppFamily.zoom, .slack])
+  func callWindowExactAfterEarlierState(_ family: CallAppFamily) {
+    let fixture = family == .zoom ? Fixture()
+      : slackFixture(control: .value([SlackHuddleWindow.leaveClass] as CFArray))
+    let earlier = AXUIElementCreateApplication(88_001)
+    fixture.windows = [earlier, fixture.window]
+    let response = fixture.response
+    fixture.response = { f, node, attribute in
+      if CFEqual(node, earlier) {
+        return .failed
+      }
+      return response?(f, node, attribute)
+    }
+    #expect(Reader.callWindowSnapshot(family: family, appPID: fixture.pid, access: fixture.access)
+      == .init(startEvidence: .call(family: family, room: "pid-70000"),
+        continuity: .ongoing(family: family, room: "pid-70000")))
+  }
+
+  @Test("Legacy title admission returns before optional later-window continuity work",
+    arguments: [CallAppFamily.zoom, .slack])
+  func legacyTitleDoesNotWaitForContinuity(_ family: CallAppFamily) {
+    let fixture = family == .zoom ? Fixture() : slackFixture(control: .missing)
+    fixture.identifier = nil
+    fixture.title = family == .zoom ? "Zoom Meeting" : "Huddle"
+    let later = AXUIElementCreateApplication(88_002)
+    fixture.windows.append(later)
+    let response = fixture.response
+    var touchedLaterWindow = false
+    fixture.response = { f, node, attribute in
+      if CFEqual(node, later) {
+        touchedLaterWindow = true
+        f.instant = f.instant.advanced(by: .seconds(2))
+        return .failed
+      }
+      return response?(f, node, attribute)
+    }
+    #expect(Reader.callWindow(family: family, appPID: fixture.pid, access: fixture.access)
+      == .call(family: family, room: "pid-70000"))
+    #expect(!touchedLaterWindow, "the outer worker must receive admitted start evidence immediately")
+    #expect(Reader.callWindowSnapshot(family: family, appPID: fixture.pid, access: fixture.access)
+      == .init(startEvidence: .call(family: family, room: "pid-70000")))
+    #expect(!touchedLaterWindow, "snapshot admission also avoids optional blocking lookahead")
+  }
+
+  @Test("Legacy negative and failed native scans never become ended proof",
+    arguments: ["zoomNegative", "slackNegative", "zoomDeadline", "slackWake", "zoomTimeout",
+      "slackPartial", "slackMalformed", "zoomMalformed"])
+  func callWindowUnknownContinuity(_ condition: String) {
+    let family: CallAppFamily = condition.hasPrefix("zoom") ? .zoom : .slack
+    let fixture = family == .zoom ? Fixture() : slackFixture(control: .missing)
+    fixture.identifier = nil
+    fixture.refuseSetup = condition == "zoomTimeout"
+    let response = fixture.response
+    fixture.response = { f, node, attribute in
+      if condition == "zoomDeadline", attribute == "AXWindows" {
+        f.instant = f.instant.advanced(by: .seconds(2))
+      }
+      if condition == "slackPartial", attribute == "AXChildren" { return .failed }
+      if condition == "slackMalformed", attribute == "AXDOMClassList" {
+        return .value(SlackHuddleWindow.leaveClass as CFString)
+      }
+      if condition == "zoomMalformed", attribute == "AXIdentifier" {
+        return .value(NSNumber(value: 1))
+      }
+      return response?(f, node, attribute)
+    }
+    var access = fixture.access
+    if condition == "slackWake" {
+      access.wake = { _, _ in
+        .init(roleError: .cannotComplete, roleReadExhausted: false, manual: nil, manualEnabled: false)
+      }
+    }
+    #expect(Reader.callWindowSnapshot(family: family, appPID: fixture.pid, access: access).continuity
+      == .unknown)
+  }
+
   @Test("Shared Slack search accepts only the real button role", arguments: [true, false])
   func slackSearchRole(button: Bool) {
     let fixture = slackFixture(
