@@ -79,7 +79,7 @@ public enum CallEvidenceReader {
     guard AXIsProcessTrusted() else { return .init(startEvidence: .unknown) }
     switch rule {
     case .callApp(let family):
-      return .init(startEvidence: nativeCallEvidence(family: family, holderPID: holderPID))
+      return nativeCallSnapshot(family: family, holderPID: holderPID)
     case .callWindow(let family):
       guard let app = runningApp(family: family, holderPID: holderPID)
       else { return .init(startEvidence: .unknown) }
@@ -94,14 +94,20 @@ public enum CallEvidenceReader {
   package static func nativeCallEvidence(
     family: CallAppFamily, holderPID: Int32, access: Access = .live
   ) -> Evidence {
+    nativeCallSnapshot(family: family, holderPID: holderPID, access: access).startEvidence
+  }
+
+  package static func nativeCallSnapshot(
+    family: CallAppFamily, holderPID: Int32, access: Access = .live
+  ) -> Snapshot {
     let room = "pid-\(holderPID)"
     guard family == .teams else {
       // A calling app's microphone use is its call (Wispr Flow's rule); the process is the room.
-      return .call(family: family, room: room)
+      return .init(startEvidence: .call(family: family, room: room))
     }
     // Teams' pre-join microphone test also captures audio (#4094). Only the observed exact
     // hang-up button proves a call for automatic recording; uncertainty still permits Ask.
-    let unproven = Evidence.microphoneOnly(family: family, room: room)
+    let unproven = Snapshot(startEvidence: .microphoneOnly(family: family, room: room))
     guard let owner = teamsOwnerPID(holderPID: holderPID, regularTeamsPIDs: access.regularTeamsPIDs())
     else { return unproven }
     let deadline = scanDeadline(access)
@@ -115,16 +121,94 @@ public enum CallEvidenceReader {
       app, kAXWindowsAttribute as CFString, until: deadline, access: access),
       let windows = value as? [AXUIElement]
     else { return unproven }
+    var allHome = !windows.isEmpty
     for window in windows {
       guard access.now() < deadline else { return unproven }
-      if case .found = callButton(
-        in: window, until: deadline, access: access, attribute: "AXDOMIdentifier" as CFString,
-        matches: { ($0 as? String).map { $0 == "hangup-button" } })
-      {
-        return .call(family: family, room: room)
+      switch teamsWindow(in: window, until: deadline, access: access) {
+      case .ongoing:
+        return .init(startEvidence: .call(family: family, room: room),
+          continuity: .ongoing(family: family, room: room))
+      case .home: break
+      case .unknown: allHome = false
       }
     }
-    return unproven
+    // A home marker never substitutes for the other windows or an unchanged owner/window set.
+    guard allHome,
+      teamsOwnerPID(holderPID: holderPID, regularTeamsPIDs: access.regularTeamsPIDs()) == owner,
+      case .value(let currentValue) = boundedCopy(
+        app, kAXWindowsAttribute as CFString, until: deadline, access: access),
+      let current = currentValue as? [AXUIElement], current.count == windows.count,
+      windows.enumerated().allSatisfy({ index, window in
+        !windows.prefix(index).contains(where: { CFEqual($0, window) })
+          && current.filter { CFEqual($0, window) }.count == 1
+      })
+    else { return unproven }
+    return .init(startEvidence: .none, continuity: .ended(family: family, room: room))
+  }
+
+  private enum TeamsWindow { case ongoing, home, unknown }
+
+  private static func teamsWindow(
+    in window: AXUIElement, until deadline: ContinuousClock.Instant, access: Access
+  ) -> TeamsWindow {
+    var complete = true
+    var home = false
+    var preview = false
+    var recognizedWindow = false
+    var supportedScope = true
+    let visible: Bool
+    if case .value(let minimized) = boundedCopy(
+      window, kAXMinimizedAttribute as CFString, until: deadline, access: access),
+      CFGetTypeID(minimized) == CFBooleanGetTypeID(), (minimized as? Bool) == false
+    { visible = true }
+    else { visible = false }
+    var queue: [(AXUIElement, Int)] = [(window, 0)]
+    var cursor = 0
+    while cursor < queue.count, cursor < 800, access.now() < deadline {
+      let (node, level) = queue[cursor]
+      cursor += 1
+      let role: String?
+      if case .value(let rawRole) = boundedCopy(
+        node, kAXRoleAttribute as CFString, until: deadline, access: access),
+        let text = rawRole as? String, !text.isEmpty
+      { role = text }
+      else { role = nil; complete = false }
+      if CFEqual(node, window) { recognizedWindow = role == "AXWindow" }
+      // A readable subtree is not necessarily supported non-call UI. Modal, nested-window
+      // and embedded-document scopes cannot borrow a home table elsewhere in this window.
+      // Keep searching them for positive hang-up proof, but never infer end from them.
+      if role == "AXSheet" || role == "AXDialog" || role == "AXSystemDialog"
+        || role == "AXDrawer" || role == "AXWebArea"
+        || (role == "AXWindow" && !CFEqual(node, window))
+      { supportedScope = false }
+      if role == "AXButton" {
+        switch boundedCopy(node, "AXDOMIdentifier" as CFString, until: deadline, access: access) {
+        case .value(let value):
+          if let identifier = value as? String {
+            if identifier == "hangup-button" { return .ongoing }
+            if identifier == "prejoin-join-button" { preview = true }
+          } else { complete = false }
+        case .missing: break
+        case .failed, .unavailable: complete = false
+        }
+      } else if role == "AXTable" {
+        let title = controlText(node, kAXTitleAttribute as CFString, until: deadline, access: access)
+        let description = controlText(
+          node, kAXDescriptionAttribute as CFString, until: deadline, access: access)
+        if !title.valid || !description.valid { complete = false }
+        if title.text == "Meet navigation", description.text == "Meet navigation" { home = true }
+      }
+      switch boundedCopy(node, kAXChildrenAttribute as CFString, until: deadline, access: access) {
+      case .value(let value):
+        guard let children = value as? [AXUIElement] else { complete = false; continue }
+        if level < 32 { queue.append(contentsOf: children.map { ($0, level + 1) }) }
+        else if !children.isEmpty { complete = false }
+      case .missing: break
+      case .failed, .unavailable: complete = false
+      }
+    }
+    if cursor < queue.count || access.now() >= deadline { complete = false }
+    return complete && supportedScope && recognizedWindow && visible && home && !preview ? .home : .unknown
   }
 
   /// A helper may hold the microphone; inspect only an unambiguous regular Teams owner.
@@ -430,10 +514,10 @@ public enum CallEvidenceReader {
         continue
       }
       if role == "AXButton" {
-        let title = meetText(node, kAXTitleAttribute as CFString, until: deadline, access: access)
+        let title = controlText(node, kAXTitleAttribute as CFString, until: deadline, access: access)
         if !title.valid { complete = false }
         let description: (text: String?, valid: Bool) = title.text == "Leave call" ? (text: nil, valid: true)
-          : meetText(node, kAXDescriptionAttribute as CFString, until: deadline, access: access)
+          : controlText(node, kAXDescriptionAttribute as CFString, until: deadline, access: access)
         if !description.valid { complete = false }
         if title.text == "Leave call" || description.text == "Leave call" {
           guard sameRoom(page, match: match, until: deadline, access: access)
@@ -443,7 +527,7 @@ public enum CallEvidenceReader {
         }
         if (title.text ?? "").isEmpty, (description.text ?? "").isEmpty { complete = false }
       } else if role == "AXHeading" {
-        let title = meetText(node, kAXTitleAttribute as CFString, until: deadline, access: access)
+        let title = controlText(node, kAXTitleAttribute as CFString, until: deadline, access: access)
         if !title.valid { complete = false }
         if let text = title.text, meetEndTitles.contains(text) {
           if case .value(let rawLevel) = boundedCopy(
@@ -475,7 +559,7 @@ public enum CallEvidenceReader {
     return .init(startEvidence: start)
   }
 
-  private static func meetText(
+  private static func controlText(
     _ element: AXUIElement, _ attribute: CFString, until deadline: ContinuousClock.Instant,
     access: Access
   ) -> (text: String?, valid: Bool) {

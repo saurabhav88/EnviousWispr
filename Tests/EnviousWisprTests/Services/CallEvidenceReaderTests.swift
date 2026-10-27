@@ -591,9 +591,30 @@ struct CallEvidenceReaderTests {
 
   func teamsFixture(
     identifier: Reader.CopyResult = .value("hangup-button" as CFString),
-    role: String = "AXButton", depth: Int = 16
+    role: String = "AXButton", depth: Int = 16, home: Bool = false
   ) -> Fixture {
     let fixture = Fixture()
+    if home {
+      fixture.response = { f, node, attribute in
+        if CFEqual(node, f.window) {
+          switch attribute {
+          case "AXRole": return .value("AXWindow" as CFString)
+          case "AXMinimized": return .value(kCFBooleanFalse)
+          case "AXChildren": return .value([f.page] as CFArray)
+          default: return nil
+          }
+        }
+        guard CFEqual(node, f.page) else { return nil }
+        switch attribute {
+        case "AXRole": return .value("AXTable" as CFString)
+        case "AXTitle", "AXDescription": return .value("Meet navigation" as CFString)
+        case "AXDOMIdentifier": return .value("" as CFString)
+        case "AXChildren": return .missing
+        default: return nil
+        }
+      }
+      return fixture
+    }
     let nodes = [fixture.window] + (1...depth).map { AXUIElementCreateApplication(Int32(71_000 + $0)) }
     fixture.response = { _, node, attribute in
       guard let index = nodes.firstIndex(where: { CFEqual($0, node) }) else { return nil }
@@ -606,6 +627,168 @@ struct CallEvidenceReaderTests {
       }
     }
     return fixture
+  }
+
+  @Test("A completely recognized Teams home window is not a new weak Ask",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4142"))
+  func teamsHomeIsNotStartEvidence() {
+    let fixture = teamsFixture(home: true)
+    #expect(Reader.nativeCallEvidence(family: .teams, holderPID: fixture.pid, access: fixture.access)
+      == .none)
+  }
+
+  @Test("Teams home-only continuity is ended with exact-handle bounds")
+  func teamsHomeSnapshot() {
+    let fixture = teamsFixture(home: true)
+    #expect(Reader.nativeCallSnapshot(family: .teams, holderPID: fixture.pid, access: fixture.access)
+      == .init(startEvidence: .none, continuity: .ended(family: .teams, room: "pid-70000")))
+    #expect(fixture.refused.isEmpty)
+  }
+
+  @Test("A Teams hang-up control wins home or uncertainty in other windows", arguments: [true, false])
+  func teamsOngoingWinsHome(homeFirst: Bool) {
+    let fixture = teamsFixture(home: true)
+    let callWindow = AXUIElementCreateApplication(85_001)
+    let button = AXUIElementCreateApplication(85_002)
+    fixture.windows = homeFirst ? [fixture.window, callWindow] : [callWindow, fixture.window]
+    let response = fixture.response
+    fixture.response = { f, node, attribute in
+      if CFEqual(node, callWindow) {
+        if attribute == "AXRole" { return .failed }
+        if attribute == "AXChildren" { return .value([button] as CFArray) }
+        return .missing
+      }
+      if CFEqual(node, button) {
+        switch attribute {
+        case "AXRole": return .value("AXButton" as CFString)
+        case "AXDOMIdentifier": return .value("hangup-button" as CFString)
+        default: return .missing
+        }
+      }
+      return response?(f, node, attribute)
+    }
+    #expect(Reader.nativeCallSnapshot(family: .teams, holderPID: fixture.pid, access: fixture.access)
+      == .init(startEvidence: .call(family: .teams, room: "pid-70000"),
+        continuity: .ongoing(family: .teams, room: "pid-70000")))
+  }
+
+  @Test("Teams home cannot cover unknown additional windows or a prejoin preview",
+    arguments: [true, false])
+  func teamsHomeWithUnrecognizedState(preview: Bool) {
+    let fixture = teamsFixture(home: true)
+    let other = AXUIElementCreateApplication(85_001)
+    let response = fixture.response
+    if !preview { fixture.windows.append(other) }
+    fixture.response = { f, node, attribute in
+      if preview, CFEqual(node, f.page), attribute == "AXChildren" {
+        return .value([other] as CFArray)
+      }
+      if CFEqual(node, other) {
+        switch attribute {
+        case "AXRole": return .value((preview ? "AXButton" : "AXWindow") as CFString)
+        case "AXDOMIdentifier": return .value("prejoin-join-button" as CFString)
+        case "AXMinimized": return .value(kCFBooleanFalse)
+        default: return .missing
+        }
+      }
+      return response?(f, node, attribute)
+    }
+    #expect(Reader.nativeCallSnapshot(family: .teams, holderPID: fixture.pid, access: fixture.access)
+      == .init(startEvidence: .microphoneOnly(family: .teams, room: "pid-70000")))
+  }
+
+  @Test("Teams home with masked, unreadable, unsupported or changing scope remains uncertain",
+    arguments: ["minimized", "missingMinimized", "partial", "expired", "windowChange",
+      "ownerChange", "empty", "locale", "malformed"])
+  func teamsUncertainHome(_ condition: String) {
+    let fixture = teamsFixture(home: true)
+    let response = fixture.response
+    var windowReads = 0
+    fixture.response = { f, node, attribute in
+      if attribute == "AXWindows" {
+        windowReads += 1
+        if condition == "empty" || (condition == "windowChange" && windowReads == 2) {
+          return .value([] as CFArray)
+        }
+      }
+      if CFEqual(node, f.window), attribute == "AXMinimized" {
+        if condition == "minimized" { return .value(kCFBooleanTrue) }
+        if condition == "missingMinimized" { return .missing }
+      }
+      if CFEqual(node, f.page) {
+        if attribute == "AXChildren", condition == "partial" { return .failed }
+        if attribute == "AXDescription" {
+          if condition == "expired" { f.instant = f.instant.advanced(by: .seconds(2)) }
+          if condition == "locale" { return .value("Unsupported home label" as CFString) }
+          if condition == "malformed" { return .value(NSNumber(value: 1)) }
+        }
+      }
+      return response?(f, node, attribute)
+    }
+    var access = fixture.access
+    var ownerReads = 0
+    access.regularTeamsPIDs = {
+      ownerReads += 1
+      return condition == "ownerChange" && ownerReads > 1 ? [] : [fixture.pid]
+    }
+    #expect(Reader.nativeCallSnapshot(family: .teams, holderPID: fixture.pid, access: access)
+      == .init(startEvidence: .microphoneOnly(family: .teams, room: "pid-70000")))
+  }
+
+  @Test("Unsupported nested Teams scopes prevent end while preserving positive call proof",
+    arguments: ["AXSheet", "AXWindow", "AXWebArea", "AXDialog"])
+  func teamsHomeUnsupportedScope(_ role: String) {
+    for ongoing in [false, true] {
+      let fixture = teamsFixture(home: true)
+      let nested = AXUIElementCreateApplication(85_003)
+      let button = AXUIElementCreateApplication(85_004)
+      let response = fixture.response
+      fixture.response = { f, node, attribute in
+        if CFEqual(node, f.window), attribute == "AXChildren" {
+          return .value([f.page, nested] as CFArray)
+        }
+        if CFEqual(node, nested) {
+          if attribute == "AXRole" { return .value(role as CFString) }
+          if attribute == "AXChildren", ongoing { return .value([button] as CFArray) }
+          return .missing
+        }
+        if CFEqual(node, button) {
+          if attribute == "AXRole" { return .value("AXButton" as CFString) }
+          if attribute == "AXDOMIdentifier" { return .value("hangup-button" as CFString) }
+          return .missing
+        }
+        return response?(f, node, attribute)
+      }
+      let expected: Reader.Snapshot = ongoing
+        ? .init(startEvidence: .call(family: .teams, room: "pid-70000"),
+          continuity: .ongoing(family: .teams, room: "pid-70000"))
+        : .init(startEvidence: .microphoneOnly(family: .teams, room: "pid-70000"))
+      #expect(Reader.nativeCallSnapshot(family: .teams, holderPID: fixture.pid, access: fixture.access)
+        == expected)
+    }
+  }
+
+  @Test("A Teams home marker before unsearched descendants cannot establish end",
+    arguments: [true, false])
+  func teamsHomeTraversalCutoff(depth: Bool) {
+    let fixture = teamsFixture(home: true)
+    let nodes = (0..<(depth ? 34 : 800)).map { AXUIElementCreateApplication(Int32(86_000 + $0)) }
+    let response = fixture.response
+    fixture.response = { f, node, attribute in
+      if CFEqual(node, f.page), attribute == "AXChildren" {
+        return .value((depth ? [nodes[0]] : nodes) as CFArray)
+      }
+      if let index = nodes.firstIndex(where: { CFEqual($0, node) }) {
+        if attribute == "AXRole" { return .value("AXGroup" as CFString) }
+        if attribute == "AXChildren", depth, index + 1 < nodes.count {
+          return .value([nodes[index + 1]] as CFArray)
+        }
+        return .missing
+      }
+      return response?(f, node, attribute)
+    }
+    #expect(Reader.nativeCallSnapshot(family: .teams, holderPID: fixture.pid, access: fixture.access)
+      == .init(startEvidence: .microphoneOnly(family: .teams, room: "pid-70000")))
   }
 
   @Test("Teams owner selection prefers its own regular holder, otherwise only one distinct owner")
