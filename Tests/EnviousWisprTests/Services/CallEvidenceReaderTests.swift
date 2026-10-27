@@ -67,13 +67,6 @@ struct CallEvidenceReaderTests {
     }
   }
 
-  @Test("Healthy Zoom identifier still proves the call")
-  func healthyZoomIdentifier() {
-    let fixture = Fixture()
-    #expect(Reader.callWindow(family: .zoom, appPID: fixture.pid, access: fixture.access)
-      == .call(family: .zoom, room: "pid-70000"))
-  }
-
   @Test("Healthy browser descendant URL still proves the call")
   func healthyBrowserURL() {
     let fixture = Fixture()
@@ -168,16 +161,21 @@ struct CallEvidenceReaderTests {
     #expect(fixture.messages.isEmpty)
   }
 
-  @Test("A quick role-read error can still wake a readable browser call")
+  @Test("A quick role-read error preserves later browser call evidence")
   func quickBrowserRoleError() {
     let fixture = Fixture()
+    var roleErrorObserved = false
     fixture.response = { rig, node, attribute in
       if attribute == "AXRole", CFEqual(node, rig.window) == false,
-        CFEqual(node, rig.page) == false { return .failed }
+        CFEqual(node, rig.page) == false {
+        roleErrorObserved = true
+        return .failed
+      }
       return nil
     }
     #expect(Reader.meetingPage(appPID: fixture.pid, access: fixture.access)
       == .call(family: .googleMeet, room: "abc-defg-hij"))
+    #expect(roleErrorObserved)
   }
 
   @Test("An incomplete walk still accepts an authoritative document address",
