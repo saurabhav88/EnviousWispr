@@ -14,7 +14,7 @@ struct SystemAudioTapTests {
 
   // MARK: - Fixtures
 
-  private final class Output: Sendable {
+  fileprivate final class Output: Sendable {
     let samples = OSAllocatedUnfairLock<[Float]>(initialState: [])
     let hostTimes = OSAllocatedUnfairLock<[UInt64]>(initialState: [])
     let newRuns = OSAllocatedUnfairLock<[Bool]>(initialState: [])
@@ -64,7 +64,7 @@ struct SystemAudioTapTests {
     (from..<(from + n)).map { amplitude * Float(sin(2 * .pi * hz * Double($0) / rate)) }
   }
 
-  private func ticks(_ seconds: Double) -> UInt64 { CallSoundPipeline.ticks(seconds: seconds) }
+  fileprivate func ticks(_ seconds: Double) -> UInt64 { CallSoundPipeline.ticks(seconds: seconds) }
 
   /// Feeds one second of `mono(i)` as IOProc callbacks of 512 frames with contiguous times.
   private func feedSecond(
@@ -405,7 +405,7 @@ struct SystemAudioTapTests {
 
   private enum FakeError: Error { case startFailed }
 
-  private final class FakeBackend: CallSoundBackend, @unchecked Sendable {
+  fileprivate final class FakeBackend: CallSoundBackend, @unchecked Sendable {
     let lock = NSLock()
     var starts = 0
     var stops = 0
@@ -418,6 +418,8 @@ struct SystemAudioTapTests {
     /// The buffer layout `start` commits to (nil commits none).
     var bufferChannels: [UInt32]?
     var outputUID = "speakers"
+    /// #4121: the transport class a build reports for the output device.
+    var outputTransport = "built_in"
     /// `currentCapture` cannot read the device.
     var failCurrent = false
     /// Changes the rate while listeners install: a change no notice reports.
@@ -443,7 +445,8 @@ struct SystemAudioTapTests {
     private var capture: CallSoundCapture {
       .init(
         build: starts, outputUID: outputUID,
-        format: .init(sampleRate: rate, bufferChannels: bufferChannels))
+        format: .init(sampleRate: rate, bufferChannels: bufferChannels),
+        outputTransport: outputTransport)
     }
 
     func currentCapture() throws -> CallSoundCapture {
@@ -503,18 +506,21 @@ struct SystemAudioTapTests {
     }
   }
 
-  private final class Events: Sendable {
+  @available(macOS 14.2, *)
+  fileprivate final class Events: Sendable {
     let list = OSAllocatedUnfairLock<[String]>(initialState: [])
+    /// #4121: change rows, kept apart from `list` so the event order above is unchanged.
+    let reports = OSAllocatedUnfairLock<[SystemAudioTap.CaptureReport]>(initialState: [])
   }
 
   /// A clock a test moves by hand.
-  private final class Clock: Sendable {
+  fileprivate final class Clock: Sendable {
     let seconds = OSAllocatedUnfairLock(initialState: 100.0)
     var now: @Sendable () -> TimeInterval { { self.seconds.withLock { $0 } } }
   }
 
   @available(macOS 14.2, *)
-  private func tap(
+  fileprivate func tap(
     _ backend: FakeBackend, _ output: Output, _ events: Events, clock: Clock = Clock()
   ) -> SystemAudioTap {
     SystemAudioTap(
@@ -523,6 +529,7 @@ struct SystemAudioTapTests {
         switch event {
         case .rebuilt: events.list.withLock { $0.append("rebuilt") }
         case .rebuildFailed: events.list.withLock { $0.append("rebuildFailed") }
+        case .report(let report): events.reports.withLock { $0.append(report) }
         }
       },
       drainInterval: .seconds(3_600), now: clock.now)
@@ -530,7 +537,7 @@ struct SystemAudioTapTests {
 
   /// `count` buffers of 480 mono frames, `step` seconds apart from `start` seconds: 20 ms is
   /// the call-profile shape (24 kHz), 10 ms is 48 kHz.
-  private func feedTiming(
+  fileprivate func feedTiming(
     _ ingest: @Sendable (UnsafePointer<AudioBufferList>, UInt64, Bool) -> Void, count: Int,
     start: Double, step: Double
   ) throws {
@@ -561,6 +568,7 @@ struct SystemAudioTapTests {
       #expect(backend.snapshot.starts == 1)
       #expect(!backend.snapshot.running)
       #expect(events.list.withLock { $0 }.isEmpty)
+      #expect(events.reports.withLock { $0 }.isEmpty, "#4121: a stopped queued rebuild sends no row")
       #expect(throws: SystemAudioTap.TapError.stopped) { try tap.start() }
       tap.stop()
     }
@@ -1153,7 +1161,7 @@ struct SystemAudioTapTests {
   }
 
   /// One callback of one interleaved buffer; `samples` holds `channels` values per frame.
-  private func deliver(
+  fileprivate func deliver(
     _ samples: [Float], to ingest: @Sendable (UnsafePointer<AudioBufferList>, UInt64, Bool) -> Void,
     host: UInt64, channels: UInt32 = 1
   ) throws {
@@ -2078,3 +2086,296 @@ struct CallSoundRateCheckTests {
     #expect(!sustained(p.takeRateOutcomes()), "two windows before and one after are not three")
   }
 }
+
+#if DEBUG
+  /// #4121: when these fail, the call-sound change rows and the meeting's start facts misreport
+  /// which output device a rebuild or stop happened on, at which rate, or why, so a device we
+  /// never tested cannot be found in the data.
+  @Suite("SystemAudioTap change rows (#4121)", .tags(.observabilityContract))
+  struct SystemAudioTapReportTests {
+    private typealias Fixture = SystemAudioTapTests
+    private let fixture = SystemAudioTapTests()
+    @available(macOS 14.2, *)
+    private typealias Report = SystemAudioTap.CaptureReport
+
+    @available(macOS 14.2, *)
+    private func make(_ backend: Fixture.FakeBackend, _ events: Fixture.Events) -> SystemAudioTap {
+      fixture.tap(backend, Fixture.Output(), events)
+    }
+
+    @Test("a change found at start rebuilds once: one start_rebuilt row, and the start facts are the rebuilt capture")
+    func startupRevalidationRebuilt() throws {
+      guard #available(macOS 14.2, *) else { return }
+      let backend = Fixture.FakeBackend()
+      backend.rateAtInstall = 24_000
+      let events = Fixture.Events()
+      let tap = make(backend, events)
+      try tap.start()
+      #expect(tap.settleForTesting())
+      #expect(
+        events.reports.withLock { $0 } == [
+          Report(
+            outcome: .startRebuilt, reason: .nominalRate, configuredRateHz: 24_000,
+            nominalRateHz: nil, measuredRateBucket: nil, outputTransport: "built_in")
+        ])
+      #expect(
+        tap.summary
+          == CallSoundSummary(outputTransport: "built_in", configuredRateHz: 24_000, rebuilds: 1))
+      #expect(tap.health.rebuilds == 0, "the runtime counter is unchanged")
+      tap.stop()
+      #expect(events.reports.withLock { $0.count } == 1, "explicit stop sends no row")
+    }
+
+    @Test("a failed rebuild at start sends one start_rebuild_failed row with the retired capture's facts and no start facts")
+    func startupRevalidationFailed() throws {
+      guard #available(macOS 14.2, *) else { return }
+      let backend = Fixture.FakeBackend()
+      backend.rateAtInstall = 24_000
+      backend.failStartNumber = 2
+      let events = Fixture.Events()
+      let tap = make(backend, events)
+      #expect(throws: (any Error).self) { try tap.start() }
+      #expect(
+        events.reports.withLock { $0 } == [
+          Report(
+            outcome: .startRebuildFailed, reason: .nominalRate, configuredRateHz: 48_000,
+            nominalRateHz: nil, measuredRateBucket: nil, outputTransport: "built_in")
+        ])
+      #expect(tap.summary == CallSoundSummary())
+    }
+
+    @Test("a start that fails outright, and a plain start and stop, send no row")
+    func silentPaths() throws {
+      guard #available(macOS 14.2, *) else { return }
+      let failing = Fixture.FakeBackend()
+      failing.failStartNumber = 1
+      let failedEvents = Fixture.Events()
+      let failedTap = make(failing, failedEvents)
+      #expect(throws: (any Error).self) { try failedTap.start() }
+      #expect(failedEvents.reports.withLock { $0 }.isEmpty)
+      #expect(failedTap.summary == CallSoundSummary())
+      let backend = Fixture.FakeBackend()
+      let events = Fixture.Events()
+      let tap = make(backend, events)
+      try tap.start()
+      #expect(tap.settleForTesting())
+      tap.stop()
+      #expect(events.reports.withLock { $0 }.isEmpty)
+      #expect(
+        tap.summary
+          == CallSoundSummary(outputTransport: "built_in", configuredRateHz: 48_000, rebuilds: 0))
+    }
+
+    @Test("an output switch rebuilds: the row names the new device's transport and rate; the start facts keep the first")
+    func runtimeRebuildUsesNewGeneration() throws {
+      guard #available(macOS 14.2, *) else { return }
+      let backend = Fixture.FakeBackend()
+      let events = Fixture.Events()
+      let tap = make(backend, events)
+      try tap.start()
+      #expect(tap.settleForTesting())
+      backend.lock.withLock {
+        backend.outputUID = "airpods"
+        backend.outputTransport = "bluetooth"
+        backend.rate = 24_000
+        backend.diagnostics.aggregateNominalRate = 24_000
+      }
+      backend.notify("defaultOutput", build: 0)
+      #expect(tap.settleForTesting())
+      #expect(
+        events.reports.withLock { $0 } == [
+          Report(
+            outcome: .rebuilt, reason: .outputDevice, configuredRateHz: 24_000,
+            nominalRateHz: 24_000, measuredRateBucket: nil, outputTransport: "bluetooth")
+        ])
+      #expect(
+        tap.summary
+          == CallSoundSummary(outputTransport: "built_in", configuredRateHz: 48_000, rebuilds: 1))
+      tap.stop()
+    }
+
+    @Test("a failed runtime rebuild sends rebuild_failed with the retired capture's rate and transport")
+    func runtimeRebuildFailed() throws {
+      guard #available(macOS 14.2, *) else { return }
+      let backend = Fixture.FakeBackend()
+      backend.failStartNumber = 2
+      let events = Fixture.Events()
+      let tap = make(backend, events)
+      try tap.start()
+      backend.lock.withLock {
+        backend.rate = 24_000
+        backend.outputTransport = "usb"
+      }
+      backend.notify("aggregateNominalRate")
+      #expect(tap.settleForTesting())
+      #expect(
+        events.reports.withLock { $0 } == [
+          Report(
+            outcome: .rebuildFailed, reason: .nominalRate, configuredRateHz: 48_000,
+            nominalRateHz: nil, measuredRateBucket: nil, outputTransport: "built_in")
+        ])
+      #expect(tap.summary.rebuilds == 0)
+      tap.stop()
+    }
+
+    @Test("a mismatch that remains after its rebuild: a rebuilt row then a stopped_rate_mismatch row, both with the measured bucket")
+    func persistentMismatchRows() throws {
+      guard #available(macOS 14.2, *) else { return }
+      let backend = Fixture.FakeBackend()
+      let events = Fixture.Events()
+      let tap = make(backend, events)
+      try tap.start()
+      #expect(tap.settleForTesting())
+      try fixture.feedTiming(try #require(backend.ingest), count: 80, start: 1, step: 0.02)
+      tap.drainForTesting()
+      #expect(tap.settleForTesting())
+      try fixture.feedTiming(try #require(backend.ingest), count: 80, start: 10, step: 0.02)
+      tap.drainForTesting()
+      #expect(tap.settleForTesting())
+      #expect(
+        events.reports.withLock { $0 } == [
+          Report(
+            outcome: .rebuilt, reason: .rateMismatch, configuredRateHz: 48_000,
+            nominalRateHz: nil, measuredRateBucket: "24000", outputTransport: "built_in"),
+          Report(
+            outcome: .stoppedRateMismatch, reason: .rateMismatch, configuredRateHz: 48_000,
+            nominalRateHz: nil, measuredRateBucket: "24000", outputTransport: "built_in"),
+        ])
+      tap.stop()
+    }
+
+    /// A tap whose `CALL_SOUND mismatch ... action=rebuild` line, logged just before the rebuild
+    /// is queued, makes the backend send a notice: the notice runs ahead of the queued rebuild
+    /// and refreshes the diagnostics to `later` nominal, as a real notice can.
+    @available(macOS 14.2, *)
+    private func tapWithNoticeAheadOfRebuild(
+      _ backend: Fixture.FakeBackend, _ events: Fixture.Events, later: Double
+    ) -> SystemAudioTap {
+      SystemAudioTap(
+        backend: backend, onSamples: { _, _, _ in },
+        onEvent: { event in
+          if case .report(let report) = event { events.reports.withLock { $0.append(report) } }
+        },
+        drainInterval: .seconds(3_600),
+        log: { line in
+          guard line.hasPrefix("CALL_SOUND mismatch"), line.hasSuffix("action=rebuild") else {
+            return
+          }
+          backend.lock.withLock { backend.diagnostics.aggregateNominalRate = later }
+          backend.notify("aggregateNominalRate", build: 0)
+        })
+    }
+
+    @Test("a queued rebuild keeps its trigger's facts: a notice between queueing and rebuild never changes a failure row; a success row uses the new capture")
+    func queuedRebuildKeepsTriggerFacts() throws {
+      guard #available(macOS 14.2, *) else { return }
+      for fails in [true, false] {
+        let backend = Fixture.FakeBackend()
+        backend.diagnostics.aggregateNominalRate = 48_000
+        if fails { backend.failStartNumber = 2 }
+        let events = Fixture.Events()
+        let tap = tapWithNoticeAheadOfRebuild(backend, events, later: 32_000)
+        try tap.start()
+        #expect(tap.settleForTesting())
+        backend.lock.withLock { backend.outputTransport = "usb" }
+        try fixture.feedTiming(try #require(backend.ingest), count: 80, start: 1, step: 0.02)
+        tap.drainForTesting()
+        #expect(tap.settleForTesting())
+        let expected =
+          fails
+          ? Report(
+            outcome: .rebuildFailed, reason: .rateMismatch, configuredRateHz: 48_000,
+            nominalRateHz: 48_000, measuredRateBucket: "24000", outputTransport: "built_in")
+          : Report(
+            outcome: .rebuilt, reason: .rateMismatch, configuredRateHz: 48_000,
+            nominalRateHz: 32_000, measuredRateBucket: "24000", outputTransport: "usb")
+        #expect(events.reports.withLock { $0 } == [expected], "fails=\(fails)")
+        tap.stop()
+      }
+    }
+
+    @Test("a refused layout the device does not explain stops with one stopped_layout row; one it does explain rebuilds")
+    func refusedLayoutRows() throws {
+      guard #available(macOS 14.2, *) else { return }
+      let stopping = Fixture.FakeBackend()
+      stopping.bufferChannels = [2]
+      let stopEvents = Fixture.Events()
+      let stopTap = make(stopping, stopEvents)
+      try stopTap.start()
+      try fixture.deliver(
+        [Float](repeating: 0.4, count: 960), to: try #require(stopping.ingest), host: 1_000)
+      stopTap.drainForTesting()
+      #expect(
+        stopEvents.reports.withLock { $0 } == [
+          Report(
+            outcome: .stoppedLayout, reason: nil, configuredRateHz: 48_000, nominalRateHz: nil,
+            measuredRateBucket: nil, outputTransport: "built_in")
+        ])
+      stopTap.stop()
+
+      let changing = Fixture.FakeBackend()
+      changing.bufferChannels = [1]
+      let changeEvents = Fixture.Events()
+      let changeTap = make(changing, changeEvents)
+      try changeTap.start()
+      changing.lock.withLock { changing.bufferChannels = [2] }
+      try fixture.deliver(
+        [Float](repeating: 0.9, count: 1_920), to: try #require(changing.ingest), host: 2_000_000,
+        channels: 2)
+      changeTap.drainForTesting()
+      #expect(changeTap.settleForTesting())
+      #expect(changeEvents.reports.withLock { $0.map(\.outcome) } == [.rebuilt])
+      #expect(changeEvents.reports.withLock { $0.map(\.reason) } == [.layout])
+      changeTap.stop()
+    }
+
+    @Test("past 24 rows a tap only counts: rebuilds keep happening and keep being counted")
+    func reportCap() throws {
+      guard #available(macOS 14.2, *) else { return }
+      let backend = Fixture.FakeBackend()
+      let events = Fixture.Events()
+      let tap = make(backend, events)
+      try tap.start()
+      #expect(tap.settleForTesting())
+      for i in 0..<26 {
+        backend.lock.withLock { backend.outputUID = "device-\(i)" }
+        backend.notify("defaultOutput", build: 0)
+        #expect(tap.settleForTesting())
+      }
+      #expect(events.reports.withLock { $0.count } == SystemAudioTap.maxReports)
+      #expect(tap.summary.rebuilds == 26)
+      #expect(tap.summary.omittedReports == 2)
+      #expect(tap.health.rebuilds == 26)
+      #expect(backend.snapshot.running)
+      tap.stop()
+    }
+
+    @Test("a measured rate becomes the nearest standard rate within 3 percent, else other")
+    func rateBucket() {
+      #expect(CallSoundRateBucket.label(for: 24_000) == "24000")
+      #expect(CallSoundRateBucket.label(for: 24_720) == "24000", "exactly 3 percent above")
+      #expect(CallSoundRateBucket.label(for: 23_280) == "24000", "exactly 3 percent below")
+      #expect(CallSoundRateBucket.label(for: 24_800) == "other", "past 3 percent and far from 22050")
+      #expect(CallSoundRateBucket.label(for: 44_100) == "44100")
+      #expect(CallSoundRateBucket.label(for: 47_100) == "48000")
+      #expect(CallSoundRateBucket.label(for: 15_600) == "16000")
+      #expect(CallSoundRateBucket.label(for: 0) == "other")
+      #expect(CallSoundRateBucket.label(for: .nan) == "other")
+      #expect(CallSoundRateBucket.label(for: 192_000) == "other")
+    }
+
+    @Test("every reason and outcome has its closed telemetry spelling")
+    func vocabulary() {
+      guard #available(macOS 14.2, *) else { return }
+      #expect(
+        SystemAudioTap.RebuildReason.allCases.map(\.telemetryValue) == [
+          "output_device", "nominal_rate", "layout", "unreadable", "watch_failed", "rate_mismatch",
+        ])
+      #expect(
+        Report.Outcome.allCases.map(\.rawValue) == [
+          "start_rebuilt", "start_rebuild_failed", "rebuilt", "rebuild_failed",
+          "stopped_rate_mismatch", "stopped_layout",
+        ])
+    }
+  }
+#endif

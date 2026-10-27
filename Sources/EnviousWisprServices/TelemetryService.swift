@@ -4098,6 +4098,8 @@ public final class TelemetryService {
   /// The `meeting.ended` payload. Numbers stay numbers (`processing_seconds` and `rtf` are
   /// `Double` seconds and a ratio, the counts `Int`), `disk_stopped` a `Bool`; `entry_point`
   /// and `disk_stopped` are omitted when not known (an attempt recovered after a relaunch).
+  /// #4121: `call_output_transport` (string), `call_capture_rate_hz`, `call_rebuilds` and
+  /// `call_reports_omitted` (`Int`) are omitted when the attempt has no call-sound summary.
   static func meetingEndedProperties(_ event: MeetingEndedTelemetry) -> [String: Any] {
     var props: [String: Any] = [
       "outcome": event.outcome.rawValue,
@@ -4116,6 +4118,10 @@ public final class TelemetryService {
     ]
     if let entryPoint = event.entryPoint { props["entry_point"] = entryPoint.rawValue }
     if let diskStopped = event.diskStopped { props["disk_stopped"] = diskStopped }
+    if let transport = event.callOutputTransport { props["call_output_transport"] = transport }
+    if let rate = event.callCaptureRateHz { props["call_capture_rate_hz"] = rate }
+    if let rebuilds = event.callRebuilds { props["call_rebuilds"] = rebuilds }
+    if let omitted = event.callReportsOmitted { props["call_reports_omitted"] = omitted }
     return props
   }
 
@@ -4166,6 +4172,42 @@ public final class TelemetryService {
           intProps: [:], doubleProps: [:], boolProps: [:]))
     #endif
     PostHogSDK.shared.capture("meeting.call_prompt", properties: props)
+  }
+
+  /// #4121: one `meeting.call_sound_capture` row per call-sound rebuild or stop (at most 24 per
+  /// meeting; the call-sound tap counts the rest). Closed vocabularies, rates and a transport class:
+  /// never audio, text, device names or UIDs.
+  public func trackMeetingCallSoundCapture(
+    outcome: String, reason: String?, configuredRateHz: Int?, nominalRateHz: Int?,
+    measuredRateBucket: String?, outputTransport: String?
+  ) {
+    let props = Self.meetingCallSoundCaptureProperties(
+      outcome: outcome, reason: reason, configuredRateHz: configuredRateHz,
+      nominalRateHz: nominalRateHz, measuredRateBucket: measuredRateBucket,
+      outputTransport: outputTransport)
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "meeting.call_sound_capture",
+          stringProps: props.compactMapValues { $0 as? String },
+          intProps: props.compactMapValues { $0 as? Int }, doubleProps: [:], boolProps: [:]))
+    #endif
+    PostHogSDK.shared.capture("meeting.call_sound_capture", properties: props)
+  }
+
+  /// The `meeting.call_sound_capture` payload: `outcome` and `reason` (`none` when there is
+  /// none) always; `configured_rate_hz` and `nominal_rate_hz` (`Int`), `measured_rate_bucket`
+  /// and `output_transport` only when known.
+  static func meetingCallSoundCaptureProperties(
+    outcome: String, reason: String?, configuredRateHz: Int?, nominalRateHz: Int?,
+    measuredRateBucket: String?, outputTransport: String?
+  ) -> [String: Any] {
+    var props: [String: Any] = ["outcome": outcome, "reason": reason ?? "none"]
+    if let configuredRateHz { props["configured_rate_hz"] = configuredRateHz }
+    if let nominalRateHz { props["nominal_rate_hz"] = nominalRateHz }
+    if let measuredRateBucket { props["measured_rate_bucket"] = measuredRateBucket }
+    if let outputTransport { props["output_transport"] = outputTransport }
+    return props
   }
 
   static func meetingCallPromptProperties(_ event: MeetingCallPromptTelemetry) -> [String: Any] {

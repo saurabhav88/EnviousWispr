@@ -239,8 +239,13 @@ struct TelemetryEmitterRegistryTests {
   /// #4012 c1 C3: one per_user_action meeting.call_prompt site (`trackMeetingCallPrompt`), keep
   /// whole; one row per answered, timed-out or auto-started call prompt (closed call_app,
   /// answer, mode), no window, address or room. Reader: founder call-detection accuracy review.
+  /// #4121: one per_change meeting.call_sound_capture site (`trackMeetingCallSoundCapture`),
+  /// keep whole; one row per call-sound rebuild or stop, capped at 24 per meeting with the rest
+  /// counted on meeting.ended (`call_reports_omitted`). Closed outcome and reason vocabularies,
+  /// rates and a transport class; no device name or UID. Reader: Claude's weekly EnviousMeet
+  /// launch check. The meeting.ended site did not move; it gained four optional keys.
   static let sitesFingerprint =
-    "e2191bac790f296481a7a729c0bbded98d19bc632d9bfa7e17e40386ae2ad1b0"
+    "f692878768bd5b3f47c410c5169a2e4a793eab93862abf6bacd784fd14d327b1"
   static let ungradedFingerprint =
     "676fe038e6e688fa79c33aae8cec75e5996979f10c3f79775755ec23c5dba168"
 

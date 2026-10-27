@@ -39,13 +39,47 @@ import Testing
     private func event(
       outcome: MeetingEndedTelemetry.Outcome = .ready, entry: MeetingEntryPoint? = .menu,
       duration: Double = 1_800, speakers: Int = 3, processing: Double = 90, audio: Double = 1_800,
-      echo: Int = 7, disk: Bool? = false
+      echo: Int = 7, disk: Bool? = false, callSound: CallSoundSummary? = nil
     ) -> MeetingEndedTelemetry {
       MeetingEndedTelemetry(
         outcome: outcome, entryPoint: entry, durationSeconds: duration, microphoneTrack: .captured,
         callSoundTrack: .unsupported, speakerCount: speakers, processingSeconds: processing,
         audioSeconds: audio, yieldCount: 4, gapCount: 2, echoHiddenCount: echo, diskStopped: disk,
-        summaryPlan: .scheduled, hasNotes: true)
+        summaryPlan: .scheduled, hasNotes: true, callSound: callSound)
+    }
+
+    @Test("#4121: a call-sound summary adds exactly four keys, a string and three integers; a known zero stays 0")
+    func callSoundFields() throws {
+      let row = try #require(
+        capture(
+          event(
+            callSound: CallSoundSummary(
+              outputTransport: "bluetooth", configuredRateHz: 24_000, rebuilds: 0,
+              omittedReports: 0))))
+      #expect(row.stringProps["call_output_transport"] == "bluetooth")
+      #expect(row.intProps["call_capture_rate_hz"] == 24_000)
+      #expect(row.intProps["call_rebuilds"] == 0)
+      #expect(row.intProps["call_reports_omitted"] == 0)
+      let keys = Set(row.stringProps.keys).union(row.intProps.keys).union(row.doubleProps.keys)
+        .union(row.boolProps.keys)
+      #expect(
+        keys
+          == Self.approvedKeys.union([
+            "call_output_transport", "call_capture_rate_hz", "call_rebuilds", "call_reports_omitted",
+          ]))
+    }
+
+    @Test("#4121: no summary sends none of the four keys; a summary without start facts sends only the counts")
+    func callSoundFieldsOmitted() throws {
+      let none = try #require(capture(event()))
+      let all = Set(none.stringProps.keys).union(none.intProps.keys)
+      #expect(all.isDisjoint(with: ["call_output_transport", "call_capture_rate_hz", "call_rebuilds", "call_reports_omitted"]))
+      let counts = try #require(
+        capture(event(callSound: CallSoundSummary(rebuilds: 3, omittedReports: 1))))
+      #expect(counts.stringProps["call_output_transport"] == nil)
+      #expect(counts.intProps["call_capture_rate_hz"] == nil)
+      #expect(counts.intProps["call_rebuilds"] == 3)
+      #expect(counts.intProps["call_reports_omitted"] == 1)
     }
 
     @Test("every approved field, with its type; nothing else")

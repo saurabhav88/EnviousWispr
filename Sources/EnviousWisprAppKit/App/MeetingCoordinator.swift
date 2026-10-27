@@ -449,6 +449,8 @@ final class MeetingCoordinator {
   struct AttemptFacts: Equatable {
     var entryPoint: MeetingEntryPoint?
     var diskStopped: Bool?
+    /// #4121: the recorder's call-sound summary, frozen at stop; nil when none.
+    var callSound: CallSoundSummary?
   }
   /// Meetings whose files a timed-out close still owns this session (only `stopForQuit` can time
   /// out; a normal stop awaits the physical close). Nothing reads, promotes or removes them
@@ -987,9 +989,8 @@ final class MeetingCoordinator {
     }
     startGeneration += 1
     phase = .stopping(meetingID: meetingID)
-    // #3973: live words end now and never hold up the Stop: admission closes, their sessions
-    // go to a cleanup of their own, and nothing below waits for it. The lines stay until the
-    // transcript is ready.
+    // #3973, #4097: Stop retires live words without waiting; their cleanup drains kept events
+    // and closes admission. The lines stay until the transcript is ready.
     deps.liveWords?.stop()
     self.recorder?.liveSamples = nil
     // Stays reachable until the files are closed, so a quit meanwhile takes it over.
@@ -997,6 +998,7 @@ final class MeetingCoordinator {
     let report = await recorder?.stop()
     // A quit during the close owns the outcome (interrupted, its own deadline).
     guard !quitting else { return }
+    adoptCallSoundSummary(report, for: meetingID)
     self.recorder = nil
     endActivity()
     if var record = live[meetingID] {
@@ -1020,6 +1022,13 @@ final class MeetingCoordinator {
     workChanged()
     startQueueIfNeeded()
     await documents.flush(meetingID)
+  }
+
+  /// #4121: keeps the recorder's frozen call-sound summary on the open attempt, for its
+  /// `meeting.ended` row. A report without one changes nothing.
+  private func adoptCallSoundSummary(_ report: MeetingRecorder.StopReport?, for meetingID: UUID) {
+    guard let summary = report?.callSoundSummary else { return }
+    openAttempts[meetingID]?.callSound = summary
   }
 
   private static func anyCloseTimedOut(_ report: MeetingRecorder.StopReport) -> Bool {
@@ -1666,8 +1675,8 @@ final class MeetingCoordinator {
     summaries?.prepareForTermination()
     queueTask?.cancel()
     job?.cancel()
-    // Live words close admission and start their cleanup; the process exit frees any native
-    // model still loaded (`TranscribeCppProcessExit`).
+    // #4097: Quit starts live-word cleanup without waiting; process exit frees any native model
+    // still loaded (`TranscribeCppProcessExit`).
     deps.liveWords?.quit()
     guard let recorder, let meetingID = activeMeetingID, var record = live[meetingID] else {
       // Notes save whether or not anything records (R46), inside the same deadline.
@@ -1680,6 +1689,7 @@ final class MeetingCoordinator {
     // without writing once `quitting` is set.
     self.recorder = nil
     let report = recorder.stopForQuit(deadline: deadline)
+    adoptCallSoundSummary(report, for: meetingID)
     finishSegmentSaves(meetingID, into: &record)
     apply(report, to: &record)
     if Self.anyCloseTimedOut(report) { closeOwned.insert(meetingID) }
@@ -1903,6 +1913,7 @@ final class MeetingCoordinator {
         summaryPlan: summaryPlan,
         // The notes this session knows (typed, or read at launch); a meeting without a folder
         // has none (R54). A deletion passes what it read before forgetting them.
-        hasNotes: hasNotes ?? !documents.notes(record.id).isEmpty))
+        hasNotes: hasNotes ?? !documents.notes(record.id).isEmpty,
+        callSound: facts.callSound))
   }
 }

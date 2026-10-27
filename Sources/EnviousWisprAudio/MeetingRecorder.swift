@@ -27,6 +27,8 @@ protocol MeetingCallSoundSource: AnyObject {
   func start() throws
   func stop()
   var currentLevel: Float { get }
+  /// #4121: the start facts and counts for the meeting's terminal telemetry row.
+  var summary: CallSoundSummary { get }
 }
 
 @available(macOS 14.2, *)
@@ -85,7 +87,13 @@ public final class MeetingRecorder {
   public struct StopReport: Sendable, Equatable {
     public var microphone: MeetingTrackWriter.CloseOutcome?
     public var callSound: MeetingTrackWriter.CloseOutcome?
+    /// #4121: the call-sound capture's summary, frozen when capture stopped. Nil when no
+    /// call-sound source was running then (off, unsupported, failed to start, or a Stop that
+    /// won before its start finished).
+    public var callSoundSummary: CallSoundSummary? = nil
   }
+
+  public typealias CallSoundReportHandler = @Sendable (CallSoundChangeReport) -> Void
 
   public enum RecorderError: Error, Equatable {
     case microphoneUnavailable(String)
@@ -112,7 +120,8 @@ public final class MeetingRecorder {
     /// Nil when this Mac cannot capture the call sound.
     var makeCallSound:
       @MainActor (
-        @escaping CallSoundPipeline.SampleHandler, @escaping @Sendable (String) -> Void
+        @escaping CallSoundPipeline.SampleHandler, @escaping @Sendable (String) -> Void,
+        @escaping CallSoundReportHandler
       ) -> MeetingCallSoundSource?
     var hostTime: @Sendable () -> UInt64
     /// The pause before reopening a lost microphone.
@@ -121,12 +130,16 @@ public final class MeetingRecorder {
     static var live: Sources {
       Sources(
         makeMicrophone: { HALMeetingMicrophone() },
-        makeCallSound: { onSamples, onFailure in
+        makeCallSound: { onSamples, onFailure, onReport in
           guard #available(macOS 14.2, *) else { return nil }
           return SystemAudioTap(
             onSamples: onSamples,
             onEvent: { event in
-              if case .rebuildFailed(let reason) = event { onFailure(reason) }
+              switch event {
+              case .rebuildFailed(let reason): onFailure(reason)
+              case .report(let report): onReport(MeetingRecorder.changeReport(from: report))
+              case .rebuilt: break
+              }
             })
         },
         hostTime: { mach_absolute_time() },
@@ -143,6 +156,7 @@ public final class MeetingRecorder {
   private let anchorHostTime: UInt64
   private let onSegment: SegmentHandler
   private let onFailure: FailureHandler
+  private let onCallSoundReport: CallSoundReportHandler
 
   private var lifecycle = Lifecycle.idle
   /// Bumped by every stop and every microphone reopen; work resumed after an await carries the
@@ -157,6 +171,9 @@ public final class MeetingRecorder {
   /// Why the microphone being opened by `start` was lost before the start finished.
   private var lostDuringStart: String?
   private var stopReport: StopReport?
+  /// #4121: the call-sound summary, frozen by the first `stopCapture` (nil inside when no source
+  /// was running). Later and overlapping stops reuse it.
+  private var frozenCallSoundSummary: CallSoundSummary??
   private let micLevelBox = OSAllocatedUnfairLock<Float>(initialState: 0)
   private let micHealthBox = OSAllocatedUnfairLock(initialState: MicrophoneHealth())
   /// Whether the current microphone's samples are recorded; false while `beginDelivery` runs.
@@ -200,6 +217,8 @@ public final class MeetingRecorder {
   #if DEBUG
     /// The current microphone reopen, so a test can wait for it to end.
     var reopenTaskForTesting: Task<Void, Never>? { reopenTask }
+    /// #4121: the microphone writer, so a test can hold its close and stop again meanwhile.
+    var microphoneWriterForTesting: MeetingTrackWriter? { micWriter }
   #endif
 
   /// The device the microphone actually bound, as the source reported it.
@@ -225,23 +244,39 @@ public final class MeetingRecorder {
     set { liveBox.set(newValue) }
   }
 
+  /// `onCallSoundReport` receives each call-sound change row (#4121), on the tap's queue.
   public convenience init(
     configuration: Configuration, onSegment: @escaping SegmentHandler,
-    onFailure: @escaping FailureHandler
+    onFailure: @escaping FailureHandler,
+    onCallSoundReport: @escaping CallSoundReportHandler = { _ in }
   ) {
     self.init(
-      configuration: configuration, sources: .live, onSegment: onSegment, onFailure: onFailure)
+      configuration: configuration, sources: .live, onSegment: onSegment, onFailure: onFailure,
+      onCallSoundReport: onCallSoundReport)
   }
 
   init(
     configuration: Configuration, sources: Sources, onSegment: @escaping SegmentHandler,
-    onFailure: @escaping FailureHandler
+    onFailure: @escaping FailureHandler,
+    onCallSoundReport: @escaping CallSoundReportHandler = { _ in }
   ) {
     self.config = configuration
     self.sources = sources
     self.anchorHostTime = sources.hostTime()
     self.onSegment = onSegment
     self.onFailure = onFailure
+    self.onCallSoundReport = onCallSoundReport
+  }
+
+  /// #4121: a tap change row in the closed vocabulary the telemetry row carries.
+  @available(macOS 14.2, *)
+  nonisolated static func changeReport(from report: SystemAudioTap.CaptureReport)
+    -> CallSoundChangeReport
+  {
+    CallSoundChangeReport(
+      outcome: report.outcome.rawValue, reason: report.reason?.telemetryValue,
+      configuredRateHz: report.configuredRateHz, nominalRateHz: report.nominalRateHz,
+      measuredRateBucket: report.measuredRateBucket, outputTransport: report.outputTransport)
   }
 
   /// Host time the meeting's timeline is measured from.
@@ -292,7 +327,8 @@ public final class MeetingRecorder {
           Task { @MainActor in
             self?.trackFailed(.callSound, CallSoundError.captureStopped(reason))
           }
-        })
+        },
+        onCallSoundReport)
       if let source {
         // The writer is the recorder's before the wait: a stop or quit during it closes the
         // file and its admission, so audio the late tap delivers (its start or its stop tail)
@@ -479,7 +515,9 @@ public final class MeetingRecorder {
     stopCapture()
     async let mic = micWriter?.finish()
     async let call = callWriter?.finish()
-    let report = StopReport(microphone: await mic, callSound: await call)
+    let report = StopReport(
+      microphone: await mic, callSound: await call,
+      callSoundSummary: frozenCallSoundSummary ?? nil)
     stopReport = report
     lifecycle = .stopped
     return report
@@ -493,7 +531,8 @@ public final class MeetingRecorder {
     if let stopReport { return stopReport }
     stopCapture()
     let report = StopReport(
-      microphone: micWriter?.close(until: deadline), callSound: callWriter?.close(until: deadline))
+      microphone: micWriter?.close(until: deadline), callSound: callWriter?.close(until: deadline),
+      callSoundSummary: frozenCallSoundSummary ?? nil)
     stopReport = report
     lifecycle = .stopped
     return report
@@ -513,6 +552,9 @@ public final class MeetingRecorder {
     microphone?.stopNow()
     microphone = nil
     callSound?.stop()
+    // #4121: frozen once, after the source stopped and before it is released; a stop that
+    // re-enters while the first one awaits its files keeps this value.
+    if frozenCallSoundSummary == nil { frozenCallSoundSummary = .some(callSound?.summary) }
     callSound = nil
   }
 
