@@ -11,12 +11,18 @@ public struct MeetingTrackPiece: Sendable, Equatable {
   public let startMs: Int
   public let endMs: Int
   public let words: [ASRWordTiming]
+  /// False for a marker the job writes in place of speech it could not transcribe ("[Could not
+  /// transcribe ...]"): a marker on the call track is not the far side talking (#4138).
+  public let isSpeech: Bool
 
-  public init(text: String, startMs: Int, endMs: Int, words: [ASRWordTiming]) {
+  public init(
+    text: String, startMs: Int, endMs: Int, words: [ASRWordTiming], isSpeech: Bool = true
+  ) {
     self.text = text
     self.startMs = startMs
     self.endMs = endMs
     self.words = words
+    self.isSpeech = isSpeech
   }
 }
 
@@ -50,7 +56,9 @@ public struct MeetingComposition: Sendable, Equatable {
 /// Merges per-track turns into one transcript (#3972 §3.7, R5). Pure and deterministic.
 ///
 /// Peers do the same split: Wispr Flow and FluidVoice keep the microphone and the call sound
-/// as separate tracks and name the microphone voice "You" (#3972 teardown). Turns are
+/// as separate tracks and name the microphone voice "You" (#3972 teardown). On a call every
+/// microphone voice is the one speaker "You": on speakers the call leaks into the microphone and
+/// its speaker analysis splits the user's own voice (#4138). Turns are
 /// assembled per track by the shipped `TurnAssembler`, so a
 /// word can only ever belong to its own track's speakers.
 public enum MeetingTranscriptComposer {
@@ -58,6 +66,7 @@ public enum MeetingTranscriptComposer {
   /// The name the microphone voice gets when the call sound shows it is a call.
   public static let youName = "You"
   /// Synthetic speaker ids used when a track's speaker analysis produced nothing usable.
+  /// `mic:you` is also the one microphone speaker of every call (#4138).
   public static let fallbackMicrophoneSpeakerID = "mic:you"
   public static let fallbackCallSpeakerID = "sys:call"
   public static let fallbackCallName = "Call"
@@ -89,6 +98,14 @@ public enum MeetingTranscriptComposer {
       }
     }
     let callWords = CallWords(collected)
+    // Whether the far side said anything: a transcribed call piece with text. Markers for audio
+    // that could not be transcribed do not count (#4138).
+    let callHasSpeech = tracks.contains { track in
+      track.kind == .callSound
+        && track.pieces.contains {
+          $0.isSpeech && !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+    }
 
     for (track, joined) in joinedTracks {
       guard !joined.entries.isEmpty else { continue }
@@ -138,9 +155,14 @@ public enum MeetingTranscriptComposer {
       text += item.text
       let upper = text.utf16.count
       let id = "m\(index)-\(item.turn.startMs ?? -1)"
+      // On a call every microphone turn is the user, whatever the speaker analysis split it into,
+      // Both and Unknown included (#4138); turn boundaries and echo flags stay as they were.
+      let speakerId =
+        callHasSpeech && item.kind == .microphone
+        ? fallbackMicrophoneSpeakerID : item.turn.speakerId
       turns.append(
         Turn(
-          id: id, speakerId: item.turn.speakerId, startMs: item.turn.startMs,
+          id: id, speakerId: speakerId, startMs: item.turn.startMs,
           endMs: item.turn.endMs, originalTextRange: lower..<upper,
           // Meetings are not polished in this release: `true` is the deliberate-bypass value
           // (`Turn.wasPolished`), so History never shows "Not fully polished" (#3972 R19).
@@ -148,7 +170,7 @@ public enum MeetingTranscriptComposer {
       if item.echo { echoIDs.append(id) }
     }
 
-    let names = speakerNames(turns: turns, echoIDs: Set(echoIDs), tracks: tracks)
+    let names = speakerNames(turns: turns, echoIDs: Set(echoIDs), callHasSpeech: callHasSpeech)
     let distinct = Set(
       turns.filter { !echoIDs.contains($0.id) }.map(\.speakerId)
         .filter { $0 != TurnAssembler.bothSpeakersID && $0 != TurnAssembler.unknownSpeakerID })
@@ -442,29 +464,18 @@ public enum MeetingTranscriptComposer {
       startMs: starts.min(), endMs: ends.max(), originalTextRange: range, granularity: .word)
   }
 
-  /// "You" for the microphone voice only when the call sound has speech AND the microphone
-  /// track has exactly one speaker AND that speaker's turns are not mostly echo (a heuristic,
-  /// #3972 R5); everyone else "Speaker N" in first-appearance order.
-  static func speakerNames(turns: [Turn], echoIDs: Set<String>, tracks: [MeetingTrackInput])
+  /// "You" for the one microphone speaker of a call (`compose` maps every microphone turn to
+  /// `mic:you` when the call sound has speech, #4138; this replaces the #3972 R5 single-speaker
+  /// and mostly-echo heuristic, founder 2026-10-27); everyone else "Speaker N" in
+  /// first-appearance order. With no call speech the microphone keeps its own speakers.
+  static func speakerNames(turns: [Turn], echoIDs: Set<String>, callHasSpeech: Bool)
     -> [String: String]
   {
-    let micPrefix = MeetingTrackKind.microphone.speakerPrefix + ":"
-    let callHasSpeech = turns.contains {
-      $0.speakerId.hasPrefix(MeetingTrackKind.callSound.speakerPrefix + ":")
-    }
-    let micTurns = turns.filter { $0.speakerId.hasPrefix(micPrefix) }
-    let micSpeakers = Set(micTurns.map(\.speakerId))
     var names: [String: String] = [:]
-    if callHasSpeech, micSpeakers.count == 1, let you = micSpeakers.first {
-      let echoCount = micTurns.filter { echoIDs.contains($0.id) }.count
-      if echoCount * 2 < micTurns.count { names[you] = youName }
-    }
     if turns.contains(where: { $0.speakerId == fallbackCallSpeakerID }) {
       names[fallbackCallSpeakerID] = fallbackCallName
     }
-    if names[fallbackMicrophoneSpeakerID] == nil,
-      turns.contains(where: { $0.speakerId == fallbackMicrophoneSpeakerID }), callHasSpeech
-    {
+    if callHasSpeech, turns.contains(where: { $0.speakerId == fallbackMicrophoneSpeakerID }) {
       names[fallbackMicrophoneSpeakerID] = youName
     }
     let generated = TurnAssembler.defaultSpeakerNames(
