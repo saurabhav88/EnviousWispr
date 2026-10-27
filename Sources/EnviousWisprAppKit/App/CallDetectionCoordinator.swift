@@ -208,8 +208,8 @@ final class CallDetectionCoordinator {
         ambiguous: ambiguous))
   }
 
-  /// Reads the evidence for every holder whose microphone is on or whose last read was unknown,
-  /// one at a time; each result applies only while its process is still listed.
+  /// Reads active or unknown holders and the apps of tracked calls, even when their microphones
+  /// are off. Each result still belongs to the process and reading that requested it.
   private func readEvidence() {
     #if DEBUG
       guard simulation == nil else { return }
@@ -219,7 +219,9 @@ final class CallDetectionCoordinator {
       return
     }
     let targets = holders.filter { holder in
-      holder.input == .active || evidence[holder.pid]?.value == .unknown
+      let tracked = CallAppCatalog.rule(forBundleID: holder.bundleID)
+        .map { policy.isTracking($0) } ?? false
+      return holder.input == .active || evidence[holder.pid]?.value == .unknown || tracked
     }
     guard !targets.isEmpty else { return }
     let read = deps.evidence
@@ -484,6 +486,9 @@ final class CallDetectionCoordinator {
     }
 
     var isWatching: Bool { watching }
+
+    /// A negative reader-selection assertion must wait for the actual async batch to settle.
+    var evidenceReadPendingForTesting: Bool { evidenceTask != nil }
 
     /// Hands the coordinator a watcher reading (nil: the read failed), through the same path
     /// as the real watcher, evidence reads included. Tests only.

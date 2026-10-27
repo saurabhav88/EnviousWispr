@@ -125,6 +125,44 @@
       for _ in 0..<20 { await Task.yield() }
     }
 
+    @Test("a tracked call is read again when its microphone becomes inactive",
+      .bug("https://github.com/saurabhav88/EnviousWispr/issues/4142"))
+    func inactiveTrackedSourceGetsFreshEvidence() async throws {
+      let rig = try Rig()
+      rig.evidenceAnswer.withLock { $0 = .call(family: .zoom, room: "tracked-call") }
+      rig.reading("us.zoom.xos", .active)
+      // The visible question proves the completed read enrolled this call, not just reader entry.
+      #expect(await settleUntilObserved { rig.panel.content == .ask(appName: "Zoom") })
+      let readsBefore = rig.evidenceReads.withLock { $0 }
+      #expect(readsBefore > 0)
+
+      rig.reading("us.zoom.xos", .inactive)
+
+      #expect(await settleUntilObserved { rig.evidenceReads.withLock { $0 } > readsBefore })
+      #expect(rig.starts.isEmpty)
+      #expect(rig.stops == 0)
+    }
+
+    @Test("tracking a call does not enroll unrelated inactive apps for evidence reads")
+    func unrelatedInactiveSourceIsNotRead() async throws {
+      let rig = try Rig()
+      rig.evidenceAnswer.withLock { $0 = .call(family: .zoom, room: "tracked-call") }
+      rig.reading("us.zoom.xos", .active)
+      #expect(await settleUntilObserved { rig.panel.content == .ask(appName: "Zoom") })
+      let readsBefore = rig.evidenceReads.withLock { $0 }
+
+      rig.coordinator.deliverWatcherReading([
+        .init(pid: 900_010, bundleID: "us.zoom.xos", input: .inactive),
+        .init(pid: 900_011, bundleID: "com.google.chrome", input: .inactive),
+      ])
+
+      #expect(rig.coordinator.evidenceReadPendingForTesting)
+      #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
+      #expect(rig.evidenceReads.withLock { $0 } == readsBefore + 1)
+      #expect(rig.starts.isEmpty)
+      #expect(rig.stops == 0)
+    }
+
     @Test("a Zoom call asks; Yes records a Zoom meeting")
     func yesRecords() async throws {
       let rig = try Rig()

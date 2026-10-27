@@ -239,6 +239,11 @@ public struct CallDetectionPolicy: Sendable {
   /// Whether any call is known: the watcher keeps polling while one is.
   public var isTrackingCalls: Bool { !episodes.isEmpty }
 
+  /// The apps whose existing episodes still need observations, even with their microphones off.
+  package func isTracking(_ rule: CallAppCatalog.Rule) -> Bool {
+    episodes.contains { $0.rule == rule }
+  }
+
   // MARK: - Inputs
 
   /// A new reading. One older than the last applied is dropped.
