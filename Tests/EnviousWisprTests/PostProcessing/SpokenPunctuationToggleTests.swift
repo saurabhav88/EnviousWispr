@@ -357,13 +357,13 @@ struct SpokenPunctuationToggleTests {
   @Test("A recogniser mark after a spoken line break is absorbed")
   func markAfterLineBreakIsAbsorbed() {
     let expected = Self.itn.normalize("Hello there. New line World is big.", spokenPunctuation: true)
-    #expect(expected == "Hello there. \n World is big.")
+    #expect(expected == "Hello there.\nWorld is big.")
     #expect(
       Self.itn.normalize("Hello there. New line. World is big.", spokenPunctuation: true)
         == expected)
     #expect(
       Self.itn.normalize("Hello there. New paragraph. World is big.", spokenPunctuation: true)
-        == "Hello there. \n\n World is big.")
+        == "Hello there.\n\nWorld is big.")
     #expect(
       Self.itn.normalize("Hello there. New line, World is big.", spokenPunctuation: true)
         == expected)
@@ -400,8 +400,24 @@ struct SpokenPunctuationToggleTests {
     #expect(on("Hello there period World is big") == "Hello there. World is big")
     #expect(on("alpha comma beta") == "alpha, beta")
     #expect(on("Is it big question mark") == "Is it big?")
-    #expect(on("Hello there. new line World is big.") == "Hello there. \n World is big.")
-    #expect(on("Hello there. new paragraph World is big.") == "Hello there. \n\n World is big.")
+    #expect(on("Hello there. new line World is big.") == "Hello there.\nWorld is big.")
+    #expect(on("Hello there. new paragraph World is big.") == "Hello there.\n\nWorld is big.")
     #expect(on("I like apples. They are good.") == "I like apples. They are good.")
+  }
+
+  /// #4149: a spoken line or paragraph break leaves no space at the start of the next line (a user
+  /// on 2.5.5 saw every paragraph look indented), mid-sentence and after a sentence end, and when
+  /// breaks follow each other. A line break the user did not dictate keeps its spaces.
+  @Test("No space starts the line after a spoken break")
+  func noLeadingSpaceAfterSpokenBreak() {
+    func on(_ s: String) -> String { Self.itn.normalize(s, spokenPunctuation: true) }
+    #expect(
+      on("Thanks for the update. New paragraph. The next step is review.")
+        == "Thanks for the update.\n\nThe next step is review.")
+    #expect(on("alpha new paragraph beta") == "alpha\n\nbeta")
+    #expect(on("alpha new line beta") == "alpha\nbeta")
+    #expect(on("Hello there. New line new paragraph World") == "Hello there.\n\n\nWorld")
+    #expect(on("Hello there.\tnew line\tWorld") == "Hello there.\nWorld")
+    #expect(on("one\n two") == Self.itn.normalize("one\n two", spokenPunctuation: false))
   }
 }
