@@ -58,7 +58,8 @@ final class MeetingSummaryOwner {
         _ transcript: String, _ notes: String, _ window: MeetingSummary.Window,
         _ timeoutSeconds: Double, _ admit: @escaping MeetingSummary.Admit,
         _ complete: @escaping MeetingSummary.Complete
-      ) async throws -> String = { transcript, notes, window, timeout, admit, complete in
+      ) async throws -> MeetingSummary.Written = {
+        transcript, notes, window, timeout, admit, complete in
         try await MeetingSummary.write(
           transcript: transcript, notes: notes, window: window, callTimeoutSeconds: timeout,
           admit: admit, complete: complete)
@@ -437,7 +438,7 @@ final class MeetingSummaryOwner {
     // R11: an AI title only when "Write a summary when a meeting ends" is on, here and again
     // after the save; a Write again with it off writes the summary alone.
     let titleWanted = deps.isEnabled()
-    let answer: String
+    let answer: MeetingSummary.Written
     do {
       answer = try await deps.write(
         inputs.transcript.text, inputs.notes, prepared.window,
@@ -458,7 +459,7 @@ final class MeetingSummaryOwner {
     if local { lane.endSummaryCall() }
     if Task.isCancelled { return Ending(end: .cancelled) }
     // The title line is never part of the saved summary, usable or not (R6).
-    let (title, text) = MeetingSummary.splitTitle(answer)
+    let (title, text) = MeetingSummary.splitTitle(answer.text)
     // An answer that was only a title is no summary: the one saved before stays (review r4 F5).
     guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       return Ending(end: .problem(.providerFailed))
@@ -473,7 +474,8 @@ final class MeetingSummaryOwner {
     busy.insert(attempt)
     defer { busy.remove(attempt) }
     switch await documents.publishGeneratedSummary(
-      meetingID, text: text, inputs: inputs.summaryInputs, approvedUserEdit: approvedUserEdit)
+      meetingID, text: text, inputs: inputs.summaryInputs, writtenInParts: answer.inParts,
+      approvedUserEdit: approvedUserEdit)
     {
     case .saved:
       // Checked once more after the save: a change during the write makes the saved summary

@@ -162,4 +162,109 @@ struct MeetingDocumentsStoreTests {
     #expect(reread.notes == "draft")
     #expect(reread.manifest.notes?.revision == 2)
   }
+
+  // MARK: - Written in parts (#4044)
+
+  @Test("parts provenance saves, decodes, follows edits and distinguishes generations")
+  func partsProvenance() throws {
+    let (store, record) = try makeMeeting()
+    let inputs = SummaryInputs(
+      transcriptSHA256: "t", notesRevision: 0, speakerNamesSHA256: "s",
+      promptVersion: 3, providerID: "appleIntelligence", configurationSHA256: "c")
+
+    let outcome = try store.saveGeneratedSummary(
+      "Generated", inputs: inputs, writtenInParts: true,
+      approvedUserEdit: nil, meeting: record.id)
+    guard case .saved(let saved) = outcome else {
+      Issue.record("Generated summary was not saved")
+      return
+    }
+    #expect(saved.summary?.writtenInParts == true)
+
+    let decoded = try MeetingStore.decoder.decode(
+      MeetingDocumentsManifest.self,
+      from: Data(contentsOf: store.documentsURL(for: record.id)))
+    #expect(decoded.summary?.writtenInParts == true)
+
+    _ = try store.saveSummary(
+      "Edited", origin: .userEdited, inputs: inputs,
+      writtenInParts: decoded.summary?.writtenInParts, meeting: record.id)
+    #expect(try store.loadDocuments(meeting: record.id).manifest.summary?.writtenInParts == true)
+
+    // Same inputs, another generation: the older edited text keeps its own provenance.
+    _ = try store.saveGeneratedSummary(
+      "New generation", inputs: inputs, writtenInParts: false,
+      approvedUserEdit: MeetingDocumentHash.sha256("Edited"), meeting: record.id)
+    #expect(try store.loadDocuments(meeting: record.id).manifest.summary?.writtenInParts == false)
+    _ = try store.saveSummary(
+      "Edit of the older generation", origin: .userEdited, inputs: inputs,
+      writtenInParts: true, meeting: record.id)
+    #expect(try store.loadDocuments(meeting: record.id).manifest.summary?.writtenInParts == true)
+
+    // An edit made outside the app keeps the record the same way.
+    try Data("Edited outside".utf8).write(to: store.summaryURL(for: record.id))
+    let repaired = try store.loadDocuments(meeting: record.id)
+    #expect(repaired.repaired == true)
+    #expect(repaired.manifest.summary?.writtenInParts == true)
+
+    // A summary the user wrote from scratch has no provenance, whatever the caller passes.
+    let (emptyStore, emptyRecord) = try makeMeeting()
+    _ = try emptyStore.saveSummary(
+      "My own summary", origin: .userEdited, inputs: nil, writtenInParts: true,
+      meeting: emptyRecord.id)
+    let scratch = try emptyStore.loadDocuments(meeting: emptyRecord.id)
+    #expect(scratch.manifest.summary?.inputs == nil)
+    #expect(scratch.manifest.summary?.writtenInParts == nil)
+  }
+
+  @Test("an old documents file without parts provenance loads as unknown")
+  func oldFileHasNoPartsRecord() throws {
+    let (store, record) = try makeMeeting()
+    let text = "Old summary"
+    let old = """
+      {"formatVersion":1,"summary":{
+        "sha256":"\(MeetingDocumentHash.sha256(text))",
+        "origin":"generated",
+        "inputs":{
+          "transcriptSHA256":"t","notesRevision":0,"speakerNamesSHA256":"s",
+          "promptVersion":3,"providerID":"appleIntelligence","configurationSHA256":"c"
+        }
+      }}
+      """
+    try Data(text.utf8).write(to: store.summaryURL(for: record.id))
+    try Data(old.utf8).write(to: store.documentsURL(for: record.id))
+    let loaded = try store.loadDocuments(meeting: record.id)
+    #expect(loaded.summary == text)
+    #expect(loaded.manifest.summary?.inputs?.providerID == "appleIntelligence")
+    #expect(loaded.manifest.summary?.writtenInParts == nil)
+    #expect(loaded.repaired == false)
+  }
+
+  @Test("the pre-change summary shape ignores an added parts key")
+  func oldReaderIgnoresPartsKey() throws {
+    struct OldSummary: Codable {
+      var sha256: String
+      var origin: MeetingDocumentsManifest.Origin
+      var inputs: SummaryInputs?
+    }
+    struct OldManifest: Codable {
+      var formatVersion: Int
+      var notes: MeetingDocumentsManifest.Notes?
+      var summary: OldSummary?
+      var summaryPending: Bool?
+    }
+    let data = Data(
+      """
+      {"formatVersion":1,"summary":{
+        "sha256":"hash","origin":"generated","writtenInParts":true
+      }}
+      """.utf8)
+    let old = try MeetingStore.decoder.decode(OldManifest.self, from: data)
+    #expect(old.summary?.sha256 == "hash")
+    let rewritten = try #require(
+      JSONSerialization.jsonObject(with: MeetingStore.encoder.encode(old))
+        as? [String: Any])
+    let summary = try #require(rewritten["summary"] as? [String: Any])
+    #expect(summary["writtenInParts"] == nil)
+  }
 }

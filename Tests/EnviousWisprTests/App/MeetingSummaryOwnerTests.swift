@@ -1179,4 +1179,59 @@ struct MeetingSummaryOwnerTests {
       #expect(rig.owner.fingerprintBuildsForTesting == built + 1, "dropped after the drain")
     }
   #endif
+
+  // MARK: - Written in parts (#4044)
+
+  @Test("the owner saves the generator's parts flag with the title-free text")
+  func savesWrittenPartsFlag() async throws {
+    for inParts in [false, true] {
+      let rig = try Rig()
+      let id = try rig.readyMeeting()
+      let world = rig.world
+      let owner = MeetingSummaryOwner(
+        dependencies: .init(
+          isEnabled: { true },
+          selection: { (.appleIntelligence, "apple") },
+          prepare: { _, _ in
+            .success(
+              MeetingSummaryProviders.Prepared(
+                execution: .local, window: world.window,
+                complete: { _, _ in "Unused" }))
+          },
+          visibleTranscript: { _ in
+            .init(text: world.transcript, speakerNames: world.speakerNames)
+          },
+          isLocalTurn: { true },
+          wakes: nil,
+          emitFinished: { world.finished.append($0) },
+          log: { _ in },
+          write: { _, _, _, _, _, _ in
+            MeetingSummary.Written(
+              text: "Title: Launch\n## Overview\nShip Friday.", inParts: inParts)
+          }),
+        documents: rig.documents, lane: rig.lane)
+
+      #expect(await rig.documents.setSummaryPending(id, true))
+      owner.startOwed(id)
+      await Self.eventually("summary settled") { world.finished.count == 1 }
+      let summary = try #require(try rig.manifest(id).summary)
+      #expect(summary.writtenInParts == inParts)
+      #expect(rig.summaryOnDisk(id) == "## Overview\nShip Friday.")
+      #expect(await rig.documents.load(id))
+
+      rig.documents.setSummary(id, "Edited")
+      #expect(await rig.documents.flushSummary(id))
+      #expect(try rig.manifest(id).summary?.writtenInParts == inParts)
+
+      // Hold the debounce so the quit path is the writer being tested.
+      let gate = MeetingDocumentsOwnerTests.DebounceGate()
+      defer { gate.open() }
+      let quitting = Rig.documents(rig.store, debounce: { await gate.wait() })
+      #expect(await quitting.load(id))
+      quitting.setSummary(id, "Edited at quit")
+      quitting.flushForQuit(deadline: .now() + .seconds(5))
+      #expect(rig.summaryOnDisk(id) == "Edited at quit")
+      #expect(try rig.manifest(id).summary?.writtenInParts == inParts)
+    }
+  }
 }

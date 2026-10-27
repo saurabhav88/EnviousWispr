@@ -39,11 +39,17 @@ public struct MeetingDocumentsManifest: Sendable, Equatable, Codable {
     public var origin: Origin
     /// What a generated summary was written from; nil for a summary the user wrote from scratch.
     public var inputs: SummaryInputs?
+    /// Whether the generation this text came from summarized in parts (#4044); edits keep it.
+    /// Nil when unknown: no inputs, or a file written before this field.
+    public var writtenInParts: Bool?
 
-    public init(sha256: String, origin: Origin, inputs: SummaryInputs?) {
+    public init(
+      sha256: String, origin: Origin, inputs: SummaryInputs?, writtenInParts: Bool? = nil
+    ) {
       self.sha256 = sha256
       self.origin = origin
       self.inputs = inputs
+      self.writtenInParts = writtenInParts
     }
   }
 

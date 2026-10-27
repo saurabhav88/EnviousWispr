@@ -81,7 +81,8 @@ extension MeetingStore {
       let summaryHash = MeetingDocumentHash.sha256(summary)
       if manifest.summary?.sha256 != summaryHash {
         manifest.summary = MeetingDocumentsManifest.Summary(
-          sha256: summaryHash, origin: .userEdited, inputs: manifest.summary?.inputs)
+          sha256: summaryHash, origin: .userEdited, inputs: manifest.summary?.inputs,
+          writtenInParts: manifest.summary?.writtenInParts)
         repaired = true
       }
     } else if manifest.summary != nil {
@@ -138,15 +139,18 @@ extension MeetingStore {
   }
 
   /// Saves the summary text with its origin and inputs, then the manifest (its notes entry read
-  /// from disk, as `saveNotes` does for the summary).
+  /// from disk, as `saveNotes` does for the summary). `writtenInParts` comes from the caller's
+  /// draft, not from disk, which may already hold a newer generation (#4044); text without
+  /// inputs has no provenance.
   public func saveSummary(
     _ text: String, origin: MeetingDocumentsManifest.Origin, inputs: SummaryInputs?,
-    meeting id: UUID
+    writtenInParts: Bool? = nil, meeting id: UUID
   ) throws -> MeetingDocumentsManifest {
     try refuseDocumentWrite(id)
     var next = try currentManifest(id)
     next.summary = MeetingDocumentsManifest.Summary(
-      sha256: MeetingDocumentHash.sha256(text), origin: origin, inputs: inputs)
+      sha256: MeetingDocumentHash.sha256(text), origin: origin, inputs: inputs,
+      writtenInParts: inputs == nil ? nil : writtenInParts)
     try Self.atomicWrite(Data(text.utf8), to: summaryURL(for: id))
     try writeManifest(next, meeting: id)
     return next
@@ -168,7 +172,8 @@ extension MeetingStore {
   /// an edit made after the confirmation is kept), never from notes older than those on disk. Every outcome clears `summaryPending`: the attempt is over. The files are
   /// reconciled first, as a load does, so a summary or notes changed outside the app count.
   public func saveGeneratedSummary(
-    _ text: String, inputs: SummaryInputs, approvedUserEdit: String?, meeting id: UUID
+    _ text: String, inputs: SummaryInputs, writtenInParts: Bool, approvedUserEdit: String?,
+    meeting id: UUID
   ) throws -> GeneratedSummarySave {
     try refuseDocumentWrite(id)
     var manifest = try readDocuments(meeting: id).manifest
@@ -184,7 +189,8 @@ extension MeetingStore {
       return .notesChanged(manifest)
     }
     manifest.summary = MeetingDocumentsManifest.Summary(
-      sha256: MeetingDocumentHash.sha256(text), origin: .generated, inputs: inputs)
+      sha256: MeetingDocumentHash.sha256(text), origin: .generated, inputs: inputs,
+      writtenInParts: writtenInParts)
     try Self.atomicWrite(Data(text.utf8), to: summaryURL(for: id))
     try writeManifest(manifest, meeting: id)
     return .saved(manifest)

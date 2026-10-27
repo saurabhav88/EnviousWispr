@@ -11372,6 +11372,17 @@
         }
       }
     },
+    "Long meeting: this summary was written in parts. The default OpenAI, Gemini and Claude models fit much longer meetings in one piece. AI Polish also uses that choice for dictation." : {
+      "comment" : "History, a meeting summarized in parts by Apple Intelligence. Explains that the default models of the three named providers support much longer meetings in a single summary call. The AI Polish provider and model choice also applies to dictation. This does not promise unlimited meeting length.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Langes Meeting: Diese Zusammenfassung wurde in Teilen erstellt. Die Standardmodelle von OpenAI, Gemini und Claude fassen viel längere Meetings in einem Durchgang zusammen. Die KI-Nachbearbeitung nutzt diese Auswahl auch für Diktate."
+          }
+        }
+      }
+    },
     "Looking for apps on this Mac." : {
       "localizations" : {
         "de" : {

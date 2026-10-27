@@ -54,7 +54,8 @@ struct MeetingSummaryTests {
   ) async throws -> String {
     try await MeetingSummary.write(
       transcript: transcript, notes: notes, window: window, callTimeoutSeconds: timeout,
-      admit: { calls.admissions += 1 }, complete: calls.complete)
+      admit: { calls.admissions += 1 }, complete: calls.complete
+    ).text
   }
 
   @Test("every provider has a capability; cleanup models are refused under any provider")
@@ -633,7 +634,7 @@ struct MeetingSummaryTests {
     let summary = try await MeetingSummary.write(
       transcript: "t", notes: "", window: prepared.window, callTimeoutSeconds: 60, admit: {},
       complete: prepared.complete)
-    #expect(summary == "summary")
+    #expect(summary.text == "summary")
 
     let hosted = Ollama(facts: OllamaModelFacts(isRemote: true, thinks: false))
     let remote = try #require(
@@ -743,7 +744,7 @@ struct MeetingSummaryTests {
     let summary = try await MeetingSummary.write(
       transcript: "t", notes: "", window: prepared.window, callTimeoutSeconds: 60, admit: {},
       complete: prepared.complete)
-    #expect(summary == "summary")
+    #expect(summary.text == "summary")
     #expect(once.requests.count == 2, "the overflow is not retried; the byte plan runs once")
 
     // A template or a normalizing tokenizer can still overflow the byte plan: reported, never
@@ -845,7 +846,7 @@ struct MeetingSummaryTests {
     let summary = try await MeetingSummary.write(
       transcript: "t", notes: "", window: Self.large, callTimeoutSeconds: 60,
       admit: { admissions.admissions += 1 }, complete: Self.openAI(retried))
-    #expect(summary == "Summary.")
+    #expect(summary.text == "Summary.")
     #expect(retried.requests == 3)
     #expect(admissions.admissions == 3)
     #expect(retried.body(0)["max_completion_tokens"] as? Int == MeetingSummary.outputTokens)
@@ -875,7 +876,7 @@ struct MeetingSummaryTests {
     let summary = try await MeetingSummary.write(
       transcript: "t", notes: "", window: Self.large, callTimeoutSeconds: 60, admit: {},
       complete: Self.openAI(script))
-    #expect(summary == "Summary.")
+    #expect(summary.text == "Summary.")
     #expect(script.requests == 2)
   }
 
@@ -899,6 +900,80 @@ struct MeetingSummaryTests {
     #expect(split("Title: Launch plan\r\n\(summary)") == ["Launch plan", summary])
     #expect(split("Title: *nix tooling\n\(summary)") == ["*nix tooling", summary])
     #expect(MeetingSummary.finalShape.contains("Title:"))
+  }
+
+  // MARK: - Written in parts (#4044)
+
+  @Test("the cloud defaults named by the long-meeting hint retain large planning windows")
+  func longMeetingHintDefaultCapacity() {
+    // #4044: "The default OpenAI, Gemini and Claude models fit much longer meetings in one
+    // piece." This binds their minimum planning capacity.
+    for provider: LLMProvider in [.openAI, .gemini, .claude] {
+      let model = LLMProvider.defaultModel(for: provider)
+      #expect(
+        MeetingSummaryProviders.hostedContextTokens(provider, model: model) >= 128_000,
+        "\(provider.rawValue) default \(model) no longer supports the hint's capacity claim")
+    }
+  }
+
+  @Test("the saved parts fact follows the successful plan")
+  func writtenPartsFact() async throws {
+    let short = Calls()
+    let one = try await MeetingSummary.write(
+      transcript: "You: we ship Friday", notes: "", window: Self.small,
+      callTimeoutSeconds: 60, admit: {}, complete: short.complete)
+    #expect(one.text == "summary 1")
+    #expect(one.inParts == false)
+    #expect(short.prompts.count == 1)
+
+    let meeting = try Self.longMeeting()
+    let long = Calls()
+    let parts = try await MeetingSummary.write(
+      transcript: meeting.transcript, notes: "", window: Self.small,
+      callTimeoutSeconds: 60, admit: {}, complete: long.complete)
+    #expect(parts.inParts == true)
+    #expect(long.prompts.count > 1)
+  }
+
+  @Test("retries and a single-call byte re-plan do not mean parts")
+  func extraRequestsAreNotParts() async throws {
+    for error in [
+      LLMError.classified(.rateLimited),
+      LLMError.classified(.inputTooLong),
+    ] {
+      let calls = Calls()
+      calls.answers = [.failure(error), .success("Summary.")]
+      let result = try await MeetingSummary.write(
+        transcript: "You: ship Friday", notes: "", window: Self.large,
+        callTimeoutSeconds: 60, admit: {}, complete: calls.complete)
+      #expect(result.inParts == false)
+      #expect(calls.prompts.count == 2)
+    }
+  }
+
+  @Test("a byte re-plan that splits the input reports parts")
+  func byteReplanDeterminesParts() async throws {
+    let transcript = String(repeating: "word ", count: 400)
+    let calls = Calls()
+    calls.answers = [.failure(LLMError.classified(.inputTooLong))]
+    let result = try await MeetingSummary.write(
+      transcript: transcript, notes: "", window: Self.small,
+      callTimeoutSeconds: 60, admit: {}, complete: calls.complete)
+    #expect(calls.prompts.first?.contains("Transcript:") == true)
+    #expect(calls.prompts.dropFirst().contains { $0.contains("This is part") })
+    #expect(result.inParts == true)
+  }
+
+  @Test("long notes alone can cause parts")
+  func notesDetermineParts() async throws {
+    let calls = Calls()
+    let result = try await MeetingSummary.write(
+      transcript: "You: ship Friday",
+      notes: String(repeating: "my note line\n", count: 800),
+      window: Self.small, callTimeoutSeconds: 60,
+      admit: {}, complete: calls.complete)
+    #expect(result.inParts == true)
+    #expect(calls.prompts.contains { $0.contains("the user's own notes") })
   }
 }
 

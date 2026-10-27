@@ -364,11 +364,15 @@ final class MeetingDocumentsOwner {
     else { return }
     let edits = entry.unsavedSummaryEdits
     // The inputs stay: an edited generated summary still shows out of date when the meeting
-    // changed (R60).
+    // changed (R60). The provenance is the edited text's own, even if a newer generation
+    // reached disk before this edit (#4044).
     let inputs = entry.manifest.summary?.inputs
+    let writtenInParts = entry.manifest.summary?.writtenInParts
     let gen = generation(meetingID)
     let result = await perform(meetingID) {
-      try $0.saveSummary(text, origin: .userEdited, inputs: inputs, meeting: meetingID)
+      try $0.saveSummary(
+        text, origin: .userEdited, inputs: inputs, writtenInParts: writtenInParts,
+        meeting: meetingID)
     }
     await deps.afterEditWrite()
     guard generation(meetingID) == gen, var current = entries[meetingID] else { return }
@@ -392,7 +396,8 @@ final class MeetingDocumentsOwner {
   /// (`approvedUserEdit`, its SHA-256), never from older notes, and it ends the owed mark. Nil
   /// when the meeting was deleted or the write failed.
   func publishGeneratedSummary(
-    _ meetingID: UUID, text: String, inputs: SummaryInputs, approvedUserEdit: String?
+    _ meetingID: UUID, text: String, inputs: SummaryInputs, writtenInParts: Bool,
+    approvedUserEdit: String?
   ) async -> MeetingStore.GeneratedSummarySave? {
     guard !forgotten.contains(meetingID) else { return nil }
     // Typing in the summary not yet saved is saved first: it is the user's text, so the
@@ -406,7 +411,8 @@ final class MeetingDocumentsOwner {
     let gen = generation(meetingID)
     let result = await perform(meetingID) {
       try $0.saveGeneratedSummary(
-        text, inputs: inputs, approvedUserEdit: approvedUserEdit, meeting: meetingID)
+        text, inputs: inputs, writtenInParts: writtenInParts,
+        approvedUserEdit: approvedUserEdit, meeting: meetingID)
     }
     await deps.afterGeneratedWrite()
     guard generation(meetingID) == gen else { return nil }
@@ -468,9 +474,14 @@ final class MeetingDocumentsOwner {
     for (meetingID, entry) in entries where entry.unsavedSummaryEdits > 0 {
       guard let text = entry.summary else { continue }
       let inputs = entry.manifest.summary?.inputs
+      let writtenInParts = entry.manifest.summary?.writtenInParts
       let outcome = writer.runBounded(
         until: deadline,
-        { _ = try $0.saveSummary(text, origin: .userEdited, inputs: inputs, meeting: meetingID) },
+        {
+          _ = try $0.saveSummary(
+            text, origin: .userEdited, inputs: inputs, writtenInParts: writtenInParts,
+            meeting: meetingID)
+        },
         late: { _ in })
       if case .finished(.failure(let error)) = outcome {
         deps.log("meeting summary quit save failed error=\(type(of: error))")
