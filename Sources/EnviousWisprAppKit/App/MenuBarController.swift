@@ -118,7 +118,7 @@ final class MenuBarController: NSObject {
   }
 
   /// What VoiceOver adds to the icon for a cue drawn without words. #1019: the gold-wave cue
-  /// (#3441: only while the cue is on); #3972 R34: the meeting glow.
+  /// (#3441: only while the cue is on); #3972 R34: the meeting wave (#4116).
   static func iconAccessibilityValue(_ icon: MenuBarIconAnimator.IconState) -> String? {
     switch icon {
     case .updatePending:
@@ -161,8 +161,8 @@ final class MenuBarController: NSObject {
     {
       return .processing
     } else if state.meetingCapturing {
-      // #3972 R47: a meeting recording shows the glowing lips, below every dictation state and
-      // warning, and above the update cue.
+      // #3972 R47: a meeting recording shows the rainbow wave (#4116), below every dictation
+      // state and warning, and above the update cue.
       return .meeting
     } else {
       // #1019: idle-with-update variant. Chosen ONLY here, after onboarding /
