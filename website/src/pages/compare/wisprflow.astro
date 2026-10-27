@@ -25,7 +25,7 @@ const faqs = [
   },
   {
     "q": "Will my audio be used for training?",
-    "a": "No. Your audio is processed on your Mac and discarded after transcription. It never leaves your device, so it cannot be used for anything else."
+    "a": "No. Your audio is transcribed on your Mac and never leaves it. Dictation audio is cleared after processing, and meeting audio stays on your Mac until you delete it. Envious Labs never receives it, so it cannot be used for anything else."
   },
   {
     "q": "Can I switch from WisprFlow easily?",
@@ -37,7 +37,7 @@ const faqs = [
   },
   {
     "q": "Does EnviousWispr use the cloud at all?",
-    "a": "Transcription is always on-device. If you choose to enable AI polish with a cloud provider (OpenAI, Gemini, or Claude), only the text transcript is sent using your own API key. You can also polish with a local model for fully offline operation. The choice is yours."
+    "a": "Transcription is always on-device. If you choose a cloud AI provider (OpenAI, Gemini, or Claude), only text is sent, using your own API key: the transcript, plus your notes when it writes a meeting summary. You can also use a local model for fully offline operation. The choice is yours."
   },
   {
     "q": "Is there a free alternative to WisprFlow?",
@@ -329,7 +329,7 @@ const faqs = [
           </tr>
           <tr>
             <td>Audio leaves your Mac</td>
-            <td><span class="table-check">Never.</span> Audio stays on your Mac. If you enable cloud AI polish, only the text transcript is sent.</td>
+            <td><span class="table-check">Never.</span> Audio stays on your Mac. If you choose a cloud AI provider, only text is sent: the transcript, plus your notes for a meeting summary.</td>
             <td>Yes, audio uploaded for transcription</td>
           </tr>
           <tr>
@@ -389,7 +389,7 @@ const faqs = [
           </tr>
           <tr>
             <td>Meeting notetaker</td>
-            <td><span class="table-cross">No</span></td>
+            <td><span class="table-check">Yes</span>, on Mac (EnviousMeet): transcript with who said what, live words, notes and an optional summary; audio stays on your Mac</td>
             <td><span class="table-check">Yes</span>, on Mac and Windows, with live transcript, speaker labels, shared notes, Otter and Granola imports, and questions over meetings</td>
           </tr>
           <tr>
@@ -673,7 +673,7 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Will my audio be used for training?</div>
-        <p class="faq-a">No. Your audio is processed on your Mac and discarded after transcription. It never leaves your device, so it cannot be used for anything else.</p>
+        <p class="faq-a">No. Your audio is transcribed on your Mac and never leaves it. Dictation audio is cleared after processing, and meeting audio stays on your Mac until you delete it. Envious Labs never receives it, so it cannot be used for anything else.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I switch from WisprFlow easily?</div>
@@ -685,7 +685,7 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does EnviousWispr use the cloud at all?</div>
-        <p class="faq-a">Transcription is always on-device. If you choose to enable AI polish with a cloud provider (OpenAI, Gemini, or Claude), only the text transcript is sent using your own API key. You can also polish with a local model for fully offline operation. The choice is yours.</p>
+        <p class="faq-a">Transcription is always on-device. If you choose a cloud AI provider (OpenAI, Gemini, or Claude), only text is sent, using your own API key: the transcript, plus your notes when it writes a meeting summary. You can also use a local model for fully offline operation. The choice is yours.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Is there a free alternative to WisprFlow?</div>

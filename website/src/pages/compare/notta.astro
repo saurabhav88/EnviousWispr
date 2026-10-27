@@ -3,10 +3,10 @@ import CompareLayout from '../../layouts/CompareLayout.astro';
 
 const meta = {
   "slug": "notta",
-  "title": "EnviousWispr vs Notta: Dictation vs Meeting Notes",
-  "description": "Notta records and transcribes meetings, mostly in the cloud. EnviousWispr is free, on-device Mac dictation for writing anywhere. Different jobs, compared.",
-  "headline": "EnviousWispr vs Notta: Real-Time Dictation vs Meeting Transcription",
-  "articleDescription": "Compare EnviousWispr and Notta.ai. One is real-time dictation for typing on Mac. The other is meeting transcription across platforms. See which fits your workflow.",
+  "title": "EnviousWispr vs Notta: Meeting Notes and Dictation on Your Mac",
+  "description": "Notta records meetings, mostly in the cloud. EnviousWispr records meetings on your Mac with no bot, and adds free dictation into any app. Compared.",
+  "headline": "EnviousWispr vs Notta: Meetings and Dictation on Your Mac vs a Cloud Meeting Platform",
+  "articleDescription": "Compare EnviousWispr and Notta.ai. EnviousWispr records meetings and dictates on your Mac, free. Notta is a meeting transcription platform across devices, mostly in the cloud. See which fits your workflow.",
   "breadcrumb": "EnviousWispr vs Notta",
   "ogImage": "/images/og/notta.png",
   "datePublished": "2026-04-04T21:41:19Z",
@@ -16,7 +16,7 @@ const meta = {
 const faqs = [
   {
     "q": "Are EnviousWispr and Notta competitors?",
-    "a": "Not really. They solve different problems. Notta is a meeting transcription platform: it records calls, identifies speakers, and generates summaries. EnviousWispr is a real-time dictation tool: hold a key, speak, and text appears at your cursor. If you want to dictate emails and messages, EnviousWispr is the right tool. If you want meeting notes, Notta is."
+    "a": "Partly. Both record and transcribe meetings. Notta is a meeting platform across web, phone and desktop: its bot joins calls, it identifies speakers, writes summaries, and gives teams shared workspaces. EnviousWispr records meetings on your Mac with no bot and writes a transcript with who said what, your notes and an optional summary. It is also a real-time dictation tool: hold a key, speak, and text appears at your cursor. If your team lives in shared meeting notes, Notta fits. If you want meetings and dictation kept on your Mac, EnviousWispr does."
   },
   {
     "q": "Is EnviousWispr really free?",
@@ -28,11 +28,11 @@ const faqs = [
   },
   {
     "q": "Can EnviousWispr transcribe meetings?",
-    "a": "No. EnviousWispr is designed for single-speaker dictation into text fields. It does not record calls or join meeting rooms; it can label speakers only in recordings you import. For meeting transcription, Notta or a similar tool is the right choice."
+    "a": "Yes. EnviousMeet, built into EnviousWispr, records a call or an in-person meeting on your Mac. No bot joins the meeting. It records your microphone and, on macOS 14.2 or later, the sound your Mac plays, then writes a transcript with who said what. For a team that shares and searches meeting notes, Notta or a similar tool is the better fit."
   },
   {
     "q": "Will my audio be used for training?",
-    "a": "No. Your audio is processed on your Mac and discarded after transcription. It never leaves your device, so it cannot be used for anything else."
+    "a": "No. Your audio is transcribed on your Mac and never leaves it. Dictation audio is cleared after processing, and meeting audio stays on your Mac until you delete it. Envious Labs never receives it, so it cannot be used for anything else."
   },
   {
     "q": "What Mac do I need?",
@@ -48,7 +48,7 @@ const faqs = [
   },
   {
     "q": "Can I use EnviousWispr to take notes during meetings?",
-    "a": "You can dictate your own notes during a meeting by holding your keybind and speaking. But EnviousWispr does not record the meeting itself, does not join call rooms, and does not transcribe other participants. For full meeting transcription with speaker identification, Notta or a similar meeting tool is what you need."
+    "a": "Yes. EnviousMeet records the meeting, shows live words while it records once a live words engine is downloaded, and has a Notes tab for your own notes. After the meeting you get a transcript with who said what and an optional summary. You can keep dictating into other apps while it records. It does not join call rooms as a bot."
   },
   {
     "q": "Does Notta work for dictation like EnviousWispr?",
@@ -56,7 +56,7 @@ const faqs = [
   },
   {
     "q": "I need both meeting notes and dictation. Can I use both?",
-    "a": "Yes. They do not overlap. Use Notta for meeting transcription and team collaboration. Use EnviousWispr for quick voice typing into any app on your Mac. They serve different workflows and work fine side by side."
+    "a": "Yes. EnviousWispr does both on your Mac: EnviousMeet for meetings and dictation for every other app. If your team already shares meeting notes in Notta, keep Notta for those and use EnviousWispr for dictation; they work fine side by side."
   }
 ];
 ---
@@ -221,8 +221,8 @@ const faqs = [
       <span class="vs-circle">VS</span>
       <span class="vs-brand">Notta</span>
     </div>
-    <h1 class="reveal">Notta records meetings. EnviousWispr lets you type by speaking.</h1>
-    <p class="page-header-sub reveal">Notta records and transcribes meetings. EnviousWispr turns your voice into typed text instantly. Different tools for different jobs.</p>
+    <h1 class="reveal">Notta takes meeting notes in the cloud. EnviousWispr takes them on your Mac.</h1>
+    <p class="page-header-sub reveal">Both record and transcribe meetings. Notta works across devices and mostly in the cloud. EnviousWispr records on your Mac with no bot, and also turns your voice into typed text in any app.</p>
     <div class="hero-pills reveal">
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
@@ -253,7 +253,7 @@ const faqs = [
     <div class="section-head reveal">
       <div class="section-label-pill">Side by Side</div>
       <h2 class="section-title">Feature comparison</h2>
-      <p class="section-sub">These are fundamentally different tools. This table shows where they overlap and where they diverge.</p>
+      <p class="section-sub">Both record meetings; only EnviousWispr types into your apps. This table shows where they overlap and where they diverge.</p>
     </div>
     <div class="compare-table-wrap reveal">
       <table class="compare-table compare-table--duo">
@@ -286,7 +286,7 @@ const faqs = [
         <tbody>
           <tr>
             <td>Primary use case</td>
-            <td><span class="table-highlight">Real-time dictation</span> into any text field</td>
+            <td><span class="table-highlight">Real-time dictation</span> into any text field, plus meeting recording on your Mac (EnviousMeet)</td>
             <td>Meeting recording and transcription</td>
           </tr>
           <tr>
@@ -296,12 +296,12 @@ const faqs = [
           </tr>
           <tr>
             <td>Meeting recording</td>
-            <td><span class="table-cross">No</span> (not a meeting tool)</td>
+            <td><span class="table-check">Yes</span>, records calls and in-person meetings on your Mac; no bot joins</td>
             <td><span class="table-check">Yes</span> - bot joins Zoom, Meet, Teams, Webex</td>
           </tr>
           <tr>
             <td>Speaker identification</td>
-            <td>Only in recordings you import (Transcribe a File); not in live dictation</td>
+            <td><span class="table-check">Yes</span>, after a meeting (on a call, everything your microphone hears is You; the call voices are numbered when they can be told apart, otherwise Call) and in files you import; not live while recording</td>
             <td><span class="table-check">Yes</span>, multi-speaker diarization</td>
           </tr>
           <tr>
@@ -336,7 +336,7 @@ const faqs = [
           </tr>
           <tr>
             <td>AI polish</td>
-            <td><span class="table-highlight">EG-1, S1-mini by Superwhisper, Ollama</span> on-device, <span class="table-highlight">Apple Intelligence</span> on-device (macOS 26+); OpenAI, Gemini, or Claude with your own key</td>
+            <td><span class="table-highlight">EG-1, S1-mini by Superwhisper, Ollama</span> on-device, <span class="table-highlight">Apple Intelligence</span> on-device (macOS 26+); OpenAI, Gemini, or Claude with your own key; Apple Intelligence, Ollama, OpenAI, Gemini or Claude can also write a summary of each meeting</td>
             <td>AI summaries and action items from meetings</td>
           </tr>
           <tr>
@@ -402,8 +402,8 @@ const faqs = [
   <div class="container">
     <div class="section-head reveal">
       <div class="section-label-pill green">Why EnviousWispr</div>
-      <h2 class="section-title">Why dictation users pick EnviousWispr</h2>
-      <p class="section-sub">If your goal is to type faster with your voice, not transcribe meetings, EnviousWispr is purpose-built for that.</p>
+      <h2 class="section-title">Why people pick EnviousWispr</h2>
+      <p class="section-sub">If you want dictation in every app and meetings recorded on your own Mac, free, EnviousWispr is built for that.</p>
     </div>
     <div class="advantages-grid">
       <div class="advantage-card reveal">
@@ -531,19 +531,20 @@ const faqs = [
   <div class="container">
     <div class="section-head reveal">
       <div class="section-label-pill">Deep Dive</div>
-      <h2 class="section-title">Different tools for different jobs</h2>
-      <p class="section-sub">Notta and EnviousWispr both involve speech and text, but they solve fundamentally different problems.</p>
+      <h2 class="section-title">Same meetings, different homes</h2>
+      <p class="section-sub">Notta and EnviousWispr both turn meetings into transcripts. Where that happens, and what else each app does, is what separates them.</p>
     </div>
     <div class="deep-dive-grid">
       <div class="deep-dive-card reveal">
         <div class="deep-dive-icon">🎯</div>
-        <div class="deep-dive-title">Dictation vs meeting transcription</div>
+        <div class="deep-dive-title">Your Mac or the cloud, plus dictation</div>
         <div class="deep-dive-body">
           <p>Notta records meetings. Its bot joins your Zoom, Google Meet, Teams, or Webex call, captures everything, identifies speakers, and produces a searchable transcript. The output lives inside Notta's app. It is a meeting productivity tool.</p>
           <p>EnviousWispr puts text where you type, in real time. Hold a keybind, speak, release. Text appears in your email draft, Slack message, code editor, or Google Doc. There is no separate transcript window, no copy-pasting, no switching tabs. It replaces your keyboard for moments when speaking is faster than typing.</p>
-          <p>If you sit in meetings all day and need transcripts, Notta is the right tool. If you write emails, Slack messages, and documents by voice, EnviousWispr is purpose-built for that workflow.</p>
+          <p>EnviousWispr also records meetings, on your Mac, with EnviousMeet. It records your microphone and, on macOS 14.2 or later, the sound your Mac plays. No bot joins. After the meeting you get a transcript with who said what, your notes, and an optional summary.</p>
+          <p>If your team shares meeting notes, wants a bot in every call, or connects meetings to Salesforce, HubSpot or Notion, Notta is the right tool. If you want meetings transcribed on your own Mac, and dictation in every app, EnviousWispr does both for free.</p>
           <div class="deep-dive-detail">
-            <strong>Key difference:</strong> Notta produces transcripts you read later. EnviousWispr produces text you use right now, in whatever app has focus.
+            <strong>Key difference:</strong> Notta keeps your meetings in its workspace for your team. EnviousWispr keeps them on your Mac, and also puts text where you type.
           </div>
         </div>
       </div>
@@ -552,10 +553,10 @@ const faqs = [
         <div class="deep-dive-title">Privacy: on-device vs cloud</div>
         <div class="deep-dive-body">
           <p>By default, Notta uploads audio to its cloud servers. Transcripts are stored online and processed by Notta's AI for summaries, action items, and search indexing. Your voice data lives on their infrastructure.</p>
-          <p>EnviousWispr processes audio entirely on your Mac's Apple Silicon chip. Nothing is uploaded. The audio buffer is discarded after transcription. If you enable AI polish with a cloud provider, only the text transcript (not audio) is sent, using your own API key.</p>
-          <p>For meeting transcription, cloud processing is a reasonable tradeoff: you need speaker identification, long-form recording, and team collaboration that requires server-side infrastructure. For dictation of personal messages, medical notes, legal correspondence, or anything sensitive, on-device processing means your words never leave your control.</p>
+          <p>EnviousWispr processes audio entirely on your Mac's Apple Silicon chip. Nothing is uploaded. Dictation audio is cleared after transcription; meeting audio stays on your Mac until you delete it. If you choose a cloud AI provider, only text is sent (the transcript, plus your notes for a meeting summary). OpenAI, Gemini and Claude receive it under your own key; a hosted Ollama model sends it to Ollama's servers.</p>
+          <p>Cloud processing is what lets Notta offer team workspaces and search across meetings. EnviousWispr records, transcribes and labels speakers on your Mac. For personal messages, medical notes, legal correspondence, or anything sensitive, on-device processing means your words never leave your control.</p>
           <div class="deep-dive-detail">
-            <strong>The tradeoff:</strong> Notta's cloud approach enables speaker identification, team workspaces, and cross-meeting search, and its newer Privacy Mode brings local meeting transcription to the desktop. EnviousWispr is local for every dictation and labels speakers in imported recordings, but does not record meetings.
+            <strong>The tradeoff:</strong> Notta's cloud approach enables speaker identification, team workspaces, and cross-meeting search, and its newer Privacy Mode brings local meeting transcription to the desktop. EnviousWispr records and transcribes meetings on your Mac for free, labels speakers after the meeting, and is local for every dictation.
           </div>
         </div>
       </div>
@@ -568,29 +569,29 @@ const faqs = [
   <div class="container">
     <div class="section-head reveal">
       <div class="section-label-pill">Being Honest</div>
-      <h2 class="section-title">Choose Notta if you need meeting notes and team collaboration</h2>
+      <h2 class="section-title">Choose Notta if your team shares meeting notes or you need it beyond the Mac</h2>
       <p class="section-sub">Notta is a capable meeting platform. It is the better choice in these situations:</p>
     </div>
     <div class="advantages-grid">
       <div class="advantage-card reveal">
         <div class="advantage-icon">🎙️</div>
-        <div class="advantage-title">Meeting transcription</div>
-        <p class="advantage-desc">Notta's core strength is recording meetings. Its bot joins Zoom, Google Meet, Teams, and Webex calls automatically, identifies speakers, and generates AI summaries with action items. EnviousWispr does not do meeting recording at all.</p>
+        <div class="advantage-title">A bot that joins your calls</div>
+        <p class="advantage-desc">Notta's bot joins Zoom, Google Meet, Teams, and Webex calls automatically, identifies speakers, and writes AI summaries with action items. EnviousMeet records on your Mac instead, with no bot: it can ask to record when a call app starts a call, but nothing joins the call for you.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🗣️</div>
         <div class="advantage-title">Speaker diarization</div>
-        <p class="advantage-desc">Notta identifies who said what in multi-person conversations. EnviousWispr labels speakers only in recordings you import, not in live meetings.</p>
+        <p class="advantage-desc">Notta identifies who said what in multi-person conversations. EnviousWispr labels speakers after a meeting ends (on a call, everything your microphone hears is You; the call voices are numbered when they can be told apart, otherwise Call), not live while it records.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">👥</div>
         <div class="advantage-title">Team collaboration</div>
-        <p class="advantage-desc">Notta's Business and Enterprise plans offer shared workspaces, team transcript libraries, and collaborative editing. EnviousWispr is a personal dictation tool with no team features.</p>
+        <p class="advantage-desc">Notta's Business and Enterprise plans offer shared workspaces, team transcript libraries, and collaborative editing. EnviousWispr keeps meetings on your Mac and has no team features.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🔗</div>
         <div class="advantage-title">Meeting integrations</div>
-        <p class="advantage-desc">Notta integrates with Zoom, Google Meet, Microsoft Teams, Webex, Salesforce, HubSpot, and Notion. It fits into an existing meeting workflow. EnviousWispr is a standalone dictation utility.</p>
+        <p class="advantage-desc">Notta integrates with Zoom, Google Meet, Microsoft Teams, Webex, Salesforce, HubSpot, and Notion. It fits into an existing meeting workflow. EnviousWispr does not connect to Salesforce, HubSpot or Notion; EnviousMeet keeps your meetings in History on your Mac and can use your calendar to name them.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">📱</div>
@@ -599,11 +600,11 @@ const faqs = [
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🔒</div>
-        <div class="advantage-title">Private meeting transcription</div>
-        <p class="advantage-desc">Notta's desktop Privacy Mode (beta, on paid plans) transcribes meetings on your Mac or Windows PC without an internet connection, apart from a periodic license check, and keeps recordings in a local folder. EnviousWispr does not record meetings at all.</p>
+        <div class="advantage-title">Private meeting transcription on Windows too</div>
+        <p class="advantage-desc">Notta's desktop Privacy Mode (beta, on paid plans) transcribes meetings on your Mac or Windows PC without an internet connection, apart from a periodic license check, and keeps recordings in a local folder. EnviousMeet also records and transcribes meetings on your Mac, free, but only on a Mac.</p>
       </div>
     </div>
-    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If your goal is to type with your voice into emails, Slack, docs, and code comments, not record meetings, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>.</p>
+    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you want to type with your voice into emails, Slack, docs, and code comments, and record meetings on your own Mac, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>.</p>
   </div>
 </section>
 
@@ -617,7 +618,7 @@ const faqs = [
     <div class="faq-list">
       <div class="faq-item reveal">
         <div class="faq-q">Are EnviousWispr and Notta competitors?</div>
-        <p class="faq-a">Not really. They solve different problems. Notta is a meeting transcription platform: it records calls, identifies speakers, and generates summaries. EnviousWispr is a real-time dictation tool: hold a key, speak, and text appears in your cursor. If you want to dictate emails and messages, EnviousWispr is the right tool. If you want meeting notes, Notta is.</p>
+        <p class="faq-a">Partly. Both record and transcribe meetings. Notta is a meeting platform across web, phone and desktop: its bot joins calls, it identifies speakers, writes summaries, and gives teams shared workspaces. EnviousWispr records meetings on your Mac with no bot and writes a transcript with who said what, your notes and an optional summary. It is also a real-time dictation tool: hold a key, speak, and text appears at your cursor. If your team lives in shared meeting notes, Notta fits. If you want meetings and dictation kept on your Mac, EnviousWispr does.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Is EnviousWispr really free?</div>
@@ -629,11 +630,11 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can EnviousWispr transcribe meetings?</div>
-        <p class="faq-a">No. EnviousWispr is designed for single-speaker dictation into text fields. It does not record calls or join meeting rooms; it can label speakers only in recordings you import. For meeting transcription, Notta or a similar tool is the right choice.</p>
+        <p class="faq-a">Yes. EnviousMeet, built into EnviousWispr, records a call or an in-person meeting on your Mac. No bot joins the meeting. It records your microphone and, on macOS 14.2 or later, the sound your Mac plays, then writes a transcript with who said what. For a team that shares and searches meeting notes, Notta or a similar tool is the better fit.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Will my audio be used for training?</div>
-        <p class="faq-a">No. Your audio is processed on your Mac and discarded after transcription. It never leaves your device, so it cannot be used for anything else.</p>
+        <p class="faq-a">No. Your audio is transcribed on your Mac and never leaves it. Dictation audio is cleared after processing, and meeting audio stays on your Mac until you delete it. Envious Labs never receives it, so it cannot be used for anything else.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">What Mac do I need?</div>
@@ -649,7 +650,7 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I use EnviousWispr to take notes during meetings?</div>
-        <p class="faq-a">You can dictate your own notes during a meeting by holding your keybind and speaking. But EnviousWispr does not record the meeting itself, does not join call rooms, and does not transcribe other participants. For full meeting transcription with speaker identification, Notta or a similar meeting tool is what you need.</p>
+        <p class="faq-a">Yes. EnviousMeet records the meeting, shows live words while it records once a live words engine is downloaded, and has a Notes tab for your own notes. After the meeting you get a transcript with who said what and an optional summary. You can keep dictating into other apps while it records. It does not join call rooms as a bot.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does Notta work for dictation like EnviousWispr?</div>
@@ -657,7 +658,7 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">I need both meeting notes and dictation. Can I use both?</div>
-        <p class="faq-a">Yes. They do not overlap. Use Notta (or a similar tool) for meeting transcription and team collaboration. Use EnviousWispr for quick voice typing into any app on your Mac. They serve different workflows and work fine side by side.</p>
+        <p class="faq-a">Yes. EnviousWispr does both on your Mac: EnviousMeet for meetings and dictation for every other app. If your team already shares meeting notes in Notta, keep Notta for those and use EnviousWispr for dictation; they work fine side by side.</p>
       </div>
     </div>
   </div>

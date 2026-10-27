@@ -66,7 +66,7 @@ export const groups = [
   ] },
   { title: 'Everyday use', rows: [
     { label: 'Workflow', cells: {
-      ew: cell('Dictate & transcribe files', 'Dictation into your apps, plus recordings you import.'),
+      ew: cell('Dictation, files & meetings', 'Dictation into your apps, recordings you import, and meetings on your Mac.'),
       flow: cell('Dictation across devices', 'Mac, Windows, iOS and Android.'),
       super: cell('Dictation & meetings', 'Mac, Windows, iOS and Android. Voice models, custom prompts and modes.'),
       mac: cell('Files, meetings & dictation', 'Includes subtitle and batch workflows.'),
