@@ -34,6 +34,7 @@ struct CustomTermsSection<Actions: View>: View {
   @Environment(CustomWordsCoordinator.self) private var customWordsCoordinator
   @Environment(\.customWordsProbe) private var customWordsProbe
   @State private var projectionProbeCounter = CustomWordsProjectionProbeCounter()
+  @State private var projection = CustomTermListProjection()
   /// See `EnvironmentValues.dictionaryScrollToTop`. This list has paged since
   /// it shipped and has always swapped rows under an unchanged scroll offset;
   /// the cloud review that named it on the pack list applies here too, so both
@@ -58,27 +59,35 @@ struct CustomTermsSection<Actions: View>: View {
     customWordsCoordinator.customWords
   }
 
-  private var filteredWords: [CustomWord] {
-    let revision = customWordsProbe.map { _ in projectionProbeCounter.next() }
-    if let revision { customWordsProbe?.emit(.projectionStarted(revision: revision)) }
-    let result = CustomTermListPolicy.filtered(
-      allWords, query: searchQuery, category: selectedCategory, autoLearnedOnly: autoLearnedOnly)
-    if let revision {
-      customWordsProbe?.emit(.projectionFinished(revision: revision, rowCount: result.count))
+  /// The one prepared list (#4086): filtered, sorted and its selectable IDs, rebuilt
+  /// only when the library, the search, a pill or the locale changes.
+  private var listResult: CustomTermListProjection.Result {
+    let input = CustomTermListProjection.Input(
+      libraryRevision: customWordsCoordinator.customWordsRevision, query: searchQuery,
+      category: selectedCategory, autoLearnedOnly: autoLearnedOnly,
+      localeIdentifier: Locale.current.identifier)
+    return projection.result(for: input) {
+      let revision = customWordsProbe.map { _ in projectionProbeCounter.next() }
+      if let revision { customWordsProbe?.emit(.projectionStarted(revision: revision)) }
+      let words = CustomTermListPolicy.filtered(
+        allWords, query: searchQuery, category: selectedCategory, autoLearnedOnly: autoLearnedOnly)
+      let result = CustomTermListProjection.Result(
+        words: words, selectableIDs: CustomTermListPolicy.selectableIDs(in: words))
+      if let revision {
+        customWordsProbe?.emit(.projectionFinished(revision: revision, rowCount: words.count))
+      }
+      return result
     }
-    return result
   }
+
+  private var filteredWords: [CustomWord] { listResult.words }
 
   /// IDs eligible for bulk selection within the current search/filter — never
   /// the whole library, and never a built-in or vocabulary-pack term. One
   /// projection reused by both the Select-All control and row rendering.
-  private var filteredSelectableIDs: Set<UUID> {
-    CustomTermListPolicy.selectableIDs(in: filteredWords)
-  }
+  private var filteredSelectableIDs: Set<UUID> { listResult.selectableIDs }
 
-  private var pageCount: Int {
-    CustomTermListPolicy.pageCount(of: filteredWords.count)
-  }
+  private var pageCount: Int { listResult.pageCount }
 
   private var pagedWords: [CustomWord] {
     let safePage = max(0, min(currentPage, pageCount - 1))

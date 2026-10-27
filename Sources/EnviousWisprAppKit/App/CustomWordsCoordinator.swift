@@ -18,7 +18,13 @@ struct CustomWordEnrichmentDisplay: Sendable, Equatable {
 /// Manages custom word state, CRUD operations, and persistence.
 @MainActor @Observable
 final class CustomWordsCoordinator {
-  var customWords: [CustomWord] = []
+  var customWords: [CustomWord] = [] {
+    didSet { customWordsRevision &+= 1 }
+  }
+  /// Bumped on every write to `customWords`, including in-place `inout` mutation
+  /// (#4086). The Your Words list keys its prepared result on this instead of
+  /// comparing the whole word array on every read.
+  private(set) var customWordsRevision = 0
   var customWordError: String?
   /// Optional per-instance timing sink; ordinary application wiring leaves it nil.
   package var probe: CustomWordsProbe?
