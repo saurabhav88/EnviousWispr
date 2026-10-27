@@ -871,9 +871,9 @@ struct CustomWordsManagerLockingTests {
   /// whole-file keyword presence.
   ///
   /// #4086 moved every disk touch into `CustomWordsFileStore`, verbatim. Whole-file
-  /// counts now cover the manager AND the store together, so a second lock path or
-  /// save helper cannot hide in either file; function-specific checks read each
-  /// function at its actual owner. Both files are parsed with SwiftParser
+  /// counts now cover the manager, the store and both policy files together, so a
+  /// second lock path or save helper cannot hide in any of them; function-specific
+  /// checks read each function at its actual owner. Every file is parsed with SwiftParser
   /// (swift-patterns.md RULE: scan-swift-source-with-swiftparser-never-a-hand-rolled-lexer).
   @Test
   func singleLockAuthorityStructureHoldsAcrossTheWholeFile() throws {
@@ -881,7 +881,12 @@ struct CustomWordsManagerLockingTests {
       at: RepoRoot.sourceURL("Sources/EnviousWisprPostProcessing/CustomWordsFileStore.swift"))
     let manager = try CachedSwiftParser.snapshot(
       at: RepoRoot.sourceURL("Sources/EnviousWisprPostProcessing/CustomWordsManager.swift"))
-    let trees = [store.tree, manager.tree]
+    let mutationPolicy = try CachedSwiftParser.snapshot(
+      at: RepoRoot.sourceURL("Sources/EnviousWisprPostProcessing/CustomWordsMutationPolicy.swift"))
+    let importPolicy = try CachedSwiftParser.snapshot(
+      at: RepoRoot.sourceURL("Sources/EnviousWisprPostProcessing/CustomWordsImportPolicy.swift"))
+    // Every dictionary file, so no lock, save, quarantine or backup path can hide in a policy.
+    let trees = [store.tree, manager.tree, mutationPolicy.tree, importPolicy.tree]
     let both = trees.map { Syntax($0) }
 
     let load = try function(named: "load", in: manager.tree)
@@ -906,7 +911,7 @@ struct CustomWordsManagerLockingTests {
     // third site hiding elsewhere.
     #expect(
       calls(named: "withExclusiveFileLock", in: both).count == 2,
-      "Expected exactly two withExclusiveFileLock call sites across manager and store.")
+      "Expected exactly two withExclusiveFileLock call sites across the dictionary files.")
     let repairLockCalls = calls(named: "withExclusiveFileLock", in: [Syntax(resolveCurrentFile)])
     #expect(
       repairLockCalls.count == 1,
@@ -937,7 +942,7 @@ struct CustomWordsManagerLockingTests {
     // the transaction wrapper, and the two legacy migrations.
     #expect(
       calls(named: "saveFileWhileLocked", in: both).count == 3,
-      "Expected exactly three saveFileWhileLocked call sites across manager and store.")
+      "Expected exactly three saveFileWhileLocked call sites across the dictionary files.")
 
     // 6. loadFileWhileLocked owns exactly two of those three save calls (the
     // legacy migrations) and the sole quarantine move.
@@ -959,34 +964,45 @@ struct CustomWordsManagerLockingTests {
     // 8. Exactly one quarantine move of fileURL exists across both files.
     #expect(
       quarantineMoves(in: both) == 1,
-      "Expected exactly one quarantine moveItem(at: fileURL...) call across manager and store.")
+      "Expected exactly one quarantine moveItem(at: fileURL...) call across the dictionary files.")
 
     // 9. writePreImportBackup() has exactly one declaration and one call
-    // across both files, and that call sits inside commitImport's locked
-    // transaction — after entering performLockedTransaction, before the
-    // transform hands back shouldSave: true.
+    // across every dictionary file, and that call sits inside commitImport's
+    // locked transaction — passed as `backup` into the import policy, which
+    // invokes it before the transform hands back shouldSave: true (#4086 moved
+    // the transform into `CustomWordsImportPolicy`; the backup stays the store's).
     #expect(
       declarationCount(named: "writePreImportBackup", in: trees) == 1,
       "Expected exactly one writePreImportBackup declaration.")
     #expect(
       calls(named: "writePreImportBackup", in: both).count == 1,
-      "Expected exactly one writePreImportBackup call across manager and store.")
-    let transactionStart = try #require(
-      calls(named: "performLockedTransaction", in: [Syntax(commitImport)]).first?.position,
+      "Expected exactly one writePreImportBackup call across the dictionary files.")
+    let transactionCall = try #require(
+      calls(named: "performLockedTransaction", in: [Syntax(commitImport)]).first,
       "commitImport must enter performLockedTransaction before creating its backup.")
+    let policyCall = try #require(
+      calls(named: "commit", in: [Syntax(transactionCall)]).first,
+      "commitImport's transaction must run CustomWordsImportPolicy.commit.")
     let backupCall = try #require(
-      calls(named: "writePreImportBackup", in: [Syntax(commitImport)]).first?.position,
-      "commitImport must call writePreImportBackup().")
+      calls(named: "writePreImportBackup", in: [Syntax(policyCall)]).first,
+      "commitImport must hand writePreImportBackup() to the import policy inside its transaction.")
     #expect(
-      transactionStart < backupCall,
-      "writePreImportBackup() must remain inside commitImport's transaction closure.")
+      policyCall.calledExpression.trimmedDescription == "CustomWordsImportPolicy.commit"
+        && argument(labeled: "backup", of: policyCall)?.contains("writePreImportBackup()") == true,
+      "writePreImportBackup() must be the import policy's `backup` argument.")
+    #expect(backupCall.position > transactionCall.position)
+    let policyCommit = try function(named: "commit", in: importPolicy.tree)
+    let backupInvocations = calls(named: "backup", in: [Syntax(policyCommit)])
+    #expect(
+      backupInvocations.count == 1, "The import policy must invoke `backup` exactly once.")
+    let backupInvocation = try #require(backupInvocations.first?.position)
     let shouldSaveTrue = try #require(
-      returns(of: "((receipt, resulting), true)", in: commitImport).first?.position,
-      "commitImport's transaction transform must return shouldSave: true on the changing-commit path."
+      returns(of: "((receipt, resulting), true)", in: policyCommit).first?.position,
+      "The import transform must return shouldSave: true on the changing-commit path."
     )
     #expect(
-      backupCall < shouldSaveTrue,
-      "writePreImportBackup() must run before the transform returns shouldSave: true.")
+      backupInvocation < shouldSaveTrue,
+      "The backup must run before the transform returns shouldSave: true.")
 
     // 10. The atomic-write shape is intact — at its OWNER.
     //
@@ -1018,7 +1034,7 @@ struct CustomWordsManagerLockingTests {
     #expect(durableTokens.contains("F_FULLFSYNC"))
 
     // 11. Neither removed helper name reappears in either file, as code or prose.
-    for source in [store.source, manager.source] {
+    for source in [store.source, manager.source, mutationPolicy.source, importPolicy.source] {
       let ns = source as NSString
       let bareLoadFile = try NSRegularExpression(pattern: #"\bloadFile\b"#)
       let bareSaveFile = try NSRegularExpression(pattern: #"\bsaveFile\b"#)

@@ -376,7 +376,7 @@ public struct WordCorrector: Sendable {
     /// The single shared answer to "does this alias collide, and who wins" —
     /// called by BOTH the import preview
     /// (`CustomWordsImportCompareEngine.detectAliasCollisions`) and the import
-    /// commit (`CustomWordsManager.enforceAliases`). Neither consumer may
+    /// commit (`CustomWordsImportPolicy.enforceAliases`). Neither consumer may
     /// re-derive blocker detection or decisive-owner selection locally; both
     /// call this and branch only on the returned case (#1672).
     ///
