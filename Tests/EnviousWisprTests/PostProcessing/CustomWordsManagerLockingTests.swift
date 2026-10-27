@@ -871,7 +871,7 @@ struct CustomWordsManagerLockingTests {
   /// whole-file keyword presence.
   ///
   /// #4086 moved every disk touch into `CustomWordsFileStore`, verbatim. Whole-file
-  /// counts now cover the manager, the store and both policy files together, so a
+  /// counts now cover the manager, the store and every policy file together, so a
   /// second lock path or save helper cannot hide in any of them; function-specific
   /// checks read each function at its actual owner. Every file is parsed with SwiftParser
   /// (swift-patterns.md RULE: scan-swift-source-with-swiftparser-never-a-hand-rolled-lexer).
@@ -885,8 +885,10 @@ struct CustomWordsManagerLockingTests {
       at: RepoRoot.sourceURL("Sources/EnviousWisprPostProcessing/CustomWordsMutationPolicy.swift"))
     let importPolicy = try CachedSwiftParser.snapshot(
       at: RepoRoot.sourceURL("Sources/EnviousWisprPostProcessing/CustomWordsImportPolicy.swift"))
+    let enrichmentPolicy = try CachedSwiftParser.snapshot(
+      at: RepoRoot.sourceURL("Sources/EnviousWisprPostProcessing/CustomWordsEnrichmentPolicy.swift"))
     // Every dictionary file, so no lock, save, quarantine or backup path can hide in a policy.
-    let trees = [store.tree, manager.tree, mutationPolicy.tree, importPolicy.tree]
+    let trees = [store.tree, manager.tree, mutationPolicy.tree, importPolicy.tree, enrichmentPolicy.tree]
     let both = trees.map { Syntax($0) }
 
     let load = try function(named: "load", in: manager.tree)
@@ -1034,7 +1036,10 @@ struct CustomWordsManagerLockingTests {
     #expect(durableTokens.contains("F_FULLFSYNC"))
 
     // 11. Neither removed helper name reappears in either file, as code or prose.
-    for source in [store.source, manager.source, mutationPolicy.source, importPolicy.source] {
+    for source in [
+      store.source, manager.source, mutationPolicy.source, importPolicy.source,
+      enrichmentPolicy.source,
+    ] {
       let ns = source as NSString
       let bareLoadFile = try NSRegularExpression(pattern: #"\bloadFile\b"#)
       let bareSaveFile = try NSRegularExpression(pattern: #"\bsaveFile\b"#)
