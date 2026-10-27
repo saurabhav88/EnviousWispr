@@ -6,7 +6,7 @@ section: "EnviousMeet"
 order: 11
 keywords: ["record this call", "call detection", "auto record meetings", "start recording automatically", "enviousmeet asks to record", "meeting ending in", "keep recording", "recording stopped", "start a new recording", "zoom", "microsoft teams", "facetime", "slack huddle", "google meet", "webex", "turn off call prompts", "didn't ask to record", "stopped recording by itself"]
 related: ["enviousmeet-record-a-meeting", "accessibility-permission-not-working", "granting-permissions-microphone-accessibility-and-automation"]
-updated: 2026-10-24
+updated: 2026-10-27
 deflection: "show_but_always_send"
 ---
 When a call app starts using your microphone in a real call, EnviousMeet can show a small panel under the menu bar that asks **Record this call?** The panel never takes the focus from your call. EnviousMeet asks macOS to leave it out of screen sharing, but macOS does not promise that on every version.
@@ -26,6 +26,8 @@ Noticing calls needs macOS 14.2 or later, and setup on the EnviousMeet page must
 ### Which apps and websites it notices
 
 **Apps:** Zoom, Microsoft Teams, FaceTime, Webex, Slack, Dialpad Meetings, Gather, Lark and VooV Meeting. Zoom counts only while its meeting or webinar window is open, and Slack only while a huddle window is open, because both apps also use the microphone outside calls.
+
+The Microsoft Teams app also uses the microphone for its sound test before you join a call. With **Ask**, that test can show the panel, and you can click **No**. With **Start by itself**, the Teams app starts a recording only once you are in the call, so the sound test never starts one.
 
 **In a browser:** Google Meet, Zoom, Microsoft Teams, Webex, Whereby, Jitsi and Slack huddles, in Chrome, Safari, Arc, Dia, Edge, Brave, Opera, Vivaldi, Zen, Comet and ChatGPT Atlas. The meeting page must be the tab you are on when the call starts.
 

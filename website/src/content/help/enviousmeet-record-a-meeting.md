@@ -4,9 +4,9 @@ description: "Record a call or an in-person meeting on your Mac and get a transc
 category: "features"
 section: "EnviousMeet"
 order: 10
-keywords: ["enviousmeet", "record a meeting", "meeting recorder", "record a call", "zoom transcript", "google meet transcript", "teams transcript", "meeting notes", "who said what", "speaker labels", "meeting summary", "call sound", "system audio", "record without a bot", "consent", "calendar meeting names", "meeting audio", "probable echo", "turn off dictation during meetings"]
+keywords: ["enviousmeet", "record a meeting", "meeting recorder", "record a call", "zoom transcript", "google meet transcript", "teams transcript", "meeting notes", "who said what", "speaker labels", "meeting summary", "call sound", "system audio", "record without a bot", "consent", "calendar meeting names", "meeting audio", "probable echo", "turn off dictation during meetings", "live words", "live transcript", "transcript language", "long meeting summary"]
 related: ["enviousmeet-when-a-call-starts", "transcript-history", "transcribe-a-file-speaker-labels", "choosing-an-ai-provider-none-apple-intelligence-ollama-openai-gemini", "privacy-overview"]
-updated: 2026-10-25
+updated: 2026-10-27
 deflection: "show_but_always_send"
 ---
 EnviousMeet records a call or a meeting on your Mac and writes a transcript that shows who said what. No bot joins your call. The audio stays on your Mac, and the transcript is written on your Mac.
@@ -44,7 +44,7 @@ Each permission has its own row on the **Permissions** tab of the EnviousMeet pa
 
 ### Record a meeting
 
-**Start.** Click the EnviousWispr icon in your menu bar and choose **Start Meeting Recording**. You can also click **Start Recording** in History. The lips in the menu bar glow while a meeting records.
+**Start.** Click the EnviousWispr icon in your menu bar and choose **Start Meeting Recording**. You can also click **Start Recording** in History. While a meeting records, a rainbow wave moves across the lips in the menu bar. With Reduce Motion on, the lips show the colours without moving.
 
 **While it records.** The menu shows what is being recorded: **Recording the call sound**, **Recording your microphone only**, or **Call sound not recorded**. In History, the recording meeting shows its live words and a **Stop Recording** button. You can keep dictating while EnviousMeet records; meeting work waits while you dictate, so your dictation never slows down.
 
@@ -53,6 +53,21 @@ Each permission has its own row on the **Permissions** tab of the EnviousMeet pa
 **Stop.** Choose **Stop Meeting Recording** in the menu, or click **Stop Recording** in History. The menu shows **Saving Meeting Recording** while it finishes.
 
 EnviousMeet can also ask to record when a call starts. See [EnviousMeet: When a Call Starts](/help/enviousmeet-when-a-call-starts/).
+
+### See live words while a meeting records
+
+Live words show what is said into your microphone and in the call while a meeting records. They are a preview: the full transcript, with speakers and probable echo hidden, is written after the meeting and does not depend on live words.
+
+Choose the engine and language under **Live words** on the **General** tab of the EnviousMeet page.
+
+| Engine | What it needs |
+| --- | --- |
+| **Apple** | This Mac's own speech recognition. Needs macOS 26 and a download for each language. |
+| **Universal** | Works on any Mac that runs EnviousWispr. Needs one download. |
+
+**Download.** Nothing downloads until you click **Download**. Download is off while a meeting records or is being transcribed. Until live words are ready, a meeting records without them. The row says what is still needed, such as **Not set up yet.** or a language that is not downloaded.
+
+**Transcript language.** The row under Live words sets the language of the full transcript. With **Auto**, no language is set. Choose a language when your meetings are always in it. A change applies to the next meeting. If live words and the transcript use different languages, the page says so; both choices still work.
 
 ### Recording the call sound
 
@@ -68,10 +83,11 @@ The first time you record the call sound, EnviousWispr explains that macOS will 
 
 Your recordings are in **History**, under **Recordings**. On the EnviousMeet page, **Show recordings** takes you there.
 
-- **Live words.** While a meeting records, its words appear about a minute behind, marked **You** or **Call**.
+- **Live words.** While a meeting records, its words appear as people speak, marked **You** for your microphone or **Call** for the call sound. They need a live words engine; see [See live words while a meeting records](#see-live-words-while-a-meeting-records).
 - **Transcript.** The transcript with who said what is written when you stop. Your voice is marked **You** when the call sound has speech in it and the microphone heard one voice that is mostly not echo. Other voices are **Speaker 1**, **Speaker 2** and so on, in the order they first speak. If the voices in the call sound cannot be told apart, their words are marked **Call**. In an in-person meeting recorded on the microphone alone, everyone is a numbered speaker.
 - **Notes.** Type your own notes on the **Notes** tab.
 - **Summary.** When summaries are on, your AI Polish provider writes one after the meeting, on the **Summary** tab.
+- **If a change cannot be saved.** History says **Your notes could not be saved.** or **Your summary changes could not be saved.** Click **Try again**. Your typing stays in the app until a save works.
 - **Audio.** Each recording keeps its audio until you delete it. **Delete audio** removes only the audio and keeps the transcript. **Delete meeting** removes everything. **Transcribe again** writes the transcript again from the kept audio.
 
 ### How meetings are named
@@ -96,6 +112,8 @@ With **Write a summary when a meeting ends** on, your AI Polish provider writes 
 | Ollama, a model on this Mac | Stay on your Mac. |
 | Ollama, a hosted model | Sent to Ollama's servers. |
 | OpenAI, Gemini or Claude | Sent to that provider under your own key. |
+
+**Long meetings with Apple Intelligence.** Apple Intelligence can read only part of a long meeting at once, so it writes the summary in parts. When that happens and AI Polish is still on Apple Intelligence, the **Summary** tab says **Long meeting: this summary was written in parts.** It adds that the default OpenAI, Gemini and Claude models fit much longer meetings in one piece, and that AI Polish also uses that choice for dictation. Click **Open AI Polish settings** to change it. Nothing changes until you choose. A summary written before this line existed has no record of being written in parts, so it does not show the line. **Write again** writes a new summary, which shows the line if Apple Intelligence wrote it in parts and AI Polish is still on Apple Intelligence.
 
 Summaries with Ollama need Ollama 0.12.6 or later. If no AI Polish provider is chosen, no summary is written. The EnviousMeet page says when the selected model can't write summaries; click **Open AI Polish settings** to pick another one. Turning summaries off does not stop a summary that has already started.
 
