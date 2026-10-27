@@ -4174,6 +4174,42 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("meeting.call_prompt", properties: props)
   }
 
+  /// #4121: one `meeting.call_sound_capture` row per call-sound rebuild or stop (at most 24 per
+  /// meeting; the call-sound tap counts the rest). Closed vocabularies, rates and a transport class:
+  /// never audio, text, device names or UIDs.
+  public func trackMeetingCallSoundCapture(
+    outcome: String, reason: String?, configuredRateHz: Int?, nominalRateHz: Int?,
+    measuredRateBucket: String?, outputTransport: String?
+  ) {
+    let props = Self.meetingCallSoundCaptureProperties(
+      outcome: outcome, reason: reason, configuredRateHz: configuredRateHz,
+      nominalRateHz: nominalRateHz, measuredRateBucket: measuredRateBucket,
+      outputTransport: outputTransport)
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "meeting.call_sound_capture",
+          stringProps: props.compactMapValues { $0 as? String },
+          intProps: props.compactMapValues { $0 as? Int }, doubleProps: [:], boolProps: [:]))
+    #endif
+    PostHogSDK.shared.capture("meeting.call_sound_capture", properties: props)
+  }
+
+  /// The `meeting.call_sound_capture` payload: `outcome` and `reason` (`none` when there is
+  /// none) always; `configured_rate_hz` and `nominal_rate_hz` (`Int`), `measured_rate_bucket`
+  /// and `output_transport` only when known.
+  static func meetingCallSoundCaptureProperties(
+    outcome: String, reason: String?, configuredRateHz: Int?, nominalRateHz: Int?,
+    measuredRateBucket: String?, outputTransport: String?
+  ) -> [String: Any] {
+    var props: [String: Any] = ["outcome": outcome, "reason": reason ?? "none"]
+    if let configuredRateHz { props["configured_rate_hz"] = configuredRateHz }
+    if let nominalRateHz { props["nominal_rate_hz"] = nominalRateHz }
+    if let measuredRateBucket { props["measured_rate_bucket"] = measuredRateBucket }
+    if let outputTransport { props["output_transport"] = outputTransport }
+    return props
+  }
+
   static func meetingCallPromptProperties(_ event: MeetingCallPromptTelemetry) -> [String: Any] {
     ["call_app": event.family.rawValue, "answer": event.answer.rawValue, "mode": event.mode]
   }

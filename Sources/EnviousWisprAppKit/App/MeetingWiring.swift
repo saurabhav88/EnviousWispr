@@ -54,6 +54,13 @@ enum MeetingWiring {
     var emitMeetingEnded: @MainActor (MeetingEndedTelemetry) -> Void = {
       TelemetryService.shared.trackMeetingEnded($0)
     }
+    /// #4121: the `meeting.call_sound_capture` emitter, on the main actor.
+    var emitCallSoundCapture: @MainActor (CallSoundChangeReport) -> Void = { report in
+      TelemetryService.shared.trackMeetingCallSoundCapture(
+        outcome: report.outcome, reason: report.reason, configuredRateHz: report.configuredRateHz,
+        nominalRateHz: report.nominalRateHz, measuredRateBucket: report.measuredRateBucket,
+        outputTransport: report.outputTransport)
+    }
     /// #4012: whether a detected Start is still wanted (`CallDetectionCoordinator`), asked
     /// before the meeting is created. Late-bound: call detection is built after the meetings.
     var detectedStartWanted: @MainActor () async -> Bool = { true }
@@ -112,14 +119,24 @@ enum MeetingWiring {
     return await readyRunning() ? .ready : .notReady
   }
 
+  /// #4121: change rows arrive on the tap's queue; the emitter runs on the main actor. Never
+  /// waits: the capture goes on whatever telemetry does.
+  static func callSoundReportForwarder(
+    _ emit: @escaping @MainActor (CallSoundChangeReport) -> Void
+  ) -> MeetingRecorder.CallSoundReportHandler {
+    { report in Task { @MainActor in emit(report) } }
+  }
+
   static func make(_ inputs: Inputs) -> MeetingCoordinator {
     let store = inputs.store
     let lane = MeetingLocalModelLane()
     let coordinator = MeetingCoordinator(
       dependencies: MeetingCoordinator.Dependencies(
         store: store,
-        makeRecorder: { configuration, onSegment, onFailure in
-          MeetingRecorder(configuration: configuration, onSegment: onSegment, onFailure: onFailure)
+        makeRecorder: { [emit = inputs.emitCallSoundCapture] configuration, onSegment, onFailure in
+          MeetingRecorder(
+            configuration: configuration, onSegment: onSegment, onFailure: onFailure,
+            onCallSoundReport: MeetingWiring.callSoundReportForwarder(emit))
         },
         makeJob: { makeJob(inputs, lane: lane) },
         liveWords: inputs.liveWords,
