@@ -1100,7 +1100,7 @@ struct MenuBarControllerTests {
     #expect(spy.fired == ["requestMeetingStart", "stopMeeting"])
   }
 
-  @Test("a meeting recording shows the glowing lips below every dictation state and warning")
+  @Test("a meeting recording shows the rainbow wave below every dictation state and warning")
   func meetingIconPriority() {
     func icon(_ state: MenuBarViewState) -> MenuBarIconAnimator.IconState {
       MenuBarController.iconState(state)
@@ -1124,20 +1124,81 @@ struct MenuBarControllerTests {
     #expect(icon(dictating) == .recording, "a dictation keeps its own icon")
   }
 
-  @Test("the meeting glow breathes without going out, and is a monochrome template image")
-  func meetingGlow() {
-    let samples = stride(from: 0.0, to: 1.0, by: 1.0 / 30.0).map {
-      MenuBarIconAnimator.meetingGlowIntensity(phase: $0)
+  @Test("the meeting wave loops, moves right, changes pixels, and stands still under Reduce Motion")
+  func meetingWave() throws {
+    typealias Animator = MenuBarIconAnimator
+
+    for column in 0..<9 {
+      let samples = (0..<40).map {
+        Animator.meetingWaveIntensity(column: column, phase: Double($0) / 40)
+      }
+      #expect(samples.allSatisfy { $0 >= 0 && $0 <= 1 })
+      #expect(try #require(samples.min()) < 0.001, "every bar goes back to grey")
+      #expect(try #require(samples.max()) > 0.99, "every bar reaches its full colour")
+
+      for phase in [0.0, 0.17, 0.63] {
+        #expect(
+          abs(
+            Animator.meetingWaveIntensity(column: column, phase: phase)
+              - Animator.meetingWaveIntensity(column: column, phase: phase + 1)) < 0.000001,
+          "one sweep loops")
+      }
+
+      // The peak sits at column/9 - 0.25; one ninth of a sweep later it is one column to the
+      // right (column 8 wraps to column 0) and this column has dimmed.
+      let peakPhase = Double(column) / 9 - 0.25
+      #expect(abs(Animator.meetingWaveIntensity(column: column, phase: peakPhase) - 1) < 0.000001)
+      #expect(
+        abs(
+          Animator.meetingWaveIntensity(column: (column + 1) % 9, phase: peakPhase + 1.0 / 9)
+            - 1) < 0.000001)
+      #expect(Animator.meetingWaveIntensity(column: column, phase: peakPhase + 1.0 / 9) < 0.8)
     }
-    #expect(samples.allSatisfy { $0 >= 0.35 && $0 <= 0.8 })
-    #expect((samples.max() ?? 0) - (samples.min() ?? 0) > 0.4, "it visibly breathes")
+
+    func pixels(_ image: NSImage) throws -> [UInt8] {
+      let rep = try #require(
+        NSBitmapImageRep(
+          bitmapDataPlanes: nil, pixelsWide: 88, pixelsHigh: 88, bitsPerSample: 8,
+          samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+          bytesPerRow: 88 * 4, bitsPerPixel: 32))
+      let context = try #require(NSGraphicsContext(bitmapImageRep: rep))
+      let data = try #require(rep.bitmapData)
+      let length = rep.bytesPerRow * rep.pixelsHigh
+      data.initialize(repeating: 0, count: length)
+      NSGraphicsContext.saveGraphicsState()
+      defer { NSGraphicsContext.restoreGraphicsState() }
+      NSGraphicsContext.current = context
+      image.draw(
+        in: NSRect(x: 0, y: 0, width: 88, height: 88), from: .zero, operation: .copy,
+        fraction: 1)
+      context.flushGraphics()
+      return Array(UnsafeBufferPointer(start: data, count: length))
+    }
+
+    let moving = Animator.meetingWaveFrame(phase: 0, reduceMotion: false)
+    #expect(moving.size == NSSize(width: 22, height: 22))
+    #expect(moving.isTemplate == false, "a coloured image, not a template")
+    let first = try pixels(moving)
+    #expect(first.contains { $0 != 0 }, "the frame draws something")
     #expect(
-      abs(
-        MenuBarIconAnimator.meetingGlowIntensity(phase: 0)
-          - MenuBarIconAnimator.meetingGlowIntensity(phase: 1)) < 0.0001, "one breath loops")
-    let image = MenuBarIconAnimator.renderMeetingLips(glow: MenuBarIconAnimator.meetingStaticGlow)
-    #expect(image.isTemplate, "it follows the menu bar's colours, never red")
-    #expect(image.size == NSSize(width: 22, height: 22))
+      first == (try pixels(Animator.meetingWaveFrame(phase: 0, reduceMotion: false))),
+      "the same phase paints the same pixels")
+    #expect(
+      first != (try pixels(Animator.meetingWaveFrame(phase: 0.25, reduceMotion: false))),
+      "a later phase paints different pixels")
+
+    let still = Animator.meetingWaveFrame(phase: 0, reduceMotion: true)
+    #expect(still.isTemplate == false)
+    #expect(still.size == NSSize(width: 22, height: 22))
+    let stillPixels = try pixels(still)
+    #expect(
+      stillPixels == (try pixels(Animator.meetingWaveFrame(phase: 0.73, reduceMotion: true))),
+      "Reduce Motion ignores the phase")
+    #expect(
+      stillPixels
+        == (try pixels(Animator.renderMeetingWave(intensities: Array(repeating: 0.5, count: 9)))),
+      "Reduce Motion shows every bar half coloured")
+
     #expect(MenuBarController.iconAccessibilityValue(.meeting) == "Recording a meeting")
     #expect(MenuBarController.iconAccessibilityValue(.idle) == nil)
   }

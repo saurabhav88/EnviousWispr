@@ -5,10 +5,10 @@ import AppKit
 /// Five states: idle (static grey lips), recording (static rainbow lips),
 /// processing (rotating rainbow spectrum wheel), error (static red lips),
 /// updatePending (grey lips with a gold wave travelling outward — the
-/// "update waiting" cue, #1019), meeting (#3972 R47: the grey lips with a soft glow that
-/// slowly breathes; static under Reduce Motion). Recording is static, not audio-reactive —
-/// the on-screen recording overlay already shows a legible audio-reactive
-/// meter; at menu-bar-icon size that reactivity only read as the icon
+/// "update waiting" cue, #1019), meeting (#4116: grey lips with a rainbow wave moving
+/// left to right; one still half-coloured frame under Reduce Motion). Recording is
+/// static, not audio-reactive — the on-screen recording overlay already shows a legible
+/// audio-reactive meter; at menu-bar-icon size that reactivity only read as the icon
 /// randomly looking smaller.
 @MainActor
 final class MenuBarIconAnimator {
@@ -23,8 +23,8 @@ final class MenuBarIconAnimator {
     /// the idle branch of its icon-state mapping, so it never overrides
     /// recording / processing / error / warning.
     case updatePending
-    /// #3972 R47: a meeting is recording. The only always-visible sign of it: monochrome like
-    /// idle (a template image, so it follows the menu bar), never red, no pill or window.
+    /// #3972: a meeting is recording. The only always-visible sign of it: grey lips with a
+    /// rainbow wave (#4116, founder 2026-10-26; replaced R47's monochrome halo), no pill or window.
     case meeting
   }
 
@@ -40,8 +40,8 @@ final class MenuBarIconAnimator {
 
   // #1019: update-pending gold-wave phase (0…1 per loop).
   private var wavePhase: Double = 0
-  // #3972: meeting glow phase (0…1 per breath).
-  private var glowPhase: Double = 0
+  // #4116: meeting wave phase (0…1 per sweep).
+  private var meetingPhase: Double = 0
   private var reduceMotionObserver: NSObjectProtocol?
 
   /// #ffd700 — the "pending" semantic gold.
@@ -72,7 +72,8 @@ final class MenuBarIconAnimator {
         case .updatePending: self.restartUpdatePendingForReduceMotionChange()
         case .meeting:
           self.stopTimer()
-          self.startMeetingGlow()
+          self.meetingPhase = 0
+          self.startMeetingWave()
         case .idle, .recording, .processing, .error: return
         }
       }
@@ -101,8 +102,8 @@ final class MenuBarIconAnimator {
       wavePhase = 0
       startUpdatePendingAnimation()
     case .meeting:
-      glowPhase = 0
-      startMeetingGlow()
+      meetingPhase = 0
+      startMeetingWave()
     }
   }
 
@@ -162,59 +163,63 @@ final class MenuBarIconAnimator {
     }
   }
 
-  // MARK: - Meeting glow (#3972 R47, ~10fps, one breath every 3 s)
+  // MARK: - Meeting wave (#4116, ~20fps, one sweep every 2 s)
 
-  /// The glow's strength through one breath: never fully off, so a glance always finds it.
-  static func meetingGlowIntensity(phase: Double) -> CGFloat {
-    CGFloat(0.35 + 0.45 * (0.5 - 0.5 * cos(2 * .pi * phase)))
+  /// Per-column rainbow colours, shared by the recording lips and the meeting wave. They match
+  /// RainbowLipsIcon in `App/Brand/RainbowLipsIcon.swift`.
+  private static let upperLipRainbow: [(r: CGFloat, g: CGFloat, b: CGFloat)] = [
+    (1.0, 0.165, 0.251), (1.0, 0.549, 0.0), (1.0, 0.843, 0.0),
+    (0.678, 1.0, 0.184), (0.0, 0.98, 0.604), (0.0, 1.0, 1.0),
+    (0.118, 0.565, 1.0), (0.255, 0.412, 0.882), (0.541, 0.169, 0.886),
+  ]
+  private static let lowerLipRainbow: [(r: CGFloat, g: CGFloat, b: CGFloat)] = [
+    (0.255, 0.412, 0.882), (0.118, 0.565, 1.0), (0.0, 1.0, 1.0),
+    (0.0, 0.98, 0.604), (0.678, 1.0, 0.184), (1.0, 0.843, 0.0),
+    (1.0, 0.549, 0.0), (1.0, 0.165, 0.251), (0.541, 0.169, 0.886),
+  ]
+
+  /// Reduce Motion: every bar half way between grey and its rainbow colour.
+  static let meetingStillIntensity: CGFloat = 0.5
+
+  /// How far column `column` (0…8) has moved from grey toward its rainbow colour at `phase`
+  /// (0…1 per sweep). Squared so the lit band is narrow and the wave reads as moving right.
+  static func meetingWaveIntensity(column: Int, phase: Double) -> CGFloat {
+    let value = 0.5 + 0.5 * sin(2 * .pi * (Double(column) / 9 - phase))
+    return CGFloat(value * value)
   }
 
-  /// Reduce Motion: one steady glow.
-  static let meetingStaticGlow: CGFloat = 0.6
-
-  private func startMeetingGlow() {
-    guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
-      button?.image = Self.renderMeetingLips(glow: Self.meetingStaticGlow)
-      return
+  /// One meeting frame; the live wave and its Reduce Motion still frame both come from here.
+  static func meetingWaveFrame(phase: Double, reduceMotion: Bool) -> NSImage {
+    let intensities = (0..<9).map {
+      reduceMotion ? meetingStillIntensity : meetingWaveIntensity(column: $0, phase: phase)
     }
-    button?.image = Self.renderMeetingLips(glow: Self.meetingGlowIntensity(phase: glowPhase))
-    animationTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 10.0, repeats: true) {
-      [weak self] _ in
-      MainActor.assumeIsolated {
-        guard let self, let button = self.button else { return }
-        self.glowPhase += 1.0 / 30.0
-        if self.glowPhase >= 1.0 { self.glowPhase -= 1.0 }
-        button.image = Self.renderMeetingLips(glow: Self.meetingGlowIntensity(phase: self.glowPhase))
+    return renderMeetingWave(intensities: intensities)
+  }
+
+  private func startMeetingWave() {
+    let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    button?.image = Self.meetingWaveFrame(phase: meetingPhase, reduceMotion: reduceMotion)
+    guard !reduceMotion else { return }
+
+    animationTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 20.0, repeats: true) {
+      [weak self] timer in
+      let drew = MainActor.assumeIsolated { () -> Bool in
+        guard let self, let button = self.button else { return false }
+        // 2 s sweep at 20fps → 40 frames per sweep.
+        self.meetingPhase += 1.0 / 40.0
+        if self.meetingPhase >= 1.0 { self.meetingPhase -= 1.0 }
+        button.image = Self.meetingWaveFrame(phase: self.meetingPhase, reduceMotion: false)
+        return true
       }
+      // The owner or its button is gone: stop the wave instead of ticking forever.
+      if !drew { timer.invalidate() }
     }
   }
 
-  /// The idle lips, a little stronger, inside a soft halo whose strength is `glow`. A template
-  /// image: only alpha is drawn, so light and dark menu bars colour it as they colour idle.
-  static func renderMeetingLips(glow: CGFloat) -> NSImage {
-    let size = NSSize(width: 22, height: 22)
-    let image = NSImage(size: size, flipped: true) { rect in
-      guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
-      let scale = rect.width / 64.0
-      let barWidth: CGFloat = 4.5 * scale
-      let cornerRadius: CGFloat = 1.5 * scale
-      ctx.translateBy(x: 0, y: Self.lipsVerticalCenteringOffset * scale)
-      ctx.setShadow(
-        offset: .zero, blur: 2.5, color: CGColor(red: 0, green: 0, blue: 0, alpha: glow))
-      ctx.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 0.85))
-      for bar in Self.upperLipBars + Self.lowerLipBars {
-        let barRect = CGRect(
-          x: bar.x * scale, y: bar.y * scale, width: barWidth, height: bar.h * scale)
-        ctx.addPath(
-          CGPath(
-            roundedRect: barRect, cornerWidth: cornerRadius, cornerHeight: cornerRadius,
-            transform: nil))
-        ctx.fillPath()
-      }
-      return true
-    }
-    image.isTemplate = true
-    return image
+  /// The meeting wave: grey lips, each bar blended toward its rainbow colour by its intensity.
+  /// Not a template: the update cue's mid-grey is what keeps it readable on light and dark bars.
+  static func renderMeetingWave(intensities: [CGFloat]) -> NSImage {
+    renderRainbowLips(intensities: intensities, alpha: 0.95)
   }
 
   // MARK: - Core Graphics Rendering
@@ -223,52 +228,41 @@ final class MenuBarIconAnimator {
   /// this isn't audio-reactive). Bar geometry and colors match RainbowLipsIcon
   /// in `App/Brand/RainbowLipsIcon.swift`.
   private func renderRecordingLips() -> NSImage {
-    let size = NSSize(width: 22, height: 22)
-    return NSImage(size: size, flipped: true) { rect in
-      guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
+    Self.renderRainbowLips(intensities: Array(repeating: 1, count: 9), alpha: 1)
+  }
 
+  /// Shared rainbow renderer: column `i`'s upper and lower bar are filled with the mid-grey
+  /// blended toward their rainbow colours by `intensities[i]` (1 = the full rainbow).
+  private static func renderRainbowLips(intensities: [CGFloat], alpha: CGFloat) -> NSImage {
+    precondition(intensities.count == 9)
+    return NSImage(size: NSSize(width: 22, height: 22), flipped: true) { rect in
+      guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
       let scale = rect.width / 64.0
       let barWidth: CGFloat = 4.5 * scale
       let cornerRadius: CGFloat = 1.5 * scale
       ctx.translateBy(x: 0, y: Self.lipsVerticalCenteringOffset * scale)
 
-      // Upper bars — v2 9-bar lip geometry (viewBox 0 0 64 64)
-      let upperBars: [(x: CGFloat, y: CGFloat, h: CGFloat, r: CGFloat, g: CGFloat, b: CGFloat)] = [
-        (4, 22.25, 5, 1.0, 0.165, 0.251),
-        (10, 17.6375, 8, 1.0, 0.549, 0.0),
-        (16, 12.04, 12, 1.0, 0.843, 0.0),
-        (22, 16.96, 9, 0.678, 1.0, 0.184),
-        (28, 21.5575, 6, 0.0, 0.98, 0.604),
-        (34, 16.96, 9, 0.0, 1.0, 1.0),
-        (40, 12.04, 12, 0.118, 0.565, 1.0),
-        (46, 17.6375, 8, 0.255, 0.412, 0.882),
-        (52, 22.25, 5, 0.541, 0.169, 0.886),
-      ]
-
-      // Lower bars — v2 9-bar lip geometry (viewBox 0 0 64 64)
-      let lowerBars: [(x: CGFloat, y: CGFloat, h: CGFloat, r: CGFloat, g: CGFloat, b: CGFloat)] = [
-        (4, 30.25, 5, 0.255, 0.412, 0.882),
-        (10, 28.6375, 9, 0.118, 0.565, 1.0),
-        (16, 27.04, 12, 0.0, 1.0, 1.0),
-        (22, 28.96, 15, 0.0, 0.98, 0.604),
-        (28, 30.5575, 17, 0.678, 1.0, 0.184),
-        (34, 28.96, 15, 1.0, 0.843, 0.0),
-        (40, 27.04, 12, 1.0, 0.549, 0.0),
-        (46, 28.6375, 9, 1.0, 0.165, 0.251),
-        (52, 30.25, 5, 0.541, 0.169, 0.886),
-      ]
-
-      for bar in upperBars + lowerBars {
-        ctx.setFillColor(CGColor(red: bar.r, green: bar.g, blue: bar.b, alpha: 1))
-        let barRect = CGRect(
-          x: bar.x * scale, y: bar.y * scale, width: barWidth, height: bar.h * scale)
-        let path = CGPath(
-          roundedRect: barRect, cornerWidth: cornerRadius, cornerHeight: cornerRadius,
-          transform: nil)
-        ctx.addPath(path)
-        ctx.fillPath()
+      for (bars, colours) in [
+        (Self.upperLipBars, Self.upperLipRainbow), (Self.lowerLipBars, Self.lowerLipRainbow),
+      ] {
+        for (i, bar) in bars.enumerated() {
+          let colour = colours[i]
+          let t = intensities[i]
+          ctx.setFillColor(
+            CGColor(
+              red: Self.greyColor.r + (colour.r - Self.greyColor.r) * t,
+              green: Self.greyColor.g + (colour.g - Self.greyColor.g) * t,
+              blue: Self.greyColor.b + (colour.b - Self.greyColor.b) * t,
+              alpha: alpha))
+          let barRect = CGRect(
+            x: bar.x * scale, y: bar.y * scale, width: barWidth, height: bar.h * scale)
+          ctx.addPath(
+            CGPath(
+              roundedRect: barRect, cornerWidth: cornerRadius, cornerHeight: cornerRadius,
+              transform: nil))
+          ctx.fillPath()
+        }
       }
-
       return true
     }
   }
@@ -450,7 +444,7 @@ final class MenuBarIconAnimator {
   /// above the viewBox's vertical center (32), so the drawn icon reads as
   /// sitting slightly high in its menu-bar cell. Shift every draw down by this
   /// much (in viewBox units) to recenter the ink, not the geometry itself —
-  /// RecordingOverlayPanel shares these bar arrays and must stay untouched.
+  /// the overlay's own lip geometry (RecordingOverlayPanel) stays unchanged.
   private static let lipsVerticalCenteringOffset: CGFloat = 2.2
 
   /// Gold intensity (0…1) for a bar at column index `i` of `count` columns,
