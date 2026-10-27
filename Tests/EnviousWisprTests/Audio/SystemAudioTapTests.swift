@@ -181,6 +181,34 @@ struct SystemAudioTapTests {
     #expect(total == 3_200, "both runs delivered in full, each with its tail: \(total)")
   }
 
+  #if DEBUG
+    /// #4008 F10: a lost chunk must not pull later call sound earlier by its own length.
+    @Test(
+      "a chunk that fails to convert ends the run; the next chunk starts a new run at its own time")
+    func conversionFailureBreaksTheRun() throws {
+      let output = Output()
+      let p = try pipeline(rate: 48_000, output)
+      let t0: UInt64 = 5_000_000
+      let t2 = t0 + ticks(0.2)
+      ingest(p, buffers: [sine(4_800, rate: 48_000)], channels: [1], host: t0)
+      p.drain()
+      p.failConversionsForTesting = 1
+      ingest(
+        p, buffers: [sine(4_800, rate: 48_000, from: 4_800)], channels: [1], host: t0 + ticks(0.1))
+      p.drain()
+      let before = output.hostTimes.withLock { $0.count }
+      ingest(p, buffers: [sine(4_800, rate: 48_000, from: 9_600)], channels: [1], host: t2)
+      p.drain()
+      p.finishRun()
+      #expect(p.health.conversionFailures == 1)
+      let hosts = Array(output.hostTimes.withLock { $0 }.dropFirst(before))
+      let flags = Array(output.newRuns.withLock { $0 }.dropFirst(before))
+      #expect(hosts.first == t2, "the chunk after the failure is stamped with its own time: \(hosts)")
+      #expect(flags.first == true, "it starts a new run, never joined to the run before the loss")
+      #expect(hosts.allSatisfy { $0 >= t2 }, "no later call sound is stamped early: \(hosts)")
+    }
+  #endif
+
   @Test("a full handoff keeps what fits and counts every frame it could not keep")
   func fullHandoffCountsDrops() throws {
     let output = Output()

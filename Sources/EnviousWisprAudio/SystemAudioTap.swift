@@ -823,6 +823,10 @@ public final class CallSoundPipeline: @unchecked Sendable {
   /// The next delivery is the first of a run that follows an earlier run.
   private var runBreakPending = false
   private var deliveredAnyRun = false
+  #if DEBUG
+    /// Fails this many of the next chunk conversions, as a buffer allocation failure would.
+    var failConversionsForTesting = 0
+  #endif
   private var meter = InputRateMeter()
   private var streak = MismatchStreak()
   /// #4117: what recovery needs from this generation's windows, in acquisition order, not yet
@@ -1076,8 +1080,16 @@ public final class CallSoundPipeline: @unchecked Sendable {
         runBreakPending = deliveredAnyRun
       }
       runExpectedHost = chunk.hostTime &+ Self.ticks(seconds: Double(chunk.frames) / sampleRate)
-      scratchSamples.withUnsafeBufferPointer { all in
+      let converted = scratchSamples.withUnsafeBufferPointer { all in
         convert(UnsafeBufferPointer(rebasing: all[chunk.offset..<(chunk.offset + chunk.frames)]))
+      }
+      // #4008 F10: the run clock already counted this chunk, so a lost chunk would stamp every
+      // later sample early by its length. End the run without a flush: after a converter error
+      // its held-back state cannot be trusted to match the run clock, so its few milliseconds
+      // are given up. The next chunk starts a new run at its own time.
+      if !converted {
+        converter?.reset()
+        runStartHost = nil
       }
     }
   }
@@ -1107,29 +1119,38 @@ public final class CallSoundPipeline: @unchecked Sendable {
   /// so the next run starts clean at its own time.
   func finishRun() {
     guard runStartHost != nil else { return }
-    convert(nil)
+    // A failed flush loses only the held-back tail; the reset below happens either way.
+    _ = convert(nil)
     converter?.reset()
     runStartHost = nil
   }
 
   /// Feeds `input` (nil = end of stream) and delivers whatever comes out. A converter that
   /// holds frames back while priming produces less now and the rest later; that is not loss.
-  private func convert(_ input: UnsafeBufferPointer<Float>?) {
-    guard let converter, let inputFormat, let start = runStartHost else { return }
+  /// Returns false when audio was lost (a buffer could not be made or the converter failed).
+  private func convert(_ input: UnsafeBufferPointer<Float>?) -> Bool {
+    guard let converter, let inputFormat, let start = runStartHost else { return true }
     var inBuffer: AVAudioPCMBuffer?
     if let input, !input.isEmpty {
+      #if DEBUG
+        if failConversionsForTesting > 0 {
+          failConversionsForTesting -= 1
+          stats.withLock { $0.conversionFailures += 1 }
+          return false
+        }
+      #endif
       guard
         let buffer = AVAudioPCMBuffer(
           pcmFormat: inputFormat, frameCapacity: AVAudioFrameCount(input.count))
       else {
         stats.withLock { $0.conversionFailures += 1 }
-        return
+        return false
       }
       buffer.frameLength = AVAudioFrameCount(input.count)
       buffer.floatChannelData![0].update(from: input.baseAddress!, count: input.count)
       inBuffer = buffer
     } else if input != nil {
-      return
+      return true
     }
     let ratio = MeetingAudioFormat.sampleRate / inputFormat.sampleRate
     let capacity = AVAudioFrameCount(Double(input?.count ?? 0) * ratio + 256)
@@ -1140,7 +1161,7 @@ public final class CallSoundPipeline: @unchecked Sendable {
       guard let out = AVAudioPCMBuffer(pcmFormat: converter.outputFormat, frameCapacity: capacity)
       else {
         stats.withLock { $0.conversionFailures += 1 }
-        return
+        return false
       }
       var error: NSError?
       let status = converter.convert(to: out, error: &error) { _, outStatus in
@@ -1154,7 +1175,7 @@ public final class CallSoundPipeline: @unchecked Sendable {
       }
       if status == .error || error != nil {
         stats.withLock { $0.conversionFailures += 1 }
-        return
+        return false
       }
       let produced = Int(out.frameLength)
       if produced > 0, let data = out.floatChannelData {
@@ -1169,7 +1190,7 @@ public final class CallSoundPipeline: @unchecked Sendable {
       }
       // `.haveData`: the buffer filled and more output is ready. Anything else (input ran
       // dry, end of stream) means the converter holds nothing more for now.
-      guard status == .haveData, produced > 0 else { return }
+      guard status == .haveData, produced > 0 else { return true }
     }
   }
 
