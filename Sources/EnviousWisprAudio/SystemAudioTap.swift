@@ -33,7 +33,35 @@ public final class SystemAudioTap: @unchecked Sendable {
     case rebuilt
     /// A rebuild failed; capture has stopped. Carries the failure's description.
     case rebuildFailed(String)
+    /// #4121: a content-free change row (a rebuild or a stop), sent in addition to the cases
+    /// above. At most `maxReports` per tap; later ones are only counted.
+    case report(CaptureReport)
   }
+
+  /// #4121: one call-sound rebuild or stop, as content-free facts: rates, a reason, an outcome
+  /// and the output device's transport class. A success describes the capture the rebuild
+  /// produced; a failure or stop describes the retired capture, frozen before teardown.
+  public struct CaptureReport: Sendable, Equatable {
+    public enum Outcome: String, Sendable, CaseIterable {
+      case startRebuilt = "start_rebuilt"
+      case startRebuildFailed = "start_rebuild_failed"
+      case rebuilt
+      case rebuildFailed = "rebuild_failed"
+      case stoppedRateMismatch = "stopped_rate_mismatch"
+      case stoppedLayout = "stopped_layout"
+    }
+    public var outcome: Outcome
+    /// Nil only for `stoppedLayout`.
+    public var reason: RebuildReason?
+    public var configuredRateHz: Int?
+    public var nominalRateHz: Int?
+    /// `CallSoundRateBucket` label of the measured rate; only for rate-mismatch rows.
+    public var measuredRateBucket: String?
+    public var outputTransport: String?
+  }
+
+  /// #4121: change rows sent per tap (one meeting) before they are only counted.
+  static let maxReports = 24
 
   /// #4117: what a fresh reading found different from the capture's commitment.
   public enum RebuildReason: String, Sendable, CaseIterable {
@@ -48,6 +76,18 @@ public final class SystemAudioTap: @unchecked Sendable {
     case watchFailed
     /// The buffers' own timing disagreed with the configured rate for three qualified windows.
     case rateMismatch
+
+    /// #4121: the closed telemetry vocabulary.
+    public var telemetryValue: String {
+      switch self {
+      case .outputDevice: "output_device"
+      case .nominalRate: "nominal_rate"
+      case .layout: "layout"
+      case .unreadable: "unreadable"
+      case .watchFailed: "watch_failed"
+      case .rateMismatch: "rate_mismatch"
+      }
+    }
   }
 
   public enum TapError: Error, Equatable {
@@ -123,6 +163,10 @@ public final class SystemAudioTap: @unchecked Sendable {
   private var mismatchRecoveryFrom: Int?
   /// A suppressed request was already logged for this generation.
   private var reportedSuppressed = false
+  /// #4121: change rows sent so far (tap queue only).
+  private var reportsSent = 0
+  /// #4121: the start facts and counts the recorder reads at stop, from any thread.
+  private let summaryState = OSAllocatedUnfairLock(initialState: CallSoundSummary())
 
   public convenience init(
     onSamples: @escaping SampleHandler, onEvent: @escaping @Sendable (Event) -> Void
@@ -160,6 +204,10 @@ public final class SystemAudioTap: @unchecked Sendable {
     return health
   }
 
+  /// #4121: the transport and rate the capture started on (set only once listeners and the
+  /// startup revalidation succeeded), with the rebuild and omitted-row counts so far.
+  public var summary: CallSoundSummary { summaryState.withLock { $0 } }
+
   /// Starts capture. Throws, with everything released, when any step fails. Must not be called
   /// on the tap's queue.
   public func start() throws {
@@ -181,6 +229,11 @@ public final class SystemAudioTap: @unchecked Sendable {
         // sent no notice: compare once now, inside start, so a capture that cannot follow the
         // change makes start throw instead of failing after start reported success.
         try revalidateAtStart()
+        let started = (committed?.outputTransport, Self.hz(configuredRate))
+        summaryState.withLock {
+          $0.outputTransport = started.0
+          $0.configuredRateHz = started.1
+        }
       } else {
         counters.withLock { $0.listenerFailures += 1 }
         teardownOnQueue()
@@ -270,8 +323,10 @@ public final class SystemAudioTap: @unchecked Sendable {
         queueRebuild(reason: reason)
         return
       }
+      let retired = frozenFacts()
       teardownOnQueue()
       counters.withLock { $0.rebuildFailures += 1 }
+      report(.stoppedLayout, reason: nil, facts: retired)
       onEvent(.rebuildFailed("call-sound buffer layout \(refused.layout.channels)"))
       return
     }
@@ -320,10 +375,13 @@ public final class SystemAudioTap: @unchecked Sendable {
     let line =
       "CALL_SOUND mismatch gen=\(generation) measured=\(CallSoundPipeline.rateText(measured)) "
       + "configured=\(CallSoundPipeline.rateText(configuredRate))"
+    let bucket = CallSoundRateBucket.label(for: measured)
     if let from = mismatchRecoveryFrom, generation > from {
       log(line + " action=stop reason=persistent")
+      let retired = frozenFacts()
       teardownOnQueue()
       counters.withLock { $0.persistentMismatches += 1 }
+      report(.stoppedRateMismatch, reason: .rateMismatch, facts: retired, measuredBucket: bucket)
       onEvent(
         .rebuildFailed(
           "call-sound rate mismatch persists: measured \(CallSoundPipeline.rateText(measured)) "
@@ -342,7 +400,7 @@ public final class SystemAudioTap: @unchecked Sendable {
     lastMismatchRecovery = time
     mismatchRecoveryFrom = generation
     log(line + " action=rebuild")
-    queueRebuild(reason: .rateMismatch)
+    queueRebuild(reason: .rateMismatch, measuredBucket: bucket)
   }
 
   /// Tap queue: a Core Audio property notification arrived (#4117). Logs where it came from,
@@ -372,7 +430,8 @@ public final class SystemAudioTap: @unchecked Sendable {
 
   /// Tap queue, inside `start`: the comparison `checkForChange` makes, done before `start`
   /// returns. A difference (or an unreadable reading) builds again at once; when that build
-  /// fails, every listener goes and `start` throws. No event is sent: `start` reports it.
+  /// fails, every listener goes and `start` throws. No `Event.rebuilt`/`.rebuildFailed` is sent
+  /// (`start` reports it); a #4121 change row is.
   private func revalidateAtStart() throws {
     guard let committed else { return }
     let reason: RebuildReason?
@@ -383,10 +442,14 @@ public final class SystemAudioTap: @unchecked Sendable {
     }
     guard let reason else { return }
     log("CALL_SOUND revalidate gen=\(generation) reason=\(reason.rawValue)")
+    let retired = frozenFacts()
     teardownOnQueue()
     do {
       try buildOnQueue(trigger: "start reason=\(reason.rawValue)")
+      summaryState.withLock { $0.rebuilds += 1 }
+      report(.startRebuilt, reason: reason, facts: frozenFacts())
     } catch {
+      report(.startRebuildFailed, reason: reason, facts: retired)
       if !backend.removeListeners() { counters.withLock { $0.listenerFailures += 1 } }
       listening = false
       throw error
@@ -422,10 +485,13 @@ public final class SystemAudioTap: @unchecked Sendable {
   }
 
   /// Queues a rebuild for this generation, run after the current drain, never inside it.
-  private func queueRebuild(reason: RebuildReason) {
+  private func queueRebuild(reason: RebuildReason, measuredBucket: String? = nil) {
     guard rebuildQueuedFor != generation else { return }
     rebuildQueuedFor = generation
     let queued = generation
+    // #4121: the trigger's facts are taken now; a notice queued ahead of the rebuild may refresh
+    // the diagnostics before it runs.
+    let trigger = frozenFacts()
     queue.async { [weak self] in
       guard let self else { return }
       #if DEBUG
@@ -433,7 +499,7 @@ public final class SystemAudioTap: @unchecked Sendable {
       #endif
       if self.rebuildQueuedFor == queued { self.rebuildQueuedFor = nil }
       guard queued == self.generation else { return }
-      self.rebuildOnQueue(reason: reason)
+      self.rebuildOnQueue(reason: reason, measuredBucket: measuredBucket, trigger: trigger)
     }
   }
 
@@ -452,8 +518,11 @@ public final class SystemAudioTap: @unchecked Sendable {
 
   /// The only full rebuild: retires this generation (admission off, its listeners and objects
   /// gone, its accepted audio and converter tail handed over), then builds and commits the next.
-  private func rebuildOnQueue(reason: RebuildReason) {
+  private func rebuildOnQueue(
+    reason: RebuildReason, measuredBucket: String? = nil, trigger: FrozenFacts? = nil
+  ) {
     guard !stopped, running else { return }
+    let retired = trigger ?? frozenFacts()
     teardownOnQueue()
     do {
       try buildOnQueue(trigger: "rebuild reason=\(reason.rawValue)")
@@ -461,13 +530,52 @@ public final class SystemAudioTap: @unchecked Sendable {
         $0.rebuilds += 1
         $0.rebuildReasons[reason, default: 0] += 1
       }
+      summaryState.withLock { $0.rebuilds += 1 }
+      report(.rebuilt, reason: reason, facts: frozenFacts(), measuredBucket: measuredBucket)
       onEvent(.rebuilt)
     } catch {
       counters.withLock { $0.rebuildFailures += 1 }
       log("CALL_SOUND rebuildFailed gen=\(generation) reason=\(reason.rawValue)")
+      report(.rebuildFailed, reason: reason, facts: retired, measuredBucket: measuredBucket)
       onEvent(.rebuildFailed(String(describing: error)))
     }
   }
+
+  /// #4121: the facts of the capture in place now, read before any teardown so a row never
+  /// mixes two generations.
+  private struct FrozenFacts {
+    var configuredRateHz: Int?
+    var nominalRateHz: Int?
+    var outputTransport: String?
+  }
+
+  private func frozenFacts() -> FrozenFacts {
+    FrozenFacts(
+      configuredRateHz: Self.hz(configuredRate),
+      nominalRateHz: diagnostics.aggregateNominalRate.flatMap(Self.hz),
+      outputTransport: committed?.outputTransport)
+  }
+
+  /// #4121: sends one change row, or counts it once the cap is reached. Tap queue only.
+  private func report(
+    _ outcome: CaptureReport.Outcome, reason: RebuildReason?, facts: FrozenFacts,
+    measuredBucket: String? = nil
+  ) {
+    guard reportsSent < Self.maxReports else {
+      summaryState.withLock { $0.omittedReports += 1 }
+      return
+    }
+    reportsSent += 1
+    onEvent(
+      .report(
+        CaptureReport(
+          outcome: outcome, reason: reason, configuredRateHz: facts.configuredRateHz,
+          nominalRateHz: facts.nominalRateHz, measuredRateBucket: measuredBucket,
+          outputTransport: facts.outputTransport)))
+  }
+
+  /// A rate in whole Hz, or nil when there is none.
+  static func hz(_ rate: Double) -> Int? { rate > 0 ? Int(rate.rounded()) : nil }
 
   #if DEBUG
     /// Runs one drain on the tap queue and returns after it.
@@ -1255,6 +1363,9 @@ struct CallSoundCapture: Equatable, Sendable {
   var build: Int
   var outputUID: String
   var format: CallSoundPipeline.InputFormat
+  /// #4121: the output device's transport class, read once at build from the same device the
+  /// UID came from. Observational only: `change(to:)` never compares it.
+  var outputTransport: String = "unknown"
 
   /// What differs in `current`, the device first; nil when nothing does.
   @available(macOS 14.2, *)
@@ -1459,7 +1570,9 @@ final class CoreAudioCallSoundBackend: CallSoundBackend {
         format.mBitsPerChannel == 32
       else { throw SystemAudioTap.TapError.unusableFormat }
 
-      let outputUID = try Self.deviceUID(try Self.defaultOutputDevice())
+      let outputDevice = try Self.defaultOutputDevice()
+      let outputUID = try Self.deviceUID(outputDevice)
+      let outputTransport = AudioDeviceEnumerator.transportLabel(for: outputDevice) ?? "unknown"
       let aggregate: [String: Any] = [
         kAudioAggregateDeviceNameKey: "EnviousMeet capture",
         kAudioAggregateDeviceUIDKey: UUID().uuidString,
@@ -1496,7 +1609,8 @@ final class CoreAudioCallSoundBackend: CallSoundBackend {
       // formats kept reading 48 kHz while AirPods in the call profile delivered 24 kHz. The
       // output identity is the one the aggregate was built around.
       return CallSoundCapture(
-        build: build, outputUID: outputUID, format: try committedCaptureFormat())
+        build: build, outputUID: outputUID, format: try committedCaptureFormat(),
+        outputTransport: outputTransport)
     } catch {
       _ = stop()
       throw error
@@ -1831,5 +1945,22 @@ final class CoreAudioCallSoundBackend: CallSoundBackend {
     var property = address(kAudioTapPropertyFormat)
     try check(AudioObjectGetPropertyData(tap, &property, 0, nil, &size, &result), "read_tap_format")
     return result
+  }
+}
+
+/// #4121: a measured call-sound rate as a closed telemetry vocabulary: the nearest standard
+/// rate within 3%, as its integer string, or `other`.
+enum CallSoundRateBucket {
+  static let rates: [Double] = [
+    8_000, 11_025, 16_000, 22_050, 24_000, 32_000, 44_100, 48_000, 88_200, 96_000,
+  ]
+  static let tolerance = 0.03
+
+  static func label(for rate: Double) -> String {
+    guard rate.isFinite, rate > 0,
+      let nearest = rates.min(by: { abs($0 - rate) < abs($1 - rate) }),
+      abs(rate - nearest) <= nearest * tolerance
+    else { return "other" }
+    return String(Int(nearest))
   }
 }
