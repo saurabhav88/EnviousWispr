@@ -231,12 +231,57 @@ struct MeetingCoordinatorTelemetryTests {
     #expect(harness.ended.map(\.entryPoint) == [.menu, .menu])
   }
 
+  /// #4121: what the fake recorder's stop reports for the call sound.
+  private static let bluetooth = CallSoundSummary(
+    outputTransport: "bluetooth", configuredRateHz: 24_000, rebuilds: 1, omittedReports: 0)
+
+  @Test("#4121: the recorder's call-sound summary reaches meeting.ended; a Retry keeps it")
+  func callSoundSummaryAdoptedAndRetried() async throws {
+    let harness = try Harness()
+    harness.saveError = CocoaError(.fileWriteOutOfSpace)
+    await harness.coordinator.start(from: .menu)
+    let recorder = try #require(harness.recorders.last)
+    let meetingID = recorder.configuration.meetingID
+    recorder.report.callSoundSummary = Self.bluetooth
+    await harness.coordinator.stop()
+    await eventually("ended") { harness.ended.count == 1 && harness.coordinator.processing == nil }
+    harness.saveError = nil
+    await harness.coordinator.retry(meetingID: meetingID)
+    await eventually("retry ended") {
+      harness.ended.count == 2 && harness.coordinator.processing == nil
+    }
+    #expect(harness.ended.map(\.outcome) == [.failed, .ready])
+    #expect(harness.ended.map(\.callOutputTransport) == ["bluetooth", "bluetooth"])
+    #expect(harness.ended.map(\.callCaptureRateHz) == [24_000, 24_000])
+    #expect(harness.ended.map(\.callRebuilds) == [1, 1])
+    #expect(harness.ended.map(\.callReportsOmitted) == [0, 0])
+  }
+
+  @Test("#4121: a quit keeps no row of its own; the attempt recovered after the relaunch has no call-sound facts")
+  func callSoundSummaryNotInventedAfterRecovery() async throws {
+    let harness = try Harness()
+    await harness.coordinator.start(from: .history)
+    try #require(harness.recorders.last).report.callSoundSummary = Self.bluetooth
+    harness.coordinator.prepareForTermination()
+    #expect(harness.ended.isEmpty)
+    let relaunched = MeetingCoordinator(dependencies: harness.dependencies())
+    relaunched.launch()
+    await eventually("ended") { harness.ended.count == 1 }
+    #expect(harness.ended.first?.outcome == .interruptedReady)
+    #expect(harness.ended.first?.callOutputTransport == nil)
+    #expect(harness.ended.first?.callCaptureRateHz == nil)
+    #expect(harness.ended.first?.callRebuilds == nil)
+    #expect(harness.ended.first?.callReportsOmitted == nil)
+  }
+
   @Test("a later Start never changes an earlier attempt's entry point; low disk is its own fact")
   func frozenFacts() async throws {
     let harness = try Harness()
     let coordinator = harness.coordinator
     await coordinator.start(from: .menu)
     let first = try #require(harness.recorders.first)
+    // #4121: each recorder's stop reports its own call-sound summary.
+    first.report.callSoundSummary = Self.bluetooth
     // The low-disk floor ends this recording at its next segment close; the low disk also
     // keeps it queued.
     harness.freeBytes = 10
@@ -250,10 +295,17 @@ struct MeetingCoordinatorTelemetryTests {
     harness.freeBytes = 50_000_000_000
     await coordinator.start(from: .history)
     #expect(coordinator.isRecording)
+    #expect(harness.ended.isEmpty, "the first attempt is still queued while the second records")
+    try #require(harness.recorders.last).report.callSoundSummary = CallSoundSummary(
+      outputTransport: "usb", configuredRateHz: 44_100, rebuilds: 0, omittedReports: 2)
     await coordinator.stop()
     await eventually("both ended") { harness.ended.count == 2 && coordinator.processing == nil }
     // The queue takes the older meeting first.
     #expect(harness.ended.map(\.entryPoint) == [.menu, .history])
     #expect(harness.ended.map(\.diskStopped) == [true, false])
+    #expect(harness.ended.map(\.callOutputTransport) == ["bluetooth", "usb"])
+    #expect(harness.ended.map(\.callCaptureRateHz) == [24_000, 44_100])
+    #expect(harness.ended.map(\.callRebuilds) == [1, 0])
+    #expect(harness.ended.map(\.callReportsOmitted) == [0, 2])
   }
 }

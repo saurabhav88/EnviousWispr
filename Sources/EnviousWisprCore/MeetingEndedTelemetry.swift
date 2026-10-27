@@ -48,6 +48,15 @@ public struct MeetingEndedTelemetry: Equatable, Sendable {
   public let summaryPlan: SummaryPlan
   /// Whether the meeting had notes at this terminal; false when it has no folder (R54).
   public let hasNotes: Bool
+  /// #4121: the call-sound capture's starting output transport class and configured rate, its
+  /// completed rebuilds and the change rows past the cap, from the recorder's summary frozen at
+  /// stop. All nil when the attempt has no summary (the call sound never started, or an attempt
+  /// recovered after a relaunch); a known zero count stays 0. They describe this attempt's
+  /// recording (a Retry inherits them), never a count of distinct capture starts.
+  public let callOutputTransport: String?
+  public let callCaptureRateHz: Int?
+  public let callRebuilds: Int?
+  public let callReportsOmitted: Int?
 
   /// The summary decision taken when the meeting ends (R48, R54).
   public enum SummaryPlan: String, Sendable, CaseIterable {
@@ -68,7 +77,7 @@ public struct MeetingEndedTelemetry: Equatable, Sendable {
     microphoneTrack: MeetingTrackStatus, callSoundTrack: MeetingTrackStatus,
     engine: MeetingEngineChoice = .parakeet, speakerCount: Int, processingSeconds: Double,
     audioSeconds: Double, yieldCount: Int, gapCount: Int, echoHiddenCount: Int, diskStopped: Bool?,
-    summaryPlan: SummaryPlan, hasNotes: Bool
+    summaryPlan: SummaryPlan, hasNotes: Bool, callSound: CallSoundSummary? = nil
   ) {
     self.outcome = outcome
     self.entryPoint = entryPoint
@@ -85,6 +94,10 @@ public struct MeetingEndedTelemetry: Equatable, Sendable {
     self.diskStopped = diskStopped
     self.summaryPlan = summaryPlan
     self.hasNotes = hasNotes
+    self.callOutputTransport = callSound?.outputTransport
+    self.callCaptureRateHz = callSound?.configuredRateHz
+    self.callRebuilds = callSound?.rebuilds
+    self.callReportsOmitted = callSound?.omittedReports
   }
 
   /// Processing seconds per audio second; 0 when there was no audio or either value is not a

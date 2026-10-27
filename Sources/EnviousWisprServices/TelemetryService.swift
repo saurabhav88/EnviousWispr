@@ -4098,6 +4098,8 @@ public final class TelemetryService {
   /// The `meeting.ended` payload. Numbers stay numbers (`processing_seconds` and `rtf` are
   /// `Double` seconds and a ratio, the counts `Int`), `disk_stopped` a `Bool`; `entry_point`
   /// and `disk_stopped` are omitted when not known (an attempt recovered after a relaunch).
+  /// #4121: `call_output_transport` (string), `call_capture_rate_hz`, `call_rebuilds` and
+  /// `call_reports_omitted` (`Int`) are omitted when the attempt has no call-sound summary.
   static func meetingEndedProperties(_ event: MeetingEndedTelemetry) -> [String: Any] {
     var props: [String: Any] = [
       "outcome": event.outcome.rawValue,
@@ -4116,6 +4118,10 @@ public final class TelemetryService {
     ]
     if let entryPoint = event.entryPoint { props["entry_point"] = entryPoint.rawValue }
     if let diskStopped = event.diskStopped { props["disk_stopped"] = diskStopped }
+    if let transport = event.callOutputTransport { props["call_output_transport"] = transport }
+    if let rate = event.callCaptureRateHz { props["call_capture_rate_hz"] = rate }
+    if let rebuilds = event.callRebuilds { props["call_rebuilds"] = rebuilds }
+    if let omitted = event.callReportsOmitted { props["call_reports_omitted"] = omitted }
     return props
   }
 
