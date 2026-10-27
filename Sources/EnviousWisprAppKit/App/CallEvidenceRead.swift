@@ -24,11 +24,24 @@ enum CallEvidenceRead {
       CallEvidenceReader.evidence(for: $0, holderPID: $1)
     }
   ) async -> CallEvidenceReader.Evidence {
+    let snapshot = await boundedSnapshot(
+      rule: rule, pid: pid, bound: bound, lane: lane, isTrusted: isTrusted,
+      read: { .init(startEvidence: read($0, $1)) })
+    return snapshot.startEvidence
+  }
+
+  static func boundedSnapshot(
+    rule: CallAppCatalog.Rule, pid: Int32, bound: Duration = .seconds(1), lane: Lane = .shared,
+    isTrusted: @escaping @Sendable () -> Bool = { AXIsProcessTrusted() },
+    read: @escaping @Sendable (CallAppCatalog.Rule, Int32) -> CallEvidenceReader.Snapshot = {
+      CallEvidenceReader.snapshot(for: $0, holderPID: $1)
+    }
+  ) async -> CallEvidenceReader.Snapshot {
     // The inner scan can lose to this outer timer (#4094). Preserve Ask without granting
     // automatic proof, and check trust at fallback time rather than before the scan.
-    let unavailable: @Sendable () -> CallEvidenceReader.Evidence = {
-      guard case .callApp(.teams) = rule, isTrusted() else { return .unknown }
-      return .microphoneOnly(family: .teams, room: "pid-\(pid)")
+    let unavailable: @Sendable () -> CallEvidenceReader.Snapshot = {
+      guard case .callApp(.teams) = rule, isTrusted() else { return .init(startEvidence: .unknown) }
+      return .init(startEvidence: .microphoneOnly(family: .teams, room: "pid-\(pid)"))
     }
     let reading = lane.reading
     let claimed = reading.withLock { busy -> Bool in
@@ -38,9 +51,9 @@ enum CallEvidenceRead {
     }
     guard claimed else { return unavailable() }
     return await withCheckedContinuation {
-      (continuation: CheckedContinuation<CallEvidenceReader.Evidence, Never>) in
+      (continuation: CheckedContinuation<CallEvidenceReader.Snapshot, Never>) in
       let resumed = OSAllocatedUnfairLock(initialState: false)
-      let finish: @Sendable (CallEvidenceReader.Evidence) -> Void = { value in
+      let finish: @Sendable (CallEvidenceReader.Snapshot) -> Void = { value in
         let first = resumed.withLock { done -> Bool in
           if done { return false }
           done = true
