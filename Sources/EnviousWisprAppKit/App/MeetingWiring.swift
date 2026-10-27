@@ -232,6 +232,15 @@ enum MeetingWiring {
           else { return nil }
           return .init(text: text, speakerNames: row.speakerNames ?? [:])
         },
+        hasNoWords: {
+          [weak coordinator, transcriptCoordinator = inputs.transcriptCoordinator] meetingID in
+          // #4148: the same live reads and projection; a missing record or row is not empty.
+          guard let record = coordinator?.record(id: meetingID),
+            let row = transcriptCoordinator.currentRow(id: record.transcriptID)
+          else { return false }
+          return transcriptCoordinator.summaryHasNoWords(
+            of: row, info: historyInfo(coordinator, meetingID: meetingID))
+        },
         isLocalTurn: { [weak coordinator] in
           isIdle() && lane.asrUnits == 0 && !(coordinator?.hasFinalPassWork ?? false)
         },

@@ -51,6 +51,8 @@ struct MeetingSummaryOwnerTests {
     var transcript = "You: we ship Friday"
     /// False: History cannot show the meeting now (its facts are not available).
     var visible = true
+    /// #4148: the meeting is known and ready, but has no visible transcript text.
+    var noWords = false
     var speakerNames = ["mic:you": "You"]
     var localTurn = true
     /// When set, replaces `localTurn` (production also waits for final-pass work).
@@ -142,8 +144,10 @@ struct MeetingSummaryOwnerTests {
                 complete: { @MainActor _, prompt in await world.call(prompt) }))
           },
           visibleTranscript: { _ in
-            world.visible ? .init(text: world.transcript, speakerNames: world.speakerNames) : nil
+            world.visible && !world.noWords
+              ? .init(text: world.transcript, speakerNames: world.speakerNames) : nil
           },
+          hasNoWords: { _ in world.visible && world.noWords },
           isLocalTurn: { world.localTurnCheck?() ?? world.localTurn },
           wakes: nil,
           emitFinished: { world.finished.append($0) },
@@ -376,6 +380,44 @@ struct MeetingSummaryOwnerTests {
     #expect(rig.world.calls.isEmpty)
     #expect(rig.summaryOnDisk(id) == nil)
     await Self.eventually("lane free") { rig.lane.summaryActive == false }
+  }
+
+  @Test("#4148: known empty input settles as nothing to summarize; unavailable input still cancels")
+  func emptyInputOutcome() async throws {
+    for noWords in [true, false] {
+      let rig = try Rig()
+      let id = try rig.readyMeeting()
+      rig.world.noWords = noWords
+      rig.world.visible = noWords
+      #expect(await Self.schedule(rig, id) == .scheduled)
+      await Self.eventually("settled") { rig.world.finished.count == 1 }
+      #expect(
+        rig.world.finished == [Self.row(noWords ? .nothingToSummarize : .cancelled, .hosted)])
+      #expect(rig.world.calls.isEmpty)
+      #expect(rig.summaryOnDisk(id) == nil)
+      #expect(try rig.manifest(id).summaryPending == nil)
+      #expect(rig.owner.activity[id] == nil)
+    }
+  }
+
+  @Test("#4148: a direct Write on an empty meeting settles; later words are summarized")
+  func emptyWriteRequest() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    rig.world.noWords = true
+    #expect(rig.owner.hasNothingToSummarize(id))
+    #expect(await rig.owner.requestWrite(id) == .started)
+    await Self.eventually("empty settled") { rig.world.finished.count == 1 }
+    #expect(rig.world.finished == [Self.row(.nothingToSummarize, .hosted)])
+    #expect(rig.world.calls.isEmpty)
+    rig.world.noWords = false
+    #expect(rig.owner.hasNothingToSummarize(id) == false)
+    #expect(await rig.owner.requestWrite(id) == .started)
+    await Self.eventually("written") { rig.world.finished.count == 2 }
+    #expect(rig.world.finished.last == Self.row(.written, .hosted))
+    rig.world.noWords = true
+    #expect(rig.owner.isOutOfDate(id), "a generated summary whose words are gone is out of date")
+    #expect(rig.documents.summary(id) != nil, "and stays visible")
   }
 
   @Test("a quit leaves the summary owed and sends nothing; the relaunch finishes it once")
@@ -1201,6 +1243,7 @@ struct MeetingSummaryOwnerTests {
           visibleTranscript: { _ in
             .init(text: world.transcript, speakerNames: world.speakerNames)
           },
+          hasNoWords: { _ in false },
           isLocalTurn: { true },
           wakes: nil,
           emitFinished: { world.finished.append($0) },

@@ -13531,6 +13531,17 @@
         }
       }
     },
+    "Nothing to summarize. This meeting has no visible transcript text." : {
+      "comment" : "History, a ready meeting's Summary tab: no visible transcript text remains after probable echo is hidden; this does not mean recording failed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nichts zum Zusammenfassen. Für dieses Meeting ist kein Transkripttext sichtbar."
+          }
+        }
+      }
+    },
     "Nothing was changed. EnviousWispr is still working. You can move it yourself in Finder anytime." : {
       "comment" : "Move to Applications result, another app has the name: the explanation. EnviousWispr is the app name; keep it.",
       "localizations" : {

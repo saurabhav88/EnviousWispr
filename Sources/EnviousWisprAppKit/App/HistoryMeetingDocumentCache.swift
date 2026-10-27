@@ -31,15 +31,14 @@ import Foundation
     return text
   }
 
-  /// #4001 step 2b-C: the visible text a meeting summary is written from and judged against,
-  /// echo always hidden; nil when nothing is visible. The same projection as search and the
-  /// preview, kept in its own cache so the display's echo choice never evicts it. A kept text
-  /// is reused only for byte-identical words and names, because the summary's fingerprints
-  /// hash bytes. The caller reads the row and the meeting facts live, before this lookup.
-  func summaryVisibleText(
+  /// A meeting summary's echo-hidden projection, including its availability and emptiness.
+  /// Uses the same projection as search and preview, with a separate cache so the display's
+  /// echo choice never evicts it. Reused only for byte-identical words and names because
+  /// summary fingerprints hash bytes. The caller reads the row and meeting facts live.
+  func summaryText(
     of row: Transcript, info: MeetingHistoryInfo?, locale: String, localizations: [String],
     bypass: Bool
-  ) -> String? {
+  ) -> MeetingText {
     let inputs = SearchTextInputs(
       text: row.text, turns: row.turns ?? [], speakerNames: row.speakerNames ?? [:],
       info: info, showEcho: false, locale: locale, localizations: localizations)
@@ -56,7 +55,7 @@ import Foundation
       #endif
       if !bypass { summaryTextCache[row.id] = (inputs, text) }
     }
-    return text.kind == .visible && !text.plain.isEmpty ? text.plain : nil
+    return text
   }
 
   private var summaryTextCache: [UUID: (inputs: SearchTextInputs, text: MeetingText)] = [:]
@@ -75,6 +74,21 @@ import Foundation
     enum Kind { case visible, everythingHidden, unavailable }
     let kind: Kind
     let plain: String
+
+    /// The text a summary is written from; nil when nothing is visible.
+    var visibleText: String? {
+      kind == .visible && !plain.isEmpty ? plain : nil
+    }
+
+    /// #4148: known inputs with no visible transcript text (visible but empty, or every turn
+    /// hidden as probable echo). Unavailable is not empty: those facts are not known.
+    var hasNoWords: Bool {
+      switch kind {
+      case .visible: plain.isEmpty
+      case .everythingHidden: true
+      case .unavailable: false
+      }
+    }
   }
 
   /// What a meeting's searchable text is made from (`Transcript` is not Equatable).
