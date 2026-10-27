@@ -20,6 +20,8 @@ struct CustomWordEnrichmentDisplay: Sendable, Equatable {
 final class CustomWordsCoordinator {
   var customWords: [CustomWord] = []
   var customWordError: String?
+  /// Optional per-instance timing sink; ordinary application wiring leaves it nil.
+  package var probe: CustomWordsProbe?
   /// Set when the launch-time load failed (#1646) so Your Words can show an
   /// honest banner instead of a silent empty list. `.unreadable`: the file is
   /// intact, nothing was changed. `.corrupted`: it was archived for recovery.
@@ -117,12 +119,17 @@ final class CustomWordsCoordinator {
 
   @discardableResult
   func add(_ word: CustomWord) -> String? {
+    let probe = probe
+    probe?.emit(.storageStarted(operation: .add))
     do {
       try manager.add(word: word, to: &customWords)
+      probe?.emit(.storageReturned(operation: .add, outcome: .returned))
       onWordsChanged?(customWords)
+      probe?.emit(.published(operation: .add))
       customWordError = nil
       return nil
     } catch {
+      probe?.emit(.storageReturned(operation: .add, outcome: .failed))
       return note(error)
     }
   }
@@ -297,12 +304,17 @@ final class CustomWordsCoordinator {
 
   @discardableResult
   func remove(id: UUID) -> String? {
+    let probe = probe
+    probe?.emit(.storageStarted(operation: .remove))
     do {
       try manager.remove(id: id, from: &customWords)
+      probe?.emit(.storageReturned(operation: .remove, outcome: .returned))
       onWordsChanged?(customWords)
+      probe?.emit(.published(operation: .remove))
       customWordError = nil
       return nil
     } catch {
+      probe?.emit(.storageReturned(operation: .remove, outcome: .failed))
       return note(error)
     }
   }
@@ -366,24 +378,34 @@ final class CustomWordsCoordinator {
   /// Bulk-remove by ID (contacts-import pill, #636).
   @discardableResult
   func removeBatch(ids: [UUID]) -> String? {
+    let probe = probe
+    probe?.emit(.storageStarted(operation: .removeBatch))
     do {
       try manager.removeBatch(ids: ids, from: &customWords)
+      probe?.emit(.storageReturned(operation: .removeBatch, outcome: .returned))
       onWordsChanged?(customWords)
+      probe?.emit(.published(operation: .removeBatch))
       customWordError = nil
       return nil
     } catch {
+      probe?.emit(.storageReturned(operation: .removeBatch, outcome: .failed))
       return note(error)
     }
   }
 
   @discardableResult
   func update(_ word: CustomWord) -> String? {
+    let probe = probe
+    probe?.emit(.storageStarted(operation: .update))
     do {
       try manager.update(word: word, in: &customWords)
+      probe?.emit(.storageReturned(operation: .update, outcome: .returned))
       onWordsChanged?(customWords)
+      probe?.emit(.published(operation: .update))
       customWordError = nil
       return nil
     } catch {
+      probe?.emit(.storageReturned(operation: .update, outcome: .failed))
       return note(error)
     }
   }

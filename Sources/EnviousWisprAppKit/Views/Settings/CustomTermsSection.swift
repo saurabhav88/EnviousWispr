@@ -32,6 +32,8 @@ struct CustomTermsSection<Actions: View>: View {
   }
 
   @Environment(CustomWordsCoordinator.self) private var customWordsCoordinator
+  @Environment(\.customWordsProbe) private var customWordsProbe
+  @State private var projectionProbeCounter = CustomWordsProjectionProbeCounter()
   /// See `EnvironmentValues.dictionaryScrollToTop`. This list has paged since
   /// it shipped and has always swapped rows under an unchanged scroll offset;
   /// the cloud review that named it on the pack list applies here too, so both
@@ -57,8 +59,14 @@ struct CustomTermsSection<Actions: View>: View {
   }
 
   private var filteredWords: [CustomWord] {
-    CustomTermListPolicy.filtered(
+    let revision = customWordsProbe.map { _ in projectionProbeCounter.next() }
+    if let revision { customWordsProbe?.emit(.projectionStarted(revision: revision)) }
+    let result = CustomTermListPolicy.filtered(
       allWords, query: searchQuery, category: selectedCategory, autoLearnedOnly: autoLearnedOnly)
+    if let revision {
+      customWordsProbe?.emit(.projectionFinished(revision: revision, rowCount: result.count))
+    }
+    return result
   }
 
   /// IDs eligible for bulk selection within the current search/filter — never
@@ -341,6 +349,7 @@ struct CustomTermsSection<Actions: View>: View {
         // apply to the same row at once.
         if !isSelecting {
           SettingsActionButton(title: "Edit", isEnabled: true) {
+            customWordsProbe?.emit(.editRequested(wordID: word.id))
             editingWord = word
           }
         }
