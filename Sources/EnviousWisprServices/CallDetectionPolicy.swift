@@ -325,12 +325,27 @@ public struct CallDetectionPolicy: Sendable {
     reading?.holders.filter { $0.rule == episode.rule } ?? []
   }
 
+  /// Recheck the current mode at every admission, including answers to an older Ask (#4094).
+  /// Existing call evidence keeps its app-specific meaning; it is not always window proof.
+  private static func admittedCall(
+    _ evidence: CallEvidenceReader.Evidence?, mode: Mode
+  ) -> (family: CallAppFamily, room: String)? {
+    guard let evidence else { return nil }
+    switch evidence {
+    case .call(let family, let room): return (family, room)
+    case .microphoneOnly(let family, let room): return mode == .ask ? (family, room) : nil
+    case .none, .unknown: return nil
+    }
+  }
+
   /// The call is going on now, known: a process of its app has the microphone on and shows
   /// this call, in a fresh complete reading.
   private func isKnownLive(_ episode: Episode, _ c: Context) -> Bool {
     guard isFresh(c) else { return false }
     return members(of: episode).contains { holder in
-      guard holder.input == .active, case .call(let family, let room)? = holder.evidence else {
+      guard holder.input == .active,
+        let (family, room) = Self.admittedCall(holder.evidence, mode: c.mode)
+      else {
         return false
       }
       return family == episode.family && (Self.isNative(episode.rule) || room == episode.room)
@@ -476,7 +491,7 @@ public struct CallDetectionPolicy: Sendable {
     withdrawMovedQuestion(c)
     guard isFresh(c), let reading else { return }
     for holder in reading.holders where holder.input == .active {
-      guard case .call(let family, let shownRoom)? = holder.evidence,
+      guard let (family, shownRoom) = Self.admittedCall(holder.evidence, mode: c.mode),
         !c.appsOff.contains(CallAppCatalog.switchID(for: holder.rule))
       else { continue }
       let room = Self.isNative(holder.rule) ? "app" : shownRoom

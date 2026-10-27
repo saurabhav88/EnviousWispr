@@ -12,6 +12,8 @@ import Foundation
 public enum CallEvidenceReader {
   public enum Evidence: Sendable, Equatable {
     case call(family: CallAppFamily, room: String)
+    /// Calling-app microphone activity without independent call proof; eligible only for Ask.
+    case microphoneOnly(family: CallAppFamily, room: String)
     case none
     case unknown
   }
@@ -24,22 +26,30 @@ public enum CallEvidenceReader {
     package var now: () -> ContinuousClock.Instant
     package var setTimeout: (AXUIElement, Float) -> AXError
     package var read: (AXUIElement, CFString) -> CopyResult
+    package var wake: (pid_t, Double) -> AccessibilityWake.Report
+    package var regularTeamsPIDs: () -> [Int32]
 
     package init(
       now: @escaping () -> ContinuousClock.Instant,
       setTimeout: @escaping (AXUIElement, Float) -> AXError,
-      read: @escaping (AXUIElement, CFString) -> CopyResult
+      read: @escaping (AXUIElement, CFString) -> CopyResult,
+      wake: @escaping (pid_t, Double) -> AccessibilityWake.Report,
+      regularTeamsPIDs: @escaping () -> [Int32]
     ) {
       self.now = now
       self.setTimeout = setTimeout
       self.read = read
+      self.wake = wake
+      self.regularTeamsPIDs = regularTeamsPIDs
     }
 
     package static var live: Self {
       Self(
         now: { .now },
         setTimeout: { AXUIElementSetMessagingTimeout($0, $1) },
-        read: { copy($0, $1) })
+        read: { copy($0, $1) },
+        wake: { AccessibilityWake.wake(pid: $0, messagingTimeout: $1) },
+        regularTeamsPIDs: { liveTeamsPIDs() })
     }
   }
 
@@ -48,14 +58,67 @@ public enum CallEvidenceReader {
     guard AXIsProcessTrusted() else { return .unknown }
     switch rule {
     case .callApp(let family):
-      // A calling app's microphone use is its call (Wispr Flow's rule); the process is the room.
-      return .call(family: family, room: "pid-\(holderPID)")
+      return nativeCallEvidence(family: family, holderPID: holderPID)
     case .callWindow(let family):
       guard let app = runningApp(family: family, holderPID: holderPID) else { return .unknown }
       return callWindow(family: family, appPID: app.processIdentifier)
     case .browser(let browser):
       guard let app = browserApp(browser, holderPID: holderPID) else { return .unknown }
       return meetingPage(appPID: app.processIdentifier)
+    }
+  }
+
+  package static func nativeCallEvidence(
+    family: CallAppFamily, holderPID: Int32, access: Access = .live
+  ) -> Evidence {
+    let room = "pid-\(holderPID)"
+    guard family == .teams else {
+      // A calling app's microphone use is its call (Wispr Flow's rule); the process is the room.
+      return .call(family: family, room: room)
+    }
+    // Teams' pre-join microphone test also captures audio (#4094). Only the observed exact
+    // hang-up button proves a call for automatic recording; uncertainty still permits Ask.
+    let unproven = Evidence.microphoneOnly(family: family, room: room)
+    guard let owner = teamsOwnerPID(holderPID: holderPID, regularTeamsPIDs: access.regularTeamsPIDs())
+    else { return unproven }
+    let deadline = scanDeadline(access)
+    let wake = access.wake(owner, Double(messagingTimeout))
+    guard wake.roleError == .success, !wake.roleReadExhausted,
+      let manual = wake.manual, !manual || wake.manualEnabled,
+      access.now() < deadline
+    else { return unproven }
+    let app = AXUIElementCreateApplication(owner)
+    guard case .value(let value) = boundedCopy(
+      app, kAXWindowsAttribute as CFString, until: deadline, access: access),
+      let windows = value as? [AXUIElement]
+    else { return unproven }
+    for window in windows {
+      guard access.now() < deadline else { return unproven }
+      if case .found = callButton(
+        in: window, until: deadline, access: access, attribute: "AXDOMIdentifier" as CFString,
+        matches: { ($0 as? String).map { $0 == "hangup-button" } })
+      {
+        return .call(family: family, room: room)
+      }
+    }
+    return unproven
+  }
+
+  /// A helper may hold the microphone; inspect only an unambiguous regular Teams owner.
+  package static func teamsOwnerPID(holderPID: Int32, regularTeamsPIDs: [Int32]) -> Int32? {
+    let candidates = Set(regularTeamsPIDs)
+    if candidates.contains(holderPID) { return holderPID }
+    return candidates.count == 1 ? candidates.first : nil
+  }
+
+  private static func liveTeamsPIDs() -> [Int32] {
+    let ids = Set(CallAppCatalog.nativeApps.filter { $0.family == .teams }
+      .flatMap(\.appBundleIDs).map { $0.lowercased() })
+    return NSWorkspace.shared.runningApplications.compactMap { app in
+      guard app.activationPolicy == .regular,
+        let id = app.bundleIdentifier, ids.contains(id.lowercased())
+      else { return nil }
+      return app.processIdentifier
     }
   }
 
@@ -117,7 +180,7 @@ public enum CallEvidenceReader {
       case .unknown: return .unknown
       }
     case .slack:
-      switch slackHuddleWindow(appPID: appPID) {
+      switch slackHuddleWindow(appPID: appPID, access: access) {
       case .call: isCall = true
       case .none: isCall = false
       case .unknown: return .unknown
@@ -129,22 +192,23 @@ public enum CallEvidenceReader {
   }
 
   /// Slack's Leave control is independent of its UI language and channel/window name (#4036).
-  private static func slackHuddleWindow(appPID: pid_t) -> SlackHuddleWindow.Verdict {
+  private static func slackHuddleWindow(appPID: pid_t, access: Access) -> SlackHuddleWindow.Verdict {
     // Same one-second budget as CallEvidenceRead.bounded; do not leave its shared lane busy.
-    let deadline = scanDeadline(.live)
-    let wake = AccessibilityWake.wake(pid: appPID, messagingTimeout: Double(messagingTimeout))
+    let deadline = scanDeadline(access)
+    let wake = access.wake(appPID, Double(messagingTimeout))
     guard wake.roleError == .success, !wake.roleReadExhausted,
-      let manual = wake.manual, !manual || wake.manualEnabled
+      let manual = wake.manual, !manual || wake.manualEnabled,
+      access.now() < deadline
     else { return .unknown }
     let app = AXUIElementCreateApplication(appPID)
-    guard case .value(let value) = boundedCopy(app, kAXWindowsAttribute as CFString, until: deadline),
+    guard case .value(let value) = boundedCopy(app, kAXWindowsAttribute as CFString, until: deadline, access: access),
       let windows = value as? [AXUIElement]
     else { return .unknown }
     return SlackHuddleWindow.classify(
       windowCount: windows.count,
-      identifier: { slackHuddleControl(in: windows[$0], until: deadline) },
+      identifier: { slackHuddleControl(in: windows[$0], until: deadline, access: access) },
       title: {
-        switch boundedCopy(windows[$0], kAXTitleAttribute as CFString, until: deadline) {
+        switch boundedCopy(windows[$0], kAXTitleAttribute as CFString, until: deadline, access: access) {
         case .value(let value): (value as? String).map { .value($0) } ?? .failed
         case .missing: .missing
         case .failed, .unavailable: .failed
@@ -152,24 +216,46 @@ public enum CallEvidenceReader {
       })
   }
 
-  /// The saved Slack trees reach depth 27. Unsearched children never mean no huddle.
   private static func slackHuddleControl(
-    in window: AXUIElement, until deadline: ContinuousClock.Instant
+    in window: AXUIElement, until deadline: ContinuousClock.Instant, access: Access
   ) -> SlackHuddleWindow.Read {
+    switch callButton(
+      in: window, until: deadline, access: access, attribute: "AXDOMClassList" as CFString,
+      matches: { value in
+        switch SlackHuddleWindow.classRead(value) {
+        case .value: true
+        case .missing: false
+        case .failed: nil
+        }
+      })
+    {
+    case .found: return .value(SlackHuddleWindow.leaveClass)
+    case .missing: return .missing
+    case .failed: return .failed
+    }
+  }
+
+  private enum ButtonSearch { case found, missing, failed }
+
+  /// The saved Slack trees reach depth 27. Unsearched children never mean no huddle.
+  private static func callButton(
+    in window: AXUIElement, until deadline: ContinuousClock.Instant, access: Access,
+    attribute: CFString, matches: (CFTypeRef) -> Bool?
+  ) -> ButtonSearch {
     var queue: [(AXUIElement, Int)] = [(window, 0)]
     var visited = 0
     var complete = true
-    while !queue.isEmpty, visited < 800, ContinuousClock.now < deadline {
+    while !queue.isEmpty, visited < 800, access.now() < deadline {
       let (node, level) = queue.removeFirst()
       visited += 1
-      switch boundedCopy(node, kAXRoleAttribute as CFString, until: deadline) {
+      switch boundedCopy(node, kAXRoleAttribute as CFString, until: deadline, access: access) {
       case .value(let role) where (role as? String) == "AXButton":
-        switch boundedCopy(node, "AXDOMClassList" as CFString, until: deadline) {
+        switch boundedCopy(node, attribute, until: deadline, access: access) {
         case .value(let value):
-          switch SlackHuddleWindow.classRead(value) {
-          case .value(let token): return .value(token)
-          case .failed: complete = false
-          case .missing: break
+          switch matches(value) {
+          case true?: return .found
+          case false?: break
+          case nil: complete = false
           }
         case .missing: break
         case .failed, .unavailable: complete = false
@@ -177,7 +263,7 @@ public enum CallEvidenceReader {
       case .value(let role) where role is String: break
       default: complete = false
       }
-      switch boundedCopy(node, kAXChildrenAttribute as CFString, until: deadline) {
+      switch boundedCopy(node, kAXChildrenAttribute as CFString, until: deadline, access: access) {
       case .value(let value):
         guard let children = value as? [AXUIElement] else { complete = false; continue }
         guard level < 32 else {
