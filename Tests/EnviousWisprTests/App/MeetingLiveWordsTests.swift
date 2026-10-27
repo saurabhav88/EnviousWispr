@@ -1458,4 +1458,106 @@ struct MeetingLiveWordsTests {
     #expect(!(owner.transcript?.lines ?? []).contains { $0.text == "Old meeting." })
     owner.stop()
   }
+
+  // MARK: - #4097: finals delivered while a stopped session ends
+
+  enum HeldStopOutcome {
+    case keep, delete, ready, newRecording
+  }
+
+  @Test(
+    "Stop keeps a final the engine delivers while its session ends",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4097", "Stop drops a queued final"))
+  func stopKeepsFinalDuringHeldEnd() async throws {
+    try await Self.checkHeldStop(.keep)
+  }
+
+  @Test("Delete while a stopped session ends keeps nothing")
+  func deleteDuringStoppedHeldEnd() async throws {
+    try await Self.checkHeldStop(.delete)
+  }
+
+  @Test("a ready transcript while a stopped session ends keeps nothing")
+  func readyDuringStoppedHeldEnd() async throws {
+    try await Self.checkHeldStop(.ready)
+  }
+
+  @Test("a new recording while a stopped session ends never shows the old final")
+  func newRecordingDuringStoppedHeldEnd() async throws {
+    try await Self.checkHeldStop(.newRecording)
+  }
+
+  /// A Universal microphone session whose end is held after Stop, as the engine's end delivers
+  /// its queued finals (`TranscribeCppPreviewSession.end`); `outcome` acts during that end.
+  static func checkHeldStop(_ outcome: HeldStopOutcome) async throws {
+    let world = World()
+    world.choice = .ready(engine: .universal, language: "de")
+    let end = Gate()
+    defer { end.open() }
+    world.engineGates = { $0 == 0 ? Gates(end: end) : Gates() }
+
+    let owner = Self.owner(world)
+    let oldID = UUID()
+    Self.record(owner, oldID, tracks: [.microphone])
+    await Self.until("Universal microphone running", owner, release: end.open) {
+      Self.status($0, .microphone) == .running
+    }
+    let shared = try #require(world.shared.first)
+    let old = try #require(shared.engine.sessions.first)
+
+    old.emit(.update(finalized: "Before.", inProgress: ""))
+    owner.stop()
+    try #require(owner.transcript?.lines.map(\.text) == ["Before."])
+    try #require(
+      await PreviewWait.within("the stopped end is held", onExpiry: end.open) {
+        await end.reached(1)
+      })
+    try #require(old.endsCompleted == 0)
+
+    var newID: UUID?
+    switch outcome {
+    case .keep:
+      break
+    case .delete:
+      owner.delete(meetingID: oldID)
+      try #require(owner.transcript == nil)
+    case .ready:
+      owner.transcriptReady(meetingID: oldID)
+      try #require(owner.transcript == nil)
+    case .newRecording:
+      // Apple, so the new recording runs while the old Universal cleanup is held.
+      world.choice = .ready(engine: .apple, language: "de")
+      world.apple = .ready(world.appleCandidate())
+      let id = UUID()
+      newID = id
+      Self.record(owner, id, tracks: [.microphone])
+      await Self.until("new Apple microphone running", owner, release: end.open) {
+        $0.transcript?.meetingID == id && Self.status($0, .microphone) == .running
+      }
+      let current = try #require(world.appleEngines.first?.sessions.first)
+      current.emit(.update(finalized: "New meeting.", inProgress: ""))
+      await Self.until("new words applied", owner, release: end.open) {
+        $0.transcript?.lines.map(\.text) == ["New meeting."]
+      }
+    }
+
+    // Delivered after Stop, while the session's end is still held.
+    old.emit(.update(finalized: "Last sentence.", inProgress: ""))
+    end.open()
+    try #require(await owner.waitForCleanups(seconds: 10))
+    #expect(old.endsCompleted == 1)
+
+    switch outcome {
+    case .keep:
+      #expect(owner.transcript?.meetingID == oldID)
+      #expect(owner.transcript?.lines.map(\.text) == ["Before. Last sentence."])
+    case .delete, .ready:
+      #expect(owner.transcript == nil)
+    case .newRecording:
+      #expect(owner.transcript?.meetingID == newID)
+      #expect(owner.transcript?.lines.map(\.text) == ["New meeting."])
+      owner.stop()
+      #expect(await owner.waitForCleanups(seconds: 10))
+    }
+  }
 }

@@ -25,8 +25,10 @@ extension WhisperPreviewEngineResolver.MeetingEngine: MeetingSharedEngine {}
 /// never holds up the recording.
 ///
 /// **Live words are display only.** Nothing here touches the recording, Stop, Delete, the final
-/// pass or Quit: each of those calls a synchronous method that closes admission, invalidates the
-/// recording's generation and hands its resources to a once-only cleanup, then returns.
+/// pass or Quit: each of those calls a synchronous method that invalidates the recording's
+/// generation and hands its resources to a once-only cleanup, then returns. Delete closes event
+/// admission there; Stop and Quit leave it to that cleanup, which applies what the ending
+/// sessions still deliver to the kept lines (#4097).
 ///
 /// **One generation per recording.** Every suspension point re-checks it; a result that arrives
 /// for an older generation (a late preparation, a late open, a late event) goes straight to that
@@ -298,8 +300,11 @@ final class MeetingLiveWords {
 
   // MARK: - Exits
 
-  /// Stop: keeps the events already accepted, closes admission, invalidates the recording and
-  /// starts its cleanup. Returns at once. The lines stay until `transcriptReady`.
+  /// Stop: applies the events already accepted, invalidates the recording and starts its
+  /// cleanup. Returns at once. What the sessions still deliver while they end (the Universal
+  /// engine's queued finals, each session's terminal) is applied by that cleanup while these
+  /// lines are still this meeting's (#4097); the cleanup then closes admission. The lines stay
+  /// until `transcriptReady`.
   func stop() {
     retireCurrent(clearOutput: false)
   }
@@ -768,18 +773,21 @@ final class MeetingLiveWords {
 
   // MARK: - Retirement and cleanup
 
-  /// Applies the accepted events, closes admission, invalidates the generation and moves every
-  /// resource into one cleanup. Synchronous: never waits for preparation, feeds, ends or the
-  /// native release.
+  /// Applies the accepted events, invalidates the generation and moves every resource into one
+  /// cleanup. Synchronous: never waits for preparation, feeds, ends or the native release.
+  /// Delete closes admission here; kept output (Stop, Quit) leaves it open for the cleanup,
+  /// which applies what the ending sessions deliver and then closes it (#4097).
   private func retireCurrent(clearOutput: Bool) {
     guard let current = recording else {
       if clearOutput { transcript = nil }
       return
     }
-    // One atomic step closes admission and takes everything accepted, so no post can land in
-    // between; Stop applies that batch (its lines keep every accepted final), Delete drops it.
-    let final = current.bridge?.closeAllAndTake() ?? []
-    if !clearOutput { apply(final, to: current) }
+    if clearOutput {
+      // One atomic step closes admission and drops everything accepted.
+      _ = current.bridge?.closeAllAndTake()
+    } else {
+      apply(current.bridge?.take() ?? [], to: current)
+    }
     recording = nil
     generation += 1
     current.drain?.cancel()
@@ -792,10 +800,20 @@ final class MeetingLiveWords {
       slot.session = nil
     }
     if clearOutput { transcript = nil }
+    var late: (@MainActor (_ last: Bool) -> Void)?
+    if !clearOutput, let bridge = current.bridge {
+      late = { [weak self] last in
+        // Always take, and close on the last call, even once the lines went (Delete, a ready
+        // transcript, the next meeting): nothing reaches another meeting's words.
+        let entries = last ? bridge.closeAllAndTake() : bridge.take()
+        guard let self, self.transcript?.meetingID == current.meetingID else { return }
+        self.apply(entries, to: current)
+      }
+    }
     hand(
       Cleanup(
         sessions: sessions, joins: current.endings + current.consumers, start: current.start,
-        universal: current.universal),
+        universal: current.universal, late: late),
       engine: current.engine)
     current.endings = []
     current.consumers = []
@@ -822,24 +840,29 @@ final class MeetingLiveWords {
   /// the sessions active at retirement, every teardown already under way (failed tracks' ends,
   /// late handles' ends, an early release), every retired pump consumer, the start task and the
   /// sessions it opens late, and the Universal engine (handed over, or created by the start).
+  /// For kept output, `late` applies what the sessions deliver while they end: after each end or
+  /// join returns, and once more (closing admission) after all of them, before the release.
   @MainActor
   final class Cleanup {
     private var sessions: [any LivePreviewEngineSession]
     private var joins: [Task<Void, Never>]
     private var start: Task<Leftovers, Never>?
     private var universal: (any MeetingSharedEngine)?
+    private var late: (@MainActor (_ last: Bool) -> Void)?
     private(set) var task: Task<Void, Never> = Task {}
     /// The engine whose resources this cleanup frees (nil when none was chosen).
     fileprivate(set) var engine: EngineKind?
 
     init(
       sessions: [any LivePreviewEngineSession], joins: [Task<Void, Never>],
-      start: Task<Leftovers, Never>?, universal: (any MeetingSharedEngine)?
+      start: Task<Leftovers, Never>?, universal: (any MeetingSharedEngine)?,
+      late: (@MainActor (_ last: Bool) -> Void)? = nil
     ) {
       self.sessions = sessions
       self.joins = joins
       self.start = start
       self.universal = universal
+      self.late = late
     }
 
     /// Ends and joins everything at once, each on its own, then frees the Universal model and
@@ -849,12 +872,14 @@ final class MeetingLiveWords {
       let joins = self.joins
       let start = self.start
       let handed = self.universal
+      let late = self.late
       self.sessions = []
       self.joins = []
       self.start = nil
       self.universal = nil
+      self.late = nil
       task = Task { @MainActor in
-        let late = await withTaskGroup(
+        let created = await withTaskGroup(
           of: (any MeetingSharedEngine)?.self, returning: (any MeetingSharedEngine)?.self
         ) { group in
           // Each end and join is its own child: a hung feed or end never delays another end.
@@ -875,15 +900,22 @@ final class MeetingLiveWords {
               let leftovers = await start.value
               await withTaskGroup(of: Void.self) { ends in
                 for session in leftovers.sessions { ends.addTask { await session.end() } }
+                // One late opening's end never withholds what another delivered.
+                for await _ in ends { await late?(false) }
               }
               return leftovers.universal
             }
           }
           var created: (any MeetingSharedEngine)?
-          for await engine in group where engine != nil { created = engine }
+          // Every child, nil results included: each end or join may have delivered events.
+          for await engine in group {
+            if let engine { created = engine }
+            late?(false)
+          }
           return created
         }
-        if let engine = handed ?? late {
+        late?(true)
+        if let engine = handed ?? created {
           await engine.beginRelease().value
         }
         finished()
