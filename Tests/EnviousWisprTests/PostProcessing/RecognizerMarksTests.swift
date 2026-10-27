@@ -78,9 +78,9 @@ struct RecognizerMarksTests {
     "English: the sentence end in front of a line break stays; a mid-sentence phrase keeps today's reading"
   )
   func englishLineBreakRows() {
-    #expect(Self.english("Hello there. New line. World is big.") == "Hello there. \n World is big.")
+    #expect(Self.english("Hello there. New line. World is big.") == "Hello there.\nWorld is big.")
     #expect(Self.english("Add a new line.") == "Add a.")
-    #expect(Self.english("a. New line. New line. b") == "a. \n B")
+    #expect(Self.english("a. New line. New line. b") == "a.\nB")
   }
 
   @Test(

@@ -955,7 +955,7 @@
 {"input": "Are you free tomorrow?", "expected": "Are you free tomorrow?", "category": "punctuation", "slice": "idempotence"}
 {"input": "wow exclamation mark", "expected": "wow!", "category": "punctuation", "slice": "gold"}
 {"input": "Wow!", "expected": "Wow!", "category": "punctuation", "slice": "idempotence"}
-{"input": "first item new line second item", "expected": "first item \n second item", "category": "punctuation", "slice": "gold"}
+{"input": "first item new line second item", "expected": "first item\nsecond item", "category": "punctuation", "slice": "gold"}
 {"input": "first item\nsecond item", "expected": "first item\nsecond item", "category": "punctuation", "slice": "idempotence"}
 {"input": "dear team colon", "expected": "dear team:", "category": "punctuation", "slice": "gold"}
 {"input": "Dear team:", "expected": "Dear team:", "category": "punctuation", "slice": "idempotence"}
