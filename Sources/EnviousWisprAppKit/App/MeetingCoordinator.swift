@@ -415,6 +415,9 @@ final class MeetingCoordinator {
   /// Per meeting, writes asked for and not yet answered, oldest first: what a failed newer
   /// write rolls the live copy back to, so an earlier change still on its way is kept.
   private var unansweredWrites: [UUID: [(sequence: Int, record: MeetingRecord)]] = [:]
+  /// #4118: each recording meeting's segment list, kept in memory until Stop or quit; while it
+  /// exists, every save of that meeting writes only its checkpoint.
+  @ObservationIgnored private var segmentSaves: [UUID: MeetingSegmentSaves] = [:]
   private var recorder: MeetingRecording?
   /// The meeting the recorder writes into, from its creation until its Stop or quit finished.
   private var activeMeetingID: UUID?
@@ -534,7 +537,11 @@ final class MeetingCoordinator {
   func playbackSource(meetingID: UUID) -> MeetingPlaybackSource? {
     guard let record = records[meetingID], record.audioKept, !deleting.contains(meetingID),
       !closeOwned.contains(meetingID), !record.deletionRequested, record.state != .recording,
-      record.state != .stopping
+      record.state != .stopping,
+      // #4118: an interrupted meeting's saved list may be only its recording checkpoint until
+      // its pass rebuilds the list from the files.
+      !(record.wasInterrupted == true
+        && ([.queued, .processing, .interrupted] as [MeetingState]).contains(record.state))
     else { return nil }
     switch phase {
     case .recording(let id, _), .stopping(let id):
@@ -773,14 +780,18 @@ final class MeetingCoordinator {
     openAttempts[meetingID] = AttemptFacts(entryPoint: entryPoint, diskStopped: false)
     publish()
     let mic = deps.microphoneSelection()
+    let saves = MeetingSegmentSaves()
+    segmentSaves[meetingID] = saves
     let recorder = deps.makeRecorder(
       MeetingRecorder.Configuration(
         meetingID: meetingID, folder: deps.store.folder(for: meetingID),
         captureCallSound: captureCall, microphoneUID: mic.uid, inputChannelByDeviceUID: mic.channels
       ),
       { [weak self] track, info in
+        // #4118: taken in here, on the writer's thread; one main-actor update per burst.
+        guard saves.append(track: track, info: info) else { return }
         Task { @MainActor in
-          await self?.segmentFinalized(meetingID: meetingID, track: track, info: info)
+          await self?.segmentFinalized(meetingID: meetingID, saves: saves)
         }
       },
       { [weak self] track, error in
@@ -805,6 +816,7 @@ final class MeetingCoordinator {
       // A stop or quit that took over owns the recorder and the record.
       guard isCurrentStart(generation) else { return .superseded(meetingID: meetingID) }
       deps.log("meeting start failed error=\(String(describing: error).prefix(80))")
+      discardSegmentSaves(meetingID)
       // The current state ends now; the old meeting's files are dealt with apart from it, so a
       // new Start during the inspection below is never touched by it.
       self.recorder = nil
@@ -988,6 +1000,7 @@ final class MeetingCoordinator {
     self.recorder = nil
     endActivity()
     if var record = live[meetingID] {
+      finishSegmentSaves(meetingID, into: &record)
       apply(report, to: &record)
       record.endedAt = Date()
       if report.map(Self.anyCloseTimedOut) ?? false {
@@ -1030,12 +1043,20 @@ final class MeetingCoordinator {
     }
   }
 
-  private func segmentFinalized(meetingID: UUID, track: MeetingTrackKind, info: MeetingSegmentInfo)
-    async
-  {
-    guard !quitting, meetingID == activeMeetingID, var record = live[meetingID] else { return }
-    record.segments[track, default: []].append(info)
-    await persist(record)
+  private func segmentFinalized(meetingID: UUID, saves: MeetingSegmentSaves) async {
+    guard !quitting, meetingID == activeMeetingID, segmentSaves[meetingID] === saves,
+      let record = live[meetingID]
+    else { return }
+    let update = saves.update()
+    for track in MeetingTrackKind.allCases {
+      if let count = update.notes[track] {
+        deps.log(
+          "meeting segment rate high track=\(track.rawValue) segmentsAtLeast=\(count) "
+            + "windowMs=\(MeetingSegmentSaves.rateWindowMs)")
+      }
+    }
+    // The checkpoint itself comes from `persist`'s projection.
+    if update.shouldSave { await persist(record) }
     if let free = deps.freeDiskBytes(), free < Self.diskFloorBytes, isRecording,
       meetingID == activeMeetingID
     {
@@ -1595,6 +1616,7 @@ final class MeetingCoordinator {
       try await deps.removeTranscriptRow(record.transcriptID)
       let meetingID = record.id
       try await writer.run { try $0.deleteFolder(meeting: meetingID) }
+      discardSegmentSaves(record.id)
       live.removeValue(forKey: record.id)
       records.removeValue(forKey: record.id)
       publish()
@@ -1658,6 +1680,7 @@ final class MeetingCoordinator {
     // without writing once `quitting` is set.
     self.recorder = nil
     let report = recorder.stopForQuit(deadline: deadline)
+    finishSegmentSaves(meetingID, into: &record)
     apply(report, to: &record)
     if Self.anyCloseTimedOut(report) { closeOwned.insert(meetingID) }
     if record.state == .recording || record.state == .stopping {
@@ -1679,6 +1702,7 @@ final class MeetingCoordinator {
   /// live copy then returns to what is on disk, unless a newer change was asked for since.
   @discardableResult
   private func persist(_ record: MeetingRecord) async -> Bool {
+    let record = recordingCheckpoint(record)
     let sequence = beginWrite(record)
     do {
       try await writer.save(record)
@@ -1714,6 +1738,7 @@ final class MeetingCoordinator {
     _ record: MeetingRecord, until deadline: DispatchTime,
     lateSuccess: (@MainActor () -> Void)? = nil
   ) -> Bool {
+    let record = recordingCheckpoint(record)
     let sequence = beginWrite(record)
     let outcome = writer.saveBounded(
       record, until: deadline,
@@ -1727,6 +1752,7 @@ final class MeetingCoordinator {
     _ record: MeetingRecord, until deadline: DispatchTime,
     lateSuccess: (@MainActor () -> Void)? = nil
   ) async -> Bool {
+    let record = recordingCheckpoint(record)
     let sequence = beginWrite(record)
     let outcome = await writer.saveWithin(
       record, until: deadline,
@@ -1772,6 +1798,25 @@ final class MeetingCoordinator {
       deps.log("meeting save still running at its deadline")
       return false
     }
+  }
+
+  /// #4118: a meeting still recording is saved with its checkpoint (the newest segment per
+  /// track), never a partial copy of its full list.
+  private func recordingCheckpoint(_ record: MeetingRecord) -> MeetingRecord {
+    guard let saves = segmentSaves[record.id] else { return record }
+    var checkpoint = record
+    checkpoint.segments = saves.checkpoint()
+    return checkpoint
+  }
+
+  /// Ends a recording's in-memory list and puts every segment into `record`.
+  private func finishSegmentSaves(_ meetingID: UUID, into record: inout MeetingRecord) {
+    guard let saves = segmentSaves.removeValue(forKey: meetingID) else { return }
+    record.segments = saves.finish()
+  }
+
+  private func discardSegmentSaves(_ meetingID: UUID) {
+    _ = segmentSaves.removeValue(forKey: meetingID)?.finish()
   }
 
   private func beginWrite(_ record: MeetingRecord) -> Int {

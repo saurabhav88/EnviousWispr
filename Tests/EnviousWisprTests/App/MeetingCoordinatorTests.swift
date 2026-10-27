@@ -289,6 +289,8 @@ struct MeetingCoordinatorTests {
     var titleGate: Gate?
     var titleLookups: [Date] = []
     var freeBytes: Int64? = 50_000_000_000
+    /// #4118: how many times the coordinator read the free space (once per segment update).
+    var freeBytesReads = 0
     /// #4105: the transcript language Settings holds now (`meetingLanguageMode`).
     var language: LanguageMode = .auto
     var activitiesBegun = 0
@@ -350,7 +352,10 @@ struct MeetingCoordinatorTests {
           await settleGate?.wait()
           return settles
         },
-        freeDiskBytes: { [self] in freeBytes },
+        freeDiskBytes: { [self] in
+          freeBytesReads += 1
+          return freeBytes
+        },
         meetingTitleAtStart: { [self] startedAt in
           titleLookups.append(startedAt)
           await titleGate?.wait()
@@ -1299,6 +1304,85 @@ struct MeetingCoordinatorTests {
     }
     #expect(gone, "the launch removed the audio the record says is deleted")
     #expect(try harness.store.load(id: cut.id).audioKept == false)
+  }
+
+  @Test(
+    "#4118: a burst of short segments writes a few small records, and Stop saves every segment",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4118", "O(n²) record rewrites"))
+  func segmentBurstWritesBoundedRecords() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    let recorder = try #require(harness.recorders.first)
+    await Self.drainMeetingFiles()
+    let before = harness.writeGate.written.withLock { $0.count }
+
+    func piece(_ index: Int, startMs: Int) -> MeetingSegmentInfo {
+      MeetingSegmentInfo(
+        index: index, fileName: "system-\(index).caf", startMs: startMs, frameCount: 160)
+    }
+    func recordingWrites() -> [MeetingRecord] {
+      harness.writeGate.written.withLock { Array($0.dropFirst(before)) }
+        .filter { $0.state == .recording }
+    }
+    // Burst A: 1,000 call-sound pieces of 10 ms, 20 ms apart (to 19.99 s): the first save.
+    let readsBeforeA = harness.freeBytesReads
+    let burstA = (1...1_000).map { piece($0, startMs: ($0 - 1) * 20) }
+    for info in burstA { recorder.onSegment(.callSound, info) }
+    await Self.eventually("burst A saved and its update done") {
+      coordinator.record(id: meetingID)?.recordedDurationMs == 19_990
+        && harness.freeBytesReads > readsBeforeA
+    }
+    // Burst B ends 25 s after A's save: its update runs (one free-space read) and saves nothing.
+    let readsBeforeB = harness.freeBytesReads
+    let burstB = (1_001...2_250).map { piece($0, startMs: ($0 - 1) * 20) }
+    for info in burstB { recorder.onSegment(.callSound, info) }
+    await Self.eventually("burst B's update ran") { harness.freeBytesReads > readsBeforeB }
+    await Self.drainMeetingFiles()
+    #expect(recordingWrites().count == 1, "a save came before 30 s of recorded audio")
+    // One more piece ends 30.02 s after A's save: the second save.
+    let last = piece(2_251, startMs: 50_000)
+    recorder.onSegment(.callSound, last)
+    await Self.eventually("the newest piece saved") {
+      coordinator.record(id: meetingID)?.recordedDurationMs == 50_010
+    }
+    let expected = burstA + burstB + [last]
+
+    // Low disk keeps the queue from starting the pass, whose folder scan would replace the list.
+    harness.freeBytes = 0
+    await coordinator.stop()
+    await Self.drainMeetingFiles()
+    let writes = harness.writeGate.written.withLock { Array($0.dropFirst(before)) }
+    let recording = writes.filter { $0.state == .recording }
+    #expect(recording.count == 2)
+    #expect(recording.allSatisfy { $0.segments.values.reduce(0) { $0 + $1.count } <= 2 })
+    let stopped = try #require(writes.first { $0.state == .queued })
+    #expect(stopped.segments[.callSound] == expected)
+  }
+
+  @Test("#4118: an interrupted meeting offers no playback until its pass ends")
+  func interruptedMeetingPlaysOnlyAfterItsPass() async throws {
+    let harness = try Harness()
+    var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    try harness.store.create(record)
+    record.state = .recording
+    try harness.store.save(record)
+    try MeetingAudioFixture.writeSegment(
+      in: harness.store.folder(for: record.id), index: 1, startMs: 0, frames: 8_000)
+    // Low disk holds the recovered meeting in the queue.
+    harness.freeBytes = 0
+    let coordinator = harness.coordinator
+    coordinator.launch()
+    await Self.eventually("recovered and queued") {
+      coordinator.record(id: record.id)?.state == .queued
+        && coordinator.record(id: record.id)?.wasInterrupted == true
+    }
+    #expect(coordinator.playbackSource(meetingID: record.id) == nil)
+    harness.freeBytes = 50_000_000_000
+    #expect(await coordinator.retry(meetingID: record.id))
+    await Self.eventually("ready") { coordinator.record(id: record.id)?.state == .ready }
+    #expect(coordinator.playbackSource(meetingID: record.id) != nil)
   }
 
   // MARK: - Launch recovery
@@ -2728,13 +2812,15 @@ struct MeetingCoordinatorTests {
     await Self.eventually("mark waiting", drainFiles: false) {
       coordinator.liveRecordForTesting(meetingID)?.deletionRequested == true
     }
-    // The next segment save copies the marked live record and queues behind the mark.
+    // The next segment save copies the marked live record and queues behind the mark. It ends
+    // 30 s of recorded audio after the first, so it saves (#4118 spacing); the saved record
+    // carries only the newest segment while recording.
     recorder.onSegment(
       .microphone,
       MeetingSegmentInfo(
-        index: 2, fileName: "mic-00002-s000001000.caf", startMs: 1_000, frameCount: 16_000))
+        index: 2, fileName: "mic-00002-s000031000.caf", startMs: 31_000, frameCount: 16_000))
     await Self.eventually("second segment queued with the mark", drainFiles: false) {
-      coordinator.liveRecordForTesting(meetingID)?.segments[.microphone]?.count == 2
+      coordinator.liveRecordForTesting(meetingID)?.segments[.microphone]?.last?.index == 2
     }
     #expect(await deletingAll.value == false, "the mark was withdrawn at its deadline")
     gate.release.signal()
