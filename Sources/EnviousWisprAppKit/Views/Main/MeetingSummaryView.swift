@@ -47,9 +47,11 @@ struct MeetingSummaryView: View {
     // cannot summarize, is explained with the way to fix it.
     let configurationProblem = summaries?.configurationProblem()
     // #4148: a ready meeting with no summary and no visible transcript text has nothing a
-    // model could summarize; say so instead of any attempt's progress or problem.
+    // model could summarize; say so instead of any attempt's progress or problem. Only once its
+    // documents are read: before that (or after a failed read) the summary is unknown, and
+    // Write summary stays the way to read them again.
     let nothingToSummarize =
-      documents.summary(meetingID) == nil
+      documents.loadState(meetingID) == .loaded && documents.summary(meetingID) == nil
       && summaries?.hasNothingToSummarize(meetingID) == true
     VStack(alignment: .leading, spacing: 10) {
       if !nothingToSummarize {
@@ -126,9 +128,9 @@ struct MeetingSummaryView: View {
         }
       } else if nothingToSummarize {
         Text(
-          "Nothing to summarize. This meeting has no visible transcript text.",
+          "Nothing to summarize. No transcript text remains once probable echo is hidden.",
           comment:
-            "History, a ready meeting's Summary tab: no visible transcript text remains after probable echo is hidden; this does not mean recording failed."
+            "History, a ready meeting's Summary tab: summaries always leave out probable echo (lines the microphone picked up from the call sound), and no other transcript text is left; this does not mean recording failed."
         )
         .font(.stBody)
         .foregroundStyle(.stTextSecondary)

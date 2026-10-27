@@ -13531,13 +13531,13 @@
         }
       }
     },
-    "Nothing to summarize. This meeting has no visible transcript text." : {
-      "comment" : "History, a ready meeting's Summary tab: no visible transcript text remains after probable echo is hidden; this does not mean recording failed.",
+    "Nothing to summarize. No transcript text remains once probable echo is hidden." : {
+      "comment" : "History, a ready meeting's Summary tab: summaries always leave out probable echo (lines the microphone picked up from the call sound), and no other transcript text is left; this does not mean recording failed.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nichts zum Zusammenfassen. Für dieses Meeting ist kein Transkripttext sichtbar."
+            "value" : "Nichts zum Zusammenfassen. Wenn wahrscheinliches Echo ausgeblendet ist, bleibt kein Transkripttext übrig."
           }
         }
       }
