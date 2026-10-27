@@ -175,6 +175,22 @@ struct CallDetectionPolicyTests {
 
   // MARK: - Starting
 
+  @Test("A Teams microphone test never starts automatic recording",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4094"))
+  func teamsMicrophoneTestDoesNotStartAutomatically() {
+    let fixture = CallEvidenceReaderTests.Fixture()
+    var s = Story()
+    s.mode = .startByItself
+    s.read([
+      .init(pid: fixture.pid, rule: .callApp(.teams), input: .active,
+        evidence: CallEvidenceReader.nativeCallEvidence(
+          family: .teams, holderPID: fixture.pid, access: fixture.access))
+    ])
+    #expect(s.starts.isEmpty,
+      "Microphone activity without a Teams call control must not start recording: \(s.starts)")
+  }
+
+
   @Test("a Zoom meeting window with the microphone on asks once")
   func zoomAsksOnce() {
     var s = Story()
@@ -901,4 +917,123 @@ struct CallDetectionPolicyTests {
     #expect(!CallAppCatalog.mayBeCallApp(bundleID: "com.apple.Music"))
     #expect(!CallAppCatalog.mayBeCallApp(bundleID: "com.google.chromecast"))
   }
+
+  static func teams(
+    _ input: Policy.Input = .active,
+    evidence: CallEvidenceReader.Evidence = .microphoneOnly(family: .teams, room: "pid-300")
+  ) -> Policy.Holder {
+    .init(pid: 300, rule: .callApp(.teams), input: input, evidence: evidence)
+  }
+
+  @Test("Teams microphone-only evidence asks; only call proof permits automatic recording")
+  func teamsEvidenceAdmission() {
+    for proof in [false, true] {
+      let evidence: CallEvidenceReader.Evidence = proof
+        ? .call(family: .teams, room: "pid-300") : .microphoneOnly(family: .teams, room: "pid-300")
+      let modes: [Policy.Mode] = [.ask, .startByItself, .off]
+      for mode in modes {
+        var s = Story()
+        s.mode = mode
+        s.read([Self.teams(evidence: evidence)])
+        #expect(s.starts == (proof && mode == .startByItself ? [.teams] : []))
+        #expect(isAsk(s.interaction, .teams) == (mode == .ask))
+      }
+    }
+    let inputs: [Policy.Input] = [.inactive, .unknown]
+    for input in inputs {
+      var s = Story()
+      s.read([Self.teams(input)])
+      #expect(s.interaction == .none)
+      #expect(s.starts.isEmpty)
+    }
+  }
+
+  @Test("An old microphone-only Teams Ask cannot start after changing to automatic mode")
+  func teamsStaleAskYes() {
+    var s = Story()
+    s.read([Self.teams()])
+    #expect(isAsk(s.interaction, .teams))
+    s.mode = .startByItself
+    s.press(.yes)
+    #expect(s.starts.isEmpty)
+    s.read([Self.teams(evidence: .call(family: .teams, room: "pid-300"))])
+    s.press(.yes)
+    #expect(s.starts == [.teams], "A real call control restores eligibility for this question")
+  }
+
+  @Test("An old microphone-only Teams switch Yes cannot stop another meeting in automatic mode")
+  func teamsStaleSwitchYes() {
+    var s = Story()
+    let existing = UUID()
+    s.meeting = .recording(meetingID: existing)
+    s.read([Self.teams()])
+    #expect(isSwitch(s.interaction))
+    s.mode = .startByItself
+    s.press(.yes)
+    #expect(s.stops == 0)
+    #expect(s.starts.isEmpty)
+    #expect(s.meeting == .recording(meetingID: existing))
+  }
+
+  @Test("Waiting Teams microphone evidence cannot acquire automatic permission from a mode change")
+  func teamsWaitingModeChange() {
+    var s = Story()
+    s.dictation = true
+    s.read([Self.teams()])
+    #expect(s.interaction == .none)
+    s.mode = .startByItself
+    s.dictation = false
+    s.step()
+    #expect(s.starts.isEmpty)
+    #expect(s.interaction == .none)
+    s.read([Self.teams(evidence: .call(family: .teams, room: "pid-300"))])
+    #expect(s.starts == [.teams])
+  }
+
+  @Test("A Teams switch rechecks current proof and mode after the old meeting stops")
+  func teamsSwitchCompletion() {
+    for proof in [false, true] {
+      var s = Story()
+      s.meeting = .recording(meetingID: UUID())
+      s.read([Self.teams()])
+      s.press(.yes)
+      #expect(s.stops == 1)
+      s.mode = .startByItself
+      let evidence: CallEvidenceReader.Evidence = proof
+        ? .call(family: .teams, room: "pid-300") : .microphoneOnly(family: .teams, room: "pid-300")
+      s.read([Self.teams(evidence: evidence)])
+      s.stopFinished()
+      #expect(s.starts == (proof ? [.teams] : []))
+      if !proof { #expect(isStopped(s.interaction, .switchNotConfirmed)) }
+    }
+  }
+
+  @Test("A chosen Teams Ask start survives mode/proof changes and still ends from microphone readings")
+  func teamsChosenStartAndEnd() {
+    var s = Story()
+    s.read([Self.teams()])
+    s.press(.yes)
+    #expect(s.starts == [.teams])
+    s.mode = .startByItself
+    s.meeting = .busy
+    s.read([Self.teams(evidence: .unknown)])
+    #expect(s.policy.isStartWanted(s.context))
+    s.startFinished(.recording(meetingID: UUID()))
+    s.hold([Self.teams(evidence: .unknown)], for: 4)
+    #expect(s.stops == 0, "Missing AX proof alone cannot end a recording")
+    end(&s, [Self.teams(.inactive, evidence: .unknown)])
+    #expect(isCountdown(s.interaction))
+    s.hold([Self.teams(.inactive, evidence: .unknown)], for: Policy.countdownLength)
+    #expect(s.stops == 1)
+  }
+
+  @Test("Other native calling apps retain microphone-based automatic starts")
+  func otherNativeAppsStayAutomatic() {
+    var s = Story()
+    s.mode = .startByItself
+    s.read([.init(pid: 400, rule: .callApp(.facetime), input: .active,
+      evidence: .call(family: .facetime, room: "pid-400"))])
+    #expect(s.starts == [.facetime])
+  }
+
 }

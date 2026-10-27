@@ -38,7 +38,12 @@ struct CallEvidenceReaderTests {
           self.timeouts[ObjectIdentifier(element)] = seconds
           return .success
         },
-        read: { element, attribute in self.read(element, attribute) })
+        read: { element, attribute in self.read(element, attribute) },
+        wake: { _, _ in
+          AccessibilityWake.Report(
+            roleError: .success, roleReadExhausted: false, manual: false, manualEnabled: false)
+        },
+        regularTeamsPIDs: { [self.pid] })
     }
 
     func read(_ element: AXUIElement, _ attribute: CFString) -> Reader.CopyResult {
@@ -200,6 +205,242 @@ struct CallEvidenceReaderTests {
     let browser = Fixture()
     browser.pageURL = nil
     #expect(Reader.meetingPage(appPID: browser.pid, access: browser.access) == .none)
+  }
+
+  func slackFixture(
+    control: Reader.CopyResult, role: String = "AXButton", title: String? = nil
+  ) -> Fixture {
+    let fixture = Fixture()
+    fixture.title = title
+    fixture.response = { rig, node, attribute in
+      if attribute == "AXRole", CFEqual(node, rig.page) { return .value(role as CFString) }
+      if attribute == "AXDOMClassList" { return control }
+      return nil
+    }
+    return fixture
+  }
+
+  @Test("Shared Slack search accepts only the real button role", arguments: [true, false])
+  func slackSearchRole(button: Bool) {
+    let fixture = slackFixture(
+      control: .value([SlackHuddleWindow.leaveClass] as CFArray),
+      role: button ? "AXButton" : "AXPopUpButton", title: "workspace")
+    let evidence = Reader.callWindow(family: .slack, appPID: fixture.pid, access: fixture.access)
+    #expect(evidence == (button ? .call(family: .slack, room: "pid-70000") : .none))
+  }
+
+  @Test("Malformed Slack class data remains uncertainty")
+  func slackMalformedControl() {
+    let fixture = slackFixture(control: .value(SlackHuddleWindow.leaveClass as CFString))
+    #expect(Reader.callWindow(family: .slack, appPID: fixture.pid, access: fixture.access) == .unknown)
+  }
+
+  @Test("A partial Slack traversal remains uncertainty")
+  func slackPartialSearch() {
+    let fixture = Fixture()
+    fixture.response = { _, _, attribute in attribute == "AXChildren" ? .failed : nil }
+    #expect(Reader.callWindow(family: .slack, appPID: fixture.pid, access: fixture.access) == .unknown)
+  }
+
+  @Test("Slack title fallback stays authoritative after missing or failed control reads",
+    arguments: [true, false])
+  func slackTitleFallback(malformed: Bool) {
+    let control: Reader.CopyResult = malformed
+      ? .value(SlackHuddleWindow.leaveClass as CFString) : .missing
+    let fixture = slackFixture(control: control, title: "Huddle")
+    #expect(Reader.callWindow(family: .slack, appPID: fixture.pid, access: fixture.access)
+      == .call(family: .slack, room: "pid-70000"))
+  }
+
+  @Test("A later Slack control still wins earlier window uncertainty")
+  func slackPositiveAfterFailure() {
+    let fixture = Fixture()
+    let bad = AXUIElementCreateApplication(70_003)
+    fixture.windows = [bad, fixture.window]
+    fixture.response = { rig, node, attribute in
+      if CFEqual(node, bad) { return attribute == "AXRole" ? .failed : .missing }
+      if attribute == "AXRole", CFEqual(node, rig.page) { return .value("AXButton" as CFString) }
+      if attribute == "AXDOMClassList" { return .value([SlackHuddleWindow.leaveClass] as CFArray) }
+      return nil
+    }
+    #expect(Reader.callWindow(family: .slack, appPID: fixture.pid, access: fixture.access)
+      == .call(family: .slack, room: "pid-70000"))
+  }
+
+  @Test("Slack wake refusals do not become negative scans or send later messages")
+  func slackWakeAcceptance() {
+    let reports = [
+      AccessibilityWake.Report(roleError: .cannotComplete, roleReadExhausted: false,
+        manual: false, manualEnabled: false),
+      AccessibilityWake.Report(roleError: .success, roleReadExhausted: true,
+        manual: false, manualEnabled: false),
+      AccessibilityWake.Report(roleError: .success, roleReadExhausted: false,
+        manual: nil, manualEnabled: false),
+      AccessibilityWake.Report(roleError: .success, roleReadExhausted: false,
+        manual: true, manualEnabled: false),
+    ]
+    for report in reports {
+      let fixture = Fixture()
+      var access = fixture.access
+      access.wake = { _, _ in report }
+      #expect(Reader.callWindow(family: .slack, appPID: fixture.pid, access: access) == .unknown)
+      #expect(fixture.messages.isEmpty)
+    }
+  }
+
+  @Test("Other calling apps keep immediate microphone-based evidence")
+  func legacyNativeEvidence() {
+    let fixture = Fixture()
+    var access = fixture.access
+    access.wake = { _, _ in
+      Issue.record("Legacy native rule must not perform wake work")
+      return AccessibilityWake.Report(roleError: .cannotComplete, roleReadExhausted: false,
+        manual: nil, manualEnabled: false)
+    }
+    access.regularTeamsPIDs = { Issue.record("Legacy native rule must not enumerate Teams"); return [] }
+    #expect(Reader.nativeCallEvidence(family: .facetime, holderPID: fixture.pid, access: access)
+      == .call(family: .facetime, room: "pid-70000"))
+    #expect(fixture.messages.isEmpty)
+  }
+
+  func teamsFixture(
+    identifier: Reader.CopyResult = .value("hangup-button" as CFString),
+    role: String = "AXButton", depth: Int = 16
+  ) -> Fixture {
+    let fixture = Fixture()
+    let nodes = [fixture.window] + (1...depth).map { AXUIElementCreateApplication(Int32(71_000 + $0)) }
+    fixture.response = { _, node, attribute in
+      guard let index = nodes.firstIndex(where: { CFEqual($0, node) }) else { return nil }
+      switch attribute {
+      case "AXRole": return .value((index == depth ? role : "AXGroup") as CFString)
+      case "AXChildren":
+        return index < depth ? .value([nodes[index + 1]] as CFArray) : .missing
+      case "AXDOMIdentifier": return identifier
+      default: return nil
+      }
+    }
+    return fixture
+  }
+
+  @Test("Teams owner selection prefers its own regular holder, otherwise only one distinct owner")
+  func teamsOwnerSelection() {
+    #expect(Reader.teamsOwnerPID(holderPID: 7, regularTeamsPIDs: []) == nil)
+    #expect(Reader.teamsOwnerPID(holderPID: 7, regularTeamsPIDs: [8, 9]) == nil)
+    #expect(Reader.teamsOwnerPID(holderPID: 7, regularTeamsPIDs: [8, 8]) == 8)
+    #expect(Reader.teamsOwnerPID(holderPID: 7, regularTeamsPIDs: [8, 7, 9]) == 7)
+  }
+
+  @Test("A depth16 Teams button proves a call using the owner but preserves microphone holder identity")
+  func teamsCallProof() {
+    let fixture = teamsFixture()
+    var access = fixture.access
+    let wake = access.wake
+    var woke: [Int32] = []
+    access.regularTeamsPIDs = { [72_000] }
+    access.wake = { pid, seconds in woke.append(pid); return wake(pid, seconds) }
+    #expect(Reader.nativeCallEvidence(family: .teams, holderPID: fixture.pid, access: access)
+      == .call(family: .teams, room: "pid-70000"))
+    #expect(woke == [72_000])
+    #expect(fixture.refused.isEmpty, "Every exact descendant handle must receive its timeout")
+  }
+
+  @Test("Teams proof never comes from a near identifier, a label or a non-button")
+  func teamsExactControl() {
+    for (role, identifier) in [
+      ("AXPopUpButton", "hangup-button"), ("AXButton", "hangup-button-more-options"),
+      ("AXButton", "Leave"), ("AXButton", "Hangup-button"),
+    ] {
+      let fixture = teamsFixture(identifier: .value(identifier as CFString), role: role)
+      fixture.title = "hangup-button"
+      #expect(Reader.nativeCallEvidence(family: .teams, holderPID: fixture.pid, access: fixture.access)
+        == .microphoneOnly(family: .teams, room: "pid-70000"))
+    }
+  }
+
+  @Test("Ambiguous or missing Teams owners retain Ask evidence without touching Accessibility")
+  func teamsUnresolvedOwner() {
+    let candidates: [[Int32]] = [[], [72_000, 72_001]]
+    for pids in candidates {
+      let fixture = teamsFixture()
+      var access = fixture.access
+      access.regularTeamsPIDs = { pids }
+      access.wake = { _, _ in
+        Issue.record("Unresolved owner must not wake an app")
+        return AccessibilityWake.Report(roleError: .cannotComplete, roleReadExhausted: false,
+          manual: nil, manualEnabled: false)
+      }
+      #expect(Reader.nativeCallEvidence(family: .teams, holderPID: fixture.pid, access: access)
+        == .microphoneOnly(family: .teams, room: "pid-70000"))
+      #expect(fixture.messages.isEmpty)
+    }
+  }
+
+  @Test("Unreadable, malformed, partial and late Teams scans never grant automatic proof")
+  func teamsUnprovenScan() {
+    for failure in ["wake", "windows", "partial", "malformed", "deadline", "timeoutSetup", "lateRead"] {
+      let fixture = teamsFixture()
+      let response = fixture.response
+      fixture.response = { rig, node, attribute in
+        if failure == "windows", attribute == "AXWindows" { return .failed }
+        if failure == "partial", attribute == "AXChildren" { return .failed }
+        if failure == "malformed", attribute == "AXDOMIdentifier" {
+          return .value(["hangup-button"] as CFArray)
+        }
+        if failure == "lateRead", attribute == "AXDOMIdentifier" {
+          rig.instant = rig.instant.advanced(by: .seconds(2))
+        }
+        return response?(rig, node, attribute)
+      }
+      fixture.refuseSetup = failure == "timeoutSetup"
+      var access = fixture.access
+      let wake = access.wake
+      access.wake = { pid, seconds in
+        if failure == "deadline" { fixture.instant = fixture.instant.advanced(by: .seconds(2)) }
+        if failure == "wake" {
+          return AccessibilityWake.Report(roleError: .cannotComplete, roleReadExhausted: false,
+            manual: nil, manualEnabled: false)
+        }
+        return wake(pid, seconds)
+      }
+      #expect(Reader.nativeCallEvidence(family: .teams, holderPID: fixture.pid, access: access)
+        == .microphoneOnly(family: .teams, room: "pid-70000"), "Failure: \(failure)")
+      if ["wake", "deadline", "timeoutSetup"].contains(failure) {
+        #expect(fixture.messages.isEmpty, "Must not message after refusal: \(failure)")
+      }
+    }
+  }
+
+  @Test("A valid later Teams control wins an earlier unreadable window")
+  func teamsPositiveAfterUncertainty() {
+    let fixture = teamsFixture()
+    let bad = AXUIElementCreateApplication(72_000)
+    fixture.windows = [bad, fixture.window]
+    let response = fixture.response
+    fixture.response = { rig, node, attribute in
+      if CFEqual(node, bad) { return .failed }
+      return response?(rig, node, attribute)
+    }
+    #expect(Reader.nativeCallEvidence(family: .teams, holderPID: fixture.pid, access: fixture.access)
+      == .call(family: .teams, room: "pid-70000"))
+  }
+
+  @Test("Teams depth and node limits cannot turn unsearched descendants into call proof")
+  func teamsTraversalLimits() {
+    let deep = teamsFixture(depth: 33)
+    #expect(Reader.nativeCallEvidence(family: .teams, holderPID: deep.pid, access: deep.access)
+      == .microphoneOnly(family: .teams, room: "pid-70000"))
+    let wide = Fixture()
+    let children = (1...801).map { AXUIElementCreateApplication(Int32(73_000 + $0)) }
+    wide.response = { rig, node, attribute in
+      switch attribute {
+      case "AXChildren": return CFEqual(node, rig.window) ? .value(children as CFArray) : .missing
+      case "AXRole": return .value((CFEqual(node, children[800]) ? "AXButton" : "AXGroup") as CFString)
+      case "AXDOMIdentifier": return .value("hangup-button" as CFString)
+      default: return nil
+      }
+    }
+    #expect(Reader.nativeCallEvidence(family: .teams, holderPID: wide.pid, access: wide.access)
+      == .microphoneOnly(family: .teams, room: "pid-70000"))
   }
 
 }
