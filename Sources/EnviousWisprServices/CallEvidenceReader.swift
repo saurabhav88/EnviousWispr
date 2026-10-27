@@ -91,14 +91,92 @@ public enum CallEvidenceReader {
       case .unknown: return .unknown
       }
     case .slack:
-      guard let titles = windowTitles(appPID: appPID) else { return .unknown }
-      // A huddle window's title starts with "Huddle"; a channel named "#huddle-…" does not
-      // count (review r15 F5). English only: the other languages are open in #4036.
-      isCall = titles.contains { $0.lowercased().hasPrefix("huddle") }
+      switch slackHuddleWindow(appPID: appPID) {
+      case .call: isCall = true
+      case .none: isCall = false
+      case .unknown: return .unknown
+      }
     default:
       isCall = false
     }
     return isCall ? .call(family: family, room: "pid-\(appPID)") : .none
+  }
+
+  /// Slack's Leave control is independent of its UI language and channel/window name (#4036).
+  private static func slackHuddleWindow(appPID: pid_t) -> SlackHuddleWindow.Verdict {
+    // Same one-second budget as CallEvidenceRead.bounded; do not leave its shared lane busy.
+    let deadline = ContinuousClock.now.advanced(by: .seconds(1))
+    let wake = AccessibilityWake.wake(pid: appPID, messagingTimeout: Double(messagingTimeout))
+    guard wake.roleError == .success, !wake.roleReadExhausted,
+      let manual = wake.manual, !manual || wake.manualEnabled
+    else { return .unknown }
+    let app = AXUIElementCreateApplication(appPID)
+    guard case .value(let value) = slackCopy(app, kAXWindowsAttribute as CFString, until: deadline),
+      let windows = value as? [AXUIElement]
+    else { return .unknown }
+    return SlackHuddleWindow.classify(
+      windowCount: windows.count,
+      identifier: { slackHuddleControl(in: windows[$0], until: deadline) },
+      title: {
+        switch slackCopy(windows[$0], kAXTitleAttribute as CFString, until: deadline) {
+        case .value(let value): (value as? String).map { .value($0) } ?? .failed
+        case .missing: .missing
+        case .failed: .failed
+        }
+      })
+  }
+
+  /// The saved Slack trees reach depth 27. Unsearched children never mean no huddle.
+  private static func slackHuddleControl(
+    in window: AXUIElement, until deadline: ContinuousClock.Instant
+  ) -> SlackHuddleWindow.Read {
+    var queue: [(AXUIElement, Int)] = [(window, 0)]
+    var visited = 0
+    var complete = true
+    while !queue.isEmpty, visited < 800, ContinuousClock.now < deadline {
+      let (node, level) = queue.removeFirst()
+      visited += 1
+      switch slackCopy(node, kAXRoleAttribute as CFString, until: deadline) {
+      case .value(let role) where (role as? String) == "AXButton":
+        switch slackCopy(node, "AXDOMClassList" as CFString, until: deadline) {
+        case .value(let value):
+          switch SlackHuddleWindow.classRead(value) {
+          case .value(let token): return .value(token)
+          case .failed: complete = false
+          case .missing: break
+          }
+        case .missing: break
+        case .failed: complete = false
+        }
+      case .value(let role) where role is String: break
+      default: complete = false
+      }
+      switch slackCopy(node, kAXChildrenAttribute as CFString, until: deadline) {
+      case .value(let value):
+        guard let children = value as? [AXUIElement] else { complete = false; continue }
+        guard level < 32 else {
+          if !children.isEmpty { complete = false }
+          continue
+        }
+        queue.append(contentsOf: children.map { ($0, level + 1) })
+      case .missing: break
+      case .failed: complete = false
+      }
+    }
+    if !queue.isEmpty { complete = false }
+    return complete ? .missing : .failed
+  }
+
+  /// AX timeouts belong to each element handle, not to its app's descendants (AXUIElement.h).
+  private static func slackCopy(
+    _ element: AXUIElement, _ attribute: CFString, until deadline: ContinuousClock.Instant
+  ) -> CopyResult {
+    let remaining = ContinuousClock.now.duration(to: deadline).components
+    let seconds = Double(remaining.seconds) + Double(remaining.attoseconds) / 1e18
+    guard seconds > 0,
+      AXUIElementSetMessagingTimeout(element, min(messagingTimeout, Float(seconds))) == .success
+    else { return .failed }
+    return copy(element, attribute)
   }
 
   /// Reads each Zoom window's identifier, then its title, only until one proves a meeting.

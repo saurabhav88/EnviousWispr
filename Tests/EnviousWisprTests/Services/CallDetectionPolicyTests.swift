@@ -185,6 +185,27 @@ struct CallDetectionPolicyTests {
     #expect(s.interaction == .none)
   }
 
+  @Test("Slack asks for a verified huddle, never for an idle channel or unreadable evidence")
+  func slackHuddleAsks() {
+    let control = SlackHuddleWindow.classRead(["leaveButton__wzISw"])
+    for (signal, title, shouldAsk) in [
+      (control, "huddle-test - Qualtrics - Slack", true),
+      (.missing, "huddle-test (Channel) - Qualtrics - Slack", false),
+      (.failed, "Saurabh Vaish (DM) - Qualtrics - Slack", false),
+    ] as [(SlackHuddleWindow.Read, String, Bool)] {
+      let verdict = SlackHuddleWindow.classify(
+        windowCount: 1, identifier: { _ in signal }, title: { _ in .value(title) })
+      let evidence: CallEvidenceReader.Evidence = switch verdict {
+      case .call: .call(family: .slack, room: "solo")
+      case .none: .none
+      case .unknown: .unknown
+      }
+      var s = Story()
+      s.read([.init(pid: 300, rule: .callWindow(.slack), input: .active, evidence: evidence)])
+      #expect(isAsk(s.interaction, .slack) == shouldAsk, "\(title)")
+    }
+  }
+
   @Test("no evidence, unknown evidence or an unknown microphone never asks")
   func noKnownEvidenceNoPrompt() {
     for holder in [
