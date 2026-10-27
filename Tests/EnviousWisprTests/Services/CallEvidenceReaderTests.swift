@@ -336,11 +336,23 @@ struct CallEvidenceReaderTests {
     var access = fixture.access
     let wake = access.wake
     var woke: [Int32] = []
+    let owner = AXUIElementCreateApplication(72_000)
+    var windowRequests: [AXUIElement] = []
+    let response = fixture.response
+    fixture.response = { rig, node, attribute in
+      if attribute == "AXWindows" {
+        windowRequests.append(node)
+        return CFEqual(node, owner) ? .value(rig.windows as CFArray) : .failed
+      }
+      return response?(rig, node, attribute)
+    }
     access.regularTeamsPIDs = { [72_000] }
     access.wake = { pid, seconds in woke.append(pid); return wake(pid, seconds) }
     #expect(Reader.nativeCallEvidence(family: .teams, holderPID: fixture.pid, access: access)
       == .call(family: .teams, room: "pid-70000"))
     #expect(woke == [72_000])
+    #expect(windowRequests.count == 1)
+    #expect(windowRequests.allSatisfy { CFEqual($0, owner) })
     #expect(fixture.refused.isEmpty, "Every exact descendant handle must receive its timeout")
   }
 
