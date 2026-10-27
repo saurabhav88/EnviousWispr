@@ -122,13 +122,27 @@ struct MeetingTranscriptComposerTests {
 
   @Test("#4138 microphone words no voice claimed (Both) are You on a call")
   func callMicrophoneBothIsYou() {
-    // The last five words fall outside every microphone segment: more than the fold maximum, so
-    // the assembler would call them Both.
-    let result = callWithMicrophone(
-      micWords: ["sure", "thing", "and", "then", "we", "ship", "it"],
-      micSegments: [SpeakerSegment(speakerId: "S1", startMs: 2000, endMs: 2550, quality: 1)])
-    let micTurns = result.turns.filter { !$0.speakerId.hasPrefix("sys:") }
-    #expect(micTurns.count >= 1)
+    // Two words inside S1, then five words far past it (beyond the assembler's tolerance and
+    // more than the fold maximum), which the assembler calls Both.
+    let words: [(String, Int?, Int?)] = [
+      ("sure", 2000, 2250), ("thing", 2300, 2550),
+      ("and", 4000, 4250), ("then", 4300, 4550), ("we", 4600, 4850), ("ship", 4900, 5150),
+      ("it", 5200, 5450),
+    ]
+    let mic = MeetingTrackInput(
+      kind: .microphone, pieces: [piece(words, start: 2000, end: 5500)],
+      speakerSegments: [SpeakerSegment(speakerId: "S1", startMs: 2000, endMs: 2550, quality: 1)])
+    // Precondition: with no call, the same microphone input does produce Both.
+    let alone = MeetingTranscriptComposer.compose(tracks: [mic])
+    #expect(alone.turns.contains { $0.speakerId == TurnAssembler.bothSpeakersID })
+
+    let call = MeetingTrackInput(
+      kind: .callSound,
+      pieces: [piece([("Can", 0, 200), ("you", 200, 400), ("hear", 400, 600)], start: 0, end: 700)],
+      speakerSegments: [SpeakerSegment(speakerId: "S1", startMs: 0, endMs: 700, quality: 1)])
+    let result = MeetingTranscriptComposer.compose(tracks: [call, mic])
+    let micTurns = result.turns.filter { ($0.startMs ?? 0) >= 2000 }
+    #expect(micTurns.count >= 2)
     #expect(micTurns.allSatisfy { $0.speakerId == "mic:you" })
     #expect(!result.turns.contains { $0.speakerId == TurnAssembler.bothSpeakersID })
     #expect(result.speakerNames["mic:you"] == "You")
@@ -136,6 +150,8 @@ struct MeetingTranscriptComposerTests {
 
   @Test("#4138 call words no far-side voice claimed (Both) still make the microphone You")
   func callBothStillMakesYou() {
+    // The only call segment lies far after every call word, so the call turn is Both, not a
+    // `sys:` speaker.
     let call = MeetingTrackInput(
       kind: .callSound,
       pieces: [
@@ -143,7 +159,7 @@ struct MeetingTranscriptComposerTests {
           [("can", 0, 200), ("you", 200, 400), ("all", 400, 600), ("hear", 600, 800), ("me", 800, 1000), ("now", 1000, 1200)],
           start: 0, end: 1300)
       ],
-      speakerSegments: [])
+      speakerSegments: [SpeakerSegment(speakerId: "S1", startMs: 10_000, endMs: 11_000, quality: 1)])
     let mic = MeetingTrackInput(
       kind: .microphone,
       pieces: [piece([("yes", 2000, 2300), ("loud", 2300, 2600)], start: 2000, end: 2700)],
@@ -152,7 +168,10 @@ struct MeetingTranscriptComposerTests {
         SpeakerSegment(speakerId: "S2", startMs: 2300, endMs: 2700, quality: 1),
       ])
     let result = MeetingTranscriptComposer.compose(tracks: [call, mic])
-    #expect(result.turns.filter { $0.startMs ?? 0 >= 2000 }.allSatisfy { $0.speakerId == "mic:you" })
+    #expect(result.turns.first?.speakerId == TurnAssembler.bothSpeakersID)
+    let micTurns = result.turns.filter { ($0.startMs ?? 0) >= 2000 }
+    #expect(!micTurns.isEmpty)
+    #expect(micTurns.allSatisfy { $0.speakerId == "mic:you" })
     #expect(result.speakerNames["mic:you"] == "You")
   }
 
