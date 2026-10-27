@@ -1,5 +1,7 @@
 import EnviousWisprCore
 import Foundation
+import SwiftParser
+import SwiftSyntax
 import Testing
 
 @testable import EnviousWisprPostProcessing
@@ -865,138 +867,125 @@ struct CustomWordsManagerLockingTests {
   /// Freezes the single-lock-authority shape (#1690) so a future edit cannot
   /// silently reintroduce a second lock path, an unlocked write, or a stale
   /// helper name. Deliberately the ONE source-reading test for this file —
-  /// every assertion is bounded to a specific function-body slice via
-  /// `functionBody(in:declaring:)`, not vague whole-file keyword presence.
+  /// every assertion is bounded to a specific parsed function body, not vague
+  /// whole-file keyword presence.
+  ///
+  /// #4086 moved every disk touch into `CustomWordsFileStore`, verbatim. Whole-file
+  /// counts now cover the manager AND the store together, so a second lock path or
+  /// save helper cannot hide in either file; function-specific checks read each
+  /// function at its actual owner. Both files are parsed with SwiftParser
+  /// (swift-patterns.md RULE: scan-swift-source-with-swiftparser-never-a-hand-rolled-lexer).
   @Test
   func singleLockAuthorityStructureHoldsAcrossTheWholeFile() throws {
-    // #4086 moved every disk touch into `CustomWordsFileStore`, verbatim. The lock, load,
-    // save, quarantine and backup assertions now read that owner; `load()` and
-    // `commitImport` still live in the manager and are read there.
-    let source = try String(
-      contentsOf: RepoRoot.sourceURL(
-        "Sources/EnviousWisprPostProcessing/CustomWordsFileStore.swift"),
-      encoding: .utf8)
-    let managerSource = try String(
-      contentsOf: RepoRoot.sourceURL(
-        "Sources/EnviousWisprPostProcessing/CustomWordsManager.swift"),
-      encoding: .utf8)
+    let store = try CachedSwiftParser.snapshot(
+      at: RepoRoot.sourceURL("Sources/EnviousWisprPostProcessing/CustomWordsFileStore.swift"))
+    let manager = try CachedSwiftParser.snapshot(
+      at: RepoRoot.sourceURL("Sources/EnviousWisprPostProcessing/CustomWordsManager.swift"))
+    let trees = [store.tree, manager.tree]
+    let both = trees.map { Syntax($0) }
 
-    let loadSlice = try functionBody(
-      in: managerSource, declaring: "public func load() -> [CustomWord]?")
+    let load = try function(named: "load", in: manager.tree)
     // #1701 Chunk 2: the missing/loaded/unreadable/needsRepair cascade —
     // including load()'s blocking repair path — moved out of load() into
     // this shared helper, verbatim, so loadSnapshot() and
     // loadPendingEnrichmentWords() can reuse the identical resolution
     // without duplicating it. load() itself is now a thin two-line wrapper.
-    let resolveCurrentFileSlice = try functionBody(
-      in: source, declaring: "func resolveCurrentFile() -> CustomWordsFile?")
-    let transactionSlice = try functionBody(
-      in: source, declaring: "func performLockedTransaction<T>(")
-    let loadFileWhileLockedSlice = try functionBody(
-      in: source, declaring: "private func loadFileWhileLocked() -> CustomWordsLoadResult")
-    let saveFileWhileLockedSlice = try functionBody(
-      in: source, declaring: "private func saveFileWhileLocked(_ file: CustomWordsFile) throws")
-    let commitImportSlice = try functionBody(
-      in: managerSource, declaring: "package func commitImport(")
+    let resolveCurrentFile = try function(named: "resolveCurrentFile", in: store.tree)
+    let transaction = try function(named: "performLockedTransaction", in: store.tree)
+    let loadFileWhileLocked = try function(named: "loadFileWhileLocked", in: store.tree)
+    let saveFileWhileLocked = try function(named: "saveFileWhileLocked", in: store.tree)
+    let commitImport = try function(named: "commitImport", in: manager.tree)
 
-    // 1. Exactly one declaration of withExclusiveFileLock.
+    // 1. Exactly one declaration of withExclusiveFileLock across both files.
     #expect(
-      source.components(separatedBy: "private func withExclusiveFileLock<T>(").count - 1 == 1,
+      declarationCount(named: "withExclusiveFileLock", in: trees) == 1,
       "Expected exactly one withExclusiveFileLock declaration.")
 
-    // 2. Exactly two code calls anywhere in the file: load()'s blocking
+    // 2. Exactly two code calls across both files: load()'s blocking
     // repair path and performLockedTransaction's non-blocking wrapper — no
     // third site hiding elsewhere.
     #expect(
-      source.components(separatedBy: "try withExclusiveFileLock").count - 1 == 2,
-      "Expected exactly two `try withExclusiveFileLock` call sites in the whole file.")
+      calls(named: "withExclusiveFileLock", in: both).count == 2,
+      "Expected exactly two withExclusiveFileLock call sites across manager and store.")
+    let repairLockCalls = calls(named: "withExclusiveFileLock", in: [Syntax(resolveCurrentFile)])
     #expect(
-      resolveCurrentFileSlice.contains("try withExclusiveFileLock"),
+      repairLockCalls.count == 1,
       "resolveCurrentFile()'s repair path must call withExclusiveFileLock.")
     #expect(
-      transactionSlice.contains("try withExclusiveFileLock"),
+      calls(named: "withExclusiveFileLock", in: [Syntax(transaction)]).count == 1,
       "performLockedTransaction must call withExclusiveFileLock.")
 
-    // 3. resolveCurrentFile()'s slice shape — load()'s own slice is now just
-    // a two-line wrapper delegating to it (#1701 Chunk 2).
-    #expect(resolveCurrentFileSlice.contains("loadFileReadOnly()"))
-    #expect(resolveCurrentFileSlice.contains("withExclusiveFileLock(blocking: true)"))
-    #expect(resolveCurrentFileSlice.contains("loadFileWhileLocked()"))
+    // 3. resolveCurrentFile()'s shape — load() is just a wrapper delegating
+    // to it (#1701 Chunk 2).
+    #expect(calls(named: "loadFileReadOnly", in: [Syntax(resolveCurrentFile)]).count == 1)
     #expect(
-      loadSlice.contains("store.resolveCurrentFile()"),
+      repairLockCalls.first.flatMap { argument(labeled: "blocking", of: $0) } == "true",
+      "The repair path must take the lock blocking.")
+    #expect(calls(named: "loadFileWhileLocked", in: [Syntax(resolveCurrentFile)]).count == 1)
+    #expect(
+      calls(named: "resolveCurrentFile", in: [Syntax(load)]).count == 1,
       "load() must delegate to resolveCurrentFile(), not inline the cascade.")
 
-    // 4. performLockedTransaction's slice shape — the mutation loader and
-    // its sole save call (already proven non-blocking by check 2 above).
-    #expect(transactionSlice.contains("loadFileForMutationWhileLocked()"))
-    let saveCallsInTransaction =
-      transactionSlice.components(separatedBy: "saveFileWhileLocked(file)").count - 1
+    // 4. performLockedTransaction's shape — the mutation loader and its sole
+    // save call (already proven non-blocking by check 2 above).
+    #expect(calls(named: "loadFileForMutationWhileLocked", in: [Syntax(transaction)]).count == 1)
     #expect(
-      saveCallsInTransaction == 1,
-      "performLockedTransaction must call saveFileWhileLocked(file) exactly once.")
+      calls(named: "saveFileWhileLocked", in: [Syntax(transaction)]).count == 1,
+      "performLockedTransaction must call saveFileWhileLocked exactly once.")
 
-    // 5. Exactly three saveFileWhileLocked(file) calls exist anywhere in the
-    // file: the transaction wrapper, and the two legacy migrations.
+    // 5. Exactly three saveFileWhileLocked calls exist across both files:
+    // the transaction wrapper, and the two legacy migrations.
     #expect(
-      source.components(separatedBy: "saveFileWhileLocked(file)").count - 1 == 3,
-      "Expected exactly three saveFileWhileLocked(file) call sites in the whole file.")
+      calls(named: "saveFileWhileLocked", in: both).count == 3,
+      "Expected exactly three saveFileWhileLocked call sites across manager and store.")
 
-    // 6. loadFileWhileLocked's slice owns exactly two of those three save
-    // calls (the legacy migrations) and the sole quarantine move.
-    let saveCallsInLoadFileWhileLocked =
-      loadFileWhileLockedSlice.components(separatedBy: "saveFileWhileLocked(file)").count - 1
+    // 6. loadFileWhileLocked owns exactly two of those three save calls (the
+    // legacy migrations) and the sole quarantine move.
     #expect(
-      saveCallsInLoadFileWhileLocked == 2,
-      "loadFileWhileLocked must call saveFileWhileLocked(file) exactly twice.")
-    let moveCallsInLoadFileWhileLocked =
-      loadFileWhileLockedSlice.components(
-        separatedBy: "FileManager.default.moveItem(at: fileURL, to: backup)"
-      ).count - 1
+      calls(named: "saveFileWhileLocked", in: [Syntax(loadFileWhileLocked)]).count == 2,
+      "loadFileWhileLocked must call saveFileWhileLocked exactly twice.")
     #expect(
-      moveCallsInLoadFileWhileLocked == 1,
+      quarantineMoves(in: [Syntax(loadFileWhileLocked)]) == 1,
       "loadFileWhileLocked must contain exactly one quarantine moveItem call.")
 
     // 7. Neither lock-free helper reacquires the lock.
     #expect(
-      loadFileWhileLockedSlice.contains("withExclusiveFileLock") == false,
+      calls(named: "withExclusiveFileLock", in: [Syntax(loadFileWhileLocked)]).isEmpty,
       "loadFileWhileLocked must never call withExclusiveFileLock.")
     #expect(
-      saveFileWhileLockedSlice.contains("withExclusiveFileLock") == false,
+      calls(named: "withExclusiveFileLock", in: [Syntax(saveFileWhileLocked)]).isEmpty,
       "saveFileWhileLocked must never call withExclusiveFileLock.")
 
-    // 8. Exactly one quarantine move targeting fileURL exists anywhere.
+    // 8. Exactly one quarantine move of fileURL exists across both files.
     #expect(
-      source.components(
-        separatedBy: "FileManager.default.moveItem(at: fileURL, to: backup)"
-      ).count - 1 == 1,
-      "Expected exactly one quarantine moveItem(at: fileURL...) call in the whole file.")
+      quarantineMoves(in: both) == 1,
+      "Expected exactly one quarantine moveItem(at: fileURL...) call across manager and store.")
 
     // 9. writePreImportBackup() has exactly one declaration and one call
-    // repo-wide, and that call sits inside commitImport's locked
+    // across both files, and that call sits inside commitImport's locked
     // transaction — after entering performLockedTransaction, before the
     // transform hands back shouldSave: true.
     #expect(
-      source.components(separatedBy: "func writePreImportBackup() {").count - 1 == 1,
+      declarationCount(named: "writePreImportBackup", in: trees) == 1,
       "Expected exactly one writePreImportBackup declaration.")
     #expect(
-      source.components(separatedBy: "writePreImportBackup()").count - 1 == 1
-        && managerSource.components(separatedBy: "writePreImportBackup()").count - 1 == 1,
-      "Expected exactly one writePreImportBackup declaration (store) and one call (manager).")
-    let transactionStartRange = try #require(
-      commitImportSlice.range(of: "outcome = try store.performLockedTransaction"),
+      calls(named: "writePreImportBackup", in: both).count == 1,
+      "Expected exactly one writePreImportBackup call across manager and store.")
+    let transactionStart = try #require(
+      calls(named: "performLockedTransaction", in: [Syntax(commitImport)]).first?.position,
       "commitImport must enter performLockedTransaction before creating its backup.")
-    let backupCallRange = try #require(
-      commitImportSlice.range(of: "store.writePreImportBackup()"),
+    let backupCall = try #require(
+      calls(named: "writePreImportBackup", in: [Syntax(commitImport)]).first?.position,
       "commitImport must call writePreImportBackup().")
     #expect(
-      transactionStartRange.lowerBound < backupCallRange.lowerBound,
+      transactionStart < backupCall,
       "writePreImportBackup() must remain inside commitImport's transaction closure.")
-    let shouldSaveTrueRange = try #require(
-      commitImportSlice.range(of: "return ((receipt, resulting), true)"),
+    let shouldSaveTrue = try #require(
+      returns(of: "((receipt, resulting), true)", in: commitImport).first?.position,
       "commitImport's transaction transform must return shouldSave: true on the changing-commit path."
     )
     #expect(
-      backupCallRange.lowerBound < shouldSaveTrueRange.lowerBound,
+      backupCall < shouldSaveTrue,
       "writePreImportBackup() must run before the transform returns shouldSave: true.")
 
     // 10. The atomic-write shape is intact — at its OWNER.
@@ -1007,63 +996,129 @@ struct CustomWordsManagerLockingTests {
     // delegates rather than growing its own write back, and the sequence still exists in one
     // place. Asserting only the delegation would let the shape rot in the file nothing else
     // checks, which is the failure mode extraction invites.
-    #expect(saveFileWhileLockedSlice.contains("DurableJSONFile.write"))
     #expect(
-      saveFileWhileLockedSlice.contains("Foundation.open") == false,
+      calls(named: "write", in: [Syntax(saveFileWhileLocked)]).contains {
+        $0.calledExpression.trimmedDescription == "DurableJSONFile.write"
+      })
+    #expect(
+      calls(named: "open", in: [Syntax(saveFileWhileLocked)]).isEmpty,
       "The save helper must delegate the write, not carry a second copy of it.")
 
-    let durableSource = try String(
-      contentsOf: RepoRoot.sourceURL(
-        "Sources/EnviousWisprCore/DurableJSONFile.swift"),
-      encoding: .utf8)
-    let durableWriteSlice = try functionBody(
-      in: durableSource,
-      declaring: "public static func write(data: Data, to url: URL, tempPrefix: String) throws")
-    #expect(durableWriteSlice.contains("Foundation.open"))
-    #expect(durableWriteSlice.contains("O_EXCL"))
-    #expect(durableWriteSlice.contains("0o600"))
-    #expect(durableWriteSlice.contains("F_FULLFSYNC"))
-    #expect(durableWriteSlice.contains("Foundation.rename"))
+    let durable = try CachedSwiftParser.snapshot(
+      at: RepoRoot.sourceURL("Sources/EnviousWisprCore/DurableJSONFile.swift"))
+    let durableWrite = try function(
+      named: "write", firstParameterLabel: "data", in: durable.tree)
+    let durableCalls = Set(
+      CallCollector.collect(in: [Syntax(durableWrite)]).map(\.calledExpression.trimmedDescription))
+    #expect(durableCalls.contains("Foundation.open"))
+    #expect(durableCalls.contains("Foundation.rename"))
+    let durableTokens = Set(durableWrite.tokens(viewMode: .sourceAccurate).map { (token: TokenSyntax) in token.text })
+    #expect(durableTokens.contains("O_EXCL"))
+    #expect(durableTokens.contains("0o600"))
+    #expect(durableTokens.contains("F_FULLFSYNC"))
 
-    // 11. Neither removed helper name reappears anywhere, as code or prose.
-    let ns = source as NSString
-    let bareLoadFile = try NSRegularExpression(pattern: #"\bloadFile\b"#)
-    let bareSaveFile = try NSRegularExpression(pattern: #"\bsaveFile\b"#)
-    #expect(
-      bareLoadFile.numberOfMatches(in: source, range: NSRange(location: 0, length: ns.length))
-        == 0,
-      "The removed `loadFile` name must never reappear, in code or comments.")
-    #expect(
-      bareSaveFile.numberOfMatches(in: source, range: NSRange(location: 0, length: ns.length))
-        == 0,
-      "The removed `saveFile` name must never reappear, in code or comments.")
+    // 11. Neither removed helper name reappears in either file, as code or prose.
+    for source in [store.source, manager.source] {
+      let ns = source as NSString
+      let bareLoadFile = try NSRegularExpression(pattern: #"\bloadFile\b"#)
+      let bareSaveFile = try NSRegularExpression(pattern: #"\bsaveFile\b"#)
+      #expect(
+        bareLoadFile.numberOfMatches(in: source, range: NSRange(location: 0, length: ns.length))
+          == 0,
+        "The removed `loadFile` name must never reappear, in code or comments.")
+      #expect(
+        bareSaveFile.numberOfMatches(in: source, range: NSRange(location: 0, length: ns.length))
+          == 0,
+        "The removed `saveFile` name must never reappear, in code or comments.")
+    }
   }
 }
 
-/// Brace-balanced extraction of a function body, anchored on its EXACT
-/// declaration-line substring rather than the first inner brace, so a function
-/// signature may span multiple lines before its opening brace.
-private func functionBody(
-  in source: String, declaring signature: String,
-  sourceLocation: SourceLocation = #_sourceLocation
-) throws -> String {
-  let declRange = try #require(
-    source.range(of: signature), "Declaration not found: \(signature)",
-    sourceLocation: sourceLocation)
-  let openIdx = try #require(
-    source[declRange.upperBound...].firstIndex(of: "{"),
-    "No opening brace found after declaration: \(signature)", sourceLocation: sourceLocation)
-  var depth = 0
-  var idx = openIdx
-  while idx < source.endIndex {
-    let c = source[idx]
-    if c == "{" { depth += 1 }
-    if c == "}" {
-      depth -= 1
-      if depth == 0 { return String(source[source.index(after: openIdx)..<idx]) }
-    }
-    idx = source.index(after: idx)
+// MARK: - Parsed-source helpers for the structural audit
+
+/// The single function named `name` (optionally with this first parameter label).
+/// Zero or several matches fail the test rather than picking one.
+private func function(
+  named name: String, firstParameterLabel: String? = nil, in tree: SourceFileSyntax,
+  sourceLocation: Testing.SourceLocation = #_sourceLocation
+) throws -> FunctionDeclSyntax {
+  let matches = FunctionCollector.collect(in: tree).filter { decl in
+    guard decl.name.text == name else { return false }
+    guard let firstParameterLabel else { return true }
+    return decl.signature.parameterClause.parameters.first?.firstName.text == firstParameterLabel
   }
-  Issue.record("Unbalanced braces after declaration: \(signature)", sourceLocation: sourceLocation)
-  throw POSIXError(.EILSEQ)
+  return try #require(
+    matches.count == 1 ? matches.first : nil,
+    "Expected exactly one function named \(name), found \(matches.count)",
+    sourceLocation: sourceLocation)
+}
+
+private func declarationCount(named name: String, in trees: [SourceFileSyntax]) -> Int {
+  trees.flatMap { FunctionCollector.collect(in: $0) }.filter { $0.name.text == name }.count
+}
+
+/// Calls whose callee's final name is `name` (`name(...)`, `x.name(...)`).
+private func calls(named name: String, in nodes: [Syntax]) -> [FunctionCallExprSyntax] {
+  CallCollector.collect(in: nodes).filter { call in
+    if let ref = call.calledExpression.as(DeclReferenceExprSyntax.self) {
+      return ref.baseName.text == name
+    }
+    if let member = call.calledExpression.as(MemberAccessExprSyntax.self) {
+      return member.declName.baseName.text == name
+    }
+    return false
+  }
+}
+
+private func argument(labeled label: String, of call: FunctionCallExprSyntax) -> String? {
+  call.arguments.first { $0.label?.text == label }?.expression.trimmedDescription
+}
+
+/// `FileManager.default.moveItem(at: fileURL, to: backup)` calls.
+private func quarantineMoves(in nodes: [Syntax]) -> Int {
+  calls(named: "moveItem", in: nodes).filter {
+    $0.calledExpression.trimmedDescription == "FileManager.default.moveItem"
+      && argument(labeled: "at", of: $0) == "fileURL"
+      && argument(labeled: "to", of: $0) == "backup"
+  }.count
+}
+
+private func returns(of expression: String, in node: some SyntaxProtocol) -> [ReturnStmtSyntax] {
+  let collector = ReturnCollector(viewMode: .sourceAccurate)
+  collector.walk(node)
+  return collector.found.filter { $0.expression?.trimmedDescription == expression }
+}
+
+private final class FunctionCollector: SyntaxVisitor {
+  private(set) var found: [FunctionDeclSyntax] = []
+  static func collect(in tree: SourceFileSyntax) -> [FunctionDeclSyntax] {
+    let collector = FunctionCollector(viewMode: .sourceAccurate)
+    collector.walk(tree)
+    return collector.found
+  }
+  override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {
+    found.append(node)
+    return .visitChildren
+  }
+}
+
+private final class CallCollector: SyntaxVisitor {
+  private(set) var found: [FunctionCallExprSyntax] = []
+  static func collect(in nodes: [Syntax]) -> [FunctionCallExprSyntax] {
+    let collector = CallCollector(viewMode: .sourceAccurate)
+    for node in nodes { collector.walk(node) }
+    return collector.found
+  }
+  override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
+    found.append(node)
+    return .visitChildren
+  }
+}
+
+private final class ReturnCollector: SyntaxVisitor {
+  private(set) var found: [ReturnStmtSyntax] = []
+  override func visit(_ node: ReturnStmtSyntax) -> SyntaxVisitorContinueKind {
+    found.append(node)
+    return .visitChildren
+  }
 }
