@@ -79,6 +79,20 @@ struct CallEvidenceReaderTests {
       == .call(family: .googleMeet, room: "abc-defg-hij"))
   }
 
+  @Test("#4135 a signed-in Meet address /meet/<code> proves the call, from the page or the document")
+  func meetPrefixedAddress() {
+    let page = Fixture()
+    page.pageURL = "https://meet.google.com/meet/abc-defg-hij"
+    #expect(Reader.meetingPage(appPID: page.pid, access: page.access)
+      == .call(family: .googleMeet, room: "abc-defg-hij"))
+    let document = Fixture()
+    document.pageURL = nil
+    document.document = "https://meet.google.com/meet/abc-defg-hij"
+    document.response = { _, _, attribute in attribute == "AXChildren" ? .failed : nil }
+    #expect(Reader.meetingPage(appPID: document.pid, access: document.access)
+      == .call(family: .googleMeet, room: "abc-defg-hij"))
+  }
+
   @Test("Each Zoom window gets its own timeout",
     .bug("https://github.com/saurabhav88/EnviousWispr/issues/4127"))
   func zoomWindowTimeout() {

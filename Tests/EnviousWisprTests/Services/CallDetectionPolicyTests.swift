@@ -754,6 +754,27 @@ struct CallDetectionPolicyTests {
     #expect(s.stops == 0)
   }
 
+  @Test("#4135 one meeting seen at both Meet addresses is one call: the question stays, and No holds")
+  func meetBothAddressForms() {
+    var s = Story()
+    s.read([Self.chrome(.active, url: Self.meetA)])
+    guard case .ask(let first, .googleMeet, _) = s.interaction else {
+      Issue.record("no question")
+      return
+    }
+    s.read([Self.chrome(.active, url: "https://meet.google.com/meet/abc-defg-hij")])
+    guard case .ask(let still, .googleMeet, _) = s.interaction else {
+      Issue.record("the question went when the address changed form")
+      return
+    }
+    #expect(still == first, "the same room under the longer address is the same question")
+    s.press(.no)
+    s.press(.close)
+    s.hold([Self.chrome(.active, url: "https://meet.google.com/meet/abc-defg-hij")], for: 20)
+    s.read([Self.chrome(.active, url: Self.meetA)])
+    #expect(s.interaction == .none, "No to the room holds under either address")
+  }
+
   @Test("Off mode forgets every call; the same app is asked about again after")
   func offForgets() {
     var s = Story()
@@ -848,6 +869,23 @@ struct CallDetectionPolicyTests {
   func meetingURLs() {
     #expect(CallMeetingURL.classify("https://meet.google.com/abc-defg-hij")?.family == .googleMeet)
     #expect(CallMeetingURL.classify("https://meet.google.com/landing") == nil)
+    // #4135: signed-in Meet shows /meet/<code> for the same room.
+    #expect(
+      CallMeetingURL.classify("https://meet.google.com/meet/abc-defg-hij")
+        == CallMeetingURL.Match(family: .googleMeet, room: "abc-defg-hij"))
+    #expect(
+      CallMeetingURL.classify("https://meet.google.com/meet/abc-defg-hij?authuser=0")?.room
+        == CallMeetingURL.classify("https://meet.google.com/abc-defg-hij")?.room)
+    #expect(CallMeetingURL.classify("https://meet.google.com/meet") == nil)
+    #expect(CallMeetingURL.classify("https://meet.google.com/meet/") == nil)
+    #expect(CallMeetingURL.classify("https://meet.google.com/meet/landing") == nil)
+    #expect(CallMeetingURL.classify("https://meet.google.com/meet/abc-defg-hi") == nil, "malformed code")
+    #expect(CallMeetingURL.classify("https://meet.google.com/meet/abc-defg-hij/x") == nil)
+    #expect(CallMeetingURL.classify("https://meet.google.com.evil.com/meet/abc-defg-hij") == nil)
+    #expect(CallMeetingURL.classify("http://meet.google.com/meet/abc-defg-hij") == nil)
+    #expect(
+      CallMeetingURL.classify("https://meet.google.com/abc-defg-hij/x")?.room == "abc-defg-hij",
+      "the short form keeps matching on its first segment, as before")
     #expect(
       CallMeetingURL.classify("https://us02web.zoom.us/j/81234567890?pwd=x")?.room == "81234567890")
     #expect(CallMeetingURL.classify("https://app.zoom.us/wc/81234567890/join")?.family == .zoom)

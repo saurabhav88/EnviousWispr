@@ -161,10 +161,18 @@ public enum CallMeetingURL {
 
     func hostIs(_ domain: String) -> Bool { host == domain || host.hasSuffix("." + domain) }
 
-    if host == "meet.google.com", let code = segments.first,
-      code.range(of: #"^[a-z]{3}-[a-z]{4}-[a-z]{3}$"#, options: .regularExpression) != nil
-    {
-      return Match(family: .googleMeet, room: code)
+    if host == "meet.google.com" {
+      // A room is the first segment (/abc-defg-hij), or the second after "meet": signed-in Meet
+      // can show /meet/abc-defg-hij for the same room (#4135). Both give the same room code.
+      func isRoomCode(_ text: String) -> Bool {
+        text.range(of: #"^[a-z]{3}-[a-z]{4}-[a-z]{3}$"#, options: .regularExpression) != nil
+      }
+      if let code = segments.first, isRoomCode(code) {
+        return Match(family: .googleMeet, room: code)
+      }
+      if segments.count == 2, segments[0] == "meet", isRoomCode(segments[1]) {
+        return Match(family: .googleMeet, room: segments[1])
+      }
     }
     if hostIs("zoom.us") || hostIs("zoomgov.com") {
       // /j/123, /s/123, /wc/join/123, /wc/123/join, /wc/123/start
