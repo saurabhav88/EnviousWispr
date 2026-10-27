@@ -100,7 +100,19 @@ struct MeetingRecorderTests {
     var emitOnStart: [Float] = []
     var emitOnStop: [Float] = []
     let handler: CallSoundPipeline.SampleHandler
-    init(handler: @escaping CallSoundPipeline.SampleHandler) { self.handler = handler }
+    /// #4121: what the recorder gave the source for its change rows.
+    let onReport: MeetingRecorder.CallSoundReportHandler
+    /// #4121: what `summary` returns; a test may change it to prove the recorder froze it.
+    var summary = CallSoundSummary()
+    /// #4121: what `summary` becomes inside `stop`, so a test proves it is read after stopping.
+    var summaryAfterStop: CallSoundSummary?
+    init(
+      handler: @escaping CallSoundPipeline.SampleHandler,
+      onReport: @escaping MeetingRecorder.CallSoundReportHandler = { _ in }
+    ) {
+      self.handler = handler
+      self.onReport = onReport
+    }
     func start() throws {
       startedOnMainThread = Thread.isMainThread
       startEntered.signal()
@@ -110,6 +122,7 @@ struct MeetingRecorderTests {
     }
     func stop() {
       stopCount += 1
+      if let summaryAfterStop { summary = summaryAfterStop }
       emit(emitOnStop)
     }
     private func emit(_ samples: [Float]) {
@@ -139,7 +152,7 @@ struct MeetingRecorderTests {
     init(_ value: Value) { self.value = value }
   }
 
-  private struct Rig {
+  fileprivate struct Rig {
     let recorder: MeetingRecorder
     let microphones: [FakeMicrophone]
     let callBox: Box<[FakeCallSound]>
@@ -155,10 +168,11 @@ struct MeetingRecorderTests {
     @MainActor func failures() -> [MeetingTrackKind] { failureBox.value }
   }
 
-  private func rig(
+  fileprivate func rig(
     microphones count: Int = 1, callSound: Bool = true, callSupported: Bool = true,
     callStartError: Error? = nil, callStartHold: DispatchSemaphore? = nil,
-    folder existing: URL? = nil
+    folder existing: URL? = nil,
+    onCallSoundReport: @escaping MeetingRecorder.CallSoundReportHandler = { _ in }
   ) throws -> Rig {
     let folder = try existing ?? MeetingAudioFixture.folder("MeetingRecorderTests")
     let microphones = (0..<count).map { _ in FakeMicrophone() }
@@ -174,9 +188,9 @@ struct MeetingRecorderTests {
         defer { next.value += 1 }
         return microphones[min(next.value, microphones.count - 1)]
       },
-      makeCallSound: { handler, _ in
+      makeCallSound: { handler, _, onReport in
         guard callSupported else { return nil }
-        let fake = FakeCallSound(handler: handler)
+        let fake = FakeCallSound(handler: handler, onReport: onReport)
         fake.startError = callStartError
         fake.startHold = callStartHold
         callBox.value.append(fake)
@@ -193,7 +207,8 @@ struct MeetingRecorderTests {
       onFailure: { track, _ in
         failureBox.value.append(track)
         failureContinuation.yield(track)
-      })
+      },
+      onCallSoundReport: onCallSoundReport)
     return Rig(
       recorder: recorder, microphones: microphones, callBox: callBox, clock: clock,
       segments: segments, failureBox: failureBox, failureSignal: failureSignal,
@@ -234,12 +249,15 @@ struct MeetingRecorderTests {
     #expect(entered == .success)
     call.emitOnStart = [Float](repeating: 0.2, count: 16_000)
     call.emitOnStop = [Float](repeating: 0.2, count: 16_000)
+    call.summary = CallSoundSummary(outputTransport: "bluetooth", configuredRateHz: 24_000)
     // The main actor is free while the tap waits: the stop runs now, and closes the call file.
     let report = await rig.recorder.stop()
     #expect(report.callSound != nil, "Stop owns the pending call-sound file")
+    #expect(report.callSoundSummary == nil, "#4121: no summary for a start Stop beat")
     hold.signal()
     await #expect(throws: (any Error).self) { try await start.value }
     #expect(call.stopCount == 1, "the tap that started after the stop is stopped")
+    #expect(await rig.recorder.stop().callSoundSummary == nil, "the late start changes no report")
     #expect(rig.segments.of(.callSound).allSatisfy { $0.frameCount == 0 },
       "no audio the late tap delivered is written after Stop")
     #expect(rig.segments.of(.callSound).reduce(0) { $0 + $1.frameCount } == 0)
@@ -260,11 +278,16 @@ struct MeetingRecorderTests {
     #expect(entered == .success)
     call.emitOnStart = [Float](repeating: 0.2, count: 16_000)
     call.emitOnStop = [Float](repeating: 0.2, count: 16_000)
+    call.summary = CallSoundSummary(outputTransport: "bluetooth", configuredRateHz: 24_000)
     let report = rig.recorder.stopForQuit(deadline: .now() + 2)
     #expect(report.callSound == .finalized, "the quit closes the pending call-sound file")
+    #expect(report.callSoundSummary == nil, "#4121: no summary for a start Quit beat")
     hold.signal()
     await #expect(throws: (any Error).self) { try await start.value }
     #expect(call.stopCount == 1)
+    #expect(
+      rig.recorder.stopForQuit(deadline: .now() + 2).callSoundSummary == nil,
+      "the late start changes no report")
     #expect(rig.segments.of(.callSound).reduce(0) { $0 + $1.frameCount } == 0)
   }
 
@@ -279,7 +302,10 @@ struct MeetingRecorderTests {
     let call = [Float](repeating: 0.2, count: 16_000)
     call.withUnsafeBufferPointer { r.calls()[0].handler($0, r.recorder.anchor, false) }
     let report = await r.recorder.stop()
-    #expect(report == .init(microphone: .finalized, callSound: .finalized))
+    #expect(
+      report
+        == .init(
+          microphone: .finalized, callSound: .finalized, callSoundSummary: CallSoundSummary()))
     #expect(r.segments.of(.microphone).map(\.frameCount) == [16_000])
     #expect(r.segments.of(.callSound).map(\.frameCount) == [16_000])
     #expect(r.microphones[0].stopCount == 1)
@@ -581,7 +607,10 @@ struct MeetingRecorderTests {
     let report = r.recorder.stopForQuit(deadline: .now() + .seconds(5))
     #expect(r.microphones[0].stopCount == 1)
     #expect(r.calls()[0].stopCount == 1)
-    #expect(report == .init(microphone: .finalized, callSound: .finalized))
+    #expect(
+      report
+        == .init(
+          microphone: .finalized, callSound: .finalized, callSoundSummary: CallSoundSummary()))
     #expect(r.segments.of(.microphone).map(\.frameCount) == [8_000])
   }
 
@@ -891,5 +920,93 @@ struct MeetingRecorderTests {
     let decoded = try MeetingAudioFixture.decode(folder.appendingPathComponent(file.fileName))
     #expect(decoded.count > 8_000)
     #expect(decoded.contains { abs($0) > 0.000_001 }, "the built-in microphone gave only zero")
+  }
+}
+
+/// #4121: when these fail, the meeting's terminal row misreports the call-sound capture's
+/// starting device class, rate or rebuild count, or the change rows never reach telemetry.
+@Suite("MeetingRecorder call-sound telemetry (#4121)", .tags(.observabilityContract), .serialized)
+@MainActor
+struct MeetingRecorderCallSoundTelemetryTests {
+  private let fixture = MeetingRecorderTests()
+  private let started = CallSoundSummary(
+    outputTransport: "built_in", configuredRateHz: 48_000, rebuilds: 2, omittedReports: 1)
+
+  @Test("a change row from the call-sound source reaches the recorder's handler unchanged")
+  func reportsAreForwarded() async throws {
+    let received = OSAllocatedUnfairLock<[CallSoundChangeReport]>(initialState: [])
+    let rig = try fixture.rig(onCallSoundReport: { report in received.withLock { $0.append(report) } })
+    _ = try await rig.recorder.start()
+    let row = CallSoundChangeReport(
+      outcome: "start_rebuilt", reason: "nominal_rate", configuredRateHz: 24_000,
+      nominalRateHz: 24_000, measuredRateBucket: nil, outputTransport: "bluetooth")
+    try #require(rig.calls().first).onReport(row)
+    #expect(received.withLock { $0 } == [row])
+    await rig.recorder.stop()
+  }
+
+  @Test("the live conversion keeps every field and spells reasons and outcomes in the closed vocabulary")
+  func liveConversion() {
+    guard #available(macOS 14.2, *) else { return }
+    #expect(
+      MeetingRecorder.changeReport(
+        from: .init(
+          outcome: .startRebuilt, reason: .nominalRate, configuredRateHz: 24_000,
+          nominalRateHz: 16_000, measuredRateBucket: "24000", outputTransport: "usb"))
+        == CallSoundChangeReport(
+          outcome: "start_rebuilt", reason: "nominal_rate", configuredRateHz: 24_000,
+          nominalRateHz: 16_000, measuredRateBucket: "24000", outputTransport: "usb"))
+    #expect(
+      MeetingRecorder.changeReport(
+        from: .init(
+          outcome: .stoppedLayout, reason: nil, configuredRateHz: nil, nominalRateHz: nil,
+          measuredRateBucket: nil, outputTransport: nil))
+        == CallSoundChangeReport(
+          outcome: "stopped_layout", reason: nil, configuredRateHz: nil, nominalRateHz: nil,
+          measuredRateBucket: nil, outputTransport: nil))
+  }
+
+  #if DEBUG
+  @Test("the summary is read after the source stops, and a stop or quit that re-enters while the first stop waits on its files keeps it")
+  func summaryIsFrozenAtStop() async throws {
+    let rig = try fixture.rig()
+    _ = try await rig.recorder.start()
+    let call = try #require(rig.calls().first)
+    call.summary = CallSoundSummary(outputTransport: "built_in", configuredRateHz: 48_000)
+    call.summaryAfterStop = started
+    let writer = try #require(rig.recorder.microphoneWriterForTesting)
+    // The first stop stops the tap, then waits on the held microphone file.
+    writer.suspendQueueForTesting()
+    let first = Task { @MainActor in await rig.recorder.stop() }
+    await MeetingCoordinatorTests.eventually("first stop stopped the tap") { call.stopCount == 1 }
+    call.summary = CallSoundSummary(outputTransport: "usb", configuredRateHz: 16_000, rebuilds: 9)
+    // A quit re-enters before the first report exists (the held file times out).
+    let quit = rig.recorder.stopForQuit(deadline: .now() + 0.2)
+    #expect(quit.callSoundSummary == started)
+    writer.resumeQueueForTesting()
+    #expect(await first.value.callSoundSummary == started)
+    #expect(await rig.recorder.stop().callSoundSummary == started)
+    #expect(call.stopCount == 1)
+  }
+  #endif
+
+  @Test("a quit reads the summary after the source stops")
+  func quitFreezesSummary() async throws {
+    let rig = try fixture.rig()
+    _ = try await rig.recorder.start()
+    let call = try #require(rig.calls().first)
+    call.summaryAfterStop = started
+    #expect(rig.recorder.stopForQuit(deadline: .now() + 2).callSoundSummary == started)
+  }
+
+  @Test("call sound off, unsupported or failed to start: no summary")
+  func noSummaryWithoutARunningSource() async throws {
+    for (off, supported, error) in [
+      (true, true, nil), (false, false, nil), (false, true, Optional<Error>.some(CancellationError())),
+    ] as [(Bool, Bool, Error?)] {
+      let rig = try fixture.rig(callSound: !off, callSupported: supported, callStartError: error)
+      _ = try await rig.recorder.start()
+      #expect(await rig.recorder.stop().callSoundSummary == nil, "off=\(off) supported=\(supported)")
+    }
   }
 }

@@ -73,7 +73,7 @@ struct MeetingLiveWordsIntegrationTests {
         let clock = self.clock
         let sources = MeetingRecorder.Sources(
           makeMicrophone: { mic },
-          makeCallSound: { [self] handler, _ in
+          makeCallSound: { [self] handler, _, _ in
             let call = MeetingRecorderTests.FakeCallSound(handler: handler)
             calls.append(call)
             return call
