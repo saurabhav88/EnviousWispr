@@ -442,7 +442,7 @@ struct CustomWordsManagerPersistenceTests {
       lastUsed: Date(timeIntervalSince1970: 5), minSimilarityOverride: 0.6,
       enrichmentPending: true, learnedAliases: ["twist", "nope"], learnedAt: learnedAt)
     word.enrichmentPending = true
-    let out = CustomWordsManager.sanitizeForPersistence(word)
+    let out = CustomWordsMutationPolicy.sanitizeForPersistence(word)
     #expect(out.aliases == ["twist", "to-ist"] && out.learnedAliases == ["twist"])
     #expect(out.id == word.id && out.canonical == "Tuist" && out.category == .brand)
     #expect(out.priority == 7 && out.forceReplace && out.caseSensitive && out.source == .pack)

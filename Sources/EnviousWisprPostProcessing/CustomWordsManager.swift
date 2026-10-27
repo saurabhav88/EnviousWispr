@@ -355,7 +355,7 @@ public final class CustomWordsManager {
   /// file — `lastLoadFailure` says which (#1646).
   public func load() -> [CustomWord]? {
     guard let file = store.resolveCurrentFile() else { return nil }
-    return mergedWords(file: file)
+    return CustomWordsMutationPolicy.mergedWords(file: file, builtins: Self.builtinDefaults)
   }
 
   /// One read of the persisted library AND its durable bulk-import-enrichment
@@ -366,7 +366,7 @@ public final class CustomWordsManager {
   package func loadSnapshot() -> CustomWordsLibrarySnapshot? {
     guard let file = store.resolveCurrentFile() else { return nil }
     return CustomWordsLibrarySnapshot(
-      words: mergedWords(file: file),
+      words: CustomWordsMutationPolicy.mergedWords(file: file, builtins: Self.builtinDefaults),
       pendingEnrichmentBatchTotal: file.pendingEnrichmentBatchTotal)
   }
 
@@ -376,7 +376,7 @@ public final class CustomWordsManager {
   /// unrecoverable read failure `load()`/`loadSnapshot()` report.
   package func loadPendingEnrichmentWords() -> [CustomWord]? {
     guard let file = store.resolveCurrentFile() else { return nil }
-    return mergedWords(file: file).filter(\.enrichmentPending)
+    return CustomWordsMutationPolicy.mergedWords(file: file, builtins: Self.builtinDefaults).filter(\.enrichmentPending)
   }
 
   /// Two-way self-heal (#1701 Chunk 2, Codex Chunk 2 review finding 2b) — a
@@ -574,8 +574,8 @@ public final class CustomWordsManager {
     // this one value and is watching for the result: a silent return dismisses
     // the sheet on a nil error, so the app reports a save it did not make. The
     // batch doors keep skipping because per-item skip IS their contract.
-    guard Self.isStorable(trimmed) else { throw CustomWordsPersistenceError.unusableValue }
-    guard Self.everyAliasIsStorable(word.aliases) else {
+    guard CustomWordsMutationPolicy.isStorable(trimmed) else { throw CustomWordsPersistenceError.unusableValue }
+    guard CustomWordsMutationPolicy.everyAliasIsStorable(word.aliases) else {
       throw CustomWordsPersistenceError.unusableValue
     }
     guard
@@ -584,34 +584,9 @@ public final class CustomWordsManager {
       })
     else { return }
 
-    let merged = try store.performLockedTransaction {
-      file -> (value: [CustomWord], shouldSave: Bool) in
-      // If this matches a deleted built-in, restore it instead of adding a user word
-      if let builtin = Self.builtinDefaults.first(where: {
-        $0.word.canonical.caseInsensitiveCompare(trimmed) == .orderedSame
-      }) {
-        file.deletedBuiltinIds.removeAll { $0 == builtin.id }
-        return (mergedWords(file: file), true)
-      }
-
-      // Re-check uniqueness against the FRESH file, not just the caller's
-      // possibly-stale in-memory snapshot above (#1690 cloud review): another
-      // process's write can land between that check and this lock actually
-      // being acquired. Skipping here — rather than appending a duplicate —
-      // matches the pre-lock check's existing no-op contract, and refreshes
-      // the caller's `words` to the word the other process already added.
-      guard
-        !file.words.contains(where: {
-          $0.canonical.caseInsensitiveCompare(trimmed) == .orderedSame
-        })
-      else {
-        return (mergedWords(file: file), false)
-      }
-
-      var sanitized = Self.sanitizeForPersistence(word)
-      sanitized.canonical = trimmed
-      file.words.append(sanitized)
-      return (mergedWords(file: file), true)
+    let merged = try store.performLockedTransaction { file in
+      CustomWordsMutationPolicy.add(
+        word: word, trimmed: trimmed, to: &file, builtins: Self.builtinDefaults)
     }
     words = merged
   }
@@ -631,40 +606,9 @@ public final class CustomWordsManager {
   public func addBatch(_ incoming: [CustomWord], to words: inout [CustomWord]) throws
     -> [UUID]
   {
-    let (createdIDs, merged) = try store.performLockedTransaction {
-      file -> (value: ([UUID], [CustomWord]), shouldSave: Bool) in
-      // Seed dedupe from BOTH the in-memory merged list and the on-disk file so a
-      // stale `words` snapshot can't produce a duplicate at batch scale.
-      var seen = Set(words.map { $0.canonical.lowercased() })
-      seen.formUnion(file.words.map { $0.canonical.lowercased() })
-      var createdIDs: [UUID] = []
-
-      for word in incoming {
-        let trimmed = word.canonical.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard Self.isStorable(trimmed) else { continue }
-        let key = trimmed.lowercased()
-        guard !seen.contains(key) else { continue }
-
-        // Tombstoned-built-in restore (mirrors the built-in branch of add(word:)).
-        // A LIVE built-in is already in `seen` (it is in merged `words`), so a
-        // built-in match here means it was tombstoned: un-delete it instead of
-        // adding a duplicate user word. Restored built-ins are not in createdIDs.
-        if let builtin = Self.builtinDefaults.first(where: {
-          $0.word.canonical.caseInsensitiveCompare(trimmed) == .orderedSame
-        }) {
-          file.deletedBuiltinIds.removeAll { $0 == builtin.id }
-          seen.insert(key)
-          continue
-        }
-
-        var sanitized = Self.sanitizeForPersistence(word)
-        sanitized.canonical = trimmed
-        file.words.append(sanitized)
-        createdIDs.append(sanitized.id)
-        seen.insert(key)
-      }
-
-      return ((createdIDs, mergedWords(file: file)), true)
+    let (createdIDs, merged) = try store.performLockedTransaction { file in
+      CustomWordsMutationPolicy.addBatch(
+        incoming, existing: words, to: &file, builtins: Self.builtinDefaults)
     }
     words = merged
     return createdIDs
@@ -672,21 +616,9 @@ public final class CustomWordsManager {
 
   public func remove(id: UUID, from words: inout [CustomWord]) throws {
     let word = words.first { $0.id == id }
-    let merged = try store.performLockedTransaction {
-      file -> (value: [CustomWord], shouldSave: Bool) in
-      // If this matches a built-in, tombstone it
-      if let word = word,
-        let builtin = Self.builtinDefaults.first(where: {
-          $0.word.canonical.lowercased() == word.canonical.lowercased()
-        })
-      {
-        if !file.deletedBuiltinIds.contains(builtin.id) {
-          file.deletedBuiltinIds.append(builtin.id)
-        }
-      }
-
-      file.words.removeAll { $0.id == id }
-      return (mergedWords(file: file), true)
+    let merged = try store.performLockedTransaction { file in
+      CustomWordsMutationPolicy.remove(
+        id: id, word: word, from: &file, builtins: Self.builtinDefaults)
     }
     words = merged
   }
@@ -699,22 +631,9 @@ public final class CustomWordsManager {
   public func removeBatch(ids: [UUID], from words: inout [CustomWord]) throws {
     guard !ids.isEmpty else { return }
     let idSet = Set(ids)
-    let merged = try store.performLockedTransaction {
-      file -> (value: [CustomWord], shouldSave: Bool) in
-      // Tombstone any built-ins whose canonical matches a removed word (mirror
-      // remove(id:)). Import-created words are user words, so this is normally
-      // inert for the import path, but keeps batch semantics identical to single.
-      for id in ids {
-        guard let word = words.first(where: { $0.id == id }) else { continue }
-        if let builtin = Self.builtinDefaults.first(where: {
-          $0.word.canonical.lowercased() == word.canonical.lowercased()
-        }), !file.deletedBuiltinIds.contains(builtin.id) {
-          file.deletedBuiltinIds.append(builtin.id)
-        }
-      }
-
-      file.words.removeAll { idSet.contains($0.id) }
-      return (mergedWords(file: file), true)
+    let merged = try store.performLockedTransaction { file in
+      CustomWordsMutationPolicy.removeBatch(
+        ids: ids, idSet: idSet, existing: words, from: &file, builtins: Self.builtinDefaults)
     }
     words = merged
   }
@@ -739,32 +658,11 @@ public final class CustomWordsManager {
   {
     let trimmedCanonical = canonical.trimmingCharacters(in: .whitespacesAndNewlines)
     let trimmedAlias = alias.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard Self.isStorable(trimmedAlias) else { throw CustomWordsPersistenceError.unusableValue }
-    return try store.performLockedTransaction {
-      file -> (value: RestoredBuiltinLearnOutcome, shouldSave: Bool) in
-      guard
-        let builtin = Self.builtinDefaults.first(where: {
-          $0.word.canonical.caseInsensitiveCompare(trimmedCanonical) == .orderedSame
-        }), file.deletedBuiltinIds.contains(builtin.id),
-        !file.words.contains(where: {
-          $0.canonical.caseInsensitiveCompare(trimmedCanonical) == .orderedSame
-        })
-      else { throw CustomWordsPersistenceError.noRestorableBuiltin }
-      var override = builtin.word.ownedByUser()
-      let aliasKey = Self.importPersistenceKey(trimmedAlias)
-      if !override.aliases.contains(where: { Self.importPersistenceKey($0) == aliasKey }) {
-        override.aliases.append(trimmedAlias)
-      }
-      override.learnedAliases.append(trimmedAlias)
-      let persisted = Self.sanitizeForPersistence(override)
-      file.deletedBuiltinIds.removeAll { $0 == builtin.id }
-      file.words.append(persisted)
-      return (
-        RestoredBuiltinLearnOutcome(
-          preState: .deletedBuiltin(id: builtin.word.id), word: persisted,
-          words: mergedWords(file: file)),
-        true
-      )
+    guard CustomWordsMutationPolicy.isStorable(trimmedAlias) else { throw CustomWordsPersistenceError.unusableValue }
+    return try store.performLockedTransaction { file in
+      try CustomWordsMutationPolicy.restoreBuiltinAndLearn(
+        trimmedCanonical: trimmedCanonical, trimmedAlias: trimmedAlias, in: &file,
+        builtins: Self.builtinDefaults)
     }
   }
 
@@ -776,16 +674,9 @@ public final class CustomWordsManager {
   /// disk state; idempotent (an absent override writes nothing); unrelated
   /// words and tombstones survive. Returns the merged library.
   package func removeUserOverride(id: UUID) throws -> [CustomWord] {
-    try store.performLockedTransaction { file -> (value: [CustomWord], shouldSave: Bool) in
-      // Only an override of a SHIPPED built-in (same UUID): an ordinary user
-      // word is not this method's to remove, whatever the caller believed.
-      guard Self.builtinDefaults.contains(where: { $0.word.id == id }),
-        file.words.contains(where: { $0.id == id })
-      else {
-        return (mergedWords(file: file), false)
-      }
-      file.words.removeAll { $0.id == id }
-      return (mergedWords(file: file), true)
+    try store.performLockedTransaction { file in
+      CustomWordsMutationPolicy.removeUserOverride(
+        id: id, from: &file, builtins: Self.builtinDefaults)
     }
   }
 
@@ -796,20 +687,9 @@ public final class CustomWordsManager {
   /// hold. Unrelated words and tombstones written meanwhile survive, because
   /// the transaction starts from fresh disk state.
   package func redeleteRestoredBuiltin(id: UUID) throws -> [CustomWord] {
-    try store.performLockedTransaction { file -> (value: [CustomWord], shouldSave: Bool) in
-      guard let builtin = Self.builtinDefaults.first(where: { $0.word.id == id }) else {
-        return (mergedWords(file: file), false)
-      }
-      var changed = false
-      if file.words.contains(where: { $0.id == id }) {
-        file.words.removeAll { $0.id == id }
-        changed = true
-      }
-      if !file.deletedBuiltinIds.contains(builtin.id) {
-        file.deletedBuiltinIds.append(builtin.id)
-        changed = true
-      }
-      return (mergedWords(file: file), changed)
+    try store.performLockedTransaction { file in
+      CustomWordsMutationPolicy.redeleteRestoredBuiltin(
+        id: id, in: &file, builtins: Self.builtinDefaults)
     }
   }
 
@@ -833,7 +713,7 @@ public final class CustomWordsManager {
         // (1) Stale check against the EFFECTIVE list Review was built from —
         // now against the freshly, LOCKED load, so it is more current than
         // before, never weaker (#1690).
-        let effective = mergedWords(file: file)
+        let effective = CustomWordsMutationPolicy.mergedWords(file: file, builtins: Self.builtinDefaults)
         guard plan.baseline.semanticallyMatches(effective) else {
           throw CustomWordsImportCommitError.staleLibrary
         }
@@ -939,19 +819,19 @@ public final class CustomWordsManager {
         // (4) Canonical uniqueness, and no imported canonical may land on an alias
         // held by a different word this import did not replace. F2c never offers a
         // decision that produces either shape, so reaching here means a bad plan.
-        var resulting = mergedWords(file: file)
+        var resulting = CustomWordsMutationPolicy.mergedWords(file: file, builtins: Self.builtinDefaults)
         var seenCanonicals: [String: UUID] = [:]
         for word in resulting {
-          let key = Self.importPersistenceKey(word.canonical)
+          let key = CustomWordsMutationPolicy.importPersistenceKey(word.canonical)
           if let owner = seenCanonicals[key], owner != word.id {
             throw CustomWordsImportCommitError.invalidPlan
           }
           seenCanonicals[key] = word.id
         }
         for word in resulting where touchedIDs.contains(word.id) {
-          let canonicalKey = Self.importPersistenceKey(word.canonical)
+          let canonicalKey = CustomWordsMutationPolicy.importPersistenceKey(word.canonical)
           for other in resulting where other.id != word.id && !touchedIDs.contains(other.id) {
-            if other.aliases.contains(where: { Self.importPersistenceKey($0) == canonicalKey }) {
+            if other.aliases.contains(where: { CustomWordsMutationPolicy.importPersistenceKey($0) == canonicalKey }) {
               throw CustomWordsImportCommitError.invalidPlan
             }
           }
@@ -971,7 +851,7 @@ public final class CustomWordsManager {
             file.words[index].aliases = word.aliases
             // A collision drop takes the alias's learned mark with it (#996):
             // the one provenance rule, re-applied after the last alias edit.
-            file.words[index] = Self.sanitizeForPersistence(file.words[index])
+            file.words[index] = CustomWordsMutationPolicy.sanitizeForPersistence(file.words[index])
           }
         }
 
@@ -985,7 +865,7 @@ public final class CustomWordsManager {
 
         // (7) Compute the post-write publication shape now; `performLockedTransaction`
         // saves `file` right after this closure returns, so this IS what will be on disk.
-        resulting = mergedWords(file: file)
+        resulting = CustomWordsMutationPolicy.mergedWords(file: file, builtins: Self.builtinDefaults)
         let receipt = CustomWordsImportCommitReceipt(
           addedIDs: addedIDs, replacedIDs: replacedIDs, droppedAliasCollisions: dropped,
           pendingEnrichmentBatchTotal: file.pendingEnrichmentBatchTotal)
@@ -1067,11 +947,11 @@ public final class CustomWordsManager {
       for result in results {
         guard let idx = file.words.firstIndex(where: { $0.id == result.id }) else { continue }
         guard file.words[idx].enrichmentPending else { continue }
-        let existingKeys = Set(file.words[idx].aliases.map(Self.importPersistenceKey))
+        let existingKeys = Set(file.words[idx].aliases.map(CustomWordsMutationPolicy.importPersistenceKey))
         var seenThisWord = existingKeys
         var candidates: [String] = []
-        for alias in Self.sanitizeAliases(result.generatedAliases) {
-          let key = Self.importPersistenceKey(alias)
+        for alias in CustomWordsMutationPolicy.sanitizeAliases(result.generatedAliases) {
+          let key = CustomWordsMutationPolicy.importPersistenceKey(alias)
           guard !key.isEmpty, !seenThisWord.contains(key) else { continue }
           candidates.append(alias)
           seenThisWord.insert(key)
@@ -1086,7 +966,7 @@ public final class CustomWordsManager {
       // real existing claim a new guess must respect. Never stripped and
       // never replayed: only the newly generated candidates below are ever
       // validated or gap-filled.
-      var index = WordCorrector.buildExactTriggerIndex(words: mergedWords(file: file))
+      var index = WordCorrector.buildExactTriggerIndex(words: CustomWordsMutationPolicy.mergedWords(file: file, builtins: Self.builtinDefaults))
       var applied: [CustomWordEnrichmentResult] = []
       for id in touchedIDs {
         guard let idx = file.words.firstIndex(where: { $0.id == id }) else {
@@ -1094,7 +974,7 @@ public final class CustomWordsManager {
           continue
         }
         let canonical = file.words[idx].canonical
-        let canonicalKey = Self.importPersistenceKey(canonical)
+        let canonicalKey = CustomWordsMutationPolicy.importPersistenceKey(canonical)
         var accepted: [String] = []
         for alias in candidatesByID[id] ?? [] {
           // Redundant with the word's OWN canonical: silently dropped, same
@@ -1102,7 +982,7 @@ public final class CustomWordsManager {
           // per-word ownership check excludes the word's own existing
           // claims, so without this a generated "Kubernetes" could land on
           // canonical "Kubernetes" itself).
-          if Self.importPersistenceKey(alias) == canonicalKey { continue }
+          if CustomWordsMutationPolicy.importPersistenceKey(alias) == canonicalKey { continue }
           // Mirrors `enforceAliases`'s own three-way branch exactly — a
           // generated guess earns no different treatment than an imported
           // one. `.noClaims` (the alias produces no real trigger claim at
@@ -1132,7 +1012,7 @@ public final class CustomWordsManager {
       return (
         CustomWordsEnrichmentCheckpointOutcome(
           snapshot: CustomWordsLibrarySnapshot(
-            words: mergedWords(file: file),
+            words: CustomWordsMutationPolicy.mergedWords(file: file, builtins: Self.builtinDefaults),
             pendingEnrichmentBatchTotal: file.pendingEnrichmentBatchTotal),
           applied: applied),
         changed || totalChanged
@@ -1159,17 +1039,11 @@ public final class CustomWordsManager {
       }
       return (
         CustomWordsLibrarySnapshot(
-          words: mergedWords(file: file),
+          words: CustomWordsMutationPolicy.mergedWords(file: file, builtins: Self.builtinDefaults),
           pendingEnrichmentBatchTotal: file.pendingEnrichmentBatchTotal),
         changed
       )
     }
-  }
-
-  /// This type's own dedup rule, named so the import path cannot accidentally
-  /// reach for the compare engine's stronger matching key (PR-F2a).
-  static func importPersistenceKey(_ s: String) -> String {
-    s.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
   }
 
   /// Field-level Replace, per the adopted plan's table. `id`, `frequencyUsed`,
@@ -1190,7 +1064,7 @@ public final class CustomWordsManager {
     // supplies it (an empty list and a nil date are authoritative clears),
     // every other source has no opinion and the live marks stay. The helper
     // then prunes any supplied mark whose alias is not among the stored ones.
-    return Self.sanitizeForPersistence(
+    return CustomWordsMutationPolicy.sanitizeForPersistence(
       CustomWord(
         id: existing.id,
         canonical: candidate.canonical.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -1218,13 +1092,13 @@ public final class CustomWordsManager {
       return fallback
     }
     let sourceAliases = supplied(candidate.aliases, else: [])
-    var union = sanitizeAliases(sourceAliases)
-    var seen = Set(union.map(importPersistenceKey))
-    for suggestion in sanitizeAliases(candidate.suggestedAliases)
-    where seen.insert(importPersistenceKey(suggestion)).inserted {
+    var union = CustomWordsMutationPolicy.sanitizeAliases(sourceAliases)
+    var seen = Set(union.map(CustomWordsMutationPolicy.importPersistenceKey))
+    for suggestion in CustomWordsMutationPolicy.sanitizeAliases(candidate.suggestedAliases)
+    where seen.insert(CustomWordsMutationPolicy.importPersistenceKey(suggestion)).inserted {
       union.append(suggestion)
     }
-    return sanitizeForPersistence(
+    return CustomWordsMutationPolicy.sanitizeForPersistence(
       CustomWord(
         canonical: candidate.canonical.trimmingCharacters(in: .whitespacesAndNewlines),
         aliases: union,
@@ -1237,66 +1111,6 @@ public final class CustomWordsManager {
         learnedAliases: supplied(candidate.learnedAliases, else: []),
         learnedAt: supplied(candidate.learnedAt, else: nil)
       ))
-  }
-
-  /// The ONE rule for valid persisted learned provenance (#996 §3c): aliases
-  /// are sanitized first (trimmed, unstorable dropped), then `learnedAliases`
-  /// is reduced to the stored aliases it names, in alias order, with no
-  /// duplicates. A learned mark written as `" alias "` keeps its mark once the
-  /// alias is stored as `"alias"`, and an alias the user removed by hand takes
-  /// its mark with it. Marks match aliases by the manager's own persistence
-  /// key (trimmed, lowercased), the same rule that decides which spellings
-  /// are one alias, so `"Twist"` keeps a mark written as `"twist"` and the
-  /// stored spelling is the one that wins. Every whole-word persistence site
-  /// calls this; nothing else validates provenance, so a caller cannot store
-  /// a mark for a sound-alike the word does not have. Every other field
-  /// passes through.
-  static func sanitizeForPersistence(_ word: CustomWord) -> CustomWord {
-    var out = word
-    out.aliases = sanitizeAliases(word.aliases)
-    let learnedKeys = Set(sanitizeAliases(word.learnedAliases).map(Self.importPersistenceKey))
-    var seen = Set<String>()
-    out.learnedAliases = out.aliases.filter {
-      let key = Self.importPersistenceKey($0)
-      return learnedKeys.contains(key) && seen.insert(key).inserted
-    }
-    return out
-  }
-
-  /// Whether a value may enter the library AT ALL, from any authoring path.
-  ///
-  /// The same question importing asks, asked here — because "what may be
-  /// stored" is one rule and the library is what it protects. Applying only
-  /// PART of it here (length, but not the character policy) let the editor
-  /// author a word that export then refused, which is the round-trip
-  /// asymmetry again with authoring as the door (cloud review, #1683).
-  static func isStorable(_ value: String) -> Bool {
-    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty,
-      trimmed.unicodeScalars.count <= CustomWordsImportLimits.maximumStoredValueScalars
-    else { return false }
-    return CustomWordsImportTextPolicy.isAcceptableStoredValue(trimmed)
-  }
-
-  /// True when every alias the user actually authored can be stored.
-  ///
-  /// Blank aliases are not a refusal — the editor leaves empty rows behind and
-  /// dropping those is ordinary trimming, not a lost edit. A NON-blank alias
-  /// that the policy refuses is the lie this catches: `sanitizeAliases` would
-  /// filter it out and the save would report success without it.
-  private static func everyAliasIsStorable(_ aliases: [String]) -> Bool {
-    aliases
-      .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-      .filter { !$0.isEmpty }
-      .allSatisfy { isStorable($0) }
-  }
-
-  private static func sanitizeAliases(_ aliases: [String]) -> [String] {
-    aliases
-      .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-      // The whole rule, not a piece of it: an alias the app stores but cannot
-      // export breaks the round trip just as thoroughly as a canonical does.
-      .filter { isStorable($0) }
   }
 
   /// Guarantees no alias this import touched is left ambiguous, whatever
@@ -1357,13 +1171,13 @@ public final class CustomWordsManager {
     for id in touchedOrder {
       guard let wordIndex = indexByID[id] else { continue }
       let word = result[wordIndex]
-      let canonicalKey = importPersistenceKey(word.canonical)
+      let canonicalKey = CustomWordsMutationPolicy.importPersistenceKey(word.canonical)
       var kept: [String] = []
       for alias in word.aliases {
-        if importPersistenceKey(alias).isEmpty { continue }
+        if CustomWordsMutationPolicy.importPersistenceKey(alias).isEmpty { continue }
         // Redundant with the word's own canonical: silently removed, never
         // reported — it is not an ambiguity anyone needs to hear about.
-        if importPersistenceKey(alias) == canonicalKey { continue }
+        if CustomWordsMutationPolicy.importPersistenceKey(alias) == canonicalKey { continue }
 
         // Blocker detection, decisive-owner selection, and the "holding a key
         // isn't always intercepting it" gate are no longer restated here —
@@ -1399,11 +1213,11 @@ public final class CustomWordsManager {
     guard let index = words.firstIndex(where: { $0.id == word.id }) else { return }
     let trimmed = word.canonical.trimmingCharacters(in: .whitespacesAndNewlines)
     // Same authoring door as `add`, same reason it throws: see there.
-    guard Self.isStorable(trimmed) else { throw CustomWordsPersistenceError.unusableValue }
-    guard Self.everyAliasIsStorable(word.aliases) else {
+    guard CustomWordsMutationPolicy.isStorable(trimmed) else { throw CustomWordsPersistenceError.unusableValue }
+    guard CustomWordsMutationPolicy.everyAliasIsStorable(word.aliases) else {
       throw CustomWordsPersistenceError.unusableValue
     }
-    var edited = Self.sanitizeForPersistence(word)
+    var edited = CustomWordsMutationPolicy.sanitizeForPersistence(word)
     edited.canonical = trimmed
 
     // An edit makes the word the user's, whatever it started as (#1680).
@@ -1431,42 +1245,10 @@ public final class CustomWordsManager {
     // already do this, so any OTHER change a sibling process saved while
     // this lock was held stays visible instead of being silently dropped
     // until the next reload or mutation.
-    let merged = try store.performLockedTransaction {
-      file -> (value: [CustomWord], shouldSave: Bool) in
-      let existingIdx = file.words.firstIndex(where: { $0.id == word.id })
-
-      // A missing id means one of two things: this is a built-in being
-      // overridden for the first time (expected, append it), or a sibling
-      // process deleted this exact user word while this edit was in flight
-      // (#1690 cloud review). Absence alone cannot distinguish them — only a
-      // real match against this process's own built-in ids can. Silently
-      // resurrecting a word the user, via the other window, already removed
-      // is wrong; drop the stale edit instead and publish the fresh state so
-      // the caller's view self-heals to reflect the deletion.
-      guard
-        existingIdx != nil
-          || Self.builtinDefaults.contains(where: { $0.word.id == word.id })
-      else {
-        return (mergedWords(file: file), false)
-      }
-
-      if let builtin = Self.builtinDefaults.first(where: {
-        $0.word.canonical.lowercased() == previousCanonical.lowercased()
-      }),
-        builtin.word.canonical.lowercased() != sanitized.canonical.lowercased(),
-        !file.deletedBuiltinIds.contains(builtin.id)
-      {
-        file.deletedBuiltinIds.append(builtin.id)
-      }
-
-      // Check if this is a built-in word being edited — store as user override
-      if let existingIdx {
-        file.words[existingIdx] = sanitized
-      } else {
-        // Editing a built-in: add as user word (overrides built-in by canonical match).
-        file.words.append(sanitized)
-      }
-      return (mergedWords(file: file), true)
+    let merged = try store.performLockedTransaction { file in
+      CustomWordsMutationPolicy.update(
+        word: word, sanitized: sanitized, previousCanonical: previousCanonical, in: &file,
+        builtins: Self.builtinDefaults)
     }
     words = merged
   }
@@ -1483,40 +1265,10 @@ public final class CustomWordsManager {
   /// with `words` untouched if nothing matched.
   public func updateBatch(_ updates: [CustomWord], to words: inout [CustomWord]) throws {
     guard !updates.isEmpty else { return }
-    let merged = try store.performLockedTransaction {
-      file -> (value: [CustomWord]?, shouldSave: Bool) in
-      var changed = false
-      for word in updates {
-        let trimmed = word.canonical.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard Self.isStorable(trimmed) else { continue }
-        guard let idx = file.words.firstIndex(where: { $0.id == word.id }) else { continue }
-        var sanitized = Self.sanitizeForPersistence(word)
-        sanitized.canonical = trimmed
-        file.words[idx] = sanitized
-        changed = true
-      }
-      guard changed else { return (nil, false) }
-      return (mergedWords(file: file), true)
+    let merged = try store.performLockedTransaction { file in
+      CustomWordsMutationPolicy.updateBatch(updates, in: &file, builtins: Self.builtinDefaults)
     }
     guard let merged else { return }
     words = merged
-  }
-
-  // MARK: - Runtime Merge
-
-  /// Merge built-in defaults with user words. Built-ins not tombstoned and not
-  /// overridden by a user word (same canonical, case-insensitive) are included.
-  private func mergedWords(file: CustomWordsFile) -> [CustomWord] {
-    let tombstones = Set(file.deletedBuiltinIds)
-    let activeBuiltins = Self.builtinDefaults
-      .filter { !tombstones.contains($0.id) }
-      .map(\.word)
-
-    let userCanonicals = Set(file.words.map { $0.canonical.lowercased() })
-    let nonOverriddenBuiltins = activeBuiltins.filter {
-      !userCanonicals.contains($0.canonical.lowercased())
-    }
-
-    return nonOverriddenBuiltins + file.words
   }
 }
