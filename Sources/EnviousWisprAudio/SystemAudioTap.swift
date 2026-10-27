@@ -1084,8 +1084,13 @@ public final class CallSoundPipeline: @unchecked Sendable {
         convert(UnsafeBufferPointer(rebasing: all[chunk.offset..<(chunk.offset + chunk.frames)]))
       }
       // #4008 F10: the run clock already counted this chunk, so a lost chunk would stamp every
-      // later sample early by its length. End the run; the next chunk starts its own.
-      if !converted { finishRun() }
+      // later sample early by its length. End the run without a flush: after a converter error
+      // its held-back state cannot be trusted to match the run clock, so its few milliseconds
+      // are given up. The next chunk starts a new run at its own time.
+      if !converted {
+        converter?.reset()
+        runStartHost = nil
+      }
     }
   }
 
