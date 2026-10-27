@@ -652,7 +652,7 @@ package final class MeetingTranscriptionJob {
       words: [
         ASRWordTiming(
           word: text, range: 0..<text.utf16.count, startMs: ms(startSample), endMs: ms(endSample))
-      ])
+      ], isSpeech: false)
   }
 
   /// The marker for audio that exists but cannot be read: the gap marker when both ends are
@@ -666,14 +666,14 @@ package final class MeetingTranscriptionJob {
           ASRWordTiming(
             word: text, range: 0..<text.utf16.count, startMs: missing.startMs,
             endMs: missing.startMs)
-        ])
+        ], isSpeech: false)
     }
     let text = "[Could not transcribe \(clock(missing.startMs)) to \(clock(endMs))]"
     return MeetingTrackPiece(
       text: text, startMs: missing.startMs, endMs: endMs,
       words: [
         ASRWordTiming(word: text, range: 0..<text.utf16.count, startMs: missing.startMs, endMs: endMs)
-      ])
+      ], isSpeech: false)
   }
 
   /// `m:ss`, or `h:mm:ss` from an hour.

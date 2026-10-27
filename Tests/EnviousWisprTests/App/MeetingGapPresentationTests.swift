@@ -29,6 +29,13 @@ struct MeetingGapPresentationTests {
         == "Hello there. [DE 1:00 bis 1:30] and then [DE ab 1:02:05] [DE 0:00 bis 0:05]. Thanks.")
   }
 
+  @Test("#4138 every marker the pass writes is flagged as not speech, so it never makes a call")
+  func markersAreNotSpeech() {
+    #expect(!MeetingTranscriptionJob.missingAudioMarker(.init(startMs: 60_000, endMs: 90_000)).isSpeech)
+    #expect(!MeetingTranscriptionJob.missingAudioMarker(.init(startMs: 3_725_000, endMs: nil)).isSpeech)
+    #expect(!MeetingTranscriptionJob.gapMarker(startSample: 0, endSample: 16_000 * 5).isSpeech)
+  }
+
   @Test("words that only resemble a marker are left alone")
   func lookalikesUnchanged() {
     let lookalikes = [

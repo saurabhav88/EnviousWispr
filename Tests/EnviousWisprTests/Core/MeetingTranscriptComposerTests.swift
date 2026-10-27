@@ -56,8 +56,8 @@ struct MeetingTranscriptComposerTests {
       result.turns.map { slice($0.originalTextRange, of: result.text) } == [
         "Can you hear me", "Yes loud and clear", "Great lets start",
       ])
-    #expect(result.turns.map(\.speakerId) == ["sys:S1", "mic:S1", "sys:S1"])
-    #expect(result.speakerNames["mic:S1"] == "You")
+    #expect(result.turns.map(\.speakerId) == ["sys:S1", "mic:you", "sys:S1"])
+    #expect(result.speakerNames["mic:you"] == "You")
     #expect(result.speakerNames["sys:S1"] == "Speaker 1")
     #expect(result.speakerCount == 2)
     #expect(Set(result.turns.map(\.id)).count == result.turns.count)
@@ -81,6 +81,144 @@ struct MeetingTranscriptComposerTests {
     #expect(result.speakerNames["mic:S2"] == "Speaker 2")
     #expect(!result.speakerNames.values.contains("You"))
     #expect(result.speakerCount == 2)
+  }
+
+  /// A call where the far side says one line and the microphone holds `micWords` (each 300 ms
+  /// from 2000 ms) split by `micSegments`.
+  private func callWithMicrophone(
+    micWords: [String], micSegments: [SpeakerSegment], callPiece: MeetingTrackPiece? = nil
+  ) -> MeetingComposition {
+    let call = MeetingTrackInput(
+      kind: .callSound,
+      pieces: [
+        callPiece
+          ?? piece([("Can", 0, 200), ("you", 200, 400), ("hear", 400, 600)], start: 0, end: 700)
+      ],
+      speakerSegments: [SpeakerSegment(speakerId: "S1", startMs: 0, endMs: 700, quality: 1)])
+    let words = micWords.enumerated().map { ($0.element, 2000 + $0.offset * 300, 2000 + $0.offset * 300 + 250) }
+    let mic = MeetingTrackInput(
+      kind: .microphone,
+      pieces: [piece(words, start: 2000, end: 2000 + micWords.count * 300)],
+      speakerSegments: micSegments)
+    return MeetingTranscriptComposer.compose(tracks: [call, mic])
+  }
+
+  @Test("#4138 on speakers: the microphone split into three voices on a call is one You")
+  func callMicrophoneClustersAreOneYou() {
+    let result = callWithMicrophone(
+      micWords: ["yes", "I", "agree", "with", "that", "plan", "fully"],
+      micSegments: [
+        SpeakerSegment(speakerId: "S1", startMs: 2000, endMs: 2550, quality: 1),
+        SpeakerSegment(speakerId: "S2", startMs: 2600, endMs: 3150, quality: 1),
+        SpeakerSegment(speakerId: "S3", startMs: 3200, endMs: 4100, quality: 1),
+      ])
+    let micTurns = result.turns.filter { !$0.speakerId.hasPrefix("sys:") }
+    #expect(!micTurns.isEmpty)
+    #expect(micTurns.allSatisfy { $0.speakerId == MeetingTranscriptComposer.fallbackMicrophoneSpeakerID })
+    #expect(result.speakerNames["mic:you"] == "You")
+    #expect(!result.speakerNames.keys.contains { $0.hasPrefix("mic:S") })
+    #expect(result.speakerCount == 2)
+  }
+
+  @Test("#4138 microphone words no voice claimed (Both) are You on a call")
+  func callMicrophoneBothIsYou() {
+    // Two words inside S1, then five words far past it (beyond the assembler's tolerance and
+    // more than the fold maximum), which the assembler calls Both.
+    let words: [(String, Int?, Int?)] = [
+      ("sure", 2000, 2250), ("thing", 2300, 2550),
+      ("and", 4000, 4250), ("then", 4300, 4550), ("we", 4600, 4850), ("ship", 4900, 5150),
+      ("it", 5200, 5450),
+    ]
+    let mic = MeetingTrackInput(
+      kind: .microphone, pieces: [piece(words, start: 2000, end: 5500)],
+      speakerSegments: [SpeakerSegment(speakerId: "S1", startMs: 2000, endMs: 2550, quality: 1)])
+    // Precondition: with no call, the same microphone input does produce Both.
+    let alone = MeetingTranscriptComposer.compose(tracks: [mic])
+    #expect(alone.turns.contains { $0.speakerId == TurnAssembler.bothSpeakersID })
+
+    let call = MeetingTrackInput(
+      kind: .callSound,
+      pieces: [piece([("Can", 0, 200), ("you", 200, 400), ("hear", 400, 600)], start: 0, end: 700)],
+      speakerSegments: [SpeakerSegment(speakerId: "S1", startMs: 0, endMs: 700, quality: 1)])
+    let result = MeetingTranscriptComposer.compose(tracks: [call, mic])
+    let micTurns = result.turns.filter { ($0.startMs ?? 0) >= 2000 }
+    #expect(micTurns.count >= 2)
+    #expect(micTurns.allSatisfy { $0.speakerId == "mic:you" })
+    #expect(!result.turns.contains { $0.speakerId == TurnAssembler.bothSpeakersID })
+    #expect(result.speakerNames["mic:you"] == "You")
+  }
+
+  @Test("#4138 call words no far-side voice claimed (Both) still make the microphone You")
+  func callBothStillMakesYou() {
+    // The only call segment lies far after every call word, so the call turn is Both, not a
+    // `sys:` speaker.
+    let call = MeetingTrackInput(
+      kind: .callSound,
+      pieces: [
+        piece(
+          [("can", 0, 200), ("you", 200, 400), ("all", 400, 600), ("hear", 600, 800), ("me", 800, 1000), ("now", 1000, 1200)],
+          start: 0, end: 1300)
+      ],
+      speakerSegments: [SpeakerSegment(speakerId: "S1", startMs: 10_000, endMs: 11_000, quality: 1)])
+    let mic = MeetingTrackInput(
+      kind: .microphone,
+      pieces: [piece([("yes", 2000, 2300), ("loud", 2300, 2600)], start: 2000, end: 2700)],
+      speakerSegments: [
+        SpeakerSegment(speakerId: "S1", startMs: 2000, endMs: 2300, quality: 1),
+        SpeakerSegment(speakerId: "S2", startMs: 2300, endMs: 2700, quality: 1),
+      ])
+    let result = MeetingTranscriptComposer.compose(tracks: [call, mic])
+    #expect(result.turns.first?.speakerId == TurnAssembler.bothSpeakersID)
+    let micTurns = result.turns.filter { ($0.startMs ?? 0) >= 2000 }
+    #expect(!micTurns.isEmpty)
+    #expect(micTurns.allSatisfy { $0.speakerId == "mic:you" })
+    #expect(result.speakerNames["mic:you"] == "You")
+  }
+
+  @Test("#4138 a call track holding only a could-not-transcribe marker is no call: microphone voices stay split")
+  func markerOnlyCallKeepsMicrophoneSpeakers() {
+    let text = "[Could not transcribe 0:00 to 0:01]"
+    let marker = MeetingTrackPiece(
+      text: text, startMs: 0, endMs: 700,
+      words: [ASRWordTiming(word: text, range: 0..<text.utf16.count, startMs: 0, endMs: 700)],
+      isSpeech: false)
+    let result = callWithMicrophone(
+      micWords: ["morning", "everyone", "hi", "there"],
+      micSegments: [
+        SpeakerSegment(speakerId: "S1", startMs: 2000, endMs: 2550, quality: 1),
+        SpeakerSegment(speakerId: "S2", startMs: 2600, endMs: 3200, quality: 1),
+      ],
+      callPiece: marker)
+    #expect(result.turns.contains { $0.speakerId == "mic:S1" })
+    #expect(result.turns.contains { $0.speakerId == "mic:S2" })
+    #expect(!result.turns.contains { $0.speakerId == "mic:you" })
+    #expect(!result.speakerNames.values.contains("You"))
+  }
+
+  @Test("#4138 a microphone that only repeats the call adds no speaker and keeps its echo marks")
+  func allEchoMicrophoneAddsNoSpeaker() {
+    let words = ["the", "budget", "is", "approved", "for", "next", "quarter"]
+    let callPiece = piece(
+      words.enumerated().map { ($0.element, 1000 + $0.offset * 300, 1000 + $0.offset * 300 + 250) },
+      start: 1000, end: 1000 + words.count * 300)
+    let micPiece = piece(
+      words.enumerated().map { ($0.element, 1150 + $0.offset * 300, 1150 + $0.offset * 300 + 250) },
+      start: 1150, end: 1150 + words.count * 300)
+    let result = MeetingTranscriptComposer.compose(tracks: [
+      MeetingTrackInput(
+        kind: .callSound, pieces: [callPiece],
+        speakerSegments: [SpeakerSegment(speakerId: "S1", startMs: 1000, endMs: 3200, quality: 1)]),
+      MeetingTrackInput(
+        kind: .microphone, pieces: [micPiece],
+        speakerSegments: [
+          SpeakerSegment(speakerId: "S1", startMs: 1150, endMs: 2000, quality: 1),
+          SpeakerSegment(speakerId: "S2", startMs: 2000, endMs: 3400, quality: 1),
+        ]),
+    ])
+    let micTurns = result.turns.filter { $0.speakerId == "mic:you" }
+    #expect(!micTurns.isEmpty)
+    #expect(micTurns.allSatisfy { result.echoTurnIDs.contains($0.id) })
+    #expect(result.speakerCount == 1)
   }
 
   @Test("echo: the repeated call sound is hidden and the user's own reply right after it stays visible")
