@@ -19,6 +19,30 @@ public enum CallEvidenceReader {
   /// Seconds an Accessibility message may take before the read gives up.
   static let messagingTimeout: Float = 0.25
 
+  /// Per-read system boundary. Tests supply local handles and never message another app.
+  package struct Access {
+    package var now: () -> ContinuousClock.Instant
+    package var setTimeout: (AXUIElement, Float) -> AXError
+    package var read: (AXUIElement, CFString) -> CopyResult
+
+    package init(
+      now: @escaping () -> ContinuousClock.Instant,
+      setTimeout: @escaping (AXUIElement, Float) -> AXError,
+      read: @escaping (AXUIElement, CFString) -> CopyResult
+    ) {
+      self.now = now
+      self.setTimeout = setTimeout
+      self.read = read
+    }
+
+    package static var live: Self {
+      Self(
+        now: { .now },
+        setTimeout: { AXUIElementSetMessagingTimeout($0, $1) },
+        read: { copy($0, $1) })
+    }
+  }
+
   /// The evidence for a microphone-holding process of `rule`, `holderPID` being that process.
   public static func evidence(for rule: CallAppCatalog.Rule, holderPID: Int32) -> Evidence {
     guard AXIsProcessTrusted() else { return .unknown }
@@ -81,11 +105,13 @@ public enum CallEvidenceReader {
 
   /// Zoom: a meeting window in any Zoom language (`ZoomCallWindow`, #4036; the main
   /// "Zoom Workplace" window is not a call). Slack: a huddle window.
-  private static func callWindow(family: CallAppFamily, appPID: pid_t) -> Evidence {
+  package static func callWindow(
+    family: CallAppFamily, appPID: pid_t, access: Access = .live
+  ) -> Evidence {
     let isCall: Bool
     switch family {
     case .zoom:
-      switch zoomMeetingWindow(appPID: appPID) {
+      switch zoomMeetingWindow(appPID: appPID, access: access) {
       case .call: isCall = true
       case .none: isCall = false
       case .unknown: return .unknown
@@ -105,23 +131,23 @@ public enum CallEvidenceReader {
   /// Slack's Leave control is independent of its UI language and channel/window name (#4036).
   private static func slackHuddleWindow(appPID: pid_t) -> SlackHuddleWindow.Verdict {
     // Same one-second budget as CallEvidenceRead.bounded; do not leave its shared lane busy.
-    let deadline = ContinuousClock.now.advanced(by: .seconds(1))
+    let deadline = scanDeadline(.live)
     let wake = AccessibilityWake.wake(pid: appPID, messagingTimeout: Double(messagingTimeout))
     guard wake.roleError == .success, !wake.roleReadExhausted,
       let manual = wake.manual, !manual || wake.manualEnabled
     else { return .unknown }
     let app = AXUIElementCreateApplication(appPID)
-    guard case .value(let value) = slackCopy(app, kAXWindowsAttribute as CFString, until: deadline),
+    guard case .value(let value) = boundedCopy(app, kAXWindowsAttribute as CFString, until: deadline),
       let windows = value as? [AXUIElement]
     else { return .unknown }
     return SlackHuddleWindow.classify(
       windowCount: windows.count,
       identifier: { slackHuddleControl(in: windows[$0], until: deadline) },
       title: {
-        switch slackCopy(windows[$0], kAXTitleAttribute as CFString, until: deadline) {
+        switch boundedCopy(windows[$0], kAXTitleAttribute as CFString, until: deadline) {
         case .value(let value): (value as? String).map { .value($0) } ?? .failed
         case .missing: .missing
-        case .failed: .failed
+        case .failed, .unavailable: .failed
         }
       })
   }
@@ -136,9 +162,9 @@ public enum CallEvidenceReader {
     while !queue.isEmpty, visited < 800, ContinuousClock.now < deadline {
       let (node, level) = queue.removeFirst()
       visited += 1
-      switch slackCopy(node, kAXRoleAttribute as CFString, until: deadline) {
+      switch boundedCopy(node, kAXRoleAttribute as CFString, until: deadline) {
       case .value(let role) where (role as? String) == "AXButton":
-        switch slackCopy(node, "AXDOMClassList" as CFString, until: deadline) {
+        switch boundedCopy(node, "AXDOMClassList" as CFString, until: deadline) {
         case .value(let value):
           switch SlackHuddleWindow.classRead(value) {
           case .value(let token): return .value(token)
@@ -146,12 +172,12 @@ public enum CallEvidenceReader {
           case .missing: break
           }
         case .missing: break
-        case .failed: complete = false
+        case .failed, .unavailable: complete = false
         }
       case .value(let role) where role is String: break
       default: complete = false
       }
-      switch slackCopy(node, kAXChildrenAttribute as CFString, until: deadline) {
+      switch boundedCopy(node, kAXChildrenAttribute as CFString, until: deadline) {
       case .value(let value):
         guard let children = value as? [AXUIElement] else { complete = false; continue }
         guard level < 32 else {
@@ -160,67 +186,99 @@ public enum CallEvidenceReader {
         }
         queue.append(contentsOf: children.map { ($0, level + 1) })
       case .missing: break
-      case .failed: complete = false
+      case .failed, .unavailable: complete = false
       }
     }
     if !queue.isEmpty { complete = false }
     return complete ? .missing : .failed
   }
 
-  /// AX timeouts belong to each element handle, not to its app's descendants (AXUIElement.h).
-  private static func slackCopy(
-    _ element: AXUIElement, _ attribute: CFString, until deadline: ContinuousClock.Instant
+  /// AX timeouts belong to each exact handle, not to equal handles or app descendants (#4127).
+  /// An unavailable budget/setup is distinct from an attempted read failing: browser wake
+  /// preserves its side effect even when the role read quickly returns an error.
+  package static func boundedCopy(
+    _ element: AXUIElement, _ attribute: CFString, until deadline: ContinuousClock.Instant,
+    access: Access = .live
   ) -> CopyResult {
-    let remaining = ContinuousClock.now.duration(to: deadline).components
+    let remaining = access.now().duration(to: deadline).components
     let seconds = Double(remaining.seconds) + Double(remaining.attoseconds) / 1e18
     guard seconds > 0,
-      AXUIElementSetMessagingTimeout(element, min(messagingTimeout, Float(seconds))) == .success
-    else { return .failed }
-    return copy(element, attribute)
+      access.setTimeout(element, min(messagingTimeout, Float(seconds))) == .success,
+      access.now() < deadline
+    else { return .unavailable }
+    let result = access.read(element, attribute)
+    return access.now() < deadline ? result : .unavailable
+  }
+
+  /// Matches the caller's existing one-second allowance. This bounds AX work, not OS scheduling.
+  private static func scanDeadline(_ access: Access) -> ContinuousClock.Instant {
+    access.now().advanced(by: .seconds(1))
   }
 
   /// Reads each Zoom window's identifier, then its title, only until one proves a meeting.
-  private static func zoomMeetingWindow(appPID: pid_t) -> ZoomCallWindow.Verdict {
+  private static func zoomMeetingWindow(appPID: pid_t, access: Access) -> ZoomCallWindow.Verdict {
+    let deadline = scanDeadline(access)
     let app = AXUIElementCreateApplication(appPID)
-    AXUIElementSetMessagingTimeout(app, messagingTimeout)
-    guard case .value(let value) = copy(app, kAXWindowsAttribute as CFString),
+    guard case .value(let value) = boundedCopy(
+      app, kAXWindowsAttribute as CFString, until: deadline, access: access),
       let windows = value as? [AXUIElement]
     else { return .unknown }
-    return ZoomCallWindow.classify(
-      windowCount: windows.count,
-      identifier: { stringRead(windows[$0], kAXIdentifierAttribute as CFString) },
-      title: { stringRead(windows[$0], kAXTitleAttribute as CFString) })
+    var failed = false
+    for window in windows {
+      guard access.now() < deadline else { return .unknown }
+      // The classifier's count-one form preserves identifier-first/positive-wins behavior;
+      // this reader owns iteration so an expired budget stops the remaining windows too.
+      switch ZoomCallWindow.classify(
+        windowCount: 1,
+        identifier: { _ in
+          stringRead(window, kAXIdentifierAttribute as CFString, until: deadline, access: access)
+        },
+        title: { _ in
+          stringRead(window, kAXTitleAttribute as CFString, until: deadline, access: access)
+        })
+      {
+      case .call: return .call
+      case .unknown: failed = true
+      case .none: break
+      }
+    }
+    return failed ? .unknown : .none
   }
 
-  private static func stringRead(_ element: AXUIElement, _ attribute: CFString)
-    -> ZoomCallWindow.Read
-  {
-    switch copy(element, attribute) {
+  private static func stringRead(
+    _ element: AXUIElement, _ attribute: CFString, until deadline: ContinuousClock.Instant,
+    access: Access
+  ) -> ZoomCallWindow.Read {
+    switch boundedCopy(element, attribute, until: deadline, access: access) {
     case .value(let value): (value as? String).map { .value($0) } ?? .missing
     case .missing: .missing
-    case .failed: .failed
+    case .failed, .unavailable: .failed
     }
   }
 
   /// The front window's web page address: the first `AXWebArea`'s `AXURL` within a bounded
-  /// walk, else the window's `AXDocument`. A read that failed, or a walk left incomplete by
-  /// one, is `.unknown`, never "no meeting" (review r5 F4).
-  private static func meetingPage(appPID: pid_t) -> Evidence {
-    // Chromium builds its tree only once a client asks for the app's role (#3802, r5 F6).
-    _ = AccessibilityWake.requestRole(ofAppWithPID: appPID, messagingTimeout: Double(messagingTimeout))
+  /// walk, else the window's `AXDocument`. Without a readable address, an incomplete walk
+  /// is `.unknown`; a readable document address remains authoritative after a partial walk.
+  package static func meetingPage(appPID: pid_t, access: Access = .live) -> Evidence {
+    let deadline = scanDeadline(access)
     let app = AXUIElementCreateApplication(appPID)
-    AXUIElementSetMessagingTimeout(app, messagingTimeout)
-    guard case .value(let windowRef) = copy(app, kAXFocusedWindowAttribute as CFString),
+    // AXRole itself wakes Chromium (#3802). Its value/error is not a capability gate:
+    // preserve the old quick-error continuation, but never message without a checked allowance.
+    if case .unavailable = boundedCopy(
+      app, kAXRoleAttribute as CFString, until: deadline, access: access)
+    { return .unknown }
+    guard case .value(let windowRef) = boundedCopy(
+      app, kAXFocusedWindowAttribute as CFString, until: deadline, access: access),
       CFGetTypeID(windowRef) == AXUIElementGetTypeID()
     else { return .unknown }
     let window = windowRef as! AXUIElement
-    let walk = url(in: window)
+    let walk = url(in: window, until: deadline, access: access)
     var address = walk.url
     if address == nil {
-      switch copy(window, kAXDocumentAttribute as CFString) {
+      switch boundedCopy(window, kAXDocumentAttribute as CFString, until: deadline, access: access) {
       case .value(let value): address = value as? String
       case .missing: break
-      case .failed: return .unknown
+      case .failed, .unavailable: return .unknown
       }
     }
     guard let address else { return walk.complete ? .none : .unknown }
@@ -230,25 +288,27 @@ public enum CallEvidenceReader {
 
   /// Breadth-first, at most 12 levels and 400 elements: browser trees are deep, and a page
   /// with a huge tree must not stall the read. `complete` is false when a read on the way failed.
-  private static func url(in root: AXUIElement) -> (url: String?, complete: Bool) {
+  private static func url(
+    in root: AXUIElement, until deadline: ContinuousClock.Instant, access: Access
+  ) -> (url: String?, complete: Bool) {
     var queue: [(AXUIElement, Int)] = [(root, 0)]
     var visited = 0
     var complete = true
-    while !queue.isEmpty, visited < 400 {
+    while !queue.isEmpty, visited < 400, access.now() < deadline {
       let (node, level) = queue.removeFirst()
       visited += 1
-      switch copy(node, kAXRoleAttribute as CFString) {
+      switch boundedCopy(node, kAXRoleAttribute as CFString, until: deadline, access: access) {
       case .value(let role) where (role as? String) == "AXWebArea":
-        switch copy(node, kAXURLAttribute as CFString) {
+        switch boundedCopy(node, kAXURLAttribute as CFString, until: deadline, access: access) {
         case .value(let value):
           if let link = (value as? URL)?.absoluteString ?? (value as? String) { return (link, true) }
         case .missing: break
-        case .failed: complete = false
+        case .failed, .unavailable: complete = false
         }
-      case .failed: complete = false
+      case .failed, .unavailable: complete = false
       default: break
       }
-      switch copy(node, kAXChildrenAttribute as CFString) {
+      switch boundedCopy(node, kAXChildrenAttribute as CFString, until: deadline, access: access) {
       case .value(let value):
         let children = (value as? [AXUIElement]) ?? []
         // A level the walk will not enter is part of the page it did not see (r6 F5).
@@ -258,7 +318,7 @@ public enum CallEvidenceReader {
         }
         queue.append(contentsOf: children.map { ($0, level + 1) })
       case .missing: break
-      case .failed: complete = false
+      case .failed, .unavailable: complete = false
       }
     }
     // Stopped at the element limit with elements still waiting: not a full search (r6 F5).
@@ -266,32 +326,16 @@ public enum CallEvidenceReader {
     return (nil, complete)
   }
 
-  /// Nil when the windows or any window's title could not be read.
-  private static func windowTitles(appPID: pid_t) -> [String]? {
-    let app = AXUIElementCreateApplication(appPID)
-    AXUIElementSetMessagingTimeout(app, messagingTimeout)
-    guard case .value(let value) = copy(app, kAXWindowsAttribute as CFString),
-      let windows = value as? [AXUIElement]
-    else { return nil }
-    var titles: [String] = []
-    for window in windows {
-      switch copy(window, kAXTitleAttribute as CFString) {
-      case .value(let title): if let title = title as? String { titles.append(title) }
-      case .missing: continue
-      case .failed: return nil
-      }
-    }
-    return titles
-  }
-
   // MARK: - Accessibility reads
 
-  private enum CopyResult {
+  package enum CopyResult {
     case value(CFTypeRef)
     /// The element has no such attribute, or no value for it now.
     case missing
     /// The read itself failed (timeout, app busy, API off): could not tell.
     case failed
+    /// Timeout setup was refused, or the scan's deadline made the response unusable.
+    case unavailable
   }
 
   private static func copy(_ element: AXUIElement, _ attribute: CFString) -> CopyResult {
