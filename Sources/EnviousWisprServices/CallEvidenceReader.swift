@@ -18,6 +18,23 @@ public enum CallEvidenceReader {
     case unknown
   }
 
+  /// Start eligibility and call lifetime are different observations. A URL alone is not ongoing proof.
+  package enum Continuity: Sendable, Equatable {
+    case ongoing(family: CallAppFamily, room: String)
+    case ended(family: CallAppFamily, room: String)
+    case unknown
+  }
+
+  package struct Snapshot: Sendable, Equatable {
+    package let startEvidence: Evidence
+    package let continuity: Continuity
+
+    package init(startEvidence: Evidence, continuity: Continuity = .unknown) {
+      self.startEvidence = startEvidence
+      self.continuity = continuity
+    }
+  }
+
   /// Seconds an Accessibility message may take before the read gives up.
   static let messagingTimeout: Float = 0.25
 
@@ -55,16 +72,22 @@ public enum CallEvidenceReader {
 
   /// The evidence for a microphone-holding process of `rule`, `holderPID` being that process.
   public static func evidence(for rule: CallAppCatalog.Rule, holderPID: Int32) -> Evidence {
-    guard AXIsProcessTrusted() else { return .unknown }
+    snapshot(for: rule, holderPID: holderPID).startEvidence
+  }
+
+  package static func snapshot(for rule: CallAppCatalog.Rule, holderPID: Int32) -> Snapshot {
+    guard AXIsProcessTrusted() else { return .init(startEvidence: .unknown) }
     switch rule {
     case .callApp(let family):
-      return nativeCallEvidence(family: family, holderPID: holderPID)
+      return .init(startEvidence: nativeCallEvidence(family: family, holderPID: holderPID))
     case .callWindow(let family):
-      guard let app = runningApp(family: family, holderPID: holderPID) else { return .unknown }
-      return callWindow(family: family, appPID: app.processIdentifier)
+      guard let app = runningApp(family: family, holderPID: holderPID)
+      else { return .init(startEvidence: .unknown) }
+      return .init(startEvidence: callWindow(family: family, appPID: app.processIdentifier))
     case .browser(let browser):
-      guard let app = browserApp(browser, holderPID: holderPID) else { return .unknown }
-      return meetingPage(appPID: app.processIdentifier)
+      guard let app = browserApp(browser, holderPID: holderPID)
+      else { return .init(startEvidence: .unknown) }
+      return meetingPageSnapshot(appPID: app.processIdentifier)
     }
   }
 
@@ -346,17 +369,21 @@ public enum CallEvidenceReader {
   /// walk, else the window's `AXDocument`. Without a readable address, an incomplete walk
   /// is `.unknown`; a readable document address remains authoritative after a partial walk.
   package static func meetingPage(appPID: pid_t, access: Access = .live) -> Evidence {
+    meetingPageSnapshot(appPID: appPID, access: access).startEvidence
+  }
+
+  package static func meetingPageSnapshot(appPID: pid_t, access: Access = .live) -> Snapshot {
     let deadline = scanDeadline(access)
     let app = AXUIElementCreateApplication(appPID)
     // AXRole itself wakes Chromium (#3802). Its value/error is not a capability gate:
     // preserve the old quick-error continuation, but never message without a checked allowance.
     if case .unavailable = boundedCopy(
       app, kAXRoleAttribute as CFString, until: deadline, access: access)
-    { return .unknown }
+    { return .init(startEvidence: .unknown) }
     guard case .value(let windowRef) = boundedCopy(
       app, kAXFocusedWindowAttribute as CFString, until: deadline, access: access),
       CFGetTypeID(windowRef) == AXUIElementGetTypeID()
-    else { return .unknown }
+    else { return .init(startEvidence: .unknown) }
     let window = windowRef as! AXUIElement
     let walk = url(in: window, until: deadline, access: access)
     var address = walk.url
@@ -364,35 +391,145 @@ public enum CallEvidenceReader {
       switch boundedCopy(window, kAXDocumentAttribute as CFString, until: deadline, access: access) {
       case .value(let value): address = value as? String
       case .missing: break
-      case .failed, .unavailable: return .unknown
+      case .failed, .unavailable: return .init(startEvidence: .unknown)
       }
     }
-    guard let address else { return walk.complete ? .none : .unknown }
-    guard let match = CallMeetingURL.classify(address) else { return .none }
-    return .call(family: match.family, room: match.room)
+    guard let address else { return .init(startEvidence: walk.complete ? .none : .unknown) }
+    guard let match = CallMeetingURL.classify(address) else { return .init(startEvidence: .none) }
+    let start = Evidence.call(family: match.family, room: match.room)
+    // A document fallback has no web-area scope, so it cannot authorize a window-wide state scan.
+    guard match.family == .googleMeet, let page = walk.webArea
+    else { return .init(startEvidence: start) }
+    return meetSnapshot(in: page, match: match, until: deadline, access: access)
+  }
+
+  private static let meetEndTitles: Set<String> = [
+    "You left the meeting", "You've ended the meeting for everyone",
+  ]
+
+  /// Only the matched page's own UI is eligible. No body-text or nested-document search.
+  private static func meetSnapshot(
+    in page: AXUIElement, match: CallMeetingURL.Match,
+    until deadline: ContinuousClock.Instant, access: Access
+  ) -> Snapshot {
+    let start = Evidence.call(family: match.family, room: match.room)
+    var queue: [(AXUIElement, Int)] = [(page, 0)]
+    var cursor = 0
+    var complete = true
+    var ended = false
+    while cursor < queue.count, cursor < 800, access.now() < deadline {
+      let (node, level) = queue[cursor]
+      cursor += 1
+      guard case .value(let rawRole) = boundedCopy(
+        node, kAXRoleAttribute as CFString, until: deadline, access: access),
+        let role = rawRole as? String
+      else { complete = false; continue }
+      if CFEqual(node, page), role != "AXWebArea" { return .init(startEvidence: .unknown) }
+      if role == "AXWebArea", !CFEqual(node, page) {
+        complete = false
+        continue
+      }
+      if role == "AXButton" {
+        let title = meetText(node, kAXTitleAttribute as CFString, until: deadline, access: access)
+        if !title.valid { complete = false }
+        let description: (text: String?, valid: Bool) = title.text == "Leave call" ? (text: nil, valid: true)
+          : meetText(node, kAXDescriptionAttribute as CFString, until: deadline, access: access)
+        if !description.valid { complete = false }
+        if title.text == "Leave call" || description.text == "Leave call" {
+          guard sameRoom(page, match: match, until: deadline, access: access)
+          else { return .init(startEvidence: .unknown) }
+          return .init(
+            startEvidence: start, continuity: .ongoing(family: match.family, room: match.room))
+        }
+        if (title.text ?? "").isEmpty, (description.text ?? "").isEmpty { complete = false }
+      } else if role == "AXHeading" {
+        let title = meetText(node, kAXTitleAttribute as CFString, until: deadline, access: access)
+        if !title.valid { complete = false }
+        if let text = title.text, meetEndTitles.contains(text) {
+          if case .value(let rawLevel) = boundedCopy(
+            node, kAXValueAttribute as CFString, until: deadline, access: access),
+            let level = rawLevel as? NSNumber,
+            CFGetTypeID(rawLevel) != CFBooleanGetTypeID(), level.doubleValue == 1
+          {
+            ended = true
+          } else {
+            complete = false
+          }
+        }
+      }
+      switch boundedCopy(node, kAXChildrenAttribute as CFString, until: deadline, access: access) {
+      case .value(let value):
+        guard let children = value as? [AXUIElement] else { complete = false; continue }
+        if level < 32 { queue.append(contentsOf: children.map { ($0, level + 1) }) }
+        else if !children.isEmpty { complete = false }
+      case .missing: break
+      case .failed, .unavailable: complete = false
+      }
+    }
+    if cursor < queue.count || access.now() >= deadline { complete = false }
+    if complete, ended {
+      guard sameRoom(page, match: match, until: deadline, access: access)
+      else { return .init(startEvidence: .unknown) }
+      return .init(startEvidence: .none, continuity: .ended(family: match.family, room: match.room))
+    }
+    return .init(startEvidence: start)
+  }
+
+  private static func meetText(
+    _ element: AXUIElement, _ attribute: CFString, until deadline: ContinuousClock.Instant,
+    access: Access
+  ) -> (text: String?, valid: Bool) {
+    switch boundedCopy(element, attribute, until: deadline, access: access) {
+    case .value(let value):
+      guard let text = value as? String else { return (nil, false) }
+      return (text, true)
+    case .missing: return (nil, true)
+    case .failed, .unavailable: return (nil, false)
+    }
+  }
+
+  private static func sameRoom(
+    _ page: AXUIElement, match: CallMeetingURL.Match,
+    until deadline: ContinuousClock.Instant, access: Access
+  ) -> Bool {
+    guard case .value(let value) = boundedCopy(
+      page, kAXURLAttribute as CFString, until: deadline, access: access),
+      let address = (value as? URL)?.absoluteString ?? (value as? String)
+    else { return false }
+    return CallMeetingURL.classify(address) == match
   }
 
   /// Breadth-first, at most 12 levels and 400 elements: browser trees are deep, and a page
   /// with a huge tree must not stall the read. `complete` is false when a read on the way failed.
   private static func url(
     in root: AXUIElement, until deadline: ContinuousClock.Instant, access: Access
-  ) -> (url: String?, complete: Bool) {
-    var queue: [(AXUIElement, Int)] = [(root, 0)]
+  ) -> (url: String?, webArea: AXUIElement?, complete: Bool) {
+    var queue: [(AXUIElement, Int, Bool)] = [(root, 0, true)]
     var visited = 0
     var complete = true
     while !queue.isEmpty, visited < 400, access.now() < deadline {
-      let (node, level) = queue.removeFirst()
+      let (node, level, eligibleRoot) = queue.removeFirst()
       visited += 1
+      var eligibleDescendants = eligibleRoot
       switch boundedCopy(node, kAXRoleAttribute as CFString, until: deadline, access: access) {
       case .value(let role) where (role as? String) == "AXWebArea":
+        // Preserve legacy address discovery below documents, but never promote an embedded
+        // document into the trusted continuity root when its ancestor has no readable URL.
+        eligibleDescendants = false
         switch boundedCopy(node, kAXURLAttribute as CFString, until: deadline, access: access) {
         case .value(let value):
-          if let link = (value as? URL)?.absoluteString ?? (value as? String) { return (link, true) }
+          if let link = (value as? URL)?.absoluteString ?? (value as? String) {
+            return (link, eligibleRoot ? node : nil, true)
+          }
         case .missing: break
         case .failed, .unavailable: complete = false
         }
-      case .failed, .unavailable: complete = false
-      default: break
+      case .value(let role):
+        if (role as? String)?.isEmpty != false { eligibleDescendants = false }
+      case .failed, .unavailable:
+        complete = false
+        eligibleDescendants = false
+      case .missing: eligibleDescendants = false
       }
       switch boundedCopy(node, kAXChildrenAttribute as CFString, until: deadline, access: access) {
       case .value(let value):
@@ -402,14 +539,14 @@ public enum CallEvidenceReader {
           if !children.isEmpty { complete = false }
           continue
         }
-        queue.append(contentsOf: children.map { ($0, level + 1) })
+        queue.append(contentsOf: children.map { ($0, level + 1, eligibleDescendants) })
       case .missing: break
       case .failed, .unavailable: complete = false
       }
     }
     // Stopped at the element limit with elements still waiting: not a full search (r6 F5).
     if !queue.isEmpty { complete = false }
-    return (nil, complete)
+    return (nil, nil, complete)
   }
 
   // MARK: - Accessibility reads

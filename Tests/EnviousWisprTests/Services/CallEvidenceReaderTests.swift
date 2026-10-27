@@ -14,6 +14,8 @@ struct CallEvidenceReaderTests {
   final class Fixture {
     let window = AXUIElementCreateApplication(70_001)
     let page = AXUIElementCreateApplication(70_002)
+    let heading = AXUIElementCreateApplication(80_001)
+    let leave = AXUIElementCreateApplication(80_002)
     let pid: Int32 = 70_000
     var instant = ContinuousClock.now
     var requireExactTimeout = true
@@ -26,6 +28,10 @@ struct CallEvidenceReaderTests {
     var title: String?
     var pageURL: String? = "https://meet.google.com/abc-defg-hij"
     var document: String?
+    var meetHeading: String?
+    var meetHeadingLevel: Reader.CopyResult = .value(NSNumber(value: 1))
+    var leaveTitle: String?
+    var leaveDescription: String?
     lazy var windows: [AXUIElement] = [window]
     var response: ((Fixture, AXUIElement, String) -> Reader.CopyResult?)?
 
@@ -61,10 +67,26 @@ struct CallEvidenceReaderTests {
       case "AXWindows": return .value(windows as CFArray)
       case "AXFocusedWindow": return .value(window)
       case "AXIdentifier": return identifier.map { .value($0 as CFString) } ?? .missing
-      case "AXTitle": return title.map { .value($0 as CFString) } ?? .missing
-      case "AXRole": return .value((CFEqual(element, page) ? "AXWebArea" : "AXWindow") as CFString)
+      case "AXTitle":
+        let text = CFEqual(element, heading) ? meetHeading : CFEqual(element, leave) ? leaveTitle : title
+        return text.map { .value($0 as CFString) } ?? .missing
+      case "AXDescription":
+        return CFEqual(element, leave)
+          ? leaveDescription.map { .value($0 as CFString) } ?? .missing : .missing
+      case "AXValue": return CFEqual(element, heading) ? meetHeadingLevel : .missing
+      case "AXRole":
+        let role = CFEqual(element, heading) ? "AXHeading"
+          : CFEqual(element, leave) ? "AXButton" : CFEqual(element, page) ? "AXWebArea" : "AXWindow"
+        return .value(role as CFString)
       case "AXChildren":
-        return CFEqual(element, window) ? .value([page] as CFArray) : .missing
+        if CFEqual(element, window) { return .value([page] as CFArray) }
+        if CFEqual(element, page) {
+          var children: [AXUIElement] = []
+          if meetHeading != nil { children.append(heading) }
+          if leaveTitle != nil || leaveDescription != nil { children.append(leave) }
+          return children.isEmpty ? .missing : .value(children as CFArray)
+        }
+        return .missing
       case "AXURL": return pageURL.map { .value($0 as CFString) } ?? .missing
       case "AXDocument": return document.map { .value($0 as CFString) } ?? .missing
       default: return .missing
@@ -77,6 +99,256 @@ struct CallEvidenceReaderTests {
     let fixture = Fixture()
     #expect(Reader.meetingPage(appPID: fixture.pid, access: fixture.access)
       == .call(family: .googleMeet, room: "abc-defg-hij"))
+  }
+
+  @Test("A proved Meet post-call page is not eligible to start another recording",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4142"))
+  func endedMeetPageIsNotStartEvidence() {
+    let fixture = Fixture()
+    let heading = AXUIElementCreateApplication(70_003)
+    fixture.response = { f, element, attribute in
+      if CFEqual(element, f.page), attribute == "AXChildren" {
+        return .value([heading] as CFArray)
+      }
+      guard CFEqual(element, heading) else { return nil }
+      switch attribute {
+      case "AXRole": return .value("AXHeading" as CFString)
+      case "AXTitle": return .value("You left the meeting" as CFString)
+      case "AXValue": return .value(NSNumber(value: 1))
+      case "AXChildren": return .missing
+      default: return .missing
+      }
+    }
+
+    #expect(Reader.meetingPage(appPID: fixture.pid, access: fixture.access) == .none)
+  }
+
+  @Test("A meeting URL alone never becomes independent ongoing-call proof")
+  func urlOnlySnapshotIsUncertain() {
+    let fixture = Fixture()
+    #expect(Reader.meetingPageSnapshot(appPID: fixture.pid, access: fixture.access)
+      == .init(startEvidence: .call(family: .googleMeet, room: "abc-defg-hij")))
+  }
+
+  @Test("Normal Meet Leave has attributed ended continuity and suppresses start admission")
+  func normalMeetLeaveSnapshot() {
+    let fixture = Fixture()
+    fixture.meetHeading = "You left the meeting"
+    #expect(Reader.meetingPageSnapshot(appPID: fixture.pid, access: fixture.access)
+      == .init(startEvidence: .none, continuity: .ended(family: .googleMeet, room: "abc-defg-hij")))
+    #expect(fixture.refused.isEmpty, "every exact handle must receive its own timeout")
+  }
+
+  @Test("Meet host End-for-everyone has the separate verified ended heading")
+  func hostMeetEndSnapshot() {
+    let fixture = Fixture()
+    fixture.meetHeading = "You've ended the meeting for everyone"
+    #expect(Reader.meetingPageSnapshot(appPID: fixture.pid, access: fixture.access)
+      == .init(startEvidence: .none, continuity: .ended(family: .googleMeet, room: "abc-defg-hij")))
+  }
+
+  @Test("A same-page Leave control wins even when an end-like heading was encountered first",
+    arguments: [true, false])
+  func ongoingMeetWins(title: Bool) {
+    let fixture = Fixture()
+    fixture.meetHeading = "You left the meeting"
+    fixture.leaveTitle = title ? "Leave call" : ""
+    fixture.leaveDescription = title ? nil : "Leave call"
+    #expect(Reader.meetingPageSnapshot(appPID: fixture.pid, access: fixture.access)
+      == .init(startEvidence: .call(family: .googleMeet, room: "abc-defg-hij"),
+        continuity: .ongoing(family: .googleMeet, room: "abc-defg-hij")))
+  }
+
+  @Test("Near-match, confirmation and unsupported headings are not ended proof",
+    arguments: ["You left the meeting early", "End the call or just leave?", "Unrecognized localized UI"])
+  func unrecognizedMeetHeading(_ text: String) {
+    let fixture = Fixture()
+    fixture.meetHeading = text
+    #expect(Reader.meetingPageSnapshot(appPID: fixture.pid, access: fixture.access).continuity == .unknown)
+  }
+
+  @Test("Malformed, missing and non-level-one end metadata remains unknown")
+  func invalidMeetHeadingMetadata() {
+    let levels: [Reader.CopyResult] = [
+      .missing, .failed, .value("1" as CFString), .value(NSNumber(value: true)),
+      .value(NSNumber(value: 2)),
+    ]
+    for level in levels {
+      let fixture = Fixture()
+      fixture.meetHeading = "You left the meeting"
+      fixture.meetHeadingLevel = level
+      #expect(Reader.meetingPageSnapshot(appPID: fixture.pid, access: fixture.access).continuity == .unknown)
+    }
+    let malformed = Fixture()
+    malformed.meetHeading = "You left the meeting"
+    malformed.response = { f, node, attribute in
+      CFEqual(node, f.heading) && attribute == "AXTitle" ? .value(NSNumber(value: 1)) : nil
+    }
+    #expect(Reader.meetingPageSnapshot(appPID: malformed.pid, access: malformed.access).continuity == .unknown)
+  }
+
+  @Test("A heading elsewhere in the browser window cannot end the matched page")
+  func meetEndCueOutsidePage() {
+    let fixture = Fixture()
+    fixture.meetHeading = "You left the meeting"
+    fixture.response = { f, node, attribute in
+      guard attribute == "AXChildren" else { return nil }
+      if CFEqual(node, f.window) { return .value([f.page, f.heading] as CFArray) }
+      return CFEqual(node, f.page) ? .missing : nil
+    }
+    #expect(Reader.meetingPageSnapshot(appPID: fixture.pid, access: fixture.access).continuity == .unknown)
+  }
+
+  @Test("A nested embedded document cannot lend its heading to the Meet page")
+  func meetEndCueInNestedDocument() {
+    let fixture = Fixture()
+    fixture.meetHeading = "You left the meeting"
+    let nested = AXUIElementCreateApplication(80_003)
+    fixture.response = { f, node, attribute in
+      if CFEqual(node, f.page), attribute == "AXChildren" { return .value([nested] as CFArray) }
+      guard CFEqual(node, nested) else { return nil }
+      switch attribute {
+      case "AXRole": return .value("AXWebArea" as CFString)
+      case "AXChildren": return .value([f.heading] as CFArray)
+      default: return .missing
+      }
+    }
+    #expect(Reader.meetingPageSnapshot(appPID: fixture.pid, access: fixture.access).continuity == .unknown)
+    #expect(!fixture.messages.contains("AXTitle"), "embedded document labels must not be read")
+  }
+
+  @Test("Nested or ancestry-unverified URL roots retain legacy admission without continuity",
+    arguments: ["embedded", "failed", "missing", "malformed"])
+  func nestedURLCannotBecomeContinuityRoot(_ ancestor: String) {
+    let fixture = Fixture()
+    fixture.meetHeading = "You left the meeting"
+    let nested = AXUIElementCreateApplication(80_003)
+    fixture.response = { f, node, attribute in
+      if CFEqual(node, f.page) {
+        switch attribute {
+        case "AXRole":
+          switch ancestor {
+          case "failed": return .failed
+          case "missing": return .missing
+          case "malformed": return .value(NSNumber(value: 1))
+          default: return .value("AXWebArea" as CFString)
+          }
+        case "AXURL": return .missing
+        case "AXChildren": return .value([nested] as CFArray)
+        default: return nil
+        }
+      }
+      guard CFEqual(node, nested) else { return nil }
+      switch attribute {
+      case "AXRole": return .value("AXWebArea" as CFString)
+      case "AXURL": return .value("https://meet.google.com/abc-defg-hij" as CFString)
+      case "AXChildren": return .value([f.heading] as CFArray)
+      default: return .missing
+      }
+    }
+    #expect(Reader.meetingPageSnapshot(appPID: fixture.pid, access: fixture.access)
+      == .init(startEvidence: .call(family: .googleMeet, room: "abc-defg-hij")))
+    #expect(!fixture.messages.contains("AXTitle"), "untrusted descendants cannot supply state cues")
+  }
+
+  @Test("A document fallback remains start evidence but cannot authorize an end scan")
+  func meetDocumentHasNoContinuityScope() {
+    let fixture = Fixture()
+    fixture.pageURL = nil
+    fixture.document = "https://meet.google.com/abc-defg-hij"
+    fixture.meetHeading = "You left the meeting"
+    #expect(Reader.meetingPageSnapshot(appPID: fixture.pid, access: fixture.access)
+      == .init(startEvidence: .call(family: .googleMeet, room: "abc-defg-hij")))
+  }
+
+  @Test("A changed room invalidates ended proof before return")
+  func meetRoomRevalidation() {
+    let fixture = Fixture()
+    fixture.meetHeading = "You left the meeting"
+    var reads = 0
+    fixture.response = { f, node, attribute in
+      guard CFEqual(node, f.page), attribute == "AXURL" else { return nil }
+      reads += 1
+      let url = reads == 1 ? "https://meet.google.com/abc-defg-hij" : "https://meet.google.com/xyz-wxyz-xyz"
+      return .value(url as CFString)
+    }
+    #expect(Reader.meetingPageSnapshot(appPID: fixture.pid, access: fixture.access)
+      == .init(startEvidence: .unknown))
+  }
+
+  @Test("A page whose role changes after URL lookup cannot supply ended proof")
+  func meetRootRoleChanges() {
+    let fixture = Fixture()
+    fixture.meetHeading = "You left the meeting"
+    var roleReads = 0
+    fixture.response = { f, node, attribute in
+      guard CFEqual(node, f.page), attribute == "AXRole" else { return nil }
+      roleReads += 1
+      return .value((roleReads == 1 ? "AXWebArea" : "AXGroup") as CFString)
+    }
+    #expect(Reader.meetingPageSnapshot(appPID: fixture.pid, access: fixture.access)
+      == .init(startEvidence: .unknown))
+  }
+
+  @Test("Native NSURL addresses work for the observed ended-page route")
+  func meetNSURLSnapshot() throws {
+    let fixture = Fixture()
+    fixture.meetHeading = "You left the meeting"
+    let address = try #require(URL(string: "https://meet.google.com/meet/abc-defg-hij")) as NSURL
+    fixture.response = { f, node, attribute in
+      CFEqual(node, f.page) && attribute == "AXURL" ? .value(address) : nil
+    }
+    #expect(Reader.meetingPageSnapshot(appPID: fixture.pid, access: fixture.access).continuity
+      == .ended(family: .googleMeet, room: "abc-defg-hij"))
+  }
+
+  @Test("Partial or exhausted state scans do not claim an ended call", arguments: [true, false])
+  func incompleteMeetStateScan(partial: Bool) {
+    let fixture = Fixture()
+    fixture.meetHeading = "You left the meeting"
+    let unreadable = AXUIElementCreateApplication(80_003)
+    fixture.response = { f, node, attribute in
+      if partial {
+        if CFEqual(node, f.page), attribute == "AXChildren" {
+          return .value([f.heading, unreadable] as CFArray)
+        }
+        if CFEqual(node, unreadable), attribute == "AXRole" { return .failed }
+      } else if CFEqual(node, f.heading), attribute == "AXValue" {
+        f.instant = f.instant.advanced(by: .seconds(1))
+      }
+      return nil
+    }
+    #expect(Reader.meetingPageSnapshot(appPID: fixture.pid, access: fixture.access).continuity == .unknown)
+  }
+
+  @Test("Unsearched depth or node-limit descendants cannot prove a Meet call ended",
+    arguments: [true, false])
+  func boundedMeetStateScan(depth: Bool) {
+    let fixture = Fixture()
+    fixture.meetHeading = "You left the meeting"
+    let nodes = (0..<(depth ? 34 : 800)).map { AXUIElementCreateApplication(Int32(81_000 + $0)) }
+    fixture.response = { f, node, attribute in
+      if CFEqual(node, f.page), attribute == "AXChildren" {
+        return .value(([f.heading] + (depth ? [nodes[0]] : nodes)) as CFArray)
+      }
+      guard let index = nodes.firstIndex(where: { CFEqual($0, node) }) else { return nil }
+      if attribute == "AXRole" { return .value("AXGroup" as CFString) }
+      if attribute == "AXChildren", depth, index + 1 < nodes.count {
+        return .value([nodes[index + 1]] as CFArray)
+      }
+      return .missing
+    }
+    #expect(Reader.meetingPageSnapshot(appPID: fixture.pid, access: fixture.access).continuity == .unknown)
+  }
+
+  @Test("Other browser vendors keep start admission without borrowing Meet's end language")
+  func otherBrowserVendorHasUnknownContinuity() {
+    let fixture = Fixture()
+    fixture.pageURL = "https://zoom.us/j/123456789"
+    fixture.meetHeading = "You left the meeting"
+    #expect(Reader.meetingPageSnapshot(appPID: fixture.pid, access: fixture.access)
+      == .init(startEvidence: .call(family: .zoom, room: "123456789")))
+    #expect(!fixture.messages.contains("AXTitle"))
   }
 
   @Test("#4135 a signed-in Meet address /meet/<code> proves the call, from the page or the document")
