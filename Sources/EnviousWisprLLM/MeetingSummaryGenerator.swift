@@ -397,6 +397,18 @@ public enum MeetingSummary {
 
   // MARK: - Run
 
+  /// The text and whether the successful plan summarized transcript or notes in parts.
+  /// Retries and overflow attempts do not determine `inParts`.
+  public struct Written: Equatable, Sendable {
+    public let text: String
+    public let inParts: Bool
+
+    public init(text: String, inParts: Bool) {
+      self.text = text
+      self.inParts = inParts
+    }
+  }
+
   /// One model call: the system instructions and the user prompt in, the answer out.
   public typealias Complete = @Sendable (_ instructions: String, _ prompt: String) async throws
     -> String
@@ -407,12 +419,14 @@ public enum MeetingSummary {
   /// a meeting that fits; otherwise a call per part, rounds that combine the answers until they
   /// fit, and the final call. Refused before any call when the window is too small or the worst
   /// case needs more than `maxCalls`.
+  /// Returns the text and whether the successful plan used parts. If an overflow causes
+  /// a byte-count re-plan, the returned flag describes that re-plan.
   public static func write(
     transcript: String, notes: String, window: Window, callTimeoutSeconds: Double,
     admit: Admit, complete: @escaping Complete
-  ) async throws -> String {
+  ) async throws -> Written {
     let attempts = AttemptCounter()
-    func run(_ counting: Counting) async throws -> String {
+    func run(_ counting: Counting) async throws -> Written {
       try await write(
         plan(transcript: transcript, notes: notes, window: window, counting: counting),
         transcript: transcript, timeoutSeconds: callTimeoutSeconds, attempts: attempts, admit: admit,
@@ -425,7 +439,7 @@ public enum MeetingSummary {
   private static func write(
     _ plan: Plan, transcript: String, timeoutSeconds: Double, attempts: AttemptCounter, admit: Admit,
     complete: @escaping Complete
-  ) async throws -> String {
+  ) async throws -> Written {
     let counting = plan.counting
     func ask(_ prompt: String) async throws -> String {
       try await call(
@@ -434,7 +448,9 @@ public enum MeetingSummary {
     }
     guard let pieces = plan.pieces else {
       // The whole transcript, which `plan` has just measured against the budget.
-      return try await ask(finalPrompt(notes: plan.inlineNotes, body: "Transcript:\n\(transcript)"))
+      let text = try await ask(
+        finalPrompt(notes: plan.inlineNotes, body: "Transcript:\n\(transcript)"))
+      return Written(text: text, inParts: false)
     }
     let cap = partialCap(plan.budget)
     // About three-quarters of a word per estimated token, or one word per six bytes when the
@@ -503,7 +519,7 @@ public enum MeetingSummary {
       }
       answers = combined
     }
-    return try await ask(
+    let text = try await ask(
       finalPrompt(
         notes: plan.inlineNotes,
         body: """
@@ -512,6 +528,7 @@ public enum MeetingSummary {
 
           \(joined(answers))
           """))
+    return Written(text: text, inParts: true)
   }
 
   private static func finalPrompt(notes: String, body: String) -> String {
