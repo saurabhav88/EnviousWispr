@@ -32,6 +32,10 @@ struct CallEvidenceReaderTests {
     var meetHeadingLevel: Reader.CopyResult = .value(NSNumber(value: 1))
     var leaveTitle: String?
     var leaveDescription: String?
+    var ownerPID: Int32? = 70_000
+    var ownerUnambiguous = true
+    var ownerBundle = "com.google.Chrome"
+    var ownerBirth: UInt64 = 100
     lazy var windows: [AXUIElement] = [window]
     var response: ((Fixture, AXUIElement, String) -> Reader.CopyResult?)?
 
@@ -49,7 +53,12 @@ struct CallEvidenceReaderTests {
           AccessibilityWake.Report(
             roleError: .success, roleReadExhausted: false, manual: false, manualEnabled: false)
         },
-        regularTeamsPIDs: { [self.pid] })
+        regularTeamsPIDs: { [self.pid] }, isTrusted: { true },
+        appOwner: { _, _ in self.ownerPID.map { (pid: $0, unambiguous: self.ownerUnambiguous) } },
+        appRun: { pid in
+          .init(pid: pid, bundleIdentifier: self.ownerBundle, birthSeconds: self.ownerBirth,
+            birthMicroseconds: 1)
+        })
     }
 
     func read(_ element: AXUIElement, _ attribute: CFString) -> Reader.CopyResult {
@@ -128,6 +137,152 @@ struct CallEvidenceReaderTests {
     let fixture = Fixture()
     #expect(Reader.meetingPageSnapshot(appPID: fixture.pid, access: fixture.access)
       == .init(startEvidence: .call(family: .googleMeet, room: "abc-defg-hij")))
+  }
+
+  @Test("Browser helper snapshots name the scanned regular owner run, not the microphone holder")
+  func browserOwnerAttribution() {
+    let fixture = Fixture()
+    fixture.leaveTitle = "Leave call"
+    fixture.ownerPID = 72_000
+    let owner = AXUIElementCreateApplication(72_000)
+    var ownerSelections = 0
+    var scannedOwners: [AXUIElement] = []
+    fixture.response = { _, node, attribute in
+      if attribute == "AXFocusedWindow" { scannedOwners.append(node) }
+      return nil
+    }
+    var access = fixture.access
+    let select = access.appOwner
+    access.appOwner = { rule, holder in
+      #expect(rule == .browser(.chrome))
+      #expect(holder == fixture.pid)
+      ownerSelections += 1
+      return select(rule, holder)
+    }
+    let value = Reader.snapshot(for: .browser(.chrome), holderPID: fixture.pid, access: access)
+    #expect(value.owner == Reader.AppRun(pid: 72_000, bundleIdentifier: "com.google.Chrome",
+      birthSeconds: 100, birthMicroseconds: 1))
+    #expect(value.continuity == .ongoing(family: .googleMeet, room: "abc-defg-hij"))
+    #expect(value.startEvidence == .call(family: .googleMeet, room: "abc-defg-hij"))
+    #expect(ownerSelections == 1)
+    #expect(scannedOwners.count == 1 && scannedOwners.allSatisfy { CFEqual($0, owner) })
+    #expect(Reader.meetingPage(appPID: 72_000, access: access) == value.startEvidence)
+    #expect(scannedOwners.count == 2, "each real entry uses one protected scan")
+  }
+
+  @Test("A native Teams helper keeps its room key while the exact regular owner is attributed")
+  func teamsOwnerAttribution() {
+    let fixture = teamsFixture()
+    fixture.ownerBundle = "com.microsoft.teams2"
+    var access = fixture.access
+    access.regularTeamsPIDs = { [72_000] }
+    access.appOwner = { _, _ in Issue.record("Teams must use its existing exact owner selection"); return nil }
+    let owner = AXUIElementCreateApplication(72_000)
+    let response = fixture.response
+    var scannedOwners: [AXUIElement] = []
+    fixture.response = { f, node, attribute in
+      if attribute == "AXWindows" { scannedOwners.append(node) }
+      return response?(f, node, attribute)
+    }
+    let value = Reader.snapshot(for: .callApp(.teams), holderPID: fixture.pid, access: access)
+    #expect(value.owner == Reader.AppRun(pid: 72_000, bundleIdentifier: "com.microsoft.teams2",
+      birthSeconds: 100, birthMicroseconds: 1))
+    #expect(value.startEvidence == .call(family: .teams, room: "pid-70000"))
+    #expect(value.continuity == .ongoing(family: .teams, room: "pid-70000"))
+    #expect(scannedOwners.count == 1 && scannedOwners.allSatisfy { CFEqual($0, owner) })
+  }
+
+  @Test("Healthy Zoom ownership preserves its exact window continuity")
+  func zoomOwnerAttribution() {
+    let fixture = Fixture()
+    fixture.ownerBundle = "us.zoom.xos"
+    let value = Reader.snapshot(for: .callWindow(.zoom), holderPID: fixture.pid, access: fixture.access)
+    #expect(value.owner?.pid == fixture.pid)
+    #expect(value.owner?.bundleIdentifier == "us.zoom.xos")
+    #expect(value.continuity == .ongoing(family: .zoom, room: "pid-70000"))
+    #expect(value.startEvidence == Reader.callWindow(family: .zoom, appPID: fixture.pid, access: fixture.access))
+  }
+
+  @Test("Unverified owner metadata cannot authorize ended continuity",
+    arguments: ["wrongBundle", "missingRun", "ambiguous", "differentPID", "missingBirth"])
+  func unverifiedOwnerWithholdsContinuity(_ reason: String) {
+    let fixture = Fixture()
+    fixture.meetHeading = "You left the meeting"
+    fixture.ownerUnambiguous = reason != "ambiguous"
+    if reason == "wrongBundle" { fixture.ownerBundle = "com.example.unrelated" }
+    if reason == "missingBirth" { fixture.ownerBirth = 0 }
+    var access = fixture.access
+    let getRun = access.appRun
+    access.appRun = { pid in
+      if reason == "missingRun" { return nil }
+      if reason == "differentPID" {
+        return .init(pid: 99_000, bundleIdentifier: "com.google.Chrome", birthSeconds: 100,
+          birthMicroseconds: 1)
+      }
+      return getRun(pid)
+    }
+    let value = Reader.snapshot(for: .browser(.chrome), holderPID: fixture.pid, access: access)
+    #expect(value.owner == nil)
+    #expect(value.continuity == .unknown)
+    #expect(value.startEvidence == .none, "legacy non-call admission is not stronger call proof")
+  }
+
+  @Test("Same-PID birth changes and disappearing owners cannot borrow a replacement",
+    arguments: [true, false])
+  func ownerChangesDuringScan(birthChanges: Bool) {
+    let fixture = Fixture()
+    fixture.leaveTitle = "Leave call"
+    fixture.ownerPID = 72_000
+    var selections = 0
+    var runRequests: [Int32] = []
+    var access = fixture.access
+    access.appOwner = { _, _ in
+      selections += 1
+      return fixture.ownerPID.map { (pid: $0, unambiguous: true) }
+    }
+    access.appRun = { pid in
+      runRequests.append(pid)
+      if !birthChanges && runRequests.count > 1 { return nil }
+      return .init(pid: pid, bundleIdentifier: "com.google.Chrome",
+        birthSeconds: birthChanges && runRequests.count > 1 ? 101 : 100, birthMicroseconds: 1)
+    }
+    fixture.response = { f, _, attribute in
+      if attribute == "AXFocusedWindow" { f.ownerPID = 73_000 }
+      return nil
+    }
+    let value = Reader.snapshot(for: .browser(.chrome), holderPID: fixture.pid, access: access)
+    #expect(value.owner == nil)
+    #expect(value.continuity == .unknown)
+    #expect(value.startEvidence == .call(family: .googleMeet, room: "abc-defg-hij"))
+    #expect(selections == 1)
+    #expect(runRequests == [72_000, 72_000])
+  }
+
+  @Test("Unresolved owners and exhausted metadata budgets do not start a new protected scan",
+    arguments: [true, false])
+  func unavailableOwnerBeforeScan(exhausted: Bool) {
+    let fixture = Fixture()
+    var access = fixture.access
+    access.appOwner = { _, _ in
+      if exhausted {
+        fixture.instant = fixture.instant.advanced(by: .seconds(2))
+        return (pid: fixture.pid, unambiguous: true)
+      }
+      return nil
+    }
+    let value = Reader.snapshot(for: .browser(.chrome), holderPID: fixture.pid, access: access)
+    #expect(value == .init(startEvidence: .unknown))
+    #expect(fixture.messages.isEmpty)
+  }
+
+  @Test("An unresolved legacy microphone-only native owner keeps its existing start meaning")
+  func unownedLegacyNativeAdmission() {
+    let fixture = Fixture()
+    var access = fixture.access
+    access.appOwner = { _, _ in nil }
+    let value = Reader.snapshot(for: .callApp(.facetime), holderPID: fixture.pid, access: access)
+    #expect(value == .init(startEvidence: .call(family: .facetime, room: "pid-70000")))
+    #expect(fixture.messages.isEmpty)
   }
 
   @Test("Normal Meet Leave has attributed ended continuity and suppresses start admission")

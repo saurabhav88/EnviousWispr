@@ -6,9 +6,9 @@ import Foundation
 
 /// Reads, through Accessibility, whether a call app is really in a call (#4012 §3.3, R4, C2):
 /// the meeting page in a browser's front window, or a call app's meeting window. Only the
-/// classification and an in-memory room key leave this type: no address, title or page text
-/// is stored, logged or sent. Every read has a short Accessibility timeout and runs off the
-/// main actor; a timeout or missing trust is `.unknown`, never "no call".
+/// typed evidence, in-memory room key and verified app-run metadata leave this type: no
+/// address, title or page text is stored, logged or sent. Every read has a short Accessibility
+/// timeout and runs off the main actor; missing trust or timeout is `.unknown`, never "no call".
 public enum CallEvidenceReader {
   public enum Evidence: Sendable, Equatable {
     case call(family: CallAppFamily, room: String)
@@ -25,13 +25,31 @@ public enum CallEvidenceReader {
     case unknown
   }
 
+  /// Process birth is an identity discriminator, never an observation/freshness timestamp.
+  package struct AppRun: Sendable, Equatable, Hashable {
+    package let pid: Int32
+    package let bundleIdentifier: String
+    package let birthSeconds: UInt64
+    package let birthMicroseconds: UInt64
+
+    package init(pid: Int32, bundleIdentifier: String, birthSeconds: UInt64, birthMicroseconds: UInt64) {
+      self.pid = pid
+      self.bundleIdentifier = bundleIdentifier.lowercased()
+      self.birthSeconds = birthSeconds
+      self.birthMicroseconds = birthMicroseconds
+    }
+  }
+
   package struct Snapshot: Sendable, Equatable {
     package let startEvidence: Evidence
     package let continuity: Continuity
+    /// Only the production entry attributes a run; the testable protected scan entries omit it.
+    package let owner: AppRun?
 
-    package init(startEvidence: Evidence, continuity: Continuity = .unknown) {
+    package init(startEvidence: Evidence, continuity: Continuity = .unknown, owner: AppRun? = nil) {
       self.startEvidence = startEvidence
       self.continuity = continuity
+      self.owner = owner
     }
   }
 
@@ -45,19 +63,28 @@ public enum CallEvidenceReader {
     package var read: (AXUIElement, CFString) -> CopyResult
     package var wake: (pid_t, Double) -> AccessibilityWake.Report
     package var regularTeamsPIDs: () -> [Int32]
+    package var isTrusted: () -> Bool
+    package var appOwner: (CallAppCatalog.Rule, Int32) -> (pid: Int32, unambiguous: Bool)?
+    package var appRun: (Int32) -> AppRun?
 
     package init(
       now: @escaping () -> ContinuousClock.Instant,
       setTimeout: @escaping (AXUIElement, Float) -> AXError,
       read: @escaping (AXUIElement, CFString) -> CopyResult,
       wake: @escaping (pid_t, Double) -> AccessibilityWake.Report,
-      regularTeamsPIDs: @escaping () -> [Int32]
+      regularTeamsPIDs: @escaping () -> [Int32],
+      isTrusted: (() -> Bool)? = nil,
+      appOwner: ((CallAppCatalog.Rule, Int32) -> (pid: Int32, unambiguous: Bool)?)? = nil,
+      appRun: ((Int32) -> AppRun?)? = nil
     ) {
       self.now = now
       self.setTimeout = setTimeout
       self.read = read
       self.wake = wake
       self.regularTeamsPIDs = regularTeamsPIDs
+      self.isTrusted = isTrusted ?? { AXIsProcessTrusted() }
+      self.appOwner = appOwner ?? { liveOwner(for: $0, holderPID: $1) }
+      self.appRun = appRun ?? { liveAppRun($0) }
     }
 
     package static var live: Self {
@@ -75,19 +102,64 @@ public enum CallEvidenceReader {
     snapshot(for: rule, holderPID: holderPID).startEvidence
   }
 
-  package static func snapshot(for rule: CallAppCatalog.Rule, holderPID: Int32) -> Snapshot {
-    guard AXIsProcessTrusted() else { return .init(startEvidence: .unknown) }
+  package static func snapshot(
+    for rule: CallAppCatalog.Rule, holderPID: Int32, access: Access = .live
+  ) -> Snapshot {
+    let deadline = scanDeadline(access)
+    guard access.isTrusted(), access.now() < deadline else { return .init(startEvidence: .unknown) }
     switch rule {
     case .callApp(let family):
-      return nativeCallSnapshot(family: family, holderPID: holderPID)
+      let selected: (pid: Int32, unambiguous: Bool)?
+      if family == .teams {
+        selected = teamsOwnerPID(holderPID: holderPID, regularTeamsPIDs: access.regularTeamsPIDs())
+          .map { (pid: $0, unambiguous: true) }
+      } else { selected = access.appOwner(rule, holderPID) }
+      guard let selected else {
+        return .init(startEvidence: family == .teams
+          ? .microphoneOnly(family: family, room: "pid-\(holderPID)")
+          : .call(family: family, room: "pid-\(holderPID)"))
+      }
+      return attributed(selected, rule: rule, until: deadline, access: access) {
+        nativeCallSnapshot(family: family, holderPID: holderPID, ownerPID: selected.pid,
+          until: deadline, access: access)
+      }
     case .callWindow(let family):
-      guard let app = runningApp(family: family, holderPID: holderPID)
+      guard let selected = access.appOwner(rule, holderPID)
       else { return .init(startEvidence: .unknown) }
-      return callWindowSnapshot(family: family, appPID: app.processIdentifier)
+      return attributed(selected, rule: rule, until: deadline, access: access) {
+        callWindowSnapshot(family: family, appPID: selected.pid, until: deadline, access: access)
+      }
+    case .browser:
+      guard let selected = access.appOwner(rule, holderPID)
+      else { return .init(startEvidence: .unknown) }
+      return attributed(selected, rule: rule, until: deadline, access: access) {
+        meetingPageSnapshot(appPID: selected.pid, until: deadline, access: access)
+      }
+    }
+  }
+
+  private static func attributed(
+    _ selected: (pid: Int32, unambiguous: Bool), rule: CallAppCatalog.Rule,
+    until deadline: ContinuousClock.Instant, access: Access, read: () -> Snapshot
+  ) -> Snapshot {
+    guard access.now() < deadline else { return .init(startEvidence: .unknown) }
+    let before = selected.unambiguous ? access.appRun(selected.pid) : nil
+    guard access.now() < deadline else { return .init(startEvidence: .unknown) }
+    let value = read()
+    guard let before, before.pid == selected.pid, before.birthSeconds > 0,
+      before.birthMicroseconds < 1_000_000, matches(before.bundleIdentifier, rule: rule),
+      access.now() < deadline, access.appRun(selected.pid) == before, access.now() < deadline
+    else { return .init(startEvidence: value.startEvidence) }
+    return .init(startEvidence: value.startEvidence, continuity: value.continuity, owner: before)
+  }
+
+  private static func matches(_ bundle: String, rule: CallAppCatalog.Rule) -> Bool {
+    switch rule {
+    case .callApp(let family), .callWindow(let family):
+      return CallAppCatalog.nativeApps.filter { $0.family == family }
+        .flatMap(\.appBundleIDs).contains { $0.lowercased() == bundle }
     case .browser(let browser):
-      guard let app = browserApp(browser, holderPID: holderPID)
-      else { return .init(startEvidence: .unknown) }
-      return meetingPageSnapshot(appPID: app.processIdentifier)
+      return browser.appBundleIDs.contains { $0.lowercased() == bundle }
     }
   }
 
@@ -100,6 +172,16 @@ public enum CallEvidenceReader {
   package static func nativeCallSnapshot(
     family: CallAppFamily, holderPID: Int32, access: Access = .live
   ) -> Snapshot {
+    let owner = family == .teams
+      ? teamsOwnerPID(holderPID: holderPID, regularTeamsPIDs: access.regularTeamsPIDs()) : nil
+    return nativeCallSnapshot(family: family, holderPID: holderPID, ownerPID: owner,
+      until: scanDeadline(access), access: access)
+  }
+
+  private static func nativeCallSnapshot(
+    family: CallAppFamily, holderPID: Int32, ownerPID: Int32?,
+    until deadline: ContinuousClock.Instant, access: Access
+  ) -> Snapshot {
     let room = "pid-\(holderPID)"
     guard family == .teams else {
       // A calling app's microphone use is its call (Wispr Flow's rule); the process is the room.
@@ -108,9 +190,8 @@ public enum CallEvidenceReader {
     // Teams' pre-join microphone test also captures audio (#4094). Only the observed exact
     // hang-up button proves a call for automatic recording; uncertainty still permits Ask.
     let unproven = Snapshot(startEvidence: .microphoneOnly(family: family, room: room))
-    guard let owner = teamsOwnerPID(holderPID: holderPID, regularTeamsPIDs: access.regularTeamsPIDs())
+    guard let owner = ownerPID
     else { return unproven }
-    let deadline = scanDeadline(access)
     let wake = access.wake(owner, Double(messagingTimeout))
     guard wake.roleError == .success, !wake.roleReadExhausted,
       let manual = wake.manual, !manual || wake.manualEnabled,
@@ -229,6 +310,33 @@ public enum CallEvidenceReader {
     }
   }
 
+  private static func liveOwner(
+    for rule: CallAppCatalog.Rule, holderPID: Int32
+  ) -> (pid: Int32, unambiguous: Bool)? {
+    switch rule {
+    case .callApp(let family), .callWindow(let family):
+      return runningApp(family: family, holderPID: holderPID)
+        .map { (pid: $0.app.processIdentifier, unambiguous: $0.unambiguous) }
+    case .browser(let browser):
+      return browserApp(browser, holderPID: holderPID)
+        .map { (pid: $0.processIdentifier, unambiguous: true) }
+    }
+  }
+
+  private static func liveAppRun(_ pid: Int32) -> AppRun? {
+    guard let app = NSRunningApplication(processIdentifier: pid),
+      app.activationPolicy == .regular, let bundle = app.bundleIdentifier
+    else { return nil }
+    // Same Darwin birth lookup as TerminalProcessScanner, retaining microseconds too.
+    var info = proc_bsdinfo()
+    let size = Int32(MemoryLayout<proc_bsdinfo>.size)
+    guard proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, size) == size,
+      info.pbi_start_tvsec > 0, info.pbi_start_tvusec < 1_000_000
+    else { return nil }
+    return .init(pid: pid, bundleIdentifier: bundle, birthSeconds: UInt64(info.pbi_start_tvsec),
+      birthMicroseconds: UInt64(info.pbi_start_tvusec))
+  }
+
   /// The browser window owner for a microphone holder: the holder itself, else the app bundle
   /// its executable lives in, else the only running copy of that browser. Two copies running
   /// (Chrome and Chrome Beta) with no way to tell which holds the microphone is unknown,
@@ -256,11 +364,13 @@ public enum CallEvidenceReader {
     return String(cString: buffer)
   }
 
-  private static func runningApp(family: CallAppFamily, holderPID: Int32) -> NSRunningApplication? {
+  private static func runningApp(
+    family: CallAppFamily, holderPID: Int32
+  ) -> (app: NSRunningApplication, unambiguous: Bool)? {
     if let app = NSRunningApplication(processIdentifier: holderPID),
       app.activationPolicy == .regular
     {
-      return app
+      return (app, true)
     }
     let ids: [String] =
       switch family {
@@ -268,9 +378,10 @@ public enum CallEvidenceReader {
       case .slack: ["com.tinyspeck.slackmacgap"]
       default: []
       }
-    return NSWorkspace.shared.runningApplications.first {
+    let candidates = NSWorkspace.shared.runningApplications.filter {
       ids.contains(($0.bundleIdentifier ?? "").lowercased())
     }
+    return candidates.first.map { ($0, candidates.count == 1) }
   }
 
   /// Zoom: a meeting window in any Zoom language (`ZoomCallWindow`, #4036; the main
@@ -284,17 +395,24 @@ public enum CallEvidenceReader {
   package static func callWindowSnapshot(
     family: CallAppFamily, appPID: pid_t, access: Access = .live
   ) -> Snapshot {
+    callWindowSnapshot(family: family, appPID: appPID, until: scanDeadline(access), access: access)
+  }
+
+  private static func callWindowSnapshot(
+    family: CallAppFamily, appPID: pid_t, until deadline: ContinuousClock.Instant, access: Access
+  ) -> Snapshot {
     switch family {
-    case .zoom: return zoomMeetingWindow(appPID: appPID, access: access)
-    case .slack: return slackHuddleWindow(appPID: appPID, access: access)
+    case .zoom: return zoomMeetingWindow(appPID: appPID, until: deadline, access: access)
+    case .slack: return slackHuddleWindow(appPID: appPID, until: deadline, access: access)
     default: return .init(startEvidence: .none)
     }
   }
 
   /// Slack's Leave control is independent of its UI language and channel/window name (#4036).
-  private static func slackHuddleWindow(appPID: pid_t, access: Access) -> Snapshot {
+  private static func slackHuddleWindow(
+    appPID: pid_t, until deadline: ContinuousClock.Instant, access: Access
+  ) -> Snapshot {
     // Same one-second budget as CallEvidenceRead.bounded; do not leave its shared lane busy.
-    let deadline = scanDeadline(access)
     let wake = access.wake(appPID, Double(messagingTimeout))
     guard wake.roleError == .success, !wake.roleReadExhausted,
       let manual = wake.manual, !manual || wake.manualEnabled,
@@ -423,8 +541,9 @@ public enum CallEvidenceReader {
   }
 
   /// Reads each Zoom window's identifier, then its title, only until one proves a meeting.
-  private static func zoomMeetingWindow(appPID: pid_t, access: Access) -> Snapshot {
-    let deadline = scanDeadline(access)
+  private static func zoomMeetingWindow(
+    appPID: pid_t, until deadline: ContinuousClock.Instant, access: Access
+  ) -> Snapshot {
     let app = AXUIElementCreateApplication(appPID)
     guard case .value(let value) = boundedCopy(
       app, kAXWindowsAttribute as CFString, until: deadline, access: access),
@@ -478,7 +597,12 @@ public enum CallEvidenceReader {
   }
 
   package static func meetingPageSnapshot(appPID: pid_t, access: Access = .live) -> Snapshot {
-    let deadline = scanDeadline(access)
+    meetingPageSnapshot(appPID: appPID, until: scanDeadline(access), access: access)
+  }
+
+  private static func meetingPageSnapshot(
+    appPID: pid_t, until deadline: ContinuousClock.Instant, access: Access
+  ) -> Snapshot {
     let app = AXUIElementCreateApplication(appPID)
     // AXRole itself wakes Chromium (#3802). Its value/error is not a capability gate:
     // preserve the old quick-error continuation, but never message without a checked allowance.
