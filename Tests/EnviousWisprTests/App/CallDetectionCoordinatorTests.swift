@@ -223,6 +223,66 @@
       return gate
     }
 
+    @Test("Yes refresh follows the matching active microphone source, including a handoff in its poll",
+      arguments: [false, true])
+    func yesRefreshFollowsCurrentActiveSource(handoffInPoll: Bool) async throws {
+      let laterReads = heldReadGate()
+      defer { laterReads.continuation.yield(()); laterReads.continuation.finish() }
+      let afterPress = OSAllocatedUnfairLock(initialState: (enabled: false, pids: [Int32]()))
+      let rig = try Rig(snapshotRead: { rule, pid in
+        let index = afterPress.withLock { state -> Int? in
+          guard state.enabled else { return nil }
+          state.pids.append(pid)
+          return state.pids.count
+        }
+        // Only the requested fresh read completes before the answer. Ordinary later
+        // work cannot accidentally restore the other holder's discarded start proof.
+        if let index, index > 1 { for await _ in laterReads.stream { break } }
+        return Rig.snapshotValue(rule: rule, pid: 900_100,
+          evidence: .call(family: .zoom, room: "handoff-call"),
+          continuity: .ongoing(family: .zoom, room: "handoff-call"))
+      })
+      defer { rig.coordinator.shutDown() }
+      let older: Int32 = 900_010
+      let newer: Int32 = 900_011
+      rig.coordinator.enablePollingForTesting()
+      rig.polledHolders = [
+        .init(pid: older, bundleID: "us.zoom.xos", input: .active),
+        .init(pid: newer, bundleID: "us.zoom.xos", input: .active),
+      ]
+      rig.coordinator.deliverWatcherReading(rig.polledHolders)
+      #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
+      rig.polledHolders = [
+        .init(pid: older, bundleID: "us.zoom.xos", input: handoffInPoll ? .active : .inactive),
+        .init(pid: newer, bundleID: "us.zoom.xos", input: handoffInPoll ? .inactive : .active),
+      ]
+      rig.coordinator.deliverWatcherReading(rig.polledHolders)
+      #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
+      rig.advance(CallDetectionPolicy.questionReadiness)
+      rig.coordinator.stepForTesting()
+      #expect(rig.panel.content == .ask(appName: "Zoom"))
+      #expect(rig.coordinator.inputForTesting?.continuity.compactMap(\.owner).allSatisfy { $0.pid == 900_100 } == true)
+      // In the timing control, the displayed question still reflects the older active
+      // holder. The required fresh poll supplies the handoff, not a second click.
+      rig.polledHolders = [
+        .init(pid: older, bundleID: "us.zoom.xos", input: .inactive),
+        .init(pid: newer, bundleID: "us.zoom.xos", input: .active),
+      ]
+      afterPress.withLock { $0.enabled = true }
+      #expect(rig.press("yes"))
+      #expect(await settleUntilObserved { rig.starts == [.zoom] },
+        "one Yes must start from current active proof without waiting for later ordinary reads")
+      #expect(rig.polls == 1)
+      #expect(afterPress.withLock { $0.pids.first } == newer)
+      #expect(rig.coordinator.inputForTesting?.holders.contains {
+        $0.pid == newer && $0.input == .active && $0.evidence == .call(family: .zoom, room: "handoff-call")
+      } == true)
+      laterReads.continuation.yield(()); laterReads.continuation.finish()
+      #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
+      #expect(rig.starts == [.zoom])
+      guard case .recording = rig.phase else { Issue.record("Yes must settle as recording"); return }
+    }
+
     @Test("Yes refresh waits for the current request, not unrelated later batch work",
       .bug("https://github.com/saurabhav88/EnviousWispr/issues/4142"))
     func yesRefreshDoesNotWaitForUnrelatedBatch() async throws {

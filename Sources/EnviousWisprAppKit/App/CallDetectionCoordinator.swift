@@ -577,7 +577,9 @@ final class CallDetectionCoordinator {
       let owners = choices.compactMap(\.state.owner)
       let unambiguous = choices.count == 1
         || (owners.count == choices.count && owners.allSatisfy { $0 == owners.first })
-      selected = unambiguous ? choices.first : nil
+      // Ambiguity is checked across every matching owner before preferring activity.
+      selected = unambiguous
+        ? (choices.first { $0.state.holder.input == .active } ?? choices.first) : nil
     } else {
       selected = candidates.first { $0.retained.map(target.matches) == true }
     }
@@ -607,9 +609,15 @@ final class CallDetectionCoordinator {
     else { return }
     if watching { pollMicrophone() }
     discardStartProof(for: request.target)
-    guard lifetime == readLifetime, policy.isCurrent(request.target), let captured = request.read,
+    // The captured read pins identity, not the microphone choice: this poll may
+    // have handed input to another already-verified source of the same call.
+    guard lifetime == readLifetime, policy.isCurrent(request.target), let previous = request.read,
+      let captured = refreshRequest(request.target)?.read,
       let current = sources[captured.state.source.pid], current.source == captured.state.source,
-      (captured.state.owner == nil || current.owner == captured.state.owner),
+      (previous.state.owner == nil || current.owner == previous.state.owner),
+      (current.source == previous.state.source
+        || (previous.state.owner != nil && current.owner == previous.state.owner
+          && current.knownCalls.contains(where: request.target.matches))),
       canQuery(current, retained: captured.retained)
     else { return }
     cycle.removeAll { $0.key == captured.key }
