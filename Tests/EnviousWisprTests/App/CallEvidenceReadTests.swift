@@ -34,10 +34,6 @@ struct CallEvidenceReadTests {
 
   @Test("A completed Teams worker unknown is never upgraded to microphone evidence")
   func teamsCompletedUnknown() async {
-    let result = await CallEvidenceRead.bounded(
-      rule: .callApp(.teams), pid: 70_000, bound: .seconds(10), lane: .init(),
-      isTrusted: { true }, read: { _, _ in .unknown })
-    #expect(result == .unknown)
     let snapshot = await CallEvidenceRead.boundedSnapshot(
       rule: .callApp(.teams), pid: 70_000, bound: .seconds(10), lane: .init(),
       isTrusted: { true }, read: { _, _ in .init(startEvidence: .unknown) })
@@ -58,7 +54,7 @@ struct CallEvidenceReadTests {
   @Test("A timed-out ongoing snapshot stays withheld until real completion and recovery")
   func snapshotRecovery() async {
     _ = await recoverWorker(rule: .callWindow(.zoom), family: .zoom, trusted: true, expected: .unknown,
-      useSnapshots: true, lateSnapshot: .init(startEvidence: .call(family: .zoom, room: "late"),
+      lateSnapshot: .init(startEvidence: .call(family: .zoom, room: "late"),
         continuity: .ongoing(family: .zoom, room: "late")))
   }
 
@@ -68,13 +64,13 @@ struct CallEvidenceReadTests {
     let expected: CallEvidenceReader.Evidence = trusted
       ? .microphoneOnly(family: .teams, room: "pid-70000") : .unknown
     _ = await recoverWorker(rule: .callApp(.teams), family: .teams, trusted: trusted, expected: expected,
-      useSnapshots: true, lateSnapshot: .init(startEvidence: .none,
+      lateSnapshot: .init(startEvidence: .none,
         continuity: .ended(family: .teams, room: "pid-70000")))
   }
 
   private func recoverWorker(
     rule: CallAppCatalog.Rule, family: CallAppFamily, trusted: Bool,
-    expected: CallEvidenceReader.Evidence, useSnapshots: Bool = false,
+    expected: CallEvidenceReader.Evidence,
     lateSnapshot: Snapshot = .init(startEvidence: .none)
   ) async -> CallEvidenceReader.Evidence {
     let lane = CallEvidenceRead.Lane()
@@ -87,7 +83,7 @@ struct CallEvidenceReadTests {
       arrival.continuation.finish()
     }
     let unexpectedReads = OSAllocatedUnfairLock(initialState: 0)
-    let first = await requestWorker(useSnapshots: useSnapshots,
+    let first = await CallEvidenceRead.boundedSnapshot(
       rule: rule, pid: 70_000, bound: .zero, lane: lane, isTrusted: { trusted },
       read: { _, _ in
         // Arrival is a precondition only. Completion is acknowledged behind this queue block.
@@ -103,7 +99,7 @@ struct CallEvidenceReadTests {
     #expect(entered)
     guard entered else { return first.startEvidence }
     #expect(lane.reading.withLock { $0 })
-    let refused = await requestWorker(useSnapshots: useSnapshots,
+    let refused = await CallEvidenceRead.boundedSnapshot(
       rule: rule, pid: 70_000, lane: lane, isTrusted: { trusted },
       read: { _, _ in
         unexpectedReads.withLock { $0 += 1 }
@@ -131,28 +127,13 @@ struct CallEvidenceReadTests {
     #expect(lane.reading.withLock { $0 } == false)
     #expect(unexpectedReads.withLock { $0 } == 0)
 
-    let healthy = await requestWorker(useSnapshots: useSnapshots,
+    let healthy = await CallEvidenceRead.boundedSnapshot(
       rule: rule, pid: 70_000, bound: .seconds(10), lane: lane, isTrusted: { trusted },
       read: { _, _ in .init(startEvidence: .call(family: family, room: "healthy"),
         continuity: .ongoing(family: family, room: "healthy")) })
     #expect(healthy == .init(startEvidence: .call(family: family, room: "healthy"),
-      continuity: useSnapshots ? .ongoing(family: family, room: "healthy") : .unknown))
+      continuity: .ongoing(family: family, room: "healthy")))
     return first.startEvidence
   }
 
-  /// The same recovery fixture exercises both real entries, not a second worker implementation.
-  private func requestWorker(
-    useSnapshots: Bool, rule: CallAppCatalog.Rule, pid: Int32, bound: Duration = .seconds(1),
-    lane: CallEvidenceRead.Lane, isTrusted: @escaping @Sendable () -> Bool,
-    read: @escaping @Sendable (CallAppCatalog.Rule, Int32) -> Snapshot
-  ) async -> Snapshot {
-    if useSnapshots {
-      return await CallEvidenceRead.boundedSnapshot(
-        rule: rule, pid: pid, bound: bound, lane: lane, isTrusted: isTrusted, read: read)
-    }
-    let evidence = await CallEvidenceRead.bounded(
-      rule: rule, pid: pid, bound: bound, lane: lane, isTrusted: isTrusted,
-      read: { read($0, $1).startEvidence })
-    return .init(startEvidence: evidence)
-  }
 }

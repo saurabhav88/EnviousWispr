@@ -51,13 +51,17 @@
       let evidenceAnswer = OSAllocatedUnfairLock<CallEvidenceReader.Evidence>(initialState: .unknown)
       let evidenceReads = OSAllocatedUnfairLock(initialState: 0)
       var blocked = false
+      var dictation = false
       /// Runs at the end of a stop (a newer recording beginning meanwhile).
       var onStop: (@MainActor () -> Void)?
       /// Runs inside a detected Start, before it returns (detection changed meanwhile).
       var duringStart: (@MainActor () async -> Void)?
       private(set) var coordinator: CallDetectionCoordinator!
 
-      init() throws {
+      init(
+        evidenceRead: (@Sendable (CallAppCatalog.Rule, Int32) async -> CallEvidenceReader.Evidence)? = nil,
+        snapshotRead: (@Sendable (CallAppCatalog.Rule, Int32) async -> CallEvidenceReader.Snapshot)? = nil
+      ) throws {
         let defaults = try #require(
           TestDefaults.suite("ew.tests.4012.callDetection.\(UUID().uuidString)"))
         settings = SettingsManager(defaults: defaults)
@@ -87,13 +91,16 @@
               return self.nextOutcome ?? .notIdle
             },
             detectedStartIsBlocked: { [weak self] in self?.blocked ?? true },
-            dictationActive: { false },
+            dictationActive: { [weak self] in self?.dictation ?? false },
             showMeetingPage: { [weak self] in self?.pageShown += 1 },
             anchor: { nil },
             emit: { [weak self] in self?.events.append($0) },
-            evidence: { [evidenceAnswer, evidenceReads] _, _ in
+            snapshot: { [evidenceAnswer, evidenceReads] rule, pid in
               evidenceReads.withLock { $0 += 1 }
-              return evidenceAnswer.withLock { $0 }
+              if let snapshotRead { return await snapshotRead(rule, pid) }
+              let answer = if let evidenceRead { await evidenceRead(rule, pid) }
+                else { evidenceAnswer.withLock { $0 } }
+              return Self.snapshotValue(rule: rule, pid: pid, evidence: answer)
             },
             now: { [weak self] in self?.clock ?? Date() },
             makePresenter: { [panel] _ in panel }))
@@ -117,12 +124,322 @@
       }
 
       func press(_ button: String) -> Bool { coordinator.press(button) }
+
+      nonisolated static func snapshotValue(
+        rule: CallAppCatalog.Rule, pid: Int32, evidence: CallEvidenceReader.Evidence,
+        continuity: CallEvidenceReader.Continuity = .unknown, birth: UInt64 = 100
+      ) -> CallEvidenceReader.Snapshot {
+        let bundle: String
+        switch rule {
+        case .callApp(let family), .callWindow(let family):
+          bundle = CallAppCatalog.nativeApps.first { $0.family == family }?.appBundleIDs.first ?? ""
+        case .browser(let browser): bundle = browser.appBundleIDs.first ?? ""
+        }
+        return .init(startEvidence: evidence, continuity: continuity,
+          owner: .init(pid: pid, bundleIdentifier: bundle, birthSeconds: birth, birthMicroseconds: 1))
+      }
     }
 
     /// Lets every Start and Stop task the press began run, so "nothing started" is observed
     /// after them, not before.
     func settleStarts() async {
       for _ in 0..<20 { await Task.yield() }
+    }
+
+    private func heldReadGate() -> (
+      stream: AsyncStream<Void>, continuation: AsyncStream<Void>.Continuation
+    ) {
+      let gate = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+      // deadline-fallback: fixture cleanup only; never used as a timing assertion.
+      DispatchQueue.global().asyncAfter(deadline: .now() + 30) {
+        gate.continuation.yield(())
+        gate.continuation.finish()
+      }
+      return gate
+    }
+
+    @Test("A waiting call cannot reuse expired start proof while a refresh is pending")
+    func pendingRefreshDoesNotKeepExpiredStartEligible() async throws {
+      let gate = heldReadGate()
+      defer { gate.continuation.yield(()); gate.continuation.finish() }
+      let stage = OSAllocatedUnfairLock(initialState: 0)
+      let rig = try Rig(snapshotRead: { rule, pid in
+        let index = stage.withLock { $0 += 1; return $0 }
+        if index > 1 { for await _ in gate.stream { break } }
+        return Rig.snapshotValue(rule: rule, pid: pid,
+          evidence: index == 1 ? .call(family: .zoom, room: "waiting") : .unknown,
+          continuity: index == 1 ? .ongoing(family: .zoom, room: "waiting") : .unknown)
+      })
+      rig.dictation = true
+      let original = rig.clock
+      rig.reading("us.zoom.xos", .active)
+      #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
+      #expect(rig.panel.content == nil)
+      rig.advance(9)
+      rig.reading("us.zoom.xos", .active)
+      #expect(await settleUntilObserved { stage.withLock { $0 == 2 } })
+      #expect(rig.coordinator.inputForTesting?.holders.first?.evidence
+        == .call(family: .zoom, room: "waiting"))
+      rig.advance(2)
+      rig.dictation = false
+      rig.coordinator.stepForTesting()
+      #expect(rig.panel.content == nil, "the newer microphone frame cannot freshen old start proof")
+      let frame = try #require(rig.coordinator.inputForTesting)
+      #expect(frame.holders.first?.evidence == nil)
+      #expect(frame.takenAt == original.addingTimeInterval(9))
+      #expect(frame.continuity.first?.id == 1)
+      #expect(frame.continuity.first?.beganAt == original)
+      gate.continuation.yield(()); gate.continuation.finish()
+      #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
+    }
+
+    @Test("Microphone polls preserve completed continuity identity and pending refresh is not unknown")
+    func continuityIsIndependentOfMicrophoneFrames() async throws {
+      let first = heldReadGate()
+      let second = heldReadGate()
+      defer {
+        first.continuation.yield(()); first.continuation.finish()
+        second.continuation.yield(()); second.continuation.finish()
+      }
+      let stage = OSAllocatedUnfairLock(initialState: 0)
+      let rig = try Rig(snapshotRead: { rule, pid in
+        let index = stage.withLock { $0 += 1; return $0 }
+        let stream = index == 1 ? first.stream : second.stream
+        for await _ in stream { break }
+        return Rig.snapshotValue(rule: rule, pid: pid,
+          evidence: .call(family: .zoom, room: "same-call"),
+          continuity: index == 1 ? .ongoing(family: .zoom, room: "same-call") : .unknown)
+      })
+      let original = rig.clock
+      rig.reading("us.zoom.xos", .active)
+      #expect(await settleUntilObserved { stage.withLock { $0 == 1 } })
+      rig.advance(1)
+      rig.reading("us.zoom.xos", .active)
+      first.continuation.yield(()); first.continuation.finish()
+      #expect(await settleUntilObserved {
+        stage.withLock { $0 == 2 } && rig.coordinator.inputForTesting?.continuity.first?.id == 1
+      })
+      let pending = try #require(rig.coordinator.inputForTesting)
+      #expect(pending.sequence == 2)
+      #expect(pending.takenAt == original.addingTimeInterval(1))
+      let observed = try #require(pending.continuity.first)
+      #expect(observed.beganAt == original)
+      #expect(observed.completedAt == original.addingTimeInterval(1))
+      #expect(observed.value == .ongoing(family: .zoom, room: "same-call"))
+      #expect(pending.pendingSources == [observed.source])
+      second.continuation.yield(()); second.continuation.finish()
+      #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
+      let finished = try #require(rig.coordinator.inputForTesting)
+      #expect(finished.sequence == 2)
+      #expect(finished.takenAt == pending.takenAt)
+      #expect(finished.continuity.first?.id == 2)
+      #expect(finished.continuity.first?.value == .unknown)
+      #expect(finished.pendingSources.isEmpty)
+    }
+
+    @Test("An activity change withholds stale start proof but still delivers independent continuity")
+    func activityChangeDoesNotReadmitOldStart() async throws {
+      let gate = heldReadGate()
+      defer { gate.continuation.yield(()); gate.continuation.finish() }
+      let entered = OSAllocatedUnfairLock(initialState: false)
+      let rig = try Rig(snapshotRead: { rule, pid in
+        entered.withLock { $0 = true }
+        for await _ in gate.stream { break }
+        return Rig.snapshotValue(rule: rule, pid: pid,
+          evidence: .call(family: .zoom, room: "same-call"),
+          continuity: .ongoing(family: .zoom, room: "same-call"))
+      })
+      rig.reading("us.zoom.xos", .active)
+      #expect(await settleUntilObserved { entered.withLock { $0 } })
+      rig.advance(1)
+      rig.reading("us.zoom.xos", .inactive)
+      gate.continuation.yield(()); gate.continuation.finish()
+      #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
+      let frame = try #require(rig.coordinator.inputForTesting)
+      #expect(frame.holders.first?.evidence == nil)
+      #expect(frame.continuity.first?.value == .ongoing(family: .zoom, room: "same-call"))
+      #expect(rig.panel.content == nil)
+      #expect(rig.starts.isEmpty)
+    }
+
+    @Test("A replacement CoreAudio object cannot receive the old object's late ended result")
+    func replacedObjectRejectsLateContinuity() async throws {
+      let gate = heldReadGate()
+      defer { gate.continuation.yield(()); gate.continuation.finish() }
+      let stage = OSAllocatedUnfairLock(initialState: 0)
+      let rig = try Rig(snapshotRead: { rule, pid in
+        let index = stage.withLock { $0 += 1; return $0 }
+        if index == 1 { for await _ in gate.stream { break } }
+        return Rig.snapshotValue(rule: rule, pid: pid, evidence: .none,
+          continuity: index == 1 ? .ended(family: .zoom, room: "old-call") : .unknown)
+      })
+      rig.coordinator.deliverWatcherReading([
+        .init(pid: 900_010, bundleID: "us.zoom.xos", input: .active, object: 1)
+      ])
+      #expect(await settleUntilObserved { stage.withLock { $0 == 1 } })
+      rig.coordinator.deliverWatcherReading([
+        .init(pid: 900_010, bundleID: "us.zoom.xos", input: .active, object: 2)
+      ])
+      gate.continuation.yield(()); gate.continuation.finish()
+      #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
+      let frame = try #require(rig.coordinator.inputForTesting)
+      #expect(frame.sources.first?.id == 2)
+      #expect(frame.continuity.count == 1)
+      #expect(frame.continuity.first?.source == frame.sources.first)
+      #expect(frame.continuity.first?.value == .unknown)
+      #expect(rig.starts.isEmpty && rig.stops == 0)
+    }
+
+    @Test("Off and shutdown reject a real worker's late snapshot and settle its task slot",
+      arguments: [true, false])
+    func lateWorkerCannotReviveStoppedDetection(shutdown: Bool) async throws {
+      let lane = CallEvidenceRead.Lane()
+      let gate = DispatchSemaphore(value: 0)
+      defer { gate.signal() }
+      let entered = OSAllocatedUnfairLock(initialState: false)
+      let rig = try Rig(snapshotRead: { rule, pid in
+        await CallEvidenceRead.boundedSnapshot(rule: rule, pid: pid, bound: .seconds(10), lane: lane,
+          read: { _, _ in
+            entered.withLock { $0 = true }
+            // deadline-fallback: release the fixture even if its consumer fails.
+            _ = gate.wait(timeout: .now() + 30)
+            return Rig.snapshotValue(rule: rule, pid: pid,
+              evidence: .call(family: .zoom, room: "late"),
+              continuity: .ended(family: .zoom, room: "late"))
+          })
+      })
+      rig.reading("us.zoom.xos", .active)
+      #expect(await settleUntilObserved { entered.withLock { $0 } })
+      if shutdown { rig.coordinator.shutDown() }
+      else {
+        rig.settings.meetingCallDetection = "off"
+        rig.coordinator.tickForTesting()
+      }
+      gate.signal()
+      #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
+      #expect(rig.coordinator.inputForTesting?.continuity.isEmpty == true)
+      #expect(!rig.panel.isShowing)
+      #expect(rig.starts.isEmpty && rig.stops == 0)
+    }
+
+    @Test("Old lifetime cleanup cannot clear the restarted lifetime's pending read")
+    func oldReadCannotClearNewWork() async throws {
+      let lane = CallEvidenceRead.Lane()
+      let first = DispatchSemaphore(value: 0)
+      let second = DispatchSemaphore(value: 0)
+      defer { first.signal(); second.signal() }
+      let stage = OSAllocatedUnfairLock(initialState: 0)
+      let rig = try Rig(snapshotRead: { rule, pid in
+        await CallEvidenceRead.boundedSnapshot(rule: rule, pid: pid, bound: .seconds(10), lane: lane,
+          read: { _, _ in
+            let index = stage.withLock { $0 += 1; return $0 }
+            // deadline-fallback: hold actual worker completion, even when its caller cancels.
+            _ = (index == 1 ? first : second).wait(timeout: .now() + 30)
+            return Rig.snapshotValue(rule: rule, pid: pid,
+              evidence: .call(family: .zoom, room: index == 1 ? "old" : "new"),
+              continuity: index == 1 ? .ended(family: .zoom, room: "old")
+                : .ongoing(family: .zoom, room: "new"))
+          })
+      })
+      rig.reading("us.zoom.xos", .active)
+      #expect(await settleUntilObserved { stage.withLock { $0 == 1 } })
+      rig.settings.meetingCallDetection = "off"
+      rig.coordinator.tickForTesting()
+      rig.settings.meetingCallDetection = "ask"
+      rig.reading("us.zoom.xos", .active)
+      first.signal()
+      #expect(await settleUntilObserved { stage.withLock { $0 == 2 } })
+      #expect(rig.coordinator.evidenceReadPendingForTesting)
+      #expect(rig.coordinator.inputForTesting?.continuity.isEmpty == true)
+      #expect(rig.coordinator.inputForTesting?.pendingSources.first?.id == 2)
+      second.signal()
+      #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
+      #expect(rig.coordinator.inputForTesting?.continuity.first?.source.id == 2)
+      #expect(rig.coordinator.inputForTesting?.continuity.first?.value
+        == .ongoing(family: .zoom, room: "new"))
+    }
+
+    @Test("Completed owner loss or replacement is explicit unknown, not pending or ended",
+      arguments: [true, false])
+    func ownerLossIsExplicitUnknown(replaced: Bool) async throws {
+      let stage = OSAllocatedUnfairLock(initialState: 0)
+      let rig = try Rig(snapshotRead: { rule, pid in
+        let index = stage.withLock { $0 += 1; return $0 }
+        if index == 1 {
+          return Rig.snapshotValue(rule: rule, pid: pid,
+            evidence: .call(family: .zoom, room: "same-call"),
+            continuity: .ongoing(family: .zoom, room: "same-call"))
+        }
+        if replaced {
+          return Rig.snapshotValue(rule: rule, pid: pid,
+            evidence: .call(family: .zoom, room: "replacement"),
+            continuity: .ended(family: .zoom, room: "replacement"), birth: 101)
+        }
+        return .init(startEvidence: .call(family: .zoom, room: "unverified"),
+          continuity: .ended(family: .zoom, room: "unverified"))
+      })
+      rig.reading("us.zoom.xos", .active)
+      #expect(await settleUntilObserved {
+        !rig.coordinator.evidenceReadPendingForTesting
+          && rig.coordinator.inputForTesting?.continuity.first?.id == 1
+      })
+      rig.advance(1)
+      rig.reading("us.zoom.xos", .active)
+      #expect(await settleUntilObserved {
+        !rig.coordinator.evidenceReadPendingForTesting
+          && rig.coordinator.inputForTesting?.continuity.first?.id == 2
+      })
+      let frame = try #require(rig.coordinator.inputForTesting)
+      #expect(frame.continuity.first?.value == .unknown)
+      #expect(frame.continuity.first?.owner == nil)
+      #expect(frame.pendingSources.isEmpty)
+      #expect(rig.starts.isEmpty && rig.stops == 0)
+      if replaced { #expect(frame.continuity.first?.source != frame.sources.first) }
+      else { #expect(frame.holders.first?.evidence == .unknown) }
+    }
+
+    @Test("A healthy source reaches its consumer before a later source finishes",
+      .bug("https://github.com/saurabhav88/EnviousWispr/issues/4142"))
+    func firstSourceIsNotWithheldByLaterRead() async throws {
+      let arrived = AsyncStream<Bool>.makeStream(bufferingPolicy: .bufferingNewest(1))
+      let release = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+      defer {
+        release.continuation.yield(())
+        release.continuation.finish()
+        arrived.continuation.finish()
+      }
+      // deadline-fallback: fail missing reader arrival, never wait forever on a broken fixture.
+      DispatchQueue.global().asyncAfter(deadline: .now() + 10) {
+        arrived.continuation.yield(false)
+        arrived.continuation.finish()
+      }
+      // deadline-fallback: bound fixture cleanup to half the suite limit; not a latency claim.
+      DispatchQueue.global().asyncAfter(deadline: .now() + 30) {
+        release.continuation.yield(())
+        release.continuation.finish()
+      }
+      let rig = try Rig(evidenceRead: { rule, _ in
+        if case .browser = rule {
+          arrived.continuation.yield(true)
+          arrived.continuation.finish()
+          for await _ in release.stream { break }
+          return .none
+        }
+        return .call(family: .zoom, room: "healthy-first")
+      })
+      rig.coordinator.deliverWatcherReading([
+        .init(pid: 900_010, bundleID: "us.zoom.xos", input: .active),
+        .init(pid: 900_011, bundleID: "com.google.chrome", input: .active),
+      ])
+      var entered = false
+      for await value in arrived.stream { entered = value; break }
+      #expect(entered)
+      guard entered else { return }
+      #expect(await settleUntilObserved { rig.panel.content == .ask(appName: "Zoom") },
+        "the first completed source must not wait for the later held read")
+      release.continuation.yield(())
+      release.continuation.finish()
+      #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
     }
 
     @Test("a tracked call is read again when its microphone becomes inactive",

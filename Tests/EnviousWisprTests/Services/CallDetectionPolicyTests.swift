@@ -15,6 +15,39 @@ import Testing
 struct CallDetectionPolicyTests {
   typealias Policy = CallDetectionPolicy
 
+  @Test("Legacy microphone frames provide no invented independent call observations")
+  func legacyFrameHasNoContinuity() {
+    let frame = Policy.Reading(sequence: 7, takenAt: Date(timeIntervalSince1970: 100),
+      complete: true, holders: [
+        .init(pid: 1, rule: .callWindow(.zoom), input: .inactive,
+          evidence: .call(family: .zoom, room: "same-call"))
+      ])
+    #expect(frame.sources.isEmpty)
+    #expect(frame.continuity.isEmpty)
+    #expect(frame.pendingSources.isEmpty)
+  }
+
+  #if DEBUG
+    @Test("A completed observation can advance without advancing the microphone frame")
+    func independentObservationUpdatesSameMicrophoneFrame() {
+      let at = Date(timeIntervalSince1970: 100)
+      let source = Policy.Source(id: 3, pid: 1, rule: .callWindow(.zoom))
+      let previous = Policy.ContinuityObservation(id: 41, source: source,
+        beganAt: at.addingTimeInterval(-1), completedAt: at, owner: nil, value: .unknown)
+      var policy = Policy()
+      policy.observe(.init(sequence: 7, takenAt: at, complete: true, holders: [], ambiguous: false,
+        sources: [source], continuity: [previous], pendingSources: [source]))
+      let completed = Policy.ContinuityObservation(id: 42, source: source, beganAt: at,
+        completedAt: at.addingTimeInterval(1), owner: nil, value: .unknown)
+      policy.observe(.init(sequence: 7, takenAt: at, complete: true, holders: [], ambiguous: false,
+        sources: [source], continuity: [completed], pendingSources: []))
+      #expect(policy.inputForTesting?.sequence == 7)
+      #expect(policy.inputForTesting?.takenAt == at)
+      #expect(policy.inputForTesting?.continuity == [completed])
+      #expect(policy.inputForTesting?.pendingSources.isEmpty == true)
+    }
+  #endif
+
   /// One policy, a clock, the meeting side and everything the policy asked for.
   struct Story {
     var policy = Policy()

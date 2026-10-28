@@ -30,7 +30,7 @@ final class CallDetectionCoordinator {
     var anchor: @MainActor () -> NSRect?
     var emit: @MainActor (MeetingCallPromptTelemetry) -> Void
     /// The evidence for one holder, read off the main actor with its own bound.
-    var evidence: @Sendable (CallAppCatalog.Rule, Int32) async -> CallEvidenceReader.Evidence
+    var snapshot: @Sendable (CallAppCatalog.Rule, Int32) async -> CallEvidenceReader.Snapshot
     /// Seconds since the Mac started, as a Date: the countdown and timeouts measure elapsed
     /// time, so changing the Mac's clock never moves them (review r15 F4).
     var now: @MainActor () -> Date = {
@@ -63,14 +63,33 @@ final class CallDetectionCoordinator {
   private var takenAt = Date.distantPast
   private var sequence = 0
   private var lastPoll = Date.distantPast
-  /// The last evidence read per process, with the bundle it was read for: it belongs to that
-  /// process only, and goes when the process leaves the list (C2).
-  /// The last evidence per process, with the process run it was read for and the reading it
-  /// belongs to. It counts only with that reading: a later reading waits for its own read, so
-  /// an answer about an earlier page never meets a newer microphone reading (C2).
-  private var evidence:
-    [Int32: (holder: CallMicrophoneWatcher.Holder, value: CallEvidenceReader.Evidence, reading: Int)] =
-    [:]
+  private struct CachedEvidence {
+    let holder: CallMicrophoneWatcher.Holder
+    let value: CallEvidenceReader.Evidence
+    var reading: Int
+    var source: CallDetectionPolicy.Source? = nil
+    var activityRevision = 0
+    var beganAt = Date.distantPast
+  }
+  private struct SourceState {
+    var holder: CallMicrophoneWatcher.Holder
+    var source: CallDetectionPolicy.Source
+    var activityRevision = 0
+    var present = true
+    var owner: CallEvidenceReader.AppRun? = nil
+  }
+  private var evidence: [Int32: CachedEvidence] = [:]
+  private var sources: [Int32: SourceState] = [:]
+  /// These survive microphone polls and absence; no cached observation is re-dated.
+  private var continuity: [Int: CallDetectionPolicy.ContinuityObservation] = [:]
+  private var pendingSources: [CallDetectionPolicy.Source] = []
+  private var nextSourceID = 0
+  private var nextObservationID = 0
+  private var readLifetime = 0
+  private var nextReadID = 0
+  private var currentReadID: Int?
+  private var readEnabled: Bool?
+  private var readStopped = false
   /// The evidence read running now; `refreshNow` waits for it.
   private var evidenceTask: Task<Void, Never>?
   private var rereadWanted = false
@@ -84,6 +103,7 @@ final class CallDetectionCoordinator {
   /// Starts the once-a-second check; the watcher itself runs only while detection is on.
   func start() {
     guard timer == nil else { return }
+    readStopped = false
     // Common modes: an open menu must not stop the prompt and countdown clocks (r6 F7).
     let clock = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
       Task { @MainActor in self?.tick() }
@@ -95,6 +115,7 @@ final class CallDetectionCoordinator {
     ) { [weak self] _ in
       MainActor.assumeIsolated {
         guard let self else { return }
+        self.invalidateReadWork()
         self.policy.noteWakeOrRestart(at: self.deps.now())
         if self.watching { self.watcher.poll() }
         self.step()
@@ -105,6 +126,9 @@ final class CallDetectionCoordinator {
 
   /// App quit: listeners and timers go away; a detected meeting is the meeting coordinator's.
   func shutDown() {
+    readStopped = true
+    readEnabled = false
+    invalidateReadWork()
     timer?.invalidate()
     timer = nil
     if let wakeObserver { NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver) }
@@ -122,7 +146,42 @@ final class CallDetectionCoordinator {
     deps.settings.meetingOnboardingComplete && mode != .off && CallMicrophoneWatcher.isSupported
   }
 
+  /// Reading lifetime is independent of microphone-frame sequence. A cancelled bounded read
+  /// retains its task slot until it really returns; no new AX work is piled behind it.
+  private func invalidateReadWork(clearInputs: Bool = true) {
+    readLifetime += 1
+    evidenceTask?.cancel()
+    rereadWanted = false
+    sources = [:]
+    continuity = [:]
+    pendingSources = []
+    if clearInputs {
+      holders = []
+      evidence = [:]
+      complete = false
+      ambiguous = false
+      takenAt = .distantPast
+    }
+    observe()
+  }
+
+  @discardableResult
+  private func updateReadLifetime() -> Bool {
+    // Explicit test readings remain usable on hosts without the live CoreAudio API.
+    let wanted = !readStopped && deps.settings.meetingOnboardingComplete && mode != .off
+    if let previous = readEnabled, previous != wanted {
+      var clearInputs = true
+      #if DEBUG
+        clearInputs = simulation == nil
+      #endif
+      invalidateReadWork(clearInputs: clearInputs)
+    }
+    readEnabled = wanted
+    return wanted
+  }
+
   private func tick() {
+    updateReadLifetime()
     if enabled != watching {
       watching = enabled
       if watching {
@@ -146,8 +205,8 @@ final class CallDetectionCoordinator {
     if watching {
       let mayBeOn = !holders.isEmpty || !complete || policy.isTrackingCalls
       let interval = watcher.isListening ? Self.pollInterval : Self.unlistenedPollInterval
-      // No poll while an evidence read runs: the read belongs to the reading that started it,
-      // so a reading and its evidence stay together (C2).
+      // Retain the existing poll schedule until the fair-cycle/cadence cutover. Listener
+      // readings can arrive during a read without invalidating independent continuity.
       // Every poll reads the evidence afresh: a tab switched to a meeting while the microphone
       // stays on is seen, and an unknown read is retried (review r4 F2).
       if evidenceTask == nil, mayBeOn || !watcher.isListening,
@@ -164,6 +223,7 @@ final class CallDetectionCoordinator {
       // A dev-control simulation owns the readings until it is cleared.
       guard simulation == nil else { return }
     #endif
+    guard updateReadLifetime() else { step(); return }
     lastPoll = deps.now()
     record(holders: reading.holders, complete: reading.complete, ambiguous: reading.ambiguous)
     readEvidence()
@@ -176,19 +236,55 @@ final class CallDetectionCoordinator {
     sequence += 1
     #if DEBUG
       // A simulation's evidence is part of its standing reading.
-      if simulation != nil { evidence = evidence.mapValues { ($0.holder, $0.value, sequence) } }
+      if simulation != nil {
+        evidence = evidence.mapValues { cached in
+          var standing = cached
+          standing.reading = sequence
+          return standing
+        }
+      }
     #endif
     takenAt = deps.now()
     self.complete = complete
     self.ambiguous = ambiguous
     holders = list
+    var seen: Set<Int32> = []
+    for holder in list {
+      guard let rule = CallAppCatalog.rule(forBundleID: holder.bundleID) else { continue }
+      seen.insert(holder.pid)
+      if var state = sources[holder.pid], Self.sameProcess(state.holder, holder) {
+        if !state.present || state.holder.input != holder.input { state.activityRevision += 1 }
+        state.holder = holder
+        state.present = true
+        sources[holder.pid] = state
+      } else {
+        if let previous = sources[holder.pid] {
+          publishContinuity(.unknown, owner: nil, for: previous.source, beganAt: deps.now())
+        }
+        nextSourceID += 1
+        sources[holder.pid] = .init(holder: holder,
+          source: .init(id: nextSourceID, pid: holder.pid, rule: rule))
+      }
+    }
     if complete {
       evidence = evidence.filter { _, read in list.contains { Self.sameProcess($0, read.holder) } }
+      for pid in Array(sources.keys) where !seen.contains(pid) {
+        guard var state = sources[pid] else { continue }
+        if state.present { state.activityRevision += 1 }
+        state.present = false
+        sources[pid] = state
+      }
+      // Hold the last independent observation for tracked calls, not for every past process.
+      sources = sources.filter { seen.contains($0.key) || policy.isTracking($0.value.source.rule) }
+      continuity = continuity.filter { _, value in
+        sources[value.source.pid]?.source == value.source || policy.isTracking(value.source.rule)
+      }
     }
     observe()
   }
 
-  private func observe() {
+  private func observe(at decisionTime: Date? = nil) {
+    let projectionTime = decisionTime ?? deps.now()
     let mapped: [CallDetectionPolicy.Holder] = holders.compactMap { holder in
       guard let rule = CallAppCatalog.rule(forBundleID: holder.bundleID) else { return nil }
       let input: CallDetectionPolicy.Input =
@@ -197,23 +293,35 @@ final class CallDetectionCoordinator {
         case .inactive: .inactive
         case .unknown: .unknown
         }
-      let read = evidence[holder.pid].flatMap {
-        Self.sameProcess($0.holder, holder) && $0.reading == sequence ? $0.value : nil
+      let read = evidence[holder.pid].flatMap { cached -> CallEvidenceReader.Evidence? in
+        guard Self.sameProcess(cached.holder, holder) else { return nil }
+        #if DEBUG
+          if simulation != nil { return cached.reading == sequence ? cached.value : nil }
+        #endif
+        guard let state = sources[holder.pid], cached.source == state.source,
+          cached.activityRevision == state.activityRevision
+        else { return nil }
+        let age = projectionTime.timeIntervalSince(cached.beganAt)
+        return age >= 0 && age <= CallDetectionPolicy.staleAfter ? cached.value : nil
       }
       return .init(pid: holder.pid, rule: rule, input: input, evidence: read)
     }
     policy.observe(
       .init(
         sequence: sequence, takenAt: takenAt, complete: complete, holders: mapped,
-        ambiguous: ambiguous))
+        ambiguous: ambiguous,
+        sources: holders.compactMap { sources[$0.pid]?.source },
+        continuity: continuity.values.sorted { $0.id < $1.id },
+        pendingSources: pendingSources.filter { sources[$0.pid]?.source == $0 }))
   }
 
   /// Reads active or unknown holders and the apps of tracked calls, even when their microphones
-  /// are off. Each result still belongs to the process and reading that requested it.
+  /// are off. Results belong to their source/request, independently of microphone sequence.
   private func readEvidence() {
     #if DEBUG
       guard simulation == nil else { return }
     #endif
+    guard updateReadLifetime() else { return }
     guard evidenceTask == nil else {
       rereadWanted = true
       return
@@ -222,40 +330,101 @@ final class CallDetectionCoordinator {
       let tracked = CallAppCatalog.rule(forBundleID: holder.bundleID)
         .map { policy.isTracking($0) } ?? false
       return holder.input == .active || evidence[holder.pid]?.value == .unknown || tracked
+    }.compactMap { holder -> SourceState? in
+      guard let state = sources[holder.pid], state.present,
+        Self.sameProcess(state.holder, holder) else { return nil }
+      return state
     }
     guard !targets.isEmpty else { return }
-    let read = deps.evidence
-    let forReading = sequence
+    let read = deps.snapshot
+    let lifetime = readLifetime
+    nextReadID += 1
+    let requestID = nextReadID
+    currentReadID = requestID
+    pendingSources = targets.map(\.source)
+    observe()
     evidenceTask = Task {
-      var fresh: [Int32: (CallMicrophoneWatcher.Holder, CallEvidenceReader.Evidence)] = [:]
-      for holder in targets {
-        guard let rule = CallAppCatalog.rule(forBundleID: holder.bundleID) else { continue }
-        fresh[holder.pid] = (holder, await read(rule, holder.pid))
-      }
-      // The answers belong to the reading they were read for (C2): a newer reading that came
-      // meanwhile (the process list changed) gets its own read instead, and a process that
-      // left, or a new run of it under the same pid, never gets these.
-      if self.sequence == forReading {
-        for (pid, read) in fresh where self.holders.contains(where: { Self.sameProcess($0, read.0) }) {
-          self.evidence[pid] = (read.0, read.1, forReading)
+      defer { self.finishRead(requestID) }
+      for target in targets {
+        guard self.currentReadID == requestID, self.readLifetime == lifetime,
+          !Task.isCancelled, self.updateReadLifetime() else { break }
+        guard let current = self.sources[target.source.pid], current.present,
+          current.source == target.source,
+          self.holders.contains(where: { Self.sameProcess($0, current.holder) })
+        else {
+          self.pendingSources.removeAll { $0 == target.source }
+          continue
         }
-      } else {
-        self.rereadWanted = true
-      }
-      self.evidenceTask = nil
-      self.observe()
-      self.step()
-      if self.rereadWanted {
-        self.rereadWanted = false
-        // An overdue microphone poll goes first (it starts its own read): reads never keep the
-        // microphone from being checked.
-        if self.watching, self.deps.now().timeIntervalSince(self.lastPoll) >= Self.pollInterval {
-          self.watcher.poll()
-        } else {
-          self.readEvidence()
-        }
+        let beganAt = self.deps.now()
+        let value = await read(current.source.rule, current.holder.pid)
+        guard self.currentReadID == requestID, self.readLifetime == lifetime,
+          !Task.isCancelled, self.updateReadLifetime() else { break }
+        self.pendingSources.removeAll { $0 == current.source }
+        self.accept(value, requested: current, beganAt: beganAt)
+        // A healthy early source is useful now, not after every other app has answered.
+        self.observe()
+        self.step()
       }
     }
+  }
+
+  private func accept(
+    _ value: CallEvidenceReader.Snapshot, requested: SourceState, beganAt: Date
+  ) {
+    let pid = requested.source.pid
+    guard var current = sources[pid], current.present, current.source == requested.source,
+      holders.contains(where: { Self.sameProcess($0, requested.holder) })
+    else { return }
+    if let expected = requested.owner, let actual = value.owner, expected != actual {
+      // This request belongs to the replaced run. Publish loss of its identity, never its
+      // positive result; a new microphone frame and query must establish the replacement.
+      publishContinuity(.unknown, owner: nil, for: requested.source, beganAt: beganAt)
+      nextSourceID += 1
+      current.source = .init(id: nextSourceID, pid: pid, rule: current.source.rule)
+      current.activityRevision += 1
+      current.present = false
+      current.owner = actual
+      sources[pid] = current
+      evidence[pid] = nil
+      rereadWanted = true
+      return
+    }
+    let sameRun = requested.owner == nil || requested.owner == value.owner
+    publishContinuity(sameRun && value.owner != nil ? value.continuity : .unknown,
+      owner: sameRun ? value.owner : nil, for: requested.source, beganAt: beganAt)
+    if let owner = value.owner { current.owner = owner }
+    sources[pid] = current
+    if current.activityRevision == requested.activityRevision {
+      let start: CallEvidenceReader.Evidence
+      if !sameRun, case .call = value.startEvidence { start = .unknown }
+      else { start = value.startEvidence }
+      evidence[pid] = .init(holder: current.holder, value: start, reading: sequence,
+        source: current.source, activityRevision: current.activityRevision, beganAt: beganAt)
+    }
+  }
+
+  private func publishContinuity(
+    _ value: CallEvidenceReader.Continuity, owner: CallEvidenceReader.AppRun?,
+    for source: CallDetectionPolicy.Source, beganAt: Date
+  ) {
+    nextObservationID += 1
+    continuity[source.id] = .init(id: nextObservationID, source: source, beganAt: beganAt,
+      completedAt: deps.now(), owner: owner, value: value)
+  }
+
+  private func finishRead(_ id: Int) {
+    guard currentReadID == id else { return }
+    evidenceTask = nil
+    currentReadID = nil
+    pendingSources = []
+    guard !readStopped else { return }
+    observe()
+    step()
+    guard rereadWanted, updateReadLifetime() else { return }
+    rereadWanted = false
+    // Preserve the existing finite poll/refresh scheduling until the scheduling cutover.
+    if watching, deps.now().timeIntervalSince(lastPoll) >= Self.pollInterval { watcher.poll() }
+    else { readEvidence() }
   }
 
   /// A fresh microphone poll and the evidence reads it starts, finished: a Yes and a switch
@@ -289,6 +458,11 @@ final class CallDetectionCoordinator {
   }
 
   private func context(forPress: Bool = false) -> CallDetectionPolicy.Context {
+    updateReadLifetime()
+    let now = deps.now()
+    // All decision ingresses use one time for proof projection and policy freshness.
+    // This updates no microphone timestamp or completed continuity observation.
+    observe(at: now)
     let meeting: CallDetectionPolicy.Meeting =
       switch deps.meetingPhase() {
       case .idle: .idle
@@ -299,7 +473,7 @@ final class CallDetectionCoordinator {
     var switchAnswered = false
     if forPress, case .switchCall = policy.interaction { switchAnswered = true }
     return .init(
-      now: deps.now(), meeting: meeting, dictationActive: deps.dictationActive(), mode: mode,
+      now: now, meeting: meeting, dictationActive: deps.dictationActive(), mode: mode,
       appsOff: appsOff, setUp: settings.meetingOnboardingComplete,
       startBlocked: switchAnswered && deps.detectedStartIsBlocked(),
       firstTipShown: settings.meetingCallFirstTipShown,
@@ -307,7 +481,10 @@ final class CallDetectionCoordinator {
   }
 
   private func step() {
-    let commands = policy.step(context())
+    updateReadLifetime()
+    guard !readStopped else { return }
+    let current = context()
+    let commands = policy.step(current)
     draw()
     run(commands)
   }
@@ -315,7 +492,8 @@ final class CallDetectionCoordinator {
   private func deliver(_ event: CallDetectionPolicy.Event) {
     var press = false
     if case .pressed = event { press = true }
-    let commands = policy.handle(event, context(forPress: press))
+    let current = context(forPress: press)
+    let commands = policy.handle(event, current)
     draw()
     run(commands)
   }
@@ -373,13 +551,15 @@ final class CallDetectionCoordinator {
 
   /// Asked by the meeting start after each of its waits (review r4 F1, r12 F1).
   func detectedStartStillWanted() -> Bool {
-    policy.isStartWanted(context())
+    let current = context()
+    return policy.isStartWanted(current)
   }
 
   // MARK: - Panel
 
   /// Draws `policy.interaction`; the buttons carry the token it was drawn with.
   private func draw() {
+    guard !readStopped else { panel.hide(); return }
     guard let content = content(policy.interaction) else {
       if panel.isShowing || panel.content != nil { panel.hide() }
       drawnToken = policy.token
@@ -457,10 +637,11 @@ final class CallDetectionCoordinator {
     private(set) var simulation: [SimulatedHolder]?
 
     func simulate(_ list: [SimulatedHolder]?) {
+      invalidateReadWork()
       simulation = list
       if let list {
         evidence = Dictionary(
-          list.map { ($0.holder.pid, ($0.holder, $0.evidence, sequence)) },
+          list.map { ($0.holder.pid, CachedEvidence(holder: $0.holder, value: $0.evidence, reading: sequence)) },
           uniquingKeysWith: { a, _ in a })
         record(holders: list.map(\.holder), complete: true, ambiguous: false)
       } else {
@@ -490,6 +671,9 @@ final class CallDetectionCoordinator {
     /// A negative reader-selection assertion must wait for the actual async batch to settle.
     var evidenceReadPendingForTesting: Bool { evidenceTask != nil }
 
+    /// The policy's consumed frame, not an observer of the injected reader or its cache.
+    var inputForTesting: CallDetectionPolicy.Reading? { policy.inputForTesting }
+
     /// Hands the coordinator a watcher reading (nil: the read failed), through the same path
     /// as the real watcher, evidence reads included. Tests only.
     func deliverWatcherReading(
@@ -500,6 +684,9 @@ final class CallDetectionCoordinator {
 
     /// The once-a-second check, for tests that move the clock.
     func tickForTesting() { tick() }
+
+    /// Exercise the same decision ingress without starting a real microphone watcher.
+    func stepForTesting() { step() }
   #endif
 
   // MARK: - Helpers

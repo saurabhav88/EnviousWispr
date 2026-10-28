@@ -17,19 +17,6 @@ enum CallEvidenceRead {
     static let shared = Lane()
   }
 
-  static func bounded(
-    rule: CallAppCatalog.Rule, pid: Int32, bound: Duration = .seconds(1), lane: Lane = .shared,
-    isTrusted: @escaping @Sendable () -> Bool = { AXIsProcessTrusted() },
-    read: @escaping @Sendable (CallAppCatalog.Rule, Int32) -> CallEvidenceReader.Evidence = {
-      CallEvidenceReader.evidence(for: $0, holderPID: $1)
-    }
-  ) async -> CallEvidenceReader.Evidence {
-    let snapshot = await boundedSnapshot(
-      rule: rule, pid: pid, bound: bound, lane: lane, isTrusted: isTrusted,
-      read: { .init(startEvidence: read($0, $1)) })
-    return snapshot.startEvidence
-  }
-
   static func boundedSnapshot(
     rule: CallAppCatalog.Rule, pid: Int32, bound: Duration = .seconds(1), lane: Lane = .shared,
     isTrusted: @escaping @Sendable () -> Bool = { AXIsProcessTrusted() },

@@ -43,7 +43,42 @@ public struct CallDetectionPolicy: Sendable {
     }
   }
 
-  /// One microphone reading of every call-app process.
+  /// A listed microphone source instance, separate from its verified regular app run.
+  package struct Source: Sendable, Equatable {
+    package let id: Int
+    package let pid: Int32
+    package let rule: CallAppCatalog.Rule
+
+    package init(id: Int, pid: Int32, rule: CallAppCatalog.Rule) {
+      self.id = id
+      self.pid = pid
+      self.rule = rule
+    }
+  }
+
+  package struct ContinuityObservation: Sendable, Equatable {
+    package let id: Int
+    package let source: Source
+    /// Conservative age starts when this read began, never when a later microphone poll ran.
+    package let beganAt: Date
+    package let completedAt: Date
+    package let owner: CallEvidenceReader.AppRun?
+    package let value: CallEvidenceReader.Continuity
+
+    package init(
+      id: Int, source: Source, beganAt: Date, completedAt: Date,
+      owner: CallEvidenceReader.AppRun?, value: CallEvidenceReader.Continuity
+    ) {
+      self.id = id
+      self.source = source
+      self.beganAt = beganAt
+      self.completedAt = completedAt
+      self.owner = owner
+      self.value = value
+    }
+  }
+
+  /// Microphone facts and independently completed call-state observations.
   public struct Reading: Sendable, Equatable {
     /// Rises with every reading the watcher takes; an older one is never applied.
     public let sequence: Int
@@ -54,15 +89,29 @@ public struct CallDetectionPolicy: Sendable {
     /// A process that may belong to a call app could not be named, and its microphone was on
     /// or could not be read: no call can be confirmed off.
     public let ambiguous: Bool
+    package let sources: [Source]
+    package let continuity: [ContinuityObservation]
+    package let pendingSources: [Source]
 
     public init(
       sequence: Int, takenAt: Date, complete: Bool, holders: [Holder], ambiguous: Bool = false
+    ) {
+      self.init(sequence: sequence, takenAt: takenAt, complete: complete, holders: holders,
+        ambiguous: ambiguous, sources: [], continuity: [], pendingSources: [])
+    }
+
+    package init(
+      sequence: Int, takenAt: Date, complete: Bool, holders: [Holder], ambiguous: Bool,
+      sources: [Source], continuity: [ContinuityObservation], pendingSources: [Source]
     ) {
       self.sequence = sequence
       self.takenAt = takenAt
       self.complete = complete
       self.holders = holders
       self.ambiguous = ambiguous
+      self.sources = sources
+      self.continuity = continuity
+      self.pendingSources = pendingSources
     }
   }
 
@@ -243,6 +292,10 @@ public struct CallDetectionPolicy: Sendable {
   package func isTracking(_ rule: CallAppCatalog.Rule) -> Bool {
     episodes.contains { $0.rule == rule }
   }
+
+  #if DEBUG
+    package var inputForTesting: Reading? { reading }
+  #endif
 
   // MARK: - Inputs
 
