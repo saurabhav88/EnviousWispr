@@ -99,12 +99,15 @@ struct CallSpeakerAdmissionTests {
 
   // MARK: - Self and partial rosters
 
-  @Test("SURVEY Teams: the user plus one remote talker, from a partial gallery, is admitted")
+  @Test("SURVEY Teams: with People closed the self tile and gallery give the user, the roster and both talkers")
   func selfPlusOneFromPartialRoster() {
     let reading = TeamsAppSpeakerReader.read(windows: [
       window(
         "Meeting compact view | Meeting with Saurabh Vaish",
-        [CallAXNode(role: "AXGroup", description: "Alex Rivera (Guest) is speaking")]),
+        [
+          CallAXNode(role: "AXGroup", description: "Alex Rivera (Guest) is speaking"),
+          CallAXNode(role: "AXGroup", description: "Saurabh Vaish is speaking"),
+        ]),
       window(
         "Meeting with Saurabh Vaish",
         [
@@ -115,7 +118,70 @@ struct CallSpeakerAdmissionTests {
         ]),
     ])
     #expect(!reading.rosterFromParticipantList, "no People list: provenance says so")
-    #expect(Admission.observationSpeaking(reading, context: Self.good) == ["Alex Rivera"])
+    #expect(reading.roster.selfNames == ["Saurabh Vaish"])
+    #expect(reading.roster.names == ["Alex Rivera", "Saurabh Vaish"])
+    #expect(reading.participants.filter(\.isSelf).map(\.name) == ["Saurabh Vaish"])
+    #expect(
+      Admission.observationSpeaking(reading, context: Self.good) == ["Alex Rivera", "Saurabh Vaish"])
+  }
+
+  @Test("SYNTHETIC Teams: a partial roster with one Alex row still sees two Alex tiles")
+  func teamsDuplicateAcrossRepresentations() {
+    let reading = TeamsAppSpeakerReader.read(windows: [
+      window(
+        "Meeting with Saurabh Vaish",
+        [
+          CallAXNode(role: "AXRow", description: "Alex Rivera (Guest), Meeting guest, Unmuted"),
+          CallAXNode(role: "AXMenuItem", description: "Alex Rivera (Guest), Context menu is available"),
+          CallAXNode(role: "AXMenuItem", description: "Alex Rivera (Guest), muted, Context menu is available"),
+          CallAXNode(role: "AXGroup", description: "Alex Rivera (Guest) is speaking"),
+        ])
+    ])
+    #expect(reading.participants.count == 1, "rows and tiles are never added together")
+    #expect(Admission.admission(of: reading, context: Self.good) == .withheld(.ambiguousTalker))
+  }
+
+  @Test("SYNTHETIC Teams: an unnamed talker beside a named one withholds the reading")
+  func teamsUnnamedTalker() {
+    let reading = TeamsAppSpeakerReader.read(windows: [
+      window(
+        "Meeting compact view | Meeting",
+        [
+          CallAXNode(role: "AXGroup", description: " is speaking"),
+          CallAXNode(role: "AXGroup", description: "Alex Rivera (Guest) is speaking"),
+        ])
+    ])
+    #expect(Admission.admission(of: reading, context: Self.good) == .withheld(.unnamedTalker))
+  }
+
+  @Test("SYNTHETIC Zoom: an unnamed talking thumbnail beside a named talker withholds the reading")
+  func zoomUnnamedTalker() {
+    let reading = zoom([
+      "Computer audio unmuted, Video off, active speaker",
+      "Priya Shah, Computer audio unmuted, Video off, active speaker",
+    ])
+    #expect(reading.participants.count == 2)
+    #expect(Admission.admission(of: reading, context: Self.good) == .withheld(.unnamedTalker))
+  }
+
+  @Test("SYNTHETIC Zoom: an incomplete panel listing Alex twice still makes Alex ambiguous")
+  func zoomIncompletePanelDuplicates() {
+    let panel = CallAXNode(
+      role: "AXOutline", description: "Participants list",
+      children: ["Saurabh A Vaish (Host, me)", "Alex Rivera", "Alex Rivera"].map {
+        CallAXNode(role: "AXRow", children: [CallAXNode(role: "AXStaticText", value: $0)])
+      })
+    let reading = ZoomAppSpeakerReader.read(windows: [
+      window(
+        "Zoom Meeting",
+        [
+          zoomTile("Alex Rivera, Computer audio unmuted, Video off, active speaker"),
+          CallAXNode(role: "AXStaticText", value: "Participants (9)"),
+          panel,
+        ])
+    ])
+    #expect(!reading.rosterFromParticipantList)
+    #expect(Admission.admission(of: reading, context: Self.good) == .withheld(.ambiguousTalker))
   }
 
   @Test("SURVEY Teams: two roster rows with one name make that talker ambiguous")

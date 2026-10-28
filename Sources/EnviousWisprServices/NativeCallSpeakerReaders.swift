@@ -40,14 +40,18 @@ package enum ZoomAppSpeakerReader {
     }
     // Speaker-view thumbnails carry a video state and show each participant once; the large
     // tile repeats one of them without it (C1a/C1b, 2026-10-28). Only thumbnails are people.
-    var thumbnails: [(name: String, talking: Bool)] = []
+    var thumbnails: [(name: String?, talking: Bool)] = []
     var flaggedOutsideThumbnails = false
     for node in windows.flatMap({ $0.root.allNodes }) {
       if node.role == "AXTabGroup", let label = node.label, let tile = parseTile(label) {
-        tileNames.append(tile.name)
-        if tile.isActiveSpeaker { speaking.append(tile.name) }
+        // A tile with Zoom's structure but no name is still a person; it is kept unnamed.
+        let name: String? = tile.name.isEmpty ? nil : tile.name
+        if let name {
+          tileNames.append(name)
+          if tile.isActiveSpeaker { speaking.append(name) }
+        }
         if tile.hasVideoState {
-          thumbnails.append((tile.name, tile.isActiveSpeaker))
+          thumbnails.append((name, tile.isActiveSpeaker))
         } else if tile.isActiveSpeaker {
           flaggedOutsideThumbnails = true
         }
@@ -62,11 +66,16 @@ package enum ZoomAppSpeakerReader {
     // shows exactly one "Participants (N)" count, equal to the entries read. A longer list Zoom
     // draws only partly, or two lists, fall back to the tiles.
     let selfList = uniqueInOrder(selfNames)
-    let thumbnailNames = thumbnails.map(\.name)
+    let thumbnailNames = thumbnails.compactMap(\.name)
     let participants = thumbnails.enumerated().map { index, tile in
       CallParticipant(
         key: "thumbnail-\(index)", name: tile.name, isTalking: tile.talking,
-        isSelf: selfList == [tile.name] && thumbnailNames.filter { $0 == tile.name }.count == 1)
+        isSelf: tile.name != nil && selfList == [tile.name!]
+          && thumbnailNames.filter { $0 == tile.name }.count == 1)
+    }
+    // Every list's own duplicates are two people, whether or not that list is complete.
+    let listedTwice = lists.reduce(into: Set<String>()) { shared, list in
+      shared.formUnion(repeatedNames(list.entries.map { panelEntry($0).name }))
     }
     // Identity holds when the thumbnails are the people and no talking flag sits elsewhere.
     let identity = !thumbnails.isEmpty && !flaggedOutsideThumbnails
@@ -79,14 +88,15 @@ package enum ZoomAppSpeakerReader {
         roster: CallSpeakerRoster(names: names, selfNames: selfList),
         rosterFromParticipantList: true, participants: participants,
         participantIdentityEstablished: identity,
-        sharedNames: repeatedNames(names).union(repeatedNames(thumbnailNames)))
+        sharedNames: listedTwice.union(repeatedNames(thumbnailNames)))
     }
     return CallSpeakerReading(
       speaking: uniqueInOrder(speaking),
       roster: CallSpeakerRoster(
         names: identity ? thumbnailNames : uniqueInOrder(tileNames), selfNames: selfList),
       rosterFromParticipantList: false, participants: participants,
-      participantIdentityEstablished: identity, sharedNames: repeatedNames(thumbnailNames))
+      participantIdentityEstablished: identity,
+      sharedNames: listedTwice.union(repeatedNames(thumbnailNames)))
   }
 
   /// `Participants (4)` → 4. Any other text → `nil`.
@@ -128,8 +138,8 @@ package enum ZoomAppSpeakerReader {
       hasVideoState = true
     }
     guard let state = parts.popLast(), audioStates.contains(state) else { return nil }
-    let name = parts.joined(separator: ", ")
-    return name.isEmpty ? nil : (name, isActiveSpeaker, hasVideoState)
+    // An empty name is returned as "": the tile is still a person the caller must not drop.
+    return (parts.joined(separator: ", "), isActiveSpeaker, hasVideoState)
   }
 
   /// The participants panel marks the user: `Saurabh A Vaish (Host, me)` or `Dana (me)`.
@@ -170,6 +180,7 @@ package enum TeamsAppSpeakerReader {
     var rosterNames: [String] = []
     var selfTiles: [String] = []
     var tileNames: [String] = []
+    var unnamedTalker = false
     // Each window's roster rows and the "In this meeting, N total" counts shown in that window.
     var rosters: [(names: [String], counts: Set<Int>)] = []
     for window in windows {
@@ -183,7 +194,7 @@ package enum TeamsAppSpeakerReader {
       switch node.role {
       case "AXGroup" where label.hasSuffix(speakingSuffix):
         let name = displayName(String(label.dropLast(speakingSuffix.count)))
-        if !name.isEmpty { speaking.append(name) }
+        if name.isEmpty { unnamedTalker = true } else { speaking.append(name) }
       case "AXRow":
         if let name = rosterName(label) { rosterNames.append(name) }
       case "AXMenuItem" where label.hasPrefix(selfTilePrefix):
@@ -207,7 +218,10 @@ package enum TeamsAppSpeakerReader {
           .allSatisfy(tileStates.contains)
       }
     }
-    let selfNames = candidates.count == 1 ? candidates : []
+    // With People closed there are no rows: the one self tile gives the user's exact name.
+    let selfFromTile = selfTiles.count == 1 ? selfTileName(selfTiles[0]) : nil
+    let selfNames =
+      rosterNames.isEmpty ? (selfFromTile.map { [$0] } ?? []) : (candidates.count == 1 ? candidates : [])
     // A complete participant list (C1 Teams run, 2026-10-28): roster rows in exactly one window,
     // whose own "In this meeting, N total" count is the one count there and equals the people
     // read. Duplicate names stay; a partial, uncounted or contested list keeps its names for
@@ -231,17 +245,32 @@ package enum TeamsAppSpeakerReader {
         key: "person-\(index)", name: name, isTalking: talking.contains(name),
         isSelf: selfNames == [name] && shown.filter { $0 == name }.count == 1)
     }
+    if unnamedTalker {
+      participants.append(
+        CallParticipant(key: "unnamed-talker", name: nil, isTalking: true, isSelf: false))
+    }
     for (index, name) in uniqueInOrder(speaking).enumerated() where !shown.contains(name) {
       participants.append(
         CallParticipant(key: "talker-\(index)", name: name, isTalking: true, isSelf: false))
     }
     return CallSpeakerReading(
       speaking: uniqueInOrder(speaking),
-      roster: CallSpeakerRoster(names: rosterNames, selfNames: selfNames),
+      // With People closed the gallery is the roster offered for renaming.
+      roster: CallSpeakerRoster(names: rosterNames.isEmpty ? shown : rosterNames, selfNames: selfNames),
       rosterFromParticipantList: complete, participants: participants,
       // Rows in two windows cannot be matched to each other: no identity.
       participantIdentityEstablished: rosters.count <= 1 && !participants.isEmpty,
-      sharedNames: repeatedNames(shown))
+      // Each representation's own duplicates are two people; rows and tiles are never added.
+      sharedNames: rosters.reduce(into: repeatedNames(tileNames)) { $0.formUnion(repeatedNames($1.names)) })
+  }
+
+  /// `Saurabh Vaish, Muted, Has context menu` (after "Myself video, ") → `Saurabh Vaish`:
+  /// trailing tile states removed, the rest kept exactly.
+  static func selfTileName(_ tile: String) -> String? {
+    var parts = tile.components(separatedBy: ", ")
+    while let last = parts.last, tileStates.contains(last) { parts.removeLast() }
+    let name = parts.joined(separator: ", ")
+    return name.isEmpty ? nil : name
   }
 
   /// A gallery tile, `Alex Rivera (Guest), muted, Context menu is available` → `Alex Rivera`.
