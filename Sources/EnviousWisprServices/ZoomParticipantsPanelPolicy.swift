@@ -14,18 +14,29 @@ package enum ZoomParticipantsPanelPolicy {
     package let windows: [CallAXWindow]
     /// The copy reached every element within its bounds and every read succeeded.
     package let isComplete: Bool
+    /// Host time, in nanoseconds, when the copy started: its oldest read can be no older, so age
+    /// is measured from here, never from when a long walk finished.
+    package let startedAtNanos: UInt64
     /// Host time, in nanoseconds, when the copy finished.
-    package let capturedAtNanos: UInt64
+    package let finishedAtNanos: UInt64
     /// The call link this copy was taken for; a relink makes it another call's copy.
     package let linkGeneration: UInt64
 
     package init(
-      windows: [CallAXWindow], isComplete: Bool, capturedAtNanos: UInt64, linkGeneration: UInt64
+      windows: [CallAXWindow], isComplete: Bool, startedAtNanos: UInt64, finishedAtNanos: UInt64,
+      linkGeneration: UInt64
     ) {
       self.windows = windows
       self.isComplete = isComplete
-      self.capturedAtNanos = capturedAtNanos
+      self.startedAtNanos = startedAtNanos
+      self.finishedAtNanos = finishedAtNanos
       self.linkGeneration = linkGeneration
+    }
+
+    /// Taken in order, finished by `now`, and started no more than `maxAge` before it.
+    func isFresh(nowNanos: UInt64, maxAgeNanos: UInt64) -> Bool {
+      startedAtNanos <= finishedAtNanos && finishedAtNanos <= nowNanos
+        && nowNanos - startedAtNanos <= maxAgeNanos
     }
   }
 
@@ -57,7 +68,7 @@ package enum ZoomParticipantsPanelPolicy {
   package enum Refusal: String, Sendable, Equatable {
     case settingOff, attemptSpent, observedOpenBefore, noSnapshot, incompleteSnapshot
     case staleSnapshot, otherCall, notOneMeetingWindow, panelOpen, noButton, ambiguousButton
-    case notRecording, paused, noPermission, dictating
+    case notRecording, paused, invalidated, noPermission, dictating
   }
 
   package enum Decision: Sendable, Equatable {
@@ -104,8 +115,9 @@ package enum ZoomParticipantsPanelPolicy {
     guard !state.observedOpen else { return .refuse(.observedOpenBefore) }
     guard let snapshot else { return .refuse(.noSnapshot) }
     guard snapshot.isComplete else { return .refuse(.incompleteSnapshot) }
-    guard snapshot.capturedAtNanos <= nowNanos, nowNanos - snapshot.capturedAtNanos <= maxAgeNanos
-    else { return .refuse(.staleSnapshot) }
+    guard snapshot.isFresh(nowNanos: nowNanos, maxAgeNanos: maxAgeNanos) else {
+      return .refuse(.staleSnapshot)
+    }
     guard snapshot.linkGeneration == currentLinkGeneration else { return .refuse(.otherCall) }
     switch panel(in: snapshot.windows) {
     case .closedWithOneButton: return .press
@@ -117,11 +129,26 @@ package enum ZoomParticipantsPanelPolicy {
     }
   }
 
+  /// What `State.admit()` let through: the call link and the observer's invalidation
+  /// generation at that moment. The observer advances the invalidation generation on every pause,
+  /// stop, relink, permission loss and quit, so an action admitted before any of them stays
+  /// refused even after the state looks normal again (a pause, then a resume).
+  package struct Admission: Sendable, Equatable {
+    package let linkGeneration: UInt64
+    package let invalidationGeneration: UInt64
+
+    package init(linkGeneration: UInt64, invalidationGeneration: UInt64) {
+      self.linkGeneration = linkGeneration
+      self.invalidationGeneration = invalidationGeneration
+    }
+  }
+
   /// What the observer knows at the moment of the press, read again on its AX queue.
   package struct FinalCheck: Sendable, Equatable {
     package let recording: Bool
     package let paused: Bool
     package let linkGeneration: UInt64
+    package let invalidationGeneration: UInt64
     package let settingOn: Bool
     package let accessibilityAllowed: Bool
     package let dictationIdle: Bool
@@ -129,12 +156,13 @@ package enum ZoomParticipantsPanelPolicy {
     package let snapshot: Snapshot
 
     package init(
-      recording: Bool, paused: Bool, linkGeneration: UInt64, settingOn: Bool,
-      accessibilityAllowed: Bool, dictationIdle: Bool, snapshot: Snapshot
+      recording: Bool, paused: Bool, linkGeneration: UInt64, invalidationGeneration: UInt64,
+      settingOn: Bool, accessibilityAllowed: Bool, dictationIdle: Bool, snapshot: Snapshot
     ) {
       self.recording = recording
       self.paused = paused
       self.linkGeneration = linkGeneration
+      self.invalidationGeneration = invalidationGeneration
       self.settingOn = settingOn
       self.accessibilityAllowed = accessibilityAllowed
       self.dictationIdle = dictationIdle
@@ -142,18 +170,28 @@ package enum ZoomParticipantsPanelPolicy {
     }
   }
 
-  /// The last check before AXPress, after `State.admit()` returned true. Any refusal leaves the
-  /// allowance spent: there is no second attempt.
-  package static func finalCheck(_ check: FinalCheck, admittedGeneration: UInt64) -> Decision {
+  /// The last check before AXPress, after `State.admit()` returned true. `state` is the latest
+  /// history, so a panel seen open (and closed by the user) after admission is still respected.
+  /// Any refusal leaves the allowance spent: there is no second attempt.
+  package static func finalCheck(
+    _ check: FinalCheck, state: State, admitted: Admission, nowNanos: UInt64, maxAgeNanos: UInt64
+  ) -> Decision {
     guard check.recording else { return .refuse(.notRecording) }
     guard !check.paused else { return .refuse(.paused) }
-    guard check.linkGeneration == admittedGeneration,
-      check.snapshot.linkGeneration == admittedGeneration
+    guard check.invalidationGeneration == admitted.invalidationGeneration else {
+      return .refuse(.invalidated)
+    }
+    guard check.linkGeneration == admitted.linkGeneration,
+      check.snapshot.linkGeneration == admitted.linkGeneration
     else { return .refuse(.otherCall) }
+    guard !state.observedOpen else { return .refuse(.observedOpenBefore) }
     guard check.settingOn else { return .refuse(.settingOff) }
     guard check.accessibilityAllowed else { return .refuse(.noPermission) }
     guard check.dictationIdle else { return .refuse(.dictating) }
     guard check.snapshot.isComplete else { return .refuse(.incompleteSnapshot) }
+    guard check.snapshot.isFresh(nowNanos: nowNanos, maxAgeNanos: maxAgeNanos) else {
+      return .refuse(.staleSnapshot)
+    }
     switch panel(in: check.snapshot.windows) {
     case .closedWithOneButton: return .press
     case .open: return .refuse(.panelOpen)

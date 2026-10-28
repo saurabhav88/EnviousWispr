@@ -25,10 +25,12 @@ struct ZoomParticipantsPanelPolicyTests {
   }
 
   private static func snap(
-    _ windows: [CallAXWindow], complete: Bool = true, at: UInt64 = 1_000, generation: UInt64 = 7
+    _ windows: [CallAXWindow], complete: Bool = true, at: UInt64 = 1_000, generation: UInt64 = 7,
+    started: UInt64? = nil
   ) -> Policy.Snapshot {
     Policy.Snapshot(
-      windows: windows, isComplete: complete, capturedAtNanos: at, linkGeneration: generation)
+      windows: windows, isComplete: complete, startedAtNanos: started ?? at - 50,
+      finishedAtNanos: at, linkGeneration: generation)
   }
 
   private static let closed = snap([window([closedButton])])
@@ -92,14 +94,39 @@ struct ZoomParticipantsPanelPolicyTests {
   }
 
   private func final(
-    recording: Bool = true, paused: Bool = false, generation: UInt64 = 7, setting: Bool = true,
-    permission: Bool = true, idle: Bool = true, snapshot: Policy.Snapshot = closed
+    recording: Bool = true, paused: Bool = false, generation: UInt64 = 7,
+    invalidation: UInt64 = 3, setting: Bool = true, permission: Bool = true, idle: Bool = true,
+    snapshot: Policy.Snapshot = closed, state: Policy.State = .init(), now: UInt64 = 1_200
   ) -> Policy.Decision {
     Policy.finalCheck(
       Policy.FinalCheck(
-        recording: recording, paused: paused, linkGeneration: generation, settingOn: setting,
-        accessibilityAllowed: permission, dictationIdle: idle, snapshot: snapshot),
-      admittedGeneration: 7)
+        recording: recording, paused: paused, linkGeneration: generation,
+        invalidationGeneration: invalidation, settingOn: setting, accessibilityAllowed: permission,
+        dictationIdle: idle, snapshot: snapshot),
+      state: state, admitted: Policy.Admission(linkGeneration: 7, invalidationGeneration: 3),
+      nowNanos: now, maxAgeNanos: 500)
+  }
+
+  @Test("the final check refuses an old or out-of-order snapshot, measured from its start")
+  func finalFreshness() {
+    #expect(final(now: 2_000) == .refuse(.staleSnapshot))
+    // A long walk: finished recently, but started too long ago for its first reads to count.
+    #expect(final(snapshot: Self.snap([Self.window([Self.closedButton])], at: 1_150, started: 600)) == .refuse(.staleSnapshot))
+    #expect(final(snapshot: Self.snap([Self.window([Self.closedButton])], at: 1_500)) == .refuse(.staleSnapshot))
+    #expect(final(snapshot: Self.snap([Self.window([Self.closedButton])], at: 1_100, started: 1_150)) == .refuse(.staleSnapshot))
+  }
+
+  @Test("a panel seen open after admission and then closed by the user is not reopened")
+  func finalRespectsLaterClose() {
+    var state = Policy.State()
+    _ = state.admit()
+    state.observe(Self.open)
+    #expect(final(snapshot: Self.closed, state: state) == .refuse(.observedOpenBefore))
+  }
+
+  @Test("a pause and resume between admission and the press keeps the old action refused")
+  func finalInvalidatedByPause() {
+    #expect(final(paused: false, invalidation: 4) == .refuse(.invalidated))
   }
 
   @Test(
