@@ -38,6 +38,12 @@ final class SequencerFakeTarget: LaunchTarget {
     log.add("reopen")
     return reopenResult
   }
+  /// What the fake answers when asked whether to quit now.
+  var quitNow = true
+  func applicationShouldTerminate(reply: @escaping @MainActor (Bool) -> Void) -> Bool {
+    log.add("shouldTerminate")
+    return quitNow
+  }
   func applicationWillTerminate() { log.add("terminate") }
 }
 
@@ -64,6 +70,21 @@ private func makeSequencer(
 @MainActor
 @Suite("LaunchSequencer (#3252)", .tags(.productOutcome))
 struct LaunchSequencerTests {
+
+  // MARK: Quit (#4086)
+
+  @Test("Quit before the app was built quits at once and asks no target; afterwards the target answers")
+  func quitAsksOnlyARunningTarget() {
+    let log = SequencerEventLog()
+    let waiting = makeSequencer(startImmediately: false, log: log)
+    #expect(waiting.applicationShouldTerminate { _ in Issue.record("no reply is owed") })
+    #expect(log.events.isEmpty)
+
+    let started = makeSequencer(startImmediately: true, log: log)
+    started.target?.quitNow = false
+    #expect(started.applicationShouldTerminate { _ in } == false)
+    #expect(log.count("shouldTerminate") == 1)
+  }
 
   // MARK: Immediate and deferred construction
 

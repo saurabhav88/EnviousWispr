@@ -97,7 +97,7 @@ struct CustomWordSaveHelperTests {
     #expect(H.proposalTarget(for: "mueller", in: [user], packTerms: []) == .new)
   }
 
-  // MARK: saveAndConfirm (write, then prove the spelling landed)
+  // MARK: saveConfirmingSpelling (write, then prove the spelling landed, one command)
   //
   // A fresh manager seeds the built-in defaults, so counts are read against
   // that baseline and words are found by id, never by position.
@@ -107,41 +107,41 @@ struct CustomWordSaveHelperTests {
   }
 
   @Test("a new word is added, an existing one updated, and nil is returned only when the spelling is on the word")
-  func saveRoutesAndConfirms() {
+  func saveRoutesAndConfirms() async {
     let coordinator = Self.isolatedCoordinator()
     let baseline = coordinator.customWords.count
     let word = CustomWord(canonical: "Saira", aliases: ["sarah"])
-    #expect(H.saveAndConfirm(word, carrying: " sarah ", through: coordinator) == nil)
+    #expect(await coordinator.saveConfirmingSpelling(word, carrying: " sarah ") == nil)
     #expect(coordinator.customWords.count == baseline + 1)
     #expect(Self.word(word.id, in: coordinator)?.aliases == ["sarah"])
 
     var updated = word
     updated.aliases.append("sara")
-    #expect(H.saveAndConfirm(updated, carrying: "sara", through: coordinator) == nil)
+    #expect(await coordinator.saveConfirmingSpelling(updated, carrying: "sara") == nil)
     #expect(coordinator.customWords.count == baseline + 1, "update, not a second add")
     #expect(Self.word(word.id, in: coordinator)?.aliases == ["sarah", "sara"])
   }
 
   @Test("a refusal from the coordinator is propagated as its message")
-  func refusalPropagates() {
+  func refusalPropagates() async {
     let coordinator = Self.isolatedCoordinator()
     let baseline = coordinator.customWords.count
     let tooLong = CustomWord(canonical: String(repeating: "x", count: 600))
-    let message = H.saveAndConfirm(tooLong, carrying: "x", through: coordinator)
+    let message = await coordinator.saveConfirmingSpelling(tooLong, carrying: "x")
     #expect(message != nil)
     #expect(coordinator.customWords.count == baseline && Self.word(tooLong.id, in: coordinator) == nil)
   }
 
   @Test("a silent non-write is caught by the landed check: the spelling is not on the word, so the save is reported as not saved")
-  func silentNonWriteIsReported() {
+  func silentNonWriteIsReported() async {
     let coordinator = Self.isolatedCoordinator()
     let existing = CustomWord(canonical: "Codex")
-    #expect(coordinator.add(existing) == nil)
+    #expect(await coordinator.add(existing) == nil)
     let baseline = coordinator.customWords.count
     // Same canonical under a new id: `add` refuses silently (returns nil) and
     // writes nothing, so the spelling never lands and the helper says so.
     let twin = CustomWord(canonical: "Codex", aliases: ["kodex"])
-    let message = H.saveAndConfirm(twin, carrying: "kodex", through: coordinator)
+    let message = await coordinator.saveConfirmingSpelling(twin, carrying: "kodex")
     #expect(message == QuickAddPanelCopy.newWordNotSaved)
     #expect(coordinator.customWords.count == baseline)
     #expect(Self.word(existing.id, in: coordinator)?.aliases == [])

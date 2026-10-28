@@ -20,6 +20,10 @@ import Foundation
 /// tests script every success, refusal, silent non-write and exact persisted
 /// transformation. `userWords()` is a FRESH read each call: the coordinator
 /// rereads after every write and compares exact values.
+///
+/// Every write runs inside `perform` (#4086): one learn or one Undo is ONE dictionary
+/// command, so its memory check, target choice, write and proof see one library and no
+/// other dictionary command runs in between.
 struct LearnedCorrectionVocabularyAccess {
   /// What `restoreBuiltinAndLearn` answered, as the coordinator sees it.
   enum BuiltinRestore: Equatable {
@@ -43,26 +47,39 @@ struct LearnedCorrectionVocabularyAccess {
   let userWords: () -> [CustomWord]
   /// Terms of the ENABLED packs only.
   let packTerms: () -> [CustomWord]
-  /// `CustomWordSaveHelper.saveAndConfirm` in production: nil means the
-  /// spelling is on the word now.
-  let save: (CustomWord, String) -> String?
-  /// `CustomWordsCoordinator.remove(id:)` in production: nil means no error.
-  let remove: (UUID) -> String?
-  /// `CustomWordsCoordinator.update(_:)` in production: nil means no error.
-  let update: (CustomWord) -> String?
+  /// `CustomWordsCoordinator.saveLearned` in production. The second value is the word as
+  /// the learn read it, or nil for a new word: an edit then lands only while the saved word
+  /// still equals it. The answer is what the save's own transaction did.
+  let save: @MainActor (CustomWord, CustomWord?) async -> CustomWordsCoordinator.LearnedSave
+  /// `CustomWordsCoordinator.remove(id:expecting:)` in production: nil means no error.
+  /// Undo's writes all carry the word as the learn left it (`postSave`); each applies only
+  /// while the saved word still equals it, under the file lock, so a change saved
+  /// meanwhile, in this window or another, is never overwritten.
+  let remove: @MainActor (UUID, CustomWord) async -> String?
+  /// `CustomWordsCoordinator.update(_:expecting:)` in production: nil means no error.
+  let update: @MainActor (CustomWord, CustomWord) async -> String?
   /// Remove a user OVERRIDE of a built-in WITHOUT tombstoning the built-in,
   /// so the built-in shows again exactly as before the learn. `remove(id:)`
   /// cannot do this: it tombstones any built-in the removed word's canonical
   /// matches. Production binds this to `CustomWordsCoordinator.removeUserOverride(id:)`.
-  let removeOverride: (UUID) -> String?
+  let removeOverride: @MainActor (UUID, CustomWord) async -> String?
   /// `CustomWordsManager.restoreBuiltinAndLearn(canonical:alias:)` in
   /// production, through the words coordinator so the live list republishes.
-  let restoreBuiltinAndLearn: (String, String) -> BuiltinRestore
+  let restoreBuiltinAndLearn: @MainActor (String, String) async -> BuiltinRestore
   /// `CustomWordsManager.redeleteRestoredBuiltin(id:)` in production, through
   /// the words coordinator: nil means no error.
-  let redeleteRestoredBuiltin: (UUID) -> String?
+  let redeleteRestoredBuiltin: @MainActor (UUID, CustomWord) async -> String?
   /// `WordSuggestionService.classifyByHeuristic` in production.
   let classify: (String) -> WordCategory?
+  /// `CustomWordsCoordinator.performAction` in production: runs one whole learn or Undo
+  /// as one dictionary command. The writes above, called inside it, join that command.
+  let perform: @MainActor (@escaping @MainActor () async -> Void) async -> Void
+}
+
+/// Carries an action's result out of `perform`, which returns nothing.
+@MainActor private final class ActionResult<Value> {
+  var value: Value
+  init(_ value: Value) { self.value = value }
 }
 
 /// The three auto-learn rows, the shared refusal row and the user-refusal
@@ -238,7 +255,21 @@ final class LearnedCorrectionCoordinator {
   func learn(
     original: String, corrected: String, expectedTarget: LearnTargetState,
     via: T.LearnVia = .judge
-  ) -> LearnOutcome {
+  ) async -> LearnOutcome {
+    let result = ActionResult<LearnOutcome>(.blocked)
+    await vocabulary.perform { [self] in
+      result.value = await learnInsideAction(
+        original: original, corrected: corrected, expectedTarget: expectedTarget, via: via)
+    }
+    return result.value
+  }
+
+  /// The learn itself, inside one dictionary command: the block check below sees every
+  /// refusal an earlier command committed.
+  private func learnInsideAction(
+    original: String, corrected: String, expectedTarget: LearnTargetState,
+    via: T.LearnVia
+  ) async -> LearnOutcome {
     let corrected = corrected.trimmingCharacters(in: .whitespacesAndNewlines)
     let original = original.trimmingCharacters(in: .whitespacesAndNewlines)
     let pairKey = CorrectionPairKey.make(original: original, corrected: corrected)
@@ -294,6 +325,9 @@ final class LearnedCorrectionCoordinator {
     let wordID: UUID
     let operation: UndoOperation
     let preSave: CustomWord?
+    // What this action's own write left, from its transaction (#4086): the Undo owns
+    // exactly that change and nothing another writer did.
+    let postSave: CustomWord
     let state: T.AddedState
     let kind: LearnedCorrectionPillModel.Kind
     switch target {
@@ -301,20 +335,24 @@ final class LearnedCorrectionCoordinator {
       var updated = live
       updated.aliases.append(original)
       updated.learnedAliases.append(original)
-      let saveError = vocabulary.save(updated, original)
-      // A target that is no longer in the live list after the write is a
-      // different failure from a write that did not land on it: the word
-      // vanished between the read that chose it and the save (plan §3.1
-      // failure table, `target_gone`).
-      guard vocabulary.userWords().contains(where: { $0.id == live.id }) else {
-        return refuse(canonical: corrected, reason: .targetGone)
-      }
-      if saveError != nil {
+      let saved = await vocabulary.save(updated, live)
+      guard case .saved(let before, let after) = saved else {
+        // A target that is no longer in the live list after the write is a
+        // different failure from a write that did not land on it: the word
+        // vanished between the read that chose it and the save (plan §3.1
+        // failure table, `target_gone`).
+        guard let now = vocabulary.userWords().first(where: { $0.id == live.id }) else {
+          return refuse(canonical: corrected, reason: .targetGone)
+        }
+        // Another writer gave the word this spelling meanwhile: nothing to learn, and no
+        // Undo, because this action changed nothing.
+        if saved == .notApplied, Self.covers(now, original: original) { return .alreadyCovered }
         return refuse(canonical: corrected, reason: .vocabularyWriteFailed)
       }
       wordID = live.id
       operation = .updated
-      preSave = live
+      preSave = before ?? live
+      postSave = after
       state = .existingWord
       kind = .updated
     case .packOverride(let converted):
@@ -322,20 +360,22 @@ final class LearnedCorrectionCoordinator {
       var override = converted
       override.aliases.append(original)
       override.learnedAliases.append(original)
-      if vocabulary.save(override, original) != nil {
+      guard case .saved(_, let after) = await vocabulary.save(override, nil) else {
         return refuse(canonical: corrected, reason: .vocabularyWriteFailed)
       }
       wordID = converted.id
       operation = .updated
       preSave = nil
+      postSave = after
       state = .packOverride
       kind = .updated
     case .new:
-      switch vocabulary.restoreBuiltinAndLearn(corrected, original) {
+      switch await vocabulary.restoreBuiltinAndLearn(corrected, original) {
       case .restored(let outcome):
         wordID = outcome.word.id
         operation = .restoredBuiltin(outcome.preState)
         preSave = nil
+        postSave = outcome.word
         state = .existingWord
         kind = .updated
       case .failed:
@@ -345,21 +385,20 @@ final class LearnedCorrectionCoordinator {
           id: makeID(), canonical: corrected, aliases: [original],
           category: vocabulary.classify(corrected) ?? .general, source: .user,
           learnedAliases: [original], learnedAt: now())
-        if vocabulary.save(word, original) != nil {
+        guard case .saved(_, let after) = await vocabulary.save(word, nil) else {
           return refuse(canonical: corrected, reason: .vocabularyWriteFailed)
         }
         wordID = word.id
         operation = .added
         preSave = nil
+        postSave = after
         state = .newWord
         kind = .added
       }
     }
 
-    // 5. Prove it: the live list, not the proposed value, is the snapshot.
-    guard let postSave = vocabulary.userWords().first(where: { $0.id == wordID }),
-      Self.covers(postSave, original: original)
-    else {
+    // 5. Prove it: the saved value, not the proposed one, is the snapshot.
+    guard Self.covers(postSave, original: original) else {
       return refuse(canonical: corrected, reason: .vocabularyWriteFailed)
     }
 
@@ -404,18 +443,23 @@ final class LearnedCorrectionCoordinator {
   /// Put back exactly what `learn` changed, only if the live word still equals
   /// the post-save snapshot; otherwise write nothing.
   @discardableResult
-  func undo(pillID: UUID) -> UndoOutcome {
+  func undo(pillID: UUID) async -> UndoOutcome {
+    let result = ActionResult<UndoOutcome>(.stale)
+    await vocabulary.perform { [self] in result.value = await undoInsideAction(pillID: pillID) }
+    return result.value
+  }
+
+  /// The Undo itself, inside one dictionary command: the live-word check, the inverse
+  /// write, its proof and the learning-memory "no" happen with no command in between.
+  private func undoInsideAction(pillID: UUID) async -> UndoOutcome {
     guard let record = undoRecord, record.pillID == pillID else {
       presenter?.close(pillID: pillID)
       return .stale
     }
     undoRecord = nil
-    // Known limit (final review 2026-09-22): this reads the live list THIS
-    // process holds. A second instance of the app writing the same word to
-    // the shared file inside the Undo window is not seen here; the
-    // manager's own reload-before-write applies the inverse by id. Two
-    // instances never run together outside a dev-and-release UAT, and a
-    // locked compare-and-write transaction would be a new manager contract.
+    // This reads the live list THIS process holds. A change another window saved to the
+    // shared file is caught by the writes below, which apply only while the saved word
+    // still equals `postSave` under the file lock (#4086).
     let live = vocabulary.userWords().first { $0.id == record.wordID }
     guard live == record.postSave else {
       telemetry.learnUndone(
@@ -426,22 +470,22 @@ final class LearnedCorrectionCoordinator {
     let refusal: String?
     switch record.operation {
     case .added:
-      refusal = vocabulary.remove(record.wordID)
+      refusal = await vocabulary.remove(record.wordID, record.postSave)
     case .updated:
       if let preSave = record.preSave, preSave.source == .builtin {
         // A live built-in gained a sound-alike, which persisted a user
         // override. The exact pre-state is "no override": remove it without
         // a tombstone and the built-in shows again as it was.
-        refusal = vocabulary.removeOverride(record.wordID)
+        refusal = await vocabulary.removeOverride(record.wordID, record.postSave)
       } else if let preSave = record.preSave {
-        refusal = vocabulary.update(preSave)
+        refusal = await vocabulary.update(preSave, record.postSave)
       } else {
         // Pack override: the user word did not exist; removing it reveals
         // the pack term again.
-        refusal = vocabulary.remove(record.wordID)
+        refusal = await vocabulary.remove(record.wordID, record.postSave)
       }
     case .restoredBuiltin:
-      refusal = vocabulary.redeleteRestoredBuiltin(record.wordID)
+      refusal = await vocabulary.redeleteRestoredBuiltin(record.wordID, record.postSave)
     }
     // Prove the pre-state landed before saying so.
     let after = vocabulary.userWords().first { $0.id == record.wordID }
@@ -449,6 +493,14 @@ final class LearnedCorrectionCoordinator {
     switch record.operation {
     case .added, .restoredBuiltin: landed = after == nil
     case .updated: landed = after == record.preSave
+    }
+    // The write found the word changed under the lock and wrote nothing: the same answer
+    // as the check above, never an error.
+    if refusal == nil, !landed, after != record.postSave {
+      telemetry.learnUndone(
+        kind: record.kind, outcome: .alreadyChanged, via: record.via, memory: nil)
+      presenter?.close(pillID: pillID)
+      return .alreadyChanged
     }
     guard refusal == nil, landed else {
       telemetry.learnUndone(kind: record.kind, outcome: .failed, via: record.via, memory: nil)

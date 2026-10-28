@@ -35,11 +35,11 @@ struct CustomWordsExportActionTests {
     return dir.appendingPathComponent("custom-words.json")
   }
 
-  private func coordinator(seedWords: [CustomWord] = []) throws -> CustomWordsCoordinator {
+  private func coordinator(seedWords: [CustomWord] = []) async throws -> CustomWordsCoordinator {
     let url = tempURL()
     let manager = CustomWordsManager(fileURL: url)
     var live = manager.load() ?? []
-    for word in seedWords { try manager.add(word: word, to: &live) }
+    for word in seedWords { try await manager.add(word: word, to: &live) }
     return CustomWordsCoordinator(manager: manager)
   }
 
@@ -51,7 +51,7 @@ struct CustomWordsExportActionTests {
 
   @Test("cancelling touches nothing at all")
   func cancellingWritesNothingAndChangesNothing() async throws {
-    let coordinator = try coordinator(seedWords: [CustomWord(canonical: "Kubernetes")])
+    let coordinator = try await coordinator(seedWords: [CustomWord(canonical: "Kubernetes")])
     let before = coordinator.customWords
     let spy = WriteSpy()
 
@@ -91,7 +91,7 @@ struct CustomWordsExportActionTests {
 
   @Test("a healthy library exports exactly the user's own words")
   func healthyLibraryExportsUserWordsOnly() async throws {
-    let coordinator = try coordinator(seedWords: [
+    let coordinator = try await coordinator(seedWords: [
       CustomWord(canonical: "Kubernetes"), CustomWord(canonical: "Qualtrics"),
     ])
     let spy = WriteSpy()
@@ -114,7 +114,7 @@ struct CustomWordsExportActionTests {
   @Test("a write failure is reported rather than reading as success")
   func writeFailureIsReported() async throws {
     struct Boom: Error {}
-    let coordinator = try coordinator(seedWords: [CustomWord(canonical: "Kubernetes")])
+    let coordinator = try await coordinator(seedWords: [CustomWord(canonical: "Kubernetes")])
 
     let outcome = await CustomWordsExportAction.run(
       coordinator: coordinator,
@@ -141,7 +141,7 @@ struct CustomWordsExportActionTests {
     let url = tempURL()
     let manager = CustomWordsManager(fileURL: url)
     var live = manager.load() ?? []
-    try manager.add(word: CustomWord(canonical: "Kubernetes"), to: &live)
+    try await manager.add(word: CustomWord(canonical: "Kubernetes"), to: &live)
 
     // The app is running with a healthy library — launch flag clean.
     let coordinator = CustomWordsCoordinator(manager: manager)
@@ -150,7 +150,7 @@ struct CustomWordsExportActionTests {
 
     // The file goes bad underneath it, and an EDIT is what finds out.
     try Data("not valid json at all {{{".utf8).write(to: url)
-    #expect(coordinator.add(CustomWord(canonical: "Qualtrics")) != nil, "the edit must fail")
+    await #expect(coordinator.add(CustomWord(canonical: "Qualtrics")) != nil, "the edit must fail")
 
     let spy = WriteSpy()
     let outcome = await CustomWordsExportAction.run(
@@ -287,7 +287,7 @@ struct CustomWordsExportActionTests {
   }
 
   @Test("the app cannot author a word it would then refuse to export")
-  func authoringCannotCreateAnUnexportableLibrary() throws {
+  func authoringCannotCreateAnUnexportableLibrary() async throws {
     // "What may be stored" is ONE rule, and the library is what it protects.
     // Applying part of it here — length but not the character policy — let the
     // editor author a word export then refused. Both halves now come from the
@@ -306,8 +306,8 @@ struct CustomWordsExportActionTests {
     // on a nil error, so the user was shown a save that never happened
     // (cloud review, #1683).
     for bad in [tooLong, deceptive, invisible] {
-      #expect(throws: CustomWordsPersistenceError.unusableValue) {
-        try manager.add(word: CustomWord(canonical: bad), to: &live)
+      await #expect(throws: CustomWordsPersistenceError.unusableValue) {
+        try await manager.add(word: CustomWord(canonical: bad))
       }
       #expect(
         !live.contains { $0.canonical == bad },
@@ -316,16 +316,15 @@ struct CustomWordsExportActionTests {
 
     // An unstorable ALIAS is the same lie one layer down: dropping it quietly
     // reports a save that lost part of what the user typed.
-    #expect(throws: CustomWordsPersistenceError.unusableValue) {
-      try manager.add(
-        word: CustomWord(canonical: "Kubernetes", aliases: [deceptive, tooLong, "k8s"]),
-        to: &live)
+    await #expect(throws: CustomWordsPersistenceError.unusableValue) {
+      try await manager.add(
+        word: CustomWord(canonical: "Kubernetes", aliases: [deceptive, tooLong, "k8s"]))
     }
     #expect(!live.contains { $0.canonical == "Kubernetes" })
 
     // Blank alias rows are not a refusal — the editor leaves them behind and
     // trimming them away loses nothing the user meant.
-    try manager.add(
+    try await manager.add(
       word: CustomWord(canonical: "Kubernetes", aliases: ["k8s", "  ", ""]), to: &live)
     #expect(live.contains { $0.canonical == "Kubernetes" && $0.aliases == ["k8s"] })
 
@@ -358,7 +357,7 @@ struct CustomWordsExportActionTests {
         !CustomWordsManager.builtinDefaults.contains { $0.word.canonical == canonical },
         "\(canonical) is a built-in; it can never appear in a user-word export")
     }
-    let coordinator = try coordinator(seedWords: expected.map { CustomWord(canonical: $0) })
+    let coordinator = try await coordinator(seedWords: expected.map { CustomWord(canonical: $0) })
     let spy = WriteSpy()
     let proposed = CustomWordsExportAction.exportableWords(from: coordinator.customWords)
 
@@ -383,7 +382,7 @@ struct CustomWordsExportActionTests {
   func sameCountRecordChangeRefusesTheWrite() async throws {
     // The drift a count comparison cannot see: one word swapped for another, so
     // the total never moves. This is why the check compares complete records.
-    let coordinator = try coordinator(seedWords: [CustomWord(canonical: "Kubernetes")])
+    let coordinator = try await coordinator(seedWords: [CustomWord(canonical: "Kubernetes")])
     let stale = [CustomWord(canonical: "SomethingElse")]
     let spy = WriteSpy()
 
@@ -400,7 +399,7 @@ struct CustomWordsExportActionTests {
 
   @Test("a field-only edit refuses the write")
   func fieldOnlyChangeRefusesTheWrite() async throws {
-    let coordinator = try coordinator(seedWords: [CustomWord(canonical: "Kubernetes")])
+    let coordinator = try await coordinator(seedWords: [CustomWord(canonical: "Kubernetes")])
     var drifted = CustomWordsExportAction.exportableWords(from: coordinator.customWords)
     drifted[0].aliases = ["kubernetties"]
     let spy = WriteSpy()
@@ -424,7 +423,7 @@ struct CustomWordsExportActionTests {
     // would eventually refuse every export — a reproducible false refusal, not
     // a rare race (Codex review r1, P2). Usage is not part of the export
     // payload, so it must not be part of the question.
-    let coordinator = try coordinator(seedWords: [CustomWord(canonical: "Kubernetes")])
+    let coordinator = try await coordinator(seedWords: [CustomWord(canonical: "Kubernetes")])
     var used = CustomWordsExportAction.exportableWords(from: coordinator.customWords)
     used[0].frequencyUsed += 7
     used[0].lastUsed = Date(timeIntervalSince1970: 1_000_000)
@@ -444,7 +443,7 @@ struct CustomWordsExportActionTests {
 
   @Test("an order-only change refuses the write")
   func orderOnlyChangeRefusesTheWrite() async throws {
-    let coordinator = try coordinator(seedWords: [
+    let coordinator = try await coordinator(seedWords: [
       CustomWord(canonical: "Kubernetes"), CustomWord(canonical: "Qualtrics"),
     ])
     let reversed = Array(
@@ -464,7 +463,7 @@ struct CustomWordsExportActionTests {
 
   @Test("no words of your own reports an honest empty state without opening a panel")
   func emptyLibraryReportsNothingToExportAndNeverAsksForAFolder() async throws {
-    let coordinator = try coordinator()
+    let coordinator = try await coordinator()
     let spy = WriteSpy()
     var panelOpened = false
 
@@ -487,7 +486,7 @@ struct CustomWordsExportActionTests {
   func emptyProposalThatRefreshesToNonEmptyReportsLibraryChanged() async throws {
     // The user was shown zero; disk disagrees. Exporting here would write a
     // snapshot they were never shown a number for.
-    let coordinator = try coordinator(seedWords: [CustomWord(canonical: "Kubernetes")])
+    let coordinator = try await coordinator(seedWords: [CustomWord(canonical: "Kubernetes")])
     var panelOpened = false
 
     let outcome = await CustomWordsExportAction.run(
@@ -506,7 +505,7 @@ struct CustomWordsExportActionTests {
 
   @Test("a retry against unchanged state exports rather than refusing forever")
   func stableRetryExportsAndDoesNotLoop() async throws {
-    let coordinator = try coordinator(seedWords: [CustomWord(canonical: "Kubernetes")])
+    let coordinator = try await coordinator(seedWords: [CustomWord(canonical: "Kubernetes")])
     let spy = WriteSpy()
 
     // First attempt drifts and is refused.

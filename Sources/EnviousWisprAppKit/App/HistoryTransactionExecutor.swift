@@ -104,59 +104,16 @@ import Foundation
 
   // MARK: - History transaction queue (#4075 S1)
 
-  /// One admitted History command. It prepares against the state earlier commands left, runs
-  /// its storage work, publishes or handles its failure, and completes its own receipt. Only
-  /// the drain runs it. A command never admits another command or waits for one.
-  private typealias HistoryCommand = @MainActor () async -> Void
-
-  /// Admitted commands not yet run, in admission order.
-  private var commands: [HistoryCommand] = []
-  /// The one retained task that runs `commands`, nil when idle. Not the caller: a caller
-  /// cancelled after admission neither withdraws its command nor stops the drain.
-  private var drain: Task<Void, Never>?
-
-  /// A command's result, kept until its caller reads it, before or after the command ends.
-  /// Internal, not private, so a test can drive this one implementation directly.
-  ///
-  /// Unsafe continuations on purpose (#3925): with `withCheckedContinuation` here, this `-O`
-  /// module carried its own copy of that emit-into-client function, and the Release test lane
-  /// crashed `LiveMediaPlaybackEffectsTests` (`-Onone`) inside its own call to it,
-  /// `EXC_BAD_ACCESS`, on CI and locally (Xcode 27.1, 27A9275; PR #4095). `complete` resumes
-  /// each waiter once and clears the list, so a waiter is never resumed twice.
-  @MainActor final class Receipt<Value: Sendable> {
-    private var value: Value?
-    private var waiters: [UnsafeContinuation<Value, Never>] = []
-
-    func complete(_ result: Value) {
-      value = result
-      let ready = waiters
-      waiters = []
-      for waiter in ready { waiter.resume(returning: result) }
-    }
-
-    func result() async -> Value {
-      if let value { return value }
-      return await withUnsafeContinuation { waiters.append($0) }
-    }
-  }
+  /// The FIFO every History command runs through. Its mechanism and reasons live in
+  /// `SerialCommandDrain`, shared with the dictionary (#4086).
+  private let commands = SerialCommandDrain()
 
   /// Admits `body` behind every earlier command, synchronously, before the caller first
   /// suspends, and returns its result once it has run.
   func admit<Value: Sendable>(_ body: @escaping @MainActor () async -> Value) async
     -> Value
   {
-    let receipt = Receipt<Value>()
-    commands.append { receipt.complete(await body()) }
-    if drain == nil {
-      drain = Task { @MainActor [self] in
-        while !commands.isEmpty {
-          let head = commands.removeFirst()
-          await head()
-        }
-        // The same turn as the empty check above, so nothing can be admitted in between.
-        drain = nil
-      }
-    }
+    let receipt = commands.enqueue(body)
     #if DEBUG
       commandsAdmittedForTesting += 1
       didAdmitForTesting?(commandsAdmittedForTesting)
@@ -184,6 +141,6 @@ import Foundation
     /// publication, so a test can hold that window.
     var ordinaryWriteDidFinishForTesting: (@Sendable () -> Void)?
     /// Whether a command is running or waiting.
-    var hasQueuedCommandsForTesting: Bool { drain != nil }
+    var hasQueuedCommandsForTesting: Bool { commands.isBusy }
   #endif
 }

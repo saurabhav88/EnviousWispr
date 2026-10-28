@@ -686,16 +686,36 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
 
   /// Every watcher save goes through here: a pair blocked since it was
   /// filtered is refused by the coordinator and counted once (#3975).
+  ///
+  /// The learn is one dictionary command (#4086), so it runs in a retained task: the
+  /// caller's checks above already ran, and the command's own block check sees every
+  /// refusal an earlier dictionary command committed.
   private func save(
     original: String, corrected: String, expectedTarget: LearnTargetState,
     via: TelemetryService.LearnFromEditsTelemetry.LearnVia, generation gen: UInt64
   ) {
-    let outcome = deps.coordinator.learn(
-      original: original, corrected: corrected, expectedTarget: expectedTarget, via: via)
-    if outcome == .blocked {
-      countBlocked(CorrectionPairKey.make(original: original, corrected: corrected), generation: gen)
+    let id = UUID()
+    savesInFlight[id] = Task { @MainActor [weak self] in
+      guard let self else { return }
+      defer { savesInFlight[id] = nil }
+      let outcome = await deps.coordinator.learn(
+        original: original, corrected: corrected, expectedTarget: expectedTarget, via: via)
+      if outcome == .blocked {
+        countBlocked(
+          CorrectionPairKey.make(original: original, corrected: corrected), generation: gen)
+      }
     }
   }
+
+  /// Learns started by `save` and not yet finished.
+  private var savesInFlight: [UUID: Task<Void, Never>] = [:]
+
+  #if DEBUG
+    /// Waits for every learn started so far, including learns they start.
+    func awaitSavesForTesting() async {
+      while let next = savesInFlight.values.first { await next.value }
+    }
+  #endif
 
   /// `learn_blocked_seen` once per distinct blocked pair per paste, with that
   /// paste's take, even when the refusal lands after observation ended.

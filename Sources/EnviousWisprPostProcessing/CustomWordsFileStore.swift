@@ -7,7 +7,12 @@ import Foundation
 /// backup and the durable write. Extracted verbatim from `CustomWordsManager`; the
 /// manager keeps word policy (built-ins, merge, authoring, import, enrichment, usage)
 /// and calls in here for every disk touch.
-final class CustomWordsFileStore {
+///
+/// `@unchecked Sendable` because it is used from one place at a time, by order, not
+/// by a lock: the manager's launch read runs before the manager sends any work to its
+/// serial file worker, and from then on every call runs on that one worker. Its mutable
+/// state (`lastLoadFailure` and the test seams) is never touched from two threads at once.
+final class CustomWordsFileStore: @unchecked Sendable {
   let fileURL: URL
 
   init() {
@@ -256,16 +261,20 @@ final class CustomWordsFileStore {
   /// batch or import) can correctly skip the write, matching pre-lock
   /// behavior. Every one of the six ordinary CRUD mutations, the automatic
   /// usage flush, and the import commit route through this (#1690).
-  func performLockedTransaction<T>(
+  ///
+  /// The receipt says whether the durable write happened (#4086): `committed` is true
+  /// only after `saveFileWhileLocked` returned, so a normal return that wrote nothing
+  /// can never be reported as a save.
+  func performLockedTransaction<T: Sendable>(
     _ transform: (inout CustomWordsFile) throws -> (value: T, shouldSave: Bool)
-  ) throws -> T {
+  ) throws -> CustomWordsStoreReceipt<T> {
     try withExclusiveFileLock {
       var file = try loadFileForMutationWhileLocked()
       let outcome = try transform(&file)
       if outcome.shouldSave {
         try saveFileWhileLocked(file)
       }
-      return outcome.value
+      return CustomWordsStoreReceipt(value: outcome.value, committed: outcome.shouldSave)
     }
   }
 

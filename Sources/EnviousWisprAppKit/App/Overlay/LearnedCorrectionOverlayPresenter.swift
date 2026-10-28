@@ -48,6 +48,14 @@ final class LearnedCorrectionOverlayPresenter: LearnedCorrectionPresenting {
   /// by pill id, so a result morph names the right `PresentationID` and a
   /// stale result (for a pill that was replaced) names nothing current.
   private var presentations: [UUID: PresentationID] = [:]
+  /// The last Undo the pill started, kept so a test can wait for it.
+  private var undoInFlight: Task<Void, Never>?
+
+  #if DEBUG
+    func awaitUndoForTesting() async {
+      await undoInFlight?.value
+    }
+  #endif
 
   init(host: any LearnedCorrectionOverlayHosting, coordinator: LearnedCorrectionCoordinator) {
     self.host = host
@@ -61,7 +69,11 @@ final class LearnedCorrectionOverlayPresenter: LearnedCorrectionPresenting {
       // Read by the director at the last moment before the pill is drawn: a
       // record a newer learn replaced is not offered.
       isStillWanted: { coordinator.undoRecord?.pillID == pill.id },
-      onUndo: { coordinator.undo(pillID: pill.id) },
+      // A retained task: the Undo is one dictionary command and outlives the pill.
+      onUndo: { [weak self] in
+        let undo = Task { _ = await coordinator.undo(pillID: pill.id) }
+        self?.undoInFlight = undo
+      },
       onEnded: { [weak self] in
         self?.presentations.removeValue(forKey: pill.id)
         coordinator.pillEnded(pillID: pill.id)

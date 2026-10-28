@@ -69,7 +69,7 @@ enum CustomWordsExportAction {
     // An empty proposal never opens a panel: a save dialog that can only make an
     // empty file is a trap. Refresh anyway — the on-screen count may be stale.
     guard !proposedExportWords.isEmpty else {
-      guard coordinator.refreshFromDiskIfPossible(), coordinator.canExportCurrentWords
+      guard await coordinator.refreshFromDiskIfPossible(), coordinator.canExportCurrentWords
       else {
         return .refusedUnsafeLibrary
       }
@@ -84,7 +84,7 @@ enum CustomWordsExportAction {
     guard let destination = chooseDestination() else { return .cancelled }
 
     // 2 + 3. Adopt what is on disk, then judge whether it may be written out.
-    guard coordinator.refreshFromDiskIfPossible(), coordinator.canExportCurrentWords
+    guard await coordinator.refreshFromDiskIfPossible(), coordinator.canExportCurrentWords
     else {
       return .refusedUnsafeLibrary
     }

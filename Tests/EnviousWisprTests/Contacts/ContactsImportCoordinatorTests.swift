@@ -72,6 +72,53 @@ private final class FakeAliasSuggester: AliasSuggesting, @unchecked Sendable {
   }
 }
 
+/// Holds every suggestion until `release()`, so a test can change the word while the
+/// suggester "thinks" (#4086). Records each name asked about.
+private final class HeldAliasSuggester: AliasSuggesting, @unchecked Sendable {
+  let aliasesByWord: [String: [String]]
+  private let lock = NSLock()
+  private var asked: [String] = []
+  private var waiting: [CheckedContinuation<Void, Never>] = []
+  private var released = false
+  var isAvailable: Bool { true }
+  var calls: [String] { lock.withLock { asked } }
+
+  init(aliasesByWord: [String: [String]]) { self.aliasesByWord = aliasesByWord }
+
+  func release() {
+    let ready = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
+      released = true
+      defer { waiting = [] }
+      return waiting
+    }
+    for continuation in ready { continuation.resume() }
+  }
+
+  func suggestAliases(
+    for word: String, category: WordCategory, priority: AliasSuggestionPriority
+  ) async -> [String]? {
+    let mustWait = lock.withLock { () -> Bool in
+      asked.append(word)
+      return !released
+    }
+    if mustWait {
+      await withCheckedContinuation { continuation in
+        let resumeNow = lock.withLock { () -> Bool in
+          if released { return true }
+          waiting.append(continuation)
+          return false
+        }
+        if resumeNow { continuation.resume() }
+      }
+    }
+    return aliasesByWord[word]
+  }
+
+  func suggestAliases(for word: String, priority: AliasSuggestionPriority) async -> [String]? {
+    aliasesByWord[word]
+  }
+}
+
 @MainActor
 @Suite("ContactsImportCoordinator — orchestration (#636)")
 struct ContactsImportCoordinatorTests {
@@ -133,7 +180,7 @@ struct ContactsImportCoordinatorTests {
     defer { cleanup(dir) }
     await coord.prepareImport()
     #expect(coord.pendingPreview?.newContactCount == 1)
-    coord.confirmImport()
+    await coord.confirmImport()
     #expect(coord.phase == .imported(count: 1))
     #expect(store.load().importedContactIDs == ["c1"])
     #expect(!store.load().importedWordIDs.isEmpty)
@@ -159,7 +206,7 @@ struct ContactsImportCoordinatorTests {
     let coord = ContactsImportCoordinator(
       provider: provider, customWords: cwCoord, stateStore: badStore)
     await coord.prepareImport()
-    coord.confirmImport()
+    await coord.confirmImport()
     if case .failed = coord.phase {
     } else {
       Issue.record("expected .failed when the import log cannot save, got \(coord.phase)")
@@ -174,7 +221,7 @@ struct ContactsImportCoordinatorTests {
     let (coord, _, _, dir) = make(provider: provider)
     defer { cleanup(dir) }
     await coord.prepareImport()
-    coord.confirmImport()
+    await coord.confirmImport()
     await coord.prepareImport()
     #expect(coord.pendingPreview?.newContactCount == 0)
     #expect(coord.pendingPreview?.alreadyPresentCount == 1)
@@ -199,9 +246,9 @@ struct ContactsImportCoordinatorTests {
     let (coord, store, cw, dir) = make(provider: provider)
     defer { cleanup(dir) }
     await coord.prepareImport()
-    coord.confirmImport()
+    await coord.confirmImport()
     #expect(coord.importedCount == 1)
-    coord.bulkRemoveImported()
+    await coord.bulkRemoveImported()
     #expect(coord.importedCount == 0)
     #expect(store.load().importedWordIDs.isEmpty)
     #expect(!cw.customWords.contains { $0.canonical == "Rajesh" })
@@ -243,7 +290,7 @@ struct ContactsImportCoordinatorTests {
     let (coord, _, cw, dir) = make(provider: provider, suggester: fake)
     defer { cleanup(dir) }
     await coord.prepareImport()
-    coord.confirmImport()
+    await coord.confirmImport()
     await coord.awaitEnrichmentForTesting()
     #expect(cw.customWords.first { $0.canonical == "Rajesh" }?.aliases == ["rah jesh", "raj esh"])
     #expect(cw.customWords.first { $0.canonical == "Vasquez" }?.aliases == ["vaskez", "vah skez"])
@@ -258,7 +305,7 @@ struct ContactsImportCoordinatorTests {
     let (coord, _, _, dir) = make(provider: provider, suggester: fake)
     defer { cleanup(dir) }
     await coord.prepareImport()
-    coord.confirmImport()
+    await coord.confirmImport()
     await coord.awaitEnrichmentForTesting()
     #expect(fake.calls.count == 2)
     #expect(fake.priorities == [.background, .background])
@@ -273,7 +320,7 @@ struct ContactsImportCoordinatorTests {
     let (coord, _, _, dir) = make(provider: provider, suggester: fake)
     defer { cleanup(dir) }
     await coord.prepareImport()
-    coord.confirmImport()
+    await coord.confirmImport()
     await coord.awaitEnrichmentForTesting()
     #expect(coord.enrichmentProgress == nil)
   }
@@ -286,7 +333,7 @@ struct ContactsImportCoordinatorTests {
     let (coord, _, cw, dir) = make(provider: provider, suggester: fake)
     defer { cleanup(dir) }
     await coord.prepareImport()
-    coord.confirmImport()
+    await coord.confirmImport()
     await coord.awaitEnrichmentForTesting()
     #expect(coord.enrichmentProgress == nil)
     #expect(cw.customWords.first { $0.canonical == "Rajesh" }?.aliases.isEmpty == true)
@@ -303,7 +350,7 @@ struct ContactsImportCoordinatorTests {
     let (coord, _, cw, dir) = make(provider: provider, suggester: fake)
     defer { cleanup(dir) }
     await coord.prepareImport()
-    coord.confirmImport()
+    await coord.confirmImport()
     await coord.awaitEnrichmentForTesting()
     #expect(cw.customWords.first { $0.canonical == "Ramachandran" }?.aliases == ["ram uh"])
   }
@@ -320,13 +367,13 @@ struct ContactsImportCoordinatorTests {
     let empty = CustomWord(canonical: "Empty", category: .person, priority: 10)
     let filled = CustomWord(
       canonical: "Filled", aliases: ["preset"], category: .person, priority: 10)
-    let ids = try #require(cw.addBatch([empty, filled]))
+    let ids = try #require(await cw.addBatch([empty, filled]))
     var state = store.load()
     state.record(contactIDs: ["c0"], wordIDs: ids, at: Date())
     try? store.save(state)
 
     await coord.prepareImport()
-    coord.confirmImport()  // 0 new → recovery enrichment over logged empties
+    await coord.confirmImport()  // 0 new → recovery enrichment over logged empties
     await coord.awaitEnrichmentForTesting()
 
     #expect(cw.customWords.first { $0.canonical == "Empty" }?.aliases == ["em tee"])
@@ -343,13 +390,13 @@ struct ContactsImportCoordinatorTests {
     // Simulate an earlier build: a combined entry + a lone entry, both logged.
     let combined = CustomWord(canonical: "Rajesh Ramachandran", category: .person, priority: 10)
     let lone = CustomWord(canonical: "Ramachandran", category: .person, priority: 10)
-    let ids = try #require(cw.addBatch([combined, lone]))
+    let ids = try #require(await cw.addBatch([combined, lone]))
     var state = store.load()
     state.record(contactIDs: ["c1"], wordIDs: ids, at: Date())
     try? store.save(state)
 
     await coord.prepareImport()
-    coord.confirmImport()  // c1 already imported → 0 new → cleanup runs
+    await coord.confirmImport()  // c1 already imported → 0 new → cleanup runs
     await coord.awaitEnrichmentForTesting()
 
     #expect(!cw.customWords.contains { $0.canonical == "Rajesh Ramachandran" })
@@ -381,8 +428,8 @@ struct ContactsImportCoordinatorTests {
     let (coord, store, _, dir) = make(provider: provider, suggester: fake)
     defer { cleanup(dir) }
     await coord.prepareImport()
-    coord.confirmImport()  // starts enrichment (task queued)
-    coord.bulkRemoveImported()  // synchronously cancels + clears before the task runs
+    await coord.confirmImport()  // starts enrichment (task queued)
+    await coord.bulkRemoveImported()  // synchronously cancels + clears before the task runs
     await coord.awaitEnrichmentForTesting()
     #expect(coord.enrichmentProgress == nil)
     #expect(coord.importedCount == 0)
@@ -401,18 +448,61 @@ struct ContactsImportCoordinatorTests {
     let (coord, store, cw, dir) = make(provider: provider, suggester: fake)
     defer { cleanup(dir) }
     let seeded = names.map { CustomWord(canonical: $0, category: .person, priority: 10) }
-    let ids = try #require(cw.addBatch(seeded))
+    let ids = try #require(await cw.addBatch(seeded))
     var state = store.load()
     state.record(contactIDs: ["c0"], wordIDs: ids, at: Date())
     try? store.save(state)
 
     await coord.prepareImport()
-    coord.confirmImport()  // 0 new → recovery enrichment over all 30 logged empties
+    await coord.confirmImport()  // 0 new → recovery enrichment over all 30 logged empties
     await coord.awaitEnrichmentForTesting()
 
     for name in names {
       #expect(cw.customWords.first { $0.canonical == name }?.aliases == ["v-\(name)"])
     }
     #expect(coord.enrichmentProgress == nil)
+  }
+
+  @Test(
+    "aliases made for a name never land on that word after it was renamed, moved out of Person or given aliases meanwhile"
+  )
+  func aliasesFollowTheNameTheyWereMadeFor() async throws {
+    let provider = FakeContactProvider(status: .authorized, candidates: [])
+    let held = HeldAliasSuggester(aliasesByWord: [
+      "Sarah": ["sara"], "Omar": ["oh mar"], "Lena": ["leena"], "Kept": ["kep"],
+    ])
+    let (coord, store, cw, dir) = make(provider: provider, suggester: held)
+    defer { cleanup(dir) }
+    let names = ["Sarah", "Omar", "Lena", "Kept"]
+    let ids = try #require(
+      await cw.addBatch(names.map { CustomWord(canonical: $0, category: .person, priority: 10) }))
+    var state = store.load()
+    state.record(contactIDs: ["c0"], wordIDs: ids, at: Date())
+    try? store.save(state)
+
+    await coord.prepareImport()
+    await coord.confirmImport()  // 0 new → enrichment over the logged empties
+    #expect(await settleUntilObserved { held.calls.first == "Sarah" })
+
+    // While the suggester runs, the person edits three of the four words.
+    func edit(_ name: String, _ change: (inout CustomWord) -> Void) async throws {
+      var word = try #require(cw.customWords.first { $0.canonical == name })
+      change(&word)
+      #expect(await cw.update(word) == nil)
+    }
+    try await edit("Sarah") { $0.canonical = "Jane" }
+    try await edit("Omar") { $0.category = .brand }
+    try await edit("Lena") { $0.aliases = ["typed"] }
+
+    held.release()
+    await coord.awaitEnrichmentForTesting()
+
+    #expect(cw.customWords.first { $0.canonical == "Jane" }?.aliases == [])
+    #expect(cw.customWords.first { $0.canonical == "Omar" }?.aliases == [])
+    #expect(cw.customWords.first { $0.canonical == "Lena" }?.aliases == ["typed"])
+    #expect(cw.customWords.first { $0.canonical == "Kept" }?.aliases == ["kep"])
+    let disk = CustomWordsManager(fileURL: dir.appendingPathComponent("custom-words.json")).load() ?? []
+    #expect(disk.first { $0.canonical == "Jane" }?.aliases == [])
+    #expect(disk.first { $0.canonical == "Kept" }?.aliases == ["kep"])
   }
 }

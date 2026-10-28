@@ -129,7 +129,7 @@ struct LearningSection: View {
       if let preview = contactsImport.pendingPreview {
         ContactsImportConfirm(
           preview: preview,
-          onConfirm: { contactsImport.confirmImport() },
+          onConfirm: { Task { await contactsImport.confirmImport() } },
           onCancel: { contactsImport.cancelImport() })
       }
     }
@@ -433,7 +433,7 @@ struct LearningSection: View {
       Text("\(contactsImport.importedCount) imported")
         .font(.stHelper)
       Button {
-        contactsImport.bulkRemoveImported()
+        Task { await contactsImport.bulkRemoveImported() }
       } label: {
         Image(systemName: "xmark.circle.fill")
           // Bulk-removes every imported name, from a glyph inside a status

@@ -76,11 +76,11 @@ final class QuickAddWiring {
     self.settings = settings
     self.coordinator = QuickAddCoordinator(
       environment: QuickAddCoordinator.Environment(
-        refreshWords: { customWords.refreshFromDiskIfPossible() },
+        refreshWords: { await customWords.refreshFromDiskIfPossible() },
         userWords: { customWords.customWords },
         packTerms: { packManager.enabledPackTerms() },
         saveWord: { word, spelling in
-          CustomWordSaveHelper.saveAndConfirm(word, carrying: spelling, through: customWords)
+          await customWords.saveConfirmingSpelling(word, carrying: spelling)
         },
         beginNewWord: {},
         emit: QuickAddTelemetryBridge.handler))
@@ -131,7 +131,7 @@ final class QuickAddWiring {
         fallbackEnabled: self.settings.quickAddClipboardFallback, environment: .live)
       // Re-asked after the await: the user may have opened the panel another way while we waited.
       guard self.notAlreadyOpen() else { return }
-      self.present(self.coordinator.begin(door: .hotkey, selection: outcome))
+      self.present(await self.coordinator.begin(door: .hotkey, selection: outcome))
     }
   }
 
@@ -176,7 +176,7 @@ final class QuickAddWiring {
         following: selection, context: context,
         fallbackEnabled: self.settings.quickAddClipboardFallback, environment: .live)
       guard self.notAlreadyOpen() else { return }
-      self.present(self.coordinator.begin(door: .menuBar, selection: outcome))
+      self.present(await self.coordinator.begin(door: .menuBar, selection: outcome))
     }
   }
 
@@ -258,6 +258,32 @@ final class QuickAddWiring {
   /// Split out for the same reason `newWordOutcome` was: the version inline could not be tested, and
   /// the state it gets wrong is one no test could reach. Two Bools, because those are the only two
   /// facts the decision turns on and naming them is what makes the case above statable at all.
+  /// What a finished Quick Add save does next (#4086). The save outlives its panel, so the
+  /// answer depends on whether the person still has that panel open.
+  package enum SaveCompletion: Equatable {
+    /// The panel is open: show the result, or keep the draft and the error for a retry.
+    case present
+    /// The panel was closed and the save was refused: end its invocation as cancelled,
+    /// once. A success already ended it inside the save.
+    case resolveCancelled
+    /// The panel was closed and the save succeeded: nothing more to do or show.
+    case nothing
+  }
+
+  /// One table for every Quick Add save, Accept and Create alike.
+  package static func saveCompletion(panelOpen: Bool, refused: Bool) -> SaveCompletion {
+    if panelOpen { return .present }
+    return refused ? .resolveCancelled : .nothing
+  }
+
+  /// Applies `saveCompletion` for `model`. The identity check keeps a closed panel's answer
+  /// away from whatever panel is up now.
+  private func handleCompletion(of model: QuickAddPanelModel, refused: Bool) -> SaveCompletion {
+    let completion = Self.saveCompletion(panelOpen: activeModel === model, refused: refused)
+    if completion == .resolveCancelled { coordinator.cancel(from: model) }
+    return completion
+  }
+
   package static func mayBeginCapture(panelVisible: Bool, hasLiveInvocation: Bool) -> Bool {
     guard panelVisible else { return true }
     return !hasLiveInvocation
@@ -286,10 +312,10 @@ final class QuickAddWiring {
     // never happened.
     guard shown else {
       activeModel = nil
-      coordinator.failedToOpen()
+      coordinator.failedToOpen(model)
       return
     }
-    coordinator.didOpen()
+    coordinator.didOpen(model)
     // Opened onto a word that already knows this spelling: the panel says so and fades, unless the
     // user types (#2391 §3).
     if model.isShowingSearchableNotice {
@@ -311,8 +337,30 @@ final class QuickAddWiring {
   ///
   /// The sentence is composed from what the coordinator REPORTS, never from the row the user
   /// clicked: the row is a snapshot taken when the panel opened, and the panel is persistent.
+  ///
+  /// The save is a dictionary command (#4086) and the panel stays usable while it runs. A
+  /// second Return while one save is in flight does nothing.
   private func accept(_ candidate: QuickAddRanker.Candidate, model: QuickAddPanelModel) {
-    switch coordinator.accept(candidate, from: model) {
+    let id = ObjectIdentifier(model)
+    guard !saving.contains(id) else { return }
+    saving.insert(id)
+    Task { @MainActor [weak self] in
+      guard let self else { return }
+      defer { self.saving.remove(id) }
+      await self.finishAccept(candidate, model: model)
+    }
+  }
+
+  /// Panels with a Quick Add save in flight, from either route. Per panel: a save still
+  /// running for a closed panel does not block the next one.
+  private var saving: Set<ObjectIdentifier> = []
+
+  private func finishAccept(_ candidate: QuickAddRanker.Candidate, model: QuickAddPanelModel) async {
+    let result = await coordinator.accept(candidate, from: model)
+    let refused: Bool
+    if case .refused = result { refused = true } else { refused = false }
+    guard handleCompletion(of: model, refused: refused) == .present else { return }
+    switch result {
     case .refused(let message):
       model.noteWriteFailure(message)
       speak(model)
@@ -364,7 +412,7 @@ final class QuickAddWiring {
       try? await Task.sleep(for: .seconds(Self.searchableNoticeSeconds))
       guard !Task.isCancelled, let self else { return }
       guard self.activeModel === model, model.isShowingSearchableNotice else { return }
-      self.coordinator.didFindAlreadySaved(usedSearch: false)
+      self.coordinator.didFindAlreadySaved(model, usedSearch: false)
       self.dismiss()
     }
   }
@@ -380,10 +428,23 @@ final class QuickAddWiring {
   /// **A refusal keeps the panel up carrying the reason**, exactly as the accept route does — which
   /// is the rule the sheet route already followed and the one thing worth preserving from it.
   private func createWord(_ word: CustomWord, model: QuickAddPanelModel) {
+    let id = ObjectIdentifier(model)
+    guard !saving.contains(id) else { return }
+    saving.insert(id)
+    Task { @MainActor [weak self] in
+      guard let self else { return }
+      defer { self.saving.remove(id) }
+      await self.finishCreateWord(word, model: model)
+    }
+  }
+
+  private func finishCreateWord(_ word: CustomWord, model: QuickAddPanelModel) async {
     // Read LIVE rather than captured at present time. The old capture existed because the sheet
     // outlived the panel in at least one ordering; a stage of the panel cannot, and the honest
     // answer to "did the ranking need rescuing" is the state the user was in when they committed.
-    switch saveNewWord(word, usedSearch: model.isSearching) {
+    let result = await saveNewWord(word, model: model, usedSearch: model.isSearching)
+    guard handleCompletion(of: model, refused: result.isRefused) == .present else { return }
+    switch result {
     case .refused(let message):
       model.noteWriteFailure(message)
       speak(model)
@@ -418,7 +479,10 @@ final class QuickAddWiring {
   /// Identity, not a Bool: the captured `model` belongs to the panel this button was built for, and
   /// a later invocation reusing the panel must not have its outcome cancelled by a stale closure.
   private func cancel(model: QuickAddPanelModel) {
-    if activeModel === model { coordinator.cancel(from: model) }
+    // A panel closed while its save runs is resolved by that save, its one terminal outcome.
+    if activeModel === model, !saving.contains(ObjectIdentifier(model)) {
+      coordinator.cancel(from: model)
+    }
     dismiss()
   }
 
@@ -426,6 +490,8 @@ final class QuickAddWiring {
   private func panelDismissed() {
     guard let model = activeModel else { return }
     activeModel = nil
+    // A save still running resolves this invocation itself (#4086).
+    guard !saving.contains(ObjectIdentifier(model)) else { return }
     coordinator.cancel(from: model)
   }
 
@@ -447,7 +513,12 @@ final class QuickAddWiring {
   /// So this asserts the OUTCOME rather than the call's return value — the word is there and it
   /// carries the spellings the user kept — which is the one check that covers both branches and any
   /// third one nobody has found yet.
-  private enum NewWordSaveResult: Equatable {
+  private enum NewWordSaveResult: Equatable, Sendable {
+    var isRefused: Bool {
+      if case .refused = self { return true }
+      return false
+    }
+
     /// The word is in the library and it was not there before.
     case created(canonical: String)
     /// The canonical was already there and already carried every spelling the user kept.
@@ -458,14 +529,31 @@ final class QuickAddWiring {
     case refused(String)
   }
 
-  private func saveNewWord(_ word: CustomWord, usedSearch: Bool) -> NewWordSaveResult {
+  ///
+  /// One dictionary command (#4086): the before-snapshot, the add and the checks see one
+  /// library, with no other command in between.
+  private func saveNewWord(_ word: CustomWord, model: QuickAddPanelModel, usedSearch: Bool) async
+    -> NewWordSaveResult
+  {
+    await customWords.performAction(
+      closing: .refused(CustomWordsCoordinator.quittingMessage)
+    ) { [self] in
+      await saveNewWordInsideAction(word, model: model, usedSearch: usedSearch)
+    }
+  }
+
+  private func saveNewWordInsideAction(
+    _ word: CustomWord, model: QuickAddPanelModel, usedSearch: Bool
+  ) async
+    -> NewWordSaveResult
+  {
     // Snapshotted BEFORE the write, because it is the only way to tell "created" from "was already
     // there". See the vacuity note on the guard below.
     let canonicalExistedBefore = customWords.customWords.contains {
       $0.canonical.caseInsensitiveCompare(
         word.canonical.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame
     }
-    if let message = customWords.add(word) { return .refused(message) }
+    if let message = await customWords.add(word) { return .refused(message) }
     // Compare against the TRIMMED canonical, because that is what `add` stores. Comparing the raw
     // one reports a correct save as a failure whenever the user typed a leading space.
     let canonical = word.canonical.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -503,16 +591,16 @@ final class QuickAddWiring {
       canonicalExistedBefore: canonicalExistedBefore)
     {
     case .created:
-      coordinator.didCreateNew(usedSearch: usedSearch)
+      coordinator.didCreateNew(model, usedSearch: usedSearch)
       return .created(canonical: stored.canonical)
     case .alreadyComplete:
       // NOT `didCreateNew`. Nothing was created, so counting one puts a write that did not happen in
       // the numerator of every rate computed off this funnel — and `alreadySaved` already means
       // exactly this, on the accept route, for exactly this reason.
-      coordinator.didFindAlreadySaved(usedSearch: usedSearch)
+      coordinator.didFindAlreadySaved(model, usedSearch: usedSearch)
       return .alreadyComplete(canonical: stored.canonical)
     case .alreadyPresent:
-      coordinator.didFindAlreadySaved(usedSearch: usedSearch)
+      coordinator.didFindAlreadySaved(model, usedSearch: usedSearch)
       return .alreadyPresent(canonical: stored.canonical)
     case .refused:
       return .refused(QuickAddPanelCopy.newWordAlreadyExists(canonical: stored.canonical))

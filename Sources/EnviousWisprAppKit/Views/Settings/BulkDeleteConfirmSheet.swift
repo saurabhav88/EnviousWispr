@@ -16,6 +16,8 @@ struct BulkDeleteConfirmSheet: View {
   @State private var exportTask: Task<Void, Never>?
   @State private var exportNotice: CustomWordsExportNotice?
   @State private var deleteFailureMessage: String?
+  /// The delete is running (#4086); the button waits for its answer.
+  @State private var isDeleting = false
 
   private var isExporting: Bool { exportTask != nil }
 
@@ -89,7 +91,7 @@ struct BulkDeleteConfirmSheet: View {
         // against this palette.
         SettingsActionButton(
           verbatimTitle: Self.deleteLabel(count: ids.count),
-          isEnabled: !isExporting,
+          isEnabled: !isExporting && !isDeleting,
           emphasis: .destructive
         ) {
           deleteSelection()
@@ -140,11 +142,17 @@ struct BulkDeleteConfirmSheet: View {
     }
   }
 
+  /// The delete is a dictionary command: closing the sheet does not stop it.
   private func deleteSelection() {
-    if let error = customWordsCoordinator.deleteByUser(ids: Array(ids)) {
-      deleteFailureMessage = error
-      return
+    guard !isDeleting else { return }
+    isDeleting = true
+    Task { @MainActor in
+      defer { isDeleting = false }
+      if let error = await customWordsCoordinator.deleteByUser(ids: Array(ids)) {
+        deleteFailureMessage = error
+        return
+      }
+      onDeleted()
     }
-    onDeleted()
   }
 }

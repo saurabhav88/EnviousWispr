@@ -282,7 +282,7 @@ struct YourWordsView: View {
         CustomWordsImportSheet(
           dependencies: .live(
             existingWords: { customWordsCoordinator.customWords },
-            commit: { customWordsCoordinator.commitImport($0) },
+            commit: { await customWordsCoordinator.commitImport($0) },
             // #2951: one row per landed import; the flow model cannot name
             // the Services module, so the mapping lives here.
             report: {
@@ -430,12 +430,12 @@ struct YourWordsView: View {
     }
   }
 
-  private func saveNewWord(_ newWord: CustomWord) -> String? {
+  private func saveNewWord(_ newWord: CustomWord) async -> String? {
     let trimmedCanonical = newWord.canonical.trimmingCharacters(in: .whitespaces)
     guard !trimmedCanonical.isEmpty else { return nil }
     var wordToSave = newWord
     wordToSave.canonical = trimmedCanonical
-    if let error = customWordsCoordinator.add(wordToSave) {
+    if let error = await customWordsCoordinator.add(wordToSave) {
       return error
     }
     return nil

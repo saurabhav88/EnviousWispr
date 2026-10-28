@@ -226,10 +226,10 @@ struct CustomTermsSection<Actions: View>: View {
         wordSuggestionService: customWordsCoordinator.suggestionService,
         // #3975: a user's own edit or delete is their "no" for a learned pair.
         onSave: { updated in
-          customWordsCoordinator.updateByUser(updated)
+          await customWordsCoordinator.updateByUser(updated)
         },
         onDelete: {
-          customWordsCoordinator.deleteByUser(id: word.id)
+          await customWordsCoordinator.deleteByUser(id: word.id)
         }
       )
     }
@@ -238,6 +238,9 @@ struct CustomTermsSection<Actions: View>: View {
         ids: request.ids,
         onDeleted: {
           list.selectedIDs.subtract(request.ids)
+          // The delete can finish after this sheet closed and another opened (#4086): it
+          // closes only its own sheet.
+          guard pendingBulkDelete?.id == request.id else { return }
           isSelecting = false
           pendingBulkDelete = nil
         },

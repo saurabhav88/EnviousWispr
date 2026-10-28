@@ -25,9 +25,9 @@ struct CustomWordsImportCommitTests {
   /// Seeds user words and returns the effective list the coordinator would hold.
   private func seed(
     _ manager: CustomWordsManager, _ words: [CustomWord]
-  ) throws -> [CustomWord] {
+  ) async throws -> [CustomWord] {
     var live = manager.load() ?? []
-    _ = try manager.addBatch(words, to: &live)
+    _ = try await manager.addBatch(words, to: &live)
     return live
   }
 
@@ -60,12 +60,12 @@ struct CustomWordsImportCommitTests {
   // MARK: - Atomicity and staleness
 
   @Test("a mixed add and replace lands as one committed file state")
-  func mixedAddAndReplaceUsesOneCommittedFileState() throws {
+  func mixedAddAndReplaceUsesOneCommittedFileState() async throws {
     let (manager, url) = makeManager()
-    var live = try seed(manager, [CustomWord(canonical: "Qualtrics")])
+    var live = try await seed(manager, [CustomWord(canonical: "Qualtrics")])
     let target = try #require(live.first { $0.canonical == "Qualtrics" })
 
-    let receipt = try manager.commitImport(
+    let receipt = try await manager.commitImport(
       plan(
         baseline: live,
         additions: [candidate("Kubernetes")],
@@ -88,15 +88,15 @@ struct CustomWordsImportCommitTests {
   }
 
   @Test("a replacement preserves the existing id and usage history")
-  func replacementPreservesExistingIDAndUsageHistory() throws {
+  func replacementPreservesExistingIDAndUsageHistory() async throws {
     let (manager, _) = makeManager()
     let stamp = Date(timeIntervalSince1970: 1_700_000_000)
-    var live = try seed(
+    var live = try await seed(
       manager,
       [CustomWord(canonical: "Qualtrics", frequencyUsed: 7, lastUsed: stamp)])
     let target = try #require(live.first { $0.canonical == "Qualtrics" })
 
-    _ = try manager.commitImport(
+    _ = try await manager.commitImport(
       plan(
         baseline: live,
         replacements: [
@@ -112,17 +112,17 @@ struct CustomWordsImportCommitTests {
   }
 
   @Test("a semantic change under an open review returns stale without writing")
-  func semanticLibraryChangeReturnsStaleWithoutWrite() throws {
+  func semanticLibraryChangeReturnsStaleWithoutWrite() async throws {
     let (manager, url) = makeManager()
-    var live = try seed(manager, [CustomWord(canonical: "Qualtrics")])
+    var live = try await seed(manager, [CustomWord(canonical: "Qualtrics")])
     let staleBaseline = live
 
     // Someone edits the list after Review was built.
-    _ = try seed(manager, [CustomWord(canonical: "Interloper")])
+    _ = try await seed(manager, [CustomWord(canonical: "Interloper")])
     var current = try #require(manager.load())
 
-    #expect(throws: CustomWordsImportCommitError.staleLibrary) {
-      _ = try manager.commitImport(
+    await #expect(throws: CustomWordsImportCommitError.staleLibrary) {
+      _ = try await manager.commitImport(
         plan(baseline: staleBaseline, additions: [candidate("Kubernetes")]),
         to: &current)
     }
@@ -133,9 +133,9 @@ struct CustomWordsImportCommitTests {
   }
 
   @Test("a usage-history-only change does not stale the review")
-  func unrelatedUsageHistoryChangeDoesNotReturnStale() throws {
+  func unrelatedUsageHistoryChangeDoesNotReturnStale() async throws {
     let (manager, _) = makeManager()
-    var live = try seed(manager, [CustomWord(canonical: "Qualtrics")])
+    var live = try await seed(manager, [CustomWord(canonical: "Qualtrics")])
     let baseline = live
 
     // Same words, different usage counters — the snapshot excludes these.
@@ -146,18 +146,18 @@ struct CustomWordsImportCommitTests {
     }
     live = bumped
 
-    let receipt = try manager.commitImport(
+    let receipt = try await manager.commitImport(
       plan(baseline: baseline, additions: [candidate("Kubernetes")]), to: &live)
     #expect(receipt.addedIDs.count == 1)
   }
 
   @Test("an all-skipped confirm writes nothing at all")
-  func confirmWithAllSkippedWritesNothing() throws {
+  func confirmWithAllSkippedWritesNothing() async throws {
     let (manager, url) = makeManager()
-    var live = try seed(manager, [CustomWord(canonical: "Qualtrics")])
+    var live = try await seed(manager, [CustomWord(canonical: "Qualtrics")])
     let before = try Data(contentsOf: url)
 
-    let receipt = try manager.commitImport(plan(baseline: live), to: &live)
+    let receipt = try await manager.commitImport(plan(baseline: live), to: &live)
     #expect(receipt.addedIDs.isEmpty)
     #expect(receipt.replacedIDs.isEmpty)
     #expect(try Data(contentsOf: url) == before)
@@ -168,21 +168,21 @@ struct CustomWordsImportCommitTests {
   }
 
   @Test("no existing file is a legitimate first import")
-  func noExistingFileTreatsCommitAsFirstImport() throws {
+  func noExistingFileTreatsCommitAsFirstImport() async throws {
     let (manager, _) = makeManager()
     var live = manager.load() ?? []
-    let receipt = try manager.commitImport(
+    let receipt = try await manager.commitImport(
       plan(baseline: live, additions: [candidate("Kubernetes")]), to: &live)
     #expect(receipt.addedIDs.count == 1)
     #expect(live.contains { $0.canonical == "Kubernetes" })
   }
 
   @Test("a plan naming a word that is not in the library is rejected")
-  func planReferencingAnUnknownWordIsRejected() throws {
+  func planReferencingAnUnknownWordIsRejected() async throws {
     let (manager, _) = makeManager()
-    var live = try seed(manager, [CustomWord(canonical: "Qualtrics")])
-    #expect(throws: CustomWordsImportCommitError.invalidPlan) {
-      _ = try manager.commitImport(
+    var live = try await seed(manager, [CustomWord(canonical: "Qualtrics")])
+    await #expect(throws: CustomWordsImportCommitError.invalidPlan) {
+      _ = try await manager.commitImport(
         plan(
           baseline: live,
           replacements: [
@@ -195,9 +195,9 @@ struct CustomWordsImportCommitTests {
   // MARK: - Field-level Replace semantics
 
   @Test("replace with unspecified fields preserves every hand-tuned value")
-  func replaceWithUnspecifiedFieldsPreservesExistingConfiguration() throws {
+  func replaceWithUnspecifiedFieldsPreservesExistingConfiguration() async throws {
     let (manager, _) = makeManager()
-    var live = try seed(
+    var live = try await seed(
       manager,
       [
         CustomWord(
@@ -206,7 +206,7 @@ struct CustomWordsImportCommitTests {
       ])
     let target = try #require(live.first { $0.canonical == "Qualtrics" })
 
-    _ = try manager.commitImport(
+    _ = try await manager.commitImport(
       plan(
         baseline: live,
         replacements: [
@@ -226,9 +226,9 @@ struct CustomWordsImportCommitTests {
   }
 
   @Test("replace with supplied fields overwrites the existing values")
-  func replaceWithSuppliedFieldsOverwritesExisting() throws {
+  func replaceWithSuppliedFieldsOverwritesExisting() async throws {
     let (manager, _) = makeManager()
-    var live = try seed(
+    var live = try await seed(
       manager,
       [
         CustomWord(
@@ -237,7 +237,7 @@ struct CustomWordsImportCommitTests {
       ])
     let target = try #require(live.first { $0.canonical == "Qualtrics" })
 
-    _ = try manager.commitImport(
+    _ = try await manager.commitImport(
       plan(
         baseline: live,
         replacements: [
@@ -260,14 +260,14 @@ struct CustomWordsImportCommitTests {
   }
 
   @Test("only the backup format can authoritatively clear aliases and strictness")
-  func suppliedEmptyAndSuppliedNilDeliberatelyClear() throws {
+  func suppliedEmptyAndSuppliedNilDeliberatelyClear() async throws {
     let (manager, _) = makeManager()
-    var live = try seed(
+    var live = try await seed(
       manager,
       [CustomWord(canonical: "Qualtrics", aliases: ["qualtrix"], minSimilarityOverride: 0.9)])
     let target = try #require(live.first { $0.canonical == "Qualtrics" })
 
-    _ = try manager.commitImport(
+    _ = try await manager.commitImport(
       plan(
         baseline: live,
         replacements: [
@@ -284,12 +284,12 @@ struct CustomWordsImportCommitTests {
   }
 
   @Test("AI suggestions never apply on replace")
-  func suggestedAliasesNeverApplyOnReplace() throws {
+  func suggestedAliasesNeverApplyOnReplace() async throws {
     let (manager, _) = makeManager()
-    var live = try seed(manager, [CustomWord(canonical: "Qualtrics", aliases: ["qualtrix"])])
+    var live = try await seed(manager, [CustomWord(canonical: "Qualtrics", aliases: ["qualtrix"])])
     let target = try #require(live.first { $0.canonical == "Qualtrics" })
 
-    _ = try manager.commitImport(
+    _ = try await manager.commitImport(
       plan(
         baseline: live,
         replacements: [
@@ -304,10 +304,10 @@ struct CustomWordsImportCommitTests {
   }
 
   @Test("an addition unions source and suggested aliases, source spellings first")
-  func additionUnionsSourceAndSuggestedAliasesDeduplicated() throws {
+  func additionUnionsSourceAndSuggestedAliasesDeduplicated() async throws {
     let (manager, _) = makeManager()
     var live = manager.load() ?? []
-    _ = try manager.commitImport(
+    _ = try await manager.commitImport(
       plan(
         baseline: live,
         additions: [
@@ -323,10 +323,10 @@ struct CustomWordsImportCommitTests {
   }
 
   @Test("an addition with unspecified fields falls back to the type defaults")
-  func additionWithUnspecifiedFieldsFallsBackToTypeDefaults() throws {
+  func additionWithUnspecifiedFieldsFallsBackToTypeDefaults() async throws {
     let (manager, _) = makeManager()
     var live = manager.load() ?? []
-    _ = try manager.commitImport(
+    _ = try await manager.commitImport(
       plan(baseline: live, additions: [candidate("Kubernetes")]), to: &live)
 
     let added = try #require(live.first { $0.canonical == "Kubernetes" })
@@ -341,11 +341,11 @@ struct CustomWordsImportCommitTests {
   // MARK: - Alias enforcement
 
   @Test("an alias already held by another word is dropped, not the word")
-  func collidingAliasIsDroppedNotWordOnCommit() throws {
+  func collidingAliasIsDroppedNotWordOnCommit() async throws {
     let (manager, _) = makeManager()
-    var live = try seed(manager, [CustomWord(canonical: "Anika", aliases: ["annie"])])
+    var live = try await seed(manager, [CustomWord(canonical: "Anika", aliases: ["annie"])])
 
-    let receipt = try manager.commitImport(
+    let receipt = try await manager.commitImport(
       plan(
         baseline: live,
         additions: [candidate("Annabelle", aliases: .supplied(["Annie", "belle"]))]),
@@ -357,7 +357,7 @@ struct CustomWordsImportCommitTests {
   }
 
   @Test("an alias matching a multi-word canonical's space-free form is dropped with a receipt")
-  func aliasCollidingOnTheNoSpaceSurfaceIsDroppedOnCommit() throws {
+  func aliasCollidingOnTheNoSpaceSurfaceIsDroppedOnCommit() async throws {
     // #1667's acceptance criterion, and the half the compare screen cannot
     // deliver on its own. `Claude Code` claims `claudecode` on the compound
     // surface, so this alias could never fire. Enforcement here used to key on
@@ -365,9 +365,9 @@ struct CustomWordsImportCommitTests {
     // alias was KEPT — the review screen disclosed a collision and the commit
     // saved the alias anyway. Both sides now read one authority.
     let (manager, _) = makeManager()
-    var live = try seed(manager, [CustomWord(canonical: "Claude Code")])
+    var live = try await seed(manager, [CustomWord(canonical: "Claude Code")])
 
-    let receipt = try manager.commitImport(
+    let receipt = try await manager.commitImport(
       plan(
         baseline: live,
         additions: [candidate("Zed", aliases: .supplied(["claudecode", "zeddy"]))]),
@@ -381,7 +381,7 @@ struct CustomWordsImportCommitTests {
   }
 
   @Test("a newly imported multi-word canonical takes the compound key from an older alias")
-  func importedCanonicalOverwritesAnIncumbentCompoundAlias() throws {
+  func importedCanonicalOverwritesAnIncumbentCompoundAlias() async throws {
     // The compound namespace is the one place a canonical is written
     // UNCONDITIONALLY, so it takes the key from an existing alias. Registering
     // touched canonicals as gap-fill instead named the older word as owner,
@@ -392,9 +392,9 @@ struct CustomWordsImportCommitTests {
     // overwrites that slot, so a second imported alias of the same spelling
     // must be refused in the NAME OF THE NEW WORD, not Anika's.
     let (manager, _) = makeManager()
-    var live = try seed(manager, [CustomWord(canonical: "Anika", aliases: ["claudecode"])])
+    var live = try await seed(manager, [CustomWord(canonical: "Anika", aliases: ["claudecode"])])
 
-    let receipt = try manager.commitImport(
+    let receipt = try await manager.commitImport(
       plan(
         baseline: live,
         additions: [
@@ -411,7 +411,7 @@ struct CustomWordsImportCommitTests {
   }
 
   @Test("touched canonicals resolve the compound key in FINAL storage order, not apply order")
-  func touchedCanonicalCompoundOwnershipMatchesRuntimeStorageOrder() throws {
+  func touchedCanonicalCompoundOwnershipMatchesRuntimeStorageOrder() async throws {
     // Corrected in round 7, reversing round 6's own conclusion. r6 reasoned
     // that the plan's APPLY order should decide a shared compound key, since
     // that is the order the user approved. That reasoning was never checked
@@ -433,13 +433,13 @@ struct CustomWordsImportCommitTests {
     // so this also proves apply order is not silently equivalent to storage
     // order for a two-word plan.
     let (manager, _) = makeManager()
-    var live = try seed(
+    var live = try await seed(
       manager,
       [CustomWord(canonical: "First"), CustomWord(canonical: "Second")])
     let first = try #require(live.first { $0.canonical == "First" })
     let second = try #require(live.first { $0.canonical == "Second" })
 
-    let receipt = try manager.commitImport(
+    let receipt = try await manager.commitImport(
       plan(
         baseline: live,
         additions: [candidate("Zed", aliases: .supplied(["Claude Code"]))],
@@ -460,12 +460,12 @@ struct CustomWordsImportCommitTests {
   }
 
   @Test("an untouched incumbent alias always beats an imported one")
-  func incumbentLibraryAliasAlwaysWinsOverImportedAlias() throws {
+  func incumbentLibraryAliasAlwaysWinsOverImportedAlias() async throws {
     let (manager, _) = makeManager()
-    var live = try seed(manager, [CustomWord(canonical: "Anika", aliases: ["annie"])])
+    var live = try await seed(manager, [CustomWord(canonical: "Anika", aliases: ["annie"])])
     let incumbent = try #require(live.first { $0.canonical == "Anika" })
 
-    _ = try manager.commitImport(
+    _ = try await manager.commitImport(
       plan(baseline: live, additions: [candidate("Zed", aliases: .supplied(["annie"]))]),
       to: &live)
 
@@ -476,10 +476,10 @@ struct CustomWordsImportCommitTests {
   }
 
   @Test("when two new words share an alias the first in plan order keeps it")
-  func firstCandidateInPlanOrderWinsWhenTwoNewCandidatesShareAnAlias() throws {
+  func firstCandidateInPlanOrderWinsWhenTwoNewCandidatesShareAnAlias() async throws {
     let (manager, _) = makeManager()
     var live = manager.load() ?? []
-    let receipt = try manager.commitImport(
+    let receipt = try await manager.commitImport(
       plan(
         baseline: live,
         additions: [
@@ -494,10 +494,10 @@ struct CustomWordsImportCommitTests {
   }
 
   @Test("an alias equal to another word's canonical is dropped")
-  func importedAliasCollidingWithAnotherCanonicalDropsTheAlias() throws {
+  func importedAliasCollidingWithAnotherCanonicalDropsTheAlias() async throws {
     let (manager, _) = makeManager()
-    var live = try seed(manager, [CustomWord(canonical: "Anika")])
-    let receipt = try manager.commitImport(
+    var live = try await seed(manager, [CustomWord(canonical: "Anika")])
+    let receipt = try await manager.commitImport(
       plan(baseline: live, additions: [candidate("Zed", aliases: .supplied(["anika"]))]),
       to: &live)
 
@@ -508,7 +508,7 @@ struct CustomWordsImportCommitTests {
   @Test(
     "a key held by both an existing alias and an existing canonical names the alias owner on commit"
   )
-  func keyHeldByBothAnExistingAliasAndCanonicalReportsTheAliasOwnerOnCommit() throws {
+  func keyHeldByBothAnExistingAliasAndCanonicalReportsTheAliasOwnerOnCommit() async throws {
     // #1672's originally-requested proof, mirroring the existing preview-side
     // test `CustomWordsImportCompareEngineTests.keyHeldByBothAnExistingAliasAndCanonicalReportsTheAliasOwner`.
     // The corrector builds every alias into the lookup FIRST, then skips any
@@ -516,7 +516,7 @@ struct CustomWordsImportCommitTests {
     // exist, the alias owner is the real holder. Before #1672, the commit path
     // and the preview screen answered this differently.
     let (manager, _) = makeManager()
-    var live = try seed(
+    var live = try await seed(
       manager,
       [
         CustomWord(canonical: "Annie"),
@@ -524,7 +524,7 @@ struct CustomWordsImportCommitTests {
       ])
     let aliasHolder = try #require(live.first { $0.canonical == "Anika" })
 
-    let receipt = try manager.commitImport(
+    let receipt = try await manager.commitImport(
       plan(baseline: live, additions: [candidate("Zed", aliases: .supplied(["Annie"]))]),
       to: &live)
 
@@ -537,10 +537,10 @@ struct CustomWordsImportCommitTests {
   }
 
   @Test("an alias equal to its own canonical is removed silently, not reported")
-  func aliasEqualToItsOwnCanonicalIsSilentlyRemovedNotReportedAsADrop() throws {
+  func aliasEqualToItsOwnCanonicalIsSilentlyRemovedNotReportedAsADrop() async throws {
     let (manager, _) = makeManager()
     var live = manager.load() ?? []
-    let receipt = try manager.commitImport(
+    let receipt = try await manager.commitImport(
       plan(
         baseline: live,
         additions: [candidate("Anika", aliases: .supplied(["ANIKA", "annie"]))]),
@@ -551,14 +551,14 @@ struct CustomWordsImportCommitTests {
   }
 
   @Test("two replacements sharing an alias are both covered by enforcement")
-  func twoReplacementsSharingAnAliasKeepOnlyTheFirstInPlanOrder() throws {
+  func twoReplacementsSharingAnAliasKeepOnlyTheFirstInPlanOrder() async throws {
     let (manager, _) = makeManager()
-    var live = try seed(
+    var live = try await seed(
       manager, [CustomWord(canonical: "First"), CustomWord(canonical: "Second")])
     let first = try #require(live.first { $0.canonical == "First" })
     let second = try #require(live.first { $0.canonical == "Second" })
 
-    let receipt = try manager.commitImport(
+    let receipt = try await manager.commitImport(
       plan(
         baseline: live,
         replacements: [
@@ -577,14 +577,14 @@ struct CustomWordsImportCommitTests {
   }
 
   @Test("two replacements aimed at the same word are rejected without writing")
-  func repeatedReplacementTargetIsRejected() throws {
+  func repeatedReplacementTargetIsRejected() async throws {
     let (manager, url) = makeManager()
-    var live = try seed(manager, [CustomWord(canonical: "Qualtrics")])
+    var live = try await seed(manager, [CustomWord(canonical: "Qualtrics")])
     let target = try #require(live.first { $0.canonical == "Qualtrics" })
     let before = try Data(contentsOf: url)
 
-    #expect(throws: CustomWordsImportCommitError.invalidPlan) {
-      _ = try manager.commitImport(
+    await #expect(throws: CustomWordsImportCommitError.invalidPlan) {
+      _ = try await manager.commitImport(
         self.plan(
           baseline: live,
           replacements: [
@@ -601,16 +601,16 @@ struct CustomWordsImportCommitTests {
   }
 
   @Test("a shared alias resolves by plan order, not by storage order")
-  func sharedAliasBetweenReplacementsResolvesByPlanOrderNotStorageOrder() throws {
+  func sharedAliasBetweenReplacementsResolvesByPlanOrderNotStorageOrder() async throws {
     let (manager, _) = makeManager()
-    var live = try seed(
+    var live = try await seed(
       manager, [CustomWord(canonical: "Alpha"), CustomWord(canonical: "Zeta")])
     let alpha = try #require(live.first { $0.canonical == "Alpha" })
     let zeta = try #require(live.first { $0.canonical == "Zeta" })
 
     // Plan order is deliberately the REVERSE of storage order, so a resolver
     // walking the stored library would keep the wrong claimant.
-    let receipt = try manager.commitImport(
+    let receipt = try await manager.commitImport(
       plan(
         baseline: live,
         replacements: [
@@ -627,9 +627,9 @@ struct CustomWordsImportCommitTests {
   }
 
   @Test("when two untouched words share an alias the receipt names the runtime winner")
-  func receiptNamesTheRuntimeWinningIncumbentAliasOwner() throws {
+  func receiptNamesTheRuntimeWinningIncumbentAliasOwner() async throws {
     let (manager, _) = makeManager()
-    var live = try seed(
+    var live = try await seed(
       manager,
       [
         CustomWord(canonical: "Earlier", aliases: ["annie"]),
@@ -637,7 +637,7 @@ struct CustomWordsImportCommitTests {
       ])
     let earlier = try #require(live.first { $0.canonical == "Earlier" })
 
-    let receipt = try manager.commitImport(
+    let receipt = try await manager.commitImport(
       plan(baseline: live, additions: [candidate("Zed", aliases: .supplied(["Annie"]))]),
       to: &live)
 
@@ -670,13 +670,13 @@ struct CustomWordsImportCommitTests {
   }
 
   @Test("a second commit in the same second does not destroy the first backup")
-  func backupsInTheSameSecondDoNotOverwriteEachOther() throws {
+  func backupsInTheSameSecondDoNotOverwriteEachOther() async throws {
     let (manager, url) = makeManager()
-    var live = try seed(manager, [CustomWord(canonical: "Original")])
+    var live = try await seed(manager, [CustomWord(canonical: "Original")])
 
-    _ = try manager.commitImport(
+    _ = try await manager.commitImport(
       plan(baseline: live, additions: [candidate("First")]), to: &live)
-    _ = try manager.commitImport(
+    _ = try await manager.commitImport(
       plan(baseline: live, additions: [candidate("Second")]), to: &live)
 
     let siblings = try FileManager.default.contentsOfDirectory(
@@ -696,13 +696,13 @@ struct CustomWordsImportCommitTests {
   // MARK: - Built-ins
 
   @Test("replacing a built-in leaves exactly one word, not the built-in plus an override")
-  func replacingABuiltinRetiresTheBuiltinInsteadOfDuplicatingIt() throws {
+  func replacingABuiltinRetiresTheBuiltinInsteadOfDuplicatingIt() async throws {
     let (manager, _) = makeManager()
     var live = try #require(manager.load())
     let builtin = try #require(live.first)
     let originalCount = live.count
 
-    _ = try manager.commitImport(
+    _ = try await manager.commitImport(
       plan(
         baseline: live,
         replacements: [
@@ -718,7 +718,7 @@ struct CustomWordsImportCommitTests {
   }
 
   @Test("replacing an existing built-in override that moves the canonical retires the built-in")
-  func replacingAnExistingOverrideThatRenamesRetiresTheBuiltin() throws {
+  func replacingAnExistingOverrideThatRenamesRetiresTheBuiltin() async throws {
     let (manager, _) = makeManager()
     var live = try #require(manager.load())
     let builtin = try #require(live.first)
@@ -729,7 +729,7 @@ struct CustomWordsImportCommitTests {
     // hides the built-in — so the list stays the same size.
     var edited = builtin
     edited.aliases = builtin.aliases + ["extra alias"]
-    try manager.update(word: edited, in: &live)
+    try await manager.update(word: edited, in: &live)
     let reloaded = try #require(manager.load())
     #expect(reloaded.count == originalCount)
 
@@ -738,7 +738,7 @@ struct CustomWordsImportCommitTests {
     // create-an-override branch — the built-in must still be retired.
     var working = reloaded
     let existing = try #require(reloaded.first { $0.id == builtin.id })
-    _ = try manager.commitImport(
+    _ = try await manager.commitImport(
       plan(
         baseline: reloaded,
         replacements: [
@@ -754,7 +754,7 @@ struct CustomWordsImportCommitTests {
   }
 
   @Test("a replace that keeps the built-in's canonical does not retire the built-in")
-  func replacingABuiltinWithoutRenamingLeavesItRestorable() throws {
+  func replacingABuiltinWithoutRenamingLeavesItRestorable() async throws {
     let (manager, url) = makeManager()
     var live = try #require(manager.load())
     let builtin = try #require(live.first)
@@ -764,7 +764,7 @@ struct CustomWordsImportCommitTests {
     // its own, so recording a tombstone would persist a deletion the user
     // never performed. Retiring is reserved for a canonical that MOVES away,
     // which is the only case where the built-in would otherwise resurface.
-    _ = try manager.commitImport(
+    _ = try await manager.commitImport(
       plan(
         baseline: live,
         replacements: [
@@ -791,7 +791,7 @@ struct CustomWordsImportCommitTests {
   @Test(
     "renaming a built-in through update leaves exactly one word, not the built-in plus an override (#1670)"
   )
-  func renamingABuiltinThroughUpdateRetiresTheBuiltinInsteadOfDuplicatingIt() throws {
+  func renamingABuiltinThroughUpdateRetiresTheBuiltinInsteadOfDuplicatingIt() async throws {
     let (manager, url) = makeManager()
     var live = try #require(manager.load())
     let builtin = try #require(live.first)
@@ -799,7 +799,7 @@ struct CustomWordsImportCommitTests {
 
     var renamed = builtin
     renamed.canonical = "\(builtin.canonical) Renamed"
-    try manager.update(word: renamed, in: &live)
+    try await manager.update(word: renamed, in: &live)
 
     #expect(live.count == originalCount)
     #expect(live.contains { $0.canonical == "\(builtin.canonical) Renamed" })
@@ -824,7 +824,7 @@ struct CustomWordsImportCommitTests {
   }
 
   @Test("renaming a built-in then renaming it back leaves exactly one word (#1670 DoD)")
-  func renamingABuiltinThenRestoringItsOriginalNameLeavesExactlyOneWord() throws {
+  func renamingABuiltinThenRestoringItsOriginalNameLeavesExactlyOneWord() async throws {
     let (manager, _) = makeManager()
     var live = try #require(manager.load())
     let builtin = try #require(live.first)
@@ -833,7 +833,7 @@ struct CustomWordsImportCommitTests {
 
     var renamed = builtin
     renamed.canonical = "\(originalCanonical) Renamed"
-    try manager.update(word: renamed, in: &live)
+    try await manager.update(word: renamed, in: &live)
 
     // Rename back to the built-in's original text. The built-in stays
     // tombstoned (the identity is now this user override, not a restored
@@ -841,7 +841,7 @@ struct CustomWordsImportCommitTests {
     // one word, never the duplicate-ID hazard the forward rename used to hit.
     var restored = renamed
     restored.canonical = originalCanonical
-    try manager.update(word: restored, in: &live)
+    try await manager.update(word: restored, in: &live)
 
     #expect(live.count == originalCount)
     let matching = live.filter { $0.canonical == originalCanonical }
@@ -854,7 +854,7 @@ struct CustomWordsImportCommitTests {
   @Test(
     "renaming a built-in's aliases through update, without moving its canonical, does not tombstone it (#1670)"
   )
-  func updateWithoutRenamingLeavesTheBuiltinRestorable() throws {
+  func updateWithoutRenamingLeavesTheBuiltinRestorable() async throws {
     let (manager, url) = makeManager()
     var live = try #require(manager.load())
     let builtin = try #require(live.first)
@@ -865,7 +865,7 @@ struct CustomWordsImportCommitTests {
     // never performed (mirrors replacingABuiltinWithoutRenamingLeavesItRestorable).
     var edited = builtin
     edited.aliases = builtin.aliases + ["extra alias"]
-    try manager.update(word: edited, in: &live)
+    try await manager.update(word: edited, in: &live)
 
     #expect(live.count == originalCount)
 
@@ -880,7 +880,7 @@ struct CustomWordsImportCommitTests {
   }
 
   @Test("an import survives a library where a duplicate ID was constructed directly")
-  func importSurvivesADirectlyConstructedDuplicateID() throws {
+  func importSurvivesADirectlyConstructedDuplicateID() async throws {
     let (manager, url) = makeManager()
     let live = try #require(manager.load())
     let builtin = try #require(live.first)
@@ -907,7 +907,7 @@ struct CustomWordsImportCommitTests {
     #expect(reloaded.filter { $0.id == builtin.id }.count == 2)
 
     var working = reloaded
-    let receipt = try manager.commitImport(
+    let receipt = try await manager.commitImport(
       plan(baseline: reloaded, additions: [candidate("Kubernetes")]), to: &working)
 
     #expect(receipt.addedIDs.count == 1)
@@ -917,10 +917,10 @@ struct CustomWordsImportCommitTests {
   // MARK: - Backup
 
   @Test("a changing commit writes a backup first")
-  func backupFileWrittenBeforeNonEmptyCommit() throws {
+  func backupFileWrittenBeforeNonEmptyCommit() async throws {
     let (manager, url) = makeManager()
-    var live = try seed(manager, [CustomWord(canonical: "Qualtrics")])
-    _ = try manager.commitImport(
+    var live = try await seed(manager, [CustomWord(canonical: "Qualtrics")])
+    _ = try await manager.commitImport(
       plan(baseline: live, additions: [candidate("Kubernetes")]), to: &live)
 
     let siblings = try FileManager.default.contentsOfDirectory(
@@ -938,16 +938,16 @@ struct CustomWordsImportCommitTests {
   // MARK: - Learned provenance authority on commit (#996)
 
   @Test("Replace with no opinion about learned marks keeps the live ones; a backup's empty list and nil date clear them; a supplied mark outside the final aliases is pruned")
-  func replaceHonorsLearnedAuthority() throws {
+  func replaceHonorsLearnedAuthority() async throws {
     let (manager, _) = makeManager()
     let learnedAt = Date(timeIntervalSince1970: 1_800_000_000)
-    var live = try seed(manager, [
+    var live = try await seed(manager, [
       CustomWord(canonical: "Tuist", aliases: ["twist", "to-ist"], learnedAliases: ["twist"], learnedAt: learnedAt)
     ])
     let tuist = try #require(live.first { $0.canonical == "Tuist" })
 
     // CSV-style replace: aliases supplied, marks unspecified → marks stay.
-    _ = try manager.commitImport(
+    _ = try await manager.commitImport(
       plan(baseline: live, replacements: [
         CustomWordsImportReplacement(
           existingID: tuist.id, candidate: candidate("Tuist", aliases: .supplied(["twist", "tuist!"])))
@@ -957,7 +957,7 @@ struct CustomWordsImportCommitTests {
     #expect(after.learnedAliases == ["twist"] && after.learnedAt == learnedAt)
 
     // Replace whose aliases drop the marked one: the mark goes with it.
-    _ = try manager.commitImport(
+    _ = try await manager.commitImport(
       plan(baseline: live, replacements: [
         CustomWordsImportReplacement(
           existingID: tuist.id, candidate: candidate("Tuist", aliases: .supplied(["to-ist"])))
@@ -969,7 +969,7 @@ struct CustomWordsImportCommitTests {
     var clearing = candidate("Tuist", aliases: .supplied(["to-ist"]))
     clearing.learnedAliases = .supplied([])
     clearing.learnedAt = .supplied(nil)
-    _ = try manager.commitImport(
+    _ = try await manager.commitImport(
       plan(baseline: live, replacements: [
         CustomWordsImportReplacement(existingID: tuist.id, candidate: clearing)
       ]), to: &live)
@@ -980,7 +980,7 @@ struct CustomWordsImportCommitTests {
     var stray = candidate("Tuist", aliases: .supplied(["to-ist"]))
     stray.learnedAliases = .supplied(["ghost", "to-ist"])
     stray.learnedAt = .supplied(learnedAt)
-    _ = try manager.commitImport(
+    _ = try await manager.commitImport(
       plan(baseline: live, replacements: [
         CustomWordsImportReplacement(existingID: tuist.id, candidate: stray)
       ]), to: &live)
@@ -990,7 +990,7 @@ struct CustomWordsImportCommitTests {
   }
 
   @Test("Add applies a backup's learned marks and defaults every other source's to none")
-  func additionAppliesOrDefaultsLearnedProvenance() throws {
+  func additionAppliesOrDefaultsLearnedProvenance() async throws {
     let (manager, _) = makeManager()
     var live = manager.load() ?? []
     let learnedAt = Date(timeIntervalSince1970: 1_800_000_000)
@@ -998,7 +998,7 @@ struct CustomWordsImportCommitTests {
     backup.learnedAliases = .supplied([" twist ", "ghost"])
     backup.learnedAt = .supplied(learnedAt)
     let csv = candidate("Saira", aliases: .supplied(["sarah"]))
-    _ = try manager.commitImport(plan(baseline: live, additions: [backup, csv]), to: &live)
+    _ = try await manager.commitImport(plan(baseline: live, additions: [backup, csv]), to: &live)
     let tuist = try #require(live.first { $0.canonical == "Tuist" })
     #expect(tuist.aliases == ["twist"] && tuist.learnedAliases == ["twist"] && tuist.learnedAt == learnedAt)
     let saira = try #require(live.first { $0.canonical == "Saira" })
@@ -1006,13 +1006,13 @@ struct CustomWordsImportCommitTests {
   }
 
   @Test("an alias dropped by the collision rule at commit takes its learned mark with it")
-  func collisionDropRemovesTheMark() throws {
+  func collisionDropRemovesTheMark() async throws {
     let (manager, _) = makeManager()
-    var live = try seed(manager, [CustomWord(canonical: "Anika", aliases: ["annie"])])
+    var live = try await seed(manager, [CustomWord(canonical: "Anika", aliases: ["annie"])])
     // A new word claims "annie" as a learned alias; the untouched incumbent wins.
     var incoming = candidate("Zed", aliases: .supplied(["annie", "zedd"]))
     incoming.learnedAliases = .supplied(["annie", "zedd"])
-    let receipt = try manager.commitImport(plan(baseline: live, additions: [incoming]), to: &live)
+    let receipt = try await manager.commitImport(plan(baseline: live, additions: [incoming]), to: &live)
     #expect(receipt.droppedAliasCollisions.map(\.alias) == ["annie"])
     let zed = try #require(live.first { $0.canonical == "Zed" })
     #expect(zed.aliases == ["zedd"] && zed.learnedAliases == ["zedd"])

@@ -37,14 +37,14 @@ struct CustomWordsManagerPersistenceTests {
   }
 
   /// A manager whose file already holds one user word ("Kubernetes").
-  private static func seededManager() throws -> (
+  private static func seededManager() async throws -> (
     manager: CustomWordsManager, url: URL, dir: URL, words: [CustomWord]
   ) {
     let dir = tempDir()
     let url = dir.appendingPathComponent("custom-words.json")
     let mgr = CustomWordsManager(fileURL: url)
     var words = mgr.load() ?? []
-    try mgr.add(word: CustomWord(canonical: "Kubernetes"), to: &words)
+    try await mgr.add(word: CustomWord(canonical: "Kubernetes"), to: &words)
     return (mgr, url, dir, words)
   }
 
@@ -63,7 +63,7 @@ struct CustomWordsManagerPersistenceTests {
   // MARK: - Missing file is a legitimate first run
 
   @Test("Missing file treats as first run across all eight call sites")
-  func missingFileTreatsAsFirstRunAcrossAllEightCallSites() throws {
+  func missingFileTreatsAsFirstRunAcrossAllEightCallSites() async throws {
     let dir = Self.tempDir()
     defer { Self.cleanup(dir) }
     let url = dir.appendingPathComponent("custom-words.json")
@@ -75,51 +75,55 @@ struct CustomWordsManagerPersistenceTests {
     #expect(words.contains { $0.canonical == "EnviousWispr" })
 
     // All six CRUD mutations succeed against a missing file.
-    try mgr.add(word: CustomWord(canonical: "Alpha Term"), to: &words)
-    let batchIDs = try mgr.addBatch([CustomWord(canonical: "Beta Term")], to: &words)
+    try await mgr.add(word: CustomWord(canonical: "Alpha Term"), to: &words)
+    let batchIDs = try await mgr.addBatch([CustomWord(canonical: "Beta Term")], to: &words)
     #expect(batchIDs.count == 1)
     let alpha = try #require(words.first { $0.canonical == "Alpha Term" })
     var updatedAlpha = alpha
     updatedAlpha.aliases = ["al fa"]
-    try mgr.update(word: updatedAlpha, in: &words)
-    try mgr.updateBatch([updatedAlpha], to: &words)
-    try mgr.remove(id: alpha.id, from: &words)
-    try mgr.removeBatch(ids: batchIDs, from: &words)
+    try await mgr.update(word: updatedAlpha, in: &words)
+    try await mgr.applyGeneratedAliases(
+      [GeneratedAliasProposal(id: alpha.id, canonical: alpha.canonical, aliases: ["al fa"])],
+      to: &words)
+    try await mgr.remove(id: alpha.id, from: &words)
+    try await mgr.removeBatch(ids: batchIDs, from: &words)
     #expect(!words.contains { $0.canonical == "Alpha Term" })
     #expect(!words.contains { $0.canonical == "Beta Term" })
 
     // flush with an unknown id: silently skipped, no crash, no file requirement.
     mgr.recordReplacements([UUID()])
-    mgr.flushPendingIncrementsForTesting()
+    await mgr.flushPendingIncrementsForTesting()
   }
 
   // MARK: - Unreadable existing file fails closed (the regression tests)
 
   @Test(
     "Unreadable existing file throws without writing",
-    arguments: ["add", "addBatch", "remove", "removeBatch", "update", "updateBatch"])
-  func unreadableExistingFileThrowsWithoutWriting(method: String) throws {
-    let (mgr, url, dir, seeded) = try Self.seededManager()
+    arguments: ["add", "addBatch", "remove", "removeBatch", "update", "generatedAliases"])
+  func unreadableExistingFileThrowsWithoutWriting(method: String) async throws {
+    let (mgr, url, dir, seeded) = try await Self.seededManager()
     defer { Self.cleanup(dir) }
     let bytesBefore = try Data(contentsOf: url)
     var words = seeded
     let target = try #require(words.first { $0.canonical == "Kubernetes" })
 
     Self.chmod(url, 0o000)
-    let error = #expect(throws: CustomWordsPersistenceError.self) {
+    let error = await #expect(throws: CustomWordsPersistenceError.self) {
       switch method {
       case "add":
-        try mgr.add(word: CustomWord(canonical: "Terraform"), to: &words)
+        try await mgr.add(word: CustomWord(canonical: "Terraform"), to: &words)
       case "addBatch":
-        _ = try mgr.addBatch([CustomWord(canonical: "Terraform")], to: &words)
+        _ = try await mgr.addBatch([CustomWord(canonical: "Terraform")], to: &words)
       case "remove":
-        try mgr.remove(id: target.id, from: &words)
+        try await mgr.remove(id: target.id, from: &words)
       case "removeBatch":
-        try mgr.removeBatch(ids: [target.id], from: &words)
+        try await mgr.removeBatch(ids: [target.id], from: &words)
       case "update":
-        try mgr.update(word: target, in: &words)
-      case "updateBatch":
-        try mgr.updateBatch([target], to: &words)
+        try await mgr.update(word: target, in: &words)
+      case "generatedAliases":
+        try await mgr.applyGeneratedAliases(
+          [GeneratedAliasProposal(id: target.id, canonical: target.canonical, aliases: ["kube"])],
+          to: &words)
       default:
         Issue.record("unknown method \(method)")
       }
@@ -133,16 +137,16 @@ struct CustomWordsManagerPersistenceTests {
   }
 
   @Test("Unreadable file keeps failing closed across repeated attempts")
-  func unreadableFileKeepsFailingClosedAcrossRepeatedAttempts() throws {
-    let (mgr, url, dir, seeded) = try Self.seededManager()
+  func unreadableFileKeepsFailingClosedAcrossRepeatedAttempts() async throws {
+    let (mgr, url, dir, seeded) = try await Self.seededManager()
     defer { Self.cleanup(dir) }
     let bytesBefore = try Data(contentsOf: url)
     var words = seeded
 
     Self.chmod(url, 0o000)
     for _ in 0..<3 {
-      #expect(throws: CustomWordsPersistenceError.unreadableExistingFile) {
-        try mgr.add(word: CustomWord(canonical: "Terraform"), to: &words)
+      await #expect(throws: CustomWordsPersistenceError.unreadableExistingFile) {
+        try await mgr.add(word: CustomWord(canonical: "Terraform"), to: &words)
       }
     }
     #expect(words == seeded)
@@ -150,14 +154,14 @@ struct CustomWordsManagerPersistenceTests {
     #expect(try Data(contentsOf: url) == bytesBefore)
 
     // Once readable again, the same mutation succeeds — retry-safe forever.
-    try mgr.add(word: CustomWord(canonical: "Terraform"), to: &words)
+    try await mgr.add(word: CustomWord(canonical: "Terraform"), to: &words)
     #expect(words.contains { $0.canonical == "Terraform" })
   }
 
   // MARK: - Corrupted existing file: fails closed once, archives, self-heals
 
   @Test("Corrupted existing file throws without writing on first attempt")
-  func corruptedExistingFileThrowsWithoutWritingOnFirstAttempt() throws {
+  func corruptedExistingFileThrowsWithoutWritingOnFirstAttempt() async throws {
     let dir = Self.tempDir()
     defer { Self.cleanup(dir) }
     let url = dir.appendingPathComponent("custom-words.json")
@@ -165,8 +169,8 @@ struct CustomWordsManagerPersistenceTests {
     let mgr = CustomWordsManager(fileURL: url)
     var words: [CustomWord] = []
 
-    #expect(throws: CustomWordsPersistenceError.corruptedExistingFile) {
-      try mgr.add(word: CustomWord(canonical: "Terraform"), to: &words)
+    await #expect(throws: CustomWordsPersistenceError.corruptedExistingFile) {
+      try await mgr.add(word: CustomWord(canonical: "Terraform"), to: &words)
     }
     #expect(words.isEmpty)
     // No new custom-words.json was written by the failed mutation.
@@ -174,7 +178,7 @@ struct CustomWordsManagerPersistenceTests {
   }
 
   @Test("Corrupted file still backs up before throwing")
-  func corruptedFileStillBacksUpBeforeThrowing() throws {
+  func corruptedFileStillBacksUpBeforeThrowing() async throws {
     let dir = Self.tempDir()
     defer { Self.cleanup(dir) }
     let url = dir.appendingPathComponent("custom-words.json")
@@ -182,8 +186,8 @@ struct CustomWordsManagerPersistenceTests {
     let mgr = CustomWordsManager(fileURL: url)
     var words: [CustomWord] = []
 
-    #expect(throws: CustomWordsPersistenceError.corruptedExistingFile) {
-      try mgr.add(word: CustomWord(canonical: "Terraform"), to: &words)
+    await #expect(throws: CustomWordsPersistenceError.corruptedExistingFile) {
+      try await mgr.add(word: CustomWord(canonical: "Terraform"), to: &words)
     }
     let sidecars = Self.corruptedSidecars(in: dir)
     #expect(sidecars.count == 1)
@@ -194,7 +198,7 @@ struct CustomWordsManagerPersistenceTests {
   }
 
   @Test("Corrupted file self-heals on the next call after the first corruption encounter")
-  func corruptedFileSelfHealsOnTheNextCallAfterTheFirstCorruptionEncounter() throws {
+  func corruptedFileSelfHealsOnTheNextCallAfterTheFirstCorruptionEncounter() async throws {
     let dir = Self.tempDir()
     defer { Self.cleanup(dir) }
     let url = dir.appendingPathComponent("custom-words.json")
@@ -203,18 +207,18 @@ struct CustomWordsManagerPersistenceTests {
     var words: [CustomWord] = []
 
     // First encounter: a mutation — fails closed, archives.
-    #expect(throws: CustomWordsPersistenceError.corruptedExistingFile) {
-      try mgr.add(word: CustomWord(canonical: "Terraform"), to: &words)
+    await #expect(throws: CustomWordsPersistenceError.corruptedExistingFile) {
+      try await mgr.add(word: CustomWord(canonical: "Terraform"), to: &words)
     }
     // Second call of EITHER kind succeeds against a fresh empty file.
     words = try #require(mgr.load())
     #expect(mgr.lastLoadFailure == nil)
-    try mgr.add(word: CustomWord(canonical: "Terraform"), to: &words)
+    try await mgr.add(word: CustomWord(canonical: "Terraform"), to: &words)
     #expect(words.contains { $0.canonical == "Terraform" })
   }
 
   @Test("Second corruption uses a unique archive and self-heals again")
-  func secondCorruptionUsesAUniqueArchiveAndSelfHealsAgain() throws {
+  func secondCorruptionUsesAUniqueArchiveAndSelfHealsAgain() async throws {
     let dir = Self.tempDir()
     defer { Self.cleanup(dir) }
     let url = dir.appendingPathComponent("custom-words.json")
@@ -232,12 +236,12 @@ struct CustomWordsManagerPersistenceTests {
 
     // And it still self-heals.
     var words = try #require(mgr.load())
-    try mgr.add(word: CustomWord(canonical: "Terraform"), to: &words)
+    try await mgr.add(word: CustomWord(canonical: "Terraform"), to: &words)
     #expect(words.contains { $0.canonical == "Terraform" })
   }
 
   @Test("Corrupted archive failure keeps original and fails closed repeatedly")
-  func corruptedArchiveFailureKeepsOriginalAndFailsClosedRepeatedly() throws {
+  func corruptedArchiveFailureKeepsOriginalAndFailsClosedRepeatedly() async throws {
     let dir = Self.tempDir()
     defer { Self.cleanup(dir) }
     let url = dir.appendingPathComponent("custom-words.json")
@@ -265,8 +269,8 @@ struct CustomWordsManagerPersistenceTests {
     }
 
     for _ in 0..<2 {
-      #expect(throws: CustomWordsPersistenceError.unreadableExistingFile) {
-        try mgr.add(word: CustomWord(canonical: "Terraform"), to: &words)
+      await #expect(throws: CustomWordsPersistenceError.unreadableExistingFile) {
+        try await mgr.add(word: CustomWord(canonical: "Terraform"), to: &words)
       }
     }
     #expect(FileManager.default.fileExists(atPath: url.path))
@@ -275,7 +279,7 @@ struct CustomWordsManagerPersistenceTests {
   }
 
   @Test("Launch load can archive corruption before next mutation proceeds")
-  func launchLoadCanArchiveCorruptionBeforeNextMutationProceeds() throws {
+  func launchLoadCanArchiveCorruptionBeforeNextMutationProceeds() async throws {
     let dir = Self.tempDir()
     defer { Self.cleanup(dir) }
     let url = dir.appendingPathComponent("custom-words.json")
@@ -289,7 +293,7 @@ struct CustomWordsManagerPersistenceTests {
 
     // The very next mutation sees .missing and proceeds cleanly — never throws.
     var words = try #require(mgr.load())
-    try mgr.add(word: CustomWord(canonical: "Terraform"), to: &words)
+    try await mgr.add(word: CustomWord(canonical: "Terraform"), to: &words)
     #expect(words.contains { $0.canonical == "Terraform" })
   }
 
@@ -328,17 +332,17 @@ struct CustomWordsManagerPersistenceTests {
   // MARK: - Best-effort flush requeues
 
   @Test("flushPendingIncrements on unreadable file requeues instead of dropping")
-  func flushPendingIncrementsOnUnreadableFileRequeuesInsteadOfDropping() throws {
-    let (mgr, url, dir, seeded) = try Self.seededManager()
+  func flushPendingIncrementsOnUnreadableFileRequeuesInsteadOfDropping() async throws {
+    let (mgr, url, dir, seeded) = try await Self.seededManager()
     defer { Self.cleanup(dir) }
     let target = try #require(seeded.first { $0.canonical == "Kubernetes" })
 
     mgr.recordReplacements([target.id])
     Self.chmod(url, 0o000)
-    mgr.flushPendingIncrementsForTesting()  // requeued, not dropped
+    await mgr.flushPendingIncrementsForTesting()  // requeued, not dropped
 
     Self.chmod(url, 0o600)
-    mgr.flushPendingIncrementsForTesting()  // retried flush lands
+    await mgr.flushPendingIncrementsForTesting()  // retried flush lands
     let words = try #require(mgr.load())
     let flushed = try #require(words.first { $0.id == target.id })
     #expect(flushed.frequencyUsed == 1)
@@ -347,8 +351,8 @@ struct CustomWordsManagerPersistenceTests {
   // MARK: - load() contract
 
   @Test("load returns nil on unreadable or corrupted, unchanged")
-  func loadReturnsNilOnUnreadableOrCorruptedUnchanged() throws {
-    let (mgr, url, dir, _) = try Self.seededManager()
+  func loadReturnsNilOnUnreadableOrCorruptedUnchanged() async throws {
+    let (mgr, url, dir, _) = try await Self.seededManager()
     defer { Self.cleanup(dir) }
 
     Self.chmod(url, 0o000)
@@ -360,8 +364,8 @@ struct CustomWordsManagerPersistenceTests {
   }
 
   @Test("load sets lastLoadFailure to unreadable or corrupted matching the real cause")
-  func loadSetsLastLoadFailureToUnreadableOrCorruptedMatchingTheRealCause() throws {
-    let (mgr, url, dir, _) = try Self.seededManager()
+  func loadSetsLastLoadFailureToUnreadableOrCorruptedMatchingTheRealCause() async throws {
+    let (mgr, url, dir, _) = try await Self.seededManager()
     defer { Self.cleanup(dir) }
 
     #expect(mgr.load() != nil)
@@ -392,22 +396,22 @@ struct CustomWordsManagerPersistenceTests {
   // MARK: - Learned provenance is valid at every write (#996)
 
   @Test("add and update keep only the learned marks that name a stored alias, in alias order, once")
-  func addAndUpdatePruneMarksOutsideAliases() throws {
-    let (mgr, _, dir, _) = try Self.seededManager()
+  func addAndUpdatePruneMarksOutsideAliases() async throws {
+    let (mgr, _, dir, _) = try await Self.seededManager()
     defer { Self.cleanup(dir) }
     var words = mgr.load() ?? []
     let learnedAt = Date(timeIntervalSince1970: 1_800_000_000)
     let word = CustomWord(
       canonical: "Tuist", aliases: ["twist", "to-ist"], category: .brand, priority: 3,
       learnedAliases: ["to-ist", "ghost", "twist", "twist"], learnedAt: learnedAt)
-    try mgr.add(word: word, to: &words)
+    try await mgr.add(word: word, to: &words)
     let added = try #require(words.first { $0.id == word.id })
     #expect(added.learnedAliases == ["twist", "to-ist"], "alias order, no ghost, no duplicate")
     #expect(added.learnedAt == learnedAt && added.category == .brand && added.priority == 3)
     // The user removes a chip in the edit sheet: the mark goes with it.
     var edited = added
     edited.aliases = ["to-ist"]
-    try mgr.update(word: edited, in: &words)
+    try await mgr.update(word: edited, in: &words)
     let updated = try #require(words.first { $0.id == word.id })
     #expect(updated.aliases == ["to-ist"] && updated.learnedAliases == ["to-ist"])
     #expect(updated.learnedAt == learnedAt, "learnedAt survives an edit")
@@ -417,18 +421,18 @@ struct CustomWordsManagerPersistenceTests {
   }
 
   @Test("a learned mark written as ' alias ' keeps its mark once the alias is stored as 'alias'")
-  func trimmedAliasKeepsItsMark() throws {
-    let (mgr, _, dir, _) = try Self.seededManager()
+  func trimmedAliasKeepsItsMark() async throws {
+    let (mgr, _, dir, _) = try await Self.seededManager()
     defer { Self.cleanup(dir) }
     var words = mgr.load() ?? []
     let word = CustomWord(canonical: "Tuist", aliases: [" twist "], learnedAliases: [" twist "])
-    try mgr.add(word: word, to: &words)
+    try await mgr.add(word: word, to: &words)
     let added = try #require(words.first { $0.id == word.id })
     #expect(added.aliases == ["twist"] && added.learnedAliases == ["twist"])
     // Case differs between the mark and the stored alias: the stored spelling
     // keeps the mark, once, and no case-only duplicate alias appears.
     let cased = CustomWord(canonical: "Saira", aliases: ["Sarah"], learnedAliases: [" sarah ", "SARAH"])
-    try mgr.add(word: cased, to: &words)
+    try await mgr.add(word: cased, to: &words)
     let addedCased = try #require(words.first { $0.id == cased.id })
     #expect(addedCased.aliases == ["Sarah"] && addedCased.learnedAliases == ["Sarah"])
   }
@@ -453,16 +457,16 @@ struct CustomWordsManagerPersistenceTests {
   // MARK: - A learned word over a deleted built-in (#996)
 
   @Test("restore-and-learn brings a deleted built-in back as ONE user word with the built-in's UUID, the sound-alike marked; re-delete puts the tombstone back")
-  func restoreBuiltinAndLearnThenRedelete() throws {
-    let (mgr, _, dir, _) = try Self.seededManager()
+  func restoreBuiltinAndLearnThenRedelete() async throws {
+    let (mgr, _, dir, _) = try await Self.seededManager()
     defer { Self.cleanup(dir) }
     var words = mgr.load() ?? []
     let github = try #require(words.first { $0.canonical == "GitHub" })
     #expect(github.source == .builtin)
-    try mgr.remove(id: github.id, from: &words)
+    try await mgr.remove(id: github.id, from: &words)
     #expect(!words.contains { $0.canonical == "GitHub" }, "deleted built-in is hidden")
 
-    let outcome = try mgr.restoreBuiltinAndLearn(canonical: "github", alias: " git-hub ")
+    let outcome = try await mgr.restoreBuiltinAndLearn(canonical: "github", alias: " git-hub ").value
     #expect(outcome.preState == .deletedBuiltin(id: github.id))
     #expect(outcome.word.id == github.id && outcome.word.source == .user)
     #expect(outcome.word.aliases == ["git hub", "get hub", "git-hub"])
@@ -472,27 +476,27 @@ struct CustomWordsManagerPersistenceTests {
     // The receipt's word is the persisted value: a fresh load agrees.
     #expect(try #require(mgr.load()).first { $0.id == github.id } == outcome.word)
 
-    let after = try mgr.redeleteRestoredBuiltin(id: github.id)
+    let after = try await mgr.redeleteRestoredBuiltin(id: github.id).value
     #expect(!after.contains { $0.canonical == "GitHub" })
     #expect(try #require(mgr.load()).contains { $0.canonical == "GitHub" } == false, "tombstone is back on disk")
     // Idempotent: a second re-delete changes nothing and throws nothing.
-    let again = try mgr.redeleteRestoredBuiltin(id: github.id)
+    let again = try await mgr.redeleteRestoredBuiltin(id: github.id).value
     #expect(again == after)
   }
 
   @Test("restore-and-learn refuses, writing nothing, when the built-in is not deleted, a user word claims the canonical, the canonical is not a built-in, or the alias is unstorable")
-  func restoreBuiltinAndLearnRefusals() throws {
-    let (mgr, url, dir, _) = try Self.seededManager()
+  func restoreBuiltinAndLearnRefusals() async throws {
+    let (mgr, url, dir, _) = try await Self.seededManager()
     defer { Self.cleanup(dir) }
     var words = mgr.load() ?? []
     let before = try Data(contentsOf: url)
     // Not deleted.
-    #expect(throws: CustomWordsPersistenceError.noRestorableBuiltin) {
-      try mgr.restoreBuiltinAndLearn(canonical: "GitHub", alias: "git-hub")
+    await #expect(throws: CustomWordsPersistenceError.noRestorableBuiltin) {
+      try await mgr.restoreBuiltinAndLearn(canonical: "GitHub", alias: "git-hub").value
     }
     // Not a built-in at all.
-    #expect(throws: CustomWordsPersistenceError.noRestorableBuiltin) {
-      try mgr.restoreBuiltinAndLearn(canonical: "Tuist", alias: "twist")
+    await #expect(throws: CustomWordsPersistenceError.noRestorableBuiltin) {
+      try await mgr.restoreBuiltinAndLearn(canonical: "Tuist", alias: "twist").value
     }
     #expect(try Data(contentsOf: url) == before, "nothing written")
     // A user override claims the canonical (an edited built-in): not a
@@ -500,11 +504,11 @@ struct CustomWordsManagerPersistenceTests {
     let github = try #require(words.first { $0.canonical == "GitHub" })
     var edited = github
     edited.aliases = ["gh"]
-    try mgr.update(word: edited, in: &words)
+    try await mgr.update(word: edited, in: &words)
     #expect(try #require(words.first { $0.id == github.id }).source == .user)
     let claimed = try Data(contentsOf: url)
-    #expect(throws: CustomWordsPersistenceError.noRestorableBuiltin) {
-      try mgr.restoreBuiltinAndLearn(canonical: "GitHub", alias: "git-hub")
+    await #expect(throws: CustomWordsPersistenceError.noRestorableBuiltin) {
+      try await mgr.restoreBuiltinAndLearn(canonical: "GitHub", alias: "git-hub").value
     }
     #expect(try Data(contentsOf: url) == claimed)
     // A tombstone AND an override for the same canonical on disk (a state
@@ -512,7 +516,7 @@ struct CustomWordsManagerPersistenceTests {
     // JSON fixture): the override's claim wins and nothing is written.
     let sibling = CustomWordsManager(fileURL: url)
     var siblingWords = try #require(sibling.load())
-    try sibling.remove(id: github.id, from: &siblingWords)  // tombstone, override gone
+    try await sibling.remove(id: github.id, from: &siblingWords)  // tombstone, override gone
     let tombstoned = try Data(contentsOf: url)
     var document = try #require(JSONSerialization.jsonObject(with: tombstoned) as? [String: Any])
     var storedWords = try #require(document["words"] as? [[String: Any]])
@@ -523,68 +527,68 @@ struct CustomWordsManagerPersistenceTests {
     try JSONSerialization.data(withJSONObject: document, options: [.sortedKeys])
       .write(to: url, options: .atomic)
     let conflicted = try Data(contentsOf: url)
-    #expect(throws: CustomWordsPersistenceError.noRestorableBuiltin) {
-      try mgr.restoreBuiltinAndLearn(canonical: "GitHub", alias: "git-hub")
+    await #expect(throws: CustomWordsPersistenceError.noRestorableBuiltin) {
+      try await mgr.restoreBuiltinAndLearn(canonical: "GitHub", alias: "git-hub").value
     }
     #expect(try Data(contentsOf: url) == conflicted)
     // Back to the plain tombstone: restore succeeds once, then a second call
     // refuses because the override now claims the canonical.
     try tombstoned.write(to: url, options: .atomic)
-    _ = try mgr.restoreBuiltinAndLearn(canonical: "GitHub", alias: "git-hub")
+    _ = try await mgr.restoreBuiltinAndLearn(canonical: "GitHub", alias: "git-hub").value
     #expect(try Data(contentsOf: url) != tombstoned)
     let restoredBytes = try Data(contentsOf: url)
-    #expect(throws: CustomWordsPersistenceError.noRestorableBuiltin) {
-      try mgr.restoreBuiltinAndLearn(canonical: "GitHub", alias: "git-hub")
+    await #expect(throws: CustomWordsPersistenceError.noRestorableBuiltin) {
+      try await mgr.restoreBuiltinAndLearn(canonical: "GitHub", alias: "git-hub").value
     }
     #expect(try Data(contentsOf: url) == restoredBytes)
     // Unstorable alias refuses before any lock, like every authoring door.
-    #expect(throws: CustomWordsPersistenceError.unusableValue) {
-      try mgr.restoreBuiltinAndLearn(canonical: "GitHub", alias: "   ")
+    await #expect(throws: CustomWordsPersistenceError.unusableValue) {
+      try await mgr.restoreBuiltinAndLearn(canonical: "GitHub", alias: "   ").value
     }
     #expect(try Data(contentsOf: url) == restoredBytes)
   }
 
   @Test("an unrelated word and tombstone written by another process between the two atomic operations survive both")
-  func atomicOperationsStartFromFreshDiskState() throws {
-    let (mgr, url, dir, _) = try Self.seededManager()
+  func atomicOperationsStartFromFreshDiskState() async throws {
+    let (mgr, url, dir, _) = try await Self.seededManager()
     defer { Self.cleanup(dir) }
     var words = mgr.load() ?? []
     let github = try #require(words.first { $0.canonical == "GitHub" })
-    try mgr.remove(id: github.id, from: &words)
+    try await mgr.remove(id: github.id, from: &words)
     // A sibling process adds a word and deletes another built-in behind our back.
     let sibling = CustomWordsManager(fileURL: url)
     var siblingWords = try #require(sibling.load())
-    try sibling.add(word: CustomWord(canonical: "FromSibling"), to: &siblingWords)
+    try await sibling.add(word: CustomWord(canonical: "FromSibling"), to: &siblingWords)
     let chatgpt = try #require(siblingWords.first { $0.canonical == "ChatGPT" })
-    try sibling.remove(id: chatgpt.id, from: &siblingWords)
+    try await sibling.remove(id: chatgpt.id, from: &siblingWords)
 
-    let outcome = try mgr.restoreBuiltinAndLearn(canonical: "GitHub", alias: "git-hub")
+    let outcome = try await mgr.restoreBuiltinAndLearn(canonical: "GitHub", alias: "git-hub").value
     #expect(outcome.words.contains { $0.canonical == "FromSibling" })
     #expect(!outcome.words.contains { $0.canonical == "ChatGPT" })
-    let after = try mgr.redeleteRestoredBuiltin(id: github.id)
+    let after = try await mgr.redeleteRestoredBuiltin(id: github.id).value
     #expect(after.contains { $0.canonical == "FromSibling" })
     #expect(!after.contains { $0.canonical == "ChatGPT" } && !after.contains { $0.canonical == "GitHub" })
   }
 
   @Test("removeUserOverride removes only the override of a live built-in, never tombstones it, leaves unrelated words and tombstones from fresh disk, and is a byte-identical no-op when absent; ordinary remove still tombstones")
-  func removeUserOverrideRevealsTheBuiltin() throws {
-    let (mgr, url, dir, _) = try Self.seededManager()
+  func removeUserOverrideRevealsTheBuiltin() async throws {
+    let (mgr, url, dir, _) = try await Self.seededManager()
     defer { Self.cleanup(dir) }
     var words = mgr.load() ?? []
     let github = try #require(words.first { $0.canonical == "GitHub" })
     var edited = github
     edited.aliases = ["git hub", "get hub", "git-hub"]
     edited.learnedAliases = ["git-hub"]
-    try mgr.update(word: edited, in: &words)
+    try await mgr.update(word: edited, in: &words)
     #expect(try #require(words.first { $0.id == github.id }).source == .user, "an override exists")
     // A sibling writes an unrelated word and deletes another built-in meanwhile.
     let sibling = CustomWordsManager(fileURL: url)
     var siblingWords = try #require(sibling.load())
-    try sibling.add(word: CustomWord(canonical: "FromSibling"), to: &siblingWords)
+    try await sibling.add(word: CustomWord(canonical: "FromSibling"), to: &siblingWords)
     let chatgpt = try #require(siblingWords.first { $0.canonical == "ChatGPT" })
-    try sibling.remove(id: chatgpt.id, from: &siblingWords)
+    try await sibling.remove(id: chatgpt.id, from: &siblingWords)
 
-    let after = try mgr.removeUserOverride(id: github.id)
+    let after = try await mgr.removeUserOverride(id: github.id).value
     let revealed = try #require(after.first { $0.id == github.id })
     #expect(revealed == github, "the shipped built-in shows again, exactly")
     #expect(after.contains { $0.canonical == "FromSibling" })
@@ -592,31 +596,31 @@ struct CustomWordsManagerPersistenceTests {
     let reloaded = try #require(mgr.load())
     #expect(reloaded.first { $0.id == github.id } == github, "no tombstone was written")
     let bytes = try Data(contentsOf: url)
-    #expect(try mgr.removeUserOverride(id: github.id) == after, "absent override: same list")
+    await #expect(try await mgr.removeUserOverride(id: github.id).value == after, "absent override: same list")
     #expect(try Data(contentsOf: url) == bytes, "and nothing written")
 
     // Control: ordinary remove of the same word tombstones the built-in.
     var live = reloaded
-    try mgr.remove(id: github.id, from: &live)
+    try await mgr.remove(id: github.id, from: &live)
     #expect(!live.contains { $0.canonical == "GitHub" })
 
     // Control: an ordinary user word is not this method's to remove.
     let tuist = CustomWord(canonical: "Tuist")
-    try mgr.add(word: tuist, to: &live)
+    try await mgr.add(word: tuist, to: &live)
     let before = try Data(contentsOf: url)
-    let untouched = try mgr.removeUserOverride(id: tuist.id)
+    let untouched = try await mgr.removeUserOverride(id: tuist.id).value
     #expect(untouched.contains { $0.id == tuist.id })
     #expect(try Data(contentsOf: url) == before, "byte-identical")
   }
 
   @Test("ordinary add still only restores a deleted built-in and discards the supplied aliases (unchanged behavior the learn path must avoid)")
-  func ordinaryAddRestoreOnlyIsUnchanged() throws {
-    let (mgr, _, dir, _) = try Self.seededManager()
+  func ordinaryAddRestoreOnlyIsUnchanged() async throws {
+    let (mgr, _, dir, _) = try await Self.seededManager()
     defer { Self.cleanup(dir) }
     var words = mgr.load() ?? []
     let github = try #require(words.first { $0.canonical == "GitHub" })
-    try mgr.remove(id: github.id, from: &words)
-    try mgr.add(word: CustomWord(canonical: "GitHub", aliases: ["git-hub"], learnedAliases: ["git-hub"]), to: &words)
+    try await mgr.remove(id: github.id, from: &words)
+    try await mgr.add(word: CustomWord(canonical: "GitHub", aliases: ["git-hub"], learnedAliases: ["git-hub"]), to: &words)
     let restored = try #require(words.first { $0.canonical == "GitHub" })
     #expect(restored.source == .builtin && restored.aliases == ["git hub", "get hub"])
     #expect(restored.learnedAliases.isEmpty)
@@ -641,12 +645,12 @@ struct CustomWordsCoordinatorLaunchFailureTests {
   }
 
   @Test("Unreadable file at launch sets wordsLoadFailure to unreadable with empty words, not error")
-  func unreadableFileAtLaunchSetsWordsLoadFailureToUnreadableWithEmptyWordsNotError() throws {
+  func unreadableFileAtLaunchSetsWordsLoadFailureToUnreadableWithEmptyWordsNotError() async throws {
     let url = Self.tempURL()
     defer { Self.cleanup(url) }
     let mgr = CustomWordsManager(fileURL: url)
     var words = try #require(mgr.load())
-    try mgr.add(word: CustomWord(canonical: "Kubernetes"), to: &words)
+    try await mgr.add(word: CustomWord(canonical: "Kubernetes"), to: &words)
     try FileManager.default.setAttributes(
       [.posixPermissions: 0o000], ofItemAtPath: url.path)
 
@@ -669,18 +673,18 @@ struct CustomWordsCoordinatorLaunchFailureTests {
   }
 
   @Test("Subsequent add after unreadable launch throws and touches no disk")
-  func subsequentAddAfterUnreadableLaunchThrowsAndTouchesNoDisk() throws {
+  func subsequentAddAfterUnreadableLaunchThrowsAndTouchesNoDisk() async throws {
     let url = Self.tempURL()
     defer { Self.cleanup(url) }
     let mgr = CustomWordsManager(fileURL: url)
     var words = try #require(mgr.load())
-    try mgr.add(word: CustomWord(canonical: "Kubernetes"), to: &words)
+    try await mgr.add(word: CustomWord(canonical: "Kubernetes"), to: &words)
     let bytesBefore = try Data(contentsOf: url)
     try FileManager.default.setAttributes(
       [.posixPermissions: 0o000], ofItemAtPath: url.path)
 
     let coordinator = CustomWordsCoordinator(manager: mgr)
-    let error = coordinator.add(CustomWord(canonical: "Terraform"))
+    let error = await coordinator.add(CustomWord(canonical: "Terraform"))
     #expect(error != nil)
     #expect(coordinator.customWordError == error)
     #expect(coordinator.customWords.isEmpty)
@@ -693,12 +697,12 @@ struct CustomWordsCoordinatorLaunchFailureTests {
   // MARK: - Export readability is a live question, not a launch snapshot (#1682)
 
   @Test("an unreadable file refuses the refresh and keeps the current list")
-  func refreshFailsClosedWhileTheFileIsUnreadable() throws {
+  func refreshFailsClosedWhileTheFileIsUnreadable() async throws {
     let url = Self.tempURL()
     defer { Self.cleanup(url) }
     let mgr = CustomWordsManager(fileURL: url)
     var words = try #require(mgr.load())
-    try mgr.add(word: CustomWord(canonical: "Kubernetes"), to: &words)
+    try await mgr.add(word: CustomWord(canonical: "Kubernetes"), to: &words)
     try FileManager.default.setAttributes(
       [.posixPermissions: 0o000], ofItemAtPath: url.path)
     defer {
@@ -708,12 +712,12 @@ struct CustomWordsCoordinatorLaunchFailureTests {
 
     let coordinator = CustomWordsCoordinator(manager: mgr)
     #expect(coordinator.wordsLoadFailureAtLaunch == .unreadable)
-    #expect(coordinator.refreshFromDiskIfPossible() == false)
+    await #expect(coordinator.refreshFromDiskIfPossible() == false)
     #expect(coordinator.customWords.isEmpty)
   }
 
   @Test("a recovered file is ADOPTED, not merely reported readable")
-  func refreshAdoptsTheRecoveredWordsRatherThanJustReportingReadable() throws {
+  func refreshAdoptsTheRecoveredWordsRatherThanJustReportingReadable() async throws {
     // The bug this freezes (cloud review, #1682): a readability check that
     // discarded what it read let export proceed while `customWords` was still
     // the empty launch fallback, so it wrote a valid EMPTY backup over a real
@@ -722,7 +726,7 @@ struct CustomWordsCoordinatorLaunchFailureTests {
     defer { Self.cleanup(url) }
     let mgr = CustomWordsManager(fileURL: url)
     var words = try #require(mgr.load())
-    try mgr.add(word: CustomWord(canonical: "Kubernetes"), to: &words)
+    try await mgr.add(word: CustomWord(canonical: "Kubernetes"), to: &words)
     try FileManager.default.setAttributes(
       [.posixPermissions: 0o000], ofItemAtPath: url.path)
 
@@ -733,7 +737,7 @@ struct CustomWordsCoordinatorLaunchFailureTests {
     try FileManager.default.setAttributes(
       [.posixPermissions: 0o600], ofItemAtPath: url.path)
 
-    #expect(coordinator.refreshFromDiskIfPossible())
+    #expect(await coordinator.refreshFromDiskIfPossible())
     // The launch flag is a snapshot and stays set — which is exactly why it
     // was the wrong thing to gate on.
     #expect(coordinator.wordsLoadFailureAtLaunch == .unreadable)
@@ -745,12 +749,12 @@ struct CustomWordsCoordinatorLaunchFailureTests {
   // MARK: - Stale import commit refreshes the in-memory list (#1679 cloud review)
 
   @Test("a stale import commit refreshes the coordinator's list from disk")
-  func staleImportCommitRefreshesTheCoordinatorsListFromDisk() throws {
+  func staleImportCommitRefreshesTheCoordinatorsListFromDisk() async throws {
     let url = Self.tempURL()
     defer { Self.cleanup(url) }
     let mgr = CustomWordsManager(fileURL: url)
     var seeded = try #require(mgr.load())
-    try mgr.add(word: CustomWord(canonical: "Qualtrics"), to: &seeded)
+    try await mgr.add(word: CustomWord(canonical: "Qualtrics"), to: &seeded)
 
     let coordinator = CustomWordsCoordinator(manager: mgr)
     let baseline = coordinator.customWords
@@ -760,10 +764,10 @@ struct CustomWordsCoordinatorLaunchFailureTests {
     // built — another window, a restored backup, a second process.
     let outside = CustomWordsManager(fileURL: url)
     var outsideWords = try #require(outside.load())
-    try outside.add(word: CustomWord(canonical: "Interloper"), to: &outsideWords)
+    try await outside.add(word: CustomWord(canonical: "Interloper"), to: &outsideWords)
     #expect(coordinator.customWords.contains { $0.canonical == "Interloper" } == false)
 
-    let outcome = coordinator.commitImport(
+    let outcome = await coordinator.commitImport(
       CustomWordsImportCommitPlan(
         baseline: CustomWordsImportLibrarySnapshot(words: baseline),
         additions: [CustomWordsImportCandidate(canonical: "Kubernetes")],
@@ -777,12 +781,12 @@ struct CustomWordsCoordinatorLaunchFailureTests {
   }
 
   @Test("a stale commit against an unreadable file keeps the current list")
-  func staleCommitAgainstAnUnreadableFileKeepsTheCurrentList() throws {
+  func staleCommitAgainstAnUnreadableFileKeepsTheCurrentList() async throws {
     let url = Self.tempURL()
     defer { Self.cleanup(url) }
     let mgr = CustomWordsManager(fileURL: url)
     var seeded = try #require(mgr.load())
-    try mgr.add(word: CustomWord(canonical: "Qualtrics"), to: &seeded)
+    try await mgr.add(word: CustomWord(canonical: "Qualtrics"), to: &seeded)
 
     let coordinator = CustomWordsCoordinator(manager: mgr)
     let before = coordinator.customWords
@@ -795,7 +799,7 @@ struct CustomWordsCoordinatorLaunchFailureTests {
         [.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
 
-    let outcome = coordinator.commitImport(
+    let outcome = await coordinator.commitImport(
       CustomWordsImportCommitPlan(
         baseline: CustomWordsImportLibrarySnapshot(words: []),
         additions: [CustomWordsImportCandidate(canonical: "Kubernetes")],
@@ -812,7 +816,7 @@ struct CustomWordsCoordinatorLaunchFailureTests {
   }
 
   @Test("a corrupted-and-archived library is not safe to export")
-  func corruptedLibraryIsNotExportable() throws {
+  func corruptedLibraryIsNotExportable() async throws {
     // The scenario: the file is damaged at launch, so the manager archives it
     // aside. A later reload then sees a legitimately MISSING file and reports
     // a clean, empty library — which reads as success while the user's real
@@ -827,12 +831,12 @@ struct CustomWordsCoordinatorLaunchFailureTests {
 
     // The reload succeeds — the damaged file is gone — and that is exactly why
     // readability alone cannot be the gate.
-    #expect(coordinator.refreshFromDiskIfPossible())
+    #expect(await coordinator.refreshFromDiskIfPossible())
     #expect(coordinator.canExportCurrentWords == false)
   }
 
   @Test("authoring a word after corruption makes the list exportable again")
-  func authoringAWordAfterCorruptionRestoresExportability() throws {
+  func authoringAWordAfterCorruptionRestoresExportability() async throws {
     let url = Self.tempURL()
     defer { Self.cleanup(url) }
     try Data("not valid json at all {{{".utf8).write(to: url)
@@ -843,7 +847,7 @@ struct CustomWordsCoordinatorLaunchFailureTests {
     // Once they have written something since, they have visibly accepted the
     // fresh start and the list is theirs again — blocking forever would be its
     // own kind of wrong.
-    #expect(coordinator.add(CustomWord(canonical: "Kubernetes")) == nil)
+    #expect(await coordinator.add(CustomWord(canonical: "Kubernetes")) == nil)
     #expect(coordinator.canExportCurrentWords)
   }
 }

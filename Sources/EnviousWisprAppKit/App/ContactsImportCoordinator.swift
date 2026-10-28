@@ -59,6 +59,8 @@ final class ContactsImportCoordinator {
   /// composition root. nil in tests that don't exercise enrichment; production
   /// always injects it. nil here means enrichment is disabled (clean no-op).
   private let aliasSuggester: (any AliasSuggesting)?
+  /// A remove-imported save in progress.
+  private var isRemovingImported = false
   private var enrichmentTask: Task<Void, Never>?
   /// Identity token: a superseded task whose generation no longer matches must
   /// not clear a newer task's state. Bumped by every start and every cancel.
@@ -115,8 +117,9 @@ final class ContactsImportCoordinator {
     }
   }
 
-  /// Step 2 (user confirms): commit the staged preview — batch-add + log.
-  func confirmImport() {
+  /// Step 2 (user confirms): commit the staged preview — batch-add + log. The preview is
+  /// taken before the first await, so a second confirm while this one saves does nothing.
+  func confirmImport() async {
     guard let preview = pendingPreview else { return }
     pendingPreview = nil
     guard !preview.newWords.isEmpty else {
@@ -124,12 +127,12 @@ final class ContactsImportCoordinator {
       // combined entries from earlier builds and fill in any missing aliases on
       // names already imported.
       phase = .idle
-      cleanupLegacyCombinedEntries()
+      await cleanupLegacyCombinedEntries()
       startEnrichment()
       return
     }
     phase = .importing
-    guard let createdIDs = customWords.addBatch(preview.newWords) else {
+    guard let createdIDs = await customWords.addBatch(preview.newWords) else {
       phase = .failed(
         customWords.customWordError
           ?? String(
@@ -153,7 +156,7 @@ final class ContactsImportCoordinator {
     }
     TelemetryService.shared.contactsImported(count: preview.newContactCount, trigger: "manual")
     phase = .imported(count: preview.newContactCount)
-    cleanupLegacyCombinedEntries()
+    await cleanupLegacyCombinedEntries()
     startEnrichment()
   }
 
@@ -174,12 +177,12 @@ final class ContactsImportCoordinator {
       let candidates = try await provider.fetchCandidateNames()
       let preview = buildPreview(ContactNameShaper.shape(candidates))
       guard !preview.newWords.isEmpty,
-        let createdIDs = customWords.addBatch(preview.newWords), !createdIDs.isEmpty
+        let createdIDs = await customWords.addBatch(preview.newWords), !createdIDs.isEmpty
       else { return }
       try persistLog(contactIDs: preview.newContactIDs, wordIDs: createdIDs)
       TelemetryService.shared.contactsImported(
         count: preview.newContactCount, trigger: "launch_sync")
-      cleanupLegacyCombinedEntries()
+      await cleanupLegacyCombinedEntries()
       startEnrichment()
     } catch {
       // Limb: stay silent on failure (incl. a log-save failure from persistLog);
@@ -188,16 +191,20 @@ final class ContactsImportCoordinator {
   }
 
   /// Bulk-remove exactly the import-created words still present, then clear the
-  /// log. Manually-deleted words are already absent and skipped silently.
-  func bulkRemoveImported() {
+  /// log. Manually-deleted words are already absent and skipped silently. A second
+  /// request while one is saving does nothing.
+  func bulkRemoveImported() async {
+    guard !isRemovingImported else { return }
     let state = stateStore.load()
     guard !state.importedWordIDs.isEmpty else { return }
+    isRemovingImported = true
+    defer { isRemovingImported = false }
     // Stop enriching words we are about to delete; the canceller owns the clear.
     cancelEnrichment()
     // Only erase ownership if BOTH the removal and the log reset succeed —
     // otherwise words could remain while the pill loses track of them.
     // A deliberate user removal (#3975): learned pairs of these words get one "no".
-    if let error = customWords.deleteByUser(ids: state.importedWordIDs) {
+    if let error = await customWords.deleteByUser(ids: state.importedWordIDs) {
       phase = .failed(error)
       return
     }
@@ -270,7 +277,7 @@ final class ContactsImportCoordinator {
   /// Removed IDs are dropped from the log so enrichment never re-targets them.
   /// The contact stays imported (its per-name tokens remain), so `importedCount`
   /// is unchanged. Best-effort: a removal/log-save failure leaves state as-is.
-  private func cleanupLegacyCombinedEntries() {
+  private func cleanupLegacyCombinedEntries() async {
     var state = stateStore.load()
     guard !state.importedWordIDs.isEmpty else { return }
     let loggedIDs = Set(state.importedWordIDs)
@@ -279,7 +286,7 @@ final class ContactsImportCoordinator {
       .filter { loggedIDs.contains($0.id) && $0.canonical.contains(" ") }
       .map(\.id)
     guard !staleIDs.isEmpty else { return }
-    guard customWords.removeBatch(ids: staleIDs) == nil else { return }
+    guard await customWords.removeBatch(ids: staleIDs) == nil else { return }
     let removed = Set(staleIDs)
     state.importedWordIDs.removeAll { removed.contains($0) }
     try? stateStore.save(state)
@@ -323,13 +330,16 @@ final class ContactsImportCoordinator {
   private func runEnrichment(
     targetIDs: [UUID], suggester: any AliasSuggesting, generation gen: Int
   ) async {
-    var buffer: [CustomWord] = []
+    var buffer: [GeneratedAliasProposal] = []
     var attempted = 0
 
-    func flush() {
+    // Proposals, not edited copies of the words (#4086): the save applies them only
+    // to a word that is still unchanged, under the file lock.
+    func flush() async {
       guard !buffer.isEmpty else { return }
-      _ = customWords.updateBatch(buffer)
+      let batch = buffer
       buffer.removeAll(keepingCapacity: true)
+      _ = await customWords.applyGeneratedAliases(batch)
     }
 
     defer {
@@ -353,27 +363,30 @@ final class ContactsImportCoordinator {
         enrichmentProgress?.done = attempted
         continue
       }
+      // The aliases belong to THIS spelling (#4086): the proposal carries it, so a word
+      // renamed while the suggester ran does not receive another name's aliases.
+      let requested = current.canonical
       let raw = await suggester.suggestAliases(
-        for: current.canonical, category: .person, priority: .background)
+        for: requested, category: .person, priority: .background)
       if Task.isCancelled { return }  // post-await: never write for a cancelled job
       attempted += 1
       enrichmentProgress?.done = attempted
-      // Re-read after the await: the user may have removed or edited the word.
+      // Re-read after the await: the user may have removed or edited the word. The save
+      // checks the same thing again under the file lock.
       guard
         let fresh = customWords.customWords.first(where: { $0.id == id }),
-        fresh.aliases.isEmpty
+        fresh.canonical == requested, fresh.category == .person, fresh.aliases.isEmpty
       else { continue }
       // Drop any generated alias that is itself a common word — an alias enters
       // WordCorrector's unconditional single-alias self-map, so a common-word
       // alias would rewrite ordinary speech.
       let safe = (raw ?? []).filter { !ContactNameShaper.isCommonWord($0) }
       guard !safe.isEmpty else { continue }
-      var updated = fresh
-      updated.aliases = safe
-      buffer.append(updated)
-      if buffer.count >= Self.enrichmentFlushChunk { flush() }
+      buffer.append(
+        GeneratedAliasProposal(id: fresh.id, canonical: requested, aliases: safe))
+      if buffer.count >= Self.enrichmentFlushChunk { await flush() }
     }
-    flush()
+    await flush()
   }
 
   /// Stop any running enrichment and clear its UI state. The canceller owns the

@@ -81,24 +81,7 @@ enum CustomWordsMutationPolicy {
     return ((createdIDs, mergedWords(file: file, builtins: builtins)), true)
   }
 
-  static func remove(
-    id: UUID, word: CustomWord?, from file: inout File, builtins: [BuiltinWord]
-  ) -> (value: [CustomWord], shouldSave: Bool) {
-    // If this matches a built-in, tombstone it
-    if let word = word,
-      let builtin = builtins.first(where: {
-        $0.word.canonical.lowercased() == word.canonical.lowercased()
-      })
-    {
-      if !file.deletedBuiltinIds.contains(builtin.id) {
-        file.deletedBuiltinIds.append(builtin.id)
-      }
-    }
-
-    file.words.removeAll { $0.id == id }
-    return (mergedWords(file: file, builtins: builtins), true)
-  }
-
+  /// One delete is a batch of one (#4086): the single and bulk doors share this rule.
   static func removeBatch(
     ids: [UUID], idSet: Set<UUID>, existing words: [CustomWord], from file: inout File,
     builtins: [BuiltinWord]
@@ -220,17 +203,26 @@ enum CustomWordsMutationPolicy {
     return (mergedWords(file: file, builtins: builtins), true)
   }
 
-  static func updateBatch(
-    _ updates: [CustomWord], in file: inout File, builtins: [BuiltinWord]
+  /// Contacts alias enrichment (#636 follow-up), narrowed in #4086: each proposal only
+  /// fills an empty alias list on the word it was generated for. Under the lock the
+  /// word must still exist, still carry the canonical the aliases were generated from,
+  /// still be a person, and still have no aliases; otherwise the proposal is stale and
+  /// is skipped. Every other field stays exactly as the file has it, so an edit made
+  /// while the aliases were being generated is never overwritten. A missing word is
+  /// never resurrected.
+  static func applyGeneratedAliases(
+    _ proposals: [GeneratedAliasProposal], in file: inout File, builtins: [BuiltinWord]
   ) -> (value: [CustomWord]?, shouldSave: Bool) {
     var changed = false
-    for word in updates {
-      let trimmed = word.canonical.trimmingCharacters(in: .whitespacesAndNewlines)
-      guard Self.isStorable(trimmed) else { continue }
-      guard let idx = file.words.firstIndex(where: { $0.id == word.id }) else { continue }
-      var sanitized = Self.sanitizeForPersistence(word)
-      sanitized.canonical = trimmed
-      file.words[idx] = sanitized
+    for proposal in proposals {
+      guard let idx = file.words.firstIndex(where: { $0.id == proposal.id }),
+        file.words[idx].canonical == proposal.canonical,
+        file.words[idx].category == .person,
+        file.words[idx].aliases.isEmpty
+      else { continue }
+      let aliases = Self.sanitizeAliases(proposal.aliases)
+      guard !aliases.isEmpty else { continue }
+      file.words[idx].aliases = aliases
       changed = true
     }
     guard changed else { return (nil, false) }
@@ -311,7 +303,8 @@ enum CustomWordsMutationPolicy {
   /// overridden by a user word (same canonical, case-insensitive) are included.
   static func mergedWords(file: File, builtins: [BuiltinWord]) -> [CustomWord] {
     let tombstones = Set(file.deletedBuiltinIds)
-    let activeBuiltins = builtins
+    let activeBuiltins =
+      builtins
       .filter { !tombstones.contains($0.id) }
       .map(\.word)
 

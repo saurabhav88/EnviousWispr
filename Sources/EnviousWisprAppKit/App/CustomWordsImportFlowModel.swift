@@ -26,7 +26,7 @@ final class CustomWordsImportFlowModel {
     /// rebuild compares against what is actually on disk now.
     var existingWords: @MainActor () -> [CustomWord]
     var commit:
-      @MainActor (CustomWordsImportCommitPlan) ->
+      @MainActor (CustomWordsImportCommitPlan) async ->
         CustomWordsCoordinator.CustomWordsImportCommitOutcome
     /// Classification, injected so the fuzzy policy this flow passes is
     /// observable in a test rather than sealed inside the model.
@@ -43,7 +43,7 @@ final class CustomWordsImportFlowModel {
     /// Production wiring: one compare engine for the sheet's lifetime.
     static func live(
       existingWords: @escaping @MainActor () -> [CustomWord],
-      commit: @escaping @MainActor (CustomWordsImportCommitPlan) ->
+      commit: @escaping @MainActor (CustomWordsImportCommitPlan) async ->
         CustomWordsCoordinator.CustomWordsImportCommitOutcome,
       report: @escaping @MainActor (CustomWordsImportReport) -> Void
     ) -> Dependencies {
@@ -344,17 +344,43 @@ final class CustomWordsImportFlowModel {
       baseline: baseline, additions: additions, replacements: [],
       enrichmentEligible: batchEnrichmentEligible)
 
-    switch dependencies.commit(plan) {
-    case .committed(let receipt):
-      droppedAliasCollisionCount = receipt.droppedAliasCollisions.count
-      // #2951: the report is the fact, the result screen is its presentation,
-      // so it goes out first. Only this branch wrote words; `.stale` comes
-      // back here through Review and reports when its own commit lands.
+    // The commit is a dictionary command (#4086). It is not `activeTask`: leaving the
+    // sheet must not abandon a write that is already queued. Review is left before
+    // this starts, so a second Confirm cannot send it twice.
+    // What the report says is taken now: closing the sheet resets the batch while the
+    // commit is still queued, and the import that lands still reports its own batch.
+    let report = (sourceID: batchSourceID, found: candidates.count, generation: generation)
+    commitTask = Task { [weak self] in
+      await self?.finishConfirm(plan, sourceID: report.sourceID, found: report.found,
+        generation: report.generation)
+    }
+  }
+
+  /// The running commit, kept so a test can wait for it.
+  private var commitTask: Task<Void, Never>?
+
+  // periphery:ignore - test seam
+  func awaitCommitForTesting() async {
+    await commitTask?.value
+  }
+
+  private func finishConfirm(
+    _ plan: CustomWordsImportCommitPlan, sourceID: String, found: Int, generation: Int
+  ) async {
+    let outcome = await dependencies.commit(plan)
+    // #2951: the report is the fact, the result screen is its presentation, so it goes
+    // out first, and even when the sheet was closed meanwhile. Only this branch wrote
+    // words; `.stale` comes back here through Review and reports when its own commit lands.
+    if case .committed(let receipt) = outcome {
       dependencies.report(
         CustomWordsImportReport(
-          sourceID: batchSourceID,
-          found: candidates.count,
-          imported: receipt.addedIDs.count))
+          sourceID: sourceID, found: found, imported: receipt.addedIDs.count))
+    }
+    // A sheet closed or restarted meanwhile shows nothing from this commit.
+    guard isCurrent(generation) else { return }
+    switch outcome {
+    case .committed(let receipt):
+      droppedAliasCollisionCount = receipt.droppedAliasCollisions.count
       showResult(
         .completed(added: receipt.addedIDs.count, replaced: receipt.replacedIDs.count))
     case .stale:

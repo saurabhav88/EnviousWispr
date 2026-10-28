@@ -91,7 +91,7 @@ final class QuickAddCoordinator {
   struct Environment {
     /// Returns false when the words file could not be re-read. The panel then says so rather than
     /// ranking a stale snapshot.
-    var refreshWords: () -> Bool
+    var refreshWords: @MainActor () async -> Bool
     var userWords: () -> [CustomWord]
     var packTerms: () -> [CustomWord]
     /// Persist a word and CONFIRM the spelling is on it afterwards. Returns nil only when both
@@ -100,7 +100,7 @@ final class QuickAddCoordinator {
     /// The spelling is a separate parameter rather than read off `word.aliases.last`, because the
     /// postcondition would then depend on the caller having appended last — a fact no signature
     /// states and one edit could change without anything failing.
-    var saveWord: (CustomWord, String) -> String?
+    var saveWord: @MainActor (CustomWord, String) async -> String?
     /// Move the panel to its compose stage, where the user authors the word by hand.
     ///
     /// **Takes no spelling, and that is the whole shape of the #2391 fix.** It used to present a
@@ -142,7 +142,7 @@ final class QuickAddCoordinator {
   /// through as-is (#2465). Both doors run the ladder before a panel exists — the shortcut because
   /// the fallback has to await a synthetic Copy, the menu because its read happened while the menu
   /// was open, at the one moment the answer was about the user's document rather than us.
-  func begin(door: QuickAddDoor, selection outcome: SelectionAcquisition.Outcome)
+  func begin(door: QuickAddDoor, selection outcome: SelectionAcquisition.Outcome) async
     -> QuickAddPanelModel?
   {
     let startedAt = environment.now()
@@ -168,7 +168,7 @@ final class QuickAddCoordinator {
     // A failure REPLACES the selection rather than returning nil. Whatever was selected is now
     // unrankable, so the panel opens on the stated reason like any other refusal — which is what
     // §3 requires and what returning nil silently did not do.
-    if !environment.refreshWords() {
+    if await !environment.refreshWords() {
       environment.emit(.failed(stage: "refresh", reason: "words_unreadable"))
       selection = .refused(.wordsUnavailable)
     }
@@ -211,10 +211,10 @@ final class QuickAddCoordinator {
       })
 
     // HELD, not emitted. `opened` names an event the user can see, so it fires when a panel is
-    // actually on screen — see `didOpen()`. Emitting it here made presentation failure the one
+    // actually on screen — see `didOpen(_:)`. Emitting it here made presentation failure the one
     // remaining way to leave an open with nothing to resolve it, and it is the only such path that
     // cannot report a reason of its own.
-    pendingOpen =
+    pendingOpen[ObjectIdentifier(model)] =
       .opened(
         door: door,
         refusal: refusal,
@@ -231,7 +231,7 @@ final class QuickAddCoordinator {
         modifierReleaseMs: outcome.modifierReleaseMs,
         bringBack: outcome.bringBack)
 
-    self.startedAt = startedAt
+    self.startedAt[ObjectIdentifier(model)] = startedAt
     return model
   }
 
@@ -239,9 +239,8 @@ final class QuickAddCoordinator {
   ///
   /// Split from `begin` so the funnel counts panels rather than attempts: one `opened`, one
   /// `resolved`, and no way to have the first without the second.
-  func didOpen() {
-    guard let event = pendingOpen else { return }
-    pendingOpen = nil
+  func didOpen(_ model: QuickAddPanelModel) {
+    guard let event = pendingOpen.removeValue(forKey: ObjectIdentifier(model)) else { return }
     environment.emit(event)
   }
 
@@ -249,9 +248,9 @@ final class QuickAddCoordinator {
   ///
   /// Never a `resolved`: nothing opened, so there is nothing to resolve, and inventing an outcome
   /// here would put a phantom row in the denominator of every rate computed from this funnel.
-  func failedToOpen() {
-    pendingOpen = nil
-    startedAt = nil
+  func failedToOpen(_ model: QuickAddPanelModel) {
+    pendingOpen[ObjectIdentifier(model)] = nil
+    startedAt[ObjectIdentifier(model)] = nil
     environment.emit(.failed(stage: "present", reason: "unmeasurable_panel"))
   }
 
@@ -288,7 +287,8 @@ final class QuickAddCoordinator {
   /// regardless is a panel reporting success for a word that was never saved. The sibling path
   /// through Create already had this shape; this one did not.
   @discardableResult
-  func accept(_ candidate: QuickAddRanker.Candidate, from model: QuickAddPanelModel) -> AcceptResult
+  func accept(_ candidate: QuickAddRanker.Candidate, from model: QuickAddPanelModel) async
+    -> AcceptResult
   {
     let usedSearch = model.isSearching
     let rank = model.ranking.candidates.firstIndex { $0.id == candidate.id }
@@ -347,12 +347,12 @@ final class QuickAddCoordinator {
         $0.caseInsensitiveCompare(model.spellingToWrite) == .orderedSame
       })
     else {
-      finish(.alreadySaved, usedSearch: usedSearch, rank: rank, kind: kind)
+      finish(model, .alreadySaved, usedSearch: usedSearch, rank: rank, kind: kind)
       return .alreadyHad(word: word.canonical)
     }
     word.aliases.append(model.spellingToWrite)
 
-    if let message = environment.saveWord(word, model.spellingToWrite) {
+    if let message = await environment.saveWord(word, model.spellingToWrite) {
       // `reason` stays a fixed token, never the message: the message is authored for a human and
       // can quote what they selected, which is the one thing telemetry may not carry.
       environment.emit(.failed(stage: "save", reason: "refused"))
@@ -365,7 +365,7 @@ final class QuickAddCoordinator {
       return .refused(message)
     }
     finish(
-      usedSearch ? .acceptedAfterSearch : .accepted,
+      model, usedSearch ? .acceptedAfterSearch : .accepted,
       usedSearch: usedSearch, rank: rank, kind: kind)
     return .saved(word: word.canonical)
   }
@@ -391,8 +391,8 @@ final class QuickAddCoordinator {
   /// Takes `usedSearch` rather than a model because the panel may already be gone — the sheet
   /// outlives it in at least one ordering — and an `if let model` at the call site made a CONFIRMED
   /// save emit nothing at all, which is the funnel hole this whole split exists to close.
-  func didCreateNew(usedSearch: Bool) {
-    finish(.createdNew, usedSearch: usedSearch, rank: nil, kind: nil)
+  func didCreateNew(_ model: QuickAddPanelModel, usedSearch: Bool) {
+    finish(model, .createdNew, usedSearch: usedSearch, rank: nil, kind: nil)
   }
 
   /// Nothing was written and nothing needed to be.
@@ -405,24 +405,28 @@ final class QuickAddCoordinator {
   /// way the funnel cares about: whether a word was created. `alreadySaved` is not new vocabulary
   /// for this — it already means "the word carried this spelling, so there was nothing to write",
   /// and it is the same fact arriving through the other doors.
-  func didFindAlreadySaved(usedSearch: Bool) {
-    finish(.alreadySaved, usedSearch: usedSearch, rank: nil, kind: nil)
+  func didFindAlreadySaved(_ model: QuickAddPanelModel, usedSearch: Bool) {
+    finish(model, .alreadySaved, usedSearch: usedSearch, rank: nil, kind: nil)
   }
 
   /// Escape, clicking away, or the panel closing.
   func cancel(from model: QuickAddPanelModel) {
-    finish(.cancelled, usedSearch: model.isSearching, rank: nil, kind: nil)
+    finish(model, .cancelled, usedSearch: model.isSearching, rank: nil, kind: nil)
   }
 
   // MARK: - Internals
 
-  private var startedAt: Date?
+  /// When each open invocation started, by panel (#4086). Per panel: a save now finishes
+  /// after an await, so an earlier panel's answer can arrive while a later panel is open,
+  /// and it must resolve its own invocation, never the later one.
+  private var startedAt: [ObjectIdentifier: Date] = [:]
 
-  /// The `opened` event for a panel that has been built and not yet shown.
-  private var pendingOpen: QuickAddEvent?
+  /// The `opened` event for each panel that has been built and not yet shown.
+  private var pendingOpen: [ObjectIdentifier: QuickAddEvent] = [:]
 
   private func finish(
-    _ outcome: QuickAddOutcome, usedSearch: Bool, rank: Int?, kind: QuickAddTargetKind?
+    _ model: QuickAddPanelModel, _ outcome: QuickAddOutcome, usedSearch: Bool, rank: Int?,
+    kind: QuickAddTargetKind?
   ) {
     // **A SECOND RESOLUTION IS REFUSED, LOUDLY, rather than substituted for.** The old
     // `startedAt ?? environment.now()` invented a start time for an invocation that had already
@@ -430,11 +434,10 @@ final class QuickAddCoordinator {
     // both. Removing the reason (above) and removing the possibility are different jobs: this is the
     // second, and it reports rather than swallows, because a silent drop is how the funnel would
     // come to disagree with reality without anyone learning why.
-    guard let started = startedAt else {
+    guard let started = startedAt.removeValue(forKey: ObjectIdentifier(model)) else {
       environment.emit(.failed(stage: "resolve", reason: "double_resolution"))
       return
     }
-    startedAt = nil
     environment.emit(
       .resolved(
         outcome: outcome, usedSearch: usedSearch, candidateRank: rank, targetKind: kind,

@@ -576,7 +576,7 @@ struct SettingsMapRenderingTests {
         return Rendered(list: list, destination: .dictionary, alwaysOnThisPage: [])
       }
       let (home, words) = try dictionaryHome()
-      if state != "empty" { try #require(words.add(CustomWord(canonical: "Envious")) == nil) }
+      if state != "empty" { try await #require(words.add(CustomWord(canonical: "Envious")) == nil) }
       let list = try await registrations(
         AnyView(YourWordsView(selection: .constant(.yourWords)).environment(home.settings).environment(words)))
       let always = alwaysShown(on: .dictionary).filter {
@@ -612,7 +612,7 @@ struct SettingsMapRenderingTests {
   ) async throws -> [SettingsMapRegistration]
   {
     let (home, words) = try Self.dictionaryHome()
-    if searching { try #require(words.add(CustomWord(canonical: "Envious")) == nil) }
+    if searching { try await #require(words.add(CustomWord(canonical: "Envious")) == nil) }
     if learnMemoryStored {
       let key = CorrectionPairKey.make(original: "kumala", corrected: "Kwmala")
       words.learnMemory.recordUndo(key)
@@ -917,7 +917,7 @@ struct SettingsMapRenderingTests {
     let view: AnyView
     if let tab = content.dictionaryTab {
       let (home, words) = try dictionaryHome()
-      try #require(words.add(CustomWord(canonical: "Envious")) == nil)
+      try await #require(words.add(CustomWord(canonical: "Envious")) == nil)
       view = try dictionaryEnvironment(
         AnyView(
           YourWordsView(
@@ -1019,7 +1019,7 @@ struct SettingsMapRenderingTests {
     }
     for tab in DictionaryTab.allCases {
       let (home, words) = try Self.dictionaryHome()
-      try #require(words.add(CustomWord(canonical: "Envious")) == nil)
+      try await #require(words.add(CustomWord(canonical: "Envious")) == nil)
       let view = try Self.dictionaryEnvironment(
         AnyView(YourWordsView(selection: .constant(tab))), home: home, words: words)
       pages.append(

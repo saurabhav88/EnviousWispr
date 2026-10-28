@@ -126,7 +126,7 @@ struct BulkImportEnrichmentCoordinatorTests {
   @Test("a fresh instance against pre-set pending state reads real progress, not a reset to zero")
   func freshInstanceReadsRealProgressOnFirstObservation() async throws {
     let (seedCoordinator, url) = makeCoordinator()
-    _ = seedCoordinator.commitImport(
+    _ = await seedCoordinator.commitImport(
       plan(
         baseline: seedCoordinator.customWords,
         additions: [
@@ -145,7 +145,7 @@ struct BulkImportEnrichmentCoordinatorTests {
     // The FIRST observation, before requestDrain() has run at all: real
     // durable state, not an in-memory counter reset to zero.
     #expect(relaunchedCoordinator.pendingEnrichmentBatchTotal == 2)
-    #expect(relaunchedCoordinator.pendingEnrichmentWords()?.count == 2)
+    await #expect(relaunchedCoordinator.pendingEnrichmentWords()?.count == 2)
 
     bulkCoordinator.requestDrain()
     await bulkCoordinator.awaitDrainForTesting()
@@ -161,7 +161,7 @@ struct BulkImportEnrichmentCoordinatorTests {
   )
   func cancelLetsInFlightLandThenSweepsLiveStateNotAStaleCallerList() async throws {
     let (coordinator, url) = makeCoordinator()
-    _ = coordinator.commitImport(
+    _ = await coordinator.commitImport(
       plan(
         baseline: coordinator.customWords,
         additions: [CustomWordsImportCandidate(canonical: "Kubernetes")]))
@@ -183,7 +183,7 @@ struct BulkImportEnrichmentCoordinatorTests {
     // relative to the file.
     let rawManager = CustomWordsManager(fileURL: url)
     var rawWords = try #require(rawManager.load())
-    _ = try rawManager.commitImport(
+    _ = try await rawManager.commitImport(
       plan(baseline: rawWords, additions: [CustomWordsImportCandidate(canonical: "Qualtrics")]),
       to: &rawWords)
 
@@ -203,9 +203,9 @@ struct BulkImportEnrichmentCoordinatorTests {
   }
 
   @Test("cancel() with no active drain is a safe no-op sweep")
-  func cancelWithNoActiveDrainIsSafeNoOpSweep() {
+  func cancelWithNoActiveDrainIsSafeNoOpSweep() async {
     let (coordinator, _) = makeCoordinator()
-    _ = coordinator.commitImport(
+    _ = await coordinator.commitImport(
       plan(
         baseline: coordinator.customWords,
         additions: [CustomWordsImportCandidate(canonical: "Kubernetes")]))
@@ -214,6 +214,7 @@ struct BulkImportEnrichmentCoordinatorTests {
       customWords: coordinator, aliasSuggester: FakeAliasSuggester(), presentStatus: { _ in })
 
     bulkCoordinator.cancel()
+    await bulkCoordinator.awaitDrainForTesting()
 
     #expect(coordinator.pendingEnrichmentBatchTotal == nil)
     #expect(coordinator.customWords.allSatisfy { $0.enrichmentPending == false })
@@ -233,7 +234,7 @@ struct BulkImportEnrichmentCoordinatorTests {
     // before any model call — zero calls even pre-fix, but a pill fired
     // that should never have fired.
     let (coordinator, _) = makeCoordinator()
-    _ = coordinator.commitImport(
+    _ = await coordinator.commitImport(
       plan(
         baseline: coordinator.customWords,
         additions: [CustomWordsImportCandidate(canonical: "Kubernetes")]))
@@ -264,7 +265,7 @@ struct BulkImportEnrichmentCoordinatorTests {
   @Test("a second import mid-drain is picked up by the SAME drain, not dropped")
   func secondImportMidDrainIsPickedUpNotDropped() async throws {
     let (coordinator, _) = makeCoordinator()
-    _ = coordinator.commitImport(
+    _ = await coordinator.commitImport(
       plan(
         baseline: coordinator.customWords,
         additions: [CustomWordsImportCandidate(canonical: "Kubernetes")]))
@@ -281,7 +282,7 @@ struct BulkImportEnrichmentCoordinatorTests {
     // A second import lands mid-drain, through the coordinator itself —
     // mirrors production: `CustomWordsCoordinator.onImportCommitted` would
     // call `requestDrain()` again here.
-    _ = coordinator.commitImport(
+    _ = await coordinator.commitImport(
       plan(
         baseline: coordinator.customWords,
         additions: [CustomWordsImportCandidate(canonical: "Qualtrics")]))
@@ -306,7 +307,7 @@ struct BulkImportEnrichmentCoordinatorTests {
   @Test("a locked-transaction write failure stops the drain without a completion pill")
   func writeFailureStopsTheDrainWithoutCompletionPill() async throws {
     let (coordinator, url) = makeCoordinator()
-    _ = coordinator.commitImport(
+    _ = await coordinator.commitImport(
       plan(
         baseline: coordinator.customWords,
         additions: [CustomWordsImportCandidate(canonical: "Kubernetes")]))
@@ -365,7 +366,7 @@ struct BulkImportEnrichmentCoordinatorTests {
     let (coordinator, mgr) = makeCoordinatorRetainingManager()
     // Seed through the coordinator's own commit path — real `lockSyscall`,
     // exactly as production writes — before rigging contention.
-    _ = coordinator.commitImport(
+    _ = await coordinator.commitImport(
       plan(
         baseline: coordinator.customWords,
         additions: [CustomWordsImportCandidate(canonical: "Kubernetes")])
@@ -405,7 +406,7 @@ struct BulkImportEnrichmentCoordinatorTests {
   @Test("busy on the checkpoint, then success: eventually persisted, pills not duplicated")
   func busyOnCheckpointThenSucceeds() async throws {
     let (coordinator, mgr) = makeCoordinatorRetainingManager()
-    _ = coordinator.commitImport(
+    _ = await coordinator.commitImport(
       plan(
         baseline: coordinator.customWords,
         additions: [CustomWordsImportCandidate(canonical: "Kubernetes")])
@@ -445,7 +446,7 @@ struct BulkImportEnrichmentCoordinatorTests {
   @Test("exhausting all retries hard-stops once, keeps the queue pending, never loops tightly")
   func exhaustedRetriesHardStops() async throws {
     let (coordinator, mgr) = makeCoordinatorRetainingManager()
-    _ = coordinator.commitImport(
+    _ = await coordinator.commitImport(
       plan(
         baseline: coordinator.customWords,
         additions: [CustomWordsImportCandidate(canonical: "Kubernetes")])
@@ -487,7 +488,7 @@ struct BulkImportEnrichmentCoordinatorTests {
   @Test("an unavailable model still resolves the whole queue, never stranding it")
   func unavailableModelStillResolvesTheQueue() async throws {
     let (coordinator, _) = makeCoordinator()
-    _ = coordinator.commitImport(
+    _ = await coordinator.commitImport(
       plan(
         baseline: coordinator.customWords,
         additions: [
@@ -524,7 +525,7 @@ struct BulkImportEnrichmentCoordinatorTests {
     // again for "Qualtrics" (no per-word skip anymore), but its late result
     // must still lose to the other instance's first checkpoint.
     let (coordinator, url) = makeCoordinator()
-    _ = coordinator.commitImport(
+    _ = await coordinator.commitImport(
       plan(
         baseline: coordinator.customWords,
         additions: [
@@ -548,9 +549,9 @@ struct BulkImportEnrichmentCoordinatorTests {
     // #1747) checkpoints "Qualtrics" FIRST, directly, bypassing this
     // coordinator entirely.
     let rawManager = CustomWordsManager(fileURL: url)
-    _ = try rawManager.applyEnrichmentResults([
+    _ = try await rawManager.applyEnrichmentResults([
       CustomWordEnrichmentResult(id: qualtricsID, generatedAliases: ["other-instance-alias"])
-    ])
+    ]).value
 
     await gate.open_()
     await bulkCoordinator.awaitDrainForTesting()
@@ -570,7 +571,7 @@ struct BulkImportEnrichmentCoordinatorTests {
   @Test("a checkpoint failure with a wake already queued still hard-stops, never retries")
   func checkpointFailureWithQueuedWakeStillHardStops() async throws {
     let (coordinator, url) = makeCoordinator()
-    _ = coordinator.commitImport(
+    _ = await coordinator.commitImport(
       plan(
         baseline: coordinator.customWords,
         additions: [CustomWordsImportCandidate(canonical: "Kubernetes")]))
@@ -622,7 +623,7 @@ struct BulkImportEnrichmentCoordinatorTests {
       // fail) with no file-system race at all — permissions stay open
       // throughout, so the checkpoint write genuinely succeeds first.
       let (coordinator, _) = makeCoordinator()
-      _ = coordinator.commitImport(
+      _ = await coordinator.commitImport(
         plan(
           baseline: coordinator.customWords,
           additions: [CustomWordsImportCandidate(canonical: "Kubernetes")]))
@@ -661,7 +662,7 @@ struct BulkImportEnrichmentCoordinatorTests {
 
       // A genuinely NEW import must announce its own start pill normally —
       // proving `didAnnounceStart` was reset, not left stuck true forever.
-      _ = coordinator.commitImport(
+      _ = await coordinator.commitImport(
         plan(
           baseline: coordinator.customWords,
           additions: [CustomWordsImportCandidate(canonical: "Qualtrics")]))
@@ -681,9 +682,9 @@ struct BulkImportEnrichmentCoordinatorTests {
   #endif
 
   @Test("a Cancel whose durable sweep fails to write is never reported as a clean cancel")
-  func cancelWriteFailureIsNeverReportedAsCleanCancel() throws {
+  func cancelWriteFailureIsNeverReportedAsCleanCancel() async throws {
     let (coordinator, url) = makeCoordinator()
-    _ = coordinator.commitImport(
+    _ = await coordinator.commitImport(
       plan(
         baseline: coordinator.customWords,
         additions: [CustomWordsImportCandidate(canonical: "Kubernetes")]))
@@ -716,7 +717,7 @@ struct BulkImportEnrichmentCoordinatorTests {
   )
   func generalWordsClassifyExplicitlyCategorizedWordsDoNot() async throws {
     let (coordinator, _) = makeCoordinator()
-    _ = coordinator.commitImport(
+    _ = await coordinator.commitImport(
       plan(
         baseline: coordinator.customWords,
         additions: [
@@ -754,7 +755,7 @@ struct BulkImportEnrichmentCoordinatorTests {
   @Test("two overlapping requestDrain() calls run exactly one walker, never two")
   func overlappingRequestDrainCallsAreSingleFlight() async throws {
     let (coordinator, _) = makeCoordinator()
-    _ = coordinator.commitImport(
+    _ = await coordinator.commitImport(
       plan(
         baseline: coordinator.customWords,
         additions: [CustomWordsImportCandidate(canonical: "Kubernetes")]))
@@ -784,7 +785,7 @@ struct BulkImportEnrichmentCoordinatorTests {
   func startAndFinishPillsFireExactlyOncePerSession() async throws {
     let (coordinator, _) = makeCoordinator()
     let manyWords = (0..<30).map { CustomWordsImportCandidate(canonical: "Word\($0)") }
-    _ = coordinator.commitImport(plan(baseline: coordinator.customWords, additions: manyWords))
+    _ = await coordinator.commitImport(plan(baseline: coordinator.customWords, additions: manyWords))
 
     let suggester = FakeAliasSuggester()
     var presented: [String] = []
@@ -805,7 +806,7 @@ struct BulkImportEnrichmentCoordinatorTests {
   func checkpointsInChunksOf25() async throws {
     let (coordinator, _) = makeCoordinator()
     let manyWords = (0..<30).map { CustomWordsImportCandidate(canonical: "Word\($0)") }
-    _ = coordinator.commitImport(plan(baseline: coordinator.customWords, additions: manyWords))
+    _ = await coordinator.commitImport(plan(baseline: coordinator.customWords, additions: manyWords))
 
     var checkpointSizes: [Int] = []
     coordinator.onWordsChanged = { _ in

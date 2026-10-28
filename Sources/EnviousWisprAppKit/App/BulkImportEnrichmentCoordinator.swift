@@ -87,12 +87,17 @@ final class BulkImportEnrichmentCoordinator {
   /// `requestDrain()` assigns `drainTask` synchronously.
   func awaitDrainForTesting() async {
     await drainTask?.value
+    await cancelSweepTask?.value
   }
+
+  /// A Cancel sweep started while no drain was running (#4086). Retained so the
+  /// command it admits is never left without an owner, and a test can wait for it.
+  private var cancelSweepTask: Task<Void, Never>?
 
   /// Never hard-cancels an in-flight call; the sweep runs once the loop exits.
   func cancel() {
     guard drainTask != nil else {
-      performCancelSweep()
+      cancelSweepTask = Task { [weak self] in await self?.performCancelSweep() }
       return
     }
     cancelRequested = true
@@ -124,7 +129,7 @@ final class BulkImportEnrichmentCoordinator {
     guard gen == generation else { return }  // superseded — a newer generation owns cleanup
     drainTask = nil
     if cancelRequested {
-      performCancelSweep()
+      await performCancelSweep()
       cancelRequested = false
     }
   }
@@ -140,11 +145,11 @@ final class BulkImportEnrichmentCoordinator {
 
   private func drainOnce(generation gen: Int) async -> DrainPassOutcome {
     do {
-      try customWords.repairPendingEnrichmentTotalIfNeeded()
+      try await customWords.repairPendingEnrichmentTotalIfNeeded()
     } catch {
       return drainFailure(error)
     }
-    guard let pending = customWords.pendingEnrichmentWords() else {
+    guard let pending = await customWords.pendingEnrichmentWords() else {
       logCheckpoint(status: .failed)
       return .failed
     }
@@ -163,10 +168,11 @@ final class BulkImportEnrichmentCoordinator {
 
     // Never retains a stale buffer across a retry: a busy checkpoint
     // propagates out of `drainOnce`; the next attempt starts fresh.
-    func flush() throws {
+    func flush() async throws {
       guard !buffer.isEmpty else { return }
-      defer { buffer.removeAll(keepingCapacity: true) }
-      try customWords.applyEnrichmentResults(buffer)
+      let batch = buffer
+      buffer.removeAll(keepingCapacity: true)
+      try await customWords.applyEnrichmentResults(batch)
     }
 
     for word in pending {
@@ -197,7 +203,7 @@ final class BulkImportEnrichmentCoordinator {
 
       if buffer.count >= Self.checkpointChunkSize {
         do {
-          try flush()
+          try await flush()
         } catch {
           return drainFailure(error)
         }
@@ -206,13 +212,13 @@ final class BulkImportEnrichmentCoordinator {
     }
 
     do {
-      try flush()
+      try await flush()
     } catch {
       return drainFailure(error)
     }
 
     // A FAILED final read is its own terminal outcome, not "still not empty".
-    guard let stillPendingAfter = customWords.pendingEnrichmentWords() else {
+    guard let stillPendingAfter = await customWords.pendingEnrichmentWords() else {
       logCheckpoint(status: .failed)
       return .failed
     }
@@ -232,9 +238,9 @@ final class BulkImportEnrichmentCoordinator {
     resetSessionCounters()
   }
 
-  private func performCancelSweep() {
+  private func performCancelSweep() async {
     // A failed write is never logged as a clean cancel.
-    guard customWords.cancelEnrichment() == nil else {
+    guard await customWords.cancelEnrichment() == nil else {
       logCheckpoint(status: .failed)
       return
     }

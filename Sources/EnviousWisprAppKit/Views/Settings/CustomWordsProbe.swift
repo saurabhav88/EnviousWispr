@@ -9,16 +9,28 @@ package struct CustomWordsProbe: Sendable {
     case editRequested(wordID: UUID)
     case projectionStarted(revision: Int)
     case projectionFinished(revision: Int, rowCount: Int)
-    case storageStarted(operation: Operation)
-    case storageReturned(operation: Operation, outcome: Outcome)
-    case published(operation: Operation)
+    /// A dictionary command joined the coordinator's queue (#4086). Every later event of
+    /// that command carries the same `command` number.
+    case admitted(command: Int, operation: Operation)
+    case storageStarted(command: Int, operation: Operation)
+    /// The file worker finished the command's whole locked transaction.
+    case storageReturned(command: Int, operation: Operation, outcome: Outcome)
+    case published(command: Int, operation: Operation)
+    /// The command's receipt completed: storage, adoption, publication and any learning
+    /// memory effect are all done, and the next command may start.
+    case completed(command: Int, operation: Operation)
   }
 
-  package enum Operation: Sendable, Equatable { case add, update, remove, removeBatch, other(String) }
+  package enum Operation: Sendable, Equatable {
+    case add, addBatch, update, generatedAliases, remove, removeBatch
+    case restoreBuiltin, removeOverride, redeleteBuiltin
+    case importCommit, enrichmentRepair, enrichmentRead, enrichmentApply, enrichmentCancel
+    case refresh, action, usageFlush
+  }
 
-  /// A normal manager return may be a no-op (for example a deleted edit target).
-  /// `returned` deliberately makes no claim that a durable write actually happened.
-  package enum Outcome: Sendable, Equatable { case returned, failed }
+  /// `committed`: the durable write finished. `unchanged`: the transaction returned
+  /// normally and wrote nothing. `failed`: it threw, and nothing was written.
+  package enum Outcome: Sendable, Equatable { case committed, unchanged, failed }
 
   package let record: @Sendable (Event, UInt64) -> Void
 

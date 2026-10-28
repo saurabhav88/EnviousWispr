@@ -224,11 +224,11 @@
       case .wordsList:
         return wordsList(args)
       case .wordsAdd:
-        return wordsAdd(args)
+        return await wordsAdd(args)
       case .wordsUpdate:
-        return wordsUpdate(args)
+        return await wordsUpdate(args)
       case .wordsRemove:
-        return wordsRemove(args)
+        return await wordsRemove(args)
       case .modelsParakeetDownload:
         return model(.parakeet, "download", args, models.parakeetDownload)
       case .modelsParakeetCancel:
@@ -744,7 +744,7 @@
     ///   window first); nothing new was made.
     /// - `unchanged`: the owner accepted the request and the list holds no such word (a
     ///   blank word, which the owner ignores).
-    private func wordsAdd(_ args: [String: Any]) -> Result {
+    private func wordsAdd(_ args: [String: Any]) async -> Result {
       guard !unexpectedKeys(args, allowed: ["word", "aliases"]) else {
         return .failure(.badArgs, "words.add takes word and aliases only")
       }
@@ -759,7 +759,7 @@
       }
       let candidate = CustomWord(canonical: canonical, aliases: newAliases)
       let beforeIDs = Set(words.customWords.map(\.id))
-      if let message = words.add(candidate) {
+      if let message = await words.add(candidate) {
         return .failure(.rejected, message)
       }
       let spelling = canonical.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -786,7 +786,7 @@
     /// only the supplied fields change; `aliases: []` clears them. When another window
     /// deleted the word first, the owner drops the edit and adopts the saved list; the
     /// reply then says `targetGone` instead of naming a row.
-    private func wordsUpdate(_ args: [String: Any]) -> Result {
+    private func wordsUpdate(_ args: [String: Any]) async -> Result {
       guard !unexpectedKeys(args, allowed: ["id", "word", "aliases"]) else {
         return .failure(.badArgs, "words.update takes id, word and aliases only")
       }
@@ -814,7 +814,7 @@
       }
       if let newCanonical { edited.canonical = newCanonical }
       if let newAliases { edited.aliases = newAliases }
-      if let message = words.update(edited) {
+      if let message = await words.update(edited) {
         return .failure(.rejected, message)
       }
       guard let saved = words.customWords.first(where: { $0.id == id }) else {
@@ -824,7 +824,7 @@
     }
 
     /// `{id}`. Removing a built-in records its deletion, as the screen does.
-    private func wordsRemove(_ args: [String: Any]) -> Result {
+    private func wordsRemove(_ args: [String: Any]) async -> Result {
       guard !unexpectedKeys(args, allowed: ["id"]) else {
         return .failure(.badArgs, "words.remove takes id only")
       }
@@ -834,7 +834,7 @@
       guard words.customWords.contains(where: { $0.id == id }) else {
         return .failure(.notFound, "no word has that id")
       }
-      if let message = words.remove(id: id) {
+      if let message = await words.remove(id: id) {
         return .failure(.rejected, message)
       }
       let stillListed = words.customWords.contains { $0.id == id }

@@ -342,6 +342,9 @@ public final class CustomWordsManager {
 
   /// Why the most recent `load()` returned nil; nil after a successful load
   /// or a legitimate first run (#1646). Owned by `CustomWordsFileStore`.
+  /// Read it only right after the launch-time `load()`/`loadSnapshot()`, before
+  /// any file work has gone to the worker; later reads carry their own failure
+  /// in `CustomWordsReadResult`.
   package var lastLoadFailure: CustomWordsInitialLoadFailure? { store.lastLoadFailure }
 
   /// Test seam forwarded to `CustomWordsFileStore.afterFileExistsCheckForTesting`.
@@ -353,6 +356,10 @@ public final class CustomWordsManager {
   /// Load the effective word list: built-in defaults (minus tombstones) + user words.
   /// Returns nil only on unrecoverable I/O failure or a corrupted (archived)
   /// file — `lastLoadFailure` says which (#1646).
+  ///
+  /// Synchronous on purpose, and for launch only (#4086): the vocabulary must be
+  /// ready before the first dictation. Every read after launch goes through
+  /// `readSnapshot()` on the file worker.
   public func load() -> [CustomWord]? {
     guard let file = store.resolveCurrentFile() else { return nil }
     return CustomWordsMutationPolicy.mergedWords(file: file, builtins: Self.builtinDefaults)
@@ -363,6 +370,8 @@ public final class CustomWordsManager {
   /// the sole AppKit adapter — can never see one without the other. Existing
   /// `load()` stays a words-only convenience for every untouched consumer;
   /// this is additive, sharing the identical resolution cascade.
+  ///
+  /// The launch read, like `load()`; later reads use `readSnapshot()`.
   package func loadSnapshot() -> CustomWordsLibrarySnapshot? {
     guard let file = store.resolveCurrentFile() else { return nil }
     return CustomWordsLibrarySnapshot(
@@ -370,13 +379,32 @@ public final class CustomWordsManager {
       pendingEnrichmentBatchTotal: file.pendingEnrichmentBatchTotal)
   }
 
+  /// `loadSnapshot()` on the file worker (#4086), in order with every write sent before
+  /// it. The failure travels in the result: `lastLoadFailure` belongs to the worker.
+  package func readSnapshot() async -> CustomWordsReadResult {
+    let builtins = Self.builtinDefaults
+    return await runReadOnWorker { store in
+      guard let file = store.resolveCurrentFile() else {
+        return .failed(store.lastLoadFailure ?? .unreadable)
+      }
+      return .loaded(
+        CustomWordsLibrarySnapshot(
+          words: CustomWordsMutationPolicy.mergedWords(file: file, builtins: builtins),
+          pendingEnrichmentBatchTotal: file.pendingEnrichmentBatchTotal))
+    }
+  }
+
   /// Word list filtered to `enrichmentPending == true` (#1701 Chunk 2) — the
   /// durable bulk-import-enrichment queue IS this scan over live state, never
   /// a separately-tracked in-memory job list. Returns nil only on the same
   /// unrecoverable read failure `load()`/`loadSnapshot()` report.
-  package func loadPendingEnrichmentWords() -> [CustomWord]? {
-    guard let file = store.resolveCurrentFile() else { return nil }
-    return CustomWordsMutationPolicy.mergedWords(file: file, builtins: Self.builtinDefaults).filter(\.enrichmentPending)
+  package func loadPendingEnrichmentWords() async -> [CustomWord]? {
+    let builtins = Self.builtinDefaults
+    return await runReadOnWorker { store in
+      guard let file = store.resolveCurrentFile() else { return nil }
+      return CustomWordsMutationPolicy.mergedWords(file: file, builtins: builtins)
+        .filter(\.enrichmentPending)
+    }
   }
 
   /// Two-way self-heal (#1701 Chunk 2, Codex Chunk 2 review finding 2b) — a
@@ -391,9 +419,13 @@ public final class CustomWordsManager {
   /// (possibly just-repaired) total either way, so the caller always learns
   /// the true current denominator. Called by the background coordinator
   /// before it begins draining.
-  package func repairPendingEnrichmentTotalIfNeeded() throws -> Int? {
-    try store.performLockedTransaction { file in
-      CustomWordsEnrichmentPolicy.repairPendingTotal(in: &file)
+  package func repairPendingEnrichmentTotalIfNeeded() async throws
+    -> CustomWordsStoreReceipt<Int?>
+  {
+    try await runOnWorker { store in
+      try store.performLockedTransaction { file in
+        CustomWordsEnrichmentPolicy.repairPendingTotal(in: &file)
+      }
     }
   }
 
@@ -408,11 +440,13 @@ public final class CustomWordsManager {
   ///
   /// Debounce policy:
   /// - Aggregate increments in `pendingIncrements` (per UUID).
-  /// - Flush sync when total pending count >= 50.
+  /// - Flush when total pending count >= 50.
   /// - Otherwise schedule a 30s timer flush (cancel + reschedule on each call).
   /// - On flush: one locked load-transform-save via `performLockedTransaction`
   ///   bumps `frequencyUsed` and sets `lastUsed` for each pending UUID found
-  ///   in the persisted file (#1690).
+  ///   in the persisted file (#1690). The flush runs on the file worker
+  ///   (#4086), in order with every other dictionary transaction; each one
+  ///   re-reads the file under the lock, so neither can lose the other's change.
   ///
   /// IDs not found in the persisted file (rare: file edited concurrently,
   /// built-in term not yet in file) are skipped silently, and a snapshot
@@ -434,21 +468,36 @@ public final class CustomWordsManager {
     }
     let totalPending = pendingIncrements.values.reduce(0) { $0 + $1.count }
     if totalPending >= Self.flushCountThreshold {
-      flushPendingIncrements()
+      pendingFlushTask?.cancel()
+      let flush = Task { @MainActor [weak self] in _ = await self?.flushPendingIncrements() }
+      pendingFlushTask = flush
+      #if DEBUG
+        thresholdFlushForTesting = flush
+      #endif
     } else {
       schedulePendingFlush()
     }
   }
 
-  /// Phase 3b (#631): test seam — synchronously flush any pending increments.
-  /// Production code never calls this; tests use it to validate the writer
-  /// without waiting for the 30s debounce timer.
+  /// Phase 3b (#631): test seam — flush any pending increments and wait for the
+  /// file write. Production code never calls this; tests use it to validate the
+  /// writer without waiting for the 30s debounce timer.
   // periphery:ignore - test seam
-  package func flushPendingIncrementsForTesting() {
-    flushPendingIncrements()
+  package func flushPendingIncrementsForTesting() async {
+    await flushPendingIncrements()
   }
 
-  private struct PendingIncrement {
+  #if DEBUG
+    /// The last flush started by crossing the count threshold, so a test can wait for it.
+    private var thresholdFlushForTesting: Task<Void, Never>?
+
+    // periphery:ignore - test seam
+    package func awaitThresholdFlushForTesting() async {
+      await thresholdFlushForTesting?.value
+    }
+  #endif
+
+  private struct PendingIncrement: Sendable {
     var count: Int
     var lastTimestamp: Date
   }
@@ -464,34 +513,52 @@ public final class CustomWordsManager {
     pendingFlushTask = Task { @MainActor [weak self] in
       try? await Task.sleep(for: .seconds(Self.flushDebounceSeconds))
       guard !Task.isCancelled, let self else { return }
-      self.flushPendingIncrements()
+      await self.flushPendingIncrements()
     }
   }
 
-  private func flushPendingIncrements() {
-    pendingFlushTask?.cancel()
+  /// Set by the words coordinator (#4086): runs a usage flush as one of its commands, so
+  /// it queues with every other dictionary change and Quit waits for it. The closure
+  /// answers false when the coordinator did not run it (Quit is waiting); the increments
+  /// are then kept for the next flush. Nil (a manager on its own, as in tests): the flush
+  /// runs straight on the file worker.
+  package var admitUsageFlush: (@MainActor (@escaping @MainActor () async -> Void) async -> Bool)?
+
+  private func flushPendingIncrements() async {
+    // Taken before the first suspension, so increments recorded while this
+    // flush is on the worker start the next accumulator, never this one.
     pendingFlushTask = nil
     let snapshot = pendingIncrements
     pendingIncrements.removeAll()
     guard !snapshot.isEmpty else { return }
+    guard let admit = admitUsageFlush else {
+      await writeIncrements(snapshot)
+      return
+    }
+    let ran = await admit { [weak self] in await self?.writeIncrements(snapshot) }
+    if !ran { requeuePendingIncrementSnapshot(snapshot) }
+  }
 
+  /// One flush's locked write and its failure policy.
+  private func writeIncrements(_ snapshot: [UUID: PendingIncrement]) async {
     do {
-      try store.performLockedTransaction { file -> (value: Void, shouldSave: Bool) in
-        var changed = false
-        for (id, increment) in snapshot {
-          guard let idx = file.words.firstIndex(where: { $0.id == id }) else { continue }
-          file.words[idx].frequencyUsed += increment.count
-          // Merge, don't assign (#1690 cloud review): the freshly loaded
-          // `lastUsed` may already be newer than this snapshot's timestamp if
-          // a sibling process's own, later-captured flush acquired the lock
-          // first — the same max() merge `requeuePendingIncrementSnapshot`
-          // already uses below, applied here against the persisted value too.
-          file.words[idx].lastUsed = max(
-            file.words[idx].lastUsed ?? .distantPast, increment.lastTimestamp)
-          changed = true
+      _ = try await runOnWorker { store in
+        try store.performLockedTransaction { file -> (value: Bool, shouldSave: Bool) in
+          var changed = false
+          for (id, increment) in snapshot {
+            guard let idx = file.words.firstIndex(where: { $0.id == id }) else { continue }
+            file.words[idx].frequencyUsed += increment.count
+            // Merge, don't assign (#1690 cloud review): the freshly loaded
+            // `lastUsed` may already be newer than this snapshot's timestamp if
+            // a sibling process's own, later-captured flush acquired the lock
+            // first — the same max() merge `requeuePendingIncrementSnapshot`
+            // already uses below, applied here against the persisted value too.
+            file.words[idx].lastUsed = max(
+              file.words[idx].lastUsed ?? .distantPast, increment.lastTimestamp)
+            changed = true
+          }
+          return (changed, changed)
         }
-        guard changed else { return ((), false) }
-        return ((), true)
       }
     } catch let persistenceError as CustomWordsPersistenceError {
       switch persistenceError {
@@ -550,13 +617,68 @@ public final class CustomWordsManager {
     }
   }
 
-  public func add(canonical: String, to words: inout [CustomWord]) throws {
-    try add(word: CustomWord(canonical: canonical), to: &words)
+  // MARK: - The file worker (#4086)
+
+  /// The one serial queue every dictionary file transaction runs on after launch, off the
+  /// main actor and in the order it was asked for. Ported from History's storage worker
+  /// (#4075 S1, `HistoryTransactionExecutor.storageWorker`): work sent here captures only
+  /// Sendable values and the store, never this main-actor manager or any UI state.
+  /// `userInitiated`, not History's `utility`: a person is usually waiting on the result.
+  private let worker = DispatchQueue(
+    label: "com.enviouswispr.dictionary.files", qos: .userInitiated)
+
+  #if DEBUG
+    /// Runs on the file worker just before each transaction, so a test can hold the
+    /// worker with a real signal and observe what the main actor does meanwhile.
+    var fileWorkWillStartForTesting: (@Sendable () -> Void)?
+  #endif
+
+  /// Runs `work` on the file worker and resumes with its result. The main actor never
+  /// blocks on it, and a cancelled caller does not withdraw work already sent: it runs
+  /// to its end, so the caller's receipt always reports what really happened on disk.
+  private func runOnWorker<T: Sendable>(
+    _ work: @escaping @Sendable (CustomWordsFileStore) throws -> T
+  ) async throws -> T {
+    let store = store
+    #if DEBUG
+      let willStart = fileWorkWillStartForTesting
+    #endif
+    return try await withCheckedThrowingContinuation { continuation in
+      worker.async {
+        #if DEBUG
+          willStart?()
+        #endif
+        continuation.resume(with: Result { try work(store) })
+      }
+    }
   }
 
-  public func add(word: CustomWord, to words: inout [CustomWord]) throws {
+  /// `runOnWorker` for a read that cannot throw.
+  private func runReadOnWorker<T: Sendable>(
+    _ work: @escaping @Sendable (CustomWordsFileStore) -> T
+  ) async -> T {
+    let store = store
+    #if DEBUG
+      let willStart = fileWorkWillStartForTesting
+    #endif
+    return await withCheckedContinuation { continuation in
+      worker.async {
+        #if DEBUG
+          willStart?()
+        #endif
+        continuation.resume(returning: work(store))
+      }
+    }
+  }
+
+  // MARK: - Authoring
+
+  /// Add one word. Returns nil when there is nothing to add (an empty canonical);
+  /// otherwise the library after the transaction, which wrote nothing
+  /// (`committed == false`) when that canonical is already in the library.
+  package func add(word: CustomWord) async throws -> CustomWordsStoreReceipt<[CustomWord]>? {
     let trimmed = word.canonical.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty else { return }
+    guard !trimmed.isEmpty else { return nil }
     // The same rule importing enforces, applied where words are AUTHORED, so
     // the library can never hold what export refuses (cloud review, #1683).
     //
@@ -568,49 +690,56 @@ public final class CustomWordsManager {
     guard CustomWordsMutationPolicy.everyAliasIsStorable(word.aliases) else {
       throw CustomWordsPersistenceError.unusableValue
     }
-    guard
-      !words.contains(where: {
-        $0.canonical.caseInsensitiveCompare(trimmed) == .orderedSame
-      })
-    else { return }
-
-    let merged = try store.performLockedTransaction { file in
-      CustomWordsMutationPolicy.add(
-        word: word, trimmed: trimmed, to: &file, builtins: Self.builtinDefaults)
+    let builtins = Self.builtinDefaults
+    return try await runOnWorker { store in
+      try store.performLockedTransaction { file in
+        // The duplicate check reads the library under the lock (#4086), not the
+        // caller's list: a word added since the caller last looked is a duplicate too.
+        let current = CustomWordsMutationPolicy.mergedWords(file: file, builtins: builtins)
+        guard
+          !current.contains(where: {
+            $0.canonical.caseInsensitiveCompare(trimmed) == .orderedSame
+          })
+        else { return (current, false) }
+        return CustomWordsMutationPolicy.add(
+          word: word, trimmed: trimmed, to: &file, builtins: builtins)
+      }
     }
-    words = merged
   }
 
   /// Bulk-insert custom words with a single file read + write. Mirrors
-  /// `add(word:to:)` per word — canonical trim, reject-empty, case-insensitive
+  /// `add(word:)` per word — canonical trim, reject-empty, case-insensitive
   /// de-dupe (against existing terms AND earlier entries in this same batch),
   /// alias sanitize, and the tombstoned-built-in restore branch — but collapses
   /// the O(n) per-word locked load/save cycle into one of each so a large
   /// import (thousands of names) never rewrites the file per word.
   ///
-  /// Returns the UUIDs of the user words this call actually appended, in input
-  /// order. De-duplicated inputs and tombstoned-built-in restores are NOT in the
-  /// returned set: the caller (contacts import) treats the result as the
-  /// import's owned set for bulk-removal, and a restored built-in is not
+  /// The value's `created` holds the UUIDs of the user words this call actually
+  /// appended, in input order. De-duplicated inputs and tombstoned-built-in
+  /// restores are NOT in it: the caller (contacts import) treats the result as
+  /// the import's owned set for bulk-removal, and a restored built-in is not
   /// import-owned.
-  public func addBatch(_ incoming: [CustomWord], to words: inout [CustomWord]) throws
-    -> [UUID]
+  package func addBatch(_ incoming: [CustomWord]) async throws
+    -> CustomWordsStoreReceipt<(created: [UUID], words: [CustomWord])>
   {
-    let (createdIDs, merged) = try store.performLockedTransaction { file in
-      CustomWordsMutationPolicy.addBatch(
-        incoming, existing: words, to: &file, builtins: Self.builtinDefaults)
+    let builtins = Self.builtinDefaults
+    return try await runOnWorker { store in
+      try store.performLockedTransaction { file in
+        let current = CustomWordsMutationPolicy.mergedWords(file: file, builtins: builtins)
+        let ((created, words), shouldSave) = CustomWordsMutationPolicy.addBatch(
+          incoming, existing: current, to: &file, builtins: builtins)
+        return ((created, words), shouldSave)
+      }
     }
-    words = merged
-    return createdIDs
   }
 
-  public func remove(id: UUID, from words: inout [CustomWord]) throws {
-    let word = words.first { $0.id == id }
-    let merged = try store.performLockedTransaction { file in
-      CustomWordsMutationPolicy.remove(
-        id: id, word: word, from: &file, builtins: Self.builtinDefaults)
-    }
-    words = merged
+  /// Remove one word. The value names the words actually removed, read under the lock.
+  /// With `expecting`, the word is removed only while it still equals that value under the
+  /// lock; a word changed meanwhile, here or in another window, is left as it is.
+  package func remove(id: UUID, expecting: CustomWord? = nil) async throws
+    -> CustomWordsStoreReceipt<CustomWordsRemoval>
+  {
+    try await removeBatch(ids: [id], expecting: expecting.map { [$0] })
   }
 
   /// Bulk-remove by ID with a single file read + write. Mirrors `remove(id:)`
@@ -618,14 +747,28 @@ public final class CustomWordsManager {
   /// word — but collapses to one locked load/save cycle. IDs not present are
   /// skipped. Used by the contacts-import bulk-remove pill (#636) to avoid an
   /// O(n) per-word rewrite when clearing a large import.
-  public func removeBatch(ids: [UUID], from words: inout [CustomWord]) throws {
-    guard !ids.isEmpty else { return }
+  package func removeBatch(ids: [UUID], expecting: [CustomWord]? = nil) async throws
+    -> CustomWordsStoreReceipt<CustomWordsRemoval>
+  {
+    let builtins = Self.builtinDefaults
     let idSet = Set(ids)
-    let merged = try store.performLockedTransaction { file in
-      CustomWordsMutationPolicy.removeBatch(
-        ids: ids, idSet: idSet, existing: words, from: &file, builtins: Self.builtinDefaults)
+    return try await runOnWorker { store in
+      try store.performLockedTransaction { file in
+        let current = CustomWordsMutationPolicy.mergedWords(file: file, builtins: builtins)
+        let targets = current.filter { idSet.contains($0.id) }
+        guard !targets.isEmpty, Self.matches(targets, expecting) else {
+          return (CustomWordsRemoval(words: current, removed: []), false)
+        }
+        let (words, shouldSave) = CustomWordsMutationPolicy.removeBatch(
+          ids: ids, idSet: idSet, existing: current, from: &file, builtins: builtins)
+        let remaining = Set(words.map(\.id))
+        return (
+          CustomWordsRemoval(
+            words: words, removed: targets.filter { !remaining.contains($0.id) }),
+          shouldSave
+        )
+      }
     }
-    words = merged
   }
 
   // MARK: - Learned words over a deleted built-in (#996)
@@ -643,16 +786,19 @@ public final class CustomWordsManager {
   /// or a user word already claims that canonical: both mean the world moved
   /// between judge and save, and the caller reports "target gone". An
   /// unstorable alias refuses like every other authoring door.
-  package func restoreBuiltinAndLearn(canonical: String, alias: String) throws
-    -> RestoredBuiltinLearnOutcome
+  package func restoreBuiltinAndLearn(canonical: String, alias: String) async throws
+    -> CustomWordsStoreReceipt<RestoredBuiltinLearnOutcome>
   {
     let trimmedCanonical = canonical.trimmingCharacters(in: .whitespacesAndNewlines)
     let trimmedAlias = alias.trimmingCharacters(in: .whitespacesAndNewlines)
     guard CustomWordsMutationPolicy.isStorable(trimmedAlias) else { throw CustomWordsPersistenceError.unusableValue }
-    return try store.performLockedTransaction { file in
-      try CustomWordsMutationPolicy.restoreBuiltinAndLearn(
-        trimmedCanonical: trimmedCanonical, trimmedAlias: trimmedAlias, in: &file,
-        builtins: Self.builtinDefaults)
+    let builtins = Self.builtinDefaults
+    return try await runOnWorker { store in
+      try store.performLockedTransaction { file in
+        try CustomWordsMutationPolicy.restoreBuiltinAndLearn(
+          trimmedCanonical: trimmedCanonical, trimmedAlias: trimmedAlias, in: &file,
+          builtins: builtins)
+      }
     }
   }
 
@@ -663,10 +809,18 @@ public final class CustomWordsManager {
   /// the removed word's canonical matches. One locked transaction from fresh
   /// disk state; idempotent (an absent override writes nothing); unrelated
   /// words and tombstones survive. Returns the merged library.
-  package func removeUserOverride(id: UUID) throws -> [CustomWord] {
-    try store.performLockedTransaction { file in
-      CustomWordsMutationPolicy.removeUserOverride(
-        id: id, from: &file, builtins: Self.builtinDefaults)
+  package func removeUserOverride(id: UUID, expecting: CustomWord? = nil) async throws
+    -> CustomWordsStoreReceipt<[CustomWord]>
+  {
+    let builtins = Self.builtinDefaults
+    return try await runOnWorker { store in
+      try store.performLockedTransaction { file in
+        let current = CustomWordsMutationPolicy.mergedWords(file: file, builtins: builtins)
+        guard Self.matches(current.filter { $0.id == id }, expecting.map { [$0] }) else {
+          return (current, false)
+        }
+        return CustomWordsMutationPolicy.removeUserOverride(id: id, from: &file, builtins: builtins)
+      }
     }
   }
 
@@ -676,11 +830,29 @@ public final class CustomWordsManager {
   /// already present are left as they are, and nothing is written when both
   /// hold. Unrelated words and tombstones written meanwhile survive, because
   /// the transaction starts from fresh disk state.
-  package func redeleteRestoredBuiltin(id: UUID) throws -> [CustomWord] {
-    try store.performLockedTransaction { file in
-      CustomWordsMutationPolicy.redeleteRestoredBuiltin(
-        id: id, in: &file, builtins: Self.builtinDefaults)
+  package func redeleteRestoredBuiltin(id: UUID, expecting: CustomWord? = nil) async throws
+    -> CustomWordsStoreReceipt<[CustomWord]>
+  {
+    let builtins = Self.builtinDefaults
+    return try await runOnWorker { store in
+      try store.performLockedTransaction { file in
+        let current = CustomWordsMutationPolicy.mergedWords(file: file, builtins: builtins)
+        guard Self.matches(current.filter { $0.id == id }, expecting.map { [$0] }) else {
+          return (current, false)
+        }
+        return CustomWordsMutationPolicy.redeleteRestoredBuiltin(
+          id: id, in: &file, builtins: builtins)
+      }
     }
+  }
+
+  /// The guarded doors' one rule (#4086): with no expectation, anything matches; with one,
+  /// the words found under the lock must be exactly the expected words, by id and value.
+  /// Learning and its Undo use it so a change saved meanwhile is never overwritten.
+  nonisolated private static func matches(_ found: [CustomWord], _ expected: [CustomWord]?) -> Bool {
+    guard let expected else { return true }
+    return found.count == expected.count
+      && expected.allSatisfy { wanted in found.contains { $0.id == wanted.id && $0 == wanted } }
   }
 
   // MARK: - Import commit (#1665, epic #1619 PR-F2b)
@@ -694,15 +866,21 @@ public final class CustomWordsManager {
   /// `importPersistenceKey` (the dictionary's own `trimmed.lowercased()` dedup
   /// rule, owned by `CustomWordsMutationPolicy` since #4086), never the compare
   /// engine's stronger matching key (PR-F2a).
-  package func commitImport(
-    _ plan: CustomWordsImportCommitPlan, to words: inout [CustomWord]
-  ) throws -> CustomWordsImportCommitReceipt {
-    let outcome: (CustomWordsImportCommitReceipt, [CustomWord]?)
+  ///
+  /// The value's library is nil when the commit changed nothing (all-Skip); the
+  /// caller publishes only a non-nil one.
+  package func commitImport(_ plan: CustomWordsImportCommitPlan) async throws
+    -> CustomWordsStoreReceipt<(receipt: CustomWordsImportCommitReceipt, words: [CustomWord]?)>
+  {
+    let builtins = Self.builtinDefaults
     do {
-      outcome = try store.performLockedTransaction { file in
-        try CustomWordsImportPolicy.commit(
-          plan, to: &file, builtins: Self.builtinDefaults,
-          backup: { store.writePreImportBackup() })
+      return try await runOnWorker { store in
+        try store.performLockedTransaction { file in
+          let ((receipt, words), shouldSave) = try CustomWordsImportPolicy.commit(
+            plan, to: &file, builtins: builtins,
+            backup: { store.writePreImportBackup() })
+          return ((receipt, words), shouldSave)
+        }
       }
     } catch let persistenceError as CustomWordsPersistenceError {
       switch persistenceError {
@@ -721,16 +899,6 @@ public final class CustomWordsManager {
         throw persistenceError
       }
     }
-
-    // (8) Publish only after the wrapper's write succeeded — this line only
-    // runs once `performLockedTransaction` has returned normally, which only
-    // happens after `saveFileWhileLocked` itself succeeded whenever
-    // `shouldSave` was true. All-Skip and every thrown validation/staleness
-    // error skip this entirely, matching the pre-#1690 contract exactly.
-    if let merged = outcome.1 {
-      words = merged
-    }
-    return outcome.0
   }
 
   // MARK: - Bulk-import enrichment checkpoint (#1701 Chunk 2)
@@ -771,9 +939,12 @@ public final class CustomWordsManager {
   /// zero, and that must still clear the total).
   package func applyEnrichmentResults(
     _ results: [CustomWordEnrichmentResult]
-  ) throws -> CustomWordsEnrichmentCheckpointOutcome {
-    try store.performLockedTransaction { file in
-      CustomWordsEnrichmentPolicy.applyResults(results, to: &file, builtins: Self.builtinDefaults)
+  ) async throws -> CustomWordsStoreReceipt<CustomWordsEnrichmentCheckpointOutcome> {
+    let builtins = Self.builtinDefaults
+    return try await runOnWorker { store in
+      try store.performLockedTransaction { file in
+        CustomWordsEnrichmentPolicy.applyResults(results, to: &file, builtins: builtins)
+      }
     }
   }
 
@@ -782,13 +953,25 @@ public final class CustomWordsManager {
   /// reloaded file — never a caller's potentially-stale in-memory target
   /// list — and clears the durable total to nil in the same transaction.
   /// Returns the resulting snapshot so the caller can atomically adopt both.
-  package func cancelEnrichment() throws -> CustomWordsLibrarySnapshot {
-    try store.performLockedTransaction { file in
-      CustomWordsEnrichmentPolicy.cancel(in: &file, builtins: Self.builtinDefaults)
+  package func cancelEnrichment() async throws
+    -> CustomWordsStoreReceipt<CustomWordsLibrarySnapshot>
+  {
+    let builtins = Self.builtinDefaults
+    return try await runOnWorker { store in
+      try store.performLockedTransaction { file in
+        CustomWordsEnrichmentPolicy.cancel(in: &file, builtins: builtins)
+      }
     }
   }
-  public func update(word: CustomWord, in words: inout [CustomWord]) throws {
-    guard let index = words.firstIndex(where: { $0.id == word.id }) else { return }
+
+  /// Edit one word. The value carries the word before and after the edit, read under
+  /// the lock; `after` is nil when the target is no longer in the library, and the
+  /// transaction then writes nothing.
+  /// With `expecting`, the edit applies only while the word still equals that value under
+  /// the lock; otherwise it writes nothing and `after` is nil.
+  package func update(word: CustomWord, expecting: CustomWord? = nil) async throws
+    -> CustomWordsStoreReceipt<CustomWordsEdit>
+  {
     let trimmed = word.canonical.trimmingCharacters(in: .whitespacesAndNewlines)
     // Same authoring door as `add`, same reason it throws: see there.
     guard CustomWordsMutationPolicy.isStorable(trimmed) else { throw CustomWordsPersistenceError.unusableValue }
@@ -807,46 +990,50 @@ public final class CustomWordsManager {
     // which filters on `source == .user` — would silently omit the user's own
     // change until the next launch decoded it. (No-op for words already `.user`.)
     let sanitized = edited.ownedByUser()
-
-    // An edit that MOVES a built-in's canonical away has to retire the
-    // built-in too (mirrors the commitImport tombstone rule, #1668) —
-    // otherwise the built-in still matches no user word, so `mergedWords`
-    // keeps showing it beside the rename and the user gets two words where
-    // they edited one (#1670). A same-canonical edit (alias-only change)
-    // must NOT tombstone: the override already hides the built-in on its
-    // own, and recording a tombstone would persist a deletion the user never
-    // performed.
-    let previousCanonical = words[index].canonical
+    let builtins = Self.builtinDefaults
 
     // Publish the freshly merged file, not a manual patch of the caller's
     // stale array (#1690 cloud review): the other five ordinary mutations
     // already do this, so any OTHER change a sibling process saved while
     // this lock was held stays visible instead of being silently dropped
     // until the next reload or mutation.
-    let merged = try store.performLockedTransaction { file in
-      CustomWordsMutationPolicy.update(
-        word: word, sanitized: sanitized, previousCanonical: previousCanonical, in: &file,
-        builtins: Self.builtinDefaults)
+    return try await runOnWorker { store in
+      try store.performLockedTransaction { file in
+        let current = CustomWordsMutationPolicy.mergedWords(file: file, builtins: builtins)
+        let found = current.first(where: { $0.id == word.id })
+        guard let before = found, Self.matches([before], expecting.map { [$0] }) else {
+          return (CustomWordsEdit(words: current, before: found, after: nil), false)
+        }
+        // An edit that MOVES a built-in's canonical away has to retire the
+        // built-in too (mirrors the commitImport tombstone rule, #1668) —
+        // otherwise the built-in still matches no user word, so `mergedWords`
+        // keeps showing it beside the rename and the user gets two words where
+        // they edited one (#1670). A same-canonical edit (alias-only change)
+        // must NOT tombstone: the override already hides the built-in on its
+        // own, and recording a tombstone would persist a deletion the user never
+        // performed. `previousCanonical` is read under the lock (#4086).
+        let (words, shouldSave) = CustomWordsMutationPolicy.update(
+          word: word, sanitized: sanitized, previousCanonical: before.canonical, in: &file,
+          builtins: builtins)
+        let after = shouldSave ? words.first(where: { $0.id == word.id }) : nil
+        return (CustomWordsEdit(words: words, before: before, after: after), shouldSave)
+      }
     }
-    words = merged
   }
 
-  /// Bulk-update existing words by ID with a single file read + write. Mirrors
-  /// `update(word:)` per word — canonical trim, reject-empty, alias sanitize —
-  /// but collapses the per-word locked load/save cycle into one of each so the
-  /// contacts-import alias enrichment can flush a batch of generated aliases
-  /// without an O(n) per-word rewrite (#636 follow-up).
-  ///
-  /// An ID not present in the file is skipped (no-op), NOT appended — unlike
-  /// `update(word:)`, which appends a missing id as a built-in override.
-  /// Enrichment must never resurrect a word the user deleted mid-job. Returns
-  /// with `words` untouched if nothing matched.
-  public func updateBatch(_ updates: [CustomWord], to words: inout [CustomWord]) throws {
-    guard !updates.isEmpty else { return }
-    let merged = try store.performLockedTransaction { file in
-      CustomWordsMutationPolicy.updateBatch(updates, in: &file, builtins: Self.builtinDefaults)
+  /// Fill empty alias lists on imported contact names with generated aliases, in one
+  /// file read + write (#636 follow-up), so a batch never rewrites the file per word.
+  /// The rules for a stale proposal: `CustomWordsMutationPolicy.applyGeneratedAliases`.
+  /// The value is nil when nothing applied, and nothing was written.
+  package func applyGeneratedAliases(_ proposals: [GeneratedAliasProposal]) async throws
+    -> CustomWordsStoreReceipt<[CustomWord]?>
+  {
+    guard !proposals.isEmpty else { return CustomWordsStoreReceipt(value: nil, committed: false) }
+    let builtins = Self.builtinDefaults
+    return try await runOnWorker { store in
+      try store.performLockedTransaction { file in
+        CustomWordsMutationPolicy.applyGeneratedAliases(proposals, in: &file, builtins: builtins)
+      }
     }
-    guard let merged else { return }
-    words = merged
   }
 }

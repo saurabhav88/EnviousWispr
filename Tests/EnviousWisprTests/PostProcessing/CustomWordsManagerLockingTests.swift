@@ -55,14 +55,14 @@ struct CustomWordsManagerLockingTests {
   /// same open-file-description mechanism `withExclusiveFileLock` relies on,
   /// unlike a mock or an in-process stub.
   @Test(.timeLimit(.minutes(1)))
-  func realContentionFailsClosedInsteadOfBlocking() throws {
+  func realContentionFailsClosedInsteadOfBlocking() async throws {
     let dir = Self.tempDir()
     defer { Self.cleanup(dir) }
     let url = dir.appendingPathComponent("custom-words.json")
     let mgr = CustomWordsManager(fileURL: url)
 
     var words = try #require(mgr.load())
-    try mgr.add(word: CustomWord(canonical: "Kubernetes"), to: &words)
+    try await mgr.add(word: CustomWord(canonical: "Kubernetes"), to: &words)
     let bytesBefore = try Data(contentsOf: url)
 
     let lockURL = url.appendingPathExtension("lock")
@@ -88,8 +88,8 @@ struct CustomWordsManagerLockingTests {
       return flock(fd, flags)
     }
 
-    let error = #expect(throws: CustomWordsPersistenceError.self) {
-      try mgr.add(word: CustomWord(canonical: "Terraform"), to: &words)
+    let error = await #expect(throws: CustomWordsPersistenceError.self) {
+      try await mgr.add(word: CustomWord(canonical: "Terraform"), to: &words)
     }
     #expect(observedFlags == (LOCK_EX | LOCK_NB))
     #expect(error == .libraryBusy)
@@ -105,21 +105,21 @@ struct CustomWordsManagerLockingTests {
     // Release the raw lock; the identical mutation now succeeds against the
     // fresh disk baseline.
     try #require(flock(rawFD, LOCK_UN) == 0)
-    try mgr.add(word: CustomWord(canonical: "Terraform"), to: &words)
+    try await mgr.add(word: CustomWord(canonical: "Terraform"), to: &words)
     #expect(words.contains { $0.canonical == "Terraform" })
   }
 
   /// Uses the injected `lockSyscall` seam (not a real second process) to
   /// force an unexpected, non-`EWOULDBLOCK` `flock` failure.
   @Test
-  func injectedNonContentionFailureMapsToCoordinationUnavailable() throws {
+  func injectedNonContentionFailureMapsToCoordinationUnavailable() async throws {
     let dir = Self.tempDir()
     defer { Self.cleanup(dir) }
     let url = dir.appendingPathComponent("custom-words.json")
     let mgr = CustomWordsManager(fileURL: url)
 
     var words = try #require(mgr.load())
-    try mgr.add(word: CustomWord(canonical: "Kubernetes"), to: &words)
+    try await mgr.add(word: CustomWord(canonical: "Kubernetes"), to: &words)
     let bytesBefore = try Data(contentsOf: url)
 
     var seamFD: Int32 = -1
@@ -129,8 +129,8 @@ struct CustomWordsManagerLockingTests {
       return -1
     }
 
-    let error = #expect(throws: CustomWordsPersistenceError.self) {
-      try mgr.add(word: CustomWord(canonical: "Terraform"), to: &words)
+    let error = await #expect(throws: CustomWordsPersistenceError.self) {
+      try await mgr.add(word: CustomWord(canonical: "Terraform"), to: &words)
     }
     #expect(error == .coordinationUnavailable)
     #expect(
@@ -154,14 +154,14 @@ struct CustomWordsManagerLockingTests {
   /// captured snapshot rather than drop it, and the second explicit flush
   /// (not a timer) is what proves the retry — never a fixed sleep.
   @Test
-  func usageFlushContentionRequeuesInsteadOfDropping() throws {
+  func usageFlushContentionRequeuesInsteadOfDropping() async throws {
     let dir = Self.tempDir()
     defer { Self.cleanup(dir) }
     let url = dir.appendingPathComponent("custom-words.json")
     let mgr = CustomWordsManager(fileURL: url)
 
     var words = try #require(mgr.load())
-    try mgr.add(word: CustomWord(canonical: "Kubernetes"), to: &words)
+    try await mgr.add(word: CustomWord(canonical: "Kubernetes"), to: &words)
     let target = try #require(words.first { $0.canonical == "Kubernetes" })
     let bytesBefore = try Data(contentsOf: url)
 
@@ -185,14 +185,14 @@ struct CustomWordsManagerLockingTests {
 
     // Contended: the debounced writer fails closed instantly, same as any
     // explicit mutation, and must not lose the captured increment.
-    mgr.flushPendingIncrementsForTesting()
+    await mgr.flushPendingIncrementsForTesting()
     #expect(try Data(contentsOf: url) == bytesBefore)
 
     // Release the raw lock; the SECOND explicit flush call is the retry
     // driver here, not a timer — this cancels the requeue's rescheduled
     // debounce task and drives the flush itself, so no sleep is needed.
     try #require(flock(rawFD, LOCK_UN) == 0)
-    mgr.flushPendingIncrementsForTesting()
+    await mgr.flushPendingIncrementsForTesting()
 
     #expect(sawBlockingRequest == false)
     let reloaded = try #require(CustomWordsManager(fileURL: url).load())
@@ -206,14 +206,14 @@ struct CustomWordsManagerLockingTests {
   /// `.libraryBusy` an ordinary mutation would, not a misleading "unreadable
   /// library" error.
   @Test
-  func commitImportContentionPropagatesLibraryBusyAndRetriesCleanly() throws {
+  func commitImportContentionPropagatesLibraryBusyAndRetriesCleanly() async throws {
     let dir = Self.tempDir()
     defer { Self.cleanup(dir) }
     let url = dir.appendingPathComponent("custom-words.json")
     let mgr = CustomWordsManager(fileURL: url)
 
     var words = try #require(mgr.load())
-    try mgr.add(word: CustomWord(canonical: "Qualtrics"), to: &words)
+    try await mgr.add(word: CustomWord(canonical: "Qualtrics"), to: &words)
     let bytesBefore = try Data(contentsOf: url)
     let wordsBefore = words
     let backupsBefore = Self.backupFiles(in: dir)
@@ -237,8 +237,8 @@ struct CustomWordsManagerLockingTests {
       return flock(fd, flags)
     }
 
-    let error = #expect(throws: CustomWordsPersistenceError.self) {
-      try mgr.commitImport(importPlan, to: &words)
+    let error = await #expect(throws: CustomWordsPersistenceError.self) {
+      try await mgr.commitImport(importPlan, to: &words)
     }
     #expect(error == .libraryBusy)
     #expect(try Data(contentsOf: url) == bytesBefore)
@@ -246,7 +246,7 @@ struct CustomWordsManagerLockingTests {
     #expect(Self.backupFiles(in: dir) == backupsBefore)
 
     try #require(flock(rawFD, LOCK_UN) == 0)
-    let receipt = try mgr.commitImport(importPlan, to: &words)
+    let receipt = try await mgr.commitImport(importPlan, to: &words)
     #expect(receipt.addedIDs.count == 1)
     #expect(words.contains { $0.canonical == "Kubernetes" })
     let onDisk = try #require(CustomWordsManager(fileURL: url).load())
@@ -258,14 +258,14 @@ struct CustomWordsManagerLockingTests {
   /// through `commitImport`, never silently collapsed into the existing
   /// `.unreadableLibrary` case — those mean different things to the coordinator.
   @Test
-  func commitImportNonContentionLockFailurePropagatesCoordinationUnavailable() throws {
+  func commitImportNonContentionLockFailurePropagatesCoordinationUnavailable() async throws {
     let dir = Self.tempDir()
     defer { Self.cleanup(dir) }
     let url = dir.appendingPathComponent("custom-words.json")
     let mgr = CustomWordsManager(fileURL: url)
 
     var words = try #require(mgr.load())
-    try mgr.add(word: CustomWord(canonical: "Qualtrics"), to: &words)
+    try await mgr.add(word: CustomWord(canonical: "Qualtrics"), to: &words)
     let bytesBefore = try Data(contentsOf: url)
     let wordsBefore = words
     let backupsBefore = Self.backupFiles(in: dir)
@@ -282,8 +282,8 @@ struct CustomWordsManagerLockingTests {
       return -1
     }
 
-    let error = #expect(throws: CustomWordsPersistenceError.self) {
-      try mgr.commitImport(importPlan, to: &words)
+    let error = await #expect(throws: CustomWordsPersistenceError.self) {
+      try await mgr.commitImport(importPlan, to: &words)
     }
     #expect(error == .coordinationUnavailable)
     #expect(try Data(contentsOf: url) == bytesBefore)
@@ -301,7 +301,7 @@ struct CustomWordsManagerLockingTests {
   /// their own copy, leaving a permanent on-disk duplicate. Proves the
   /// locked transform's own fresh re-check is what actually prevents it.
   @Test
-  func addRechecksUniquenessAgainstTheFreshFileNotTheStaleSnapshot() throws {
+  func addRechecksUniquenessAgainstTheFreshFileNotTheStaleSnapshot() async throws {
     let dir = Self.tempDir()
     defer { Self.cleanup(dir) }
     let url = dir.appendingPathComponent("custom-words.json")
@@ -316,11 +316,11 @@ struct CustomWordsManagerLockingTests {
     // the SAME canonical, landing after the snapshot above.
     let sibling = CustomWordsManager(fileURL: url)
     var siblingWords = try #require(sibling.load())
-    try sibling.add(word: CustomWord(canonical: "Kubernetes"), to: &siblingWords)
+    try await sibling.add(word: CustomWord(canonical: "Kubernetes"), to: &siblingWords)
 
     // This call's pre-lock check sees only the stale (empty) snapshot, so it
     // reaches the locked transaction regardless.
-    try mgr.add(word: CustomWord(canonical: "Kubernetes"), to: &staleWords)
+    try await mgr.add(word: CustomWord(canonical: "Kubernetes"), to: &staleWords)
 
     let onDisk = try #require(CustomWordsManager(fileURL: url).load())
     let onDiskMatches = onDisk.filter {
@@ -339,26 +339,26 @@ struct CustomWordsManagerLockingTests {
   /// surfaces a sibling's concurrent change instead of silently dropping it
   /// until the next reload.
   @Test
-  func updatePublishesTheFreshlyMergedFileNotAStalePatch() throws {
+  func updatePublishesTheFreshlyMergedFileNotAStalePatch() async throws {
     let dir = Self.tempDir()
     defer { Self.cleanup(dir) }
     let url = dir.appendingPathComponent("custom-words.json")
     let mgr = CustomWordsManager(fileURL: url)
 
     var words = try #require(mgr.load())
-    try mgr.add(word: CustomWord(canonical: "Qualtrics"), to: &words)
+    try await mgr.add(word: CustomWord(canonical: "Qualtrics"), to: &words)
     let target = try #require(words.first { $0.canonical == "Qualtrics" })
 
     // Simulate a sibling process's concurrent, already-saved addition of a
     // DIFFERENT word, landing after this caller's snapshot was taken.
     let sibling = CustomWordsManager(fileURL: url)
     var siblingWords = try #require(sibling.load())
-    try sibling.add(word: CustomWord(canonical: "Kubernetes"), to: &siblingWords)
+    try await sibling.add(word: CustomWord(canonical: "Kubernetes"), to: &siblingWords)
     #expect(words.contains { $0.canonical == "Kubernetes" } == false)
 
     var edited = target
     edited.aliases = ["Qualtrics XM"]
-    try mgr.update(word: edited, in: &words)
+    try await mgr.update(word: edited, in: &words)
 
     #expect(words.contains { $0.canonical == "Kubernetes" })
     #expect(words.first { $0.canonical == "Qualtrics" }?.aliases == ["Qualtrics XM"])
@@ -372,14 +372,14 @@ struct CustomWordsManagerLockingTests {
   /// deleted word by appending the caller's stale edit. Proves it now drops
   /// the stale edit and publishes the fresh (word-gone) state instead.
   @Test
-  func updateDoesNotResurrectAWordASiblingDeleted() throws {
+  func updateDoesNotResurrectAWordASiblingDeleted() async throws {
     let dir = Self.tempDir()
     defer { Self.cleanup(dir) }
     let url = dir.appendingPathComponent("custom-words.json")
     let mgr = CustomWordsManager(fileURL: url)
 
     var words = try #require(mgr.load())
-    try mgr.add(word: CustomWord(canonical: "Qualtrics"), to: &words)
+    try await mgr.add(word: CustomWord(canonical: "Qualtrics"), to: &words)
     let target = try #require(words.first { $0.canonical == "Qualtrics" })
 
     // This caller's snapshot still shows "Qualtrics" as present — captured
@@ -392,9 +392,9 @@ struct CustomWordsManagerLockingTests {
     // landing after staleWords was captured.
     let sibling = CustomWordsManager(fileURL: url)
     var siblingWords = try #require(sibling.load())
-    try sibling.remove(id: target.id, from: &siblingWords)
+    try await sibling.remove(id: target.id, from: &siblingWords)
 
-    try mgr.update(word: edited, in: &staleWords)
+    try await mgr.update(word: edited, in: &staleWords)
 
     let onDisk = try #require(CustomWordsManager(fileURL: url).load())
     #expect(onDisk.contains { $0.id == target.id } == false)
@@ -413,25 +413,25 @@ struct CustomWordsManagerLockingTests {
   /// always-`Date()` capture time could be) and confirming a flush cannot
   /// regress it.
   @Test
-  func flushKeepsTheNewestCrossProcessUsageTimestamp() throws {
+  func flushKeepsTheNewestCrossProcessUsageTimestamp() async throws {
     let dir = Self.tempDir()
     defer { Self.cleanup(dir) }
     let url = dir.appendingPathComponent("custom-words.json")
     let mgr = CustomWordsManager(fileURL: url)
 
     var words = try #require(mgr.load())
-    try mgr.add(word: CustomWord(canonical: "Kubernetes"), to: &words)
+    try await mgr.add(word: CustomWord(canonical: "Kubernetes"), to: &words)
     let target = try #require(words.first { $0.canonical == "Kubernetes" })
 
     let futureTimestamp = Date().addingTimeInterval(3600)
     var persisted = target
     persisted.lastUsed = futureTimestamp
-    try mgr.update(word: persisted, in: &words)
+    try await mgr.update(word: persisted, in: &words)
 
     // This flush's captured timestamp is `Date()` at call time — strictly
     // OLDER than the already-persisted future value above.
     mgr.recordReplacements([target.id])
-    mgr.flushPendingIncrementsForTesting()
+    await mgr.flushPendingIncrementsForTesting()
 
     let reloaded = try #require(CustomWordsManager(fileURL: url).load())
     let flushed = try #require(reloaded.first { $0.id == target.id })
@@ -476,14 +476,14 @@ struct CustomWordsManagerLockingTests {
   /// A current-format file must never touch the lock at all (#1690) — the
   /// fast path in `loadFileReadOnly()` decodes and returns directly.
   @Test
-  func currentFormatFastPathIgnoresAHeldLock() throws {
+  func currentFormatFastPathIgnoresAHeldLock() async throws {
     let dir = Self.tempDir()
     defer { Self.cleanup(dir) }
     let url = dir.appendingPathComponent("custom-words.json")
     let mgr = CustomWordsManager(fileURL: url)
 
     var words = try #require(mgr.load())
-    try mgr.add(word: CustomWord(canonical: "Kubernetes"), to: &words)
+    try await mgr.add(word: CustomWord(canonical: "Kubernetes"), to: &words)
 
     let lockURL = url.appendingPathExtension("lock")
     let openedFD = lockURL.path.withCString { open($0, O_RDWR | O_CREAT, 0o600) }
