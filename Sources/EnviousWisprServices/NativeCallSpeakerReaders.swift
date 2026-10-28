@@ -6,8 +6,11 @@ import Foundation
 /// is an `AXTabGroup` labelled `<Name>, Computer audio muted, Video off`, and the person talking
 /// gets `, active speaker` added. The large Speaker-view tile alone is not evidence of talking.
 package enum ZoomAppSpeakerReader {
-  /// The audio-state part of a tile label. A label without one is not a participant tile.
-  static let audioStatePrefixes = ["Computer audio", "Phone audio", "No audio"]
+  /// The audio-state part of a tile label, exactly as observed. A label without one is not a
+  /// participant tile; an unobserved wording is not read rather than matched by prefix.
+  static let audioStates: Set<String> = [
+    "Computer audio muted", "Computer audio unmuted", "No audio connected",
+  ]
   static let activeSpeakerFlag = "active speaker"
   static let videoStates: Set<String> = ["Video off", "Video on"]
 
@@ -45,8 +48,7 @@ package enum ZoomAppSpeakerReader {
     let isActiveSpeaker = parts.last == activeSpeakerFlag
     if isActiveSpeaker { parts.removeLast() }
     if let last = parts.last, videoStates.contains(last) { parts.removeLast() }
-    guard let state = parts.popLast(), audioStatePrefixes.contains(where: { state.hasPrefix($0) })
-    else { return nil }
+    guard let state = parts.popLast(), audioStates.contains(state) else { return nil }
     let name = parts.joined(separator: ", ")
     return name.isEmpty ? nil : (name, isActiveSpeaker)
   }
@@ -80,7 +82,9 @@ package enum TeamsAppSpeakerReader {
   /// The mute state that ends a roster row.
   static let muteStates: Set<String> = ["Muted", "Unmuted"]
   /// What follows the name on the user's own tile ("Muted, Has context menu").
-  static let tileStates = ["Muted", "Unmuted", "Has context menu", "Context menu is available"]
+  static let tileStates: Set<String> = [
+    "Muted", "Unmuted", "Has context menu", "Context menu is available",
+  ]
 
   package static func read(windows: [CallAXWindow]) -> CallSpeakerReading {
     var speaking: [String] = []
@@ -105,9 +109,12 @@ package enum TeamsAppSpeakerReader {
     // matches "Myself video, Lee, Dana, ...". More than one match is ambiguous: nobody is marked.
     let candidates = uniqueInOrder(rosterNames).filter { name in
       selfTiles.contains { tile in
-        guard tile == name || tile.hasPrefix(name + ", ") else { return false }
-        let rest = tile.dropFirst(name.count).drop { $0 == "," || $0 == " " }
-        return rest.isEmpty || tileStates.contains(where: { rest.hasPrefix($0) })
+        if tile == name { return true }
+        guard tile.hasPrefix(name + ", ") else { return false }
+        // Every remaining part must be a known tile state, so "Lee, Muted engineer, Muted"
+        // never makes "Lee" the user.
+        return tile.dropFirst(name.count + 2).components(separatedBy: ", ")
+          .allSatisfy(tileStates.contains)
       }
     }
     let selfNames = candidates.count == 1 ? candidates : []

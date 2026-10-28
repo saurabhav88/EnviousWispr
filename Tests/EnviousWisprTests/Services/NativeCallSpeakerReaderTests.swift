@@ -217,4 +217,35 @@ struct NativeCallSpeakerReaderTests {
     ])
     #expect(reading.roster.names == ["Dana, Presenter, Lee", "Priya Shah"])
   }
+
+  /// SYNTHETIC: only "Lee" is visible in the roster and the user's name continues with a word
+  /// that starts like a state.
+  @Test("Teams: a self tile is matched only when everything after the name is a tile state")
+  func teamsSelfPartialRoster() {
+    let reading = TeamsAppSpeakerReader.read(windows: [
+      window(
+        "Meeting",
+        [
+          CallAXNode(role: "AXRow", description: "Lee, Attendee, Muted"),
+          CallAXNode(
+            role: "AXMenuItem", description: "Myself video, Lee, Muted engineer, Muted, Has context menu"),
+        ])
+    ])
+    #expect(reading.roster.selfNames.isEmpty)
+  }
+
+  /// SYNTHETIC: an audio part that only starts like Zoom's audio state is not one.
+  @Test("Zoom: only Zoom's exact audio states end a name")
+  func zoomExactAudioState() {
+    let reading = ZoomAppSpeakerReader.read(windows: [
+      window(
+        "Zoom Meeting",
+        [
+          zoomTile("Dana, Computer audio engineer, Video off, active speaker"),
+          zoomTile("Priya Shah, No audio connected"),
+        ])
+    ])
+    #expect(reading.speaking.isEmpty)
+    #expect(reading.roster.names == ["Priya Shah"])
+  }
 }
