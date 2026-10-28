@@ -469,9 +469,7 @@ public final class CustomWordsManager {
       pendingFlushTask?.cancel()
       let flush = Task { @MainActor [weak self] in _ = await self?.flushPendingIncrements() }
       pendingFlushTask = flush
-      #if DEBUG
-        thresholdFlushForTesting = flush
-      #endif
+      thresholdFlushForTesting = flush
     } else {
       schedulePendingFlush()
     }
@@ -485,15 +483,14 @@ public final class CustomWordsManager {
     await flushPendingIncrements()
   }
 
-  #if DEBUG
-    /// The last flush started by crossing the count threshold, so a test can wait for it.
-    private var thresholdFlushForTesting: Task<Void, Never>?
+  /// The last flush started by crossing the count threshold, so a test can wait for it.
+  /// Not DEBUG-only, so the Release test lane compiles the tests that use it.
+  private var thresholdFlushForTesting: Task<Void, Never>?
 
-    // periphery:ignore - test seam
-    package func awaitThresholdFlushForTesting() async {
-      await thresholdFlushForTesting?.value
-    }
-  #endif
+  // periphery:ignore - test seam
+  package func awaitThresholdFlushForTesting() async {
+    await thresholdFlushForTesting?.value
+  }
 
   private struct PendingIncrement: Sendable {
     var count: Int
@@ -625,11 +622,10 @@ public final class CustomWordsManager {
   private let worker = DispatchQueue(
     label: "com.enviouswispr.dictionary.files", qos: .userInitiated)
 
-  #if DEBUG
-    /// Runs on the file worker just before each transaction, so a test can hold the
-    /// worker with a real signal and observe what the main actor does meanwhile.
-    var fileWorkWillStartForTesting: (@Sendable () -> Void)?
-  #endif
+  /// Runs on the file worker just before each transaction, so a test can hold the
+  /// worker with a real signal and observe what the main actor does meanwhile. Nil in
+  /// the app. Not DEBUG-only, so the Release test lane compiles the tests that use it.
+  var fileWorkWillStartForTesting: (@Sendable () -> Void)?
 
   /// Runs `work` on the file worker and resumes with its result. The main actor never
   /// blocks on it, and a cancelled caller does not withdraw work already sent: it runs
@@ -638,14 +634,10 @@ public final class CustomWordsManager {
     _ work: @escaping @Sendable (CustomWordsFileStore) throws -> T
   ) async throws -> T {
     let store = store
-    #if DEBUG
-      let willStart = fileWorkWillStartForTesting
-    #endif
+    let willStart = fileWorkWillStartForTesting
     return try await withCheckedThrowingContinuation { continuation in
       worker.async {
-        #if DEBUG
-          willStart?()
-        #endif
+        willStart?()
         continuation.resume(with: Result { try work(store) })
       }
     }
@@ -656,14 +648,10 @@ public final class CustomWordsManager {
     _ work: @escaping @Sendable (CustomWordsFileStore) -> T
   ) async -> T {
     let store = store
-    #if DEBUG
-      let willStart = fileWorkWillStartForTesting
-    #endif
+    let willStart = fileWorkWillStartForTesting
     return await withCheckedContinuation { continuation in
       worker.async {
-        #if DEBUG
-          willStart?()
-        #endif
+        willStart?()
         continuation.resume(returning: work(store))
       }
     }

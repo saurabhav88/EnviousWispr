@@ -51,11 +51,10 @@ final class LearnedCorrectionOverlayPresenter: LearnedCorrectionPresenting {
   /// The last Undo the pill started, kept so a test can wait for it.
   private var undoInFlight: Task<Void, Never>?
 
-  #if DEBUG
-    func awaitUndoForTesting() async {
-      await undoInFlight?.value
-    }
-  #endif
+  // Not DEBUG-only, so the Release test lane compiles the tests that use it.
+  func awaitUndoForTesting() async {
+    await undoInFlight?.value
+  }
 
   init(host: any LearnedCorrectionOverlayHosting, coordinator: LearnedCorrectionCoordinator) {
     self.host = host
