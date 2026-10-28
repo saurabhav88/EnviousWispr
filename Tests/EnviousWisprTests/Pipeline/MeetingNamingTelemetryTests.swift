@@ -27,7 +27,7 @@ struct MeetingNamingTelemetryTests {
     let expected: [(MeetingNamingResult.Outcome, SpeakerNamingSummary.Outcome?)] = [
       (.noLog, nil), (.noPermission, .noPermission), (.unreadable, nil),
       (.unsupported, .unsupported), (.rulesUnusable, nil), (.statusUnknown, nil),
-      (.lagUnmeasured, nil), (.rosterUncertain, nil), (.noEligibleSpeakers, nil),
+      (.lagUnmeasured, nil), (.noEligibleSpeakers, nil),
       (.noSignal, .noSignal), (.ambiguous, .ambiguous),
     ]
     for (outcome, mapped) in expected {

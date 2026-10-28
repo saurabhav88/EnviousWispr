@@ -2,7 +2,9 @@ import EnviousWisprCore
 import Foundation
 
 /// The validated talker rules document (#4013 D3, chunk 5): the selector rule for each rules-driven
-/// surface and the measured talking-indicator lag for each surface. The bundled
+/// surface and the configured talking-indicator correction for each surface (#4013 r5 item 3: a
+/// founder-selected starting value of +500 ms, informed by Granola's static Mac defaults, not our
+/// measurement). The bundled
 /// `talker-rules.json` and the copy served at `https://enviouswispr.com/meet/talker-rules.json` are
 /// the same file and both decode only through `decode(_:)`.
 ///
@@ -22,12 +24,13 @@ import Foundation
 /// `schema` is compatibility: a build reads only `supportedSchema`, and a hosted file must keep
 /// that value while builds that read it are in use. `revision` orders documents of one schema:
 /// the store never replaces rules with a lower revision. A surface with no selector entry is
-/// unconfigured (reads nothing); a surface with no lag entry is unmeasured (never zero).
+/// unconfigured (reads nothing); a surface with no lag entry has no configured correction (never
+/// zero).
 package struct TalkerRules: Sendable, Equatable {
   package static let supportedSchema = 1
   /// The approved size cap (#4013 R7). Checked before parsing, and by the download while it reads.
   package static let maximumBytes = FrozenTalkerRules.maximumPayloadBytes
-  /// Measured lags are a few hundred milliseconds; anything beyond five seconds is a typo.
+  /// Corrections are a few hundred milliseconds; anything beyond five seconds is a typo.
   package static let lagBoundMs = 5_000
   /// Revisions are small counters; the bound keeps both validators on exactly representable
   /// whole numbers (the website check reads JSON numbers as doubles).
@@ -49,9 +52,23 @@ package struct TalkerRules: Sendable, Equatable {
     selectors[surface] ?? .unconfigured(surface)
   }
 
-  /// The measured lag for `surface`, or `nil` when it was never measured.
+  /// The configured correction for `surface`, or `nil` when this document has none.
   package func lag(for surface: CallSpeakerSurface) -> CallSpeakerLag? {
     lags[surface]
+  }
+
+  /// The correction a recording freezes at its start (#4013 r5 item 3): the selected rules'
+  /// value for the surface when that document has one (zero and negative values included),
+  /// otherwise the bundled rules' value, otherwise `nil`. An unknown surface stays unknown. Pure:
+  /// it never fetches or rereads rules. The observer resolves it once at recording start and
+  /// stores the result in `CallSpeakerLog.lag` beside the frozen selected document, whose payload
+  /// stays exactly as downloaded; a bundled fallback is never written into that document.
+  /// Transcribe again uses the saved `log.lag`, never today's rules.
+  package static func recordingStartLag(
+    for surface: CallSpeakerSurface?, selected: TalkerRules, bundled: TalkerRules
+  ) -> CallSpeakerLag? {
+    guard let surface else { return nil }
+    return selected.lag(for: surface) ?? bundled.lag(for: surface)
   }
 
   package enum DecodeError: Error, Equatable {

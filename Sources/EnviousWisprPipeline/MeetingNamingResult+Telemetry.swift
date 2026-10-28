@@ -11,7 +11,7 @@ extension MeetingNamingResult {
   /// - `statusUnknown`: a log with no status, or one this build does not know, is not proof
   ///   that the evidence is missing, incompatible or corrupt.
   /// - `rulesUnusable`: frozen rules that no longer decode, or rules that forbid a talker.
-  /// - `lagUnmeasured`, `rosterUncertain`: a talker surface the namer may not use yet.
+  /// - `lagUnmeasured`: no saved indicator correction (an older log, or none configured).
   /// - `noEligibleSpeakers`: no one else spoke, or eligibility was not supplied.
   package func pass(log: CallSpeakerLog?) -> SpeakerNamingPass {
     let surface = SpeakerNamingSummary.Surface(log?.surface)
@@ -25,8 +25,7 @@ extension MeetingNamingResult {
     case .unsupported: reason = .unsupported
     case .noSignal: reason = .noSignal
     case .ambiguous: reason = .ambiguous
-    case .noLog, .unreadable, .rulesUnusable, .statusUnknown, .lagUnmeasured, .rosterUncertain,
-      .noEligibleSpeakers:
+    case .noLog, .unreadable, .rulesUnusable, .statusUnknown, .lagUnmeasured, .noEligibleSpeakers:
       reason = nil
     }
     return .abstained(surface: surface, outcome: reason)

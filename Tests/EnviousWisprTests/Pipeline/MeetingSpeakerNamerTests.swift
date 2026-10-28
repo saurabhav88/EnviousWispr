@@ -353,9 +353,9 @@ struct MeetingSpeakerNamerTests {
       propose(turns, eligible, Self.log(samples, status: .unsupported)).outcome == .unsupported)
     #expect(propose(turns, eligible, Self.log(samples, status: nil)).outcome == .statusUnknown)
     #expect(propose(turns, eligible, Self.log(samples, lag: nil)).outcome == .lagUnmeasured)
-    #expect(
-      propose(turns, eligible, Self.log(samples, fromList: false)).outcome == .rosterUncertain)
-    #expect(propose(turns, eligible, Self.log(samples, fromList: nil)).outcome == .rosterUncertain)
+    // A tile roster (provenance false or unknown) still names people (#4013 r5 item 1).
+    #expect(propose(turns, eligible, Self.log(samples, fromList: false)).outcome == .named)
+    #expect(propose(turns, eligible, Self.log(samples, fromList: nil)).outcome == .named)
     #expect(propose(turns, nil, Self.log(samples)).outcome == .noEligibleSpeakers)
     for outcome in [
       propose(turns, eligible, nil), propose(turns, eligible, Self.log(samples, lag: nil)),

@@ -80,12 +80,9 @@ package struct MeetingNamingResult: Sendable, Equatable {
     case rulesUnusable
     /// The saved evidence does not say how observation went (an older or newer log).
     case statusUnknown
-    /// The talking indicator's lag on this call app was never measured; votes cannot be
-    /// placed on the audio.
+    /// The saved log has no indicator correction (an older log, or a surface with none
+    /// configured when it recorded); votes cannot be placed on the audio.
     case lagUnmeasured
-    /// The roster did not come from the app's participant list, so a name's uniqueness on the
-    /// call cannot be established.
-    case rosterUncertain
     /// No genuine call-sound speaker has eligible speech, or eligibility was not supplied.
     case noEligibleSpeakers
     /// No usable talking evidence fell inside eligible speech.
@@ -128,8 +125,10 @@ package enum MeetingSpeakerNamer {
     case nil: return none(.statusUnknown)
     }
     if let refusal = evidenceRefusal(log) { return none(refusal) }
+    // `rosterFromParticipantList` is provenance only (#4013 r5 item 1): a tile roster names
+    // people too. Only observations admitted by `CallSpeakerAdmission` were saved, and a name
+    // two distinct participants share is excluded below.
     guard let lag = log.lag else { return none(.lagUnmeasured) }
-    guard log.rosterFromParticipantList == true else { return none(.rosterUncertain) }
     guard let eligibility else { return none(.noEligibleSpeakers) }
 
     let speech = eligibleSpeech(composition: composition, eligibility: eligibility)

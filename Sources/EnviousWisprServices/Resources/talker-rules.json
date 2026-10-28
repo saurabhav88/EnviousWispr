@@ -1,7 +1,12 @@
 {
   "schema": 1,
-  "revision": 2,
-  "lagMs": {},
+  "revision": 3,
+  "lagMs": {
+    "zoom_app": 500,
+    "teams_app": 500,
+    "zoom_web": 500,
+    "meet": 500
+  },
   "selectors": [
     {
       "surface": "meet",

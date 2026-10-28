@@ -42,10 +42,11 @@ public enum CallSpeakerObservationStatus: String, Sendable, Equatable, CaseItera
 }
 
 /// Signed delay between a call app's talking indicator and the far side's voice on the call-sound
-/// track: indicator time minus voice onset (#4013 r1 R1). Measured per surface on the real-call
-/// rig; never invented.
+/// track: indicator time minus voice onset (#4013 r1 R1). The value a recording saved: the
+/// correction configured for its surface when it started (#4013 r5 item 3), never filled in later
+/// for a log saved without one.
 public struct CallSpeakerLag: Sendable, Equatable, Codable {
-  /// A saved lag beyond a minute is not a measurement; the bound also keeps `audioAlignedMs`
+  /// A saved lag beyond a minute is not a real correction; the bound also keeps `audioAlignedMs`
   /// free of overflow for every admitted observation.
   public static let maximumMagnitudeMs = 60_000
 
