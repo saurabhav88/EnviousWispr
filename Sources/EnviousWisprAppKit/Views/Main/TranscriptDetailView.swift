@@ -31,7 +31,7 @@ struct TranscriptDetailView: View {
   @State private var timesOn = true
   /// #4013 r3 F3: a meeting row's saved participant list, for the rename suggestions; never
   /// read for a dictation or an import.
-  @State private var roster: CallSpeakerRoster?
+  @State private var rosterRead: KeyedRosterRead<RosterKey>?
   /// Surfaced via `.alert` rather than swallowed by `try?` (found by chunk review) — a failed
   /// disk write must not look identical to a successful one.
   @State private var saveError: String?
@@ -99,7 +99,8 @@ struct TranscriptDetailView: View {
                   speakerNames: transcript.speakerNames ?? [:], language: transcript.language,
                   isMeeting: transcript.isMeeting, mode: documentView, timesOn: timesOn,
                   documentFinished: documentFinished,
-                  renameSuggestions: SpeakerRenameSuggestions(row: transcript, roster: roster))
+                  renameSuggestions: SpeakerRenameSuggestions(
+                    row: transcript, roster: rosterRead?.roster(for: rosterKey)))
               )
               .equatable()
             }
@@ -122,13 +123,11 @@ struct TranscriptDetailView: View {
       timesOn = true
     }
     .task(id: rosterKey) {
-      // Cleared first: another row, a deletion or Delete audio never keeps the old list, and a
-      // read cancelled by a newer key never lands.
-      roster = nil
-      guard let meetingID = rosterKey?.meetingID else { return }
-      let read = await meetings.callSpeakerRoster(meetingID: meetingID)
+      // Stored with the request it answers; shown only while that is still the request.
+      guard let key = rosterKey else { return }
+      let read = await meetings.callSpeakerRoster(meetingID: key.meetingID)
       guard !Task.isCancelled else { return }
-      roster = read
+      rosterRead = KeyedRosterRead(key: key, roster: read)
     }
     .alert(
       "Couldn't save the file",

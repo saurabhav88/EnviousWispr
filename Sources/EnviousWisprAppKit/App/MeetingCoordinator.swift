@@ -607,16 +607,24 @@ final class MeetingCoordinator {
   }
 
   /// #4013 r3 F3: the participant list saved with the meeting, for the rename suggestions.
-  /// Read on the meeting file queue. `nil` when the meeting is unknown, deleting or without
-  /// its audio (the list goes with the audio), or the file is missing or unusable.
+  /// Read on the meeting file queue. `nil` when the meeting is unknown, being deleted or losing
+  /// its audio (the list goes with the audio), at the start of the read OR when it returns, or
+  /// when the file is missing or unusable.
   func callSpeakerRoster(meetingID: UUID) async -> CallSpeakerRoster? {
-    guard let record = records[meetingID], record.audioKept, !record.deletionRequested else {
-      return nil
-    }
-    guard case .usable(let log)? = try? await writer.loadCallSpeakers(meeting: meetingID) else {
-      return nil
-    }
+    guard rosterReadable(meetingID) else { return nil }
+    guard case .usable(let log)? = try? await writer.loadCallSpeakers(meeting: meetingID),
+      rosterReadable(meetingID)
+    else { return nil }
     return log.roster
+  }
+
+  /// The latest intended state (`live`) and the open claims, not only what is on disk: a
+  /// deletion or Delete audio counts from the moment it starts.
+  private func rosterReadable(_ meetingID: UUID) -> Bool {
+    guard let record = live[meetingID], record.audioKept, !record.deletionRequested else {
+      return false
+    }
+    return !deleting.contains(meetingID) && !removingAudio.contains(meetingID)
   }
 
   func dismissNotice() { notice = nil }

@@ -317,9 +317,11 @@ private struct RenamePopoverView: View {
   @FocusState private var focus: Focus?
   private static let maxLength = 60
 
+  /// A suggestion is focused by its name, never its position: the list can change while the
+  /// popover is open, and focus must not land on another name in the same place.
   private enum Focus: Hashable {
     case field
-    case suggestion(Int)
+    case suggestion(String)
   }
 
   var body: some View {
@@ -335,8 +337,8 @@ private struct RenamePopoverView: View {
           onCancel()
         }
         .onKeyPress(.downArrow) {
-          guard !suggestions.isEmpty else { return .ignored }
-          focus = .suggestion(0)
+          guard let first = suggestions.first else { return .ignored }
+          focus = .suggestion(first)
           return .handled
         }
         .onChange(of: name) { _, newValue in
@@ -352,6 +354,10 @@ private struct RenamePopoverView: View {
     .onAppear {
       hasCommitted = false
       didCancelExplicitly = false
+    }
+    .onChange(of: suggestions) { _, newValue in
+      // The focused name left the list: focus goes back to the field, not to a neighbour.
+      if case .suggestion(let focused) = focus, !newValue.contains(focused) { focus = .field }
     }
     .onChange(of: failure) { _, newValue in
       guard newValue != nil else { return }
@@ -372,7 +378,8 @@ private struct RenamePopoverView: View {
         .accessibilityAddTraits(.isHeader)
       ScrollView {
         VStack(alignment: .leading, spacing: 0) {
-          ForEach(Array(suggestions.enumerated()), id: \.offset) { index, suggestion in
+          // Names are unique in the list (`SpeakerRenameSuggestions.names(for:)`).
+          ForEach(suggestions, id: \.self) { suggestion in
             Button {
               choose(suggestion)
             } label: {
@@ -385,17 +392,23 @@ private struct RenamePopoverView: View {
             .buttonStyle(.borderless)
             .padding(.vertical, 3)
             .focusable()
-            .focused($focus, equals: .suggestion(index))
+            .focused($focus, equals: .suggestion(suggestion))
             .onKeyPress(.return) {
               choose(suggestion)
               return .handled
             }
             .onKeyPress(.downArrow) {
-              if index + 1 < suggestions.count { focus = .suggestion(index + 1) }
+              if let index = suggestions.firstIndex(of: suggestion), index + 1 < suggestions.count {
+                focus = .suggestion(suggestions[index + 1])
+              }
               return .handled
             }
             .onKeyPress(.upArrow) {
-              focus = index == 0 ? .field : .suggestion(index - 1)
+              if let index = suggestions.firstIndex(of: suggestion), index > 0 {
+                focus = .suggestion(suggestions[index - 1])
+              } else {
+                focus = .field
+              }
               return .handled
             }
             .onExitCommand {
@@ -411,7 +424,9 @@ private struct RenamePopoverView: View {
     }
   }
 
-  /// A chosen suggestion is the name, committed once; the outside-click commit is then off.
+  /// A chosen suggestion is the name. `hasCommitted` is the one gate for every commit (choosing,
+  /// Return in the field, the outside click): while one write is pending no other is sent, and
+  /// a failure (`onChange(of: failure)`) opens it again for a retry.
   private func choose(_ suggestion: String) {
     guard !hasCommitted else { return }
     hasCommitted = true
@@ -419,6 +434,7 @@ private struct RenamePopoverView: View {
   }
 
   private func commit() {
+    guard !hasCommitted else { return }
     hasCommitted = true
     let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else {

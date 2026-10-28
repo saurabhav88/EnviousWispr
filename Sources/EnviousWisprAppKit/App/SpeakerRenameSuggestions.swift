@@ -33,24 +33,23 @@ struct SpeakerRenameSuggestions: Equatable, Sendable {
   }
 
   /// What to offer when renaming `speakerId`: the user's own names first, then the roster
-  /// without self names, each spelled as stored and listed once; a name another speaker
+  /// without self names, each listed once in the first spelling seen; a name another speaker
   /// already shows is left out. The speaker's own current name is not "elsewhere".
+  ///
+  /// Names MATCH by Swift string equality (canonical equivalence: a composed and a decomposed
+  /// "é" are one name), so an equivalent spelling never slips past the self, assigned or
+  /// duplicate checks. Case and spaces still count. Redraw comparison (`==`) stays byte-exact.
   func names(for speakerId: String) -> [String] {
-    let selfSet = Set(selfNames.map(Self.bytes))
-    let elsewhere = Set(assigned.filter { $0.key != speakerId }.values.map(Self.bytes))
-    var seen = Set<[UInt8]>()
+    let selfSet = Set(selfNames)
+    let elsewhere = Set(assigned.filter { $0.key != speakerId }.values)
+    var seen = Set<String>()
     var result: [String] = []
-    for name in authored + roster.filter({ !selfSet.contains(Self.bytes($0)) }) {
-      let key = Self.bytes(name)
-      guard !name.isEmpty, !elsewhere.contains(key), seen.insert(key).inserted else { continue }
+    for name in authored + roster.filter({ !selfSet.contains($0) }) {
+      guard !name.isEmpty, !elsewhere.contains(name), seen.insert(name).inserted else { continue }
       result.append(name)
     }
     return result
   }
-
-  /// Strings compared as their UTF-8 bytes, as the rest of the meeting document is: two
-  /// spellings that Swift calls equal ("é" composed or not) are different names on screen.
-  private static func bytes(_ name: String) -> [UInt8] { Array(name.utf8) }
 
   static func == (a: Self, b: Self) -> Bool {
     sameBytes(a.roster, b.roster) && sameBytes(a.selfNames, b.selfNames)
@@ -59,5 +58,18 @@ struct SpeakerRenameSuggestions: Equatable, Sendable {
 
   private static func sameBytes(_ a: [String], _ b: [String]) -> Bool {
     a.count == b.count && zip(a, b).allSatisfy { MeetingDocumentHash.sameBytes($0, $1) }
+  }
+}
+
+/// A roster read and the request it answers (#4013 r3 F3). A presentation shows the roster only
+/// while its current request is this one, so a read that finishes after a switch to another
+/// meeting, or after Delete audio or a deletion changed the request, is never shown.
+struct KeyedRosterRead<Key: Hashable>: Equatable {
+  let key: Key
+  let roster: CallSpeakerRoster?
+
+  /// The roster when `current` is the request this read answered, else `nil`.
+  func roster(for current: Key?) -> CallSpeakerRoster? {
+    current == key ? roster : nil
   }
 }

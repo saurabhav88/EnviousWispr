@@ -51,7 +51,7 @@ struct MeetingHistoryDetailView: View {
   @State private var tab: Tab = .transcript
   /// #4013 r3 F3: this meeting's saved participant list, for the rename suggestions; read once
   /// per meeting and audio state (`RosterKey`).
-  @State private var roster: CallSpeakerRoster?
+  @State private var rosterRead: KeyedRosterRead<RosterKey>?
 
   var body: some View {
     if let record = meetings.record(id: meetingID) {
@@ -86,17 +86,12 @@ struct MeetingHistoryDetailView: View {
       .task(id: meetings.playbackSource(meetingID: meetingID)) {
         reconcilePlayer()
       }
-      .task(
-        id: RosterKey(
-          meetingID: meetingID, audioKept: record.audioKept,
-          deletionRequested: record.deletionRequested, state: record.state)
-      ) {
-        // Cleared first, so Delete audio or a deletion never leaves the old list offered; a
-        // read cancelled by a newer key never lands.
-        roster = nil
+      .task(id: rosterKey(record)) {
+        // Stored with the request it answers; shown only while that is still the request.
+        let key = rosterKey(record)
         let read = await meetings.callSpeakerRoster(meetingID: meetingID)
         guard !Task.isCancelled else { return }
-        roster = read
+        rosterRead = KeyedRosterRead(key: key, roster: read)
       }
       .onAppear {
         // A meeting that recorded nothing has only notes to show.
@@ -191,6 +186,12 @@ struct MeetingHistoryDetailView: View {
   private struct AudioSizeKey: Hashable {
     let audioKept: Bool
     let state: MeetingState
+  }
+
+  private func rosterKey(_ record: MeetingRecord) -> RosterKey {
+    RosterKey(
+      meetingID: meetingID, audioKept: record.audioKept,
+      deletionRequested: record.deletionRequested, state: record.state)
   }
 
   private struct RosterKey: Hashable {
@@ -529,7 +530,8 @@ struct MeetingHistoryDetailView: View {
           MeetingTurnsDocument(
             rowID: row.id, turns: turns, rawText: row.text,
             speakerNames: row.speakerNames ?? [:], player: player,
-            renameSuggestions: SpeakerRenameSuggestions(row: row, roster: record == nil ? nil : roster)
+            renameSuggestions: SpeakerRenameSuggestions(
+              row: row, roster: record.flatMap { rosterRead?.roster(for: rosterKey($0)) })
           )
           .equatable()
         case .everythingHidden:
