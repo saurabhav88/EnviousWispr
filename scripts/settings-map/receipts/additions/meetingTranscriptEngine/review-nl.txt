@@ -1,0 +1,27 @@
+{
+  "meetingTranscriptEngine": {
+    "language": "nl",
+    "title": "transcriptie-engine",
+    "words": [],
+    "phrases": [
+      "model kiezen voor het volledige vergadertranscript",
+      "engine voor transcriptie na de vergadering wijzigen"
+    ]
+  },
+  "meetingTranscriptEngine.parakeet": {
+    "language": "nl",
+    "title": "Parakeet",
+    "words": [],
+    "phrases": [
+      "Parakeet gebruiken om vergaderingen uit te schrijven"
+    ]
+  },
+  "meetingTranscriptEngine.whisper": {
+    "language": "nl",
+    "title": "Whisper Large v3 Turbo",
+    "words": [],
+    "phrases": [
+      "Whisper gebruiken om vergaderingen uit te schrijven"
+    ]
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "meetingTranscriptEngine": {
+    "language": "cs",
+    "title": "modul přepisu schůzek",
+    "words": [],
+    "phrases": [
+      "vybrat model pro úplný přepis schůzky",
+      "změnit modul pro přepis po skončení schůzky"
+    ]
+  },
+  "meetingTranscriptEngine.parakeet": {
+    "language": "cs",
+    "title": "Parakeet",
+    "words": [],
+    "phrases": [
+      "přepis schůzek pomocí modelu Parakeet"
+    ]
+  },
+  "meetingTranscriptEngine.whisper": {
+    "language": "cs",
+    "title": "Whisper Large v3 Turbo",
+    "words": [],
+    "phrases": [
+      "použít Whisper pro přepis schůzek"
+    ]
+  }
+}

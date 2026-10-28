@@ -1,0 +1,27 @@
+{
+  "meetingTranscriptEngine": {
+    "language": "sl",
+    "title": "pogon za celotni prepis sestanka",
+    "words": [],
+    "phrases": [
+      "izberi model za celoten prepis sestanka",
+      "zamenjaj pogon za prepis po sestanku"
+    ]
+  },
+  "meetingTranscriptEngine.parakeet": {
+    "language": "sl",
+    "title": "Parakeet",
+    "words": [],
+    "phrases": [
+      "uporabi Parakeet za prepis sestankov"
+    ]
+  },
+  "meetingTranscriptEngine.whisper": {
+    "language": "sl",
+    "title": "Whisper Large v3 Turbo",
+    "words": [],
+    "phrases": [
+      "uporabi Whisper za prepis sestankov"
+    ]
+  }
+}

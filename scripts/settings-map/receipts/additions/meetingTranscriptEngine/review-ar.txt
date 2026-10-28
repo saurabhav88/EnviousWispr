@@ -1,0 +1,29 @@
+{
+  "meetingTranscriptEngine": {
+    "language": "ar",
+    "title": "محرك تفريغ الاجتماعات",
+    "words": [
+      "محرك نص الاجتماع"
+    ],
+    "phrases": [
+      "اختيار محرك لكتابة نص الاجتماع كاملًا بعد انتهائه",
+      "تغيير محرك تفريغ الاجتماعات"
+    ]
+  },
+  "meetingTranscriptEngine.parakeet": {
+    "language": "ar",
+    "title": "Parakeet",
+    "words": [],
+    "phrases": [
+      "استخدام Parakeet لتفريغ الاجتماعات"
+    ]
+  },
+  "meetingTranscriptEngine.whisper": {
+    "language": "ar",
+    "title": "Whisper Large v3 Turbo",
+    "words": [],
+    "phrases": [
+      "استخدام Whisper لتفريغ الاجتماعات"
+    ]
+  }
+}

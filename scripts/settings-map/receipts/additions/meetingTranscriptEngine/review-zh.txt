@@ -1,0 +1,30 @@
+{
+  "meetingTranscriptEngine": {
+    "language": "zh",
+    "title": "会后转写引擎",
+    "words": [
+      "会议转写引擎",
+      "会议转写模型"
+    ],
+    "phrases": [
+      "选择转写整场会议的模型",
+      "更改会后生成完整文字稿的引擎"
+    ]
+  },
+  "meetingTranscriptEngine.parakeet": {
+    "language": "zh",
+    "title": "Parakeet",
+    "words": [],
+    "phrases": [
+      "用Parakeet把会议语音转成文字"
+    ]
+  },
+  "meetingTranscriptEngine.whisper": {
+    "language": "zh",
+    "title": "Whisper Large v3 Turbo",
+    "words": [],
+    "phrases": [
+      "用Whisper转写会议"
+    ]
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "meetingTranscriptEngine": {
+    "language": "hu",
+    "title": "átírási motor",
+    "words": [],
+    "phrases": [
+      "modell kiválasztása a megbeszélés teljes átiratához",
+      "megbeszélés utáni átírás motorjának módosítása"
+    ]
+  },
+  "meetingTranscriptEngine.parakeet": {
+    "language": "hu",
+    "title": "Parakeet",
+    "words": [],
+    "phrases": [
+      "megbeszélések leirata Parakeettel"
+    ]
+  },
+  "meetingTranscriptEngine.whisper": {
+    "language": "hu",
+    "title": "Whisper Large v3 Turbo",
+    "words": [],
+    "phrases": [
+      "Whisper használata megbeszélések átírásához"
+    ]
+  }
+}

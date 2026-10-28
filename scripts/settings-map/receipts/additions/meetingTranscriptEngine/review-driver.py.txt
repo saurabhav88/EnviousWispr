@@ -1,0 +1,135 @@
+#!/usr/bin/env python3
+"""#3973 C3: one fresh isolated Codex session per language reviews the drafted search blocks for
+the three new EnviousMeet places together (accuracy, naturalness, collisions with each other and
+with their existing siblings). Adapted from the #4105 meetingLiveWords driver.
+Usage: review-driver.py <worktree> <outdir> <id>=<draft.json> ..."""
+import concurrent.futures
+import json
+import os
+import pathlib
+import subprocess
+import sys
+import tempfile
+
+wt = pathlib.Path(sys.argv[1])
+out = pathlib.Path(sys.argv[2])
+out.mkdir(parents=True, exist_ok=True)
+drafts = {}
+for arg in sys.argv[3:]:
+    pid, path = arg.split("=", 1)
+    drafts[pid] = {b["language"]: b for b in json.load(open(path, encoding="utf-8"))["blocks"]}
+
+PLACES = {
+    "meetingTranscriptEngine": {
+        "title_en": "Transcript engine",
+        "title_de": "Transkript-Engine",
+        "description_en": "Chooses the engine that writes the full transcript after a meeting.",
+        "truth": (
+            "A row on the Models tab of the EnviousMeet (meeting recorder) page. A menu with two "
+            "speech engines, Parakeet and Whisper Large v3 Turbo, that write the full meeting "
+            "transcript after a meeting ends. Whisper can be chosen only once its model (886 MB, "
+            "the same one dictation uses) is downloaded; the row has Download, Resume and Cancel "
+            "for it, never during a meeting. It warns when meetings and dictation use different "
+            "engines. A change applies to new meetings; Transcribe again on a meeting's page can "
+            "use either ready engine. It does NOT change dictation's engine, does NOT change the "
+            "live words shown while a meeting records, and does NOT change the transcript "
+            "language."),
+    },
+    "meetingTranscriptEngine.parakeet": {
+        "title_en": "Parakeet",
+        "title_de": "Parakeet",
+        "description_en": "(none) A choice in the Transcript engine menu.",
+        "truth": (
+            "The Parakeet choice in the EnviousMeet Transcript engine menu: meeting transcripts "
+            "written by the Parakeet speech engine after each meeting. It is not dictation's "
+            "engine choice and not the live words engine."),
+    },
+    "meetingTranscriptEngine.whisper": {
+        "title_en": "Whisper Large v3 Turbo",
+        "title_de": "Whisper Large v3 Turbo",
+        "description_en": "(none) A choice in the Transcript engine menu.",
+        "truth": (
+            "The Whisper Large v3 Turbo choice in the EnviousMeet Transcript engine menu: meeting "
+            "transcripts written by Whisper after each meeting, in many more languages; needs its "
+            "886 MB model downloaded. It is not dictation's engine choice and not the live words "
+            "engine."),
+    },
+}
+SIBLINGS = ["meetingLiveWords", "meetingLiveWords.apple", "meetingLiveWords.universal",
+            "meetingTranscriptLanguage", "transcriptionEngine", "whisperModel.setUp",
+            "previewEngine"]
+
+vocab = json.load(
+    open(wt / "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json", encoding="utf-8"))
+by_id = {e["id"]: {b["language"]: b for b in e["blocks"]} for e in vocab["entries"]}
+missing = [s for s in SIBLINGS if s not in by_id]
+assert not missing, f"unknown sibling ids: {missing}"
+
+BRIEF = """You are reviewing draft search vocabulary blocks for THREE new places in the Settings search box of EnviousWispr, a macOS dictation app (press a key and speak, it types your words into any app). It also has EnviousMeet, a meeting recorder on its own page. The language you review is "{lang}".
+
+Use ONLY this brief and the data below. Do not open, search or read any file, folder, repository or website. Do not run commands.
+
+The places (English titles and descriptions are the source of truth):
+{places}
+
+For each place's draft block in "{lang}":
+1. Accuracy: remove or rewrite anything the place does not do.
+2. Collisions: a block must not fit another of the three places, or an existing sibling place, equally well. The two engine choices must clearly name their engine and that they are for meeting transcripts. The siblings' current blocks in this language are listed below.
+3. Naturalness: wording a native speaker of "{lang}" would really type or see in an app's settings. For a title: how an app in that language would label this place. Keep product names (EnviousMeet, EnviousWispr, Apple, Universal, macOS, Mac) unchanged. Lowercase except nouns the language capitalises. "words" 0 to 6 short terms; "phrases" 1 to 3 everyday searches, at least one. For en and de there is no title (the interface supplies it); for de use du-form.
+
+Draft blocks (place id -> block):
+{drafts}
+
+Sibling blocks in "{lang}" (id -> block):
+{siblings}
+
+Output: one JSON object only, no commentary, no code fence, mapping each of the three place ids to its corrected block in exactly the draft's shape: {{"language": "{lang}", "title": "...", "words": [...], "phrases": [...]}} (omit "title" for en and de). Return a block unchanged if it is already right. After the JSON add nothing.
+"""
+
+
+def describe() -> str:
+    lines = []
+    for pid, p in PLACES.items():
+        lines.append(
+            f"- {pid}: English title {p['title_en']}; German title {p['title_de']}; English "
+            f"description: {p['description_en']}; what it really is: {p['truth']}")
+    return "\n".join(lines)
+
+
+def run(lang: str) -> tuple[str, int]:
+    prompt = BRIEF.format(
+        lang=lang, places=describe(),
+        drafts=json.dumps({pid: d[lang] for pid, d in drafts.items()}, ensure_ascii=False, indent=1),
+        siblings=json.dumps(
+            {i: by_id[i][lang] for i in SIBLINGS if lang in by_id[i]}, ensure_ascii=False, indent=1),
+    )
+    iso = pathlib.Path(tempfile.mkdtemp(prefix="ew-vocab-review."))
+    (iso / "work").mkdir()
+    (iso / "codex-home").mkdir()
+    os.symlink(os.path.expanduser("~/.codex/auth.json"), iso / "codex-home" / "auth.json")
+    answer = iso / "out.txt"
+    env = dict(os.environ, CODEX_HOME=str(iso / "codex-home"))
+    proc = subprocess.run(
+        [os.path.expanduser("~/.claude/bin/codex-run"), str(answer), "-c", "tools.web_search=false",
+         "exec", "--sandbox", "read-only", "--skip-git-repo-check", "--ignore-rules", "--ephemeral",
+         "-C", str(iso / "work")],
+        input=prompt, text=True, env=env, cwd=str(iso / "work"), capture_output=True)
+    last = pathlib.Path(str(answer) + ".last")
+    if proc.returncode == 0 and last.exists():
+        (out / f"review-{lang}.txt").write_text(last.read_text(encoding="utf-8"), encoding="utf-8")
+    else:
+        (out / f"review-{lang}.FAILED").write_text(
+            f"exit {proc.returncode}\n{proc.stderr[-2000:]}", encoding="utf-8")
+    return lang, proc.returncode
+
+
+langs = sorted(next(iter(drafts.values())).keys())
+assert all(sorted(d.keys()) == langs for d in drafts.values()), "drafts cover different languages"
+# A rerun of languages whose session stalled: EW_LANGS="de fr ...", fewer at a time.
+if os.environ.get("EW_LANGS"):
+    langs = [l for l in langs if l in os.environ["EW_LANGS"].split()]
+with concurrent.futures.ThreadPoolExecutor(
+        max_workers=int(os.environ.get("EW_WORKERS", "6"))) as pool:
+    for lang, rc in pool.map(run, langs):
+        print(f"{lang}: exit {rc}", flush=True)
+print("DONE", flush=True)

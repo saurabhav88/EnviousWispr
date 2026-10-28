@@ -1,0 +1,259 @@
+{
+ "id": "meetingTranscriptEngine.whisper",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "Whisper Large v3 Turbo",
+   "words": [],
+   "phrases": [
+    "استخدام Whisper لتفريغ الاجتماعات"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "Whisper Large v3 Turbo",
+   "words": [],
+   "phrases": [
+    "използвай Whisper за транскрипция на срещи"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "Whisper Large v3 Turbo",
+   "words": [],
+   "phrases": [
+    "použít Whisper pro přepis schůzek"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "Whisper Large v3 Turbo",
+   "words": [],
+   "phrases": [
+    "brug Whisper til at transskribere møder"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [],
+   "phrases": [
+    "Whisper für die Transkription deiner Meetings verwenden"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "Whisper Large v3 Turbo",
+   "words": [],
+   "phrases": [
+    "χρήση του Whisper για απομαγνητοφώνηση συναντήσεων"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [],
+   "phrases": [
+    "use Whisper for meeting transcripts"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "Whisper Large v3 Turbo",
+   "words": [],
+   "phrases": [
+    "usar Whisper para transcribir reuniones"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "Whisper Large v3 Turbo",
+   "words": [],
+   "phrases": [
+    "kasuta koosolekute transkribeerimiseks Whisperit"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "Whisper Large v3 Turbo",
+   "words": [],
+   "phrases": [
+    "käytä Whisperiä kokousten litterointiin"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "Whisper Large v3 Turbo",
+   "words": [],
+   "phrases": [
+    "utiliser Whisper pour transcrire les réunions"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "Whisper Large v3 Turbo",
+   "words": [],
+   "phrases": [
+    "मीटिंग को टेक्स्ट में बदलने के लिए Whisper चुनें"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "Whisper Large v3 Turbo",
+   "words": [],
+   "phrases": [
+    "koristi Whisper za transkripciju sastanaka"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "Whisper Large v3 Turbo",
+   "words": [],
+   "phrases": [
+    "Whisper használata megbeszélések átírásához"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "Whisper Large v3 Turbo",
+   "words": [],
+   "phrases": [
+    "usare Whisper per trascrivere le riunioni"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "Whisper Large v3 Turbo",
+   "words": [],
+   "phrases": [
+    "会議の文字起こしにWhisperを使う"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "Whisper Large v3 Turbo",
+   "words": [],
+   "phrases": [
+    "회의 전사에 Whisper 사용"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "Whisper Large v3 Turbo",
+   "words": [],
+   "phrases": [
+    "naudoti Whisper susitikimams transkribuoti"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "Whisper Large v3 Turbo",
+   "words": [],
+   "phrases": [
+    "izmantot Whisper sapulču transkripcijai"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "Whisper Large v3 Turbo",
+   "words": [],
+   "phrases": [
+    "uża Whisper biex tittraskrivi l-laqgħat"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "Whisper Large v3 Turbo",
+   "words": [],
+   "phrases": [
+    "Whisper gebruiken om vergaderingen uit te schrijven"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "Whisper Large v3 Turbo",
+   "words": [],
+   "phrases": [
+    "użyj Whisper do transkrypcji spotkań"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "Whisper Large v3 Turbo",
+   "words": [],
+   "phrases": [
+    "usar Whisper para transcrever reuniões"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "Whisper Large v3 Turbo",
+   "words": [],
+   "phrases": [
+    "folosește Whisper pentru transcrierea ședințelor"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "Whisper Large v3 Turbo",
+   "words": [],
+   "phrases": [
+    "использовать Whisper для расшифровки встреч"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "Whisper Large v3 Turbo",
+   "words": [],
+   "phrases": [
+    "použiť Whisper na prepis stretnutí"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "Whisper Large v3 Turbo",
+   "words": [],
+   "phrases": [
+    "uporabi Whisper za prepis sestankov"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "Whisper Large v3 Turbo",
+   "words": [],
+   "phrases": [
+    "använd Whisper för att transkribera möten"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "Whisper Large v3 Turbo",
+   "words": [],
+   "phrases": [
+    "toplantıları yazıya dökmek için Whisper kullan"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "Whisper Large v3 Turbo",
+   "words": [],
+   "phrases": [
+    "використовувати Whisper для розшифрування зустрічей"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "Whisper Large v3 Turbo",
+   "words": [],
+   "phrases": [
+    "dùng Whisper để chép lời cuộc họp"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "Whisper Large v3 Turbo",
+   "words": [],
+   "phrases": [
+    "用Whisper转写会议"
+   ]
+  }
+ ]
+}

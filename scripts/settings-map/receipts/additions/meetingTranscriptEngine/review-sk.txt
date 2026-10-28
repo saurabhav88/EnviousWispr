@@ -1,0 +1,29 @@
+{
+  "meetingTranscriptEngine": {
+    "language": "sk",
+    "title": "model prepisu stretnutí",
+    "words": [
+      "model prepisu stretnutí"
+    ],
+    "phrases": [
+      "vybrať model na úplný prepis stretnutia",
+      "zmeniť model na prepis po skončení stretnutia"
+    ]
+  },
+  "meetingTranscriptEngine.parakeet": {
+    "language": "sk",
+    "title": "Parakeet",
+    "words": [],
+    "phrases": [
+      "prepis stretnutí pomocou modelu Parakeet"
+    ]
+  },
+  "meetingTranscriptEngine.whisper": {
+    "language": "sk",
+    "title": "Whisper Large v3 Turbo",
+    "words": [],
+    "phrases": [
+      "použiť Whisper na prepis stretnutí"
+    ]
+  }
+}

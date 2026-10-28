@@ -12646,6 +12646,739 @@
    },
    "review": "additions/meetings.tab.models.json",
    "reviewSHA256": "c7597f37284c34d0f94680dafb69363ee63c5959bcff3f5e430c3f5a421f977e"
+  },
+  "meetingTranscriptEngine": {
+   "blocks": {
+    "ar": {
+     "title": "محرك تفريغ الاجتماعات",
+     "words": [
+      "محرك نص الاجتماع"
+     ],
+     "phrases": [
+      "اختيار محرك لكتابة نص الاجتماع كاملًا بعد انتهائه",
+      "تغيير محرك تفريغ الاجتماعات"
+     ]
+    },
+    "bg": {
+     "title": "модел за транскрипция на срещи",
+     "words": [],
+     "phrases": [
+      "избор на модел за пълната транскрипция след срещата",
+      "смяна на модела за транскрипция на срещи"
+     ]
+    },
+    "cs": {
+     "title": "modul přepisu schůzek",
+     "words": [],
+     "phrases": [
+      "vybrat model pro úplný přepis schůzky",
+      "změnit modul pro přepis po skončení schůzky"
+     ]
+    },
+    "da": {
+     "title": "transskriptionsmotor",
+     "words": [],
+     "phrases": [
+      "vælg motor til mødets fulde transskription",
+      "skift motor til transskription efter mødet"
+     ]
+    },
+    "de": {
+     "words": [],
+     "phrases": [
+      "Modell für das vollständige Meetingtranskript auswählen",
+      "Engine für die Transkription nach dem Meeting ändern"
+     ]
+    },
+    "el": {
+     "title": "μηχανή απομαγνητοφώνησης",
+     "words": [],
+     "phrases": [
+      "επιλογή μηχανής για την πλήρη απομαγνητοφώνηση της συνάντησης",
+      "ποια μηχανή γράφει το πλήρες κείμενο μετά τη συνάντηση"
+     ]
+    },
+    "en": {
+     "words": [
+      "meeting transcript engine"
+     ],
+     "phrases": [
+      "choose model for the full meeting transcript",
+      "change the engine for full meeting transcripts"
+     ]
+    },
+    "es": {
+     "title": "motor de transcripción de reuniones",
+     "words": [],
+     "phrases": [
+      "elegir motor para la transcripción completa de la reunión",
+      "cambiar el motor que transcribe después de la reunión"
+     ]
+    },
+    "et": {
+     "title": "transkriptsioonimootor",
+     "words": [],
+     "phrases": [
+      "vali koosoleku lõpliku transkriptsiooni mootor",
+      "muuda koosolekujärgse transkriptsiooni mootorit"
+     ]
+    },
+    "fi": {
+     "title": "litterointimoottori",
+     "words": [],
+     "phrases": [
+      "valitse kokouksen lopullisen litteroinnin moottori",
+      "vaihda kokouksen jälkeisen litteroinnin moottoria"
+     ]
+    },
+    "fr": {
+     "title": "moteur de transcription des réunions",
+     "words": [],
+     "phrases": [
+      "choisir le moteur qui transcrit toute la réunion une fois terminée",
+      "changer le moteur de transcription complète des réunions"
+     ]
+    },
+    "hi": {
+     "title": "ट्रांसक्रिप्ट इंजन",
+     "words": [
+      "मीटिंग ट्रांसक्रिप्ट मॉडल"
+     ],
+     "phrases": [
+      "पूरी मीटिंग को टेक्स्ट में लिखने वाला मॉडल चुनें",
+      "मीटिंग के बाद ट्रांसक्रिप्ट बनाने वाला इंजन बदलें"
+     ]
+    },
+    "hr": {
+     "title": "model za prijepis sastanka",
+     "words": [],
+     "phrases": [
+      "odaberi model za potpuni prijepis sastanka",
+      "promijeni model za prijepis koji se izrađuje nakon sastanka"
+     ]
+    },
+    "hu": {
+     "title": "átírási motor",
+     "words": [],
+     "phrases": [
+      "modell kiválasztása a megbeszélés teljes átiratához",
+      "megbeszélés utáni átírás motorjának módosítása"
+     ]
+    },
+    "it": {
+     "title": "motore di trascrizione delle riunioni",
+     "words": [],
+     "phrases": [
+      "scegliere il motore che trascrive le riunioni dopo la registrazione",
+      "cambiare il motore per la trascrizione completa delle riunioni"
+     ]
+    },
+    "ja": {
+     "title": "会議の全文文字起こしエンジン",
+     "words": [],
+     "phrases": [
+      "会議の全文を書き起こすモデルを選ぶ",
+      "会議後の文字起こしエンジンを変更"
+     ]
+    },
+    "ko": {
+     "title": "회의 녹취록 엔진",
+     "words": [],
+     "phrases": [
+      "회의 후 전체 녹취록을 작성할 엔진 선택",
+      "회의 녹취록용 음성 인식 모델 바꾸기"
+     ]
+    },
+    "lt": {
+     "title": "susitikimų transkripcijos variklis",
+     "words": [],
+     "phrases": [
+      "pasirinkti variklį susitikimui transkribuoti po įrašymo",
+      "pakeisti susitikimų transkripcijos variklį"
+     ]
+    },
+    "lv": {
+     "title": "sapulces atšifrējuma dzinis",
+     "words": [],
+     "phrases": [
+      "izvēlēties dzini pilnam sapulces atšifrējumam",
+      "mainīt dzini atšifrējuma veidošanai pēc sapulces"
+     ]
+    },
+    "mt": {
+     "title": "magna tat-traskrizzjoni tal-laqgħat",
+     "words": [
+      "mudell għat-traskrizzjoni tal-laqgħat"
+     ],
+     "phrases": [
+      "agħżel il-magna għat-traskrizzjoni sħiħa tal-laqgħat",
+      "ibdel il-magna li tittraskrivi l-laqgħat wara li jintemmu"
+     ]
+    },
+    "nl": {
+     "title": "transcriptie-engine",
+     "words": [],
+     "phrases": [
+      "model kiezen voor het volledige vergadertranscript",
+      "engine voor transcriptie na de vergadering wijzigen"
+     ]
+    },
+    "pl": {
+     "title": "silnik transkrypcji spotkań",
+     "words": [],
+     "phrases": [
+      "wybierz model do pełnej transkrypcji spotkania",
+      "zmień silnik tworzący transkrypcję po spotkaniu"
+     ]
+    },
+    "pt": {
+     "title": "motor de transcrição de reuniões",
+     "words": [
+      "motor da transcrição completa"
+     ],
+     "phrases": [
+      "escolher o motor da transcrição completa da reunião",
+      "mudar o motor que transcreve a reunião depois que ela termina"
+     ]
+    },
+    "ro": {
+     "title": "motor de transcriere a întâlnirilor",
+     "words": [],
+     "phrases": [
+      "alege motorul pentru transcrierea completă după încheierea întâlnirii",
+      "schimbă motorul de transcriere de după întâlnire"
+     ]
+    },
+    "ru": {
+     "title": "движок полной расшифровки встреч",
+     "words": [],
+     "phrases": [
+      "выбрать движок для полной расшифровки встречи после её завершения",
+      "сменить модель для полной расшифровки встреч"
+     ]
+    },
+    "sk": {
+     "title": "model prepisu stretnutí",
+     "words": [
+      "model prepisu stretnutí"
+     ],
+     "phrases": [
+      "vybrať model na úplný prepis stretnutia",
+      "zmeniť model na prepis po skončení stretnutia"
+     ]
+    },
+    "sl": {
+     "title": "pogon za celotni prepis sestanka",
+     "words": [],
+     "phrases": [
+      "izberi model za celoten prepis sestanka",
+      "zamenjaj pogon za prepis po sestanku"
+     ]
+    },
+    "sv": {
+     "title": "motor för mötestranskript",
+     "words": [],
+     "phrases": [
+      "välj motor för att transkribera hela mötet",
+      "byt motor för transkribering efter mötet"
+     ]
+    },
+    "tr": {
+     "title": "toplantı dökümü motoru",
+     "words": [
+      "toplantı deşifre motoru"
+     ],
+     "phrases": [
+      "toplantının tamamını yazıya dökecek modeli seç",
+      "toplantı sonrası deşifre motorunu değiştir"
+     ]
+    },
+    "uk": {
+     "title": "рушій транскрибування зустрічей",
+     "words": [],
+     "phrases": [
+      "вибрати рушій для повної стенограми зустрічі",
+      "змінити модель для розшифрування записаних зустрічей"
+     ]
+    },
+    "vi": {
+     "title": "công cụ chép lời cuộc họp",
+     "words": [],
+     "phrases": [
+      "chọn công cụ tạo bản chép lời đầy đủ sau cuộc họp",
+      "đổi mô hình chép lời cho cuộc họp mới"
+     ]
+    },
+    "zh": {
+     "title": "会后转写引擎",
+     "words": [
+      "会议转写引擎",
+      "会议转写模型"
+     ],
+     "phrases": [
+      "选择转写整场会议的模型",
+      "更改会后生成完整文字稿的引擎"
+     ]
+    }
+   },
+   "review": "additions/meetingTranscriptEngine.json",
+   "reviewSHA256": "f4b97dc702c188f6aaaf6988501c95a5928356e23b7d0c570b1f999c5e76a051"
+  },
+  "meetingTranscriptEngine.parakeet": {
+   "blocks": {
+    "ar": {
+     "title": "Parakeet",
+     "words": [],
+     "phrases": [
+      "استخدام Parakeet لتفريغ الاجتماعات"
+     ]
+    },
+    "bg": {
+     "title": "Parakeet",
+     "words": [],
+     "phrases": [
+      "използване на Parakeet за транскрипция на срещи"
+     ]
+    },
+    "cs": {
+     "title": "Parakeet",
+     "words": [],
+     "phrases": [
+      "přepis schůzek pomocí modelu Parakeet"
+     ]
+    },
+    "da": {
+     "title": "Parakeet",
+     "words": [],
+     "phrases": [
+      "brug Parakeet til at transskribere møder"
+     ]
+    },
+    "de": {
+     "words": [],
+     "phrases": [
+      "Parakeet für das Transkript nach dem Meeting nutzen"
+     ]
+    },
+    "el": {
+     "title": "Parakeet",
+     "words": [],
+     "phrases": [
+      "χρήση Parakeet για απομαγνητοφώνηση συναντήσεων"
+     ]
+    },
+    "en": {
+     "words": [],
+     "phrases": [
+      "use Parakeet for meeting transcripts"
+     ]
+    },
+    "es": {
+     "title": "Parakeet",
+     "words": [],
+     "phrases": [
+      "usar Parakeet para transcribir reuniones"
+     ]
+    },
+    "et": {
+     "title": "Parakeet",
+     "words": [],
+     "phrases": [
+      "koosolekute transkribeerimine Parakeetiga"
+     ]
+    },
+    "fi": {
+     "title": "Parakeet",
+     "words": [],
+     "phrases": [
+      "käytä Parakeetia kokouksen lopulliseen litterointiin"
+     ]
+    },
+    "fr": {
+     "title": "Parakeet",
+     "words": [],
+     "phrases": [
+      "utiliser Parakeet pour transcrire les réunions"
+     ]
+    },
+    "hi": {
+     "title": "Parakeet",
+     "words": [],
+     "phrases": [
+      "मीटिंग के बाद पूरी ट्रांसक्रिप्ट बनाने के लिए Parakeet चुनें"
+     ]
+    },
+    "hr": {
+     "title": "Parakeet",
+     "words": [],
+     "phrases": [
+      "koristi Parakeet za transkripciju sastanaka"
+     ]
+    },
+    "hu": {
+     "title": "Parakeet",
+     "words": [],
+     "phrases": [
+      "megbeszélések leirata Parakeettel"
+     ]
+    },
+    "it": {
+     "title": "Parakeet",
+     "words": [],
+     "phrases": [
+      "usare Parakeet per trascrivere le riunioni"
+     ]
+    },
+    "ja": {
+     "title": "Parakeet",
+     "words": [],
+     "phrases": [
+      "会議の文字起こしにParakeetを使う"
+     ]
+    },
+    "ko": {
+     "title": "Parakeet",
+     "words": [],
+     "phrases": [
+      "회의 후 녹취록 작성에 Parakeet 사용"
+     ]
+    },
+    "lt": {
+     "title": "Parakeet",
+     "words": [],
+     "phrases": [
+      "naudoti Parakeet susitikimų transkripcijai"
+     ]
+    },
+    "lv": {
+     "title": "Parakeet",
+     "words": [],
+     "phrases": [
+      "izmantot Parakeet sapulču transkripcijai"
+     ]
+    },
+    "mt": {
+     "title": "Parakeet",
+     "words": [],
+     "phrases": [
+      "uża Parakeet biex tittraskrivi l-laqgħat"
+     ]
+    },
+    "nl": {
+     "title": "Parakeet",
+     "words": [],
+     "phrases": [
+      "Parakeet gebruiken om vergaderingen uit te schrijven"
+     ]
+    },
+    "pl": {
+     "title": "Parakeet",
+     "words": [],
+     "phrases": [
+      "użyj Parakeet do transkrypcji spotkań"
+     ]
+    },
+    "pt": {
+     "title": "Parakeet",
+     "words": [],
+     "phrases": [
+      "usar Parakeet para transcrever reuniões"
+     ]
+    },
+    "ro": {
+     "title": "Parakeet",
+     "words": [],
+     "phrases": [
+      "folosește Parakeet pentru transcrierea ședințelor"
+     ]
+    },
+    "ru": {
+     "title": "Parakeet",
+     "words": [],
+     "phrases": [
+      "использовать Parakeet для полной расшифровки встреч после их завершения"
+     ]
+    },
+    "sk": {
+     "title": "Parakeet",
+     "words": [],
+     "phrases": [
+      "prepis stretnutí pomocou modelu Parakeet"
+     ]
+    },
+    "sl": {
+     "title": "Parakeet",
+     "words": [],
+     "phrases": [
+      "uporabi Parakeet za prepis sestankov"
+     ]
+    },
+    "sv": {
+     "title": "Parakeet",
+     "words": [],
+     "phrases": [
+      "använd Parakeet för att transkribera möten i efterhand"
+     ]
+    },
+    "tr": {
+     "title": "Parakeet",
+     "words": [],
+     "phrases": [
+      "toplantı bittikten sonra dökümü oluşturmak için Parakeet kullan"
+     ]
+    },
+    "uk": {
+     "title": "Parakeet",
+     "words": [],
+     "phrases": [
+      "використовувати Parakeet для розшифрування зустрічей"
+     ]
+    },
+    "vi": {
+     "title": "Parakeet",
+     "words": [],
+     "phrases": [
+      "dùng Parakeet để tạo bản chép lời sau khi cuộc họp kết thúc"
+     ]
+    },
+    "zh": {
+     "title": "Parakeet",
+     "words": [],
+     "phrases": [
+      "用Parakeet把会议语音转成文字"
+     ]
+    }
+   },
+   "review": "additions/meetingTranscriptEngine.parakeet.json",
+   "reviewSHA256": "2d34fbbcb75046a678c9f78a0c84e2dd1a2a2f5e405d2af52e288331c11ac54e"
+  },
+  "meetingTranscriptEngine.whisper": {
+   "blocks": {
+    "ar": {
+     "title": "Whisper Large v3 Turbo",
+     "words": [],
+     "phrases": [
+      "استخدام Whisper لتفريغ الاجتماعات"
+     ]
+    },
+    "bg": {
+     "title": "Whisper Large v3 Turbo",
+     "words": [],
+     "phrases": [
+      "използвай Whisper за транскрипция на срещи"
+     ]
+    },
+    "cs": {
+     "title": "Whisper Large v3 Turbo",
+     "words": [],
+     "phrases": [
+      "použít Whisper pro přepis schůzek"
+     ]
+    },
+    "da": {
+     "title": "Whisper Large v3 Turbo",
+     "words": [],
+     "phrases": [
+      "brug Whisper til at transskribere møder"
+     ]
+    },
+    "de": {
+     "words": [],
+     "phrases": [
+      "Whisper für das Transkript nach dem Meeting nutzen"
+     ]
+    },
+    "el": {
+     "title": "Whisper Large v3 Turbo",
+     "words": [],
+     "phrases": [
+      "χρήση του Whisper για απομαγνητοφώνηση συναντήσεων"
+     ]
+    },
+    "en": {
+     "words": [],
+     "phrases": [
+      "use Whisper for meeting transcripts"
+     ]
+    },
+    "es": {
+     "title": "Whisper Large v3 Turbo",
+     "words": [],
+     "phrases": [
+      "usar Whisper para transcribir reuniones"
+     ]
+    },
+    "et": {
+     "title": "Whisper Large v3 Turbo",
+     "words": [],
+     "phrases": [
+      "kasuta koosolekute transkribeerimiseks Whisperit"
+     ]
+    },
+    "fi": {
+     "title": "Whisper Large v3 Turbo",
+     "words": [],
+     "phrases": [
+      "käytä Whisperiä kokouksen lopulliseen litterointiin"
+     ]
+    },
+    "fr": {
+     "title": "Whisper Large v3 Turbo",
+     "words": [],
+     "phrases": [
+      "utiliser Whisper pour transcrire les réunions"
+     ]
+    },
+    "hi": {
+     "title": "Whisper Large v3 Turbo",
+     "words": [],
+     "phrases": [
+      "मीटिंग के बाद पूरी ट्रांसक्रिप्ट बनाने के लिए Whisper चुनें"
+     ]
+    },
+    "hr": {
+     "title": "Whisper Large v3 Turbo",
+     "words": [],
+     "phrases": [
+      "koristi Whisper za transkripciju sastanaka"
+     ]
+    },
+    "hu": {
+     "title": "Whisper Large v3 Turbo",
+     "words": [],
+     "phrases": [
+      "Whisper használata megbeszélések átírásához"
+     ]
+    },
+    "it": {
+     "title": "Whisper Large v3 Turbo",
+     "words": [],
+     "phrases": [
+      "usare Whisper per trascrivere le riunioni"
+     ]
+    },
+    "ja": {
+     "title": "Whisper Large v3 Turbo",
+     "words": [],
+     "phrases": [
+      "会議の文字起こしにWhisperを使う"
+     ]
+    },
+    "ko": {
+     "title": "Whisper Large v3 Turbo",
+     "words": [],
+     "phrases": [
+      "회의 전사에 Whisper 사용"
+     ]
+    },
+    "lt": {
+     "title": "Whisper Large v3 Turbo",
+     "words": [],
+     "phrases": [
+      "naudoti Whisper susitikimams transkribuoti"
+     ]
+    },
+    "lv": {
+     "title": "Whisper Large v3 Turbo",
+     "words": [],
+     "phrases": [
+      "izmantot Whisper sapulču transkripcijai"
+     ]
+    },
+    "mt": {
+     "title": "Whisper Large v3 Turbo",
+     "words": [],
+     "phrases": [
+      "uża Whisper biex tittraskrivi l-laqgħat"
+     ]
+    },
+    "nl": {
+     "title": "Whisper Large v3 Turbo",
+     "words": [],
+     "phrases": [
+      "Whisper gebruiken om vergaderingen uit te schrijven"
+     ]
+    },
+    "pl": {
+     "title": "Whisper Large v3 Turbo",
+     "words": [],
+     "phrases": [
+      "użyj Whisper do transkrypcji spotkań"
+     ]
+    },
+    "pt": {
+     "title": "Whisper Large v3 Turbo",
+     "words": [],
+     "phrases": [
+      "usar Whisper para transcrever reuniões"
+     ]
+    },
+    "ro": {
+     "title": "Whisper Large v3 Turbo",
+     "words": [],
+     "phrases": [
+      "folosește Whisper pentru transcrierea ședințelor"
+     ]
+    },
+    "ru": {
+     "title": "Whisper Large v3 Turbo",
+     "words": [],
+     "phrases": [
+      "использовать Whisper для полной расшифровки встреч после их завершения"
+     ]
+    },
+    "sk": {
+     "title": "Whisper Large v3 Turbo",
+     "words": [],
+     "phrases": [
+      "použiť Whisper na prepis stretnutí"
+     ]
+    },
+    "sl": {
+     "title": "Whisper Large v3 Turbo",
+     "words": [],
+     "phrases": [
+      "uporabi Whisper za prepis sestankov"
+     ]
+    },
+    "sv": {
+     "title": "Whisper Large v3 Turbo",
+     "words": [],
+     "phrases": [
+      "använd Whisper för att transkribera möten i efterhand"
+     ]
+    },
+    "tr": {
+     "title": "Whisper Large v3 Turbo",
+     "words": [],
+     "phrases": [
+      "toplantı bittikten sonra dökümü oluşturmak için Whisper kullan"
+     ]
+    },
+    "uk": {
+     "title": "Whisper Large v3 Turbo",
+     "words": [],
+     "phrases": [
+      "використовувати Whisper для розшифрування зустрічей"
+     ]
+    },
+    "vi": {
+     "title": "Whisper Large v3 Turbo",
+     "words": [],
+     "phrases": [
+      "dùng Whisper để chép lời cuộc họp"
+     ]
+    },
+    "zh": {
+     "title": "Whisper Large v3 Turbo",
+     "words": [],
+     "phrases": [
+      "用Whisper转写会议"
+     ]
+    }
+   },
+   "review": "additions/meetingTranscriptEngine.whisper.json",
+   "reviewSHA256": "4759f4cac521d81f9fab22be80a17335761bbfd6fe3a2b331fec311736bf9e8c"
   }
  }
 }
