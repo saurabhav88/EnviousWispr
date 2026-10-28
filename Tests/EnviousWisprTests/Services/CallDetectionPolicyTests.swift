@@ -782,6 +782,46 @@ struct CallDetectionPolicyTests {
     #expect(s.interaction == .none, "No to the room holds under either address")
   }
 
+  static let teamsLink = "https://teams.live.com/meet/9318226891234"
+  static let teamsLight =
+    "https://teams.live.com/light-meetings/launch?p=AbCdEfGh12345678Xy&anon=true"
+
+  @Test(
+    "#4162 Teams web's hand-off from the meeting link to the call page is a new room: a new question"
+  )
+  func teamsWebRedirectWhileAsking() {
+    // The two addresses give different rooms: no mapping between the link number and the
+    // page's code is known, so the call page is asked about as itself.
+    var s = Story()
+    s.read([Self.chrome(.active, url: Self.teamsLink)])
+    guard case .ask(let first, .teams, _) = s.interaction else {
+      Issue.record("no question on the meeting link")
+      return
+    }
+    s.read([Self.chrome(.active, url: Self.teamsLight)])
+    guard case .ask(let second, .teams, _) = s.interaction else {
+      Issue.record("no question on the call page")
+      return
+    }
+    #expect(second != first)
+    #expect(s.starts.isEmpty)
+  }
+
+  @Test(
+    "#4162 a recording started on the Teams meeting link asks to switch on the call page; No keeps it"
+  )
+  func teamsWebRedirectWhileRecording() {
+    var s = Story()
+    s.read([Self.chrome(.active, url: Self.teamsLink)])
+    s.press(.yes)
+    s.startFinished(.recording(meetingID: UUID()))
+    s.read([Self.chrome(.active, url: Self.teamsLight)])
+    #expect(isSwitch(s.interaction))
+    s.press(.no)
+    s.hold([Self.chrome(.active, url: Self.teamsLight)], for: 20)
+    #expect(s.stops == 0)
+  }
+
   @Test("Off mode forgets every call; the same app is asked about again after")
   func offForgets() {
     var s = Story()
