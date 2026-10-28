@@ -15,6 +15,253 @@ import Testing
 struct CallDetectionPolicyTests {
   typealias Policy = CallDetectionPolicy
 
+  @Test("Microphone inactivity or disappearance alone never ends a policy-owned recording",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4142"), arguments: [true, false])
+  func microphoneLossIsNotCallEnd(missing: Bool) throws {
+    var story = Story()
+    story.mode = .startByItself
+    story.read([Self.zoom(.active)])
+    #expect(story.lastStart != nil)
+    story.startFinished(.recording(meetingID: UUID()))
+    let holders = missing ? [] : [Self.zoom(.inactive)]
+    story.read(holders)
+    story.hold(holders, for: 2)
+    if case .countdown = story.interaction { Issue.record("microphone loss is not ended proof") }
+    story.hold(holders, for: 20)
+    #expect(story.lastStop == nil, "no independent ended observation was supplied")
+  }
+
+  @Test("Two completed scoped end reads cross microphone polls; a cached ID and ticks cannot confirm")
+  func independentEndAcrossPolls() {
+    var s = recordingZoom()
+    let call = Self.zoom(.active)
+    s.observeCall(.ended(family: .zoom, room: "w"), holder: call)
+    s.read([call])
+    s.pending = s.sources
+    s.hold([call], for: 4)
+    #expect(!isCountdown(s.interaction), "one completed ID, despite active microphone polls")
+    s.pending = []
+    s.observeCall(.ended(family: .zoom, room: "w"), holder: call)
+    s.read([call])
+    #expect(isCountdown(s.interaction), "input can remain active after the actual call ends")
+    s.hold([call], for: Policy.countdownLength)
+    #expect(s.stops == 1)
+  }
+
+  @Test("Completed uncertainty, ongoing or owner invalidation cancels countdown and consumes old proof",
+    arguments: [0, 1, 2, 3])
+  func independentEndResets(kind: Int) {
+    var s = recordingZoom()
+    end(&s)
+    #expect(isCountdown(s.interaction))
+    let previous = s.observations
+    if kind == 3 {
+      s.wait(Policy.staleAfter + 1)
+    } else {
+      let value: CallEvidenceReader.Continuity = kind == 1
+        ? .ongoing(family: .zoom, room: "w") : .unknown
+      let owner = kind == 2 ? CallEvidenceReader.AppRun(pid: 100,
+        bundleIdentifier: "test.100", birthSeconds: 2, birthMicroseconds: 0) : nil
+      s.observeCall(value, holder: Self.zoom(.active), owner: owner)
+    }
+    s.read([Self.zoom(.inactive)])
+    #expect(!isCountdown(s.interaction))
+    s.observations = previous
+    s.read([Self.zoom(.inactive)])
+    s.step()
+    #expect(!isCountdown(s.interaction), "replaying consumed old IDs cannot resurrect confirmation")
+    #expect(s.stops == 0)
+  }
+
+  @Test("Fresh ongoing blocks conflicting retained end; clearing it needs two new ends; other rooms do not block")
+  func retainedAndGenericReconciliation() {
+    var s = Story()
+    let call = Self.chrome(.active, url: Self.meetA)
+    s.ongoing(call)
+    s.press(.yes)
+    s.startFinished(.recording(meetingID: UUID()))
+    let target = CallEvidenceReader.RetainedTarget(rule: call.rule, holderPID: call.pid,
+      owner: Story.owner(for: call), family: .googleMeet, room: "abc-defg-hij")
+    s.observeCall(.ended(family: .googleMeet, room: "abc-defg-hij"), holder: call, retained: target)
+    s.read([call])
+    s.wait(2)
+    s.observeCall(.ended(family: .googleMeet, room: "abc-defg-hij"), holder: call, retained: target)
+    s.read([call])
+    #expect(!isCountdown(s.interaction), "fresh same-scope ongoing in another slot prevents end")
+    #expect(s.stops == 0)
+    s.observeCall(.unknown, holder: call)
+    s.read([call])
+    #expect(!isCountdown(s.interaction), "clearing the conflict cannot resurrect consumed ended IDs")
+    s.observeCall(.ended(family: .googleMeet, room: "abc-defg-hij"), holder: call, retained: target)
+    s.read([call])
+    #expect(!isCountdown(s.interaction), "one new end after conflict clearing is insufficient")
+    s.wait(2)
+    s.observeCall(.ended(family: .googleMeet, room: "abc-defg-hij"), holder: call, retained: target)
+    s.read([call])
+    #expect(isCountdown(s.interaction), "two new scoped ends confirm once ongoing conflict is gone")
+    let other = CallEvidenceReader.RetainedTarget(rule: call.rule, holderPID: call.pid,
+      owner: target.owner, family: .googleMeet, room: "xyz-wxyz-xyz")
+    s.observeCall(.ongoing(family: .googleMeet, room: "xyz-wxyz-xyz"), holder: call, retained: other)
+    s.read([call])
+    #expect(isCountdown(s.interaction), "another room's ongoing does not block this confirmed end")
+    s.observeCall(.unknown, holder: call)
+    s.read([call])
+    #expect(!isCountdown(s.interaction), "new applicable unknown defeats older convenient end")
+  }
+
+  @Test("Wrong room, family or process birth cannot end the established call", arguments: [0, 1, 2])
+  func wrongEndAttribution(kind: Int) {
+    var s = Story()
+    let call = Self.chrome(.active, url: Self.meetA)
+    s.ongoing(call)
+    s.press(.yes)
+    s.startFinished(.recording(meetingID: UUID()))
+    let value: CallEvidenceReader.Continuity = kind == 0
+      ? .ended(family: .googleMeet, room: "xyz-wxyz-xyz")
+      : .ended(family: kind == 1 ? .zoom : .googleMeet, room: "abc-defg-hij")
+    let owner = kind == 2 ? CallEvidenceReader.AppRun(pid: call.pid,
+      bundleIdentifier: "test.200", birthSeconds: 2, birthMicroseconds: 0) : nil
+    for _ in 0..<2 {
+      s.wait(2)
+      s.observeCall(value, holder: call, owner: owner)
+      s.read([call])
+    }
+    #expect(!isCountdown(s.interaction))
+    #expect(s.stops == 0)
+  }
+
+  @Test("Not now survives inactive, unknown and missing holders without independent end",
+    arguments: [0, 1, 2])
+  func declinedCallSurvivesMicrophoneLoss(kind: Int) {
+    var s = Story()
+    s.ready([Self.zoom(.active)])
+    s.press(.no)
+    s.press(.close)
+    let holders = kind == 0 ? [Self.zoom(.inactive)] : kind == 1 ? [Self.zoom(.unknown)] : []
+    s.hold(holders, for: 130)
+    s.ready([Self.zoom(.active)])
+    #expect(s.interaction == .none)
+    #expect(s.answers == [.no])
+  }
+
+  @Test("Ask readiness and lifetime have exact independent boundaries; notes retain 15 seconds")
+  func questionClockBoundaries() {
+    var s = Story()
+    s.read([Self.zoom(.active)])
+    s.wait(1.999)
+    s.read([Self.zoom(.active)])
+    #expect(s.interaction == .none)
+    s.wait(0.001)
+    s.read([Self.zoom(.active)])
+    #expect(isAsk(s.interaction, .zoom))
+    s.hold([Self.zoom(.active)], for: 119.999)
+    #expect(isAsk(s.interaction, .zoom))
+    s.wait(0.001)
+    s.read([Self.zoom(.active)])
+    #expect(s.interaction == .none)
+    #expect(s.answers == [.timeout])
+    var tip = Story()
+    tip.ready([Self.zoom(.active)])
+    tip.press(.no)
+    tip.wait(14.999)
+    tip.step()
+    #expect(note(tip.interaction) == .firstTip)
+    tip.wait(0.001)
+    tip.step()
+    #expect(tip.interaction == .none)
+  }
+
+  @Test("Global interval starts at actual display; deferred proof is checked before another question")
+  func globalQuestionIntervalAndDeferredProof() {
+    var s = Story()
+    s.dictation = true
+    let zoom = Self.zoom(.active)
+    let meet = Self.chrome(.active, url: Self.meetA)
+    s.read([zoom])
+    s.hold([zoom], for: 130)
+    s.dictation = false
+    s.read([zoom])
+    #expect(isAsk(s.interaction, .zoom), "candidate detection did not spend the display interval")
+    s.press(.no)
+    s.press(.close)
+    s.read([zoom, meet])
+    s.hold([zoom, meet], for: 119.999)
+    #expect(s.interaction == .none)
+    s.wait(0.001)
+    s.read([zoom, Self.chromeUnknown(.active)])
+    #expect(s.interaction == .none, "interval expiry cannot reuse stale eligibility")
+    s.read([zoom, meet])
+    #expect(isAsk(s.interaction, .googleMeet))
+  }
+
+  @Test("Pending evidence cannot refresh an old end or reuse it as a second confirmation")
+  func pendingEndBecomesStale() {
+    var s = recordingZoom()
+    let call = Self.zoom(.active)
+    s.observeCall(.ended(family: .zoom, room: "w"), holder: call)
+    s.read([call])
+    s.pending = s.sources
+    s.hold([call], for: Policy.staleAfter + 1)
+    #expect(!isCountdown(s.interaction))
+    s.pending = []
+    s.observeCall(.ended(family: .zoom, room: "w"), holder: call)
+    s.read([call])
+    #expect(!isCountdown(s.interaction), "one new end after stale reset is only one confirmation")
+    s.wait(2)
+    s.observeCall(.ended(family: .zoom, room: "w"), holder: call)
+    s.read([call])
+    #expect(isCountdown(s.interaction))
+  }
+
+  @Test("A new same-process episode cannot reuse the previous call's ended observations")
+  func newEpisodeConsumesHistoricalEnd() {
+    var s = Story()
+    let call = Self.zoom(.active)
+    s.ongoing(call)
+    s.press(.no)
+    s.press(.close)
+    end(&s)
+    #expect(!s.policy.isTrackingCalls)
+    let historical = s.observations
+    s.wait(Policy.questionInterval)
+    s.ongoing(call)
+    #expect(isAsk(s.interaction, .zoom))
+    s.press(.no)
+    s.press(.close)
+    s.observations = historical
+    s.read([Self.zoom(.inactive)])
+    #expect(s.policy.isTrackingCalls)
+    s.ready([call])
+    #expect(s.interaction == .none, "historical end cannot release the new call's Not now")
+    #expect(s.answers == [.no, .no])
+  }
+
+  @Test("A replacement app run withdraws the old question and cannot inherit its end count")
+  func replacementRunCannotBorrowEnd() {
+    var s = Story()
+    let call = Self.zoom(.active)
+    s.ongoing(call)
+    guard case .ask(let first, _, _) = s.interaction else { Issue.record("no question"); return }
+    s.observeCall(.ended(family: .zoom, room: "w"), holder: call)
+    s.read([Self.zoom(.inactive)])
+    let replacement = CallEvidenceReader.AppRun(pid: call.pid, bundleIdentifier: "test.100",
+      birthSeconds: 2, birthMicroseconds: 0)
+    s.observeCall(.ongoing(family: .zoom, room: "w"), holder: call, owner: replacement)
+    s.read([call])
+    #expect(s.interaction == .none)
+    s.wait(Policy.questionInterval)
+    s.observeCall(.ongoing(family: .zoom, room: "w"), holder: call, owner: replacement)
+    s.read([call])
+    guard case .ask(let second, _, _) = s.interaction else { Issue.record("no replacement question"); return }
+    #expect(first != second)
+    s.press(.yes)
+    s.startFinished(.recording(meetingID: UUID()))
+    s.wait(2)
+    s.observeCall(.ended(family: .zoom, room: "w"), holder: call, owner: replacement)
+    s.read([Self.zoom(.inactive)])
+    #expect(!isCountdown(s.interaction), "the new run has only one ended observation")
+  }
+
   @Test("Legacy microphone frames provide no invented independent call observations")
   func legacyFrameHasNoContinuity() {
     let frame = Policy.Reading(sequence: 7, takenAt: Date(timeIntervalSince1970: 100),
@@ -46,7 +293,7 @@ struct CallDetectionPolicyTests {
   func refreshTargetFollowsOperationNotNewQuestion() throws {
     var story = Story()
     story.meeting = .recording(meetingID: UUID())
-    story.read([Self.zoom(.active)])
+    story.ready([Self.zoom(.active)])
     let question = try #require(story.policy.refreshTarget(token: story.policy.token))
     #expect(question.family == .zoom)
     story.press(.yes)
@@ -95,6 +342,44 @@ struct CallDetectionPolicyTests {
     var firstTipShown = false
     var noCounts: [String: Int] = [:]
     var commands: [Policy.Command] = []
+    var sources: [Policy.Source] = []
+    var pending: [Policy.Source] = []
+    var observations: [Policy.ContinuityObservation] = []
+    var nextObservation = 1
+
+    /// Explicit test facts, never inferred from microphone state or absent windows.
+    mutating func observeCall(_ value: CallEvidenceReader.Continuity, holder: Policy.Holder,
+      owner: CallEvidenceReader.AppRun? = nil,
+      retained: CallEvidenceReader.RetainedTarget? = nil) {
+      let source = Policy.Source(id: Int(holder.pid), pid: holder.pid, rule: holder.rule)
+      if !sources.contains(source) { sources.append(source) }
+      let run = owner ?? Self.owner(for: holder)
+      observations.removeAll { $0.source == source && $0.retainedTarget == retained }
+      observations.append(.init(id: nextObservation, source: source, beganAt: now,
+        completedAt: now, owner: run, value: value, retainedTarget: retained))
+      nextObservation += 1
+    }
+
+    static func owner(for holder: Policy.Holder) -> CallEvidenceReader.AppRun {
+      .init(pid: holder.pid, bundleIdentifier: "test.\(holder.pid)",
+        birthSeconds: 1, birthMicroseconds: 0)
+    }
+
+    /// Reach the approved question readiness with fresh microphone facts, without UI end proof.
+    mutating func ready(_ holders: [Policy.Holder]) {
+      read(holders)
+      wait(Policy.questionReadiness)
+      read(holders)
+    }
+
+    /// An explicitly attributed ongoing call, used only by stories that exercise independent end.
+    mutating func ongoing(_ holder: Policy.Holder) {
+      guard case .call(let family, let room)? = holder.evidence else {
+        Issue.record("ongoing fixture requires explicit call evidence"); return
+      }
+      observeCall(.ongoing(family: family, room: room), holder: holder)
+      ready([holder])
+    }
 
     var context: Policy.Context {
       .init(
@@ -112,7 +397,7 @@ struct CallDetectionPolicyTests {
       policy.observe(
         .init(
           sequence: sequence, takenAt: now, complete: complete, holders: holders,
-          ambiguous: ambiguous))
+          ambiguous: ambiguous, sources: sources, continuity: observations, pendingSources: pending))
       step()
     }
 
@@ -227,16 +512,23 @@ struct CallDetectionPolicyTests {
   /// A Zoom call recorded through Yes.
   func recordingZoom() -> Story {
     var s = Story()
-    s.read([Self.zoom(.active)])
+    s.ongoing(Self.zoom(.active))
     s.press(.yes)
     s.startFinished(.recording(meetingID: UUID()))
     return s
   }
 
-  /// Ends a call: the microphone off in readings for long enough.
-  func end(_ s: inout Story, _ holders: [Policy.Holder] = [zoom(.inactive)]) {
+  /// Two explicit completed UI end observations of the already-established call.
+  func end(_ s: inout Story, _ holders: [Policy.Holder] = [zoom(.inactive)],
+    call: Policy.Holder = zoom(.active)) {
+    guard case .call(let family, let room)? = call.evidence else {
+      Issue.record("end fixture requires an explicit scoped call"); return
+    }
+    s.observeCall(.ended(family: family, room: room), holder: call)
     s.read(holders)
-    s.hold(holders, for: 2)
+    s.wait(2)
+    s.observeCall(.ended(family: family, room: room), holder: call)
+    s.read(holders)
   }
 
   // MARK: - Starting
@@ -260,7 +552,7 @@ struct CallDetectionPolicyTests {
   @Test("a Zoom meeting window with the microphone on asks once")
   func zoomAsksOnce() {
     var s = Story()
-    s.read([Self.zoom(.active)])
+    s.ready([Self.zoom(.active)])
     #expect(isAsk(s.interaction, .zoom))
     s.press(.close)
     s.hold([Self.zoom(.active)], for: 6)
@@ -283,7 +575,7 @@ struct CallDetectionPolicyTests {
       case .unknown: .unknown
       }
       var s = Story()
-      s.read([.init(pid: 300, rule: .callWindow(.slack), input: .active, evidence: evidence)])
+      s.ready([.init(pid: 300, rule: .callWindow(.slack), input: .active, evidence: evidence)])
       #expect(isAsk(s.interaction, .slack) == shouldAsk, "\(title)")
     }
   }
@@ -327,7 +619,7 @@ struct CallDetectionPolicyTests {
   @Test("Google Meet in Chrome asks")
   func meetAsks() {
     var s = Story()
-    s.read([Self.chrome(.active, url: Self.meetA)])
+    s.ready([Self.chrome(.active, url: Self.meetA)])
     #expect(isAsk(s.interaction, .googleMeet))
   }
 
@@ -335,7 +627,7 @@ struct CallDetectionPolicyTests {
   func waitsForDictation() {
     var s = Story()
     s.dictation = true
-    s.read([Self.zoom(.active)])
+    s.ready([Self.zoom(.active)])
     #expect(s.interaction == .none)
     s.dictation = false
     s.step()
@@ -387,13 +679,13 @@ struct CallDetectionPolicyTests {
   @Test("Yes starts the call the panel asked about; a press with an old token does nothing")
   func yesAndStaleToken() {
     var s = Story()
-    s.read([Self.zoom(.active)])
+    s.ready([Self.zoom(.active)])
     let asked = s.policy.token
     s.press(.close)
     s.press(.yes, token: asked)
     #expect(s.starts.isEmpty)
     var t = Story()
-    t.read([Self.zoom(.active)])
+    t.ready([Self.zoom(.active)])
     t.press(.yes)
     #expect(t.starts == [.zoom])
     #expect(t.answers == [.yes])
@@ -402,7 +694,7 @@ struct CallDetectionPolicyTests {
   @Test("Yes while the reading is unknown starts nothing and keeps the question")
   func yesWhileUnknown() {
     var s = Story()
-    s.read([Self.zoom(.active)])
+    s.ready([Self.zoom(.active)])
     s.read([Self.zoom(.active, evidence: .unknown)])
     s.press(.yes)
     #expect(s.starts.isEmpty)
@@ -412,7 +704,7 @@ struct CallDetectionPolicyTests {
   @Test("Yes after a recording started from the menu asks to switch instead")
   func yesAfterMenuStart() {
     var s = Story()
-    s.read([Self.zoom(.active)])
+    s.ready([Self.zoom(.active)])
     s.meeting = .recording(meetingID: UUID())
     s.press(.yes)
     #expect(s.starts.isEmpty)
@@ -422,7 +714,7 @@ struct CallDetectionPolicyTests {
   @Test("No records nothing, counts the No and shows the first tip once")
   func noShowsFirstTip() {
     var s = Story()
-    s.read([Self.zoom(.active)])
+    s.ready([Self.zoom(.active)])
     s.press(.no)
     #expect(s.starts.isEmpty)
     #expect(s.answers == [.no])
@@ -439,7 +731,7 @@ struct CallDetectionPolicyTests {
     var s = Story()
     s.firstTipShown = true
     s.noCounts = ["browser": 2]
-    s.read([Self.chrome(.active, url: Self.meetA)])
+    s.ready([Self.chrome(.active, url: Self.meetA)])
     s.press(.no)
     #expect(s.commands.contains(.countNo(switchID: "browser")))
     #expect(note(s.interaction) == .lastTip(rule: .browser(.chrome), family: .googleMeet))
@@ -448,20 +740,22 @@ struct CallDetectionPolicyTests {
   @Test("a No lasts for the call: it is not asked again until the call ends")
   func noLastsForTheCall() {
     var s = Story()
-    s.read([Self.zoom(.active)])
+    s.ongoing(Self.zoom(.active))
     s.press(.no)
     s.press(.close)
     s.hold([Self.zoom(.active)], for: 20)
     #expect(s.interaction == .none)
     end(&s)
-    s.read([Self.zoom(.active)])
+    s.wait(Policy.questionInterval)
+    s.observeCall(.ongoing(family: .zoom, room: "w"), holder: Self.zoom(.active))
+    s.ready([Self.zoom(.active)])
     #expect(isAsk(s.interaction, .zoom), "the next call asks again")
   }
 
-  @Test("an unanswered prompt closes after 15 seconds as a timeout, not a No")
+  @Test("an unanswered prompt closes after 120 seconds as a timeout, not a No")
   func promptTimeout() {
     var s = Story()
-    s.read([Self.zoom(.active)])
+    s.ready([Self.zoom(.active)])
     s.hold([Self.zoom(.active)], for: Policy.promptTimeout)
     #expect(s.interaction == .none)
     #expect(s.answers == [.timeout])
@@ -472,7 +766,7 @@ struct CallDetectionPolicyTests {
   func oneQuestionAtATime() {
     var s = Story()
     let both = [Self.zoom(.active), Self.chrome(.active, url: Self.meetA)]
-    s.read(both)
+    s.ready(both)
     guard case .ask(_, let first, _) = s.interaction else {
       Issue.record("no question")
       return
@@ -480,7 +774,9 @@ struct CallDetectionPolicyTests {
     s.read(both)
     if case .ask(_, let still, _) = s.interaction { #expect(still == first) }
     s.press(.no)
-    // The next question replaces the tip at once.
+    // The next call waits for the global display interval.
+    #expect(!isAsk(s.interaction, .googleMeet))
+    s.hold(both, for: Policy.questionInterval)
     guard case .ask(_, let second, _) = s.interaction else {
       Issue.record("the second call was never asked about")
       return
@@ -491,15 +787,17 @@ struct CallDetectionPolicyTests {
   @Test("the question goes away when its call ends or its app is switched off, not on a blip")
   func questionWithdrawn() {
     var s = Story()
-    s.read([Self.zoom(.active)])
+    s.ongoing(Self.zoom(.active))
     s.read([Self.zoom(.unknown)])
     s.read([Self.zoom(.inactive)])
     #expect(isAsk(s.interaction, .zoom), "one off reading is a blip")
     s.hold([Self.zoom(.inactive)], for: 2)
+    #expect(isAsk(s.interaction, .zoom), "mute is not end")
+    end(&s)
     #expect(s.interaction == .none)
     #expect(s.answers.isEmpty, "a withdrawn question is not a timeout")
     var off = Story()
-    off.read([Self.zoom(.active)])
+    off.ready([Self.zoom(.active)])
     off.appsOff = ["zoom"]
     off.step()
     #expect(off.interaction == .none)
@@ -523,34 +821,38 @@ struct CallDetectionPolicyTests {
   @Test("an end needs two readings and the confirm time; one reading never ends a call")
   func endNeedsReadingsAndTime() {
     var s = recordingZoom()
+    s.observeCall(.ended(family: .zoom, room: "w"), holder: Self.zoom(.active))
     s.read([Self.zoom(.inactive)])
     s.wait(5)
     s.step()
     #expect(!isCountdown(s.interaction), "time alone with one reading")
     var t = recordingZoom()
+    t.observeCall(.ended(family: .zoom, room: "w"), holder: Self.zoom(.active))
     t.read([Self.zoom(.inactive)])
     t.wait(0.5)
+    t.observeCall(.ended(family: .zoom, room: "w"), holder: Self.zoom(.active))
     t.read([Self.zoom(.inactive)])
     #expect(!isCountdown(t.interaction), "two readings inside the confirm time")
   }
 
-  @Test("the microphone coming back during the countdown cancels it")
+  @Test("independent ongoing call proof during the countdown cancels it")
   func returnCancelsCountdown() {
     var s = recordingZoom()
     end(&s)
     #expect(isCountdown(s.interaction))
+    s.observeCall(.ongoing(family: .zoom, room: "w"), holder: Self.zoom(.active))
     s.read([Self.zoom(.active)])
     #expect(s.interaction == .none)
     s.hold([Self.zoom(.active)], for: 20)
     #expect(s.stops == 0)
   }
 
-  @Test("an incomplete, stale, ambiguous or unknown reading restarts the end count")
+  @Test("completed unknown, ongoing or stale independent proof restarts the end count")
   func uncertaintyRestartsTheEnd() {
     let breaks: [(inout Story) -> Void] = [
-      { $0.read([], complete: false) },
-      { $0.read([Self.zoom(.inactive)], ambiguous: true) },
-      { $0.read([Self.zoom(.unknown)]) },
+      { $0.observeCall(.unknown, holder: Self.zoom(.active)); $0.read([], complete: false) },
+      { $0.observeCall(.unknown, holder: Self.zoom(.active)); $0.read([Self.zoom(.inactive)], ambiguous: true) },
+      { $0.observeCall(.ongoing(family: .zoom, room: "w"), holder: Self.zoom(.active)); $0.read([Self.zoom(.unknown)]) },
       { s in
         s.wait(Policy.staleAfter + 1)
         s.step()
@@ -569,11 +871,12 @@ struct CallDetectionPolicyTests {
     }
   }
 
-  @Test("a missing process in a complete reading has left; a failed read is not that")
+  @Test("neither a missing process nor a failed microphone read independently proves end")
   func missingVersusFailed() {
     var s = recordingZoom()
-    end(&s, [])
-    #expect(isCountdown(s.interaction), "the app quit")
+    s.read([])
+    s.hold([], for: 20)
+    #expect(!isCountdown(s.interaction), "disappearance is not independent termination proof")
     var t = recordingZoom()
     for _ in 0..<6 {
       t.wait(2)
@@ -594,7 +897,7 @@ struct CallDetectionPolicyTests {
     #expect(s.interaction == .none)
     s.hold([Self.zoom(.inactive)], for: Policy.wakeHoldoff)
     #expect(s.stops == 0)
-    s.hold([Self.zoom(.inactive)], for: 4)
+    end(&s)
     #expect(isCountdown(s.interaction))
   }
 
@@ -612,13 +915,14 @@ struct CallDetectionPolicyTests {
   func handStarted() {
     var s = Story()
     s.meeting = .recording(meetingID: UUID())
-    s.read([Self.zoom(.active)])
+    s.ongoing(Self.zoom(.active))
     #expect(isSwitch(s.interaction))
     s.press(.no)
     end(&s)
     s.hold([Self.zoom(.inactive)], for: 20)
     #expect(s.stops == 0)
     #expect(s.answers == [.switchNo])
+    #expect(!s.policy.isTrackingCalls, "the unrelated call was actually confirmed over")
   }
 
   @Test("a meeting stopped from the menu takes its countdown away")
@@ -643,7 +947,8 @@ struct CallDetectionPolicyTests {
     end(&t)
     t.hold([Self.zoom(.inactive)], for: Policy.countdownLength)
     t.meeting = .idle
-    t.read([Self.zoom(.inactive), Self.chrome(.active, url: Self.meetA)])
+    t.wait(Policy.questionInterval)
+    t.ready([Self.zoom(.inactive), Self.chrome(.active, url: Self.meetA)])
     t.stopFinished()
     #expect(isAsk(t.interaction, .googleMeet), "the newer question keeps the panel")
   }
@@ -657,7 +962,7 @@ struct CallDetectionPolicyTests {
       (.needsAttention, .needsAttention),
     ] {
       var s = Story()
-      s.read([Self.zoom(.active)])
+      s.ready([Self.zoom(.active)])
       s.press(.yes)
       s.startFinished(result)
       #expect(note(s.interaction) == expected)
@@ -666,6 +971,7 @@ struct CallDetectionPolicyTests {
     s.read([Self.zoom(.active)])
     s.press(.yes)
     s.startFinished(.superseded)
+    s.wait(Policy.questionInterval)
     s.read([Self.zoom(.active)])
     #expect(isAsk(s.interaction, .zoom), "a superseded Start is asked about again")
   }
@@ -673,7 +979,7 @@ struct CallDetectionPolicyTests {
   @Test("a start in flight is never dropped: uncertainty keeps it wanted, success records")
   func startNotDropped() {
     var s = Story()
-    s.read([Self.zoom(.active)])
+    s.ongoing(Self.zoom(.active))
     s.press(.yes)
     s.meeting = .busy
     s.read([], complete: false)
@@ -687,7 +993,7 @@ struct CallDetectionPolicyTests {
   @Test("detection or the app switched off during a start makes it unwanted")
   func startUnwanted() {
     var s = Story()
-    s.read([Self.zoom(.active)])
+    s.ready([Self.zoom(.active)])
     s.press(.yes)
     s.meeting = .busy
     #expect(s.policy.isStartWanted(s.context))
@@ -695,7 +1001,7 @@ struct CallDetectionPolicyTests {
     s.step()
     #expect(!s.policy.isStartWanted(s.context))
     var off = Story()
-    off.read([Self.zoom(.active)])
+    off.ready([Self.zoom(.active)])
     off.press(.yes)
     off.meeting = .busy
     off.mode = .off
@@ -706,11 +1012,13 @@ struct CallDetectionPolicyTests {
   @Test("a late start result after a newer question settles its call but keeps the question")
   func lateStartKeepsQuestion() {
     var s = Story()
-    s.read([Self.zoom(.active)])
+    s.ready([Self.zoom(.active)])
     s.press(.yes)
     s.meeting = .busy
     s.read([Self.zoom(.active), Self.chrome(.active, url: Self.meetA)])
     #expect(s.interaction == .none, "no question while the start runs")
+    s.wait(Policy.questionInterval)
+    s.read([Self.zoom(.active), Self.chrome(.active, url: Self.meetA)])
     s.meeting = .idle
     s.startFinished(.couldNotStart)
     #expect(isAsk(s.interaction, .googleMeet), "the next call's question owns the panel")
@@ -722,8 +1030,9 @@ struct CallDetectionPolicyTests {
   @Test("switch Yes stops the old meeting, then starts the new call")
   func switchYes() {
     var s = recordingZoom()
+    s.wait(Policy.questionInterval)
     let both = [Self.zoom(.active), Self.chrome(.active, url: Self.meetA)]
-    s.read(both)
+    s.ready(both)
     #expect(isSwitch(s.interaction))
     s.press(.yes)
     #expect(s.stops == 1)
@@ -735,7 +1044,8 @@ struct CallDetectionPolicyTests {
   @Test("switch Yes that a new Start could not finish keeps the meeting recording")
   func switchBlocked() {
     var s = recordingZoom()
-    s.read([Self.zoom(.active), Self.chrome(.active, url: Self.meetA)])
+    s.wait(Policy.questionInterval)
+    s.ready([Self.zoom(.active), Self.chrome(.active, url: Self.meetA)])
     s.startBlocked = true
     s.press(.yes)
     #expect(s.stops == 0)
@@ -745,7 +1055,8 @@ struct CallDetectionPolicyTests {
   @Test("a switch whose new call is not confirmed after the stop says so and offers a Start")
   func switchNotConfirmed() {
     var s = recordingZoom()
-    s.read([Self.zoom(.active), Self.chrome(.active, url: Self.meetA)])
+    s.wait(Policy.questionInterval)
+    s.ready([Self.zoom(.active), Self.chrome(.active, url: Self.meetA)])
     s.press(.yes)
     s.read([Self.zoom(.active), Self.chromeUnknown(.active)])
     s.stopFinished()
@@ -756,22 +1067,24 @@ struct CallDetectionPolicyTests {
   @Test("a switch question pauses the old meeting's countdown")
   func switchPausesCountdown() {
     var s = recordingZoom()
+    s.wait(Policy.questionInterval)
     end(&s)
     #expect(isCountdown(s.interaction))
     let next = [Self.zoom(.inactive), Self.chrome(.active, url: Self.meetA)]
-    s.read(next)
+    s.ready(next)
     #expect(isSwitch(s.interaction))
     s.hold(next, for: Policy.countdownLength + 2)
     #expect(s.stops == 0)
     s.press(.no)
-    s.hold(next, for: 4)
+    end(&s, next)
     #expect(isCountdown(s.interaction), "after No it counts down in view")
   }
 
   @Test("a switch question becomes Record this call? once the recording stops from the menu")
   func switchBecomesAsk() {
     var s = recordingZoom()
-    s.read([Self.zoom(.active), Self.chrome(.active, url: Self.meetA)])
+    s.wait(Policy.questionInterval)
+    s.ready([Self.zoom(.active), Self.chrome(.active, url: Self.meetA)])
     let before = s.policy.token
     s.meeting = .idle
     s.step()
@@ -785,17 +1098,17 @@ struct CallDetectionPolicyTests {
   @Test("two Chrome processes showing one meeting are one call")
   func browserProcessesOneCall() {
     var s = Story()
-    s.read([Self.chrome(.active, url: Self.meetA, pid: 1), Self.chrome(.active, url: Self.meetA, pid: 2)])
+    s.ready([Self.chrome(.active, url: Self.meetA, pid: 1), Self.chrome(.active, url: Self.meetA, pid: 2)])
     s.press(.no)
     s.press(.close)
     s.read([Self.chrome(.inactive, url: nil, pid: 1), Self.chrome(.active, url: Self.meetA, pid: 3)])
     #expect(s.interaction == .none)
   }
 
-  @Test("another tab never ends a browser meeting; only every Chrome process off does")
+  @Test("another tab never ends a browser meeting; scoped end proof does")
   func browserTabChange() {
     var s = Story()
-    s.read([Self.chrome(.active, url: Self.meetA)])
+    s.ongoing(Self.chrome(.active, url: Self.meetA))
     s.press(.yes)
     s.startFinished(.recording(meetingID: UUID()))
     s.hold([Self.chrome(.active, url: "https://mail.google.com/")], for: 20)
@@ -803,17 +1116,18 @@ struct CallDetectionPolicyTests {
     #expect(s.interaction == .none)
     s.read([Self.chromeUnknown(.active)])
     #expect(s.interaction == .none, "an unreadable page changes nothing")
-    end(&s, [Self.chromeUnknown(.inactive)])
-    #expect(isCountdown(s.interaction), "Chrome off the microphone ends it, whatever the page")
+    end(&s, [Self.chromeUnknown(.inactive)], call: Self.chrome(.active, url: Self.meetA))
+    #expect(isCountdown(s.interaction), "independent scoped call-end proof ends it while another tab is selected")
   }
 
   @Test("another meeting's page asks to switch and keeps the recorded meeting")
   func browserOtherMeeting() {
     var s = Story()
-    s.read([Self.chrome(.active, url: Self.meetA)])
+    s.ready([Self.chrome(.active, url: Self.meetA)])
     s.press(.yes)
     s.startFinished(.recording(meetingID: UUID()))
-    s.read([Self.chrome(.active, url: Self.meetB)])
+    s.wait(Policy.questionInterval)
+    s.ready([Self.chrome(.active, url: Self.meetB)])
     #expect(isSwitch(s.interaction))
     s.press(.no)
     s.hold([Self.chrome(.active, url: Self.meetB)], for: 20)
@@ -823,7 +1137,7 @@ struct CallDetectionPolicyTests {
   @Test("#4135 one meeting seen at both Meet addresses is one call: the question stays, and No holds")
   func meetBothAddressForms() {
     var s = Story()
-    s.read([Self.chrome(.active, url: Self.meetA)])
+    s.ready([Self.chrome(.active, url: Self.meetA)])
     guard case .ask(let first, .googleMeet, _) = s.interaction else {
       Issue.record("no question")
       return
@@ -844,25 +1158,29 @@ struct CallDetectionPolicyTests {
   @Test("Off mode forgets every call; the same app is asked about again after")
   func offForgets() {
     var s = Story()
-    s.read([Self.zoom(.active)])
+    s.ready([Self.zoom(.active)])
     s.press(.no)
     s.mode = .off
     s.step()
     s.mode = .ask
-    s.read([Self.zoom(.active)])
+    s.wait(Policy.questionInterval)
+    s.ready([Self.zoom(.active)])
     #expect(isAsk(s.interaction, .zoom))
   }
 
   @Test("a question about one meeting goes when the browser shows another; that one is asked")
   func movedQuestion() {
     var s = Story()
-    s.read([Self.chrome(.active, url: Self.meetA)])
+    s.ready([Self.chrome(.active, url: Self.meetA)])
     guard case .ask(let first, _, _) = s.interaction else {
       Issue.record("no question")
       return
     }
     s.read([Self.chrome(.active, url: "https://mail.google.com/")])
     if case .ask(let still, _, _) = s.interaction { #expect(still == first, "a page that is no meeting keeps it") }
+    s.read([Self.chrome(.active, url: Self.meetB)])
+    #expect(s.interaction == .none, "old room question withdraws during global cooldown")
+    s.wait(Policy.questionInterval)
     s.read([Self.chrome(.active, url: Self.meetB)])
     guard case .ask(let second, .googleMeet, _) = s.interaction else {
       Issue.record("the new meeting was not asked about")
@@ -874,7 +1192,7 @@ struct CallDetectionPolicyTests {
   @Test("a call confirmed over while its Start runs makes the Start unwanted")
   func endedWhileStarting() {
     var s = Story()
-    s.read([Self.zoom(.active)])
+    s.ongoing(Self.zoom(.active))
     s.press(.yes)
     s.meeting = .busy
     #expect(s.policy.isStartWanted(s.context))
@@ -898,7 +1216,7 @@ struct CallDetectionPolicyTests {
   @Test("a stop names the recording it is for")
   func stopNamesItsRecording() {
     var s = Story()
-    s.read([Self.zoom(.active)])
+    s.ongoing(Self.zoom(.active))
     s.press(.yes)
     let m = UUID()
     s.startFinished(.recording(meetingID: m))
@@ -910,18 +1228,19 @@ struct CallDetectionPolicyTests {
   @Test("a Yes pressed in time is never lost to the timeout while it is checked")
   func claimedYesSurvivesTimeout() {
     var s = Story()
-    s.read([Self.zoom(.active)])
+    s.ongoing(Self.zoom(.active))
     s.wait(Policy.promptTimeout - 0.5)
     let token = s.policy.token
     s.policy.claim(token: token)
     s.wait(1)
+    s.observeCall(.ongoing(family: .zoom, room: "w"), holder: Self.zoom(.active))
     s.read([Self.zoom(.active)])
     #expect(isAsk(s.interaction, .zoom), "the claimed question stays")
     s.press(.yes, token: token)
     #expect(s.starts == [.zoom])
     #expect(!s.answers.contains(.timeout))
     var ended = Story()
-    ended.read([Self.zoom(.active)])
+    ended.ongoing(Self.zoom(.active))
     let asked = ended.policy.token
     ended.policy.claim(token: asked)
     end(&ended)
@@ -1038,7 +1357,7 @@ struct CallDetectionPolicyTests {
       for mode in modes {
         var s = Story()
         s.mode = mode
-        s.read([Self.teams(evidence: evidence)])
+        s.ready([Self.teams(evidence: evidence)])
         #expect(s.starts == (proof && mode == .startByItself ? [.teams] : []))
         #expect(isAsk(s.interaction, .teams) == (mode == .ask))
       }
@@ -1055,7 +1374,7 @@ struct CallDetectionPolicyTests {
   @Test("An old microphone-only Teams Ask cannot start after changing to automatic mode")
   func teamsStaleAskYes() {
     var s = Story()
-    s.read([Self.teams()])
+    s.ready([Self.teams()])
     #expect(isAsk(s.interaction, .teams))
     s.mode = .startByItself
     s.press(.yes)
@@ -1070,7 +1389,7 @@ struct CallDetectionPolicyTests {
     var s = Story()
     let existing = UUID()
     s.meeting = .recording(meetingID: existing)
-    s.read([Self.teams()])
+    s.ready([Self.teams()])
     #expect(isSwitch(s.interaction))
     s.mode = .startByItself
     s.press(.yes)
@@ -1099,7 +1418,7 @@ struct CallDetectionPolicyTests {
     for proof in [false, true] {
       var s = Story()
       s.meeting = .recording(meetingID: UUID())
-      s.read([Self.teams()])
+      s.ready([Self.teams()])
       s.press(.yes)
       #expect(s.stops == 1)
       s.mode = .startByItself
@@ -1112,10 +1431,11 @@ struct CallDetectionPolicyTests {
     }
   }
 
-  @Test("A chosen Teams Ask start survives mode/proof changes and still ends from microphone readings")
+  @Test("A chosen Teams Ask start survives mode/proof changes and ends only with independent proof")
   func teamsChosenStartAndEnd() {
     var s = Story()
-    s.read([Self.teams()])
+    s.observeCall(.ongoing(family: .teams, room: "pid-300"), holder: Self.teams())
+    s.ready([Self.teams()])
     s.press(.yes)
     #expect(s.starts == [.teams])
     s.mode = .startByItself
@@ -1125,7 +1445,8 @@ struct CallDetectionPolicyTests {
     s.startFinished(.recording(meetingID: UUID()))
     s.hold([Self.teams(evidence: .unknown)], for: 4)
     #expect(s.stops == 0, "Missing AX proof alone cannot end a recording")
-    end(&s, [Self.teams(.inactive, evidence: .unknown)])
+    end(&s, [Self.teams(.inactive, evidence: .unknown)],
+      call: Self.teams(evidence: .call(family: .teams, room: "pid-300")))
     #expect(isCountdown(s.interaction))
     s.hold([Self.teams(.inactive, evidence: .unknown)], for: Policy.countdownLength)
     #expect(s.stops == 1)

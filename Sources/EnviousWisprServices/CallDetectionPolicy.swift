@@ -7,9 +7,8 @@ import Foundation
 ///
 /// Two owners, nothing else (`docs/audits/2026-10-24-4012-leak-enumeration.md`):
 /// - **Episodes.** A call is an `Episode` with its own id. It begins only from known positive
-///   evidence in a complete reading, and it ends only when complete readings show every process
-///   of its app off the microphone for the confirm time. An incomplete, stale or ambiguous
-///   reading changes nothing and restarts that count.
+///   start evidence in a complete reading. Only independently attributed, fresh call-ended
+///   observations can confirm its end; microphone inactivity never owns that decision.
 /// - **The interaction.** What the panel shows is `interaction`, and `token` changes with it. A
 ///   button press carries the token it was shown with; an old token does nothing. A start or a
 ///   stop is an `Operation` with its own id: its result always settles its episode, whatever
@@ -112,6 +111,8 @@ public struct CallDetectionPolicy: Sendable {
     /// or could not be read: no call can be confirmed off.
     public let ambiguous: Bool
     package let sources: [Source]
+    /// Latest completed value per source + retained-target slot. A later value replaces its
+    /// own slot; fresh ongoing facts in different applicable slots still conflict with end.
     package let continuity: [ContinuityObservation]
     package let pendingSources: [Source]
 
@@ -242,15 +243,16 @@ public struct CallDetectionPolicy: Sendable {
     case openMeetingPage
   }
 
-  // Named timing values (§3.4). 1.5 s absence and 10 s holdoff are Wispr Flow's shipped
-  // `absenceConfirmMs` and `wakeHoldoffMs`; 10 s countdown, 15 s prompt and 60 s offer are
-  // founder product values (D2, D3).
-  public static let absenceConfirm: TimeInterval = 1.5
-  /// Complete readings an end needs, besides the time (Wispr Flow: two confirming polls).
-  public static let absenceReadings = 2
+  // Independent call-end confirmation retains the established 1.5 s minimum and two reads.
+  // Consent questions have their own approved readiness, lifetime and global display clocks.
+  public static let endConfirm: TimeInterval = 1.5
+  public static let endReadingsRequired = 2
   public static let wakeHoldoff: TimeInterval = 10
   public static let countdownLength: TimeInterval = 10
-  public static let promptTimeout: TimeInterval = 15
+  public static let questionReadiness: TimeInterval = 2
+  public static let questionInterval: TimeInterval = 120
+  public static let promptTimeout: TimeInterval = 120
+  public static let noteTimeout: TimeInterval = 15
   public static let stoppedOffer: TimeInterval = 60
   /// A reading older than this proves nothing (five 2-second watcher intervals).
   public static let staleAfter: TimeInterval = 10
@@ -275,12 +277,17 @@ public struct CallDetectionPolicy: Sendable {
     let family: CallAppFamily
     /// The meeting room for a browser call; one call per app for a native app.
     let room: String
+    let noticedAt: Date
+    var establishedAt: Date
+    var sources: [Source] = []
+    var owner: CallEvidenceReader.AppRun? = nil
     var phase: Phase
     /// Confirmed over while its Start ran: the Start is no longer wanted.
     var endedWhileStarting = false
-    var offSince: Date?
-    var offReadings = 0
-    var lastOffSequence: Int?
+    var endSince: Date?
+    var endReadings = 0
+    var lastEndedReadAt: Date?
+    var lastObservationID = 0
   }
 
   enum Operation: Sendable, Equatable {
@@ -304,6 +311,7 @@ public struct CallDetectionPolicy: Sendable {
   private var nextID = 1
   private var reading: Reading?
   private var holdoffUntil: Date?
+  private var lastQuestionShownAt: Date?
 
   public init() {}
 
@@ -366,7 +374,11 @@ public struct CallDetectionPolicy: Sendable {
   /// and every end is counted afresh (a sleep past a countdown's deadline never stops at once).
   public mutating func noteWakeOrRestart(at now: Date) {
     holdoffUntil = now.addingTimeInterval(Self.wakeHoldoff)
-    for index in episodes.indices { resetEnd(index) }
+    let consumed = reading?.continuity.map(\.id).max() ?? 0
+    for index in episodes.indices {
+      episodes[index].lastObservationID = max(episodes[index].lastObservationID, consumed)
+      resetEnd(index)
+    }
   }
 
   /// The rules for this moment: ends, timeouts, new calls, questions.
@@ -427,7 +439,42 @@ public struct CallDetectionPolicy: Sendable {
 
   private func isFresh(_ c: Context) -> Bool {
     guard let reading, reading.complete else { return false }
-    return c.now.timeIntervalSince(reading.takenAt) <= Self.staleAfter
+    let age = c.now.timeIntervalSince(reading.takenAt)
+    return age >= 0 && age <= Self.staleAfter
+  }
+
+  private func attribution(for holder: Holder, _ c: Context) -> (Source?, ContinuityObservation?) {
+    guard let reading, let source = reading.sources.first(where: { $0.pid == holder.pid && $0.rule == holder.rule })
+    else { return (nil, nil) }
+    let observation = reading.continuity.filter { $0.source == source && $0.retainedTarget == nil }
+      .max { $0.id < $1.id }
+    guard let observation, fresh(observation, c) else { return (source, nil) }
+    return (source, observation)
+  }
+
+  private func fresh(_ observation: ContinuityObservation, _ c: Context) -> Bool {
+    let age = c.now.timeIntervalSince(observation.beganAt)
+    return age >= 0 && age <= Self.staleAfter
+      && observation.completedAt >= observation.beganAt && observation.completedAt <= c.now
+  }
+
+  /// Nil is another target; unknown is an applicable conflict/loss, never a convenient skip.
+  private func state(_ observation: ContinuityObservation, for episode: Episode) -> CallEvidenceReader.Continuity? {
+    guard observation.source.rule == episode.rule else { return nil }
+    if let target = observation.retainedTarget {
+      guard target.family == episode.family, target.owner == episode.owner,
+        Self.isNative(episode.rule) || target.room == episode.room else { return nil }
+    } else {
+      let sameOwner = episode.owner != nil && observation.owner == episode.owner
+      guard sameOwner || episode.sources.contains(observation.source) else { return nil }
+    }
+    guard let owner = episode.owner, observation.owner == owner else { return .unknown }
+    switch observation.value {
+    case .ongoing(let family, let room), .ended(let family, let room):
+      guard family == episode.family, Self.isNative(episode.rule) || room == episode.room else { return .unknown }
+      return observation.value
+    case .unknown: return .unknown
+    }
   }
 
   private func inHoldoff(_ c: Context) -> Bool {
@@ -435,7 +482,7 @@ public struct CallDetectionPolicy: Sendable {
     return false
   }
 
-  /// The episode's processes: every process of its app (helpers and a relaunch included).
+  /// Candidate processes of the app; verified run and room checks decide episode membership.
   private func members(of episode: Episode) -> [Holder] {
     reading?.holders.filter { $0.rule == episode.rule } ?? []
   }
@@ -463,7 +510,15 @@ public struct CallDetectionPolicy: Sendable {
       else {
         return false
       }
-      return family == episode.family && (Self.isNative(episode.rule) || room == episode.room)
+      guard family == episode.family && (Self.isNative(episode.rule) || room == episode.room) else { return false }
+      if let owner = episode.owner {
+        guard attribution(for: holder, c).1?.owner == owner else { return false }
+      }
+      if let latest = reading?.continuity.filter({ state($0, for: episode) != nil }).max(by: { $0.id < $1.id }),
+        fresh(latest, c), latest.beganAt >= episode.establishedAt,
+        case .ended? = state(latest, for: episode)
+      { return false }
+      return true
     }
   }
 
@@ -520,20 +575,18 @@ public struct CallDetectionPolicy: Sendable {
   }
 
   private mutating func resetEnd(_ index: Int) {
-    episodes[index].offSince = nil
-    episodes[index].offReadings = 0
-    episodes[index].lastOffSequence = nil
+    episodes[index].endSince = nil
+    episodes[index].endReadings = 0
+    episodes[index].lastEndedReadAt = nil
     if case .ending(let m, _) = episodes[index].phase {
       episodes[index].phase = .recording(meetingID: m)
       if case .countdown(episodes[index].id, _) = interaction { set(.none) }
     }
   }
 
-  /// Ends (D3): every process of the episode's app off in complete, fresh, unambiguous
-  /// readings, for `absenceReadings` readings and `absenceConfirm` seconds. Anything else
-  /// restarts the count, so an unknown stretch never uses up its time.
+  /// Only new, scoped completed UI observations confirm end. Cached IDs and microphone
+  /// frames cannot contribute confirmations; unknown/conflict/staleness consumes old proof.
   private mutating func trackEnds(_ c: Context, _ out: inout [Command]) {
-    let certain = isFresh(c) && reading?.ambiguous == false && !inHoldoff(c)
     var questionShown = false
     switch interaction {
     case .ask, .switchCall: questionShown = true
@@ -541,29 +594,49 @@ public struct CallDetectionPolicy: Sendable {
     }
     var ended: [Int] = []
     for index in episodes.indices {
+      let applicable = (reading?.continuity ?? []).filter { state($0, for: episodes[index]) != nil }
+        .sorted { $0.id < $1.id }
+      let latestID = applicable.last?.id ?? episodes[index].lastObservationID
+      if inHoldoff(c) {
+        episodes[index].lastObservationID = max(episodes[index].lastObservationID, latestID)
+        resetEnd(index)
+        continue
+      }
       switch episodes[index].phase {
       case .stopping: continue
       case .recording where questionShown:
         // While a new call's question is on the panel, this meeting does not count down, and
-        // no off time builds up behind it: the question would hide the countdown and its Keep
+        // no end confirmation builds up behind it: the question would hide the countdown and its Keep
         // recording (review r9 F2).
+        episodes[index].lastObservationID = max(episodes[index].lastObservationID, latestID)
         resetEnd(index)
         continue
       default: break
       }
-      let off = certain && members(of: episodes[index]).allSatisfy { $0.input == .inactive }
-      guard off, let sequence = reading?.sequence else {
+      let ongoing = applicable.contains { observation in
+        guard fresh(observation, c) else { return false }
+        if case .ongoing? = state(observation, for: episodes[index]) { return true }
+        return false
+      }
+      guard !ongoing, let latest = applicable.last, fresh(latest, c),
+        case .ended? = state(latest, for: episodes[index])
+      else {
+        episodes[index].lastObservationID = max(episodes[index].lastObservationID, latestID)
         resetEnd(index)
         continue
       }
-      if episodes[index].offSince == nil { episodes[index].offSince = c.now }
-      if episodes[index].lastOffSequence != sequence {
-        episodes[index].lastOffSequence = sequence
-        episodes[index].offReadings += 1
+      for observation in applicable where observation.id > episodes[index].lastObservationID {
+        episodes[index].lastObservationID = observation.id
+        guard fresh(observation, c), observation.beganAt >= episodes[index].establishedAt,
+          case .ended? = state(observation, for: episodes[index])
+        else { resetEnd(index); continue }
+        if episodes[index].endSince == nil { episodes[index].endSince = observation.completedAt }
+        episodes[index].endReadings += 1
+        episodes[index].lastEndedReadAt = observation.beganAt
       }
-      guard let since = episodes[index].offSince,
-        episodes[index].offReadings >= Self.absenceReadings,
-        c.now.timeIntervalSince(since) >= Self.absenceConfirm
+      guard let since = episodes[index].endSince, let lastRead = episodes[index].lastEndedReadAt,
+        episodes[index].endReadings >= Self.endReadingsRequired,
+        lastRead.timeIntervalSince(since) >= Self.endConfirm
       else { continue }
       let episode = episodes[index]
       switch episode.phase {
@@ -610,13 +683,30 @@ public struct CallDetectionPolicy: Sendable {
         !c.appsOff.contains(CallAppCatalog.switchID(for: holder.rule))
       else { continue }
       let room = Self.isNative(holder.rule) ? "app" : shownRoom
-      guard
-        !episodes.contains(where: {
-          $0.rule == holder.rule && $0.family == family && $0.room == room
-        })
-      else { continue }
-      episodes.append(
-        Episode(id: newID(), rule: holder.rule, family: family, room: room, phase: .waiting))
+      let (source, observed) = attribution(for: holder, c)
+      let owner = observed?.owner
+      if let observed, case .ended = observed.value { continue }
+      if let index = episodes.firstIndex(where: {
+        guard $0.rule == holder.rule && $0.family == family && $0.room == room else { return false }
+        if let old = $0.owner, let owner { return old == owner }
+        return true // Uncertainty does not split a call or renew an offered question.
+      }) {
+        if let source, episodes[index].sources.contains(source), episodes[index].owner == nil, let owner {
+          episodes[index].owner = owner
+          episodes[index].establishedAt = c.now
+          episodes[index].lastObservationID = reading.continuity.map(\.id).max() ?? 0
+          resetEnd(index)
+        }
+        if let source, owner != nil, episodes[index].owner == owner,
+          !episodes[index].sources.contains(source) { episodes[index].sources.append(source) }
+        continue
+      }
+      var episode = Episode(id: newID(), rule: holder.rule, family: family, room: room,
+        noticedAt: min(c.now, reading.takenAt), establishedAt: c.now, phase: .waiting)
+      if let source { episode.sources = [source] }
+      episode.owner = owner
+      episode.lastObservationID = reading.continuity.map(\.id).max() ?? 0
+      episodes.append(episode)
     }
   }
 
@@ -630,6 +720,11 @@ public struct CallDetectionPolicy: Sendable {
     for index in episodes.indices where episodes[index].phase == .waiting {
       let episode = episodes[index]
       guard isKnownLive(episode, c) else { continue }
+      let displaysQuestion = c.mode != .startByItself || c.meeting != .idle
+      if displaysQuestion {
+        guard c.now.timeIntervalSince(episode.noticedAt) >= Self.questionReadiness else { continue }
+        if let lastQuestionShownAt, c.now.timeIntervalSince(lastQuestionShownAt) < Self.questionInterval { continue }
+      }
       switch c.meeting {
       case .busy:
         return
@@ -846,16 +941,23 @@ public struct CallDetectionPolicy: Sendable {
     }
   }
 
-  /// A browser question whose browser now shows another meeting, known, and not this one: the
-  /// question goes, and the new meeting is asked about (review r3 F5). The asked-about call
-  /// stays known until the browser leaves the microphone.
+  /// A known different browser room or native app run withdraws the obsolete question.
+  /// A new question still waits for fresh eligibility, readiness and the global display interval.
+  /// The original episode survives microphone uncertainty until independently confirmed over.
   private mutating func withdrawMovedQuestion(_ c: Context) {
     let e: Int
     switch interaction {
     case .ask(let id, _, _), .switchCall(let id, _, _, _): e = id
     default: return
     }
-    guard isFresh(c), let episode = episode(e), !Self.isNative(episode.rule) else { return }
+    guard isFresh(c), let episode = episode(e) else { return }
+    if Self.isNative(episode.rule) {
+      guard let owner = episode.owner else { return }
+      let replacements = members(of: episode).filter { $0.input == .active }
+        .compactMap { attribution(for: $0, c).1?.owner }
+      if !replacements.isEmpty, !replacements.contains(owner) { set(.none) }
+      return
+    }
     var shown: [(CallAppFamily, String)] = []
     for holder in members(of: episode) where holder.input == .active {
       guard case .call(let family, let room)? = holder.evidence else { return }
@@ -868,6 +970,10 @@ public struct CallDetectionPolicy: Sendable {
 
   private mutating func set(_ new: Interaction) {
     guard new != interaction else { return }
+    switch new {
+    case .ask(_, _, let since), .switchCall(_, _, _, let since): lastQuestionShownAt = since
+    default: break
+    }
     interaction = new
     token += 1
     claimedToken = nil
@@ -877,7 +983,7 @@ public struct CallDetectionPolicy: Sendable {
   private mutating func showNote(_ note: Note, _ c: Context) {
     switch interaction {
     case .ask, .switchCall, .countdown: return
-    default: set(.note(note, until: c.now.addingTimeInterval(Self.promptTimeout)))
+    default: set(.note(note, until: c.now.addingTimeInterval(Self.noteTimeout)))
     }
   }
 

@@ -24,7 +24,7 @@ struct CallEvidenceReadTests {
     let evidence = await recoverWorker(
       rule: .callApp(.teams), family: .teams, trusted: trusted, expected: expected)
     var ask = CallDetectionPolicyTests.Story()
-    ask.read([.init(pid: 70_000, rule: .callApp(.teams), input: .active, evidence: evidence)])
+    ask.ready([.init(pid: 70_000, rule: .callApp(.teams), input: .active, evidence: evidence)])
     if case .ask = ask.interaction { #expect(trusted) } else { #expect(trusted == false) }
     var automatic = CallDetectionPolicyTests.Story()
     automatic.mode = .startByItself
