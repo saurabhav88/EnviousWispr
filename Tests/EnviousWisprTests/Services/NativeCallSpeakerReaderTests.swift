@@ -303,6 +303,42 @@ struct NativeCallSpeakerReaderTests {
     ])
     #expect(reading.speaking == ["Priya Shah"])
     #expect(reading.roster.selfNames == ["Saurabh Vaish"])
+    let good = CallCaptureContext(completeness: .complete, scope: .resolved)
+    #expect(CallSpeakerAdmission.observationSpeaking(reading, context: good) == ["Priya Shah"])
+  }
+
+  /// SYNTHETIC: an unnamed tile with the talking frame beside a named talking tile, and a
+  /// participant tile nested inside another tile.
+  @Test("Teams: an unnamed talking tile withholds; a nested tile's frame is not the outer tile's")
+  func teamsMainWindowFrameEdges() {
+    let frame = CallAXNode(role: "AXGroup", domClassList: ["vdi-frame-occlusion"])
+    let good = CallCaptureContext(completeness: .complete, scope: .resolved)
+    let unnamed = TeamsAppSpeakerReader.read(windows: [
+      window(
+        "Meeting",
+        [
+          CallAXNode(role: "AXMenuItem", description: "Context menu is available", children: [frame]),
+          CallAXNode(
+            role: "AXMenuItem", description: "Priya Shah (Guest), Context menu is available",
+            children: [frame]),
+        ])
+    ])
+    #expect(
+      CallSpeakerAdmission.admission(of: unnamed, context: good) == .withheld(.unnamedTalker))
+    let nested = TeamsAppSpeakerReader.read(windows: [
+      window(
+        "Meeting",
+        [
+          CallAXNode(
+            role: "AXMenuItem", description: "Alex Rivera (Guest), Context menu is available",
+            children: [
+              CallAXNode(
+                role: "AXMenuItem", description: "Priya Shah (Guest), Context menu is available",
+                children: [frame])
+            ])
+        ])
+    ])
+    #expect(nested.speaking == ["Priya Shah"])
   }
 
   /// SURVEY main window alone (no compact view): roster yes, talker no. SYNTHETIC: Organizer

@@ -181,6 +181,7 @@ package enum TeamsAppSpeakerReader {
     var selfTiles: [String] = []
     var tileNames: [String] = []
     var unnamedTalker = false
+    var selfTileTalking = false
     // Each window's roster rows and the "In this meeting, N total" counts shown in that window.
     var rosters: [(names: [String], counts: Set<Int>)] = []
     for window in windows {
@@ -199,14 +200,16 @@ package enum TeamsAppSpeakerReader {
         if let name = rosterName(label) { rosterNames.append(name) }
       case "AXMenuItem" where label.hasPrefix(selfTilePrefix):
         selfTiles.append(String(label.dropFirst(selfTilePrefix.count)))
+        if hasTalkingFrame(node) { selfTileTalking = true }
       case "AXMenuItem":
+        // The main window marks the talker's gallery tile with a frame carrying this class
+        // (C1 Teams run 2, 2026-10-28; the signal Superwhisper reads).
+        let talkingTile = hasTalkingFrame(node)
         if let name = tileName(label) {
           tileNames.append(name)
-          // The main window marks the talker's gallery tile with a frame carrying this class
-          // (C1 Teams run 2, 2026-10-28; the signal Superwhisper reads).
-          if node.allNodes.contains(where: { $0.domClassList.contains(talkingFrameClass) }) {
-            speaking.append(name)
-          }
+          if talkingTile { speaking.append(name) }
+        } else if talkingTile {
+          unnamedTalker = true
         }
       default:
         break
@@ -229,6 +232,9 @@ package enum TeamsAppSpeakerReader {
     let selfFromTile = selfTiles.count == 1 ? selfTileName(selfTiles[0]) : nil
     let selfNames =
       rosterNames.isEmpty ? (selfFromTile.map { [$0] } ?? []) : (candidates.count == 1 ? candidates : [])
+    // The user's own tile talking is the user (the namer removes self); a self tile whose name is
+    // not known adds nobody.
+    if selfTileTalking, selfNames.count == 1 { speaking.append(selfNames[0]) }
     // A complete participant list (C1 Teams run, 2026-10-28): roster rows in exactly one window,
     // whose own "In this meeting, N total" count is the one count there and equals the people
     // read. Duplicate names stay; a partial, uncounted or contested list keeps its names for
@@ -292,6 +298,19 @@ package enum TeamsAppSpeakerReader {
 
   /// The class on the frame inside the talker's gallery tile in the main meeting window.
   static let talkingFrameClass = "vdi-frame-occlusion"
+
+  /// Whether the tile's own subtree holds the talking frame. A tile nested inside it is another
+  /// participant, so its frame is never this tile's.
+  static func hasTalkingFrame(_ tile: CallAXNode) -> Bool {
+    var queue = tile.children
+    while !queue.isEmpty {
+      let node = queue.removeFirst()
+      if node.role == "AXMenuItem" { continue }
+      if node.domClassList.contains(talkingFrameClass) { return true }
+      queue.append(contentsOf: node.children)
+    }
+    return false
+  }
 
   /// What follows the name on another participant's gallery tile (C1 Teams run, 2026-10-28).
   static let galleryTileStates: Set<String> = ["muted", "Context menu is available"]
