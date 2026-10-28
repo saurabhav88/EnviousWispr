@@ -161,8 +161,6 @@ package enum CustomWordsInitialLoadFailure: Sendable, Equatable {
 @MainActor
 public final class CustomWordsManager {
   private let store: CustomWordsFileStore
-  /// The on-disk schema every word-policy transform edits; owned by the store (#4086).
-  private typealias CustomWordsFile = CustomWordsFileStore.CustomWordsFile
 
   /// Where the live word list is kept.
   ///
