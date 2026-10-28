@@ -2659,7 +2659,9 @@ package final class WisprBootstrapper {
         },
         anchor: { [menuBarControllerHolder] in menuBarControllerHolder.controller?.statusItemFrame },
         emit: { TelemetryService.shared.trackMeetingCallPrompt($0) },
-        snapshot: { rule, pid in await CallEvidenceRead.boundedSnapshot(rule: rule, pid: pid) },
+        snapshot: { rule, pid, retained in
+          await CallEvidenceRead.boundedSnapshot(rule: rule, pid: pid, retained: retained)
+        },
         makePresenter: { [overlayEffects] anchor in
           CallPromptPanel(anchor: anchor, makePanel: overlayEffects.makePanel)
         }))

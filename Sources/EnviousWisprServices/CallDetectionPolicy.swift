@@ -64,10 +64,13 @@ public struct CallDetectionPolicy: Sendable {
     package let completedAt: Date
     package let owner: CallEvidenceReader.AppRun?
     package let value: CallEvidenceReader.Continuity
+    /// Explicit historical target for a retained query; nil means the source's current view.
+    package let retainedTarget: CallEvidenceReader.RetainedTarget?
 
     package init(
       id: Int, source: Source, beganAt: Date, completedAt: Date,
-      owner: CallEvidenceReader.AppRun?, value: CallEvidenceReader.Continuity
+      owner: CallEvidenceReader.AppRun?, value: CallEvidenceReader.Continuity,
+      retainedTarget: CallEvidenceReader.RetainedTarget? = nil
     ) {
       self.id = id
       self.source = source
@@ -75,6 +78,7 @@ public struct CallDetectionPolicy: Sendable {
       self.completedAt = completedAt
       self.owner = owner
       self.value = value
+      self.retainedTarget = retainedTarget
     }
   }
 
@@ -291,6 +295,13 @@ public struct CallDetectionPolicy: Sendable {
   /// The apps whose existing episodes still need observations, even with their microphones off.
   package func isTracking(_ rule: CallAppCatalog.Rule) -> Bool {
     episodes.contains { $0.rule == rule }
+  }
+
+  package func isTracking(_ target: CallEvidenceReader.RetainedTarget) -> Bool {
+    episodes.contains {
+      $0.rule == target.rule && $0.family == target.family
+        && (Self.isNative(target.rule) || $0.room == target.room)
+    }
   }
 
   #if DEBUG

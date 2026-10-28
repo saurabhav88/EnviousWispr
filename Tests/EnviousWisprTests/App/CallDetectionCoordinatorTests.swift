@@ -60,7 +60,8 @@
 
       init(
         evidenceRead: (@Sendable (CallAppCatalog.Rule, Int32) async -> CallEvidenceReader.Evidence)? = nil,
-        snapshotRead: (@Sendable (CallAppCatalog.Rule, Int32) async -> CallEvidenceReader.Snapshot)? = nil
+        snapshotRead: (@Sendable (CallAppCatalog.Rule, Int32) async -> CallEvidenceReader.Snapshot)? = nil,
+        retainedRead: (@Sendable (CallEvidenceReader.RetainedTarget) async -> CallEvidenceReader.Snapshot)? = nil
       ) throws {
         let defaults = try #require(
           TestDefaults.suite("ew.tests.4012.callDetection.\(UUID().uuidString)"))
@@ -95,8 +96,9 @@
             showMeetingPage: { [weak self] in self?.pageShown += 1 },
             anchor: { nil },
             emit: { [weak self] in self?.events.append($0) },
-            snapshot: { [evidenceAnswer, evidenceReads] rule, pid in
+            snapshot: { [evidenceAnswer, evidenceReads] rule, pid, retained in
               evidenceReads.withLock { $0 += 1 }
+              if let retained, let retainedRead { return await retainedRead(retained) }
               if let snapshotRead { return await snapshotRead(rule, pid) }
               let answer = if let evidenceRead { await evidenceRead(rule, pid) }
                 else { evidenceAnswer.withLock { $0 } }
@@ -156,6 +158,139 @@
         gate.continuation.finish()
       }
       return gate
+    }
+
+    @Test("A tracked call still receives continuity when its microphone holder disappears",
+      .bug("https://github.com/saurabhav88/EnviousWispr/issues/4142"))
+    func missingHolderStillReceivesContinuity() async throws {
+      let rig = try Rig(snapshotRead: { rule, pid in
+        Rig.snapshotValue(rule: rule, pid: pid,
+          evidence: .call(family: .zoom, room: "retained-call"),
+          continuity: .ongoing(family: .zoom, room: "retained-call"))
+      })
+      rig.reading("us.zoom.xos", .active)
+      #expect(await settleUntilObserved {
+        rig.panel.content == .ask(appName: "Zoom") && !rig.coordinator.evidenceReadPendingForTesting
+      })
+      let original = try #require(rig.coordinator.inputForTesting?.continuity.last)
+      #expect(original.owner != nil)
+      rig.advance(1)
+      let missingAt = rig.clock
+      rig.coordinator.deliverWatcherReading([])
+      #expect(await settleUntilObserved {
+        rig.coordinator.inputForTesting?.continuity.last?.id == 2
+          && !rig.coordinator.evidenceReadPendingForTesting
+      }, "a complete missing-holder frame must not end independent owner queries")
+      let frame = try #require(rig.coordinator.inputForTesting)
+      #expect(frame.sequence == 2 && frame.takenAt == missingAt)
+      #expect(frame.holders.isEmpty)
+      #expect(frame.continuity.last?.source == original.source)
+      #expect(frame.continuity.last?.owner == original.owner)
+      #expect(frame.continuity.last?.value == .ongoing(family: .zoom, room: "retained-call"))
+      #expect(rig.starts.isEmpty && rig.stops == 0)
+    }
+
+    @Test("Retained browser targets keep established rooms instead of borrowing the latest page")
+    func retainedRoomsStayDistinct() async throws {
+      let stage = OSAllocatedUnfairLock(initialState: 0)
+      let rooms = OSAllocatedUnfairLock(initialState: [String]())
+      let rig = try Rig(snapshotRead: { rule, pid in
+        let index = stage.withLock { $0 += 1; return $0 }
+        let room = index == 1 ? "abc-defg-hij" : "xyz-wxyz-xyz"
+        return Rig.snapshotValue(rule: rule, pid: pid,
+          evidence: .call(family: .googleMeet, room: room),
+          continuity: .ongoing(family: .googleMeet, room: room))
+      }, retainedRead: { target in
+        rooms.withLock { $0.append(target.room) }
+        // A room-A request sees the current room-B page: never relabel its ended proof.
+        return .init(startEvidence: .call(family: .googleMeet, room: "xyz-wxyz-xyz"),
+          continuity: target.room == "abc-defg-hij"
+            ? .ended(family: .googleMeet, room: "xyz-wxyz-xyz")
+            : .ongoing(family: .googleMeet, room: "xyz-wxyz-xyz"), owner: target.owner)
+      })
+      rig.reading("com.google.chrome", .active)
+      #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
+      rig.advance(1)
+      rig.reading("com.google.chrome", .active)
+      #expect(await settleUntilObserved {
+        stage.withLock { $0 == 2 } && !rig.coordinator.evidenceReadPendingForTesting
+      })
+      rig.advance(1)
+      let at = rig.clock
+      rig.coordinator.deliverWatcherReading([])
+      #expect(await settleUntilObserved {
+        rooms.withLock { $0.count == 2 } && !rig.coordinator.evidenceReadPendingForTesting
+      })
+      let frame = try #require(rig.coordinator.inputForTesting)
+      #expect(rooms.withLock { $0 } == ["abc-defg-hij", "xyz-wxyz-xyz"])
+      #expect(frame.continuity.first { $0.retainedTarget?.room == "abc-defg-hij" }?.value == .unknown)
+      #expect(frame.continuity.first { $0.retainedTarget?.room == "xyz-wxyz-xyz" }?.value
+        == .ongoing(family: .googleMeet, room: "xyz-wxyz-xyz"))
+      #expect(frame.holders.isEmpty && frame.takenAt == at && frame.sequence == 3)
+      #expect(frame.pendingSources.isEmpty)
+      #expect(rig.starts.isEmpty && rig.stops == 0)
+    }
+
+    @Test("Missing holders without verified owner attribution never gain a guessed retained read")
+    func unverifiedMissingHolderIsNotQueried() async throws {
+      let rig = try Rig(snapshotRead: { _, _ in
+        .init(startEvidence: .call(family: .zoom, room: "unverified"))
+      })
+      rig.reading("us.zoom.xos", .active)
+      #expect(await settleUntilObserved {
+        rig.panel.content == .ask(appName: "Zoom") && !rig.coordinator.evidenceReadPendingForTesting
+      })
+      let before = rig.evidenceReads.withLock { $0 }
+      rig.coordinator.deliverWatcherReading([])
+      #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
+      #expect(rig.coordinator.inputForTesting?.sequence == 2)
+      #expect(rig.evidenceReads.withLock { $0 } == before)
+      #expect(rig.coordinator.inputForTesting?.pendingSources.isEmpty == true)
+    }
+
+    @Test("Off or replacement rejects a late retained result from the actual bounded worker",
+      arguments: [true, false])
+    func lateRetainedResultIsRejected(off: Bool) async throws {
+      let lane = CallEvidenceRead.Lane()
+      let gate = DispatchSemaphore(value: 0)
+      defer { gate.signal() }
+      let entered = OSAllocatedUnfairLock(initialState: false)
+      let rig = try Rig(snapshotRead: { rule, pid in
+        Rig.snapshotValue(rule: rule, pid: pid,
+          evidence: .call(family: .zoom, room: "retained-old"),
+          continuity: .ongoing(family: .zoom, room: "retained-old"))
+      }, retainedRead: { target in
+        await CallEvidenceRead.boundedSnapshot(rule: target.rule, pid: target.holderPID,
+          retained: target, bound: .seconds(10), lane: lane,
+          read: { _, _ in
+            entered.withLock { $0 = true }
+            // deadline-fallback: bounded fixture release, not a latency threshold.
+            _ = gate.wait(timeout: .now() + 30)
+            return .init(startEvidence: .call(family: target.family, room: target.room),
+              continuity: .ended(family: target.family, room: target.room), owner: target.owner)
+          })
+      })
+      rig.reading("us.zoom.xos", .active)
+      #expect(await settleUntilObserved {
+        rig.panel.content == .ask(appName: "Zoom") && !rig.coordinator.evidenceReadPendingForTesting
+      })
+      rig.advance(1)
+      rig.coordinator.deliverWatcherReading([])
+      #expect(await settleUntilObserved { entered.withLock { $0 } })
+      if off {
+        rig.settings.meetingCallDetection = "off"
+        rig.coordinator.tickForTesting()
+      } else {
+        rig.coordinator.deliverWatcherReading([
+          .init(pid: 900_010, bundleID: "us.zoom.xos", input: .active, object: 2)
+        ])
+      }
+      gate.signal()
+      #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
+      let frame = try #require(rig.coordinator.inputForTesting)
+      #expect(!frame.continuity.contains { if case .ended = $0.value { return true }; return false })
+      #expect(frame.pendingSources.isEmpty)
+      #expect(rig.starts.isEmpty && rig.stops == 0)
     }
 
     @Test("A waiting call cannot reuse expired start proof while a refresh is pending")

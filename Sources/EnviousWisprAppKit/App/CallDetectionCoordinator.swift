@@ -30,7 +30,8 @@ final class CallDetectionCoordinator {
     var anchor: @MainActor () -> NSRect?
     var emit: @MainActor (MeetingCallPromptTelemetry) -> Void
     /// The evidence for one holder, read off the main actor with its own bound.
-    var snapshot: @Sendable (CallAppCatalog.Rule, Int32) async -> CallEvidenceReader.Snapshot
+    var snapshot: @Sendable (CallAppCatalog.Rule, Int32, CallEvidenceReader.RetainedTarget?) async
+      -> CallEvidenceReader.Snapshot
     /// Seconds since the Mac started, as a Date: the countdown and timeouts measure elapsed
     /// time, so changing the Mac's clock never moves them (review r15 F4).
     var now: @MainActor () -> Date = {
@@ -77,11 +78,16 @@ final class CallDetectionCoordinator {
     var activityRevision = 0
     var present = true
     var owner: CallEvidenceReader.AppRun? = nil
+    var knownCalls: [CallEvidenceReader.RetainedTarget] = []
+  }
+  private struct ReadTarget {
+    let state: SourceState
+    let retained: CallEvidenceReader.RetainedTarget?
   }
   private var evidence: [Int32: CachedEvidence] = [:]
   private var sources: [Int32: SourceState] = [:]
   /// These survive microphone polls and absence; no cached observation is re-dated.
-  private var continuity: [Int: CallDetectionPolicy.ContinuityObservation] = [:]
+  private var continuity: [CallDetectionPolicy.ContinuityObservation] = []
   private var pendingSources: [CallDetectionPolicy.Source] = []
   private var nextSourceID = 0
   private var nextObservationID = 0
@@ -153,7 +159,7 @@ final class CallDetectionCoordinator {
     evidenceTask?.cancel()
     rereadWanted = false
     sources = [:]
-    continuity = [:]
+    continuity = []
     pendingSources = []
     if clearInputs {
       holders = []
@@ -276,7 +282,7 @@ final class CallDetectionCoordinator {
       }
       // Hold the last independent observation for tracked calls, not for every past process.
       sources = sources.filter { seen.contains($0.key) || policy.isTracking($0.value.source.rule) }
-      continuity = continuity.filter { _, value in
+      continuity = continuity.filter { value in
         sources[value.source.pid]?.source == value.source || policy.isTracking(value.source.rule)
       }
     }
@@ -311,7 +317,7 @@ final class CallDetectionCoordinator {
         sequence: sequence, takenAt: takenAt, complete: complete, holders: mapped,
         ambiguous: ambiguous,
         sources: holders.compactMap { sources[$0.pid]?.source },
-        continuity: continuity.values.sorted { $0.id < $1.id },
+        continuity: continuity.sorted { $0.id < $1.id },
         pendingSources: pendingSources.filter { sources[$0.pid]?.source == $0 }))
   }
 
@@ -326,7 +332,7 @@ final class CallDetectionCoordinator {
       rereadWanted = true
       return
     }
-    let targets = holders.filter { holder in
+    let listed = holders.filter { holder in
       let tracked = CallAppCatalog.rule(forBundleID: holder.bundleID)
         .map { policy.isTracking($0) } ?? false
       return holder.input == .active || evidence[holder.pid]?.value == .unknown || tracked
@@ -335,37 +341,57 @@ final class CallDetectionCoordinator {
         Self.sameProcess(state.holder, holder) else { return nil }
       return state
     }
+    var targets = listed.map { ReadTarget(state: $0, retained: nil) }
+    for state in sources.values.sorted(by: { $0.source.id < $1.source.id }) where !state.present {
+      for target in state.knownCalls where target.owner == state.owner && policy.isTracking(target) {
+        targets.append(.init(state: state, retained: target))
+      }
+    }
     guard !targets.isEmpty else { return }
     let read = deps.snapshot
     let lifetime = readLifetime
     nextReadID += 1
     let requestID = nextReadID
     currentReadID = requestID
-    pendingSources = targets.map(\.source)
+    pendingSources = targets.map(\.state.source)
     observe()
     evidenceTask = Task {
       defer { self.finishRead(requestID) }
       for target in targets {
         guard self.currentReadID == requestID, self.readLifetime == lifetime,
           !Task.isCancelled, self.updateReadLifetime() else { break }
-        guard let current = self.sources[target.source.pid], current.present,
-          current.source == target.source,
-          self.holders.contains(where: { Self.sameProcess($0, current.holder) })
+        guard let current = self.sources[target.state.source.pid],
+          current.source == target.state.source,
+          self.canQuery(current, retained: target.retained)
         else {
-          self.pendingSources.removeAll { $0 == target.source }
+          self.removePending(target.state.source)
           continue
         }
         let beganAt = self.deps.now()
-        let value = await read(current.source.rule, current.holder.pid)
+        let value = await read(current.source.rule, current.holder.pid, target.retained)
         guard self.currentReadID == requestID, self.readLifetime == lifetime,
           !Task.isCancelled, self.updateReadLifetime() else { break }
-        self.pendingSources.removeAll { $0 == current.source }
-        self.accept(value, requested: current, beganAt: beganAt)
+        self.removePending(current.source)
+        if let retained = target.retained {
+          self.acceptRetained(value, requested: current, target: retained, beganAt: beganAt)
+        } else { self.accept(value, requested: current, beganAt: beganAt) }
         // A healthy early source is useful now, not after every other app has answered.
         self.observe()
         self.step()
       }
     }
+  }
+
+  private func canQuery(_ state: SourceState, retained: CallEvidenceReader.RetainedTarget?) -> Bool {
+    if let retained {
+      return !state.present && state.owner == retained.owner && state.knownCalls.contains(retained)
+        && policy.isTracking(retained)
+    }
+    return state.present && holders.contains { Self.sameProcess($0, state.holder) }
+  }
+
+  private func removePending(_ source: CallDetectionPolicy.Source) {
+    if let index = pendingSources.firstIndex(of: source) { pendingSources.remove(at: index) }
   }
 
   private func accept(
@@ -384,6 +410,7 @@ final class CallDetectionCoordinator {
       current.activityRevision += 1
       current.present = false
       current.owner = actual
+      current.knownCalls = []
       sources[pid] = current
       evidence[pid] = nil
       rereadWanted = true
@@ -393,6 +420,9 @@ final class CallDetectionCoordinator {
     publishContinuity(sameRun && value.owner != nil ? value.continuity : .unknown,
       owner: sameRun ? value.owner : nil, for: requested.source, beganAt: beganAt)
     if let owner = value.owner { current.owner = owner }
+    if sameRun, let target = capturedTarget(value, source: current.source), !current.knownCalls.contains(target) {
+      current.knownCalls.append(target)
+    }
     sources[pid] = current
     if current.activityRevision == requested.activityRevision {
       let start: CallEvidenceReader.Evidence
@@ -403,13 +433,44 @@ final class CallDetectionCoordinator {
     }
   }
 
+  private func capturedTarget(
+    _ value: CallEvidenceReader.Snapshot, source: CallDetectionPolicy.Source
+  ) -> CallEvidenceReader.RetainedTarget? {
+    guard let owner = value.owner else { return nil }
+    let call: (CallAppFamily, String)
+    switch value.continuity {
+    case .ongoing(let family, let room), .ended(let family, let room): call = (family, room)
+    case .unknown:
+      switch value.startEvidence {
+      case .call(let family, let room), .microphoneOnly(let family, let room): call = (family, room)
+      case .none, .unknown: return nil
+      }
+    }
+    return .init(rule: source.rule, holderPID: source.pid, owner: owner, family: call.0, room: call.1)
+  }
+
+  private func acceptRetained(
+    _ value: CallEvidenceReader.Snapshot, requested: SourceState,
+    target: CallEvidenceReader.RetainedTarget, beganAt: Date
+  ) {
+    guard let current = sources[requested.source.pid], current.source == requested.source,
+      current.owner == target.owner, current.knownCalls.contains(target), policy.isTracking(target)
+    else { return }
+    let valid = value.owner == target.owner && target.accepts(value.continuity)
+    publishContinuity(valid ? value.continuity : .unknown, owner: valid ? value.owner : nil,
+      for: requested.source, beganAt: beganAt, retainedTarget: target)
+    // No start cache or microphone field is written by a retained completion.
+  }
+
   private func publishContinuity(
     _ value: CallEvidenceReader.Continuity, owner: CallEvidenceReader.AppRun?,
-    for source: CallDetectionPolicy.Source, beganAt: Date
+    for source: CallDetectionPolicy.Source, beganAt: Date,
+    retainedTarget: CallEvidenceReader.RetainedTarget? = nil
   ) {
     nextObservationID += 1
-    continuity[source.id] = .init(id: nextObservationID, source: source, beganAt: beganAt,
-      completedAt: deps.now(), owner: owner, value: value)
+    continuity.removeAll { $0.source == source && $0.retainedTarget == retainedTarget }
+    continuity.append(.init(id: nextObservationID, source: source, beganAt: beganAt,
+      completedAt: deps.now(), owner: owner, value: value, retainedTarget: retainedTarget))
   }
 
   private func finishRead(_ id: Int) {
@@ -487,6 +548,11 @@ final class CallDetectionCoordinator {
     let commands = policy.step(current)
     draw()
     run(commands)
+    for pid in Array(sources.keys) {
+      guard var state = sources[pid] else { continue }
+      state.knownCalls.removeAll { !policy.isTracking($0) }
+      sources[pid] = state
+    }
   }
 
   private func deliver(_ event: CallDetectionPolicy.Event) {

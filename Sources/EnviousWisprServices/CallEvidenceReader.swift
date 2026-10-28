@@ -40,6 +40,33 @@ public enum CallEvidenceReader {
     }
   }
 
+  /// Historical attribution for one tracked call, not permission to resolve another owner.
+  package struct RetainedTarget: Sendable, Equatable {
+    package let rule: CallAppCatalog.Rule
+    package let holderPID: Int32
+    package let owner: AppRun
+    package let family: CallAppFamily
+    package let room: String
+
+    package init(
+      rule: CallAppCatalog.Rule, holderPID: Int32, owner: AppRun, family: CallAppFamily, room: String
+    ) {
+      self.rule = rule
+      self.holderPID = holderPID
+      self.owner = owner
+      self.family = family
+      self.room = room
+    }
+
+    package func accepts(_ value: Continuity) -> Bool {
+      switch value {
+      case .ongoing(let family, let room), .ended(let family, let room):
+        return family == self.family && room == self.room
+      case .unknown: return true
+      }
+    }
+  }
+
   package struct Snapshot: Sendable, Equatable {
     package let startEvidence: Evidence
     package let continuity: Continuity
@@ -138,19 +165,49 @@ public enum CallEvidenceReader {
     }
   }
 
+  /// No microphone fact or new start eligibility can be obtained from a retained owner.
+  package static func snapshot(for target: RetainedTarget, access: Access = .live) -> Snapshot {
+    let deadline = scanDeadline(access)
+    guard access.isTrusted(), access.now() < deadline else { return .init(startEvidence: .unknown) }
+    let value = attributed((pid: target.owner.pid, unambiguous: true), rule: target.rule,
+      until: deadline, access: access, requiredOwner: target.owner) {
+        switch target.rule {
+        case .callApp(let family):
+          return nativeCallSnapshot(family: family, holderPID: target.holderPID,
+            ownerPID: target.owner.pid, until: deadline, access: access, fixedOwner: true)
+        case .callWindow(let family):
+          return callWindowSnapshot(family: family, appPID: target.owner.pid,
+            until: deadline, access: access)
+        case .browser:
+          return meetingPageSnapshot(appPID: target.owner.pid, until: deadline, access: access)
+        }
+      }
+    return .init(startEvidence: .unknown,
+      continuity: target.accepts(value.continuity) ? value.continuity : .unknown, owner: value.owner)
+  }
+
   private static func attributed(
     _ selected: (pid: Int32, unambiguous: Bool), rule: CallAppCatalog.Rule,
-    until deadline: ContinuousClock.Instant, access: Access, read: () -> Snapshot
+    until deadline: ContinuousClock.Instant, access: Access, requiredOwner: AppRun? = nil,
+    read: () -> Snapshot
   ) -> Snapshot {
     guard access.now() < deadline else { return .init(startEvidence: .unknown) }
     let before = selected.unambiguous ? access.appRun(selected.pid) : nil
     guard access.now() < deadline else { return .init(startEvidence: .unknown) }
+    if let requiredOwner {
+      guard before == requiredOwner, validOwner(requiredOwner, pid: selected.pid, rule: rule)
+      else { return .init(startEvidence: .unknown) }
+    }
     let value = read()
-    guard let before, before.pid == selected.pid, before.birthSeconds > 0,
-      before.birthMicroseconds < 1_000_000, matches(before.bundleIdentifier, rule: rule),
+    guard let before, validOwner(before, pid: selected.pid, rule: rule),
       access.now() < deadline, access.appRun(selected.pid) == before, access.now() < deadline
     else { return .init(startEvidence: value.startEvidence) }
     return .init(startEvidence: value.startEvidence, continuity: value.continuity, owner: before)
+  }
+
+  private static func validOwner(_ owner: AppRun, pid: Int32, rule: CallAppCatalog.Rule) -> Bool {
+    owner.pid == pid && owner.birthSeconds > 0 && owner.birthMicroseconds < 1_000_000
+      && matches(owner.bundleIdentifier, rule: rule)
   }
 
   private static func matches(_ bundle: String, rule: CallAppCatalog.Rule) -> Bool {
@@ -180,7 +237,7 @@ public enum CallEvidenceReader {
 
   private static func nativeCallSnapshot(
     family: CallAppFamily, holderPID: Int32, ownerPID: Int32?,
-    until deadline: ContinuousClock.Instant, access: Access
+    until deadline: ContinuousClock.Instant, access: Access, fixedOwner: Bool = false
   ) -> Snapshot {
     let room = "pid-\(holderPID)"
     guard family == .teams else {
@@ -215,7 +272,7 @@ public enum CallEvidenceReader {
     }
     // A home marker never substitutes for the other windows or an unchanged owner/window set.
     guard allHome,
-      teamsOwnerPID(holderPID: holderPID, regularTeamsPIDs: access.regularTeamsPIDs()) == owner,
+      (fixedOwner || teamsOwnerPID(holderPID: holderPID, regularTeamsPIDs: access.regularTeamsPIDs()) == owner),
       case .value(let currentValue) = boundedCopy(
         app, kAXWindowsAttribute as CFString, until: deadline, access: access),
       let current = currentValue as? [AXUIElement], current.count == windows.count,

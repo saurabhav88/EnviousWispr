@@ -18,15 +18,22 @@ enum CallEvidenceRead {
   }
 
   static func boundedSnapshot(
-    rule: CallAppCatalog.Rule, pid: Int32, bound: Duration = .seconds(1), lane: Lane = .shared,
+    rule: CallAppCatalog.Rule, pid: Int32, retained: CallEvidenceReader.RetainedTarget? = nil,
+    bound: Duration = .seconds(1), lane: Lane = .shared,
     isTrusted: @escaping @Sendable () -> Bool = { AXIsProcessTrusted() },
-    read: @escaping @Sendable (CallAppCatalog.Rule, Int32) -> CallEvidenceReader.Snapshot = {
-      CallEvidenceReader.snapshot(for: $0, holderPID: $1)
-    }
+    read: (@Sendable (CallAppCatalog.Rule, Int32) -> CallEvidenceReader.Snapshot)? = nil
   ) async -> CallEvidenceReader.Snapshot {
+    let operation: @Sendable (CallAppCatalog.Rule, Int32) -> CallEvidenceReader.Snapshot = read ?? { rule, pid in
+      if let retained {
+        guard retained.rule == rule, retained.holderPID == pid else { return .init(startEvidence: .unknown) }
+        return CallEvidenceReader.snapshot(for: retained)
+      }
+      return CallEvidenceReader.snapshot(for: rule, holderPID: pid)
+    }
     // The inner scan can lose to this outer timer (#4094). Preserve Ask without granting
     // automatic proof, and check trust at fallback time rather than before the scan.
     let unavailable: @Sendable () -> CallEvidenceReader.Snapshot = {
+      guard retained == nil else { return .init(startEvidence: .unknown) }
       guard case .callApp(.teams) = rule, isTrusted() else { return .init(startEvidence: .unknown) }
       return .init(startEvidence: .microphoneOnly(family: .teams, room: "pid-\(pid)"))
     }
@@ -46,10 +53,14 @@ enum CallEvidenceRead {
           done = true
           return true
         }
-        if first { continuation.resume(returning: value) }
+        if first {
+          let result = retained == nil ? value
+            : .init(startEvidence: .unknown, continuity: value.continuity, owner: value.owner)
+          continuation.resume(returning: result)
+        }
       }
       lane.queue.async {
-        let value = read(rule, pid)
+        let value = operation(rule, pid)
         reading.withLock { $0 = false }
         finish(value)
       }

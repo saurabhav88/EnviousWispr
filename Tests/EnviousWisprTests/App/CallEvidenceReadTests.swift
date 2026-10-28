@@ -68,9 +68,20 @@ struct CallEvidenceReadTests {
         continuity: .ended(family: .teams, room: "pid-70000")))
   }
 
+  @Test("Retained Teams timeout, busy and healthy results cannot create start eligibility")
+  func retainedWorkerNeverGrantsStart() async {
+    let target = CallEvidenceReader.RetainedTarget(rule: .callApp(.teams), holderPID: 70_000,
+      owner: .init(pid: 72_000, bundleIdentifier: "com.microsoft.teams2", birthSeconds: 100,
+        birthMicroseconds: 1), family: .teams, room: "pid-70000")
+    _ = await recoverWorker(rule: .callApp(.teams), family: .teams, trusted: true, expected: .unknown,
+      retained: target, lateSnapshot: .init(startEvidence: .call(family: .teams, room: "late"),
+        continuity: .ended(family: .teams, room: "pid-70000"), owner: target.owner))
+  }
+
   private func recoverWorker(
     rule: CallAppCatalog.Rule, family: CallAppFamily, trusted: Bool,
     expected: CallEvidenceReader.Evidence,
+    retained: CallEvidenceReader.RetainedTarget? = nil,
     lateSnapshot: Snapshot = .init(startEvidence: .none)
   ) async -> CallEvidenceReader.Evidence {
     let lane = CallEvidenceRead.Lane()
@@ -84,7 +95,7 @@ struct CallEvidenceReadTests {
     }
     let unexpectedReads = OSAllocatedUnfairLock(initialState: 0)
     let first = await CallEvidenceRead.boundedSnapshot(
-      rule: rule, pid: 70_000, bound: .zero, lane: lane, isTrusted: { trusted },
+      rule: rule, pid: 70_000, retained: retained, bound: .zero, lane: lane, isTrusted: { trusted },
       read: { _, _ in
         // Arrival is a precondition only. Completion is acknowledged behind this queue block.
         arrival.continuation.yield(true)
@@ -100,7 +111,7 @@ struct CallEvidenceReadTests {
     guard entered else { return first.startEvidence }
     #expect(lane.reading.withLock { $0 })
     let refused = await CallEvidenceRead.boundedSnapshot(
-      rule: rule, pid: 70_000, lane: lane, isTrusted: { trusted },
+      rule: rule, pid: 70_000, retained: retained, lane: lane, isTrusted: { trusted },
       read: { _, _ in
         unexpectedReads.withLock { $0 += 1 }
         return .init(startEvidence: .call(family: family, room: "healthy"),
@@ -128,10 +139,10 @@ struct CallEvidenceReadTests {
     #expect(unexpectedReads.withLock { $0 } == 0)
 
     let healthy = await CallEvidenceRead.boundedSnapshot(
-      rule: rule, pid: 70_000, bound: .seconds(10), lane: lane, isTrusted: { trusted },
+      rule: rule, pid: 70_000, retained: retained, bound: .seconds(10), lane: lane, isTrusted: { trusted },
       read: { _, _ in .init(startEvidence: .call(family: family, room: "healthy"),
         continuity: .ongoing(family: family, room: "healthy")) })
-    #expect(healthy == .init(startEvidence: .call(family: family, room: "healthy"),
+    #expect(healthy == .init(startEvidence: retained == nil ? .call(family: family, room: "healthy") : .unknown,
       continuity: .ongoing(family: family, room: "healthy")))
     return first.startEvidence
   }

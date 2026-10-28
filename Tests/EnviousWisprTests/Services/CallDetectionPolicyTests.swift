@@ -27,6 +27,21 @@ struct CallDetectionPolicyTests {
     #expect(frame.pendingSources.isEmpty)
   }
 
+  @Test("Read-only retained membership distinguishes browser rooms")
+  func trackedRetainedRoomMembership() {
+    var story = Story()
+    story.read([.init(pid: 1, rule: .browser(.chrome), input: .active,
+      evidence: .call(family: .googleMeet, room: "abc-defg-hij"))])
+    let owner = CallEvidenceReader.AppRun(pid: 2, bundleIdentifier: "com.google.Chrome",
+      birthSeconds: 100, birthMicroseconds: 1)
+    let known = CallEvidenceReader.RetainedTarget(rule: .browser(.chrome), holderPID: 1,
+      owner: owner, family: .googleMeet, room: "abc-defg-hij")
+    let other = CallEvidenceReader.RetainedTarget(rule: .browser(.chrome), holderPID: 1,
+      owner: owner, family: .googleMeet, room: "xyz-wxyz-xyz")
+    #expect(story.policy.isTracking(known))
+    #expect(!story.policy.isTracking(other))
+  }
+
   #if DEBUG
     @Test("A completed observation can advance without advancing the microphone frame")
     func independentObservationUpdatesSameMicrophoneFrame() {

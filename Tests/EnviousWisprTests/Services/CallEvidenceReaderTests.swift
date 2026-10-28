@@ -285,6 +285,101 @@ struct CallEvidenceReaderTests {
     #expect(fixture.messages.isEmpty)
   }
 
+  func retainedBrowserTarget() -> Reader.RetainedTarget {
+    .init(rule: .browser(.chrome), holderPID: 70_000,
+      owner: .init(pid: 72_000, bundleIdentifier: "com.google.Chrome", birthSeconds: 100,
+        birthMicroseconds: 1), family: .googleMeet, room: "abc-defg-hij")
+  }
+
+  @Test("Retained browser reads scan the captured regular owner with no new start admission")
+  func retainedBrowserUsesExactOwner() {
+    let fixture = Fixture()
+    fixture.leaveTitle = "Leave call"
+    let target = retainedBrowserTarget()
+    let owner = AXUIElementCreateApplication(target.owner.pid)
+    var scanned: [AXUIElement] = []
+    fixture.response = { _, node, attribute in
+      if attribute == "AXFocusedWindow" { scanned.append(node) }
+      return nil
+    }
+    var access = fixture.access
+    access.appOwner = { _, _ in Issue.record("Retained queries must not resolve another owner"); return nil }
+    let value = Reader.snapshot(for: target, access: access)
+    #expect(value.startEvidence == .unknown)
+    #expect(value.owner == target.owner)
+    #expect(value.continuity == .ongoing(family: .googleMeet, room: "abc-defg-hij"))
+    #expect(scanned.count == 1 && scanned.allSatisfy { CFEqual($0, owner) })
+    #expect(fixture.refused.isEmpty)
+  }
+
+  @Test("Retained Teams keeps the original holder room without re-resolving an owner",
+    arguments: [true, false])
+  func retainedTeamsKeepsRoom(home: Bool) {
+    let fixture = teamsFixture(home: home)
+    fixture.ownerBundle = "com.microsoft.teams2"
+    let target = Reader.RetainedTarget(rule: .callApp(.teams), holderPID: fixture.pid,
+      owner: .init(pid: 72_000, bundleIdentifier: fixture.ownerBundle, birthSeconds: 100,
+        birthMicroseconds: 1), family: .teams, room: "pid-70000")
+    var access = fixture.access
+    access.regularTeamsPIDs = { Issue.record("Captured owner requires no Teams owner selection"); return [] }
+    access.appOwner = { _, _ in Issue.record("Captured owner must not be replaced"); return nil }
+    let value = Reader.snapshot(for: target, access: access)
+    #expect(value.startEvidence == .unknown)
+    #expect(value.owner == target.owner)
+    #expect(value.continuity == (home
+      ? .ended(family: .teams, room: "pid-70000") : .ongoing(family: .teams, room: "pid-70000")))
+  }
+
+  @Test("Retained preflight rejects unavailable or replaced identity before SDK work",
+    arguments: ["bundle", "birth", "missing", "trust", "deadline"])
+  func retainedPreflightRejectsInvalidRun(_ reason: String) {
+    let fixture = Fixture()
+    fixture.leaveTitle = "Leave call"
+    let target = retainedBrowserTarget()
+    var access = fixture.access
+    access.appOwner = { _, _ in Issue.record("No replacement resolution is allowed"); return nil }
+    access.isTrusted = { reason != "trust" }
+    access.appRun = { pid in
+      if reason == "missing" { return nil }
+      if reason == "deadline" { fixture.instant = fixture.instant.advanced(by: .seconds(2)) }
+      return .init(pid: pid, bundleIdentifier: reason == "bundle" ? "com.example.other" : "com.google.Chrome",
+        birthSeconds: reason == "birth" ? 101 : 100, birthMicroseconds: 1)
+    }
+    #expect(Reader.snapshot(for: target, access: access) == .init(startEvidence: .unknown))
+    #expect(fixture.messages.isEmpty, "invalid preflight must not wake or message the captured PID")
+  }
+
+  @Test("Retained postflight withholds a run changed during the protected read")
+  func retainedPostflightRejectsChangedRun() {
+    let fixture = Fixture()
+    fixture.leaveTitle = "Leave call"
+    let target = retainedBrowserTarget()
+    var requests: [Int32] = []
+    var access = fixture.access
+    access.appOwner = { _, _ in Issue.record("No convenient replacement owner"); return nil }
+    access.appRun = { pid in
+      requests.append(pid)
+      return .init(pid: pid, bundleIdentifier: "com.google.Chrome",
+        birthSeconds: requests.count == 1 ? 100 : 101, birthMicroseconds: 1)
+    }
+    #expect(Reader.snapshot(for: target, access: access) == .init(startEvidence: .unknown))
+    #expect(requests == [72_000, 72_000])
+    #expect(fixture.messages.contains("AXFocusedWindow"), "the postflight control must actually scan")
+  }
+
+  @Test("Another browser room cannot supply retained ongoing or ended proof", arguments: [true, false])
+  func retainedBrowserDoesNotBorrowRoom(ended: Bool) {
+    let fixture = Fixture()
+    fixture.pageURL = "https://meet.google.com/xyz-wxyz-xyz"
+    if ended { fixture.meetHeading = "You left the meeting" }
+    else { fixture.leaveTitle = "Leave call" }
+    let target = retainedBrowserTarget()
+    let value = Reader.snapshot(for: target, access: fixture.access)
+    #expect(value.startEvidence == .unknown)
+    #expect(value.owner == target.owner)
+    #expect(value.continuity == .unknown)
+  }
+
   @Test("Normal Meet Leave has attributed ended continuity and suppresses start admission")
   func normalMeetLeaveSnapshot() {
     let fixture = Fixture()
