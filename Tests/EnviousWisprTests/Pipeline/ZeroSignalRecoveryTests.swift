@@ -38,10 +38,11 @@ struct ZeroSignalRecoveryTests {
     },
     zeroSignalRefusalSink: @escaping @MainActor ([ZeroSignalRefusalContext]) -> Void = { _ in },
     minimumRecordingTicks: Int = 0,
-    microphonePermissionIsDenied: @escaping @MainActor () -> Bool = { false }
+    microphonePermissionIsDenied: @escaping @MainActor () -> Bool = { false },
+    engineBehavior: FakeEngineBehavior = .batchSuccess(text: "hello")
   ) -> Context {
     let clock = FakeClock()
-    let engine = FakeEngine(behavior: .batchSuccess(text: "hello"), clock: clock)
+    let engine = FakeEngine(behavior: engineBehavior, clock: clock)
     let capture = FakeAudioCapture()
     let vad = FakeVADSignalSource()
     let paste = FakePasteTarget()
@@ -689,6 +690,218 @@ struct ZeroSignalRecoveryTests {
   }
 
   /// Collects everything the kernel hands the refusal sink, flattened in order.
+  // MARK: - #4154 — confirmed-bound USB takes at STOP
+
+  /// A speech prefix at least the conditioner's minimum length, so ASR input is
+  /// never padded and its length shows whether the zero suffix was trimmed.
+  private let prefix = 24_000
+
+  /// A frozen route for the take. `helper_reported` means the bound source itself
+  /// reported the transport; `app_derived` is the app's own guess.
+  private static func route(_ effective: String, source: String = "helper_reported")
+    -> ResolvedRouteTransports
+  {
+    ResolvedRouteTransports(
+      selected: "unknown", effective: effective, routeReason: "system_default",
+      routeFallbackReason: nil, inputSelectionMode: "auto", outputTransport: "display_port",
+      routeResolutionSource: source)
+  }
+
+  /// Start a take on `route`, deliver `buffers` (frames, amplitude), commit Live,
+  /// then stop and wait for the terminal. Asserts the frozen route first.
+  private func runTake(
+    _ ctx: Context, route: ResolvedRouteTransports, buffers: [(Int, Float)],
+    beforeStop: () -> Void = {}
+  ) async throws {
+    ctx.capture.liveResolvedRoute = route
+    await startToRecording(ctx)
+    for (frames, amplitude) in buffers {
+      ctx.capture.deliverBuffer(frameCount: frames, amplitude: amplitude)
+    }
+    await ctx.wrapper.drainReadyWork()
+    try #require(ctx.wrapper.testKernel.lastResolvedRoute == route, "precondition: route frozen")
+    beforeStop()
+    await ctx.wrapper.apply(.stop)
+    await ctx.wrapper.drainUntilConcluded()
+  }
+
+  /// When this fails, a USB-mic user who stops talking a second before releasing
+  /// the key sees a false "interrupted" notice and the next press opens cold.
+  @Test("USB: a qualifying zero suffix completes normally, trimmed, with no retire")
+  func usbSuffixCompletesNormallyWithoutRetire() async throws {
+    let ctx = makeContext()
+    ctx.vad.evidence = .voiced  // no segments: ASR receives the whole buffer
+    try await runTake(ctx, route: Self.route("usb"), buffers: [(prefix, 0.2), (threshold, 0)])
+
+    #expect(ctx.wrapper.testKernel.recordingOutcome == .completed)
+    #expect(ctx.wrapper.testKernel.deliveredTranscript == "hello")
+    #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == nil)
+    #expect(ctx.wrapper.stopTimeZeroSignalTelemetryFired.isEmpty)
+    #expect(ctx.capture.retireCapturingSourceCallCount == 0)
+    #expect(ctx.wrapper.deadMicRetireAttempts.isEmpty)
+    let asrInput = try #require(ctx.engine.lastFinalizeBatchSamples)
+    #expect(asrInput.count == prefix, "the qualifying zero suffix is trimmed before ASR")
+  }
+
+  /// The USB trim is sample-qualified: an ineligible device must not leave the
+  /// zero suffix in place, and the device snapshot is never consulted.
+  @Test("USB: the suffix trim does not need device eligibility, and eligibility is never read")
+  func usbSuffixTrimDoesNotRequireEligibility() async throws {
+    var snapshotReads = 0
+    let ctx = makeContext(zeroSignalDecisionSnapshot: {
+      snapshotReads += 1
+      return ZeroSignalDecisionSnapshot(
+        eligibility: .deviceMuted, currentRunWasClassifiedReactively: false)
+    })
+    ctx.vad.evidence = .voiced  // no segments: ASR receives the whole buffer
+    try await runTake(ctx, route: Self.route("usb"), buffers: [(prefix, 0.2), (threshold, 0)])
+
+    #expect(ctx.wrapper.testKernel.recordingOutcome == .completed)
+    #expect(snapshotReads == 0)
+    #expect(ctx.capture.retireCapturingSourceCallCount == 0)
+    #expect(try #require(ctx.engine.lastFinalizeBatchSamples).count == prefix)
+  }
+
+  /// Controls: the same suffix on a non-USB route, or a USB guess the bound
+  /// source never confirmed, keeps today's stamp, trim and retire.
+  @Test(
+    "non-enrolled routes keep today's suffix outcome",
+    arguments: [
+      ("built_in", "helper_reported"), ("bluetooth", "helper_reported"), ("usb", "app_derived"),
+    ]
+  )
+  func nonEnrolledSuffixKeepsExistingOutcome(effective: String, source: String) async throws {
+    let ctx = makeContext()
+    ctx.vad.evidence = .voiced  // no segments: ASR receives the whole buffer
+    try await runTake(
+      ctx, route: Self.route(effective, source: source), buffers: [(prefix, 0.2), (threshold, 0)])
+
+    #expect(ctx.wrapper.testKernel.recordingOutcome == .completed)
+    #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == .becameZeroMidCapture)
+    #expect(ctx.wrapper.stopTimeZeroSignalTelemetryFired.count == 1)
+    #expect(ctx.capture.retireCapturingSourceCallCount == 1)
+    #expect(try #require(ctx.engine.lastFinalizeBatchSamples).count == prefix)
+  }
+
+  /// A whole-zero USB take keeps today's stop-time handling: eligible → the
+  /// zero-signal terminal, access off → permission terminal, ineligible → the
+  /// ordinary no-speech outcome. The sample-fact retire still runs in all three.
+  @Test("USB: a whole-zero take keeps today's stop-time handling")
+  func usbAllZeroPreservesStopHandling() async throws {
+    let eligible = makeContext()
+    try await runTake(eligible, route: Self.route("usb"), buffers: [(threshold * 2, 0)])
+    #expect(eligible.wrapper.testKernel.recordingOutcome == .failed(.zeroSignal))
+    #expect(eligible.wrapper.testKernel.zeroSignalFailureMode == .allZeroFromStart)
+    #expect(eligible.capture.retireCapturingSourceCallCount == 1)
+
+    let access = AccessBox()
+    let denied = makeContext(microphonePermissionIsDenied: { access.denied })
+    try await runTake(
+      denied, route: Self.route("usb"), buffers: [(threshold * 2, 0)],
+      beforeStop: { access.denied = true })
+    #expect(denied.wrapper.testKernel.recordingOutcome == .failed(.permissionDenied))
+    #expect(denied.capture.retireCapturingSourceCallCount == 1)
+
+    let ineligible = makeContext(zeroSignalDecisionSnapshot: {
+      ZeroSignalDecisionSnapshot(
+        eligibility: .deviceMuted, currentRunWasClassifiedReactively: false)
+    })
+    ineligible.vad.evidence = .confirmedNoSpeech
+    try await runTake(ineligible, route: Self.route("usb"), buffers: [(threshold * 2, 0)])
+    #expect(ineligible.wrapper.testKernel.recordingOutcome.kind == .noSpeech)
+    #expect(ineligible.wrapper.testKernel.zeroSignalFailureMode == nil)
+    #expect(ineligible.capture.retireCapturingSourceCallCount == 1)
+  }
+
+  /// A too-short USB tap still discards before any zero-signal handling, exactly
+  /// as on every other route: no stamp, no retire.
+  @Test("USB: a too-short dead tap still discards first and is never retired")
+  func usbEarlyTerminalsStillWin() async throws {
+    let ctx = makeContext(minimumRecordingTicks: 5)
+    ctx.vad.evidence = .confirmedNoSpeech
+    try await runTake(ctx, route: Self.route("usb"), buffers: [(threshold, 0)])
+
+    #expect(ctx.wrapper.testKernel.recordingOutcome.kind == .discarded)
+    #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == nil)
+    #expect(ctx.capture.retireCapturingSourceCallCount == 0)
+  }
+
+  /// When this fails, a USB-mic user's quiet sentence with a long pause in the
+  /// middle is discarded as "no speech" (D-Q). The full take reaches ASR.
+  @Test("USB: quiet speech around a long interior pause reaches ASR")
+  func usbQuietInteriorPauseReachesASR() async throws {
+    let ctx = makeContext()
+    ctx.vad.evidence = .confirmedNoSpeech
+    try await runTake(
+      ctx, route: Self.route("usb"),
+      buffers: [(threshold, 0.0013), (threshold * 5, 0), (threshold, 0.0013)])
+
+    #expect(ctx.wrapper.testKernel.recordingOutcome == .completed)
+    #expect(ctx.engine.finalizeCallCount == 1)
+    #expect(try #require(ctx.engine.lastFinalizeBatchSamples).count == threshold * 7)
+  }
+
+  /// With a trailing zero run too: the diluted prefix does not qualify the
+  /// classifier's trim, so ASR gets the whole buffer, timing intact.
+  @Test("USB: quiet interior pause plus trailing zeros reaches ASR untrimmed")
+  func usbQuietInteriorPauseWithTrailingZerosReachesASR() async throws {
+    let ctx = makeContext()
+    ctx.vad.evidence = .confirmedNoSpeech
+    try await runTake(
+      ctx, route: Self.route("usb"),
+      buffers: [(threshold, 0.0013), (threshold * 5, 0), (threshold, 0.0013), (threshold, 0)])
+
+    #expect(ctx.wrapper.testKernel.recordingOutcome == .completed)
+    #expect(ctx.engine.finalizeCallCount == 1)
+    #expect(try #require(ctx.engine.lastFinalizeBatchSamples).count == threshold * 8)
+    #expect(ctx.capture.retireCapturingSourceCallCount == 0)
+  }
+
+  /// Controls for D-Q: the same quiet take on a non-enrolled route stays today's
+  /// no-speech verdict and never reaches ASR.
+  @Test(
+    "non-enrolled routes keep today's no-speech verdict for the quiet pause",
+    arguments: [("built_in", "helper_reported"), ("usb", "app_derived")]
+  )
+  func nonEnrolledQuietPauseStaysNoSpeech(effective: String, source: String) async throws {
+    let ctx = makeContext()
+    ctx.vad.evidence = .confirmedNoSpeech
+    try await runTake(
+      ctx, route: Self.route(effective, source: source),
+      buffers: [(threshold, 0.0013), (threshold * 5, 0), (threshold, 0.0013)])
+
+    #expect(ctx.wrapper.testKernel.recordingOutcome.kind == .noSpeech)
+    #expect(ctx.engine.finalizeCallCount == 0)
+  }
+
+  /// D-Q admits the take; an empty decode then maps to the quiet no-speech
+  /// outcome (#964 R2), not a failure. This pins the mapping only; it does not
+  /// claim the engine always returns empty on non-speech.
+  @Test("USB: an energy-admitted take with an empty decode ends as quiet no-speech")
+  func usbEnergyAdmittedEmptyDecodeBecomesNoSpeech() async throws {
+    let ctx = makeContext(engineBehavior: .empty(hadSpeechEvidence: false))
+    ctx.vad.evidence = .confirmedNoSpeech
+    try await runTake(
+      ctx, route: Self.route("usb"),
+      buffers: [(threshold, 0.0013), (threshold * 5, 0), (threshold, 0.0013)])
+
+    #expect(ctx.engine.finalizeCallCount == 1)
+    #expect(ctx.wrapper.testKernel.recordingOutcome == .noSpeech(.asrEmptyNoSpeech))
+  }
+
+  /// The open-segment clamp still applies after the USB sample-qualified trim.
+  @Test("USB: an open VAD segment past the trim boundary is clamped")
+  func usbQualifiedSuffixClampsVADSegments() async throws {
+    let ctx = makeContext()
+    ctx.vad.evidence = .voiced
+    ctx.vad.segments = [SpeechSegment(startSample: 0, endSample: prefix + threshold)]
+    try await runTake(ctx, route: Self.route("usb"), buffers: [(prefix, 0.2), (threshold, 0)])
+
+    #expect(ctx.wrapper.testKernel.recordingOutcome == .completed)
+    #expect(ctx.wrapper.testKernel.deliveredTranscript == "hello")
+    #expect(try #require(ctx.engine.lastFinalizeBatchSamples).count == prefix)
+  }
+
   private final class RefusalSinkLog {
     var batches: [[ZeroSignalRefusalContext]] = []
     var flattened: [ZeroSignalRefusalContext] { batches.flatMap { $0 } }
