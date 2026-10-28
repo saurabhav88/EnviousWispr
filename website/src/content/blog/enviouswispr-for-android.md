@@ -35,9 +35,9 @@ AI polish has the same choice it has on the Mac. It can run on the phone with S1
 
 ## Writing that is ready to send
 
-Nobody speaks in finished sentences, and that matters even more on a phone, where fixing a message with your thumbs is the slow part. EnviousWispr removes filler words and puts punctuation in place. In the AI Polish tab you choose the tone, from casual to formal, whether spoken lists become bullet points, and whether emails get a greeting line and a sign-off.
+Nobody speaks in finished sentences, and that matters even more on a phone, where fixing a message with your thumbs is the slow part. EnviousWispr removes filler words and puts punctuation in place. With S1-mini, the AI Polish tab lets you choose the tone, from casual to formal, whether spoken lists become bullet points, and whether a greeting and sign-off you dictate are laid out as an email.
 
-The Dictionary tab teaches it the names and terms that matter to you, including the ways they tend to be misheard. History keeps every completed dictation on your phone, ready to copy again.
+The Dictionary tab teaches it the names and terms that matter to you, including the ways they tend to be misheard. History saves your completed dictations on your phone, ready to copy again.
 
 ## What you need
 

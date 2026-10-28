@@ -103,7 +103,7 @@ export const groups = [
 // Keep the complete directory independent from the shorter at-a-glance set.
 export const directory = [
   ['Apple Dictation', 'apple-dictation'], ['Dragon', 'dragon'], ['FluidVoice', 'fluidvoice'],
-  ['Google Docs Voice Typing', 'google-docs-voice-typing'], ['Handy', 'handy'], ['Juno', 'juno'],
+  ['Gboard Voice Typing', 'gboard-voice-typing'], ['Google Docs Voice Typing', 'google-docs-voice-typing'], ['Handy', 'handy'], ['Juno', 'juno'],
   ['MacWhisper', 'macwhisper'], ['Notta', 'notta'], ['Otter.ai', 'otter-ai'], ['Spokenly', 'spokenly'],
   ['Superwhisper', 'superwhisper'], ['TypeWhisper', 'typewhisper'], ['VoiceInk', 'voiceink'],
   ['Vox', 'vox'], ['whisper.cpp', 'whisper-cpp'], ['Willow Voice', 'willow-voice'], ['Wispr Flow', 'wisprflow'],
