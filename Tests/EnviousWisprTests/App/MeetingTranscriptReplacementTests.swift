@@ -59,6 +59,43 @@ struct MeetingTranscriptReplacementTests {
   }
 
   @Test(
+    "a launch keeps a History row that already holds the committed generation; an unreadable one publishes nothing"
+  )
+  func launchKeepsAPublishedRow() async throws {
+    let harness = try Harness()
+    let (meetingID, _) = try await readyMeeting(harness)
+    harness.jobBehavior = Self.rerunResult
+    let save = MeetingCoordinatorTests.Gate()
+    harness.saveGate = save
+    #expect(await harness.coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet))
+    await eventually("History save parked") { save.parked }
+    // A crash now leaves the committed record and its receipt, as one whose History write
+    // landed but whose receipt removal failed would.
+    let kept = try #require(receipt(harness, meetingID))
+
+    // History's file cannot be read: nothing is published and the receipt stays.
+    let unreadable = try Harness(copying: harness.root)
+    unreadable.historyReadError = CocoaError(.fileReadCorruptFile)
+    unreadable.coordinator.launch()
+    await eventually("refused") { unreadable.coordinator.notice == .storageFailed }
+    #expect(unreadable.saved.isEmpty)
+    #expect(unreadable.coordinator.isCommitReceiptPending(meetingID))
+    #expect(receipt(unreadable, meetingID) != nil)
+
+    // History's file already holds the committed generation (the user may have edited it
+    // since): it is kept as it is.
+    let relaunched = try Harness(copying: harness.root)
+    relaunched.historyFiles[kept.candidateRow.id] = kept.candidateRow
+    relaunched.coordinator.launch()
+    // Pending is false before launch reads the receipt too; launch over is the settled signal.
+    await eventually("launch over") { relaunched.coordinator.canTranscribeAgain(meetingID) }
+    #expect(!relaunched.coordinator.isCommitReceiptPending(meetingID))
+    #expect(relaunched.saved.isEmpty, "the edited row was not rewritten from the receipt")
+    #expect(hasNoReceipt(relaunched, meetingID))
+    save.open()
+  }
+
+  @Test(
     "a crash after the ready barrier: the next launch shows the earlier row with its own facts, then publishes the committed one"
   )
   func crashAfterBarrierPublishesTheCommittedRow() async throws {
@@ -96,6 +133,33 @@ struct MeetingTranscriptReplacementTests {
     let after = MeetingWiring.historyInfo(relaunched.coordinator, meetingID: meetingID)
     #expect(after?.matching(earlier) == nil, "the earlier generation's facts are gone")
     save.open()
+  }
+
+  @Test(
+    "an unreadable receipt blocks a ready meeting until settled, and is dropped for one that is not ready"
+  )
+  func unreadableReceiptByState() async throws {
+    let harness = try Harness()
+    let (meetingID, _) = try await readyMeeting(harness)
+    try Data("not a receipt".utf8).write(to: harness.store.transcriptReplacementURL(for: meetingID))
+
+    // Ready: the receipt may belong to the commit that made it ready, so it is kept.
+    let ready = try Harness(copying: harness.root)
+    ready.coordinator.launch()
+    await eventually("refused") { ready.coordinator.notice == .storageFailed }
+    #expect(ready.coordinator.isCommitReceiptPending(meetingID))
+    #expect(!ready.coordinator.canTranscribeAgain(meetingID))
+
+    // Not ready: no ready write landed, so it committed nothing and is dropped.
+    var record = try harness.store.load(id: meetingID)
+    record.state = .failed
+    try harness.store.save(record)
+    let failed = try Harness(copying: harness.root)
+    failed.coordinator.launch()
+    await eventually("launch over") { failed.coordinator.canTranscribeAgain(meetingID) }
+    #expect(hasNoReceipt(failed, meetingID))
+    #expect(!failed.coordinator.isCommitReceiptPending(meetingID))
+    #expect(failed.coordinator.notice == nil)
   }
 
   @Test(
@@ -277,6 +341,22 @@ struct MeetingTranscriptReplacementTests {
     #expect(loaded.candidate == saved.candidate)
     #expect(loaded.candidateRow.text == "héllo 👋")
     #expect(loaded.candidateRow.meetingTranscriptAttemptID == row.meetingTranscriptAttemptID)
+
+    // Another meeting's receipt in this folder, in the current format, is never trusted.
+    let other = MeetingTranscriptReplacement(
+      meetingID: UUID(), previous: nil, previousRow: nil, candidate: saved.candidate,
+      candidateRow: row)
+    try MeetingStore.encoder.encode(other)
+      .write(to: harness.store.transcriptReplacementURL(for: record.id))
+    guard case .unusable = harness.store.loadTranscriptReplacement(meeting: record.id) else {
+      Issue.record("another meeting's receipt was trusted")
+      return
+    }
+    try harness.store.saveTranscriptReplacement(saved)
+    guard case .receipt = harness.store.loadTranscriptReplacement(meeting: record.id) else {
+      Issue.record("the control receipt did not load")
+      return
+    }
 
     var object = try #require(
       try JSONSerialization.jsonObject(

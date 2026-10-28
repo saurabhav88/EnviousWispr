@@ -168,6 +168,9 @@ enum MeetingWiring {
         historyRow: { [transcriptCoordinator = inputs.transcriptCoordinator] id in
           transcriptCoordinator.currentRow(id: id)
         },
+        durableHistoryRow: { [transcriptCoordinator = inputs.transcriptCoordinator] id in
+          try await transcriptCoordinator.durableRow(id: id)
+        },
         removeTranscriptRow: { [transcriptCoordinator = inputs.transcriptCoordinator] id in
           try await transcriptCoordinator.removeRow(id: id)
         },

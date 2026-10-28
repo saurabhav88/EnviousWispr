@@ -982,6 +982,14 @@ final class TranscriptCoordinator {
     }.get()
   }
 
+  /// #3973 C2: a row as its file holds it, read in History's command order, so a write admitted
+  /// before this read has landed. Nil when there is no file; throws when it cannot be read.
+  func durableRow(id: UUID) async throws -> Transcript? {
+    try await transactionExecutor.admit { [self] in
+      await transactionExecutor.capture { try await transactionExecutor.readRow(id: id) }
+    }.get()
+  }
+
   private func performDurableWrite(_ transcript: Transcript) async throws {
     try await transactionExecutor.writeDurably(transcript)
     diskReconciler.noteWritten(transcript.id)

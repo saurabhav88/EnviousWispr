@@ -2,8 +2,9 @@ import Foundation
 
 /// What one transcription attempt of a meeting was asked to do (#3973 C2), frozen when it is
 /// asked for: at Start (before any wait) and at Transcribe again (the meeting language chosen
-/// then, against the chosen engine). Queue, retry after a failure and launch recovery continue
-/// the saved attempt and never read Settings again.
+/// then, against the chosen engine). The queue and launch recovery continue an unfinished
+/// (queued or processing) attempt and never read Settings again; Transcribe again after a
+/// failure asks anew.
 public struct MeetingAttemptConfiguration: Sendable, Equatable, Codable {
   /// New for every Start and every Transcribe again; kept by a continued attempt. Keys the
   /// checkpoint and, once committed, pairs the History row with its meeting facts.

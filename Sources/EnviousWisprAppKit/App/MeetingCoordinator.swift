@@ -302,6 +302,9 @@ final class MeetingCoordinator {
     /// #3973 C2: the History row as History holds it now, kept in the commit receipt as the
     /// previous generation's row. Nil when History has none.
     var historyRow: @MainActor (UUID) -> Transcript? = { _ in nil }
+    /// #3973 C2: the History row as its file holds it, read in History's command order. Nil
+    /// when there is no file; throws when it cannot be read.
+    var durableHistoryRow: @MainActor (UUID) async throws -> Transcript? = { _ in nil }
     var removeTranscriptRow: @MainActor (UUID) async throws -> Void
     /// The History rows that name this meeting, for a row whose meeting record is gone.
     var meetingRowIDs: @MainActor (UUID) -> [UUID] = { _ in [] }
@@ -639,7 +642,7 @@ final class MeetingCoordinator {
     let committedReceipts = await reconcileReceipts(loaded)
     publish()
     for receipt in committedReceipts where isStillOwned(receipt.meetingID) {
-      _ = await publishCommitted(receipt)
+      _ = await publishCommitted(receipt, atLaunch: true)
     }
     // Notes are searched with their meeting's transcript (R38): read every meeting's notes
     // once, behind the listing, on the file queue.
@@ -709,6 +712,16 @@ final class MeetingCoordinator {
       switch loaded {
       case .none:
         continue
+      case .unusable where record.state != .ready:
+        // Only the ready write commits a receipt, so a meeting that is not ready committed
+        // none: the receipt is dropped like an uncommitted one, unread.
+        deps.log("meeting commit receipt unreadable id=\(meetingID.uuidString) committed=false")
+        do {
+          try await writer.run { try $0.clearTranscriptReplacement(meeting: meetingID) }
+        } catch {
+          deps.log("meeting commit receipt clear failed error=\(type(of: error))")
+          unresolvedReceipts.insert(meetingID)
+        }
       case .unusable:
         deps.log("meeting commit receipt unreadable id=\(meetingID.uuidString)")
         unresolvedReceipts.insert(meetingID)
@@ -1203,6 +1216,9 @@ final class MeetingCoordinator {
           // already changed it, while `meetings` still shows the meeting queued.
           && live[$0.id]?.state == .queued && live[$0.id]?.audioKept == true
           && !removingAudio.contains($0.id)
+          // #3973 C2: a receipt this launch could not settle is never written over; the
+          // meeting waits for the next launch.
+          && !unresolvedReceipts.contains($0.id)
       })
       else { break }
       attempted.insert(next.id)
@@ -1468,10 +1484,19 @@ final class MeetingCoordinator {
   /// #3973 C2: publishes a committed receipt's History row, then clears the receipt. False
   /// (receipt kept, storage failure shown) when the row could not be written: History keeps
   /// the previous row with its own facts, and the next launch publishes again.
-  private func publishCommitted(_ receipt: MeetingTranscriptReplacement) async -> Bool {
+  ///
+  /// At launch the row may already be published (only the receipt's removal failed) and since
+  /// edited, such as its speaker names. A History file that already holds this generation is
+  /// kept, not rewritten from the receipt; one that cannot be read publishes nothing.
+  private func publishCommitted(
+    _ receipt: MeetingTranscriptReplacement, atLaunch: Bool = false
+  ) async -> Bool {
     let meetingID = receipt.meetingID
     do {
-      try await deps.saveTranscript(receipt.candidateRow)
+      let held = atLaunch ? try await deps.durableHistoryRow(receipt.candidateRow.id) : nil
+      if held?.meetingTranscriptGeneration != receipt.candidate.generation {
+        try await deps.saveTranscript(receipt.candidateRow)
+      }
     } catch {
       deps.log("meeting history publish failed error=\(type(of: error))")
       notice = .storageFailed
