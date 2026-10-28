@@ -219,6 +219,12 @@ final class DictationRuntime {
   /// before meeting teardown releases the engine, so that release cannot wake a start.
   func closeDictationRequests() { pendingRequests.endForQuit() }
 
+  /// #3973 C1: what re-arms dictation's unload timers when a press given the engine turn by a
+  /// meeting gives it back without recording (the meeting skipped that re-arm at the hand-off).
+  func onTurnGivenBackUnused(_ rearm: @escaping @MainActor () -> Void) {
+    pendingRequests.onTurnGivenBackUnused = rearm
+  }
+
   func cancelRecording(trigger: UserCancelTrigger) async {
     await finalizer.cancel(trigger: trigger)
   }

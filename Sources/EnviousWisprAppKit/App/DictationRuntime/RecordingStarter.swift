@@ -395,9 +395,13 @@ final class RecordingStarter {
     // covers every early return between here and there, however many get added
     // later — which is why the release is not repeated at each one.
     var unmintedEngineToken: EngineLease.Token? = preAdmitted?.token
+    // #3973 C1: whether this call dispatched the recording start (the session owns the turn).
+    var dispatchedStart = false
     defer {
+      if let preAdmitted {
+        pendingRequests.finishStarting(preAdmitted.ticket, minted: dispatchedStart)
+      }
       if let unmintedEngineToken { engineAdmission.release(unmintedEngineToken) }
-      if let preAdmitted { pendingRequests.finishStarting(preAdmitted.ticket) }
     }
     dictationLifecycleCoordinator?.cancelPendingWarning()
     let backend = asrManager.activeBackendType
@@ -602,6 +606,7 @@ final class RecordingStarter {
       // (held since before preWarm) guarantees the coordinator did NOT switch the
       // active engine across these awaits, so `active` is still the user's choice.
       try await active.handle(event: .toggleRecording(config))
+      dispatchedStart = true
       // The session is minted, so the claim now belongs to the session rather
       // than to this call. Both start methods RETURN while the recording is
       // still running, so releasing on the way out would admit an import into
@@ -717,9 +722,13 @@ final class RecordingStarter {
     // because the claim happens inside the start-only gate block and the release
     // has to cover every exit after it.
     var claimedEngineToken: EngineLease.Token? = preAdmitted?.token
+    // #3973 C1: whether this call dispatched the recording start (the session owns the turn).
+    var dispatchedStart = false
     defer {
+      if let preAdmitted {
+        pendingRequests.finishStarting(preAdmitted.ticket, minted: dispatchedStart)
+      }
       if let claimedEngineToken { engineAdmission.release(claimedEngineToken) }
-      if let preAdmitted { pendingRequests.finishStarting(preAdmitted.ticket) }
     }
     dictationLifecycleCoordinator?.cancelPendingWarning()
     let backend = asrManager.activeBackendType
@@ -840,6 +849,7 @@ final class RecordingStarter {
         // NOT switch the active engine, so `active` is still the user's choice.
       }
       try await active.handle(event: .toggleRecording(config))
+      dispatchedStart = true
       // Minted, so the claim belongs to the session now — same hand-off as the
       // PTT path, for the same reason: this method returns while the recording
       // is still running.

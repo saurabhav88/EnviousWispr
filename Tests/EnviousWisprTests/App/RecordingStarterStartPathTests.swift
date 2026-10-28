@@ -959,7 +959,9 @@ import Testing
   @Test(arguments: [false, true])
   func aPressWaitsForTheMeetingTurnThenStarts(useToggle: Bool) async {
     var arms: [ASRBackendType] = []
+    var givenBack = 0
     let fx = Self.makeFixture(onRecoveryArm: { arms.append($0) })
+    fx.pendingRequests.onTurnGivenBackUnused = { givenBack += 1 }
     fx.asr.activeBackendType = .parakeet
     fx.asr.isModelLoaded = true
     guard
@@ -988,6 +990,7 @@ import Testing
 
     #expect(arms == [.parakeet], "the press reached the start boundary once")
     #expect(fx.kernelDriver.state.isActive, "the waited-for press minted a recording session")
+    #expect(givenBack == 0, "a press that records leaves the unload timers to its session")
     #expect(fx.turnLog.outcomes == ["admitted waitMs=1250"])
     #expect(!fx.engineLease.hasPendingReservation)
   }
@@ -999,6 +1002,7 @@ import Testing
   func aPressEndedDuringStartUpMintsNothing(route: String) async {
     let box = FixtureBox()
     var arms = 0
+    var givenBack = 0
     let fx = Self.makeFixture(onRecoveryArm: { _ in
       arms += 1
       if route == "cancelPending" {
@@ -1008,6 +1012,7 @@ import Testing
       }
     })
     box.fixture = fx
+    fx.pendingRequests.onTurnGivenBackUnused = { givenBack += 1 }
     fx.asr.activeBackendType = .parakeet
     fx.asr.isModelLoaded = true
     guard let parked = await Self.parkPress(fx, { _ = await fx.starter.start() }) else { return }
@@ -1018,6 +1023,7 @@ import Testing
     #expect(arms == 1, "the press reached its start-up after the wait")
     #expect(fx.kernelDriver.state == .idle, "an ended press minted a session")
     #expect(fx.engineLease.isBusy == false, "the granted token went back")
+    #expect(givenBack == 1, "the unused turn re-armed dictation's unload timers")
   }
 
   /// Every way a user ends a waiting press: the request ends at once, and the meeting's later

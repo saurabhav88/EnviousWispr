@@ -186,6 +186,30 @@ struct MeetingParakeetRouteTests {
       ])
   }
 
+  /// #3973 C1: a release that hands the engine straight to a waiting dictation leaves
+  /// dictation's unload timers off, so "Unload immediately" cannot unload the model under the
+  /// press that is about to use it; a release with nobody waiting re-arms them as before.
+  @Test("a release that hands the engine to a waiting dictation does not re-arm unload timers")
+  func aHandOffLeavesTheUnloadTimersOff() async throws {
+    let rig = Rig()
+    let route = rig.route()
+    try await route.acquire()
+    let lease = rig.lease
+    let signal = ReservationSignal()
+    let dictation = Task { @MainActor in await lease.waitForReservedTurn { signal.deliver($0) } }
+    #expect(await signal.value() != nil, "the press never reserved")
+
+    await route.endModelUse()
+    let token = await dictation.value
+    #expect(token?.holder == .dictation, "the release handed the engine to the press")
+    #expect(rig.rearms == 0, "the hand-off re-armed the unload timers")
+    if let token { lease.release(token) }
+
+    try await route.acquire()
+    await route.endModelUse()
+    #expect(rig.rearms == 1, "a release with nobody waiting re-arms them")
+  }
+
   @Test("dictation on Whisper: the pass keeps its own Parakeet and never takes the lease")
   func ownRouteWhenDictationUsesWhisper() async throws {
     let rig = Rig()

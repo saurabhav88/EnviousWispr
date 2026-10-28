@@ -2072,6 +2072,8 @@ package final class WisprBootstrapper {
       kernelDriver.applyEngineUnloadPolicy(settings.modelUnloadPolicy)
       whisperKernelDriver.applyEngineUnloadPolicy(settings.modelUnloadPolicy)
     }
+    // #3973 C1: a press handed the engine by a meeting, then given back unused, re-arms them.
+    dictationRuntime.onTurnGivenBackUnused(rearmEngineTimers)
 
     let fileImportCoordinator = FileImportCoordinator(
       decode: { url in try await AudioFileDecoder.decode(url: url) },

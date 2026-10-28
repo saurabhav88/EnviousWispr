@@ -53,19 +53,36 @@ final class PendingDictationRequests {
   private let reference: ContinuousClock.Instant
   private let log: @MainActor (String) -> Void
   private var pending: Pending? {
-    didSet {
-      if (oldValue == nil) != (pending == nil) { onWaitingChanged?(pending != nil) }
-    }
+    didSet { reportActivity() }
   }
 
-  /// Told true when a press starts waiting and false when no press waits any more, so the
-  /// cancel shortcut can be armed for a press that has no recording yet (`HotkeyController`).
+  /// Told true when a press starts waiting and false once no press is waiting or starting up
+  /// after its wait any more, so the cancel shortcut can be armed for a press that has no
+  /// recording yet (`HotkeyController`).
   var onWaitingChanged: (@MainActor (Bool) -> Void)?
+
+  /// Told when a press that was GIVEN the engine turn gives it back without a recording (it
+  /// ended during start-up, a fresh gate refused it, or the hand-off crossed its cancel). The
+  /// meeting skips re-arming dictation's unload timers when it hands the engine straight to a
+  /// waiting press (`MeetingParakeetRoute.releaseShared`), so the timers are re-armed here
+  /// instead; a press that records leaves them to its own session, as every take does.
+  var onTurnGivenBackUnused: (@MainActor () -> Void)?
+
+  private var reportedActive = false
+
+  private func reportActivity() {
+    let active = pending != nil || starting != nil
+    guard active != reportedActive else { return }
+    reportedActive = active
+    onWaitingChanged?(active)
+  }
   /// Quit closed dictation admission (`endForQuit()`): no press waits or starts from here on. Both
   /// start paths read this before their claim, so a free engine does not let one through.
   private(set) var isClosed = false
   /// The admitted press still starting up, until it mints or gives up (`finishStarting`).
-  private var starting: UUID?
+  private var starting: UUID? {
+    didSet { reportActivity() }
+  }
 
   init(
     access: EngineAdmissionAccess,
@@ -110,18 +127,20 @@ final class PendingDictationRequests {
     // This request's outcome was already logged when it was superseded or cancelled; a token
     // that reached it anyway (the hand-off and the cancel crossed) goes straight back.
     guard let current = pending, current.id == id else {
-      if let token { access.release(token) }
+      if let token { giveBackUnused(token) }
       return nil
     }
-    pending = nil
     guard let token, !Task.isCancelled else {
-      if let token { access.release(token) }
+      pending = nil
+      if let token { giveBackUnused(token) }
       finish(
         id: id, startedAt: startedAt, outcome: token == nil && isClosed ? .refused : .cancelled)
       return nil
     }
-    finish(id: id, startedAt: startedAt, outcome: .admitted)
+    // Starting before the wait ends, so the cancel shortcut stays armed across the change.
     starting = id
+    pending = nil
+    finish(id: id, startedAt: startedAt, outcome: .admitted)
     return Admission(token: token, ticket: id)
   }
 
@@ -131,9 +150,16 @@ final class PendingDictationRequests {
     starting == ticket && !Task.isCancelled
   }
 
-  /// The admitted press minted its session or gave up; its ticket stops mattering.
-  func finishStarting(_ ticket: UUID) {
+  /// The admitted press minted its session (`minted`) or gave up; its ticket stops mattering. A
+  /// press that gave up re-arms dictation's unload timers (`onTurnGivenBackUnused`).
+  func finishStarting(_ ticket: UUID, minted: Bool) {
     if starting == ticket { starting = nil }
+    if !minted { onTurnGivenBackUnused?() }
+  }
+
+  private func giveBackUnused(_ token: EngineLease.Token) {
+    access.release(token)
+    onTurnGivenBackUnused?()
   }
 
   /// Ends the waiting request, or the admitted one still starting up, if any: the press ended

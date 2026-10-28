@@ -355,13 +355,19 @@ final class MeetingParakeetRoute {
     onWaitingForDictation?(waiting)
   }
 
-  /// Gives the lease back: timers re-armed, then the token (synchronous, the order Transcribe
-  /// a File uses), then the install claim (it awaits the gate, after the lease is already
+  /// Gives the lease back: timers re-armed (unless a waiting dictation takes the engine), then
+  /// the token (synchronous, the order Transcribe a File uses), then the install claim (it awaits the gate, after the lease is already
   /// free), then recovery's own wake for a scan this hold deferred. Repeatable.
   private func releaseShared() async {
     let held = token != nil
     if let token {
-      deps.rearmEngineTimers()
+      // #3973 C1: when a dictation is waiting, this release hands it the engine in the same
+      // step, so dictation's unload timers stay off: re-arming them first could queue an
+      // unload ("Unload immediately") ahead of the waiting press, which would then find its
+      // model gone. The press re-arms them if it gives the turn back unused
+      // (`PendingDictationRequests.onTurnGivenBackUnused`); a recording leaves them to its
+      // own session.
+      if !deps.admission.hasPendingReservation() { deps.rearmEngineTimers() }
       deps.admission.release(token)
       self.token = nil
       if let claimedAt {
