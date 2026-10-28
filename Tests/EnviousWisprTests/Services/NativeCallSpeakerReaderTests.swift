@@ -72,9 +72,76 @@ struct NativeCallSpeakerReaderTests {
         ])
     ])
     #expect(reading.roster.selfNames == ["Saurabh A Vaish"])
-    // The panel's tree was not captured, so its names are not read as a roster yet (#4013 C1).
+    // Texts outside the "Participants list" outline are not a roster.
     #expect(reading.roster.names.isEmpty)
     #expect(!reading.rosterFromParticipantList)
+  }
+
+  /// SURVEY (C1a, 2026-10-28): the open participants panel with four people, two of them named
+  /// "Alex Rivera", beside the Speaker-view tiles.
+  private func zoomPanel(entries: [String], counts: [String]) -> CallAXWindow {
+    window(
+      "Zoom Meeting  40-minutes",
+      [
+        zoomTile("Priya Shah, Computer audio unmuted"),
+        zoomTile("Saurabh A Vaish, Computer audio muted, Video off"),
+        zoomTile("Alex Rivera, Computer audio muted, Video off"),
+        zoomTile("Alex Rivera, Computer audio muted, Video off"),
+        zoomTile("Priya Shah, Computer audio unmuted, Video off, active speaker"),
+      ]
+        + counts.map { CallAXNode(role: "AXStaticText", value: $0) }
+        + [
+          CallAXNode(
+            role: "AXOutline", description: "Participants list",
+            children: entries.map { entry in
+              CallAXNode(
+                role: "AXRow",
+                children: [
+                  CallAXNode(role: "AXStaticText", value: entry),
+                  CallAXNode(
+                    role: "AXMenuButton",
+                    description: "More options for \(entry), collapsed"),
+                ])
+            })
+        ])
+  }
+
+  @Test("Zoom: an open, complete participants panel is the roster, duplicates kept")
+  func zoomParticipantsPanel() {
+    let reading = ZoomAppSpeakerReader.read(windows: [
+      zoomPanel(
+        entries: ["Saurabh A Vaish (Host, me)", "Alex Rivera", "Alex Rivera", "Priya Shah"],
+        counts: ["Participants (4)", "Participants (4)"])
+    ])
+    #expect(reading.rosterFromParticipantList)
+    #expect(
+      reading.roster.names == ["Saurabh A Vaish", "Alex Rivera", "Alex Rivera", "Priya Shah"])
+    #expect(reading.roster.selfNames == ["Saurabh A Vaish"])
+    #expect(reading.speaking == ["Priya Shah"])
+  }
+
+  /// SYNTHETIC: a panel Zoom draws only partly, a panel with no count, and two counts that
+  /// disagree. None of them is a complete list, so the tiles' roster is kept and flagged.
+  @Test("Zoom: an incomplete or uncounted panel is not the participant list")
+  func zoomIncompletePanel() {
+    let entries = ["Saurabh A Vaish (Host, me)", "Alex Rivera", "Priya Shah"]
+    for counts in [["Participants (12)"], [], ["Participants (3)", "Participants (4)"]] {
+      let reading = ZoomAppSpeakerReader.read(windows: [zoomPanel(entries: entries, counts: counts)])
+      #expect(!reading.rosterFromParticipantList, "\(counts)")
+      #expect(reading.roster.names == ["Priya Shah", "Saurabh A Vaish", "Alex Rivera"])
+    }
+  }
+
+  @Test("Zoom: only Zoom's own tags are taken off a panel entry")
+  func zoomPanelEntry() {
+    #expect(ZoomAppSpeakerReader.panelEntry("Saurabh A Vaish (Host, me)").name == "Saurabh A Vaish")
+    #expect(ZoomAppSpeakerReader.panelEntry("Dana Lee (Co-host)").name == "Dana Lee")
+    #expect(ZoomAppSpeakerReader.panelEntry("Dana (Design)").name == "Dana (Design)")
+    #expect(ZoomAppSpeakerReader.panelEntry("(Host)").name == "(Host)")
+    #expect(ZoomAppSpeakerReader.participantCount("Participants (4)") == 4)
+    for text in ["Participants ()", "Participants (four)", "Participants (4", "Attendees (4)"] {
+      #expect(ZoomAppSpeakerReader.participantCount(text) == nil, "\(text)")
+    }
   }
 
   /// SYNTHETIC: a name with a comma, two people flagged at once, and look-alike labels outside a

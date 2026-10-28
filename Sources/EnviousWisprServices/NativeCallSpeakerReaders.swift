@@ -5,6 +5,12 @@ import Foundation
 /// 2026-10-27 (`docs/audits/2026-10-27-4013/zoom-mac-names-findings.md`): every participant tile
 /// is an `AXTabGroup` labelled `<Name>, Computer audio muted, Video off`, and the person talking
 /// gets `, active speaker` added. The large Speaker-view tile alone is not evidence of talking.
+///
+/// The roster comes from the participants panel when it is open and complete (#4013 C1a,
+/// 2026-10-28, `docs/audits/2026-10-27-4013/c1a-receipt.txt`): an `AXOutline` labelled
+/// `Participants list` holds one `AXStaticText` per person, duplicates kept, and a
+/// `Participants (N)` text gives the count. Zoom keeps the panel closed by default; then the roster
+/// is the tiles', which cannot tell one person on two tiles from two people sharing a name.
 package enum ZoomAppSpeakerReader {
   /// The audio-state part of a tile label, exactly as observed. A label without one is not a
   /// participant tile; an unobserved wording is not read rather than matched by prefix.
@@ -13,12 +19,24 @@ package enum ZoomAppSpeakerReader {
   ]
   static let activeSpeakerFlag = "active speaker"
   static let videoStates: Set<String> = ["Video off", "Video on"]
+  static let participantsListLabel = "Participants list"
+  static let participantsCountPrefix = "Participants ("
+  /// The words Zoom puts in brackets after a name in the participants panel.
+  static let panelTags: Set<String> = ["Host", "Co-host", "me", "Guest"]
 
   package static func read(windows: [CallAXWindow]) -> CallSpeakerReading {
     var tileNames: [String] = []
     var speaking: [String] = []
     var selfNames: [String] = []
+    var listEntries: [String]?
+    var listedCounts: Set<Int> = []
     for node in windows.flatMap({ $0.root.allNodes }) {
+      if node.role == "AXOutline", node.label == participantsListLabel, listEntries == nil {
+        listEntries = node.allNodes.filter { $0.role == "AXStaticText" }.compactMap(\.label)
+      }
+      if let label = node.label, let count = participantCount(label) {
+        listedCounts.insert(count)
+      }
       if node.role == "AXTabGroup", let label = node.label, let tile = parseTile(label) {
         tileNames.append(tile.name)
         if tile.isActiveSpeaker { speaking.append(tile.name) }
@@ -28,15 +46,46 @@ package enum ZoomAppSpeakerReader {
         selfNames.append(name)
       }
     }
+    // The panel lists each person once, so a name listed twice is two people. It counts as the
+    // participant list only when it is complete: exactly one "Participants (N)" count, equal to
+    // the entries read. A longer list Zoom draws only partly fails that check.
+    if let entries = listEntries, !entries.isEmpty, listedCounts == [entries.count] {
+      return CallSpeakerReading(
+        speaking: uniqueInOrder(speaking),
+        roster: CallSpeakerRoster(
+          names: entries.map { panelEntry($0).name }, selfNames: uniqueInOrder(selfNames)),
+        rosterFromParticipantList: true)
+    }
     // A person appears as a thumbnail and as the large Speaker-view tile: one name, two tiles.
-    // Tiles cannot tell that apart from two people sharing a name, hence the flag below. The
-    // participants panel would list each person once, but its tree was not captured on
-    // 2026-10-27; reading it waits for that capture (#4013 C1) rather than a guessed shape.
+    // Tiles cannot tell that apart from two people sharing a name, hence the flag below.
     return CallSpeakerReading(
       speaking: uniqueInOrder(speaking),
       roster: CallSpeakerRoster(
         names: uniqueInOrder(tileNames), selfNames: uniqueInOrder(selfNames)),
       rosterFromParticipantList: false)
+  }
+
+  /// `Participants (4)` → 4. Any other text → `nil`.
+  static func participantCount(_ label: String) -> Int? {
+    guard label.hasPrefix(participantsCountPrefix), label.hasSuffix(")") else { return nil }
+    let digits = label.dropFirst(participantsCountPrefix.count).dropLast()
+    guard !digits.isEmpty, digits.allSatisfy(\.isASCII), digits.allSatisfy(\.isNumber) else {
+      return nil
+    }
+    return Int(digits)
+  }
+
+  /// `Saurabh A Vaish (Host, me)` → name `Saurabh A Vaish`. Only a trailing bracket made of
+  /// Zoom's own tags is removed, so a name such as `Dana (Design)` keeps its bracket.
+  static func panelEntry(_ label: String) -> (name: String, tags: [String]) {
+    guard label.hasSuffix(")"), let open = label.range(of: " (", options: .backwards) else {
+      return (label, [])
+    }
+    let tags = label[open.upperBound..<label.index(before: label.endIndex)]
+      .components(separatedBy: ", ")
+    guard tags.allSatisfy(panelTags.contains) else { return (label, []) }
+    let name = String(label[..<open.lowerBound])
+    return name.isEmpty ? (label, []) : (name, tags)
   }
 
   /// `Lee, Dana, Computer audio unmuted, Video off, active speaker` → name `Lee, Dana`, talking.
