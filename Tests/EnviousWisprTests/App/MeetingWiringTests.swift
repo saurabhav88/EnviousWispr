@@ -959,6 +959,38 @@ struct MeetingWiringTests {
     #expect(rig.dictation.decodes.isEmpty)
   }
 
+  @Test("#3973 C3: a shared Whisper operation re-arms unload timers only when no one took the engine meanwhile")
+  func sharedWhisperRouteLeavesTimersToTheHolder() async throws {
+    let lease = EngineLease()
+    var rearms = 0
+    let route = MeetingWhisperRoute(
+      dependencies: .init(
+        isAdmitted: { true }, isDictationIdle: { true }, isSwitchSettled: { true },
+        activeBackend: { .whisper }, wakes: MeetingWakeSignal(),
+        admission: .live(lease: lease, as: .meeting), ensureDictationReady: { .ready },
+        modelPath: { "/models/turbo.gguf" }, modelIdentity: { "turbo" },
+        transcribeShared: { samples, _ in DictationSide.heard(samples) },
+        disarmEngineTimers: {}, rearmEngineTimers: { rearms += 1 },
+        ownLoad: { _ in }, ownTranscribe: { samples, _ in DictationSide.heard(samples) },
+        ownUnload: {}, ownResidencyEnded: {}, log: { _ in }))
+
+    // Control: nobody took the engine, so the operation's end re-arms the timers.
+    try await route.acquire()
+    #expect(route.route == .shared)
+    await route.endModelUse()
+    #expect(rearms == 1)
+
+    // Transcribe a File takes the engine while the meeting decodes on it.
+    try await route.acquire()
+    guard case .granted(let token) = lease.admit(.fileImport) else {
+      Issue.record("the import could not take the engine")
+      return
+    }
+    await route.endModelUse()
+    #expect(rearms == 1, "the import holds the engine; it re-arms the timers itself")
+    _ = lease.release(token)
+  }
+
   @Test("the real job fails cleanly when no model is installed, and holds no model claim")
   func realJobWithoutModel() async throws {
     let rig = try Rig()

@@ -198,8 +198,13 @@ final class MeetingWhisperRoute: MeetingFinalEngineRoute {
   private func releaseShared() {
     guard sharedTimersDisarmed else { return }
     sharedTimersDisarmed = false
-    // A dictation waiting for its turn keeps the timers off; it re-arms them itself.
-    if !deps.admission.hasPendingReservation() { deps.rearmEngineTimers() }
+    // This route holds no lease, so another use (a dictation, Transcribe a File) may have
+    // taken the engine during the operation. Whoever holds it, or a dictation waiting for its
+    // turn, re-arms the timers itself: re-arming them here could unload the model under it.
+    guard deps.admission.currentHolder() == nil, !deps.admission.hasPendingReservation() else {
+      return
+    }
+    deps.rearmEngineTimers()
   }
 
   /// Dictation's readiness drive, but a cancelled pass stops waiting at once (the drive can be
