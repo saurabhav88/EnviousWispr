@@ -139,6 +139,32 @@ struct MeetingEndedNamingTests {
     #expect(row.speakerCount == 2, "the other facts are the attempt's own")
   }
 
+  @Test("a receipt that cannot be cleared after History saved the row keeps the names in the row")
+  func receiptClearFailureKeepsSummary() async throws {
+    let harness = try namingHarness()
+    let save = MeetingCoordinatorTests.Gate()
+    let meetingID = try await meetingParkedAtSave(harness, save)
+    // Only the meeting's folder turns read-only: the receipt cannot be removed. History's own
+    // folder is elsewhere, so the row is still written.
+    let folder = harness.store.folder(for: meetingID)
+    let manager = FileManager.default
+    let original = try manager.attributesOfItem(atPath: folder.path)[.posixPermissions]
+    try manager.setAttributes([.posixPermissions: 0o555], ofItemAtPath: folder.path)
+    defer {
+      if let original {
+        try? manager.setAttributes([.posixPermissions: original], ofItemAtPath: folder.path)
+      }
+    }
+    save.open()
+    await eventually("sent") { harness.ended.count == 1 && harness.coordinator.processing == nil }
+    let row = try #require(harness.ended.first)
+    #expect(row.speakerNamesSurface == .meet)
+    #expect(row.speakerNamesOutcome == .named)
+    #expect(row.autoNamedCount == 1)
+    #expect(harness.coordinator.isCommitReceiptPending(meetingID), "the receipt stayed")
+    #expect(harness.ended.count == 1)
+  }
+
   @Test("a History save that fails sends one ready row with no naming facts")
   func failedPublicationSendsNoNaming() async throws {
     let harness = try namingHarness()
