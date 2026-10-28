@@ -231,6 +231,44 @@ struct TalkerRulesStoreTests {
     #expect(transport.count == 1)
   }
 
+  @Test("a lag at the smallest 64-bit integer is refused in a saved copy and in a download")
+  func extremeLagIsRefused() async throws {
+    let extreme = Data(
+      #"{"schema":1,"revision":9,"lagMs":{"meet":-9223372036854775808},"selectors":[]}"#.utf8)
+    let folder = Folder()
+    try folder.writeCache(extreme)
+    let transport = Transport { Self.ok(extreme) }
+    let subject = store(folder, transport: transport, clock: Clock(Self.start))
+    let before = await subject.current()
+    #expect(before.origin == .bundled)
+    #expect(before.rules.revision == 1)
+    #expect(await subject.refreshIfDue() == before)
+    #expect(transport.count == 1)
+  }
+
+  @Test("when the saved copy cannot be replaced, the download is still used and the old copy stays")
+  func cacheWriteFailure() async throws {
+    let folder = Folder()
+    let saved = Self.document(revision: 3)
+    try folder.writeCache(saved)
+    // A read-only folder refuses the atomic replacement (and the attempt record).
+    try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: folder.url.path)
+    defer {
+      try? FileManager.default.setAttributes(
+        [.posixPermissions: 0o755], ofItemAtPath: folder.url.path)
+    }
+    let subject = store(
+      folder, transport: Transport { Self.ok(Self.document(revision: 8, lagMs: 30)) },
+      clock: Clock(Self.start))
+    let fresh = await subject.refreshIfDue()
+    #expect(fresh.origin == .downloaded)
+    #expect(fresh.rules.revision == 8)
+    #expect(await subject.current() == fresh)
+    #expect(try Data(contentsOf: folder.cache) == saved)
+    let names = try FileManager.default.contentsOfDirectory(atPath: folder.url.path)
+    #expect(names == [TalkerRulesStore.cacheFileName])
+  }
+
   @Test("a snapshot already handed out never changes when newer rules arrive")
   func snapshotsAreFrozen() async {
     let folder = Folder()

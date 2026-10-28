@@ -25,6 +25,9 @@ package struct TalkerRules: Sendable, Equatable {
   package static let maximumBytes = 32 * 1024
   /// Measured lags are a few hundred milliseconds; anything beyond five seconds is a typo.
   package static let lagBoundMs = 5_000
+  /// Revisions are small counters; the bound keeps both validators on exactly representable
+  /// whole numbers (the website check reads JSON numbers as doubles).
+  package static let maximumRevision = 1_000_000_000
   static let maximumTalkingClasses = 8
 
   package let schema: Int
@@ -67,7 +70,7 @@ package struct TalkerRules: Sendable, Equatable {
     try requireKeys(object, allowed: ["schema", "revision", "lagMs", "selectors"], at: "document")
     guard let schema = integer(object["schema"]) else { throw .invalid("schema") }
     guard schema == supportedSchema else { throw .unsupportedSchema }
-    guard let revision = integer(object["revision"]), revision >= 0 else {
+    guard let revision = integer(object["revision"]), (0...maximumRevision).contains(revision) else {
       throw .invalid("revision")
     }
 
@@ -77,7 +80,8 @@ package struct TalkerRules: Sendable, Equatable {
       guard let surface = CallSpeakerSurface(rawValue: key) else {
         throw .invalid("lagMs.\(key): unknown surface")
       }
-      guard let ms = integer(value), abs(ms) <= lagBoundMs else {
+      // A range test, not `abs`: `abs(Int.min)` traps.
+      guard let ms = integer(value), (-lagBoundMs...lagBoundMs).contains(ms) else {
         throw .invalid("lagMs.\(key)")
       }
       lags[surface] = CallSpeakerLag(milliseconds: ms)
@@ -259,9 +263,14 @@ package struct TalkerRulesSnapshot: Sendable, Equatable {
   }
 
 
-  /// The rules a recording froze, for Transcribe again. `nil` when the frozen text no longer
-  /// decodes in this build (a newer schema); the caller then keeps fallback labels.
+  /// The rules a recording froze, for Transcribe again. `nil` when the envelope's version is not
+  /// one this build reads, when the text no longer decodes, or when the two disagree; the caller
+  /// then keeps fallback labels.
   package static func thaw(_ frozen: FrozenTalkerRules) -> TalkerRules? {
-    try? TalkerRules.decode(Data(frozen.payload.utf8))
+    guard frozen.version == TalkerRules.supportedSchema,
+      let rules = try? TalkerRules.decode(Data(frozen.payload.utf8)),
+      rules.schema == frozen.version
+    else { return nil }
+    return rules
   }
 }

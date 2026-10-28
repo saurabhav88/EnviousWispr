@@ -12,6 +12,29 @@
       }
     },
     {
+      "name": "largest revision",
+      "accept": true,
+      "document": {
+        "schema": 1,
+        "revision": 1000000000,
+        "lagMs": {},
+        "selectors": []
+      }
+    },
+    {
+      "name": "lag at both bounds",
+      "accept": true,
+      "document": {
+        "schema": 1,
+        "revision": 3,
+        "lagMs": {
+          "meet": 5000,
+          "zoom_app": -5000
+        },
+        "selectors": []
+      }
+    },
+    {
       "name": "every field and combination in use",
       "accept": true,
       "document": {
@@ -684,6 +707,50 @@
             "verification": "verified"
           }
         ]
+      }
+    },
+    {
+      "name": "revision one past the largest",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 1000000001,
+        "lagMs": {},
+        "selectors": []
+      }
+    },
+    {
+      "name": "revision too large to be exact",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 1e+100,
+        "lagMs": {},
+        "selectors": []
+      }
+    },
+    {
+      "name": "lag at the smallest 64-bit integer",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 3,
+        "lagMs": {
+          "meet": -9223372036854775808
+        },
+        "selectors": []
+      }
+    },
+    {
+      "name": "lag one past the negative bound",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 3,
+        "lagMs": {
+          "meet": -5001
+        },
+        "selectors": []
       }
     }
   ]

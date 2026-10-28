@@ -19,6 +19,7 @@ const fixturesFile = path.join(root, 'scripts/talker-rules-fixtures.json');
 
 const MAX_BYTES = 32 * 1024;
 const LAG_BOUND_MS = 5000;
+const MAX_REVISION = 1000000000;
 const MAX_TALKING = 8;
 const SURFACES = [
   'zoom_app', 'teams_app', 'zoom_web', 'teams_web', 'meet', 'slack_app', 'slack_web',
@@ -39,11 +40,11 @@ export function problem(doc) {
   if (unknown) return `unknown field ${unknown}`;
   if (!isInt(doc.schema)) return 'schema';
   if (doc.schema !== 1) return 'unsupported schema';
-  if (!isInt(doc.revision) || doc.revision < 0) return 'revision';
+  if (!isInt(doc.revision) || doc.revision < 0 || doc.revision > MAX_REVISION) return 'revision';
   if (!isObject(doc.lagMs)) return 'lagMs';
   for (const [key, value] of Object.entries(doc.lagMs)) {
     if (!SURFACES.includes(key)) return `lagMs.${key}: unknown surface`;
-    if (!isInt(value) || Math.abs(value) > LAG_BOUND_MS) return `lagMs.${key}`;
+    if (!isInt(value) || value < -LAG_BOUND_MS || value > LAG_BOUND_MS) return `lagMs.${key}`;
   }
   if (!Array.isArray(doc.selectors)) return 'selectors';
   const seen = new Set();

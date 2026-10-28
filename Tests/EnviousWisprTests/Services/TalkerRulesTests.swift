@@ -132,5 +132,8 @@ struct TalkerRulesTests {
     #expect(TalkerRulesSnapshot.thaw(snapshot.frozen) == snapshot.rules)
     #expect(
       TalkerRulesSnapshot.thaw(FrozenTalkerRules(version: 2, payload: #"{"schema":2}"#)) == nil)
+    // An envelope whose version disagrees with its valid schema-1 text does not thaw either.
+    #expect(TalkerRulesSnapshot.thaw(FrozenTalkerRules(version: 2, payload: text)) == nil)
+    #expect(TalkerRulesSnapshot.thaw(FrozenTalkerRules(version: 0, payload: text)) == nil)
   }
 }
