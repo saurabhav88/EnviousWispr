@@ -1,3 +1,4 @@
+import EnviousWisprAppKitTestSupport
 import EnviousWisprCore
 import Foundation
 import Testing
@@ -27,7 +28,7 @@ struct TalkerRulesStoreTests {
 
   /// A temporary folder, removed when the test ends.
   private final class Folder {
-    let url = FileManager.default.temporaryDirectory
+    let url = TestTemporaryDirectory.url
       .appendingPathComponent("talker-rules-\(UUID().uuidString)", isDirectory: true)
     var cache: URL { url.appendingPathComponent(TalkerRulesStore.cacheFileName) }
     deinit { try? FileManager.default.removeItem(at: url) }
