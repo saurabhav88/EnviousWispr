@@ -51,7 +51,6 @@ export const ANDROID_APP = {
   description:
     'Free on-device dictation for Android with built-in AI polish. Tap the bubble, speak, and finished text lands where you type. Your voice never leaves your phone.',
   url: `${SITE}/android/`,
-  downloadUrl: 'https://play.google.com/store/apps/details?id=com.envi.wispr',
   installUrl: 'https://play.google.com/store/apps/details?id=com.envi.wispr',
   offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
   author: ORG_REF,
