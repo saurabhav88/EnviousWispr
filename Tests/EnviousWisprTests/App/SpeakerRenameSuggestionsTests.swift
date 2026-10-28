@@ -70,6 +70,44 @@ struct SpeakerRenameSuggestionsTests {
         != SpeakerRenameSuggestions(roster: [decomposed], selfNames: [], authored: [], assigned: [:]))
   }
 
+  @Test("arrow keys move the highlight by name; typing clears it, so Return saves what was typed")
+  func keyboardHighlight() {
+    let names = ["Alex Rivera", "Priya Shah", "Dana Lee"]
+    var highlight = RenameSuggestionHighlight()
+    let upFirst = highlight.up(in: names)
+    #expect(upFirst == false, "Up with nothing highlighted is left to the field")
+    let downFirst = highlight.down(in: names)
+    #expect(downFirst)
+    #expect(highlight.choice(in: names) == "Alex Rivera")
+    _ = highlight.down(in: names)
+    _ = highlight.down(in: names)
+    _ = highlight.down(in: names)
+    #expect(highlight.choice(in: names) == "Dana Lee", "Down stops on the last name")
+    _ = highlight.up(in: names)
+    #expect(highlight.choice(in: names) == "Priya Shah")
+    // Open, Down, then type a name: Return must save the typed name.
+    highlight.fieldEdited()
+    #expect(highlight.choice(in: names) == nil)
+    _ = highlight.down(in: names)
+    let upFromFirst = highlight.up(in: names)
+    #expect(upFromFirst)
+    #expect(highlight.choice(in: names) == nil, "Up from the first clears the highlight")
+    let downInEmpty = highlight.down(in: [])
+    #expect(downInEmpty == false)
+  }
+
+  @Test("a highlighted name that leaves the list is not replaced by its neighbour")
+  func highlightSurvivesListChange() {
+    var highlight = RenameSuggestionHighlight()
+    _ = highlight.down(in: ["Alex Rivera", "Priya Shah"])
+    _ = highlight.down(in: ["Alex Rivera", "Priya Shah"])
+    highlight.listChanged(to: ["Priya Shah", "Dana Lee"])
+    #expect(highlight.choice(in: ["Priya Shah", "Dana Lee"]) == "Priya Shah", "kept: still listed")
+    highlight.listChanged(to: ["Alex Rivera", "Dana Lee"])
+    #expect(highlight.name == nil)
+    #expect(highlight.choice(in: ["Alex Rivera", "Dana Lee"]) == nil)
+  }
+
   @Test("a roster read is shown only for the request it answered")
   func keyedRead() {
     let roster = CallSpeakerRoster(names: ["Ana"], selfNames: [])

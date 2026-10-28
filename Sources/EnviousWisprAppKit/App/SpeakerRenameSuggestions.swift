@@ -73,3 +73,41 @@ struct KeyedRosterRead<Key: Hashable>: Equatable {
     current == key ? roster : nil
   }
 }
+
+/// The rename popover's keyboard highlight (#4013 r3 F3): which suggestion Return chooses. By
+/// name, never by position, so a list that changes while the popover is open never moves it to
+/// a neighbour. Editing the typed name clears it, so Return then saves what was typed.
+struct RenameSuggestionHighlight: Equatable {
+  private(set) var name: String?
+
+  /// Down: the first suggestion, then the next; stays on the last.
+  mutating func down(in suggestions: [String]) -> Bool {
+    guard !suggestions.isEmpty else { return false }
+    let next = name.flatMap(suggestions.firstIndex(of:)).map { $0 + 1 } ?? 0
+    name = suggestions[min(next, suggestions.count - 1)]
+    return true
+  }
+
+  /// Up: the previous suggestion; from the first, none. Unhandled when nothing is highlighted.
+  mutating func up(in suggestions: [String]) -> Bool {
+    guard let current = name.flatMap(suggestions.firstIndex(of:)) else { return false }
+    name = current > 0 ? suggestions[current - 1] : nil
+    return true
+  }
+
+  /// The user typed: Return saves the field, not an earlier highlight.
+  mutating func fieldEdited() { name = nil }
+
+  /// The highlighted name left the list: nothing is highlighted.
+  mutating func listChanged(to suggestions: [String]) {
+    if let name, !suggestions.contains(name) { self.name = nil }
+  }
+
+  mutating func clear() { name = nil }
+
+  /// What Return chooses: the highlighted suggestion while it is still listed, else nothing
+  /// (the typed name is committed).
+  func choice(in suggestions: [String]) -> String? {
+    name.flatMap { suggestions.contains($0) ? $0 : nil }
+  }
+}

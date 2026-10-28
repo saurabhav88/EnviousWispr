@@ -304,9 +304,10 @@ struct MarkedUpPassageText: View {
 /// buttons above the field. Choosing one commits it through the same `onCommit`, once, spelled
 /// exactly as saved (the 60-character cap is for typing, so a long participant name is not cut).
 /// Keyboard focus stays in the field, as before (#4013 UAT: focusable suggestion buttons took
-/// focus from it when the popover opened): Down and Up highlight a suggestion, Return chooses
-/// the highlighted one, Up from the first clears the highlight. Each suggestion is a real
-/// button, so VoiceOver and Full Keyboard Access reach and activate it directly.
+/// focus from it when the popover opened): Down and Up highlight a suggestion and scroll it into
+/// view, Return chooses the highlighted one, typing clears the highlight
+/// (`RenameSuggestionHighlight`). Each suggestion is a real button, so VoiceOver and Full
+/// Keyboard Access reach and activate it directly; Escape cancels wherever focus is.
 private struct RenamePopoverView: View {
   @Binding var name: String
   let failure: RenameFailure?
@@ -315,9 +316,7 @@ private struct RenamePopoverView: View {
   let onCancel: () -> Void
   @State private var didCancelExplicitly = false
   @State private var hasCommitted = false
-  /// The suggestion Return chooses, by name, never by position: the list can change while the
-  /// popover is open, and the highlight must not move to another name in the same place.
-  @State private var highlighted: String?
+  @State private var highlight = RenameSuggestionHighlight()
   private static let maxLength = 60
 
   var body: some View {
@@ -327,30 +326,16 @@ private struct RenamePopoverView: View {
         .textFieldStyle(.roundedBorder)
         .frame(width: 200)
         .onSubmit {
-          if let highlighted, suggestions.contains(highlighted) {
-            choose(highlighted)
+          if let choice = highlight.choice(in: suggestions) {
+            choose(choice)
           } else {
             commit()
           }
         }
-        .onExitCommand {
-          didCancelExplicitly = true
-          onCancel()
-        }
-        .onKeyPress(.downArrow) {
-          guard !suggestions.isEmpty else { return .ignored }
-          let index = highlighted.flatMap(suggestions.firstIndex(of:)).map { $0 + 1 } ?? 0
-          highlighted = suggestions[min(index, suggestions.count - 1)]
-          return .handled
-        }
-        .onKeyPress(.upArrow) {
-          guard let current = highlighted.flatMap(suggestions.firstIndex(of:)) else {
-            return .ignored
-          }
-          highlighted = current > 0 ? suggestions[current - 1] : nil
-          return .handled
-        }
+        .onKeyPress(.downArrow) { highlight.down(in: suggestions) ? .handled : .ignored }
+        .onKeyPress(.upArrow) { highlight.up(in: suggestions) ? .handled : .ignored }
         .onChange(of: name) { _, newValue in
+          highlight.fieldEdited()
           if newValue.count > Self.maxLength { name = String(newValue.prefix(Self.maxLength)) }
         }
       if let failure {
@@ -360,15 +345,18 @@ private struct RenamePopoverView: View {
       }
     }
     .padding(8)
+    // On the whole popover, so Escape cancels from the field or from a suggestion button that
+    // Full Keyboard Access focused; a dismissal without this flag would commit.
+    .onExitCommand {
+      didCancelExplicitly = true
+      onCancel()
+    }
     .onAppear {
       hasCommitted = false
       didCancelExplicitly = false
-      highlighted = nil
+      highlight.clear()
     }
-    .onChange(of: suggestions) { _, newValue in
-      // The highlighted name left the list: nothing is highlighted, never a neighbour.
-      if let highlighted, !newValue.contains(highlighted) { self.highlighted = nil }
-    }
+    .onChange(of: suggestions) { _, newValue in highlight.listChanged(to: newValue) }
     .onChange(of: failure) { _, newValue in
       guard newValue != nil else { return }
       hasCommitted = false
@@ -386,33 +374,40 @@ private struct RenamePopoverView: View {
         .font(.caption)
         .foregroundStyle(.secondary)
         .accessibilityAddTraits(.isHeader)
-      ScrollView {
-        VStack(alignment: .leading, spacing: 0) {
-          // Names are unique in the list (`SpeakerRenameSuggestions.names(for:)`).
-          ForEach(suggestions, id: \.self) { suggestion in
-            Button {
-              choose(suggestion)
-            } label: {
-              // A participant's name is content, never a translation key.
-              Text(verbatim: suggestion)
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
-                .padding(.horizontal, 4)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
+      ScrollViewReader { proxy in
+        ScrollView {
+          VStack(alignment: .leading, spacing: 0) {
+            // Names are unique in the list (`SpeakerRenameSuggestions.names(for:)`).
+            ForEach(suggestions, id: \.self) { suggestion in
+              Button {
+                choose(suggestion)
+              } label: {
+                // A participant's name is content, never a translation key.
+                Text(verbatim: suggestion)
+                  .lineLimit(2)
+                  .multilineTextAlignment(.leading)
+                  .padding(.horizontal, 4)
+                  .frame(maxWidth: .infinity, alignment: .leading)
+                  .contentShape(Rectangle())
+              }
+              .buttonStyle(.borderless)
+              .padding(.vertical, 3)
+              .background(
+                RoundedRectangle(cornerRadius: 4)
+                  .fill(highlight.name == suggestion ? Color.accentColor.opacity(0.2) : .clear))
+              .accessibilityAddTraits(highlight.name == suggestion ? .isSelected : [])
+              .id(suggestion)
             }
-            .buttonStyle(.borderless)
-            .padding(.vertical, 3)
-            .background(
-              RoundedRectangle(cornerRadius: 4)
-                .fill(highlighted == suggestion ? Color.accentColor.opacity(0.2) : .clear))
-            .accessibilityAddTraits(highlighted == suggestion ? .isSelected : [])
           }
         }
+        .frame(width: 200)
+        .frame(maxHeight: 160)
+        .fixedSize(horizontal: false, vertical: suggestions.count <= 5)
+        // A highlight below the fold scrolls into view.
+        .onChange(of: highlight.name) { _, name in
+          if let name { proxy.scrollTo(name) }
+        }
       }
-      .frame(width: 200)
-      .frame(maxHeight: 160)
-      .fixedSize(horizontal: false, vertical: suggestions.count <= 5)
     }
   }
 
