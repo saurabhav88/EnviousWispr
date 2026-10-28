@@ -50,6 +50,9 @@ final class CustomTermListProjection {
 
   @ObservationIgnored private var library: [CustomWord] = []
   @ObservationIgnored private var libraryRevision: Int?
+  /// The locale the prepared list was sorted and searched with. The search and
+  /// the sort both follow the current locale, so a new one is an input too.
+  @ObservationIgnored private var preparedLocale: String?
   /// Optional timing sink (`CustomWordsProbe`); nil in ordinary use.
   @ObservationIgnored var probe: CustomWordsProbe?
   @ObservationIgnored private let probeCounter = CustomWordsProjectionProbeCounter()
@@ -78,15 +81,23 @@ final class CustomTermListProjection {
     selectedIDs.formIntersection(CustomTermListPolicy.selectableIDs(in: words))
   }
 
+  /// Re-sort for a new system locale. The view calls this when macOS reports a
+  /// locale change; the same locale again does nothing. `identifier` exists so a
+  /// test can name a locale; the build itself always reads `Locale.current`.
+  func localeChanged(_ identifier: String = Locale.current.identifier) {
+    guard identifier != preparedLocale else { return }
+    rebuild(locale: identifier)
+  }
+
   private func inputsChanged() {
     currentPage = 0
     rebuild()
   }
 
-  /// The one place the list is filtered and sorted. Reads the locale at build time,
-  /// as the old per-read build did.
-  private func rebuild() {
+  /// The one place the list is filtered and sorted, with the current locale.
+  private func rebuild(locale: String = Locale.current.identifier) {
     guard hasLibrary else { return }
+    preparedLocale = locale
     let revision = probe.map { _ in probeCounter.next() }
     if let revision { probe?.emit(.projectionStarted(revision: revision)) }
     let words = CustomTermListPolicy.filtered(

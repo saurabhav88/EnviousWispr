@@ -124,6 +124,18 @@ struct CustomTermListProjectionTests {
     #expect(list.prepared.words.count == 125)
   }
 
+  @Test("a new locale rebuilds once; the same locale again reuses the list")
+  func localeChangeRebuildsOnce() {
+    let (list, counter) = loaded()
+    list.localeChanged(Locale.current.identifier)
+    #expect(counter.builds == 1)
+    list.localeChanged("x-test-locale")
+    #expect(counter.builds == 2)
+    list.localeChanged("x-test-locale")
+    #expect(counter.builds == 2)
+    #expect(list.prepared.words.map(\.canonical) == ["alpha", "Kubernetes", "Shipped", "zulu"])
+  }
+
   @Test("a shorter list moves a page that no longer exists back to the last page")
   func shrinkingLibraryClampsThePage() {
     let many = (0..<120).map { CustomWord(canonical: String(format: "word%03d", $0)) }

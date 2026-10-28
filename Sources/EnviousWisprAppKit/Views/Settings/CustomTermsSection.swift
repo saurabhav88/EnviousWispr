@@ -217,6 +217,9 @@ struct CustomTermsSection<Actions: View>: View {
       list.probe = customWordsProbe
       list.libraryChanged(allWords, revision: revision)
     }
+    .onReceive(NotificationCenter.default.publisher(for: NSLocale.currentLocaleDidChangeNotification)) { _ in
+      list.localeChanged()
+    }
     .sheet(item: $editingWord) { word in
       CustomWordEditSheet(
         word: word,
