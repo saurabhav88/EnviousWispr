@@ -114,6 +114,21 @@ struct ZoomWebSpeakerReaderTests {
     #expect(reading.roster.names == ["Alex Rivera", "Priya Shah"])
   }
 
+  @Test("SYNTHETIC: an unnamed outer thumbnail never borrows the name of a thumbnail nested in its footer")
+  func nestedNameBoundary() throws {
+    let outer = CallAXNode(
+      role: "AXGroup", domClassList: ["speaker-bar-container__video-frame"],
+      children: [
+        CallAXNode(
+          role: "AXGroup", domClassList: ["video-avatar__avatar-footer"],
+          children: [thumbnail("Priya Shah", active: true)])
+      ])
+    let reading = try #require(ZoomWebSpeakerReader.read(documents: [page(callURL, [outer])]))
+    #expect(reading.participants.map(\.name) == [nil, "Priya Shah"])
+    #expect(reading.sharedNames.isEmpty)
+    #expect(CallSpeakerAdmission.observationSpeaking(reading, context: good) == ["Priya Shah"])
+  }
+
   /// SYNTHETIC: other tabs are never read; two Zoom call tabs, or none, are not read at all.
   @Test("only the single Zoom call page is read")
   func documentSelection() throws {

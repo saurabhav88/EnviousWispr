@@ -36,7 +36,7 @@ package enum ZoomWebSpeakerReader {
     // Without thumbnails the names on screen still serve the rename list.
     let visible = page.root.allNodes
       .filter { $0.domClassList.contains(footerClass) || $0.domClassList.contains(nameClass) }
-      .compactMap { name(in: $0.allNodes) }
+      .compactMap { name(in: ownSubtree(of: $0)) }
     return CallSpeakerReading(
       speaking: identity ? uniqueInOrder(participants.filter(\.isTalking).compactMap(\.name)) : [],
       roster: CallSpeakerRoster(names: identity ? names : uniqueInOrder(visible), selfNames: []),
@@ -44,11 +44,12 @@ package enum ZoomWebSpeakerReader {
       participantIdentityEstablished: identity, sharedNames: repeatedNames(names))
   }
 
-  /// The first text under the footer, else under the name block, within the given nodes.
+  /// The first text under the footer, else under the name block, within one participant's own
+  /// nodes: a nested thumbnail's text is never this participant's name.
   static func name(in nodes: [CallAXNode]) -> String? {
     for wanted in [footerClass, nameClass] {
       for node in nodes where node.domClassList.contains(wanted) {
-        if let text = node.allNodes.first(where: { $0.role == "AXStaticText" })?.label,
+        if let text = ownSubtree(of: node).first(where: { $0.role == "AXStaticText" })?.label,
           !text.isEmpty
         {
           return text
@@ -58,7 +59,7 @@ package enum ZoomWebSpeakerReader {
     return nil
   }
 
-  /// The frame and its descendants, stopping at any nested thumbnail frame.
+  /// The node and its descendants, stopping at any nested thumbnail frame.
   static func ownSubtree(of frame: CallAXNode) -> [CallAXNode] {
     var nodes = [frame]
     var queue = frame.children
