@@ -280,6 +280,31 @@ struct NativeCallSpeakerReaderTests {
     }
   }
 
+  /// SURVEY (C1 Teams run 2, 2026-10-28): in the main window the talker's gallery tile holds a
+  /// frame group with class `vdi-frame-occlusion`; quiet tiles hold none.
+  @Test("Teams: the main window's talking frame names the talker on its gallery tile")
+  func teamsMainWindowFrame() {
+    func tile(_ label: String, talking: Bool) -> CallAXNode {
+      CallAXNode(
+        role: "AXMenuItem", description: label,
+        children: [
+          CallAXNode(role: "AXGroup", domClassList: talking ? ["fui-Flex", "vdi-frame-occlusion"] : ["fui-Flex", "vdi-occlusion"])
+        ])
+    }
+    let reading = TeamsAppSpeakerReader.read(windows: [
+      window(
+        "Meeting with Saurabh Vaish",
+        [
+          tile("Alex Rivera (Guest), muted, Context menu is available", talking: false),
+          tile("Priya Shah (Guest), Context menu is available", talking: true),
+          CallAXNode(
+            role: "AXMenuItem", description: "Myself video, Saurabh Vaish, Muted, Has context menu"),
+        ])
+    ])
+    #expect(reading.speaking == ["Priya Shah"])
+    #expect(reading.roster.selfNames == ["Saurabh Vaish"])
+  }
+
   /// SURVEY main window alone (no compact view): roster yes, talker no. SYNTHETIC: Organizer
   /// without a "Myself video" tile is not the user.
   @Test("Teams: the main window gives the roster but no talker, and Organizer is not the user")

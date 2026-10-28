@@ -200,7 +200,14 @@ package enum TeamsAppSpeakerReader {
       case "AXMenuItem" where label.hasPrefix(selfTilePrefix):
         selfTiles.append(String(label.dropFirst(selfTilePrefix.count)))
       case "AXMenuItem":
-        if let name = tileName(label) { tileNames.append(name) }
+        if let name = tileName(label) {
+          tileNames.append(name)
+          // The main window marks the talker's gallery tile with a frame carrying this class
+          // (C1 Teams run 2, 2026-10-28; the signal Superwhisper reads).
+          if node.allNodes.contains(where: { $0.domClassList.contains(talkingFrameClass) }) {
+            speaking.append(name)
+          }
+        }
       default:
         break
       }
@@ -282,6 +289,9 @@ package enum TeamsAppSpeakerReader {
     let name = displayName(parts.joined(separator: ", "))
     return name.isEmpty ? nil : name
   }
+
+  /// The class on the frame inside the talker's gallery tile in the main meeting window.
+  static let talkingFrameClass = "vdi-frame-occlusion"
 
   /// What follows the name on another participant's gallery tile (C1 Teams run, 2026-10-28).
   static let galleryTileStates: Set<String> = ["muted", "Context menu is available"]
