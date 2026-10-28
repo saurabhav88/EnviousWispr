@@ -610,7 +610,7 @@ final class MeetingCoordinator {
   /// Read on the meeting file queue. `nil` when the meeting is unknown, being deleted or losing
   /// its audio (the list goes with the audio), at the start of the read OR when it returns, or
   /// when the file is missing or unusable.
-  func callSpeakerRoster(meetingID: UUID) async -> CallSpeakerRoster? {
+  func callSpeakerEvidence(meetingID: UUID) async -> CallSpeakerEvidence? {
     guard rosterReadable(meetingID) else { return nil }
     #if DEBUG
       rosterReadAdmittedForTesting?()
@@ -618,7 +618,7 @@ final class MeetingCoordinator {
     guard case .usable(let log)? = try? await writer.loadCallSpeakers(meeting: meetingID),
       rosterReadable(meetingID)
     else { return nil }
-    return log.roster
+    return CallSpeakerEvidence(log)
   }
 
   /// The latest intended state (`live`) and the open claims, not only what is on disk: a

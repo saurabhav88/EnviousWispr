@@ -61,16 +61,35 @@ struct SpeakerRenameSuggestions: Equatable, Sendable {
   }
 }
 
-/// A roster read and the request it answers (#4013 r3 F3). A presentation shows the roster only
+/// What History shows from a meeting's saved speaker evidence (#4013): the call's roster for the
+/// rename list, and whether the recording positively noted that Accessibility was not allowed.
+/// A missing, older or unreadable file gives no evidence at all, never a missing permission.
+struct CallSpeakerEvidence: Equatable {
+  let roster: CallSpeakerRoster
+  let permissionMissing: Bool
+
+  init(_ log: CallSpeakerLog) {
+    roster = log.roster
+    permissionMissing = log.status == .noPermission
+  }
+}
+
+/// A speaker-evidence read and the request it answers (#4013 r3 F3). A presentation shows it only
 /// while its current request is this one, so a read that finishes after a switch to another
 /// meeting, or after Delete audio or a deletion changed the request, is never shown.
 struct KeyedRosterRead<Key: Hashable>: Equatable {
   let key: Key
-  let roster: CallSpeakerRoster?
+  let evidence: CallSpeakerEvidence?
 
   /// The roster when `current` is the request this read answered, else `nil`.
   func roster(for current: Key?) -> CallSpeakerRoster? {
-    current == key ? roster : nil
+    current == key ? evidence?.roster : nil
+  }
+
+  /// Whether to explain missing speaker names: only for the request this read answered, and only
+  /// when the recording noted that Accessibility was not allowed.
+  func permissionMissing(for current: Key?) -> Bool {
+    current == key && evidence?.permissionMissing == true
   }
 }
 

@@ -143,6 +143,22 @@ enum MeetingHistoryPresentation {
         "History: a meeting whose every line repeats the call sound, so all of them are hidden.")
   }
 
+  /// #4013: the recording noted that Accessibility was not allowed, so no speaker names were
+  /// read. Shown only on that positive note, never for a missing or older file.
+  static var speakerNamesPermissionMessage: String {
+    String(
+      localized:
+        "Speaker names need Accessibility, which was off when this meeting was recorded. Names can't be added to this meeting now, but you can still rename each speaker. Allow Accessibility before your next call.",
+      comment:
+        "History: a meeting recorded without the Accessibility permission, so no participant names were read from the call app.")
+  }
+
+  static var speakerNamesPermissionButton: String {
+    String(
+      localized: "Open EnviousMeet Settings",
+      comment: "History: opens the EnviousMeet settings page's Permissions tab.")
+  }
+
   static var unavailableMessage: String {
     String(
       localized: "This meeting isn't available right now.",

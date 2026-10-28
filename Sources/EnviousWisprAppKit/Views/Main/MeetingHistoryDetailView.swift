@@ -89,9 +89,9 @@ struct MeetingHistoryDetailView: View {
       .task(id: rosterKey(record)) {
         // Stored with the request it answers; shown only while that is still the request.
         let key = rosterKey(record)
-        let read = await meetings.callSpeakerRoster(meetingID: meetingID)
+        let read = await meetings.callSpeakerEvidence(meetingID: meetingID)
         guard !Task.isCancelled else { return }
-        rosterRead = KeyedRosterRead(key: key, roster: read)
+        rosterRead = KeyedRosterRead(key: key, evidence: read)
       }
       .onAppear {
         // A meeting that recorded nothing has only notes to show.
@@ -525,6 +525,9 @@ struct MeetingHistoryDetailView: View {
           }
           .disabled(!permissions.accessibilityGranted || !canDeliver)
         }
+        if record.map({ rosterRead?.permissionMissing(for: rosterKey($0)) == true }) == true {
+          speakerNamesPermissionNote
+        }
         switch projection {
         case .visible(let turns, _):
           MeetingTurnsDocument(
@@ -544,6 +547,22 @@ struct MeetingHistoryDetailView: View {
             .foregroundStyle(.stTextSecondary)
         }
       }
+    }
+  }
+
+  /// #4013: this meeting recorded without Accessibility, so it has no speaker names to offer.
+  private var speakerNamesPermissionNote: some View {
+    HStack(alignment: .firstTextBaseline, spacing: 8) {
+      Text(MeetingHistoryPresentation.speakerNamesPermissionMessage)
+        .font(.stBody)
+        .foregroundStyle(.stTextSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+      Spacer(minLength: 0)
+      Button(MeetingHistoryPresentation.speakerNamesPermissionButton) {
+        navigationCoordinator.request(.meetings(.permissions))
+        appWindowCoordinator.showWindow()
+      }
+      .accessibilityIdentifier("meetings.history.speakerNamesPermission")
     }
   }
 

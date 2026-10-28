@@ -125,9 +125,9 @@ struct TranscriptDetailView: View {
     .task(id: rosterKey) {
       // Stored with the request it answers; shown only while that is still the request.
       guard let key = rosterKey else { return }
-      let read = await meetings.callSpeakerRoster(meetingID: key.meetingID)
+      let read = await meetings.callSpeakerEvidence(meetingID: key.meetingID)
       guard !Task.isCancelled else { return }
-      rosterRead = KeyedRosterRead(key: key, roster: read)
+      rosterRead = KeyedRosterRead(key: key, evidence: read)
     }
     .alert(
       "Couldn't save the file",

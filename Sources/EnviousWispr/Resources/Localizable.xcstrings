@@ -7769,13 +7769,13 @@
         }
       }
     },
-    "EnviousMeet uses Accessibility to see whether a call window or meeting page is open when an app starts using your microphone. It reads this on your Mac and never sends it anywhere. Pasting your dictation uses the same permission." : {
+    "EnviousMeet uses Accessibility to see whether a call window or meeting page is open when an app starts using your microphone. In Zoom, Teams, Meet and Slack calls, it also reads who is talking, so a meeting can show people's names instead of numbered speakers when it can tell them apart. It reads this on your Mac and never sends it to Envious Labs. Allow it before a call starts. Pasting your dictation uses the same permission." : {
       "comment" : "EnviousMeet page: help for the Accessibility permission row.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "EnviousMeet nutzt die Bedienungshilfen, um zu prüfen, ob ein Anruffenster oder eine Meeting-Seite offen ist, wenn eine App dein Mikrofon nutzt. Das wird lokal auf deinem Mac ausgelesen und nirgendwohin gesendet. Das Einfügen deines Diktats nutzt dieselbe Berechtigung."
+            "value" : "EnviousMeet nutzt die Bedienungshilfen, um zu prüfen, ob ein Anruffenster oder eine Meeting-Seite geöffnet ist, sobald eine App beginnt, dein Mikrofon zu nutzen. In Anrufen über Zoom, Teams, Meet und Slack liest es außerdem, wer gerade spricht, damit ein Meeting Namen statt nummerierter Sprecher anzeigen kann, wenn es die Personen auseinanderhalten kann. Diese Informationen liest es auf deinem Mac aus und sendet sie nie an Envious Labs. Erlaube den Zugriff vor Beginn eines Anrufs. Das Einfügen deines Diktats nutzt dieselbe Berechtigung."
           }
         }
       }
@@ -14132,6 +14132,17 @@
         }
       }
     },
+    "Open EnviousMeet Settings" : {
+      "comment" : "History: opens the EnviousMeet settings page's Permissions tab.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousMeet-Einstellungen öffnen"
+          }
+        }
+      }
+    },
     "Open EnviousMeet to see why." : {
       "comment" : "EnviousMeet: under EnviousMeet could not start recording.",
       "localizations" : {
@@ -18157,6 +18168,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sprechername"
+          }
+        }
+      }
+    },
+    "Speaker names need Accessibility, which was off when this meeting was recorded. Names can't be added to this meeting now, but you can still rename each speaker. Allow Accessibility before your next call." : {
+      "comment" : "History: a meeting recorded without the Accessibility permission, so no participant names were read from the call app.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für Sprechernamen ist der Zugriff auf die Bedienungshilfen nötig. Er war bei der Aufnahme dieses Meetings deaktiviert. Diesem Meeting können jetzt keine Namen mehr hinzugefügt werden, aber du kannst jeden Sprecher weiterhin umbenennen. Erlaube den Zugriff auf die Bedienungshilfen vor deinem nächsten Anruf."
           }
         }
       }

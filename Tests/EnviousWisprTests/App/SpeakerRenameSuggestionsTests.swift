@@ -111,10 +111,36 @@ struct SpeakerRenameSuggestionsTests {
   @Test("a roster read is shown only for the request it answered")
   func keyedRead() {
     let roster = CallSpeakerRoster(names: ["Ana"], selfNames: [])
-    let read = KeyedRosterRead(key: "meeting-A", roster: roster)
+    let log = CallSpeakerLog(
+      surface: .zoomApp, source: .app, status: .observed, lag: nil, rules: nil, roster: roster,
+      rosterFromParticipantList: true, observations: [])
+    let read = KeyedRosterRead(key: "meeting-A", evidence: CallSpeakerEvidence(log))
     #expect(read.roster(for: "meeting-A") == roster)
     #expect(read.roster(for: "meeting-B") == nil, "a switch to another meeting hides it")
     #expect(read.roster(for: nil) == nil)
+  }
+
+  @Test("the missing-permission note shows only for a recording that noted it, on its own request")
+  func permissionNote() {
+    func read(_ status: CallSpeakerObservationStatus?, key: String = "meeting-A")
+      -> KeyedRosterRead<String>
+    {
+      KeyedRosterRead(
+        key: key,
+        evidence: CallSpeakerEvidence(
+          CallSpeakerLog(
+            surface: .teamsApp, source: .app, status: status, lag: nil, rules: nil,
+            roster: CallSpeakerRoster(names: [], selfNames: []), rosterFromParticipantList: nil,
+            observations: [])))
+    }
+    #expect(read(.noPermission).permissionMissing(for: "meeting-A"))
+    #expect(!read(.noPermission).permissionMissing(for: "meeting-B"), "another meeting's read")
+    #expect(!read(.noPermission).permissionMissing(for: nil))
+    for status: CallSpeakerObservationStatus? in [.observed, .unreadable, .unsupported, nil] {
+      #expect(!read(status).permissionMissing(for: "meeting-A"), "\(String(describing: status))")
+    }
+    // No file, an older file or a damaged one: no evidence, so nothing is said.
+    #expect(!KeyedRosterRead<String>(key: "meeting-A", evidence: nil).permissionMissing(for: "meeting-A"))
   }
 
   @Test("a change to the suggestions alone makes the inputs differ")
@@ -169,11 +195,11 @@ struct SpeakerRenameSuggestionsTests {
       harness.coordinator.record(id: record.id) != nil
         && harness.coordinator.record(id: other.id) != nil
     }
-    #expect(await harness.coordinator.callSpeakerRoster(meetingID: record.id) == log.roster)
-    #expect(await harness.coordinator.callSpeakerRoster(meetingID: other.id) == nil)
-    #expect(await harness.coordinator.callSpeakerRoster(meetingID: UUID()) == nil)
+    #expect(await harness.coordinator.callSpeakerEvidence(meetingID: record.id) == CallSpeakerEvidence(log))
+    #expect(await harness.coordinator.callSpeakerEvidence(meetingID: other.id) == nil)
+    #expect(await harness.coordinator.callSpeakerEvidence(meetingID: UUID()) == nil)
     await harness.coordinator.deleteAudio(meetingID: record.id)
-    #expect(await harness.coordinator.callSpeakerRoster(meetingID: record.id) == nil)
+    #expect(await harness.coordinator.callSpeakerEvidence(meetingID: record.id) == nil)
   }
 
   /// True when `stream` delivers a signal before the deadline.
@@ -231,7 +257,7 @@ struct SpeakerRenameSuggestionsTests {
     let (admissions, admitted) = AsyncStream<Void>.makeStream()
     harness.coordinator.rosterReadAdmittedForTesting = { admitted.yield() }
     defer { harness.coordinator.rosterReadAdmittedForTesting = nil }
-    let read = Task { await harness.coordinator.callSpeakerRoster(meetingID: record.id) }
+    let read = Task { await harness.coordinator.callSpeakerEvidence(meetingID: record.id) }
     try #require(await Self.firstSignal(admissions, within: .seconds(5)), "the read was never admitted")
     let deletion = Task { await harness.coordinator.delete(meetingID: record.id) }
     // The test holds the file queue, so this wait must not drain it.
