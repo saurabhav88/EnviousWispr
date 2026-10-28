@@ -72,6 +72,9 @@ struct NativeCallSpeakerReaderTests {
         ])
     ])
     #expect(reading.roster.selfNames == ["Saurabh A Vaish"])
+    // The panel's tree was not captured, so its names are not read as a roster yet (#4013 C1).
+    #expect(reading.roster.names.isEmpty)
+    #expect(!reading.rosterFromParticipantList)
   }
 
   /// SYNTHETIC: a name with a comma, two people flagged at once, and look-alike labels outside a
@@ -91,6 +94,24 @@ struct NativeCallSpeakerReaderTests {
     ])
     #expect(reading.speaking == ["Lee, Dana", "Priya Shah"])
     #expect(reading.roster.names == ["Lee, Dana", "Priya Shah"])
+  }
+
+  /// SYNTHETIC: a name containing look-alike status words, an unknown ending, and one person
+  /// shown as thumbnail and large tile.
+  @Test("Zoom: the name is read from Zoom's fixed ending, an unknown ending is skipped")
+  func zoomStructuralSuffix() {
+    let reading = ZoomAppSpeakerReader.read(windows: [
+      window(
+        "Zoom Meeting",
+        [
+          zoomTile("Dana, Computer audio engineer, Computer audio unmuted, Video off, active speaker"),
+          zoomTile("Priya Shah, Computer audio muted, Video off, Hand raised"),
+          zoomTile("Alex Rivera, Computer audio unmuted"),
+          zoomTile("Alex Rivera, Computer audio unmuted, Video off"),
+        ])
+    ])
+    #expect(reading.speaking == ["Dana, Computer audio engineer"])
+    #expect(reading.roster.names == ["Dana, Computer audio engineer", "Alex Rivera"])
   }
 
   // MARK: - Teams
@@ -164,5 +185,36 @@ struct NativeCallSpeakerReaderTests {
     #expect(reading.roster.names == ["Lee, Dana", "Alex Rivera", "Alex Rivera"])
     #expect(reading.roster.selfNames == ["Lee, Dana"])
     #expect(reading.speaking == ["Lee, Dana", "Alex Rivera"])
+  }
+
+  /// SYNTHETIC: "Lee" and "Lee, Dana" on one call; only the full name is the user.
+  @Test("Teams: a shorter roster name that prefixes the user's name is not the user")
+  func teamsSelfCollision() {
+    let reading = TeamsAppSpeakerReader.read(windows: [
+      window(
+        "Meeting",
+        [
+          CallAXNode(role: "AXRow", description: "Lee, Attendee, Muted"),
+          CallAXNode(role: "AXRow", description: "Lee, Dana, Organizer, Muted"),
+          CallAXNode(role: "AXMenuItem", description: "Myself video, Lee, Dana, Muted, Has context menu"),
+        ])
+    ])
+    #expect(reading.roster.names == ["Lee", "Lee, Dana"])
+    #expect(reading.roster.selfNames == ["Lee, Dana"])
+  }
+
+  /// SYNTHETIC: a role word inside a name, and an unknown row ending.
+  @Test("Teams: the name is read from the row's fixed ending, an unknown ending is skipped")
+  func teamsStructuralSuffix() {
+    let reading = TeamsAppSpeakerReader.read(windows: [
+      window(
+        "Meeting",
+        [
+          CallAXNode(role: "AXRow", description: "Dana, Presenter, Lee (Guest), Meeting guest, Muted"),
+          CallAXNode(role: "AXRow", description: "Priya Shah, Attendee"),
+          CallAXNode(role: "AXRow", description: "Alex Rivera, Attendee, Raised hand"),
+        ])
+    ])
+    #expect(reading.roster.names == ["Dana, Presenter, Lee", "Priya Shah"])
   }
 }

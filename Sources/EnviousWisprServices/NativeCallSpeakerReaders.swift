@@ -9,6 +9,7 @@ package enum ZoomAppSpeakerReader {
   /// The audio-state part of a tile label. A label without one is not a participant tile.
   static let audioStatePrefixes = ["Computer audio", "Phone audio", "No audio"]
   static let activeSpeakerFlag = "active speaker"
+  static let videoStates: Set<String> = ["Video off", "Video on"]
 
   package static func read(windows: [CallAXWindow]) -> CallSpeakerReading {
     var tileNames: [String] = []
@@ -25,7 +26,9 @@ package enum ZoomAppSpeakerReader {
       }
     }
     // A person appears as a thumbnail and as the large Speaker-view tile: one name, two tiles.
-    // Tiles cannot tell that apart from two people sharing a name, hence the flag below.
+    // Tiles cannot tell that apart from two people sharing a name, hence the flag below. The
+    // participants panel would list each person once, but its tree was not captured on
+    // 2026-10-27; reading it waits for that capture (#4013 C1) rather than a guessed shape.
     return CallSpeakerReading(
       speaking: uniqueInOrder(speaking),
       roster: CallSpeakerRoster(
@@ -34,17 +37,18 @@ package enum ZoomAppSpeakerReader {
   }
 
   /// `Lee, Dana, Computer audio unmuted, Video off, active speaker` → name `Lee, Dana`, talking.
-  /// The name is everything before the first audio-state part, so commas inside a name survive.
+  /// Read from the end, where Zoom's structure is fixed: an optional `active speaker`, an
+  /// optional video state, then exactly one audio state. Everything before that is the name, so
+  /// commas and look-alike words inside a name survive. Any other ending is not read (no guess).
   static func parseTile(_ label: String) -> (name: String, isActiveSpeaker: Bool)? {
-    let parts = label.components(separatedBy: ", ")
-    guard
-      let stateIndex = parts.firstIndex(where: { part in
-        audioStatePrefixes.contains { part.hasPrefix($0) }
-      }), stateIndex > 0
+    var parts = label.components(separatedBy: ", ")
+    let isActiveSpeaker = parts.last == activeSpeakerFlag
+    if isActiveSpeaker { parts.removeLast() }
+    if let last = parts.last, videoStates.contains(last) { parts.removeLast() }
+    guard let state = parts.popLast(), audioStatePrefixes.contains(where: { state.hasPrefix($0) })
     else { return nil }
-    let name = parts[..<stateIndex].joined(separator: ", ")
-    guard !name.isEmpty else { return nil }
-    return (name, parts[stateIndex...].contains(activeSpeakerFlag))
+    let name = parts.joined(separator: ", ")
+    return name.isEmpty ? nil : (name, isActiveSpeaker)
   }
 
   /// The participants panel marks the user: `Saurabh A Vaish (Host, me)` or `Dana (me)`.
@@ -73,6 +77,10 @@ package enum TeamsAppSpeakerReader {
   static let roles: Set<String> = [
     "Organizer", "Co-organizer", "Presenter", "Attendee", "Meeting guest",
   ]
+  /// The mute state that ends a roster row.
+  static let muteStates: Set<String> = ["Muted", "Unmuted"]
+  /// What follows the name on the user's own tile ("Muted, Has context menu").
+  static let tileStates = ["Muted", "Unmuted", "Has context menu", "Context menu is available"]
 
   package static func read(windows: [CallAXWindow]) -> CallSpeakerReading {
     var speaking: [String] = []
@@ -92,25 +100,32 @@ package enum TeamsAppSpeakerReader {
         break
       }
     }
-    // The self tile's text continues past the name ("Saurabh Vaish, Muted, ..."): take the roster
-    // name it starts with, so a comma inside a name is never cut.
-    let selfNames = uniqueInOrder(rosterNames).filter { name in
-      selfTiles.contains { $0 == name || $0.hasPrefix(name + ", ") }
+    // The self tile's text continues past the name ("Saurabh Vaish, Muted, ..."). A roster name
+    // marks the user only when the text after it is a tile state or nothing, so "Lee" never
+    // matches "Myself video, Lee, Dana, ...". More than one match is ambiguous: nobody is marked.
+    let candidates = uniqueInOrder(rosterNames).filter { name in
+      selfTiles.contains { tile in
+        guard tile == name || tile.hasPrefix(name + ", ") else { return false }
+        let rest = tile.dropFirst(name.count).drop { $0 == "," || $0 == " " }
+        return rest.isEmpty || tileStates.contains(where: { rest.hasPrefix($0) })
+      }
     }
+    let selfNames = candidates.count == 1 ? candidates : []
     return CallSpeakerReading(
       speaking: uniqueInOrder(speaking),
       roster: CallSpeakerRoster(names: rosterNames, selfNames: selfNames),
       rosterFromParticipantList: !rosterNames.isEmpty)
   }
 
-  /// `Alex Rivera (Guest), Meeting guest, Muted` → `Alex Rivera`. A row without a known role
-  /// (the "In this meeting, 4 total" header) is not a person.
+  /// `Alex Rivera (Guest), Meeting guest, Muted` → `Alex Rivera`. Read from the end: an optional
+  /// mute state, then exactly one role; everything before is the name, so a role word inside a
+  /// name survives. A row without that ending (the "In this meeting, 4 total" header) is not a
+  /// person.
   static func rosterName(_ label: String) -> String? {
-    let parts = label.components(separatedBy: ", ")
-    guard let roleIndex = parts.firstIndex(where: roles.contains), roleIndex > 0 else {
-      return nil
-    }
-    let name = displayName(parts[..<roleIndex].joined(separator: ", "))
+    var parts = label.components(separatedBy: ", ")
+    if let last = parts.last, muteStates.contains(last) { parts.removeLast() }
+    guard let role = parts.popLast(), roles.contains(role) else { return nil }
+    let name = displayName(parts.joined(separator: ", "))
     return name.isEmpty ? nil : name
   }
 
