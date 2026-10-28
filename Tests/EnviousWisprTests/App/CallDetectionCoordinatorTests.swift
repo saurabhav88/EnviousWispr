@@ -61,7 +61,24 @@
       var onStop: (@MainActor () -> Void)?
       /// Runs inside a detected Start, before it returns (detection changed meanwhile).
       var duringStart: (@MainActor () async -> Void)?
+      var duringManualStart: (@MainActor () async -> Void)?
       private(set) var coordinator: CallDetectionCoordinator!
+      let manualMeetingID = UUID()
+      /// The actual admission flow with fake recording effects, used by manual-fallback stories.
+      lazy var manualFlow = MeetingStartFlow(dependencies: .init(
+        isSetUp: { [unowned self] in settings.meetingOnboardingComplete },
+        captureCallSound: { false }, isExplained: { true }, markExplained: {},
+        canStart: { [unowned self] in phase == .idle },
+        start: { [unowned self] _, _, family in
+          userStarts.append(family)
+          phase = .recording(meetingID: manualMeetingID, startedAt: clock)
+          await duringManualStart?()
+          return .recording(meetingID: manualMeetingID)
+        },
+        microphoneNeedsAsking: { false }, requestMicrophone: {}, showMeetingPage: {},
+        acceptedStartNow: { [unowned self] in clock },
+        acceptedStart: { [unowned self] in coordinator.acceptedStart($0) },
+        settledStart: { [unowned self] in coordinator.settledStart($0, recordingID: $1) }))
 
       init(
         evidenceRead: (@Sendable (CallAppCatalog.Rule, Int32) async -> CallEvidenceReader.Evidence)? = nil,
@@ -1149,6 +1166,96 @@
       rig.advance(10)
       await rig.proof(.unknown, input: .inactive)
       #expect(rig.stops == 0)
+    }
+
+    @Test("A real Flow manual fallback on the admitted call gains owned-ID end behavior without another Start",
+      .bug("https://github.com/saurabhav88/EnviousWispr/issues/4142"))
+    func matchingFlowManualFallbackFollowsCallEnd() async throws {
+      let rig = try Rig()
+      await rig.ongoingZoom()
+      #expect(rig.panel.content == .ask(appName: "Zoom"))
+      let result = await rig.manualFlow.requestStart(from: .menu)
+      #expect(result == .started(.recording(meetingID: rig.manualMeetingID)))
+      rig.coordinator.stepForTesting()
+      #expect(rig.panel.content == nil, "the manual fallback already records the asked-about call")
+      #expect(rig.userStarts.count == 1 && rig.starts.isEmpty)
+      #expect(rig.events.isEmpty, "manual adoption sends neither duplicate Yes nor autoStarted")
+      await rig.endedZoom()
+      rig.advance(1.6)
+      await rig.endedZoom()
+      #expect(rig.panel.content == .countdown(secondsLeft: 10))
+      rig.advance(10)
+      await rig.endedZoom()
+      #expect(await settleUntilObserved { rig.stops == 1 && rig.phase == .idle })
+      #expect(rig.userStarts.count == 1 && rig.starts.isEmpty)
+    }
+
+    @Test("A recording visible before Flow returns has no transient question and rejects its old Yes")
+    func visibleRecordingBeforeManualSettlement() async throws {
+      let rig = try Rig()
+      await rig.ongoingZoom()
+      let oldYes = rig.panel.actions.yes
+      let gate = MeetingCoordinatorTests.Gate()
+      defer { gate.open() }
+      rig.duringManualStart = {
+        rig.coordinator.stepForTesting()
+        #expect(rig.panel.content == nil)
+        await gate.wait()
+      }
+      let start = Task { await rig.manualFlow.requestStart(from: .menu) }
+      await MeetingCoordinatorTests.eventually("manual recording visible before outcome", drainFiles: false) { gate.parked }
+      #expect(rig.phase == .recording(meetingID: rig.manualMeetingID, startedAt: rig.clock))
+      oldYes()
+      rig.coordinator.stepForTesting()
+      #expect(rig.panel.content == nil && rig.starts.isEmpty)
+      gate.open()
+      #expect(await start.value == .started(.recording(meetingID: rig.manualMeetingID)))
+      await rig.endedZoom()
+      rig.advance(1.6)
+      await rig.endedZoom()
+      #expect(rig.panel.content == .countdown(secondsLeft: 10))
+      #expect(rig.userStarts.count == 1 && rig.starts.isEmpty && rig.events.isEmpty)
+    }
+
+    @Test("A real history Flow fallback links the already-identified ongoing browser room")
+    func browserManualFlowUsesHistoricalRoom() async throws {
+      let rig = try Rig()
+      let rule = CallAppCatalog.Rule.browser(.chrome)
+      let room = "abc-defg-hij"
+      await rig.proof(.ongoing(family: .googleMeet, room: room), rule: rule, family: .googleMeet, room: room)
+      rig.advance(CallDetectionPolicy.questionReadiness)
+      rig.coordinator.stepForTesting()
+      #expect(rig.panel.content == .ask(appName: "Google Meet"))
+      #expect(await rig.manualFlow.requestStart(from: .history)
+        == .started(.recording(meetingID: rig.manualMeetingID)))
+      #expect(rig.panel.content == nil)
+      await rig.proof(.ended(family: .googleMeet, room: room), rule: rule, family: .googleMeet, room: room)
+      rig.advance(1.6)
+      await rig.proof(.ended(family: .googleMeet, room: room), rule: rule, family: .googleMeet, room: room)
+      #expect(rig.panel.content == .countdown(secondsLeft: 10), "active browser microphone cannot veto scoped end")
+      #expect(rig.userStarts.count == 1 && rig.starts.isEmpty && rig.events.isEmpty)
+    }
+
+    @Test("Read-lifetime invalidation discards a parked manual ticket instead of suppressing later questions forever")
+    func invalidatedManualTicketCannotBlockNewLifetime() async throws {
+      let rig = try Rig()
+      await rig.ongoingZoom()
+      let gate = MeetingCoordinatorTests.Gate()
+      defer { gate.open() }
+      rig.duringManualStart = { await gate.wait() }
+      let start = Task { await rig.manualFlow.requestStart(from: .menu) }
+      await MeetingCoordinatorTests.eventually("manual ticket parked before invalidation", drainFiles: false) { gate.parked }
+      let newer = [CallDetectionCoordinator.SimulatedHolder(
+        holder: .init(pid: 900_022, bundleID: "com.microsoft.teams2", input: .active),
+        evidence: .call(family: .teams, room: "new-lifetime-call"))]
+      rig.coordinator.simulate(newer)
+      rig.advance(CallDetectionPolicy.questionInterval)
+      rig.coordinator.simulate(newer)
+      #expect(rig.panel.content == .switchMeeting(appName: "Microsoft Teams"))
+      gate.open()
+      await start.value
+      #expect(rig.panel.content == .switchMeeting(appName: "Microsoft Teams"))
+      #expect(rig.userStarts.count == 1 && rig.starts.isEmpty)
     }
 
     @Test("Keep recording stops the countdown and the meeting goes on")

@@ -262,6 +262,273 @@ struct CallDetectionPolicyTests {
     #expect(!isCountdown(s.interaction), "the new run has only one ended observation")
   }
 
+  @Test("A timed-out native Ask can link the matching manual fallback once, without another Start or Yes")
+  func timedOutManualFallbackLinks() {
+    var s = Story()
+    let call = Self.zoom(.active)
+    s.ongoing(call)
+    let oldToken = s.policy.token
+    s.hold([call], for: Policy.promptTimeout)
+    #expect(s.answers == [.timeout])
+    s.observeCall(.ongoing(family: .zoom, room: "w"), holder: call)
+    s.read([call])
+    let request = s.acceptManual()
+    let id = UUID()
+    s.meeting = .recording(meetingID: id)
+    s.settleManual(request, recordingID: id)
+    s.press(.yes, token: oldToken)
+    #expect(s.starts.isEmpty && s.answers == [.timeout])
+    #expect(s.interaction == .none)
+    end(&s)
+    #expect(isCountdown(s.interaction))
+    s.hold([Self.zoom(.inactive)], for: Policy.countdownLength)
+    #expect(s.commands.contains { if case .stop(_, id) = $0 { true } else { false } })
+    #expect(s.starts.isEmpty)
+  }
+
+  @Test("A browser fallback needs pre-acceptance independent room proof, not just its URL", arguments: [true, false])
+  func browserManualProofRequired(ongoing: Bool) {
+    var s = Story()
+    let call = Self.chrome(.active, url: Self.meetA)
+    s.observeCall(ongoing ? .ongoing(family: .googleMeet, room: "abc-defg-hij") : .unknown, holder: call)
+    s.ready([call])
+    let request = s.acceptManual(route: .history)
+    let id = UUID()
+    s.meeting = .recording(meetingID: id)
+    s.settleManual(request, recordingID: id)
+    // Stronger proof after settlement cannot promote a URL-only rejected request.
+    s.observeCall(.ongoing(family: .googleMeet, room: "abc-defg-hij"), holder: call)
+    s.read([call])
+    end(&s, [Self.chrome(.inactive, url: Self.meetA)], call: call)
+    #expect(isCountdown(s.interaction) == ongoing)
+    #expect(s.starts.isEmpty)
+    if !ongoing { #expect(s.meeting == .recording(meetingID: id) && s.stops == 0) }
+  }
+
+  @Test("A call or browser room identified after acceptance cannot borrow earlier microphone activity",
+    arguments: [true, false])
+  func lateCallCannotBecomeManualCandidate(browser: Bool) {
+    var s = Story()
+    let call = browser ? Self.chrome(.active, url: Self.meetA) : Self.zoom(.active)
+    let unknown = Policy.Holder(pid: call.pid, rule: call.rule, input: .active, evidence: .unknown)
+    s.observeCall(.unknown, holder: unknown)
+    s.read([unknown])
+    let request = s.acceptManual()
+    let family: CallAppFamily = browser ? .googleMeet : .zoom
+    let room = browser ? "abc-defg-hij" : "w"
+    s.observeCall(.ongoing(family: family, room: room), holder: call)
+    s.ready([call])
+    #expect(s.interaction == .none, "pending provenance does not create a transient question")
+    let id = UUID()
+    s.meeting = .recording(meetingID: id)
+    s.settleManual(request, recordingID: id)
+    let inactive = Policy.Holder(pid: call.pid, rule: call.rule, input: .inactive, evidence: call.evidence)
+    end(&s, [inactive], call: call)
+    #expect(!isCountdown(s.interaction) && s.stops == 0)
+    #expect(s.meeting == .recording(meetingID: id))
+  }
+
+  @Test("Two admitted calls leave a manual recording unassociated")
+  func ambiguousManualCandidateStaysManual() {
+    var s = Story()
+    let zoom = Self.zoom(.active)
+    let teams = Self.teams(evidence: .call(family: .teams, room: "pid-300"))
+    s.observeCall(.ongoing(family: .zoom, room: "w"), holder: zoom)
+    s.observeCall(.ongoing(family: .teams, room: "pid-300"), holder: teams)
+    s.ready([zoom, teams])
+    #expect(s.policy.isTracking(.callWindow(.zoom)) && s.policy.isTracking(.callApp(.teams)))
+    let request = s.acceptManual()
+    let id = UUID()
+    s.meeting = .recording(meetingID: id)
+    s.settleManual(request, recordingID: id)
+    end(&s, [Self.zoom(.inactive), Self.teams(.inactive)])
+    #expect(!isCountdown(s.interaction) && s.stops == 0)
+    #expect(s.meeting == .recording(meetingID: id))
+  }
+
+  @Test("End/new call, changed run, feature reset, wake and app disable invalidate a frozen fallback",
+    arguments: [0, 1, 2, 3, 4])
+  func frozenManualInvalidation(kind: Int) {
+    var s = Story()
+    let call = Self.zoom(.active)
+    s.ongoing(call)
+    let request = s.acceptManual()
+    let replacement = CallEvidenceReader.AppRun(pid: call.pid, bundleIdentifier: "test.100",
+      birthSeconds: 2, birthMicroseconds: 0)
+    switch kind {
+    case 0:
+      end(&s)
+      s.ongoing(call)
+    case 1:
+      s.observeCall(.ongoing(family: .zoom, room: "w"), holder: call, owner: replacement)
+      s.read([call])
+    case 2:
+      s.mode = .off
+      s.step()
+      s.mode = .ask
+      s.ongoing(call)
+    case 3: s.policy.noteWakeOrRestart(at: s.now)
+    default: s.appsOff = ["zoom"]
+    }
+    let id = UUID()
+    s.meeting = .recording(meetingID: id)
+    s.settleManual(request, recordingID: id)
+    if kind == 3 { s.wait(Policy.wakeHoldoff) }
+    for _ in 0..<2 {
+      s.wait(2)
+      s.observeCall(.ended(family: .zoom, room: "w"), holder: call,
+        owner: kind == 1 ? replacement : nil)
+      s.read([Self.zoom(.inactive)])
+    }
+    #expect(!isCountdown(s.interaction), "invalidation case \(kind)")
+    #expect(s.stops == 0 && s.meeting == .recording(meetingID: id))
+  }
+
+  @Test("A newer accepted request survives an obsolete completion and stops only its matching UUID")
+  func manualGenerationCannotClearNewerRequest() {
+    var s = Story()
+    s.ongoing(Self.zoom(.active))
+    let old = s.acceptManual(generation: 1)
+    let current = s.acceptManual(generation: 2)
+    let id = UUID()
+    s.meeting = .recording(meetingID: id)
+    s.settleManual(old, recordingID: UUID())
+    s.settleManual(current, recordingID: id)
+    end(&s)
+    #expect(isCountdown(s.interaction))
+    s.hold([Self.zoom(.inactive)], for: Policy.countdownLength)
+    #expect(s.commands.contains { if case .stop(_, id) = $0 { true } else { false } })
+    #expect(s.stops == 1 && s.starts.isEmpty)
+  }
+
+  @Test("Keep or a manual Stop cannot be silently reacquired on the same call", arguments: [true, false])
+  func manualOverrideCannotBeReacquired(keep: Bool) {
+    var s = Story()
+    let call = Self.zoom(.active)
+    s.ongoing(call)
+    let request = s.acceptManual()
+    let first = UUID()
+    s.meeting = .recording(meetingID: first)
+    s.settleManual(request, recordingID: first)
+    if keep {
+      end(&s)
+      #expect(isCountdown(s.interaction))
+      s.press(.keepRecording)
+    }
+    s.meeting = .idle
+    s.step()
+    s.ongoing(call)
+    let next = s.acceptManual(generation: 2)
+    let second = UUID()
+    s.meeting = .recording(meetingID: second)
+    s.settleManual(next, recordingID: second)
+    s.settleManual(request, recordingID: first)
+    end(&s)
+    #expect(!isCountdown(s.interaction) && s.stops == 0)
+    #expect(s.meeting == .recording(meetingID: second))
+  }
+
+  @Test("A different browser room cannot replace a frozen room; reload loses pending provenance")
+  func frozenRoomAndReloadStayManual() {
+    for reload in [false, true] {
+      var s = Story()
+      let call = Self.chrome(.active, url: Self.meetA)
+      s.ongoing(call)
+      let request = s.acceptManual()
+      if reload { s.policy = Policy() }
+      let other = Self.chrome(.active, url: Self.meetB)
+      s.observeCall(.ongoing(family: .googleMeet, room: "xyz-wxyz-xyz"), holder: other)
+      s.ready([other])
+      let id = UUID()
+      s.meeting = .recording(meetingID: id)
+      s.settleManual(request, recordingID: id)
+      end(&s, [Self.chrome(.inactive, url: Self.meetB)], call: other)
+      #expect(!isCountdown(s.interaction) && s.stops == 0)
+      #expect(s.meeting == .recording(meetingID: id))
+    }
+  }
+
+  @Test("An admitted native call with fresh ongoing proof can link through a microphone flap")
+  func nativeManualFallbackThroughMicFlap() {
+    var s = Story()
+    let call = Self.zoom(.active)
+    s.ongoing(call)
+    s.read([])
+    let request = s.acceptManual()
+    let id = UUID()
+    s.meeting = .recording(meetingID: id)
+    s.settleManual(request, recordingID: id)
+    end(&s, [])
+    #expect(isCountdown(s.interaction), "independent call proof survives absent mic holders")
+  }
+
+  @Test("A different eligible call still asks to switch after a manual fallback links")
+  func linkedManualAllowsDifferentCallSwitch() {
+    var s = Story()
+    let zoom = Self.zoom(.active)
+    s.ongoing(zoom)
+    let request = s.acceptManual()
+    let id = UUID()
+    s.meeting = .recording(meetingID: id)
+    s.settleManual(request, recordingID: id)
+    s.wait(Policy.questionInterval)
+    let meet = Self.chrome(.active, url: Self.meetA)
+    s.observeCall(.ongoing(family: .zoom, room: "w"), holder: zoom)
+    s.observeCall(.ongoing(family: .googleMeet, room: "abc-defg-hij"), holder: meet)
+    s.ready([zoom, meet])
+    #expect(isSwitch(s.interaction))
+    s.press(.yes)
+    #expect(s.commands.contains { if case .stop(_, id) = $0 { true } else { false } })
+    #expect(s.answers == [.switchYes], "adoption itself added no Yes or autoStarted")
+  }
+
+  @Test("Two retained browser rooms in the same verified run are ambiguous for a manual start")
+  func twoBrowserRoomsStayManual() {
+    var s = Story()
+    let a = Self.chrome(.active, url: Self.meetA)
+    let b = Self.chrome(.active, url: Self.meetB)
+    s.ongoing(a)
+    s.observeCall(.ongoing(family: .googleMeet, room: "xyz-wxyz-xyz"), holder: b)
+    s.ready([b])
+    s.observeCall(.unknown, holder: b)
+    let owner = Story.owner(for: a)
+    let targetA = CallEvidenceReader.RetainedTarget(rule: a.rule, holderPID: a.pid,
+      owner: owner, family: .googleMeet, room: "abc-defg-hij")
+    let targetB = CallEvidenceReader.RetainedTarget(rule: b.rule, holderPID: b.pid,
+      owner: owner, family: .googleMeet, room: "xyz-wxyz-xyz")
+    s.observeCall(.ongoing(family: .googleMeet, room: "abc-defg-hij"), holder: a, retained: targetA)
+    s.observeCall(.ongoing(family: .googleMeet, room: "xyz-wxyz-xyz"), holder: b, retained: targetB)
+    s.read([])
+    #expect(s.policy.isTracking(targetA) && s.policy.isTracking(targetB))
+    let request = s.acceptManual()
+    let id = UUID()
+    s.meeting = .recording(meetingID: id)
+    s.settleManual(request, recordingID: id)
+    for _ in 0..<2 {
+      s.wait(2)
+      s.observeCall(.ended(family: .googleMeet, room: "abc-defg-hij"), holder: a, retained: targetA)
+      s.read([])
+    }
+    #expect(!isCountdown(s.interaction) && s.stops == 0)
+    #expect(s.meeting == .recording(meetingID: id))
+  }
+
+  @Test("Wake holdoff keeps a newly accepted manual start manual and still retires its old question")
+  func manualAcceptanceDuringWakeStaysManual() {
+    var s = Story()
+    s.ongoing(Self.zoom(.active))
+    s.policy.noteWakeOrRestart(at: s.now)
+    let request = s.acceptManual()
+    #expect(s.interaction == .none)
+    let id = UUID()
+    s.meeting = .recording(meetingID: id)
+    s.settleManual(request, recordingID: id)
+    s.wait(Policy.wakeHoldoff)
+    end(&s)
+    #expect(!isCountdown(s.interaction) && s.stops == 0)
+    #expect(s.meeting == .recording(meetingID: id))
+  }
+
   @Test("Legacy microphone frames provide no invented independent call observations")
   func legacyFrameHasNoContinuity() {
     let frame = Policy.Reading(sequence: 7, takenAt: Date(timeIntervalSince1970: 100),
@@ -413,6 +680,16 @@ struct CallDetectionPolicyTests {
         left -= 2
         read(holders)
       }
+    }
+
+    mutating func acceptManual(generation: Int = 1, route: MeetingEntryPoint = .menu) -> Policy.AcceptedStart {
+      let request = Policy.AcceptedStart(generation: generation, route: route, acceptedAt: now)
+      record(policy.acceptedStart(request, context))
+      return request
+    }
+
+    mutating func settleManual(_ request: Policy.AcceptedStart, recordingID: UUID?) {
+      record(policy.settledStart(request, recordingID: recordingID, context))
     }
 
     mutating func press(_ button: Policy.Button) {

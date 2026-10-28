@@ -183,6 +183,7 @@ final class CallDetectionCoordinator {
   /// Reading lifetime is independent of microphone-frame sequence. A cancelled bounded read
   /// retains its task slot until it really returns; no new AX work is piled behind it.
   private func invalidateReadWork(clearInputs: Bool = true) {
+    policy.invalidateAcceptedStart()
     readLifetime += 1
     evidenceTask?.cancel()
     cycleWanted = false
@@ -623,6 +624,27 @@ final class CallDetectionCoordinator {
   }
 
   // MARK: - Policy
+
+  /// Flow publishes synchronously before its recording dependency can suspend or finish.
+  /// Only Policy selects/fixes the historical candidate; this layer transports fresh facts.
+  func acceptedStart(_ request: CallDetectionPolicy.AcceptedStart) {
+    let current = context()
+    guard !readStopped else { return }
+    let commands = policy.acceptedStart(request, current)
+    draw()
+    run(commands)
+  }
+
+  func settledStart(_ request: CallDetectionPolicy.AcceptedStart, recordingID: UUID?) {
+    let current = context()
+    guard !readStopped else { return }
+    let matching = recordingID.flatMap { id in
+      current.meeting == .recording(meetingID: id) ? id : nil
+    }
+    let commands = policy.settledStart(request, recordingID: matching, current)
+    draw()
+    run(commands)
+  }
 
   private var appsOff: Set<String> {
     CallAppCatalog.appsOff(from: deps.settings.meetingCallAppsOff)

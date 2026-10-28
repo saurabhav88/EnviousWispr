@@ -2594,6 +2594,9 @@ package final class WisprBootstrapper {
         startUniversalDownload: { [modelDelivery] in modelDelivery.startPreviewDownload() },
         universalDownloadRefused: { [modelDelivery] in modelDelivery.previewDownloadRefused },
         cancelUniversalDownload: { [modelDelivery] in modelDelivery.cancelPreviewDownload() }))
+    let callDetectionNow: @MainActor () -> Date = {
+      Date(timeIntervalSinceReferenceDate: ProcessInfo.processInfo.systemUptime)
+    }
     let meetingStartFlow = MeetingStartFlow(
       dependencies: .init(
         isSetUp: { [settings] in settings.meetingOnboardingComplete },
@@ -2612,6 +2615,13 @@ package final class WisprBootstrapper {
         showMeetingPage: { [navigationCoordinator, appWindowCoordinator] in
           navigationCoordinator.request(.meetings(.general))
           appWindowCoordinator.showWindow()
+        },
+        acceptedStartNow: callDetectionNow,
+        acceptedStart: { [weak meetingBox] request in
+          meetingBox?.callDetection?.acceptedStart(request)
+        },
+        settledStart: { [weak meetingBox] request, recordingID in
+          meetingBox?.callDetection?.settledStart(request, recordingID: recordingID)
         }))
     meetingBox.startFlow = meetingStartFlow
     self.meetingStartFlow = meetingStartFlow
@@ -2662,6 +2672,7 @@ package final class WisprBootstrapper {
         snapshot: { rule, pid, retained in
           await CallEvidenceRead.boundedSnapshot(rule: rule, pid: pid, retained: retained)
         },
+        now: callDetectionNow,
         makePresenter: { [overlayEffects] anchor in
           CallPromptPanel(anchor: anchor, makePanel: overlayEffects.makePanel)
         }))
@@ -3337,7 +3348,7 @@ struct OutputClassifierEmissionPolicy: Equatable {
 final class MeetingCoordinatorBox {
   weak var coordinator: MeetingCoordinator?
   weak var startFlow: MeetingStartFlow?
-  /// #4012: call detection, for the DEBUG `call.simulate` command.
+  /// Call detection receives accepted-start observations and the DEBUG `call.simulate` command.
   weak var callDetection: CallDetectionCoordinator?
 
   /// #4069: whether "Turn off dictation during meetings" refuses a dictation start now: the

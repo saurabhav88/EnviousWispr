@@ -55,6 +55,20 @@ public struct CallDetectionPolicy: Sendable {
     }
   }
 
+  /// Produced only at Flow's accepted recording request, before its first start suspension.
+  /// `acceptedAt` shares the policy's monotonic clock, not a recording file's wall clock.
+  package struct AcceptedStart: Sendable, Equatable {
+    package let generation: Int
+    package let route: MeetingEntryPoint
+    package let acceptedAt: Date
+
+    package init(generation: Int, route: MeetingEntryPoint, acceptedAt: Date) {
+      self.generation = generation
+      self.route = route
+      self.acceptedAt = acceptedAt
+    }
+  }
+
   /// A read-only reference to the question/operation that requested fresh proof.
   package struct RefreshTarget: Sendable, Equatable {
     package enum Reference: Sendable, Equatable {
@@ -281,6 +295,8 @@ public struct CallDetectionPolicy: Sendable {
     var establishedAt: Date
     var sources: [Source] = []
     var owner: CallEvidenceReader.AppRun? = nil
+    /// A deliberate Keep or manual Stop cannot become another automatic ownership link.
+    var ownershipOverridden = false
     var phase: Phase
     /// Confirmed over while its Start ran: the Start is no longer wanted.
     var endedWhileStarting = false
@@ -312,6 +328,32 @@ public struct CallDetectionPolicy: Sendable {
   private var reading: Reading?
   private var holdoffUntil: Date?
   private var lastQuestionShownAt: Date?
+  private struct ManualCandidate {
+    let episode: Int
+    let owner: CallEvidenceReader.AppRun
+    let sources: [Source]
+    let room: String
+    let family: CallAppFamily
+    let rule: CallAppCatalog.Rule
+  }
+  private struct PendingManual {
+    let request: AcceptedStart
+    let candidate: ManualCandidate?
+  }
+  private enum Association {
+    case rejected(UUID)
+    case linked(UUID, episode: Int)
+    case overridden(UUID)
+
+    var recordingID: UUID {
+      switch self {
+      case .rejected(let id), .linked(let id, _), .overridden(let id): id
+      }
+    }
+  }
+  private var pendingManual: PendingManual?
+  private var association: Association?
+  private var latestAcceptedGeneration = 0
 
   public init() {}
 
@@ -373,6 +415,7 @@ public struct CallDetectionPolicy: Sendable {
   /// After wake from sleep or an audio service restart: no call starts or ends for a while,
   /// and every end is counted afresh (a sleep past a countdown's deadline never stops at once).
   public mutating func noteWakeOrRestart(at now: Date) {
+    invalidateAcceptedStart()
     holdoffUntil = now.addingTimeInterval(Self.wakeHoldoff)
     let consumed = reading?.continuity.map(\.id).max() ?? 0
     for index in episodes.indices {
@@ -388,6 +431,8 @@ public struct CallDetectionPolicy: Sendable {
       // Nothing is watched while off, so what is known about calls is out of date: when
       // watching resumes, every call is a new one. A running recording goes on as the user's.
       episodes = []
+      pendingManual = nil
+      if case .recording(let id) = c.meeting { association = .rejected(id) }
       set(.none)
       return out
     }
@@ -397,6 +442,90 @@ public struct CallDetectionPolicy: Sendable {
     noticeCalls(c)
     offer(c, &out)
     return out
+  }
+
+  /// Freeze existing provenance synchronously at Flow acceptance; no later discovery can
+  /// turn a rejected request into a candidate. This observer never starts or renames a meeting.
+  package mutating func acceptedStart(_ request: AcceptedStart, _ c: Context) -> [Command] {
+    guard request.generation > latestAcceptedGeneration else { return [] }
+    latestAcceptedGeneration = request.generation
+    pendingManual = nil
+    guard request.route == .menu || request.route == .history,
+      c.setUp, c.mode != .off, c.meeting == .idle, request.acceptedAt <= c.now
+    else { return [] }
+    followMeeting(c)
+    let plausible = episodes.filter { episode in
+      guard !inHoldoff(c), episode.establishedAt <= request.acceptedAt, episode.owner != nil,
+        !episode.ownershipOverridden,
+        !c.appsOff.contains(CallAppCatalog.switchID(for: episode.rule)) else { return false }
+      switch episode.phase { case .waiting, .offered: break; default: return false }
+      let ongoing = (reading?.continuity ?? []).contains {
+        guard $0.completedAt <= request.acceptedAt, fresh($0, c) else { return false }
+        if case .ongoing? = state($0, for: episode) { return true }
+        return false
+      }
+      return ongoing || isKnownLive(episode, c)
+    }
+    var candidate: ManualCandidate?
+    if plausible.count == 1, let episode = plausible.first, let owner = episode.owner,
+      !episode.sources.isEmpty,
+      let latest = reading?.continuity.filter({ state($0, for: episode) != nil })
+        .max(by: { $0.id < $1.id }),
+      latest.completedAt <= request.acceptedAt, fresh(latest, c), latest.owner == owner
+    {
+      let qualifies: Bool
+      switch state(latest, for: episode) {
+      case .ongoing?: qualifies = true
+      case .unknown?: qualifies = Self.isNative(episode.rule) && isKnownLive(episode, c)
+      case .ended?, nil: qualifies = false
+      }
+      if qualifies {
+        candidate = .init(episode: episode.id, owner: owner, sources: episode.sources,
+          room: episode.room, family: episode.family, rule: episode.rule)
+      }
+    }
+    pendingManual = .init(request: request, candidate: candidate)
+    // A user-accepted recording is already starting; an old consent question cannot start it
+    // again. Keep its offered suppression and invalidate its button token immediately.
+    switch interaction { case .ask, .switchCall: set(.none); default: break }
+    return []
+  }
+
+  /// A replaced read lifetime cannot carry a historical in-flight ticket into its successor.
+  package mutating func invalidateAcceptedStart() {
+    pendingManual = nil
+  }
+
+  package mutating func settledStart(
+    _ request: AcceptedStart, recordingID: UUID?, _ c: Context
+  ) -> [Command] {
+    guard let pending = pendingManual, pending.request == request,
+      request.generation == latestAcceptedGeneration else { return [] }
+    pendingManual = nil
+    guard let recordingID else { return [] }
+    guard association?.recordingID != recordingID else { return [] }
+    association = .rejected(recordingID)
+    guard c.setUp, c.mode != .off, c.meeting == .recording(meetingID: recordingID),
+      let frozen = pending.candidate,
+      !c.appsOff.contains(CallAppCatalog.switchID(for: frozen.rule)),
+      let index = episodes.firstIndex(where: { $0.id == frozen.episode }),
+      !episodes[index].ownershipOverridden,
+      episodes[index].owner == frozen.owner, episodes[index].sources == frozen.sources,
+      episodes[index].room == frozen.room, episodes[index].family == frozen.family,
+      episodes[index].rule == frozen.rule,
+      let latest = reading?.continuity.filter({ state($0, for: episodes[index]) != nil })
+        .max(by: { $0.id < $1.id }), fresh(latest, c), latest.owner == frozen.owner,
+      frozen.sources.contains(latest.source)
+    else { return [] }
+    if case .ended? = state(latest, for: episodes[index]) { return [] }
+    if case .ongoing(let family, let room) = latest.value,
+      family != frozen.family || (!Self.isNative(frozen.rule) && room != frozen.room) { return [] }
+    // Historical eligibility is not recomputed here; only the frozen episode/run/source/room
+    // is checked for invalidation. Another candidate cannot replace it at completion.
+    switch episodes[index].phase { case .waiting, .offered: break; default: return [] }
+    setPhase(frozen.episode, .recording(meetingID: recordingID))
+    association = .linked(recordingID, episode: frozen.episode)
+    return step(c)
   }
 
   /// A Yes was pressed on `pressedToken`; its answer arrives after fresh readings.
@@ -535,6 +664,10 @@ public struct CallDetectionPolicy: Sendable {
         switch episodes[index].phase {
         case .recording(let m), .kept(let m), .ending(let m, _):
           if c.meeting != .recording(meetingID: m) {
+            episodes[index].ownershipOverridden = true
+            if case .linked(let linkedID, _)? = association, linkedID == m {
+              association = .rejected(m)
+            }
             if case .countdown(episodes[index].id, _) = interaction { set(.none) }
             episodes[index].phase = .offered
             resetEnd(index)
@@ -716,7 +849,7 @@ public struct CallDetectionPolicy: Sendable {
     case .ask, .switchCall: return
     default: break
     }
-    guard !inHoldoff(c), !startInFlight else { return }
+    guard pendingManual == nil, !inHoldoff(c), !startInFlight else { return }
     for index in episodes.indices where episodes[index].phase == .waiting {
       let episode = episodes[index]
       guard isKnownLive(episode, c) else { continue }
@@ -816,6 +949,8 @@ public struct CallDetectionPolicy: Sendable {
         case .ending(let m, _) = episodes[index].phase
       {
         episodes[index].phase = .kept(meetingID: m)
+        episodes[index].ownershipOverridden = true
+        association = .overridden(m)
         resetEnd(index)
       }
       set(.none)
