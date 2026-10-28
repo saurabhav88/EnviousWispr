@@ -1,0 +1,15 @@
+/* The FeatureFaq component's own styles (#4161). They lived in everyday.css,
+ * which only three feature pages load, so /android/ rendered the list bare.
+ * The component imports this file, so every page that uses it is styled. */
+.feature-faq{padding-block:56px 24px;max-width:860px}
+.feature-faq h2{font-size:clamp(28px,3vw,38px);letter-spacing:-.03em;margin-bottom:22px}
+.feature-faq-list{display:grid;gap:10px}
+.feature-faq details{border:1px solid var(--line);border-radius:14px;background:var(--film-well);padding:0 20px}
+.feature-faq summary{cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:16px;padding:18px 0;font-size:17px;font-weight:600;color:var(--ink);list-style:none}
+.feature-faq summary::-webkit-details-marker{display:none}
+.feature-faq summary::after{content:'+';content:'+' / '';flex-shrink:0;color:var(--accent);font-size:22px;font-weight:400;line-height:1;transition:transform .18s}
+.feature-faq details[open] summary::after{transform:rotate(45deg)}
+.feature-faq summary:focus-visible{outline:3px solid var(--accent);outline-offset:4px;border-radius:6px}
+.feature-faq details p{margin:0 0 18px;font-size:16px;line-height:1.65;color:var(--body)}
+@media(max-width:600px){.feature-faq{padding-block:40px 16px}.feature-faq summary{font-size:16px}}
+@media(prefers-reduced-motion:reduce){.feature-faq summary::after{transition:none}}

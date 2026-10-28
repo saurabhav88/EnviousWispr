@@ -2,6 +2,7 @@
 // Visible questions and answers for a feature page, with the FAQPage JSON-LD
 // built from the same array, so the markup and the page can never drift apart.
 // Answers are plain text: they ship verbatim into structured data.
+import '../../styles/features/feature-faq.css';
 interface Props {
   title?: string;
   items: { q: string; a: string }[];
