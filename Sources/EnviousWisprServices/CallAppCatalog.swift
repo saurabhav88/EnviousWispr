@@ -197,6 +197,14 @@ public enum CallMeetingURL {
       if lower.hasPrefix("/l/meetup-join/") || (lower.hasPrefix("/meet/") && segments.count >= 2) {
         return Match(family: .teams, room: host + path)
       }
+      // #4162: a teams.live.com meeting link hands the browser on to
+      // /light-meetings/launch?p=<code>, the page that holds the call. Only that path with a
+      // code counts, and only on teams.live.com, where it was seen; the code is the room.
+      if host == "teams.live.com", lower == "/light-meetings/launch",
+        let code = components.queryItems?.first(where: { $0.name == "p" })?.value, !code.isEmpty
+      {
+        return Match(family: .teams, room: host + path + "?p=" + code)
+      }
       return nil
     }
     if hostIs("webex.com") {
