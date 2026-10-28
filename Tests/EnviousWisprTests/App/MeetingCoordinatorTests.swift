@@ -112,6 +112,8 @@ struct MeetingCoordinatorTests {
     private(set) var receivedAttempts: [MeetingAttemptConfiguration] = []
     private(set) var receivedMissingAudio: [MeetingTrackKind: [MeetingTranscriptionJob.MissingAudio]] =
       [:]
+    /// #4013 chunk 12A: the saved speaker evidence each run was given, in order.
+    private(set) var receivedCallSpeakers: [MeetingCallSpeakerEvidence] = []
     var isEngineResident = false
     var isUnitInFlight = false
     var isOwnModelResident = false
@@ -128,10 +130,12 @@ struct MeetingCoordinatorTests {
       tracks: [MeetingTrackKind: MeetingTrackAudio], language: String?,
       checkpoint access: MeetingTranscriptionJob.CheckpointAccess?,
       missingAudio: [MeetingTrackKind: [MeetingTranscriptionJob.MissingAudio]],
+      callSpeakers: MeetingCallSpeakerEvidence,
       onStage: @escaping @MainActor (MeetingTranscriptionJob.Stage) -> Void,
       attempt: MeetingAttemptConfiguration
     ) async throws -> MeetingTranscriptionJob.Result {
       runs += 1
+      receivedCallSpeakers.append(callSpeakers)
       receivedTracks = tracks
       receivedLanguages.append(language)
       receivedAttempts.append(attempt)

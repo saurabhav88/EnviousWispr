@@ -139,6 +139,9 @@ package final class MeetingTranscriptionJob {
     package let audioSeconds: Double
     /// #3973 C2: what the attempt resolved to: the engine and model its words came from.
     package let resolved: MeetingResolvedAttempt
+    /// #4013 chunk 12A: automatic speaker naming for this pass; `nil` when the pass did not
+    /// run it (a stand-in pass in tests).
+    package var naming: MeetingNamingOutput? = nil
   }
 
   package enum JobError: Error, Equatable {
@@ -312,10 +315,14 @@ package final class MeetingTranscriptionJob {
   ///
   /// `attempt` (#3973 C2) is the saved attempt this pass runs; `language` is its effective
   /// language, passed separately so the existing input stays. They must agree.
+  ///
+  /// `callSpeakers` (#4013 chunk 12A) is the meeting's saved speaker evidence, read once by the
+  /// caller before the pass; the pass names call-sound speakers from it after composition.
   package func run(
     tracks: [MeetingTrackKind: MeetingTrackAudio], language: String?,
     checkpoint access: CheckpointAccess? = nil,
     missingAudio: [MeetingTrackKind: [MissingAudio]] = [:],
+    callSpeakers: MeetingCallSpeakerEvidence = .absent,
     onStage: @escaping @MainActor (Stage) -> Void,
     attempt: MeetingAttemptConfiguration
   ) async throws -> Result {
@@ -495,6 +502,18 @@ package final class MeetingTranscriptionJob {
       await Task.detached(priority: .utility) { MeetingTranscriptComposer.compose(tracks: inputs) }
         .value
     }
+    // 4. #4013 chunk 12A: name call-sound speakers from the saved evidence, after composition
+    // and from what the pass knew before composition (real pieces, markers, diarized ids).
+    try checkCancelled()
+    let eligibility = Self.namingEligibility(
+      pieces: piecesByTrack, callSegments: segments[.callSound] ?? [], missingAudio: missingAudio)
+    let naming = await Task.detached(priority: .utility) {
+      MeetingNamingOutput(
+        evidence: callSpeakers, eligibility: eligibility,
+        result: MeetingSpeakerNamer.propose(
+          composition: composition, eligibility: eligibility, log: callSpeakers.log))
+    }.value
+    try checkCancelled()
     let all = piecesByTrack.values.flatMap { $0 }
     var failedRanges: [MeetingTrackKind: [Range<Int>]] = [:]
     for (kind, list) in piecesByTrack {
@@ -508,7 +527,40 @@ package final class MeetingTranscriptionJob {
       resumedPieces: resumedAtStart == 0 ? 0 : min(resumedAtStart, all.count),
       checkpointSaveFailures: saveFailures, yieldCount: yieldCount,
       processingSeconds: Date().timeIntervalSince(started),
-      audioSeconds: Double(totalSamples) / MeetingAudioFormat.sampleRate, resolved: resolved)
+      audioSeconds: Double(totalSamples) / MeetingAudioFormat.sampleRate, resolved: resolved,
+      naming: naming)
+  }
+
+  /// Who automatic naming may consider (#4013 r3 F1), from the pass's own pieces before
+  /// composition discards their provenance: the diarized call-sound speakers as composed ids,
+  /// the stretches of transcribed call speech, and every marker on each track (a piece that
+  /// failed twice, or audio that could not be read, with an open end kept open). A fresh pass
+  /// and one that reused checkpointed pieces give the same answer for the same pieces.
+  nonisolated static func namingEligibility(
+    pieces: [MeetingTrackKind: [MeetingProcessingCheckpoint.Piece]],
+    callSegments: [SpeakerSegment], missingAudio: [MeetingTrackKind: [MissingAudio]]
+  ) -> MeetingNamingEligibility {
+    let prefix = MeetingTrackKind.callSound.speakerPrefix
+    let callSpeech = (pieces[.callSound] ?? []).compactMap { piece -> MeetingNamingInterval? in
+      guard piece.words != nil,
+        piece.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+      else { return nil }
+      return MeetingNamingInterval(startMs: ms(piece.startSample), endMs: ms(piece.endSample))
+    }
+    var markers: [MeetingNamingMarker] = []
+    for kind in MeetingTrackKind.allCases {
+      for piece in pieces[kind] ?? [] where piece.words == nil {
+        markers.append(
+          MeetingNamingMarker(
+            track: kind, startMs: ms(piece.startSample), endMs: ms(piece.endSample)))
+      }
+      for missing in missingAudio[kind] ?? [] {
+        markers.append(MeetingNamingMarker(track: kind, startMs: missing.startMs, endMs: missing.endMs))
+      }
+    }
+    return MeetingNamingEligibility(
+      callSpeakerIDs: Set(callSegments.map { "\(prefix):\($0.speakerId)" }),
+      callSpeech: callSpeech, markers: markers)
   }
 
   /// Pieces of a pass run without a checkpoint, held only for the pass.

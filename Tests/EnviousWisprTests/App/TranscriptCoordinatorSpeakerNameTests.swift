@@ -121,6 +121,28 @@ struct TranscriptCoordinatorSpeakerNameTests {
     #expect(launched.currentRow(id: id) == nil, "nothing is shown")
   }
 
+  @Test("a name typed while the meeting processed wins over the pass's automatic name")
+  func manualRenameBeatsAutomaticName() async throws {
+    let dir = Self.makeTempDir()
+    let coordinator = TranscriptCoordinator(store: TranscriptStore(directory: dir))
+    try await coordinator.saveAndShowDurably(row("first", [("sys:S1", 0, 5_000)]))
+    #expect(
+      await coordinator.renameSpeaker(id: id, speakerId: "sys:S1", name: "Ana", isMeeting: true)
+        == nil)
+    // #4013 chunk 12A: the pass's row arrives with its own automatic name for the same voice.
+    let base = row("second", [("sys:S8", 0, 5_000)])
+    let automatic = Transcript(
+      id: base.id, text: base.text, backendType: base.backendType,
+      speakerAnalysis: base.speakerAnalysis, speakerNames: ["sys:S8": "Alex Rivera"],
+      turns: base.turns, speakerNameSources: ["sys:S8": .auto], meetingID: meetingID)
+    try await coordinator.saveAndShowDurably(automatic)
+
+    let saved = try onDisk(dir)
+    #expect(saved.speakerNames == ["sys:S8": "Ana"])
+    #expect(saved.speakerNameSource(for: "sys:S8") == .manual)
+    #expect(coordinator.currentRow(id: id)?.speakerNames == saved.speakerNames)
+  }
+
   @Test("a name with no new speaker to go to is kept on the row, also after a relaunch")
   func unmatchedNameKept() async throws {
     let dir = Self.makeTempDir()

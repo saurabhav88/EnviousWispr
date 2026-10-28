@@ -29,6 +29,7 @@ protocol MeetingProcessing: AnyObject {
     tracks: [MeetingTrackKind: MeetingTrackAudio], language: String?,
     checkpoint access: MeetingTranscriptionJob.CheckpointAccess?,
     missingAudio: [MeetingTrackKind: [MeetingTranscriptionJob.MissingAudio]],
+    callSpeakers: MeetingCallSpeakerEvidence,
     onStage: @escaping @MainActor (MeetingTranscriptionJob.Stage) -> Void,
     attempt: MeetingAttemptConfiguration
   ) async throws -> MeetingTranscriptionJob.Result
@@ -1366,6 +1367,10 @@ final class MeetingCoordinator {
     }
     // The inventory rebuilt from the files, durable before the pass reads it.
     guard await persist(current), isStillOwned(meetingID) else { return }
+    // #4013 chunk 12A: the saved speaker evidence, read once through the file queue; the pass
+    // names from this snapshot even if the file changes while it runs.
+    let callSpeakers = await callSpeakerEvidenceForPass(meetingID)
+    guard isStillOwned(meetingID) else { return }
 
     let job = deps.makeJob()
     self.job = job
@@ -1390,7 +1395,7 @@ final class MeetingCoordinator {
       // #4105, #3973 C2: the saved attempt's language and engine, from the record only.
       result = try await job.run(
         tracks: tracks, language: attempt.requestedEffectiveLanguage, checkpoint: access,
-        missingAudio: missingAudio,
+        missingAudio: missingAudio, callSpeakers: callSpeakers,
         onStage: { [weak self] stage in self?.processing?.stage = stage },
         attempt: attempt)
     } catch MeetingTranscriptionJob.JobError.cancelled {
@@ -1632,20 +1637,55 @@ final class MeetingCoordinator {
     return !quitting && !deleting.contains(meetingID) && !record.deletionRequested
   }
 
+  /// The saved speaker evidence as a pass receives it. A failure to read is unusable evidence,
+  /// never a failed pass: naming then leaves the fallback labels.
+  private func callSpeakerEvidenceForPass(_ meetingID: UUID) async -> MeetingCallSpeakerEvidence {
+    let load: MeetingStore.CallSpeakersLoad
+    do {
+      load = try await writer.loadCallSpeakers(meeting: meetingID)
+    } catch {
+      deps.log("meeting call speakers read failed error=\(type(of: error))")
+      return .unusable(.unreadable)
+    }
+    switch load {
+    case .usable(let log): return .usable(log)
+    case .absent: return .absent
+    case .unusable(let reason):
+      switch reason {
+      case .unreadable: return .unusable(.unreadable)
+      case .tooLarge: return .unusable(.tooLarge)
+      case .newerFormat: return .unusable(.newerFormat)
+      case .invalid: return .unusable(.invalid)
+      }
+    }
+  }
+
   /// The History row a finished meeting is saved as (R5, R19). Always `.labeled` so History keeps
   /// the turns; the truthful per-track outcome lives in the meeting record.
+  ///
+  /// #4013 chunk 12A: the pass's proposed names replace the display names of the speakers they
+  /// were proposed for, marked `.auto`; nothing else about the composition changes. The user's
+  /// own names are applied later, by the durable History write.
   static func transcript(for record: MeetingRecord, result: MeetingTranscriptionJob.Result)
     -> Transcript
   {
     let composition = result.composition
+    var names = composition.speakerNames
+    var sources: [String: SpeakerNameSource] = [:]
+    let present = Set(composition.turns.map(\.speakerId))
+    for (speaker, name) in result.naming?.result.proposals ?? [:] where present.contains(speaker) {
+      names[speaker] = name
+      sources[speaker] = .auto
+    }
     return Transcript(
       id: record.transcriptID, text: composition.text, duration: result.audioSeconds,
       processingTime: result.processingSeconds,
       backendType: result.resolved.resolvedEngine.backendType, createdAt: record.createdAt,
       speakerAnalysis: composition.turns.isEmpty
         ? nil : .labeled(count: max(1, composition.speakerCount)),
-      speakerNames: composition.turns.isEmpty ? nil : composition.speakerNames,
+      speakerNames: composition.turns.isEmpty ? nil : names,
       turns: composition.turns.isEmpty ? nil : composition.turns,
+      speakerNameSources: composition.turns.isEmpty || sources.isEmpty ? nil : sources,
       meetingID: record.id, meetingTranscriptAttemptID: result.resolved.attemptID)
   }
 
