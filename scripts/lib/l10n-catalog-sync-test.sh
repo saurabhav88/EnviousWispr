@@ -840,7 +840,7 @@ def write_receipt(dd, tree="1" * 40, xcode=None):
 
 
 def dev_case(name, want_code, want_texts, *, receipt="valid", expect=None, mode="--check", edit_committed=None,
-             after_receipt=None, before_receipt=None, extra_args=(), absent_texts=(), **fx):
+             after_receipt=None, before_receipt=None, extra_args=(), absent_texts=(), verify=None, **fx):
     global cases
     with tempfile.TemporaryDirectory() as tmp:
         root = pathlib.Path(tmp)
@@ -871,10 +871,13 @@ def dev_case(name, want_code, want_texts, *, receipt="valid", expect=None, mode=
             args += ["--expect-inputs", expect or digest or "0" * 64]
         code, out = run(*args)
         cases += 1
-        ok = code == want_code and all(t in out for t in want_texts) and not any(t in out for t in absent_texts)
+        problem = verify(json.loads(catalog.read_text())["strings"]) if verify else None
+        ok = code == want_code and all(t in out for t in want_texts) and not any(t in out for t in absent_texts) and not problem
         print(f"{'PASS' if ok else 'FAIL'}  {name}: exit {code}")
         if not ok:
             failures.append(name)
+            if problem:
+                print(f"  {problem}")
             print(out)
 
 
@@ -1099,6 +1102,30 @@ dbg("debug-only: a raw string in the file: blocks (unsupported)", 1,
 dbg("debug-only: a line past the end of the file: blocks", 1, f"#if DEBUG\nlet y = {L}\n#endif\n", [40])
 dev_case("debug-only: a LISTED key is unaffected (still ignored, no warning)", 0, ["Dev-only keys ignored: 1 of 42"],
          absent_texts=["judged as Dev-only"], extra_keys=[DEV_ONLY_SAMPLE])
+
+
+# #3930: exercise the real updater and inspect its saved catalog, not just its verdict.
+dev_case("Dev update: a proven new DEBUG-only key is not written", 0, ["partial repair from a Dev build"],
+         mode="--update", extra_args=("--source-root", "@ROOT@/src"),
+         before_receipt=probe(f"#if DEBUG\nlet y = {L}\n#endif\n", [2]),
+         verify=lambda s: None if NEW_DEBUG_KEY not in s else "DEBUG-only key was written to the catalog")
+dev_case("Dev update: an unproven shipping key is still written", 0, ["partial repair from a Dev build"],
+         mode="--update", extra_args=("--source-root", "@ROOT@/src"),
+         before_receipt=probe(f"let y = {L}\n", [1]),
+         verify=lambda s: None if NEW_DEBUG_KEY in s else "shipping key was incorrectly excluded")
+dev_case("Dev update: stale source cannot exempt a key", 0, ["partial repair from a Dev build"],
+         mode="--update", extra_args=("--source-root", "@ROOT@/src"),
+         before_receipt=probe(f"// shipping\nlet y = {L}\n", [2],
+                              edit_after={PROBE: f"#if DEBUG\nlet y = {L}\n#endif\n"}),
+         verify=lambda s: None if NEW_DEBUG_KEY in s else "stale source incorrectly exempted the key")
+dev_case("Dev update: a committed DEBUG key keeps its German translation", 0, ["partial repair from a Dev build"],
+         mode="--update", extra_args=("--source-root", "@ROOT@/src"),
+         before_receipt=probe(f"#if DEBUG\nlet y = {L}\n#endif\n", [2]),
+         edit_committed=lambda s: s.update({NEW_DEBUG_KEY: {"localizations": {
+             "de": {"stringUnit": {"state": "translated", "value": "Diagnose"}}}}}),
+         verify=lambda s: None if s.get(NEW_DEBUG_KEY, {}).get("localizations", {}).get("de") == {
+             "stringUnit": {"state": "translated", "value": "Diagnose"}}
+         else "committed key or German translation changed")
 
 
 # --- Dev partial repair (#3524 PR 3): add and update from a certified Dev build, remove nothing ---
