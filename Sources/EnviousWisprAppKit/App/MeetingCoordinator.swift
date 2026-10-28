@@ -612,6 +612,9 @@ final class MeetingCoordinator {
   /// when the file is missing or unusable.
   func callSpeakerRoster(meetingID: UUID) async -> CallSpeakerRoster? {
     guard rosterReadable(meetingID) else { return nil }
+    #if DEBUG
+      rosterReadAdmittedForTesting?()
+    #endif
     guard case .usable(let log)? = try? await writer.loadCallSpeakers(meeting: meetingID),
       rosterReadable(meetingID)
     else { return nil }
@@ -799,6 +802,9 @@ final class MeetingCoordinator {
     /// coordinator before it releases a held write (#4102).
     func liveRecordForTesting(_ id: UUID) -> MeetingRecord? { live[id] }
     func isDeletingForTesting(_ id: UUID) -> Bool { deleting.contains(id) }
+    /// #4013: called when a roster read has passed its first check and is about to wait on the
+    /// file queue, so a test can start a deletion exactly then.
+    @ObservationIgnored var rosterReadAdmittedForTesting: (@MainActor () -> Void)?
   #endif
 
   // MARK: - Start and stop

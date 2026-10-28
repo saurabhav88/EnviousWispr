@@ -138,6 +138,23 @@ struct SpeakerRenameSuggestionsTests {
     #expect(await harness.coordinator.callSpeakerRoster(meetingID: record.id) == nil)
   }
 
+  /// True when `stream` delivers a signal before the deadline.
+  static func firstSignal(_ stream: AsyncStream<Void>, within limit: Duration) async -> Bool {
+    await withTaskGroup(of: Bool.self) { group in
+      group.addTask {
+        for await _ in stream { return true }
+        return false
+      }
+      group.addTask {
+        try? await Task.sleep(for: limit)  // deadline-fallback: bounds the signal wait above
+        return false
+      }
+      let result = await group.next() ?? false
+      group.cancelAll()
+      return result
+    }
+  }
+
   /// A synchronous wait, called only from a detached task so no actor is blocked.
   // settle: deadline fallback around a semaphore the gated block signals.
   nonisolated static func waitBlocking(_ semaphore: DispatchSemaphore) -> DispatchTimeoutResult {
@@ -171,9 +188,13 @@ struct SpeakerRenameSuggestionsTests {
     // settle: deadline fallback around the gate's own `entered` signal.
     let held = await Task.detached { Self.waitBlocking(entered) == .success }.value
     try #require(held, "the file queue was never held")
-    // The read passes its first check and waits on the held queue.
+    // The read passes its first check (the coordinator says so) and waits on the held queue;
+    // only then does the deletion start.
+    let (admissions, admitted) = AsyncStream<Void>.makeStream()
+    harness.coordinator.rosterReadAdmittedForTesting = { admitted.yield() }
+    defer { harness.coordinator.rosterReadAdmittedForTesting = nil }
     let read = Task { await harness.coordinator.callSpeakerRoster(meetingID: record.id) }
-    await Task.yield()
+    try #require(await Self.firstSignal(admissions, within: .seconds(5)), "the read was never admitted")
     let deletion = Task { await harness.coordinator.delete(meetingID: record.id) }
     // The test holds the file queue, so this wait must not drain it.
     await MeetingCoordinatorTests.eventually("deletion started", drainFiles: false) {
