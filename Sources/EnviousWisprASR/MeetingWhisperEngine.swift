@@ -81,6 +81,8 @@ package actor MeetingWhisperEngine<Driver: WhisperExecutorDriving> {
   /// Closed by `closeForRemoval()` until `reopenAfterRemoval()`: no load starts while Remove
   /// deletes the model files.
   private var isClosed = false
+  /// Tests only: told, on the engine, the moment `closeForRemoval()` is about to return.
+  private var removalObserver: (@Sendable () -> Void)?
 
   package init(driver: Driver) {
     self.driver = driver
@@ -153,6 +155,11 @@ package actor MeetingWhisperEngine<Driver: WhisperExecutorDriving> {
   package func closeForRemoval() async {
     isClosed = true
     await unload()
+    removalObserver?()
+  }
+
+  package func setRemovalObserver(_ observer: (@Sendable () -> Void)?) {
+    removalObserver = observer
   }
 
   /// Remove's step after the deletion (successful or not): loads may start again.

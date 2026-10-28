@@ -122,10 +122,8 @@ struct TranscribeCppWhisperBackendTests {
     let engine = MeetingWhisperEngine(driver: driver)
     let load = Task { try await engine.load(modelPath: "turbo.gguf") }
     await driver.waitForLog("load turbo.gguf")
-    let removal = Task {
-      await engine.closeForRemoval()
-      driver.record("removal done")
-    }
+    await engine.setRemovalObserver { driver.record("removal done") }
+    let removal = Task { await engine.closeForRemoval() }
     let closed = Task {
       while await !engine.isClosedForRemoval { await Task.yield() }
     }
@@ -155,10 +153,8 @@ struct TranscribeCppWhisperBackendTests {
     driver.holdUnloads()
     let routeUnload = Task { await engine.unload() }
     await driver.waitForLog("unloading 1")
-    let removal = Task {
-      await engine.closeForRemoval()
-      driver.record("removal done")
-    }
+    await engine.setRemovalObserver { driver.record("removal done") }
+    let removal = Task { await engine.closeForRemoval() }
     let closed = Task {
       while await !engine.isClosedForRemoval { await Task.yield() }
     }
