@@ -344,7 +344,9 @@ final class QuickAddWiring {
     let id = ObjectIdentifier(model)
     guard !saving.contains(id) else { return }
     saving.insert(id)
+    model.noteSaving(true)
     Task { @MainActor [weak self] in
+      defer { model.noteSaving(false) }
       guard let self else { return }
       defer { self.saving.remove(id) }
       await self.finishAccept(candidate, model: model)
@@ -441,7 +443,9 @@ final class QuickAddWiring {
     let id = ObjectIdentifier(model)
     guard !saving.contains(id) else { return }
     saving.insert(id)
+    model.noteSaving(true)
     Task { @MainActor [weak self] in
+      defer { model.noteSaving(false) }
       guard let self else { return }
       defer { self.saving.remove(id) }
       await self.finishCreateWord(word, model: model)
