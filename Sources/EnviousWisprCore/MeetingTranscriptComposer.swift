@@ -6,24 +6,34 @@ import Foundation
 /// `words` carry ranges into THIS piece's `text` and times on the meeting timeline (already
 /// offset by the segment's start). A word the engine gave no time keeps `nil`; the composer
 /// interpolates it inside the piece (#3972 R5) so every word becomes a timed entry.
+///
+/// `segments` (#3973 C3) are an engine's segment timings for an engine with no word timings
+/// (Whisper): ranges into this piece's `text`, times on the meeting timeline. A track whose
+/// speech pieces carry segments and no words is assembled by segment.
 public struct MeetingTrackPiece: Sendable, Equatable {
   public let text: String
   public let startMs: Int
   public let endMs: Int
   public let words: [ASRWordTiming]
+  public let segments: [ASRSegmentTiming]
   /// False for a marker the job writes in place of speech it could not transcribe ("[Could not
   /// transcribe ...]"): a marker on the call track is not the far side talking (#4138).
   public let isSpeech: Bool
 
   public init(
-    text: String, startMs: Int, endMs: Int, words: [ASRWordTiming], isSpeech: Bool = true
+    text: String, startMs: Int, endMs: Int, words: [ASRWordTiming],
+    segments: [ASRSegmentTiming] = [], isSpeech: Bool = true
   ) {
     self.text = text
     self.startMs = startMs
     self.endMs = endMs
     self.words = words
+    self.segments = segments
     self.isSpeech = isSpeech
   }
+
+  /// #3973 C3: speech timed by segment only.
+  var isSegmentTimed: Bool { isSpeech && words.isEmpty && !segments.isEmpty }
 }
 
 /// Everything one track contributes: its transcribed pieces in time order and its speaker
@@ -90,7 +100,8 @@ public enum MeetingTranscriptComposer {
     // The call sound's words, for echo matching. Collected first so the microphone track can be
     // compared whichever order the tracks arrive in.
     var collected: [(token: String, startMs: Int, endMs: Int)] = []
-    for (track, joined) in joinedTracks where track.kind == .callSound {
+    // A segment-timed track has no word times to pair (#3973 C3).
+    for (track, joined) in joinedTracks where track.kind == .callSound && joined.segmentTimings == nil {
       for entry in joined.entries {
         guard let start = entry.startMs, let end = entry.endMs else { continue }
         let token = normalizedToken(entry.word)
@@ -110,19 +121,33 @@ public enum MeetingTranscriptComposer {
     for (track, joined) in joinedTracks {
       guard !joined.entries.isEmpty else { continue }
       let segments = prefixedSegments(track.speakerSegments, kind: track.kind)
-      var turns: [Turn]
-      if segments.isEmpty {
-        turns = [singleTurn(entries: joined.entries, speaker: fallbackSpeakerID(for: track.kind))]
-      } else {
-        turns = TurnAssembler.assemble(entries: joined.entries, segments: segments)
+      let fallback = fallbackSpeakerID(for: track.kind)
+      var flagged: [(turn: Turn, echo: Bool)]
+      if let timings = joined.segmentTimings {
+        // #3973 C3: a segment takes one label (mixed or unbound segments are Both). No word
+        // times exist, so no pause or echo splitting.
+        var turns =
+          segments.isEmpty
+          ? []
+          : TurnAssembler.assemble(segmentTimings: timings, rawText: joined.text, segments: segments)
+            .turns
         if turns.isEmpty {
-          turns = [singleTurn(entries: joined.entries, speaker: fallbackSpeakerID(for: track.kind))]
+          turns = [singleTurn(entries: joined.entries, speaker: fallback, granularity: .segment)]
         }
-      }
-      turns = turns.flatMap { splitAtPauses($0, entries: joined.entries) }
-      var flagged: [(turn: Turn, echo: Bool)] = turns.map { ($0, false) }
-      if track.kind == .microphone, !callWords.words.isEmpty {
-        flagged = turns.flatMap { splitAtEcho($0, entries: joined.entries, callWords: callWords) }
+        flagged = turns.map { ($0, false) }
+      } else {
+        var turns: [Turn]
+        if segments.isEmpty {
+          turns = [singleTurn(entries: joined.entries, speaker: fallback)]
+        } else {
+          turns = TurnAssembler.assemble(entries: joined.entries, segments: segments)
+          if turns.isEmpty { turns = [singleTurn(entries: joined.entries, speaker: fallback)] }
+        }
+        turns = turns.flatMap { splitAtPauses($0, entries: joined.entries) }
+        flagged = turns.map { ($0, false) }
+        if track.kind == .microphone, !callWords.words.isEmpty {
+          flagged = turns.flatMap { splitAtEcho($0, entries: joined.entries, callWords: callWords) }
+        }
       }
       let utf16 = Array(joined.text.utf16)
       for (turn, echo) in flagged {
@@ -166,7 +191,7 @@ public enum MeetingTranscriptComposer {
           endMs: item.turn.endMs, originalTextRange: lower..<upper,
           // Meetings are not polished in this release: `true` is the deliberate-bypass value
           // (`Turn.wasPolished`), so History never shows "Not fully polished" (#3972 R19).
-          wasPolished: true, granularity: .word))
+          wasPolished: true, granularity: item.turn.effectiveGranularity))
       if item.echo { echoIDs.append(id) }
     }
 
@@ -184,6 +209,10 @@ public enum MeetingTranscriptComposer {
   struct JoinedTrack {
     let text: String
     let entries: [ASRWordTiming]
+    /// #3973 C3: set for a segment-timed track: every piece's segments with ranges into
+    /// `text`; a piece without segments (a marker, or text the engine could not time) is one
+    /// segment over its whole text and time. Nil for a word-timed track.
+    let segmentTimings: [ASRSegmentTiming]?
   }
 
   /// Joins a track's pieces into one text with a space between pieces and turns every word
@@ -191,12 +220,29 @@ public enum MeetingTranscriptComposer {
   static func joinPieces(_ pieces: [MeetingTrackPiece]) -> JoinedTrack {
     var text = ""
     var entries: [ASRWordTiming] = []
+    let segmentTimed = pieces.contains(where: \.isSegmentTimed)
+    var segmentTimings: [ASRSegmentTiming] = []
     for piece in pieces {
       let trimmed = piece.text
       guard !trimmed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
       if !text.isEmpty { text += " " }
       let base = text.utf16.count
       text += trimmed
+      if segmentTimed {
+        if piece.segments.isEmpty {
+          segmentTimings.append(
+            ASRSegmentTiming(
+              range: base..<(base + trimmed.utf16.count), startMs: piece.startMs,
+              endMs: piece.endMs))
+        } else {
+          for segment in piece.segments {
+            segmentTimings.append(
+              ASRSegmentTiming(
+                range: (base + segment.range.lowerBound)..<(base + segment.range.upperBound),
+                startMs: segment.startMs, endMs: segment.endMs))
+          }
+        }
+      }
       let timed = interpolatedTimes(for: piece)
       if timed.isEmpty {
         // No word data at all: the whole piece is one entry spanning the piece.
@@ -214,7 +260,8 @@ public enum MeetingTranscriptComposer {
             word: word.word, range: lower..<upper, startMs: word.startMs, endMs: word.endMs))
       }
     }
-    return JoinedTrack(text: text, entries: entries)
+    return JoinedTrack(
+      text: text, entries: entries, segmentTimings: segmentTimed ? segmentTimings : nil)
   }
 
   /// Gives every untimed word a time between its timed neighbours, clamped to the piece
@@ -455,13 +502,16 @@ public enum MeetingTranscriptComposer {
     kind == .microphone ? fallbackMicrophoneSpeakerID : fallbackCallSpeakerID
   }
 
-  static func singleTurn(entries: [ASRWordTiming], speaker: String) -> Turn {
+  static func singleTurn(
+    entries: [ASRWordTiming], speaker: String, granularity: TurnGranularity = .word
+  ) -> Turn {
     let range = entries.first!.range.lowerBound..<entries.last!.range.upperBound
     let starts = entries.compactMap(\.startMs)
     let ends = entries.compactMap(\.endMs)
     return Turn(
       id: "\(range.lowerBound)-\(range.upperBound)", speakerId: speaker,
-      startMs: starts.min(), endMs: ends.max(), originalTextRange: range, granularity: .word)
+      startMs: starts.min(), endMs: ends.max(), originalTextRange: range,
+      granularity: granularity)
   }
 
   /// "You" for the one microphone speaker of a call (`compose` maps every microphone turn to

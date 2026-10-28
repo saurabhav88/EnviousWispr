@@ -76,10 +76,10 @@
 
     // MARK: - Catalog
 
-    @Test("the table lists exactly the 83 declared keys, once each, in four kinds")
+    @Test("the table lists exactly the 84 declared keys, once each, in four kinds")
     func catalogMatchesDeclaration() throws {
       let declared = try Self.declaredKeyNames()
-      #expect(declared.count == 83)
+      #expect(declared.count == 84)
       #expect(Set(declared).count == declared.count)
       let listed = DevControlSettings.allKeys.map(DevControlSettings.name)
       #expect(listed == declared)
@@ -90,7 +90,7 @@
 
       let (_, _, settings) = Self.fixture()
       let rows = DevControlSettings.catalog(settings)
-      #expect(rows.count == 83)
+      #expect(rows.count == 84)
       #expect(rows.compactMap { $0["key"] as? String } == declared)
       for row in rows {
         #expect(row["value"] != nil)
@@ -101,7 +101,7 @@
       for row in rows {
         kinds[row["kind"] as? String ?? "?", default: []].append(row["key"] as? String ?? "?")
       }
-      #expect(kinds["direct"]?.count == 51)
+      #expect(kinds["direct"]?.count == 52)
       #expect(kinds["viaOwner"]?.count == 8)
       #expect(kinds["extractedCheck"]?.count == 16)
       #expect(kinds["staging"]?.count == 8)
@@ -252,6 +252,9 @@
         name: "meetingLanguageMode", wire: { _ in #"{"mode":"locked","code":"de"}"# },
         holds: { $0.meetingLanguageMode == .locked("de") && $0.languageMode == .auto },
         fires: .meetingLanguageMode),
+      Row(
+        name: "meetingTranscriptEngine", wire: { _ in "\"whisper\"" },
+        holds: { $0.meetingTranscriptEngine == .whisper }, fires: .meetingTranscriptEngine),
       // #4105: meeting live words engine and language; null clears either.
       Row(
         name: "meetingLiveWordsEngine", wire: { _ in "\"universal\"" },
@@ -368,7 +371,7 @@
       "llmModel": "llmModel",
     ]
 
-    @Test("a forced write lands on the right property for every one of the 83 keys and persists")
+    @Test("a forced write lands on the right property for every one of the 84 keys and persists")
     func forcedWriteEveryKey() throws {
       let declared = try Self.declaredKeyNames()
       #expect(Self.rows.map(\.name) == declared)
@@ -402,8 +405,8 @@
         }
         exercised += 1
       }
-      #expect(exercised == 83)
-      #expect(readChecks == 83)
+      #expect(exercised == 84)
+      #expect(readChecks == 84)
     }
 
     @Test("hasCompletedOnboarding is the onboarding alias; forcing it moves onboardingState")
@@ -843,7 +846,7 @@
         if route == .shortcutField { shortcutFields.insert(DevControlSettings.name(key)) }
       }
       #expect(shortcutFields == Self.shortcutNames)
-      #expect(counts[.typed] == 59)
+      #expect(counts[.typed] == 60)
       #expect(counts[.modelCatalog] == 1)
       #expect(counts[.inputDevice] == 2)
       #expect(counts[.spokenPunctuation] == 1)
@@ -855,7 +858,7 @@
       #expect(counts[.ollamaModel] == 2)
       #expect(counts[.channelCommand] == 1)
       #expect(counts[.shortcutField] == 10)
-      #expect(counts.values.reduce(0, +) == 83)
+      #expect(counts.values.reduce(0, +) == 84)
       #expect(DevControlSettings.route(.llmModel) == .modelCatalog)
       #expect(DevControlSettings.route(.hasCompletedOnboarding) == .typed)
     }

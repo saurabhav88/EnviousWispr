@@ -34,7 +34,9 @@ public struct MeetingEndedTelemetry: Equatable, Sendable {
   public let durationSeconds: Double
   public let microphoneTrack: MeetingTrackStatus
   public let callSoundTrack: MeetingTrackStatus
-  public let engine: MeetingEngineChoice
+  /// #3973 C3: the engine the attempt resolved to (Parakeet when Whisper fell back); nil when
+  /// it never resolved (a Start that failed, a meeting deleted before its pass began).
+  public let engine: MeetingEngineChoice?
   public let speakerCount: Int
   public let processingSeconds: Double
   public let audioSeconds: Double
@@ -77,7 +79,7 @@ public struct MeetingEndedTelemetry: Equatable, Sendable {
   public init(
     outcome: Outcome, entryPoint: MeetingEntryPoint?, durationSeconds: Double,
     microphoneTrack: MeetingTrackStatus, callSoundTrack: MeetingTrackStatus,
-    engine: MeetingEngineChoice = .parakeet, speakerCount: Int, processingSeconds: Double,
+    engine: MeetingEngineChoice?, speakerCount: Int, processingSeconds: Double,
     audioSeconds: Double, yieldCount: Int, gapCount: Int, echoHiddenCount: Int, diskStopped: Bool?,
     summaryPlan: SummaryPlan, hasNotes: Bool, callSound: CallSoundSummary? = nil
   ) {
@@ -116,7 +118,8 @@ public struct MeetingEndedTelemetry: Equatable, Sendable {
   ) -> MeetingEndedTelemetry {
     MeetingEndedTelemetry(
       outcome: .startFailed, entryPoint: entryPoint, durationSeconds: 0, microphoneTrack: microphone,
-      callSoundTrack: callSound, speakerCount: 0, processingSeconds: 0, audioSeconds: 0,
+      callSoundTrack: callSound, engine: nil, speakerCount: 0, processingSeconds: 0,
+      audioSeconds: 0,
       yieldCount: 0, gapCount: 0, echoHiddenCount: 0, diskStopped: false,
       summaryPlan: .notApplicable, hasNotes: false)
   }

@@ -11,9 +11,11 @@ import Foundation
 /// engine and model (#3973 C2). Work from another attempt, engine or model is never reused.
 public struct MeetingProcessingCheckpoint: Codable, Equatable, Sendable {
   /// 2 adds `Key.transcriptLanguage` (#4105). 3 adds `Key.attemptID` and `Key.engine`, which
-  /// replace the separate engine identity (#3973 C2). A build that reads another format rejects
-  /// the file and redoes the pass, so a rollback never reuses words it cannot see the source of.
-  public static let currentFormatVersion = 3
+  /// replace the separate engine identity (#3973 C2). 4 adds `Piece.segments`, so a piece with
+  /// text and no words is a success timed by segment, not a failure (#3973 C3). A build that
+  /// reads another format rejects the file and redoes the pass, so a rollback never reuses
+  /// words it cannot see the source of.
+  public static let currentFormatVersion = 4
 
   /// The engine and model an attempt's pieces come from (#3973 C2).
   public struct Engine: Codable, Equatable, Sendable {
@@ -115,23 +117,47 @@ public struct MeetingProcessingCheckpoint: Codable, Equatable, Sendable {
     }
   }
 
-  /// One finished piece: its own range on the track timeline and the words it owns. `words`
-  /// nil means the piece failed twice (a truthful gap, not silence).
+  /// One finished piece: its own range on the track timeline and the words it owns. A piece
+  /// with no `text` failed twice (a truthful gap, not silence); a decoded piece has text and a
+  /// word list, which is empty for an engine timed by segment (#3973 C3).
   public struct Piece: Codable, Equatable, Sendable {
     public let startSample: Int
     public let endSample: Int
     public let forcedCut: Bool
     public let text: String?
     public let words: [Word]?
+    /// #3973 C3: the engine's segment timings (Whisper), ranges into `text`, times on the
+    /// meeting timeline. Nil for a word-timed engine and for a failed piece.
+    public let segments: [SegmentTiming]?
 
     public init(
-      startSample: Int, endSample: Int, forcedCut: Bool, text: String?, words: [Word]?
+      startSample: Int, endSample: Int, forcedCut: Bool, text: String?, words: [Word]?,
+      segments: [SegmentTiming]? = nil
     ) {
       self.startSample = startSample
       self.endSample = endSample
       self.forcedCut = forcedCut
       self.text = text
       self.words = words
+      self.segments = segments
+    }
+
+    /// The one failure test: the piece failed twice and carries no text.
+    public var isFailed: Bool { text == nil }
+  }
+
+  /// #3973 C3: one engine segment of a piece's text.
+  public struct SegmentTiming: Codable, Equatable, Sendable {
+    public let lower: Int
+    public let upper: Int
+    public let startMs: Int?
+    public let endMs: Int?
+
+    public init(lower: Int, upper: Int, startMs: Int?, endMs: Int?) {
+      self.lower = lower
+      self.upper = upper
+      self.startMs = startMs
+      self.endMs = endMs
     }
   }
 

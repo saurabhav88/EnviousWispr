@@ -269,13 +269,31 @@ final class MeetingCoordinator {
         MeetingRecorder.Configuration, @escaping MeetingRecorder.SegmentHandler,
         @escaping MeetingRecorder.FailureHandler
       ) -> MeetingRecording
-    var makeJob: @MainActor () -> MeetingProcessing
+    /// #3973 C3: builds a pass that decodes with the resolved engine.
+    var makeJob: @MainActor (MeetingEngineResolution) -> MeetingProcessing
+    /// #3973 C3: the engine a pass of an attempt that asked for `engine` runs on, decided from
+    /// current availability without downloading: Whisper when it is ready, else Parakeet with
+    /// the reason. Never reads Settings.
+    var resolveEngine:
+      @MainActor (_ attempt: MeetingAttemptConfiguration) async -> MeetingEngineResolution = {
+        MeetingEngineResolution(
+          engine: $0.requestedEngine, effectiveLanguage: $0.requestedEffectiveLanguage)
+      }
+    /// #3973 C3: whether `engine` can decode `language` (a code). A language it cannot is asked
+    /// as Auto (`MeetingAttemptConfiguration`).
+    var engineSupportsLanguage: @Sendable (MeetingEngineChoice, String) -> Bool = { _, _ in true }
     /// Live words while a meeting records (#3973): nil shows none.
     var liveWords: MeetingLiveWords?
     /// The meeting transcript's language (`meetingLanguageMode`, decision 16), read once per
     /// Start and stored on the record (#4105). Live words never read it; they have their own
     /// engine and language (`MeetingLiveWordsChoice`).
     var meetingLanguage: @MainActor () -> LanguageMode = { .auto }
+    /// #3973 C3: the final transcript's engine (`meetingTranscriptEngine`), read once per Start
+    /// beside the language.
+    var meetingTranscriptEngine: @MainActor () -> MeetingEngineChoice = { .parakeet }
+    /// #3973 C3: whether `engine`'s model is ready now, for the Transcribe again menu (the pass
+    /// checks again and falls back when it is gone by then).
+    var isEngineReady: @MainActor (MeetingEngineChoice) -> Bool = { $0 == .parakeet }
     /// Custom Words for live words, read once at each recording's start.
     var liveVocabulary: @MainActor () -> LivePreviewVocabulary = {
       LivePreviewVocabulary(lookups: nil, contextualPhrases: [], dictionaryEnabled: false)
@@ -478,6 +496,8 @@ final class MeetingCoordinator {
     var diskStopped: Bool?
     /// #4121: the recorder's call-sound summary, frozen at stop; nil when none.
     var callSound: CallSoundSummary?
+    /// #3973 C3: the engine this attempt's pass resolved to, once it did.
+    var resolvedEngine: MeetingEngineChoice?
   }
   /// Meetings whose files a timed-out close still owns this session (only `stopForQuit` can time
   /// out; a normal stop awaits the physical close). Nothing reads, promotes or removes them
@@ -544,10 +564,16 @@ final class MeetingCoordinator {
 
   /// A meeting's own engine is loaded or a meeting unit is running: dictation's Ultra
   /// activation waits (C3a, C4a).
-  /// #4052: the final pass is transcribing on its own Parakeet. An engine switch of dictation
-  /// into Parakeet waits until it is released (gate 6d), so two copies never coexist. Live
-  /// words run on Apple speech or the Universal engine, never a meeting Parakeet.
-  var isFinalPassOwnParakeetResident: Bool { job?.isOwnModelResident ?? false }
+  /// #4052, #3973 C3: the final pass is transcribing on its own copy of `backend`. An engine
+  /// switch of dictation into that engine waits until it is released (gate 6d), so two copies
+  /// never coexist. Live words run on Apple speech or the Universal engine, never a meeting
+  /// final engine.
+  func isFinalPassOwnModelResident(_ backend: ASRBackendType) -> Bool {
+    guard job?.isOwnModelResident == true else { return false }
+    return processingResolution?.engine.backendType == backend
+  }
+  /// #3973 C3: the engine the running pass decodes with.
+  private var processingResolution: MeetingEngineResolution?
 
   var isMeetingModelWorkActive: Bool {
     (job?.isEngineResident ?? false) || (job?.isUnitInFlight ?? false)
@@ -787,6 +813,7 @@ final class MeetingCoordinator {
     // #4105: the transcript language this Start asked for, read before any wait so a change
     // during the waits belongs to the next meeting.
     let transcriptLanguage = deps.meetingLanguage()
+    let transcriptEngine = deps.meetingTranscriptEngine()
     notice = nil
     guard deps.microphoneAuthorized() else {
       notice = .microphoneDenied
@@ -832,14 +859,14 @@ final class MeetingCoordinator {
       }
     }
     var record = MeetingRecord(
-      title: calendarTitle, createdAt: startedAt, engine: .parakeet,
+      title: calendarTitle, createdAt: startedAt, engine: transcriptEngine,
       trackStatus: [.microphone: .captured, .callSound: captureCall ? .captured : .off])
     // #4012: the call app a detected Start was for, so the fallback name says "Zoom call".
     record.callApp = callApp
     // #4105: in the record before its first save, so recovery and retry use this value.
     record.transcriptLanguageMode = transcriptLanguage
     // #3973 C2: the attempt this Start asked for, frozen from the same read.
-    record.beginAttempt(record.attemptFromStartValues())
+    record.beginAttempt(record.attemptFromStartValues(supports: deps.engineSupportsLanguage))
     let meetingID = record.id
     do {
       let created = record
@@ -1326,7 +1353,17 @@ final class MeetingCoordinator {
     // The inventory rebuilt from the files, durable before the pass reads it.
     guard await persist(current), isStillOwned(meetingID) else { return }
 
-    let job = deps.makeJob()
+    let resolution = await deps.resolveEngine(attempt)
+    // Read again after the await: a deletion mark or a quit meanwhile wins.
+    guard isStillOwned(meetingID) else { return }
+    if let reason = resolution.fallbackReason {
+      deps.log(
+        "meeting engine fallback requested=\(attempt.requestedEngine.rawValue) resolved=\(resolution.engine.rawValue) reason=\(reason.rawValue)"
+      )
+    }
+    openAttempts[meetingID]?.resolvedEngine = resolution.engine
+    processingResolution = resolution
+    let job = deps.makeJob(resolution)
     self.job = job
     job.onWaitingForDictation = { [weak self] waiting in
       guard self?.processing?.meetingID == meetingID else { return }
@@ -1348,7 +1385,7 @@ final class MeetingCoordinator {
     do {
       // #4105, #3973 C2: the saved attempt's language and engine, from the record only.
       result = try await job.run(
-        tracks: tracks, language: attempt.requestedEffectiveLanguage, checkpoint: access,
+        tracks: tracks, language: resolution.effectiveLanguage, checkpoint: access,
         missingAudio: missingAudio,
         onStage: { [weak self] stage in self?.processing?.stage = stage },
         attempt: attempt)
@@ -1644,7 +1681,17 @@ final class MeetingCoordinator {
     }
     return await queue(
       meetingID,
-      attempt: MeetingAttemptConfiguration(requestedEngine: engine, language: deps.meetingLanguage()))
+      attempt: MeetingAttemptConfiguration(
+        requestedEngine: engine, language: deps.meetingLanguage(),
+        supports: deps.engineSupportsLanguage))
+  }
+
+  /// #3973 C3: the engines Transcribe again offers: the ready ones, the Transcript engine
+  /// setting's first.
+  var transcribeAgainEngines: [MeetingEngineChoice] {
+    let preferred = deps.meetingTranscriptEngine()
+    return ([preferred] + MeetingEngineChoice.allCases.filter { $0 != preferred })
+      .filter { deps.isEngineReady($0) }
   }
 
   /// Continues the meeting's saved attempt (#3973 C2): its engine and language as saved, never
@@ -2174,7 +2221,7 @@ final class MeetingCoordinator {
         durationSeconds: Double(record.recordedDurationMs) / 1000,
         microphoneTrack: record.trackStatus[.microphone] ?? .off,
         callSoundTrack: record.trackStatus[.callSound] ?? .off,
-        engine: record.engine,
+        engine: result?.resolved.resolvedEngine ?? facts.resolvedEngine,
         speakerCount: result?.composition.speakerCount ?? 0,
         processingSeconds: processingSeconds,
         audioSeconds: result?.audioSeconds ?? 0,

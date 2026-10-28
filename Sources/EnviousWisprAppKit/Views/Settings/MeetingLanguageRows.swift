@@ -177,6 +177,8 @@ struct MeetingLiveWordsRow: View {
 /// another language, and never blocks either choice.
 struct MeetingTranscriptLanguageRow: View {
   @Environment(MeetingLiveWordsRowModel.self) private var model
+  /// #3973 C3: the language list and its unsupported note follow the transcript engine.
+  @Environment(MeetingTranscriptEngineRowModel.self) private var engine
 
   var body: some View {
     SettingsRow(
@@ -194,8 +196,12 @@ struct MeetingTranscriptLanguageRow: View {
           set: { model.transcriptLanguage = $0.isEmpty ? .auto : .locked($0) })
       ) {
         Text(MeetingsCopy.transcriptLanguageAuto).tag("")
-        ForEach(model.transcriptLanguageOptions, id: \.lockCode) { entry in
+        ForEach(engine.transcriptLanguageOptions, id: \.lockCode) { entry in
           Text(entry.displayName).tag(entry.lockCode)
+        }
+        // A saved language the engine cannot transcribe stays shown, named by the note below.
+        if let code = engine.unsupportedTranscriptLanguage {
+          Text(LanguageCatalog.entry(for: code).displayName).tag(code)
         }
       }
       .labelsHidden()
@@ -203,12 +209,131 @@ struct MeetingTranscriptLanguageRow: View {
       .fixedSize()
     }
     .rowStatus {
-      if model.languagesDiffer {
-        Text(MeetingsCopy.languagesDiffer)
+      VStack(alignment: .leading, spacing: 4) {
+        if let code = engine.unsupportedTranscriptLanguage {
+          Text(
+            MeetingsCopy.transcriptLanguageUnsupported(
+              language: LanguageCatalog.entry(for: code).displayName,
+              engine: engine.selectedEngine.backendType.displayName)
+          )
           .font(.stRowHelper)
           .foregroundStyle(.stTextSecondary)
           .fixedSize(horizontal: false, vertical: true)
+        }
+        if model.languagesDiffer {
+          Text(MeetingsCopy.languagesDiffer)
+            .font(.stRowHelper)
+            .foregroundStyle(.stTextSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
       }
+    }
+  }
+}
+
+/// #3973 C3 (decision 19): EnviousMeet > Models' Transcript engine row. Parakeet or Whisper
+/// Large v3 Turbo; Whisper is greyed until its model is downloaded, with the shared Whisper
+/// download's Download, Resume and Cancel beside it (refused during a meeting). Warns when
+/// meetings and dictation use different engines, with a link to "Turn off dictation during
+/// meetings".
+struct MeetingTranscriptEngineRow: View {
+  @Environment(MeetingTranscriptEngineRowModel.self) private var model
+  @Environment(\.settingsNavigate) private var navigate
+
+  var body: some View {
+    SettingsRow(
+      map: .id(.meetingTranscriptEngine), icon: "waveform",
+      help: MeetingsCopy.transcriptEngineHelp
+    ) {
+      Picker(
+        String(localized: MeetingsCopy.transcriptEngineTitle),
+        selection: Binding(
+          get: { model.selectedEngine },
+          set: { engine in Task { await model.select(engine) } })
+      ) {
+        ForEach(MeetingEngineChoice.allCases, id: \.self) { choice in
+          Text(Self.title(of: choice)).tag(choice)
+            .disabled(choice == .whisper && !model.isWhisperReady)
+        }
+      }
+      .labelsHidden()
+      .settingsArrivalFocusControl()
+      .fixedSize()
+    }
+    .rowStatus { statusLines }
+    .rowSupplementaryControl(belowWidth: 560) { action }
+    .task { await model.appear() }
+  }
+
+  /// The menu's label for `choice`; the Settings Map's choice titles use the same strings.
+  static func title(of choice: MeetingEngineChoice) -> String {
+    switch choice {
+    case .parakeet: String(localized: MeetingsCopy.engineParakeet)
+    case .whisper: String(localized: MeetingsCopy.engineWhisper)
+    }
+  }
+
+  @ViewBuilder private var statusLines: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      if model.isChosenWhisperGone {
+        status(String(localized: MeetingsCopy.whisperGone))
+      }
+      switch model.whisperState {
+      case .notDownloaded:
+        status(String(localized: MeetingsCopy.whisperNotDownloaded))
+      case .downloading(let progress, _):
+        status(String(localized: MeetingsCopy.whisperDownloading))
+        ProgressView(value: progress).frame(maxWidth: 220)
+      case .paused:
+        status(String(localized: MeetingsCopy.whisperPaused))
+      case .error:
+        status(String(localized: MeetingsCopy.whisperFailed))
+      case .checking, .ready:
+        EmptyView()
+      }
+      if let engine = model.engineMismatch {
+        status(
+          String(
+            localized: engine == .whisper
+              ? MeetingsCopy.warningWhisperMeeting : MeetingsCopy.warningParakeetMeeting))
+        Button(String(localized: MeetingsCopy.turnsOffDictationTitle)) {
+          navigate(.meetings(.general))
+        }
+        .buttonStyle(.link)
+        .font(.stRowHelper)
+      }
+    }
+  }
+
+  private func status(_ text: String) -> some View {
+    Text(text)
+      .font(.stRowHelper)
+      .foregroundStyle(.stTextSecondary)
+      .fixedSize(horizontal: false, vertical: true)
+  }
+
+  /// Download, Resume, Try Again or Cancel of the shared Whisper download. While a meeting is
+  /// active the row says when a download can start instead; the model refuses it too.
+  @ViewBuilder private var action: some View {
+    switch model.whisperState {
+    case .notDownloaded:
+      downloadButton(SettingsItemCopy.LivePreview.universalDownload)
+    case .paused:
+      downloadButton(SettingsItemCopy.Engine.whisperResume)
+    case .error:
+      downloadButton(SettingsItemCopy.Engine.whisperTryAgain)
+    case .downloading:
+      Button(String(localized: SettingsItemCopy.Engine.whisperCancel)) { model.cancelDownload() }
+    case .checking, .ready:
+      EmptyView()
+    }
+  }
+
+  @ViewBuilder private func downloadButton(_ title: LocalizedStringResource) -> some View {
+    if let refusal = model.downloadRefusal {
+      status(refusal)
+    } else {
+      Button(String(localized: title)) { model.download() }
     }
   }
 }

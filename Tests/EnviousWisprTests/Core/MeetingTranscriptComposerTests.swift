@@ -442,4 +442,101 @@ struct MeetingTranscriptComposerTests {
     #expect(visible.isEmpty)
     #expect(!result.echoTurnIDs.isEmpty)
   }
+
+  // MARK: - #3973 C3: segment-timed tracks (Whisper)
+
+  /// A Whisper piece: sentences joined by single spaces, each its own timed segment, no words.
+  private func segmentPiece(_ sentences: [(String, Int?, Int?)], start: Int, end: Int)
+    -> MeetingTrackPiece
+  {
+    var text = ""
+    var segments: [ASRSegmentTiming] = []
+    for (sentence, s, e) in sentences {
+      if !text.isEmpty { text += " " }
+      let lower = text.utf16.count
+      text += sentence
+      segments.append(ASRSegmentTiming(range: lower..<text.utf16.count, startMs: s, endMs: e))
+    }
+    return MeetingTrackPiece(text: text, startMs: start, endMs: end, words: [], segments: segments)
+  }
+
+  @Test(
+    "#3973 C3: a Whisper track is labelled by sentence; one crossing two speakers is Both, never split"
+  )
+  func segmentTrackLabelsBySentence() {
+    let call = MeetingTrackInput(
+      kind: .callSound,
+      pieces: [
+        segmentPiece(
+          [
+            ("We will send the revised proposal on Friday.", 0, 2_000),
+            ("I will check the figures before lunch.", 2_500, 4_500),
+            ("Sounds good to both of us.", 5_000, 7_000),
+          ], start: 0, end: 7_000)
+      ],
+      speakerSegments: [
+        SpeakerSegment(speakerId: "A", startMs: 0, endMs: 2_200, quality: 1),
+        SpeakerSegment(speakerId: "B", startMs: 2_300, endMs: 6_000, quality: 1),
+        SpeakerSegment(speakerId: "A", startMs: 6_000, endMs: 7_000, quality: 1),
+      ])
+
+    let result = MeetingTranscriptComposer.compose(tracks: [call])
+
+    #expect(
+      result.turns.map { slice($0.originalTextRange, of: result.text) } == [
+        "We will send the revised proposal on Friday.",
+        "I will check the figures before lunch.",
+        "Sounds good to both of us.",
+      ])
+    #expect(result.turns.map(\.speakerId) == ["sys:A", "sys:B", TurnAssembler.bothSpeakersID])
+    #expect(result.turns.allSatisfy { $0.granularity == .segment }, "never presented as words")
+  }
+
+  @Test("#3973 C3: a Whisper microphone on a call is You; a gap marker keeps its place in the text")
+  func segmentMicrophoneOnACall() {
+    let call = MeetingTrackInput(
+      kind: .callSound,
+      pieces: [segmentPiece([("Can you hear me?", 0, 1_000)], start: 0, end: 1_000)],
+      speakerSegments: [SpeakerSegment(speakerId: "S1", startMs: 0, endMs: 1_000, quality: 1)])
+    let marker = MeetingTrackPiece(
+      text: "[Could not transcribe 0:04 to 0:05]", startMs: 4_000, endMs: 5_000,
+      words: [
+        ASRWordTiming(
+          word: "[Could not transcribe 0:04 to 0:05]", range: 0..<35, startMs: 4_000, endMs: 5_000)
+      ], isSpeech: false)
+    let mic = MeetingTrackInput(
+      kind: .microphone,
+      pieces: [segmentPiece([("Yes, loud and clear.", 2_000, 3_000)], start: 2_000, end: 3_000), marker],
+      speakerSegments: [
+        SpeakerSegment(speakerId: "S1", startMs: 2_000, endMs: 3_000, quality: 1),
+        SpeakerSegment(speakerId: "S2", startMs: 4_000, endMs: 5_000, quality: 1),
+      ])
+
+    let result = MeetingTranscriptComposer.compose(tracks: [call, mic])
+
+    #expect(
+      result.turns.map { slice($0.originalTextRange, of: result.text) } == [
+        "Can you hear me?", "Yes, loud and clear.", "[Could not transcribe 0:04 to 0:05]",
+      ])
+    #expect(result.turns.map(\.speakerId) == ["sys:S1", "mic:you", "mic:you"])
+    #expect(result.speakerNames["mic:you"] == "You")
+    #expect(result.echoTurnIDs.isEmpty, "no word times, so no echo pairing")
+  }
+
+  @Test("#3973 C3: a Whisper track without speaker analysis is one turn, still by segment")
+  func segmentTrackWithoutSpeakers() {
+    let call = MeetingTrackInput(
+      kind: .callSound,
+      pieces: [
+        segmentPiece([("First sentence.", 0, 1_000), ("Second one.", 1_000, 2_000)], start: 0, end: 2_000)
+      ],
+      speakerSegments: [])
+
+    let result = MeetingTranscriptComposer.compose(tracks: [call])
+
+    #expect(result.turns.count == 1)
+    #expect(result.text == "First sentence. Second one.")
+    #expect(result.turns.first?.speakerId == MeetingTranscriptComposer.fallbackCallSpeakerID)
+    #expect(result.turns.first?.granularity == .segment)
+  }
 }

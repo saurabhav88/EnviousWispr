@@ -102,19 +102,43 @@ struct MeetingProcessingCheckpointStoreTests {
     #expect(store.load() == .unusable)
   }
 
-  /// #3973 C2 (plan G3): the attempt and the engine are part of the key, and a checkpoint written
-  /// by this build is format 3, which a build reading only format 2 rejects and redoes.
-  @Test("a checkpoint is format 3: a format 2 reader rejects it, this build resumes it")
-  func checkpointIsFormatThree() throws {
+  /// #3973 C2 (plan G3): the attempt and the engine are part of the key. #3973 C3: a checkpoint
+  /// written by this build is format 4 (segment-timed pieces), which a build reading only format
+  /// 3 rejects and redoes: there a text-only piece would not mean what it means here.
+  @Test("#3973 C3: a Whisper piece (text, no words, segments) round-trips as a success; a failed one has no text")
+  func segmentPieceRoundTrips() throws {
+    let store = MeetingProcessingCheckpointStore(meetingFolder: try meetingFolder())
+    var saved = checkpoint(pieces: 0)
+    saved.tracks[.microphone]?.pieces = [
+      .init(
+        startSample: 0, endSample: 16_000, forcedCut: false, text: "Hello there. Bye.", words: [],
+        segments: [
+          .init(lower: 0, upper: 12, startMs: 0, endMs: 600),
+          .init(lower: 13, upper: 17, startMs: 700, endMs: nil),
+        ]),
+      .init(startSample: 16_000, endSample: 32_000, forcedCut: false, text: nil, words: nil),
+    ]
+    try store.save(saved)
+    guard case .checkpoint(let loaded) = store.load() else {
+      Issue.record("the checkpoint did not load")
+      return
+    }
+    #expect(loaded == saved)
+    let pieces = try #require(loaded.tracks[.microphone]?.pieces)
+    #expect(pieces.map(\.isFailed) == [false, true])
+  }
+
+  @Test("a checkpoint is format 4: a format 3 reader rejects it, this build resumes it")
+  func checkpointIsFormatFour() throws {
     let store = MeetingProcessingCheckpointStore(meetingFolder: try meetingFolder())
     let saved = checkpoint()
     try store.save(saved)
     let json = try #require(String(data: try Data(contentsOf: store.fileURL), encoding: .utf8))
-    #expect(json.contains(#""formatVersion":3"#))
+    #expect(json.contains(#""formatVersion":4"#))
     #expect(json.contains(#""attemptID":""#))
     #expect(json.contains(#""modelIdentity":"ultra:rev""#))
     #expect(!json.contains("engineIdentity"), "one identity, in the key")
-    #expect(store.load(acceptingFormatVersion: 2) == .unusable)
+    #expect(store.load(acceptingFormatVersion: 3) == .unusable)
     #expect(store.load() == .checkpoint(saved))
   }
 

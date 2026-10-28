@@ -335,7 +335,7 @@ MODEL_ACTIONS = ("download", "cancel")
 # The call panel's buttons `call simulate --press` may name (DevControlCalls.buttons).
 CALL_PANEL_BUTTONS = ("yes", "no", "keepRecording", "startNewRecording", "openSettings", "close")
 # MeetingEngineChoice raw values (#3973 C2); the door refuses anything else.
-MEETING_ENGINES = ("parakeet",)
+MEETING_ENGINES = ("parakeet", "whisper")
 # MeetingEntryPoint raw values; the door refuses anything else.
 MEETING_ENTRY_POINTS = ("history", "menu")
 # CLI verb -> door command for the meeting commands that take only a meeting id; all change

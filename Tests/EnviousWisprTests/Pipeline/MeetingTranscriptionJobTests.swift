@@ -1603,4 +1603,115 @@ struct MeetingTranscriptionJobTests {
       #expect(!waiting, "cleared after the wait ends")
     }
   }
+
+
+  // MARK: - #3973 C3: Whisper results, yields and the resolved engine
+
+  /// A whole-run job (the production shape) whose engine is `transcribe`.
+  private func wholeRunJob(
+    transcribe: @escaping @MainActor ([Float], String?) async throws -> ASRResult,
+    analyze: @escaping @Sendable (MeetingTrackAudio) async -> MeetingSpeakerAnalysis = { _ in
+      MeetingSpeakerAnalysis(outcome: .single, segments: [])
+    },
+    resolution: MeetingEngineResolution? = nil
+  ) -> MeetingTranscriptionJob {
+    var config = MeetingTranscriptionJob.Configuration()
+    config.cutsPieces = false
+    return MeetingTranscriptionJob(
+      dependencies: .init(
+        isDictationIdle: { true }, waitUntilDictationIdle: {}, beginModelUse: {}, endModelUse: {},
+        loadEngine: {}, transcribe: transcribe, unloadEngine: {}, analyzeSpeakers: analyze,
+        resolution: resolution),
+      configuration: config)
+  }
+
+  @Test("#3973 C3: a Whisper result (sentences, no words) is a success: speakers found per sentence, no gap")
+  func whisperResultIsASuccess() async throws {
+    let dir = try folder()
+    let files = [try segment(in: dir, index: 1, startMs: 0, seconds: 4)]
+    let text = "Hello there. Bye now."
+    let job = wholeRunJob(
+      transcribe: { _, _ in
+        ASRResult(
+          text: text, language: "en", duration: 4, processingTime: 0, backendType: .whisper,
+          wordTimings: nil, wordTimingCoverage: nil,
+          segmentTimings: [
+            ASRSegmentTiming(range: 0..<12, startMs: 0, endMs: 1_000),
+            ASRSegmentTiming(range: 13..<21, startMs: 1_500, endMs: 2_500),
+          ])
+      },
+      analyze: { _ in
+        MeetingSpeakerAnalysis(
+          outcome: .labeled,
+          segments: [
+            SpeakerSegment(speakerId: "1", startMs: 0, endMs: 1_200, quality: 1),
+            SpeakerSegment(speakerId: "2", startMs: 1_300, endMs: 4_000, quality: 1),
+          ])
+      })
+
+    let result = try await job.runTestAttempt(
+      tracks: [.callSound: MeetingTrackAudio(files: files)], language: nil) { _ in }
+
+    #expect(result.failedPieces == 0)
+    #expect(result.failedRanges.isEmpty)
+    #expect(result.speakerOutcomes[.callSound] == .labeled, "speaker analysis ran on it")
+    #expect(result.composition.text == "Hello there.\n\nBye now.")
+    #expect(result.composition.turns.map(\.speakerId) == ["sys:1", "sys:2"])
+    #expect(result.composition.turns.allSatisfy { $0.granularity == .segment })
+  }
+
+  @Test("#3973 C3: a decode that gave way to dictation runs again, with no gap counted")
+  func yieldIsRetriedNotFailed() async throws {
+    let dir = try folder()
+    let files = [try segment(in: dir, index: 1, startMs: 0, seconds: 3)]
+    var calls = 0
+    let job = wholeRunJob(transcribe: { samples, _ in
+      calls += 1
+      if calls == 1 { throw MeetingEngineYield() }
+      return FakeSpeech.transcribe(samples)
+    })
+
+    let result = try await job.runTestAttempt(
+      tracks: [.microphone: MeetingTrackAudio(files: files)], language: nil) { _ in }
+
+    #expect(calls == 2)
+    #expect(result.failedPieces == 0)
+    #expect(!result.composition.text.isEmpty)
+  }
+
+  @Test("#3973 C3: yields with no dictation running stop after a bound and become a visible gap")
+  func idleYieldsAreBounded() async throws {
+    let dir = try folder()
+    let files = [try segment(in: dir, index: 1, startMs: 0, seconds: 3)]
+    var calls = 0
+    let job = wholeRunJob(transcribe: { _, _ in
+      calls += 1
+      throw MeetingEngineYield()
+    })
+
+    let result = try await job.runTestAttempt(
+      tracks: [.microphone: MeetingTrackAudio(files: files)], language: nil) { _ in }
+
+    #expect(calls == 2 * MeetingTranscriptionJob.idleYieldLimit)
+    #expect(result.failedPieces == 1)
+  }
+
+  @Test("#3973 C3: the result names the engine the pass resolved to and why, not the one asked for")
+  func resultCarriesTheResolution() async throws {
+    let dir = try folder()
+    let files = [try segment(in: dir, index: 1, startMs: 0, seconds: 2)]
+    let job = wholeRunJob(
+      transcribe: { samples, _ in FakeSpeech.transcribe(samples) },
+      resolution: MeetingEngineResolution(engine: .parakeet, fallbackReason: .notDownloaded))
+    let attempt = MeetingAttemptConfiguration(
+      requestedEngine: .whisper, languageIntent: nil, requestedEffectiveLanguage: nil)
+
+    let result = try await job.run(
+      tracks: [.microphone: MeetingTrackAudio(files: files)], language: nil,
+      onStage: { _ in }, attempt: attempt)
+
+    #expect(result.resolved.requestedEngine == .whisper)
+    #expect(result.resolved.resolvedEngine == .parakeet)
+    #expect(result.resolved.fallbackReason == .notDownloaded)
+  }
 }

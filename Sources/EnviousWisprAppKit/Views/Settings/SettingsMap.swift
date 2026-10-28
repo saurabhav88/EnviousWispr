@@ -679,6 +679,14 @@ enum SettingsMap {
       description: .resource(MeetingsCopy.liveWordsShort),
       parent: .meetingsTabModels, destination: .meetings(.models), dictionaryTab: nil,
       visibility: .always, target: .meetingLiveWords, fallbacks: []),
+    // #3973 C3: the engine that writes the meeting transcript; its choices are the menu's.
+    // Download, Resume and Cancel are actions of the row, like Live words'.
+    SettingsMapNode(
+      id: .meetingTranscriptEngine, structure: .item, item: .setting,
+      title: .resource(MeetingsCopy.transcriptEngineTitle),
+      description: .resource(MeetingsCopy.transcriptEngineShort),
+      parent: .meetingsTabModels, destination: .meetings(.models), dictionaryTab: nil,
+      visibility: .always, target: .meetingTranscriptEngine, fallbacks: []),
     SettingsMapNode(
       id: .meetingTranscriptLanguage, structure: .item, item: .setting,
       title: .resource(MeetingsCopy.transcriptLanguageTitle),
@@ -1358,6 +1366,10 @@ enum SettingsMap {
       of: .meetingLiveWords, destination: .meetings(.models), dictionaryTab: nil,
       visibility: .always, fallbacks: [],
       LivePreviewEngineChoice.allCases.map { ($0.meetingLiveWordsMapID, $0.meetingLiveWordsTitle, nil) })
+    + choices(
+      of: .meetingTranscriptEngine, destination: .meetings(.models), dictionaryTab: nil,
+      visibility: .always, fallbacks: [],
+      MeetingEngineChoice.allCases.map { ($0.transcriptEngineMapID, $0.transcriptEngineTitle, nil) })
     + choices(
       of: .unloadModelAfter, destination: .dictation(.engine), dictionaryTab: nil,
       visibility: .always, fallbacks: [],

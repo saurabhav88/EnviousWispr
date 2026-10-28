@@ -20,6 +20,13 @@ enum WhisperDeliveryWiring {
     /// The Remove drain's engine-unload seam, assigned by the bootstrapper once the driver
     /// exists (the adapter is constructed after this wiring runs).
     let removal: WhisperRemovalHook
+    /// #3973 C3: the same admitted model as EnviousMeet's final engine reads it: the file when
+    /// admitted now (never cached, never fetched), nil otherwise.
+    let admittedModelPath: @MainActor () async -> String?
+    /// #3973 C3: model name and revision, the meeting checkpoint identity.
+    let modelIdentity: String?
+    /// #3973 C3: the delivery kill switch for this model, read fresh.
+    let isDeliveryEnabled: @MainActor () -> Bool
   }
 
   static func make(
@@ -245,7 +252,15 @@ enum WhisperDeliveryWiring {
     }
 
     return Wired(
-      backend: backend, migration: migration, setupService: setupService, removal: removal)
+      backend: backend, migration: migration, setupService: setupService, removal: removal,
+      admittedModelPath: { [weak handle] in
+        guard let handle, let modelPath, await handle.isAdmitted() else { return nil }
+        return modelPath
+      },
+      modelIdentity: registration.map {
+        "\($0.manifest.identity.name):\($0.manifest.identity.revision)"
+      },
+      isDeliveryEnabled: { [weak handle] in handle?.isEnabled() ?? false })
   }
 }
 
