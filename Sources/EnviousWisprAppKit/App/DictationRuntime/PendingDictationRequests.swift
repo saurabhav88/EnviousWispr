@@ -61,7 +61,7 @@ final class PendingDictationRequests {
   /// Told true when a press starts waiting and false when no press waits any more, so the
   /// cancel shortcut can be armed for a press that has no recording yet (`HotkeyController`).
   var onWaitingChanged: (@MainActor (Bool) -> Void)?
-  /// Quit closed dictation admission (`close()`): no press waits or starts from here on. Both
+  /// Quit closed dictation admission (`endForQuit()`): no press waits or starts from here on. Both
   /// start paths read this before their claim, so a free engine does not let one through.
   private(set) var isClosed = false
   /// The admitted press still starting up, until it mints or gives up (`finishStarting`).
@@ -151,7 +151,7 @@ final class PendingDictationRequests {
   }
 
   /// Quit: no request waits or starts from here on.
-  func close() {
+  func endForQuit() {
     isClosed = true
     starting = nil
     if let current = pending { end(current, outcome: .cancelled) }

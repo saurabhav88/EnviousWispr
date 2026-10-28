@@ -1110,7 +1110,7 @@ import Testing
     fx.asr.isModelLoaded = true
     guard let parked = await Self.parkPress(fx, { _ = await fx.starter.start() }) else { return }
 
-    fx.pendingRequests.close()
+    fx.pendingRequests.endForQuit()
     await parked.task.value
     // The engine is free now, so only the closure can refuse these.
     #expect(fx.engineLease.release(parked.meeting))

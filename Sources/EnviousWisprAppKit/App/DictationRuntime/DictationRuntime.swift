@@ -217,7 +217,7 @@ final class DictationRuntime {
 
   /// #3973 C1, quit: a press waiting for its engine turn ends, and no new one waits. Called
   /// before meeting teardown releases the engine, so that release cannot wake a start.
-  func closeDictationRequests() { pendingRequests.close() }
+  func closeDictationRequests() { pendingRequests.endForQuit() }
 
   func cancelRecording(trigger: UserCancelTrigger) async {
     await finalizer.cancel(trigger: trigger)
