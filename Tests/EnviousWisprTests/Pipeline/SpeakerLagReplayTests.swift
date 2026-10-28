@@ -32,13 +32,13 @@ struct SpeakerLagReplayTests {
   @Test("each verified surface's bundled correction is +500 ms; others have none")
   func bundledDefaults() throws {
     let bundled = try TalkerRules.decode(bundledData())
-    #expect(bundled.revision == 3)
-    for surface in [CallSpeakerSurface.zoomApp, .teamsApp, .zoomWeb, .meet] {
+    #expect(bundled.revision == 4)
+    for surface in [CallSpeakerSurface.zoomApp, .teamsApp, .zoomWeb, .meet, .teamsWeb] {
       #expect(
         TalkerRules.recordingStartLag(for: surface, selected: bundled, bundled: bundled)
           == CallSpeakerLag(milliseconds: 500), "\(surface)")
     }
-    for surface in [CallSpeakerSurface.teamsWeb, .slackApp, .slackWeb, .facetime] {
+    for surface in [CallSpeakerSurface.slackApp, .slackWeb, .facetime] {
       #expect(
         TalkerRules.recordingStartLag(for: surface, selected: bundled, bundled: bundled) == nil)
     }

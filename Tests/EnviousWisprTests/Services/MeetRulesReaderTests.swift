@@ -168,6 +168,6 @@ struct MeetRulesReaderTests {
     let thawed = try #require(TalkerRulesSnapshot.thaw(snapshot.frozen))
     #expect(thawed == snapshot.rules)
     #expect(thawed.rule(for: .meet).tilesAreParticipants)
-    #expect(thawed.revision == 3)
+    #expect(thawed.revision == 4)
   }
 }

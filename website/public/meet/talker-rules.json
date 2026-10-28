@@ -1,11 +1,12 @@
 {
   "schema": 1,
-  "revision": 3,
+  "revision": 4,
   "lagMs": {
     "zoom_app": 500,
     "teams_app": 500,
     "zoom_web": 500,
-    "meet": 500
+    "meet": 500,
+    "teams_web": 500
   },
   "selectors": [
     {
@@ -16,6 +17,17 @@
       "talkingClasses": [
         "kssMZb",
         "BlxGDf"
+      ],
+      "verification": "verified",
+      "tilesAreParticipants": true
+    },
+    {
+      "surface": "teams_web",
+      "tileRole": "AXMenuItem",
+      "nameSource": "ownLabel",
+      "nameSuffix": " Unverified",
+      "talkingClasses": [
+        "vdi-frame-occlusion"
       ],
       "verification": "verified",
       "tilesAreParticipants": true
