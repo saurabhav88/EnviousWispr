@@ -447,6 +447,9 @@ final class MeetingCoordinator {
   private var unresolvedReceipts: Set<UUID> = []
   /// #3973 C2: meetings whose failed ready write is being read back, with the edits waiting.
   @ObservationIgnored private var settlingCommits: [UUID: [CheckedContinuation<Void, Never>]] = [:]
+  /// #3973 C2: meetings whose failed ready write could not be read back: whether it landed is
+  /// unknown for this session, so no edit writes their record until the next launch decides.
+  @ObservationIgnored private var unknownCommits: Set<UUID> = []
   private var deleting: Set<UUID> = []
   /// Meetings whose Delete audio is under way, from its guard until its files are gone (#3994):
   /// claimed synchronously, so no pass can start on audio that is being removed.
@@ -1503,6 +1506,7 @@ final class MeetingCoordinator {
     }
     guard let onDisk = try? await writer.run({ try $0.load(id: meetingID) }) else {
       deps.log("meeting commit unsettled; next launch reconciles")
+      unknownCommits.insert(meetingID)
       notice = .storageFailed
       return false
     }
@@ -1645,7 +1649,7 @@ final class MeetingCoordinator {
 
   func rename(meetingID: UUID, title: String) async {
     await waitForCommitSettlement(meetingID)
-    guard var record = live[meetingID] else { return }
+    guard !unknownCommits.contains(meetingID), var record = live[meetingID] else { return }
     let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
     record.title = trimmed.isEmpty ? nil : String(trimmed.prefix(120))
     await persist(record)
@@ -1656,7 +1660,8 @@ final class MeetingCoordinator {
   /// meanwhile wins; it never names a meeting the user already named.
   func assignAITitle(meetingID: UUID, title: String) async {
     await waitForCommitSettlement(meetingID)
-    guard var record = live[meetingID], record.title == nil, !deleting.contains(meetingID),
+    guard !unknownCommits.contains(meetingID), var record = live[meetingID], record.title == nil,
+      !deleting.contains(meetingID),
       !closeOwned.contains(meetingID)
     else { return }
     // `MeetingSummary.splitTitle` keeps titles to one short line.
@@ -1856,6 +1861,7 @@ final class MeetingCoordinator {
       // #3973 C2: the receipt went with the folder.
       unpublishedReceipts.removeValue(forKey: record.id)
       unresolvedReceipts.remove(record.id)
+      unknownCommits.remove(record.id)
       live.removeValue(forKey: record.id)
       records.removeValue(forKey: record.id)
       publish()

@@ -186,6 +186,35 @@ struct MeetingTranscriptReplacementTests {
     #expect(onDisk.committedTranscriptGeneration == committed, "a later rename kept the commit")
   }
 
+  /// #3973 C2 (second confirming review): when the record cannot even be read back, whether the
+  /// ready write landed is unknown, so no rename writes the record (it could put the earlier
+  /// record over a landed commit); the next launch decides from the file and publishes.
+  @Test("a ready write whose outcome cannot be read back blocks renames until the next launch")
+  func unknownCommitBlocksEdits() async throws {
+    let harness = try Harness()
+    let (meetingID, _) = try await readyMeeting(harness)
+    harness.jobBehavior = Self.rerunResult
+    let recordURL = harness.store.recordURL(for: meetingID)
+    let hidden = recordURL.appendingPathExtension("hidden")
+    harness.writeGate.failAfterLanding { $0.state == .ready && $0.echoTurnIDs == ["mic-9"] }
+    // The landed file is moved aside as the failure is reported, so the read-back fails.
+    harness.writeGate.onLandingFailure.withLock {
+      $0 = { try? FileManager.default.moveItem(at: recordURL, to: hidden) }
+    }
+    #expect(await harness.coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet))
+    await eventually("pass over") { harness.coordinator.processing == nil }
+    #expect(harness.coordinator.isCommitReceiptPending(meetingID))
+    await harness.coordinator.rename(meetingID: meetingID, title: "Refused")
+    #expect(!FileManager.default.fileExists(atPath: recordURL.path), "the rename wrote nothing")
+    try FileManager.default.moveItem(at: hidden, to: recordURL)
+    #expect(try harness.store.load(id: meetingID).echoTurnIDs == ["mic-9"], "the landed commit")
+
+    let relaunched = try Harness(copying: harness.root)
+    relaunched.coordinator.launch()
+    await eventually("published") { relaunched.saved.count == 1 }
+    #expect(relaunched.saved.first?.text == "hello again")
+  }
+
   /// #3973 C2 (chunk review 3): a summary is written from, and judged against, only the
   /// committed generation's row. While a committed replacement is not yet in History the row
   /// History holds is the earlier one, so it counts as no row.
