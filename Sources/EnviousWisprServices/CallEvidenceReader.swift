@@ -824,7 +824,17 @@ public enum CallEvidenceReader {
     // A document fallback has no web-area scope, so it cannot authorize a window-wide state scan.
     guard match.family == .googleMeet, let page = walk.webArea
     else { return .init(startEvidence: start) }
-    return meetSnapshot(in: page, match: match, until: deadline, access: access)
+    // Optional lifetime interpretation must not spend the legacy start's entire
+    // return path. Reserve one exact-handle allowance for URL revalidation and
+    // 100ms for the existing owner bookend/return; the worker still expires at 1s.
+    let returnReserve: Duration = .milliseconds(100)
+    let stateBudget = Duration.seconds(Double(messagingTimeout))
+    let revalidationDeadline = deadline.advanced(by: .zero - returnReserve)
+    let stateDeadline = min(access.now().advanced(by: stateBudget),
+      revalidationDeadline.advanced(by: .zero - stateBudget))
+    guard access.now() < stateDeadline else { return .init(startEvidence: start) }
+    return meetSnapshot(in: page, match: match, until: stateDeadline,
+      revalidateUntil: revalidationDeadline, access: access)
   }
 
   private static let meetEndTitles: Set<String> = [
@@ -834,7 +844,8 @@ public enum CallEvidenceReader {
   /// Only the matched page's own UI is eligible. No body-text or nested-document search.
   private static func meetSnapshot(
     in page: AXUIElement, match: CallMeetingURL.Match,
-    until deadline: ContinuousClock.Instant, access: Access
+    until deadline: ContinuousClock.Instant, revalidateUntil revalidationDeadline: ContinuousClock.Instant,
+    access: Access
   ) -> Snapshot {
     let start = Evidence.call(family: match.family, room: match.room)
     var queue: [(AXUIElement, Int)] = [(page, 0)]
@@ -860,7 +871,7 @@ public enum CallEvidenceReader {
           : controlText(node, kAXDescriptionAttribute as CFString, until: deadline, access: access)
         if !description.valid { complete = false }
         if title.text == "Leave call" || description.text == "Leave call" {
-          guard sameRoom(page, match: match, until: deadline, access: access)
+          guard sameRoom(page, match: match, until: revalidationDeadline, access: access)
           else { return .init(startEvidence: .unknown) }
           return .init(
             startEvidence: start, continuity: .ongoing(family: match.family, room: match.room))
@@ -892,7 +903,7 @@ public enum CallEvidenceReader {
     }
     if cursor < queue.count || access.now() >= deadline { complete = false }
     if complete, ended {
-      guard sameRoom(page, match: match, until: deadline, access: access)
+      guard sameRoom(page, match: match, until: revalidationDeadline, access: access)
       else { return .init(startEvidence: .unknown) }
       return .init(startEvidence: .none, continuity: .ended(family: match.family, room: match.room))
     }

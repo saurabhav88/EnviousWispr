@@ -372,6 +372,114 @@ struct CallEvidenceReaderTests {
       .continuity == .ongoing(family: .zoom, room: "pid-70000"))
   }
 
+  @Test("Slow optional Meet controls leave time to return the already-qualified start and owner")
+  func slowMeetContinuityPreservesStartReturnBudget() {
+    let fixture = Fixture()
+    fixture.leaveTitle = "Other action"
+    fixture.leaveDescription = "Other action"
+    let began = fixture.instant
+    let overall = began.advanced(by: .seconds(1))
+    var qualifiedURL = false
+    var trace: [(attribute: String, allowance: Float, before: Duration, after: Duration)] = []
+    fixture.response = { f, element, attribute in
+      if !qualifiedURL, CFEqual(element, f.page), attribute == "AXURL" {
+        qualifiedURL = true
+        return nil
+      }
+      guard qualifiedURL else { return nil }
+      let allowance = f.issued.last ?? 0
+      let before = began.duration(to: f.instant)
+      // A bounded native read may consume its installed allowance. Never advance
+      // beyond that allowance, and do not sleep or model a real worker timer.
+      f.instant = f.instant.advanced(by: .seconds(Double(allowance)))
+      trace.append((attribute, allowance, before, began.duration(to: f.instant)))
+      return nil
+    }
+    let result = Reader.snapshot(for: .browser(.chrome), holderPID: fixture.pid, access: fixture.access)
+    #expect(result.startEvidence == .call(family: .googleMeet, room: "abc-defg-hij"))
+    #expect(result.continuity == .unknown)
+    #expect(fixture.instant.duration(to: overall) >= .milliseconds(100), "AX clock/allowance trace: \(trace)")
+    #expect(result.owner?.pid == fixture.pid)
+    #expect(!trace.isEmpty && trace.allSatisfy { $0.allowance > 0 && $0.allowance <= 0.25 })
+    #expect(fixture.refused.isEmpty)
+  }
+
+  @Test("Late qualified URL discovery skips optional Meet controls and still returns start")
+  func lateMeetURLSkipsOptionalState() {
+    let fixture = Fixture()
+    let began = fixture.instant
+    var slowDiscoveryReads = 3
+    var qualifiedURL = false
+    var optionalReads = 0
+    fixture.response = { f, element, attribute in
+      if qualifiedURL { optionalReads += 1; return nil }
+      if CFEqual(element, f.page), attribute == "AXURL" { qualifiedURL = true; return nil }
+      if slowDiscoveryReads > 0 {
+        slowDiscoveryReads -= 1
+        f.instant = f.instant.advanced(by: .seconds(Double(f.issued.last ?? 0)))
+      }
+      return nil
+    }
+    let result = Reader.snapshot(for: .browser(.chrome), holderPID: fixture.pid, access: fixture.access)
+    #expect(qualifiedURL && slowDiscoveryReads == 0)
+    #expect(began.duration(to: fixture.instant) == .milliseconds(750))
+    #expect(optionalReads == 0)
+    #expect(result.startEvidence == .call(family: .googleMeet, room: "abc-defg-hij"))
+    #expect(result.continuity == .unknown && result.owner?.pid == fixture.pid)
+    #expect(fixture.refused.isEmpty)
+  }
+
+  @Test("A fast Meet cue retains a separate bounded allowance for same-room revalidation")
+  func meetRoomRevalidationUsesReservedBudget() {
+    let fixture = Fixture()
+    fixture.leaveTitle = "Leave call"
+    let began = fixture.instant
+    var urlReads = 0
+    var delayedRoot = false
+    var revalidationAllowance: Float = 0
+    fixture.response = { f, element, attribute in
+      if CFEqual(element, f.page), attribute == "AXURL" {
+        urlReads += 1
+        if urlReads > 1 {
+          revalidationAllowance = f.issued.last ?? 0
+          f.instant = f.instant.advanced(by: .seconds(Double(revalidationAllowance)))
+        }
+      } else if urlReads == 1, !delayedRoot, CFEqual(element, f.page), attribute == "AXRole" {
+        delayedRoot = true
+        f.instant = f.instant.advanced(by: .seconds(Double(f.issued.last ?? 0) * 0.96))
+      }
+      return nil
+    }
+    let result = Reader.snapshot(for: .browser(.chrome), holderPID: fixture.pid, access: fixture.access)
+    #expect(delayedRoot && urlReads == 2 && revalidationAllowance == 0.25)
+    #expect(result.continuity == .ongoing(family: .googleMeet, room: "abc-defg-hij"))
+    #expect(result.startEvidence == .call(family: .googleMeet, room: "abc-defg-hij"))
+    #expect(result.owner?.pid == fixture.pid)
+    #expect(began.duration(to: fixture.instant) < .milliseconds(900))
+    #expect(fixture.refused.isEmpty)
+  }
+
+  @Test("An observed end heading before a slow unfinished sibling does not establish end")
+  func slowMeetSiblingAfterEndHeadingIsUnknown() {
+    let fixture = Fixture()
+    fixture.meetHeading = "You left the meeting"
+    fixture.leaveTitle = "Other action"
+    var delayed = false
+    fixture.response = { f, element, attribute in
+      if CFEqual(element, f.leave), attribute == "AXRole" {
+        delayed = true
+        f.instant = f.instant.advanced(by: .seconds(Double(f.issued.last ?? 0)))
+      }
+      return nil
+    }
+    let result = Reader.snapshot(for: .browser(.chrome), holderPID: fixture.pid, access: fixture.access)
+    #expect(delayed)
+    #expect(result.continuity == .unknown)
+    #expect(result.startEvidence == .call(family: .googleMeet, room: "abc-defg-hij"))
+    #expect(result.owner?.pid == fixture.pid)
+    #expect(fixture.refused.isEmpty)
+  }
+
   @Test("Healthy browser descendant URL still proves the call")
   func healthyBrowserURL() {
     let fixture = Fixture()
