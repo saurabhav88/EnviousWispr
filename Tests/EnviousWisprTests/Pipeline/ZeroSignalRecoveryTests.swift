@@ -909,6 +909,8 @@ struct ZeroSignalRecoveryTests {
     #expect(ctx.wrapper.testKernel.recordingOutcome == .completed)
     #expect(ctx.wrapper.testKernel.deliveredTranscript == "hello")
     #expect(try #require(ctx.engine.lastFinalizeBatchSamples).count == prefix)
+    let observed = try #require(ctx.engine.lastObservedSpeechSegments)
+    #expect(observed.map { [$0.startSample, $0.endSample] } == [[0, prefix]])
   }
 
   // MARK: - #4154 chunk 4 — downstream checks on a USB take
