@@ -11034,13 +11034,13 @@
         }
       }
     },
-    "Live words are not set up. Choose an engine in EnviousMeet settings, General, Live words." : {
+    "Live words are not set up. Choose an engine in EnviousMeet settings, Models, Live words." : {
       "comment" : "History, a recording meeting: no live words engine and language are chosen yet.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das Live-Transkript ist nicht eingerichtet. Wähle in den EnviousMeet-Einstellungen unter „Allgemein“ im Bereich „Live-Transkript“ eine Engine."
+            "value" : "Das Live-Transkript ist nicht eingerichtet. Wähle in den EnviousMeet-Einstellungen unter „Modelle“ im Bereich „Live-Transkript“ eine Engine."
           }
         }
       }
@@ -11067,24 +11067,24 @@
         }
       }
     },
-    "Live words need Apple's %@ model. Download it in EnviousMeet settings, General, Live words." : {
+    "Live words need Apple's %@ model. Download it in EnviousMeet settings, Models, Live words." : {
       "comment" : "History, a recording meeting: Apple's meeting speech model for the chosen language is not downloaded. The placeholder is a language name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Für das Live-Transkript wird Apples Modell für %@ benötigt. Lade es in den EnviousMeet-Einstellungen unter „Allgemein“ im Bereich „Live-Transkript“ herunter."
+            "value" : "Für das Live-Transkript wird Apples Modell für %@ benötigt. Lade es in den EnviousMeet-Einstellungen unter „Modelle“ im Bereich „Live-Transkript“ herunter."
           }
         }
       }
     },
-    "Live words need the Universal engine. Download it in EnviousMeet settings, General, Live words." : {
+    "Live words need the Universal engine. Download it in EnviousMeet settings, Models, Live words." : {
       "comment" : "History, a recording meeting: the Universal engine chosen for live words is not downloaded.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Für das Live-Transkript wird die Engine „Universal“ benötigt. Lade sie in den EnviousMeet-Einstellungen unter „Allgemein“ im Bereich „Live-Transkript“ herunter."
+            "value" : "Für das Live-Transkript wird die Engine „Universal“ benötigt. Lade sie in den EnviousMeet-Einstellungen unter „Modelle“ im Bereich „Live-Transkript“ herunter."
           }
         }
       }
@@ -12117,7 +12117,7 @@
       }
     },
     "Models" : {
-      "comment" : "AI Polish, Ollama: the model list sheet's title.",
+      "comment" : "AI Polish, Ollama: the model list sheet's title.\nEnviousMeet settings: tab name for the speech engines, languages and summary model.",
       "localizations" : {
         "de" : {
           "stringUnit" : {

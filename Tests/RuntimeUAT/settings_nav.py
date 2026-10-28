@@ -32,7 +32,7 @@ TABS = {
     ),
     "App Settings": ("Appearance", "Permissions", "Privacy", "Licenses"),
     # #4058: drawn only once EnviousMeet's setup is finished (see SETUP_GATED).
-    "EnviousMeet": ("General", "Call Apps", "Permissions"),
+    "EnviousMeet": ("General", "Models", "Call Apps", "Permissions"),
 }
 # Pages that show a setup instead of their tab strip until it is finished.
 SETUP_GATED = {"EnviousMeet"}

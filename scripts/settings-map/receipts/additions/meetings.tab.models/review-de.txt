@@ -1,0 +1,8 @@
+{
+  "language": "de",
+  "words": [],
+  "phrases": [
+    "Modelle für Meetings",
+    "Modelle in EnviousMeet"
+  ]
+}

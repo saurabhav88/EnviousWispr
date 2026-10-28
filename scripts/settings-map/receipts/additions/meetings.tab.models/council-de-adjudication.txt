@@ -1,0 +1,1 @@
+GPT proposed adding Meetingmodelle, Transkriptsprache, Meetingzusammenfassungen and 'Sprache für Meetingtranskripte'. Rejected: those terms belong to the sibling rows meetingTranscriptLanguage and the summary row; the per-language review kept the tab block free of sibling collisions. Gemini: OK. Adopted block unchanged.

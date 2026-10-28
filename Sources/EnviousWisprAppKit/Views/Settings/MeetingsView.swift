@@ -33,7 +33,7 @@ struct MeetingsView: View {
     }
   }
 
-  /// #4058: the settings in three tabs, drawn like Dictation Settings and App Settings. The
+  /// #4058: the settings in tabs (#3973 PR B added Models), drawn like Dictation Settings and App Settings. The
   /// call-sound explainer and the notice banner sit above the tab strip, so they show on every
   /// tab (the banner can carry the microphone fix).
   private var settingsPage: some View {
@@ -77,6 +77,7 @@ struct MeetingsView: View {
   private var tabContent: some View {
     switch selection {
     case .general: generalTab
+    case .models: modelsTab
     case .callApps: callAppsTab
     case .permissions: permissionsTab
     }
@@ -90,13 +91,7 @@ struct MeetingsView: View {
           BrandedRow { MeetingCallSoundRow() }
           BrandedRow { MeetingWriteSummaryRow() }
           BrandedRow { MeetingTurnsOffDictationRow() }
-          BrandedRow { summaryWriterRow }
           BrandedRow(showDivider: false) { MeetingCalendarNamesRow() }
-        }
-        // #4105: live words and the transcript's language, one section.
-        BrandedSection {
-          BrandedRow { MeetingLiveWordsRow() }
-          BrandedRow(showDivider: false) { MeetingTranscriptLanguageRow() }
         }
         VStack(alignment: .leading, spacing: 8) {
           Text(MeetingsCopy.keptUntilDeleted)
@@ -132,6 +127,22 @@ struct MeetingsView: View {
           .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 4)
+      }
+    }
+  }
+
+  /// #3973 PR B: every model choice on one tab (founder 2026-10-27): live words and the
+  /// transcript's language in one section (#4105), and who writes summaries.
+  private var modelsTab: some View {
+    SettingsContentView {
+      VStack(alignment: .leading, spacing: 16) {
+        BrandedSection {
+          BrandedRow { MeetingLiveWordsRow() }
+          BrandedRow(showDivider: false) { MeetingTranscriptLanguageRow() }
+        }
+        BrandedSection {
+          BrandedRow(showDivider: false) { summaryWriterRow }
+        }
       }
     }
   }
