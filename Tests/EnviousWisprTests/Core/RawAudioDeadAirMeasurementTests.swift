@@ -141,6 +141,145 @@ struct RawAudioDeadAirMeasurementTests {
     #expect(whole == window, "a sub-window buffer's loudest window is the whole buffer")
   }
 
+  // MARK: #4154 D-Q: exact-zero runs left out of the whole-buffer RMS decision
+
+  /// 1 s of `.0013`, `zeros` exact zeros, 1 s of `.0013`. The quiet level alone
+  /// clears the 0.00125 whole-buffer floor; peak and window values stay under
+  /// theirs, so the whole-buffer term is the only one that can keep it alive.
+  private func quietPause(zeros: Int, leading: Int = 0, trailing: Int = 0) -> [Float] {
+    [Float](repeating: 0, count: leading)
+      + [Float](repeating: 0.0013, count: 16_000)
+      + [Float](repeating: 0, count: zeros)
+      + [Float](repeating: 0.0013, count: 16_000)
+      + [Float](repeating: 0, count: trailing)
+  }
+
+  /// When this fails, a USB user's quiet sentence with a long pause in the
+  /// middle is thrown away as "no speech". The default call is today's
+  /// verdict: the 5 s pause dilutes the quiet speech to dead air.
+  @Test("a long interior zero run no longer dilutes quiet input to dead air")
+  func interiorZeroRunDoesNotDiluteQuietInput() throws {
+    let samples = quietPause(zeros: 80_000)
+    let p = peak(samples)
+
+    let today = RawAudioDeadAirClassifier.measure(samples, peak: p)
+    let excluding = RawAudioDeadAirClassifier.measure(
+      samples, peak: p, excludingExactZeroRunsOfAtLeast: 16_000)
+
+    #expect(today.isDeadAir == true, "baseline: the default call must keep today's verdict")
+    #expect(today.wholeBufferRMSExcludingZeroRuns == nil)
+    #expect(excluding.isDeadAir == false)
+    let raw = try #require(excluding.wholeBufferRMS)
+    let decision = try #require(excluding.wholeBufferRMSExcludingZeroRuns)
+    #expect(abs(raw - 0.000_695) < 0.000_005, "raw RMS keeps its whole-buffer meaning")
+    #expect(raw == today.wholeBufferRMS, "raw RMS must not change when the decision mode is on")
+    #expect(abs(decision - 0.0013) < 0.000_005)
+    #expect(
+      excluding.maxWindowRMS == nil, "the whole-buffer term decided; the window loop never ran")
+  }
+
+  /// Only runs of at least `minRun` leave the denominator, wherever they sit.
+  /// 15,999 is one short of the bar and stays in; leading and trailing runs
+  /// count the same as interior ones.
+  @Test(
+    "only exact-zero runs of at least the minimum length leave the denominator",
+    arguments: [
+      // (label, zeros, leading, trailing, excluded)
+      ("interior one short of the bar", 15_999, 0, 0, false),
+      ("interior exactly the bar", 16_000, 0, 0, true),
+      ("interior one past the bar", 16_001, 0, 0, true),
+      ("leading run", 0, 16_000, 0, true),
+      ("trailing run", 0, 0, 16_000, true),
+    ] as [(String, Int, Int, Int, Bool)]
+  )
+  func runLengthBoundaries(
+    label: String, zeros: Int, leading: Int, trailing: Int, excluded: Bool
+  ) throws {
+    let samples = quietPause(zeros: zeros, leading: leading, trailing: trailing)
+    let measured = RawAudioDeadAirClassifier.measure(
+      samples, peak: peak(samples), excludingExactZeroRunsOfAtLeast: 16_000)
+
+    let raw = try #require(measured.wholeBufferRMS, "\(label)")
+    let decision = try #require(measured.wholeBufferRMSExcludingZeroRuns, "\(label)")
+    if excluded {
+      #expect(abs(decision - 0.0013) < 0.000_005, "\(label): run must leave the denominator")
+      #expect(decision > raw, "\(label)")
+    } else {
+      #expect(decision == raw, "\(label): a short run must stay in the denominator")
+    }
+  }
+
+  /// A buffer that is nothing but a qualifying run has an empty denominator.
+  /// The decision value is a finite 0, never NaN, and the take stays dead air
+  /// through the unchanged window loop.
+  @Test("an all-zero buffer gets a decision RMS of 0 and stays dead air")
+  func allZeroBufferStaysDeadAir() throws {
+    let samples = [Float](repeating: 0, count: 32_000)
+    let measured = RawAudioDeadAirClassifier.measure(
+      samples, peak: 0, excludingExactZeroRunsOfAtLeast: 16_000)
+
+    #expect(measured.isDeadAir == true)
+    let decision = try #require(measured.wholeBufferRMSExcludingZeroRuns)
+    #expect(decision == 0)
+    #expect(decision.isNaN == false)
+    #expect(measured.wholeBufferRMS == 0)
+    #expect(measured.maxWindowRMS == 0)
+  }
+
+  /// Below-floor input stays dead air with the exclusion on: removing zeros
+  /// lifts the average only to the level the input really had.
+  @Test("below-floor input plus a long zero run stays dead air")
+  func belowFloorInputStaysDeadAir() {
+    let samples =
+      [Float](repeating: 0.001, count: 16_000) + [Float](repeating: 0, count: 80_000)
+    let measured = RawAudioDeadAirClassifier.measure(
+      samples, peak: peak(samples), excludingExactZeroRunsOfAtLeast: 16_000)
+
+    #expect(measured.isDeadAir == true)
+    #expect(measured.maxWindowRMS != nil, "the window loop ran and agreed")
+  }
+
+  /// With no qualifying run the decision equals the raw value and every tuned
+  /// shape keeps its verdict, so turning the mode on changes nothing else.
+  @Test("with no qualifying run the exclusion mode keeps every tuned verdict")
+  func exclusionModeKeepsTunedVerdicts() {
+    let shapes: [[Float]] = [
+      [Float](repeating: 0.001, count: 16_000),
+      [Float](repeating: 0.0011, count: 16_000),
+      [Float](repeating: 0.0013, count: 16_000),
+      [Float](repeating: 0.001, count: 320),
+      [Float](repeating: 0.0025, count: 320),
+    ]
+    for samples in shapes {
+      let p = peak(samples)
+      let today = RawAudioDeadAirClassifier.measure(samples, peak: p)
+      let excluding = RawAudioDeadAirClassifier.measure(
+        samples, peak: p, excludingExactZeroRunsOfAtLeast: 16_000)
+      #expect(excluding.isDeadAir == today.isDeadAir)
+      #expect(excluding.wholeBufferRMS == today.wholeBufferRMS)
+      #expect(excluding.maxWindowRMS == today.maxWindowRMS)
+      #expect(excluding.wholeBufferRMSExcludingZeroRuns == today.wholeBufferRMS)
+    }
+  }
+
+  /// The run counter walks the slice's own indices, like the window loop.
+  @Test("the exclusion agrees for an Array and a non-zero-offset slice")
+  func exclusionAgreesAcrossSliceOffset() {
+    var backing = [Float](repeating: 0.9, count: 1_000)
+    backing.append(contentsOf: quietPause(zeros: 80_000))
+    let slice = backing[1_000...]
+    let array = Array(slice)
+
+    let slicePeak = slice.reduce(Float(0)) { max($0, abs($1)) }
+    let arrayResult = RawAudioDeadAirClassifier.measure(
+      array, peak: peak(array), excludingExactZeroRunsOfAtLeast: 16_000)
+    let sliceResult = RawAudioDeadAirClassifier.measure(
+      slice, peak: slicePeak, excludingExactZeroRunsOfAtLeast: 16_000)
+
+    #expect(arrayResult == sliceResult, "slice offset changed the measurement")
+    #expect(sliceResult.isDeadAir == false)
+  }
+
   // MARK: #3834 advisory bar
 
   /// When this fails, the user sees "Audio isn't capturing" after a short tap

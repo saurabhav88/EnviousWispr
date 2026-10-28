@@ -190,6 +190,9 @@ final class TranscriptionCheckpointLog {
 final class DeadMicTelemetryLog {
   var retireAttempts: [DeadMicRetireAttemptContext] = []
   var recoveries: [DeadMicRecoveryOutcome] = []
+  /// #4154: the kernel's legacy zombie-zero-peak fallback, observed so a test can
+  /// prove a USB suffix completion does not fall back to it.
+  var zombieZeroPeaks: [ZeroPeakContext] = []
 }
 
 @MainActor
@@ -257,6 +260,7 @@ final class KernelRecordingSession: RecordingSessionDriving {
   private let deadMicLog = DeadMicTelemetryLog()
   var deadMicRetireAttempts: [DeadMicRetireAttemptContext] { deadMicLog.retireAttempts }
   var deadMicRecoveries: [DeadMicRecoveryOutcome] { deadMicLog.recoveries }
+  var zombieZeroPeaks: [ZeroPeakContext] { deadMicLog.zombieZeroPeaks }
 
   init(
     engine: FakeEngine,
@@ -380,6 +384,7 @@ final class KernelRecordingSession: RecordingSessionDriving {
         transcriptionCheckpointLog.events.append(event)
       },
       minimumRecordingTicks: minimumRecordingTicks,
+      zombieZeroPeakTelemetry: { [deadMicLog] ctx in deadMicLog.zombieZeroPeaks.append(ctx) },
       captureTelemetry: captureTelemetry,
       deadMicRetireAttemptTelemetry: { [deadMicLog] ctx in
         deadMicLog.retireAttempts.append(ctx)

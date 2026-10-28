@@ -2238,13 +2238,25 @@ final class RecordingSessionKernel {
     }
 
     // Heartpath 5b (#1520): the pure sample fact (sample-shape-only, device-
-    // independent), computed ONCE below both early terminals. It drives TWO
+    // independent), computed ONCE below both early terminals. Through its
+    // INTERPRETED form `signalZeroMode` (#4154, below) it drives TWO
     // independent decisions: the eligibility-gated stamp just below (terminal +
     // telemetry + salvage, unchanged) AND the signal-only source retire further
     // down (independent of eligibility — the #1520 gap).
-    let signalZeroMode = Self.classifyZeroSignalAtStop(
+    let sampleZeroShape = Self.classifyZeroSignalAtStop(
       captureResult.samples,
       drainedPreRollSampleCount: audioCapture.drainedPreRollSampleCount)
+    // #4154: on a confirmed-bound USB take a trailing zero run is not a failure.
+    // The shape above stays a pure sample fact (it still qualifies the trim
+    // below); only its INTERPRETATION changes. "Confirmed-bound" means this
+    // take's frozen route came from the bound source itself (`helper_reported`),
+    // so an app-derived guess never enrolls. A whole-zero take keeps today's path.
+    let zeroSignalBypassedForUSB = !AudioCaptureManager.zeroSamplesEndTake(
+      forEffectiveTransport: lastResolvedRoute?.routeResolutionSource == "helper_reported"
+        ? lastResolvedRoute?.effective : nil)
+    let signalZeroMode =
+      zeroSignalBypassedForUSB && sampleZeroShape == .becameZeroMidCapture
+      ? nil : sampleZeroShape
 
     // #1317 §3.6 STOP-win row: only when the reactive detector never classified
     // this run (raced by STOP, or the capture was too short to reach its own
@@ -2296,8 +2308,10 @@ final class RecordingSessionKernel {
     }
 
     // Heartpath 5b (#1520): retire the source when THIS take was zero-signal by
-    // EITHER confirmation route — the stop-time signal fact (`signalZeroMode`, which
-    // fires even when the device-eligibility guess refused, closing the #1520 gap)
+    // EITHER confirmation route — the stop-time signal fact as INTERPRETED
+    // (`signalZeroMode`: the pure `sampleZeroShape`, except nil for a confirmed-bound
+    // USB mid-take run, #4154; it fires even when the device-eligibility guess
+    // refused, closing the #1520 gap)
     // OR the reactive detector's eligibility-gated stamp (which can confirm a
     // mid-capture zero run whose shape the stop-time samples no longer show — e.g. a
     // real-speech prefix whose zero suffix was already drained). Fenced + idempotent
@@ -2368,7 +2382,9 @@ final class RecordingSessionKernel {
     // #1317 fast-follow (cloud review PR #1512 + live UAT repro): trim the
     // confirmed trailing zero suffix out of the salvaged capture ONCE, here —
     // the single point downstream of BOTH ways `.becameZeroMidCapture` gets
-    // confirmed (the reactive mid-capture detector, stamped at
+    // confirmed (and, since #4154, of the unconfirmed but classifier-qualified
+    // suffix on a confirmed-bound USB take, which still requires the same
+    // non-dead-air prefix) (the reactive mid-capture detector, stamped at
     // `telemetryState.zeroSignalFailureMode` above before `captureResult`
     // even existed; or the STOP-time backstop just above) and upstream of
     // every consumer that would otherwise average the zero suffix into a
@@ -2378,7 +2394,11 @@ final class RecordingSessionKernel {
     // discarded). Device-eligibility for the STOP-time branch was already
     // checked in the `if` above; the reactive branch was already
     // eligibility-gated when `AudioCaptureManager` stamped it (§3.0).
-    if telemetryState.zeroSignalFailureMode == .becameZeroMidCapture {
+    // #4154: a confirmed-bound USB take trims the same classifier-qualified suffix
+    // without the stamp; the dilution reason above still applies to it.
+    if telemetryState.zeroSignalFailureMode == .becameZeroMidCapture
+      || (zeroSignalBypassedForUSB && sampleZeroShape == .becameZeroMidCapture)
+    {
       let suffixCount = Self.trailingZeroSuffixCount(captureResult.samples)
       if suffixCount > 0 {
         captureResult = CaptureResult(
@@ -2412,11 +2432,17 @@ final class RecordingSessionKernel {
     // a quiet `.noSpeech` instead of a user-visible ASR failure (#964 R2).
     var attemptedFromEnergyDespiteNoSegments = false
     if speechEvidence == .confirmedNoSpeech {
-      // #1845: `measure` instead of `rawAudioIsDeadAir` — the identical verdict,
+      // #1845: `measure` instead of `rawAudioIsDeadAir` — the identical verdict
+      // with exclusion off (every take except a confirmed-bound USB one, below),
       // plus the two energy values the classifier already computed. Read ONCE;
       // a second call would be a second measurement of the same buffer.
+      // #4154 (D-Q): on a confirmed-bound USB take, long exact-zero runs (the
+      // pauses that no longer end the take) leave the whole-buffer RMS
+      // denominator, so they cannot dilute quiet input that was audible alone.
       let deadAirMeasurement = RawAudioDeadAirClassifier.measure(
-        captureResult.samples, peak: rawPeakAudioLevel)
+        captureResult.samples, peak: rawPeakAudioLevel,
+        excludingExactZeroRunsOfAtLeast: zeroSignalBypassedForUSB
+          ? AudioConstants.minimumTranscriptionSamples : nil)
       if deadAirMeasurement.isDeadAir {
         // #1845: route frozen from THIS take's snapshot, never from the live
         // `audioCapture.currentResolvedRoute` — by terminal time that can
@@ -5005,8 +5031,9 @@ final class RecordingSessionKernel {
   /// #1317 fast-follow: exact count of trailing exact-zero samples — the one
   /// authority both `classifyZeroSignalAtStop` (below) and the post-capture
   /// `.becameZeroMidCapture` trim in `runForwardPath` use, so the trim
-  /// boundary can never disagree with the classification decision that named
-  /// the session `.becameZeroMidCapture` in the first place.
+  /// boundary can never disagree with the classification that found the
+  /// `.becameZeroMidCapture` shape (on a confirmed-bound USB take that shape
+  /// qualifies the trim without stamping the session, #4154).
   nonisolated static func trailingZeroSuffixCount(_ samples: [Float]) -> Int {
     var count = 0
     for s in samples.reversed() {
@@ -5039,7 +5066,8 @@ final class RecordingSessionKernel {
   /// own confidence threshold before it ended. Pure + nonisolated so the
   /// boundary cases unit-test without a kernel. Sample-shape only — the
   /// caller still runs the §3.0 device-alive/not-muted discriminator before
-  /// trusting the result.
+  /// trusting the result as a FAILURE; the confirmed-bound USB suffix trim
+  /// (#4154) uses the shape without that discriminator, by design.
   /// #1810: `drainedPreRollSampleCount` takes NO default. The stop path is the
   /// second consumer of the 1.0s bar and it reads the SAME buffer the reactive
   /// detector does — `captureResult.samples` includes the drained pre-roll — so
