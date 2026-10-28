@@ -45,13 +45,13 @@ export function tapFrame(t) {
 }
 
 function init(root) {
-  const card = root.querySelector('.ad-card');
-  const pill = root.querySelector('.ad-pill');
-  const bubble = root.querySelector('.ad-bubble');
-  const clock = root.querySelector('.ad-clock');
-  const ring = root.querySelector('.ad-ring');
-  const hand = root.querySelector('.ad-hand');
-  const bars = [...root.querySelectorAll('.ad-rail i')];
+  const card = root.querySelector('.ewa-card');
+  const pill = root.querySelector('.ewa-pill');
+  const bubble = root.querySelector('.ewa-bubble');
+  const clock = root.querySelector('.ewa-clock');
+  const ring = root.querySelector('.ewa-ring');
+  const hand = root.querySelector('.ewa-hand');
+  const bars = [...root.querySelectorAll('.ewa-rail i')];
   const toggle = root.querySelector('[data-android-demo-toggle]');
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   let visible = false;

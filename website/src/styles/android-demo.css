@@ -7,7 +7,7 @@
   max-width: 460px;
   margin: 0 auto;
 }
-.ad-card {
+.ewa-card {
   --u: calc(100cqw / 360);
   position: relative;
   width: 100%;
@@ -23,7 +23,7 @@
   line-height: 1;
   user-select: none;
 }
-.ad-bar {
+.ewa-bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -32,7 +32,7 @@
   font-size: calc(16 * var(--u));
   word-spacing: calc(10 * var(--u));
 }
-.ad-row {
+.ewa-row {
   display: flex;
   align-items: center;
   gap: calc(14 * var(--u));
@@ -40,23 +40,23 @@
   padding: 0 calc(13 * var(--u));
   border-top: calc(1 * var(--u)) solid #2e2e2e;
 }
-.ad-chip {
+.ewa-chip {
   padding: calc(3 * var(--u)) calc(9 * var(--u));
   border-radius: 99px;
   background: #2e3238;
   font-size: calc(12 * var(--u));
 }
-.ad-chev {
+.ewa-chev {
   margin-left: auto;
   font-size: calc(15 * var(--u));
 }
-.ad-body {
+.ewa-body {
   position: relative;
   height: calc(124 * var(--u));
   padding: calc(11 * var(--u)) calc(13 * var(--u)) 0;
   border-top: calc(1 * var(--u)) solid #2e2e2e;
 }
-.ad-email {
+.ewa-email {
   display: flex;
   color: #e8eaed;
   flex-direction: column;
@@ -64,10 +64,10 @@
   font-size: calc(13 * var(--u));
   line-height: calc(19 * var(--u));
 }
-.ad-gap {
+.ewa-gap {
   height: calc(19 * var(--u));
 }
-.ad-cursor {
+.ewa-cursor {
   position: absolute;
   top: calc(13 * var(--u));
   left: calc(13 * var(--u));
@@ -76,7 +76,7 @@
   background: #e8eaed;
   opacity: 0;
 }
-.ad-keyboard {
+.ewa-keyboard {
   position: absolute;
   left: 0;
   right: 0;
@@ -88,17 +88,17 @@
   padding: calc(4 * var(--u));
   background: #22262b;
 }
-.ad-tools {
+.ewa-tools {
   display: flex;
   justify-content: space-around;
   align-items: center;
   height: calc(30 * var(--u));
   font-weight: 700;
 }
-.ad-gif {
+.ewa-gif {
   font-size: calc(9 * var(--u));
 }
-.ad-mic {
+.ewa-mic {
   display: grid;
   place-items: center;
   width: calc(26 * var(--u));
@@ -107,15 +107,15 @@
   background: #3a3f46;
   font-size: calc(12 * var(--u));
 }
-.ad-keys {
+.ewa-keys {
   display: flex;
   flex: 1;
   gap: calc(4 * var(--u));
 }
-.ad-keys.inset {
+.ewa-keys.inset {
   padding: 0 calc(16 * var(--u));
 }
-.ad-key {
+.ewa-key {
   display: grid;
   flex: 1;
   place-items: center;
@@ -123,18 +123,18 @@
   background: #3a3f46;
   font-size: calc(14 * var(--u));
 }
-.ad-key.wide {
+.ewa-key.wide {
   flex: 1.5;
 }
-.ad-key.space {
+.ewa-key.space {
   flex: 5;
 }
-.ad-key.fn {
+.ewa-key.fn {
   background: #2c3038;
   font-size: calc(11 * var(--u));
 }
 /* The bubble: 56 dp, 12 dp from the right edge, 18 dp above the keyboard. */
-.ad-bubble {
+.ewa-bubble {
   position: absolute;
   left: calc(292 * var(--u));
   top: calc(158 * var(--u));
@@ -143,7 +143,7 @@
   width: calc(56 * var(--u));
   height: calc(56 * var(--u));
 }
-.ad-ground {
+.ewa-ground {
   display: grid;
   place-items: center;
   width: calc(48 * var(--u));
@@ -152,13 +152,13 @@
   background: #131019a3;
   box-shadow: 0 calc(2 * var(--u)) calc(6 * var(--u)) #13101966;
 }
-.ad-lips {
+.ewa-lips {
   display: block;
   width: calc(38 * var(--u));
   height: calc(38 * var(--u));
 }
 /* The full recorder pill: 232 x 60 dp, centred on the bubble, right edge 12 dp in. */
-.ad-pill {
+.ewa-pill {
   position: absolute;
   left: calc(116 * var(--u));
   top: calc(156 * var(--u));
@@ -174,7 +174,7 @@
   opacity: 0;
   transform: translateX(calc(240 * var(--u)));
 }
-.ad-clock {
+.ewa-clock {
   flex: 0 0 calc(48 * var(--u));
   color: #ece9f4;
   font-size: calc(15 * var(--u));
@@ -182,20 +182,20 @@
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
-.ad-rail {
+.ewa-rail {
   display: flex;
   flex: 1;
   align-items: center;
   gap: calc(1.4 * var(--u));
   height: calc(22 * var(--u));
 }
-.ad-rail i {
+.ewa-rail i {
   flex: 1;
   height: 14%;
   border-radius: 99px;
   background: #3a3547;
 }
-.ad-control {
+.ewa-control {
   display: grid;
   flex: 0 0 auto;
   place-items: center;
@@ -203,16 +203,16 @@
   height: calc(40 * var(--u));
   border-radius: 50%;
 }
-.ad-control + .ad-control {
+.ewa-control + .ewa-control {
   margin-left: calc(-2 * var(--u));
 }
-.ad-cancel {
+.ewa-cancel {
   background: #2a273399;
 }
-.ad-accept {
+.ewa-accept {
   background: #7c3aedb3;
 }
-.ad-control svg {
+.ewa-control svg {
   width: 100%;
   height: 100%;
   fill: none;
@@ -221,7 +221,7 @@
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.ad-ring {
+.ewa-ring {
   position: absolute;
   left: calc(303 * var(--u));
   top: calc(169 * var(--u));
@@ -232,7 +232,7 @@
   opacity: 0;
 }
 /* The hand's fingertip sits at (20, 6) of its 80 x 96 canvas; the script moves it. */
-.ad-hand {
+.ewa-hand {
   position: absolute;
   left: calc(300 * var(--u));
   top: calc(180 * var(--u));
@@ -242,22 +242,22 @@
   opacity: 0;
   pointer-events: none;
 }
-.ad-hand-pose {
+.ewa-hand-pose {
   transform-box: view-box;
   transform-origin: 20px 6px;
   transform: rotate(-15deg);
 }
-.android-demo[data-pressed] .ad-hand-pose {
+.android-demo[data-pressed] .ewa-hand-pose {
   transform: rotate(-15deg) scale(0.94);
 }
 /* Before the words land: the cursor blinks in the empty body. */
-.android-demo[data-phase='typing'] .ad-email {
+.android-demo[data-phase='typing'] .ewa-email {
   visibility: hidden;
 }
-.android-demo[data-phase='typing'][data-cursor] .ad-cursor {
+.android-demo[data-phase='typing'][data-cursor] .ewa-cursor {
   opacity: 1;
 }
-.ad-steps {
+.ewa-steps {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
@@ -265,7 +265,7 @@
   gap: 10px 14px;
   margin-top: 18px;
 }
-.ad-steps ol {
+.ewa-steps ol {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
@@ -274,7 +274,7 @@
   padding: 0;
   list-style: none;
 }
-.ad-steps li {
+.ewa-steps li {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -286,7 +286,7 @@
   font-weight: 600;
   transition: border-color 0.2s, color 0.2s, background 0.2s;
 }
-.ad-steps li span {
+.ewa-steps li span {
   display: grid;
   place-items: center;
   width: 22px;
@@ -308,12 +308,12 @@
   background: var(--accent);
   color: var(--bg, #fff);
 }
-.ad-toggle-slot {
+.ewa-toggle-slot {
   flex: 0 0 100%;
   min-height: 34px;
   text-align: center;
 }
-.ad-toggle {
+.ewa-toggle {
   padding: 6px 4px;
   background: none;
   color: var(--accent);
@@ -323,13 +323,13 @@
   text-underline-offset: 3px;
   cursor: pointer;
 }
-.ad-toggle:focus-visible {
+.ewa-toggle:focus-visible {
   outline: 3px solid var(--accent);
   outline-offset: 3px;
   border-radius: 4px;
 }
 @media (prefers-reduced-motion: reduce) {
-  .ad-steps li {
+  .ewa-steps li {
     transition: none;
   }
 }

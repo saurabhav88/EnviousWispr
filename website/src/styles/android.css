@@ -64,27 +64,115 @@
   letter-spacing: -0.045em;
   line-height: 1.12;
 }
-.android-polish-grid {
+.android-polish-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 50px;
+}
+.android-polish-top > p {
+  max-width: 420px;
+  color: var(--body);
+  font-size: 18px;
+  line-height: 1.75;
+}
+.polish-options {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 35px;
+  gap: 18px;
   margin-top: 40px;
 }
-.android-polish-grid > div {
-  padding: 26px;
+.polish-option {
+  padding: 24px 26px;
   border: 1px solid var(--line);
   border-radius: 18px;
-  background: var(--surface);
 }
-.android-polish-grid h3 {
+.polish-option.featured {
+  border-color: var(--accent);
+  background: var(--surface);
+  box-shadow: 0 18px 50px #6f26b914;
+}
+.polish-option-name {
+  display: inline-block;
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  color: var(--body);
+  font-size: 13px;
+  font-weight: 600;
+}
+.polish-option.featured .polish-option-name {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--bg, #fff);
+}
+.polish-option h3 {
+  margin-top: 16px;
   font-size: 21px;
   font-weight: 600;
 }
-.android-polish-grid p {
+.polish-option p {
+  margin-top: 10px;
+  color: var(--body);
+  font-size: 16px;
+  line-height: 1.7;
+}
+.polish-style {
+  display: grid;
+  grid-template-columns: 0.8fr 1.2fr;
+  gap: 24px 60px;
+  margin-top: 26px;
+  padding: 30px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+}
+.polish-style-intro h3 {
+  font-size: 23px;
+  font-weight: 600;
+}
+.polish-style-intro p {
   margin-top: 12px;
   color: var(--body);
   font-size: 16px;
-  line-height: 1.75;
+  line-height: 1.7;
+}
+.polish-style dl {
+  display: grid;
+  gap: 22px;
+  margin: 0;
+}
+.polish-setting dt {
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 600;
+}
+.polish-setting dd {
+  margin: 8px 0 0;
+}
+.polish-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.polish-chip {
+  padding: 6px 13px;
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  color: var(--body);
+  font-size: 14px;
+}
+.polish-chip.on {
+  border-color: var(--accent);
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 600;
+}
+.polish-hint {
+  display: block;
+  margin-top: 8px;
+  color: var(--body);
+  font-size: 14px;
+  line-height: 1.6;
 }
 .android-privacy .benefit-copy > p + p {
   margin-top: 16px;
@@ -132,12 +220,18 @@
 }
 @media (max-width: 850px) {
   .android-steps,
-  .android-polish-grid {
+  .polish-options,
+  .polish-style {
     grid-template-columns: 1fr;
     gap: 22px;
   }
   .android-needs {
     grid-template-columns: 1fr;
+  }
+  .android-polish-top {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 14px;
   }
   .android-needs > p {
     grid-column: auto;
