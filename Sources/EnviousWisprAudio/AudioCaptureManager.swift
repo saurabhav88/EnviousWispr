@@ -404,7 +404,8 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   private var deadAirDetector = DeadAirStreamingDetector()
 
   /// How many leading exact-zero samples the mid-take all-zero detector tolerates
-  /// before it concludes the microphone is dead. ONE owner, ONE code path in every
+  /// before it concludes the microphone is dead (not consulted on a confirmed-bound
+  /// USB take, where `zeroSamplesEndTake` skips classification, #4154). ONE owner, ONE code path in every
   /// configuration — release and DEBUG differ only in whether an override is
   /// consulted, never in how the verdict is computed (#1788).
   ///
@@ -485,7 +486,10 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   }
 
   /// #4154: whether exact-zero samples alone may end or relabel a take on this
-  /// transport. Only a confirmed-bound USB microphone opts out: there, zeros are
+  /// transport. Only a confirmed-bound USB microphone opts out, and only in two
+  /// places: the reactive detector skips both shapes, and the kernel's stop-time
+  /// path stops interpreting a trailing mid-take zero run as a failure. A
+  /// whole-zero USB take keeps today's stop-time handling. On USB, zeros are
   /// the only evidence the zero-signal paths act on (eligibility already requires
   /// the device alive and unmuted), a USB hardware mute is indistinguishable from
   /// a fault (#1578), and the reporter's cause is not established. Silence is
@@ -1499,8 +1503,9 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   // MARK: - Reactive dead-air detection (#1317, ported in-process at C1 #1543)
 
   /// Feed this batch's raw samples into the per-generation all-zero
-  /// harness-glitch detector; when it crosses a confidence threshold, run the
-  /// §3.0 device discriminator and — only if it returns `.eligible` — fire
+  /// harness-glitch detector; when it crosses a confidence threshold (and the
+  /// bind is not a confirmed-bound USB microphone, which tolerates the run,
+  /// #4154), run the §3.0 device discriminator and — only if it returns `.eligible` — fire
   /// `onCaptureStalled` with the matching failure mode. Any of the five
   /// non-eligible reasons fails closed: no fire, today's honest no-speech path
   /// is untouched, the run's reason is frozen so the kernel's STOP-time backstop

@@ -531,8 +531,9 @@ import Testing
     return (wrapper, capture)
   }
 
-  /// When this fails, the dead-mic recovery series misreports a USB user who
-  /// recovered: the earlier retire is never resolved, or is resolved twice.
+  /// When this fails, the dead-mic recovery series misattributes a later durable
+  /// completion: the earlier retire is never resolved, or is resolved twice. The
+  /// resolution is mechanical; it does not establish that the mic recovered.
   @Test("#4154: a USB suffix completion resolves the earlier retire watch exactly once")
   func priorRetireThenUSBSuffixResolvesLaterSuccessExactlyOnce() async throws {
     let (wrapper, capture) = try await priorRetireThenUSBSuffix()

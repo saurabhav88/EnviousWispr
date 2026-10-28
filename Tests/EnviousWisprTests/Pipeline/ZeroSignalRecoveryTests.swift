@@ -793,6 +793,15 @@ struct ZeroSignalRecoveryTests {
     #expect(eligible.wrapper.testKernel.recordingOutcome == .failed(.zeroSignal))
     #expect(eligible.wrapper.testKernel.zeroSignalFailureMode == .allZeroFromStart)
     #expect(eligible.capture.retireCapturingSourceCallCount == 1)
+    // §6 row 12: the stop-time context the emitter's no-audio dedup latches on.
+    #expect(eligible.wrapper.stopTimeZeroSignalTelemetryFired.count == 1)
+    let stopContext = try #require(eligible.wrapper.stopTimeZeroSignalTelemetryFired.first)
+    #expect(stopContext.failureMode == .allZeroFromStart)
+    #expect(stopContext.sourceType == "stop_time_classification")
+    #expect(stopContext.effectiveTransport == "usb")
+    #expect(stopContext.routeResolutionSource == "helper_reported")
+    #expect(eligible.wrapper.deadMicRetireAttempts.count == 1)
+    #expect(eligible.wrapper.deadMicRetireAttempts.first?.transport == "usb")
 
     let access = AccessBox()
     let denied = makeContext(microphonePermissionIsDenied: { access.denied })

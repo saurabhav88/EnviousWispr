@@ -88,7 +88,8 @@ public enum RawAudioDeadAirClassifier {
   /// recomputing them at the call site would be a second implementation of the
   /// thing being measured.
   ///
-  /// Short-circuit ORDER and RESULTS are identical to the pre-#1845 code —
+  /// With exclusion off (`nil`, every caller but one), short-circuit ORDER and
+  /// RESULTS are identical to the pre-#1845 code —
   /// peak, then empty, then whole-buffer RMS, then the short-buffer reuse, then
   /// the tiled window loop. Nothing added here may change what the gate decides.
   ///
