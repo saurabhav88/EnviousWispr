@@ -27,6 +27,19 @@ const steps = [
   ['Your words land.', 'Finished text lands at your cursor in apps such as Gmail, WhatsApp and Chrome.'],
 ];
 
+// The AI Polish tab's three places to polish (PolishScreen.kt "1 · WHERE POLISH RUNS") and the
+// S1-mini Writing style card (PolishLadder.kt S1ControlCopy; hints verbatim, shared with the Mac).
+const polishOptions = [
+  { name: 'Off', title: 'Cleanup only.', copy: 'Your words land after the cleanup rules on your phone, with no AI polish step.' },
+  { name: 'This phone', title: 'S1-mini, on device.', copy: 'A small AI model that runs on your phone and works offline after setup. Your dictated words stay on the phone.', featured: true },
+  { name: 'Cloud', title: 'Your own key.', copy: 'Connect OpenAI, Claude or Gemini with your own key. Selected text and your custom words then go straight to that provider.' },
+];
+const styleSettings = [
+  { name: 'Tone', options: ['Casual', 'Semi-casual', 'Semi-formal', 'Formal'], shown: 'Semi-formal', hint: 'Semi-formal keeps capitals and full stops. Casual and semi-casual write the way you would text.' },
+  { name: 'Structure', options: ['Prose', 'Lists'], shown: 'Lists', hint: 'Lists turns a spoken run of items into bullet points. Prose keeps everything as sentences.' },
+  { name: 'Context', options: ['General', 'Email'], shown: 'Email', hint: 'Email lays out a greeting line and a sign-off block when you dictate them. It changes nothing else.' },
+];
+
 const faqs = [
   {
     q: 'Is EnviousWispr for Android free?',
@@ -128,13 +141,47 @@ const softwareApplication = {
     </div>
   </section>
 
-  <section class="android-polish wrap">
-    <span class="eyebrow">AI polish</span>
-    <h2>Your tone. Your format.</h2>
-    <div class="android-polish-grid">
-      <div><h3>On your phone.</h3><p>Local AI polish runs on the phone itself, so your dictated words stay there too.</p></div>
-      <div><h3>Or your own key.</h3><p>Connect your own OpenAI, Anthropic or Google Gemini key for cloud polish. Selected text and your custom words then go directly to that provider.</p></div>
-      <div><h3>Written your way.</h3><p>Choose casual to formal. Turn spoken lists into bullet points, and lay out emails with a greeting and sign-off.</p></div>
+  <section class="android-polish wrap" aria-labelledby="android-polish-title">
+    <div class="android-polish-top">
+      <div>
+        <span class="eyebrow">AI polish</span>
+        <h2 id="android-polish-title">Choose where<br />polish runs.</h2>
+      </div>
+      <p>Pick it in the AI Polish tab, and change it any time.</p>
+    </div>
+    <div class="polish-options">
+      {
+        polishOptions.map((option) => (
+          <div class:list={['polish-option', { featured: option.featured }]}>
+            <span class="polish-option-name">{option.name}</span>
+            <h3>{option.title}</h3>
+            <p>{option.copy}</p>
+          </div>
+        ))
+      }
+    </div>
+    <div class="polish-style">
+      <div class="polish-style-intro">
+        <h3>S1-mini writing style</h3>
+        <p>S1-mini was trained on three settings. Change them any time; a new pick applies to your next dictation.</p>
+      </div>
+      <dl>
+        {
+          styleSettings.map((setting) => (
+            <div class="polish-setting">
+              <dt>{setting.name}</dt>
+              <dd>
+                <span class="polish-chips">
+                  {setting.options.map((option) => (
+                    <span class:list={['polish-chip', { on: option === setting.shown }]}>{option}</span>
+                  ))}
+                </span>
+                <span class="polish-hint">{setting.hint}</span>
+              </dd>
+            </div>
+          ))
+        }
+      </dl>
     </div>
   </section>
 
