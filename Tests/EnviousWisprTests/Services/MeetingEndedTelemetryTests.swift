@@ -39,13 +39,64 @@ import Testing
     private func event(
       outcome: MeetingEndedTelemetry.Outcome = .ready, entry: MeetingEntryPoint? = .menu,
       duration: Double = 1_800, speakers: Int = 3, processing: Double = 90, audio: Double = 1_800,
-      echo: Int = 7, disk: Bool? = false, callSound: CallSoundSummary? = nil
+      echo: Int = 7, disk: Bool? = false, callSound: CallSoundSummary? = nil,
+      speakerNaming: SpeakerNamingSummary? = nil
     ) -> MeetingEndedTelemetry {
       MeetingEndedTelemetry(
         outcome: outcome, entryPoint: entry, durationSeconds: duration, microphoneTrack: .captured,
         callSoundTrack: .unsupported, speakerCount: speakers, processingSeconds: processing,
         audioSeconds: audio, yieldCount: 4, gapCount: 2, echoHiddenCount: echo, diskStopped: disk,
-        summaryPlan: .scheduled, hasNotes: true, callSound: callSound)
+        summaryPlan: .scheduled, hasNotes: true, callSound: callSound,
+        speakerNaming: speakerNaming)
+    }
+
+    private static let speakerNameKeys: Set<String> = [
+      "speaker_names_surface", "speaker_names_outcome", "auto_named_count",
+    ]
+
+    @Test("#4013: a naming summary adds two closed strings and an integer count; a known zero stays 0")
+    func speakerNameFields() throws {
+      let row = try #require(
+        capture(
+          event(
+            speakerNaming: SpeakerNamingSummary(
+              surface: .zoomApp, outcome: .manualOnly, autoNamedCount: 0))))
+      #expect(row.stringProps["speaker_names_surface"] == "zoom_app")
+      #expect(row.stringProps["speaker_names_outcome"] == "manual_only")
+      #expect(row.intProps["auto_named_count"] == 0)
+      #expect(row.doubleProps["auto_named_count"] == nil)
+      let keys = Set(row.stringProps.keys).union(row.intProps.keys).union(row.doubleProps.keys)
+        .union(row.boolProps.keys)
+      #expect(keys == Self.approvedKeys.union(Self.speakerNameKeys))
+    }
+
+    @Test("#4013: no summary sends none of the three keys; an unknown fact is omitted on its own")
+    func speakerNameFieldsOmitted() throws {
+      let none = try #require(capture(event()))
+      let all = Set(none.stringProps.keys).union(none.intProps.keys)
+      #expect(all.isDisjoint(with: Self.speakerNameKeys))
+      let partial = try #require(
+        capture(
+          event(
+            speakerNaming: SpeakerNamingSummary(surface: nil, outcome: nil, autoNamedCount: 2))))
+      #expect(partial.stringProps["speaker_names_surface"] == nil)
+      #expect(partial.stringProps["speaker_names_outcome"] == nil)
+      #expect(partial.intProps["auto_named_count"] == 2)
+    }
+
+    @Test("#4013: every surface and outcome travels as its closed spelling and nothing else")
+    func speakerNameVocabulary() throws {
+      for surface in SpeakerNamingSummary.Surface.allCases {
+        for outcome in SpeakerNamingSummary.Outcome.allCases {
+          let props = TelemetryService.meetingEndedProperties(
+            event(
+              speakerNaming: SpeakerNamingSummary(
+                surface: surface, outcome: outcome, autoNamedCount: 1)))
+          #expect(props["speaker_names_surface"] as? String == surface.rawValue)
+          #expect(props["speaker_names_outcome"] as? String == outcome.rawValue)
+          #expect(props["auto_named_count"] as? Int == 1)
+        }
+      }
     }
 
     @Test("#4121: a call-sound summary adds exactly four keys, a string and three integers; a known zero stays 0")
