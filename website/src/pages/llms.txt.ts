@@ -46,6 +46,7 @@ const COMPARISONS: [string, string, string][] = [
   ['notta', 'vs Notta', 'Personal on-device dictation versus a cloud transcription service.'],
   ['dragon', 'vs Dragon', 'A modern on-device alternative to legacy desktop dictation.'],
   ['google-docs-voice-typing', 'vs Google Docs voice typing', 'System-wide dictation versus Docs-only voice typing.'],
+  ['gboard-voice-typing', 'vs Gboard voice typing', 'Android dictation with on-device AI polish versus the keyboard microphone.'],
   ['whisper-cpp', 'vs whisper.cpp', 'A finished Mac app versus a command-line library.'],
 ];
 

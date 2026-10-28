@@ -1,5 +1,5 @@
 ---
-import { ORG_REF, ORG_ID, APP_ID, ORG_SAME_AS } from '../../data/entities.js';
+import { ORG_REF, ORG_ID, APP_ID, ORG_SAME_AS, ANDROID_APP } from '../../data/entities.js';
 const jsonLd = JSON.stringify({
   '@context': 'https://schema.org',
   '@type': 'SoftwareApplication',
@@ -17,6 +17,8 @@ const jsonLd = JSON.stringify({
   publisher: ORG_REF,
   url: 'https://enviouswispr.com/',
 });
+
+const jsonLdAndroid = JSON.stringify({ '@context': 'https://schema.org', ...ANDROID_APP });
 
 const jsonLdOrg = JSON.stringify({
   '@context': 'https://schema.org',
@@ -72,6 +74,7 @@ const jsonLdWebSite = JSON.stringify({
 ---
 
 <script type="application/ld+json" set:html={jsonLd} />
+<script type="application/ld+json" set:html={jsonLdAndroid} />
 <script type="application/ld+json" set:html={jsonLdOrg} />
 <script type="application/ld+json" set:html={jsonLdPerson} />
 <script type="application/ld+json" set:html={jsonLdWebSite} />
