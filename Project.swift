@@ -328,7 +328,9 @@ let project = Project(
         .target(name: "EnviousWisprObservabilityCore"),
         .package(product: "PostHog"),
         .package(product: "Sentry"),
-      ]),
+      ],
+      // #4013: Resources/talker-rules.json through Bundle.module (Package.swift declares it too).
+      hasResources: true),
     // #1525 PR I-B: isolates FluidAudio's raw error-classification behind a
     // small, internal-only leaf. Consumed only by EnviousWisprASR and its
     // test target, so it is declared explicitly there rather than added to
