@@ -6,10 +6,11 @@
     {
       "surface": "meet",
       "tileRole": "AXGroup",
-      "tileClass": "dkjMxf",
+      "tileClass": "oZRSLe",
       "nameSource": "firstStaticText",
       "talkingClasses": [
-        "kssMZb"
+        "kssMZb",
+        "BlxGDf"
       ],
       "verification": "verified",
       "tilesAreParticipants": true

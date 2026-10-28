@@ -7,10 +7,12 @@ import Testing
 /// #4013 r5 step 3: when these fail, a Meet call in Chrome names the wrong person, treats one
 /// person shown twice as two, loses an unnamed talker, or the shipped rules stop reading Meet.
 ///
-/// CAPTURED: the Meet rule in the bundled rules file and the tile shape below (AXGroup tiles with
-/// class `dkjMxf`, name as the first static text, `kssMZb` inside the talker's tile) come from
-/// the C1 Meet run of 2026-10-28 (`docs/audits/2026-10-27-4013/c1m-receipt.txt`). SYNTHETIC: the
-/// duplicate, unnamed and nested cases, which that run did not show.
+/// CAPTURED: the Meet rule in the bundled rules file and the tile shapes below come from the C1
+/// Meet runs of 2026-10-28 (`docs/audits/2026-10-27-4013/c1m-receipt.txt`): in Chrome and in
+/// Safari each participant has one AXGroup tile with class `oZRSLe` holding the name as its first
+/// static text; while that person talks, Chrome adds `kssMZb` and `BlxGDf` inside the tile and
+/// Safari adds `BlxGDf`. SYNTHETIC: the duplicate, unnamed and nested cases, which those runs did
+/// not show.
 @Suite("Meet through the talker rules", .tags(.productOutcome))
 struct MeetRulesReaderTests {
 
@@ -24,13 +26,28 @@ struct MeetRulesReaderTests {
           path: "Sources/EnviousWisprServices/Resources/talker-rules.json")))
   }
 
+  /// Chrome's shape: the indicator group gains `kssMZb` and `BlxGDf` while talking.
   private func tile(_ name: String?, talking: Bool, inner: [CallAXNode] = []) -> CallAXNode {
     let indicator = CallAXNode(
-      role: "AXGroup", domClassList: talking ? ["gjg47c", "kssMZb"] : ["gjg47c"])
+      role: "AXGroup",
+      domClassList: talking ? ["qg7mD", "xm86Be", "BlxGDf", "kssMZb"] : ["qg7mD", "xm86Be"])
     let label = name.map { [CallAXNode(role: "AXStaticText", value: $0)] } ?? []
     return CallAXNode(
-      role: "AXGroup", domClassList: ["MVbbRb", "dkjMxf", "iPFm3e", "tSl2vc"],
-      children: label + [indicator] + inner)
+      role: "AXGroup", domClassList: ["oZRSLe"], children: label + [indicator] + inner)
+  }
+
+  /// Safari's shape: the same tile class; only `BlxGDf` appears while talking.
+  private func safariTile(_ name: String, talking: Bool) -> CallAXNode {
+    CallAXNode(
+      role: "AXGroup", domClassList: ["oZRSLe"],
+      children: [
+        CallAXNode(role: "AXStaticText", value: name),
+        CallAXNode(
+          role: "AXGroup",
+          domClassList: talking
+            ? ["qg7mD", "r6DyN", "xm86Be", "JBY0Kc", "eXUaib", "BlxGDf", "KXY1yb"]
+            : ["qg7mD", "r6DyN", "xm86Be", "JBY0Kc", "eXUaib", "KXY1yb"]),
+      ])
   }
 
   private func read(_ tiles: [CallAXNode], rule: SpeakerSelectorRule? = nil) throws
@@ -62,6 +79,16 @@ struct MeetRulesReaderTests {
     #expect(talking.roster.names == ["Alex Rivera", "Priya Shah", "Saurabh Vaish"])
     #expect(!talking.rosterFromParticipantList, "tiles, not a participant list")
     #expect(talking.roster.selfNames.isEmpty, "no self evidence in the capture")
+  }
+
+  @Test("CAPTURED: Safari's shape is read by the same rule")
+  func capturedSafari() throws {
+    let reading = try read([
+      safariTile("Saurabh Vaish", talking: false), safariTile("Alex Rivera", talking: false),
+      safariTile("Priya Shah", talking: true), safariTile("Sam Safari", talking: false),
+    ])
+    #expect(CallSpeakerAdmission.observationSpeaking(reading, context: Self.good) == ["Priya Shah"])
+    #expect(reading.participants.count == 4)
   }
 
   @Test("SYNTHETIC: two tiles named Alex are two people; a talking Alex is withheld")
