@@ -7,6 +7,7 @@
 export const SITE = 'https://enviouswispr.com';
 export const ORG_ID = `${SITE}/#organization`;
 export const APP_ID = `${SITE}/#app`;
+export const ANDROID_APP_ID = `${SITE}/android/#app`;
 
 /** The publisher, author or employer reference used on every page. */
 export const ORG_REF = {
@@ -33,4 +34,26 @@ export const APP_REF = {
   operatingSystem: 'macOS 14+',
   applicationCategory: 'ProductivityApplication',
   offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+};
+
+/**
+ * EnviousWispr for Android (#4161, #4171), the full node: published on the homepage
+ * beside the Mac app and on /android/, under one @id. Name, requirement and wording
+ * follow the Play listing (EnviousWispr-Android docs/play-listing/store-listing.md).
+ */
+export const ANDROID_APP = {
+  '@type': 'MobileApplication',
+  '@id': ANDROID_APP_ID,
+  name: 'EnviousWispr: Voice to Text',
+  alternateName: 'EnviousWispr for Android',
+  operatingSystem: 'Android 13+',
+  applicationCategory: 'ProductivityApplication',
+  description:
+    'Free on-device dictation for Android with built-in AI polish. Tap the bubble, speak, and finished text lands where you type. Your voice never leaves your phone.',
+  url: `${SITE}/android/`,
+  downloadUrl: 'https://play.google.com/store/apps/details?id=com.envi.wispr',
+  installUrl: 'https://play.google.com/store/apps/details?id=com.envi.wispr',
+  offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+  author: ORG_REF,
+  publisher: ORG_REF,
 };
