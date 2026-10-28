@@ -29,6 +29,11 @@ export const HELP_CATEGORIES: readonly HelpCategory[] = [
     blurb: 'Something is not working. Start here.',
   },
   {
+    slug: 'android',
+    label: 'EnviousWispr for Android',
+    blurb: 'Set up the phone app, use the bubble, and fix common problems.',
+  },
+  {
     slug: 'recording-and-keybinds',
     label: 'Recording and Keybinds',
     blurb: 'Hold, tap, or go hands-free. Pick how you start and stop, and change the key.',
