@@ -484,6 +484,23 @@ public final class AudioCaptureManager: AudioCaptureInterface {
       : AudioConstants.minimumTranscriptionSamples
   }
 
+  /// #4154: whether exact-zero samples alone may end or relabel a take on this
+  /// transport. Only a confirmed-bound USB microphone opts out: there, zeros are
+  /// the only evidence the zero-signal paths act on (eligibility already requires
+  /// the device alive and unmuted), a USB hardware mute is indistinguishable from
+  /// a fault (#1578), and the reporter's cause is not established. Silence is
+  /// allowed while the stream stays live. Every other value, `"unknown"` and nil
+  /// keep today's behaviour, the same fail-closed shape as the #1788 ceiling
+  /// above. Callers pass a frozen per-take transport, never a live re-read: the
+  /// reactive detector passes the bind `prepare()` returned, the kernel's
+  /// stop-time path passes its frozen take route when the bound source reported
+  /// it.
+  package nonisolated static func zeroSamplesEndTake(forEffectiveTransport transport: String?)
+    -> Bool
+  {
+    transport != "usb"
+  }
+
   #if DEBUG
     /// One-shot per capture generation so the zero-prefix line is emitted once,
     /// not on every subsequent batch. Reset in `beginCapturePhase`.
@@ -1508,6 +1525,15 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     #if DEBUG
       emitZeroPrefixDiagnosticIfNeeded()
     #endif
+
+    // #4154: on a confirmed-bound USB microphone a zero run is tolerated, not
+    // classified. Ingestion, the run reset above and the DEBUG observation still
+    // ran; returning here sets no fire latch, no refusal and no reactive
+    // classification, so the take continues and later real audio is captured.
+    // `.noBuffers` comes from the source watchdog and is not gated here.
+    guard
+      Self.zeroSamplesEndTake(forEffectiveTransport: effectiveDiscriminatorDevice?.transportLabel)
+    else { return }
 
     let mode: CaptureStallFailureMode
     if deadAirDetector.isAllZeroFromStart(ceilingSamples: allZeroCeilingSamples) {
