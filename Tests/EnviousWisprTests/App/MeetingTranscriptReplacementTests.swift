@@ -189,7 +189,7 @@ struct MeetingTranscriptReplacementTests {
   /// #3973 C2 (second confirming review): when the record cannot even be read back, whether the
   /// ready write landed is unknown, so no rename writes the record (it could put the earlier
   /// record over a landed commit); the next launch decides from the file and publishes.
-  @Test("a ready write whose outcome cannot be read back blocks renames until the next launch")
+  @Test("a ready write whose outcome cannot be read back blocks record edits until the next launch")
   func unknownCommitBlocksEdits() async throws {
     let harness = try Harness()
     let (meetingID, _) = try await readyMeeting(harness)
@@ -206,6 +206,9 @@ struct MeetingTranscriptReplacementTests {
     #expect(harness.coordinator.isCommitReceiptPending(meetingID))
     await harness.coordinator.rename(meetingID: meetingID, title: "Refused")
     #expect(!FileManager.default.fileExists(atPath: recordURL.path), "the rename wrote nothing")
+    await harness.coordinator.deleteAudio(meetingID: meetingID)
+    #expect(!FileManager.default.fileExists(atPath: recordURL.path), "Delete audio wrote nothing")
+    #expect(try !harness.store.segmentFiles(meeting: meetingID).isEmpty, "the audio stayed")
     try FileManager.default.moveItem(at: hidden, to: recordURL)
     #expect(try harness.store.load(id: meetingID).echoTurnIDs == ["mic-9"], "the landed commit")
 

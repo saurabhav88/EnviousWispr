@@ -448,7 +448,9 @@ final class MeetingCoordinator {
   /// #3973 C2: meetings whose failed ready write is being read back, with the edits waiting.
   @ObservationIgnored private var settlingCommits: [UUID: [CheckedContinuation<Void, Never>]] = [:]
   /// #3973 C2: meetings whose failed ready write could not be read back: whether it landed is
-  /// unknown for this session, so no edit writes their record until the next launch decides.
+  /// unknown for this session, so no edit writes their record until the next launch decides
+  /// (rename, AI title and Delete audio refuse; Transcribe again waits on `unresolvedReceipts`;
+  /// deleting the meeting removes it whatever it holds).
   @ObservationIgnored private var unknownCommits: Set<UUID> = []
   private var deleting: Set<UUID> = []
   /// Meetings whose Delete audio is under way, from its guard until its files are gone (#3994):
@@ -1670,7 +1672,9 @@ final class MeetingCoordinator {
   }
 
   func deleteAudio(meetingID: UUID) async {
-    guard var record = live[meetingID], !isActive(meetingID), !closeOwned.contains(meetingID)
+    // #3973 C2: an unknown commit outcome blocks every record edit until the next launch.
+    guard !unknownCommits.contains(meetingID), var record = live[meetingID],
+      !isActive(meetingID), !closeOwned.contains(meetingID)
     else { return }
     // Claimed in the same turn as the guard (#3994): a pass cannot start on this audio while
     // its removal is saved and carried out.
