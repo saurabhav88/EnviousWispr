@@ -12689,6 +12689,17 @@
         }
       }
     },
+    "No local model handled other languages well in our tests." : {
+      "comment" : "AI Polish, Ollama: caveat above the local model list and in the Why use Ollama paragraph.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein lokales Modell hat in unseren Tests andere Sprachen gut verarbeitet."
+          }
+        }
+      }
+    },
     "No match for \"%@\"" : {
       "comment" : "Quick Add panel: line above the list. %@ is the bounded misheard text; use this language's quotation marks.",
       "localizations" : {

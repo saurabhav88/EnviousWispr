@@ -235,5 +235,9 @@ package enum OllamaModelVerdicts {
   /// Universal rather than model specific: the best local result is 3 of 7 non-English cases and
   /// seven of the twelve measured models pass zero of 7. Saying it only on the rows that fail worst
   /// would imply the others are fine.
-  package static let nonEnglishCaveat = "No local model handled other languages well in our tests."
+  package static var nonEnglishCaveat: String {
+    String(
+      localized: "No local model handled other languages well in our tests.",
+      comment: "AI Polish, Ollama: caveat above the local model list and in the Why use Ollama paragraph.")
+  }
 }
