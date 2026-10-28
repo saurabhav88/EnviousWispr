@@ -282,7 +282,44 @@ final class CustomWordsCoordinator {
     }
   }
 
-  /// The add step shared by `add` and `saveConfirmingSpelling`.
+  /// The Settings Add sheet's save (#4086): nil only when the transaction wrote the word.
+  /// An Add has no base word. A canonical already in the library writes nothing and keeps
+  /// the saved word as it is, so the sheet stays open with the reason instead of closing
+  /// on a save that did not happen.
+  func addByUser(_ word: CustomWord) async -> String? {
+    await command(.add, closing: Self.quittingMessage) { [self] number in
+      do {
+        // Committed is not enough: an Add of a deleted built-in's name restores the
+        // built-in, which keeps its own spelling, sound-alikes and settings.
+        guard let receipt = try await addWithinCommand(word, number), receipt.committed,
+          let stored = receipt.value.first(where: { $0.id == word.id })
+            ?? receipt.value.first(where: {
+              $0.canonical.caseInsensitiveCompare(word.canonical) == .orderedSame
+            }),
+          Self.holdsEveryAuthoredField(of: word, stored)
+        else { return notSaved(QuickAddPanelCopy.newWordNotSaved) }
+        return nil
+      } catch {
+        return note(error)
+      }
+    }
+  }
+
+  /// An Add has no base, so every field of the draft was authored, defaults included:
+  /// the stored word must carry each one as typed. Extra sound-alikes a restored
+  /// built-in brings with it are its own.
+  private static func holdsEveryAuthoredField(of draft: CustomWord, _ stored: CustomWord) -> Bool {
+    let asked = draft.aliases
+      .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+      .filter { !$0.isEmpty }
+    return stored.canonical == draft.canonical.trimmingCharacters(in: .whitespacesAndNewlines)
+      && asked.allSatisfy(stored.aliases.contains)
+      && stored.category == draft.category && stored.priority == draft.priority
+      && stored.forceReplace == draft.forceReplace && stored.caseSensitive == draft.caseSensitive
+      && stored.minSimilarityOverride == draft.minSimilarityOverride
+  }
+
+  /// The add step shared by `add`, `addByUser` and `saveConfirmingSpelling`.
   @discardableResult
   private func addWithinCommand(_ word: CustomWord, _ number: Int) async throws
     -> CustomWordsStoreReceipt<[CustomWord]>?
@@ -325,8 +362,8 @@ final class CustomWordsCoordinator {
       closing: .refused(Self.quittingMessage)
     ) { [self] number in
       do {
-        if customWords.contains(where: { $0.id == word.id }) {
-          let edit = try await updateWithinCommand(word, number, expecting: expecting)
+        if let live = customWords.first(where: { $0.id == word.id }) {
+          let edit = try await updateWithinCommand(word, number, expecting: expecting ?? live)
           guard let after = edit.after else { return .notApplied }
           return .saved(before: edit.before, after: after)
         }
@@ -352,16 +389,20 @@ final class CustomWordsCoordinator {
   /// Every one of those has one observable: is the spelling on the word now. So that is
   /// what this asks, instead of asking three questions about how the write was routed.
   ///
-  /// `add` when the word is new to the user library, `update` when it is already there.
-  /// A converted pack term is NEW here even though its id is the pack's, which is why the
-  /// decision is by membership rather than by `source`.
+  /// `add` when the word is new to the user library; otherwise an edit that only appends
+  /// the spelling to the word as it is now (#4086), so nothing else on `word`, which the
+  /// panel copied earlier, can overwrite a change saved meanwhile. A converted pack term is
+  /// NEW here even though its id is the pack's, which is why the decision is by membership
+  /// rather than by `source`.
   func saveConfirmingSpelling(_ word: CustomWord, carrying spelling: String) async -> String? {
     await command(
       customWords.contains { $0.id == word.id } ? .update : .add, closing: Self.quittingMessage
     ) { [self] number in
       do {
         if customWords.contains(where: { $0.id == word.id }) {
-          _ = try await updateWithinCommand(word, number)
+          let edit = try await editWithinCommand(
+            CustomWordEditRequest(appending: spelling, to: word), number)
+          if edit.outcome == .targetGone { return notSaved(QuickAddPanelCopy.wordNoLongerExists) }
         } else {
           try await addWithinCommand(word, number)
         }
@@ -373,7 +414,7 @@ final class CustomWordsCoordinator {
         stored.canonical.caseInsensitiveCompare(word.canonical) == .orderedSame
           && stored.aliases.contains { $0.caseInsensitiveCompare(wanted) == .orderedSame }
       }
-      return landed ? nil : QuickAddPanelCopy.newWordNotSaved
+      return landed ? nil : notSaved(QuickAddPanelCopy.newWordNotSaved)
     }
   }
 
@@ -396,7 +437,7 @@ final class CustomWordsCoordinator {
   /// the archive. Routing every failure through one place means a future
   /// mutation cannot forget to say so.
   private func note(_ error: Error) -> String {
-    if quitReply != nil { failedWhileQuitting = true }
+    _ = notSaved(error.localizedDescription)
     if let persistence = error as? CustomWordsPersistenceError,
       persistence == .corruptedExistingFile
     {
@@ -404,6 +445,13 @@ final class CustomWordsCoordinator {
     }
     customWordError = error.localizedDescription
     return error.localizedDescription
+  }
+
+  /// A person's change that did not happen (a failure, a conflict, a word gone): while
+  /// Quit waits, it stops Quit, so the draft and its reason stay on screen (#4086).
+  private func notSaved(_ message: String) -> String {
+    if quitReply != nil { failedWhileQuitting = true }
+    return message
   }
 
   /// Re-read the saved words from disk and adopt them, reporting whether the
@@ -701,10 +749,10 @@ final class CustomWordsCoordinator {
     }
   }
 
-  /// A plain edit: no removed learned sound-alike becomes a refusal.
-  /// With `expecting`, only while the word still equals it (learning's Undo).
+  /// Learning's Undo edit: applies only while the word still equals `expecting`. No removed
+  /// learned sound-alike becomes a refusal.
   @discardableResult
-  func update(_ word: CustomWord, expecting: CustomWord? = nil) async -> String? {
+  func update(_ word: CustomWord, expecting: CustomWord) async -> String? {
     await command(.update, closing: Self.quittingMessage) { [self] number in
       do {
         _ = try await updateWithinCommand(word, number, expecting: expecting)
@@ -715,13 +763,23 @@ final class CustomWordsCoordinator {
     }
   }
 
-  /// The edit step shared by the plain and the user's doors.
+  /// Learning's guarded whole-word edit step.
   private func updateWithinCommand(
-    _ word: CustomWord, _ number: Int, expecting: CustomWord? = nil
+    _ word: CustomWord, _ number: Int, expecting: CustomWord
   ) async throws -> CustomWordsEdit {
     let stored = try await storage(number, .update) {
       try await manager.update(word: word, expecting: expecting)
     }
+    publish(stored.value.words, committed: stored.committed, number, .update)
+    customWordError = nil
+    return stored.value
+  }
+
+  /// The edit step for a person's change: only what they asked for, merged under the lock.
+  private func editWithinCommand(
+    _ request: CustomWordEditRequest, _ number: Int
+  ) async throws -> CustomWordsEditResult {
+    let stored = try await storage(number, .update) { try await manager.edit(request) }
     publish(stored.value.words, committed: stored.committed, number, .update)
     customWordError = nil
     return stored.value
@@ -763,23 +821,35 @@ final class CustomWordsCoordinator {
   // learning memory is a separate file: a refusal it could not remember leaves
   // the saved delete or edit in place, as before.
 
-  /// The user deleted a word in Settings: each pair it learned gets one "no",
-  /// after the delete landed.
-  @discardableResult
-  func deleteByUser(id: UUID) async -> String? {
-    await deleteByUser(ids: [id], operation: .remove)
+  /// The person pressed Delete in the word's editor: the word goes only while what they
+  /// can see and change is still what the editor showed (`shown`); a usage count saved
+  /// meanwhile does not stop it (founder 2026-10-28). Each pair the deleted word learned
+  /// gets one "no", after the delete landed. Nil only when the word was deleted.
+  func deleteByUser(shownAs shown: CustomWord) async -> String? {
+    await command(.remove, closing: Self.quittingMessage) { [self] number in
+      do {
+        let stored = try await storage(number, .remove) {
+          try await manager.remove(id: shown.id, shownAs: shown)
+        }
+        publish(stored.value.words, committed: stored.committed, number, .remove)
+        customWordError = nil
+        recordUserNo(learnedPairs(of: stored.value.removed), source: .deleteWord)
+        guard stored.value.removed.isEmpty else { return nil }
+        return notSaved(
+          stored.value.words.contains { $0.id == shown.id }
+            ? CustomWordEditorCopy.deleteConflict : CustomWordEditorCopy.deleteTargetGone)
+      } catch {
+        return note(error)
+      }
+    }
   }
 
   /// Bulk delete from Settings (or the deliberate Contacts "remove imported").
   @discardableResult
   func deleteByUser(ids: [UUID]) async -> String? {
-    await deleteByUser(ids: ids, operation: .removeBatch)
-  }
-
-  private func deleteByUser(ids: [UUID], operation: CustomWordsProbe.Operation) async -> String? {
-    await command(operation, closing: Self.quittingMessage) { [self] number in
+    await command(.removeBatch, closing: Self.quittingMessage) { [self] number in
       do {
-        let removal = try await removeWithinCommand(ids, number, operation)
+        let removal = try await removeWithinCommand(ids, number, .removeBatch)
         recordUserNo(learnedPairs(of: removal.removed), source: .deleteWord)
         return nil
       } catch {
@@ -788,22 +858,46 @@ final class CustomWordsCoordinator {
     }
   }
 
-  /// The user saved an edit: each learned sound-alike the edit removed gets
-  /// one "no", after the save landed.
-  @discardableResult
-  func updateByUser(_ word: CustomWord) async -> String? {
-    await command(.update, closing: Self.quittingMessage) { [self] number in
+  /// The person saved the word's editor: `base` is the word the editor opened on, `draft`
+  /// what they made of it. Only the fields they changed are sent (#4086). Each learned
+  /// sound-alike the person removed, and the saved edit really took away, gets one "no",
+  /// after the save landed. Nil only when the word now holds the edit.
+  func updateByUser(base: CustomWord, draft: CustomWord) async -> String? {
+    let request = CustomWordEditRequest(base: base, draft: draft)
+    return await command(.update, closing: Self.quittingMessage) { [self] number in
       do {
-        let edit = try await updateWithinCommand(word, number)
-        guard let before = edit.before, let after = edit.after else { return nil }
-        let kept = Set(after.aliases.map(CorrectionPairKey.normalise))
-        let removed = before.learnedAliases
-          .filter { !kept.contains(CorrectionPairKey.normalise($0)) }
-          .map { CorrectionPairKey.make(original: $0, corrected: before.canonical) }
-        recordUserNo(removed, source: .removeSoundAlike)
-        return nil
+        let edit = try await editWithinCommand(request, number)
+        if case .saved(let before, let after) = edit.outcome {
+          let asked = Set(request.removedAliases.map(CorrectionPairKey.normalise))
+          let kept = Set(after.aliases.map(CorrectionPairKey.normalise))
+          let removed = before.learnedAliases
+            .filter {
+              let key = CorrectionPairKey.normalise($0)
+              return asked.contains(key) && !kept.contains(key)
+            }
+            .map { CorrectionPairKey.make(original: $0, corrected: before.canonical) }
+          recordUserNo(removed, source: .removeSoundAlike)
+        }
+        return CustomWordEditorCopy.message(for: edit.outcome).map(notSaved)
       } catch {
         return note(error)
+      }
+    }
+  }
+
+  /// What an edit command answered for a caller that reads the outcome itself.
+  enum EditResult: Sendable, Equatable {
+    case done(CustomWordEditOutcome)
+    case refused(String)
+  }
+
+  /// An edit of only the given fields, with no refusal recorded (DEBUG control).
+  func edit(_ request: CustomWordEditRequest) async -> EditResult {
+    await command(.update, closing: .refused(Self.quittingMessage)) { [self] number in
+      do {
+        return .done(try await editWithinCommand(request, number).outcome)
+      } catch {
+        return .refused(note(error))
       }
     }
   }

@@ -435,10 +435,7 @@ struct YourWordsView: View {
     guard !trimmedCanonical.isEmpty else { return nil }
     var wordToSave = newWord
     wordToSave.canonical = trimmedCanonical
-    if let error = await customWordsCoordinator.add(wordToSave) {
-      return error
-    }
-    return nil
+    return await customWordsCoordinator.addByUser(wordToSave)
   }
 }
 

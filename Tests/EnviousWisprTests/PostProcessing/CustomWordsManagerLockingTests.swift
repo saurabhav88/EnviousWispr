@@ -426,7 +426,9 @@ struct CustomWordsManagerLockingTests {
     let futureTimestamp = Date().addingTimeInterval(3600)
     var persisted = target
     persisted.lastUsed = futureTimestamp
-    try await mgr.update(word: persisted, in: &words)
+    // Usage time is bookkeeping, which an edit never sets (#4086); the guarded whole-word
+    // door stands in for the sibling's own flush.
+    words = try await mgr.update(word: persisted, expecting: target).value.words
 
     // This flush's captured timestamp is `Date()` at call time — strictly
     // OLDER than the already-persisted future value above.

@@ -225,8 +225,9 @@ struct CustomWordsBulkEnrichmentTests {
     // bypassing the caller's in-memory copy entirely.
     var concurrentlyEdited = try #require(manager.load())
     let idx = try #require(concurrentlyEdited.firstIndex { $0.id == target.id })
-    concurrentlyEdited[idx].aliases = ["hand-typed-alias"]
-    try await manager.update(word: concurrentlyEdited[idx], in: &concurrentlyEdited)
+    var edited = concurrentlyEdited[idx]
+    edited.aliases = ["hand-typed-alias"]
+    try await manager.update(word: edited, in: &concurrentlyEdited)
 
     // The checkpoint call still carries the ORIGINAL (now stale) view of the
     // word implicitly — it only ever sends id + generatedAliases, never a

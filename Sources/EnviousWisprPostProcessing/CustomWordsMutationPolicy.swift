@@ -203,6 +203,116 @@ enum CustomWordsMutationPolicy {
     return (mergedWords(file: file, builtins: builtins), true)
   }
 
+  /// The person's edit (#4086): the requested changes merged onto the word as the file has
+  /// it now. A word no longer in the library is never recreated: a deleted user word and a
+  /// built-in deleted after the editor opened both answer `targetGone`, while a live
+  /// built-in edited for the first time becomes a user override, as before.
+  static func edit(
+    _ request: CustomWordEditRequest, in file: inout File, builtins: [BuiltinWord]
+  ) -> (value: CustomWordsEditResult, shouldSave: Bool) {
+    let current = mergedWords(file: file, builtins: builtins)
+    guard let found = current.first(where: { $0.id == request.id }) else {
+      return (CustomWordsEditResult(words: current, outcome: .targetGone), false)
+    }
+    guard let merged = merge(request, onto: found) else {
+      return (CustomWordsEditResult(words: current, outcome: .conflict(current: found)), false)
+    }
+    guard merged != found.ownedByUser() else {
+      return (CustomWordsEditResult(words: current, outcome: .unchanged(found)), false)
+    }
+    let (words, _) = update(
+      word: merged, sanitized: merged, previousCanonical: found.canonical, in: &file,
+      builtins: builtins)
+    let after = words.first(where: { $0.id == request.id }) ?? merged
+    return (CustomWordsEditResult(words: words, outcome: .saved(before: found, after: after)), true)
+  }
+
+  /// The merge rules for one edit (#4086, plan §3.3). Nil means the edit conflicts with a
+  /// change saved meanwhile and must write nothing.
+  /// - A field the person left alone keeps its current value, so usage counts, provenance
+  ///   and enrichment bookkeeping written meanwhile survive.
+  /// - A field the person changed applies when the current value is still the one they
+  ///   saw, or already the one they chose; any other current value is a conflict.
+  /// - Sound-alikes apply as additions and removals against what the person saw, so a
+  ///   sound-alike added meanwhile stays. One the person removed or respelled that was
+  ///   respelled meanwhile is a conflict. A word renamed meanwhile, or (in the editor) a
+  ///   sound-alike they saw that was removed or renamed meanwhile, is a conflict: the
+  ///   person's list is out of date, and saving it would bring removed content back.
+  static func merge(_ request: CustomWordEditRequest, onto current: CustomWord) -> CustomWord? {
+    func apply<T: Equatable>(_ wanted: T?, _ base: T, _ now: T) -> T? {
+      guard let wanted else { return .some(now) }
+      return now == base || now == wanted ? .some(wanted) : nil
+    }
+    let base = request.base
+    guard let canonical = apply(request.canonical, base.canonical, current.canonical),
+      let category = apply(request.category, base.category, current.category),
+      let priority = apply(request.priority, base.priority, current.priority),
+      let forceReplace = apply(request.forceReplace, base.forceReplace, current.forceReplace),
+      let caseSensitive = apply(request.caseSensitive, base.caseSensitive, current.caseSensitive),
+      let strictness = apply(
+        request.minSimilarityOverride, base.minSimilarityOverride, current.minSimilarityOverride)
+    else { return nil }
+
+    var out = current
+    out.canonical = canonical
+    out.category = category
+    out.priority = priority
+    out.forceReplace = forceReplace
+    out.caseSensitive = caseSensitive
+    out.minSimilarityOverride = strictness
+
+    if !request.addedAliases.isEmpty || !request.removedAliases.isEmpty {
+      let key = Self.importPersistenceKey
+      guard current.canonical == base.canonical else { return nil }
+      if request.needsBaseAliases {
+        let now = Set(current.aliases.map(key))
+        guard base.aliases.allSatisfy({ now.contains(key($0)) }) else { return nil }
+      }
+      // A sound-alike the person removed or respelled must still be spelled as they saw
+      // it, unless it already reads as they want it; a spelling saved meanwhile wins.
+      let spelledNow = Set(current.aliases)
+      for gone in request.removedAliases where !spelledNow.contains(gone) {
+        guard
+          let wanted = request.addedAliases.first(where: { key($0) == key(gone) }),
+          spelledNow.contains(wanted)
+        else { return nil }
+      }
+      let removed = Set(request.removedAliases.map(key))
+      var pending = request.addedAliases
+      var aliases: [String] = []
+      for alias in current.aliases {
+        guard removed.contains(key(alias)) else {
+          aliases.append(alias)
+          continue
+        }
+        // A new spelling of the same sound-alike takes the old one's place.
+        if let index = pending.firstIndex(where: { key($0) == key(alias) }) {
+          aliases.append(pending.remove(at: index))
+        }
+      }
+      for alias in pending where !aliases.contains(where: { key($0) == key(alias) }) {
+        aliases.append(alias)
+      }
+      out.aliases = aliases
+    }
+    if !request.unmarkedAliases.isEmpty {
+      let unmarked = Set(request.unmarkedAliases.map(Self.importPersistenceKey))
+      out.learnedAliases.removeAll { unmarked.contains(Self.importPersistenceKey($0)) }
+    }
+    return sanitizeForPersistence(out).ownedByUser()
+  }
+
+  /// What the person can see and change in the editor (#4086): the word, its sound-alikes,
+  /// its category and its settings. Usage counts, provenance and enrichment bookkeeping are
+  /// not part of it. The editor's Delete stops only when this changed meanwhile (founder
+  /// 2026-10-28, option A).
+  static func sameAuthoredContent(_ lhs: CustomWord, _ rhs: CustomWord) -> Bool {
+    lhs.id == rhs.id && lhs.canonical == rhs.canonical && lhs.aliases == rhs.aliases
+      && lhs.category == rhs.category && lhs.priority == rhs.priority
+      && lhs.forceReplace == rhs.forceReplace && lhs.caseSensitive == rhs.caseSensitive
+      && lhs.minSimilarityOverride == rhs.minSimilarityOverride
+  }
+
   /// Contacts alias enrichment (#636 follow-up), narrowed in #4086: each proposal only
   /// fills an empty alias list on the word it was generated for. Under the lock the
   /// word must still exist, still carry the canonical the aliases were generated from,

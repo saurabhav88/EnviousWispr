@@ -20834,6 +20834,50 @@
         }
       }
     },
+    "This word changed while this editor was open. Nothing was deleted. Close this editor and open the word again." : {
+      "comment" : "Dictionary word editor: Delete stopped because the word's text or settings were changed elsewhere meanwhile.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Wort hat sich geändert, während dieser Dialog geöffnet war. Es wurde nichts gelöscht. Schließe diesen Dialog und öffne das Wort erneut."
+          }
+        }
+      }
+    },
+    "This word changed while you were editing. Your changes weren't saved. Close this editor and open the word again." : {
+      "comment" : "Dictionary word editor: Save stopped because the word was changed elsewhere meanwhile.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Wort hat sich geändert, während du es bearbeitet hast. Deine Änderungen wurden nicht gespeichert. Schließe diesen Dialog und öffne das Wort erneut."
+          }
+        }
+      }
+    },
+    "This word is no longer in your words. Nothing was deleted." : {
+      "comment" : "Dictionary word editor: Delete found the word already deleted.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Wort steht nicht mehr unter „Deine Wörter“. Es wurde nichts gelöscht."
+          }
+        }
+      }
+    },
+    "This word is no longer in your words. Your changes weren't saved." : {
+      "comment" : "Dictionary word editor: Save stopped because the word was deleted meanwhile.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Wort steht nicht mehr unter „Deine Wörter“. Deine Änderungen wurden nicht gespeichert."
+          }
+        }
+      }
+    },
     "Those are your words, typed for you.\nIn any other app, click into a text box first." : {
       "comment" : "Practice screen, after the first dictation worked. Keep the line break.",
       "localizations" : {

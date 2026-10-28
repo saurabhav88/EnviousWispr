@@ -750,13 +750,32 @@ public final class CustomWordsManager {
   package func removeBatch(ids: [UUID], expecting: [CustomWord]? = nil) async throws
     -> CustomWordsStoreReceipt<CustomWordsRemoval>
   {
+    try await removeBatch(ids: ids) { Self.matches($0, expecting) }
+  }
+
+  /// The editor's Delete (#4086): removes the word only while what the person can see and
+  /// change (`CustomWordsMutationPolicy.sameAuthoredContent`) still equals `shown`. A usage
+  /// count or other bookkeeping saved meanwhile does not stop it (founder 2026-10-28). The
+  /// value's `removed` is empty when nothing was deleted; the word is then either gone or
+  /// changed, which the caller reads from `words`.
+  package func remove(id: UUID, shownAs shown: CustomWord) async throws
+    -> CustomWordsStoreReceipt<CustomWordsRemoval>
+  {
+    try await removeBatch(ids: [id]) { found in
+      found.count == 1 && CustomWordsMutationPolicy.sameAuthoredContent(found[0], shown)
+    }
+  }
+
+  private func removeBatch(
+    ids: [UUID], accepting accepts: @escaping @Sendable ([CustomWord]) -> Bool
+  ) async throws -> CustomWordsStoreReceipt<CustomWordsRemoval> {
     let builtins = Self.builtinDefaults
     let idSet = Set(ids)
     return try await runOnWorker { store in
       try store.performLockedTransaction { file in
         let current = CustomWordsMutationPolicy.mergedWords(file: file, builtins: builtins)
         let targets = current.filter { idSet.contains($0.id) }
-        guard !targets.isEmpty, Self.matches(targets, expecting) else {
+        guard !targets.isEmpty, accepts(targets) else {
           return (CustomWordsRemoval(words: current, removed: []), false)
         }
         let (words, shouldSave) = CustomWordsMutationPolicy.removeBatch(
@@ -964,12 +983,34 @@ public final class CustomWordsManager {
     }
   }
 
-  /// Edit one word. The value carries the word before and after the edit, read under
-  /// the lock; `after` is nil when the target is no longer in the library, and the
-  /// transaction then writes nothing.
-  /// With `expecting`, the edit applies only while the word still equals that value under
-  /// the lock; otherwise it writes nothing and `after` is nil.
-  package func update(word: CustomWord, expecting: CustomWord? = nil) async throws
+  /// The person's edit (#4086): only the requested changes, merged under the lock onto the
+  /// word as it is now (`CustomWordsMutationPolicy.edit`). The outcome says whether it was
+  /// saved, already true, refused by a change saved meanwhile, or aimed at a word that is gone.
+  package func edit(_ request: CustomWordEditRequest) async throws
+    -> CustomWordsStoreReceipt<CustomWordsEditResult>
+  {
+    // Same authoring door as `add`, same reason it throws: see there.
+    if let canonical = request.canonical {
+      guard CustomWordsMutationPolicy.isStorable(canonical) else {
+        throw CustomWordsPersistenceError.unusableValue
+      }
+    }
+    guard CustomWordsMutationPolicy.everyAliasIsStorable(request.addedAliases) else {
+      throw CustomWordsPersistenceError.unusableValue
+    }
+    let builtins = Self.builtinDefaults
+    return try await runOnWorker { store in
+      try store.performLockedTransaction { file in
+        CustomWordsMutationPolicy.edit(request, in: &file, builtins: builtins)
+      }
+    }
+  }
+
+  /// Learning's whole-word write (#996, #4086). The value carries the word before and after
+  /// the edit, read under the lock. The edit applies only while the word still equals
+  /// `expecting` under the lock; otherwise, or when the target is no longer in the library,
+  /// it writes nothing and `after` is nil. A person's edit uses `edit(_:)` instead.
+  package func update(word: CustomWord, expecting: CustomWord) async throws
     -> CustomWordsStoreReceipt<CustomWordsEdit>
   {
     let trimmed = word.canonical.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1001,7 +1042,7 @@ public final class CustomWordsManager {
       try store.performLockedTransaction { file in
         let current = CustomWordsMutationPolicy.mergedWords(file: file, builtins: builtins)
         let found = current.first(where: { $0.id == word.id })
-        guard let before = found, Self.matches([before], expecting.map { [$0] }) else {
+        guard let before = found, Self.matches([before], [expecting]) else {
           return (CustomWordsEdit(words: current, before: found, after: nil), false)
         }
         // An edit that MOVES a built-in's canonical away has to retire the

@@ -90,10 +90,11 @@ import Testing
     let f = try await fixture(seed: [original])
     let gate = WorkerGate()
     f.manager.fileWorkWillStartForTesting = gate.hook
-    var edited = try #require(f.words.customWords.first { $0.id == original.id })
+    let shown = try #require(f.words.customWords.first { $0.id == original.id })
+    var edited = shown
     edited.aliases = ["cube nets"]
 
-    let save = Task { await f.words.update(edited) }
+    let save = Task { await f.words.updateByUser(base: shown, draft: edited) }
     #expect(await settleUntilObserved { gate.arrived }, "the save never reached the file worker")
 
     // The main actor is free: other main-actor work runs to its end while the save is held.
@@ -127,8 +128,12 @@ import Testing
   func unchangedIsNotACommit() async throws {
     let f = try await fixture(seed: [CustomWord(canonical: "Kubernetes")])
     let before = try Data(contentsOf: f.url)
+    let ghost = CustomWord(canonical: "Ghost")
+    var renamed = ghost
+    renamed.canonical = "Ghosts"
 
-    #expect(await f.words.update(CustomWord(canonical: "Ghost")) == nil)
+    #expect(
+      await f.words.updateByUser(base: ghost, draft: renamed) == CustomWordEditorCopy.saveTargetGone)
 
     #expect(try Data(contentsOf: f.url) == before)
     #expect(
@@ -152,7 +157,7 @@ import Testing
     var edited = original
     edited.aliases = ["cube nets"]
 
-    #expect(await f.words.update(edited) != nil)
+    #expect(await f.words.updateByUser(base: original, draft: edited) != nil)
 
     #expect(try Data(contentsOf: f.url) == before)
     #expect(f.words.customWords == shown)
@@ -205,7 +210,7 @@ import Testing
     let gate = WorkerGate()
     f.manager.fileWorkWillStartForTesting = gate.hook
 
-    let delete = Task { await f.words.deleteByUser(id: learned.id) }
+    let delete = Task { await f.words.deleteByUser(shownAs: learned) }
     #expect(await settleUntilObserved { gate.arrived })
     // Queued while the delete is held: it must run after the delete's refusal landed.
     let learn = Task {
@@ -241,9 +246,10 @@ import Testing
     -> CustomWord
   {
     let sibling = CustomWordsManager(fileURL: url)
-    var word = try #require(sibling.load()?.first { $0.id == id })
+    let shown = try #require(sibling.load()?.first { $0.id == id })
+    var word = shown
     change(&word)
-    _ = try await sibling.update(word: word)
+    _ = try await sibling.edit(CustomWordEditRequest(base: shown, draft: word))
     return try #require(sibling.load()?.first { $0.id == id })
   }
 
@@ -543,5 +549,386 @@ import Testing
     // Nothing queued now, so the next Quit goes through at once.
     #expect(f.words.requestQuit { _ in Issue.record("no later answer is owed") })
     #expect(replies.values == [false])
+  }
+
+  // MARK: - The editor sends only what the person changed (#4086 Chunk 8)
+  //
+  // The coordinator's list is the editor's view: a sibling manager on the same file changes
+  // the word after that view was taken, the way another window or a background writer does.
+
+  /// Another window writes a whole word, guarded on the word it read (bookkeeping fields).
+  private func siblingWrite(_ url: URL, id: UUID, _ change: (inout CustomWord) -> Void)
+    async throws
+  {
+    let sibling = CustomWordsManager(fileURL: url)
+    let shown = try #require(sibling.load()?.first { $0.id == id })
+    var word = shown
+    change(&word)
+    #expect(try await sibling.update(word: word, expecting: shown).committed)
+  }
+
+  private func shown(_ f: Fixture, _ id: UUID) throws -> CustomWord {
+    try #require(f.words.customWords.first { $0.id == id })
+  }
+
+  @Test("a category edit keeps a sound-alike added while the editor was open")
+  func categoryEditKeepsAConcurrentAlias() async throws {
+    let original = CustomWord(canonical: "Kubernetes", aliases: ["cube"])
+    let f = try await fixture(seed: [original])
+    let base = try shown(f, original.id)
+    _ = try await siblingEdit(f.url, id: original.id) { $0.aliases.append("kube") }
+    var draft = base
+    draft.category = .brand
+
+    #expect(await f.words.updateByUser(base: base, draft: draft) == nil)
+
+    for word in [onDisk(f.url), f.words.customWords].compactMap({ $0.first { $0.id == original.id } }) {
+      #expect(word.category == .brand)
+      #expect(word.aliases == ["cube", "kube"])
+    }
+  }
+
+  @Test("removing a sound-alike removes it and keeps one added meanwhile")
+  func explicitAliasRemovalApplies() async throws {
+    let original = CustomWord(canonical: "Kubernetes", aliases: ["cube", "kube net"])
+    let f = try await fixture(seed: [original])
+    let base = try shown(f, original.id)
+    _ = try await siblingEdit(f.url, id: original.id) { $0.aliases.append("k8s") }
+    var draft = base
+    draft.aliases = ["kube net"]
+
+    #expect(await f.words.updateByUser(base: base, draft: draft) == nil)
+
+    #expect(onDisk(f.url).first { $0.id == original.id }?.aliases == ["kube net", "k8s"])
+    #expect(f.words.customWords.first { $0.id == original.id }?.aliases == ["kube net", "k8s"])
+  }
+
+  @Test("a setting changed both here and in another window is a conflict; neither the draft nor anything else is written")
+  func overlappingSettingConflicts() async throws {
+    let original = CustomWord(canonical: "Kubernetes", priority: 1)
+    let f = try await fixture(seed: [original])
+    let base = try shown(f, original.id)
+    let theirs = try await siblingEdit(f.url, id: original.id) { $0.priority = 5 }
+    var draft = base
+    draft.priority = 9
+    draft.category = .brand
+    let before = try Data(contentsOf: f.url)
+
+    #expect(await f.words.updateByUser(base: base, draft: draft) == CustomWordEditorCopy.saveConflict)
+
+    #expect(try Data(contentsOf: f.url) == before)
+    #expect(f.words.customWords.first { $0.id == original.id } == theirs)
+  }
+
+  @Test(
+    "a sound-alike edit is a conflict when a sound-alike the person saw was removed, or the word renamed, meanwhile; the removed one never comes back"
+  )
+  func newerRemovalOrRenameConflicts() async throws {
+    let original = CustomWord(canonical: "Kubernetes", aliases: ["cube", "kube"])
+    let f = try await fixture(seed: [original])
+    let base = try shown(f, original.id)
+    var draft = base
+    draft.aliases.append("k8s")
+
+    _ = try await siblingEdit(f.url, id: original.id) { $0.aliases = ["kube"] }
+    #expect(await f.words.updateByUser(base: base, draft: draft) == CustomWordEditorCopy.saveConflict)
+    #expect(onDisk(f.url).first { $0.id == original.id }?.aliases == ["kube"])
+
+    let renamedBase = try shown(f, original.id)
+    var renamedDraft = renamedBase
+    renamedDraft.aliases.append("k8s")
+    _ = try await siblingEdit(f.url, id: original.id) { $0.canonical = "K8s" }
+    #expect(
+      await f.words.updateByUser(base: renamedBase, draft: renamedDraft)
+        == CustomWordEditorCopy.saveConflict)
+    let disk = try #require(onDisk(f.url).first { $0.id == original.id })
+    #expect(disk.canonical == "K8s" && disk.aliases == ["kube"])
+  }
+
+  @Test("an edit keeps the usage count, last use, enrichment flag and learned marks saved meanwhile")
+  func untouchedBookkeepingSurvives() async throws {
+    let original = CustomWord(canonical: "Kwmala", aliases: ["kumala"])
+    let f = try await fixture(seed: [original])
+    let base = try shown(f, original.id)
+    let used = Date(timeIntervalSince1970: 1_900_000_000)
+    try await siblingWrite(f.url, id: original.id) {
+      $0.frequencyUsed = 7
+      $0.lastUsed = used
+      $0.enrichmentPending = true
+      $0.learnedAliases = ["kumala"]
+    }
+    var draft = base
+    draft.category = .person
+
+    #expect(await f.words.updateByUser(base: base, draft: draft) == nil)
+
+    let disk = try #require(onDisk(f.url).first { $0.id == original.id })
+    #expect(disk.category == .person)
+    #expect(disk.frequencyUsed == 7 && disk.lastUsed == used)
+    #expect(disk.enrichmentPending && disk.learnedAliases == ["kumala"])
+    #expect(f.words.customWords.first { $0.id == original.id } == disk)
+  }
+
+  @Test("an edit of a word deleted meanwhile says so and does not bring the word back")
+  func goneWordIsNotRecreated() async throws {
+    let original = CustomWord(canonical: "Kubernetes")
+    let f = try await fixture(seed: [original])
+    let base = try shown(f, original.id)
+    _ = try await CustomWordsManager(fileURL: f.url).remove(id: original.id)
+    var draft = base
+    draft.aliases = ["cube"]
+
+    #expect(await f.words.updateByUser(base: base, draft: draft) == CustomWordEditorCopy.saveTargetGone)
+
+    #expect(!onDisk(f.url).contains { $0.id == original.id })
+    #expect(!f.words.customWords.contains { $0.id == original.id })
+  }
+
+  @Test("a first edit of a built-in saves it as the person's word; a built-in deleted meanwhile is not brought back")
+  func builtinOverrideVersusDeleted() async throws {
+    let f = try await fixture()
+    let builtins = CustomWordsManager.builtinDefaults.map(\.word)
+    let first = try shown(f, try #require(builtins.first).id)
+    var draft = first
+    draft.aliases.append("extra sound alike")
+    #expect(await f.words.updateByUser(base: first, draft: draft) == nil)
+    let override = try #require(onDisk(f.url).first { $0.id == first.id })
+    #expect(override.source == .user && override.aliases.contains("extra sound alike"))
+
+    let second = try shown(f, try #require(builtins.dropFirst().first).id)
+    _ = try await CustomWordsManager(fileURL: f.url).remove(id: second.id)
+    var secondDraft = second
+    secondDraft.aliases.append("extra sound alike")
+    #expect(
+      await f.words.updateByUser(base: second, draft: secondDraft) == CustomWordEditorCopy.saveTargetGone)
+    #expect(!onDisk(f.url).contains { $0.id == second.id })
+    #expect(!f.words.customWords.contains { $0.id == second.id })
+  }
+
+  @Test("an edit the word already holds succeeds and writes nothing")
+  func alreadyTrueIsUnchangedSuccess() async throws {
+    let original = CustomWord(canonical: "Kubernetes")
+    let f = try await fixture(seed: [original])
+    let base = try shown(f, original.id)
+    _ = try await siblingEdit(f.url, id: original.id) { $0.aliases = ["kube"] }
+    var draft = base
+    draft.aliases = ["kube"]
+    let before = try Data(contentsOf: f.url)
+
+    #expect(await f.words.updateByUser(base: base, draft: draft) == nil)
+
+    #expect(try Data(contentsOf: f.url) == before)
+    #expect(
+      f.events.all.contains(.storageReturned(command: 1, operation: .update, outcome: .unchanged)))
+    #expect(f.words.customWords.first { $0.id == original.id }?.aliases == ["kube"])
+  }
+
+  @Test("only a learned sound-alike the person removed, and the save took away, gets a no")
+  func refusalsOnlyForAppliedRemovals() async throws {
+    let original = CustomWord(
+      canonical: "Kwmala", aliases: ["kumala", "kwamala"], learnedAliases: ["kumala"])
+    let f = try await fixture(seed: [original])
+    let base = try shown(f, original.id)
+    // Learned meanwhile, so absent from the person's draft: not a removal.
+    try await siblingWrite(f.url, id: original.id) {
+      $0.aliases.append("kamala")
+      $0.learnedAliases.append("kamala")
+    }
+    var draft = base
+    draft.aliases = ["kwamala"]
+
+    #expect(await f.words.updateByUser(base: base, draft: draft) == nil)
+
+    let key = { CorrectionPairKey.make(original: $0, corrected: "Kwmala") }
+    #expect(f.words.learnMemory.entry(key("kumala"))?.userNos == 1)
+    #expect(f.words.learnMemory.entry(key("kamala")) == nil)
+    let disk = try #require(onDisk(f.url).first { $0.id == original.id })
+    #expect(disk.aliases == ["kwamala", "kamala"] && disk.learnedAliases == ["kamala"])
+
+    // A save stopped by a conflict removed nothing, so it records no no.
+    let next = try shown(f, original.id)
+    _ = try await siblingEdit(f.url, id: original.id) { $0.priority = 5 }
+    var conflicting = next
+    conflicting.aliases = ["kwamala"]
+    conflicting.priority = 9
+    #expect(
+      await f.words.updateByUser(base: next, draft: conflicting) == CustomWordEditorCopy.saveConflict)
+    #expect(f.words.learnMemory.entry(key("kamala")) == nil)
+    #expect(onDisk(f.url).first { $0.id == original.id }?.aliases == ["kwamala", "kamala"])
+  }
+
+  @Test(
+    "Delete goes through when only the usage count changed meanwhile, stops when the word's text changed, and says when the word is already gone"
+  )
+  func deleteStopsOnlyForAuthoredChanges() async throws {
+    let used = CustomWord(canonical: "Kubernetes")
+    let edited = CustomWord(canonical: "Kwmala")
+    let gone = CustomWord(canonical: "Zorblax")
+    let f = try await fixture(seed: [used, edited, gone])
+    let usedBase = try shown(f, used.id)
+    let editedBase = try shown(f, edited.id)
+    let goneBase = try shown(f, gone.id)
+    let sibling = CustomWordsManager(fileURL: f.url)
+    sibling.recordReplacements([used.id])
+    await sibling.flushPendingIncrementsForTesting()
+    #expect(onDisk(f.url).first { $0.id == used.id }?.frequencyUsed == 1)
+    let theirs = try await siblingEdit(f.url, id: edited.id) { $0.aliases = ["kumala"] }
+    _ = try await sibling.remove(id: gone.id)
+
+    #expect(await f.words.deleteByUser(shownAs: usedBase) == nil)
+    #expect(await f.words.deleteByUser(shownAs: editedBase) == CustomWordEditorCopy.deleteConflict)
+    #expect(await f.words.deleteByUser(shownAs: goneBase) == CustomWordEditorCopy.deleteTargetGone)
+
+    let disk = onDisk(f.url)
+    #expect(!disk.contains { $0.id == used.id })
+    #expect(disk.first { $0.id == edited.id } == theirs)
+    #expect(!f.words.customWords.contains { $0.id == used.id })
+    #expect(f.words.customWords.first { $0.id == edited.id } == theirs)
+  }
+
+  @Test("Quick Add appends its spelling to the word as it is now, keeping a change saved meanwhile")
+  func quickAddAppendsOnly() async throws {
+    let original = CustomWord(canonical: "Kubernetes", aliases: ["cube"])
+    let f = try await fixture(seed: [original])
+    var panelWord = try shown(f, original.id)
+    _ = try await siblingEdit(f.url, id: original.id) {
+      $0.category = .brand
+      $0.aliases.append("kube")
+    }
+    panelWord.aliases.append("k8s")
+
+    #expect(await f.words.saveConfirmingSpelling(panelWord, carrying: "k8s") == nil)
+
+    let disk = try #require(onDisk(f.url).first { $0.id == original.id })
+    #expect(disk.category == .brand && disk.aliases == ["cube", "kube", "k8s"])
+  }
+
+  @Test("Add has no base word: a word already in the list is kept as it is and the Add is reported as not saved")
+  func duplicateAddIsNotASave() async throws {
+    let original = CustomWord(canonical: "Kubernetes", aliases: ["cube"])
+    let f = try await fixture(seed: [original])
+    let before = try Data(contentsOf: f.url)
+
+    let twin = CustomWord(canonical: "kubernetes", aliases: ["k8s"])
+    #expect(await f.words.addByUser(twin) == QuickAddPanelCopy.newWordNotSaved)
+
+    #expect(try Data(contentsOf: f.url) == before)
+    #expect(!f.words.customWords.contains { $0.id == twin.id })
+    #expect(f.words.customWords.first { $0.id == original.id }?.aliases == ["cube"])
+    #expect(await f.words.addByUser(CustomWord(canonical: "Zorblax")) == nil)
+    #expect(onDisk(f.url).contains { $0.canonical == "Zorblax" })
+  }
+
+  @Test("a Save stopped by a change made meanwhile stops Quit once, keeps the draft's reason, and a fresh Save and Quit then go through")
+  func conflictedSaveCancelsQuit() async throws {
+    let original = CustomWord(canonical: "Kubernetes", priority: 1)
+    let f = try await fixture(seed: [original])
+    let base = try shown(f, original.id)
+    let gate = WorkerGate()
+    f.manager.fileWorkWillStartForTesting = gate.hook
+    let replies = QuitReplies()
+    var draft = base
+    draft.priority = 9
+
+    let save = Task { await f.words.updateByUser(base: base, draft: draft) }
+    #expect(await settleUntilObserved { gate.arrived })
+    #expect(f.words.requestQuit { replies.values.append($0) } == false)
+    _ = try await siblingEdit(f.url, id: original.id) { $0.priority = 5 }
+    gate.release()
+
+    #expect(await save.value == CustomWordEditorCopy.saveConflict)
+    #expect(await settleUntilObserved { !replies.values.isEmpty })
+    #expect(replies.values == [false])
+
+    // Reopened against the word as it is now, the same change saves, and Quit goes through.
+    let fresh = try shown(f, original.id)
+    var retry = fresh
+    retry.priority = 9
+    #expect(await f.words.updateByUser(base: fresh, draft: retry) == nil)
+    #expect(onDisk(f.url).first { $0.id == original.id }?.priority == 9)
+    #expect(f.words.requestQuit { _ in Issue.record("no later answer is owed") })
+    #expect(replies.values == [false])
+    #expect(gate.timedOut == false)
+  }
+
+  @Test("Add of a deleted built-in's name with new sound-alikes is not reported as saved when only the built-in came back")
+  func addThatOnlyRestoresIsNotASave() async throws {
+    let f = try await fixture()
+    let builtins = CustomWordsManager.builtinDefaults.map(\.word)
+    let first = try #require(builtins.first)
+    let second = try #require(builtins.dropFirst().first)
+    let third = try #require(builtins.dropFirst(2).first)
+    for gone in [first, second, third] { _ = try await CustomWordsManager(fileURL: f.url).remove(id: gone.id) }
+    #expect(await f.words.refreshFromDiskIfPossible())
+
+    let asked = CustomWord(canonical: first.canonical, aliases: ["brand new sound alike"])
+    #expect(await f.words.addByUser(asked) == QuickAddPanelCopy.newWordNotSaved)
+    let restored = try #require(f.words.customWords.first { $0.id == first.id })
+    #expect(!restored.aliases.contains("brand new sound alike"))
+    #expect(!onDisk(f.url).contains { $0.aliases.contains("brand new sound alike") })
+
+    // A setting typed as the editor's default is still a choice: a restored built-in whose
+    // category differs does not hold it.
+    let otherCategory: WordCategory = second.category == .general ? .brand : .general
+    #expect(
+      await f.words.addByUser(CustomWord(canonical: second.canonical, category: otherCategory))
+        == QuickAddPanelCopy.newWordNotSaved)
+    // The word exactly as the built-in has it is satisfied by the restore.
+    #expect(
+      await f.words.addByUser(
+        CustomWord(
+          canonical: third.canonical, aliases: third.aliases, category: third.category,
+          priority: third.priority, forceReplace: third.forceReplace,
+          caseSensitive: third.caseSensitive,
+          minSimilarityOverride: third.minSimilarityOverride)) == nil)
+    #expect(f.words.customWords.contains { $0.id == third.id })
+  }
+
+  @Test("changing only the capitals of a sound-alike saves the new spelling in its place")
+  func capitalsOnlyAliasEditIsSaved() async throws {
+    let original = CustomWord(canonical: "Kubernetes", aliases: ["k8s", "kube"])
+    let f = try await fixture(seed: [original])
+    let base = try shown(f, original.id)
+    _ = try await siblingEdit(f.url, id: original.id) { $0.aliases.append("cube") }
+    var draft = base
+    draft.aliases = ["K8S", "kube"]
+
+    #expect(await f.words.updateByUser(base: base, draft: draft) == nil)
+
+    #expect(onDisk(f.url).first { $0.id == original.id }?.aliases == ["K8S", "kube", "cube"])
+    #expect(f.words.customWords.first { $0.id == original.id }?.aliases == ["K8S", "kube", "cube"])
+
+    // Respelled meanwhile in another window: a conflict, and that spelling stays.
+    let next = try shown(f, original.id)
+    var respell = next
+    respell.aliases = ["k8S", "kube", "cube"]
+    _ = try await siblingEdit(f.url, id: original.id) { $0.aliases[0] = "K8s" }
+    #expect(await f.words.updateByUser(base: next, draft: respell) == CustomWordEditorCopy.saveConflict)
+    #expect(onDisk(f.url).first { $0.id == original.id }?.aliases == ["K8s", "kube", "cube"])
+    #expect(f.words.customWords.first { $0.id == original.id }?.aliases == ["K8s", "kube", "cube"])
+    #expect(f.words.learnMemory.entry(CorrectionPairKey.make(original: "K8S", corrected: "Kubernetes")) == nil)
+  }
+
+  @Test("a sparkled sound-alike removed and typed back in is saved as the person's own, with no no recorded, and a mark learned meanwhile stays")
+  func retypedLearnedAliasLosesOnlyItsMark() async throws {
+    let original = CustomWord(
+      canonical: "Kwmala", aliases: ["kumala"], learnedAliases: ["kumala"])
+    let f = try await fixture(seed: [original])
+    let base = try shown(f, original.id)
+    try await siblingWrite(f.url, id: original.id) {
+      $0.aliases.append("kamala")
+      $0.learnedAliases.append("kamala")
+    }
+    var draft = base
+    CustomWordSuggestionFlow.removeAlias("kumala", from: &draft)
+    draft.aliases.append("kumala")
+
+    #expect(await f.words.updateByUser(base: base, draft: draft) == nil)
+
+    for word in [onDisk(f.url), f.words.customWords].compactMap({ $0.first { $0.id == original.id } }) {
+      #expect(word.aliases == ["kumala", "kamala"])
+      #expect(word.learnedAliases == ["kamala"])
+    }
+    #expect(f.words.learnMemory.entry(CorrectionPairKey.make(original: "kumala", corrected: "Kwmala")) == nil)
   }
 }

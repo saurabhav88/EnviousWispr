@@ -101,7 +101,7 @@ struct LearnFromEditsCompositionTests {
     let f = await fixture()
     let word = CustomWord(canonical: "Kwmala", aliases: ["kumala"], learnedAliases: ["kumala"])
     await #expect(f.customWords.add(word) == nil)
-    await #expect(f.customWords.deleteByUser(id: word.id) == nil)
+    await #expect(f.customWords.deleteByUser(shownAs: word) == nil)
     #expect(f.telemetry.events.last == .refusedByUser(.deleteWord, .watching))
     let key = CorrectionPairKey.make(original: "kumala", corrected: "Kwmala")
     // The learned coordinator sees the same store: its save-time check refuses

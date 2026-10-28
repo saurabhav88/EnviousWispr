@@ -31,8 +31,11 @@ extension CustomWordsManager {
     words = try await removeBatch(ids: ids).value.words
   }
 
+  /// An edit the way the editor sends one: the caller's list holds the word it was shown
+  /// (the base), `word` is the draft. A word missing from the list is its own base.
   func update(word: CustomWord, in words: inout [CustomWord]) async throws {
-    words = try await update(word: word).value.words
+    let base = words.first { $0.id == word.id } ?? word
+    words = try await edit(CustomWordEditRequest(base: base, draft: word)).value.words
   }
 
   func applyGeneratedAliases(

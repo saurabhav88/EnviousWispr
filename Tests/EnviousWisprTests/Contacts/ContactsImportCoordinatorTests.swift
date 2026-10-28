@@ -486,9 +486,10 @@ struct ContactsImportCoordinatorTests {
 
     // While the suggester runs, the person edits three of the four words.
     func edit(_ name: String, _ change: (inout CustomWord) -> Void) async throws {
-      var word = try #require(cw.customWords.first { $0.canonical == name })
+      let shown = try #require(cw.customWords.first { $0.canonical == name })
+      var word = shown
       change(&word)
-      #expect(await cw.update(word) == nil)
+      #expect(await cw.updateByUser(base: shown, draft: word) == nil)
     }
     try await edit("Sarah") { $0.canonical = "Jane" }
     try await edit("Omar") { $0.category = .brand }

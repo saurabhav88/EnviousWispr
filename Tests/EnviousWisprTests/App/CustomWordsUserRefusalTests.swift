@@ -55,7 +55,7 @@ import EnviousWisprAppKitTestSupport
     let f = fixture()
     let word = learnedWord()
     #expect(await f.words.add(word) == nil)
-    #expect(await f.words.deleteByUser(id: word.id) == nil)
+    #expect(await f.words.deleteByUser(shownAs: word) == nil)
     #expect(!f.words.customWords.contains { $0.id == word.id })
     #expect(f.words.learnMemory.entry(key("kumala"))?.userNos == 1)
     #expect(f.words.learnMemory.entry(key("kamala"))?.userNos == 1)
@@ -72,7 +72,7 @@ import EnviousWisprAppKitTestSupport
     let f = fixture()
     let first = learnedWord()
     await f.words.add(first)
-    await f.words.deleteByUser(id: first.id)
+    _ = await f.words.deleteByUser(shownAs: first)
     #expect(!f.words.learnMemory.isBlocked(key("kumala")))
     // Learned again, then the user's Undo-equivalent no (bulk delete) blocks it.
     let again = learnedWord()
@@ -87,11 +87,12 @@ import EnviousWisprAppKitTestSupport
   )
   func updateRecordsRemovedLearnedAliases() async throws {
     let f = fixture()
-    var word = learnedWord()
-    await f.words.add(word)
+    let shown = learnedWord()
+    await f.words.add(shown)
+    var word = shown
     word.aliases = ["KAMALA"]  // keeps "kamala" (any case), drops learned "kumala" and typed "kwamala"
     word.learnedAliases = ["kamala"]
-    await #expect(await f.words.updateByUser(word) == nil)
+    await #expect(await f.words.updateByUser(base: shown, draft: word) == nil)
     #expect(f.words.learnMemory.entry(key("kumala"))?.userNos == 1)
     #expect(f.words.learnMemory.entry(key("kamala")) == nil)
     #expect(f.words.learnMemory.entry(key("kwamala")) == nil)
@@ -113,11 +114,12 @@ import EnviousWisprAppKitTestSupport
     try #require(flock(fd, LOCK_EX) == 0)
     defer { flock(fd, LOCK_UN) }
 
-    #expect(await f.words.deleteByUser(id: word.id) != nil)
+    #expect(await f.words.deleteByUser(shownAs: word) != nil)
     #expect(await f.words.deleteByUser(ids: [word.id]) != nil)
+    let shown = word
     word.aliases = []
     word.learnedAliases = []
-    #expect(await f.words.updateByUser(word) != nil)
+    #expect(await f.words.updateByUser(base: shown, draft: word) != nil)
     let live = try #require(f.words.customWords.first { $0.id == word.id })
     #expect(live.learnedAliases == ["kumala", "kamala"], "the word is unchanged")
     #expect(f.words.learnMemory.entry(key("kumala")) == nil)
@@ -130,9 +132,10 @@ import EnviousWisprAppKitTestSupport
     let f = fixture()
     var word = learnedWord()
     await f.words.add(word)
+    let shown = try #require(f.words.customWords.first { $0.id == word.id })
     word.aliases = []
     word.learnedAliases = []
-    await #expect(await f.words.update(word) == nil)
+    await #expect(await f.words.update(word, expecting: shown) == nil)
     let other = learnedWord()
     await f.words.add(other)
     await #expect(await f.words.remove(id: other.id) == nil)

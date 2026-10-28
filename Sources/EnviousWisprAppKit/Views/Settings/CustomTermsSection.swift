@@ -225,11 +225,13 @@ struct CustomTermsSection<Actions: View>: View {
         word: word,
         wordSuggestionService: customWordsCoordinator.suggestionService,
         // #3975: a user's own edit or delete is their "no" for a learned pair.
-        onSave: { updated in
-          await customWordsCoordinator.updateByUser(updated)
+        // `word` is the sheet's item, fixed when it opened: the base both commands
+        // compare against under the lock (#4086), never the draft.
+        onSave: { draft in
+          await customWordsCoordinator.updateByUser(base: word, draft: draft)
         },
         onDelete: {
-          await customWordsCoordinator.deleteByUser(id: word.id)
+          await customWordsCoordinator.deleteByUser(shownAs: word)
         }
       )
     }
