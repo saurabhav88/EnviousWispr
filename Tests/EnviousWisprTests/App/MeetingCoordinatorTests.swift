@@ -309,6 +309,8 @@ struct MeetingCoordinatorTests {
     var removeGate: Gate?
     /// Every `meeting.ended` row the coordinator sent, in order.
     var ended: [MeetingEndedTelemetry] = []
+    /// #4013 chunk 12B: the naming pass each History save was given, in order.
+    var namingPasses: [SpeakerNamingPass?] = []
     /// Runs as each row is sent, to read state at that exact moment.
     var onEnded: (@MainActor (MeetingEndedTelemetry) -> Void)?
     var settles = true
@@ -408,15 +410,18 @@ struct MeetingCoordinatorTests {
           await onDetectedCheck?()
           return detectedAnswers.isEmpty ? detectedWanted : detectedAnswers.removeFirst()
         },
-        saveTranscript: { [self] transcript in
+        saveTranscript: { [self] transcript, naming in
           saveRequests.append(transcript)
+          namingPasses.append(naming)
           if let meetingID = transcript.meetingID {
             stateAtSave.append(try store.load(id: meetingID).state)
           }
           await saveGate?.wait()
           if let saveError { throw saveError }
-          if let history { try await history.saveAndShowDurably(transcript) }
+          var summary: SpeakerNamingSummary?
+          if let history { summary = try await history.saveAndShowDurably(transcript, naming: naming) }
           saved.append(transcript)
+          return summary
         },
         durableHistoryRow: { [self] id in
           await historyReadGate?.wait()

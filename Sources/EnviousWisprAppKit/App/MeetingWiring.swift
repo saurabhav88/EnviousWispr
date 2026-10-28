@@ -162,8 +162,8 @@ enum MeetingWiring {
           return await MeetingCalendarTitle.lookup(at: startedAt, bound: .seconds(1))
         },
         detectedStartWanted: inputs.detectedStartWanted,
-        saveTranscript: { [transcriptCoordinator = inputs.transcriptCoordinator] transcript in
-          try await transcriptCoordinator.saveAndShowDurably(transcript)
+        saveTranscript: { [transcriptCoordinator = inputs.transcriptCoordinator] transcript, naming in
+          try await transcriptCoordinator.saveAndShowDurably(transcript, naming: naming)
         },
         historyRow: { [transcriptCoordinator = inputs.transcriptCoordinator] id in
           transcriptCoordinator.currentRow(id: id)

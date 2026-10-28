@@ -44,7 +44,7 @@ struct MeetingSpeakerNamingProcessingTests {
 
   /// A pass that names from the evidence the coordinator handed the stand-in job, like the
   /// real job does after composition. `gate` holds the pass before it names.
-  private static func namingPass(_ harness: Harness, gate: MeetingCoordinatorTests.Gate? = nil)
+  static func namingPass(_ harness: Harness, gate: MeetingCoordinatorTests.Gate? = nil)
     -> @MainActor (MeetingTranscriptionJob.CheckpointAccess?) async throws ->
     MeetingTranscriptionJob.Result
   {
@@ -180,6 +180,7 @@ struct MeetingSpeakerNamingProcessingTests {
     #expect(relaunched.saved.first?.speakerNameSources == ["sys:1": .auto])
     #expect(relaunched.saved.first?.meetingTranscriptAttemptID == kept.candidate.generation)
     #expect(relaunched.jobs.isEmpty, "the launch did not run a pass or name again")
+    #expect(relaunched.ended.isEmpty, "the replay sends no second meeting.ended row")
     save.open()
   }
 

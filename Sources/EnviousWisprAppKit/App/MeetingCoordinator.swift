@@ -311,8 +311,10 @@ final class MeetingCoordinator {
     /// call still going), asked after the waits and before anything is created.
     var detectedStartWanted: @MainActor () async -> Bool = { true }
     /// Saves the meeting's History row durably, its disk work off the main actor; throws when
-    /// it could not.
-    var saveTranscript: @MainActor (Transcript) async throws -> Void
+    /// it could not. #4013 chunk 12B: with the naming pass that proposed the row's automatic
+    /// names, returns what naming achieved in the row written (nil when not known).
+    var saveTranscript:
+      @MainActor (Transcript, SpeakerNamingPass?) async throws -> SpeakerNamingSummary?
     /// #3973 C2: the History row as History holds it now, kept in the commit receipt as the
     /// previous generation's row. Nil when History has none.
     var historyRow: @MainActor (UUID) -> Transcript? = { _ in nil }
@@ -486,6 +488,46 @@ final class MeetingCoordinator {
 
   /// The facts of each meeting's last ended attempt, for a Retry of the same recording.
   private var lastAttemptFacts: [UUID: AttemptFacts] = [:]
+
+  /// #4013 chunk 12B: ready attempts closed at the ready barrier whose `meeting.ended` row waits
+  /// for the History publication's result, so it can report the names actually written. Only
+  /// frozen, content-free facts; settled once (`settleEnded`), at the latest at quit.
+  private var pendingEnded: [UUID: PendingEnded] = [:]
+
+  private struct PendingEnded {
+    let attemptID: UUID
+    let event: FrozenEnded
+  }
+
+  /// One attempt's terminal facts, frozen when it closes: everything `meeting.ended` reports
+  /// except the naming summary.
+  private struct FrozenEnded {
+    let outcome: MeetingEndedTelemetry.Outcome
+    let facts: AttemptFacts
+    let durationSeconds: Double
+    let microphoneTrack: MeetingTrackStatus
+    let callSoundTrack: MeetingTrackStatus
+    let engine: MeetingEngineChoice
+    let speakerCount: Int
+    let processingSeconds: Double
+    let audioSeconds: Double
+    let yieldCount: Int
+    let gapCount: Int
+    let echoHiddenCount: Int
+    let summaryPlan: MeetingEndedTelemetry.SummaryPlan
+    let hasNotes: Bool
+
+    func event(speakerNaming: SpeakerNamingSummary?) -> MeetingEndedTelemetry {
+      MeetingEndedTelemetry(
+        outcome: outcome, entryPoint: facts.entryPoint, durationSeconds: durationSeconds,
+        microphoneTrack: microphoneTrack, callSoundTrack: callSoundTrack, engine: engine,
+        speakerCount: speakerCount, processingSeconds: processingSeconds,
+        audioSeconds: audioSeconds, yieldCount: yieldCount, gapCount: gapCount,
+        echoHiddenCount: echoHiddenCount, diskStopped: facts.diskStopped,
+        summaryPlan: summaryPlan, hasNotes: hasNotes, callSound: facts.callSound,
+        speakerNaming: speakerNaming)
+    }
+  }
 
   struct AttemptFacts: Equatable {
     var entryPoint: MeetingEntryPoint?
@@ -1506,12 +1548,24 @@ final class MeetingCoordinator {
       ready.wasInterrupted == true
       ? .interruptedReady
       : (result.failedPieces > 0 || !missingAudio.isEmpty ? .readyWithGaps : .ready)
-    endAttempt(
+    // #4013 chunk 12B: its `meeting.ended` row waits for the History publication below, which
+    // says what naming achieved in the row written; the attempt itself is closed now.
+    let attemptID = result.resolved.attemptID
+    if let frozen = closeAttempt(
       ready, outcome: outcome, result: result,
       gapCount: result.failedPieces + MeetingDamagedAudio.markerCount(missingAudio),
       processingSeconds: Date().timeIntervalSince(started), summaryPlan: summaryPlan)
+    {
+      pendingEnded[meetingID] = PendingEnded(attemptID: attemptID, event: frozen)
+    }
     // A deletion meanwhile removes the folder, receipt included, and the row.
-    let published = isStillOwned(meetingID) ? await publishCommitted(receipt) : false
+    let published =
+      isStillOwned(meetingID)
+      ? await publishCommitted(
+        receipt, naming: Self.namingPass(result: result, record: ready), settling: attemptID)
+      : false
+    // Published rows settled it with their summary; anything else reports no naming.
+    settleEnded(meetingID, attemptID: attemptID, speakerNaming: nil)
     if summaryPlan == .scheduled {
       if !owedOnDisk {
         summaries?.settleUnwritableMark(meetingID)
@@ -1536,8 +1590,13 @@ final class MeetingCoordinator {
   /// At launch the row may already be published (only the receipt's removal failed) and since
   /// edited, such as its speaker names. A History file that already holds this generation is
   /// kept, not rewritten from the receipt; one that cannot be read publishes nothing.
+  ///
+  /// #4013 chunk 12B: `settling` is the attempt whose `meeting.ended` row waits on this
+  /// publication; it is settled with the naming summary the History write returned as soon as
+  /// the row is written, before the receipt is cleared.
   private func publishCommitted(
-    _ receipt: MeetingTranscriptReplacement, atLaunch: Bool = false
+    _ receipt: MeetingTranscriptReplacement, atLaunch: Bool = false,
+    naming: SpeakerNamingPass? = nil, settling attemptID: UUID? = nil
   ) async -> Bool {
     let meetingID = receipt.meetingID
     do {
@@ -1545,9 +1604,11 @@ final class MeetingCoordinator {
       // A deletion that began during the read owns the row now. Checked in the same main-actor
       // turn the save is admitted to History's queue, so a later deletion's removal runs after it.
       guard isStillOwned(meetingID) else { return false }
+      var summary: SpeakerNamingSummary?
       if held?.meetingTranscriptGeneration != receipt.candidate.generation {
-        try await deps.saveTranscript(receipt.candidateRow)
+        summary = try await deps.saveTranscript(receipt.candidateRow, naming)
       }
+      if let attemptID { settleEnded(meetingID, attemptID: attemptID, speakerNaming: summary) }
     } catch {
       deps.log("meeting history publish failed error=\(type(of: error))")
       notice = .storageFailed
@@ -2025,6 +2086,12 @@ final class MeetingCoordinator {
   /// not finish in time stays owned by its queued close; launch recovery handles it.
   func prepareForTermination(deadline: DispatchTime = .now() + 1) {
     quitting = true
+    // #4013 chunk 12B: ready attempts still waiting on their History publication send their
+    // row now, with no naming facts (the publication's result is not known). A late
+    // publication finds nothing to settle.
+    for (meetingID, pending) in pendingEnded {
+      settleEnded(meetingID, attemptID: pending.attemptID, speakerNaming: nil)
+    }
     summaries?.prepareForTermination()
     queueTask?.cancel()
     job?.cancel()
@@ -2247,26 +2314,68 @@ final class MeetingCoordinator {
     processingSeconds: Double = 0,
     summaryPlan: MeetingEndedTelemetry.SummaryPlan = .notApplicable, hasNotes: Bool? = nil
   ) {
-    guard let facts = openAttempts.removeValue(forKey: record.id) else { return }
+    guard
+      let frozen = closeAttempt(
+        record, outcome: outcome, result: result, gapCount: gapCount,
+        processingSeconds: processingSeconds, summaryPlan: summaryPlan, hasNotes: hasNotes)
+    else { return }
+    deps.emitEnded(frozen.event(speakerNaming: nil))
+  }
+
+  /// Closes the attempt and freezes its terminal facts, or nil when no attempt is open for the
+  /// meeting. Sends nothing.
+  private func closeAttempt(
+    _ record: MeetingRecord, outcome: MeetingEndedTelemetry.Outcome,
+    result: MeetingTranscriptionJob.Result? = nil, gapCount: Int = 0,
+    processingSeconds: Double = 0,
+    summaryPlan: MeetingEndedTelemetry.SummaryPlan = .notApplicable, hasNotes: Bool? = nil
+  ) -> FrozenEnded? {
+    guard let facts = openAttempts.removeValue(forKey: record.id) else { return nil }
     lastAttemptFacts[record.id] = facts
-    deps.emitEnded(
-      MeetingEndedTelemetry(
-        outcome: outcome, entryPoint: facts.entryPoint,
-        durationSeconds: Double(record.recordedDurationMs) / 1000,
-        microphoneTrack: record.trackStatus[.microphone] ?? .off,
-        callSoundTrack: record.trackStatus[.callSound] ?? .off,
-        engine: record.engine,
-        speakerCount: result?.composition.speakerCount ?? 0,
-        processingSeconds: processingSeconds,
-        audioSeconds: result?.audioSeconds ?? 0,
-        yieldCount: result?.yieldCount ?? 0,
-        gapCount: gapCount,
-        echoHiddenCount: result?.composition.echoTurnIDs.count ?? 0,
-        diskStopped: facts.diskStopped,
-        summaryPlan: summaryPlan,
-        // The notes this session knows (typed, or read at launch); a meeting without a folder
-        // has none (R54). A deletion passes what it read before forgetting them.
-        hasNotes: hasNotes ?? !documents.notes(record.id).isEmpty,
-        callSound: facts.callSound))
+    return FrozenEnded(
+      outcome: outcome, facts: facts,
+      durationSeconds: Double(record.recordedDurationMs) / 1000,
+      microphoneTrack: record.trackStatus[.microphone] ?? .off,
+      callSoundTrack: record.trackStatus[.callSound] ?? .off,
+      engine: record.engine,
+      speakerCount: result?.composition.speakerCount ?? 0,
+      processingSeconds: processingSeconds,
+      audioSeconds: result?.audioSeconds ?? 0,
+      yieldCount: result?.yieldCount ?? 0,
+      gapCount: gapCount,
+      echoHiddenCount: result?.composition.echoTurnIDs.count ?? 0,
+      summaryPlan: summaryPlan,
+      // The notes this session knows (typed, or read at launch); a meeting without a folder
+      // has none (R54). A deletion passes what it read before forgetting them.
+      hasNotes: hasNotes ?? !documents.notes(record.id).isEmpty)
+  }
+
+  /// #4013 chunk 12B: sends a ready attempt's waiting `meeting.ended` row once. Only the
+  /// attempt it was frozen for settles it, so a late callback from an older attempt never
+  /// sends a newer attempt's row; a second call does nothing.
+  private func settleEnded(
+    _ meetingID: UUID, attemptID: UUID, speakerNaming: SpeakerNamingSummary?
+  ) {
+    guard let pending = pendingEnded[meetingID], pending.attemptID == attemptID else { return }
+    pendingEnded[meetingID] = nil
+    deps.emitEnded(pending.event.event(speakerNaming: speakerNaming))
+  }
+
+  /// #4013 chunk 12B: the naming pass the History write summarizes, from the pass's own
+  /// result. Nil when the pass did not name (no naming result). Missing evidence on a meeting
+  /// started for a call app, or evidence that could not be used, is `unavailable`; missing
+  /// evidence otherwise says nothing, since it never proves the meeting was not a call.
+  static func namingPass(result: MeetingTranscriptionJob.Result, record: MeetingRecord)
+    -> SpeakerNamingPass?
+  {
+    guard let naming = result.naming else { return nil }
+    switch naming.evidence {
+    case .usable(let log):
+      return naming.result.pass(log: log)
+    case .unusable:
+      return .abstained(surface: nil, outcome: .unavailable)
+    case .absent:
+      return .abstained(surface: nil, outcome: record.callApp == nil ? nil : .unavailable)
+    }
   }
 }
