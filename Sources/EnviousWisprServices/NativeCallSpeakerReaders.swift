@@ -191,7 +191,12 @@ package enum TeamsAppSpeakerReader {
       if !names.isEmpty { rosters.append((names, counts)) }
     }
     for node in windows.flatMap({ $0.root.allNodes }) {
-      guard let label = node.label else { continue }
+      guard let label = node.label else {
+        // A gallery tile with no label at all can still hold the talking frame: someone
+        // unknown is talking.
+        if node.role == "AXMenuItem", hasTalkingFrame(node) { unnamedTalker = true }
+        continue
+      }
       switch node.role {
       case "AXGroup" where label.hasSuffix(speakingSuffix):
         let name = displayName(String(label.dropLast(speakingSuffix.count)))

@@ -325,6 +325,21 @@ struct NativeCallSpeakerReaderTests {
     ])
     #expect(
       CallSpeakerAdmission.admission(of: unnamed, context: good) == .withheld(.unnamedTalker))
+    // A tile with no label at all, alone and beside Priya.
+    let unlabelled = CallAXNode(role: "AXMenuItem", children: [frame])
+    for children in [
+      [unlabelled],
+      [
+        unlabelled,
+        CallAXNode(
+          role: "AXMenuItem", description: "Priya Shah (Guest), Context menu is available",
+          children: [frame]),
+      ],
+    ] {
+      let reading = TeamsAppSpeakerReader.read(windows: [window("Meeting", children)])
+      #expect(
+        CallSpeakerAdmission.admission(of: reading, context: good) == .withheld(.unnamedTalker))
+    }
     let nested = TeamsAppSpeakerReader.read(windows: [
       window(
         "Meeting",
