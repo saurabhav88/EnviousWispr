@@ -52,6 +52,9 @@
       let evidenceReads = OSAllocatedUnfairLock(initialState: 0)
       var blocked = false
       var dictation = false
+      var polls = 0
+      var polledHolders: [CallMicrophoneWatcher.Holder] = []
+      var pollAmbiguous = false
       /// Runs at the end of a stop (a newer recording beginning meanwhile).
       var onStop: (@MainActor () -> Void)?
       /// Runs inside a detected Start, before it returns (detection changed meanwhile).
@@ -105,7 +108,12 @@
               return Self.snapshotValue(rule: rule, pid: pid, evidence: answer)
             },
             now: { [weak self] in self?.clock ?? Date() },
-            makePresenter: { [panel] _ in panel }))
+            makePresenter: { [panel] _ in panel },
+            pollMicrophone: { [weak self] in
+              guard let self else { return }
+              self.polls += 1
+              self.coordinator.deliverWatcherReading(self.polledHolders, ambiguous: self.pollAmbiguous)
+            }))
       }
 
       /// One faked Zoom process with its meeting window open, the microphone `input`.
@@ -122,7 +130,8 @@
       /// A real watcher reading for one Teams or Zoom process, through the evidence reads.
       func reading(_ bundleID: String, _ input: CallMicrophoneWatcher.Input, pid: Int32 = 900_010)
       {
-        coordinator.deliverWatcherReading([.init(pid: pid, bundleID: bundleID, input: input)])
+        polledHolders = [.init(pid: pid, bundleID: bundleID, input: input)]
+        coordinator.deliverWatcherReading(polledHolders)
       }
 
       func press(_ button: String) -> Bool { coordinator.press(button) }
@@ -158,6 +167,349 @@
         gate.continuation.finish()
       }
       return gate
+    }
+
+    @Test("Yes refresh waits for the current request, not unrelated later batch work",
+      .bug("https://github.com/saurabhav88/EnviousWispr/issues/4142"))
+    func yesRefreshDoesNotWaitForUnrelatedBatch() async throws {
+      let browser = heldReadGate()
+      let slack = heldReadGate()
+      defer {
+        browser.continuation.yield(()); browser.continuation.finish()
+        slack.continuation.yield(()); slack.continuation.finish()
+      }
+      let browserEntered = OSAllocatedUnfairLock(initialState: false)
+      let zoomReads = OSAllocatedUnfairLock(initialState: 0)
+      let rig = try Rig(snapshotRead: { rule, pid in
+        switch rule {
+        case .browser:
+          browserEntered.withLock { $0 = true }
+          for await _ in browser.stream { break }
+          return Rig.snapshotValue(rule: rule, pid: pid, evidence: .none)
+        case .callWindow(.slack):
+          for await _ in slack.stream { break }
+          return Rig.snapshotValue(rule: rule, pid: pid, evidence: .none)
+        default:
+          zoomReads.withLock { $0 += 1 }
+          return Rig.snapshotValue(rule: rule, pid: pid,
+            evidence: .call(family: .zoom, room: "wanted"),
+            continuity: .ongoing(family: .zoom, room: "wanted"))
+        }
+      })
+      rig.polledHolders = [
+        .init(pid: 900_010, bundleID: "us.zoom.xos", input: .active),
+        .init(pid: 900_011, bundleID: "com.google.chrome", input: .active),
+        .init(pid: 900_012, bundleID: "com.tinyspeck.slackmacgap", input: .active),
+      ]
+      rig.coordinator.enablePollingForTesting()
+      rig.coordinator.deliverWatcherReading(rig.polledHolders)
+      #expect(await settleUntilObserved {
+        browserEntered.withLock { $0 } && rig.panel.content == .ask(appName: "Zoom")
+      })
+      #expect(rig.press("yes"))
+      #expect(await settleUntilObserved { rig.coordinator.refreshPendingForTesting })
+      #expect(rig.press("yes"), "a repeated click is coalesced while the same refresh is pending")
+      browser.continuation.yield(()); browser.continuation.finish()
+      #expect(await settleUntilObserved { rig.starts == [.zoom] },
+        "Yes must not await the later held Slack request")
+      #expect(zoomReads.withLock { $0 } >= 2, "the intended call needs one fresh read before Start")
+      slack.continuation.yield(()); slack.continuation.finish()
+      #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
+      #expect(rig.starts.count == 1)
+    }
+
+    private func releaseWorker(_ lane: CallEvidenceRead.Lane, gate: DispatchSemaphore) async -> Bool {
+      let acknowledged = AsyncStream<Bool>.makeStream(bufferingPolicy: .bufferingNewest(1))
+      defer { acknowledged.continuation.finish() }
+      lane.queue.async {
+        acknowledged.continuation.yield(true)
+        acknowledged.continuation.finish()
+      }
+      // deadline-fallback: missing queue reconciliation fails instead of hanging the test.
+      DispatchQueue.global().asyncAfter(deadline: .now() + 10) {
+        acknowledged.continuation.yield(false)
+        acknowledged.continuation.finish()
+      }
+      gate.signal()
+      for await value in acknowledged.stream { return value }
+      return false
+    }
+
+    @Test("After the occupied lane releases, round robin gives the later healthy source a real read")
+    func recoveredLaneIsFairToLaterSource() async throws {
+      let lane = CallEvidenceRead.Lane()
+      let slow = DispatchSemaphore(value: 0)
+      defer { slow.signal() }
+      let slowEntries = OSAllocatedUnfairLock(initialState: 0)
+      let healthyEntries = OSAllocatedUnfairLock(initialState: 0)
+      let rig = try Rig(snapshotRead: { rule, pid in
+        let frozen = rule == .callWindow(.zoom)
+        return await CallEvidenceRead.boundedSnapshot(rule: rule, pid: pid,
+          bound: frozen ? .zero : .seconds(10), lane: lane, read: { _, _ in
+            if frozen {
+              slowEntries.withLock { $0 += 1 }
+              // deadline-fallback: deliberately occupied physical lane, released by the fixture.
+              _ = slow.wait(timeout: .now() + 30)
+              return Rig.snapshotValue(rule: rule, pid: pid, evidence: .none)
+            }
+            healthyEntries.withLock { $0 += 1 }
+            return Rig.snapshotValue(rule: rule, pid: pid,
+              evidence: .call(family: .googleMeet, room: "abc-defg-hij"),
+              continuity: .ongoing(family: .googleMeet, room: "abc-defg-hij"))
+          })
+      })
+      let zoom = CallMicrophoneWatcher.Holder(pid: 900_010, bundleID: "us.zoom.xos", input: .active)
+      let chrome = CallMicrophoneWatcher.Holder(pid: 900_011, bundleID: "com.google.chrome", input: .active)
+      rig.coordinator.deliverWatcherReading([zoom, chrome])
+      #expect(await settleUntilObserved {
+        slowEntries.withLock { $0 == 1 } && !rig.coordinator.evidenceReadPendingForTesting
+          && rig.coordinator.inputForTesting?.continuity.count == 2
+      })
+      #expect(healthyEntries.withLock { $0 } == 0, "busy is not an actual healthy reader entry")
+      #expect(await releaseWorker(lane, gate: slow))
+      #expect(!lane.reading.withLock { $0 })
+      rig.advance(1)
+      // Reordering the microphone list must not reset the persistent source cursor.
+      rig.coordinator.deliverWatcherReading([chrome, zoom])
+      #expect(await settleUntilObserved {
+        healthyEntries.withLock { $0 >= 1 } && rig.panel.content == .ask(appName: "Google Meet")
+      })
+      #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
+      #expect(await releaseWorker(lane, gate: slow))
+      #expect(rig.coordinator.inputForTesting?.continuity.contains {
+        $0.value == .ongoing(family: .googleMeet, room: "abc-defg-hij")
+      } == true)
+    }
+
+    @Test("Ambiguous startup polls actively, fractional ticks avoid extra AX and no-call polling stays slow")
+    func livePollingCadenceUsesFrameState() throws {
+      let rig = try Rig()
+      rig.pollAmbiguous = true
+      rig.coordinator.tickForTesting()
+      #expect(rig.polls == 1)
+      rig.advance(0.5)
+      rig.coordinator.tickForTesting()
+      #expect(rig.polls == 1)
+      rig.advance(0.5)
+      rig.coordinator.tickForTesting()
+      #expect(rig.polls == 2, "complete but ambiguous empty startup still needs active polling")
+      rig.pollAmbiguous = false
+      rig.advance(1)
+      rig.coordinator.tickForTesting()
+      #expect(rig.polls == 3)
+      rig.advance(9)
+      rig.coordinator.tickForTesting()
+      #expect(rig.polls == 3)
+      rig.advance(1)
+      rig.coordinator.tickForTesting()
+      #expect(rig.polls == 4)
+      #expect(rig.evidenceReads.withLock { $0 } == 0)
+      rig.coordinator.shutDown()
+    }
+
+    @Test("A due microphone poll runs while UI evidence is pending without starting parallel AX work")
+    func microphonePollingContinuesDuringRead() async throws {
+      let gate = heldReadGate()
+      defer { gate.continuation.yield(()); gate.continuation.finish() }
+      let entered = OSAllocatedUnfairLock(initialState: false)
+      let rig = try Rig(snapshotRead: { rule, pid in
+        entered.withLock { $0 = true }
+        for await _ in gate.stream { break }
+        return Rig.snapshotValue(rule: rule, pid: pid,
+          evidence: .call(family: .zoom, room: "same-call"))
+      })
+      rig.coordinator.enablePollingForTesting()
+      rig.reading("us.zoom.xos", .active)
+      #expect(await settleUntilObserved { entered.withLock { $0 } })
+      rig.advance(0.5)
+      rig.coordinator.tickForTesting()
+      #expect(rig.polls == 0)
+      rig.advance(0.5)
+      rig.coordinator.tickForTesting()
+      #expect(rig.polls == 1)
+      #expect(rig.coordinator.inputForTesting?.sequence == 2)
+      #expect(rig.evidenceReads.withLock { $0 } == 1)
+      gate.continuation.yield(()); gate.continuation.finish()
+      #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
+    }
+
+    @Test("A No during a held Yes refresh invalidates the captured token and prevents a late Start")
+    func replacedQuestionCannotStartAfterRefresh() async throws {
+      let lane = CallEvidenceRead.Lane()
+      let gate = DispatchSemaphore(value: 0)
+      defer { gate.signal() }
+      let reads = OSAllocatedUnfairLock(initialState: 0)
+      let entered = OSAllocatedUnfairLock(initialState: false)
+      let rig = try Rig(snapshotRead: { rule, pid in
+        let index = reads.withLock { $0 += 1; return $0 }
+        if index == 2 {
+          return await CallEvidenceRead.boundedSnapshot(rule: rule, pid: pid, bound: .seconds(10), lane: lane,
+            read: { _, _ in
+              entered.withLock { $0 = true }
+              // deadline-fallback: cancellation must not hide a late real-worker result.
+              _ = gate.wait(timeout: .now() + 30)
+              return Rig.snapshotValue(rule: rule, pid: pid,
+                evidence: .call(family: .zoom, room: "wanted"))
+            })
+        }
+        return Rig.snapshotValue(rule: rule, pid: pid,
+          evidence: .call(family: .zoom, room: "wanted"))
+      })
+      rig.coordinator.enablePollingForTesting()
+      rig.reading("us.zoom.xos", .active)
+      #expect(await settleUntilObserved {
+        rig.panel.content == .ask(appName: "Zoom") && !rig.coordinator.evidenceReadPendingForTesting
+      })
+      #expect(rig.press("yes"))
+      #expect(await settleUntilObserved { entered.withLock { $0 } })
+      #expect(rig.press("no"))
+      gate.signal()
+      #expect(await settleUntilObserved {
+        !rig.coordinator.refreshPendingForTesting && !rig.coordinator.evidenceReadPendingForTesting
+      })
+      #expect(rig.starts.isEmpty)
+      #expect(rig.events.contains { $0.answer == .no })
+    }
+
+    @Test("Yes on a newer question is preserved while an obsolete question's refresh finishes")
+    func newerQuestionYesIsNotLost() async throws {
+      let lane = CallEvidenceRead.Lane()
+      let gate = DispatchSemaphore(value: 0)
+      defer { gate.signal() }
+      let zoomReads = OSAllocatedUnfairLock(initialState: 0)
+      let teamsReads = OSAllocatedUnfairLock(initialState: 0)
+      let held = OSAllocatedUnfairLock(initialState: false)
+      let rig = try Rig(snapshotRead: { rule, pid in
+        if rule == .callApp(.teams) {
+          teamsReads.withLock { $0 += 1 }
+          return Rig.snapshotValue(rule: rule, pid: pid,
+            evidence: .call(family: .teams, room: "call-b"),
+            continuity: .ongoing(family: .teams, room: "call-b"))
+        }
+        let index = zoomReads.withLock { $0 += 1; return $0 }
+        if index == 2 {
+          return await CallEvidenceRead.boundedSnapshot(rule: rule, pid: pid, bound: .seconds(10), lane: lane,
+            read: { _, _ in
+              held.withLock { $0 = true }
+              // deadline-fallback: hold the obsolete request through actual worker completion.
+              _ = gate.wait(timeout: .now() + 30)
+              return Rig.snapshotValue(rule: rule, pid: pid,
+                evidence: .call(family: .zoom, room: "call-a"))
+            })
+        }
+        return Rig.snapshotValue(rule: rule, pid: pid,
+          evidence: .call(family: .zoom, room: "call-a"))
+      })
+      rig.polledHolders = [
+        .init(pid: 900_010, bundleID: "us.zoom.xos", input: .active),
+        .init(pid: 900_011, bundleID: "com.microsoft.teams2", input: .active),
+      ]
+      rig.coordinator.enablePollingForTesting()
+      rig.coordinator.deliverWatcherReading(rig.polledHolders)
+      #expect(await settleUntilObserved {
+        rig.panel.content == .ask(appName: "Zoom") && !rig.coordinator.evidenceReadPendingForTesting
+      })
+      #expect(rig.press("yes"))
+      #expect(await settleUntilObserved { held.withLock { $0 } })
+      #expect(rig.press("no"))
+      #expect(await settleUntilObserved { rig.panel.content == .ask(appName: "Microsoft Teams") })
+      #expect(rig.press("yes"))
+      gate.signal()
+      #expect(await settleUntilObserved { rig.starts == [.teams] },
+        "the newer claimed Yes needs no second click after the obsolete refresh completes")
+      #expect(teamsReads.withLock { $0 } >= 2)
+      #expect(rig.starts.count == 1)
+      #expect(await settleUntilObserved {
+        !rig.coordinator.refreshPendingForTesting && !rig.coordinator.evidenceReadPendingForTesting
+      })
+    }
+
+    @Test("An arriving source cannot restart a captured cycle ahead of a tracked retained call")
+    func arrivalsDoNotStarveRetainedTarget() async throws {
+      let browser = heldReadGate()
+      let slack = heldReadGate()
+      defer {
+        browser.continuation.yield(()); browser.continuation.finish()
+        slack.continuation.yield(()); slack.continuation.finish()
+      }
+      let browserEntered = OSAllocatedUnfairLock(initialState: false)
+      let rig = try Rig(snapshotRead: { rule, pid in
+        if case .browser = rule {
+          browserEntered.withLock { $0 = true }
+          for await _ in browser.stream { break }
+          return Rig.snapshotValue(rule: rule, pid: pid, evidence: .none)
+        }
+        if rule == .callWindow(.slack) {
+          for await _ in slack.stream { break }
+          return Rig.snapshotValue(rule: rule, pid: pid, evidence: .none)
+        }
+        return Rig.snapshotValue(rule: rule, pid: pid,
+          evidence: .call(family: .zoom, room: "tracked"),
+          continuity: .ongoing(family: .zoom, room: "tracked"))
+      }, retainedRead: { target in
+        .init(startEvidence: .unknown,
+          continuity: .ongoing(family: target.family, room: target.room), owner: target.owner)
+      })
+      rig.reading("us.zoom.xos", .active)
+      #expect(await settleUntilObserved {
+        rig.panel.content == .ask(appName: "Zoom") && !rig.coordinator.evidenceReadPendingForTesting
+      })
+      rig.advance(1)
+      let chrome = CallMicrophoneWatcher.Holder(pid: 900_011, bundleID: "com.google.chrome", input: .active)
+      rig.coordinator.deliverWatcherReading([chrome])
+      #expect(await settleUntilObserved { browserEntered.withLock { $0 } })
+      rig.coordinator.deliverWatcherReading([
+        .init(pid: 900_012, bundleID: "com.tinyspeck.slackmacgap", input: .active), chrome,
+      ])
+      browser.continuation.yield(()); browser.continuation.finish()
+      #expect(await settleUntilObserved {
+        rig.coordinator.inputForTesting?.continuity.contains {
+          $0.retainedTarget?.family == .zoom && $0.value == .ongoing(family: .zoom, room: "tracked")
+        } == true
+      })
+      slack.continuation.yield(()); slack.continuation.finish()
+      #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
+    }
+
+    @Test("Switch completion refreshes its captured room after stop changes the current page")
+    func switchRefreshDoesNotBorrowChangedPage() async throws {
+      let gate = heldReadGate()
+      defer { gate.continuation.yield(()); gate.continuation.finish() }
+      let stopped = OSAllocatedUnfairLock(initialState: false)
+      let afterStop = OSAllocatedUnfairLock(initialState: 0)
+      let rig = try Rig(snapshotRead: { rule, pid in
+        if stopped.withLock({ $0 }) {
+          let index = afterStop.withLock { $0 += 1; return $0 }
+          if index == 1 { for await _ in gate.stream { break } }
+          return Rig.snapshotValue(rule: rule, pid: pid,
+            evidence: .call(family: .googleMeet, room: "xyz-wxyz-xyz"),
+            continuity: .ongoing(family: .googleMeet, room: "xyz-wxyz-xyz"))
+        }
+        return Rig.snapshotValue(rule: rule, pid: pid,
+          evidence: .call(family: .googleMeet, room: "abc-defg-hij"),
+          continuity: .ongoing(family: .googleMeet, room: "abc-defg-hij"))
+      })
+      rig.phase = .recording(meetingID: UUID(), startedAt: rig.clock)
+      rig.coordinator.enablePollingForTesting()
+      rig.onStop = { [weak rig] in
+        stopped.withLock { $0 = true }
+        rig?.reading("com.google.chrome", .active)
+      }
+      rig.reading("com.google.chrome", .active)
+      #expect(await settleUntilObserved {
+        rig.panel.content == .switchMeeting(appName: "Google Meet") && !rig.coordinator.evidenceReadPendingForTesting
+      })
+      #expect(rig.press("yes"))
+      #expect(await settleUntilObserved { afterStop.withLock { $0 == 1 } })
+      gate.continuation.yield(()); gate.continuation.finish()
+      #expect(await settleUntilObserved {
+        afterStop.withLock { $0 >= 2 } && !rig.coordinator.refreshPendingForTesting
+      })
+      #expect(afterStop.withLock { $0 } >= 2, "switch completion needs its own fresh target read")
+      #expect(rig.stops == 1 && rig.starts.isEmpty)
+      #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
+      #expect(rig.coordinator.inputForTesting?.holders.first?.evidence
+        == .call(family: .googleMeet, room: "xyz-wxyz-xyz"))
     }
 
     @Test("A tracked call still receives continuity when its microphone holder disappears",

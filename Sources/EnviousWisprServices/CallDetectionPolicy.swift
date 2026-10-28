@@ -56,6 +56,24 @@ public struct CallDetectionPolicy: Sendable {
     }
   }
 
+  /// A read-only reference to the question/operation that requested fresh proof.
+  package struct RefreshTarget: Sendable, Equatable {
+    package enum Reference: Sendable, Equatable {
+      case question(token: Int)
+      case operation(Int)
+    }
+    package let reference: Reference
+    package let episode: Int
+    package let rule: CallAppCatalog.Rule
+    package let family: CallAppFamily
+    package let room: String
+
+    package func matches(_ target: CallEvidenceReader.RetainedTarget) -> Bool {
+      target.rule == rule && target.family == family
+        && (CallDetectionPolicy.isNative(rule) || target.room == room)
+    }
+  }
+
   package struct ContinuityObservation: Sendable, Equatable {
     package let id: Int
     package let source: Source
@@ -302,6 +320,34 @@ public struct CallDetectionPolicy: Sendable {
       $0.rule == target.rule && $0.family == target.family
         && (Self.isNative(target.rule) || $0.room == target.room)
     }
+  }
+
+  package func refreshTarget(token requestedToken: Int) -> RefreshTarget? {
+    guard requestedToken == token else { return nil }
+    let id: Int
+    switch interaction {
+    case .ask(let episode, _, _), .switchCall(let episode, _, _, _): id = episode
+    default: return nil
+    }
+    return refreshTarget(episode: id, reference: .question(token: requestedToken))
+  }
+
+  package func refreshTarget(operation: Int) -> RefreshTarget? {
+    guard case .switchTo(let episode, _, _) = operations[operation] else { return nil }
+    return refreshTarget(episode: episode, reference: .operation(operation))
+  }
+
+  package func isCurrent(_ target: RefreshTarget) -> Bool {
+    switch target.reference {
+    case .question(let token): return refreshTarget(token: token) == target
+    case .operation(let id): return refreshTarget(operation: id) == target
+    }
+  }
+
+  private func refreshTarget(episode id: Int, reference: RefreshTarget.Reference) -> RefreshTarget? {
+    guard let episode = episodes.first(where: { $0.id == id }) else { return nil }
+    return .init(reference: reference, episode: id, rule: episode.rule,
+      family: episode.family, room: episode.room)
   }
 
   #if DEBUG

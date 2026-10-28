@@ -39,12 +39,15 @@ final class CallDetectionCoordinator {
     }
     /// The panel under the menu bar (`CallPromptPanel` in the app); tests hand in a stand-in.
     var makePresenter: @MainActor (@escaping @MainActor () -> NSRect?) -> any CallPromptPresenting
+    /// Tests can supply microphone frames without starting real hardware.
+    var pollMicrophone: (@MainActor () -> Void)? = nil
   }
 
   /// Seconds between polls while a call may be on; without the process-list listener, between
   /// every poll.
-  static let pollInterval: TimeInterval = 2
+  static let pollInterval: TimeInterval = 1
   static let unlistenedPollInterval: TimeInterval = 10
+  static let presentationTick: TimeInterval = 0.5
 
   private let deps: Dependencies
   private var policy = CallDetectionPolicy()
@@ -83,6 +86,20 @@ final class CallDetectionCoordinator {
   private struct ReadTarget {
     let state: SourceState
     let retained: CallEvidenceReader.RetainedTarget?
+    var key: RequestKey { .init(sourceID: state.source.id, retained: retained) }
+  }
+  private struct RequestKey: Equatable {
+    let sourceID: Int
+    let retained: CallEvidenceReader.RetainedTarget?
+  }
+  private struct RefreshRequest {
+    let target: CallDetectionPolicy.RefreshTarget
+    let read: ReadTarget?
+  }
+  private struct PendingPress {
+    let token: Int
+    let button: CallDetectionPolicy.Button
+    let request: RefreshRequest?
   }
   private var evidence: [Int32: CachedEvidence] = [:]
   private var sources: [Int32: SourceState] = [:]
@@ -96,9 +113,15 @@ final class CallDetectionCoordinator {
   private var currentReadID: Int?
   private var readEnabled: Bool?
   private var readStopped = false
+  private var refreshInProgress = false
+  private var pressRefreshTask: Task<Void, Never>?
+  private var activePress: PendingPress?
+  private var queuedPress: PendingPress?
+  private var cycle: [ReadTarget] = []
+  private var cycleWanted = false
+  private var lastCycleStart: RequestKey?
   /// The evidence read running now; `refreshNow` waits for it.
   private var evidenceTask: Task<Void, Never>?
-  private var rereadWanted = false
   /// The policy token the panel's buttons were last drawn with.
   private var drawnToken = -1
 
@@ -111,7 +134,7 @@ final class CallDetectionCoordinator {
     guard timer == nil else { return }
     readStopped = false
     // Common modes: an open menu must not stop the prompt and countdown clocks (r6 F7).
-    let clock = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+    let clock = Timer(timeInterval: Self.presentationTick, repeats: true) { [weak self] _ in
       Task { @MainActor in self?.tick() }
     }
     RunLoop.main.add(clock, forMode: .common)
@@ -123,7 +146,7 @@ final class CallDetectionCoordinator {
         guard let self else { return }
         self.invalidateReadWork()
         self.policy.noteWakeOrRestart(at: self.deps.now())
-        if self.watching { self.watcher.poll() }
+        if self.watching { self.pollMicrophone() }
         self.step()
       }
     }
@@ -152,12 +175,20 @@ final class CallDetectionCoordinator {
     deps.settings.meetingOnboardingComplete && mode != .off && CallMicrophoneWatcher.isSupported
   }
 
+  private func pollMicrophone() {
+    if let poll = deps.pollMicrophone { poll() }
+    else { watcher.poll() }
+  }
+
   /// Reading lifetime is independent of microphone-frame sequence. A cancelled bounded read
   /// retains its task slot until it really returns; no new AX work is piled behind it.
   private func invalidateReadWork(clearInputs: Bool = true) {
     readLifetime += 1
     evidenceTask?.cancel()
-    rereadWanted = false
+    cycleWanted = false
+    queuedPress = nil
+    cycle = []
+    lastCycleStart = nil
     sources = [:]
     continuity = []
     pendingSources = []
@@ -191,7 +222,7 @@ final class CallDetectionCoordinator {
     if enabled != watching {
       watching = enabled
       if watching {
-        watcher.start()
+        if deps.pollMicrophone == nil { watcher.start() }
       } else {
         watcher.stop()
         holders = []
@@ -209,16 +240,12 @@ final class CallDetectionCoordinator {
       }
     #endif
     if watching {
-      let mayBeOn = !holders.isEmpty || !complete || policy.isTrackingCalls
-      let interval = watcher.isListening ? Self.pollInterval : Self.unlistenedPollInterval
-      // Retain the existing poll schedule until the fair-cycle/cadence cutover. Listener
-      // readings can arrive during a read without invalidating independent continuity.
-      // Every poll reads the evidence afresh: a tab switched to a meeting while the microphone
-      // stays on is seen, and an unknown read is retried (review r4 F2).
-      if evidenceTask == nil, mayBeOn || !watcher.isListening,
-        now.timeIntervalSince(lastPoll) >= interval
-      {
-        watcher.poll()
+      let mayBeOn = !holders.isEmpty || !complete || ambiguous || policy.isTrackingCalls
+      let interval = mayBeOn ? Self.pollInterval : Self.unlistenedPollInterval
+      // Microphone facts keep moving during UI work; the faster presentation tick does not
+      // itself request AX work. Even listener-backed no-call checks remain conservative.
+      if now.timeIntervalSince(lastPoll) >= interval {
+        pollMicrophone()
       }
     }
     step()
@@ -328,10 +355,11 @@ final class CallDetectionCoordinator {
       guard simulation == nil else { return }
     #endif
     guard updateReadLifetime() else { return }
-    guard evidenceTask == nil else {
-      rereadWanted = true
-      return
-    }
+    cycleWanted = true
+    scheduleNextRead()
+  }
+
+  private func eligibleTargets() -> [ReadTarget] {
     let listed = holders.filter { holder in
       let tracked = CallAppCatalog.rule(forBundleID: holder.bundleID)
         .map { policy.isTracking($0) } ?? false
@@ -347,30 +375,81 @@ final class CallDetectionCoordinator {
         targets.append(.init(state: state, retained: target))
       }
     }
-    guard !targets.isEmpty else { return }
+    var unique: [ReadTarget] = []
+    for target in targets where !unique.contains(where: { $0.key == target.key }) { unique.append(target) }
+    return unique.sorted {
+      if $0.state.source.id != $1.state.source.id { return $0.state.source.id < $1.state.source.id }
+      return ($0.retained?.room ?? "") < ($1.retained?.room ?? "")
+    }
+  }
+
+  private func makeCycle() -> [ReadTarget] {
+    let targets = eligibleTargets()
+    let primary = targets.filter {
+      $0.retained != nil || $0.state.holder.input == .active || policy.isTracking($0.state.source.rule)
+    }
+    let secondary = targets.filter { target in !primary.contains { $0.key == target.key } }
+    let group = primary.isEmpty ? secondary : primary
+    guard !group.isEmpty else { return [] }
+    let start: Int
+    if let lastCycleStart, let previous = group.firstIndex(where: { $0.key == lastCycleStart }) {
+      start = (previous + 1) % group.count
+    } else if let lastCycleStart {
+      start = group.firstIndex { $0.state.source.id > lastCycleStart.sourceID } ?? 0
+    } else { start = 0 }
+    lastCycleStart = group[start].key
+    let rotated = Array(group[start...]) + Array(group[..<start])
+    return primary.isEmpty ? rotated : rotated + secondary
+  }
+
+  private func scheduleNextRead() {
+    guard evidenceTask == nil, !refreshInProgress, queuedPress == nil,
+      updateReadLifetime(), !readStopped else { return }
+    // At most the leftover captured cycle and one newly requested cycle. New arrivals never
+    // restart a finite cycle or push its already-enrolled targets behind them forever.
+    for _ in 0..<2 {
+      if cycle.isEmpty {
+        guard cycleWanted else { pendingSources = []; observe(); return }
+        cycleWanted = false
+        cycle = makeCycle()
+      }
+      let bound = cycle.count
+      for _ in 0..<bound {
+        let target = cycle.removeFirst()
+        guard let state = sources[target.state.source.pid], state.source == target.state.source,
+          canQuery(state, retained: target.retained) else { continue }
+        launchRead(.init(state: state, retained: target.retained))
+        return
+      }
+    }
+    pendingSources = []
+    observe()
+  }
+
+  private func launchRead(_ target: ReadTarget) {
     let read = deps.snapshot
     let lifetime = readLifetime
     nextReadID += 1
     let requestID = nextReadID
     currentReadID = requestID
-    pendingSources = targets.map(\.state.source)
+    pendingSources = ([target] + cycle).map(\.state.source)
     observe()
     evidenceTask = Task {
       defer { self.finishRead(requestID) }
-      for target in targets {
+      do {
         guard self.currentReadID == requestID, self.readLifetime == lifetime,
-          !Task.isCancelled, self.updateReadLifetime() else { break }
+          !Task.isCancelled, self.updateReadLifetime() else { return }
         guard let current = self.sources[target.state.source.pid],
           current.source == target.state.source,
           self.canQuery(current, retained: target.retained)
         else {
           self.removePending(target.state.source)
-          continue
+          return
         }
         let beganAt = self.deps.now()
         let value = await read(current.source.rule, current.holder.pid, target.retained)
         guard self.currentReadID == requestID, self.readLifetime == lifetime,
-          !Task.isCancelled, self.updateReadLifetime() else { break }
+          !Task.isCancelled, self.updateReadLifetime() else { return }
         self.removePending(current.source)
         if let retained = target.retained {
           self.acceptRetained(value, requested: current, target: retained, beganAt: beganAt)
@@ -413,7 +492,7 @@ final class CallDetectionCoordinator {
       current.knownCalls = []
       sources[pid] = current
       evidence[pid] = nil
-      rereadWanted = true
+      cycleWanted = true
       return
     }
     let sameRun = requested.owner == nil || requested.owner == value.owner
@@ -477,33 +556,64 @@ final class CallDetectionCoordinator {
     guard currentReadID == id else { return }
     evidenceTask = nil
     currentReadID = nil
-    pendingSources = []
+    pendingSources = cycle.map(\.state.source)
     guard !readStopped else { return }
     observe()
     step()
-    guard rereadWanted, updateReadLifetime() else { return }
-    rereadWanted = false
-    // Preserve the existing finite poll/refresh scheduling until the scheduling cutover.
-    if watching, deps.now().timeIntervalSince(lastPoll) >= Self.pollInterval { watcher.poll() }
-    else { readEvidence() }
+    scheduleNextRead()
   }
 
   /// A fresh microphone poll and the evidence reads it starts, finished: a Yes and a switch
   /// act on what the call shows now, not on a read from before (review r4 F3, r12 F1).
-  private func refreshNow() async {
+  private func refreshRequest(_ target: CallDetectionPolicy.RefreshTarget?) -> RefreshRequest? {
+    guard let target else { return nil }
+    let candidates = eligibleTargets().filter { $0.state.source.rule == target.rule }
+    let listed = candidates.filter { $0.retained == nil }
+    let known = listed.filter { $0.state.knownCalls.contains(where: target.matches) }
+    let choices = known.isEmpty ? listed : known
+    let selected: ReadTarget?
+    if !choices.isEmpty {
+      let owners = choices.compactMap(\.state.owner)
+      let unambiguous = choices.count == 1
+        || (owners.count == choices.count && owners.allSatisfy { $0 == owners.first })
+      selected = unambiguous ? choices.first : nil
+    } else {
+      selected = candidates.first { $0.retained.map(target.matches) == true }
+    }
+    return .init(target: target, read: selected)
+  }
+
+  private func discardStartProof(for target: CallDetectionPolicy.RefreshTarget) {
+    for pid in Array(evidence.keys) where sources[pid]?.source.rule == target.rule { evidence[pid] = nil }
+    observe()
+  }
+
+  private func refreshNow(_ request: RefreshRequest?) async {
     #if DEBUG
       guard simulation == nil else { return }
     #endif
-    guard watching else { return }
-    // A read already running belongs to an older reading: let it finish first.
-    if let running = evidenceTask { await running.value }
-    watcher.poll()
-    // The reads for this poll, and at most one more if the process list changed meanwhile:
-    // never an open-ended wait.
-    for _ in 0..<2 {
-      guard let running = evidenceTask else { break }
-      await running.value
+    guard let request, updateReadLifetime(), policy.isCurrent(request.target) else { return }
+    guard !refreshInProgress else { discardStartProof(for: request.target); return }
+    let lifetime = readLifetime
+    refreshInProgress = true
+    defer {
+      refreshInProgress = false
+      scheduleNextRead()
     }
+    // A task is one bounded request, never the rest of the ordinary cycle.
+    if let running = evidenceTask { await running.value }
+    guard lifetime == readLifetime, updateReadLifetime(), policy.isCurrent(request.target)
+    else { return }
+    if watching { pollMicrophone() }
+    discardStartProof(for: request.target)
+    guard lifetime == readLifetime, policy.isCurrent(request.target), let captured = request.read,
+      let current = sources[captured.state.source.pid], current.source == captured.state.source,
+      (captured.state.owner == nil || current.owner == captured.state.owner),
+      canQuery(current, retained: captured.retained)
+    else { return }
+    cycle.removeAll { $0.key == captured.key }
+    launchRead(.init(state: current, retained: captured.retained))
+    if let fresh = evidenceTask { await fresh.value }
   }
 
   nonisolated static func sameProcess(
@@ -579,6 +689,7 @@ final class CallDetectionCoordinator {
           self.deliver(.startFinished(operation: operation, Self.result(outcome)))
         }
       case .stop(let operation, let meetingID):
+        let target = refreshRequest(policy.refreshTarget(operation: operation))
         Task {
           // Only the recording the policy meant: one started since (from the menu) is never
           // stopped by a late command.
@@ -586,7 +697,7 @@ final class CallDetectionCoordinator {
             await self.deps.stopMeeting()
           }
           // Fresh readings first: a switch checks the new call against them.
-          await self.refreshNow()
+          await self.refreshNow(target)
           self.deliver(.stopFinished(operation: operation))
         }
       case .emit(let family, let answer):
@@ -676,17 +787,44 @@ final class CallDetectionCoordinator {
       deliver(.pressed(token: token, button))
       return
     }
+    guard let target = policy.refreshTarget(token: token),
+      activePress?.token != token, queuedPress?.token != token else { return }
+    let request = PendingPress(token: token, button: button, request: refreshRequest(target))
     // Claimed now, answered after the fresh read: a Yes in time is never lost to the timeout.
     policy.claim(token: token)
-    Task {
+    if pressRefreshTask != nil {
+      // One newer answer, not another task. Its claim survives the obsolete request's boundary.
+      queuedPress = request
+      return
+    }
+    beginPress(request)
+  }
+
+  private func beginPress(_ press: PendingPress) {
+    activePress = press
+    pressRefreshTask = Task {
+      defer { self.finishPress(press.token) }
       // Fresh readings for a Yes: the call may have ended or moved since the last read (r4 F3).
       // A question replaced meanwhile has a new token, so this press then answers nothing.
-      await self.refreshNow()
+      await self.refreshNow(press.request)
       // The rules see this moment's settings first: a question whose app was switched off
       // since it showed is withdrawn.
       self.step()
-      self.deliver(.pressed(token: token, button))
+      // An obsolete answer must not clear the newer question's claimed token in Policy.handle.
+      if self.policy.refreshTarget(token: press.token) != nil {
+        self.deliver(.pressed(token: press.token, press.button))
+      }
     }
+  }
+
+  private func finishPress(_ token: Int) {
+    guard activePress?.token == token else { return }
+    pressRefreshTask = nil
+    activePress = nil
+    let next = queuedPress
+    queuedPress = nil
+    if let next, !readStopped, policy.refreshTarget(token: next.token) != nil { beginPress(next) }
+    else { scheduleNextRead() }
   }
 
   // MARK: - Dev control (DEBUG)
@@ -715,7 +853,7 @@ final class CallDetectionCoordinator {
         evidence = [:]
         complete = false
         // Back to the real microphone.
-        if watching { watcher.poll() }
+        if watching { pollMicrophone() }
       }
       step()
     }
@@ -739,6 +877,8 @@ final class CallDetectionCoordinator {
 
     /// The policy's consumed frame, not an observer of the injected reader or its cache.
     var inputForTesting: CallDetectionPolicy.Reading? { policy.inputForTesting }
+    var refreshPendingForTesting: Bool { refreshInProgress }
+    func enablePollingForTesting() { watching = true }
 
     /// Hands the coordinator a watcher reading (nil: the read failed), through the same path
     /// as the real watcher, evidence reads included. Tests only.

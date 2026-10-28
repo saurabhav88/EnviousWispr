@@ -42,6 +42,24 @@ struct CallDetectionPolicyTests {
     #expect(!story.policy.isTracking(other))
   }
 
+  @Test("Refresh projections retain the switch operation's intended call after its question changes")
+  func refreshTargetFollowsOperationNotNewQuestion() throws {
+    var story = Story()
+    story.meeting = .recording(meetingID: UUID())
+    story.read([Self.zoom(.active)])
+    let question = try #require(story.policy.refreshTarget(token: story.policy.token))
+    #expect(question.family == .zoom)
+    story.press(.yes)
+    let operation = try #require(story.lastStop)
+    let captured = try #require(story.policy.refreshTarget(operation: operation))
+    #expect(captured.family == .zoom && captured.rule == .callWindow(.zoom))
+    #expect(!story.policy.isCurrent(question))
+    story.read([.init(pid: 2, rule: .callApp(.teams), input: .active,
+      evidence: .call(family: .teams, room: "another-call"))])
+    #expect(story.policy.refreshTarget(operation: operation) == captured)
+    #expect(story.policy.isCurrent(captured))
+  }
+
   #if DEBUG
     @Test("A completed observation can advance without advancing the microphone frame")
     func independentObservationUpdatesSameMicrophoneFrame() {
