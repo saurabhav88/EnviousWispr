@@ -54,6 +54,18 @@ package struct CallAXWindow: Sendable, Equatable {
   }
 }
 
+/// One web page in a browser window: its address and its tree. Browser readers keep pages apart,
+/// so names from an unrelated tab never join a call's roster (#4013 chunk 3).
+package struct CallAXDocument: Sendable, Equatable {
+  package let url: String?
+  package let root: CallAXNode
+
+  package init(url: String?, root: CallAXNode) {
+    self.url = url
+    self.root = root
+  }
+}
+
 /// What a speaker reader found in one snapshot: who the app showed as talking, and the
 /// participants it could see (#4013 §3 item 2).
 ///
