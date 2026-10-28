@@ -59,7 +59,7 @@ struct MeetingTranscriptReplacementTests {
   }
 
   @Test(
-    "a launch keeps a History row that already holds the committed generation; an unreadable one publishes nothing"
+    "a launch keeps a History row that already holds the committed generation; an unreadable or deleted one publishes nothing"
   )
   func launchKeepsAPublishedRow() async throws {
     let harness = try Harness()
@@ -92,6 +92,18 @@ struct MeetingTranscriptReplacementTests {
     #expect(!relaunched.coordinator.isCommitReceiptPending(meetingID))
     #expect(relaunched.saved.isEmpty, "the edited row was not rewritten from the receipt")
     #expect(hasNoReceipt(relaunched, meetingID))
+
+    // A deletion while launch reads History's file: the deleted meeting's row is not saved back.
+    let deleted = try Harness(copying: harness.root)
+    let read = MeetingCoordinatorTests.Gate()
+    deleted.historyReadGate = read
+    deleted.coordinator.launch()
+    await eventually("History read parked") { read.parked }
+    #expect(await deleted.coordinator.delete(meetingID: meetingID))
+    read.open()
+    // Deleting a meeting launch has not listed waits for launch to end.
+    _ = await deleted.coordinator.delete(meetingID: UUID())
+    #expect(deleted.saveRequests.isEmpty, "the deleted meeting's row was not published")
     save.open()
   }
 

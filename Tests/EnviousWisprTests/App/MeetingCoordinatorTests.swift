@@ -275,12 +275,16 @@ struct MeetingCoordinatorTests {
           MeetingCoordinatorTests.result()
         }
     var saved: [Transcript] = []
+    /// Every History save asked for, recorded before anything can fail it.
+    var saveRequests: [Transcript] = []
     /// The meeting's saved state at the moment its History row was written.
     var stateAtSave: [MeetingState] = []
     var saveError: Error?
     /// #3973 C2: History's row files as `durableHistoryRow` reads them, and its read failure.
     var historyFiles: [UUID: Transcript] = [:]
     var historyReadError: Error?
+    /// When set, `durableHistoryRow` waits on it.
+    var historyReadGate: Gate?
     /// #3973 C2: while set, the commit receipt's write fails with it (a commit that never
     /// began). Read on the file writer's queue, so behind a lock.
     let receiptError = OSAllocatedUnfairLock<CocoaError?>(initialState: nil)
@@ -401,6 +405,7 @@ struct MeetingCoordinatorTests {
           return detectedAnswers.isEmpty ? detectedWanted : detectedAnswers.removeFirst()
         },
         saveTranscript: { [self] transcript in
+          saveRequests.append(transcript)
           if let meetingID = transcript.meetingID {
             stateAtSave.append(try store.load(id: meetingID).state)
           }
@@ -410,6 +415,7 @@ struct MeetingCoordinatorTests {
           saved.append(transcript)
         },
         durableHistoryRow: { [self] id in
+          await historyReadGate?.wait()
           if let historyReadError { throw historyReadError }
           return historyFiles[id]
         },

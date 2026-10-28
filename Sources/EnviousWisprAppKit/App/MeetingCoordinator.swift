@@ -719,8 +719,10 @@ final class MeetingCoordinator {
         do {
           try await writer.run { try $0.clearTranscriptReplacement(meeting: meetingID) }
         } catch {
+          // Kept out of the queue until a launch removes it; the failure is shown.
           deps.log("meeting commit receipt clear failed error=\(type(of: error))")
           unresolvedReceipts.insert(meetingID)
+          notice = .storageFailed
         }
       case .unusable:
         deps.log("meeting commit receipt unreadable id=\(meetingID.uuidString)")
@@ -1494,6 +1496,9 @@ final class MeetingCoordinator {
     let meetingID = receipt.meetingID
     do {
       let held = atLaunch ? try await deps.durableHistoryRow(receipt.candidateRow.id) : nil
+      // A deletion that began during the read owns the row now. Checked in the same main-actor
+      // turn the save is admitted to History's queue, so a later deletion's removal runs after it.
+      guard isStillOwned(meetingID) else { return false }
       if held?.meetingTranscriptGeneration != receipt.candidate.generation {
         try await deps.saveTranscript(receipt.candidateRow)
       }
@@ -1581,7 +1586,9 @@ final class MeetingCoordinator {
   /// if the mark then failed or was withdrawn. A step that carries on writes on the live copy,
   /// mark included, so a mark that lands that way still deletes the meeting (`persist`).
   private func isStillOwned(_ meetingID: UUID) -> Bool {
-    !quitting && !deleting.contains(meetingID) && records[meetingID]?.deletionRequested != true
+    // A meeting whose deletion already finished is gone from `records`: not owned either.
+    guard let record = records[meetingID] else { return false }
+    return !quitting && !deleting.contains(meetingID) && !record.deletionRequested
   }
 
   /// The History row a finished meeting is saved as (R5, R19). Always `.labeled` so History keeps
