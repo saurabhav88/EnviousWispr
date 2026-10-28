@@ -721,6 +721,31 @@
           .contains("Ship it Friday.") == false, "echo stays hidden for the summary")
     }
 
+    @Test("#4148: summary emptiness tells visible words, empty, all hidden and unavailable apart")
+    func summaryEmptiness() {
+      let w = World()
+      let record = Self.record(at: w.time, ready: true)
+      let row = Self.twoTurnRow(record.id, at: w.time)
+      let empty = Transcript(text: "", createdAt: w.time, meetingID: record.id)
+      let cases: [(Transcript, MeetingHistoryInfo?, Bool)] = [
+        (row, .init(echoTurnIDs: []), false),
+        (empty, .init(echoTurnIDs: []), true),
+        (row, .init(echoTurnIDs: ["t0", "t1"]), true),
+        (empty, nil, false),
+      ]
+      for c in w.both {
+        let counter = { c.meetingDocumentCacheForTesting.meetingTextBuildsForTesting }
+        for (i, (r, info, noWords)) in cases.enumerated() {
+          #expect(c.summaryHasNoWords(of: r, info: info) == noWords, "case \(i)")
+          let built = counter()
+          // The same inputs again: the cached coordinator answers from its kept text, the
+          // bypassed one projects again; both give the same answer.
+          #expect(c.summaryHasNoWords(of: r, info: info) == noWords, "case \(i) again")
+          #expect(counter() == built + (c === w.cached ? 0 : 1), "case \(i) reuse")
+        }
+      }
+    }
+
     @Test("a byte-distinct but equal-looking speaker name is projected again, never reused")
     func summaryTextFollowsBytes() {
       let w = World()

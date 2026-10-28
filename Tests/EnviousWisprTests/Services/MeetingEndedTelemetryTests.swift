@@ -132,6 +132,7 @@ import Testing
       #expect(
         MeetingSummaryFinishedTelemetry.Outcome.allCases.map(\.rawValue) == [
           "written", "unsupported", "no_provider", "failed", "cancelled", "stale",
+          "nothing_to_summarize",
         ])
       #expect(
         MeetingSummaryFinishedTelemetry.ProviderKind.allCases.map(\.rawValue) == [

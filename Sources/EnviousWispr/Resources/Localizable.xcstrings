@@ -13531,6 +13531,17 @@
         }
       }
     },
+    "Nothing to summarize. No transcript text remains once probable echo is hidden." : {
+      "comment" : "History, a ready meeting's Summary tab: summaries always leave out probable echo (lines the microphone picked up from the call sound), and no other transcript text is left; this does not mean recording failed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nichts zum Zusammenfassen. Wenn wahrscheinliches Echo ausgeblendet ist, bleibt kein Transkripttext übrig."
+          }
+        }
+      }
+    },
     "Nothing was changed. EnviousWispr is still working. You can move it yourself in Finder anytime." : {
       "comment" : "Move to Applications result, another app has the name: the explanation. EnviousWispr is the app name; keep it.",
       "localizations" : {

@@ -140,6 +140,8 @@ public struct MeetingSummaryFinishedTelemetry: Equatable, Sendable {
     /// The answer was not saved because the meeting changed meanwhile, or the summary is the
     /// user's own text.
     case stale
+    /// Known inputs had no visible transcript text; no summary model call was made (#4148).
+    case nothingToSummarize = "nothing_to_summarize"
   }
 
   public enum ProviderKind: String, Sendable, CaseIterable {

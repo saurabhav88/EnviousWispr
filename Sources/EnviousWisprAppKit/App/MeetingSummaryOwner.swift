@@ -42,6 +42,9 @@ final class MeetingSummaryOwner {
     /// What History shows for a ready meeting, echo hidden, and its speaker names. Nil when
     /// the meeting is not ready, gone, or has nothing visible.
     var visibleTranscript: @MainActor (UUID) -> VisibleTranscript?
+    /// #4148: true only for known, ready inputs with no visible transcript text. False when
+    /// the meeting is not ready, gone, or its facts cannot be read.
+    var hasNoWords: @MainActor (UUID) -> Bool
     /// True when a local model call may start: dictation idle, no meeting engine unit running,
     /// no final pass due.
     var isLocalTurn: @MainActor () -> Bool
@@ -244,6 +247,8 @@ final class MeetingSummaryOwner {
     case written
     case stale
     case cancelled
+    /// #4148: known inputs had no visible transcript text; no model call was made.
+    case nothingToSummarize
     case problem(Problem)
   }
 
@@ -403,8 +408,9 @@ final class MeetingSummaryOwner {
     case .failed, .unknown: return Ending(end: .problem(.notesUnreadable))
     case .none, .saved: break
     }
+    // Nil inputs are a cancel (gone, not ready) unless the meeting is known and wordless (#4148).
     guard let inputs = currentInputs(meetingID, selection: selection) else {
-      return Ending(end: .cancelled)
+      return Ending(end: deps.hasNoWords(meetingID) ? .nothingToSummarize : .cancelled)
     }
 
     let local = prepared.execution == .local
@@ -536,6 +542,12 @@ final class MeetingSummaryOwner {
           provider: selection.provider, model: selection.model)))
   }
 
+  /// #4148: true when the meeting is ready and has no visible transcript text, so the Summary
+  /// tab says there is nothing to summarize instead of offering Write summary.
+  func hasNothingToSummarize(_ meetingID: UUID) -> Bool {
+    deps.hasNoWords(meetingID)
+  }
+
   /// The meeting's summary was written from inputs that differ from the meeting now (a rename,
   /// new notes, a Retry, another model or prompt): it is shown as out of date, never as current
   /// (R60). False when there is no summary or it records no inputs (the user wrote it).
@@ -662,6 +674,7 @@ final class MeetingSummaryOwner {
       case .written: outcome = .written
       case .stale: outcome = .stale
       case .cancelled: outcome = .cancelled
+      case .nothingToSummarize: outcome = .nothingToSummarize
       case .problem(.noProvider): outcome = .noProvider
       case .problem(.notForSummaries), .problem(.notReady), .problem(.ollamaTooOld),
         .problem(.tooLong):
@@ -681,7 +694,7 @@ final class MeetingSummaryOwner {
     guard current, !terminating else { return }
     switch end {
     case .problem(let problem): activity[meetingID] = .failed(problem)
-    case .written, .stale, .cancelled: activity[meetingID] = nil
+    case .written, .stale, .cancelled, .nothingToSummarize: activity[meetingID] = nil
     }
   }
 }

@@ -1609,10 +1609,21 @@ final class TranscriptCoordinator {
   }
 
   /// A meeting summary's source text: the visible text, echo always hidden, nil when nothing is
-  /// visible (`HistoryMeetingDocumentCache.summaryVisibleText`). The caller reads the row and the
+  /// visible (`HistoryMeetingDocumentCache.summaryText`). The caller reads the row and the
   /// meeting facts live, before this lookup.
   func summaryVisibleText(of row: Transcript, info: MeetingHistoryInfo?) -> String? {
-    meetingDocuments.summaryVisibleText(
+    summaryText(of: row, info: info).visibleText
+  }
+
+  /// #4148: true when the same projection is known and has no visible transcript text.
+  func summaryHasNoWords(of row: Transcript, info: MeetingHistoryInfo?) -> Bool {
+    summaryText(of: row, info: info).hasNoWords
+  }
+
+  private func summaryText(
+    of row: Transcript, info: MeetingHistoryInfo?
+  ) -> HistoryMeetingDocumentCache.MeetingText {
+    meetingDocuments.summaryText(
       of: row, info: info, locale: Locale.current.identifier,
       localizations: Bundle.main.preferredLocalizations, bypass: meetingDocumentsBypass)
   }
