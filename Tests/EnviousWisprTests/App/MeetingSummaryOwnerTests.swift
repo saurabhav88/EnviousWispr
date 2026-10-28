@@ -607,7 +607,10 @@ struct MeetingSummaryOwnerTests {
     await Self.eventually("retry ready") {
       coordinator.record(id: second)?.state == .ready && coordinator.processing == nil
     }
-    #expect(rig.world.finished.contains(Self.row(.cancelled, .local)))
+    // The cancelled summary's row is sent once its task has ended, which may follow the pass.
+    await Self.eventually("waiting summary cancelled") {
+      rig.world.finished.contains(Self.row(.cancelled, .local))
+    }
 
     // Dictation ends: the summaries run one local call at a time.
     var concurrent = 0
