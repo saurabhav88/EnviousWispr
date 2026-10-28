@@ -75,6 +75,9 @@ package actor MeetingWhisperEngine<Driver: WhisperExecutorDriving> {
   private var generation = 0
   private var loadsInFlight = 0
   private var drainWaiters: [CheckedContinuation<Void, Never>] = []
+  /// The latest model free, kept so every unload waits for one already running (the route's
+  /// own unload, then Remove's) instead of returning while the model is still being freed.
+  private var teardown: Task<Void, Never>?
   /// Closed by `closeForRemoval()` until `reopenAfterRemoval()`: no load starts while Remove
   /// deletes the model files.
   private var isClosed = false
@@ -126,14 +129,20 @@ package actor MeetingWhisperEngine<Driver: WhisperExecutorDriving> {
       driver: driver, handle: handle, samples: samples, language: language)
   }
 
-  /// Aborts and drains any run, frees the model, and waits until every load in flight has
-  /// ended and freed its own result. Repeatable.
+  /// Aborts and drains any run, frees the model, and waits until every free already running
+  /// and every load in flight has ended (a late load frees its own result). Repeatable.
   package func unload() async {
     generation &+= 1
     if let handle {
       self.handle = nil
-      await driver.unload(handle)
+      let previous = teardown
+      let driver = driver
+      teardown = Task {
+        await previous?.value
+        await driver.unload(handle)
+      }
     }
+    await teardown?.value
     while loadsInFlight > 0 {
       await withCheckedContinuation { drainWaiters.append($0) }
     }

@@ -1722,14 +1722,19 @@ struct MeetingTranscriptionJobTests {
     let piece = MeetingTranscriptionJob.wholeRunPiece(result: result, startMs: 0, endMs: 4_000)
     #expect(piece.isSegmentLevel)
 
+    // Through the checkpoint writer and reader, as a resumed pass reads it.
     let stored = MeetingProcessingCheckpoint.Piece(
-      startSample: 0, endSample: 64_000, forcedCut: false, text: "Hello", words: [], segments: [])
+      startSample: 0, endSample: 64_000, forcedCut: false, text: piece.text, words: [],
+      segments: MeetingTranscriptionJob.storedSegments(piece))
+    #expect(stored.segments == [])
     #expect(MeetingTranscriptionJob.trackPiece(stored)?.isSegmentLevel == true)
 
     let parakeet = ASRResult(
       text: "Hello", language: "en", duration: 4, processingTime: 0, backendType: .parakeet,
       wordTimings: nil, wordTimingCoverage: nil, segmentTimings: nil)
-    #expect(!MeetingTranscriptionJob.wholeRunPiece(result: parakeet, startMs: 0, endMs: 4_000).isSegmentLevel)
+    let wordPiece = MeetingTranscriptionJob.wholeRunPiece(result: parakeet, startMs: 0, endMs: 4_000)
+    #expect(!wordPiece.isSegmentLevel)
+    #expect(MeetingTranscriptionJob.storedSegments(wordPiece) == nil)
   }
 
   @Test("#3973 C3: the result names the engine the pass resolved to and why, not the one asked for")

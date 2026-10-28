@@ -638,17 +638,21 @@ package final class MeetingTranscriptionJob {
           word: $0.word, lower: $0.range.lowerBound, upper: $0.range.upperBound,
           startMs: $0.startMs, endMs: $0.endMs)
       },
-      // A segment-level piece stores its segments even when there are none, so a resumed pass
-      // still knows it has no word times.
-      segments: owned.flatMap { piece in
-        !piece.isSegmentLevel
-          ? nil
-          : piece.segments.map {
-            .init(
-              lower: $0.range.lowerBound, upper: $0.range.upperBound, startMs: $0.startMs,
-              endMs: $0.endMs)
-          }
-      })
+      segments: owned.flatMap(Self.storedSegments))
+  }
+
+  /// A piece's segments as the checkpoint stores them. A segment-level piece stores its
+  /// segments even when there are none, so a resumed pass still knows it has no word times;
+  /// a word-timed piece stores none.
+  nonisolated static func storedSegments(_ piece: MeetingTrackPiece)
+    -> [MeetingProcessingCheckpoint.SegmentTiming]?
+  {
+    guard piece.isSegmentLevel else { return nil }
+    return piece.segments.map {
+      .init(
+        lower: $0.range.lowerBound, upper: $0.range.upperBound, startMs: $0.startMs,
+        endMs: $0.endMs)
+    }
   }
 
   /// The marker turn a piece that failed twice becomes (plan §6): one word spanning the piece,

@@ -137,11 +137,21 @@ public enum MeetingTranscriptComposer {
           ? []
           : TurnAssembler.assemble(segmentTimings: timings, rawText: joined.text, segments: segments)
             .turns
-        if turns.isEmpty {
-          turns = [singleTurn(entries: joined.entries, speaker: fallback, granularity: .segment)]
-        }
         let spans = timings.map {
           ASRWordTiming(word: "", range: $0.range, startMs: $0.startMs, endMs: $0.endMs)
+        }
+        if turns.isEmpty {
+          // The whole text, timed by its sentences rather than its pieces, so a short sentence
+          // in a long run keeps its own place against the other track.
+          let whole = singleTurn(entries: joined.entries, speaker: fallback, granularity: .segment)
+          let timed = spans.compactMap(\.startMs).min() != nil
+          turns = [
+            Turn(
+              id: whole.id, speakerId: whole.speakerId,
+              startMs: timed ? spans.compactMap(\.startMs).min() : whole.startMs,
+              endMs: timed ? spans.compactMap(\.endMs).max() : whole.endMs,
+              originalTextRange: whole.originalTextRange, granularity: .segment)
+          ]
         }
         flagged = turns.flatMap { splitAtPauses($0, entries: spans, granularity: .segment) }
           .map { ($0, false) }
@@ -334,10 +344,22 @@ public enum MeetingTranscriptComposer {
       }
     }
     guard groups.count > 1 else { return [turn] }
-    return groups.map { group in
+    return groups.enumerated().map { index, group in
       let starts = group.compactMap(\.startMs)
       let ends = group.compactMap(\.endMs)
-      let range = group.first!.range.lowerBound..<group.last!.range.upperBound
+      // #3973 C3: segments may leave text no segment was bound to, so segment groups partition
+      // the whole turn (uncovered text goes with the group before it) and nothing is dropped.
+      // The caller trims each slice.
+      let range: Range<Int>
+      if granularity == .segment {
+        let lower = index == 0 ? turn.originalTextRange.lowerBound : group.first!.range.lowerBound
+        let upper =
+          index == groups.count - 1
+          ? turn.originalTextRange.upperBound : groups[index + 1].first!.range.lowerBound
+        range = lower..<upper
+      } else {
+        range = group.first!.range.lowerBound..<group.last!.range.upperBound
+      }
       return Turn(
         id: "\(range.lowerBound)-\(range.upperBound)", speakerId: turn.speakerId,
         startMs: starts.min(), endMs: ends.max(), originalTextRange: range,

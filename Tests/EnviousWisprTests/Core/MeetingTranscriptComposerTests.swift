@@ -567,6 +567,46 @@ struct MeetingTranscriptComposerTests {
     #expect(result.turns.allSatisfy { $0.granularity == .segment })
   }
 
+  @Test("#3973 C3: text no Whisper sentence was bound to stays in the transcript when turns split at a pause")
+  func segmentSplitKeepsUnboundText() {
+    // "MISSING" has no segment: it sits between two sentences a long pause apart.
+    let call = MeetingTrackInput(
+      kind: .callSound,
+      pieces: [
+        MeetingTrackPiece(
+          text: "First MISSING Last", startMs: 0, endMs: 5_000, words: [],
+          segments: [
+            ASRSegmentTiming(range: 0..<5, startMs: 0, endMs: 1_000),
+            ASRSegmentTiming(range: 14..<18, startMs: 4_000, endMs: 5_000),
+          ])
+      ],
+      speakerSegments: [])
+
+    let result = MeetingTranscriptComposer.compose(tracks: [call])
+
+    #expect(
+      result.turns.map { slice($0.originalTextRange, of: result.text) } == ["First MISSING", "Last"])
+  }
+
+  @Test("#3973 C3: without speaker analysis, Whisper tracks still interleave by their sentence times")
+  func segmentFallbackUsesSentenceTimes() {
+    let call = MeetingTrackInput(
+      kind: .callSound,
+      pieces: [segmentPiece([("Thanks for joining.", 10_000, 11_000)], start: 0, end: 20_000)],
+      speakerSegments: [])
+    let mic = MeetingTrackInput(
+      kind: .microphone,
+      pieces: [segmentPiece([("Hello everyone.", 1_000, 2_000)], start: 0, end: 20_000)],
+      speakerSegments: [])
+
+    let result = MeetingTranscriptComposer.compose(tracks: [call, mic])
+
+    #expect(
+      result.turns.map { slice($0.originalTextRange, of: result.text) } == [
+        "Hello everyone.", "Thanks for joining.",
+      ])
+  }
+
   @Test("#3973 C3: a Whisper track without speaker analysis is one turn, still by segment")
   func segmentTrackWithoutSpeakers() {
     let call = MeetingTrackInput(

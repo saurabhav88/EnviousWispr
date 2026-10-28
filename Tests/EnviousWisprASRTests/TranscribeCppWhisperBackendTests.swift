@@ -122,7 +122,10 @@ struct TranscribeCppWhisperBackendTests {
     let engine = MeetingWhisperEngine(driver: driver)
     let load = Task { try await engine.load(modelPath: "turbo.gguf") }
     await driver.waitForLog("load turbo.gguf")
-    let removal = Task { await engine.closeForRemoval() }
+    let removal = Task {
+      await engine.closeForRemoval()
+      driver.record("removal done")
+    }
     let closed = Task {
       while await !engine.isClosedForRemoval { await Task.yield() }
     }
@@ -130,7 +133,10 @@ struct TranscribeCppWhisperBackendTests {
     #expect(!driver.log.contains("unload 1"), "control: the load has not returned yet")
     driver.releaseLoad("turbo.gguf")
     try await driver.bounded(removal)
-    #expect(driver.log.contains("unload 1"), "Remove returned only after the late model was freed")
+    let log = driver.log
+    #expect(
+      log.firstIndex(of: "unload 1").map { $0 < log.firstIndex(of: "removal done")! } == true,
+      "Remove returned only after the late model was freed")
     await #expect(throws: MeetingEngineYield.self) { try await driver.bounded(load) }
     #expect(await engine.isLoaded == false)
     await #expect(throws: MeetingEngineYield.self, "no load starts until Remove ends") {
@@ -139,6 +145,32 @@ struct TranscribeCppWhisperBackendTests {
     await engine.reopenAfterRemoval()
     try await engine.load(modelPath: "turbo.gguf")
     #expect(await engine.isLoaded)
+  }
+
+  @Test("#3973 C3: Remove waits for the meeting model free the route already started")
+  func meetingEngineRemovalJoinsARunningFree() async throws {
+    let driver = FakeWhisperDriver()
+    let engine = MeetingWhisperEngine(driver: driver)
+    try await engine.load(modelPath: "turbo.gguf")
+    driver.holdUnloads()
+    let routeUnload = Task { await engine.unload() }
+    await driver.waitForLog("unloading 1")
+    let removal = Task {
+      await engine.closeForRemoval()
+      driver.record("removal done")
+    }
+    let closed = Task {
+      while await !engine.isClosedForRemoval { await Task.yield() }
+    }
+    try await driver.bounded(closed)
+    driver.releaseUnloads()
+    try await driver.bounded(removal)
+    try await driver.bounded(routeUnload)
+    let log = driver.log
+    #expect(
+      log.firstIndex(of: "unload 1").map { $0 < log.firstIndex(of: "removal done")! } == true,
+      "Remove returned only after the running free ended")
+    #expect(log.filter { $0 == "unloading 1" }.count == 1, "the model is freed once")
   }
 
   @Test("an unload joins a load still travelling to the executor before it settles")
