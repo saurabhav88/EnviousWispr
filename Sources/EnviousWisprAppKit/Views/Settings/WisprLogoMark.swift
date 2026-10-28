@@ -4,7 +4,15 @@ import SwiftUI
 /// coloured bars), drawn vectorially so it stays crisp at any size without
 /// bundling an image. Geometry + colours mirror `website/public/favicon.svg`
 /// (viewBox 256, bars translated by (8, 13)).
-struct WisprLogoMark: View {
+struct WisprLogoMark: View, @MainActor Animatable {
+  /// Opt-in finite entrance wave. Zero and one retain the canonical resting geometry;
+  /// all existing callers keep the zero default and remain static.
+  var waveProgress = 0.0
+
+  var animatableData: Double {
+    get { waveProgress }
+    set { waveProgress = newValue }
+  }
   private struct Bar {
     let x: CGFloat
     let y: CGFloat
@@ -46,11 +54,15 @@ struct WisprLogoMark: View {
     Canvas { context, size in
       let scale = size.width / 256
       for bar in Self.bars {
+        let column = Double((bar.x - 16) / 192)
+        let local = min(1, max(0, waveProgress * 1.5 - column * 0.5))
+        let compression = local > 0 && local < 1 ? 1 - 0.6 * sin(.pi * local) : 1
+        let height = bar.h * scale * compression
         let rect = CGRect(
           x: (bar.x + 8) * scale,
-          y: (bar.y + 13) * scale,
+          y: (bar.y + 13) * scale + (bar.h * scale - height) / 2,
           width: Self.barWidth * scale,
-          height: bar.h * scale)
+          height: height)
         context.fill(
           Path(roundedRect: rect, cornerRadius: Self.corner * scale),
           with: .color(bar.color))

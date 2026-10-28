@@ -425,6 +425,17 @@
         }
       }
     },
+    "%@ is using the microphone. I can start a recording." : {
+      "comment" : "EnviousMeet: observed microphone use, including prejoin; the app name. Recording is offered, not started.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ nutzt das Mikrofon. Ich kann eine Aufnahme starten."
+          }
+        }
+      }
+    },
     "%@ is warming up after a restart" : {
       "comment" : "Pill subtitle while the speech engine loads after a restart. %@ is the engine's name.",
       "localizations" : {
@@ -671,17 +682,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ Schreibweisen"
-          }
-        }
-      }
-    },
-    "%@ started using the microphone." : {
-      "comment" : "EnviousMeet: under Record this call?; the call app's name.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ nutzt jetzt das Mikrofon."
           }
         }
       }
@@ -13292,7 +13292,7 @@
       }
     },
     "Not now" : {
-      "comment" : "Card after a dictation: closes the card and leaves the setup for later.\nEnviousMeet setup: skips a permission for now.",
+      "comment" : "Card after a dictation: closes the card and leaves the setup for later.\nEnviousMeet setup: skips a permission for now.\nEnviousMeet: decline recording; do not ask again during this call.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -18292,7 +18292,7 @@
       }
     },
     "Start a new recording" : {
-      "comment" : "EnviousMeet: after a detected meeting stopped.",
+      "comment" : "EnviousMeet: after a detected meeting stopped.\nEnviousMeet: switch to the newly detected call.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -18346,6 +18346,7 @@
       }
     },
     "Start recording" : {
+      "comment" : "EnviousMeet: accept the offered call recording.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -22283,6 +22284,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wartet auf die Transkription"
+          }
+        }
+      }
+    },
+    "Want me to take notes?" : {
+      "comment" : "EnviousMeet: friendly question when a call app uses the microphone.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Soll ich Notizen machen?"
           }
         }
       }

@@ -15,6 +15,12 @@ enum CallPromptContent: Equatable {
   case couldNotStart
   case firstTip
   case lastTip(appName: String)
+
+  /// A countdown's ticks update copy, not the lifetime of its presentation.
+  var presentationIdentity: Self {
+    if case .countdown = self { return .countdown(secondsLeft: 0) }
+    return self
+  }
 }
 
 /// The panel's answers, back to `CallDetectionCoordinator`.
@@ -62,17 +68,19 @@ protocol CallPromptPresenting: AnyObject {
 final class CallPromptModel {
   var content: CallPromptContent?
   var actions = CallPromptActions()
+  var presentationID = 0
 }
 
 /// A small non-activating panel under the menu bar icon (#4012 D2): it never takes focus from
 /// the call, and it asks macOS to leave it out of screen sharing (`sharingType = .none`). macOS
 /// does not guarantee that on every version, so nothing promises it is hidden. The window comes
-/// from the same panel factory as the pill (`DesktopOverlayEffects.makePanel`, #2455 C4), so
-/// this module never builds one and tests never show one.
+/// from the same panel factory as the pill (`DesktopOverlayEffects.makePanel`, #2455 C4).
+/// This module owns placement; the native effects tests exercise the real factory.
 @MainActor
 final class CallPromptPanel: CallPromptPresenting {
   private let model = CallPromptModel()
   private var panel: (any OverlayPanelDriving)?
+  private var hosting: NSHostingView<CallPromptView>?
   private let anchor: @MainActor () -> NSRect?
   private let makePanel: @MainActor () -> any OverlayPanelDriving
 
@@ -91,12 +99,20 @@ final class CallPromptPanel: CallPromptPresenting {
   var actions: CallPromptActions { model.actions }
 
   func show(_ content: CallPromptContent, actions: CallPromptActions) {
+    if !isShowing || model.content?.presentationIdentity != content.presentationIdentity {
+      model.presentationID += 1
+    }
     model.content = content
     model.actions = actions
     let panel = self.panel ?? configuredPanel()
     self.panel = panel
-    let size = panel.contentView?.fittingSize ?? NSSize(width: 300, height: 120)
+    // Observation invalidation is not synchronous layout. Measure the updated card, and keep
+    // the window's frame owned here rather than by NSHostingView.windowDidLayout (#3850).
+    hosting?.layoutSubtreeIfNeeded()
+    let measured = hosting?.fittingSize ?? .zero
+    let size = Self.usable(measured) ? measured : NSSize(width: 380, height: 260)
     panel.setFrame(CGRect(origin: origin(for: size), size: size), display: true)
+    hosting?.frame = panel.contentView?.bounds ?? CGRect(origin: .zero, size: size)
     panel.orderFrontRegardless()
   }
 
@@ -116,9 +132,17 @@ final class CallPromptPanel: CallPromptPresenting {
     panel.sharingType = .none
     panel.setAccessibilityIdentifier("meetings.callPrompt")
     let host = NSHostingView(rootView: CallPromptView(model: model))
-    host.sizingOptions = [.preferredContentSize]
-    panel.contentView = host
+    let container = NSView(frame: CGRect(x: 0, y: 0, width: 380, height: 260))
+    host.frame = container.bounds
+    host.autoresizingMask = [.width, .height]
+    container.addSubview(host)
+    panel.contentView = container
+    hosting = host
     return panel
+  }
+
+  private static func usable(_ size: NSSize) -> Bool {
+    size.width.isFinite && size.height.isFinite && size.width > 0 && size.height > 0
   }
 
   private func origin(for size: NSSize) -> NSPoint {
@@ -147,165 +171,5 @@ final class CallPromptPanel: CallPromptPresenting {
     origin.x = min(max(origin.x, screen.minX + 8), screen.maxX - size.width - 8)
     origin.y = min(max(origin.y, screen.minY + 8), screen.maxY - size.height - 8)
     return origin
-  }
-}
-
-struct CallPromptView: View {
-  let model: CallPromptModel
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      if let content = model.content {
-        Text(title(content))
-          .font(.system(size: 13, weight: .semibold))
-          .foregroundStyle(Color.obTextPrimary)
-          .fixedSize(horizontal: false, vertical: true)
-        if let detail = detail(content) {
-          Text(detail)
-            .font(.system(size: 11))
-            .foregroundStyle(Color.obTextSecondary)
-            .fixedSize(horizontal: false, vertical: true)
-        }
-        buttons(content)
-      }
-    }
-    .padding(12)
-    .frame(width: 300, alignment: .leading)
-    .background(Color.obCardBg, in: RoundedRectangle(cornerRadius: 12))
-    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.obBorder, lineWidth: 1))
-    .accessibilityElement(children: .contain)
-  }
-
-  private func title(_ content: CallPromptContent) -> LocalizedStringResource {
-    switch content {
-    case .ask:
-      LocalizedStringResource(
-        "Record this call?", comment: "EnviousMeet: the question asked when a call starts.")
-    case .switchMeeting(let app):
-      LocalizedStringResource(
-        "New call in \(app). Start a new recording?",
-        comment: "EnviousMeet: a new call started while a meeting records; the app's name.")
-    case .countdown(let seconds):
-      LocalizedStringResource(
-        "Meeting ending in \(seconds) seconds",
-        comment: "EnviousMeet: the call ended; the recording stops after this many seconds.")
-    case .stopped, .switchNotConfirmed:
-      LocalizedStringResource(
-        "Recording stopped", comment: "EnviousMeet: the detected meeting stopped.")
-    case .needsAttention:
-      LocalizedStringResource(
-        "EnviousMeet needs your attention before it can record",
-        comment:
-          "EnviousMeet: a call started, but a permission or the call sound explainer is needed first."
-      )
-    case .couldNotStart:
-      LocalizedStringResource(
-        "EnviousMeet could not start recording",
-        comment: "EnviousMeet: Yes to Record this call?, but the recording could not start.")
-    case .firstTip:
-      LocalizedStringResource(
-        "Tip: you can turn off call prompts for some apps in EnviousMeet settings.",
-        comment: "EnviousMeet: shown once after the first No to Record this call?")
-    case .lastTip(let app):
-      LocalizedStringResource(
-        "You said No to \(app) a few times. Last reminder: you can turn off \(app) in EnviousMeet settings.",
-        comment: "EnviousMeet: shown once after the third No for one app; the app's name twice.")
-    }
-  }
-
-  private func detail(_ content: CallPromptContent) -> LocalizedStringResource? {
-    switch content {
-    case .ask(let app):
-      LocalizedStringResource(
-        "\(app) started using the microphone.",
-        comment: "EnviousMeet: under Record this call?; the call app's name.")
-    case .stopped:
-      // No promise about the transcript: a close that timed out finishes on the next launch.
-      LocalizedStringResource(
-        "The call ended.", comment: "EnviousMeet: under Recording stopped.")
-    case .switchNotConfirmed:
-      LocalizedStringResource(
-        "The new call could not be confirmed.",
-        comment: "EnviousMeet: under Recording stopped, after a switch to a new call that could not be checked.")
-    case .couldNotStart:
-      LocalizedStringResource(
-        "Open EnviousMeet to see why.",
-        comment: "EnviousMeet: under EnviousMeet could not start recording.")
-    default: nil
-    }
-  }
-
-  @ViewBuilder private func buttons(_ content: CallPromptContent) -> some View {
-    let actions = model.actions
-    HStack(spacing: 8) {
-      switch content {
-      case .ask, .switchMeeting:
-        button(
-          LocalizedStringResource("Yes", comment: "EnviousMeet: answer to Record this call?"),
-          primary: true
-        ) {
-          actions.yes()
-        }
-        button(
-          LocalizedStringResource("No", comment: "EnviousMeet: answer to Record this call?"),
-          primary: false
-        ) {
-          actions.no()
-        }
-      case .countdown:
-        button(
-          LocalizedStringResource(
-            "Keep recording", comment: "EnviousMeet: stops the countdown; the meeting goes on."),
-          primary: true
-        ) {
-          actions.keepRecording()
-        }
-      case .stopped, .switchNotConfirmed:
-        button(
-          LocalizedStringResource(
-            "Start a new recording", comment: "EnviousMeet: after a detected meeting stopped."),
-          primary: true
-        ) {
-          actions.startNewRecording()
-        }
-        button(
-          LocalizedStringResource("Close", comment: "EnviousMeet: closes the call panel."),
-          primary: false
-        ) {
-          actions.dismiss()
-        }
-      case .needsAttention, .couldNotStart, .firstTip, .lastTip:
-        button(
-          LocalizedStringResource(
-            "Open settings", comment: "EnviousMeet: opens the EnviousMeet settings page."),
-          primary: true
-        ) {
-          actions.openSettings()
-        }
-        button(
-          LocalizedStringResource("Close", comment: "EnviousMeet: closes the call panel."),
-          primary: false
-        ) {
-          actions.dismiss()
-        }
-      }
-    }
-  }
-
-  private func button(_ title: LocalizedStringResource, primary: Bool, action: @escaping () -> Void)
-    -> some View
-  {
-    Button(action: action) {
-      Text(title)
-        .font(.system(size: 12, weight: primary ? .semibold : .regular))
-        .foregroundStyle(primary ? Color.white : Color.obTextPrimary)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 5)
-        .background(
-          primary ? Color.obButtonFill : Color.obSurface, in: RoundedRectangle(cornerRadius: 7)
-        )
-        .contentShape(Rectangle())
-    }
-    .buttonStyle(.plain)
   }
 }
