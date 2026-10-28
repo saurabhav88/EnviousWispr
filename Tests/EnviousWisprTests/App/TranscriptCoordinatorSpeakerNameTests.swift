@@ -105,6 +105,22 @@ struct TranscriptCoordinatorSpeakerNameTests {
     #expect(launched.currentRow(id: id)?.speakerNames == saved.speakerNames)
   }
 
+  @Test("a launch replay never writes over a meeting row file it cannot read")
+  func unreadableRowIsNotOverwritten() async throws {
+    let dir = Self.makeTempDir()
+    let file = dir.appendingPathComponent("\(id.uuidString).json")
+    let broken = Data("{ not a transcript".utf8)
+    try broken.write(to: file)
+
+    let launched = TranscriptCoordinator(store: TranscriptStore(directory: dir))
+    #expect(launched.currentRow(id: id) == nil, "History has not loaded the row")
+    await #expect(throws: (any Error).self) {
+      try await launched.saveAndShowDurably(row("third", [("sys:S7", 0, 5_000)]))
+    }
+    #expect(try Data(contentsOf: file) == broken, "the file is left as it was")
+    #expect(launched.currentRow(id: id) == nil, "nothing is shown")
+  }
+
   @Test("a name with no new speaker to go to is kept on the row, also after a relaunch")
   func unmatchedNameKept() async throws {
     let dir = Self.makeTempDir()
