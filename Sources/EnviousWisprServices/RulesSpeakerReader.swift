@@ -35,11 +35,15 @@ package struct SpeakerSelectorRule: Sendable, Equatable {
   /// entry per person, each named by its first static text. `nil` when the list is not known.
   package let participantListClass: String?
   package let verification: TalkerRuleVerification
+  /// Declared from a live capture: each matching tile is one distinct participant, so equal
+  /// names on two tiles are two people (#4013 r5 step 3). `false` (absent in the document) means
+  /// the tiles' identity is unknown and the surface names no one.
+  package let tilesAreParticipants: Bool
 
   package init(
     surface: CallSpeakerSurface, tileRole: String?, tileClass: String?,
     nameSource: TileNameSource, talkingClasses: [String], participantListClass: String?,
-    verification: TalkerRuleVerification
+    verification: TalkerRuleVerification, tilesAreParticipants: Bool = false
   ) {
     self.surface = surface
     self.tileRole = tileRole
@@ -48,6 +52,7 @@ package struct SpeakerSelectorRule: Sendable, Equatable {
     self.talkingClasses = talkingClasses
     self.participantListClass = participantListClass
     self.verification = verification
+    self.tilesAreParticipants = tilesAreParticipants
   }
 
   /// A surface whose shape is not captured yet: reads nothing (#4013 chunk 4).
@@ -139,11 +144,16 @@ package enum RulesSpeakerReader {
       speaking: uniqueInOrder(speaking),
       // A participant list shows each person once, so its duplicates are real; tiles repeat one
       // person, so they are de-duplicated and the roster is marked tile-only.
-      roster: CallSpeakerRoster(names: listNames ?? uniqueInOrder(tileNames), selfNames: []),
+      // Declared distinct tiles keep their duplicates; otherwise a name on two tiles may be one
+      // person shown twice, so the roster is de-duplicated.
+      roster: CallSpeakerRoster(
+        names: listNames ?? (rule.tilesAreParticipants ? tileNames : uniqueInOrder(tileNames)),
+        selfNames: []),
       rosterFromParticipantList: fromList, participants: participants,
-      // Which tiles are distinct people is not established for any rules surface yet (#4013 r5
-      // step 3 adds it per surface from live captures), so these readings never name anyone.
-      participantIdentityEstablished: false, sharedNames: repeatedNames(listNames ?? []))
+      // Identity only where a live capture declared the tiles to be people (#4013 r5 step 3).
+      participantIdentityEstablished: rule.tilesAreParticipants,
+      sharedNames: repeatedNames(listNames ?? [])
+        .union(rule.tilesAreParticipants ? repeatedNames(tileNames) : []))
   }
 
   /// Tiles in document order, outermost first. A tile nested in another is its own tile.

@@ -52,7 +52,7 @@ export function problem(doc) {
     const at = `selectors[${index}]`;
     if (!isObject(entry)) return `${at}: not an object`;
     const allowed = ['surface', 'tileRole', 'tileClass', 'nameSource', 'nameSuffix', 'talkingClasses',
-      'participantListClass', 'verification'];
+      'participantListClass', 'verification', 'tilesAreParticipants'];
     const extra = Object.keys(entry).find((k) => !allowed.includes(k));
     if (extra) return `${at}: unknown field ${extra}`;
     if (!SURFACES.includes(entry.surface)) return `${at}.surface`;
@@ -78,7 +78,13 @@ export function problem(doc) {
       return `${at}.talkingClasses`;
     }
     if (!['verified', 'unverified'].includes(entry.verification)) return `${at}.verification`;
+    if ('tilesAreParticipants' in entry && typeof entry.tilesAreParticipants !== 'boolean') {
+      return `${at}.tilesAreParticipants`;
+    }
     const hasTile = 'tileRole' in entry || 'tileClass' in entry;
+    if (entry.tilesAreParticipants === true && !hasTile) {
+      return `${at}: tilesAreParticipants without a tile selector`;
+    }
     if (talking.length > 0 && !hasTile) return `${at}: talkingClasses without a tile selector`;
     if ('tileClass' in entry && talking.includes(entry.tileClass)) return `${at}: talking class equals tile class`;
     if (entry.verification === 'verified' && talking.length === 0) return `${at}: verified without talkingClasses`;

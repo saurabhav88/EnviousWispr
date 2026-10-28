@@ -13,7 +13,11 @@ import Foundation
 ///       "selectors": [ { "surface": "meet", "tileRole": "AXGroup", "tileClass": "token",
 ///                        "nameSource": "firstStaticText" | "ownLabel", "nameSuffix": " Unverified",
 ///                        "talkingClasses": ["token"], "participantListClass": "token",
-///                        "verification": "verified" | "unverified" } ] }
+///                        "verification": "verified" | "unverified",
+///                        "tilesAreParticipants": true | false } ] }
+///
+/// `tilesAreParticipants` is optional (absent means false: tile identity unknown) and a JSON
+/// boolean only; true needs a tile selector.
 ///
 /// `schema` is compatibility: a build reads only `supportedSchema`, and a hosted file must keep
 /// that value while builds that read it are in use. `revision` orders documents of one schema:
@@ -107,7 +111,7 @@ package struct TalkerRules: Sendable, Equatable {
       entry,
       allowed: [
         "surface", "tileRole", "tileClass", "nameSource", "nameSuffix", "talkingClasses",
-        "participantListClass", "verification",
+        "participantListClass", "verification", "tilesAreParticipants",
       ], at: place)
     guard let surfaceText = entry["surface"] as? String,
       let surface = CallSpeakerSurface(rawValue: surfaceText)
@@ -155,8 +159,19 @@ package struct TalkerRules: Sendable, Equatable {
     default: throw .invalid("\(place).verification")
     }
 
+    var tilesAreParticipants = false
+    if let value = entry["tilesAreParticipants"] {
+      guard let number = value as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() else {
+        throw .invalid("\(place).tilesAreParticipants")
+      }
+      tilesAreParticipants = number.boolValue
+    }
+
     // Combinations that cannot mean what they say.
     let hasTile = tileRole != nil || tileClass != nil
+    if tilesAreParticipants && !hasTile {
+      throw .invalid("\(place): tilesAreParticipants without a tile selector")
+    }
     if !talking.isEmpty && !hasTile {
       throw .invalid("\(place): talkingClasses without a tile selector")
     }
@@ -177,7 +192,8 @@ package struct TalkerRules: Sendable, Equatable {
 
     return SpeakerSelectorRule(
       surface: surface, tileRole: tileRole, tileClass: tileClass, nameSource: nameSource,
-      talkingClasses: talking, participantListClass: listClass, verification: verification)
+      talkingClasses: talking, participantListClass: listClass, verification: verification,
+      tilesAreParticipants: tilesAreParticipants)
   }
 
   private static func requireKeys(_ object: [String: Any], allowed: Set<String>, at place: String)

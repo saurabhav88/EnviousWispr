@@ -752,6 +752,134 @@
         },
         "selectors": []
       }
+    },
+    {
+      "name": "meet tiles declared as participants (C1 capture)",
+      "accept": true,
+      "document": {
+        "schema": 1,
+        "revision": 2,
+        "lagMs": {},
+        "selectors": [
+          {
+            "surface": "meet",
+            "tileRole": "AXGroup",
+            "tileClass": "dkjMxf",
+            "nameSource": "firstStaticText",
+            "talkingClasses": [
+              "kssMZb"
+            ],
+            "verification": "verified",
+            "tilesAreParticipants": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "tilesAreParticipants false is allowed",
+      "accept": true,
+      "document": {
+        "schema": 1,
+        "revision": 2,
+        "lagMs": {},
+        "selectors": [
+          {
+            "surface": "meet",
+            "tileRole": "AXGroup",
+            "tileClass": "dkjMxf",
+            "nameSource": "firstStaticText",
+            "talkingClasses": [
+              "kssMZb"
+            ],
+            "verification": "verified",
+            "tilesAreParticipants": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "tilesAreParticipants as a string is refused",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 2,
+        "lagMs": {},
+        "selectors": [
+          {
+            "surface": "meet",
+            "tileRole": "AXGroup",
+            "tileClass": "dkjMxf",
+            "nameSource": "firstStaticText",
+            "talkingClasses": [
+              "kssMZb"
+            ],
+            "verification": "verified",
+            "tilesAreParticipants": "true"
+          }
+        ]
+      }
+    },
+    {
+      "name": "tilesAreParticipants as a number is refused",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 2,
+        "lagMs": {},
+        "selectors": [
+          {
+            "surface": "meet",
+            "tileRole": "AXGroup",
+            "tileClass": "dkjMxf",
+            "nameSource": "firstStaticText",
+            "talkingClasses": [
+              "kssMZb"
+            ],
+            "verification": "verified",
+            "tilesAreParticipants": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "tilesAreParticipants as null is refused",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 2,
+        "lagMs": {},
+        "selectors": [
+          {
+            "surface": "meet",
+            "tileRole": "AXGroup",
+            "tileClass": "dkjMxf",
+            "nameSource": "firstStaticText",
+            "talkingClasses": [
+              "kssMZb"
+            ],
+            "verification": "verified",
+            "tilesAreParticipants": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "tilesAreParticipants without a tile selector is refused",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 2,
+        "lagMs": {},
+        "selectors": [
+          {
+            "surface": "meet",
+            "nameSource": "firstStaticText",
+            "talkingClasses": [],
+            "verification": "unverified",
+            "tilesAreParticipants": true
+          }
+        ]
+      }
     }
   ]
 }

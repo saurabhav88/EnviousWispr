@@ -1,6 +1,18 @@
 {
   "schema": 1,
-  "revision": 1,
+  "revision": 2,
   "lagMs": {},
-  "selectors": []
+  "selectors": [
+    {
+      "surface": "meet",
+      "tileRole": "AXGroup",
+      "tileClass": "dkjMxf",
+      "nameSource": "firstStaticText",
+      "talkingClasses": [
+        "kssMZb"
+      ],
+      "verification": "verified",
+      "tilesAreParticipants": true
+    }
+  ]
 }
