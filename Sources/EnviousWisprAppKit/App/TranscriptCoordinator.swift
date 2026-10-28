@@ -993,10 +993,16 @@ final class TranscriptCoordinator {
   private func performDurableWrite(_ incoming: Transcript) async throws {
     // #4013 r2 item 4: the user's speaker names are carried over from the row as it is NOW,
     // read when this command runs, so a rename admitted while the meeting was processing is
-    // kept. The reconciled row is what is written and what is shown.
-    let transcript =
-      currentRow(id: incoming.id).map { incoming.reconcilingSpeakerNames(withCurrent: $0) }
-      ?? incoming
+    // kept. The reconciled row is what is written and what is shown. A row History has not
+    // loaded (a launch replay of #3973 C2) is read from its file inside this same command; a
+    // file that cannot be read fails the write rather than writing over it.
+    let existing: Transcript?
+    if let row = currentRow(id: incoming.id) {
+      existing = row
+    } else {
+      existing = try await transactionExecutor.readRow(id: incoming.id)
+    }
+    let transcript = existing.map { incoming.reconcilingSpeakerNames(withCurrent: $0) } ?? incoming
     try await transactionExecutor.writeDurably(transcript)
     diskReconciler.noteWritten(transcript.id)
     if let existing = transcripts.firstIndex(where: { $0.id == transcript.id }) {

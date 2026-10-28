@@ -26,7 +26,9 @@ struct TranscriptCoordinatorSpeakerNameTests {
   private let id = UUID()
   private let meetingID = UUID()
 
-  private func row(_ text: String, _ speakers: [(String, Int, Int)]) -> Transcript {
+  private func row(
+    _ text: String, _ speakers: [(String, Int, Int)], attempt: UUID? = nil
+  ) -> Transcript {
     let turns = speakers.map {
       Turn(
         id: "\($0.0)-\($0.1)", speakerId: $0.0, startMs: $0.1, endMs: $0.2,
@@ -37,7 +39,8 @@ struct TranscriptCoordinatorSpeakerNameTests {
     )
     return Transcript(
       id: id, text: text, backendType: .parakeet, speakerAnalysis: .labeled(count: speakers.count),
-      speakerNames: names, turns: turns, meetingID: meetingID)
+      speakerNames: names, turns: turns, meetingID: meetingID,
+      meetingTranscriptAttemptID: attempt)
   }
 
   private func onDisk(_ dir: URL) throws -> Transcript {
@@ -73,6 +76,33 @@ struct TranscriptCoordinatorSpeakerNameTests {
     await relaunched.diskReconcilerForTesting.waitForLoadForTesting()
     #expect(
       relaunched.currentRow(id: id)?.speakerNames == ["sys:S8": "Ana", "sys:S9": "Speaker 2"])
+  }
+
+  @Test("a launch replay publishing a meeting row History has not loaded keeps the saved names")
+  func replayBeforeHistoryLoadKeepsNames() async throws {
+    // #3973 C2: after a crash between the ready record and publication, the next launch
+    // publishes the candidate row, possibly before History has loaded the previous one.
+    let dir = Self.makeTempDir()
+    let before = TranscriptCoordinator(store: TranscriptStore(directory: dir))
+    try await before.saveAndShowDurably(
+      row("first", [("sys:S1", 0, 5_000), ("sys:S2", 5_000, 9_000)]))
+    _ = await before.renameSpeaker(id: id, speakerId: "sys:S1", name: "Ana", isMeeting: true)
+    _ = await before.renameSpeaker(id: id, speakerId: "sys:S2", name: "Cy", isMeeting: true)
+    try await before.saveAndShowDurably(row("second", [("sys:S5", 0, 5_000)]))
+    #expect(try onDisk(dir).unassignedSpeakerNames == ["Cy"])
+
+    let attempt = UUID()
+    let launched = TranscriptCoordinator(store: TranscriptStore(directory: dir))
+    #expect(launched.currentRow(id: id) == nil, "History has not loaded the row")
+    try await launched.saveAndShowDurably(row("third", [("sys:S7", 0, 5_000)], attempt: attempt))
+
+    let saved = try onDisk(dir)
+    #expect(saved.text == "third")
+    #expect(saved.speakerNames == ["sys:S7": "Ana"])
+    #expect(saved.speakerNameSource(for: "sys:S7") == .manual)
+    #expect(saved.unassignedSpeakerNames == ["Cy"])
+    #expect(saved.meetingTranscriptAttemptID == attempt)
+    #expect(launched.currentRow(id: id)?.speakerNames == saved.speakerNames)
   }
 
   @Test("a name with no new speaker to go to is kept on the row, also after a relaunch")
