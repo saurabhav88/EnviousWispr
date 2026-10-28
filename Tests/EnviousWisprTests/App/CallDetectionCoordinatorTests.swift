@@ -648,6 +648,180 @@
         == .call(family: .googleMeet, room: "xyz-wxyz-xyz"))
     }
 
+    @Test("Wake keeps a missing-microphone recording's verified end-query route without keeping old proof")
+    func wakeKeepsRetainedEndMonitoring() async throws {
+      let answer = OSAllocatedUnfairLock<CallEvidenceReader.Continuity>(
+        initialState: .ongoing(family: .zoom, room: "wake-call"))
+      let rig = try Rig(
+        snapshotRead: { rule, pid in
+          Rig.snapshotValue(rule: rule, pid: pid,
+            evidence: .call(family: .zoom, room: "wake-call"),
+            continuity: .ongoing(family: .zoom, room: "wake-call"))
+        },
+        retainedRead: { target in
+          Rig.snapshotValue(rule: target.rule, pid: target.owner.pid, evidence: .none,
+            continuity: answer.withLock { $0 })
+        })
+      defer { rig.coordinator.shutDown() }
+      rig.settings.meetingCallDetection = CallDetectionPolicy.Mode.startByItself.rawValue
+      rig.polledHolders = [.init(pid: 900_010, bundleID: "us.zoom.xos", input: .active)]
+      // Registers the production wake observer; the injected poll never starts Core Audio.
+      rig.coordinator.start()
+      #expect(await settleUntilObserved {
+        rig.starts == [.zoom] && !rig.coordinator.evidenceReadPendingForTesting
+      })
+      guard case .recording = rig.phase else { Issue.record("Expected owned recording"); return }
+      let ownedPhase = rig.phase
+      rig.polledHolders = []
+      rig.advance(1)
+      rig.coordinator.deliverWatcherReading([])
+      #expect(await settleUntilObserved {
+        rig.coordinator.inputForTesting?.continuity.last?.retainedTarget != nil
+          && !rig.coordinator.evidenceReadPendingForTesting
+      })
+      // A single pre-wake ended observation must not survive as confirmation.
+      answer.withLock { $0 = .ended(family: .zoom, room: "wake-call") }
+      rig.advance(1)
+      rig.coordinator.deliverWatcherReading([])
+      #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
+      let old = try #require(rig.coordinator.inputForTesting?.continuity.last)
+      #expect(old.value == .ended(family: .zoom, room: "wake-call"))
+      answer.withLock { $0 = .ongoing(family: .zoom, room: "wake-call") }
+      NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.didWakeNotification, object: nil)
+      #expect(rig.coordinator.inputForTesting?.holders.isEmpty == true)
+      #expect(rig.coordinator.inputForTesting?.continuity.isEmpty == true)
+      #expect(await settleUntilObserved {
+        guard let fresh = rig.coordinator.inputForTesting?.continuity.last else { return false }
+        return fresh.id > old.id && fresh.retainedTarget == old.retainedTarget
+          && fresh.owner == old.owner && fresh.value == .ongoing(family: .zoom, room: "wake-call")
+          && !rig.coordinator.evidenceReadPendingForTesting
+      }, "a new retained result must reach Policy after wake, not just enter the reader")
+      #expect(rig.starts == [.zoom] && rig.stops == 0)
+      #expect(rig.phase == ownedPhase)
+      rig.advance(CallDetectionPolicy.wakeHoldoff - 1)
+      rig.coordinator.stepForTesting()
+      #expect(rig.stops == 0 && rig.panel.content != .countdown(secondsLeft: 10))
+      rig.advance(2)
+      answer.withLock { $0 = .ended(family: .zoom, room: "wake-call") }
+      rig.coordinator.deliverWatcherReading([])
+      #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
+      let firstEnd = try #require(rig.coordinator.inputForTesting?.continuity.last)
+      #expect(firstEnd.id > old.id && firstEnd.beganAt == rig.clock)
+      #expect(rig.panel.content != .countdown(secondsLeft: 10))
+      rig.advance(1.6)
+      rig.coordinator.deliverWatcherReading([])
+      #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
+      #expect(rig.coordinator.inputForTesting?.continuity.last?.id != firstEnd.id)
+      #expect(rig.panel.content == .countdown(secondsLeft: 10))
+      for _ in 0..<10 {
+        rig.advance(1)
+        rig.coordinator.deliverWatcherReading([])
+        #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
+      }
+      #expect(await settleUntilObserved { rig.stops == 1 && rig.phase == .idle })
+      #expect(rig.starts == [.zoom])
+    }
+
+    @Test("Wake cannot accept a replaced retained owner as the recorded call's end")
+    func wakeRejectsReplacedRetainedOwner() async throws {
+      let replaced = OSAllocatedUnfairLock(initialState: false)
+      let rig = try Rig(
+        snapshotRead: { rule, pid in
+          Rig.snapshotValue(rule: rule, pid: pid,
+            evidence: .call(family: .zoom, room: "owned-call"),
+            continuity: .ongoing(family: .zoom, room: "owned-call"))
+        },
+        retainedRead: { target in
+          let changed = replaced.withLock { $0 }
+          return Rig.snapshotValue(rule: target.rule, pid: target.owner.pid, evidence: .none,
+            continuity: changed ? .ended(family: .zoom, room: "owned-call") : .ongoing(family: .zoom, room: "owned-call"),
+            birth: changed ? 101 : 100)
+        })
+      defer { rig.coordinator.shutDown() }
+      rig.coordinator.enablePollingForTesting()
+      await rig.ongoingZoom()
+      #expect(rig.press("yes"))
+      #expect(await settleUntilObserved { rig.starts == [.zoom] })
+      let ownedPhase = rig.phase
+      rig.polledHolders = []
+      rig.coordinator.deliverWatcherReading([])
+      #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
+      let old = try #require(rig.coordinator.inputForTesting?.continuity.last)
+      replaced.withLock { $0 = true }
+      rig.coordinator.wakeForTesting()
+      #expect(await settleUntilObserved {
+        guard let fresh = rig.coordinator.inputForTesting?.continuity.last else { return false }
+        return fresh.id > old.id && fresh.value == .unknown && fresh.owner == nil
+          && fresh.retainedTarget == old.retainedTarget && !rig.coordinator.evidenceReadPendingForTesting
+      })
+      rig.advance(CallDetectionPolicy.wakeHoldoff + 2)
+      rig.coordinator.deliverWatcherReading([])
+      #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
+      #expect(rig.stops == 0 && rig.starts == [.zoom] && rig.phase == ownedPhase)
+      #expect(rig.panel.content != .countdown(secondsLeft: 10))
+      #expect(rig.coordinator.inputForTesting?.holders.isEmpty == true)
+    }
+
+    @Test("Wake rejects the old held read and consumes a new retained result after its slot returns")
+    func wakeRejectsHeldOldCompletion() async throws {
+      let oldGate = heldReadGate()
+      defer { oldGate.continuation.yield(()); oldGate.continuation.finish() }
+      let state = OSAllocatedUnfairLock(initialState: (hold: false, entered: false, returned: false))
+      let rig = try Rig(
+        snapshotRead: { rule, pid in
+          Rig.snapshotValue(rule: rule, pid: pid,
+            evidence: .call(family: .zoom, room: "owned-call"),
+            continuity: .ongoing(family: .zoom, room: "owned-call"))
+        },
+        retainedRead: { target in
+          let held = state.withLock { value -> Bool in
+            guard value.hold, !value.entered else { return false }
+            value.entered = true
+            return true
+          }
+          if held {
+            for await _ in oldGate.stream { break }
+            state.withLock { $0.returned = true }
+          }
+          return Rig.snapshotValue(rule: target.rule, pid: target.owner.pid, evidence: .none,
+            continuity: held ? .ended(family: .zoom, room: "owned-call") : .ongoing(family: .zoom, room: "owned-call"))
+        })
+      defer { rig.coordinator.shutDown() }
+      rig.coordinator.enablePollingForTesting()
+      await rig.ongoingZoom()
+      #expect(rig.press("yes"))
+      #expect(await settleUntilObserved { rig.starts == [.zoom] })
+      let ownedPhase = rig.phase
+      rig.polledHolders = []
+      rig.coordinator.deliverWatcherReading([])
+      #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
+      let old = try #require(rig.coordinator.inputForTesting?.continuity.last)
+      state.withLock { $0.hold = true }
+      rig.advance(1)
+      rig.coordinator.deliverWatcherReading([])
+      #expect(await settleUntilObserved { state.withLock { $0.entered } })
+      rig.coordinator.wakeForTesting()
+      oldGate.continuation.yield(()); oldGate.continuation.finish()
+      #expect(await settleUntilObserved {
+        guard let fresh = rig.coordinator.inputForTesting?.continuity.last else { return false }
+        return state.withLock { $0.returned } && !rig.coordinator.evidenceReadPendingForTesting
+          && fresh.id > old.id && fresh.value == .ongoing(family: .zoom, room: "owned-call")
+      }, "negative assertions follow old completion and the new policy-consumed result")
+      #expect(rig.coordinator.inputForTesting?.continuity.allSatisfy {
+        $0.value != .ended(family: .zoom, room: "owned-call")
+      } == true)
+      #expect(rig.phase == ownedPhase && rig.stops == 0 && rig.starts == [.zoom])
+      rig.settings.meetingCallDetection = CallDetectionPolicy.Mode.off.rawValue
+      rig.coordinator.tickForTesting()
+      #expect(rig.coordinator.inputForTesting?.continuity.isEmpty == true)
+      let readCount = rig.evidenceReads.withLock { $0 }
+      rig.coordinator.shutDown()
+      rig.coordinator.wakeForTesting()
+      rig.coordinator.deliverWatcherReading([])
+      #expect(rig.evidenceReads.withLock { $0 } == readCount)
+      #expect(rig.phase == ownedPhase && rig.stops == 0)
+    }
+
     @Test("A tracked call still receives continuity when its microphone holder disappears",
       .bug("https://github.com/saurabhav88/EnviousWispr/issues/4142"))
     func missingHolderStillReceivesContinuity() async throws {

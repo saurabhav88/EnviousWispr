@@ -143,11 +143,7 @@ final class CallDetectionCoordinator {
       forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
     ) { [weak self] _ in
       MainActor.assumeIsolated {
-        guard let self else { return }
-        self.invalidateReadWork()
-        self.policy.noteWakeOrRestart(at: self.deps.now())
-        if self.watching { self.pollMicrophone() }
-        self.step()
+        self?.handleWake()
       }
     }
     tick()
@@ -180,9 +176,17 @@ final class CallDetectionCoordinator {
     else { watcher.poll() }
   }
 
+  private func handleWake() {
+    guard !readStopped else { return }
+    invalidateReadWork(preservingTrackedQueries: true)
+    policy.noteWakeOrRestart(at: deps.now())
+    if watching { pollMicrophone() }
+    step()
+  }
+
   /// Reading lifetime is independent of microphone-frame sequence. A cancelled bounded read
   /// retains its task slot until it really returns; no new AX work is piled behind it.
-  private func invalidateReadWork(clearInputs: Bool = true) {
+  private func invalidateReadWork(clearInputs: Bool = true, preservingTrackedQueries: Bool = false) {
     policy.invalidateAcceptedStart()
     readLifetime += 1
     evidenceTask?.cancel()
@@ -190,7 +194,23 @@ final class CallDetectionCoordinator {
     queuedPress = nil
     cycle = []
     lastCycleStart = nil
-    sources = [:]
+    if preservingTrackedQueries {
+      // Historical addresses survive wake, never microphone activity or completed proof.
+      sources = sources.compactMapValues { state in
+        guard let owner = state.owner else { return nil }
+        var retained = state
+        retained.knownCalls = state.knownCalls.filter {
+          $0.owner == owner && $0.rule == state.source.rule && $0.holderPID == state.source.pid
+            && policy.isTracking($0)
+        }
+        guard !retained.knownCalls.isEmpty else { return nil }
+        retained.present = false
+        retained.holder = .init(pid: state.holder.pid, bundleID: state.holder.bundleID,
+          input: .unknown, object: state.holder.object)
+        retained.activityRevision += 1
+        return retained
+      }
+    } else { sources = [:] }
     continuity = []
     pendingSources = []
     if clearInputs {
@@ -909,6 +929,7 @@ final class CallDetectionCoordinator {
     var inputForTesting: CallDetectionPolicy.Reading? { policy.inputForTesting }
     var refreshPendingForTesting: Bool { refreshInProgress }
     func enablePollingForTesting() { watching = true }
+    func wakeForTesting() { handleWake() }
 
     /// Hands the coordinator a watcher reading (nil: the read failed), through the same path
     /// as the real watcher, evidence reads included. Tests only.
