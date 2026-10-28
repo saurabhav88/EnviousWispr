@@ -3002,6 +3002,8 @@ package final class WisprBootstrapper {
     // a Cocoa quit concludes no take, so this is the only path that restores
     // the volume for a quit mid-dictation.
     dictationRuntime.otherAudioHold.finishForTermination()
+    // #3973 C1: before the meeting below gives the engine back, so no waiting press takes it.
+    dictationRuntime.closeDictationRequests()
     // #3972 R18: close meeting admission, cancel its pass, stop capture and close both files
     // against one shared one-second deadline.
     callDetection.shutDown()

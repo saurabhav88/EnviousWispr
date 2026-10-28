@@ -214,7 +214,8 @@ struct RecordingFinalizerAbandonmentTests {
         recordingOverlay: overlay,
         heartControlRecovery: hcr,
         recordingLockedAccess: lockAccess,
-        languageSuggestionPresenter: nil)
+        languageSuggestionPresenter: nil,
+        pendingRequests: PendingDictationRequests(access: .alwaysAllowedForTesting))
       return Fixture(
         finalizer: finalizer,
         kernelDriver: pipeline,

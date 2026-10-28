@@ -50,6 +50,10 @@ import Testing
     /// #2648: the real claim the starter was wired to, so an admission row can
     /// hold it as another workload before pressing record.
     let engineLease: EngineLease
+    /// #3973 C1: the waiting-press owner, its log and its clock.
+    let pendingRequests: PendingDictationRequests
+    let turnLog: TurnLogSink
+    let turnClock: TurnClock
   }
 
   /// What the pill is showing, as a person would describe it (#2292 C6).
@@ -109,6 +113,12 @@ import Testing
 
   /// Records Discard presses and what the overlay was showing at the instant of
   /// each, so a case can pin OWNER-BEFORE-DISMISS rather than merely both.
+  /// Lets a fixture closure reach the fixture it is part of (#3973 C1).
+  @MainActor
+  private final class FixtureBox {
+    var fixture: Fixture?
+  }
+
   @MainActor
   private final class DiscardProbe {
     var count = 0
@@ -122,7 +132,8 @@ import Testing
     recoveringDuringArm: Bool = false,
     micStatus: AVAuthorizationStatus = .authorized,
     micPrompt: MicPromptStub? = nil,
-    duringRecoveryArm: (@MainActor () -> Void)? = nil
+    duringRecoveryArm: (@MainActor () -> Void)? = nil,
+    onRecoveryArm: (@MainActor (ASRBackendType) -> Void)? = nil
   ) -> Fixture {
     // The overlay used to post an `NSAccessibility` notification against
     // `NSApp.mainWindow` on every `.recording` push, and `NSApp` is an
@@ -167,6 +178,13 @@ import Testing
       setLocked: { locked in lockAccess.set(locked) },
       backend: { asr.activeBackendType.rawValue }
     )
+    let engineLease = EngineLease()
+    let engineAdmission = EngineAdmissionAccess.live(lease: engineLease, as: .dictation)
+    // #3973 C1: one request owner shared by the starter and the finalizer, as in production.
+    let turnLog = TurnLogSink()
+    let turnClock = TurnClock()
+    let pendingRequests = PendingDictationRequests(
+      access: engineAdmission, now: { turnClock.now }, log: { turnLog.append($0) })
     let finalizer = RecordingFinalizer(
       kernelDriver: pipeline,
       whisperKernelDriver: whisperKernelDriver,
@@ -174,11 +192,11 @@ import Testing
       recordingOverlay: overlay,
       heartControlRecovery: hcr,
       recordingLockedAccess: lockAccess,
-      languageSuggestionPresenter: nil
+      languageSuggestionPresenter: nil,
+      pendingRequests: pendingRequests
     )
     let lastRecordingResult = LastRecordingResult()
     let discards = DiscardProbe()
-    let engineLease = EngineLease()
     // `recovering` is a captured var both the arm closure (mutates) and the gate
     // closure (reads) share — lets a test flip recovery ON during the arm await
     // (#1063 PR2: the post-arm re-check). Both run on the MainActor.
@@ -193,7 +211,8 @@ import Testing
     let makeRecoveryDirective:
       @MainActor (SettingsManager, ASRBackendType, Bool) async -> (
         recoverySessionID: String, payload: Data
-      )? = { _, _, _ in
+      )? = { _, backend, _ in
+        onRecoveryArm?(backend)
         duringRecoveryArm?()
         if releaseDuringRecoveryArm { await finalizer.userStop() }
         if recoveringDuringArm {
@@ -228,7 +247,8 @@ import Testing
       // #2648: a REAL lease, not the always-allow seam. The admission rows hold
       // it as another workload and assert both start routes refuse, which a seam
       // that always says yes could not show.
-      engineAdmission: .live(lease: engineLease, as: .dictation)
+      engineAdmission: engineAdmission,
+      pendingRequests: pendingRequests
     )
     return Fixture(
       starter: starter,
@@ -244,7 +264,10 @@ import Testing
       overlayHost: overlayHost,
       settings: settings,
       discards: discards,
-      engineLease: engineLease
+      engineLease: engineLease,
+      pendingRequests: pendingRequests,
+      turnLog: turnLog,
+      turnClock: turnClock
     )
   }
 
@@ -879,35 +902,237 @@ import Testing
     #expect(Self.showsSharedEngineBusy(fx.overlay, holder: .fileImport))
   }
 
-  /// #4052: a meeting transcript on dictation's own engine refuses both routes the same way,
-  /// naming the meeting, and keeps its claim.
-  @Test func bothRoutesAreRefusedWhileAMeetingTranscriptHoldsTheResource() async {
-    let fx = Self.makeFixture()
+  // MARK: - #3973 C1 A press waits for a meeting's turn
+
+  /// Holds the fixture's lease as a meeting, starts `press` in a task, and returns once the
+  /// press has reserved the next turn (the request owner's `waiting` line is written in the
+  /// same main-actor step as the reservation, and this resumes only after the press parks).
+  private static func parkPress(
+    _ fx: Fixture, _ press: @escaping @MainActor () async -> Void
+  ) async -> (meeting: EngineLease.Token, task: Task<Void, Never>)? {
+    guard case .granted(let meeting) = fx.engineLease.admit(.meeting) else {
+      Issue.record("the fixture's lease was already held")
+      return nil
+    }
+    let waitingLines = fx.turnLog.count(containing: "event=waiting")
+    let task = Task { @MainActor in await press() }
+    guard await fx.turnLog.waitFor(containing: "event=waiting", after: waitingLines) else {
+      Issue.record("the press never parked")
+      return nil
+    }
+    #expect(fx.engineLease.hasPendingReservation, "a parked press holds the next turn")
+    return (meeting, task)
+  }
+
+  /// Both routes wait while a meeting holds the engine, keep any fresh meeting claim out, and
+  /// go on to the start boundary (the recovery arm, the last step before the driver) after the
+  /// meeting gives the engine back. Replaces #4052's refusal for this holder.
+  @Test(arguments: [false, true])
+  func aPressWaitsForTheMeetingTurnThenStarts(useToggle: Bool) async {
+    var arms: [ASRBackendType] = []
+    let fx = Self.makeFixture(onRecoveryArm: { arms.append($0) })
     fx.asr.activeBackendType = .parakeet
     fx.asr.isModelLoaded = true
-    guard case .granted = fx.engineLease.admit(.meeting) else {
-      Issue.record("the fixture's lease was already held")
+    guard
+      let parked = await Self.parkPress(
+        fx,
+        {
+          if useToggle {
+            await fx.starter.toggle(source: .toggleHotkey)
+          } else {
+            _ = await fx.starter.start()
+          }
+        })
+    else { return }
+
+    #expect(!Self.showsSharedEngineBusy(fx.overlay, holder: .meeting), "a meeting no longer refuses")
+    #expect(arms.isEmpty, "nothing starts while the meeting holds the engine")
+
+    fx.turnClock.advance(milliseconds: 1_250)
+    #expect(fx.engineLease.release(parked.meeting))
+    // The meeting's next operation cannot claim in the release's own step: the press owns it.
+    guard case .refused(by: .dictation) = fx.engineLease.admit(.meeting) else {
+      Issue.record("a fresh meeting claim got past a waiting dictation")
       return
     }
+    await parked.task.value
 
+    #expect(arms == [.parakeet], "the press reached the start boundary once")
+    #expect(fx.kernelDriver.state.isActive, "the waited-for press minted a recording session")
+    #expect(fx.turnLog.outcomes == ["admitted waitMs=1250"])
+    #expect(!fx.engineLease.hasPendingReservation)
+  }
+
+  /// A press ended AFTER its turn was granted, while its start-up is still suspended in the
+  /// recovery arm, mints nothing: its identity outlives the wait. Two routes: the user's stop
+  /// reaching the request owner, and a newer push-to-talk press cancelling the older task.
+  @Test(arguments: ["cancelPending", "taskCancel"])
+  func aPressEndedDuringStartUpMintsNothing(route: String) async {
+    let box = FixtureBox()
+    var arms = 0
+    let fx = Self.makeFixture(onRecoveryArm: { _ in
+      arms += 1
+      if route == "cancelPending" {
+        box.fixture?.pendingRequests.cancelPending()
+      } else {
+        withUnsafeCurrentTask { $0?.cancel() }
+      }
+    })
+    box.fixture = fx
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = true
+    guard let parked = await Self.parkPress(fx, { _ = await fx.starter.start() }) else { return }
+
+    #expect(fx.engineLease.release(parked.meeting))
+    await parked.task.value
+
+    #expect(arms == 1, "the press reached its start-up after the wait")
+    #expect(fx.kernelDriver.state == .idle, "an ended press minted a session")
+    #expect(fx.engineLease.isBusy == false, "the granted token went back")
+  }
+
+  /// Every way a user ends a waiting press: the request ends at once, and the meeting's later
+  /// release starts nothing, arms no recovery and leaves no claim, reservation or waiter.
+  @Test(arguments: ["release", "cancel", "secondToggle", "taskCancel"])
+  func anEndedPressNeverStartsLate(route: String) async {
+    var arms = 0
+    let fx = Self.makeFixture(onRecoveryArm: { _ in arms += 1 })
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = true
+    let useToggle = route == "secondToggle"
+    guard
+      let parked = await Self.parkPress(
+        fx,
+        {
+          if useToggle {
+            await fx.starter.toggle(source: .toggleHotkey)
+          } else {
+            _ = await fx.starter.start()
+          }
+        })
+    else { return }
+
+    switch route {
+    case "release": await fx.finalizer.userStop()
+    case "cancel": await fx.finalizer.cancel(trigger: .shortcut)
+    case "secondToggle": await fx.starter.toggle(source: .toggleHotkey)
+    default: parked.task.cancel()
+    }
+    await parked.task.value
+    #expect(fx.turnLog.outcomes.count == 1)
+    #expect(fx.turnLog.outcomes.first?.hasPrefix("cancelled") == true)
+    #expect(!fx.engineLease.hasPendingReservation, "the reservation was withdrawn")
+
+    #expect(fx.engineLease.release(parked.meeting))
+    #expect(fx.engineLease.isBusy == false, "the meeting's release handed the engine to nobody")
+    #expect(arms == 0, "an ended press started late")
+    #expect(fx.kernelDriver.state == .idle)
+  }
+
+  /// The meeting's release and the user's stop land in the same main-actor turn: the hand-off
+  /// gives the press its token, the stop ends the request, and the token goes straight back.
+  @Test func aStopCrossingTheHandOffStartsNothingAndFreesTheEngine() async {
+    var arms = 0
+    let fx = Self.makeFixture(onRecoveryArm: { _ in arms += 1 })
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = true
+    guard let parked = await Self.parkPress(fx, { _ = await fx.starter.start() }) else { return }
+
+    #expect(fx.engineLease.release(parked.meeting))
+    #expect(fx.engineLease.currentHolder == .dictation, "the hand-off happened in the release")
+    #expect(fx.pendingRequests.cancelPending(), "the stop reached the request before it resumed")
+    await parked.task.value
+
+    #expect(arms == 0)
+    #expect(fx.engineLease.isBusy == false, "the crossed token was released")
+    #expect(fx.turnLog.outcomes.count == 1)
+    #expect(fx.turnLog.outcomes.first?.hasPrefix("cancelled") == true)
+  }
+
+  /// A newer press supersedes the waiting one; only the newer one starts.
+  @Test func aNewerPressSupersedesTheWaitingOne() async {
+    var arms = 0
+    let fx = Self.makeFixture(onRecoveryArm: { _ in arms += 1 })
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = true
+    guard let first = await Self.parkPress(fx, { _ = await fx.starter.start() }) else { return }
+    let waitingLines = fx.turnLog.count(containing: "event=waiting")
+    let second = Task { @MainActor in _ = await fx.starter.start() }
+    guard await fx.turnLog.waitFor(containing: "event=waiting", after: waitingLines) else {
+      Issue.record("the newer press never parked")
+      return
+    }
+    await first.task.value
+    #expect(fx.turnLog.outcomes.first?.hasPrefix("superseded") == true)
+    #expect(fx.engineLease.hasPendingReservation, "the older press's cleanup kept the newer turn")
+
+    #expect(fx.engineLease.release(first.meeting))
+    await second.value
+    #expect(arms == 1)
+    #expect(fx.turnLog.outcomes.count == 2)
+    #expect(fx.turnLog.outcomes.last?.hasPrefix("admitted") == true)
+  }
+
+  /// Quit: the waiting press ends, and a press after that is refused without waiting.
+  @Test func quitEndsTheWaitingPressAndRefusesNewOnes() async {
+    var arms = 0
+    let fx = Self.makeFixture(onRecoveryArm: { _ in arms += 1 })
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = true
+    guard let parked = await Self.parkPress(fx, { _ = await fx.starter.start() }) else { return }
+
+    fx.pendingRequests.close()
+    await parked.task.value
+    // The engine is free now, so only the closure can refuse these.
+    #expect(fx.engineLease.release(parked.meeting))
     let outcome = await fx.starter.start()
     #expect(outcome == .noRecording)
-    #expect(fx.kernelDriver.state == .idle, "a refused press must mint no session")
-    #expect(Self.showsSharedEngineBusy(fx.overlay, holder: .meeting))
-    #expect(fx.engineLease.currentHolder == .meeting)
+    await fx.starter.toggle(source: .toggleHotkey)
+    #expect(arms == 0)
+    #expect(fx.kernelDriver.state == .idle)
+    #expect(fx.engineLease.isBusy == false)
+    #expect(fx.turnLog.outcomes.map { $0.split(separator: " ").first.map(String.init) } == [
+      "cancelled"
+    ])
+  }
 
-    // The toggle route on its own fixture, so its pill cannot be the press's left on screen.
-    let toggle = Self.makeFixture()
-    toggle.asr.activeBackendType = .parakeet
-    toggle.asr.isModelLoaded = true
-    guard case .granted = toggle.engineLease.admit(.meeting) else {
-      Issue.record("the toggle fixture's lease was already held")
-      return
-    }
-    await toggle.starter.toggle(source: .toggleHotkey)
-    #expect(toggle.kernelDriver.state == .idle, "a refused toggle must mint no session")
-    #expect(Self.showsSharedEngineBusy(toggle.overlay, holder: .meeting))
-    #expect(toggle.engineLease.currentHolder == .meeting)
+  /// Engine facts are read after the wait, not before it: a gate that now fails refuses, and a
+  /// backend switched during the wait is the one the press starts on.
+  @Test func theResumedPressReadsFreshEngineFacts() async {
+    var arms: [ASRBackendType] = []
+    let fx = Self.makeFixture(onRecoveryArm: { arms.append($0) })
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = true
+    guard let parked = await Self.parkPress(fx, { _ = await fx.starter.start() }) else { return }
+    fx.starter.isSelectedModelInstalled = { false }
+    #expect(fx.engineLease.release(parked.meeting))
+    await parked.task.value
+    #expect(arms.isEmpty, "the removed model's gate refused after the wait")
+    #expect(fx.engineLease.isBusy == false)
+
+    // Readiness read after the wait: the model unloaded while the press waited.
+    fx.starter.isSelectedModelInstalled = { true }
+    guard let cold = await Self.parkPress(fx, { _ = await fx.starter.start() }) else { return }
+    fx.asr.isModelLoaded = false
+    #expect(fx.engineLease.release(cold.meeting))
+    await cold.task.value
+    #expect(arms.isEmpty, "a press on an engine that went cold during the wait recorded")
+    #expect(
+      Self.showsColdBoot(fx.overlay, engine: fx.kernelDriver.engineDisplayName),
+      "the fresh readiness read sent the press to the cold-engine notice")
+
+    // Backend read after the wait: the user switched dictation to Whisper while it waited.
+    fx.asr.isModelLoaded = true
+    guard let again = await Self.parkPress(fx, { _ = await fx.starter.start() }) else { return }
+    fx.settings.selectedBackend = .whisper
+    fx.asr.activeBackendType = .whisper
+    #expect(fx.engineLease.release(again.meeting))
+    await again.task.value
+    #expect(!arms.contains(.parakeet), "the press kept the backend it saw before the wait")
+    #expect(
+      arms == [.whisper]
+        || Self.showsColdBoot(fx.overlay, engine: fx.whisperKernelDriver.engineDisplayName),
+      "the press acted on Whisper, the backend after the wait")
   }
 
   /// A refused press must not disturb the claim it lost to. Releasing someone
@@ -1182,4 +1407,54 @@ import Testing
 private final class AXRefreshCounter {
   var count = 0
 
+}
+
+/// #3973 C1: the request owner's log, read per test (a per-instance sink, never the shared
+/// logger), with a wait for a line that the subject itself writes.
+@MainActor
+final class TurnLogSink {
+  private(set) var lines: [String] = []
+  private var waiters: [(needle: String, after: Int, continuation: CheckedContinuation<Bool, Never>)] = []
+
+  func append(_ line: String) {
+    lines.append(line)
+    let ready = waiters.filter { count(containing: $0.needle) > $0.after }
+    waiters.removeAll { count(containing: $0.needle) > $0.after }
+    ready.forEach { $0.continuation.resume(returning: true) }
+  }
+
+  func count(containing needle: String) -> Int { lines.filter { $0.contains(needle) }.count }
+
+  /// Each terminal line as `<outcome> waitMs=<n>`.
+  var outcomes: [String] {
+    lines.compactMap { line in
+      guard let range = line.range(of: "outcome="),
+        let end = line.range(of: " startMs=", range: range.upperBound..<line.endIndex)
+      else { return nil }
+      return String(line[range.upperBound..<end.lowerBound])
+    }
+  }
+
+  /// True once more than `after` lines contain `needle`; false after a 5 s deadline so a test
+  /// that never gets there fails instead of hanging.
+  func waitFor(containing needle: String, after: Int) async -> Bool {
+    guard count(containing: needle) <= after else { return true }
+    return await withCheckedContinuation { continuation in
+      waiters.append((needle, after, continuation))
+      Task { @MainActor [weak self] in
+        try? await Task.sleep(for: .seconds(5))  // deadline-fallback: bounds the signal wait
+        guard let self,
+          let index = self.waiters.firstIndex(where: { $0.needle == needle && $0.after == after })
+        else { return }
+        self.waiters.remove(at: index).continuation.resume(returning: false)
+      }
+    }
+  }
+}
+
+/// #3973 C1: a manual monotonic clock for the request owner's wait times.
+@MainActor
+final class TurnClock {
+  private(set) var now = ContinuousClock.now
+  func advance(milliseconds: Int) { now = now.advanced(by: .milliseconds(milliseconds)) }
 }

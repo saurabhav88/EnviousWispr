@@ -112,6 +112,7 @@ struct HotkeyControllerAbandonmentDisarmTests {
         hideOverlay: { overlay.dismissCurrent(.announced) },
         setLocked: { locked in lockAccess.set(locked) },
         backend: { "parakeet" })
+      let pendingRequests = PendingDictationRequests(access: .alwaysAllowedForTesting)
       let finalizer = RecordingFinalizer(
         kernelDriver: pipeline,
         whisperKernelDriver: whisperKernelDriver,
@@ -119,7 +120,8 @@ struct HotkeyControllerAbandonmentDisarmTests {
         recordingOverlay: overlay,
         heartControlRecovery: hcr,
         recordingLockedAccess: lockAccess,
-        languageSuggestionPresenter: nil)
+        languageSuggestionPresenter: nil,
+        pendingRequests: pendingRequests)
       let starter = RecordingStarter(
         audioCapture: audio,
         asrManager: asr,
@@ -134,7 +136,8 @@ struct HotkeyControllerAbandonmentDisarmTests {
         lastRecordingResult: LastRecordingResult(),
         dictationLifecycleCoordinator: nil,
         // #2648: hotkey disarm behaviour, not admission — the frozen seam.
-        recovery: .disabled, engineAdmission: .alwaysAllowedForTesting)
+        recovery: .disabled, engineAdmission: .alwaysAllowedForTesting,
+        pendingRequests: pendingRequests)
       let controller = HotkeyController(
         hotkeyService: hotkey, starter: starter, finalizer: finalizer, settings: settings)
       return Fixture(controller: controller, hotkeyService: hotkey, kernelDriver: pipeline)

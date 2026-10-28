@@ -32,6 +32,8 @@ final class RecordingFinalizer {
   weak var languageSuggestionPresenter: LanguageSuggestionPresenter?
 
   private var lastUserStopRequest: ContinuousClock.Instant?
+  /// #3973 C1: the press waiting for its engine turn, shared with the starter.
+  private let pendingRequests: PendingDictationRequests
 
   /// #902 test seams — the stop/cancel dispatch steps. Defaults are today's exact
   /// inline calls, so production behavior is identical. Two separate closures
@@ -72,8 +74,10 @@ final class RecordingFinalizer {
     recordingOverlay: OverlayDirector,
     heartControlRecovery: HeartControlRecovery,
     recordingLockedAccess: DictationLifecycleCoordinator.RecordingLockedAccess,
-    languageSuggestionPresenter: LanguageSuggestionPresenter?
+    languageSuggestionPresenter: LanguageSuggestionPresenter?,
+    pendingRequests: PendingDictationRequests
   ) {
+    self.pendingRequests = pendingRequests
     self.kernelDriver = kernelDriver
     self.whisperKernelDriver = whisperKernelDriver
     self.asrManager = asrManager
@@ -86,6 +90,9 @@ final class RecordingFinalizer {
   func userStop() async {
     recordingLockedAccess.set(false)
     lastUserStopRequest = ContinuousClock.now
+    // #3973 C1: a press still waiting for its engine turn ends here, before any await, so the
+    // turn it reserved cannot start a recording after the user let go or pressed Stop.
+    pendingRequests.cancelPending()
     let active: KernelDictationDriver =
       asrManager.activeBackendType == .whisper ? whisperKernelDriver : kernelDriver
     do {
@@ -108,6 +115,8 @@ final class RecordingFinalizer {
     // Prologue: an ignored cancel still unlocks (RecordingFinalizerCancelPathTests).
     recordingLockedAccess.set(false)
     lastUserStopRequest = ContinuousClock.now
+    // #3973 C1: same as `userStop`, before the idle-driver early return below.
+    pendingRequests.cancelPending()
     // PR-5 Rung 5 (#827): both backends are kernel drivers now; collapse the
     // WhisperKit-specific cancel branch (which used `handle(.cancelRecording)`
     // and gated on the now-extinct `.startingUp` state) onto the same

@@ -151,6 +151,14 @@ final class HotkeyController {
       guard starter.activeDriver.continuingSessionID == sessionID else { return false }
       return finalizer.recordingOverlay.showInPanelNotice(.secureInputActive, dismissAfter: 5.0)
     }
+    // #3973 C1: a press waiting for its engine turn has no recording yet, so the lifecycle
+    // coordinator's per-state arming leaves cancel off; arm it for the wait, and on the way out
+    // hand the decision back to the policy for whatever the driver is doing now.
+    starter.pendingRequests.onWaitingChanged = { [weak starter, weak hotkeyService] waiting in
+      guard let starter else { return }
+      hotkeyService?.setCancelHotkeyEnabled(
+        waiting || CancelAffordancePolicy.isShortcutEnabled(state: starter.activeDriver.state))
+    }
     hotkeyService.onIsProcessing = { [weak starter] in
       starter?.isProcessing ?? false
     }

@@ -38,6 +38,15 @@ import Foundation
 /// that cannot have the resource is told so immediately and shows the user why.
 /// Queueing would make a record press appear to do nothing for minutes.
 ///
+/// **One exception, dictation's turn after a meeting operation (#3973 C1).** Dictation has
+/// priority over EnviousMeet's after-meeting transcript (decision 11), and the meeting gives
+/// the engine back after each engine operation. So a dictation that finds the meeting holding
+/// the engine reserves the NEXT turn (`waitForReservedTurn`) instead of being refused: while
+/// the reservation stands every other claim is refused naming `.dictation`, and the meeting's
+/// release hands ownership straight to the waiting dictation in the same synchronous step, so
+/// nothing can take the turn in between. One reservation at a time; cancelling it (the press
+/// ended, was superseded, or the app is quitting) withdraws it without a grant.
+///
 /// **Only the matching token releases.** A stale holder handing back a token
 /// from a run that already ended cannot evict the current one.
 @MainActor
@@ -72,7 +81,16 @@ package final class EngineLease {
     case refused(by: Holder)
   }
 
+  /// A pending dictation's claim on the next turn (#3973 C1). Opaque, compared by identity.
+  package struct Reservation: Sendable, Equatable {
+    fileprivate let id = UUID()
+  }
+
   private var held: Token?
+  private var reservation: Reservation?
+  /// The reserved dictation's wait, resumed with its token at the hand-off or nil when the
+  /// reservation is withdrawn. Present exactly while `reservation` is.
+  private var reservationWaiter: CheckedContinuation<Token?, Never>?
 
   /// #3546 A3: called after every effective release, so work deferred because the engine
   /// was held (the in-session Parakeet Ultra activation) is offered again whoever held it,
@@ -86,11 +104,62 @@ package final class EngineLease {
   /// No suspension point: see the type's note on atomicity.
   package func admit(_ holder: Holder) -> Admission {
     if let held { return .refused(by: held.holder) }
+    // #3973 C1: a reserved turn belongs to the waiting dictation; it is handed over by the
+    // release that frees the engine, so a free engine with a reservation is only the instant
+    // before that hand-off resumes the waiter. Refuse as the holder that is about to own it.
+    if reservation != nil { return .refused(by: .dictation) }
+    return .granted(grant(holder))
+  }
+
+  private func grant(_ holder: Holder) -> Token {
     let token = Token(holder: holder)
     held = token
     admissionEpoch += 1
-    return .granted(token)
+    return token
   }
+
+  /// #3973 C1: waits for the engine on dictation's behalf when it is held. Reserves the next
+  /// turn synchronously (handing the reservation to `onReserved` before any suspension, so a
+  /// canceller can name it), then returns the granted token when the holder releases, or nil
+  /// when the reservation is withdrawn (`cancelReservation`, or the calling task cancelled).
+  /// A free engine grants at once. Returns nil without reserving when another reservation
+  /// already stands: one waiting dictation at a time.
+  package func waitForReservedTurn(onReserved: (Reservation) -> Void) async -> Token? {
+    guard reservation == nil else { return nil }
+    guard held != nil else { return grant(.dictation) }
+    let reserved = Reservation()
+    reservation = reserved
+    onReserved(reserved)
+    return await withTaskCancellationHandler {
+      await withCheckedContinuation { continuation in
+        // Same main-actor step as the reservation above: a release cannot run in between.
+        if reservation == reserved {
+          reservationWaiter = continuation
+        } else {
+          continuation.resume(returning: nil)
+        }
+      }
+    } onCancel: {
+      Task { @MainActor [weak self] in self?.cancelReservation(reserved) }
+    }
+  }
+
+  /// Withdraws `reservation` if it is the live one, resuming its wait with nil. Returns
+  /// whether it was. A reservation already handed its token is no longer live: the caller then
+  /// owns that token and releases it.
+  @discardableResult
+  package func cancelReservation(_ reservation: Reservation) -> Bool {
+    guard self.reservation == reservation else { return false }
+    self.reservation = nil
+    let waiter = reservationWaiter
+    reservationWaiter = nil
+    waiter?.resume(returning: nil)
+    return true
+  }
+
+  /// A dictation is waiting for the next turn (#3973 C1). New meeting engine work does not
+  /// start while this is true.
+  package var hasPendingReservation: Bool { reservation != nil }
 
   /// Releases the claim if `token` is the live one. Returns whether it was.
   ///
@@ -100,6 +169,12 @@ package final class EngineLease {
   package func release(_ token: Token) -> Bool {
     guard held == token else { return false }
     held = nil
+    // #3973 C1: the waiting dictation takes the turn in this same step.
+    if reservation != nil, let waiter = reservationWaiter {
+      reservation = nil
+      reservationWaiter = nil
+      waiter.resume(returning: grant(.dictation))
+    }
     onReleased?()
     return true
   }

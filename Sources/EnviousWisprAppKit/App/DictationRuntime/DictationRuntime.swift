@@ -40,6 +40,7 @@ final class DictationRuntime {
   private let hotkeyController: HotkeyController
   private let starter: RecordingStarter
   private let finalizer: RecordingFinalizer
+  private let pendingRequests: PendingDictationRequests
   /// #1413: the other-audio hold, driven per transition by the lifecycle
   /// coordinator (which shares this instance) and reached from the app shell
   /// for `adoptOrphans()` at launch and `finishForTermination()` at quit.
@@ -113,6 +114,10 @@ final class DictationRuntime {
       setLocked: { locked in recordingLockedAccess.set(locked) },
       backend: { [asrManager] in asrManager.activeBackendType.rawValue }
     )
+    // #3973 C1: ONE owner of a press waiting for its engine turn, shared by the starter (which
+    // waits), the finalizer (release, Stop, cancel) and quit (`closeDictationRequests`).
+    let pendingRequests = PendingDictationRequests(access: engineAdmission)
+    self.pendingRequests = pendingRequests
     let finalizer = RecordingFinalizer(
       kernelDriver: kernelDriver,
       whisperKernelDriver: whisperKernelDriver,
@@ -120,7 +125,8 @@ final class DictationRuntime {
       recordingOverlay: recordingOverlay,
       heartControlRecovery: heartControlRecovery,
       recordingLockedAccess: recordingLockedAccess,
-      languageSuggestionPresenter: languageSuggestionPresenter
+      languageSuggestionPresenter: languageSuggestionPresenter,
+      pendingRequests: pendingRequests
     )
     self.finalizer = finalizer
     let starter = RecordingStarter(
@@ -143,6 +149,7 @@ final class DictationRuntime {
       // kernel never sees the coordinator.
       recovery: RecoveryWiring.access(binding: recoveryCoordinator),
       engineAdmission: engineAdmission,
+      pendingRequests: pendingRequests,
       // #1171: drive the selected engine to ready before recording, gate a press
       // during an in-flight switch, and hold the start-window state-gate so the
       // coordinator can't switch the engine out mid-startup.
@@ -207,6 +214,10 @@ final class DictationRuntime {
   func toggleRecording(source: TriggerSource) async {
     await starter.toggle(source: source)
   }
+
+  /// #3973 C1, quit: a press waiting for its engine turn ends, and no new one waits. Called
+  /// before meeting teardown releases the engine, so that release cannot wake a start.
+  func closeDictationRequests() { pendingRequests.close() }
 
   func cancelRecording(trigger: UserCancelTrigger) async {
     await finalizer.cancel(trigger: trigger)
