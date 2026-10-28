@@ -902,6 +902,94 @@ struct ZeroSignalRecoveryTests {
     #expect(try #require(ctx.engine.lastFinalizeBatchSamples).count == prefix)
   }
 
+  // MARK: - #4154 chunk 4 — downstream checks on a USB take
+
+  /// VAD auto-stop and the hard cap now own the exit on a USB take that went
+  /// quiet (the zero run no longer wins first), and it completes normally.
+  @Test(
+    "USB: VAD auto-stop and the cap own the exit and complete without a retire",
+    arguments: ["vad_auto_stop", "max_duration"]
+  )
+  func usbAutomaticExitsOwnTheTake(exit: String) async throws {
+    let ctx = makeContext()
+    ctx.vad.evidence = .voiced  // no segments: ASR receives the whole buffer
+    ctx.capture.liveResolvedRoute = Self.route("usb")
+    await startToRecording(ctx)
+    ctx.capture.deliverBuffer(frameCount: prefix, amplitude: 0.2)
+    ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0)
+    await ctx.wrapper.drainReadyWork()
+    ctx.vad.emit(exit == "vad_auto_stop" ? .autoStopTriggered : .maxDurationReached)
+    await ctx.wrapper.drainUntilConcluded()
+
+    #expect(ctx.wrapper.testKernel.lastStopReason == exit)
+    #expect(ctx.wrapper.testKernel.recordingOutcome == .completed)
+    #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == nil)
+    #expect(ctx.capture.retireCapturingSourceCallCount == 0)
+    #expect(ctx.engine.finalizeCallCount == 1)
+  }
+
+  /// Cancel still wins on a USB take that went quiet: nothing is delivered,
+  /// classified or retired.
+  @Test("USB: cancel still ends a quiet take as cancelled")
+  func usbCancelStillWins() async throws {
+    let ctx = makeContext()
+    ctx.capture.liveResolvedRoute = Self.route("usb")
+    await startToRecording(ctx)
+    ctx.capture.deliverBuffer(frameCount: prefix, amplitude: 0.2)
+    ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0)
+    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.apply(.cancel)
+    await ctx.wrapper.drainUntilConcluded()
+
+    #expect(ctx.wrapper.testKernel.recordingOutcome == .cancelled)
+    #expect(ctx.wrapper.testKernel.deliveredTranscript == nil)
+    #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == nil)
+    #expect(ctx.capture.retireCapturingSourceCallCount == 0)
+  }
+
+  /// A genuine device removal on a USB take still carries its own cause, so the
+  /// completion disclosure says the microphone disconnected; the USB bypass only
+  /// removes the zero-mode override, never a real interruption.
+  @Test("USB: a real device removal keeps its cause and no zero-mode override")
+  func usbDeviceRemovalKeepsItsCause() async throws {
+    let ctx = makeContext()
+    ctx.vad.evidence = .voiced
+    ctx.capture.liveResolvedRoute = Self.route("usb")
+    await startToRecording(ctx)
+    ctx.capture.deliverBuffer(frameCount: prefix, amplitude: 0.2)
+    ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0)
+    await ctx.wrapper.drainReadyWork()
+    // The simulator has no app-side router for engine interruptions, so the
+    // test calls the kernel entry the router calls (as `externalCaptureStalled`
+    // is called elsewhere in this suite).
+    ctx.wrapper.testKernel.externalEngineInterrupted(.deviceRemoved)
+    await ctx.wrapper.drainUntilConcluded()
+
+    #expect(ctx.wrapper.testKernel.lastAudioInterruptionCause == .deviceRemoved)
+    #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == nil)
+  }
+
+  /// The legacy zombie fallback stays silent on a USB suffix completion (the
+  /// prefix has real energy), and the observation is live: an unclassified
+  /// whole-zero take on a refused non-USB device still emits it.
+  @Test("USB: a suffix completion emits no zombie fallback; a refused whole-zero take does")
+  func usbSuffixEmitsNoZombieFallback() async throws {
+    let usb = makeContext()
+    usb.vad.evidence = .voiced
+    try await runTake(usb, route: Self.route("usb"), buffers: [(prefix, 0.2), (threshold, 0)])
+    #expect(usb.wrapper.testKernel.recordingOutcome == .completed)
+    #expect(usb.wrapper.zombieZeroPeaks.isEmpty)
+
+    let control = makeContext(zeroSignalDecisionSnapshot: {
+      ZeroSignalDecisionSnapshot(
+        eligibility: .deviceMuted, currentRunWasClassifiedReactively: false)
+    })
+    control.vad.evidence = .confirmedNoSpeech
+    try await runTake(
+      control, route: Self.route("built_in"), buffers: [(threshold * 2, 0)])
+    #expect(control.wrapper.zombieZeroPeaks.count == 1, "control: the observation is wired")
+  }
+
   private final class RefusalSinkLog {
     var batches: [[ZeroSignalRefusalContext]] = []
     var flattened: [ZeroSignalRefusalContext] { batches.flatMap { $0 } }
