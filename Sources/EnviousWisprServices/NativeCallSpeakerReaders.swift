@@ -28,15 +28,17 @@ package enum ZoomAppSpeakerReader {
     var tileNames: [String] = []
     var speaking: [String] = []
     var selfNames: [String] = []
-    var listEntries: [String]?
-    var listedCounts: Set<Int> = []
+    // Every participants list on screen, each with the counts shown in its own window.
+    var lists: [(entries: [String], counts: Set<Int>)] = []
+    for window in windows {
+      let nodes = window.root.allNodes
+      let counts = Set(nodes.compactMap { $0.label.flatMap(participantCount) })
+      for node in nodes where node.role == "AXOutline" && node.label == participantsListLabel {
+        lists.append(
+          (node.allNodes.filter { $0.role == "AXStaticText" }.compactMap(\.label), counts))
+      }
+    }
     for node in windows.flatMap({ $0.root.allNodes }) {
-      if node.role == "AXOutline", node.label == participantsListLabel, listEntries == nil {
-        listEntries = node.allNodes.filter { $0.role == "AXStaticText" }.compactMap(\.label)
-      }
-      if let label = node.label, let count = participantCount(label) {
-        listedCounts.insert(count)
-      }
       if node.role == "AXTabGroup", let label = node.label, let tile = parseTile(label) {
         tileNames.append(tile.name)
         if tile.isActiveSpeaker { speaking.append(tile.name) }
@@ -47,9 +49,13 @@ package enum ZoomAppSpeakerReader {
       }
     }
     // The panel lists each person once, so a name listed twice is two people. It counts as the
-    // participant list only when it is complete: exactly one "Participants (N)" count, equal to
-    // the entries read. A longer list Zoom draws only partly fails that check.
-    if let entries = listEntries, !entries.isEmpty, listedCounts == [entries.count] {
+    // participant list only when it is the only list on screen and complete: its own window
+    // shows exactly one "Participants (N)" count, equal to the entries read. A longer list Zoom
+    // draws only partly, or two lists, fall back to the tiles.
+    if lists.count == 1, let list = lists.first, !list.entries.isEmpty,
+      list.counts == [list.entries.count]
+    {
+      let entries = list.entries
       return CallSpeakerReading(
         speaking: uniqueInOrder(speaking),
         roster: CallSpeakerRoster(

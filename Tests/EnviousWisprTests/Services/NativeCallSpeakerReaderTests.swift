@@ -132,6 +132,26 @@ struct NativeCallSpeakerReaderTests {
     }
   }
 
+  /// SYNTHETIC: two different lists with equal counts, in either order, and a count shown only
+  /// in another window. None identifies one complete list, so the tiles' roster is kept.
+  @Test("Zoom: two lists, or a count from another window, are not the participant list")
+  func zoomAmbiguousPanels() {
+    let a = zoomPanel(
+      entries: ["Saurabh A Vaish (Host, me)", "Alex Rivera", "Priya Shah"],
+      counts: ["Participants (3)"])
+    let b = zoomPanel(
+      entries: ["Saurabh A Vaish (Host, me)", "Dana Lee", "Ben Ode"],
+      counts: ["Participants (3)"])
+    for windows in [[a, b], [b, a]] {
+      #expect(!ZoomAppSpeakerReader.read(windows: windows).rosterFromParticipantList)
+    }
+    let uncounted = zoomPanel(
+      entries: ["Saurabh A Vaish (Host, me)", "Alex Rivera", "Priya Shah"], counts: [])
+    let countElsewhere = window("Zoom", [CallAXNode(role: "AXStaticText", value: "Participants (3)")])
+    #expect(
+      !ZoomAppSpeakerReader.read(windows: [uncounted, countElsewhere]).rosterFromParticipantList)
+  }
+
   @Test("Zoom: only Zoom's own tags are taken off a panel entry")
   func zoomPanelEntry() {
     #expect(ZoomAppSpeakerReader.panelEntry("Saurabh A Vaish (Host, me)").name == "Saurabh A Vaish")
