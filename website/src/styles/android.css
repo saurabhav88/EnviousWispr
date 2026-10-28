@@ -15,13 +15,6 @@
   height: auto;
   border-radius: 30px;
 }
-.android-phone--demo {
-  max-width: 460px;
-  border-radius: 34px;
-}
-.android-phone--demo img {
-  border-radius: 26px;
-}
 .android-mac-link {
   display: inline-block;
   margin-top: 16px;
