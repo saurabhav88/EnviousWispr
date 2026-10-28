@@ -138,7 +138,7 @@ import EnviousWisprAppKitTestSupport
     await #expect(await f.words.update(word, expecting: shown) == .applied)
     let other = learnedWord()
     await f.words.add(other)
-    await #expect(await f.words.remove(id: other.id) == .applied)
+    await #expect(await f.words.remove(id: other.id).failure == nil)
     let third = learnedWord()
     await f.words.add(third)
     await #expect(await f.words.removeBatch(ids: [third.id]) == nil)
