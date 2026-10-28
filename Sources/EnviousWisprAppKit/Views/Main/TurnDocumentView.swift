@@ -303,9 +303,10 @@ struct MarkedUpPassageText: View {
 /// #4013 r3 F3: `suggestions` (this meeting's participants and the user's kept names) are
 /// buttons above the field. Choosing one commits it through the same `onCommit`, once, spelled
 /// exactly as saved (the 60-character cap is for typing, so a long participant name is not cut).
-/// From the field, Down Arrow moves to the list; Up and Down move within it, Return or Space
-/// chooses, and Up from the first returns to the field. Each is a real button, so VoiceOver
-/// lists and activates them.
+/// Keyboard focus stays in the field, as before (#4013 UAT: focusable suggestion buttons took
+/// focus from it when the popover opened): Down and Up highlight a suggestion, Return chooses
+/// the highlighted one, Up from the first clears the highlight. Each suggestion is a real
+/// button, so VoiceOver and Full Keyboard Access reach and activate it directly.
 private struct RenamePopoverView: View {
   @Binding var name: String
   let failure: RenameFailure?
@@ -314,15 +315,10 @@ private struct RenamePopoverView: View {
   let onCancel: () -> Void
   @State private var didCancelExplicitly = false
   @State private var hasCommitted = false
-  @FocusState private var focus: Focus?
+  /// The suggestion Return chooses, by name, never by position: the list can change while the
+  /// popover is open, and the highlight must not move to another name in the same place.
+  @State private var highlighted: String?
   private static let maxLength = 60
-
-  /// A suggestion is focused by its name, never its position: the list can change while the
-  /// popover is open, and focus must not land on another name in the same place.
-  private enum Focus: Hashable {
-    case field
-    case suggestion(String)
-  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 4) {
@@ -330,15 +326,28 @@ private struct RenamePopoverView: View {
       TextField("Speaker name", text: $name)
         .textFieldStyle(.roundedBorder)
         .frame(width: 200)
-        .focused($focus, equals: .field)
-        .onSubmit { commit() }
+        .onSubmit {
+          if let highlighted, suggestions.contains(highlighted) {
+            choose(highlighted)
+          } else {
+            commit()
+          }
+        }
         .onExitCommand {
           didCancelExplicitly = true
           onCancel()
         }
         .onKeyPress(.downArrow) {
-          guard let first = suggestions.first else { return .ignored }
-          focus = .suggestion(first)
+          guard !suggestions.isEmpty else { return .ignored }
+          let index = highlighted.flatMap(suggestions.firstIndex(of:)).map { $0 + 1 } ?? 0
+          highlighted = suggestions[min(index, suggestions.count - 1)]
+          return .handled
+        }
+        .onKeyPress(.upArrow) {
+          guard let current = highlighted.flatMap(suggestions.firstIndex(of:)) else {
+            return .ignored
+          }
+          highlighted = current > 0 ? suggestions[current - 1] : nil
           return .handled
         }
         .onChange(of: name) { _, newValue in
@@ -354,10 +363,11 @@ private struct RenamePopoverView: View {
     .onAppear {
       hasCommitted = false
       didCancelExplicitly = false
+      highlighted = nil
     }
     .onChange(of: suggestions) { _, newValue in
-      // The focused name left the list: focus goes back to the field, not to a neighbour.
-      if case .suggestion(let focused) = focus, !newValue.contains(focused) { focus = .field }
+      // The highlighted name left the list: nothing is highlighted, never a neighbour.
+      if let highlighted, !newValue.contains(highlighted) { self.highlighted = nil }
     }
     .onChange(of: failure) { _, newValue in
       guard newValue != nil else { return }
@@ -386,35 +396,17 @@ private struct RenamePopoverView: View {
               // A participant's name is content, never a translation key.
               Text(verbatim: suggestion)
                 .lineLimit(2)
+                .multilineTextAlignment(.leading)
+                .padding(.horizontal, 4)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.borderless)
             .padding(.vertical, 3)
-            .focusable()
-            .focused($focus, equals: .suggestion(suggestion))
-            .onKeyPress(.return) {
-              choose(suggestion)
-              return .handled
-            }
-            .onKeyPress(.downArrow) {
-              if let index = suggestions.firstIndex(of: suggestion), index + 1 < suggestions.count {
-                focus = .suggestion(suggestions[index + 1])
-              }
-              return .handled
-            }
-            .onKeyPress(.upArrow) {
-              if let index = suggestions.firstIndex(of: suggestion), index > 0 {
-                focus = .suggestion(suggestions[index - 1])
-              } else {
-                focus = .field
-              }
-              return .handled
-            }
-            .onExitCommand {
-              didCancelExplicitly = true
-              onCancel()
-            }
+            .background(
+              RoundedRectangle(cornerRadius: 4)
+                .fill(highlighted == suggestion ? Color.accentColor.opacity(0.2) : .clear))
+            .accessibilityAddTraits(highlighted == suggestion ? .isSelected : [])
           }
         }
       }
