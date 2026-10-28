@@ -62,7 +62,8 @@ package enum ZoomWebSpeakerReader {
   }
 
   /// The one tile whose name is strictly taller than every other tile's. Any tile without a
-  /// usable height, or a tie for tallest, means no talker (#4013 D5).
+  /// usable height, a tie for tallest (even between two tiles with one name), or a lone tile
+  /// means no talker (#4013 D5).
   static func uniqueLargest(_ tiles: [(name: String, height: Double?)]) -> String? {
     var measured: [(name: String, height: Double)] = []
     for tile in tiles {
@@ -70,11 +71,10 @@ package enum ZoomWebSpeakerReader {
       measured.append((tile.name, height))
     }
     guard let tallest = measured.max(by: { $0.height < $1.height }) else { return nil }
+    // Exactly one tallest tile, and at least one smaller tile. Two tiles at the top are a tie
+    // even with one name: tiles cannot prove two entries are the same person.
     let atTallest = measured.filter { $0.height == tallest.height }
-    // One person may appear twice at the same height only if both entries are that person.
-    guard Set(atTallest.map(\.name)).count == 1, measured.count > atTallest.count else {
-      return nil
-    }
+    guard atTallest.count == 1, measured.count > 1 else { return nil }
     return tallest.name
   }
 }

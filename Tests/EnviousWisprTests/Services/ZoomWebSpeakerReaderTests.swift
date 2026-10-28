@@ -69,7 +69,7 @@ struct ZoomWebSpeakerReaderTests {
   }
 
   /// SYNTHETIC: ties, a missing height, and a single tile give no talker.
-  @Test("a tie, a missing height or a lone tile gives no talker")
+  @Test("a tie (even with one name), a missing height or a lone tile gives no talker")
   func ambiguousSizes() throws {
     let cases: [[CallAXNode]] = [
       [
@@ -78,6 +78,7 @@ struct ZoomWebSpeakerReaderTests {
       ],
       [tile("Alex Rivera", height: 71), tile("Priya Shah", height: nil)],
       [tile("Alex Rivera", height: 71)],
+      [tile("Alex Rivera", height: 71), tile("Alex Rivera", height: 71), tile("Priya Shah", height: 19)],
     ]
     for tiles in cases {
       let reading = try #require(
