@@ -93,33 +93,38 @@ struct CustomWordEditSheet: View {
           .foregroundStyle(.stTextSecondary)
       }
 
-      // Canonical
-      VStack(alignment: .leading, spacing: 5) {
-        groupLabel(
-          LocalizedStringResource(
-            "The correct word",
-            comment: "Edit word sheet: section label for the word as it should be written."))
-        TextField("How it should be written", text: $word.canonical)
-          .focused($wordFieldFocused)
-          .settingsFieldChrome(focused: $wordFieldFocused)
-      }
-
-      // Category
-      VStack(alignment: .leading, spacing: 5) {
-        groupLabel(
-          LocalizedStringResource(
-            "Category", comment: "Edit word sheet: section label for the word's category."))
-        Picker("Category", selection: $word.category) {
-          ForEach(WordCategory.allCases, id: \.self) { cat in
-            Text(cat.displayName).tag(cat)
-          }
+      // The fields hold still while a Save or Delete runs (#4086): that command carries the
+      // draft as it was pressed, so a later keystroke would be dropped when it closes.
+      Group {
+        // Canonical
+        VStack(alignment: .leading, spacing: 5) {
+          groupLabel(
+            LocalizedStringResource(
+              "The correct word",
+              comment: "Edit word sheet: section label for the word as it should be written."))
+          TextField("How it should be written", text: $word.canonical)
+            .focused($wordFieldFocused)
+            .settingsFieldChrome(focused: $wordFieldFocused)
         }
-        .labelsHidden()
-        .pickerStyle(.segmented)
-      }
 
-      aliasesCard
-      recognitionCard
+        // Category
+        VStack(alignment: .leading, spacing: 5) {
+          groupLabel(
+            LocalizedStringResource(
+              "Category", comment: "Edit word sheet: section label for the word's category."))
+          Picker("Category", selection: $word.category) {
+            ForEach(WordCategory.allCases, id: \.self) { cat in
+              Text(cat.displayName).tag(cat)
+            }
+          }
+          .labelsHidden()
+          .pickerStyle(.segmented)
+        }
+
+        aliasesCard
+        recognitionCard
+      }
+      .disabled(isSubmitting)
 
       if let saveError {
         Label(saveError, systemImage: "exclamationmark.triangle.fill")

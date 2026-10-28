@@ -135,10 +135,10 @@ import EnviousWisprAppKitTestSupport
     let shown = try #require(f.words.customWords.first { $0.id == word.id })
     word.aliases = []
     word.learnedAliases = []
-    await #expect(await f.words.update(word, expecting: shown) == nil)
+    await #expect(await f.words.update(word, expecting: shown) == .applied)
     let other = learnedWord()
     await f.words.add(other)
-    await #expect(await f.words.remove(id: other.id) == nil)
+    await #expect(await f.words.remove(id: other.id) == .applied)
     let third = learnedWord()
     await f.words.add(third)
     await #expect(await f.words.removeBatch(ids: [third.id]) == nil)

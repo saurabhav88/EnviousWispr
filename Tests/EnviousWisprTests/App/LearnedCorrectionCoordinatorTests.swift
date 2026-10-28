@@ -120,25 +120,26 @@ final class LearnedLibraryFake {
       },
       remove: { [unowned self] id, _ in
         self.removes.append(id)
-        if let refusal = self.removeRefusal { return refusal }
-        if self.silentRemove { return nil }
+        if let refusal = self.removeRefusal { return .failed(refusal) }
+        if self.silentRemove { return .applied }
+        guard self.userWords.contains(where: { $0.id == id }) else { return .notApplied }
         self.userWords.removeAll { $0.id == id }
-        return nil
+        return .applied
       },
       update: { [unowned self] word, _ in
         self.updates.append(word)
-        if let refusal = self.updateRefusal { return refusal }
-        if self.silentUpdate { return nil }
+        if let refusal = self.updateRefusal { return .failed(refusal) }
+        if self.silentUpdate { return .applied }
         if let i = self.userWords.firstIndex(where: { $0.id == word.id }) {
           self.userWords[i] = self.persist(word.ownedByUser())
         }
-        return nil
+        return .applied
       },
       removeOverride: { [unowned self] id, _ in
         self.overrideRemoves.append(id)
-        if let refusal = self.removeOverrideRefusal { return refusal }
+        if let refusal = self.removeOverrideRefusal { return .failed(refusal) }
         // The override goes; the built-in shows again as it shipped.
-        guard let i = self.userWords.firstIndex(where: { $0.id == id }) else { return nil }
+        guard let i = self.userWords.firstIndex(where: { $0.id == id }) else { return .notApplied }
         let canonical = self.userWords[i].canonical
         if let builtin = CustomWordsManager.builtinDefaults.first(where: {
           $0.word.canonical == canonical
@@ -147,7 +148,7 @@ final class LearnedLibraryFake {
         } else {
           self.userWords.remove(at: i)
         }
-        return nil
+        return .applied
       },
       restoreBuiltinAndLearn: { [unowned self] canonical, alias in
         if self.restoreFails { return .failed }
@@ -168,14 +169,14 @@ final class LearnedLibraryFake {
       },
       redeleteRestoredBuiltin: { [unowned self] id, _ in
         self.redeletes.append(id)
-        if let refusal = self.redeleteRefusal { return refusal }
-        guard let i = self.userWords.firstIndex(where: { $0.id == id }) else { return nil }
+        if let refusal = self.redeleteRefusal { return .failed(refusal) }
+        guard let i = self.userWords.firstIndex(where: { $0.id == id }) else { return .notApplied }
         self.userWords.remove(at: i)
         // The tombstone is back: the built-in is deleted again, as it shipped.
         if let builtin = CustomWordsManager.builtinDefaults.first(where: { $0.word.id == id }) {
           self.deletedBuiltins.append(builtin.word)
         }
-        return nil
+        return .applied
       },
       classify: { _ in .person },
       perform: { action in await action() })

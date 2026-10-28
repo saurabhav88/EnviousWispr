@@ -449,7 +449,8 @@ final class CustomWordsCoordinator {
 
   /// A person's change that did not happen (a failure, a conflict, a word gone): while
   /// Quit waits, it stops Quit, so the draft and its reason stay on screen (#4086).
-  private func notSaved(_ message: String) -> String {
+  /// Quick Add's create path decides this itself, inside its command.
+  func notSaved(_ message: String) -> String {
     if quitReply != nil { failedWhileQuitting = true }
     return message
   }
@@ -482,6 +483,9 @@ final class CustomWordsCoordinator {
       queuedRefresh = nil
       return await refreshWithinCommand(number)
     }
+    // Refused while Quit waited, the refresh never started: never leave its refusal for a
+    // later request to join once Quit is cancelled.
+    if queuedRefresh === receipt { queuedRefresh = nil }
     receipt.complete(result)
     return result
   }
@@ -641,17 +645,31 @@ final class CustomWordsCoordinator {
     }
   }
 
+  /// What one of Undo's guarded writes did (#4086), from its own transaction: whether it
+  /// really wrote, so a write that found nothing to undo is never counted as an Undo.
+  enum UndoWrite: Sendable, Equatable {
+    case applied
+    /// The word was already gone or changed; nothing was written.
+    case notApplied
+    case failed(String)
+
+    var failure: String? {
+      if case .failed(let message) = self { return message }
+      return nil
+    }
+  }
+
   /// A plain delete: no learned pair becomes a refusal. Undo, imports and cleanup use it.
   /// With `expecting`, only while the word still equals it (learning's Undo).
   @discardableResult
-  func remove(id: UUID, expecting: CustomWord? = nil) async -> String? {
-    await command(.remove, closing: Self.quittingMessage) { [self] number in
+  func remove(id: UUID, expecting: CustomWord? = nil) async -> UndoWrite {
+    await command(.remove, closing: .failed(Self.quittingMessage)) { [self] number in
       do {
-        _ = try await removeWithinCommand(
+        let removal = try await removeWithinCommand(
           [id], number, .remove, expecting: expecting.map { [$0] })
-        return nil
+        return removal.removed.isEmpty ? .notApplied : .applied
       } catch {
-        return note(error)
+        return .failed(note(error))
       }
     }
   }
@@ -703,17 +721,17 @@ final class CustomWordsCoordinator {
   /// Exact undo of `restoreBuiltinAndLearn`: the override goes, the tombstone
   /// comes back.
   @discardableResult
-  func redeleteRestoredBuiltin(id: UUID, expecting: CustomWord? = nil) async -> String? {
-    await command(.redeleteBuiltin, closing: Self.quittingMessage) { [self] number in
+  func redeleteRestoredBuiltin(id: UUID, expecting: CustomWord? = nil) async -> UndoWrite {
+    await command(.redeleteBuiltin, closing: .failed(Self.quittingMessage)) { [self] number in
       do {
         let stored = try await storage(number, .redeleteBuiltin) {
           try await manager.redeleteRestoredBuiltin(id: id, expecting: expecting)
         }
         publish(stored.value, committed: stored.committed, number, .redeleteBuiltin)
         customWordError = nil
-        return nil
+        return stored.committed ? .applied : .notApplied
       } catch {
-        return note(error)
+        return .failed(note(error))
       }
     }
   }
@@ -721,17 +739,17 @@ final class CustomWordsCoordinator {
   /// Remove a user override of a built-in WITHOUT tombstoning the built-in
   /// (the learn path's Undo of a live built-in that gained a sound-alike).
   @discardableResult
-  func removeUserOverride(id: UUID, expecting: CustomWord? = nil) async -> String? {
-    await command(.removeOverride, closing: Self.quittingMessage) { [self] number in
+  func removeUserOverride(id: UUID, expecting: CustomWord? = nil) async -> UndoWrite {
+    await command(.removeOverride, closing: .failed(Self.quittingMessage)) { [self] number in
       do {
         let stored = try await storage(number, .removeOverride) {
           try await manager.removeUserOverride(id: id, expecting: expecting)
         }
         publish(stored.value, committed: stored.committed, number, .removeOverride)
         customWordError = nil
-        return nil
+        return stored.committed ? .applied : .notApplied
       } catch {
-        return note(error)
+        return .failed(note(error))
       }
     }
   }
@@ -752,13 +770,13 @@ final class CustomWordsCoordinator {
   /// Learning's Undo edit: applies only while the word still equals `expecting`. No removed
   /// learned sound-alike becomes a refusal.
   @discardableResult
-  func update(_ word: CustomWord, expecting: CustomWord) async -> String? {
-    await command(.update, closing: Self.quittingMessage) { [self] number in
+  func update(_ word: CustomWord, expecting: CustomWord) async -> UndoWrite {
+    await command(.update, closing: .failed(Self.quittingMessage)) { [self] number in
       do {
-        _ = try await updateWithinCommand(word, number, expecting: expecting)
-        return nil
+        let edit = try await updateWithinCommand(word, number, expecting: expecting)
+        return edit.after == nil ? .notApplied : .applied
       } catch {
-        return note(error)
+        return .failed(note(error))
       }
     }
   }

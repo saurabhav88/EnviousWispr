@@ -622,15 +622,15 @@ final class LearnFromEditsWiring {
         return await customWords.saveLearned(word, expecting: expecting)
       },
       remove: { [weak customWords] id, expecting in
-        guard let customWords else { return "Couldn't undo" }
+        guard let customWords else { return .failed("Couldn't undo") }
         return await customWords.remove(id: id, expecting: expecting)
       },
       update: { [weak customWords] word, expecting in
-        guard let customWords else { return "Couldn't undo" }
+        guard let customWords else { return .failed("Couldn't undo") }
         return await customWords.update(word, expecting: expecting)
       },
       removeOverride: { [weak customWords] id, expecting in
-        guard let customWords else { return "Couldn't undo" }
+        guard let customWords else { return .failed("Couldn't undo") }
         return await customWords.removeUserOverride(id: id, expecting: expecting)
       },
       restoreBuiltinAndLearn: { [weak customWords] canonical, alias in
@@ -642,7 +642,7 @@ final class LearnFromEditsWiring {
         }
       },
       redeleteRestoredBuiltin: { [weak customWords] id, expecting in
-        guard let customWords else { return "Couldn't undo" }
+        guard let customWords else { return .failed("Couldn't undo") }
         return await customWords.redeleteRestoredBuiltin(id: id, expecting: expecting)
       },
       classify: { WordSuggestionService.classifyByHeuristic($0) },

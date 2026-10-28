@@ -355,7 +355,8 @@ final class QuickAddWiring {
   /// running for a closed panel does not block the next one.
   private var saving: Set<ObjectIdentifier> = []
 
-  private func finishAccept(_ candidate: QuickAddRanker.Candidate, model: QuickAddPanelModel) async {
+  private func finishAccept(_ candidate: QuickAddRanker.Candidate, model: QuickAddPanelModel) async
+  {
     let result = await coordinator.accept(candidate, from: model)
     let refused: Bool
     if case .refused = result { refused = true } else { refused = false }
@@ -538,7 +539,11 @@ final class QuickAddWiring {
     await customWords.performAction(
       closing: .refused(CustomWordsCoordinator.quittingMessage)
     ) { [self] in
-      await saveNewWordInsideAction(word, model: model, usedSearch: usedSearch)
+      let result = await saveNewWordInsideAction(word, model: model, usedSearch: usedSearch)
+      // Decided here, inside the command, so a Quit waiting on it stops and the panel keeps
+      // the word the person typed.
+      if case .refused(let message) = result { _ = customWords.notSaved(message) }
+      return result
     }
   }
 

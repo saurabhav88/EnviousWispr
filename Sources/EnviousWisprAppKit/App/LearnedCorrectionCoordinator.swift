@@ -51,24 +51,26 @@ struct LearnedCorrectionVocabularyAccess {
   /// the learn read it, or nil for a new word: an edit then lands only while the saved word
   /// still equals it. The answer is what the save's own transaction did.
   let save: @MainActor (CustomWord, CustomWord?) async -> CustomWordsCoordinator.LearnedSave
-  /// `CustomWordsCoordinator.remove(id:expecting:)` in production: nil means no error.
+  /// `CustomWordsCoordinator.remove(id:expecting:)` in production; the answer says whether
+  /// the write really happened (#4086).
   /// Undo's writes all carry the word as the learn left it (`postSave`); each applies only
   /// while the saved word still equals it, under the file lock, so a change saved
   /// meanwhile, in this window or another, is never overwritten.
-  let remove: @MainActor (UUID, CustomWord) async -> String?
-  /// `CustomWordsCoordinator.update(_:expecting:)` in production: nil means no error.
-  let update: @MainActor (CustomWord, CustomWord) async -> String?
+  let remove: @MainActor (UUID, CustomWord) async -> CustomWordsCoordinator.UndoWrite
+  /// `CustomWordsCoordinator.update(_:expecting:)` in production.
+  let update: @MainActor (CustomWord, CustomWord) async -> CustomWordsCoordinator.UndoWrite
   /// Remove a user OVERRIDE of a built-in WITHOUT tombstoning the built-in,
   /// so the built-in shows again exactly as before the learn. `remove(id:)`
   /// cannot do this: it tombstones any built-in the removed word's canonical
   /// matches. Production binds this to `CustomWordsCoordinator.removeUserOverride(id:)`.
-  let removeOverride: @MainActor (UUID, CustomWord) async -> String?
+  let removeOverride: @MainActor (UUID, CustomWord) async -> CustomWordsCoordinator.UndoWrite
   /// `CustomWordsManager.restoreBuiltinAndLearn(canonical:alias:)` in
   /// production, through the words coordinator so the live list republishes.
   let restoreBuiltinAndLearn: @MainActor (String, String) async -> BuiltinRestore
   /// `CustomWordsManager.redeleteRestoredBuiltin(id:)` in production, through
-  /// the words coordinator: nil means no error.
-  let redeleteRestoredBuiltin: @MainActor (UUID, CustomWord) async -> String?
+  /// the words coordinator.
+  let redeleteRestoredBuiltin:
+    @MainActor (UUID, CustomWord) async -> CustomWordsCoordinator.UndoWrite
   /// `WordSuggestionService.classifyByHeuristic` in production.
   let classify: (String) -> WordCategory?
   /// `CustomWordsCoordinator.performAction` in production: runs one whole learn or Undo
@@ -467,25 +469,25 @@ final class LearnedCorrectionCoordinator {
       presenter?.close(pillID: pillID)
       return .alreadyChanged
     }
-    let refusal: String?
+    let write: CustomWordsCoordinator.UndoWrite
     switch record.operation {
     case .added:
-      refusal = await vocabulary.remove(record.wordID, record.postSave)
+      write = await vocabulary.remove(record.wordID, record.postSave)
     case .updated:
       if let preSave = record.preSave, preSave.source == .builtin {
         // A live built-in gained a sound-alike, which persisted a user
         // override. The exact pre-state is "no override": remove it without
         // a tombstone and the built-in shows again as it was.
-        refusal = await vocabulary.removeOverride(record.wordID, record.postSave)
+        write = await vocabulary.removeOverride(record.wordID, record.postSave)
       } else if let preSave = record.preSave {
-        refusal = await vocabulary.update(preSave, record.postSave)
+        write = await vocabulary.update(preSave, record.postSave)
       } else {
         // Pack override: the user word did not exist; removing it reveals
         // the pack term again.
-        refusal = await vocabulary.remove(record.wordID, record.postSave)
+        write = await vocabulary.remove(record.wordID, record.postSave)
       }
     case .restoredBuiltin:
-      refusal = await vocabulary.redeleteRestoredBuiltin(record.wordID, record.postSave)
+      write = await vocabulary.redeleteRestoredBuiltin(record.wordID, record.postSave)
     }
     // Prove the pre-state landed before saying so.
     let after = vocabulary.userWords().first { $0.id == record.wordID }
@@ -494,15 +496,15 @@ final class LearnedCorrectionCoordinator {
     case .added, .restoredBuiltin: landed = after == nil
     case .updated: landed = after == record.preSave
     }
-    // The write found the word changed under the lock and wrote nothing: the same answer
-    // as the check above, never an error.
-    if refusal == nil, !landed, after != record.postSave {
+    // The write found the word changed or already gone under the lock and wrote nothing:
+    // nothing was undone, so no "no" is recorded (#4086).
+    if write == .notApplied {
       telemetry.learnUndone(
         kind: record.kind, outcome: .alreadyChanged, via: record.via, memory: nil)
       presenter?.close(pillID: pillID)
       return .alreadyChanged
     }
-    guard refusal == nil, landed else {
+    guard write == .applied, landed else {
       telemetry.learnUndone(kind: record.kind, outcome: .failed, via: record.via, memory: nil)
       presenter?.showUndoError(LearnedCorrectionUndoError(pillID: pillID))
       return .failed
@@ -515,7 +517,8 @@ final class LearnedCorrectionCoordinator {
     case .committed(.blocked): memoryResult = .blocked
     case .notRemembered: memoryResult = nil
     }
-    telemetry.learnUndone(kind: record.kind, outcome: .undone, via: record.via, memory: memoryResult)
+    telemetry.learnUndone(
+      kind: record.kind, outcome: .undone, via: record.via, memory: memoryResult)
     if let memoryResult { telemetry.learnRefusedByUser(source: .undo, result: memoryResult) }
     presenter?.showUndone(pillID: pillID)
     return .undone

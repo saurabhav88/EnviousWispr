@@ -842,7 +842,7 @@
       guard words.customWords.contains(where: { $0.id == id }) else {
         return .failure(.notFound, "no word has that id")
       }
-      if let message = await words.remove(id: id) {
+      if let message = await words.remove(id: id).failure {
         return .failure(.rejected, message)
       }
       let stillListed = words.customWords.contains { $0.id == id }

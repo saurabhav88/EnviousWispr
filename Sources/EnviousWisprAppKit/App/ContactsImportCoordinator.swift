@@ -208,8 +208,18 @@ final class ContactsImportCoordinator {
       phase = .failed(error)
       return
     }
+    // Read the log again after the delete: an import saved while it ran recorded its own
+    // contacts and words, which stay tracked (#4086).
+    var remaining = stateStore.load()
+    let removedWords = Set(state.importedWordIDs)
+    let removedContacts = Set(state.importedContactIDs)
+    remaining.importedWordIDs.removeAll { removedWords.contains($0) }
+    remaining.importedContactIDs.removeAll { removedContacts.contains($0) }
+    if remaining.importedWordIDs.isEmpty, remaining.importedContactIDs.isEmpty {
+      remaining = .empty
+    }
     do {
-      try stateStore.save(.empty)
+      try stateStore.save(remaining)
     } catch {
       phase = .failed(
         String(
@@ -219,7 +229,7 @@ final class ContactsImportCoordinator {
         ))
       return
     }
-    importedCount = 0
+    importedCount = remaining.importedContactIDs.count
     phase = .idle
   }
 
@@ -288,6 +298,8 @@ final class ContactsImportCoordinator {
     guard !staleIDs.isEmpty else { return }
     guard await customWords.removeBatch(ids: staleIDs) == nil else { return }
     let removed = Set(staleIDs)
+    // Read again after the delete, so a log entry saved while it ran is kept (#4086).
+    state = stateStore.load()
     state.importedWordIDs.removeAll { removed.contains($0) }
     try? stateStore.save(state)
   }

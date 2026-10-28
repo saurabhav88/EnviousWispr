@@ -255,6 +255,42 @@ struct ContactsImportCoordinatorTests {
     #expect(!cw.customWords.contains { $0.canonical == "Ramachandran" })
   }
 
+  @Test("Removing imported words keeps the contacts and words an import logged while the removal ran")
+  func bulkRemoveKeepsAConcurrentImportsLog() async throws {
+    let dir = Self.tempDir()
+    defer { cleanup(dir) }
+    let manager = CustomWordsManager(fileURL: dir.appendingPathComponent("custom-words.json"))
+    let cw = CustomWordsCoordinator(manager: manager)
+    let store = ImportedContactsStateStore(
+      fileURL: dir.appendingPathComponent("imported-contacts-state.json"))
+    let coord = ContactsImportCoordinator(
+      provider: FakeContactProvider(status: .authorized, candidates: []), customWords: cw,
+      stateStore: store, aliasSuggester: nil)
+    let old = try #require(await cw.addBatch([CustomWord(canonical: "Sarah", category: .person)]))
+    let newer = try #require(await cw.addBatch([CustomWord(canonical: "Omar", category: .person)]))
+    var state = store.load()
+    state.record(contactIDs: ["c0"], wordIDs: old, at: Date())
+    try store.save(state)
+    let gate = CustomWordsCommandQueueTests.WorkerGate()
+    manager.fileWorkWillStartForTesting = gate.hook
+
+    let removal = Task { await coord.bulkRemoveImported() }
+    #expect(await settleUntilObserved { gate.arrived })
+    // A contact sync saves its log while the removal waits on disk.
+    var synced = store.load()
+    synced.record(contactIDs: ["c1"], wordIDs: newer, at: Date())
+    try store.save(synced)
+    gate.release()
+    await removal.value
+
+    let after = store.load()
+    #expect(after.importedContactIDs == ["c1"])
+    #expect(after.importedWordIDs == newer)
+    #expect(coord.importedCount == 1)
+    #expect(!cw.customWords.contains { old.contains($0.id) })
+    #expect(gate.timedOut == false)
+  }
+
   @Test("syncNewContacts no-ops when not authorized (fetch never called)")
   func syncGateNotAuthorized() async {
     let provider = FakeContactProvider(status: .notDetermined)

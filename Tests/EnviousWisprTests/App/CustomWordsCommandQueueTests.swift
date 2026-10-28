@@ -268,7 +268,7 @@ import Testing
     let theirs = try await siblingEdit(f.url, id: original.id) { $0.aliases = ["theirs"] }
     gate.release()
 
-    #expect(await save.value == nil)
+    #expect(await save.value == .notApplied)
     #expect(onDisk(f.url).first { $0.id == original.id } == theirs)
     #expect(f.words.customWords.first { $0.id == original.id } == theirs)
     #expect(
@@ -289,7 +289,7 @@ import Testing
     let theirs = try await siblingEdit(f.url, id: original.id) { $0.aliases = ["theirs"] }
     gate.release()
 
-    #expect(await delete.value == nil)
+    #expect(await delete.value == .notApplied)
     #expect(onDisk(f.url).first { $0.id == original.id } == theirs)
     #expect(f.words.customWords.first { $0.id == original.id } == theirs)
     #expect(gate.timedOut == false)
@@ -930,5 +930,75 @@ import Testing
       #expect(word.learnedAliases == ["kamala"])
     }
     #expect(f.words.learnMemory.entry(CorrectionPairKey.make(original: "kumala", corrected: "Kwmala")) == nil)
+  }
+
+  // MARK: - Final review (#4086)
+
+  @Test("Undo of a learned new word that another window already deleted records no no")
+  func undoOfADeletedWordRecordsNoNo() async throws {
+    let f = try await fixture()
+    let learner = LearnedCorrectionCoordinator(
+      vocabulary: LearnFromEditsWiring.vocabulary(customWords: f.words, packTerms: { [] }),
+      memory: f.words.learnMemory, telemetry: LearnedTelemetrySpy())
+    let outcome = await learner.learn(
+      original: "kumala", corrected: "Kwmala", expectedTarget: .newWord)
+    guard case .learned(let pill) = outcome else {
+      Issue.record("the learn did not save: \(outcome)")
+      return
+    }
+    let learned = try #require(f.words.customWords.first { $0.canonical == "Kwmala" })
+    _ = try await CustomWordsManager(fileURL: f.url).remove(id: learned.id)
+
+    #expect(await learner.undo(pillID: pill.id) == .alreadyChanged)
+    #expect(!onDisk(f.url).contains { $0.id == learned.id })
+    #expect(
+      f.words.learnMemory.entry(CorrectionPairKey.make(original: "kumala", corrected: "Kwmala"))
+        == nil, "an Undo that removed nothing recorded the user's no")
+  }
+
+  @Test("a refresh refused while Quit waited does not keep failing after Quit is cancelled")
+  func refusedRefreshDoesNotStick() async throws {
+    let f = try await fixture()
+    let replies = QuitReplies()
+    let lockURL = f.url.appendingPathExtension("lock")
+    let openedFD = lockURL.path.withCString { open($0, O_RDWR | O_CREAT, 0o600) }
+    let fd = try #require(openedFD >= 0 ? openedFD : nil)
+    defer { close(fd) }
+    try #require(flock(fd, LOCK_EX) == 0)
+    let gate = WorkerGate()
+    f.manager.fileWorkWillStartForTesting = gate.hook
+
+    let save = Task { await f.words.add(CustomWord(canonical: "Alpha")) }
+    #expect(await settleUntilObserved { gate.arrived })
+    #expect(f.words.requestQuit { replies.values.append($0) } == false)
+    #expect(await f.words.refreshFromDiskIfPossible() == false)
+    gate.release()
+    #expect(await save.value != nil)
+    #expect(await settleUntilObserved { !replies.values.isEmpty })
+    #expect(replies.values == [false])
+
+    try #require(flock(fd, LOCK_UN) == 0)
+    #expect(await f.words.refreshFromDiskIfPossible(), "Quick Add and Export stay unavailable")
+  }
+
+  @Test("a change refused inside an action while Quit waits stops Quit")
+  func actionRefusalStopsQuit() async throws {
+    let f = try await fixture()
+    let gate = WorkerGate()
+    f.manager.fileWorkWillStartForTesting = gate.hook
+    let replies = QuitReplies()
+
+    let action = Task {
+      await f.words.performAction(closing: "closing") { () -> String in
+        _ = await f.words.add(CustomWord(canonical: "Alpha"))
+        return f.words.notSaved("not what the person asked for")
+      }
+    }
+    #expect(await settleUntilObserved { gate.arrived })
+    #expect(f.words.requestQuit { replies.values.append($0) } == false)
+    gate.release()
+    #expect(await action.value == "not what the person asked for")
+    #expect(await settleUntilObserved { !replies.values.isEmpty })
+    #expect(replies.values == [false])
   }
 }
