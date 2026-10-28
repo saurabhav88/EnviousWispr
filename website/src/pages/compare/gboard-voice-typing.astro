@@ -27,22 +27,22 @@ const meta = {
 const faqPairs = [
   ['Is EnviousWispr a Gboard voice typing alternative?', 'It works alongside Gboard rather than replacing it. You keep Gboard, or any keyboard, and EnviousWispr adds a floating bubble beside the text box. Tap it, speak, and finished text lands at your cursor, with on-device AI polish if you choose it.'],
   ['Is EnviousWispr for Android free?', 'Yes. There is no app subscription, trial, account or ads. If you connect your own OpenAI, Anthropic or Google Gemini key for cloud polish, that provider\'s charges and terms apply.'],
-  ['Does Gboard voice typing send my audio to Google?', 'It depends on the phone and the feature. For advanced voice typing on Pixel 6 and later, Google says the text you speak stays on your device, except when you use Fix it or detailed edits, which send the voice command transcript and the field text but no audio. For Rambler on the Pixel 11 series, Google says your text, audio input and corrections are temporarily processed by Google and deleted after your text is delivered.'],
+  ['Does Gboard voice typing send my audio to Google?', 'It depends on the phone and the feature. For advanced voice typing on Pixel 6 and later, Google says the text you speak stays on your device except with Fix it or detailed edits; detailed edits send the command transcript and the field text, without audio. For Rambler on the Pixel 11 series, Google says your text, audio input and corrections are temporarily processed by Google and deleted after your text is delivered; offline, Rambler keeps basic cleanup, punctuation and capitalization.'],
   ['Does EnviousWispr send my audio anywhere?', 'No. Speech recognition runs on your phone and audio is never uploaded. Local AI polish runs on the phone too. With cloud polish on, the selected text and your custom words go directly to the provider you chose.'],
   ['Which phones does EnviousWispr support?', 'Android 13 or newer on a 64-bit ARM phone with at least 6 GB of memory, and about 1.2 GB of free storage for its two on-device models. It works best on recent flagship phones such as the Galaxy S26 Ultra and Pixel 8. Entry-level phones with older processors are not supported.'],
-  ['Can I use both?', 'Yes. EnviousWispr does not replace your keyboard, so Gboard\'s microphone stays available. Many people use the keyboard microphone for quick replies and the EnviousWispr bubble when they want polished, formatted text.'],
+  ['Can I use both?', 'Yes. EnviousWispr does not replace your keyboard, so if you use Gboard its microphone stays available. You can use either one, depending on what you are writing.'],
 ];
 const faqs = faqPairs.map(([q, a]) => ({ q, a }));
 
 const rows = [
   ['What it is', 'A dictation app that works beside your keyboard', 'Voice typing built into the Gboard keyboard'],
   ['Phones', 'Android 13+, 64-bit, 6 GB+ memory, any brand', 'Any phone with Gboard; advanced voice typing on Pixel 6 and later; Rambler on the Pixel 11 series'],
-  ['Speech recognition', 'On your phone, offline after setup', 'Advanced voice typing keeps spoken text on the device; Rambler is temporarily processed by Google'],
-  ['AI polish', 'On your phone with S1-mini, or the cloud with your own key', 'Rambler (Gemini) removes filler words and rewrites on request'],
+  ['Speech recognition', 'On your phone, offline after setup', 'Advanced voice typing keeps spoken text on the device; online Rambler is temporarily processed by Google, and offline it keeps basic cleanup'],
+  ['AI polish', 'On your phone with S1-mini, or the cloud with your own key', 'On-device proofreading and rewriting on Pixel 9 and later (not 9a); Rambler (Gemini) on the Pixel 11 series'],
   ['Your writing style', 'Tone from casual to formal, spoken lists as bullet points, and email layout for a greeting and sign-off you dictate (S1-mini)', 'Rambler rewrites on request, such as more professional or shorter'],
   ['Custom words', 'Dictionary with preferred spellings and the ways they get misheard', 'Learns from words you correct (advanced voice typing)'],
-  ['Voice editing commands', 'No', 'Yes, such as "delete" and "clear"; detailed edits on Pixel 8 and later'],
-  ['History', 'Completed dictations, saved and searchable on your phone', 'Not a feature of voice typing'],
+  ['Voice editing commands', 'No', 'Advanced voice typing on Pixel 6 and later, such as "delete" and "clear"; detailed edits on Pixel 8 and later in English (US)'],
+  ['History', 'Completed dictations, saved and searchable on your phone', 'Not described in Google\'s voice typing help'],
   ['Setup', 'Two model downloads (about 1.2 GB) and Accessibility access', 'Built in; advanced voice typing downloads an update over Wi-Fi'],
   ['Price', 'Free; no account, subscription or ads', 'Free'],
 ];
@@ -100,7 +100,7 @@ const rows = [
   <div class="container">
     <div class="vs-badge"><span class="vs-brand accent">EnviousWispr</span><span class="vs-circle">VS</span><span class="vs-brand">Gboard</span></div>
     <h1>Dictation on Android, from the keyboard or beside it.</h1>
-    <p class="page-header-sub">Gboard's microphone is already on most Android phones. EnviousWispr adds on-device AI polish, your tone and format, and a dictionary of your own words, on any supported phone.</p>
+    <p class="page-header-sub">If you use Gboard, its microphone gives you dictation from the keyboard. EnviousWispr adds on-device AI polish, your tone and format, and a dictionary of your own words, on any supported phone.</p>
     <div class="hero-cta"><PlayButton source="compare-gboard" label="Get EnviousWispr for Android" /></div>
     <p class="hero-meta">By <a href="/authors/saurabh-vaish/">Saurabh Vaish</a> · Gboard facts checked {checked} from Google's help pages</p>
   </div>
@@ -136,7 +136,7 @@ const rows = [
     <div class="section-head"><div class="section-label-pill cyan">Privacy</div><h2 class="section-title">Where your voice goes.</h2></div>
     <div class="privacy-split">
       <div class="privacy-card ew"><div class="privacy-card-label">EnviousWispr</div><p>Speech recognition runs on your phone and audio is never uploaded. Local AI polish keeps the text on the phone too.</p><p>If you choose cloud polish, the selected text and your custom words go directly to your provider under your own key. They do not pass through Envious Labs. <a href="/help/android-privacy/">Privacy on Android</a></p></div>
-      <div class="privacy-card"><div class="privacy-card-label">Gboard</div><p>For advanced voice typing on Pixel 6 and later, Google says the text you speak stays on your device, except with Fix it or detailed edits, which send the command transcript and the field text, with no audio.</p><p>For Rambler on the Pixel 11 series, Google says your text, audio input and corrections are temporarily processed by Google and deleted after your text is delivered. Google's help pages do not describe processing for standard voice typing on other phones.</p></div>
+      <div class="privacy-card"><div class="privacy-card-label">Gboard</div><p>For advanced voice typing on Pixel 6 and later, Google says the text you speak stays on your device except with Fix it or detailed edits; detailed edits send the command transcript and the field text, without audio.</p><p>For Rambler on the Pixel 11 series, Google says your text, audio input and corrections are temporarily processed by Google and deleted after your text is delivered; offline, Rambler keeps basic cleanup, punctuation and capitalization. Google's help pages do not describe processing for standard voice typing on other phones.</p></div>
     </div>
   </div>
 </section>
@@ -145,9 +145,9 @@ const rows = [
   <div class="container">
     <div class="section-head"><div class="section-label-pill">Being Honest</div><h2 class="section-title">When Gboard is the better fit.</h2></div>
     <div class="advantages-grid">
-      <div class="advantage-card"><div class="advantage-title">Nothing to set up</div><p class="advantage-desc">Gboard voice typing is built into the keyboard. EnviousWispr needs about 1.2 GB of model downloads, a phone with 6 GB of memory and Accessibility access.</p></div>
-      <div class="advantage-card"><div class="advantage-title">Editing by voice</div><p class="advantage-desc">Gboard supports voice commands such as "delete" and "clear", and on Pixel 8 and later it can insert, delete and replace words by voice. EnviousWispr does not edit text by voice.</p></div>
-      <div class="advantage-card"><div class="advantage-title">Rambler on the newest Pixels</div><p class="advantage-desc">On the Pixel 11 series, Rambler uses Gemini to remove filler words and rewrite on request, with conversational corrections. It processes your speech with Google to do that.</p></div>
+      <div class="advantage-card"><div class="advantage-title">Start from your keyboard</div><p class="advantage-desc">Gboard voice typing is part of the keyboard, with no separate app. EnviousWispr needs about 1.2 GB of model downloads, a phone with 6 GB of memory and Accessibility access.</p></div>
+      <div class="advantage-card"><div class="advantage-title">Editing by voice</div><p class="advantage-desc">Advanced voice typing on Pixel 6 and later supports commands such as "delete" and "clear", and detailed edits on Pixel 8 and later (English US) insert, delete and replace words by voice. EnviousWispr does not edit text by voice.</p></div>
+      <div class="advantage-card"><div class="advantage-title">Rewriting on recent Pixels</div><p class="advantage-desc">Pixel 9 and later (not 9a) proofread and rewrite on the device. On the Pixel 11 series, Rambler uses Gemini to remove filler words and rewrite on request, processing your speech with Google while online.</p></div>
     </div>
   </div>
 </section>
