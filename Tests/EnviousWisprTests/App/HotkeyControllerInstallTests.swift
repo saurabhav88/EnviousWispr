@@ -23,13 +23,20 @@ import Testing
 @MainActor
 @Suite struct HotkeyControllerInstallTests {
 
-  private static func makeFixture(settings: SettingsManager = SettingsManager()) -> (
+  private static func makeFixture(
+    settings: SettingsManager = SettingsManager(),
+    duringRecoveryArm: (@MainActor () async -> Void)? = nil
+  ) -> (
     controller: HotkeyController,
     hotkeyService: HotkeyService,
     starter: RecordingStarter,
     finalizer: RecordingFinalizer,
     settings: SettingsManager,
-    settingsSync: PipelineSettingsSync
+    settingsSync: PipelineSettingsSync,
+    engineLease: EngineLease,
+    turnLog: TurnLogSink,
+    asr: RouterTestASRManager,
+    kernelDriver: KernelDictationDriver
   ) {
     let audio = RouterTestAudioCapture()
     let asr = RouterTestASRManager()
@@ -39,7 +46,8 @@ import Testing
     let whisperKernelDriver = DictationRuntimeFixtures.makeWhisperPipeline(
       audioCapture: audio, store: store)
     let overlay = OverlayTestDouble.headlessDirector()
-    let permissions = PermissionsService()
+    // #3973 C1: an answered microphone, so a start press is not turned into macOS's prompt.
+    let permissions = PermissionsService(microphoneReader: { .authorized })
     let hotkey = HotkeyService(effects: RecordingDesktopHotkeyEffects())
     let settingsSync = PipelineSettingsSync(
       kernelDriver: pipeline,
@@ -62,6 +70,13 @@ import Testing
       setLocked: { locked in lockAccess.set(locked) },
       backend: { "parakeet" }
     )
+    // #3973 C1: a real lease and one shared request owner, so the waiting-press rows can hold
+    // the engine as a meeting and reach the owner through the installed callbacks.
+    let engineLease = EngineLease()
+    let engineAdmission = EngineAdmissionAccess.live(lease: engineLease, as: .dictation)
+    let turnLog = TurnLogSink()
+    let pendingRequests = PendingDictationRequests(
+      access: engineAdmission, log: { turnLog.append($0) })
     let finalizer = RecordingFinalizer(
       kernelDriver: pipeline,
       whisperKernelDriver: whisperKernelDriver,
@@ -69,7 +84,8 @@ import Testing
       recordingOverlay: overlay,
       heartControlRecovery: hcr,
       recordingLockedAccess: lockAccess,
-      languageSuggestionPresenter: nil
+      languageSuggestionPresenter: nil,
+      pendingRequests: pendingRequests
     )
     let starter = RecordingStarter(
       audioCapture: audio,
@@ -84,10 +100,16 @@ import Testing
       lastUserStopAccess: finalizer.lastUserStopAccess,
       lastRecordingResult: LastRecordingResult(),
       dictationLifecycleCoordinator: nil,
-      recovery: .disabled,
-      // #2648: this suite is about hotkey callback wiring, not admission, so it
-      // takes the frozen always-allow seam rather than a real lease.
-      engineAdmission: .alwaysAllowedForTesting
+      // #3973 C1: a recovery arm that lets a row act while start-up is parked after the wait.
+      recovery: RecordingStarter.RecoveryAccess(
+        makeDirective: { _, _, _ in
+          await duringRecoveryArm?()
+          return nil
+        },
+        cleanupArm: { _ in }, isRecovering: { false }, signalPendingLiveStart: {},
+        discardActive: {}),
+      engineAdmission: engineAdmission,
+      pendingRequests: pendingRequests
     )
     let controller = HotkeyController(
       hotkeyService: hotkey,
@@ -95,7 +117,10 @@ import Testing
       finalizer: finalizer,
       settings: settings
     )
-    return (controller, hotkey, starter, finalizer, settings, settingsSync)
+    return (
+      controller, hotkey, starter, finalizer, settings, settingsSync, engineLease, turnLog, asr,
+      pipeline
+    )
   }
 
   @Test func installWiresAllSixCallbacks() {
@@ -116,6 +141,81 @@ import Testing
     #expect(fx.hotkeyService.onCancelRecording != nil)
     #expect(fx.hotkeyService.onIsProcessing != nil)
     #expect(fx.hotkeyService.onLockRequested != nil)
+  }
+
+  /// #3973 C1: while a press waits for a meeting's engine turn, the INSTALLED callbacks reach
+  /// the one request owner: the cancel shortcut is armed for the wait, and stop, cancel and a
+  /// second toggle each end it and disarm cancel again.
+  @Test(arguments: ["stop", "cancel", "toggle"])
+  func installedCallbacksEndAWaitingPress(route: String) async {
+    let fx = Self.makeFixture()
+    fx.controller.install()
+    guard case .granted(let meeting) = fx.engineLease.admit(.meeting) else {
+      Issue.record("the fixture's lease was already held")
+      return
+    }
+    let startPress =
+      route == "toggle" ? fx.hotkeyService.onToggleRecording : nil
+    let start = fx.hotkeyService.onStartRecording
+    let press = Task { @MainActor in
+      if let startPress { await startPress() } else { _ = await start?() }
+    }
+    guard await fx.turnLog.waitFor(containing: "event=waiting", after: 0) else {
+      Issue.record("the press never parked")
+      return
+    }
+    #expect(fx.hotkeyService.isCancelArmed, "cancel is armed while the press waits")
+
+    switch route {
+    case "stop": await fx.hotkeyService.onStopRecording?()
+    case "cancel": await fx.hotkeyService.onCancelRecording?()
+    default: await fx.hotkeyService.onToggleRecording?()
+    }
+    await press.value
+
+    #expect(fx.turnLog.outcomes.count == 1)
+    #expect(fx.turnLog.outcomes.first?.hasPrefix("cancelled") == true)
+    #expect(!fx.hotkeyService.isCancelArmed, "cancel is disarmed once nothing waits")
+    #expect(fx.engineLease.release(meeting))
+    #expect(fx.engineLease.isBusy == false, "the ended press took no turn")
+  }
+
+  /// #3973 C1: after the wait, while the admitted press is still starting up (parked in its
+  /// recovery arm), the cancel shortcut stays armed and the INSTALLED cancel callback ends the
+  /// press: no recording, and the engine goes back.
+  @Test func theCancelShortcutStaysArmedThroughStartUpAfterTheWait() async {
+    @MainActor final class Box { var hotkey: HotkeyService? }
+    let box = Box()
+    var armedDuringStartUp: Bool?
+    let fx = Self.makeFixture(
+      settings: SettingsManager(defaults: TestDefaults.suite("ew-hotkey-\(UUID().uuidString)")!),
+      duringRecoveryArm: {
+      guard let hotkey = box.hotkey else { return }
+      armedDuringStartUp = hotkey.isCancelArmed
+      await hotkey.onCancelRecording?()
+    })
+    box.hotkey = fx.hotkeyService
+    fx.controller.install()
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = true
+    guard case .granted(let meeting) = fx.engineLease.admit(.meeting) else {
+      Issue.record("the fixture's lease was already held")
+      return
+    }
+    let start = fx.hotkeyService.onStartRecording
+    let press = Task { @MainActor in _ = await start?() }
+    guard await fx.turnLog.waitFor(containing: "event=waiting", after: 0) else {
+      Issue.record("the press never parked")
+      return
+    }
+    #expect(fx.engineLease.release(meeting))
+    await press.value
+
+    #expect(armedDuringStartUp == true, "cancel was off while the admitted press started up")
+    #expect(fx.turnLog.count(containing: "event=ended_during_start") == 1)
+    #expect(fx.kernelDriver.state == .idle, "a cancelled press recorded")
+    #expect(fx.engineLease.isBusy == false)
+    #expect(!fx.hotkeyService.isCancelArmed, "cancel is disarmed once nothing waits or starts")
   }
 
   @Test func installPushesInitialRecordingModeAndKeyConfiguration() {

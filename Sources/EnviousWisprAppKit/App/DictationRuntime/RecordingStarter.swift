@@ -121,6 +121,10 @@ final class RecordingStarter {
   /// a counter rather than to describe the dependency.
   let engineAdmission: EngineAdmissionAccess
 
+  /// #3973 C1 — the press waiting for its engine turn while a meeting holds the engine, shared
+  /// with the finalizer, the hotkey callbacks and quit so any of them can end that wait.
+  let pendingRequests: PendingDictationRequests
+
   /// #1171 — drives the SELECTED engine to ready (the coordinator owns the
   /// single-flight switch + warm) and returns the outcome (ready / notInstalled /
   /// notReady). Bound to `EngineCoordinator.ensureSelectedReadyForPress`; default
@@ -245,7 +249,8 @@ final class RecordingStarter {
   /// here is a different workload.
   private func handleSharedEngineBusyPressRefused(holder: EngineLease.Holder) {
     recordingOverlay.present(.warning(reason: .sharedEngineBusy(holder: holder)))
-    // #4052: a refusal is evidence, not an absence (a press during a meeting transcript).
+    // #4052: a refusal is evidence, not an absence. (A meeting transcript no longer refuses:
+    // #3973 C1 waits for its turn instead, `PendingDictationRequests`.)
     Task {
       await AppLogger.shared.log(
         "record press refused holder=\(holder.rawValue)", level: .info, category: "Pipeline")
@@ -295,6 +300,7 @@ final class RecordingStarter {
     accessibilityRefresh: (@MainActor () -> Void)? = nil,
     recovery: RecoveryAccess,
     engineAdmission: EngineAdmissionAccess,
+    pendingRequests: PendingDictationRequests,
     ensureSelectedReadyForPress: @escaping @MainActor () async -> EngineCoordinator.PressReadiness =
       {
         .notReady
@@ -305,6 +311,7 @@ final class RecordingStarter {
   ) {
     self.recovery = recovery
     self.engineAdmission = engineAdmission
+    self.pendingRequests = pendingRequests
     self.ensureSelectedReadyForPress = ensureSelectedReadyForPress
     self.isEngineSwitching = isEngineSwitching
     self.beginMinting = beginMinting
@@ -364,6 +371,38 @@ final class RecordingStarter {
   /// dispatch `.toggleRecording`, then the issue #445 post-condition
   /// guard.
   func start() async -> RecordingStartOutcome {
+    await start(preAdmitted: nil)
+  }
+
+  /// Whether the press that waited for `admission` was ended during its start-up (a release,
+  /// Stop, cancel, second toggle, newer press or quit). Always false for a press that never
+  /// waited: those keep their existing `lastUserStopAccess` checks only.
+  private func endedDuringStartUp(_ admission: PendingDictationRequests.Admission?) -> Bool {
+    guard let admission else { return false }
+    return !pendingRequests.isStillStarting(admission.ticket)
+  }
+
+  /// `start()`'s body. `preAdmitted` is the engine token a waited-for turn granted (#3973 C1):
+  /// the press runs again from the top so every engine fact (backend, driver, readiness) and
+  /// every start gate is read fresh after the wait, and only the claim is skipped. This call
+  /// owns `preAdmitted` from entry and releases it on every path that mints nothing.
+  private func start(preAdmitted: PendingDictationRequests.Admission?) async
+    -> RecordingStartOutcome
+  {
+    // Handed to `DictationLifecycleCoordinator` at the moment a session is
+    // minted, and released here on every path that mints nothing. `defer` reads
+    // this variable's FINAL value, so the single assignment at the hand-off
+    // covers every early return between here and there, however many get added
+    // later — which is why the release is not repeated at each one.
+    var unmintedEngineToken: EngineLease.Token? = preAdmitted?.token
+    // #3973 C1: whether this call dispatched the recording start (the session owns the turn).
+    var dispatchedStart = false
+    defer {
+      if let preAdmitted {
+        pendingRequests.finishStarting(preAdmitted.ticket, minted: dispatchedStart)
+      }
+      if let unmintedEngineToken { engineAdmission.release(unmintedEngineToken) }
+    }
     dictationLifecycleCoordinator?.cancelPendingWarning()
     let backend = asrManager.activeBackendType
     let isWhisper = backend == .whisper
@@ -402,22 +441,23 @@ final class RecordingStarter {
     // engine work: a refusal must reach the user as a pill at press time, not
     // after a pre-warm they cannot see the point of. Recovery is refused in an
     // earlier gate, so a claim that fails here belongs to another workload.
-    let engineToken: EngineLease.Token
-    switch engineAdmission.claim() {
-    case .granted(let token):
-      engineToken = token
-    case .refused(let holder):
-      handleSharedEngineBusyPressRefused(holder: holder)
-      return .noRecording
-    }
-    // Handed to `DictationLifecycleCoordinator` at the moment a session is
-    // minted, and released here on every path that mints nothing. `defer` reads
-    // this variable's FINAL value, so the single assignment at the hand-off
-    // covers every early return between here and there, however many get added
-    // later — which is why the release is not repeated at each one.
-    var unmintedEngineToken: EngineLease.Token? = engineToken
-    defer {
-      if let unmintedEngineToken { engineAdmission.release(unmintedEngineToken) }
+    // #3973 C1: a meeting holding it is the exception: dictation has priority, so the press
+    // waits for the meeting's turn to end and then runs again from the top with that token.
+    if unmintedEngineToken == nil {
+      // Quit closed dictation admission: a free engine does not let a press through either.
+      if pendingRequests.isClosed { return .noRecording }
+      switch engineAdmission.claim() {
+      case .granted(let token):
+        unmintedEngineToken = token
+      case .refused(by: .meeting):
+        guard let admission = await pendingRequests.waitForTurn() else {
+          return .noRecording
+        }
+        return await start(preAdmitted: admission)
+      case .refused(let holder):
+        handleSharedEngineBusyPressRefused(holder: holder)
+        return .noRecording
+      }
     }
     // #1171 — start-of-recording safety: never record on an engine other than the
     // one the user selected (a switch deferred while busy/recovering may not have
@@ -519,7 +559,7 @@ final class RecordingStarter {
       guard let lastStop = lastUserStopAccess.read() else { return false }
       return lastStop > pttStart
     }()
-    if userStoppedDuringPreWarm {
+    if userStoppedDuringPreWarm || endedDuringStartUp(preAdmitted) {
       audioCapture.abortPreWarm()
       recordingOverlay.dismissCurrent(.announced)
       recordingLockedAccess.set(false)
@@ -536,7 +576,10 @@ final class RecordingStarter {
       // code-diff r2 P2) — a bare hide/unlock would leave the mic engine running.
       // The key armed above is cleaned inline below; the launch recovery scan's
       // orphan-key sweep is only the backstop if this process dies first.
-      if let lastStop = lastUserStopAccess.read(), lastStop > pttStart {
+      // #3973 C1: a press that waited for its turn also ends here when the user ended it
+      // during start-up, or a newer press cancelled its task.
+      let releasedDuringArm = lastUserStopAccess.read().map { $0 > pttStart } ?? false
+      if releasedDuringArm || endedDuringStartUp(preAdmitted) {
         audioCapture.abortPreWarm()
         // A key was armed for this take but no session will start — no terminal
         // pipeline state fires, so clean the orphan spool/key here (Codex r3).
@@ -563,6 +606,7 @@ final class RecordingStarter {
       // (held since before preWarm) guarantees the coordinator did NOT switch the
       // active engine across these awaits, so `active` is still the user's choice.
       try await active.handle(event: .toggleRecording(config))
+      dispatchedStart = true
       // The session is minted, so the claim now belongs to the session rather
       // than to this call. Both start methods RETURN while the recording is
       // still running, so releasing on the way out would admit an import into
@@ -575,7 +619,7 @@ final class RecordingStarter {
       // ended. Leaving the token in `unmintedEngineToken` makes the `defer`
       // release it on the way out, which costs this session's exclusivity and
       // keeps the record button working — the right way round for a limb.
-      if let coordinator = dictationLifecycleCoordinator {
+      if let coordinator = dictationLifecycleCoordinator, let engineToken = unmintedEngineToken {
         coordinator.acceptEngineToken(engineToken, mintedBy: isWhisper ? .whisper : .parakeet)
         unmintedEngineToken = nil
       } else {
@@ -662,20 +706,38 @@ final class RecordingStarter {
   /// the prior polish error and refresh AX status so the session config
   /// snapshot picks up the right paste capability.
   func toggle(source: TriggerSource) async {
+    // #3973 C1: a toggle while a press waits for its engine turn ends that wait. It is the
+    // user's second press of the same control, so it means "stop", not another start.
+    // Only while nothing records yet: once a session is running, the toggle is its ordinary stop.
+    if !activeDriver.state.isActive, pendingRequests.cancelPending() { return }
+    await toggle(source: source, preAdmitted: nil)
+  }
+
+  /// `toggle(source:)`'s body; `preAdmitted` as in `start(preAdmitted:)`.
+  private func toggle(
+    source: TriggerSource, preAdmitted: PendingDictationRequests.Admission?
+  ) async {
+    // #2648 — held from the claim below until either the mint hands it to the
+    // lifecycle coordinator or this call ends without minting. Declared out here
+    // because the claim happens inside the start-only gate block and the release
+    // has to cover every exit after it.
+    var claimedEngineToken: EngineLease.Token? = preAdmitted?.token
+    // #3973 C1: whether this call dispatched the recording start (the session owns the turn).
+    var dispatchedStart = false
+    defer {
+      if let preAdmitted {
+        pendingRequests.finishStarting(preAdmitted.ticket, minted: dispatchedStart)
+      }
+      if let claimedEngineToken { engineAdmission.release(claimedEngineToken) }
+    }
     dictationLifecycleCoordinator?.cancelPendingWarning()
     let backend = asrManager.activeBackendType
     let isWK = backend == .whisper
     let active: KernelDictationDriver = isWK ? whisperKernelDriver : kernelDriver
     let isStartingFromIdle =
       !(isWK ? whisperKernelDriver.state.isActive : kernelDriver.state.isActive)
-    // #2648 — held from the claim below until either the mint hands it to the
-    // lifecycle coordinator or this call ends without minting. Declared out here
-    // because the claim happens inside the start-only gate block and the release
-    // has to cover every exit after it.
-    var claimedEngineToken: EngineLease.Token?
-    defer {
-      if let claimedEngineToken { engineAdmission.release(claimedEngineToken) }
-    }
+    // A waited-for turn was a START; it never becomes a stop of some other session.
+    if preAdmitted != nil, !isStartingFromIdle { return }
     if isStartingFromIdle {
       // #1063 PR2 — recovery hold, same as the PTT path. A toggle that would START
       // while recovery holds the engine mints no session: show the pill and bail.
@@ -697,12 +759,21 @@ final class RecordingStarter {
       // position: after recovery, before any engine work. A STOP toggle never
       // reaches here (guarded by `isStartingFromIdle`), so stopping a recording
       // is never refused.
-      switch engineAdmission.claim() {
-      case .granted(let token):
-        claimedEngineToken = token
-      case .refused(let holder):
-        handleSharedEngineBusyPressRefused(holder: holder)
-        return
+      // #3973 C1: same meeting wait as the PTT path; the toggle then runs again from the top.
+      if claimedEngineToken == nil {
+        // Quit closed dictation admission: a free engine does not let a toggle start through.
+        if pendingRequests.isClosed { return }
+        switch engineAdmission.claim() {
+        case .granted(let token):
+          claimedEngineToken = token
+        case .refused(by: .meeting):
+          guard let admission = await pendingRequests.waitForTurn() else { return }
+          await toggle(source: source, preAdmitted: admission)
+          return
+        case .refused(let holder):
+          handleSharedEngineBusyPressRefused(holder: holder)
+          return
+        }
       }
       // #1171 — start-of-recording safety, same as the PTT path: never record on
       // an engine other than the one the user selected; show the reactive pill for
@@ -753,7 +824,9 @@ final class RecordingStarter {
       // key armed here (a never-started or immediately-discarded session emits no
       // terminal state for the lifecycle coordinator's cleanup to observe).
       if isStartingFromIdle {
-        if let lastStop = lastUserStopAccess.read(), lastStop > toggleStart {
+        // #3973 C1: the same for a toggle that waited and was ended during its start-up.
+        let stoppedDuringArm = lastUserStopAccess.read().map { $0 > toggleStart } ?? false
+        if stoppedDuringArm || endedDuringStartUp(preAdmitted) {
           recovery.cleanupArm(config.recoverySessionID)
           return
         }
@@ -776,6 +849,7 @@ final class RecordingStarter {
         // NOT switch the active engine, so `active` is still the user's choice.
       }
       try await active.handle(event: .toggleRecording(config))
+      dispatchedStart = true
       // Minted, so the claim belongs to the session now — same hand-off as the
       // PTT path, for the same reason: this method returns while the recording
       // is still running.

@@ -74,7 +74,9 @@ enum FakeSpeech {
 
 /// #3972 R23, R25: when these fail, a meeting transcript loses or doubles words where pieces
 /// join, or meeting work runs while the user dictates.
-@Suite("MeetingTranscriptionJob", .tags(.productOutcome))
+// #3973 C1: a suite-wide limit, so one parked fixture fails in a minute instead of holding the
+// shared local test queue (a hang here held it for 38 minutes).
+@Suite("MeetingTranscriptionJob", .tags(.productOutcome), .timeLimit(.minutes(1)))
 @MainActor
 struct MeetingTranscriptionJobTests {
 
@@ -403,11 +405,13 @@ struct MeetingTranscriptionJobTests {
     let rig = OwnershipRig(contentions: 1)
     let run = Task { try await rig.job.run(tracks: [.microphone: MeetingTrackAudio(files: files)], language: nil) { _ in } }
     await rig.untilWaiting()
-    #expect(rig.job.isEngineResident, "ownership is held through the wait")
+    // #3973 C1: the claim is given back before the contention wait and taken again after it.
+    #expect(!rig.job.isEngineResident, "nothing is held through the wait")
     rig.release()
     _ = try await run.value
     #expect(rig.job.engineContentionWaits == 1)
-    #expect(rig.log == ["use", "busy", "wait", "load", "unload", "release"])
+    #expect(
+      rig.log == ["use", "release", "use", "busy", "release", "wait", "use", "load", "unload", "release"])
     #expect(rig.residentDuringLoad == true)
     #expect(!rig.job.isEngineResident)
   }
@@ -421,7 +425,7 @@ struct MeetingTranscriptionJobTests {
     await rig.untilWaiting()
     rig.job.cancel()
     await #expect(throws: MeetingTranscriptionJob.JobError.cancelled) { _ = try await run.value }
-    #expect(rig.log == ["use", "busy", "wait", "release"])
+    #expect(rig.log == ["use", "release", "use", "busy", "release", "wait"])
     #expect(!rig.job.isEngineResident)
     rig.release()  // a late release finds nothing to resume
   }
@@ -490,12 +494,16 @@ struct MeetingTranscriptionJobTests {
       _ = try await job.run(tracks: [.microphone: MeetingTrackAudio(files: files)], language: nil) { _ in }
     }
     #expect(state.decodes == 0)
-    #expect(state.log == ["use", "load", "unload", "release"])
+    // The identity probe (#3973 C1), then the operation's load, unload and release.
+    #expect(state.log == ["use", "release", "use", "load", "unload", "release"])
     #expect(!job.isEngineResident)
   }
 
+  /// #3973 C1 retired #3972 R32's documented limit here: the operation gives the engine back
+  /// before it pauses for a dictation, so delivery turned off during the pause finds nothing held,
+  /// and the next acquisition stops at the model-source check without a decode.
   @Test(
-    "delivery off while paused for dictation: the model stays held until dictation ends, then no decode, unload, release",
+    "delivery off while paused for dictation: nothing is held during the pause, then no decode",
     .timeLimit(.minutes(1)))
   func deliveryOffWhilePausedForDictation() async throws {
     let dir = try folder()
@@ -537,16 +545,17 @@ struct MeetingTranscriptionJobTests {
     let run = Task { try await job.run(tracks: [.microphone: MeetingTrackAudio(files: files)], language: nil) { _ in } }
     await withCheckedContinuation { state.pausedSignal = $0 }
     state.usable = false  // delivery turned off while the job is paused
-    // Documented limit: the model is still loaded and its use still held while dictation runs.
-    #expect(state.log == ["use", "load", "paused"])
-    #expect(job.isEngineResident)
+    // The identity probe, then the operation's load, given back before the pause.
+    #expect(state.log == ["use", "release", "use", "load", "unload", "release", "paused"])
+    #expect(!job.isEngineResident, "nothing is held while the job waits for dictation")
     state.dictating = false
     state.idleWaiter?.resume()
     await #expect(throws: MeetingTranscriptionJob.JobError.engineUnavailable("model_source_unavailable")) {
       _ = try await run.value
     }
     #expect(state.decodes == 0)
-    #expect(state.log == ["use", "load", "paused", "unload", "release"])
+    #expect(
+      state.log == ["use", "release", "use", "load", "unload", "release", "paused", "use", "release"])
     #expect(!job.isEngineResident)
   }
 
@@ -907,10 +916,14 @@ struct MeetingTranscriptionJobTests {
     let audio = MeetingTrackAudio(files: [try segment(in: dir, index: 1, startMs: 0, seconds: 2)])
     let (entered, enteredSignal) = AsyncStream<Void>.makeStream()
     var release: CheckedContinuation<Void, Never>?
+    var uses = 0
     let job = MeetingTranscriptionJob(
       dependencies: .init(
         isDictationIdle: { true }, waitUntilDictationIdle: {},
         beginModelUse: {
+          // Only the first model-use claim parks: #3973 C1 takes it again for each operation.
+          uses += 1
+          guard uses == 1 else { return }
           enteredSignal.yield()
           await withCheckedContinuation { release = $0 }
         },
@@ -1042,34 +1055,41 @@ struct MeetingTranscriptionJobTests {
         waitUntilMemoryNormal: {
           state.log.append("pressure-wait")
           state.pressure = false
-        },
-        sleep: { _ in
-          // The prolonged-pause limit elapses at once; dictation ends right after it.
-          await MainActor.run {
-            Task { @MainActor in state.endDictation() }
-          }
         }),
       configuration: config)
   }
 
   #if DEBUG
+    /// #3973 C1: a dictation that starts during a decode finds the engine given back at the
+    /// end of that decode (one engine operation), so the job never pauses with the engine
+    /// loaded and the prolonged-pause unload has nothing to do; the next decode loads again
+    /// after the dictation.
     @Test(
-      "paused for dictation longer than the limit: the engine unloads, then reloads to finish",
+      "a dictation during a decode: the engine is given back after it, and reloaded after dictation",
       .timeLimit(.minutes(1)))
-    func prolongedPauseUnloads() async throws {
+    func aDictationDuringADecodeFindsTheEngineGivenBack() async throws {
       let dir = try folder()
       let audio = MeetingTrackAudio(files: [try segment(in: dir, index: 1, startMs: 0, seconds: 50)])
       let state = PauseState()
       let job = pauseJob(state, onSecondPiece: { state.dictating = true })
-      // #3972 C5: the page's pause line follows this wait too, and always ends cleared.
+      // #3972 C5: the page's pause line follows this wait too, and always ends cleared. The
+      // dictation ends once the job reports it is waiting for it (the job's own signal).
       var waitReports: [Bool] = []
-      job.onWaitingForDictation = { waitReports.append($0) }
+      job.onWaitingForDictation = { waiting in
+        waitReports.append(waiting)
+        if waiting {
+          #expect(Array(state.log.suffix(2)) == ["unload", "release"], "waiting with nothing held")
+          state.endDictation()
+        }
+      }
       let result = try await job.run(tracks: [.microphone: audio], language: nil) { _ in }
       #expect(waitReports.first == true)
       #expect(waitReports.last == false)
       #expect(waitReports.filter { $0 }.count == waitReports.filter { !$0 }.count)
-      #expect(job.pauseUnloads == 1)
-      #expect(Array(state.log.prefix(6)) == ["use", "load", "decode", "unload", "release", "use"])
+      // The identity probe first (#3973 C1), then one operation, given back, then the next.
+      #expect(
+        Array(state.log.prefix(8))
+          == ["use", "release", "use", "load", "decode", "unload", "release", "use"])
       #expect(state.log.last == "release")
       #expect(result.failedPieces == 0)
       #expect(!job.isEngineResident)
@@ -1082,12 +1102,96 @@ struct MeetingTranscriptionJobTests {
       let state = PauseState()
       let job = pauseJob(state, onSecondPiece: { state.pressure = true })
       _ = try await job.run(tracks: [.microphone: audio], language: nil) { _ in }
-      #expect(job.pressureUnloads == 1)
+      // #3973 C1: the decode's operation already gave the engine back; the pass then waits for
+      // normal with nothing loaded, so no separate pressure unload is counted.
+      #expect(job.pressureUnloads == 0)
       #expect(
-        Array(state.log.prefix(8))
-          == ["use", "load", "decode", "unload", "release", "pressure-wait", "use", "load"])
+        Array(state.log.prefix(10))
+          == [
+            "use", "release", "use", "load", "decode", "unload", "release", "pressure-wait", "use",
+            "load",
+          ])
     }
   #endif
+
+  /// A job whose model load or contention wait can raise memory pressure (#3973 C1).
+  private func pressureJob(
+    _ state: PauseState, loadRaisesPressure: Bool, contentions: Int
+  ) -> MeetingTranscriptionJob {
+    var refusals = contentions
+    var raised = false
+    return MeetingTranscriptionJob(
+      dependencies: .init(
+        isDictationIdle: { true }, waitUntilDictationIdle: {},
+        beginModelUse: { state.log.append("use") },
+        endModelUse: { state.log.append("release") },
+        loadEngine: {
+          if refusals > 0 {
+            refusals -= 1
+            state.log.append("busy")
+            throw Contention()
+          }
+          state.log.append("load")
+          if loadRaisesPressure, !raised {
+            raised = true
+            state.pressure = true  // pressure rises while the model loads
+          }
+        },
+        transcribe: { samples, _ in
+          state.log.append("decode")
+          return FakeSpeech.transcribe(samples)
+        },
+        unloadEngine: { state.log.append("unload") },
+        analyzeSpeakers: { _ in MeetingSpeakerAnalysis(outcome: .single, segments: []) },
+        isTemporaryEngineContention: { $0 is Contention },
+        waitForEngineAvailability: {
+          state.log.append("wait")
+          state.pressure = true  // pressure rises while the load waits for contention
+        },
+        engineIdentity: { "fake" },
+        isMemoryPressureElevated: { state.pressure },
+        waitUntilMemoryNormal: {
+          state.log.append("pressure-wait")
+          state.pressure = false
+        }))
+  }
+
+  /// #3973 C1: memory pressure that rises during the load is checked before the decode: the
+  /// operation unloads, waits for normal holding nothing, loads again, and only then decodes.
+  @Test("pressure rising during a load: no decode until normal, then the pass resumes")
+  func pressureDuringLoadStopsTheDecode() async throws {
+    let dir = try folder()
+    let audio = MeetingTrackAudio(files: [try segment(in: dir, index: 1, startMs: 0, seconds: 2)])
+    let state = PauseState()
+    let job = pressureJob(state, loadRaisesPressure: true, contentions: 0)
+    let result = try await job.run(tracks: [.microphone: audio], language: nil) { _ in }
+    #expect(
+      state.log == [
+        "use", "release", "use", "load", "unload", "release", "pressure-wait", "use", "load",
+        "decode", "unload", "release",
+      ])
+    #expect(job.pressureUnloads == 1)
+    #expect(result.failedPieces == 0)
+    #expect(!job.isEngineResident)
+  }
+
+  /// #3973 C1: memory pressure that rises during a contention wait is waited out, holding
+  /// nothing, before the load is tried again.
+  @Test("pressure rising during a contention wait: no load until normal, then the pass resumes")
+  func pressureDuringContentionStopsTheLoad() async throws {
+    let dir = try folder()
+    let audio = MeetingTrackAudio(files: [try segment(in: dir, index: 1, startMs: 0, seconds: 2)])
+    let state = PauseState()
+    let job = pressureJob(state, loadRaisesPressure: false, contentions: 1)
+    let result = try await job.run(tracks: [.microphone: audio], language: nil) { _ in }
+    #expect(
+      state.log == [
+        "use", "release", "use", "busy", "release", "wait", "pressure-wait", "use", "load",
+        "decode", "unload", "release",
+      ])
+    #expect(result.failedPieces == 0)
+    #expect(!job.isEngineResident)
+  }
 
   // MARK: - C3b round 2
 
@@ -1194,7 +1298,7 @@ struct MeetingTranscriptionJobTests {
     state.pressure = true
     let job = pauseJob(state, onSecondPiece: {})
     _ = try await job.run(tracks: [.microphone: audio], language: nil) { _ in }
-    #expect(Array(state.log.prefix(3)) == ["pressure-wait", "use", "load"])
+    #expect(Array(state.log.prefix(5)) == ["pressure-wait", "use", "release", "use", "load"])
   }
 
   @Test("a piece that fails twice shows as a marker line in place, between its neighbours' words")
@@ -1317,8 +1421,44 @@ struct MeetingTranscriptionJobTests {
     }
   }
 
+  /// #3973 C1: the engine operation gives the engine back as soon as the decode has physically
+  /// ended, without waiting for a dictation that started meanwhile; the job then waits for
+  /// that dictation (before its speaker analysis) holding nothing, and a cancel ends that wait.
+  /// #3973 C1: every decode acquires the engine again, so a model that changed between two
+  /// operations (dictation's Parakeet swapped while it held the engine) is seen at the next
+  /// acquisition and fails the pass: words from two models are never mixed in one transcript.
+  @Test("a model that changed between two decode operations fails the pass", .timeLimit(.minutes(1)))
+  func aModelChangedBetweenOperationsFailsThePass() async throws {
+    let dir = try folder()
+    let audio = MeetingTrackAudio(files: [
+      try segment(in: dir, index: 1, startMs: 0, seconds: 2),
+      try segment(in: dir, index: 2, startMs: 5_000, seconds: 2),
+    ])
+    var identity = "model-a"
+    var log: [String] = []
+    let job = MeetingTranscriptionJob(
+      dependencies: .init(
+        isDictationIdle: { true }, waitUntilDictationIdle: {},
+        beginModelUse: { log.append("use") }, endModelUse: { log.append("release") },
+        loadEngine: { log.append("load \(identity)") },
+        transcribe: { samples, _ in
+          log.append("decode")
+          identity = "model-b"  // swapped while the engine was given back
+          return FakeSpeech.transcribe(samples)
+        },
+        unloadEngine: { log.append("unload") },
+        analyzeSpeakers: { _ in MeetingSpeakerAnalysis(outcome: .single, segments: []) },
+        engineIdentity: { identity }))
+    await #expect(throws: MeetingTranscriptionJob.JobError.engineUnavailable("model_changed")) {
+      _ = try await job.run(tracks: [.microphone: audio], language: nil) { _ in }
+    }
+    #expect(log.filter { $0 == "decode" }.count == 1, "no decode ran on the changed model")
+    #expect(log.last == "release", "the changed model was given back")
+    #expect(!job.isEngineResident)
+  }
+
   @Test(
-    "after the last decode the normal unload waits for dictation; a cancel then releases at once",
+    "after the last decode the engine is given back at once; the next unit waits for dictation",
     .timeLimit(.minutes(1)))
   func normalUnloadWaitsForDictation() async throws {
     let dir = try folder()
@@ -1351,17 +1491,18 @@ struct MeetingTranscriptionJobTests {
       let run = Task { try await job.run(tracks: [.microphone: audio], language: nil) { _ in } }
       var iterator = paused.makeAsyncIterator()
       _ = await iterator.next()
-      #expect(state.log == ["use", "load"], "unload waits while dictating")
-      #expect(waiting, "the unload wait is reported")
+      #expect(
+        state.log == ["use", "release", "use", "load", "unload", "release"], "released before any wait")
+      #expect(waiting, "the wait for dictation is reported")
       if cancelDuringWait {
         job.cancel()
         _ = try? await run.value
-        #expect(state.log == ["use", "load", "unload", "release"])
       } else {
         state.endDictation()
         _ = try await run.value
-        #expect(Array(state.log.prefix(4)) == ["use", "load", "unload", "release"])
       }
+      #expect(
+        state.log == ["use", "release", "use", "load", "unload", "release"], "nothing taken again")
       #expect(!waiting, "cleared after the wait ends")
     }
   }

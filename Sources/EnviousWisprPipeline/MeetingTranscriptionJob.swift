@@ -6,10 +6,11 @@ import Foundation
 /// Runs one EnviousMeet meeting's after-recording pass (#3972 §3, R23-R25).
 ///
 /// Order: for each track, speech in pieces cut at quiet moments (R16) with the Superwhisper
-/// seam rule (R23) → unload the engine → speaker analysis per track → compose. ONE unit runs at
-/// a time, and a unit starts only while dictation is idle (R25): the job never claims
-/// `EngineLease`, so a dictation is never refused, and a unit already running when a dictation
-/// starts is allowed to finish (its compute cannot be stopped mid-call) and then the job waits.
+/// seam rule (R23) → speaker analysis per track → compose. ONE unit runs at a time, and a unit
+/// starts only while dictation is idle (R25). Each decode is one engine operation
+/// (`engineOperation`, #3973 C1): the engine is acquired for it and given back as soon as it
+/// has physically finished, so a dictation pressed meanwhile waits only for that decode and
+/// goes first; the next decode acquires again.
 ///
 /// The engine, the speaker analysis and the dictation-activity facts are injected, so this type
 /// holds only sequencing policy and is testable without models.
@@ -49,8 +50,6 @@ package final class MeetingTranscriptionJob {
     /// Returns once memory pressure is back to normal (event-driven). Must also return promptly
     /// when its task is cancelled.
     package var waitUntilMemoryNormal: @MainActor () async -> Void
-    /// A plain wait, injectable so the prolonged-pause rule is testable without a real minute.
-    package var sleep: @Sendable (Duration) async -> Void
     /// Told when a unit (normal or teardown) starts, in the same main-actor step as its
     /// admission check, and when it has physically ended (#3972 R50: the shared local-model
     /// lane, so no other local model work is admitted in between).
@@ -79,7 +78,6 @@ package final class MeetingTranscriptionJob {
       engineIdentity: @escaping @MainActor () -> String? = { nil },
       isMemoryPressureElevated: @escaping @MainActor () -> Bool = { false },
       waitUntilMemoryNormal: @escaping @MainActor () async -> Void = {},
-      sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) },
       unitStarted: @escaping @MainActor () -> Void = {},
       unitEnded: @escaping @MainActor () -> Void = {},
       passStarted: @escaping @MainActor (UUID?, Int) -> Void = { _, _ in },
@@ -99,7 +97,6 @@ package final class MeetingTranscriptionJob {
       self.engineIdentity = engineIdentity
       self.isMemoryPressureElevated = isMemoryPressureElevated
       self.waitUntilMemoryNormal = waitUntilMemoryNormal
-      self.sleep = sleep
       self.unitStarted = unitStarted
       self.unitEnded = unitEnded
       self.passStarted = passStarted
@@ -116,9 +113,6 @@ package final class MeetingTranscriptionJob {
     /// words than 5-minute slices did at their joins). No cut search, no seam padding, and every
     /// word the engine returns is kept. True keeps the earlier cut pieces.
     package var cutsPieces = true
-    /// Longer than this paused for dictation with the engine loaded, the engine is unloaded
-    /// and reloaded when the pass resumes (plan §3 resource table).
-    package var prolongedPauseSeconds: Double = 60
     package init() {}
   }
 
@@ -191,9 +185,9 @@ package final class MeetingTranscriptionJob {
   private var engineResident = false
   private var engineLoaded = false
   private var firstEngineIdentity: String?
-  /// Times the engine was unloaded mid-pass: a pause for dictation longer than
-  /// `prolongedPauseSeconds`, or memory pressure.
-  private(set) package var pauseUnloads = 0
+  /// Times memory pressure unloaded the engine mid-pass. (#3973 C1 retired #3972's
+  /// prolonged-pause unload: the job never waits for dictation with the engine loaded, so the
+  /// memory that rule freed after 60 s is now never held during a pause at all.)
   private(set) package var pressureUnloads = 0
   private var running = false
   private(set) package var yieldCount = 0
@@ -266,9 +260,9 @@ package final class MeetingTranscriptionJob {
     await releaseModelUse()
   }
 
-  /// Before a model unit: under memory pressure, unload and wait for normal; paused for
-  /// dictation longer than the limit, unload; then reload if needed. A reload that brings a
-  /// different model fails the pass, so two models' words are never mixed.
+  /// Before an engine operation: under memory pressure, unload and wait for normal; then load if
+  /// needed. A load that brings a different model fails the pass, so two models' words are
+  /// never mixed.
   private func prepareModelUnit() async throws {
     if dependencies.isMemoryPressureElevated() {
       if engineLoaded {
@@ -276,15 +270,6 @@ package final class MeetingTranscriptionJob {
         await releaseEngine()
       }
       try await waitForNormalMemory()
-    }
-    if engineLoaded, !dependencies.isDictationIdle() {
-      let idleInTime = try await reportingDictationWait {
-        try await self.dictationIdleWithin(seconds: self.configuration.prolongedPauseSeconds)
-      }
-      if !idleInTime {
-        pauseUnloads += 1
-        await releaseEngine()
-      }
     }
     if !engineLoaded {
       try await waitForNormalMemory()
@@ -294,64 +279,6 @@ package final class MeetingTranscriptionJob {
         await releaseEngine()
         throw JobError.engineUnavailable("model_changed")
       }
-    }
-  }
-
-  /// Whether dictation went idle before `seconds` passed. The loser is cancelled and both are
-  /// joined before this returns; `cancel()` ends the whole wait.
-  private func dictationIdleWithin(seconds: Double) async throws -> Bool {
-    let sleep = dependencies.sleep
-    let waitIdle = dependencies.waitUntilDictationIdle
-    let idleTask = Task { @MainActor in
-      await waitIdle()
-      return true
-    }
-    let sleepTask = Task {
-      await sleep(.milliseconds(Int(seconds * 1_000)))
-      return false
-    }
-    let first: Bool
-    do {
-      first = try await cancellableWait {
-        await withTaskCancellationHandler {
-          await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
-            let once = ResumeOnce()
-            Task { @MainActor in
-              let value = await idleTask.value
-              if once.claim() { continuation.resume(returning: value) }
-            }
-            Task { @MainActor in
-              let value = await sleepTask.value
-              if once.claim() { continuation.resume(returning: value) }
-            }
-          }
-        } onCancel: {
-          idleTask.cancel()
-          sleepTask.cancel()
-        }
-      }
-    } catch {
-      idleTask.cancel()
-      sleepTask.cancel()
-      _ = await idleTask.value
-      _ = await sleepTask.value
-      throw error
-    }
-    // Cancel the loser and join both before returning.
-    idleTask.cancel()
-    sleepTask.cancel()
-    _ = await idleTask.value
-    _ = await sleepTask.value
-    try checkCancelled()
-    return first
-  }
-
-  @MainActor private final class ResumeOnce {
-    private var done = false
-    func claim() -> Bool {
-      guard !done else { return false }
-      done = true
-      return true
     }
   }
 
@@ -434,15 +361,15 @@ package final class MeetingTranscriptionJob {
     }
     let resumedAtStart = progress?.tracks.values.reduce(0) { $0 + $1.pieces.count } ?? 0
 
-    // 1. Speech, both tracks, one engine residency, only if some range is not yet committed.
+    // 1. Speech, both tracks, one engine operation per decode (#3973 C1), only if some range is
+    // not yet committed. The first acquisition here reads the model identity before any reuse.
     let speechNeeded = order.contains { kind in
       guard let audio = tracks[kind] else { return false }
       return !Self.isFullyCovered(audio, by: progress?.tracks[kind]?.pieces ?? [])
     }
     if speechNeeded {
       try await waitForNormalMemory()
-      try await acquireAndLoadEngine()
-      firstEngineIdentity = dependencies.engineIdentity()
+      firstEngineIdentity = try await probeEngineIdentity()
       if var current = progress {
         let identity = firstEngineIdentity
         if let previous = current.engineIdentity, previous != identity {
@@ -469,7 +396,6 @@ package final class MeetingTranscriptionJob {
               }) {
                 piece = reused
               } else {
-                try await prepareModelUnit()
                 piece = try await nextPiece(audio: audio, run: run, from: cursor)
                 if progress != nil {
                   progress?.tracks[kind, default: .init()].pieces =
@@ -493,18 +419,10 @@ package final class MeetingTranscriptionJob {
           }
         }
       } catch {
-        if engineResident {
-          await unitIgnoringCancel { await self.dependencies.unloadEngine() }
-          await releaseModelUse()
-        }
+        // Every operation gives its engine back on every exit; this only covers a throw that
+        // could ever land between an acquisition and its operation.
+        if engineResident { await releaseEngine() }
         throw error
-      }
-      if engineResident {
-        // Normal completion: the unload is a unit (R25) and waits for dictation to be idle,
-        // unless the pass is cancelled meanwhile or the model source became unusable (R32).
-        await waitForIdleUnlessReleasing()
-        await unitIgnoringCancel { await self.dependencies.unloadEngine() }
-        await releaseModelUse()
       }
     }
 
@@ -583,46 +501,88 @@ package final class MeetingTranscriptionJob {
 
   /// Model use, then the engine load, waiting through temporary contention (C3a).
   private func acquireAndLoadEngine() async throws {
+    // #3973 C1: nothing is held across any wait. A dictation running now is waited for first;
+    // one that starts while the model-use claim is being taken, or a load refused by temporary
+    // contention, gives the claim back before waiting, then the claim is taken again.
+    while true {
+      if !dependencies.isDictationIdle() { try await waitForDictationHoldingNothing() }
+      // Memory pressure can rise during any earlier wait or a refused load: wait it out first.
+      try await waitForNormalMemory()
+      engineResident = true
+      do {
+        // A mutation of the model can hold this for its duration; a cancel ends the wait.
+        try await cancellableWait { try await self.dependencies.beginModelUse() }
+      } catch {
+        engineResident = false
+        throw error
+      }
+      if cancelled {
+        // Acquired in the same moment as the cancel: give it straight back.
+        await releaseModelUse()
+        throw JobError.cancelled
+      }
+      // Same main-actor step as the load unit's own admission check: no dictation slips in,
+      // and no load starts under memory pressure that rose while the claim was being taken.
+      guard dependencies.isDictationIdle(), !dependencies.isMemoryPressureElevated() else {
+        await releaseModelUse()
+        continue
+      }
+      do {
+        try await unit {
+          try self.requireModelSource()
+          try await self.dependencies.loadEngine()
+        }
+        engineLoaded = true
+        return
+      } catch let error where !(error is JobError)
+        && dependencies.isTemporaryEngineContention(error)
+      {
+        // Contention for the shared offline mode is temporary: give the claim back, wait for
+        // the contention to end (no polling, no failure counted), then take the claim again.
+        await releaseModelUse()
+        engineContentionWaits += 1
+        try await cancellableWait { try await self.dependencies.waitForEngineAvailability() }
+        try checkCancelled()
+      } catch let error as JobError {
+        await releaseModelUse()
+        throw error
+      } catch {
+        await releaseModelUse()
+        throw JobError.engineUnavailable(String(describing: error))
+      }
+    }
+  }
+
+  /// #3973 C1: the model identity, read under the model-use claim and given straight back, before
+  /// any checkpointed piece is reused. Nothing is loaded and nothing stays held: the reused-piece
+  /// walk, checkpoint saves and waits that follow run with the engine free.
+  private func probeEngineIdentity() async throws -> String? {
+    if !dependencies.isDictationIdle() { try await waitForDictationHoldingNothing() }
     engineResident = true
     do {
-      // A mutation of the model can hold this for its duration; a cancel ends the wait.
       try await cancellableWait { try await self.dependencies.beginModelUse() }
     } catch {
       engineResident = false
       throw error
     }
-    if cancelled {
-      // Acquired in the same moment as the cancel: give it straight back.
-      await releaseModelUse()
-      throw JobError.cancelled
-    }
-    do {
-      // Contention for the shared offline mode is temporary: wait for its release (no polling,
-      // no failure counted), then try again through a fresh unit, which re-checks
-      // cancellation and dictation idleness and re-reads the selection.
-      while true {
-        do {
-          try await unit {
-            try self.requireModelSource()
-            try await self.dependencies.loadEngine()
-          }
-          break
-        } catch let error where !(error is JobError)
-          && dependencies.isTemporaryEngineContention(error)
-        {
-          engineContentionWaits += 1
-          try await cancellableWait { try await self.dependencies.waitForEngineAvailability() }
-          try checkCancelled()
-        }
+    let identity = dependencies.engineIdentity()
+    await releaseModelUse()
+    try checkCancelled()
+    return identity
+  }
+
+  /// Waits, holding no engine resource, until dictation is idle, re-checking after every wake
+  /// (work that took the turn meanwhile is waited for too). One yield however many waits it
+  /// takes, reported as "Paused while you dictate"; `cancel()` ends it.
+  private func waitForDictationHoldingNothing() async throws {
+    guard !dependencies.isDictationIdle() else { return }
+    yieldCount += 1
+    while !dependencies.isDictationIdle() {
+      try await reportingDictationWait {
+        try await self.cancellableWait { await self.dependencies.waitUntilDictationIdle() }
       }
-    } catch let error as JobError {
-      await releaseModelUse()
-      throw error
-    } catch {
-      await releaseModelUse()
-      throw JobError.engineUnavailable(String(describing: error))
+      try checkCancelled()
     }
-    engineLoaded = true
   }
 
   // MARK: - Pieces
@@ -818,7 +778,7 @@ package final class MeetingTranscriptionJob {
     let paddedEnd = min(run.endSample, end + pad)
     for attempt in 0..<2 {
       do {
-        return try await unit { () async throws -> MeetingTrackPiece in
+        return try await engineOperation { () async throws -> MeetingTrackPiece in
           try self.requireModelSource()
           let samples = try await self.readOffMain(
             audio: audio, from: paddedStart, count: paddedEnd - paddedStart)
@@ -934,17 +894,6 @@ package final class MeetingTranscriptionJob {
     return try result.get()
   }
 
-  /// Before a normal-completion unload: waits for dictation to be idle (R25), but ends the wait
-  /// at once on `cancel()`, and skips it when the model source is unusable (R32).
-  private func waitForIdleUnlessReleasing() async {
-    guard !cancelled, dependencies.isModelSourceUsable(), !dependencies.isDictationIdle() else {
-      return
-    }
-    _ = try? await reportingDictationWait {
-      try await self.cancellableWait { await self.dependencies.waitUntilDictationIdle() }
-    }
-  }
-
   /// Runs one wait for dictation to finish, telling `onWaitingForDictation` true before it and
   /// false after it, however it ends (#3972 C5). Every dictation wait goes through here.
   private func reportingDictationWait<T>(_ wait: () async throws -> T) async rethrows -> T {
@@ -953,10 +902,52 @@ package final class MeetingTranscriptionJob {
     return try await wait()
   }
 
-  /// Teardown units (unloading the engine) run even after a cancel. Their callers decide the
-  /// admission: a normal completion waits for dictation first (`waitForIdleUnlessReleasing`);
-  /// cancellation, errors, memory pressure, a prolonged pause and R32 release at once, so a
-  /// cancelled or deleted job gives its resources back without waiting.
+  /// #3973 C1: one engine operation (one decode attempt; a retry is another operation). The
+  /// engine is acquired and loaded for it (`prepareModelUnit`: the route, the model-use claim and
+  /// the model are taken fresh and the model identity checked), the decode runs as one unit and
+  /// is joined physically, and then everything the operation held is given back: the shared
+  /// lease (handing the turn to a waiting dictation in the same step), the model-use claim,
+  /// timer suppression, and the meeting's own Parakeet copy. Only after that does the caller
+  /// write a checkpoint or wait. Dictation has priority (decision 11), so it never waits for
+  /// more than the operation running when it pressed.
+  ///
+  /// The boundary is this method, not the generic unit: a cut search, a speaker analysis or the
+  /// composition is a unit too, and none of them holds or releases the engine.
+  private func engineOperation<T: Sendable>(
+    _ work: @escaping @MainActor () async throws -> T
+  ) async throws -> T {
+    // A dictation that started while the engine was being acquired or loaded goes first: the
+    // operation gives everything back, waits holding nothing, and acquires again.
+    // Memory pressure that rose during the load is handled the same way: unload, wait for
+    // normal holding nothing, load again; no decode starts under pressure.
+    while true {
+      try await prepareModelUnit()
+      if dependencies.isMemoryPressureElevated() {
+        pressureUnloads += 1
+        await releaseEngine()
+        try await waitForNormalMemory()
+        continue
+      }
+      // Same main-actor step as the unit's admission check below: no dictation slips in.
+      if dependencies.isDictationIdle() { break }
+      await releaseEngine()
+      try await waitForDictationHoldingNothing()
+    }
+    let result: Swift.Result<T, Error>
+    do {
+      result = .success(try await unit(work))
+    } catch {
+      result = .failure(error)
+    }
+    // `unit` returned only after the decode's task physically ended, success or not.
+    if engineResident { await releaseEngine() }
+    return try result.get()
+  }
+
+  /// Teardown units (unloading the engine) run even after a cancel, and never wait for
+  /// dictation: an operation's end, cancellation, errors, memory pressure and R32 release at
+  /// once, so a dictation waiting for the engine, or a cancelled or deleted job, is never kept
+  /// waiting by the release itself (#3973 C1).
   private func unitIgnoringCancel(_ work: @escaping @MainActor () async -> Void) async {
     unitInFlight = true
     dependencies.unitStarted()
@@ -967,10 +958,10 @@ package final class MeetingTranscriptionJob {
 
   /// Model work stops once the installed model may no longer be read (delivery turned off).
   /// Checked inside the unit, after its dictation-idle wait, so no load or decode starts after
-  /// the switch. Known system quirk (#3972 plan R32, founder-accepted): while the job is paused for
-  /// dictation it does not see the switch, so the loaded model and its use claim stay held
-  /// until dictation goes idle, and a running decode is not interrupted; the vendor's download
-  /// path does not honour the use claim.
+  /// the switch. Known system quirk (#3972 plan R32, founder-accepted): a running decode is not
+  /// interrupted, and the vendor's download path does not honour the use claim. (#3973 C1 removed
+  /// the other half of that quirk: the job no longer pauses for dictation with the model loaded
+  /// and its use claim held.)
   private func requireModelSource() throws {
     guard dependencies.isModelSourceUsable() else {
       throw JobError.engineUnavailable("model_source_unavailable")

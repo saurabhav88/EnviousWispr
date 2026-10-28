@@ -83,7 +83,7 @@ final class EngineCoordinator {
     /// #3972: EnviousMeet's own Parakeet engine is loaded, or one of its pass units (speech,
     /// speakers, compose) is running. Read only by the Ultra activation gate: retiring the old
     /// install would wait on the meeting's model-use gate while this coordinator holds the
-    /// switch gate, stalling dictation for the whole pass. The meeting pokes
+    /// switch gate, stalling dictation behind the meeting's work. The meeting pokes
     /// `.parakeetUpgradeOwed` when its engine is released and when its work ends.
     var isMeetingEngineResident: @MainActor () -> Bool = { false }
     /// #4052: EnviousMeet's final pass holds its OWN Parakeet (dictation was on Whisper). Read

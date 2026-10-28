@@ -183,4 +183,123 @@ struct EngineLeaseTests {
       lease.admissionEpoch == afterFirst,
       "a refusal counted as a visit, so a probe would discard a clean verdict")
   }
+
+  // MARK: - #3973 C1 Dictation's reserved turn
+
+  /// Parks a dictation wait behind `holder` and returns its task and reservation once the
+  /// reservation exists (handed out synchronously, before the wait suspends).
+  private func parkDictation(_ lease: EngineLease) async -> (
+    task: Task<EngineLease.Token?, Never>, reservation: EngineLease.Reservation
+  )? {
+    // The subject's own signal: `onReserved` fires in the step that reserves, and this resumes
+    // only after that step suspends in its wait. Bounded: a wait that never reserves fails the
+    // test after 5 s instead of hanging it, and its parked task is cancelled.
+    let signal = ReservationSignal()
+    let task = Task { @MainActor in
+      await lease.waitForReservedTurn { signal.deliver($0) }
+    }
+    guard let reserved = await signal.value() else {
+      task.cancel()
+      Issue.record("the wait never reserved")
+      return nil
+    }
+    return (task, reserved)
+  }
+
+  @Test("a waiting dictation keeps every other claim out, then gets the turn at the release")
+  func aReservedTurnIsHandedOverAtTheRelease() async {
+    let lease = EngineLease()
+    guard case .granted(let meeting) = lease.admit(.meeting),
+      let parked = await parkDictation(lease)
+    else { return }
+    #expect(lease.hasPendingReservation)
+    let epoch = lease.admissionEpoch
+
+    #expect(lease.release(meeting))
+    // Same step as the release: nothing can claim in between, the meeting included.
+    #expect(lease.currentHolder == .dictation)
+    #expect(lease.admissionEpoch == epoch + 1)
+    for holder in [SharedEngineHolder.meeting, .fileImport, .crashRecovery, .dictation] {
+      guard case .refused(by: .dictation) = lease.admit(holder) else {
+        Issue.record("\(holder) took the reserved turn")
+        return
+      }
+    }
+    let token = await parked.task.value
+    #expect(token?.holder == .dictation)
+    #expect(!lease.hasPendingReservation)
+    if let token { #expect(lease.release(token)) }
+    #expect(!lease.isBusy)
+  }
+
+  @Test("a withdrawn reservation gets nothing and the next release frees the engine")
+  func aWithdrawnReservationIsNotGranted() async {
+    let lease = EngineLease()
+    guard case .granted(let meeting) = lease.admit(.meeting),
+      let parked = await parkDictation(lease)
+    else { return }
+
+    #expect(lease.cancelReservation(parked.reservation))
+    #expect(await parked.task.value == nil)
+    #expect(!lease.cancelReservation(parked.reservation), "a second withdrawal is a no-op")
+    #expect(lease.release(meeting))
+    #expect(!lease.isBusy)
+  }
+
+  @Test("cancelling the waiting task withdraws its reservation")
+  func aCancelledWaitWithdrawsItsReservation() async {
+    let lease = EngineLease()
+    guard case .granted(let meeting) = lease.admit(.meeting),
+      let parked = await parkDictation(lease)
+    else { return }
+
+    parked.task.cancel()
+    #expect(await parked.task.value == nil)
+    #expect(!lease.hasPendingReservation)
+    #expect(lease.release(meeting))
+    #expect(!lease.isBusy)
+  }
+
+  @Test("a free engine grants at once; a second waiter while one waits is refused")
+  func oneReservationAtATime() async {
+    let lease = EngineLease()
+    let free = await lease.waitForReservedTurn { _ in Issue.record("a free engine reserved") }
+    #expect(free?.holder == .dictation)
+    guard let free, lease.release(free), case .granted(let meeting) = lease.admit(.meeting),
+      let parked = await parkDictation(lease)
+    else { return }
+
+    let second = await lease.waitForReservedTurn { _ in Issue.record("a second reservation") }
+    #expect(second == nil)
+    #expect(lease.cancelReservation(parked.reservation))
+    _ = await parked.task.value
+    #expect(lease.release(meeting))
+  }
+}
+
+/// One reservation handed from the subject's `onReserved` to the waiting test, or nil after a
+/// 5 s deadline (#3973 C1). Shared with the meeting wiring rows.
+@MainActor
+final class ReservationSignal {
+  private var delivered: EngineLease.Reservation?
+  private var waiter: CheckedContinuation<EngineLease.Reservation?, Never>?
+
+  func deliver(_ reservation: EngineLease.Reservation) {
+    delivered = reservation
+    waiter?.resume(returning: reservation)
+    waiter = nil
+  }
+
+  func value() async -> EngineLease.Reservation? {
+    if let delivered { return delivered }
+    return await withCheckedContinuation { continuation in
+      waiter = continuation
+      Task { @MainActor [weak self] in
+        try? await Task.sleep(for: .seconds(5))  // deadline-fallback: bounds the signal wait
+        guard let self, let waiter = self.waiter else { return }
+        self.waiter = nil
+        waiter.resume(returning: nil)
+      }
+    }
+  }
 }
