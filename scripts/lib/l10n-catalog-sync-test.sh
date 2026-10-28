@@ -104,7 +104,8 @@ def fixture(root, extra_keys=(), drop_manual=None, manual_override=None, drop_ta
         d.mkdir(parents=True)
         (d / "File.stringsdata").write_text(stringsdata([entry("x")]))
     # Tuist resource-bundle targets exist in every real build and must be accepted, not read.
-    for bundle in ("EnviousWispr_EnviousWisprAppKit", "EnviousWispr_EnviousWisprPostProcessing"):
+    for bundle in ("EnviousWispr_EnviousWisprAppKit", "EnviousWispr_EnviousWisprPostProcessing",
+                   "EnviousWispr_EnviousWisprServices"):
         (base / f"{bundle}.build").mkdir(parents=True)
     # Test target data must be IGNORED, never merged.
     d = base / "EnviousWisprTests.build/Objects-normal/arm64"

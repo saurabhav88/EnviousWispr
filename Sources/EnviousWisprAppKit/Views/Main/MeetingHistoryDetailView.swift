@@ -49,6 +49,9 @@ struct MeetingHistoryDetailView: View {
   }
 
   @State private var tab: Tab = .transcript
+  /// #4013 r3 F3: this meeting's saved participant list, for the rename suggestions; read once
+  /// per meeting and audio state (`RosterKey`).
+  @State private var roster: CallSpeakerRoster?
 
   var body: some View {
     if let record = meetings.record(id: meetingID) {
@@ -82,6 +85,18 @@ struct MeetingHistoryDetailView: View {
       }
       .task(id: meetings.playbackSource(meetingID: meetingID)) {
         reconcilePlayer()
+      }
+      .task(
+        id: RosterKey(
+          meetingID: meetingID, audioKept: record.audioKept,
+          deletionRequested: record.deletionRequested, state: record.state)
+      ) {
+        // Cleared first, so Delete audio or a deletion never leaves the old list offered; a
+        // read cancelled by a newer key never lands.
+        roster = nil
+        let read = await meetings.callSpeakerRoster(meetingID: meetingID)
+        guard !Task.isCancelled else { return }
+        roster = read
       }
       .onAppear {
         // A meeting that recorded nothing has only notes to show.
@@ -175,6 +190,13 @@ struct MeetingHistoryDetailView: View {
   /// What the audio size depends on, so it is measured again only when that changes.
   private struct AudioSizeKey: Hashable {
     let audioKept: Bool
+    let state: MeetingState
+  }
+
+  private struct RosterKey: Hashable {
+    let meetingID: UUID
+    let audioKept: Bool
+    let deletionRequested: Bool
     let state: MeetingState
   }
 
@@ -506,7 +528,8 @@ struct MeetingHistoryDetailView: View {
         case .visible(let turns, _):
           MeetingTurnsDocument(
             rowID: row.id, turns: turns, rawText: row.text,
-            speakerNames: row.speakerNames ?? [:], player: player
+            speakerNames: row.speakerNames ?? [:], player: player,
+            renameSuggestions: SpeakerRenameSuggestions(row: row, roster: record == nil ? nil : roster)
           )
           .equatable()
         case .everythingHidden:
@@ -566,10 +589,11 @@ struct MeetingTurnsDocument: View, Equatable {
   let rawText: String
   let speakerNames: [String: String]
   let player: MeetingPlaybackController?
+  let renameSuggestions: SpeakerRenameSuggestions
   @Environment(TranscriptCoordinator.self) private var transcripts
 
   nonisolated static func == (a: MeetingTurnsDocument, b: MeetingTurnsDocument) -> Bool {
-    a.rowID == b.rowID && a.player === b.player
+    a.rowID == b.rowID && a.player === b.player && a.renameSuggestions == b.renameSuggestions
       && MeetingDocumentHash.sameBytes(a.rawText, b.rawText)
       && MeetingDocumentHash.sameBytes(a.speakerNames, b.speakerNames)
       && TranscriptTurnsDocument.Inputs.sameTurns(a.turns, b.turns)
@@ -590,6 +614,7 @@ struct MeetingTurnsDocument: View, Equatable {
           player.play()
         }
       },
+      renameSuggestions: renameSuggestions,
       fallback: { EmptyView() })
   }
 }

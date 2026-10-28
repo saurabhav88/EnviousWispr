@@ -21,9 +21,12 @@ struct TranscriptTurnsDocument: View, Equatable {
     let mode: FileImportCoordinator.DocumentView
     let timesOn: Bool
     let documentFinished: Bool
+    /// #4013 r3 F3: what the rename popover offers; a change to it alone redraws.
+    var renameSuggestions: SpeakerRenameSuggestions = .none
 
     static func == (a: Inputs, b: Inputs) -> Bool {
       a.rowID == b.rowID && a.mode == b.mode && a.timesOn == b.timesOn
+        && a.renameSuggestions == b.renameSuggestions
         && a.documentFinished == b.documentFinished && a.isMeeting == b.isMeeting
         && a.language == b.language
         && MeetingDocumentHash.sameBytes(a.text, b.text)
@@ -111,6 +114,7 @@ struct TranscriptTurnsDocument: View, Equatable {
       onTurnsDisplayed: {
         transcriptCoordinator.noteTurnsDisplayed(id: inputs.rowID, isMeeting: inputs.isMeeting)
       },
+      renameSuggestions: inputs.renameSuggestions,
       fallback: { EmptyView() }
     )
     .task(id: DiffKey.task(for: inputs, pairs: { turnDiffInput })) {

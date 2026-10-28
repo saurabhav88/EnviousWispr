@@ -606,6 +606,19 @@ final class MeetingCoordinator {
     }
   }
 
+  /// #4013 r3 F3: the participant list saved with the meeting, for the rename suggestions.
+  /// Read on the meeting file queue. `nil` when the meeting is unknown, deleting or without
+  /// its audio (the list goes with the audio), or the file is missing or unusable.
+  func callSpeakerRoster(meetingID: UUID) async -> CallSpeakerRoster? {
+    guard let record = records[meetingID], record.audioKept, !record.deletionRequested else {
+      return nil
+    }
+    guard case .usable(let log)? = try? await writer.loadCallSpeakers(meeting: meetingID) else {
+      return nil
+    }
+    return log.roster
+  }
+
   func dismissNotice() { notice = nil }
 
   // MARK: - Launch

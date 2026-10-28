@@ -28,6 +28,9 @@ struct TurnDocumentView<Fallback: View>: View {
   /// #3972: when set, a turn with a start time offers "play from here", which calls this with
   /// that time. Only EnviousMeet's detail sets it.
   var onPlayFrom: ((Int) -> Void)? = nil
+  /// #4013 r3 F3: the names the rename popover offers for each speaker. `.none` offers nothing,
+  /// as before.
+  var renameSuggestions: SpeakerRenameSuggestions = .none
   @ViewBuilder let fallback: () -> Fallback
 
   /// No `ScrollView` of its own (found by chunk review): both callers already embed this
@@ -49,7 +52,7 @@ struct TurnDocumentView<Fallback: View>: View {
         ForEach(TurnRowKey.keyed(turns), id: \.key) { _, turn in
           TurnRowView(
             turn: turn, onRename: onRename, onRenameCancelled: onRenameCancelled,
-            onPlayFrom: onPlayFrom)
+            onPlayFrom: onPlayFrom, renameSuggestions: renameSuggestions)
         }
       }
       .onAppear(perform: onTurnsDisplayed)
@@ -116,6 +119,7 @@ private struct TurnRowView: View {
   let onRename: (String, String) async -> RenameFailure?
   let onRenameCancelled: () -> Void
   let onPlayFrom: ((Int) -> Void)?
+  let renameSuggestions: SpeakerRenameSuggestions
   @State private var isRenaming = false
   @State private var draftName = ""
   @State private var renameFailure: RenameFailure?
@@ -195,6 +199,7 @@ private struct TurnRowView: View {
         RenamePopoverView(
           name: $draftName,
           failure: renameFailure,
+          suggestions: renameSuggestions.names(for: renamingSpeakerId ?? turn.speakerId),
           onCommit: { name in commitRename(name) },
           onCancel: {
             renameFailure = nil
@@ -294,24 +299,45 @@ struct MarkedUpPassageText: View {
 /// would turn the next outside click into a silent no-op.
 ///
 /// `failure` renders inline when the caller's last commit attempt failed (plan §7).
+///
+/// #4013 r3 F3: `suggestions` (this meeting's participants and the user's kept names) are
+/// buttons above the field. Choosing one commits it through the same `onCommit`, once, spelled
+/// exactly as saved (the 60-character cap is for typing, so a long participant name is not cut).
+/// From the field, Down Arrow moves to the list; Up and Down move within it, Return or Space
+/// chooses, and Up from the first returns to the field. Each is a real button, so VoiceOver
+/// lists and activates them.
 private struct RenamePopoverView: View {
   @Binding var name: String
   let failure: RenameFailure?
+  let suggestions: [String]
   let onCommit: (String) -> Void
   let onCancel: () -> Void
   @State private var didCancelExplicitly = false
   @State private var hasCommitted = false
+  @FocusState private var focus: Focus?
   private static let maxLength = 60
+
+  private enum Focus: Hashable {
+    case field
+    case suggestion(Int)
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 4) {
+      if !suggestions.isEmpty { suggestionList }
       TextField("Speaker name", text: $name)
         .textFieldStyle(.roundedBorder)
         .frame(width: 200)
+        .focused($focus, equals: .field)
         .onSubmit { commit() }
         .onExitCommand {
           didCancelExplicitly = true
           onCancel()
+        }
+        .onKeyPress(.downArrow) {
+          guard !suggestions.isEmpty else { return .ignored }
+          focus = .suggestion(0)
+          return .handled
         }
         .onChange(of: name) { _, newValue in
           if newValue.count > Self.maxLength { name = String(newValue.prefix(Self.maxLength)) }
@@ -336,6 +362,60 @@ private struct RenamePopoverView: View {
       guard !didCancelExplicitly, !hasCommitted else { return }
       commit()
     }
+  }
+
+  private var suggestionList: some View {
+    VStack(alignment: .leading, spacing: 2) {
+      Text("Suggestions", comment: "Speaker rename popover: heading above names to choose from.")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .accessibilityAddTraits(.isHeader)
+      ScrollView {
+        VStack(alignment: .leading, spacing: 0) {
+          ForEach(Array(suggestions.enumerated()), id: \.offset) { index, suggestion in
+            Button {
+              choose(suggestion)
+            } label: {
+              // A participant's name is content, never a translation key.
+              Text(verbatim: suggestion)
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.borderless)
+            .padding(.vertical, 3)
+            .focusable()
+            .focused($focus, equals: .suggestion(index))
+            .onKeyPress(.return) {
+              choose(suggestion)
+              return .handled
+            }
+            .onKeyPress(.downArrow) {
+              if index + 1 < suggestions.count { focus = .suggestion(index + 1) }
+              return .handled
+            }
+            .onKeyPress(.upArrow) {
+              focus = index == 0 ? .field : .suggestion(index - 1)
+              return .handled
+            }
+            .onExitCommand {
+              didCancelExplicitly = true
+              onCancel()
+            }
+          }
+        }
+      }
+      .frame(width: 200)
+      .frame(maxHeight: 160)
+      .fixedSize(horizontal: false, vertical: suggestions.count <= 5)
+    }
+  }
+
+  /// A chosen suggestion is the name, committed once; the outside-click commit is then off.
+  private func choose(_ suggestion: String) {
+    guard !hasCommitted else { return }
+    hasCommitted = true
+    onCommit(suggestion)
   }
 
   private func commit() {

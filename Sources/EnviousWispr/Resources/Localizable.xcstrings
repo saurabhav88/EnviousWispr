@@ -18664,6 +18664,17 @@
         }
       }
     },
+    "Suggestions" : {
+      "comment" : "Speaker rename popover: heading above names to choose from.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Vorschläge"
+          }
+        }
+      }
+    },
     "Summaries" : {
       "comment" : "EnviousMeet page: the row that says who writes meeting summaries.",
       "localizations" : {

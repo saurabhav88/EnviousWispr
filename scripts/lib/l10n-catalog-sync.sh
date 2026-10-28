@@ -87,6 +87,8 @@ NON_PRODUCTION = {
 # read (they hold resources, not compiled Swift).
 GENERATED_RESOURCE_TARGETS = {
     "EnviousWispr_EnviousWisprAppKit", "EnviousWispr_EnviousWisprPostProcessing",
+    # #4013: the bundled talker rules (`Sources/EnviousWisprServices/Resources`).
+    "EnviousWispr_EnviousWisprServices",
 }
 # Binary-framework wrapper targets Xcode makes for a SwiftPM binaryTarget (#3735: CTranscribe).
 # They compile nothing; with the compilation cache on (CI) Xcode still writes a `.cas-config`
