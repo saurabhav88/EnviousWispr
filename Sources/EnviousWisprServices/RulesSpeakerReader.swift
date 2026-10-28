@@ -117,11 +117,15 @@ package enum RulesSpeakerReader {
     var tileNames: [String] = []
     var speaking: [String] = []
     var unnamedTalker = false
-    for tile in tiles(in: root, rule: rule) {
+    var participants: [CallParticipant] = []
+    for (index, tile) in tiles(in: root, rule: rule).enumerated() {
       let talking = rule.mayReportTalker && isTalking(tile, rule: rule)
+      let tileName = name(of: tile, rule: rule)
+      participants.append(
+        CallParticipant(key: "tile-\(index)", name: tileName, isTalking: talking, isSelf: false))
       // A signal is never given another tile's name. A talking tile without a readable name
       // means someone unknown is also talking, so this scan reports no talker at all.
-      guard let name = name(of: tile, rule: rule) else {
+      guard let name = tileName else {
         if talking { unnamedTalker = true }
         continue
       }
@@ -136,7 +140,10 @@ package enum RulesSpeakerReader {
       // A participant list shows each person once, so its duplicates are real; tiles repeat one
       // person, so they are de-duplicated and the roster is marked tile-only.
       roster: CallSpeakerRoster(names: listNames ?? uniqueInOrder(tileNames), selfNames: []),
-      rosterFromParticipantList: fromList)
+      rosterFromParticipantList: fromList, participants: participants,
+      // Which tiles are distinct people is not established for any rules surface yet (#4013 r5
+      // step 3 adds it per surface from live captures), so these readings never name anyone.
+      participantIdentityEstablished: false, sharedNames: repeatedNames(listNames ?? []))
   }
 
   /// Tiles in document order, outermost first. A tile nested in another is its own tile.

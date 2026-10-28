@@ -67,22 +67,43 @@ package struct CallAXDocument: Sendable, Equatable {
 }
 
 /// What a speaker reader found in one snapshot: who the app showed as talking, and the
-/// participants it could see (#4013 §3 item 2).
+/// participants it could see (#4013 §3 item 2, r5 item 1).
 ///
-/// `speaking` lists every name shown as talking at once, so the namer can abstain when it is
-/// more than one. `rosterFromParticipantList` says whether the roster came from the app's
-/// participant list, which shows every person once, or only from tiles, where two people with
-/// one display name cannot be told from one person shown twice.
+/// `participants` keeps distinct people apart before any name is de-duplicated, so two people
+/// sharing a display name stay two entries; `participantIdentityEstablished` says whether the
+/// reader could tell distinct people from repeated views of one person on this surface.
+/// `sharedNames` are display names other evidence (a participant list) shows for two people.
+/// `CallSpeakerAdmission` decides from these whether the reading may become a naming
+/// observation. `speaking`, `roster` and `rosterFromParticipantList` stay for existing consumers;
+/// the last is provenance (the roster came from the app's participant list), not admission.
 package struct CallSpeakerReading: Sendable, Equatable {
   package let speaking: [String]
   package let roster: CallSpeakerRoster
   package let rosterFromParticipantList: Bool
+  package let participants: [CallParticipant]
+  package let participantIdentityEstablished: Bool
+  package let sharedNames: Set<String>
 
-  package init(speaking: [String], roster: CallSpeakerRoster, rosterFromParticipantList: Bool) {
+  package init(
+    speaking: [String], roster: CallSpeakerRoster, rosterFromParticipantList: Bool,
+    participants: [CallParticipant], participantIdentityEstablished: Bool,
+    sharedNames: Set<String>
+  ) {
     self.speaking = speaking
     self.roster = roster
     self.rosterFromParticipantList = rosterFromParticipantList
+    self.participants = participants
+    self.participantIdentityEstablished = participantIdentityEstablished
+    self.sharedNames = sharedNames
   }
+}
+
+/// Display names that occur more than once in `names`.
+func repeatedNames(_ names: [String]) -> Set<String> {
+  var seen = Set<String>()
+  var repeated = Set<String>()
+  for name in names where !seen.insert(name).inserted { repeated.insert(name) }
+  return repeated
 }
 
 /// Order-keeping de-duplication for names seen in more than one representation.

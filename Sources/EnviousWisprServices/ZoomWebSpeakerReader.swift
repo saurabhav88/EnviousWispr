@@ -49,7 +49,15 @@ package enum ZoomWebSpeakerReader {
     return CallSpeakerReading(
       speaking: speaking,
       roster: CallSpeakerRoster(names: uniqueInOrder(tiles.map(\.name)), selfNames: []),
-      rosterFromParticipantList: false)
+      rosterFromParticipantList: false,
+      participants: tiles.enumerated().map { index, tile in
+        CallParticipant(
+          key: "tile-\(index)", name: tile.name, isTalking: speaking.contains(tile.name),
+          isSelf: false)
+      },
+      // Main tile and thumbnails repeat people; which tiles are distinct is not established
+      // (#4013 r5 step 3 replaces this reader), so these readings never name anyone.
+      participantIdentityEstablished: false, sharedNames: [])
   }
 
   /// A tile's name: the first text inside a name-class group, with that text's height.

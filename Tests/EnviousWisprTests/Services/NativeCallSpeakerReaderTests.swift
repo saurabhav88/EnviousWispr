@@ -37,7 +37,8 @@ struct NativeCallSpeakerReaderTests {
         ])
     ])
     #expect(reading.speaking == ["Alex Rivera"])
-    #expect(reading.roster.names == ["Alex Rivera", "Saurabh A Vaish", "Priya Shah"])
+    // The thumbnails are the people, in their order; the large tile repeats Alex.
+    #expect(reading.roster.names == ["Saurabh A Vaish", "Priya Shah", "Alex Rivera"])
     #expect(reading.roster.selfNames.isEmpty)
     #expect(!reading.rosterFromParticipantList)
   }
@@ -128,7 +129,9 @@ struct NativeCallSpeakerReaderTests {
     for counts in [["Participants (12)"], [], ["Participants (3)", "Participants (4)"]] {
       let reading = ZoomAppSpeakerReader.read(windows: [zoomPanel(entries: entries, counts: counts)])
       #expect(!reading.rosterFromParticipantList, "\(counts)")
-      #expect(reading.roster.names == ["Priya Shah", "Saurabh A Vaish", "Alex Rivera"])
+      // The thumbnails keep both people named Alex Rivera; the large tile repeats Priya.
+      #expect(
+        reading.roster.names == ["Saurabh A Vaish", "Alex Rivera", "Alex Rivera", "Priya Shah"])
     }
   }
 
