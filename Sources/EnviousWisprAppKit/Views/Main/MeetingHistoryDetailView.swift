@@ -191,7 +191,8 @@ struct MeetingHistoryDetailView: View {
           comment: "EnviousMeet: makes the meeting's transcript again from its kept audio."),
         isEnabled: offered.transcribeAgain, systemImage: "arrow.clockwise"
       ) {
-        run { meetings in await meetings.retry(meetingID: meetingID) }
+        // #3973 C2: Parakeet is the only meeting engine until C3 adds the engine menu.
+        run { meetings in await meetings.transcribeAgain(meetingID: meetingID, engine: .parakeet) }
       }
       .accessibilityIdentifier("meetings.detail.retry")
       SettingsActionButton(
@@ -344,17 +345,20 @@ struct MeetingHistoryDetailView: View {
             localized: "Waiting to be transcribed",
             comment: "History, a meeting: it waits for another meeting's transcript first."))
       }
-      if record.state == .ready, let row = transcripts.currentRow(id: record.transcriptID) {
+      // #3973 C2: a committed transcript stays shown while Transcribe again runs, waits or
+      // fails; it is replaced only once the new one is committed and published.
+      let committed = record.committedTranscriptGeneration != nil
+      if committed, let row = transcripts.currentRow(id: record.transcriptID) {
         transcript(row: row, record: record)
-      } else if record.state == .ready, !transcripts.historyReadFinished {
+      } else if committed, !transcripts.historyReadFinished {
         busyLine(
           String(
             localized: "Loading the transcript",
             comment: "History, a ready meeting: waiting for History's first read attempt to finish."
           ))
-      } else if record.state == .ready {
-        // #4001 H12: ready, History has been read, and the row is still not there (its file is
-        // missing or could not be read). Say so instead of showing nothing.
+      } else if committed {
+        // #4001 H12: committed, History has been read, and the row is still not there (its file
+        // is missing or could not be read). Say so instead of showing nothing.
         missingTranscript(canTranscribeAgain: canOfferTranscribeAgain(record.id))
       } else if record.state != .notesOnly {
         // #3973: processing, queued or failed: the live words stay until a transcript is ready.
@@ -429,7 +433,9 @@ struct MeetingHistoryDetailView: View {
       }()
       VStack(alignment: .leading, spacing: 10) {
         HStack(spacing: 10) {
-          if let record, !record.echoTurnIDs.isEmpty, record.state == .ready {
+          // #3973 C2: the shown row's own generation decides, so a retained transcript keeps
+          // its control while Transcribe again runs.
+          if record != nil, transcripts.meetingHasProbableEcho(row) {
             Toggle(
               isOn: Binding(
                 get: { transcripts.isShowingEcho(rowID: row.id) },

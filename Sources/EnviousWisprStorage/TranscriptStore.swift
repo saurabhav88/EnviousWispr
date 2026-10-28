@@ -176,6 +176,23 @@ public final class TranscriptStore {
     #endif
   }
 
+  /// #3973 C2: a reader of one permanent row's file, self-contained like `durableWriter` so the
+  /// caller runs it off the main actor. Nil when no file has that id; throws when the file is
+  /// there but cannot be read or decoded.
+  public func rowReader() -> @Sendable (UUID) throws -> Transcript? {
+    let directory = directory
+    return { id in
+      let url = directory.appendingPathComponent("\(id.uuidString).json")
+      let data: Data
+      do {
+        data = try Data(contentsOf: url)
+      } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+        return nil
+      }
+      return try JSONDecoder().decode(Transcript.self, from: data)
+    }
+  }
+
   // MARK: - Pending (Escape Recovery) namespace — #2087
   //
   // Pending rows live in a CHILD directory rather than being flagged by a

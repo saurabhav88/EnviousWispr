@@ -459,6 +459,8 @@ struct MeetingWiringTests {
     record.state = .ready
     try rig.store.save(record)
     coordinator.launch()
+    // Delete All marks only listed meetings; one still being listed is refused (#3973 C2).
+    await MeetingCoordinatorTests.eventually("listed") { coordinator.meetings.count == 1 }
     try await rig.transcripts.saveAndShowDurably(
       Transcript(
         id: record.transcriptID, text: "standup", backendType: .parakeet, meetingID: record.id))
@@ -479,6 +481,8 @@ struct MeetingWiringTests {
     let folder = rig.store.folder(for: record.id)
     try MeetingAudioFixture.writeSegment(in: folder, index: 1, startMs: 0, frames: 8_000)
     coordinator.launch()
+    // Listed first, so the refusal comes from the unwritable folder (#3973 C2).
+    await MeetingCoordinatorTests.eventually("listed") { coordinator.meetings.count == 1 }
     let row = Transcript(
       id: record.transcriptID, text: "standup", backendType: .parakeet, meetingID: record.id)
     try await rig.transcripts.saveAndShowDurably(row)
@@ -541,7 +545,7 @@ struct MeetingWiringTests {
     #expect(mic.runs.count == 2)
     // Every decode fails twice (the fake cannot transcribe), so each run is a gap marker and no
     // speaker analysis runs; the engine path is what this test reads.
-    let result = try await job.run(tracks: [.microphone: mic, .callSound: call], language: nil, checkpoint: nil) { _ in }
+    let result = try await job.runTestAttempt(tracks: [.microphone: mic, .callSound: call], language: nil, checkpoint: nil) { _ in }
     #expect(result.failedPieces == 3)
     // One unpadded decode per run, retried once: call sound first, then the two microphone runs.
     #expect(rig.dictation.decodes.map(\.samples) == [48_000, 48_000, 32_000, 32_000, 32_000, 32_000])
@@ -627,7 +631,7 @@ struct MeetingWiringTests {
     let saves = SaveProbe(lease: rig.lease)
     let meetingID = UUID()
     let run = Task { @MainActor in
-      try await job.run(
+      try await job.runTestAttempt(
         tracks: [.microphone: try Self.twoRuns("meeting-wiring-handoff")], language: nil,
         checkpoint: .init(meetingID: meetingID, load: { nil }, save: { _ in await saves.record() })
       ) { _ in }
@@ -703,7 +707,7 @@ struct MeetingWiringTests {
       let job = MeetingWiring.makeJob(rig.inputs, lane: MeetingLocalModelLane())
       let decodesBefore = rig.dictation.decodes.count
       let run = Task { @MainActor in
-        try await job.run(
+        try await job.runTestAttempt(
           tracks: tracks, language: nil,
           checkpoint: .init(
             meetingID: meetingID, load: { await store.load() },
@@ -741,7 +745,7 @@ struct MeetingWiringTests {
     rig.dictation.onDecode = { await gate.hold() }
     let job = MeetingWiring.makeJob(rig.inputs, lane: MeetingLocalModelLane())
     let run = Task { @MainActor in
-      try await job.run(
+      try await job.runTestAttempt(
         tracks: [.microphone: try Self.twoRuns("meeting-wiring-withdrawn")], language: nil,
         checkpoint: nil
       ) { _ in }
@@ -780,7 +784,7 @@ struct MeetingWiringTests {
     fake.meetingOwnParakeetResident = { job.isOwnModelResident }
     let coordinator = fake.makeStartedCoordinator()
     let run = Task { @MainActor in
-      try await job.run(
+      try await job.runTestAttempt(
         tracks: [.microphone: try Self.twoRuns("meeting-wiring-own-switch")], language: nil,
         checkpoint: nil
       ) { _ in }
@@ -826,7 +830,7 @@ struct MeetingWiringTests {
     let folder = try MeetingAudioFixture.folder("meeting-wiring-cancel")
     let url = try MeetingAudioFixture.writeSegment(in: folder, index: 1, startMs: 0, frames: 32_000)
     let run = Task { @MainActor in
-      try await job.run(tracks: [.microphone: MeetingTrackAudio(files: [(url: url, startMs: 0)])], language: nil, checkpoint: nil) { _ in }
+      try await job.runTestAttempt(tracks: [.microphone: MeetingTrackAudio(files: [(url: url, startMs: 0)])], language: nil, checkpoint: nil) { _ in }
     }
     #expect(await gate.waitForEntered(1))
     job.cancel()
@@ -852,7 +856,7 @@ struct MeetingWiringTests {
       (url: try MeetingAudioFixture.writeSegment(in: folder, index: 2, startMs: 5_000, frames: 16_000), startMs: 5_000),
     ])
     let run = Task { @MainActor in
-      try await job.run(tracks: [.microphone: audio], language: nil, checkpoint: nil) { _ in }
+      try await job.runTestAttempt(tracks: [.microphone: audio], language: nil, checkpoint: nil) { _ in }
     }
     // First run, first attempt: pressure rises while it decodes.
     #expect(await gate.waitForEntered(1))
@@ -891,7 +895,7 @@ struct MeetingWiringTests {
       (url: try MeetingAudioFixture.writeSegment(in: folder, index: 1, startMs: 0, frames: 48_000), startMs: 0),
       (url: try MeetingAudioFixture.writeSegment(in: folder, index: 2, startMs: 10_000, frames: 32_000), startMs: 10_000),
     ])
-    let result = try await job.run(tracks: [.microphone: audio], language: nil, checkpoint: nil) { _ in }
+    let result = try await job.runTestAttempt(tracks: [.microphone: audio], language: nil, checkpoint: nil) { _ in }
     // One decode per run, the whole run each time.
     #expect(rig.dictation.decodes.map(\.samples) == [48_000, 32_000])
     #expect(rig.dictation.decodes.allSatisfy { $0.holder == .meeting })
@@ -920,7 +924,7 @@ struct MeetingWiringTests {
     let folder = try MeetingAudioFixture.folder("meeting-wiring-own-load")
     let url = try MeetingAudioFixture.writeSegment(in: folder, index: 1, startMs: 0, frames: 16_000)
     let run = Task { @MainActor in
-      try await job.run(tracks: [.microphone: MeetingTrackAudio(files: [(url: url, startMs: 0)])], language: nil, checkpoint: nil) { _ in }
+      try await job.runTestAttempt(tracks: [.microphone: MeetingTrackAudio(files: [(url: url, startMs: 0)])], language: nil, checkpoint: nil) { _ in }
     }
     // The pass's own Parakeet is loading (parked in prepare).
     let loading = rig.ownBackends.backend
@@ -949,7 +953,7 @@ struct MeetingWiringTests {
     let job = MeetingWiring.makeJob(rig.inputs, lane: MeetingLocalModelLane())
     let folder = try MeetingAudioFixture.folder("meeting-wiring-own")
     let url = try MeetingAudioFixture.writeSegment(in: folder, index: 1, startMs: 0, frames: 32_000)
-    _ = try? await job.run(tracks: [.microphone: MeetingTrackAudio(files: [(url: url, startMs: 0)])], language: nil, checkpoint: nil) { _ in }
+    _ = try? await job.runTestAttempt(tracks: [.microphone: MeetingTrackAudio(files: [(url: url, startMs: 0)])], language: nil, checkpoint: nil) { _ in }
     #expect(rig.lease.admissionEpoch == 0)
     #expect(rig.dictation.readyCalls == 0)
     #expect(rig.dictation.decodes.isEmpty)
@@ -964,7 +968,7 @@ struct MeetingWiringTests {
     let url = try MeetingAudioFixture.writeSegment(in: folder, index: 1, startMs: 0, frames: 32_000)
     let audio = MeetingTrackAudio(files: [(url: url, startMs: 0)])
     await #expect(throws: (any Error).self) {
-      _ = try await job.run(tracks: [.microphone: audio], language: nil, checkpoint: nil) { _ in }
+      _ = try await job.runTestAttempt(tracks: [.microphone: audio], language: nil, checkpoint: nil) { _ in }
     }
     #expect(job.isEngineResident == false)
     #expect(job.isUnitInFlight == false)
@@ -981,7 +985,7 @@ struct MeetingWiringTests {
     let folder = try MeetingAudioFixture.folder("meeting-wiring-claim")
     let url = try MeetingAudioFixture.writeSegment(in: folder, index: 1, startMs: 0, frames: 32_000)
     let audio = MeetingTrackAudio(files: [(url: url, startMs: 0)])
-    _ = try? await job.run(tracks: [.microphone: audio], language: nil, checkpoint: nil) { _ in }
+    _ = try? await job.runTestAttempt(tracks: [.microphone: audio], language: nil, checkpoint: nil) { _ in }
     #expect(await rig.gate.isInUse(Self.key(missing)) == false)
     #expect(job.isEngineResident == false)
     #expect(rig.changeCounter.count > 0)

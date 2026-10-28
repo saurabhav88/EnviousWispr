@@ -17,23 +17,33 @@ struct MeetingSummaryView: View {
 
   var body: some View {
     if let record = meetings.record(id: meetingID) {
-      switch record.state {
-      case .ready: ready
-      case .notesOnly, .failed:
-        Text(
-          "This meeting has no transcript, so it has no summary.",
-          comment: "History, a meeting with no transcript: its Summary tab."
-        )
-        .font(.stBody)
-        .foregroundStyle(.stTextSecondary)
-      case .recording, .stopping, .interrupted, .queued, .processing:
-        Text(
-          "A summary is written after the meeting is transcribed.",
-          comment: "History, a meeting: the Summary tab before a summary exists."
-        )
-        .font(.stBody)
-        .foregroundStyle(.stTextSecondary)
+      // #3973 C2: a committed transcript keeps its summary shown while Transcribe again runs,
+      // waits or fails.
+      if record.committedTranscriptGeneration != nil {
+        ready
+      } else {
+        unready(record)
       }
+    }
+  }
+
+  @ViewBuilder private func unready(_ record: MeetingRecord) -> some View {
+    switch record.state {
+    case .ready: ready
+    case .notesOnly, .failed:
+      Text(
+        "This meeting has no transcript, so it has no summary.",
+        comment: "History, a meeting with no transcript: its Summary tab."
+      )
+      .font(.stBody)
+      .foregroundStyle(.stTextSecondary)
+    case .recording, .stopping, .interrupted, .queued, .processing:
+      Text(
+        "A summary is written after the meeting is transcribed.",
+        comment: "History, a meeting: the Summary tab before a summary exists."
+      )
+      .font(.stBody)
+      .foregroundStyle(.stTextSecondary)
     }
   }
 

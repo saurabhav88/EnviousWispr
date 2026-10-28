@@ -982,6 +982,14 @@ final class TranscriptCoordinator {
     }.get()
   }
 
+  /// #3973 C2: a row as its file holds it, read in History's command order, so a write admitted
+  /// before this read has landed. Nil when there is no file; throws when it cannot be read.
+  func durableRow(id: UUID) async throws -> Transcript? {
+    try await transactionExecutor.admit { [self] in
+      await transactionExecutor.capture { try await transactionExecutor.readRow(id: id) }
+    }.get()
+  }
+
   private func performDurableWrite(_ transcript: Transcript) async throws {
     try await transactionExecutor.writeDurably(transcript)
     diskReconciler.noteWritten(transcript.id)
@@ -1546,10 +1554,24 @@ final class TranscriptCoordinator {
     if show { echoShownRowIDs.insert(rowID) } else { echoShownRowIDs.remove(rowID) }
   }
 
+  /// #3973 C2: the probable-echo turn IDs of `row`'s own transcript generation, or nil when
+  /// its facts are not known.
+  func meetingEchoTurnIDs(of row: Transcript) -> Set<String>? {
+    guard let meetingID = row.meetingID else { return nil }
+    return meetingInfo?(meetingID)?.matching(row)?.echoTurnIDs
+  }
+
+  /// #3973 C2: whether `row`'s own transcript generation has probable-echo lines, the facts
+  /// "Show probable echo" acts on. False for a row whose facts are not known.
+  func meetingHasProbableEcho(_ row: Transcript) -> Bool {
+    meetingEchoTurnIDs(of: row)?.isEmpty == false
+  }
+
   /// What a meeting row shows; `.unavailable` for a row that is not a meeting.
   func meetingProjection(of row: Transcript) -> MeetingHistoryPresentation.Projection {
     guard let meetingID = row.meetingID else { return .unavailable }
-    let info = meetingInfo?(meetingID)
+    // #3973 C2: only the facts of this row's own transcript generation.
+    let info = meetingInfo?(meetingID)?.matching(row)
     let showEcho = isShowingEcho(rowID: row.id)
     // #4075 R6: the plain text comes from the kept meeting text (the same projection search and
     // the preview read), so a detail redraw does not rebuild the whole meeting's text. Only the

@@ -239,7 +239,8 @@
         return .failure(
           .tooLarge, "the stored text is \(textBytes) bytes; page the turns instead")
       }
-      let echo = Set(record.echoTurnIDs)
+      // #3973 C2: the row's own generation's echo lines (a kept row while a rerun runs).
+      let echo = transcripts.meetingEchoTurnIDs(of: row) ?? []
       let turns = row.turns ?? []
       let page = turns.dropFirst(offset).prefix(limit)
       let projection = transcripts.meetingProjection(of: row)
@@ -254,7 +255,7 @@
         "rowID": row.id.uuidString,
         "textBytes": textBytes,
         "speakerNames": row.speakerNames ?? [:],
-        "echoTurnIDs": record.echoTurnIDs,
+        "echoTurnIDs": echo.sorted(),
         "totalTurns": turns.count,
         "turnOffset": offset,
         "turns": page.map { turn -> [String: Any] in
@@ -267,6 +268,9 @@
           ]
         },
         "projection": projected,
+        // #3973 C2: the attempt this History row came from (nil before attempts).
+        "attemptID": row.meetingTranscriptAttemptID?.uuidString as Any? ?? NSNull(),
+        "backendType": row.backendType.rawValue,
       ]
       if includeText { transcript["text"] = row.text }
       reply["transcript"] = transcript
@@ -275,15 +279,25 @@
 
     // MARK: - Changes
 
-    /// `{meetingID}`: Transcribe again. Refused when the coordinator does not offer it
-    /// (`canTranscribeAgain`, the same answer the detail view shows, #4008); succeeds only when
-    /// `retry` itself reports the meeting queued, never from the state read back.
+    /// `{meetingID, engine?}`: Transcribe again, on `engine` (default `parakeet`, #3973 C2).
+    /// Refused when the coordinator does not offer it (`canTranscribeAgain`, the same answer the
+    /// detail view shows, #4008); succeeds only when `transcribeAgain` itself reports the
+    /// meeting queued, never from the state read back.
     func retry(_ args: [String: Any]) async -> Result {
-      await change(args, name: "retry") { coordinator, record in
+      var engine = MeetingEngineChoice.parakeet
+      if let value = args["engine"] {
+        guard let name = value as? String, let choice = MeetingEngineChoice(rawValue: name) else {
+          let names = MeetingEngineChoice.allCases.map(\.rawValue).joined(separator: ", ")
+          return .failure(.badArgs, "engine must be one of: \(names)")
+        }
+        engine = choice
+      }
+      return await change(args, name: "retry", allowed: ["meetingID", "engine"]) {
+        coordinator, record in
         coordinator.canTranscribeAgain(record.id)
           ? nil : "Transcribe again is not offered for this meeting now"
       } run: { coordinator, id in
-        await coordinator.retry(meetingID: id)
+        await coordinator.transcribeAgain(meetingID: id, engine: engine)
       } check: { _ in true }
     }
 
@@ -329,13 +343,13 @@
     /// recording, being transcribed or held by a timed-out close, and passes `refusal`; the
     /// owner runs; the record read back passes `check`, or the reply says it did not happen.
     private func change(
-      _ args: [String: Any], name: String,
+      _ args: [String: Any], name: String, allowed: Set<String> = ["meetingID"],
       refusal: (MeetingCoordinator, MeetingRecord) -> String?,
       run: (MeetingCoordinator, UUID) async -> Bool,
       check: (MeetingRecord?) -> Bool
     ) async -> Result {
       let meetingID: UUID
-      switch Self.meetingID(args, allowed: ["meetingID"]) {
+      switch Self.meetingID(args, allowed: allowed) {
       case .failure(let result): return result
       case .success(let id): meetingID = id
       }
@@ -677,6 +691,20 @@
         "closeOwned": coordinator.isCloseOwned(record.id),
         "writable": record.isWritableByThisBuild,
         "tracks": tracks,
+        // #3973 C2: the attempt still to finish and the committed transcript's generation.
+        "formatVersion": record.formatVersion,
+        "pendingAttempt": record.pendingAttempt.map {
+          [
+            "attemptID": $0.attemptID.uuidString, "engine": $0.requestedEngine.rawValue,
+            "language": $0.requestedEffectiveLanguage as Any? ?? NSNull(),
+          ] as Any
+        } ?? NSNull(),
+        "committedAttemptID": record.committedTranscriptGeneration?.uuidString as Any? ?? NSNull(),
+        "requestedTranscriptEngine": record.requestedTranscriptEngine?.rawValue as Any? ?? NSNull(),
+        "transcriptEngineUsed": record.transcriptEngineUsed?.rawValue as Any? ?? NSNull(),
+        "transcriptEngineFallbackReason":
+          record.transcriptEngineFallbackReason?.rawValue as Any? ?? NSNull(),
+        "commitReceiptPending": coordinator.isCommitReceiptPending(record.id),
       ]
     }
 

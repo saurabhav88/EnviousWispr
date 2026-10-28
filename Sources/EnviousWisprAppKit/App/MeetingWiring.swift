@@ -165,6 +165,12 @@ enum MeetingWiring {
         saveTranscript: { [transcriptCoordinator = inputs.transcriptCoordinator] transcript in
           try await transcriptCoordinator.saveAndShowDurably(transcript)
         },
+        historyRow: { [transcriptCoordinator = inputs.transcriptCoordinator] id in
+          transcriptCoordinator.currentRow(id: id)
+        },
+        durableHistoryRow: { [transcriptCoordinator = inputs.transcriptCoordinator] id in
+          try await transcriptCoordinator.durableRow(id: id)
+        },
         removeTranscriptRow: { [transcriptCoordinator = inputs.transcriptCoordinator] id in
           try await transcriptCoordinator.removeRow(id: id)
         },
@@ -226,18 +232,24 @@ enum MeetingWiring {
           [weak coordinator, transcriptCoordinator = inputs.transcriptCoordinator] meetingID in
           // #4001 step 2b-C: the record, the row and the meeting facts are read live here;
           // the coordinator keeps the projection they make.
+          // #3973 C2: only the committed generation's row: while a committed replacement is
+          // not yet in History, the inputs are unknown (out of date, nothing written).
           guard let record = coordinator?.record(id: meetingID),
             let row = transcriptCoordinator.currentRow(id: record.transcriptID),
+            isCommittedRow(row, of: record),
             let text = transcriptCoordinator.summaryVisibleText(
               of: row, info: historyInfo(coordinator, meetingID: meetingID))
           else { return nil }
-          return .init(text: text, speakerNames: row.speakerNames ?? [:])
+          return .init(
+            text: text, speakerNames: row.speakerNames ?? [:],
+            transcriptAttemptID: row.meetingTranscriptAttemptID)
         },
         hasNoWords: {
           [weak coordinator, transcriptCoordinator = inputs.transcriptCoordinator] meetingID in
           // #4148: the same live reads and projection; a missing record or row is not empty.
           guard let record = coordinator?.record(id: meetingID),
-            let row = transcriptCoordinator.currentRow(id: record.transcriptID)
+            let row = transcriptCoordinator.currentRow(id: record.transcriptID),
+            isCommittedRow(row, of: record)
           else { return false }
           return transcriptCoordinator.summaryHasNoWords(
             of: row, info: historyInfo(coordinator, meetingID: meetingID))
@@ -254,6 +266,13 @@ enum MeetingWiring {
       documents: coordinator.documents, lane: lane)
   }
 
+  /// #3973 C2: whether `row` is `record`'s committed transcript generation, the only row a
+  /// summary is written from or judged against.
+  static func isCommittedRow(_ row: Transcript, of record: MeetingRecord) -> Bool {
+    guard let committed = record.committedTranscriptGeneration else { return false }
+    return row.meetingTranscriptGeneration == committed
+  }
+
   /// When a final-pass unit may start: dictation first, then the lane's order (R50): it yields
   /// only to a running local summary call.
   static func admission(
@@ -262,12 +281,14 @@ enum MeetingWiring {
     { dictationIdle() && !lane.summaryCallRunning }
   }
 
-  /// History's meeting facts, from the coordinator's in-memory durable copy (observable), and
-  /// only while that copy is ready (`MeetingHistoryInfo.paired(with:)`).
+  /// History's meeting facts, from the coordinator's in-memory durable copy (observable): the
+  /// committed transcript generation's, plus the previous generation's while a committed one is
+  /// not yet published (`MeetingHistoryInfo.paired(with:previous:)`, #3973 C2).
   static func historyInfo(_ coordinator: MeetingCoordinator?, meetingID: UUID)
     -> MeetingHistoryInfo?
   {
-    MeetingHistoryInfo.paired(with: coordinator?.record(id: meetingID))
+    MeetingHistoryInfo.paired(
+      with: coordinator?.record(id: meetingID), previous: coordinator?.historyPrevious(meetingID))
   }
 
   /// The final pass's job. It decodes through a `MeetingParakeetRoute` (#4052), whole runs at a

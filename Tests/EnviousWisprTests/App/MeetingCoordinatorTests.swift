@@ -109,6 +109,7 @@ struct MeetingCoordinatorTests {
     private(set) var receivedTracks: [MeetingTrackKind: MeetingTrackAudio] = [:]
     /// #4105: the transcript language each run was given, in order.
     private(set) var receivedLanguages: [String?] = []
+    private(set) var receivedAttempts: [MeetingAttemptConfiguration] = []
     private(set) var receivedMissingAudio: [MeetingTrackKind: [MeetingTranscriptionJob.MissingAudio]] =
       [:]
     var isEngineResident = false
@@ -127,14 +128,17 @@ struct MeetingCoordinatorTests {
       tracks: [MeetingTrackKind: MeetingTrackAudio], language: String?,
       checkpoint access: MeetingTranscriptionJob.CheckpointAccess?,
       missingAudio: [MeetingTrackKind: [MeetingTranscriptionJob.MissingAudio]],
-      onStage: @escaping @MainActor (MeetingTranscriptionJob.Stage) -> Void
+      onStage: @escaping @MainActor (MeetingTranscriptionJob.Stage) -> Void,
+      attempt: MeetingAttemptConfiguration
     ) async throws -> MeetingTranscriptionJob.Result {
       runs += 1
       receivedTracks = tracks
       receivedLanguages.append(language)
+      receivedAttempts.append(attempt)
       receivedMissingAudio = missingAudio
       onStage(.composing)
-      return try await behavior(access)
+      // The real job resolves the attempt it was given (C2: always to its requested engine).
+      return try await behavior(access).resolving(attempt)
     }
 
     func cancel() { cancelled = true }
@@ -162,6 +166,30 @@ struct MeetingCoordinatorTests {
     }
 
     func failWrites(inState state: MeetingState) { failWrites { $0.state == state } }
+
+    private let landing = OSAllocatedUnfairLock<[@Sendable (MeetingRecord) -> Bool]>(
+      initialState: [])
+    /// #3973 C2: the next write of a record matching `predicate` lands on disk, then reports
+    /// failure (a sync that failed after the file was replaced). Once only: a write that
+    /// `onLandingFailure` starts must not fail again, or each failure starts another.
+    func failAfterLanding(where predicate: @escaping @Sendable (MeetingRecord) -> Bool) {
+      landing.withLock { $0.append(predicate) }
+    }
+
+    /// Runs on the writer's thread as a landed write is about to report its failure.
+    let onLandingFailure = OSAllocatedUnfairLock<(@Sendable () -> Void)?>(initialState: nil)
+
+    func failIfLandingFails(_ record: MeetingRecord) throws {
+      let matched = landing.withLock { predicates -> Bool in
+        guard let index = predicates.firstIndex(where: { $0(record) }) else { return false }
+        predicates.remove(at: index)
+        return true
+      }
+      if matched {
+        onLandingFailure.withLock { $0 }?()
+        throw InjectedFailure()
+      }
+    }
 
     /// Every record written, in write order.
     let written = OSAllocatedUnfairLock<[MeetingRecord]>(initialState: [])
@@ -247,9 +275,19 @@ struct MeetingCoordinatorTests {
           MeetingCoordinatorTests.result()
         }
     var saved: [Transcript] = []
+    /// Every History save asked for, recorded before anything can fail it.
+    var saveRequests: [Transcript] = []
     /// The meeting's saved state at the moment its History row was written.
     var stateAtSave: [MeetingState] = []
     var saveError: Error?
+    /// #3973 C2: History's row files as `durableHistoryRow` reads them, and its read failure.
+    var historyFiles: [UUID: Transcript] = [:]
+    var historyReadError: Error?
+    /// When set, `durableHistoryRow` waits on it.
+    var historyReadGate: Gate?
+    /// #3973 C2: while set, the commit receipt's write fails with it (a commit that never
+    /// began). Read on the file writer's queue, so behind a lock.
+    let receiptError = OSAllocatedUnfairLock<CocoaError?>(initialState: nil)
     /// When set, the History save waits on it (a slow durable write).
     var saveGate: Gate?
     /// When set, recovery blocks its worker thread until signalled (bounded).
@@ -367,6 +405,7 @@ struct MeetingCoordinatorTests {
           return detectedAnswers.isEmpty ? detectedWanted : detectedAnswers.removeFirst()
         },
         saveTranscript: { [self] transcript in
+          saveRequests.append(transcript)
           if let meetingID = transcript.meetingID {
             stateAtSave.append(try store.load(id: meetingID).state)
           }
@@ -374,6 +413,11 @@ struct MeetingCoordinatorTests {
           if let saveError { throw saveError }
           if let history { try await history.saveAndShowDurably(transcript) }
           saved.append(transcript)
+        },
+        durableHistoryRow: { [self] id in
+          await historyReadGate?.wait()
+          if let historyReadError { throw historyReadError }
+          return historyFiles[id]
         },
         removeTranscriptRow: { [self] id in
           await removeGate?.wait()
@@ -406,6 +450,10 @@ struct MeetingCoordinatorTests {
           }
           try store.save(checkpoint)
         },
+        writeCommitReceipt: { [receiptError] store, receipt in
+          if let error = receiptError.withLock({ $0 }) { throw error }
+          try store.saveTranscriptReplacement(receipt)
+        },
         writeRecord: { [writeGate] store, record in
           writeGate.passIfArmed()
           writeGate.passIfHeld(record)
@@ -413,6 +461,7 @@ struct MeetingCoordinatorTests {
           try writeGate.failIfInFailingState(record)
           try store.save(record)
           writeGate.written.withLock { $0.append(record) }
+          try writeGate.failIfLandingFails(record)
         })
     }
 
@@ -427,8 +476,13 @@ struct MeetingCoordinatorTests {
         text: text, turns: [], speakerNames: [:], echoTurnIDs: ["mic-3"], speakerCount: 1),
       speakerOutcomes: [.microphone: .single], forcedCuts: 0, failedPieces: 0, failedRanges: [:],
       resumedPieces: 0, checkpointSaveFailures: 0, yieldCount: 0, processingSeconds: 1,
-      audioSeconds: 1)
+      audioSeconds: 1, resolved: placeholderResolved)
   }
+
+  /// Replaced by `FakeJob` with the attempt it ran (`Result.resolving`).
+  static let placeholderResolved = MeetingResolvedAttempt(
+    attemptID: UUID(), requestedEngine: .parakeet, resolvedEngine: .parakeet,
+    effectiveLanguage: nil, modelIdentity: nil, fallbackReason: nil)
 
   /// On a worker thread: once `gate`'s write is held, whether the main actor runs a job within
   /// 2 s. Releases the write either way.
@@ -450,10 +504,11 @@ struct MeetingCoordinatorTests {
   static func checkpoint(_ meetingID: UUID) -> MeetingProcessingCheckpoint {
     MeetingProcessingCheckpoint(
       key: .init(
-        meetingID: meetingID, processingVersion: 1, pieceTargetSeconds: 60,
+        meetingID: meetingID, attemptID: UUID(), processingVersion: 3, pieceTargetSeconds: 60,
         pieceSearchSeconds: 15, seamPaddingSeconds: 1, cutsPieces: true, transcriptLanguage: nil,
+        engine: .init(requested: .parakeet, resolved: .parakeet, modelIdentity: "ultra:rev"),
         inputs: []),
-      engineIdentity: "ultra:rev", tracks: [:])
+      tracks: [:])
   }
 
   /// Waits for `condition` through Observation, with a deadline that only fails the test.
@@ -530,8 +585,8 @@ struct MeetingCoordinatorTests {
     #expect(harness.activitiesEnded == 1)
     #expect(harness.jobs.count == 1)
     #expect(harness.jobs.first?.receivedTracks[.microphone]?.isEmpty == false)
-    // History first, while the meeting was still processing; ready only after.
-    #expect(harness.stateAtSave == [.processing])
+    // #3973 C2: the receipt, then ready, then History: the row is written once committed.
+    #expect(harness.stateAtSave == [.ready])
     let row = try #require(harness.saved.first)
     let record = try harness.store.load(id: meetingID)
     #expect(row.id == record.transcriptID)
@@ -546,39 +601,43 @@ struct MeetingCoordinatorTests {
     #expect(coordinator.isWorkInFlight == false)
   }
 
-  @Test("a History save that fails keeps the progress and never reports ready")
-  func failedHistorySaveKeepsCheckpoint() async throws {
+  /// #3973 C2 (plan §3 item 5): the History row is written after the ready barrier. A write
+  /// that fails there leaves the transcript committed and its receipt kept (storage failure
+  /// shown, Transcribe again waiting), and the next launch publishes exactly that row.
+  @Test("a History save that fails after the ready barrier is published by the next launch")
+  func failedHistorySavePublishesAtNextLaunch() async throws {
     let harness = try Harness()
     harness.saveError = CocoaError(.fileWriteOutOfSpace)
-    harness.jobBehavior = { access in
-      try await #require(access).save(Self.checkpoint(try #require(access).meetingID))
-      return Self.result()
-    }
     let coordinator = harness.coordinator
     await coordinator.start(from: .history)
     let meetingID = try onlyMeeting(harness).id
     await coordinator.stop()
-    await Self.eventually("failed") { coordinator.record(id: meetingID)?.state == .failed }
-
-    let record = try harness.store.load(id: meetingID)
-    #expect(record.failureCode == "commit_failed")
+    await Self.eventually("committed") {
+      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
+    }
     #expect(harness.saved.isEmpty)
-    #expect(FileManager.default.fileExists(atPath: harness.checkpointURL(meetingID).path))
+    #expect(coordinator.notice == .storageFailed)
+    #expect(!coordinator.canTranscribeAgain(meetingID), "the receipt is settled first")
+    guard case .receipt(let receipt) = harness.store.loadTranscriptReplacement(meeting: meetingID)
+    else {
+      Issue.record("no receipt kept")
+      return
+    }
+    let record = try harness.store.load(id: meetingID)
+    #expect(record.committedTranscriptGeneration == receipt.candidate.generation)
+    #expect(receipt.previous == nil, "a first transcript")
 
-    // Retry resumes from the kept progress, then commits.
-    harness.saveError = nil
-    var sawCheckpoint = false
-    harness.jobBehavior = { access in
-      let checkpoints = try #require(access)
-      sawCheckpoint = await checkpoints.load() != nil
-      return Self.result()
+    let relaunched = try Harness(copying: harness.root)
+    relaunched.coordinator.launch()
+    await Self.eventually("published") { relaunched.saved.count == 1 }
+    let row = try #require(relaunched.saved.first)
+    #expect(row.id == record.transcriptID)
+    #expect(row.meetingTranscriptAttemptID == receipt.candidate.generation)
+    await Self.eventually("offered again") { relaunched.coordinator.canTranscribeAgain(meetingID) }
+    guard case .none = relaunched.store.loadTranscriptReplacement(meeting: meetingID) else {
+      Issue.record("the receipt was not cleared")
+      return
     }
-    await coordinator.retry(meetingID: meetingID)
-    await Self.eventually("ready after retry") {
-      coordinator.record(id: meetingID)?.state == .ready
-    }
-    #expect(sawCheckpoint)
-    #expect(harness.saved.count == 1)
   }
 
   /// #4069: "Turn off dictation during meetings" follows the real coordinator's capture phase:
@@ -769,7 +828,7 @@ struct MeetingCoordinatorTests {
     #expect(coordinator.playbackSource(meetingID: meetingID) == nil)
 
     // This session never touches files the queued close still owns.
-    await coordinator.retry(meetingID: meetingID)
+    await coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet)
     await coordinator.deleteAudio(meetingID: meetingID)
     await coordinator.delete(meetingID: meetingID)
     #expect(harness.jobs.isEmpty)
@@ -867,7 +926,10 @@ struct MeetingCoordinatorTests {
     _ = await starting.value
   }
 
-  @Test("a queued meeting and Transcribe again use the Start language, not the current setting")
+  /// #4105, #3973 C2 (plan G2): a queued pass runs the attempt its Start froze, whatever
+  /// Settings say by then; Transcribe again is a new attempt that freezes the meeting language
+  /// chosen when it is pressed, and a later Settings change never reaches it.
+  @Test("a queued meeting uses its Start language; Transcribe again freezes the language chosen then")
   func queuedAndRetriedPassesUseTheStartLanguage() async throws {
     let harness = try Harness()
     let coordinator = harness.coordinator
@@ -895,14 +957,29 @@ struct MeetingCoordinatorTests {
     }
     #expect(harness.jobs.map(\.receivedLanguages) == [[nil], ["de"]])
 
-    // Transcribe again after Settings moved on: still German.
-    harness.language = .auto
-    harness.jobBehavior = { _ in Self.result() }
-    #expect(await coordinator.retry(meetingID: meetingB))
+    let started = try #require(harness.jobs.last?.receivedAttempts.first)
+
+    // Transcribe again after Settings moved on: a new attempt in the language chosen now
+    // (Spanish), held while Settings move again (French), which never reaches it.
+    harness.language = .locked("es")
+    let rerun = Gate()
+    harness.jobBehavior = { _ in
+      await rerun.wait()
+      return Self.result()
+    }
+    #expect(await coordinator.transcribeAgain(meetingID: meetingB, engine: .parakeet))
+    await Self.eventually("rerun processing") { rerun.parked }
+    harness.language = .locked("fr")
+    rerun.open()
     await Self.eventually("ready again") {
       coordinator.record(id: meetingB)?.state == .ready && coordinator.processing == nil
     }
-    #expect(harness.jobs.last?.receivedLanguages == ["de"])
+    #expect(harness.jobs.last?.receivedLanguages == ["es"])
+    let again = try #require(harness.jobs.last?.receivedAttempts.first)
+    #expect(again.attemptID != started.attemptID, "Transcribe again is a new attempt")
+    #expect(again.languageIntent == "es")
+    #expect(coordinator.record(id: meetingB)?.committedTranscriptAttemptID == again.attemptID)
+    #expect(coordinator.record(id: meetingB)?.pendingAttempt == nil)
   }
 
   @Test("a failed close marks the track failed but keeps its audio for processing")
@@ -1126,7 +1203,7 @@ struct MeetingCoordinatorTests {
     #expect(record.state == .ready)
     #expect(try harness.store.segmentFiles(meeting: meetingID).isEmpty)
     // No audio, so Retry has nothing to run.
-    await coordinator.retry(meetingID: meetingID)
+    await coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet)
     #expect(try harness.store.load(id: meetingID).state == .ready)
     #expect(harness.jobs.count == 1)
   }
@@ -1181,7 +1258,7 @@ struct MeetingCoordinatorTests {
     // Space is back and Transcribe again on the other meeting restarts the queue while the
     // Delete audio save is held: the saved list still shows the first meeting queued.
     harness.freeBytes = 50_000_000_000
-    await coordinator.retry(meetingID: otherID)
+    await coordinator.transcribeAgain(meetingID: otherID, engine: .parakeet)
     gate.release.signal()
     await removing.value
     #expect(gate.timedOut.withLock { $0 } == false, "a held write waited out its bound")
@@ -1380,7 +1457,7 @@ struct MeetingCoordinatorTests {
     }
     #expect(coordinator.playbackSource(meetingID: record.id) == nil)
     harness.freeBytes = 50_000_000_000
-    #expect(await coordinator.retry(meetingID: record.id))
+    #expect(await coordinator.transcribeAgain(meetingID: record.id, engine: .parakeet))
     await Self.eventually("ready") { coordinator.record(id: record.id)?.state == .ready }
     #expect(coordinator.playbackSource(meetingID: record.id) != nil)
   }
@@ -1682,11 +1759,12 @@ struct MeetingCoordinatorTests {
   }
 
   #if DEBUG
-  /// #4075 S1: quit while the meeting's durable History commit is held at the real History
-  /// boundary. Ready is not written; the audio and the processing checkpoint stay. A launch on
-  /// a COPY of those files finishes the meeting, and the original run's held write, released
-  /// afterwards, changes nothing in the copy.
-  @Test("quit during an unacknowledged History commit leaves the meeting for the next launch to finish")
+  /// #4075 S1, #3973 C2: quit while the meeting's durable History write is held at the real
+  /// History boundary. The transcript is already committed (ready, with its receipt); the audio
+  /// stays. A launch on a COPY of those files publishes the committed row from the receipt,
+  /// without transcribing again, and the original run's held write, released afterwards,
+  /// changes nothing in the copy.
+  @Test("quit during an unacknowledged History write leaves the committed row for the next launch to publish")
   func quitDuringHistoryCommitRecoversAtLaunch() async throws {
     let harness = try Harness()
     let historyDir = TestTemporaryDirectory.url
@@ -1720,19 +1798,24 @@ struct MeetingCoordinatorTests {
       "the durable History write never started")
     coordinator.prepareForTermination()
     let onDisk = try harness.store.load(id: record.id)
-    #expect(onDisk.state != .ready, "Ready was written before History acknowledged the row")
+    #expect(onDisk.state == .ready, "committed before History is written")
+    guard case .receipt(let receipt) = harness.store.loadTranscriptReplacement(meeting: record.id)
+    else {
+      Issue.record("the commit receipt is missing")
+      return
+    }
+    #expect(onDisk.committedTranscriptGeneration == receipt.candidate.generation)
     #expect(try harness.store.segmentFiles(meeting: record.id).isEmpty == false, "the audio went")
-    #expect(
-      FileManager.default.fileExists(atPath: harness.checkpointURL(record.id).path),
-      "the processing checkpoint went")
     #expect(harness.saved.isEmpty)
 
-    // The next launch, on a copy of the files as quit left them.
+    // The next launch, on a copy of the files as quit left them, publishes the committed row.
     let recovered = try Harness(copying: harness.root)
     let relaunched = recovered.coordinator
     relaunched.launch()
-    await Self.eventually("ready after launch") { relaunched.record(id: record.id)?.state == .ready }
+    await Self.eventually("published after launch") { recovered.saved.count == 1 }
     #expect(recovered.saved.map(\.meetingID) == [record.id])
+    #expect(recovered.saved.first?.meetingTranscriptAttemptID == receipt.candidate.generation)
+    #expect(recovered.jobs.isEmpty, "nothing was transcribed again")
 
     // The original run's write now finishes in its own History; the copy is untouched.
     release.signal()
@@ -2063,7 +2146,7 @@ struct MeetingCoordinatorTests {
       resumed.meetingID = await access?.load()?.key.meetingID
       return Self.result()
     }
-    #expect(await coordinator.retry(meetingID: meetingID))
+    #expect(await coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet))
     await Self.eventually("ready after Transcribe again") {
       coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
     }
@@ -2108,7 +2191,7 @@ struct MeetingCoordinatorTests {
     let coordinator = harness.coordinator
     let meetingID = try await stalledByInventorySave(harness)
     #expect(coordinator.canTranscribeAgain(meetingID))
-    #expect(await coordinator.retry(meetingID: meetingID))
+    #expect(await coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet))
     await Self.eventually("ready") {
       coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
     }
@@ -2121,17 +2204,17 @@ struct MeetingCoordinatorTests {
     let coordinator = harness.coordinator
     let meetingID = try await stalledByInventorySave(harness)
     harness.writeGate.failNext(1)
-    #expect(await coordinator.retry(meetingID: meetingID) == false)
+    #expect(await coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet) == false)
     #expect(coordinator.record(id: meetingID)?.state == .processing)
     #expect(coordinator.canTranscribeAgain(meetingID), "the live copy rolled back: still offered")
-    #expect(await coordinator.retry(meetingID: meetingID))
+    #expect(await coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet))
     await Self.eventually("ready") {
       coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
     }
     #expect(harness.ended.count == 1, "still one attempt")
     // An ended failure retried starts a new attempt (contrast): one more row.
     harness.jobBehavior = { _ in throw MeetingTranscriptionJob.JobError.engineUnavailable("test") }
-    #expect(await coordinator.retry(meetingID: meetingID))
+    #expect(await coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet))
     await Self.eventually("failed") {
       coordinator.record(id: meetingID)?.state == .failed && coordinator.processing == nil
     }
@@ -2159,7 +2242,7 @@ struct MeetingCoordinatorTests {
     #expect(coordinator.record(id: meetingID)?.state == .queued)
     #expect(coordinator.queueWaitsForSpace == false)
     #expect(coordinator.canTranscribeAgain(meetingID), "no queue will take it: offered")
-    #expect(await coordinator.retry(meetingID: meetingID))
+    #expect(await coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet))
     await Self.eventually("ready") {
       coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
     }
@@ -2172,7 +2255,7 @@ struct MeetingCoordinatorTests {
     let meetingID = try await stalledByInventorySave(harness)
     #expect(await coordinator.deleteForHistoryDeleteAll(meetingIDs: [meetingID]))
     #expect(coordinator.canTranscribeAgain(meetingID) == false)
-    #expect(await coordinator.retry(meetingID: meetingID) == false)
+    #expect(await coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet) == false)
     await Self.eventually("deleted") { coordinator.record(id: meetingID) == nil }
     #expect(harness.jobs.isEmpty)
   }
@@ -2184,7 +2267,7 @@ struct MeetingCoordinatorTests {
     let meetingID = try await stalledByInventorySave(harness)
     let gate = harness.writeGate
     gate.holdNext { $0.id == meetingID && $0.state == .queued }
-    let retrying = Task { await coordinator.retry(meetingID: meetingID) }
+    let retrying = Task { await coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet) }
     #expect(await Task.detached { Self.waitBlocking(gate.entered) }.value == .success)
     let removing = Task { await coordinator.deleteAudio(meetingID: meetingID) }
     await MeetingWorkAdmission.waitUntil { !coordinator.canTranscribeAgain(meetingID) }
@@ -2231,13 +2314,13 @@ struct MeetingCoordinatorTests {
       return Self.result()
     }
     harness.freeBytes = 50_000_000_000
-    #expect(await coordinator.retry(meetingID: first))
+    #expect(await coordinator.transcribeAgain(meetingID: first, engine: .parakeet))
     await Self.eventually("second parked, first stalled") {
       parked.parked && coordinator.record(id: first)?.state == .processing
         && coordinator.processing?.meetingID == second
     }
     #expect(coordinator.canTranscribeAgain(first))
-    #expect(await coordinator.retry(meetingID: first))
+    #expect(await coordinator.transcribeAgain(meetingID: first, engine: .parakeet))
     parked.open()
     await Self.eventually("both ready") {
       coordinator.record(id: first)?.state == .ready
@@ -2263,7 +2346,7 @@ struct MeetingCoordinatorTests {
     coordinator.launch()
     #expect(await Task.detached { Self.waitBlocking(gate.entered) }.value == .success)
     #expect(coordinator.canTranscribeAgain(crashed.id) == false, "not while launch recovery runs")
-    let retrying = Task { await coordinator.retry(meetingID: crashed.id) }
+    let retrying = Task { await coordinator.transcribeAgain(meetingID: crashed.id, engine: .parakeet) }
     gate.release.signal()
     let accepted = await retrying.value
     #expect(gate.timedOut.withLock { $0 } == false, "a held write waited out its bound")
@@ -2834,9 +2917,9 @@ struct MeetingCoordinatorTests {
   /// #4102 cloud review: a pass that finishes while Delete All's mark is still unconfirmed must
   /// not throw its result away on that provisional mark. When this is wrong and the mark then
   /// fails, the meeting is left unmarked in `.processing` with no pass to finish it until a
-  /// manual retry or relaunch. Here the finished result carries the mark the user asked for, so
-  /// the meeting is deleted. About one second: the mark must still be running at the real
-  /// Delete All deadline.
+  /// manual retry or relaunch. Here the pass's commit waits behind the mark on the file queue,
+  /// so it commits the meeting as ready once the mark has failed (#3973 C2). About one second:
+  /// the mark must still be running at the real Delete All deadline.
   @Test("a pass that finishes during an unconfirmed Delete All mark is not stranded when the mark fails")
   func passDuringFailedMarkNotStranded() async throws {
     let harness = try Harness()
@@ -2864,11 +2947,14 @@ struct MeetingCoordinatorTests {
     job.open()
     #expect(await deletingAll.value == false, "the mark was still running at its deadline")
     gate.release.signal()
+    // #3973 C2: the commit's receipt write queues behind the held mark, so the ready record is
+    // built after the mark failed and was rolled back: the meeting ends ready (Delete All already
+    // reported it refused), never left processing.
     await Self.eventually("not left processing") {
-      coordinator.record(id: meetingID) == nil && coordinator.processing == nil
+      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
     }
     #expect(gate.timedOut.withLock { $0 } == false)
-    #expect(FileManager.default.fileExists(atPath: harness.store.folder(for: meetingID).path) == false)
+    #expect(coordinator.record(id: meetingID)?.deletionRequested == false)
   }
 
   // MARK: - Work facts
@@ -2919,10 +3005,10 @@ struct MeetingCoordinatorTests {
     harness.freeBytes = 10
     let coordinator = harness.coordinator
     coordinator.launch()
-    await Self.eventually("listed") { coordinator.record(id: record.id) != nil }
+    // #3973 C2: launch settles commit receipts before the queue starts, so wait for the queue.
+    await Self.eventually("queue waited for space") { coordinator.notice == .lowDisk }
     #expect(coordinator.record(id: record.id)?.state == .queued)
     #expect(coordinator.isWorkInFlight == false)
-    #expect(coordinator.notice == .lowDisk)
   }
 
   @Test("a queue stopped by a full disk resumes from Transcribe again once space is free")
@@ -2941,13 +3027,13 @@ struct MeetingCoordinatorTests {
 
     // Still full: Transcribe again checks the disk again and keeps waiting, writing nothing.
     let writesBefore = harness.writeGate.written.withLock { $0.count }
-    #expect(await coordinator.retry(meetingID: meetingID))
+    #expect(await coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet))
     #expect(harness.writeGate.written.withLock { $0.count } == writesBefore, "no record write")
     await Self.eventually("checked again") { coordinator.queueWaitsForSpace }
     #expect(coordinator.record(id: meetingID)?.state == .queued)
 
     harness.freeBytes = 50_000_000_000
-    await coordinator.retry(meetingID: meetingID)
+    await coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet)
     await Self.eventually("ready") { coordinator.record(id: meetingID)?.state == .ready }
     #expect(coordinator.queueWaitsForSpace == false)
   }

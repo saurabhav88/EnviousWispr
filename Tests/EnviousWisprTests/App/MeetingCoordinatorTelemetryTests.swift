@@ -53,7 +53,8 @@ struct MeetingCoordinatorTelemetryTests {
       result = MeetingTranscriptionJob.Result(
         composition: result.composition, speakerOutcomes: result.speakerOutcomes, forcedCuts: 0,
         failedPieces: 2, failedRanges: [:], resumedPieces: 0, checkpointSaveFailures: 0,
-        yieldCount: 3, processingSeconds: 1, audioSeconds: 1)
+        yieldCount: 3, processingSeconds: 1, audioSeconds: 1,
+        resolved: MeetingCoordinatorTests.placeholderResolved)
       return result
     }
     var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
@@ -103,17 +104,16 @@ struct MeetingCoordinatorTelemetryTests {
   @Test("deleting a meeting while its ready write lands ends it as ready, never deleted")
   func deletionDuringReadyWrite() async throws {
     let harness = try Harness()
-    let save = MeetingCoordinatorTests.Gate()
-    harness.saveGate = save
+    let gate = harness.writeGate
+    harness.jobBehavior = { _ in
+      // #3973 C2: the next meeting write is the ready write: held on the file queue.
+      gate.arm()
+      return MeetingCoordinatorTests.result()
+    }
     let coordinator = harness.coordinator
     await coordinator.start(from: .history)
     let meetingID = try #require(harness.recorders.first).configuration.meetingID
     await coordinator.stop()
-    await eventually("history save parked") { save.parked }
-    let gate = harness.writeGate
-    // The next meeting write is the ready write: held on the file queue.
-    gate.arm()
-    save.open()
     #expect(
       await Task.detached { MeetingCoordinatorTests.waitBlocking(gate.entered) }.value == .success)
     let deletion = Task { await coordinator.delete(meetingID: meetingID) }
@@ -219,11 +219,11 @@ struct MeetingCoordinatorTelemetryTests {
   @Test("a failed commit sends failed; a Retry is a new attempt with the recording's facts")
   func failedThenRetry() async throws {
     let harness = try Harness()
-    harness.saveError = CocoaError(.fileWriteOutOfSpace)
+    harness.receiptError.withLock { $0 = CocoaError(.fileWriteOutOfSpace) }
     let meetingID = try await recordAndFinish(harness, from: .menu)
     #expect(harness.ended.map(\.outcome) == [.failed])
-    harness.saveError = nil
-    await harness.coordinator.retry(meetingID: meetingID)
+    harness.receiptError.withLock { $0 = nil }
+    await harness.coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet)
     await eventually("retry ended") {
       harness.ended.count == 2 && harness.coordinator.processing == nil
     }
@@ -238,15 +238,15 @@ struct MeetingCoordinatorTelemetryTests {
   @Test("#4121: the recorder's call-sound summary reaches meeting.ended; a Retry keeps it")
   func callSoundSummaryAdoptedAndRetried() async throws {
     let harness = try Harness()
-    harness.saveError = CocoaError(.fileWriteOutOfSpace)
+    harness.receiptError.withLock { $0 = CocoaError(.fileWriteOutOfSpace) }
     await harness.coordinator.start(from: .menu)
     let recorder = try #require(harness.recorders.last)
     let meetingID = recorder.configuration.meetingID
     recorder.report.callSoundSummary = Self.bluetooth
     await harness.coordinator.stop()
     await eventually("ended") { harness.ended.count == 1 && harness.coordinator.processing == nil }
-    harness.saveError = nil
-    await harness.coordinator.retry(meetingID: meetingID)
+    harness.receiptError.withLock { $0 = nil }
+    await harness.coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet)
     await eventually("retry ended") {
       harness.ended.count == 2 && harness.coordinator.processing == nil
     }

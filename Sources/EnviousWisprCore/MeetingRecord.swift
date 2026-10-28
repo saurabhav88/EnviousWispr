@@ -118,11 +118,19 @@ public enum MeetingEngineChoice: String, Sendable, Equatable, Codable, CaseItera
 /// file still decodes; a file from a NEWER format is listed read-only and never rewritten or
 /// deleted by this build (#3972 §4).
 public struct MeetingRecord: Sendable, Equatable, Codable, Identifiable {
-  /// 2 adds `MeetingState.notesOnly` (#3972 R56). A record keeps the version it was created
-  /// with until it needs a newer value: `markNotesOnly()` raises it.
-  public static let currentFormatVersion = 2
+  /// 2 adds `MeetingState.notesOnly` (#3972 R56). 3 adds transcription attempts and the
+  /// committed transcript generation (#3973 C2). A record keeps the version it was created
+  /// with until it needs a newer value: `markNotesOnly()` and `beginAttempt(_:)` raise it.
+  public static let currentFormatVersion = 3
   /// The format that introduced `MeetingState.notesOnly`.
   public static let notesOnlyFormatVersion = 2
+  /// The format that introduced attempts (#3973 C2). An older build lists such a meeting
+  /// read-only rather than resuming an attempt it cannot see.
+  public static let attemptFormatVersion = 3
+  /// The generation of a transcript committed before attempts existed (#3973 C2): its History
+  /// row carries no attempt ID, and its record no committed ID while it is ready.
+  public static let legacyTranscriptAttemptID = UUID(
+    uuidString: "00000000-0000-0000-0000-000000000001")!
 
   public private(set) var formatVersion: Int
   public let id: UUID
@@ -160,6 +168,53 @@ public struct MeetingRecord: Sendable, Equatable, Codable, Identifiable {
   /// the Start value. A language code for a locked language; absent means Auto (also for
   /// meetings recorded before this field). Stored as text, like `callAppRaw`.
   public var transcriptLanguage: String?
+  /// #3973 C2: the attempt still to finish (queued, processing, or failed and resumable); nil
+  /// once its transcript committed. Never the attempt the shown transcript came from.
+  public var pendingAttempt: MeetingAttemptConfiguration?
+  /// #3973 C2: what `pendingAttempt` resolved to, once it did.
+  public var resolvedAttempt: MeetingResolvedAttempt?
+  /// #3973 C2: the committed transcript's attempt, its requested and used engine and why they
+  /// differ. Changed only at the ready barrier; a failed or running attempt leaves them.
+  public var committedTranscriptAttemptID: UUID?
+  public var requestedTranscriptEngine: MeetingEngineChoice?
+  public var transcriptEngineUsed: MeetingEngineChoice?
+  public var transcriptEngineFallbackReason: MeetingTranscriptFallbackReason?
+
+  /// The generation of the committed transcript, or nil when none committed. A ready record
+  /// written before attempts existed committed the legacy generation.
+  public var committedTranscriptGeneration: UUID? {
+    committedTranscriptAttemptID ?? (state == .ready ? Self.legacyTranscriptAttemptID : nil)
+  }
+
+  /// Saves a new attempt as the one to run (#3973 C2), raising the format so an older build
+  /// never resumes it. A legacy committed generation is pinned first, because the record is
+  /// about to leave `.ready`, which is what identified it.
+  public mutating func beginAttempt(_ attempt: MeetingAttemptConfiguration) {
+    if committedTranscriptAttemptID == nil, state == .ready {
+      committedTranscriptAttemptID = Self.legacyTranscriptAttemptID
+    }
+    pendingAttempt = attempt
+    resolvedAttempt = nil
+    formatVersion = max(formatVersion, Self.attemptFormatVersion)
+  }
+
+  /// A new attempt from the record's saved Start values (#3973 C2): its Start language on its
+  /// Start engine, never current Settings. Start saves it; a record queued before attempts
+  /// existed runs it.
+  public func attemptFromStartValues() -> MeetingAttemptConfiguration {
+    MeetingAttemptConfiguration(requestedEngine: engine, language: transcriptLanguageMode)
+  }
+
+  /// Commits `resolved`'s attempt as the shown transcript's generation (#3973 C2), at the
+  /// ready barrier only.
+  public mutating func commitAttempt(_ resolved: MeetingResolvedAttempt) {
+    committedTranscriptAttemptID = resolved.attemptID
+    requestedTranscriptEngine = resolved.requestedEngine
+    transcriptEngineUsed = resolved.resolvedEngine
+    transcriptEngineFallbackReason = resolved.fallbackReason
+    pendingAttempt = nil
+    resolvedAttempt = nil
+  }
 
   /// `transcriptLanguage` as a mode: Auto when absent or empty.
   public var transcriptLanguageMode: LanguageMode {
@@ -203,6 +258,12 @@ public struct MeetingRecord: Sendable, Equatable, Codable, Identifiable {
     self.wasInterrupted = nil
     self.callAppRaw = nil
     self.transcriptLanguage = nil
+    self.pendingAttempt = nil
+    self.resolvedAttempt = nil
+    self.committedTranscriptAttemptID = nil
+    self.requestedTranscriptEngine = nil
+    self.transcriptEngineUsed = nil
+    self.transcriptEngineFallbackReason = nil
   }
 
   /// Nothing was captured, the user's notes are kept (#3972 R53, R56). Raises the format so an

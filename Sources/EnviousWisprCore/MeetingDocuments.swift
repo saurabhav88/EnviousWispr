@@ -74,10 +74,14 @@ public struct SummaryInputs: Sendable, Equatable, Codable {
   /// written before this field existed: the configuration is unknown, so that summary is out
   /// of date (it never equals a current fingerprint).
   public var configurationSHA256: String?
+  /// #3973 C2: the transcript attempt the summary was written from, so a Transcribe again makes
+  /// a generated summary out of date even when its words come out identical. Nil for a summary
+  /// written from a transcript made before attempts (or before this field).
+  public var transcriptAttemptID: UUID?
 
   public init(
     transcriptSHA256: String, notesRevision: Int, speakerNamesSHA256: String, promptVersion: Int,
-    providerID: String, configurationSHA256: String
+    providerID: String, configurationSHA256: String, transcriptAttemptID: UUID? = nil
   ) {
     self.transcriptSHA256 = transcriptSHA256
     self.notesRevision = notesRevision
@@ -85,6 +89,7 @@ public struct SummaryInputs: Sendable, Equatable, Codable {
     self.promptVersion = promptVersion
     self.providerID = providerID
     self.configurationSHA256 = configurationSHA256
+    self.transcriptAttemptID = transcriptAttemptID
   }
 }
 

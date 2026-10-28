@@ -68,7 +68,9 @@ public struct MeetingEndedTelemetry: Equatable, Sendable {
     case noProvider = "no_provider"
     /// The selected provider or model cannot write summaries.
     case unsupported
-    /// The meeting did not become ready (failed, start failed, deleted, notes only).
+    /// The meeting did not become ready (failed, start failed, deleted, notes only), or a
+    /// Transcribe again replaced its transcript (#3973 C2: a replacement never writes a summary
+    /// by itself; the existing one shows as out of date until Write again).
     case notApplicable = "not_applicable"
   }
 

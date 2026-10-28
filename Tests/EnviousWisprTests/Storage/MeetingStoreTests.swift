@@ -80,7 +80,7 @@ struct MeetingStoreTests {
     try FileManager.default.createDirectory(
       at: store.folder(for: id), withIntermediateDirectories: true)
     let future = """
-      {"formatVersion": 3, "id": "\(id.uuidString)", "createdAt": "2027-01-01T10:00:00Z",
+      {"formatVersion": \(MeetingRecord.currentFormatVersion + 1), "id": "\(id.uuidString)", "createdAt": "2027-01-01T10:00:00Z",
        "engine": "something-new", "newField": [1, 2, 3]}
       """
     let original = Data(future.utf8)
@@ -92,7 +92,7 @@ struct MeetingStoreTests {
       Issue.record("expected a newer-format listing, got \(String(describing: listings.first))")
       return
     }
-    #expect(header.id == id && header.formatVersion == 3)
+    #expect(header.id == id && header.formatVersion == MeetingRecord.currentFormatVersion + 1)
 
     var attempt = MeetingRecord(id: id, engine: .parakeet, trackStatus: [:])
     attempt.title = "overwrite"
