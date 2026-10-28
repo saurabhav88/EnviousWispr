@@ -1,0 +1,20 @@
+---
+// "Get it on Google Play" for EnviousWispr for Android (#4161). The partner of
+// features/DownloadButton.astro: the same button shape, a phone mark, and a
+// Play link whose install referrer names the placement. data-play-source is
+// what SiteServices' android_store_clicked handler reads.
+import { playUrl } from '../data/site-navigation.js';
+import '../styles/download-choices.css';
+interface Props {
+  source: string;
+  label?: string;
+  class?: string;
+}
+const { source, label = 'Get it for Android', class: className = 'button' } = Astro.props;
+---
+
+<a class:list={[className, 'play-button']} href={playUrl(source)} data-play-source={source} rel="noopener"
+  ><svg class="download-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true" focusable="false"
+    ><rect x="6" y="2.5" width="12" height="19" rx="2.6"></rect><path d="M10.5 18.2h3"></path></svg
+  >{label}</a
+>

@@ -3,6 +3,7 @@ import examples from '../../data/home/hero.json';
 import { downloadUrl } from '../../data/home/site.js';
 import { heroArt } from '../../utils/home/hero-art.js';
 import AppDemo from './AppDemo.astro';
+import PlayButton from '../PlayButton.astro';
 const art = await heroArt();
 const sources = [art.light, art.dark];
 ---
@@ -32,11 +33,15 @@ const sources = [art.light, art.dark];
       </p><p class="screen-hero-description">
         Turn spoken thoughts into polished text in the apps you use. Your voice stays on your Mac,
         with offline AI polish.
-      </p><a class="button screen-hero-download" href={downloadUrl} data-download-source="hero"
-        >Download free for Mac <span aria-hidden="true">↓</span></a
-      ><p class="screen-hero-values">
+      </p><div class="download-choices screen-hero-choices">
+        <a class="button screen-hero-download" href={downloadUrl} data-download-source="hero"
+          >Download free for Mac <span aria-hidden="true">↓</span></a
+        ><PlayButton source="hero" class="button screen-hero-download is-secondary" />
+      </div><p class="screen-hero-values">
         <strong>Free and open source.</strong><span>No account. No subscription.</span>
-      </p><p class="screen-hero-compatibility">macOS 14+ · Apple Silicon (M1 or later)</p>
+      </p><p class="screen-hero-compatibility">
+        Mac: macOS 14+ · Apple Silicon (M1 or later)<br /><a href="/android/">Android</a>: Android 13+ · 6 GB memory or more
+      </p>
     </div>
     <div class="hero-product-demo" id="how" aria-label="EnviousWispr app demonstration">
       <div class="hero-screen-frame">

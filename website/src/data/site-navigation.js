@@ -16,6 +16,17 @@ export const githubUrl = 'https://github.com/saurabhav88/EnviousWispr';
 // StructuredData.astro keeps it as the schema's downloadUrl.
 export const downloadUrl = '/download?source=onsite';
 
+// #4161: EnviousWispr for Android is a Google Play install, not a doorway
+// download. Each button names its placement in the Play install referrer, so
+// Play Console's acquisition report can attribute the installs; the click is
+// counted on-site as android_store_clicked (SiteServices), never as
+// download_clicked, which counts Mac downloads.
+const PLAY_LISTING = 'https://play.google.com/store/apps/details?id=com.envi.wispr';
+export function playUrl(placement) {
+  const referrer = `utm_source=enviouswispr.com&utm_medium=website&utm_campaign=${placement}`;
+  return `${PLAY_LISTING}&referrer=${encodeURIComponent(referrer)}`;
+}
+
 export const catalog = [
   {
     slug: 'features',
@@ -138,6 +149,12 @@ export const catalog = [
     updated: '2026-09-12',
     menuFoot: 'Make it yours',
   },
+  {
+    slug: 'android',
+    path: '/android/',
+    name: 'EnviousWispr for Android',
+    updated: '2026-10-28',
+  },
 ];
 
 export const menuProducts = catalog.filter((entry) => entry.menuProduct);
@@ -152,7 +169,7 @@ export const resources = [
 ];
 
 export const footerLinks = catalog
-  .filter((entry) => entry.slug === 'features' || entry.headerLink || entry.slug === 'customization')
+  .filter((entry) => entry.slug === 'features' || entry.headerLink || entry.slug === 'customization' || entry.slug === 'android')
   .map((entry) => [entry.name, entry.path]);
 
 export function byPath(pathname) {

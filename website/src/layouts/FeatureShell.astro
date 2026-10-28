@@ -12,11 +12,14 @@ interface Props {
   activePage?: string;
   ogImage?: string;
   ogImageAlt?: string;
+  /** Extra JSON-LD blocks for this page, such as /android/'s SoftwareApplication. */
+  extraLd?: object[];
 }
-const { path, title, description, activePage = 'features', ogImage, ogImageAlt } = Astro.props;
+const { path, title, description, activePage = 'features', ogImage, ogImageAlt, extraLd = [] } = Astro.props;
 const entry = entryFor(path);
 const ld = [webPage({ path, name: entry.name, description, updated: entry.updated }), breadcrumbs(path, entry.name)];
 if (path === '/features/') ld.push(featureItemList());
+ld.push(...extraLd);
 ---
 
 <ThemedLayout title={title} description={description} canonicalPath={path} activePage={activePage} ogImage={ogImage} ogImageAlt={ogImageAlt}>

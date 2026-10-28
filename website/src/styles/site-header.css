@@ -306,6 +306,84 @@ html[data-theme='dark'] .site-chrome {
   height: 23px;
   flex-shrink: 0;
 }
+/* #4161: the header Download is a small Mac / Android menu. A <details>
+ * element, so it opens with no script; download-menu.js only closes it on an
+ * outside click, Escape or focus leaving. */
+.chrome-header .chrome-download-menu {
+  position: relative;
+}
+.chrome-header .chrome-download-menu > summary {
+  cursor: pointer;
+  list-style: none;
+}
+.chrome-header .chrome-download-menu > summary::-webkit-details-marker {
+  display: none;
+}
+.chrome-header .chrome-download-menu > summary:focus-visible {
+  outline: 3px solid var(--nav-accent);
+  outline-offset: 3px;
+}
+.site-chrome .chrome-button .download-glyph {
+  display: block;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+.chrome-header .chrome-download > svg:last-child {
+  width: 16px;
+  height: 16px;
+  margin-left: -6px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  transition: transform 0.18s;
+}
+.chrome-header .chrome-download-menu[open] .chrome-download > svg:last-child {
+  transform: rotate(180deg);
+}
+.chrome-header .download-menu-panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 70;
+  width: 250px;
+  padding: 9px;
+  border: 1px solid var(--nav-line);
+  border-radius: 12px;
+  background: var(--nav-card);
+  box-shadow: var(--nav-menu-shadow);
+}
+.chrome-header .download-menu-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: var(--nav-ink);
+}
+.chrome-header .download-menu-item strong {
+  font-size: 15px;
+  font-weight: 600;
+}
+.chrome-header .download-menu-item small {
+  color: var(--nav-muted);
+  font-size: 12.5px;
+}
+.chrome-header .download-menu-item:hover,
+.chrome-header .download-menu-item:focus-visible,
+.chrome-header .download-menu-foot:hover {
+  background: var(--nav-surface);
+}
+.chrome-header .download-menu-foot {
+  display: block;
+  margin-top: 5px;
+  padding: 10px 12px 6px;
+  border-top: 1px solid var(--nav-line);
+  border-radius: 0 0 8px 8px;
+  color: var(--nav-accent);
+  font-size: 13.5px;
+  font-weight: 600;
+}
 .site-chrome .chrome-icon-button {
   display: grid;
   place-items: center;
@@ -656,7 +734,8 @@ html[data-nav-js] .chrome-header:not([data-nav-ready]) [data-nav-panel] {
     width: 100%;
     box-shadow: none;
   }
-  html[data-nav-js] .chrome-header .chrome-actions .chrome-button {
+  html[data-nav-js] .chrome-header .chrome-actions .chrome-button,
+  html[data-nav-js] .chrome-header .chrome-download-menu {
     display: none;
   }
   .chrome-header .chrome-actions {
@@ -770,6 +849,7 @@ html[data-nav-js] .chrome-header:not([data-nav-ready]) [data-nav-panel] {
     transform: none;
   }
   .site-chrome .chrome-button,
+  .chrome-header .chrome-download > svg:last-child,
   .site-chrome .chrome-pill,
   .chrome-header .menu-product {
     transition: none;

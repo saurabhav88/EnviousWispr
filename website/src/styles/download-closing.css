@@ -113,6 +113,17 @@ html[data-theme='dark'] .download-closing {
 .download-closing-button:hover { box-shadow: 0 7px 28px #8c48cb28; }
 .download-closing-button:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
 .download-closing-button .download-apple { display: block; width: 23px; height: 23px; flex-shrink: 0; }
+.download-closing-choices { justify-content: center; }
+.download-closing-android {
+  display: block;
+  width: fit-content;
+  margin: 12px auto 0;
+  color: var(--closing-ink);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 .download-closing-compatibility {
   display: block;
   width: fit-content;

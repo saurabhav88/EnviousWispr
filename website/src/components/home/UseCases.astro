@@ -52,15 +52,15 @@ const apps = ['vscode', 'clinical', 'keep', 'gmail', 'docs', 'slack', 'discord',
               <div class="case-copy">
                 <h3 id={`case-title-${i}`}>{item.title}</h3>
                 <p>{item.note}</p>
-                <span class="case-status">{item.upcoming ? 'Android coming soon' : item.sampleLabel || ''}</span>
+                {item.android ? <a class="case-status" href="/android/">Now on Android →</a> : <span class="case-status">{item.sampleLabel || ''}</span>}
               </div>
               <figure class="case-person">
                 <img class="case-scene" src={assets[i].src} srcset={assets[i].srcset}
                   sizes="(max-width:600px) 90vw, 50vw" width={assets[i].width} height={assets[i].height}
                   loading="lazy" decoding="async" draggable="false"
-                  alt={'Illustrated ' + item.name.toLowerCase() + ' speaking toward a ' + (item.upcoming ? 'phone' : 'computer')} />
+                  alt={'Illustrated ' + item.name.toLowerCase() + ' speaking toward a ' + (item.android ? 'phone' : 'computer')} />
               </figure>
-              <div class:list={['case-screen', { 'is-phone': item.upcoming === true }]} data-phase="finished">
+              <div class:list={['case-screen', { 'is-phone': item.android === true }]} data-phase="finished">
                 <AppDemo app={apps[i]} text={item.final} lang={item.lang || 'en'} focusable
                   context={{ to: i === 3 ? 'Jordan' : undefined,
                     title: i === 4 ? 'City life · Essay draft' : i === 7 ? 'Family message' : 'Story notes',

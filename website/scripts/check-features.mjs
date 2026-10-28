@@ -27,7 +27,7 @@ if (expected.size === 0 || [...expected.values()].some((d) => !/^\d{4}-\d{2}-\d{
   console.error('FAIL: the catalog has no entries or an entry without a YYYY-MM-DD updated date.');
   process.exit(1);
 }
-const isLaunchRoute = (route) => /^\/features(?:\/|\.html$|$)/.test(route) || /^\/(?:why-offline|customization)(?:\/|\.html$|$)/.test(route);
+const isLaunchRoute = (route) => /^\/features(?:\/|\.html$|$)/.test(route) || /^\/(?:why-offline|customization|android)(?:\/|\.html$|$)/.test(route);
 
 // ── Built pages: every HTML file, including 404.html ───────────────────────
 const pages = new Map(); // route or file path → html

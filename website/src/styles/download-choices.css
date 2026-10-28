@@ -1,0 +1,65 @@
+/* Mac and Android download buttons side by side (#4161).
+ * The Mac button keeps its existing primary style. The Android button is the
+ * outlined partner, except on an Android phone, where SiteHead stamps
+ * html[data-device="android"] and the Android button moves first and fills. */
+.download-choices {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.download-choices > a {
+  margin: 0;
+}
+.download-phone {
+  display: block;
+  width: 23px;
+  height: 23px;
+  flex-shrink: 0;
+}
+.play-button.is-secondary {
+  background: transparent;
+  border: 1.5px solid var(--choice-line, var(--accent, #793bd4));
+  box-shadow: none;
+  color: var(--choice-ink, var(--accent, #793bd4));
+}
+.play-button.is-secondary:hover {
+  box-shadow: 0 7px 28px #8c48cb28;
+}
+.play-button:focus-visible {
+  outline: 3px solid var(--accent, #793bd4);
+  outline-offset: 4px;
+}
+html[data-device='android'] .download-choices .play-button {
+  order: -1;
+}
+html[data-device='android'] .download-choices .play-button.is-secondary {
+  background: var(--choice-fill, var(--accent, #793bd4));
+  border-color: transparent;
+  color: var(--choice-fill-ink, #fff);
+}
+html[data-theme='dark'] .download-choices .play-button.is-secondary {
+  --choice-line: #bf93fa;
+  --choice-ink: #e7d6ff;
+  --choice-fill: #bf93fa;
+  --choice-fill-ink: #24132f;
+}
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme]) .download-choices .play-button.is-secondary {
+    --choice-line: #bf93fa;
+    --choice-ink: #e7d6ff;
+    --choice-fill: #bf93fa;
+    --choice-fill-ink: #24132f;
+  }
+}
+@media (max-width: 600px) {
+  .download-choices {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .play-button {
+    transition: none;
+  }
+}
