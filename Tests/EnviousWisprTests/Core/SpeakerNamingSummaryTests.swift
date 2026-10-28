@@ -34,8 +34,16 @@ struct SpeakerNamingSummaryTests {
     turn("sys:S3", 3_000, 4_000),
   ]
 
-  private func summary(_ row: Transcript, _ pass: SpeakerNamingPass) -> SpeakerNamingSummary? {
-    PendingSpeakerNamingSummary(reconciled: row, pass: pass).committed(.written)
+  /// The pass's own row, with automatic proposals for S1 and S2.
+  private static let proposals = row(
+    turns, names: ["sys:S1": "Priya Shah", "sys:S2": "Dana Lee"],
+    sources: ["sys:S1": .auto, "sys:S2": .auto])
+
+  private func summary(
+    _ row: Transcript, _ pass: SpeakerNamingPass, proposed: Transcript? = nil
+  ) -> SpeakerNamingSummary? {
+    PendingSpeakerNamingSummary(proposed: proposed ?? row, reconciled: row, pass: pass)
+      .committed(.written)
   }
 
   @Test("every surface and outcome spelling is closed")
@@ -85,8 +93,10 @@ struct SpeakerNamingSummaryTests {
 
   @Test("an older row's typed names never count as automatic")
   func legacyRowCountsNothing() throws {
-    let row = Self.row(Self.turns, names: ["sys:S1": "Priya Shah"], sources: nil)
-    let result = try #require(summary(row, .proposed(surface: .zoomApp, count: 1)))
+    let row = Self.row(
+      Self.turns, names: ["sys:S1": "Priya Shah", "sys:S2": "Dana Lee"], sources: nil)
+    let result = try #require(
+      summary(row, .proposed(surface: .zoomApp, count: 2), proposed: Self.proposals))
     #expect(result.autoNamedCount == 0)
     #expect(result.outcome == .manualOnly)
   }
@@ -100,7 +110,8 @@ struct SpeakerNamingSummaryTests {
       sources: ["sys:S1": .auto, "sys:S2": .auto])
     let reconciled = incoming.reconcilingSpeakerNames(withCurrent: current)
     #expect(reconciled.speakerNameSources == ["sys:S1": .manual, "sys:S2": .auto])
-    let result = try #require(summary(reconciled, .proposed(surface: .meet, count: 2)))
+    let result = try #require(
+      summary(reconciled, .proposed(surface: .meet, count: 2), proposed: incoming))
     #expect(result == .init(surface: .meet, outcome: .named, autoNamedCount: 1))
   }
 
@@ -115,7 +126,8 @@ struct SpeakerNamingSummaryTests {
       sources: ["sys:S1": .auto, "sys:S2": .auto])
     let reconciled = incoming.reconcilingSpeakerNames(withCurrent: current)
     #expect(reconciled.speakerNameSources?.values.contains(.auto) == false)
-    let result = try #require(summary(reconciled, .proposed(surface: .zoomWeb, count: 2)))
+    let result = try #require(
+      summary(reconciled, .proposed(surface: .zoomWeb, count: 2), proposed: incoming))
     #expect(result == .init(surface: .zoomWeb, outcome: .manualOnly, autoNamedCount: 0))
   }
 
@@ -132,9 +144,30 @@ struct SpeakerNamingSummaryTests {
   @Test("proposals that vanished with no user name to explain it give no outcome")
   func unexplainedLoss() throws {
     let row = Self.row(Self.turns, names: [:])
-    let result = try #require(summary(row, .proposed(surface: .teamsWeb, count: 2)))
+    let result = try #require(
+      summary(row, .proposed(surface: .teamsWeb, count: 2), proposed: Self.proposals))
     #expect(result.outcome == nil)
     #expect(result.autoNamedCount == 0)
+  }
+
+  @Test("an unrelated user name does not explain vanished proposals")
+  func unrelatedManualName() throws {
+    let row = Self.row(
+      Self.turns, names: ["mic:you": "Sam Ortiz", "sys:S1": "Speaker 1", "sys:S2": "Speaker 2"],
+      sources: ["mic:you": .manual])
+    let result = try #require(
+      summary(row, .proposed(surface: .zoomApp, count: 2), proposed: Self.proposals))
+    #expect(result == .init(surface: .zoomApp, outcome: nil, autoNamedCount: 0))
+  }
+
+  @Test("one proposal displaced and one vanished is not manual_only")
+  func partlyDisplaced() throws {
+    let row = Self.row(
+      Self.turns, names: ["sys:S1": "Sam Ortiz", "sys:S2": "Speaker 2"],
+      sources: ["sys:S1": .manual])
+    let result = try #require(
+      summary(row, .proposed(surface: .zoomApp, count: 2), proposed: Self.proposals))
+    #expect(result.outcome == nil)
   }
 
   @Test(
@@ -161,6 +194,7 @@ struct SpeakerNamingSummaryTests {
   @Test("a failed or unknown write releases no summary")
   func uncommitted() {
     let pending = PendingSpeakerNamingSummary(
+      proposed: Self.proposals,
       reconciled: Self.row(Self.turns, names: ["sys:S1": "Priya Shah"], sources: ["sys:S1": .auto]),
       pass: .proposed(surface: .teamsApp, count: 1))
     #expect(pending.committed(.failed) == nil)

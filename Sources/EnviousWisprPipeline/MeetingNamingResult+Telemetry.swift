@@ -8,6 +8,8 @@ extension MeetingNamingResult {
   /// - `noLog`: the meeting may not be a call, or its evidence may be missing; the caller that
   ///   read the file says which (`.notACall`, or `.unavailable` for a known call).
   /// - `unreadable`: a live read failure, not missing or damaged saved evidence.
+  /// - `statusUnknown`: a log with no status, or one this build does not know, is not proof
+  ///   that the evidence is missing, incompatible or corrupt.
   /// - `rulesUnusable`: frozen rules that no longer decode, or rules that forbid a talker.
   /// - `lagUnmeasured`, `rosterUncertain`: a talker surface the namer may not use yet.
   /// - `noEligibleSpeakers`: no one else spoke, or eligibility was not supplied.
@@ -21,10 +23,9 @@ extension MeetingNamingResult {
         : .proposed(surface: surface, count: proposals.count)
     case .noPermission: reason = .noPermission
     case .unsupported: reason = .unsupported
-    case .statusUnknown: reason = .unavailable
     case .noSignal: reason = .noSignal
     case .ambiguous: reason = .ambiguous
-    case .noLog, .unreadable, .rulesUnusable, .lagUnmeasured, .rosterUncertain,
+    case .noLog, .unreadable, .rulesUnusable, .statusUnknown, .lagUnmeasured, .rosterUncertain,
       .noEligibleSpeakers:
       reason = nil
     }

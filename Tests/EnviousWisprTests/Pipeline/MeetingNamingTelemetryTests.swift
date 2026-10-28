@@ -26,7 +26,7 @@ struct MeetingNamingTelemetryTests {
   func outcomeMapping() {
     let expected: [(MeetingNamingResult.Outcome, SpeakerNamingSummary.Outcome?)] = [
       (.noLog, nil), (.noPermission, .noPermission), (.unreadable, nil),
-      (.unsupported, .unsupported), (.rulesUnusable, nil), (.statusUnknown, .unavailable),
+      (.unsupported, .unsupported), (.rulesUnusable, nil), (.statusUnknown, nil),
       (.lagUnmeasured, nil), (.rosterUncertain, nil), (.noEligibleSpeakers, nil),
       (.noSignal, .noSignal), (.ambiguous, .ambiguous),
     ]
@@ -34,6 +34,26 @@ struct MeetingNamingTelemetryTests {
       let pass = MeetingNamingResult(proposals: [:], outcome: outcome)
         .pass(log: Self.log(surface: .meet))
       #expect(pass == .abstained(surface: .meet, outcome: mapped), "\(outcome)")
+    }
+  }
+
+  @Test("a decoded log with no status, or a status this build does not know, gives no outcome")
+  func unknownStatusStaysAbsent() throws {
+    for status in [nil, "paused_by_newer_build"] {
+      let field = status.map { "\"status\":\"\($0)\"," } ?? ""
+      let json =
+        "{\"formatVersion\":1,\"surface\":\"zoom_app\",\"source\":\"app\"," + field
+        + "\"lag\":{\"milliseconds\":0},"
+        + "\"roster\":{\"names\":[\"Alex Rivera\"],\"selfNames\":[\"Saurabh Vaish\"]},"
+        + "\"observations\":[{\"observationMs\":100,\"speaking\":[\"Alex Rivera\"]}]}"
+      let log = try JSONDecoder().decode(CallSpeakerLog.self, from: Data(json.utf8))
+      #expect(log.status == nil)
+      let result = MeetingSpeakerNamer.propose(
+        composition: MeetingComposition(
+          text: "x", turns: [], speakerNames: [:], echoTurnIDs: [], speakerCount: 0),
+        eligibility: nil, log: log)
+      #expect(result.outcome == .statusUnknown)
+      #expect(result.pass(log: log) == .abstained(surface: .zoomApp, outcome: nil))
     }
   }
 
@@ -62,7 +82,8 @@ struct MeetingNamingTelemetryTests {
       speakerNameSources: ["sys:S1": .auto], meetingID: UUID())
     let pass = MeetingNamingResult(proposals: ["sys:S1": "Alex Rivera"], outcome: .named)
       .pass(log: Self.log(surface: .zoomApp))
-    let summary = PendingSpeakerNamingSummary(reconciled: row, pass: pass).committed(.written)
+    let summary = PendingSpeakerNamingSummary(proposed: row, reconciled: row, pass: pass)
+      .committed(.written)
     #expect(summary == .init(surface: .zoomApp, outcome: .named, autoNamedCount: 1))
     let event = MeetingEndedTelemetry(
       outcome: .ready, entryPoint: .detected, durationSeconds: 60, microphoneTrack: .captured,

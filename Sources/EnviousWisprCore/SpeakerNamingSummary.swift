@@ -93,15 +93,17 @@ public struct PendingSpeakerNamingSummary: Equatable, Sendable {
   private let summary: SpeakerNamingSummary
 
   /// The summary for `reconciled`, the row the durable write is about to store after
-  /// `Transcript.reconcilingSpeakerNames(withCurrent:)`.
+  /// `proposed.reconcilingSpeakerNames(withCurrent:)`. `proposed` is the pass's own row, which
+  /// carries its automatic proposals; neither row's names or ids reach the summary.
   ///
   /// `auto_named_count` counts call-sound speakers present in the row's turns whose name is
   /// recorded as `.auto`, leaving out the microphone, the undivided call ("Call"), generated
   /// labels, the user's names and names of speakers no longer in the turns. `named` needs a
-  /// count above zero. `manualOnly` needs proposals, a zero count and at least one of the
-  /// user's names on a present speaker; proposals that vanished any other way, or an
-  /// abstention that left automatic names behind, give no outcome.
-  public init(reconciled: Transcript, pass: SpeakerNamingPass) {
+  /// count above zero. `manualOnly` needs a zero count and every proposal in `proposed`
+  /// displaced by the user's names in `reconciled`: its speaker now carries a user's name, or a
+  /// present speaker carries the user's name with the proposal's exact spelling. Proposals that
+  /// vanished any other way, or an abstention that left automatic names behind, give no outcome.
+  public init(proposed: Transcript, reconciled: Transcript, pass: SpeakerNamingPass) {
     let count = Self.autoNamedCount(in: reconciled)
     switch pass {
     case .notACall:
@@ -115,7 +117,9 @@ public struct PendingSpeakerNamingSummary: Equatable, Sendable {
       } else if count > 0 {
         outcome = .named
       } else {
-        outcome = Self.hasManualName(in: reconciled) ? .manualOnly : nil
+        outcome =
+          Self.everyProposalDisplaced(proposed: proposed, reconciled: reconciled)
+          ? .manualOnly : nil
       }
       summary = SpeakerNamingSummary(surface: surface, outcome: outcome, autoNamedCount: count)
     case .abstained(let surface, let reason):
@@ -150,9 +154,25 @@ public struct PendingSpeakerNamingSummary: Equatable, Sendable {
     }.count
   }
 
-  /// Whether a present speaker of either track has a name the user wrote.
-  private static func hasManualName(in row: Transcript) -> Bool {
-    let present = Set((row.turns ?? []).map(\.speakerId))
-    return present.contains { row.speakerNameSource(for: $0) == .manual }
+  /// Whether `proposed` has automatic call-sound names and the user's names in `reconciled`
+  /// displaced each one.
+  private static func everyProposalDisplaced(proposed: Transcript, reconciled: Transcript)
+    -> Bool
+  {
+    let proposals = presentCallSpeakers(in: proposed).compactMap { id -> (String, String)? in
+      guard proposed.speakerNameSources?[id] == .auto, let name = proposed.speakerNames?[id],
+        !Transcript.isGeneratedLabel(name, for: id)
+      else { return nil }
+      return (id, name)
+    }
+    guard !proposals.isEmpty else { return false }
+    let present = Set((reconciled.turns ?? []).map(\.speakerId))
+    let manualNames = Set(
+      present.filter { reconciled.speakerNameSource(for: $0) == .manual }
+        .compactMap { reconciled.speakerNames?[$0] })
+    return proposals.allSatisfy { id, name in
+      (present.contains(id) && reconciled.speakerNameSource(for: id) == .manual)
+        || manualNames.contains(name)
+    }
   }
 }
