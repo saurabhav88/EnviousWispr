@@ -249,7 +249,8 @@ final class RecordingStarter {
   /// here is a different workload.
   private func handleSharedEngineBusyPressRefused(holder: EngineLease.Holder) {
     recordingOverlay.present(.warning(reason: .sharedEngineBusy(holder: holder)))
-    // #4052: a refusal is evidence, not an absence (a press during a meeting transcript).
+    // #4052: a refusal is evidence, not an absence. (A meeting transcript no longer refuses:
+    // #3973 C1 waits for its turn instead, `PendingDictationRequests`.)
     Task {
       await AppLogger.shared.log(
         "record press refused holder=\(holder.rawValue)", level: .info, category: "Pipeline")

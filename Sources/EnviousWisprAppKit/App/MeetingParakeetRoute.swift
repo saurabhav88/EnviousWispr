@@ -23,8 +23,9 @@ import os
 /// **No wait for engine ownership runs under the lease.** Readiness and the install claim are
 /// taken with nothing held; the lease is taken in one synchronous main-actor step that
 /// re-checks everything (`acquire()`); the release of the lease is synchronous. Under the lease
-/// only the pass's own work runs (decode, audio reads, checkpoint writes). This is what closed
-/// the acquisition-across-waits findings of the plan's review rounds 1-4.
+/// only one engine operation runs (its audio read and decode); checkpoint writes and every wait
+/// come after the release (#3973 C1). This is what closed the acquisition-across-waits findings
+/// of the #4052 plan's review rounds 1-4.
 @MainActor
 final class MeetingParakeetRoute {
   enum Route: Equatable {
