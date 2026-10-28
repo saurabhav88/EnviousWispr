@@ -7,11 +7,11 @@
 import { Image } from 'astro:assets';
 import FeatureShell from '../layouts/FeatureShell.astro';
 import PlayButton from '../components/PlayButton.astro';
+import AndroidDemo from '../components/AndroidDemo.astro';
 import FeatureFaq from '../components/features/FeatureFaq.astro';
 import DownloadClosing from '../components/DownloadClosing.astro';
 import { downloadUrl, playUrl } from '../data/site-navigation.js';
 import '../styles/android.css';
-import demo from '../assets/android/demo-landed-crop.png';
 import cleanup from '../assets/android/transcription-3.png';
 import dictionary from '../assets/android/dictionary.png';
 import history from '../assets/android/history.png';
@@ -91,9 +91,7 @@ const softwareApplication = {
       </div>
     </div>
     <div class="hero-visual">
-      <figure class="android-phone android-phone--demo">
-        <Image src={demo} alt="An email on an Android phone. The EnviousWispr bubble sits beside the keyboard, and the dictated sentence is already in the message." widths={[420, 700, 1050]} sizes="(max-width: 900px) 80vw, 460px" loading="eager" />
-      </figure>
+      <AndroidDemo />
     </div>
   </section>
 
