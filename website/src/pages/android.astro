@@ -2,7 +2,7 @@
 // EnviousWispr for Android (#4161). Every product claim on this page traces to
 // the submitted Play listing (EnviousWispr-Android
 // docs/play-listing/store-listing.md) or to the app's own screen copy shown in
-// the screenshots below. Requirements follow that listing's WHAT YOU NEED
+// the screenshots below (languages and spoken commands: ui/TranscriptionScreen.kt). Requirements follow that listing's WHAT YOU NEED
 // paragraph and docs/device-support-decision.md; change them together.
 import { Image } from 'astro:assets';
 import FeatureShell from '../layouts/FeatureShell.astro';
@@ -50,7 +50,7 @@ const faqs = [
   },
   {
     q: 'Does it sync with EnviousWispr for Mac?',
-    a: 'No. There is no account and no automatic sync, so each app keeps its own History and Dictionary on its own device.',
+    a: 'No. There is no account, and nothing you dictate passes through Envious Labs, so each app keeps its own History and Dictionary on its own device.',
   },
 ];
 
@@ -156,8 +156,8 @@ const softwareApplication = {
   <section class="benefit wrap">
     <div class="benefit-copy">
       <span class="eyebrow">History</span>
-      <h2>Every dictation,<br />saved on your phone.</h2>
-      <p>Search what you said and copy it again any time. History stays on your phone.</p>
+      <h2>Your dictations,<br />saved on your phone.</h2>
+      <p>Completed dictations are saved in History. Search what you said and copy it again any time. History stays on your phone.</p>
     </div>
     <div class="benefit-visual">
       <figure class="android-phone">

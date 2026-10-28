@@ -38,14 +38,21 @@ html[data-device='android'] .download-choices .play-button.is-secondary {
   border-color: transparent;
   color: var(--choice-fill-ink, #fff);
 }
-html[data-theme='dark'] .download-choices .play-button.is-secondary {
+/* The Mac button steps back to an outline on an Android phone. */
+html[data-device='android'] .download-choices > a:not(.play-button) {
+  background: transparent;
+  border: 1.5px solid var(--choice-line, var(--accent, #793bd4));
+  box-shadow: none;
+  color: var(--choice-ink, var(--accent, #793bd4));
+}
+html[data-theme='dark'] .download-choices {
   --choice-line: #bf93fa;
   --choice-ink: #e7d6ff;
   --choice-fill: #bf93fa;
   --choice-fill-ink: #24132f;
 }
 @media (prefers-color-scheme: dark) {
-  html:not([data-theme]) .download-choices .play-button.is-secondary {
+  html:not([data-theme]) .download-choices {
     --choice-line: #bf93fa;
     --choice-ink: #e7d6ff;
     --choice-fill: #bf93fa;
