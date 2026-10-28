@@ -20,11 +20,17 @@ extension Transcript {
     return Self.isGeneratedLabel(name, for: speakerId) ? nil : .manual
   }
 
-  /// The labels the app generates: "Speaker N" (`TurnAssembler.defaultSpeakerNames`), "You" for
+  /// The labels the app generates, in exactly the spelling it generates them: "Speaker N" with N
+  /// a positive whole number written plainly (`TurnAssembler.defaultSpeakerNames`), "You" for
   /// the call's microphone and "Call" for an undivided call sound
-  /// (`MeetingTranscriptComposer.speakerNames`).
+  /// (`MeetingTranscriptComposer.speakerNames`). "Speaker 01" or "Speaker +2" was typed.
   static func isGeneratedLabel(_ name: String, for speakerId: String) -> Bool {
-    if TurnAssembler.defaultSpeakerNumber(in: name) != nil { return true }
+    let prefix = "Speaker "
+    if name.hasPrefix(prefix), let number = Int(name.dropFirst(prefix.count)), number > 0,
+      name == "\(prefix)\(number)"
+    {
+      return true
+    }
     if speakerId == MeetingTranscriptComposer.fallbackMicrophoneSpeakerID,
       name == MeetingTranscriptComposer.youName
     {
@@ -67,9 +73,14 @@ extension Transcript {
     let newIDs = Set(incomingTurns.map(\.speakerId)).subtracting([
       TurnAssembler.unknownSpeakerID, TurnAssembler.bothSpeakersID,
     ])
-    var names = speakerNames ?? [:]
+    // Kept from this row: its automatic proposals and its generated labels. Any other name it
+    // carries came from an older copy of the row, and the user's names come only from
+    // `current`, so it is dropped here and regenerated below.
     var sources = (speakerNameSources ?? [:]).filter {
-      $0.value == .auto && names[$0.key] != nil
+      $0.value == .auto && speakerNames?[$0.key] != nil
+    }
+    var names = (speakerNames ?? [:]).filter { id, name in
+      sources[id] == .auto || Self.isGeneratedLabel(name, for: id)
     }
 
     let oldManual = (current.speakerNames?.keys.sorted() ?? []).filter {
@@ -108,9 +119,9 @@ extension Transcript {
     let regenerated = TurnAssembler.defaultSpeakerNames(for: incomingTurns, existingNames: names)
     for id in newIDs where names[id] == nil { names[id] = regenerated[id] }
     let lost = unmatched.sorted().compactMap { current.speakerNames?[$0] }
-    let kept = Self.keepingNames(
-      Self.keepingNames(current.unassignedSpeakerNames, adding: unassignedSpeakerNames ?? []),
-      adding: lost)
+    // Kept names come from `current` only: this row's list is an older copy, and could bring
+    // back a name a rename has since taken out.
+    let kept = Self.keepingNames(current.unassignedSpeakerNames, adding: lost)
     return withSpeakerNameFields(
       names: speakerNames == nil && names.isEmpty ? nil : names,
       sources: turns == nil ? nil : sources, unassigned: kept)

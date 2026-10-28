@@ -66,6 +66,38 @@ struct TranscriptSpeakerReconciliationTests {
       row.speakerNameSource(for: "sys:S3") == .manual, "only the generated pattern is a label")
   }
 
+  @Test("only the exact generated spelling is a label: Speaker 01, Speaker +2 and Speaker 0 were typed")
+  func canonicalLabelsOnly() {
+    let row = Self.row(
+      [Self.turn("sys:S1", 0, 1), Self.turn("sys:S2", 1, 2), Self.turn("sys:S3", 2, 3), Self.turn("sys:S4", 3, 4)],
+      names: ["sys:S1": "Speaker 01", "sys:S2": "Speaker +2", "sys:S3": "Speaker 0", "sys:S4": "Speaker 12"],
+      sources: nil)
+    #expect(row.speakerNameSource(for: "sys:S1") == .manual)
+    #expect(row.speakerNameSource(for: "sys:S2") == .manual)
+    #expect(row.speakerNameSource(for: "sys:S3") == .manual)
+    #expect(row.speakerNameSource(for: "sys:S4") == nil)
+    // A typed "Speaker 01" moves with its speaker, spelled as typed.
+    let moved = Self.row([Self.turn("sys:S9", 0, 1)], names: ["sys:S9": "Speaker 1"])
+      .reconcilingSpeakerNames(
+        withCurrent: Self.row([Self.turn("sys:S1", 0, 1)], names: ["sys:S1": "Speaker 01"], sources: nil))
+    #expect(moved.speakerNames == ["sys:S9": "Speaker 01"])
+    #expect(moved.speakerNameSource(for: "sys:S9") == .manual)
+  }
+
+  @Test("a stale name or kept list on the incoming row never comes back")
+  func staleIncoming() {
+    let current = Self.row(
+      [Self.turn("sys:S1", 0, 1_000)], names: ["sys:S1": "Ana"], sources: ["sys:S1": .manual])
+    // The incoming row still carries Ana on a speaker that does not overlap, and an old kept list.
+    let incoming = Self.row(
+      [Self.turn("sys:S9", 5_000, 6_000)], names: ["sys:S9": "Ana"], sources: ["sys:S9": .manual],
+      unassigned: ["Ben"])
+    let result = incoming.reconcilingSpeakerNames(withCurrent: current)
+    #expect(result.speakerNames == ["sys:S9": "Speaker 1"])
+    #expect(result.speakerNameSources == [:])
+    #expect(result.unassignedSpeakerNames == ["Ana"], "Ben was taken out on the current row")
+  }
+
   @Test("an explicit rename is manual, even when it reads like a generated label")
   func renameIsManual() {
     let base = Self.row(
