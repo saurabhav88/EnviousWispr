@@ -445,6 +445,8 @@ final class MeetingCoordinator {
   /// the next launch's reconciliation rather than write a second receipt over it. Observable:
   /// the detail view's Transcribe again follows it.
   private var unresolvedReceipts: Set<UUID> = []
+  /// #3973 C2: meetings whose failed ready write is being read back, with the edits waiting.
+  @ObservationIgnored private var settlingCommits: [UUID: [CheckedContinuation<Void, Never>]] = [:]
   private var deleting: Set<UUID> = []
   /// Meetings whose Delete audio is under way, from its guard until its files are gone (#3994):
   /// claimed synchronously, so no pass can start on audio that is being removed.
@@ -1487,8 +1489,18 @@ final class MeetingCoordinator {
   /// the commit goes on (true). One that did not means nothing was committed: the receipt is
   /// removed and Transcribe again works as before (false). One that cannot be read keeps the
   /// receipt and blocks Transcribe again for the next launch, which decides from the file.
+  ///
+  /// Edits that build on the live copy (rename, AI title) wait for it (`waitForCommitSettlement`):
+  /// live has rolled back to the earlier record, so one written meanwhile could put that record
+  /// back over a commit that landed. Set in the same main-actor turn the ready write failed in;
+  /// the read is queued on the file writer after every write already sent, so it sees them.
   private func settleAfterFailedBarrier(_ receipt: MeetingTranscriptReplacement) async -> Bool {
     let meetingID = receipt.meetingID
+    settlingCommits[meetingID] = []
+    defer {
+      let waiters = settlingCommits.removeValue(forKey: meetingID) ?? []
+      for waiter in waiters { waiter.resume() }
+    }
     guard let onDisk = try? await writer.run({ try $0.load(id: meetingID) }) else {
       deps.log("meeting commit unsettled; next launch reconciles")
       notice = .storageFailed
@@ -1508,6 +1520,13 @@ final class MeetingCoordinator {
       notice = .storageFailed
     }
     return false
+  }
+
+  /// #3973 C2: waits while the meeting's failed ready write is being settled
+  /// (`settleAfterFailedBarrier`).
+  private func waitForCommitSettlement(_ meetingID: UUID) async {
+    guard settlingCommits[meetingID] != nil else { return }
+    await withCheckedContinuation { settlingCommits[meetingID, default: []].append($0) }
   }
 
   /// #3973 C2: whether the meeting's commit receipt is not settled in this session.
@@ -1625,6 +1644,7 @@ final class MeetingCoordinator {
   }
 
   func rename(meetingID: UUID, title: String) async {
+    await waitForCommitSettlement(meetingID)
     guard var record = live[meetingID] else { return }
     let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
     record.title = trimmed.isEmpty ? nil : String(trimmed.prefix(120))
@@ -1635,6 +1655,7 @@ final class MeetingCoordinator {
   /// latest record just before the save, so a rename, the calendar's name or a deletion
   /// meanwhile wins; it never names a meeting the user already named.
   func assignAITitle(meetingID: UUID, title: String) async {
+    await waitForCommitSettlement(meetingID)
     guard var record = live[meetingID], record.title == nil, !deleting.contains(meetingID),
       !closeOwned.contains(meetingID)
     else { return }

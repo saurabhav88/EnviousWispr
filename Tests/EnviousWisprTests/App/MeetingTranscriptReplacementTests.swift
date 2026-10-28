@@ -147,15 +147,20 @@ struct MeetingTranscriptReplacementTests {
     #expect(harness.coordinator.canTranscribeAgain(meetingID))
   }
 
-  /// #3973 C2 (chunk review 1): a ready write that landed but reported failure has committed
-  /// the new transcript. The record read back is adopted, so a later rename never writes the
-  /// older record over it, and the new row is published.
-  @Test("a ready write that lands but reports failure is adopted; a later rename keeps the commit")
+  /// #3973 C2 (chunk review 1, confirming review): a ready write that landed but reported
+  /// failure has committed the new transcript. The record read back is adopted, and a rename
+  /// sent as the failure is reported (racing the read-back) waits for it, so neither it nor any
+  /// later edit writes the older record over the commit; the new row is published.
+  @Test("a ready write that lands but reports failure is adopted; a racing rename keeps the commit")
   func landedReadyWriteIsAdopted() async throws {
     let harness = try Harness()
     let (meetingID, earlier) = try await readyMeeting(harness)
     harness.jobBehavior = Self.rerunResult
+    let coordinator = harness.coordinator
     harness.writeGate.failAfterLanding { $0.state == .ready && $0.echoTurnIDs == ["mic-9"] }
+    harness.writeGate.onLandingFailure.withLock {
+      $0 = { Task { @MainActor in await coordinator.rename(meetingID: meetingID, title: "Raced") } }
+    }
     #expect(await harness.coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet))
     await eventually("published") {
       harness.saved.count == 2 && harness.coordinator.processing == nil
@@ -168,11 +173,17 @@ struct MeetingTranscriptReplacementTests {
     let info = MeetingWiring.historyInfo(harness.coordinator, meetingID: meetingID)
     #expect(info?.matching(earlier) == nil)
 
-    await harness.coordinator.rename(meetingID: meetingID, title: "Renamed")
-    let onDisk = try harness.store.load(id: meetingID)
-    #expect(onDisk.title == "Renamed")
-    #expect(onDisk.committedTranscriptGeneration == committed, "the rename kept the commit")
+    await eventually("raced rename saved") {
+      harness.coordinator.record(id: meetingID)?.title == "Raced"
+    }
+    var onDisk = try harness.store.load(id: meetingID)
+    #expect(onDisk.committedTranscriptGeneration == committed, "the racing rename kept the commit")
     #expect(onDisk.echoTurnIDs == ["mic-9"])
+
+    await harness.coordinator.rename(meetingID: meetingID, title: "Renamed")
+    onDisk = try harness.store.load(id: meetingID)
+    #expect(onDisk.title == "Renamed")
+    #expect(onDisk.committedTranscriptGeneration == committed, "a later rename kept the commit")
   }
 
   /// #3973 C2 (chunk review 3): a summary is written from, and judged against, only the

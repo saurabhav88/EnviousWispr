@@ -175,8 +175,14 @@ struct MeetingCoordinatorTests {
       landing.withLock { $0.append(predicate) }
     }
 
+    /// Runs on the writer's thread as a landed write is about to report its failure.
+    let onLandingFailure = OSAllocatedUnfairLock<(@Sendable () -> Void)?>(initialState: nil)
+
     func failIfLandingFails(_ record: MeetingRecord) throws {
-      if landing.withLock({ $0 }).contains(where: { $0(record) }) { throw InjectedFailure() }
+      if landing.withLock({ $0 }).contains(where: { $0(record) }) {
+        onLandingFailure.withLock { $0 }?()
+        throw InjectedFailure()
+      }
     }
 
     /// Every record written, in write order.
