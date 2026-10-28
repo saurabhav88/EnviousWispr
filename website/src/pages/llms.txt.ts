@@ -24,6 +24,7 @@ const CATALOG_NOTES: Record<string, string> = {
   features: 'Every feature of the free Mac app, each on its own page.',
   privacy: 'What cloud dictation sends away, what EnviousWispr keeps local, and what goes out only if you choose cloud text polish.',
   customization: 'Record key, start and stop sounds, how text lands, and the overlay position.',
+  android: 'The free Android app on Google Play: on-device speech recognition and AI polish, with text inserted where you type. Android 13+, 64-bit, 6 GB memory or more.',
 };
 
 const COMPARISONS: [string, string, string][] = [
@@ -70,7 +71,7 @@ export async function GET() {
     '',
     'Maker: Envious Labs LLC (Connecticut, USA). Founder: Saurabh Vaish.',
     'License: GNU General Public License v3 (GPLv3, open source on GitHub).',
-    'Platform: macOS 14 (Sonoma) or later, Apple Silicon only.',
+    'Platform: macOS 14 (Sonoma) or later, Apple Silicon only. Android app: Android 13 or later, 64-bit ARM, 6 GB memory or more (Google Play, com.envi.wispr).',
     `Last-updated: ${lastUpdated}`,
     '',
     '## Product',

@@ -146,4 +146,23 @@
   // as it stands when the handler returns.
   document.addEventListener('click', trackDownload);
   document.addEventListener('auxclick', trackDownload);
+
+  // #4161: a Google Play button is an Android install intent, not a Mac
+  // download, so it gets its own event and never feeds download_clicked.
+  // Play Console attributes the install itself through the link's referrer.
+  function trackPlay(e) {
+    const link = e.target.closest('a[data-play-source]');
+    if (!link) return;
+    if (
+      (e.type === 'click' || (e.type === 'auxclick' && e.button === 1)) &&
+      typeof window.posthog !== 'undefined'
+    ) {
+      window.posthog.capture('android_store_clicked', {
+        source: link.dataset.playSource,
+        page: window.location.pathname,
+      });
+    }
+  }
+  document.addEventListener('click', trackPlay);
+  document.addEventListener('auxclick', trackPlay);
 </script>

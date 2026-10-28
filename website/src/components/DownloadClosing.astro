@@ -5,6 +5,8 @@ import { getImage } from 'astro:assets';
 import dawn from '../assets/features/dawn-landscape.png';
 import twilight from '../assets/features/twilight-landscape.png';
 import DownloadButton from './features/DownloadButton.astro';
+import PlayButton from './PlayButton.astro';
+import { downloadUrl } from '../data/site-navigation.js';
 import '../styles/download-closing.css';
 
 interface Props {
@@ -12,12 +14,18 @@ interface Props {
   description?: string;
   source?: string;
   id?: string;
+  /** #4161: 'button' puts Google Play beside the Mac button; 'link' (pages about
+   * a Mac feature) adds only a quiet link to /android/, so the closing never
+   * implies that page's feature runs on Android; 'primary' (the /android/
+   * page) leads with Google Play and keeps a quiet Mac link. */
+  android?: 'button' | 'link' | 'primary';
 }
 const {
   title = 'Put your voice to work.',
   description = 'Free, private dictation for Mac. No account. No subscription.',
   source = 'features-closing',
   id,
+  android = 'link',
 } = Astro.props;
 const widths = [1086, 2172];
 async function sources(src) {
@@ -35,8 +43,23 @@ const dark = await sources(twilight);
     <span class="download-closing-kicker">A little more room for your ideas.</span>
     <h2 id="download-closing-title">{title}</h2>
     <p class="download-closing-description">{description}</p>
-    <DownloadButton source={source} class="download-closing-button" />
-    <small class="download-closing-compatibility">macOS 14+ · Apple Silicon</small>
+    {
+      android === 'primary' ? (
+        <PlayButton source={source} class="download-closing-button" label="Get it on Google Play" />
+      ) : android === 'button' ? (
+        <div class="download-choices download-closing-choices">
+          <DownloadButton source={source} class="download-closing-button" />
+          <PlayButton source={source} class="download-closing-button is-secondary" />
+        </div>
+      ) : (
+        <DownloadButton source={source} class="download-closing-button" />
+      )
+    }
+    <small class="download-closing-compatibility">
+      {android === 'primary' ? 'Android 13+ · 64-bit · 6 GB memory or more' : android === 'button' ? 'macOS 14+ · Apple Silicon · Android 13+' : 'macOS 14+ · Apple Silicon'}
+    </small>
+    {android === 'link' && <a class="download-closing-android" href="/android/">Also on Android <span aria-hidden="true">→</span></a>}
+    {android === 'primary' && <a class="download-closing-android" href={downloadUrl} data-download-source={source}>On a Mac? Download for Mac</a>}
     <slot />
   </div>
 </section>

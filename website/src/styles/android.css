@@ -1,0 +1,166 @@
+/* /android/ (#4161): the features family layout plus a phone frame for the
+ * real app screens, the three steps, the polish cards and the requirements. */
+.android-phone {
+  margin: 0 auto;
+  max-width: 340px;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 38px;
+  background: #1b1525;
+  box-shadow: 0 24px 70px #2714381f;
+}
+.android-phone img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 30px;
+}
+.android-phone--demo {
+  max-width: 460px;
+  border-radius: 34px;
+}
+.android-phone--demo img {
+  border-radius: 26px;
+}
+.android-mac-link {
+  display: inline-block;
+  margin-top: 16px;
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.android-steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 35px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.android-steps li {
+  border-top: 1px solid var(--line);
+  padding-top: 20px;
+}
+.android-steps li > span {
+  display: block;
+  margin-bottom: 17px;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+}
+.android-steps h3 {
+  font-size: 23px;
+  font-weight: 600;
+}
+.android-steps p {
+  margin-top: 14px;
+  color: var(--body);
+  font-size: 16px;
+  line-height: 1.8;
+}
+.android-polish {
+  padding-top: 70px;
+  padding-bottom: 70px;
+}
+.android-polish h2,
+.android-needs h2 {
+  font-size: clamp(36px, 3.65vw, 53px);
+  font-weight: 600;
+  letter-spacing: -0.045em;
+  line-height: 1.12;
+}
+.android-polish-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 35px;
+  margin-top: 40px;
+}
+.android-polish-grid > div {
+  padding: 26px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+}
+.android-polish-grid h3 {
+  font-size: 21px;
+  font-weight: 600;
+}
+.android-polish-grid p {
+  margin-top: 12px;
+  color: var(--body);
+  font-size: 16px;
+  line-height: 1.75;
+}
+.android-privacy .benefit-copy > p + p {
+  margin-top: 16px;
+}
+.android-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+}
+.android-links .text-link {
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 600;
+}
+.android-needs {
+  display: grid;
+  grid-template-columns: 0.8fr 1.2fr;
+  gap: 20px 65px;
+  padding-top: 75px;
+  padding-bottom: 75px;
+}
+.android-needs ul {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.android-needs li {
+  padding: 14px 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--body);
+  font-size: 17px;
+}
+.android-needs li strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+.android-needs > p {
+  grid-column: 2;
+  color: var(--body);
+  font-size: 16px;
+  line-height: 1.8;
+}
+@media (max-width: 850px) {
+  .android-steps,
+  .android-polish-grid {
+    grid-template-columns: 1fr;
+    gap: 22px;
+  }
+  .android-needs {
+    grid-template-columns: 1fr;
+  }
+  .android-needs > p {
+    grid-column: auto;
+  }
+}
+@media (max-width: 650px) {
+  .android-phone {
+    max-width: 280px;
+    border-radius: 32px;
+  }
+  .android-phone img {
+    border-radius: 25px;
+  }
+  .android-polish,
+  .android-needs {
+    padding-top: 48px;
+    padding-bottom: 48px;
+  }
+}

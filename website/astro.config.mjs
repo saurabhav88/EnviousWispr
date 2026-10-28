@@ -79,7 +79,8 @@ const isFeatureUrl = (url) =>
   url === `${SITE}/features/` ||
   url.startsWith(`${SITE}/features/`) ||
   url === `${SITE}/why-offline/` ||
-  url === `${SITE}/customization/`;
+  url === `${SITE}/customization/` ||
+  url === `${SITE}/android/`;
 
 export default defineConfig({
   site: SITE,
