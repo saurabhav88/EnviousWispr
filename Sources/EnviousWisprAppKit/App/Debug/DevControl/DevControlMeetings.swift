@@ -275,15 +275,25 @@
 
     // MARK: - Changes
 
-    /// `{meetingID}`: Transcribe again. Refused when the coordinator does not offer it
-    /// (`canTranscribeAgain`, the same answer the detail view shows, #4008); succeeds only when
-    /// `retry` itself reports the meeting queued, never from the state read back.
+    /// `{meetingID, engine?}`: Transcribe again, on `engine` (default `parakeet`, #3973 C2).
+    /// Refused when the coordinator does not offer it (`canTranscribeAgain`, the same answer the
+    /// detail view shows, #4008); succeeds only when `transcribeAgain` itself reports the
+    /// meeting queued, never from the state read back.
     func retry(_ args: [String: Any]) async -> Result {
-      await change(args, name: "retry") { coordinator, record in
+      var engine = MeetingEngineChoice.parakeet
+      if let value = args["engine"] {
+        guard let name = value as? String, let choice = MeetingEngineChoice(rawValue: name) else {
+          let names = MeetingEngineChoice.allCases.map(\.rawValue).joined(separator: ", ")
+          return .failure(.badArgs, "engine must be one of: \(names)")
+        }
+        engine = choice
+      }
+      return await change(args, name: "retry", allowed: ["meetingID", "engine"]) {
+        coordinator, record in
         coordinator.canTranscribeAgain(record.id)
           ? nil : "Transcribe again is not offered for this meeting now"
       } run: { coordinator, id in
-        await coordinator.retry(meetingID: id)
+        await coordinator.transcribeAgain(meetingID: id, engine: engine)
       } check: { _ in true }
     }
 
@@ -329,13 +339,13 @@
     /// recording, being transcribed or held by a timed-out close, and passes `refusal`; the
     /// owner runs; the record read back passes `check`, or the reply says it did not happen.
     private func change(
-      _ args: [String: Any], name: String,
+      _ args: [String: Any], name: String, allowed: Set<String> = ["meetingID"],
       refusal: (MeetingCoordinator, MeetingRecord) -> String?,
       run: (MeetingCoordinator, UUID) async -> Bool,
       check: (MeetingRecord?) -> Bool
     ) async -> Result {
       let meetingID: UUID
-      switch Self.meetingID(args, allowed: ["meetingID"]) {
+      switch Self.meetingID(args, allowed: allowed) {
       case .failure(let result): return result
       case .success(let id): meetingID = id
       }

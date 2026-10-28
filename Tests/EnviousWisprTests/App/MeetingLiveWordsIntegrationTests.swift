@@ -329,7 +329,7 @@ struct MeetingLiveWordsIntegrationTests {
     }
     #expect(rig.coordinator.liveTranscript?.meetingID == meetingID)
     #expect(rig.coordinator.liveTranscript?.lines.map(\.text) == ["Live line."], "kept on failure")
-    #expect(await rig.coordinator.retry(meetingID: meetingID))
+    #expect(await rig.coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet))
     await MeetingCoordinatorTests.eventually("the transcript ready") {
       rig.coordinator.record(id: meetingID)?.state == .ready
     }

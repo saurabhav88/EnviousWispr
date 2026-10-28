@@ -191,7 +191,8 @@ struct MeetingHistoryDetailView: View {
           comment: "EnviousMeet: makes the meeting's transcript again from its kept audio."),
         isEnabled: offered.transcribeAgain, systemImage: "arrow.clockwise"
       ) {
-        run { meetings in await meetings.retry(meetingID: meetingID) }
+        // #3973 C2: Parakeet is the only meeting engine until C3 adds the engine menu.
+        run { meetings in await meetings.transcribeAgain(meetingID: meetingID, engine: .parakeet) }
       }
       .accessibilityIdentifier("meetings.detail.retry")
       SettingsActionButton(

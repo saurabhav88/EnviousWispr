@@ -515,11 +515,12 @@ struct MeetingHistoryPresentationTests {
           speakerCount: 1),
         speakerOutcomes: first.speakerOutcomes, forcedCuts: 0, failedPieces: 0,
         failedRanges: [:], resumedPieces: 0, checkpointSaveFailures: 0, yieldCount: 0,
-        processingSeconds: 1, audioSeconds: 1)
+        processingSeconds: 1, audioSeconds: 1,
+        resolved: MeetingCoordinatorTests.placeholderResolved)
     }
     let save = MeetingCoordinatorTests.Gate()
     harness.saveGate = save
-    await coordinator.retry(meetingID: meetingID)
+    await coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet)
     await eventually("retry save parked") { save.parked }
     // The earlier row is still listed, but its record is no longer ready: nothing is read.
     #expect(MeetingWiring.historyInfo(coordinator, meetingID: meetingID) == nil)
@@ -570,9 +571,10 @@ struct MeetingHistoryPresentationTests {
           speakerCount: 1),
         speakerOutcomes: first.speakerOutcomes, forcedCuts: 0, failedPieces: 0,
         failedRanges: [:], resumedPieces: 0, checkpointSaveFailures: 0, yieldCount: 0,
-        processingSeconds: 1, audioSeconds: 1)
+        processingSeconds: 1, audioSeconds: 1,
+        resolved: MeetingCoordinatorTests.placeholderResolved)
     }
-    #expect(await coordinator.retry(meetingID: meetingID))
+    #expect(await coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet))
     await eventually("ready") {
       coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
     }

@@ -29,7 +29,8 @@ protocol MeetingProcessing: AnyObject {
     tracks: [MeetingTrackKind: MeetingTrackAudio], language: String?,
     checkpoint access: MeetingTranscriptionJob.CheckpointAccess?,
     missingAudio: [MeetingTrackKind: [MeetingTranscriptionJob.MissingAudio]],
-    onStage: @escaping @MainActor (MeetingTranscriptionJob.Stage) -> Void
+    onStage: @escaping @MainActor (MeetingTranscriptionJob.Stage) -> Void,
+    attempt: MeetingAttemptConfiguration
   ) async throws -> MeetingTranscriptionJob.Result
   func cancel()
   var isEngineResident: Bool { get }
@@ -746,6 +747,8 @@ final class MeetingCoordinator {
     record.callApp = callApp
     // #4105: in the record before its first save, so recovery and retry use this value.
     record.transcriptLanguageMode = transcriptLanguage
+    // #3973 C2: the attempt this Start asked for, frozen from the same read.
+    record.beginAttempt(record.attemptFromStartValues())
     let meetingID = record.id
     do {
       let created = record
@@ -1147,6 +1150,10 @@ final class MeetingCoordinator {
     else { return }
     processing = Processing(meetingID: meetingID, stage: nil)
     workChanged()
+    // #3973 C2: a meeting queued before attempts existed runs its saved Start values as an
+    // attempt, saved with this write; Settings are never read here.
+    if record.pendingAttempt == nil { record.beginAttempt(record.attemptFromStartValues()) }
+    let attempt = record.pendingAttempt ?? record.attemptFromStartValues()
     record.state = .processing
     guard await persist(record), isStillOwned(meetingID) else {
       // The pass never began: the claim is released without the pass's own ending (its live
@@ -1245,13 +1252,12 @@ final class MeetingCoordinator {
       })
     let result: MeetingTranscriptionJob.Result
     do {
-      // #4105: the language the meeting was started with, from its record only.
+      // #4105, #3973 C2: the saved attempt's language and engine, from the record only.
       result = try await job.run(
-        tracks: tracks, language: record.transcriptLanguage, checkpoint: access,
-        missingAudio: missingAudio
-      ) { [weak self] stage in
-        self?.processing?.stage = stage
-      }
+        tracks: tracks, language: attempt.requestedEffectiveLanguage, checkpoint: access,
+        missingAudio: missingAudio,
+        onStage: { [weak self] stage in self?.processing?.stage = stage },
+        attempt: attempt)
     } catch MeetingTranscriptionJob.JobError.cancelled {
       return
     } catch {
@@ -1310,6 +1316,8 @@ final class MeetingCoordinator {
     // Read after that wait: a deletion mark or a rename during it stays.
     guard isStillOwned(meetingID), var ready = live[meetingID] else { return }
     ready.state = .ready
+    // #3973 C2: the ready barrier commits this attempt as the shown transcript's generation.
+    ready.commitAttempt(result.resolved)
     ready.speakerOutcomes = result.speakerOutcomes
     ready.echoTurnIDs = result.composition.echoTurnIDs
     ready.failureCode =
@@ -1390,19 +1398,45 @@ final class MeetingCoordinator {
     return [.failed, .ready, .interrupted, .processing].contains(record.state)
   }
 
-  /// Transcribe again. True when the meeting was queued (or, waiting for space, the queue was
-  /// started again); false when it was refused or its queued state could not be saved.
+  /// Transcribe again with `engine` (#3973 C2): a new attempt, frozen now from the current
+  /// meeting language against that engine, so a new Start value never reaches a saved
+  /// attempt and an old one never reaches this. The transcript shown so far stays until the new
+  /// one commits. A meeting left queued or processing with no pass (its attempt never ran to
+  /// an end) continues its saved attempt instead (`resumeAttempt`). True when the meeting was
+  /// queued (or, waiting for space, the queue was started again); false when it was refused or
+  /// its queued state could not be saved.
   @discardableResult
-  func retry(meetingID: UUID) async -> Bool {
+  func transcribeAgain(meetingID: UUID, engine: MeetingEngineChoice) async -> Bool {
     // Launch recovery decides first what an unfinished meeting is (it requeues them itself).
     if let launchTask { await launchTask.value }
+    guard canTranscribeAgain(meetingID), let record = live[meetingID] else { return false }
+    if [.queued, .processing].contains(record.state) {
+      return await resumeAttempt(meetingID: meetingID)
+    }
+    return await queue(
+      meetingID,
+      attempt: MeetingAttemptConfiguration(requestedEngine: engine, language: deps.meetingLanguage()))
+  }
+
+  /// Continues the meeting's saved attempt (#3973 C2): its engine and language as saved, never
+  /// Settings. For a meeting left queued or processing with no pass running.
+  @discardableResult
+  func resumeAttempt(meetingID: UUID) async -> Bool {
+    if let launchTask { await launchTask.value }
+    guard canTranscribeAgain(meetingID), let record = live[meetingID] else { return false }
+    return await queue(meetingID, attempt: record.pendingAttempt ?? record.attemptFromStartValues())
+  }
+
+  /// Queues `attempt` for the meeting and starts the queue.
+  private func queue(_ meetingID: UUID, attempt: MeetingAttemptConfiguration) async -> Bool {
     guard canTranscribeAgain(meetingID), var record = live[meetingID] else { return false }
-    if record.state == .queued {
+    if record.state == .queued, record.pendingAttempt == attempt {
       // Left queued (a full disk, or a pass whose first save failed): nothing to save, the
       // queue starts again and checks the disk again.
       startQueueIfNeeded()
       return true
     }
+    record.beginAttempt(attempt)
     record.state = .queued
     guard await persist(record) else { return false }
     // Read again after the save: a Delete audio, a deletion or a quit meanwhile wins.

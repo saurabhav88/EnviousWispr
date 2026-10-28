@@ -137,6 +137,8 @@ package final class MeetingTranscriptionJob {
     package let yieldCount: Int
     package let processingSeconds: Double
     package let audioSeconds: Double
+    /// #3973 C2: what the attempt resolved to: the engine and model its words came from.
+    package let resolved: MeetingResolvedAttempt
   }
 
   package enum JobError: Error, Equatable {
@@ -144,6 +146,9 @@ package final class MeetingTranscriptionJob {
     case engineUnavailable(String)
     /// `run` was called while a pass was already running on this job.
     case alreadyRunning
+    /// #3973 C2: `language` is not the attempt's effective language. Both come from the same
+    /// saved attempt; a disagreement is a caller defect, refused before any reuse or decode.
+    case attemptMismatch
   }
 
   /// Where a pass keeps its progress (#3972 C3b). The job reads it once at the start and
@@ -173,7 +178,7 @@ package final class MeetingTranscriptionJob {
 
   /// Bumped whenever segmentation or ownership changes what a piece contains; a checkpoint
   /// from another version is discarded.
-  package nonisolated static let processingVersion = 2
+  package nonisolated static let processingVersion = 3
 
   private let dependencies: Dependencies
   private let configuration: Configuration
@@ -304,14 +309,21 @@ package final class MeetingTranscriptionJob {
   /// `missingAudio`: per track, the stretches no readable file covers. Each becomes a visible
   /// gap marker in timeline order, like a piece that failed twice, even for a track with no
   /// readable audio at all.
+  ///
+  /// `attempt` (#3973 C2) is the saved attempt this pass runs; `language` is its effective
+  /// language, passed separately so the existing input stays. They must agree.
   package func run(
     tracks: [MeetingTrackKind: MeetingTrackAudio], language: String?,
     checkpoint access: CheckpointAccess? = nil,
     missingAudio: [MeetingTrackKind: [MissingAudio]] = [:],
-    onStage: @escaping @MainActor (Stage) -> Void
+    onStage: @escaping @MainActor (Stage) -> Void,
+    attempt: MeetingAttemptConfiguration
   ) async throws -> Result {
     guard !running else { throw JobError.alreadyRunning }
+    guard MeetingAttemptConfiguration.normalized(language) == attempt.requestedEffectiveLanguage
+    else { throw JobError.attemptMismatch }
     running = true
+    firstEngineIdentity = nil
     passLanguage = language?.isEmpty == false ? language : nil
     defer {
       running = false
@@ -328,7 +340,17 @@ package final class MeetingTranscriptionJob {
     dependencies.passStarted(
       access?.meetingID, Int((Double(timelineEnd) / MeetingAudioFormat.sampleRate).rounded()))
 
-    // 0. Progress already committed for exactly these inputs and settings.
+    // 0. Progress already committed for exactly these inputs, settings, attempt and model.
+    // #3973 C2: the model identity is read before any reuse, so even a fully covered checkpoint
+    // from another model is never reused. C2 resolves every attempt to its requested engine.
+    if !order.isEmpty {
+      try await waitForNormalMemory()
+      firstEngineIdentity = try await probeEngineIdentity()
+    }
+    let resolved = MeetingResolvedAttempt(
+      attemptID: attempt.attemptID, requestedEngine: attempt.requestedEngine,
+      resolvedEngine: attempt.requestedEngine, effectiveLanguage: passLanguage,
+      modelIdentity: firstEngineIdentity, fallbackReason: nil)
     var progress: MeetingProcessingCheckpoint?
     var saveFailures = 0
     if let access {
@@ -337,9 +359,13 @@ package final class MeetingTranscriptionJob {
       let config = configuration
       let meetingID = access.meetingID
       let language = passLanguage
+      let engine = MeetingProcessingCheckpoint.Engine(
+        requested: resolved.requestedEngine, resolved: resolved.resolvedEngine,
+        modelIdentity: resolved.modelIdentity)
       let key = try? await Task.detached(priority: .utility) {
         try Self.key(
-          meetingID: meetingID, tracks: tracks, order: order, language: language, config)
+          meetingID: meetingID, attemptID: attempt.attemptID, tracks: tracks, order: order,
+          language: language, engine: engine, config)
       }.value
       if let key {
         if let stored = await access.load(), stored.key == key,
@@ -362,23 +388,13 @@ package final class MeetingTranscriptionJob {
     let resumedAtStart = progress?.tracks.values.reduce(0) { $0 + $1.pieces.count } ?? 0
 
     // 1. Speech, both tracks, one engine operation per decode (#3973 C1), only if some range is
-    // not yet committed. The first acquisition here reads the model identity before any reuse.
+    // not yet committed. The model identity was read above; a decode under another model fails
+    // the pass (`prepareModelUnit`).
     let speechNeeded = order.contains { kind in
       guard let audio = tracks[kind] else { return false }
       return !Self.isFullyCovered(audio, by: progress?.tracks[kind]?.pieces ?? [])
     }
     if speechNeeded {
-      try await waitForNormalMemory()
-      firstEngineIdentity = try await probeEngineIdentity()
-      if var current = progress {
-        let identity = firstEngineIdentity
-        if let previous = current.engineIdentity, previous != identity {
-          // Pieces from another model are never mixed with this one's.
-          for kind in current.tracks.keys { current.tracks[kind]?.pieces = [] }
-        }
-        current.engineIdentity = identity
-        progress = current
-      }
       do {
         for kind in order {
           guard let audio = tracks[kind] else { continue }
@@ -493,7 +509,7 @@ package final class MeetingTranscriptionJob {
       resumedPieces: resumedAtStart == 0 ? 0 : min(resumedAtStart, all.count),
       checkpointSaveFailures: saveFailures, yieldCount: yieldCount,
       processingSeconds: Date().timeIntervalSince(started),
-      audioSeconds: Double(totalSamples) / MeetingAudioFormat.sampleRate)
+      audioSeconds: Double(totalSamples) / MeetingAudioFormat.sampleRate, resolved: resolved)
   }
 
   /// Pieces of a pass run without a checkpoint, held only for the pass.
@@ -704,16 +720,17 @@ package final class MeetingTranscriptionJob {
   /// frame count, byte size and a SHA-256 of its bytes, never by path alone. Throws when any
   /// file cannot be read, so a pass never reuses work against inputs it could not verify.
   nonisolated static func key(
-    meetingID: UUID, tracks: [MeetingTrackKind: MeetingTrackAudio], order: [MeetingTrackKind],
-    language: String?, _ configuration: Configuration
+    meetingID: UUID, attemptID: UUID, tracks: [MeetingTrackKind: MeetingTrackAudio],
+    order: [MeetingTrackKind], language: String?, engine: MeetingProcessingCheckpoint.Engine,
+    _ configuration: Configuration
   ) throws -> MeetingProcessingCheckpoint.Key {
     MeetingProcessingCheckpoint.Key(
-      meetingID: meetingID, processingVersion: processingVersion,
+      meetingID: meetingID, attemptID: attemptID, processingVersion: processingVersion,
       pieceTargetSeconds: configuration.pieceTargetSeconds,
       pieceSearchSeconds: configuration.pieceSearchSeconds,
       seamPaddingSeconds: configuration.seamPaddingSeconds,
       cutsPieces: configuration.cutsPieces,
-      transcriptLanguage: language,
+      transcriptLanguage: language, engine: engine,
       inputs: try order.map { kind in
         MeetingProcessingCheckpoint.TrackInventory(
           track: kind,

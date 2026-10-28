@@ -53,7 +53,8 @@ struct MeetingCoordinatorTelemetryTests {
       result = MeetingTranscriptionJob.Result(
         composition: result.composition, speakerOutcomes: result.speakerOutcomes, forcedCuts: 0,
         failedPieces: 2, failedRanges: [:], resumedPieces: 0, checkpointSaveFailures: 0,
-        yieldCount: 3, processingSeconds: 1, audioSeconds: 1)
+        yieldCount: 3, processingSeconds: 1, audioSeconds: 1,
+        resolved: MeetingCoordinatorTests.placeholderResolved)
       return result
     }
     var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
@@ -223,7 +224,7 @@ struct MeetingCoordinatorTelemetryTests {
     let meetingID = try await recordAndFinish(harness, from: .menu)
     #expect(harness.ended.map(\.outcome) == [.failed])
     harness.saveError = nil
-    await harness.coordinator.retry(meetingID: meetingID)
+    await harness.coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet)
     await eventually("retry ended") {
       harness.ended.count == 2 && harness.coordinator.processing == nil
     }
@@ -246,7 +247,7 @@ struct MeetingCoordinatorTelemetryTests {
     await harness.coordinator.stop()
     await eventually("ended") { harness.ended.count == 1 && harness.coordinator.processing == nil }
     harness.saveError = nil
-    await harness.coordinator.retry(meetingID: meetingID)
+    await harness.coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet)
     await eventually("retry ended") {
       harness.ended.count == 2 && harness.coordinator.processing == nil
     }

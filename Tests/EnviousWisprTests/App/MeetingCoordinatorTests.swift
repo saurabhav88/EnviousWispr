@@ -109,6 +109,7 @@ struct MeetingCoordinatorTests {
     private(set) var receivedTracks: [MeetingTrackKind: MeetingTrackAudio] = [:]
     /// #4105: the transcript language each run was given, in order.
     private(set) var receivedLanguages: [String?] = []
+    private(set) var receivedAttempts: [MeetingAttemptConfiguration] = []
     private(set) var receivedMissingAudio: [MeetingTrackKind: [MeetingTranscriptionJob.MissingAudio]] =
       [:]
     var isEngineResident = false
@@ -127,14 +128,17 @@ struct MeetingCoordinatorTests {
       tracks: [MeetingTrackKind: MeetingTrackAudio], language: String?,
       checkpoint access: MeetingTranscriptionJob.CheckpointAccess?,
       missingAudio: [MeetingTrackKind: [MeetingTranscriptionJob.MissingAudio]],
-      onStage: @escaping @MainActor (MeetingTranscriptionJob.Stage) -> Void
+      onStage: @escaping @MainActor (MeetingTranscriptionJob.Stage) -> Void,
+      attempt: MeetingAttemptConfiguration
     ) async throws -> MeetingTranscriptionJob.Result {
       runs += 1
       receivedTracks = tracks
       receivedLanguages.append(language)
+      receivedAttempts.append(attempt)
       receivedMissingAudio = missingAudio
       onStage(.composing)
-      return try await behavior(access)
+      // The real job resolves the attempt it was given (C2: always to its requested engine).
+      return try await behavior(access).resolving(attempt)
     }
 
     func cancel() { cancelled = true }
@@ -427,8 +431,13 @@ struct MeetingCoordinatorTests {
         text: text, turns: [], speakerNames: [:], echoTurnIDs: ["mic-3"], speakerCount: 1),
       speakerOutcomes: [.microphone: .single], forcedCuts: 0, failedPieces: 0, failedRanges: [:],
       resumedPieces: 0, checkpointSaveFailures: 0, yieldCount: 0, processingSeconds: 1,
-      audioSeconds: 1)
+      audioSeconds: 1, resolved: placeholderResolved)
   }
+
+  /// Replaced by `FakeJob` with the attempt it ran (`Result.resolving`).
+  static let placeholderResolved = MeetingResolvedAttempt(
+    attemptID: UUID(), requestedEngine: .parakeet, resolvedEngine: .parakeet,
+    effectiveLanguage: nil, modelIdentity: nil, fallbackReason: nil)
 
   /// On a worker thread: once `gate`'s write is held, whether the main actor runs a job within
   /// 2 s. Releases the write either way.
@@ -450,10 +459,11 @@ struct MeetingCoordinatorTests {
   static func checkpoint(_ meetingID: UUID) -> MeetingProcessingCheckpoint {
     MeetingProcessingCheckpoint(
       key: .init(
-        meetingID: meetingID, processingVersion: 1, pieceTargetSeconds: 60,
+        meetingID: meetingID, attemptID: UUID(), processingVersion: 3, pieceTargetSeconds: 60,
         pieceSearchSeconds: 15, seamPaddingSeconds: 1, cutsPieces: true, transcriptLanguage: nil,
+        engine: .init(requested: .parakeet, resolved: .parakeet, modelIdentity: "ultra:rev"),
         inputs: []),
-      engineIdentity: "ultra:rev", tracks: [:])
+      tracks: [:])
   }
 
   /// Waits for `condition` through Observation, with a deadline that only fails the test.
@@ -573,7 +583,7 @@ struct MeetingCoordinatorTests {
       sawCheckpoint = await checkpoints.load() != nil
       return Self.result()
     }
-    await coordinator.retry(meetingID: meetingID)
+    await coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet)
     await Self.eventually("ready after retry") {
       coordinator.record(id: meetingID)?.state == .ready
     }
@@ -769,7 +779,7 @@ struct MeetingCoordinatorTests {
     #expect(coordinator.playbackSource(meetingID: meetingID) == nil)
 
     // This session never touches files the queued close still owns.
-    await coordinator.retry(meetingID: meetingID)
+    await coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet)
     await coordinator.deleteAudio(meetingID: meetingID)
     await coordinator.delete(meetingID: meetingID)
     #expect(harness.jobs.isEmpty)
@@ -867,7 +877,10 @@ struct MeetingCoordinatorTests {
     _ = await starting.value
   }
 
-  @Test("a queued meeting and Transcribe again use the Start language, not the current setting")
+  /// #4105, #3973 C2 (plan G2): a queued pass runs the attempt its Start froze, whatever
+  /// Settings say by then; Transcribe again is a new attempt that freezes the meeting language
+  /// chosen when it is pressed, and a later Settings change never reaches it.
+  @Test("a queued meeting uses its Start language; Transcribe again freezes the language chosen then")
   func queuedAndRetriedPassesUseTheStartLanguage() async throws {
     let harness = try Harness()
     let coordinator = harness.coordinator
@@ -895,14 +908,29 @@ struct MeetingCoordinatorTests {
     }
     #expect(harness.jobs.map(\.receivedLanguages) == [[nil], ["de"]])
 
-    // Transcribe again after Settings moved on: still German.
-    harness.language = .auto
-    harness.jobBehavior = { _ in Self.result() }
-    #expect(await coordinator.retry(meetingID: meetingB))
+    let started = try #require(harness.jobs.last?.receivedAttempts.first)
+
+    // Transcribe again after Settings moved on: a new attempt in the language chosen now
+    // (Spanish), held while Settings move again (French), which never reaches it.
+    harness.language = .locked("es")
+    let rerun = Gate()
+    harness.jobBehavior = { _ in
+      await rerun.wait()
+      return Self.result()
+    }
+    #expect(await coordinator.transcribeAgain(meetingID: meetingB, engine: .parakeet))
+    await Self.eventually("rerun processing") { rerun.parked }
+    harness.language = .locked("fr")
+    rerun.open()
     await Self.eventually("ready again") {
       coordinator.record(id: meetingB)?.state == .ready && coordinator.processing == nil
     }
-    #expect(harness.jobs.last?.receivedLanguages == ["de"])
+    #expect(harness.jobs.last?.receivedLanguages == ["es"])
+    let again = try #require(harness.jobs.last?.receivedAttempts.first)
+    #expect(again.attemptID != started.attemptID, "Transcribe again is a new attempt")
+    #expect(again.languageIntent == "es")
+    #expect(coordinator.record(id: meetingB)?.committedTranscriptAttemptID == again.attemptID)
+    #expect(coordinator.record(id: meetingB)?.pendingAttempt == nil)
   }
 
   @Test("a failed close marks the track failed but keeps its audio for processing")
@@ -1126,7 +1154,7 @@ struct MeetingCoordinatorTests {
     #expect(record.state == .ready)
     #expect(try harness.store.segmentFiles(meeting: meetingID).isEmpty)
     // No audio, so Retry has nothing to run.
-    await coordinator.retry(meetingID: meetingID)
+    await coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet)
     #expect(try harness.store.load(id: meetingID).state == .ready)
     #expect(harness.jobs.count == 1)
   }
@@ -1181,7 +1209,7 @@ struct MeetingCoordinatorTests {
     // Space is back and Transcribe again on the other meeting restarts the queue while the
     // Delete audio save is held: the saved list still shows the first meeting queued.
     harness.freeBytes = 50_000_000_000
-    await coordinator.retry(meetingID: otherID)
+    await coordinator.transcribeAgain(meetingID: otherID, engine: .parakeet)
     gate.release.signal()
     await removing.value
     #expect(gate.timedOut.withLock { $0 } == false, "a held write waited out its bound")
@@ -1380,7 +1408,7 @@ struct MeetingCoordinatorTests {
     }
     #expect(coordinator.playbackSource(meetingID: record.id) == nil)
     harness.freeBytes = 50_000_000_000
-    #expect(await coordinator.retry(meetingID: record.id))
+    #expect(await coordinator.transcribeAgain(meetingID: record.id, engine: .parakeet))
     await Self.eventually("ready") { coordinator.record(id: record.id)?.state == .ready }
     #expect(coordinator.playbackSource(meetingID: record.id) != nil)
   }
@@ -2063,7 +2091,7 @@ struct MeetingCoordinatorTests {
       resumed.meetingID = await access?.load()?.key.meetingID
       return Self.result()
     }
-    #expect(await coordinator.retry(meetingID: meetingID))
+    #expect(await coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet))
     await Self.eventually("ready after Transcribe again") {
       coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
     }
@@ -2108,7 +2136,7 @@ struct MeetingCoordinatorTests {
     let coordinator = harness.coordinator
     let meetingID = try await stalledByInventorySave(harness)
     #expect(coordinator.canTranscribeAgain(meetingID))
-    #expect(await coordinator.retry(meetingID: meetingID))
+    #expect(await coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet))
     await Self.eventually("ready") {
       coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
     }
@@ -2121,17 +2149,17 @@ struct MeetingCoordinatorTests {
     let coordinator = harness.coordinator
     let meetingID = try await stalledByInventorySave(harness)
     harness.writeGate.failNext(1)
-    #expect(await coordinator.retry(meetingID: meetingID) == false)
+    #expect(await coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet) == false)
     #expect(coordinator.record(id: meetingID)?.state == .processing)
     #expect(coordinator.canTranscribeAgain(meetingID), "the live copy rolled back: still offered")
-    #expect(await coordinator.retry(meetingID: meetingID))
+    #expect(await coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet))
     await Self.eventually("ready") {
       coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
     }
     #expect(harness.ended.count == 1, "still one attempt")
     // An ended failure retried starts a new attempt (contrast): one more row.
     harness.jobBehavior = { _ in throw MeetingTranscriptionJob.JobError.engineUnavailable("test") }
-    #expect(await coordinator.retry(meetingID: meetingID))
+    #expect(await coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet))
     await Self.eventually("failed") {
       coordinator.record(id: meetingID)?.state == .failed && coordinator.processing == nil
     }
@@ -2159,7 +2187,7 @@ struct MeetingCoordinatorTests {
     #expect(coordinator.record(id: meetingID)?.state == .queued)
     #expect(coordinator.queueWaitsForSpace == false)
     #expect(coordinator.canTranscribeAgain(meetingID), "no queue will take it: offered")
-    #expect(await coordinator.retry(meetingID: meetingID))
+    #expect(await coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet))
     await Self.eventually("ready") {
       coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
     }
@@ -2172,7 +2200,7 @@ struct MeetingCoordinatorTests {
     let meetingID = try await stalledByInventorySave(harness)
     #expect(await coordinator.deleteForHistoryDeleteAll(meetingIDs: [meetingID]))
     #expect(coordinator.canTranscribeAgain(meetingID) == false)
-    #expect(await coordinator.retry(meetingID: meetingID) == false)
+    #expect(await coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet) == false)
     await Self.eventually("deleted") { coordinator.record(id: meetingID) == nil }
     #expect(harness.jobs.isEmpty)
   }
@@ -2184,7 +2212,7 @@ struct MeetingCoordinatorTests {
     let meetingID = try await stalledByInventorySave(harness)
     let gate = harness.writeGate
     gate.holdNext { $0.id == meetingID && $0.state == .queued }
-    let retrying = Task { await coordinator.retry(meetingID: meetingID) }
+    let retrying = Task { await coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet) }
     #expect(await Task.detached { Self.waitBlocking(gate.entered) }.value == .success)
     let removing = Task { await coordinator.deleteAudio(meetingID: meetingID) }
     await MeetingWorkAdmission.waitUntil { !coordinator.canTranscribeAgain(meetingID) }
@@ -2231,13 +2259,13 @@ struct MeetingCoordinatorTests {
       return Self.result()
     }
     harness.freeBytes = 50_000_000_000
-    #expect(await coordinator.retry(meetingID: first))
+    #expect(await coordinator.transcribeAgain(meetingID: first, engine: .parakeet))
     await Self.eventually("second parked, first stalled") {
       parked.parked && coordinator.record(id: first)?.state == .processing
         && coordinator.processing?.meetingID == second
     }
     #expect(coordinator.canTranscribeAgain(first))
-    #expect(await coordinator.retry(meetingID: first))
+    #expect(await coordinator.transcribeAgain(meetingID: first, engine: .parakeet))
     parked.open()
     await Self.eventually("both ready") {
       coordinator.record(id: first)?.state == .ready
@@ -2263,7 +2291,7 @@ struct MeetingCoordinatorTests {
     coordinator.launch()
     #expect(await Task.detached { Self.waitBlocking(gate.entered) }.value == .success)
     #expect(coordinator.canTranscribeAgain(crashed.id) == false, "not while launch recovery runs")
-    let retrying = Task { await coordinator.retry(meetingID: crashed.id) }
+    let retrying = Task { await coordinator.transcribeAgain(meetingID: crashed.id, engine: .parakeet) }
     gate.release.signal()
     let accepted = await retrying.value
     #expect(gate.timedOut.withLock { $0 } == false, "a held write waited out its bound")
@@ -2941,13 +2969,13 @@ struct MeetingCoordinatorTests {
 
     // Still full: Transcribe again checks the disk again and keeps waiting, writing nothing.
     let writesBefore = harness.writeGate.written.withLock { $0.count }
-    #expect(await coordinator.retry(meetingID: meetingID))
+    #expect(await coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet))
     #expect(harness.writeGate.written.withLock { $0.count } == writesBefore, "no record write")
     await Self.eventually("checked again") { coordinator.queueWaitsForSpace }
     #expect(coordinator.record(id: meetingID)?.state == .queued)
 
     harness.freeBytes = 50_000_000_000
-    await coordinator.retry(meetingID: meetingID)
+    await coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet)
     await Self.eventually("ready") { coordinator.record(id: meetingID)?.state == .ready }
     #expect(coordinator.queueWaitsForSpace == false)
   }

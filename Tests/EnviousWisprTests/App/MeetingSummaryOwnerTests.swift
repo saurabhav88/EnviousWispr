@@ -513,7 +513,7 @@ struct MeetingSummaryOwnerTests {
     // Transcribe again; its History save parks, then is let go while the old call still runs.
     let save = MeetingCoordinatorTests.Gate()
     harness.saveGate = save
-    await coordinator.retry(meetingID: meetingID)
+    await coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet)
     await Self.eventually("save parked") { save.parked }
     save.open()
     // The new transcript waits for the old summary: it is not ready while that call runs.
@@ -558,7 +558,7 @@ struct MeetingSummaryOwnerTests {
 
     // Transcribe again on the second: its waiting summary is cancelled and settles at once,
     // so the final pass is not held behind the first meeting's summary.
-    await coordinator.retry(meetingID: second)
+    await coordinator.transcribeAgain(meetingID: second, engine: .parakeet)
     await Self.eventually("retry ready") {
       coordinator.record(id: second)?.state == .ready && coordinator.processing == nil
     }

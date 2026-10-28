@@ -143,7 +143,7 @@ struct MeetingProcessingRealBoundaryTests {
     defer { try? FileManager.default.removeItem(at: dir) }
     let audio = try segments(from: fixture, into: dir)
     let (job, engine) = try realJob()
-    let result = try await job.run(tracks: [.callSound: audio], language: nil) { _ in }
+    let result = try await job.runTestAttempt(tracks: [.callSound: audio], language: nil) { _ in }
     let words = result.composition.text.split(whereSeparator: \.isWhitespace).count
     print(
       "MEETING_REAL two-voice words=\(words) speakers=\(result.composition.speakerCount) outcome=\(result.speakerOutcomes[.callSound].map(\.rawValue) ?? "none")"
@@ -213,7 +213,7 @@ struct MeetingProcessingRealBoundaryTests {
     let meetingID = UUID()
     let (job, _) = try realJob()
     let started = Date()
-    let result = try await job.run(
+    let result = try await job.runTestAttempt(
       tracks: [.callSound: audio], language: nil,
       checkpoint: .init(
         meetingID: meetingID,
