@@ -10,7 +10,8 @@ import PlayButton from '../components/PlayButton.astro';
 import AndroidDemo from '../components/AndroidDemo.astro';
 import FeatureFaq from '../components/features/FeatureFaq.astro';
 import DownloadClosing from '../components/DownloadClosing.astro';
-import { downloadUrl, playUrl } from '../data/site-navigation.js';
+import { downloadUrl } from '../data/site-navigation.js';
+import { ANDROID_APP } from '../data/entities.js';
 import '../styles/android.css';
 import cleanup from '../assets/android/transcription-3.png';
 import dictionary from '../assets/android/dictionary.png';
@@ -67,19 +68,7 @@ const faqs = [
   },
 ];
 
-const softwareApplication = {
-  '@context': 'https://schema.org',
-  '@type': 'MobileApplication',
-  name: 'EnviousWispr: Voice to Text',
-  operatingSystem: 'Android 13 or later',
-  applicationCategory: 'ProductivityApplication',
-  description,
-  url: 'https://enviouswispr.com/android/',
-  downloadUrl: playUrl('structured-data'),
-  installUrl: playUrl('structured-data'),
-  offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
-  publisher: { '@type': 'Organization', name: 'Envious Labs LLC', url: 'https://enviouswispr.com/' },
-};
+const androidApp = { '@context': 'https://schema.org', ...ANDROID_APP };
 ---
 
 <FeatureShell
@@ -87,7 +76,7 @@ const softwareApplication = {
   activePage="android"
   title="EnviousWispr for Android: free on-device dictation"
   description={description}
-  extraLd={[softwareApplication]}
+  extraLd={[androidApp]}
 >
   <section class="product-hero android-hero wrap">
     <div class="hero-message">
