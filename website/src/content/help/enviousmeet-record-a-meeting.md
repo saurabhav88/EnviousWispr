@@ -58,7 +58,7 @@ EnviousMeet can also ask to record when a call starts. See [EnviousMeet: When a 
 
 Live words show what is said into your microphone and in the call while a meeting records. They are a preview: the full transcript, with speakers and probable echo hidden, is written after the meeting and does not depend on live words.
 
-Choose the engine and language under **Live words** on the **General** tab of the EnviousMeet page.
+Choose the engine and language under **Live words** on the **Models** tab of the EnviousMeet page.
 
 | Engine | What it needs |
 | --- | --- |
