@@ -25,7 +25,7 @@ It is free on [Google Play](/android/), with no account, no subscription and no 
 
 You keep the keyboard you already use. When a text box is active, a floating bubble appears just above the keyboard. Tap it to start, then tap the check when you are done. Or hold it while you talk and let go to finish.
 
-Your words land at the cursor in apps such as Gmail, WhatsApp and Chrome. If an app does not accept them, EnviousWispr copies them to the clipboard and keeps them in History, so you do not have to say it again.
+Your words land at the cursor in apps such as Gmail, WhatsApp and Chrome. If an app does not accept them, EnviousWispr tells you where they went, usually the clipboard or History, so you do not have to say it again.
 
 ## Your voice stays on your phone
 

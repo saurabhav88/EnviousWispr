@@ -29,7 +29,7 @@ Open EnviousWispr and go to the **History** tab. Find your dictation and tap **C
 
 ### Why it happens
 
-**Accessibility access is off.** Without it, EnviousWispr cannot paste into other apps, so it copies your words instead.
+**Accessibility access is off.** Without it, EnviousWispr cannot paste into other apps. The message tells you whether your words are on the clipboard or in History.
 
 **It was a password or PIN field.** EnviousWispr never types into password or PIN fields. The message tells you where your words went.
 
