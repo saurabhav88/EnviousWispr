@@ -15,10 +15,4 @@
 .say-get-note{font-size:12px;color:var(--body);padding-inline:4px}
 .lang-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
 .lang-chips span{padding:7px 13px;border-radius:999px;border:1px solid var(--line);background:var(--film-well);color:var(--ink);font-size:14px;font-weight:500}
-.feature-faq{padding-block:56px 24px;max-width:860px}
-.feature-faq h2{font-size:clamp(28px,3vw,38px);letter-spacing:-.03em;margin-bottom:22px}
-.feature-faq-list{display:grid;gap:10px}
-.feature-faq details{border:1px solid var(--line);border-radius:14px;background:var(--film-well);padding:0 20px}
-.feature-faq summary{cursor:pointer;padding:18px 0;font-size:17px;font-weight:600;color:var(--ink);list-style-position:outside}
-.feature-faq details p{margin:0 0 18px;font-size:16px;line-height:1.65;color:var(--body)}
-@media(max-width:600px){.key-panel,.say-get{padding:14px}.say-get-row{grid-template-columns:minmax(0,1fr);gap:4px}.say-get-row .arrow{display:none}.key-row{grid-template-columns:minmax(0,1fr)}.feature-faq{padding-block:40px 16px}.feature-faq summary{font-size:16px}}
+@media(max-width:600px){.key-panel,.say-get{padding:14px}.say-get-row{grid-template-columns:minmax(0,1fr);gap:4px}.say-get-row .arrow{display:none}.key-row{grid-template-columns:minmax(0,1fr)}}
