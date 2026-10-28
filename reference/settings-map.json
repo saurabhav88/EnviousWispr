@@ -1,14 +1,14 @@
 {
   "counts" : {
-    "nodes" : 289,
-    "searchable" : 262,
-    "vocabularyBlocks" : 8384
+    "nodes" : 290,
+    "searchable" : 263,
+    "vocabularyBlocks" : 8416
   },
   "fingerprints" : {
-    "mapSHA256" : "aa5b13393e001909472a4b8679de2fcd0e1699188ccedb3c410609fb7d6333a4",
-    "uiCatalogSHA256" : "808df26c517c23ccec43e4fee894d39154f4c7facc6f4d9d18ce3217375c679d",
+    "mapSHA256" : "9917795ed2474d77d9852822bc037ddc203085624d70978a5b3a93e1ed87eda8",
+    "uiCatalogSHA256" : "60ba6b34004df202e0838e073ea163268a3343c67d1cea3cc3c53d74fb3aa640",
     "vocabularyCanonicalization" : "length-prefixed-v1",
-    "vocabularySHA256" : "3273414fce296c2df8ccc686342e09b2d3855db129220ec053e2c269cf77bd14"
+    "vocabularySHA256" : "2e35019d9014352b1f131ed67cc84f82ffc652bfdc674508d9b26d2ebcae63e5"
   },
   "interfaceLanguages" : [
     "en",
@@ -37989,7 +37989,7 @@
       "context" : [
         "window.settings",
         "page.meetings",
-        "meetings.tab.general"
+        "meetings.tab.models"
       ],
       "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
       "description" : {
@@ -38002,7 +38002,7 @@
       },
       "destination" : {
         "page" : "meetings",
-        "tab" : "general"
+        "tab" : "models"
       },
       "dictionaryTab" : null,
       "fallbacks" : [
@@ -38010,7 +38010,7 @@
       ],
       "id" : "meetingLiveWords",
       "kind" : "setting",
-      "parent" : "meetings.tab.general",
+      "parent" : "meetings.tab.models",
       "searchable" : true,
       "structure" : "item",
       "target" : "meetingLiveWords",
@@ -38357,7 +38357,7 @@
       "context" : [
         "window.settings",
         "page.meetings",
-        "meetings.tab.general"
+        "meetings.tab.models"
       ],
       "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
       "description" : {
@@ -38370,7 +38370,7 @@
       },
       "destination" : {
         "page" : "meetings",
-        "tab" : "general"
+        "tab" : "models"
       },
       "dictionaryTab" : null,
       "fallbacks" : [
@@ -38378,7 +38378,7 @@
       ],
       "id" : "meetingTranscriptLanguage",
       "kind" : "setting",
-      "parent" : "meetings.tab.general",
+      "parent" : "meetings.tab.models",
       "searchable" : true,
       "structure" : "item",
       "target" : "meetingTranscriptLanguage",
@@ -67591,6 +67591,327 @@
       "description" : null,
       "destination" : {
         "page" : "meetings",
+        "tab" : "models"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "meetings.tab.models",
+      "kind" : "feature",
+      "parent" : "page.meetings",
+      "searchable" : true,
+      "structure" : "tab",
+      "target" : "meetings.tab.models",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Modelle",
+        "en" : "Models",
+        "key" : "Models",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "نماذج الاجتماعات"
+          ],
+          "title" : "النماذج",
+          "words" : [
+
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "модели за срещи"
+          ],
+          "title" : "модели",
+          "words" : [
+
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "modely pro schůzky"
+          ],
+          "title" : "modely",
+          "words" : [
+
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "modeller til møder"
+          ],
+          "title" : "modeller",
+          "words" : [
+
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "Modelle für Meetings",
+            "Modelle in EnviousMeet"
+          ],
+          "words" : [
+
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "μοντέλα για συναντήσεις"
+          ],
+          "title" : "μοντέλα",
+          "words" : [
+
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "meeting models",
+            "EnviousMeet models"
+          ],
+          "words" : [
+
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "modelos para reuniones"
+          ],
+          "title" : "modelos",
+          "words" : [
+
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "koosolekute mudelid"
+          ],
+          "title" : "mudelid",
+          "words" : [
+
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "EnviousMeetin mallit"
+          ],
+          "title" : "mallit",
+          "words" : [
+
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "modèles pour les réunions"
+          ],
+          "title" : "modèles",
+          "words" : [
+
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "मीटिंग के लिए मॉडल"
+          ],
+          "title" : "मॉडल",
+          "words" : [
+
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "modeli za sastanke"
+          ],
+          "title" : "modeli",
+          "words" : [
+
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "modellek megbeszélésekhez"
+          ],
+          "title" : "modellek",
+          "words" : [
+
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "modelli per le riunioni"
+          ],
+          "title" : "modelli",
+          "words" : [
+
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "会議用モデル"
+          ],
+          "title" : "モデル",
+          "words" : [
+
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "회의용 모델"
+          ],
+          "title" : "모델",
+          "words" : [
+
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "susitikimų modeliai"
+          ],
+          "title" : "modeliai",
+          "words" : [
+
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "sapulču modeļi"
+          ],
+          "title" : "modeļi",
+          "words" : [
+
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "mudelli għal-laqgħat"
+          ],
+          "title" : "mudelli",
+          "words" : [
+
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "modellen voor vergaderingen"
+          ],
+          "title" : "modellen",
+          "words" : [
+
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "modele do spotkań"
+          ],
+          "title" : "modele",
+          "words" : [
+
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "modelos para reuniões"
+          ],
+          "title" : "modelos",
+          "words" : [
+
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "modele pentru ședințe"
+          ],
+          "title" : "modele",
+          "words" : [
+
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "модели для встреч"
+          ],
+          "title" : "модели",
+          "words" : [
+
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "modely pre schôdze"
+          ],
+          "title" : "modely",
+          "words" : [
+
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "modeli za sestanke"
+          ],
+          "title" : "modeli",
+          "words" : [
+
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "modeller för möten"
+          ],
+          "title" : "modeller",
+          "words" : [
+
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "toplantı modelleri"
+          ],
+          "title" : "modeller",
+          "words" : [
+
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "моделі для зустрічей"
+          ],
+          "title" : "моделі",
+          "words" : [
+
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "mô hình cho cuộc họp"
+          ],
+          "title" : "mô hình",
+          "words" : [
+
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "会议用的模型"
+          ],
+          "title" : "模型",
+          "words" : [
+
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.meetings"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : null,
+      "destination" : {
+        "page" : "meetings",
         "tab" : "callApps"
       },
       "dictionaryTab" : null,
@@ -80053,14 +80374,14 @@
       "context" : [
         "window.settings",
         "page.meetings",
-        "meetings.tab.general",
+        "meetings.tab.models",
         "meetingLiveWords"
       ],
       "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
       "description" : null,
       "destination" : {
         "page" : "meetings",
-        "tab" : "general"
+        "tab" : "models"
       },
       "dictionaryTab" : null,
       "fallbacks" : [
@@ -80371,14 +80692,14 @@
       "context" : [
         "window.settings",
         "page.meetings",
-        "meetings.tab.general",
+        "meetings.tab.models",
         "meetingLiveWords"
       ],
       "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
       "description" : null,
       "destination" : {
         "page" : "meetings",
-        "tab" : "general"
+        "tab" : "models"
       },
       "dictionaryTab" : null,
       "fallbacks" : [

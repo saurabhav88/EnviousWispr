@@ -1,0 +1,38 @@
+{
+  "run_id": "run-1793153133-d71ef479",
+  "run_dir": "/Users/m4pro_sv/.local/state/council/runs/run-1793153133-d71ef479",
+  "providers": {
+    "openai": {
+      "content": "1. {\"words\":[\"Meetingmodelle\",\"Transkriptsprache\",\"Meetingzusammenfassungen\"],\"phrases\":[\"Modelle f\u00fcr Meetings\",\"Modelle in EnviousMeet\",\"Sprache f\u00fcr Meetingtranskripte\"]} \u2013 Die zus\u00e4tzlichen Suchbegriffe decken auch die Sprachwahl und Zusammenfassungen auf dieser Seite ab.",
+      "latest_response_id": "resp_0cdfb670ea02655d006ae1586def7c8196a7dc9aa84c0cca36",
+      "model": "gpt-6-sol",
+      "provider": "openai",
+      "session": "ew-3973-prB-german-2026-10-27-gpt",
+      "status": "ok",
+      "usage": {
+        "completion_tokens": 510,
+        "cost_usd": 0.002748,
+        "latency_ms": 5322,
+        "prompt_tokens": 708,
+        "reasoning_tokens": 437,
+        "total_tokens": 1218
+      }
+    },
+    "gemini": {
+      "content": "1. OK. The block adheres to all formatting and length rules and accurately targets the meeting models tab without conflicting with the dictation or AI Polish settings.",
+      "latest_interaction_id": "v1_ChdGRmpoYXZqNEtfdS14ZElQNGVpRm9RWRIXYmxqaGF0amdGWUdzeXRNUHhfMjk2UVk",
+      "model": "gemini-3.8-flash",
+      "provider": "gemini",
+      "session": "ew-3973-prB-german-2026-10-27-gemini",
+      "status": "ok",
+      "usage": {
+        "prompt_tokens": 1025,
+        "completion_tokens": 30,
+        "reasoning_tokens": 5403,
+        "total_tokens": 6458,
+        "cost_usd": 0.042285,
+        "latency_ms": 46384
+      }
+    }
+  }
+}

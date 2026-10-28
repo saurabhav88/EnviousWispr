@@ -1072,7 +1072,7 @@ struct SettingsArrivalTests {
     }
   }
 
-  /// Hosts the real EnviousMeet General tab in a narrow window and reveals `entryID`; returns
+  /// Hosts the real EnviousMeet Models tab (#3973 PR B) in a narrow window and reveals `entryID`; returns
   /// the acknowledged token and the rung it landed on.
   static func meetingsArrival(at entryID: String, appleAvailable: Bool) async throws -> (
     acknowledged: Int?, landed: SettingsArrivalRung?
@@ -1081,7 +1081,7 @@ struct SettingsArrivalTests {
       appleAvailable: appleAvailable)
     let box = RevealBox()
     func page(_ reveal: SettingsReveal?) -> some View {
-      MeetingsPage(box: box, reveal: reveal, tab: .general, environment: environment)
+      MeetingsPage(box: box, reveal: reveal, tab: .models, environment: environment)
         .frame(width: 560, height: 420)
     }
     let host = NSHostingView(rootView: page(nil))
@@ -1119,7 +1119,7 @@ struct SettingsArrivalTests {
   }
 
   /// #4105: a search result for Live words, its engine choices or Transcript language opens the
-  /// real EnviousMeet General tab, below the fold of a narrow window, and lands on the row,
+  /// real EnviousMeet Models tab, below the fold of a narrow window, and lands on the row,
   /// with Apple unavailable too.
   @Test("Live words, its engines and Transcript language arrive at their rows on the real page")
   func meetingLanguageRowsArrive() async throws {

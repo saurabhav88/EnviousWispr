@@ -3,6 +3,7 @@ import SwiftUI
 /// The EnviousMeet tabs (#4058), in display order. Selection belongs to the window shell.
 enum MeetingsTab: String, CaseIterable, Hashable, Identifiable {
   case general
+  case models
   case callApps
   case permissions
 
@@ -12,6 +13,7 @@ enum MeetingsTab: String, CaseIterable, Hashable, Identifiable {
   var mapID: SettingsMapID {
     switch self {
     case .general: .meetingsTabGeneral
+    case .models: .meetingsTabModels
     case .callApps: .meetingsTabCallApps
     case .permissions: .meetingsTabPermissions
     }
@@ -21,6 +23,10 @@ enum MeetingsTab: String, CaseIterable, Hashable, Identifiable {
     switch self {
     case .general:
       LocalizedStringResource("General", comment: "EnviousMeet settings: tab name.")
+    case .models:
+      LocalizedStringResource(
+        "Models",
+        comment: "EnviousMeet settings: tab name for the speech engines, languages and summary model.")
     case .callApps:
       LocalizedStringResource(
         "Call Apps", comment: "EnviousMeet settings: tab name for the per-app call switches.")
@@ -34,6 +40,7 @@ enum MeetingsTab: String, CaseIterable, Hashable, Identifiable {
   var icon: String {
     switch self {
     case .general: "gearshape"
+    case .models: "cpu"
     case .callApps: "phone.badge.waveform"
     case .permissions: "hand.raised"
     }

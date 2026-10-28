@@ -1,0 +1,261 @@
+{
+ "id": "meetings.tab.models",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "النماذج",
+   "words": [],
+   "phrases": [
+    "نماذج الاجتماعات"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "модели",
+   "words": [],
+   "phrases": [
+    "модели за срещи"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "modely",
+   "words": [],
+   "phrases": [
+    "modely pro schůzky"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "modeller",
+   "words": [],
+   "phrases": [
+    "modeller til møder"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [],
+   "phrases": [
+    "Modelle für Meetings",
+    "Modelle in EnviousMeet"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "μοντέλα",
+   "words": [],
+   "phrases": [
+    "μοντέλα για συναντήσεις"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [],
+   "phrases": [
+    "meeting models",
+    "EnviousMeet models"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "modelos",
+   "words": [],
+   "phrases": [
+    "modelos para reuniones"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "mudelid",
+   "words": [],
+   "phrases": [
+    "koosolekute mudelid"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "mallit",
+   "words": [],
+   "phrases": [
+    "EnviousMeetin mallit"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "modèles",
+   "words": [],
+   "phrases": [
+    "modèles pour les réunions"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "मॉडल",
+   "words": [],
+   "phrases": [
+    "मीटिंग के लिए मॉडल"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "modeli",
+   "words": [],
+   "phrases": [
+    "modeli za sastanke"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "modellek",
+   "words": [],
+   "phrases": [
+    "modellek megbeszélésekhez"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "modelli",
+   "words": [],
+   "phrases": [
+    "modelli per le riunioni"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "モデル",
+   "words": [],
+   "phrases": [
+    "会議用モデル"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "모델",
+   "words": [],
+   "phrases": [
+    "회의용 모델"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "modeliai",
+   "words": [],
+   "phrases": [
+    "susitikimų modeliai"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "modeļi",
+   "words": [],
+   "phrases": [
+    "sapulču modeļi"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "mudelli",
+   "words": [],
+   "phrases": [
+    "mudelli għal-laqgħat"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "modellen",
+   "words": [],
+   "phrases": [
+    "modellen voor vergaderingen"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "modele",
+   "words": [],
+   "phrases": [
+    "modele do spotkań"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "modelos",
+   "words": [],
+   "phrases": [
+    "modelos para reuniões"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "modele",
+   "words": [],
+   "phrases": [
+    "modele pentru ședințe"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "модели",
+   "words": [],
+   "phrases": [
+    "модели для встреч"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "modely",
+   "words": [],
+   "phrases": [
+    "modely pre schôdze"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "modeli",
+   "words": [],
+   "phrases": [
+    "modeli za sestanke"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "modeller",
+   "words": [],
+   "phrases": [
+    "modeller för möten"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "modeller",
+   "words": [],
+   "phrases": [
+    "toplantı modelleri"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "моделі",
+   "words": [],
+   "phrases": [
+    "моделі для зустрічей"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "mô hình",
+   "words": [],
+   "phrases": [
+    "mô hình cho cuộc họp"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "模型",
+   "words": [],
+   "phrases": [
+    "会议用的模型"
+   ]
+  }
+ ]
+}

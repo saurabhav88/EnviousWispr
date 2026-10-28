@@ -12,9 +12,9 @@ Generated from the compiled Settings Map and the validated search vocabulary. Do
 
 The interface ships in English and German. The other 30 languages (ar, bg, cs, da, el, es, et, fi, fr, hi, hr, hu, it, ja, ko, lt, lv, mt, nl, pl, pt, ro, ru, sk, sl, sv, tr, uk, vi, zh) are search metadata only: words and titles people may type, matched against the same places. Titles below read English / German.
 
-289 nodes, 262 searchable, 8384 vocabulary blocks.
+290 nodes, 263 searchable, 8416 vocabulary blocks.
 
-Fingerprints: mapSHA256 `aa5b13393e001909472a4b8679de2fcd0e1699188ccedb3c410609fb7d6333a4`, uiCatalogSHA256 `808df26c517c23ccec43e4fee894d39154f4c7facc6f4d9d18ce3217375c679d`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `3273414fce296c2df8ccc686342e09b2d3855db129220ec053e2c269cf77bd14`
+Fingerprints: mapSHA256 `9917795ed2474d77d9852822bc037ddc203085624d70978a5b3a93e1ed87eda8`, uiCatalogSHA256 `60ba6b34004df202e0838e073ea163268a3343c67d1cea3cc3c53d74fb3aa640`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `2e35019d9014352b1f131ed67cc84f82ffc652bfdc674508d9b26d2ebcae63e5`
 
 ## Structure
 
@@ -286,12 +286,13 @@ Fingerprints: mapSHA256 `aa5b13393e001909472a4b8679de2fcd0e1699188ccedb3c410609f
       - [Record only my voice / Nur meine Stimme aufnehmen](#node-meetingCaptureCallSound) `meetingCaptureCallSound` (setting)
       - [Write a summary when a meeting ends / Zusammenfassung erstellen, wenn ein Meeting endet](#node-meetingWriteSummary) `meetingWriteSummary` (setting)
       - [Turn off dictation during meetings / Diktieren während Meetings ausschalten](#node-meetingTurnsOffDictation) `meetingTurnsOffDictation` (setting)
+      - [Name meetings from my calendar / Meetings nach meinem Kalender benennen](#node-meetingUseCalendarForNames) `meetingUseCalendarForNames` (setting)
+      - [When a call starts / Wenn ein Anruf beginnt](#node-meetingCallDetection) `meetingCallDetection` (setting)
+    - [Models / Modelle](#node-meetings-tab-models) `meetings.tab.models` (feature)
       - [Live words / Live-Transkript](#node-meetingLiveWords) `meetingLiveWords` (setting)
         - [Apple](#node-meetingLiveWords-apple) `meetingLiveWords.apple` (choice)
         - [Universal / Universal](#node-meetingLiveWords-universal) `meetingLiveWords.universal` (choice)
       - [Transcript language / Transkriptsprache](#node-meetingTranscriptLanguage) `meetingTranscriptLanguage` (setting)
-      - [Name meetings from my calendar / Meetings nach meinem Kalender benennen](#node-meetingUseCalendarForNames) `meetingUseCalendarForNames` (setting)
-      - [When a call starts / Wenn ein Anruf beginnt](#node-meetingCallDetection) `meetingCallDetection` (setting)
     - [Call Apps / Anruf-Apps](#node-meetings-tab-callApps) `meetings.tab.callApps` (feature)
       - [Notice calls in / Anrufe erkennen in](#node-meetingCallApps) `meetingCallApps` (setting)
     - [Permissions / Berechtigungen](#node-meetings-tab-permissions) `meetings.tab.permissions` (feature)
@@ -2564,11 +2565,11 @@ Fingerprints: mapSHA256 `aa5b13393e001909472a4b8679de2fcd0e1699188ccedb3c410609f
 |---|---|
 | Structure | item |
 | Kind | setting |
-| Parent | [`meetings.tab.general`](#node-meetings-tab-general) |
+| Parent | [`meetings.tab.models`](#node-meetings-tab-models) |
 | Title source | catalog key `Live words` |
 | Description | The engine and language for words shown while a meeting records. / Engine und Sprache für das Live-Transkript während einer Meeting-Aufnahme. |
 | Description source | catalog key `The engine and language for words shown while a meeting records.` |
-| Destination | `meetings` › `general` |
+| Destination | `meetings` › `models` |
 | Dictionary tab | none |
 | Shown when | `always` |
 | Arrival target | [`meetingLiveWords`](#node-meetingLiveWords) |
@@ -2586,11 +2587,11 @@ Fingerprints: mapSHA256 `aa5b13393e001909472a4b8679de2fcd0e1699188ccedb3c410609f
 |---|---|
 | Structure | item |
 | Kind | setting |
-| Parent | [`meetings.tab.general`](#node-meetings-tab-general) |
+| Parent | [`meetings.tab.models`](#node-meetings-tab-models) |
 | Title source | catalog key `Transcript language` |
 | Description | The language of the full transcript written after a meeting. / Die Sprache des vollständigen Transkripts, das nach einem Meeting erstellt wird. |
 | Description source | catalog key `The language of the full transcript written after a meeting.` |
-| Destination | `meetings` › `general` |
+| Destination | `meetings` › `models` |
 | Dictionary tab | none |
 | Shown when | `always` |
 | Arrival target | [`meetingTranscriptLanguage`](#node-meetingTranscriptLanguage) |
@@ -4325,6 +4326,27 @@ Fingerprints: mapSHA256 `aa5b13393e001909472a4b8679de2fcd0e1699188ccedb3c410609f
 | Search (de) | phrases: allgemeine Einstellungen für EnviousMeet |
 | Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
+<a id="node-meetings-tab-models"></a>
+
+### Models / Modelle (`meetings.tab.models`)
+
+| Field | Value |
+|---|---|
+| Structure | tab |
+| Kind | feature |
+| Parent | [`page.meetings`](#node-page-meetings) |
+| Title source | catalog key `Models` |
+| Description | none |
+| Destination | `meetings` › `models` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`meetings.tab.models`](#node-meetings-tab-models) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | phrases: meeting models; EnviousMeet models |
+| Search (de) | phrases: Modelle für Meetings; Modelle in EnviousMeet |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
 <a id="node-meetings-tab-callApps"></a>
 
 ### Call Apps / Anruf-Apps (`meetings.tab.callApps`)
@@ -5042,7 +5064,7 @@ Fingerprints: mapSHA256 `aa5b13393e001909472a4b8679de2fcd0e1699188ccedb3c410609f
 | Parent | [`meetingLiveWords`](#node-meetingLiveWords) |
 | Title source | product name |
 | Description | none |
-| Destination | `meetings` › `general` |
+| Destination | `meetings` › `models` |
 | Dictionary tab | none |
 | Shown when | `always` |
 | Arrival target | [`meetingLiveWords`](#node-meetingLiveWords) |
@@ -5063,7 +5085,7 @@ Fingerprints: mapSHA256 `aa5b13393e001909472a4b8679de2fcd0e1699188ccedb3c410609f
 | Parent | [`meetingLiveWords`](#node-meetingLiveWords) |
 | Title source | catalog key `Universal` |
 | Description | none |
-| Destination | `meetings` › `general` |
+| Destination | `meetings` › `models` |
 | Dictionary tab | none |
 | Shown when | `always` |
 | Arrival target | [`meetingLiveWords`](#node-meetingLiveWords) |

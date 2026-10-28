@@ -36,6 +36,9 @@
   "mac-tab-meetings-general": [
    "meetings.tab.general"
   ],
+  "mac-tab-meetings-models": [
+   "meetings.tab.models"
+  ],
   "mac-tab-meetings-call-apps": [
    "meetings.tab.callApps"
   ],
@@ -789,6 +792,11 @@
    "kind": "section",
    "parent": "mac-page-meetings",
    "label": "General [tab]"
+  },
+  "mac-tab-meetings-models": {
+   "kind": "section",
+   "parent": "mac-page-meetings",
+   "label": "Models [tab]"
   },
   "mac-tab-meetings-call-apps": {
    "kind": "section",

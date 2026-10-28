@@ -101,6 +101,19 @@ struct SettingsSearchBothLegsTests {
       "universal: \(Array(universal.prefix(5)))")
   }
 
+  /// #3973 PR B: the EnviousMeet Models tab is found by its reviewed phrases in English and German.
+  @Test("the EnviousMeet Models tab is found first by its phrases in English and German")
+  func meetingModelsTabIsFound() async throws {
+    let rows: [(SettingsSearchModel, String)] = [
+      (try Self.model("en"), "meeting models"),
+      (try Self.model("de"), "Modelle für Meetings"),
+    ]
+    for (model, query) in rows {
+      let ids = await Self.search(model, query)
+      #expect(ids.first == "meetings.tab.models", "\(query): \(Array(ids.prefix(5)))")
+    }
+  }
+
   @Test("the word-leg rows keep their answers with the meaning pass on")
   func wordRowsHold() async throws {
     let english = try Self.model("en")

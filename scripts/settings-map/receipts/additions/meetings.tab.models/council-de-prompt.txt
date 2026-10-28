@@ -1,0 +1,6 @@
+You are reviewing German Settings-search vocabulary for a macOS dictation app (EnviousWispr). Each block lists short "words" and everyday "phrases" a German user might type into the app's Settings search to find one place. Use du-form, no dashes, lowercase except nouns. The interface title is supplied separately and is not part of the block.
+
+1. Place: the EnviousMeet page's new tab „Modelle“: every model choice for meetings: Live-Transkript (engine and language for words shown while a meeting records), Transkriptsprache (language of the full transcript after a meeting), and Zusammenfassungen (which AI Polish model writes the meeting summary). Not the dictation engine page, not the AI Polish settings themselves.
+   Block: {"words": [], "phrases": ["Modelle für Meetings", "Modelle in EnviousMeet"]}
+
+For each block answer "N. OK" or "N. <corrected JSON block>" plus a one-sentence reason. Keep 0 to 6 words and 1 to 3 phrases.

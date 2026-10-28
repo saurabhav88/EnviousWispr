@@ -2342,10 +2342,10 @@
    "kind": "setting",
    "destination": {
     "page": "meetings",
-    "tab": "general"
+    "tab": "models"
    },
    "disposition": "mapped",
-   "parent": "meetings.tab.general",
+   "parent": "meetings.tab.models",
    "target": "meetingLiveWords",
    "fallbacks": [],
    "dynamicTitle": false,
@@ -2360,7 +2360,7 @@
    "kind": "choice",
    "destination": {
     "page": "meetings",
-    "tab": "general"
+    "tab": "models"
    },
    "disposition": "mapped",
    "parent": "meetingLiveWords",
@@ -2374,7 +2374,7 @@
    "kind": "choice",
    "destination": {
     "page": "meetings",
-    "tab": "general"
+    "tab": "models"
    },
    "disposition": "mapped",
    "parent": "meetingLiveWords",
@@ -2388,10 +2388,10 @@
    "kind": "setting",
    "destination": {
     "page": "meetings",
-    "tab": "general"
+    "tab": "models"
    },
    "disposition": "mapped",
-   "parent": "meetings.tab.general",
+   "parent": "meetings.tab.models",
    "target": "meetingTranscriptLanguage",
    "fallbacks": [],
    "dynamicTitle": false,
@@ -4738,6 +4738,19 @@
    "disposition": "mapped",
    "parent": "page.meetings",
    "target": "meetings.tab.general",
+   "fallbacks": [],
+   "dynamicTitle": false
+  },
+  {
+   "id": "meetings.tab.models",
+   "kind": "feature",
+   "destination": {
+    "page": "meetings",
+    "tab": "models"
+   },
+   "disposition": "mapped",
+   "parent": "page.meetings",
+   "target": "meetings.tab.models",
    "fallbacks": [],
    "dynamicTitle": false
   },

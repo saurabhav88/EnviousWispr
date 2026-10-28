@@ -980,23 +980,21 @@
    "meetingCallApps",
    "meetings.tab.callApps",
    "meetings.tab.general",
+   "meetings.tab.models",
    "meetings.tab.permissions"
   ]
  },
  "meetings.general": {
-  "exempt": {
-   "statusLine": 1
-  },
+  "exempt": {},
   "mapped": [
    "meetingCallDetection",
    "meetingCaptureCallSound",
-   "meetingLiveWords",
-   "meetingTranscriptLanguage",
    "meetingTurnsOffDictation",
    "meetingUseCalendarForNames",
    "meetingWriteSummary",
    "meetings.tab.callApps",
    "meetings.tab.general",
+   "meetings.tab.models",
    "meetings.tab.permissions"
   ]
  },
@@ -1007,6 +1005,20 @@
   "mapped": [
    "meetings.tab.callApps",
    "meetings.tab.general",
+   "meetings.tab.models",
+   "meetings.tab.permissions"
+  ]
+ },
+ "meetings.models": {
+  "exempt": {
+   "statusLine": 1
+  },
+  "mapped": [
+   "meetingLiveWords",
+   "meetingTranscriptLanguage",
+   "meetings.tab.callApps",
+   "meetings.tab.general",
+   "meetings.tab.models",
    "meetings.tab.permissions"
   ]
  }
