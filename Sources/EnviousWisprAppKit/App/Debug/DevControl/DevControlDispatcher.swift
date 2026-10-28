@@ -4,6 +4,7 @@
   import EnviousWisprCore
   import EnviousWisprModelDelivery
   import EnviousWisprPipeline
+  import EnviousWisprPostProcessing
   import EnviousWisprServices
   import Foundation
 
@@ -224,11 +225,11 @@
       case .wordsList:
         return wordsList(args)
       case .wordsAdd:
-        return wordsAdd(args)
+        return await wordsAdd(args)
       case .wordsUpdate:
-        return wordsUpdate(args)
+        return await wordsUpdate(args)
       case .wordsRemove:
-        return wordsRemove(args)
+        return await wordsRemove(args)
       case .modelsParakeetDownload:
         return model(.parakeet, "download", args, models.parakeetDownload)
       case .modelsParakeetCancel:
@@ -744,7 +745,7 @@
     ///   window first); nothing new was made.
     /// - `unchanged`: the owner accepted the request and the list holds no such word (a
     ///   blank word, which the owner ignores).
-    private func wordsAdd(_ args: [String: Any]) -> Result {
+    private func wordsAdd(_ args: [String: Any]) async -> Result {
       guard !unexpectedKeys(args, allowed: ["word", "aliases"]) else {
         return .failure(.badArgs, "words.add takes word and aliases only")
       }
@@ -759,7 +760,7 @@
       }
       let candidate = CustomWord(canonical: canonical, aliases: newAliases)
       let beforeIDs = Set(words.customWords.map(\.id))
-      if let message = words.add(candidate) {
+      if let message = await words.add(candidate) {
         return .failure(.rejected, message)
       }
       let spelling = canonical.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -782,11 +783,12 @@
       return .ok(["outcome": outcome, "word": Self.project(match)])
     }
 
-    /// `{id, word?, aliases?}`: at least one of word and aliases. The row is copied and
-    /// only the supplied fields change; `aliases: []` clears them. When another window
-    /// deleted the word first, the owner drops the edit and adopts the saved list; the
-    /// reply then says `targetGone` instead of naming a row.
-    private func wordsUpdate(_ args: [String: Any]) -> Result {
+    /// `{id, word?, aliases?}`: at least one of word and aliases. Only the supplied fields
+    /// are sent, as changes against the row as listed now, and merged onto the saved word
+    /// (#4086); `aliases: []` clears them. The reply's outcome is `updated`, `unchanged`,
+    /// `targetGone` (another window deleted the word first) or `conflict` (a change saved
+    /// meanwhile overlaps).
+    private func wordsUpdate(_ args: [String: Any]) async -> Result {
       guard !unexpectedKeys(args, allowed: ["id", "word", "aliases"]) else {
         return .failure(.badArgs, "words.update takes id, word and aliases only")
       }
@@ -809,22 +811,28 @@
       guard newCanonical != nil || newAliases != nil else {
         return .failure(.badArgs, "give word, aliases or both")
       }
-      guard var edited = words.customWords.first(where: { $0.id == id }) else {
+      guard let base = words.customWords.first(where: { $0.id == id }) else {
         return .failure(.notFound, "no word has that id")
       }
-      if let newCanonical { edited.canonical = newCanonical }
-      if let newAliases { edited.aliases = newAliases }
-      if let message = words.update(edited) {
+      var draft = base
+      if let newCanonical { draft.canonical = newCanonical }
+      if let newAliases { draft.aliases = newAliases }
+      switch await words.edit(CustomWordEditRequest(base: base, draft: draft)) {
+      case .refused(let message):
         return .failure(.rejected, message)
-      }
-      guard let saved = words.customWords.first(where: { $0.id == id }) else {
+      case .done(.saved(_, let after)):
+        return .ok(["outcome": "updated", "word": Self.project(after)])
+      case .done(.unchanged(let current)):
+        return .ok(["outcome": "unchanged", "word": Self.project(current)])
+      case .done(.targetGone):
         return .ok(["outcome": "targetGone", "word": NSNull()])
+      case .done(.conflict(let current)):
+        return .ok(["outcome": "conflict", "word": Self.project(current)])
       }
-      return .ok(["outcome": "updated", "word": Self.project(saved)])
     }
 
     /// `{id}`. Removing a built-in records its deletion, as the screen does.
-    private func wordsRemove(_ args: [String: Any]) -> Result {
+    private func wordsRemove(_ args: [String: Any]) async -> Result {
       guard !unexpectedKeys(args, allowed: ["id"]) else {
         return .failure(.badArgs, "words.remove takes id only")
       }
@@ -834,7 +842,7 @@
       guard words.customWords.contains(where: { $0.id == id }) else {
         return .failure(.notFound, "no word has that id")
       }
-      if let message = words.remove(id: id) {
+      if let message = await words.remove(id: id).failure {
         return .failure(.rejected, message)
       }
       let stillListed = words.customWords.contains { $0.id == id }

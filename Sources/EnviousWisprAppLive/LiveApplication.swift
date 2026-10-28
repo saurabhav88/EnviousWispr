@@ -136,6 +136,9 @@ package final class LiveApplication {
   package func applicationDidBecomeActive() {
     sequencer.applicationDidBecomeActive()
   }
+  package func applicationShouldTerminate(reply: @escaping @MainActor (Bool) -> Void) -> Bool {
+    sequencer.applicationShouldTerminate(reply: reply)
+  }
   package func applicationWillTerminate() {
     sequencer.applicationWillTerminate()
   }

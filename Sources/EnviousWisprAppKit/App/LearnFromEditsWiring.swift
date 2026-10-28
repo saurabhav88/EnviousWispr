@@ -213,38 +213,8 @@ final class LearnFromEditsWiring {
     compiledCacheDirectory: URL = CoreMLCorrectionJudge.defaultCompiledCacheDirectory()
   ) {
     let suggestionService = customWords.suggestionService
-    let vocabulary = LearnedCorrectionVocabularyAccess(
-      userWords: { [weak customWords] in customWords?.customWords ?? [] },
-      packTerms: { [weak packs] in packs?.enabledPackTerms() ?? [] },
-      save: { [weak customWords] word, spelling in
-        guard let customWords else { return "Couldn't save" }
-        return CustomWordSaveHelper.saveAndConfirm(word, carrying: spelling, through: customWords)
-      },
-      remove: { [weak customWords] id in
-        guard let customWords else { return "Couldn't undo" }
-        return customWords.remove(id: id)
-      },
-      update: { [weak customWords] word in
-        guard let customWords else { return "Couldn't undo" }
-        return customWords.update(word)
-      },
-      removeOverride: { [weak customWords] id in
-        guard let customWords else { return "Couldn't undo" }
-        return customWords.removeUserOverride(id: id)
-      },
-      restoreBuiltinAndLearn: { [weak customWords] canonical, alias in
-        guard let customWords else { return .failed }
-        switch customWords.restoreBuiltinAndLearn(canonical: canonical, alias: alias) {
-        case .restored(let outcome): return .restored(outcome)
-        case .notFound: return .notFound
-        case .failed: return .failed
-        }
-      },
-      redeleteRestoredBuiltin: { [weak customWords] id in
-        guard let customWords else { return "Couldn't undo" }
-        return customWords.redeleteRestoredBuiltin(id: id)
-      },
-      classify: { WordSuggestionService.classifyByHeuristic($0) })
+    let vocabulary = Self.vocabulary(
+      customWords: customWords, packTerms: { [weak packs] in packs?.enabledPackTerms() ?? [] })
     // #3975: the one learning memory is the words coordinator's, so Undo,
     // Settings deletes and the watcher share one store.
     let learnMemory = customWords.learnMemory
@@ -636,6 +606,50 @@ final class LearnFromEditsWiring {
     }
     publishPhase(.notInstalled)
     return true
+  }
+
+  /// The learn path's vocabulary in production: every read and write goes to the words
+  /// coordinator, and `perform` runs one learn or Undo as one dictionary command (#4086).
+  /// A function so a test drives this exact wiring over a temp-file coordinator.
+  static func vocabulary(
+    customWords: CustomWordsCoordinator, packTerms: @escaping () -> [CustomWord]
+  ) -> LearnedCorrectionVocabularyAccess {
+    LearnedCorrectionVocabularyAccess(
+      userWords: { [weak customWords] in customWords?.customWords ?? [] },
+      packTerms: packTerms,
+      save: { [weak customWords] word, expecting in
+        guard let customWords else { return .refused("Couldn't save") }
+        return await customWords.saveLearned(word, expecting: expecting)
+      },
+      remove: { [weak customWords] id, expecting in
+        guard let customWords else { return .failed("Couldn't undo") }
+        return await customWords.remove(id: id, expecting: expecting)
+      },
+      update: { [weak customWords] word, expecting in
+        guard let customWords else { return .failed("Couldn't undo") }
+        return await customWords.update(word, expecting: expecting)
+      },
+      removeOverride: { [weak customWords] id, expecting in
+        guard let customWords else { return .failed("Couldn't undo") }
+        return await customWords.removeUserOverride(id: id, expecting: expecting)
+      },
+      restoreBuiltinAndLearn: { [weak customWords] canonical, alias in
+        guard let customWords else { return .failed }
+        switch await customWords.restoreBuiltinAndLearn(canonical: canonical, alias: alias) {
+        case .restored(let outcome): return .restored(outcome)
+        case .notFound: return .notFound
+        case .failed: return .failed
+        }
+      },
+      redeleteRestoredBuiltin: { [weak customWords] id, expecting in
+        guard let customWords else { return .failed("Couldn't undo") }
+        return await customWords.redeleteRestoredBuiltin(id: id, expecting: expecting)
+      },
+      classify: { WordSuggestionService.classifyByHeuristic($0) },
+      perform: { [weak customWords] action in
+        guard let customWords else { return await action() }
+        await customWords.performAction(closing: (), action)
+      })
   }
 
   /// The env var is read here and nowhere else, and only in Debug: Release

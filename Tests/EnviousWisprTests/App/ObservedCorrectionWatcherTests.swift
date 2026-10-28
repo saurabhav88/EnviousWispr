@@ -889,6 +889,71 @@ struct ObservedCorrectionWatcherTests {
     )
   }
 
+  /// Holds one queued dictionary command until `open()`.
+  @MainActor final class QueueHold {
+    private var waiter: CheckedContinuation<Void, Never>?
+    private var opened = false
+    var isWaiting: Bool { waiter != nil }
+    func wait() async {
+      guard !opened else { return }
+      await withCheckedContinuation { waiter = $0 }
+    }
+    func open() {
+      opened = true
+      waiter?.resume()
+      waiter = nil
+    }
+  }
+
+  @Test(
+    "a learn waiting behind another dictionary command is dropped when the toggle goes off or the text changes meanwhile (#4086)"
+  )
+  func queuedLearnRechecksTheWatch() async {
+    // Toggle off while the learn waits: nothing saved, no pill.
+    let watcher = makeWatcher()
+    let hold = QueueHold()
+    library.holdNextAction = hold.wait
+    edits.outcomes = [.captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0))]
+    watcher.pasteCompleted(paste())
+    #expect(await waitUntil { observer.starts == 1 })
+    observer.fire(.settled(region: "Ask Saira today"))
+    #expect(await waitUntil { hold.isWaiting })
+    knobs.toggle = false
+    watcher.learnFromEditsChanged(isOn: false)
+    hold.open()
+    #expect(await waitUntil { watcher.staleResults == 1 })
+    #expect(presenter.offers.isEmpty && library.saves.isEmpty)
+
+    // The user keeps typing while the learn waits: the learn is about older text.
+    knobs.toggle = true
+    let watcher2 = makeWatcher()
+    let hold2 = QueueHold()
+    library.holdNextAction = hold2.wait
+    edits.outcomes = [.captured(ObserverFake.target(pasted: "Call sarah now", pastedAtMs: 0))]
+    watcher2.pasteCompleted(paste("Call sarah now"))
+    #expect(await waitUntil { observer.starts == 2 })
+    observer.fire(.settled(region: "Call Saira now"))
+    #expect(await waitUntil { hold2.isWaiting })
+    observer.fire(.changed(region: "Call Sairaa now"))
+    hold2.open()
+    #expect(await waitUntil { watcher2.staleResults == 1 })
+    #expect(presenter.offers.isEmpty && library.saves.isEmpty)
+
+    // Nothing changed while the learn waits: it is learned as before.
+    observer.fire(.ended(.focusChanged))
+    let watcher3 = makeWatcher()
+    let hold3 = QueueHold()
+    library.holdNextAction = hold3.wait
+    edits.outcomes = [.captured(ObserverFake.target(pasted: "Meet sarah soon", pastedAtMs: 0))]
+    watcher3.pasteCompleted(paste("Meet sarah soon"))
+    #expect(await waitUntil { observer.starts == 3 })
+    observer.fire(.settled(region: "Meet Saira soon"))
+    #expect(await waitUntil { hold3.isWaiting })
+    hold3.open()
+    #expect(await waitUntil { presenter.offers.count == 1 })
+    #expect(watcher3.staleResults == 0)
+  }
+
   @Test(
     "a text change while the judge thinks makes the answer stale; a natural observer ending does not"
   )
@@ -1106,7 +1171,7 @@ struct ObservedCorrectionWatcherTests {
     observer.fire(.settled(region: "Ask Saira today"))
     #expect(await waitUntil { presenter.offers.count == 1 })
     let pill = try #require(presenter.offers.first)
-    #expect(coordinator.undo(pillID: pill.id) == .undone)
+    await #expect(coordinator.undo(pillID: pill.id) == .undone)
     #expect(learnedSaira()?.aliases.isEmpty == true)
     observer.fire(.ended(.focusChanged))
     #expect(await waitUntil { !watcher2.isWatching })
@@ -1123,7 +1188,7 @@ struct ObservedCorrectionWatcherTests {
 
     // #3975: the second Undo blocks the pair; the next fix is not judged or saved.
     let pill2 = try #require(presenter.offers.last)
-    #expect(coordinator.undo(pillID: pill2.id) == .undone)
+    await #expect(coordinator.undo(pillID: pill2.id) == .undone)
     observer.fire(.ended(.focusChanged))
     #expect(await waitUntil { !watcher3.isWatching })
     let requestsBefore = judge.requests.count

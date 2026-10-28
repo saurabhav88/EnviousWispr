@@ -284,6 +284,12 @@ final class QuickAddPanelModel {
   /// model does not know what a words file is and must not learn.
   func noteWriteFailure(_ message: String) { writeFailure = message }
 
+  /// A Return's save is waiting or running (#4086): it may queue behind another dictionary
+  /// command, so the fields are locked until it ends, and nothing typed meanwhile is lost
+  /// when the panel concludes. Set by the caller that owns the save.
+  private(set) var isSaving = false
+  func noteSaving(_ saving: Bool) { isSaving = saving }
+
   /// Return has been pressed and something happened. Say what, then the caller takes the panel away.
   ///
   /// **`searchable` is set HERE rather than taken as an argument, and it is always false.** This is

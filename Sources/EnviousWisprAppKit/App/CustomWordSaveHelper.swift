@@ -4,15 +4,14 @@ import Foundation
 
 // MARK: - Custom word save helper (#996 §4, F3)
 //
-// The one App-layer owner of target resolution and save confirmation shared by
-// Quick Add and the learned-correction coordinator: WHICH stored word does a
-// save write into, decided against the library as it is NOW, and DID the write
-// land. `quickAddTarget` and `saveAndConfirm` are Quick Add's own
-// implementations, moved here verbatim with their reasons; `proposalTarget` is
-// the corrected-string entrypoint auto-learn uses and Quick Add never calls.
-// Nothing here allocates a word id or writes on its
-// own: `saveAndConfirm` is the only write, and it goes through
-// `CustomWordsCoordinator`.
+// The one App-layer owner of target resolution shared by Quick Add and the
+// learned-correction coordinator: WHICH stored word does a save write into,
+// decided against the library as it is NOW. `quickAddTarget` is Quick Add's own
+// implementation, moved here verbatim with its reasons; `proposalTarget` is the
+// corrected-string entrypoint auto-learn uses and Quick Add never calls.
+// Nothing here allocates a word id or writes: the write and the check that it
+// landed are one dictionary command, `CustomWordsCoordinator.saveConfirmingSpelling`
+// (#4086).
 
 @MainActor
 enum CustomWordSaveHelper {
@@ -120,35 +119,5 @@ enum CustomWordSaveHelper {
       return .packOverride(pack.ownedByUser())
     }
     return .new
-  }
-
-  /// Write a word and PROVE the spelling is on it afterwards.
-  ///
-  /// **A nil return from the words coordinator is not evidence the write happened**, and this is the
-  /// third distinct way that has been true in this feature. `add` returns silently for a duplicate
-  /// canonical and for a deleted-built-in restore; `update` opens
-  /// `guard let index = words.firstIndex(where: { $0.id == word.id }) else { return }`, so a word
-  /// another instance removed while this panel was open is written NOWHERE and reported as saved.
-  /// The panel then closes on a spelling that was never stored.
-  ///
-  /// Every one of those is invisible to the caller and all of them have one observable: is the
-  /// spelling on the word now. So that is what this asks, instead of asking three questions about
-  /// how the write was routed.
-  ///
-  /// `add` when the word is new to the user library, `update` when it is already there. A converted
-  /// pack term is NEW here even though its id is the pack's, which is why the decision is by
-  /// membership rather than by `source`.
-  static func saveAndConfirm(
-    _ word: CustomWord, carrying spelling: String, through customWords: CustomWordsCoordinator
-  ) -> String? {
-    let existing = customWords.customWords.contains { $0.id == word.id }
-    if let message = existing ? customWords.update(word) : customWords.add(word) { return message }
-
-    let wanted = spelling.trimmingCharacters(in: .whitespacesAndNewlines)
-    let landed = customWords.customWords.contains { stored in
-      stored.canonical.caseInsensitiveCompare(word.canonical) == .orderedSame
-        && stored.aliases.contains { $0.caseInsensitiveCompare(wanted) == .orderedSame }
-    }
-    return landed ? nil : QuickAddPanelCopy.newWordNotSaved
   }
 }

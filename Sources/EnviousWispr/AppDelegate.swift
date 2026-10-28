@@ -52,6 +52,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     application?.applicationDidBecomeActive()
   }
 
+  /// #4086: Quit first lets queued dictionary saves finish. AppKit then gets one answer
+  /// later through `reply(toApplicationShouldTerminate:)`; the main thread is never held.
+  func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+    guard let application else { return .terminateNow }
+    let now = application.applicationShouldTerminate { proceed in
+      sender.reply(toApplicationShouldTerminate: proceed)
+    }
+    return now ? .terminateNow : .terminateLater
+  }
+
   func applicationWillTerminate(_ notification: Notification) {
     application?.applicationWillTerminate()
   }

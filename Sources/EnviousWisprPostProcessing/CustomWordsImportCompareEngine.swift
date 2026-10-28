@@ -506,7 +506,7 @@ package actor CustomWordsImportCompareEngine {
   /// canonicals to it, and asks that one shared function for each alias's
   /// answer — it never lowercases, strips spaces, classifies single versus
   /// multi, replays corrector precedence, or re-derives blocker/decisive-owner
-  /// selection itself. `CustomWordsManager.enforceAliases` calls the identical
+  /// selection itself. `CustomWordsImportPolicy.enforceAliases` calls the identical
   /// function; doing either of those things here again is the defect this
   /// ends.
   ///
@@ -580,7 +580,7 @@ package actor CustomWordsImportCompareEngine {
         // Blocker detection, decisive-owner selection, and the "holding a key
         // isn't always intercepting it" gate are no longer restated here —
         // `resolveAliasOwnership` is the one shared answer both this preview
-        // and the commit path (`CustomWordsManager.enforceAliases`) call, so
+        // and the commit path (`CustomWordsImportPolicy.enforceAliases`) call, so
         // there is nothing left in either file to drift apart again (#1672).
         switch plannedOwners.resolveAliasOwnership(for: alias, excludingOwnerID: candidate.id) {
         case .noClaims:

@@ -39,7 +39,7 @@ struct LearnFromEditsCompositionTests {
 
   private func fixture(
     judgeServes: Bool = false, debugExportPath: String? = nil, osMajor: Int = 27
-  ) -> Fixture {
+  ) async -> Fixture {
     let dir = TestTemporaryDirectory.url
       .appendingPathComponent("ew-learn-composition-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -49,7 +49,7 @@ struct LearnFromEditsCompositionTests {
     let settings = SettingsManager(defaults: defaults)
     let customWords = CustomWordsCoordinator(
       manager: CustomWordsManager(fileURL: dir.appendingPathComponent("custom-words.json")))
-    _ = customWords.add(CustomWord(canonical: "Saira"))
+    _ = await customWords.add(CustomWord(canonical: "Saira"))
     let packs = VocabularyPackManager(defaults: defaults)
     let armed = Armed()
     let overlay = OverlayDirector(
@@ -97,25 +97,25 @@ struct LearnFromEditsCompositionTests {
   @Test(
     "#3975: the words coordinator, Undo and the watcher share one learning memory, and a Settings delete reaches learn_refused_by_user"
   )
-  func oneMemoryAndUserRefusalTelemetry() throws {
-    let f = fixture()
+  func oneMemoryAndUserRefusalTelemetry() async throws {
+    let f = await fixture()
     let word = CustomWord(canonical: "Kwmala", aliases: ["kumala"], learnedAliases: ["kumala"])
-    #expect(f.customWords.add(word) == nil)
-    #expect(f.customWords.deleteByUser(id: word.id) == nil)
+    await #expect(f.customWords.add(word) == nil)
+    await #expect(f.customWords.deleteByUser(shownAs: word) == nil)
     #expect(f.telemetry.events.last == .refusedByUser(.deleteWord, .watching))
     let key = CorrectionPairKey.make(original: "kumala", corrected: "Kwmala")
     // The learned coordinator sees the same store: its save-time check refuses
     // once the second no lands.
     f.customWords.learnMemory.recordUndo(key)
-    #expect(
+    await #expect(
       f.wiring.coordinator.learn(original: "kumala", corrected: "Kwmala", expectedTarget: .newWord)
         == .blocked)
   }
 
   @Test("production selects no judge on every macOS major (the qualification table is empty), and the Settings row is disabled with its reason")
-  func productionSelectsNothing() {
+  func productionSelectsNothing() async {
     for major in [14, 15, 26, 27] {
-      let f = fixture(osMajor: major)
+      let f = await fixture(osMajor: major)
       #expect(f.wiring.selection == .unavailable(.noQualifiedArm), "macOS \(major)")
       #expect(f.wiring.selectJudge() == nil, "macOS \(major): model_unavailable")
       #expect(f.wiring.availability.presentation == .unwired, "macOS \(major)")
@@ -128,7 +128,7 @@ struct LearnFromEditsCompositionTests {
 
   @Test("the graph is retained and wired: a paste with no judge is counted as model_unavailable, and a judged fix is saved at once and offered with Undo")
   func graphIsWired() async throws {
-    let f = fixture(judgeServes: true)
+    let f = await fixture(judgeServes: true)
     #expect(f.wiring.coordinator.undoRecord == nil)
     // The registry holds the watcher weakly; the wiring is what keeps it alive.
     #expect(f.settings.learnFromEdits, "on by default")
@@ -151,14 +151,14 @@ struct LearnFromEditsCompositionTests {
     #expect(f.wiring.coordinator.undoRecord?.pillID == pill.id)
     f.overlay.dismissCurrent(.silent)
 
-    let g = fixture()
+    let g = await fixture()
     g.registry.emit(paste())
     #expect(await waitUntil { g.telemetry.events.contains(.skipped(.modelUnavailable)) }, "the paste reached the watcher and found no judge: \(g.telemetry.events)")
   }
 
   @Test("with a serving judge a paste starts a watch; the toggle fan-out cancels it as toggle_off; a recording start finishes the next as next_dictation_started")
   func toggleAndRecordingReachTheWatcher() async {
-    let f = fixture(judgeServes: true)
+    let f = await fixture(judgeServes: true)
     let edits = EditCaptureFake()
     edits.outcomes = [
       .captured(ObserverFake.target(pasted: "Ask sarah today", pastedAtMs: 0)),
@@ -187,8 +187,8 @@ struct LearnFromEditsCompositionTests {
   }
 
   @Test("the Settings environment carries the selection's presentation")
-  func settingsEnvironment() {
-    let f = fixture()
+  func settingsEnvironment() async {
+    let f = await fixture()
     struct Probe: View {
       @Environment(LearnFromEditsAvailability.self) var availability: LearnFromEditsAvailability?
       let report: @MainActor (LearnFromEditsSettingsPresentation?) -> Void
@@ -212,12 +212,12 @@ struct LearnFromEditsCompositionTests {
   #if DEBUG
     @Test("the Debug door: a relative path is rejected, a missing directory fails to load, and neither publishes an override")
     func debugDoorStates() async {
-      let relative = fixture(debugExportPath: "relative/export")
+      let relative = await fixture(debugExportPath: "relative/export")
       let rejected = try? #require(relative.wiring.debugDoor)
       #expect(rejected?.state == .rejected("not an absolute path"))
       #expect(relative.wiring.selectJudge() == nil)
 
-      let missing = fixture(debugExportPath: "/nonexistent/ew-\(UUID().uuidString)/fp32")
+      let missing = await fixture(debugExportPath: "/nonexistent/ew-\(UUID().uuidString)/fp32")
       let door = missing.wiring.debugDoor
       #expect(door != nil && door?.state == .loading)
       #expect(

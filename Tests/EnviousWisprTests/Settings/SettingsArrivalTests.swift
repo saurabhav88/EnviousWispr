@@ -1168,7 +1168,7 @@ struct SettingsArrivalTests {
   ) {
     let (home, words) = try SettingsMapRenderingTests.dictionaryHome()
     for index in 0..<200 {
-      try #require(words.add(CustomWord(canonical: "Arrivalword\(index)")) == nil)
+      try await #require(words.add(CustomWord(canonical: "Arrivalword\(index)")) == nil)
     }
     let box = RevealBox()
     let environment: (AnyView) -> AnyView = { view in

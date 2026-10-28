@@ -1169,7 +1169,7 @@ struct TranscriptCoordinatorMeetingTests {
 
     @Test("a command's result is kept when it finishes before anyone asks for it")
     func receiptKeepsAResultCompletedBeforeTheWaiter() async throws {
-      let receipt = HistoryTransactionExecutor.Receipt<Int>()
+      let receipt = SerialCommandDrain.Receipt<Int>()
       receipt.complete(42)
       var read: Int?
       let reader = Task { @MainActor in read = await receipt.result() }

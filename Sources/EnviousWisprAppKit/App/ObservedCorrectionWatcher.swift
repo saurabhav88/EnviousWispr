@@ -549,7 +549,7 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
       case .strong:
         save(
           original: f.run.coreOriginal, corrected: f.run.coreReplacement,
-          expectedTarget: expectedTarget, via: .repeat, generation: gen)
+          expectedTarget: expectedTarget, via: .repeat, generation: gen, revision: revision)
       case .weak:
         watch?.weakHeld.append(
           HeldCorrection(pairKey: f.pairKey, expectedTarget: expectedTarget, via: .repeat))
@@ -680,20 +680,32 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
       guard stillWanted(generation: gen, revision: revision) else { return }
       save(
         original: f.run.coreOriginal, corrected: f.run.coreReplacement,
-        expectedTarget: expectedTarget, via: .judge, generation: gen)
+        expectedTarget: expectedTarget, via: .judge, generation: gen, revision: revision)
     }
   }
 
   /// Every watcher save goes through here: a pair blocked since it was
   /// filtered is refused by the coordinator and counted once (#3975).
+  ///
+  /// The learn is one dictionary command (#4086), so it runs in a task and may wait
+  /// behind an earlier command: the watch is checked again when the command starts,
+  /// and the command's own block check sees every refusal an earlier command committed.
   private func save(
     original: String, corrected: String, expectedTarget: LearnTargetState,
-    via: TelemetryService.LearnFromEditsTelemetry.LearnVia, generation gen: UInt64
+    via: TelemetryService.LearnFromEditsTelemetry.LearnVia, generation gen: UInt64,
+    revision: UInt64
   ) {
-    let outcome = deps.coordinator.learn(
-      original: original, corrected: corrected, expectedTarget: expectedTarget, via: via)
-    if outcome == .blocked {
-      countBlocked(CorrectionPairKey.make(original: original, corrected: corrected), generation: gen)
+    Task { @MainActor [weak self] in
+      guard let self else { return }
+      let outcome = await deps.coordinator.learn(
+        original: original, corrected: corrected, expectedTarget: expectedTarget, via: via,
+        stillWanted: { [weak self] in
+          self?.stillWanted(generation: gen, revision: revision) ?? false
+        })
+      if outcome == .blocked {
+        countBlocked(
+          CorrectionPairKey.make(original: original, corrected: corrected), generation: gen)
+      }
     }
   }
 
@@ -792,7 +804,7 @@ final class ObservedCorrectionWatcher: PasteCompletionObserver {
       guard stillWanted(generation: gen, revision: w.revision) else { return }
       save(
         original: run.original, corrected: run.corrected, expectedTarget: h.expectedTarget,
-        via: h.via, generation: gen)
+        via: h.via, generation: gen, revision: w.revision)
     }
   }
 

@@ -30,7 +30,8 @@
         writeContext: DevControlSettings.WriteContext(
           modelCatalog: { DevControlSettings.ModelCatalog(provider: nil, models: []) },
           loadCachedModelCatalog: { _, _ in },
-          connectedInputUIDs: { ["mic-a"] }, inputChannelCounts: { [:] }, pillWordsCapability: { .available }),
+          connectedInputUIDs: { ["mic-a"] }, inputChannelCounts: { [:] },
+          pillWordsCapability: { .available }),
         status: DevControlFixtures.StatusFake().sources,
         history: DevControlFixtures.history([]),
         models: DevControlFixtures.ModelFake().actions,
@@ -143,8 +144,10 @@
         dictation: DevControlFixtures.inertDictation(),
         credentials: DevControlFixtures.isolatedCredentials(),
         words: DevControlFixtures.unwrittenWords(), meetings: .unwired())
-      let reply = try #require(payload(await dispatcher.handle(
-        .channelSet, args: ["deviceUID": "mic-a", "channel": NSNumber(value: 2)])))
+      let reply = try #require(
+        payload(
+          await dispatcher.handle(
+            .channelSet, args: ["deviceUID": "mic-a", "channel": NSNumber(value: 2)])))
       #expect(reply["deviceUID"] as? String == "mic-a")
       #expect(reply["channel"] as? Int == 2)
       for args: [String: Any] in [
@@ -154,8 +157,10 @@
       ] {
         #expect(code(await dispatcher.handle(.channelSet, args: args)) == "badArgs", "\(args)")
       }
-      #expect(code(await dispatcher.handle(
-        .channelSet, args: ["deviceUID": "mic-a", "channel": 9])) == "checkFailed")
+      #expect(
+        code(
+          await dispatcher.handle(
+            .channelSet, args: ["deviceUID": "mic-a", "channel": 9])) == "checkFailed")
       #expect(settings.inputChannelByDeviceUID == ["mic-a": 2])
     }
 
@@ -179,7 +184,9 @@
       #expect(settings.toggleKeyCode == ModifierKeyCodes.rightCommand)
 
       // F2, F8, F9 and F5 with Control-Shift: no default and no Mac shortcut uses them.
-      for (role, keyCode) in [("cancel", 120), ("quickAdd", 100), ("pasteLast", 101), ("copyLast", 96)] {
+      for (role, keyCode) in [
+        ("cancel", 120), ("quickAdd", 100), ("pasteLast", 101), ("copyLast", 96),
+      ] {
         let saved = await dispatcher.handle(
           .shortcutSet,
           args: [
@@ -214,14 +221,18 @@
         #expect(code(await dispatcher.handle(.shortcutSet, args: args)) == "badArgs", "\(args)")
       }
       #expect(
-        code(await dispatcher.handle(
-          .shortcutSet,
-          args: ["role": "quickAdd", "keyCode": 8,
-                 "modifiers": NSNumber(value: NSEvent.ModifierFlags.command.rawValue)]))
+        code(
+          await dispatcher.handle(
+            .shortcutSet,
+            args: [
+              "role": "quickAdd", "keyCode": 8,
+              "modifiers": NSNumber(value: NSEvent.ModifierFlags.command.rawValue),
+            ]))
           == "checkFailed")
       #expect(
-        code(await dispatcher.handle(
-          .shortcutSet, args: ["role": "record", "keyCode": 53, "modifiers": 0]))
+        code(
+          await dispatcher.handle(
+            .shortcutSet, args: ["role": "record", "keyCode": 53, "modifiers": 0]))
           == "checkFailed")
       #expect(settings.shortcutBindings == before)
     }
@@ -230,8 +241,9 @@
     func shortcutFieldThroughDispatch() async throws {
       let (settings, dispatcher) = Self.make()
       #expect(
-        code(await dispatcher.handle(
-          .settingsSet, args: ["key": "toggleKeyCode", "value": 53])) == "checkFailed")
+        code(
+          await dispatcher.handle(
+            .settingsSet, args: ["key": "toggleKeyCode", "value": 53])) == "checkFailed")
       #expect(settings.toggleKeyCode == ShortcutRole.record.defaultKeyCode)
       let forced = await dispatcher.handle(
         .settingsSet, args: ["key": "toggleKeyCode", "value": 53, "force": true])
@@ -265,7 +277,10 @@
     @Test(
       "each model command presses exactly its own button once, then reads that engine's state",
       arguments: [
-        (DevControlDispatcher.Command.modelsParakeetDownload, "parakeetDownload", "parakeet", "download"),
+        (
+          DevControlDispatcher.Command.modelsParakeetDownload, "parakeetDownload", "parakeet",
+          "download"
+        ),
         (.modelsParakeetCancel, "parakeetCancel", "parakeet", "cancel"),
         (.modelsWhisperDownload, "whisperDownload", "whisper", "download"),
         (.modelsWhisperCancel, "whisperCancel", "whisper", "cancel"),
@@ -299,9 +314,12 @@
       status.whisper = .ready
       let models = DevControlFixtures.ModelFake()
       let (_, dispatcher) = Self.make(status: status, models: models)
-      let parakeet = try #require(payload(await dispatcher.handle(.modelsParakeetCancel, args: [:])))
-      #expect(parakeet["state"] as? [String: AnyHashable] == ["state": "cancelled", "resumable": true])
-      let whisper = try #require(payload(await dispatcher.handle(.modelsWhisperDownload, args: [:])))
+      let parakeet = try #require(
+        payload(await dispatcher.handle(.modelsParakeetCancel, args: [:])))
+      #expect(
+        parakeet["state"] as? [String: AnyHashable] == ["state": "cancelled", "resumable": true])
+      let whisper = try #require(
+        payload(await dispatcher.handle(.modelsWhisperDownload, args: [:])))
       #expect(whisper["state"] as? [String: AnyHashable] == ["state": "ready"])
       #expect(models.pressed == ["parakeetCancel", "whisperDownload"])
     }
@@ -332,7 +350,8 @@
         writeContext: DevControlSettings.WriteContext(
           modelCatalog: { DevControlSettings.ModelCatalog(provider: nil, models: []) },
           loadCachedModelCatalog: { _, _ in },
-          connectedInputUIDs: { [] }, inputChannelCounts: { [:] }, pillWordsCapability: { .available }),
+          connectedInputUIDs: { [] }, inputChannelCounts: { [:] },
+          pillWordsCapability: { .available }),
         status: status.sources,
         history: DevControlDispatcher.HistorySource(visibleTranscripts: rows),
         models: models.actions,
@@ -394,7 +413,8 @@
       let keys = try #require(reply["savedKeys"] as? [String: String])
       #expect(keys == ["openAI": "present", "gemini": "absent", "claude": "unknown"])
 
-      let encoded = String(decoding: try JSONSerialization.data(withJSONObject: reply), as: UTF8.self)
+      let encoded = String(
+        decoding: try JSONSerialization.data(withJSONObject: reply), as: UTF8.self)
       #expect(encoded.contains("screen copy") == false)
     }
 
@@ -432,9 +452,13 @@
       #expect(driver["state"] as? String == "advisory")
       #expect(driver["reason"] as? String == "vadGateNoSpeech")
       #expect(fake.driverStateAsked == [.whisper])
-      #expect(try object(first["parakeetDelivery"]) as NSDictionary == ["state": "failed", "reason": "insufficient_disk"])
+      #expect(
+        try object(first["parakeetDelivery"]) as NSDictionary == [
+          "state": "failed", "reason": "insufficient_disk",
+        ])
       #expect(try object(first["whisperSetup"]) as NSDictionary == ["state": "error"])
-      let encoded = String(decoding: try JSONSerialization.data(withJSONObject: first), as: UTF8.self)
+      let encoded = String(
+        decoding: try JSONSerialization.data(withJSONObject: first), as: UTF8.self)
       for owned in ["detail-text", "src-x", "owner error words"] {
         #expect(encoded.contains(owned) == false, "\(owned)")
       }
@@ -524,7 +548,8 @@
       #expect((most["rows"] as? [Any])?.count == 200)
       let one = try #require(
         payload(await dispatcher.handle(.historyList, args: ["limit": NSNumber(value: 1)])))
-      #expect((one["rows"] as? [[String: Any]])?.first?["id"] as? String == rows.value[0].id.uuidString)
+      #expect(
+        (one["rows"] as? [[String: Any]])?.first?["id"] as? String == rows.value[0].id.uuidString)
 
       let refused: [Any] = [
         NSNumber(value: 201), NSNumber(value: 0), NSNumber(value: -1), NSNumber(value: 1.5),
@@ -645,7 +670,9 @@
       let (settings, dispatcher) = Self.make(
         status: fake,
         rows: {
-          if let settings = settingsRef.value { writeFlags.value.append(settings.isDevControlWrite) }
+          if let settings = settingsRef.value {
+            writeFlags.value.append(settings.isDevControlWrite)
+          }
           return rows
         })
       settingsRef.value = settings
@@ -662,253 +689,262 @@
       #expect(writeFlags.value.count == 3)
       #expect(writeFlags.value.allSatisfy { $0 == false })
     }
-// MARK: - Words
+    // MARK: - Words
 
-private static func make(words: CustomWordsCoordinator) -> (SettingsManager, DevControlDispatcher) {
-  let defaults = TestDefaults.suite("ew.tests.3765.dispatch.\(UUID().uuidString)")!
-  let settings = SettingsManager(defaults: defaults)
-  let dispatcher = DevControlDispatcher(
-    settings: settings,
-    writeContext: DevControlSettings.WriteContext(
-      modelCatalog: { DevControlSettings.ModelCatalog(provider: nil, models: []) },
-      loadCachedModelCatalog: { _, _ in },
-      connectedInputUIDs: { [] }, inputChannelCounts: { [:] }, pillWordsCapability: { .available }),
-    status: DevControlFixtures.StatusFake().sources,
-    history: DevControlFixtures.history([]),
-    models: DevControlFixtures.ModelFake().actions,
-    dictation: DevControlFixtures.inertDictation(),
-    credentials: DevControlFixtures.isolatedCredentials(),
-    words: words, meetings: .unwired())
-  return (settings, dispatcher)
-}
-
-private func listed(_ dispatcher: DevControlDispatcher) async throws -> [[String: Any]] {
-  let reply = try #require(payload(await dispatcher.handle(.wordsList, args: [:])))
-  return try #require(reply["words"] as? [[String: Any]])
-}
-
-private func word(_ result: DevControlDispatcher.Result) throws -> [String: Any] {
-  try object(try #require(payload(result))["word"])
-}
-
-private func outcome(_ result: DevControlDispatcher.Result) -> String? {
-  payload(result)?["outcome"] as? String
-}
-
-@Test("add, list, update and remove go through the coordinator and persist to its file")
-func wordsRoundTrip() async throws {
-  let temp = DevControlFixtures.TempWords()
-  defer { temp.cleanUp() }
-  let (_, dispatcher) = Self.make(words: temp.coordinator)
-
-  let added = await dispatcher.handle(
-    .wordsAdd, args: ["word": "  Zorblax ", "aliases": ["zor blacks"]])
-  #expect(outcome(added) == "created")
-  let row = try word(added)
-  let id = try #require(row["id"] as? String)
-  #expect(row["word"] as? String == "Zorblax")
-  #expect(row["aliases"] as? [String] == ["zor blacks"])
-  #expect(row["source"] as? String == "user")
-  let listedRow = try #require(try await listed(dispatcher).first { $0["id"] as? String == id })
-  #expect(listedRow["word"] as? String == "Zorblax")
-  #expect(
-    try await listed(dispatcher).map { $0["id"] as? String }
-      == temp.coordinator.customWords.map(\.id.uuidString))
-
-  let aliasOnly = await dispatcher.handle(
-    .wordsUpdate, args: ["id": id.lowercased(), "aliases": ["zorb lax"]])
-  #expect(outcome(aliasOnly) == "updated")
-  #expect(try word(aliasOnly)["word"] as? String == "Zorblax")
-  #expect(try word(aliasOnly)["aliases"] as? [String] == ["zorb lax"])
-  #expect(try word(aliasOnly)["id"] as? String == id)
-
-  let wordOnly = await dispatcher.handle(.wordsUpdate, args: ["id": id, "word": "Zorblaxx"])
-  #expect(try word(wordOnly)["word"] as? String == "Zorblaxx")
-  #expect(try word(wordOnly)["aliases"] as? [String] == ["zorb lax"])
-
-  let cleared = await dispatcher.handle(.wordsUpdate, args: ["id": id, "aliases": [String]()])
-  #expect(try word(cleared)["aliases"] as? [String] == [])
-
-  let reread = try #require(CustomWordsManager(fileURL: temp.url).load())
-  let saved = try #require(reread.first { $0.id.uuidString == id })
-  #expect(saved.canonical == "Zorblaxx")
-  #expect(saved.aliases.isEmpty)
-
-  let removed = await dispatcher.handle(.wordsRemove, args: ["id": id])
-  #expect(outcome(removed) == "removed")
-  #expect(try await listed(dispatcher).contains { $0["id"] as? String == id } == false)
-  let afterRemove = try #require(CustomWordsManager(fileURL: temp.url).load())
-  #expect(afterRemove.contains { $0.id.uuidString == id } == false)
-}
-
-@Test("malformed word requests and missing targets change nothing and fire no callback")
-func wordRefusalsChangeNothing() async throws {
-  let temp = DevControlFixtures.TempWords()
-  defer { temp.cleanUp() }
-  let (_, dispatcher) = Self.make(words: temp.coordinator)
-  let existing = try #require(
-    payload(await dispatcher.handle(.wordsAdd, args: ["word": "Kestrel"])))
-  let id = try #require((existing["word"] as? [String: Any])?["id"] as? String)
-  var callbacks = 0
-  temp.coordinator.onWordsChanged = { _ in callbacks += 1 }
-  let before = temp.coordinator.customWords
-  let fileBefore = try Data(contentsOf: temp.url)
-
-  let refusals: [(DevControlDispatcher.Command, [String: Any], String)] = [
-    (.wordsList, ["limit": 5], "badArgs"),
-    (.wordsAdd, [:], "badArgs"),
-    (.wordsAdd, ["word": 5], "badArgs"),
-    (.wordsAdd, ["word": "Osprey", "aliases": "osprey"], "badArgs"),
-    (.wordsAdd, ["word": "Osprey", "aliases": ["ok", 2]], "badArgs"),
-    (.wordsAdd, ["word": "Osprey", "aliases": [NSNull()]], "badArgs"),
-    (.wordsAdd, ["word": "Osprey", "id": UUID().uuidString], "badArgs"),
-    (.wordsAdd, ["word": "Osprey", "source": "builtin"], "badArgs"),
-    (.wordsUpdate, ["word": "Osprey"], "badArgs"),
-    (.wordsUpdate, ["id": "not-a-uuid", "word": "Osprey"], "badArgs"),
-    (.wordsUpdate, ["id": 7, "word": "Osprey"], "badArgs"),
-    (.wordsUpdate, ["id": id], "badArgs"),
-    (.wordsUpdate, ["id": id, "word": 5], "badArgs"),
-    (.wordsUpdate, ["id": id, "aliases": ["a", 1]], "badArgs"),
-    (.wordsUpdate, ["id": id, "frequencyUsed": 9], "badArgs"),
-    (.wordsUpdate, ["id": UUID().uuidString, "word": "Osprey"], "notFound"),
-    (.wordsRemove, [:], "badArgs"),
-    (.wordsRemove, ["id": "nope"], "badArgs"),
-    (.wordsRemove, ["id": id, "force": true], "badArgs"),
-    (.wordsRemove, ["id": UUID().uuidString], "notFound"),
-  ]
-  for (command, args, expected) in refusals {
-    #expect(code(await dispatcher.handle(command, args: args)) == expected, "\(command) \(args)")
-  }
-  #expect(callbacks == 0)
-  #expect(temp.coordinator.customWords == before)
-  #expect(try Data(contentsOf: temp.url) == fileBefore)
-}
-
-@Test("an owner refusal comes back as rejected with the owner's message, and nothing changes")
-func ownerRefusalIsRejected() async throws {
-  let temp = DevControlFixtures.TempWords()
-  defer { temp.cleanUp() }
-  let (_, dispatcher) = Self.make(words: temp.coordinator)
-  let id = try #require(
-    try word(await dispatcher.handle(.wordsAdd, args: ["word": "Heron"]))["id"] as? String)
-  var callbacks = 0
-  temp.coordinator.onWordsChanged = { _ in callbacks += 1 }
-  let before = temp.coordinator.customWords
-  let tooLong = String(repeating: "a", count: CustomWordsImportLimits.maximumStoredValueScalars + 1)
-
-  for (command, args) in [
-    (DevControlDispatcher.Command.wordsAdd, ["word": tooLong] as [String: Any]),
-    (.wordsAdd, ["word": "Egret", "aliases": [tooLong]]),
-    (.wordsUpdate, ["id": id, "aliases": [tooLong]]),
-    (.wordsUpdate, ["id": id, "word": tooLong]),
-  ] {
-    let result = await dispatcher.handle(command, args: args)
-    guard case .error(let code, let message) = result else {
-      Issue.record("expected a refusal for \(command)")
-      continue
+    private static func make(words: CustomWordsCoordinator) -> (
+      SettingsManager, DevControlDispatcher
+    ) {
+      let defaults = TestDefaults.suite("ew.tests.3765.dispatch.\(UUID().uuidString)")!
+      let settings = SettingsManager(defaults: defaults)
+      let dispatcher = DevControlDispatcher(
+        settings: settings,
+        writeContext: DevControlSettings.WriteContext(
+          modelCatalog: { DevControlSettings.ModelCatalog(provider: nil, models: []) },
+          loadCachedModelCatalog: { _, _ in },
+          connectedInputUIDs: { [] }, inputChannelCounts: { [:] },
+          pillWordsCapability: { .available }),
+        status: DevControlFixtures.StatusFake().sources,
+        history: DevControlFixtures.history([]),
+        models: DevControlFixtures.ModelFake().actions,
+        dictation: DevControlFixtures.inertDictation(),
+        credentials: DevControlFixtures.isolatedCredentials(),
+        words: words, meetings: .unwired())
+      return (settings, dispatcher)
     }
-    #expect(code == "rejected")
-    #expect(message == CustomWordsPersistenceError.unusableValue.localizedDescription)
-  }
-  #expect(callbacks == 0)
-  #expect(temp.coordinator.customWords == before)
-}
 
-@Test("a duplicate or blank add makes nothing new and names what the list holds")
-func duplicateAndBlankAdds() async throws {
-  let temp = DevControlFixtures.TempWords()
-  defer { temp.cleanUp() }
-  let (_, dispatcher) = Self.make(words: temp.coordinator)
-  var published: [[CustomWord]] = []
-  temp.coordinator.onWordsChanged = { published.append($0) }
+    private func listed(_ dispatcher: DevControlDispatcher) async throws -> [[String: Any]] {
+      let reply = try #require(payload(await dispatcher.handle(.wordsList, args: [:])))
+      return try #require(reply["words"] as? [[String: Any]])
+    }
 
-  let first = await dispatcher.handle(.wordsAdd, args: ["word": "Kestrel"])
-  let id = try #require(try word(first)["id"] as? String)
-  let count = temp.coordinator.customWords.count
+    private func word(_ result: DevControlDispatcher.Result) throws -> [String: Any] {
+      try object(try #require(payload(result))["word"])
+    }
 
-  let duplicate = await dispatcher.handle(.wordsAdd, args: ["word": " kestrel"])
-  #expect(outcome(duplicate) == "existing")
-  #expect(try word(duplicate)["id"] as? String == id)
-  #expect(try word(duplicate)["word"] as? String == "Kestrel")
+    private func outcome(_ result: DevControlDispatcher.Result) -> String? {
+      payload(result)?["outcome"] as? String
+    }
 
-  let blank = await dispatcher.handle(.wordsAdd, args: ["word": "   "])
-  #expect(outcome(blank) == "unchanged")
-  #expect(payload(blank)?["word"] is NSNull)
-  #expect(temp.coordinator.customWords.count == count)
-  // The coordinator publishes after every accepted add, its no-op ones included.
-  #expect(published.count == 3)
-  #expect(published.last == temp.coordinator.customWords)
-}
+    @Test("add, list, update and remove go through the coordinator and persist to its file")
+    func wordsRoundTrip() async throws {
+      let temp = DevControlFixtures.TempWords()
+      defer { temp.cleanUp() }
+      let (_, dispatcher) = Self.make(words: temp.coordinator)
 
-@Test("a built-in can be edited, removed and brought back through the same owner")
-func builtinEditRemoveRestore() async throws {
-  let temp = DevControlFixtures.TempWords()
-  defer { temp.cleanUp() }
-  let (_, dispatcher) = Self.make(words: temp.coordinator)
-  let builtin = try #require(temp.coordinator.customWords.first { $0.source == .builtin })
-  let id = builtin.id.uuidString
+      let added = await dispatcher.handle(
+        .wordsAdd, args: ["word": "  Zorblax ", "aliases": ["zor blacks"]])
+      #expect(outcome(added) == "created")
+      let row = try word(added)
+      let id = try #require(row["id"] as? String)
+      #expect(row["word"] as? String == "Zorblax")
+      #expect(row["aliases"] as? [String] == ["zor blacks"])
+      #expect(row["source"] as? String == "user")
+      let listedRow = try #require(try await listed(dispatcher).first { $0["id"] as? String == id })
+      #expect(listedRow["word"] as? String == "Zorblax")
+      #expect(
+        try await listed(dispatcher).map { $0["id"] as? String }
+          == temp.coordinator.customWords.map(\.id.uuidString))
 
-  let removed = await dispatcher.handle(.wordsRemove, args: ["id": id])
-  #expect(outcome(removed) == "removed")
-  #expect(temp.coordinator.customWords.contains { $0.id == builtin.id } == false)
+      let aliasOnly = await dispatcher.handle(
+        .wordsUpdate, args: ["id": id.lowercased(), "aliases": ["zorb lax"]])
+      #expect(outcome(aliasOnly) == "updated")
+      #expect(try word(aliasOnly)["word"] as? String == "Zorblax")
+      #expect(try word(aliasOnly)["aliases"] as? [String] == ["zorb lax"])
+      #expect(try word(aliasOnly)["id"] as? String == id)
 
-  let restored = await dispatcher.handle(
-    .wordsAdd, args: ["word": builtin.canonical.uppercased()])
-  #expect(outcome(restored) == "restored")
-  #expect(try word(restored)["id"] as? String == id)
-  #expect(try word(restored)["source"] as? String == "builtin")
+      let wordOnly = await dispatcher.handle(.wordsUpdate, args: ["id": id, "word": "Zorblaxx"])
+      #expect(try word(wordOnly)["word"] as? String == "Zorblaxx")
+      #expect(try word(wordOnly)["aliases"] as? [String] == ["zorb lax"])
 
-  let edited = await dispatcher.handle(
-    .wordsUpdate, args: ["id": id, "aliases": builtin.aliases + ["extra sound alike"]])
-  #expect(outcome(edited) == "updated")
-  #expect(try word(edited)["id"] as? String == id)
-  #expect(try word(edited)["source"] as? String == "user")
-  #expect((try word(edited)["aliases"] as? [String])?.contains("extra sound alike") == true)
-}
+      let cleared = await dispatcher.handle(.wordsUpdate, args: ["id": id, "aliases": [String]()])
+      #expect(try word(cleared)["aliases"] as? [String] == [])
 
-@Test("an edit to a word another window deleted is dropped, and the reply says the target is gone")
-func staleUpdateReportsTargetGone() async throws {
-  let temp = DevControlFixtures.TempWords()
-  defer { temp.cleanUp() }
-  let (_, dispatcher) = Self.make(words: temp.coordinator)
-  let id = try #require(
-    try word(await dispatcher.handle(.wordsAdd, args: ["word": "Quokka"]))["id"] as? String)
-  let uuid = try #require(UUID(uuidString: id))
+      let reread = try #require(CustomWordsManager(fileURL: temp.url).load())
+      let saved = try #require(reread.first { $0.id.uuidString == id })
+      #expect(saved.canonical == "Zorblaxx")
+      #expect(saved.aliases.isEmpty)
 
-  // A second app copy removes the word straight from the shared file.
-  let other = CustomWordsManager(fileURL: temp.url)
-  var otherWords = try #require(other.load())
-  try other.remove(id: uuid, from: &otherWords)
-  #expect(temp.coordinator.customWords.contains { $0.id == uuid })
+      let removed = await dispatcher.handle(.wordsRemove, args: ["id": id])
+      #expect(outcome(removed) == "removed")
+      #expect(try await listed(dispatcher).contains { $0["id"] as? String == id } == false)
+      let afterRemove = try #require(CustomWordsManager(fileURL: temp.url).load())
+      #expect(afterRemove.contains { $0.id.uuidString == id } == false)
+    }
 
-  let stale = await dispatcher.handle(.wordsUpdate, args: ["id": id, "aliases": ["quoka"]])
-  #expect(outcome(stale) == "targetGone")
-  #expect(payload(stale)?["word"] is NSNull)
-  #expect(temp.coordinator.customWords.contains { $0.id == uuid } == false)
-  #expect(
-    try #require(CustomWordsManager(fileURL: temp.url).load()).contains { $0.id == uuid } == false)
-}
+    @Test("malformed word requests and missing targets change nothing and fire no callback")
+    func wordRefusalsChangeNothing() async throws {
+      let temp = DevControlFixtures.TempWords()
+      defer { temp.cleanUp() }
+      let (_, dispatcher) = Self.make(words: temp.coordinator)
+      let existing = try #require(
+        payload(await dispatcher.handle(.wordsAdd, args: ["word": "Kestrel"])))
+      let id = try #require((existing["word"] as? [String: Any])?["id"] as? String)
+      var callbacks = 0
+      temp.coordinator.onWordsChanged = { _ in callbacks += 1 }
+      let before = temp.coordinator.customWords
+      let fileBefore = try Data(contentsOf: temp.url)
 
-@Test("word commands never enter a settings attribution scope or change a setting")
-func wordCommandsLeaveSettingsAlone() async throws {
-  let temp = DevControlFixtures.TempWords()
-  defer { temp.cleanUp() }
-  let (settings, dispatcher) = Self.make(words: temp.coordinator)
-  var flags: [Bool] = []
-  temp.coordinator.onWordsChanged = { _ in flags.append(settings.isDevControlWrite) }
-  let before = try JSONSerialization.data(
-    withJSONObject: DevControlSettings.catalog(settings), options: .sortedKeys)
+      let refusals: [(DevControlDispatcher.Command, [String: Any], String)] = [
+        (.wordsList, ["limit": 5], "badArgs"),
+        (.wordsAdd, [:], "badArgs"),
+        (.wordsAdd, ["word": 5], "badArgs"),
+        (.wordsAdd, ["word": "Osprey", "aliases": "osprey"], "badArgs"),
+        (.wordsAdd, ["word": "Osprey", "aliases": ["ok", 2]], "badArgs"),
+        (.wordsAdd, ["word": "Osprey", "aliases": [NSNull()]], "badArgs"),
+        (.wordsAdd, ["word": "Osprey", "id": UUID().uuidString], "badArgs"),
+        (.wordsAdd, ["word": "Osprey", "source": "builtin"], "badArgs"),
+        (.wordsUpdate, ["word": "Osprey"], "badArgs"),
+        (.wordsUpdate, ["id": "not-a-uuid", "word": "Osprey"], "badArgs"),
+        (.wordsUpdate, ["id": 7, "word": "Osprey"], "badArgs"),
+        (.wordsUpdate, ["id": id], "badArgs"),
+        (.wordsUpdate, ["id": id, "word": 5], "badArgs"),
+        (.wordsUpdate, ["id": id, "aliases": ["a", 1]], "badArgs"),
+        (.wordsUpdate, ["id": id, "frequencyUsed": 9], "badArgs"),
+        (.wordsUpdate, ["id": UUID().uuidString, "word": "Osprey"], "notFound"),
+        (.wordsRemove, [:], "badArgs"),
+        (.wordsRemove, ["id": "nope"], "badArgs"),
+        (.wordsRemove, ["id": id, "force": true], "badArgs"),
+        (.wordsRemove, ["id": UUID().uuidString], "notFound"),
+      ]
+      for (command, args, expected) in refusals {
+        #expect(
+          code(await dispatcher.handle(command, args: args)) == expected, "\(command) \(args)")
+      }
+      #expect(callbacks == 0)
+      #expect(temp.coordinator.customWords == before)
+      #expect(try Data(contentsOf: temp.url) == fileBefore)
+    }
 
-  let id = try #require(
-    try word(await dispatcher.handle(.wordsAdd, args: ["word": "Puffin"]))["id"] as? String)
-  _ = await dispatcher.handle(.wordsUpdate, args: ["id": id, "aliases": ["puff in"]])
-  _ = await dispatcher.handle(.wordsRemove, args: ["id": id])
+    @Test("an owner refusal comes back as rejected with the owner's message, and nothing changes")
+    func ownerRefusalIsRejected() async throws {
+      let temp = DevControlFixtures.TempWords()
+      defer { temp.cleanUp() }
+      let (_, dispatcher) = Self.make(words: temp.coordinator)
+      let id = try #require(
+        try word(await dispatcher.handle(.wordsAdd, args: ["word": "Heron"]))["id"] as? String)
+      var callbacks = 0
+      temp.coordinator.onWordsChanged = { _ in callbacks += 1 }
+      let before = temp.coordinator.customWords
+      let tooLong = String(
+        repeating: "a", count: CustomWordsImportLimits.maximumStoredValueScalars + 1)
 
-  #expect(flags == [false, false, false])
-  let after = try JSONSerialization.data(
-    withJSONObject: DevControlSettings.catalog(settings), options: .sortedKeys)
-  #expect(before == after)
-}
+      for (command, args) in [
+        (DevControlDispatcher.Command.wordsAdd, ["word": tooLong] as [String: Any]),
+        (.wordsAdd, ["word": "Egret", "aliases": [tooLong]]),
+        (.wordsUpdate, ["id": id, "aliases": [tooLong]]),
+        (.wordsUpdate, ["id": id, "word": tooLong]),
+      ] {
+        let result = await dispatcher.handle(command, args: args)
+        guard case .error(let code, let message) = result else {
+          Issue.record("expected a refusal for \(command)")
+          continue
+        }
+        #expect(code == "rejected")
+        #expect(message == CustomWordsPersistenceError.unusableValue.localizedDescription)
+      }
+      #expect(callbacks == 0)
+      #expect(temp.coordinator.customWords == before)
+    }
+
+    @Test("a duplicate or blank add makes nothing new and names what the list holds")
+    func duplicateAndBlankAdds() async throws {
+      let temp = DevControlFixtures.TempWords()
+      defer { temp.cleanUp() }
+      let (_, dispatcher) = Self.make(words: temp.coordinator)
+      var published: [[CustomWord]] = []
+      temp.coordinator.onWordsChanged = { published.append($0) }
+
+      let first = await dispatcher.handle(.wordsAdd, args: ["word": "Kestrel"])
+      let id = try #require(try word(first)["id"] as? String)
+      let count = temp.coordinator.customWords.count
+
+      let duplicate = await dispatcher.handle(.wordsAdd, args: ["word": " kestrel"])
+      #expect(outcome(duplicate) == "existing")
+      #expect(try word(duplicate)["id"] as? String == id)
+      #expect(try word(duplicate)["word"] as? String == "Kestrel")
+
+      let blank = await dispatcher.handle(.wordsAdd, args: ["word": "   "])
+      #expect(outcome(blank) == "unchanged")
+      #expect(payload(blank)?["word"] is NSNull)
+      #expect(temp.coordinator.customWords.count == count)
+      // The coordinator publishes once for the add that saved a word. Since #4086 an add that
+      // changed nothing (the duplicate, the blank) does not publish the same list again, so
+      // consumers do not rebuild for it.
+      #expect(published.count == 1)
+      #expect(published.last == temp.coordinator.customWords)
+    }
+
+    @Test("a built-in can be edited, removed and brought back through the same owner")
+    func builtinEditRemoveRestore() async throws {
+      let temp = DevControlFixtures.TempWords()
+      defer { temp.cleanUp() }
+      let (_, dispatcher) = Self.make(words: temp.coordinator)
+      let builtin = try #require(temp.coordinator.customWords.first { $0.source == .builtin })
+      let id = builtin.id.uuidString
+
+      let removed = await dispatcher.handle(.wordsRemove, args: ["id": id])
+      #expect(outcome(removed) == "removed")
+      #expect(temp.coordinator.customWords.contains { $0.id == builtin.id } == false)
+
+      let restored = await dispatcher.handle(
+        .wordsAdd, args: ["word": builtin.canonical.uppercased()])
+      #expect(outcome(restored) == "restored")
+      #expect(try word(restored)["id"] as? String == id)
+      #expect(try word(restored)["source"] as? String == "builtin")
+
+      let edited = await dispatcher.handle(
+        .wordsUpdate, args: ["id": id, "aliases": builtin.aliases + ["extra sound alike"]])
+      #expect(outcome(edited) == "updated")
+      #expect(try word(edited)["id"] as? String == id)
+      #expect(try word(edited)["source"] as? String == "user")
+      #expect((try word(edited)["aliases"] as? [String])?.contains("extra sound alike") == true)
+    }
+
+    @Test(
+      "an edit to a word another window deleted is dropped, and the reply says the target is gone")
+    func staleUpdateReportsTargetGone() async throws {
+      let temp = DevControlFixtures.TempWords()
+      defer { temp.cleanUp() }
+      let (_, dispatcher) = Self.make(words: temp.coordinator)
+      let id = try #require(
+        try word(await dispatcher.handle(.wordsAdd, args: ["word": "Quokka"]))["id"] as? String)
+      let uuid = try #require(UUID(uuidString: id))
+
+      // A second app copy removes the word straight from the shared file.
+      let other = CustomWordsManager(fileURL: temp.url)
+      var otherWords = try #require(other.load())
+      try await other.remove(id: uuid, from: &otherWords)
+      #expect(temp.coordinator.customWords.contains { $0.id == uuid })
+
+      let stale = await dispatcher.handle(.wordsUpdate, args: ["id": id, "aliases": ["quoka"]])
+      #expect(outcome(stale) == "targetGone")
+      #expect(payload(stale)?["word"] is NSNull)
+      #expect(temp.coordinator.customWords.contains { $0.id == uuid } == false)
+      #expect(
+        try #require(CustomWordsManager(fileURL: temp.url).load()).contains { $0.id == uuid }
+          == false)
+    }
+
+    @Test("word commands never enter a settings attribution scope or change a setting")
+    func wordCommandsLeaveSettingsAlone() async throws {
+      let temp = DevControlFixtures.TempWords()
+      defer { temp.cleanUp() }
+      let (settings, dispatcher) = Self.make(words: temp.coordinator)
+      var flags: [Bool] = []
+      temp.coordinator.onWordsChanged = { _ in flags.append(settings.isDevControlWrite) }
+      let before = try JSONSerialization.data(
+        withJSONObject: DevControlSettings.catalog(settings), options: .sortedKeys)
+
+      let id = try #require(
+        try word(await dispatcher.handle(.wordsAdd, args: ["word": "Puffin"]))["id"] as? String)
+      _ = await dispatcher.handle(.wordsUpdate, args: ["id": id, "aliases": ["puff in"]])
+      _ = await dispatcher.handle(.wordsRemove, args: ["id": id])
+
+      #expect(flags == [false, false, false])
+      let after = try JSONSerialization.data(
+        withJSONObject: DevControlSettings.catalog(settings), options: .sortedKeys)
+      #expect(before == after)
+    }
   }
 
   /// Plain-value owners for the dispatcher's `status`, History and word commands.
@@ -981,7 +1017,8 @@ func wordCommandsLeaveSettingsAlone() async throws {
         keychainManager: keychain,
         cacheDefaults: TestDefaults.suite("ew.tests.3765.keys.cache.\(UUID().uuidString)")!,
         savedKeyPresence: presence, discoverModels: { _, _ in [] })
-      var writer = CredentialWriter(keychainManager: keychain, presence: presence, discovery: discovery)
+      var writer = CredentialWriter(
+        keychainManager: keychain, presence: presence, discovery: discovery)
       writer.emit = emit
       return writer
     }
@@ -1040,7 +1077,10 @@ func wordCommandsLeaveSettingsAlone() async throws {
 
       var sources: DevControlDispatcher.StatusSources {
         DevControlDispatcher.StatusSources(
-          engineStatus: { [self] in onRead?(); return engine },
+          engineStatus: { [self] in
+            onRead?()
+            return engine
+          },
           isSwitching: { [self] in isSwitching },
           driverState: { [self] backend in
             driverStateAsked.append(backend)

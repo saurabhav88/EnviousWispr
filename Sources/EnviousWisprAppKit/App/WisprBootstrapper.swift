@@ -2994,6 +2994,12 @@ package final class WisprBootstrapper {
     sparkleUpdateController.updateCoordinator?.checkForUpdatesProactively(trigger: "foreground")
   }
 
+  /// #4086: dictionary saves already queued finish before the app quits. Nothing else
+  /// asks to finish first today.
+  package func applicationShouldTerminate(reply: @escaping @MainActor (Bool) -> Void) -> Bool {
+    customWordsCoordinator.requestQuit(reply: reply)
+  }
+
   package func applicationWillTerminate() {
     #if DEBUG
       // #2885: stop answering, and stop watching, before anything below tears down.

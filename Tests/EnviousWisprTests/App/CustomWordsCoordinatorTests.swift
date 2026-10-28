@@ -32,11 +32,11 @@ struct CustomWordsCoordinatorTests {
   }
 
   @Test("pendingEnrichmentBatchTotal round-trips through loadSnapshot()")
-  func pendingTotalRoundTripsThroughLoadSnapshot() {
+  func pendingTotalRoundTripsThroughLoadSnapshot() async {
     let (first, url) = makeCoordinator()
     #expect(first.pendingEnrichmentBatchTotal == nil, "a fresh library has no run in progress")
 
-    _ = first.commitImport(
+    _ = await first.commitImport(
       plan(
         baseline: first.customWords,
         additions: [CustomWordsImportCandidate(canonical: "Kubernetes")]))
@@ -51,12 +51,12 @@ struct CustomWordsCoordinatorTests {
   }
 
   @Test("onImportCommitted fires on a nonempty commit")
-  func onImportCommittedFiresOnNonemptyCommit() {
+  func onImportCommittedFiresOnNonemptyCommit() async {
     let (coordinator, _) = makeCoordinator()
     var fired = 0
     coordinator.onImportCommitted = { fired += 1 }
 
-    _ = coordinator.commitImport(
+    _ = await coordinator.commitImport(
       plan(
         baseline: coordinator.customWords,
         additions: [CustomWordsImportCandidate(canonical: "Kubernetes")]))
@@ -65,27 +65,27 @@ struct CustomWordsCoordinatorTests {
   }
 
   @Test("onImportCommitted does not fire on an all-Skip commit")
-  func onImportCommittedDoesNotFireOnEmptyCommit() {
+  func onImportCommittedDoesNotFireOnEmptyCommit() async {
     let (coordinator, _) = makeCoordinator()
     var fired = 0
     coordinator.onImportCommitted = { fired += 1 }
 
-    _ = coordinator.commitImport(plan(baseline: coordinator.customWords))
+    _ = await coordinator.commitImport(plan(baseline: coordinator.customWords))
 
     #expect(fired == 0)
   }
 
   @Test("onImportCommitted does not fire on a stale or failed commit")
-  func onImportCommittedDoesNotFireOnStaleCommit() {
+  func onImportCommittedDoesNotFireOnStaleCommit() async {
     let (coordinator, _) = makeCoordinator()
     let staleBaseline = coordinator.customWords
     // Change the library after the (stale) baseline was captured.
-    _ = coordinator.add(CustomWord(canonical: "Interloper"))
+    _ = await coordinator.add(CustomWord(canonical: "Interloper"))
 
     var fired = 0
     coordinator.onImportCommitted = { fired += 1 }
 
-    let outcome = coordinator.commitImport(
+    let outcome = await coordinator.commitImport(
       plan(
         baseline: staleBaseline, additions: [CustomWordsImportCandidate(canonical: "Kubernetes")]))
 
@@ -97,7 +97,7 @@ struct CustomWordsCoordinatorTests {
   }
 
   @Test("a stale-commit refresh adopts words AND the durable total together, from one snapshot")
-  func staleCommitRefreshAdoptsWordsAndTotalTogether() {
+  func staleCommitRefreshAdoptsWordsAndTotalTogether() async {
     // Codex Chunk 2 review round 2 finding 4: `refreshFromDiskIfPossible`
     // used to call `manager.load()` (words only), so a stale-commit refresh
     // after another app instance wrote could adopt fresh words paired with a
@@ -111,7 +111,7 @@ struct CustomWordsCoordinatorTests {
     // coordinator entirely — both new words AND a fresh durable total.
     let rawManager = CustomWordsManager(fileURL: url)
     var rawWords = rawManager.load() ?? []
-    _ = try! rawManager.commitImport(
+    _ = try! await rawManager.commitImport(
       plan(
         baseline: rawWords,
         additions: [
@@ -122,7 +122,7 @@ struct CustomWordsCoordinatorTests {
 
     // This coordinator's own commit, built against the now-stale baseline,
     // triggers the internal refresh.
-    let outcome = coordinator.commitImport(
+    let outcome = await coordinator.commitImport(
       plan(baseline: staleBaseline, additions: [CustomWordsImportCandidate(canonical: "Anthropic")])
     )
     guard case .stale = outcome else {
@@ -138,13 +138,13 @@ struct CustomWordsCoordinatorTests {
   }
 
   @Test("a total-only refresh never republishes unchanged words to pipelines")
-  func totalOnlyRefreshDoesNotFireOnWordsChanged() throws {
+  func totalOnlyRefreshDoesNotFireOnWordsChanged() async throws {
     // Codex Chunk 2 review round 3 finding 3a: the old unconditional
     // `onWordsChanged?(customWords)` fired even when only the total changed,
     // needlessly republishing byte-identical words to every pipeline
     // consumer.
     let (coordinator, url) = makeCoordinator()
-    _ = coordinator.commitImport(
+    _ = await coordinator.commitImport(
       plan(
         baseline: coordinator.customWords,
         additions: [CustomWordsImportCandidate(canonical: "Kubernetes")]))
@@ -161,7 +161,7 @@ struct CustomWordsCoordinatorTests {
     var changedFired = 0
     coordinator.onWordsChanged = { _ in changedFired += 1 }
 
-    #expect(coordinator.refreshFromDiskIfPossible() == true)
+    await #expect(coordinator.refreshFromDiskIfPossible() == true)
 
     #expect(coordinator.pendingEnrichmentBatchTotal == 5)
     #expect(coordinator.customWords == wordsBefore)
@@ -169,19 +169,19 @@ struct CustomWordsCoordinatorTests {
   }
 
   @Test("a cross-process transition to a new run clears a stale display from a previous one")
-  func crossProcessNewRunClearsStaleDisplay() throws {
+  func crossProcessNewRunClearsStaleDisplay() async throws {
     // Codex Chunk 2 review round 3 finding 3b: the local `commitImport` path
     // already clears `mostRecentEnrichment` on a nil -> non-nil transition;
     // `refreshFromDiskIfPossible` must apply the same rule, or a stale
     // display from THIS coordinator's own already-completed run can flash
     // before another instance's freshly-started run produces its own result.
     let (coordinator, url) = makeCoordinator()
-    _ = coordinator.commitImport(
+    _ = await coordinator.commitImport(
       plan(
         baseline: coordinator.customWords,
         additions: [CustomWordsImportCandidate(canonical: "Kubernetes")]))
     let target = try #require(coordinator.customWords.first { $0.canonical == "Kubernetes" })
-    try coordinator.applyEnrichmentResults([
+    try await coordinator.applyEnrichmentResults([
       CustomWordEnrichmentResult(id: target.id, generatedAliases: ["k8s"])
     ])
     #expect(coordinator.mostRecentEnrichment != nil, "the completed run left a display behind")
@@ -190,11 +190,11 @@ struct CustomWordsCoordinatorTests {
     // A SEPARATE manager instance starts a genuinely NEW run on the same file.
     let rawManager = CustomWordsManager(fileURL: url)
     var rawWords = rawManager.load() ?? []
-    _ = try rawManager.commitImport(
+    _ = try await rawManager.commitImport(
       plan(baseline: rawWords, additions: [CustomWordsImportCandidate(canonical: "Qualtrics")]),
       to: &rawWords)
 
-    #expect(coordinator.refreshFromDiskIfPossible() == true)
+    await #expect(coordinator.refreshFromDiskIfPossible() == true)
 
     #expect(coordinator.pendingEnrichmentBatchTotal == 1)
     #expect(
@@ -213,9 +213,9 @@ struct CustomWordsCoordinatorTests {
   }
 
   @Test("pendingEnrichmentCount reflects a commit immediately, in memory")
-  func pendingEnrichmentCountReflectsCommit() {
+  func pendingEnrichmentCountReflectsCommit() async {
     let (coordinator, _) = makeCoordinator()
-    _ = coordinator.commitImport(
+    _ = await coordinator.commitImport(
       plan(
         baseline: coordinator.customWords,
         additions: [
@@ -226,9 +226,9 @@ struct CustomWordsCoordinatorTests {
   }
 
   @Test("pendingEnrichmentCount drops as checkpoints land and reaches 0 on completion")
-  func pendingEnrichmentCountDropsAsCheckpointsLand() throws {
+  func pendingEnrichmentCountDropsAsCheckpointsLand() async throws {
     let (coordinator, _) = makeCoordinator()
-    _ = coordinator.commitImport(
+    _ = await coordinator.commitImport(
       plan(
         baseline: coordinator.customWords,
         additions: [
@@ -239,27 +239,27 @@ struct CustomWordsCoordinatorTests {
       $0.canonical == "Kubernetes" || $0.canonical == "Qualtrics"
     }
 
-    try coordinator.applyEnrichmentResults([
+    try await coordinator.applyEnrichmentResults([
       CustomWordEnrichmentResult(id: words[0].id, generatedAliases: [])
     ])
     #expect(coordinator.pendingEnrichmentCount == 1)
 
-    try coordinator.applyEnrichmentResults([
+    try await coordinator.applyEnrichmentResults([
       CustomWordEnrichmentResult(id: words[1].id, generatedAliases: [])
     ])
     #expect(coordinator.pendingEnrichmentCount == 0)
   }
 
   @Test("pendingEnrichmentCount drops to 0 on Cancel")
-  func pendingEnrichmentCountDropsToZeroOnCancel() {
+  func pendingEnrichmentCountDropsToZeroOnCancel() async {
     let (coordinator, _) = makeCoordinator()
-    _ = coordinator.commitImport(
+    _ = await coordinator.commitImport(
       plan(
         baseline: coordinator.customWords,
         additions: [CustomWordsImportCandidate(canonical: "Kubernetes")]))
     #expect(coordinator.pendingEnrichmentCount == 1)
 
-    _ = coordinator.cancelEnrichment()
+    _ = await coordinator.cancelEnrichment()
     #expect(coordinator.pendingEnrichmentCount == 0)
   }
 }

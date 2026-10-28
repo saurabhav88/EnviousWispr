@@ -602,6 +602,8 @@ struct QuickAddPanelView: View {
       .font(.system(size: 15))
       .foregroundStyle(.stTextPrimary)
       .focused($composeFocused)
+      // Locked while its save waits (#4086), so a correction typed meanwhile is not dropped.
+      .disabled(model.isSaving)
       // **Return creates only when there is something to create.** An empty field does nothing,
       // which is the same rule the picking stage applies below the confidence bar, and the legend
       // says so by omitting the cap.
@@ -633,6 +635,10 @@ struct QuickAddPanelView: View {
     .task {
       await Task.yield()
       composeFocused = true
+    }
+    // A refused save keeps the panel up; the field it locked takes focus back.
+    .onChange(of: model.isSaving) { _, saving in
+      if !saving { composeFocused = true }
     }
   }
 
@@ -695,7 +701,7 @@ struct QuickAddPanelView: View {
       // Unreachable today — `showsSearchField` hides the field under a refusal — and kept as the
       // floor: any future state that shows the field without a rankable heard string gets an inert
       // control rather than a silent one.
-      .disabled(model.refusal != nil)
+      .disabled(model.refusal != nil || model.isSaving)
       // Arrows move the highlight WITHOUT leaving the field, which is what lets the user keep typing
       // after correcting the selection.
       .onMoveCommand { direction in
@@ -729,6 +735,9 @@ struct QuickAddPanelView: View {
     // for the mouse. Moved off the body when the body gained a second stage: left there it fired
     // once, at open, and returning from Compose left the panel with no focused field at all.
     .onAppear { searchFocused = true }
+    .onChange(of: model.isSaving) { _, saving in
+      if !saving { searchFocused = true }
+    }
   }
 
   private var candidateRows: some View {

@@ -128,7 +128,7 @@ struct CustomWordSuggestionFlowTests {
     #expect(word.aliases == ["sara"] && word.learnedAliases.isEmpty)
     // Typed back in before saving: present, and NOT auto-learned any more.
     word.aliases.append("sarah")
-    #expect(CustomWordsManager.sanitizeForPersistence(word).learnedAliases.isEmpty)
+    #expect(CustomWordsMutationPolicy.sanitizeForPersistence(word).learnedAliases.isEmpty)
     #expect(!word.isAutoLearned)
     // Control: removing the plain chip leaves the learned mark on the other.
     var other = CustomWord(
