@@ -12,8 +12,8 @@ import Foundation
 /// queue, so a write queued before a deletion never recreates the data.
 extension MeetingStore {
   public static let callSpeakersFileName = "call-speakers.json"
-  /// A meeting log is a few kilobytes a minute; this bounds a read of a damaged or hostile file
-  /// without limiting any real meeting.
+  /// Bounds every read and every write of the file, so a damaged or hostile file is never loaded
+  /// whole and a save never produces a file the loader refuses. A log over it is not saved.
   public static let maximumCallSpeakersBytes = 16 * 1024 * 1024
 
   public func callSpeakersURL(for id: UUID) -> URL {
@@ -31,6 +31,11 @@ extension MeetingStore {
     case newerFormat
     /// The log's shape is wrong (`CallSpeakerLog.shapeProblem`); nothing is written.
     case invalidLog(String)
+    /// The encoded log is over `maximumCallSpeakersBytes`; nothing is written.
+    case tooLarge
+    /// The file on disk could not be shown to be one this build may replace (unreadable, over
+    /// the size bound, not a log, or an unknown version); it is kept.
+    case existingUnverifiable
   }
 
   /// What a read of `call-speakers.json` found. Only `.usable` is evidence; every other answer
@@ -78,11 +83,41 @@ extension MeetingStore {
   /// disk that a newer build wrote; and a log whose shape is wrong.
   public func saveCallSpeakers(_ log: CallSpeakerLog, meeting id: UUID) throws {
     if let problem = log.shapeProblem { throw CallSpeakersError.invalidLog(problem) }
+    let data = try Self.encoder.encode(log)
+    guard data.count <= Self.maximumCallSpeakersBytes else { throw CallSpeakersError.tooLarge }
     try refuseCallSpeakersWrite(id)
-    if case .unusable(.newerFormat) = loadCallSpeakers(meeting: id) {
+    try refuseReplacingUnknownCallSpeakers(id)
+    try Self.atomicWrite(data, to: callSpeakersURL(for: id))
+  }
+
+  /// Replacing is allowed only when nothing is there, or the file states a version this build
+  /// writes. Failing to read or recognise the file is never permission to replace it.
+  private func refuseReplacingUnknownCallSpeakers(_ id: UUID) throws {
+    let url = callSpeakersURL(for: id)
+    let handle: FileHandle
+    do {
+      handle = try FileHandle(forReadingFrom: url)
+    } catch {
+      if Self.confirmedAbsent(url) { return }
+      throw CallSpeakersError.existingUnverifiable
+    }
+    defer { try? handle.close() }
+    guard let data = try? handle.read(upToCount: Self.maximumCallSpeakersBytes + 1),
+      data.count <= Self.maximumCallSpeakersBytes,
+      let stated = try? Self.decoder.decode(StatedVersion.self, from: data)
+    else { throw CallSpeakersError.existingUnverifiable }
+    if stated.formatVersion > CallSpeakerLog.currentFormatVersion {
       throw CallSpeakersError.newerFormat
     }
-    try Self.atomicWrite(try Self.encoder.encode(log), to: callSpeakersURL(for: id))
+    guard stated.formatVersion == CallSpeakerLog.currentFormatVersion else {
+      throw CallSpeakersError.existingUnverifiable
+    }
+  }
+
+  /// Only the version field, so a log whose other fields are damaged can still be recognised
+  /// as one this build wrote (and then replaced).
+  private struct StatedVersion: Decodable {
+    let formatVersion: Int
   }
 
   private func refuseCallSpeakersWrite(_ id: UUID) throws {
@@ -100,17 +135,26 @@ extension MeetingStore {
   }
 
   /// Removes `call-speakers.json` and any temp or backup file a failed `atomicWrite` of it left
-  /// (`.call-speakers.json.<uuid>.tmp` / `.bak`). Other meeting files are untouched.
+  /// (exactly `.call-speakers.json.<UUID>.tmp` / `.bak`). Other meeting files are untouched.
   func removeCallSpeakers(meeting id: UUID) throws {
     let fm = FileManager.default
     let dir = folder(for: id)
-    let leftoverPrefix = ".\(Self.callSpeakersFileName)."
     for name in try fm.contentsOfDirectory(atPath: dir.path)
-    where name == Self.callSpeakersFileName
-      || (name.hasPrefix(leftoverPrefix) && (name.hasSuffix(".tmp") || name.hasSuffix(".bak")))
-    {
+    where name == Self.callSpeakersFileName || Self.isCallSpeakersLeftover(name) {
       try fm.removeItem(at: dir.appendingPathComponent(name))
     }
+  }
+
+  /// `atomicWrite`'s temp and backup names for this file: the exact prefix, one UUID, then
+  /// `.tmp` or `.bak`.
+  static func isCallSpeakersLeftover(_ name: String) -> Bool {
+    let prefix = ".\(callSpeakersFileName)."
+    guard name.hasPrefix(prefix) else { return false }
+    let rest = name.dropFirst(prefix.count)
+    for suffix in [".tmp", ".bak"] where rest.hasSuffix(suffix) {
+      return UUID(uuidString: String(rest.dropLast(suffix.count))) != nil
+    }
+    return false
   }
 
   /// True only when `lstat` says the path does not exist.

@@ -83,6 +83,19 @@ struct CallSpeakerLogTests {
     #expect(CallSpeakerLag(milliseconds: 0).audioAlignedMs(42) == 42)
   }
 
+  @Test("a version below 1 is invalid, while a newer version stays its own answer")
+  func unsupportedOlderVersions() {
+    for version in [0, -1] {
+      #expect(throws: CallSpeakerLog.DecodeError.invalid("formatVersion")) {
+        try JSONDecoder().decode(
+          CallSpeakerLog.self, from: Data(#"{"formatVersion":\#(version)}"#.utf8))
+      }
+    }
+    #expect(throws: CallSpeakerLog.DecodeError.unsupportedFormatVersion(2)) {
+      try JSONDecoder().decode(CallSpeakerLog.self, from: Data(#"{"formatVersion":2}"#.utf8))
+    }
+  }
+
   @Test("roster source reads back as saved, and a log without it reads as unknown")
   func rosterSource() throws {
     for value in [true, false] {

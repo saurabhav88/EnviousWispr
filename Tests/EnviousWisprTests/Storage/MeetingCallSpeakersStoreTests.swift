@@ -178,6 +178,55 @@ struct MeetingCallSpeakersStoreTests {
     #expect(store2.loadCallSpeakers(meeting: record2.id) == .absent)
   }
 
+  @Test("a log too large to read back is not saved, and the previous log stays")
+  func oversizedLogRefused() throws {
+    let (store, record) = try makeMeeting()
+    try store.saveCallSpeakers(Self.log(), meeting: record.id)
+    let before = try Data(contentsOf: store.callSpeakersURL(for: record.id))
+    let names = (0..<60).map { "Participant \($0) " + String(repeating: "x", count: 230) }
+    let huge = Self.log(
+      observations: (0..<1_200).map { CallSpeakerObservation(observationMs: $0, speaking: names) })
+    #expect(huge.shapeProblem == nil, "the log is well formed, only large")
+    #expect(throws: MeetingStore.CallSpeakersError.tooLarge) {
+      try store.saveCallSpeakers(huge, meeting: record.id)
+    }
+    #expect(try Data(contentsOf: store.callSpeakersURL(for: record.id)) == before)
+  }
+
+  @Test(
+    "a file whose version cannot be shown to be this build's is kept, whatever its size",
+    arguments: ["oversized newer", "not json", "version zero", "truncated"])
+  func unrecognisedFileKept(kind: String) throws {
+    let (store, record) = try makeMeeting()
+    let url = store.callSpeakersURL(for: record.id)
+    let bytes: Data
+    switch kind {
+    case "oversized newer":
+      bytes = Data(
+        (#"{"formatVersion":2,"pad":""#
+          + String(repeating: "x", count: MeetingStore.maximumCallSpeakersBytes) + #""}"#).utf8)
+    case "not json": bytes = Data("garbage".utf8)
+    case "version zero": bytes = Data(#"{"formatVersion":0}"#.utf8)
+    default: bytes = Data(#"{"formatVersion":1,"roster":"#.utf8)
+    }
+    try bytes.write(to: url)
+    #expect(throws: MeetingStore.CallSpeakersError.existingUnverifiable) {
+      try store.saveCallSpeakers(Self.log(), meeting: record.id)
+    }
+    #expect(try Data(contentsOf: url) == bytes)
+  }
+
+  @Test("a damaged log that says it is this build's version is replaced")
+  func damagedCurrentVersionReplaced() throws {
+    let (store, record) = try makeMeeting()
+    try writeRaw(
+      #"{"formatVersion":1,"observations":[{"observationMs":-5,"speaking":[]}]}"#,
+      meeting: record.id, in: store)
+    #expect(store.loadCallSpeakers(meeting: record.id) == .unusable(.invalid))
+    try store.saveCallSpeakers(Self.log(), meeting: record.id)
+    #expect(store.loadCallSpeakers(meeting: record.id) == .usable(Self.log()))
+  }
+
   @Test("a failed replacement keeps the previous saved log")
   func failedWriteKeepsPrevious() throws {
     let (store, record) = try makeMeeting()
@@ -204,8 +253,12 @@ struct MeetingCallSpeakersStoreTests {
       ".call-speakers.json.\(UUID().uuidString).tmp",
       ".call-speakers.json.\(UUID().uuidString).bak",
     ]
-    let unrelated = ".notes.md.\(UUID().uuidString).bak"
-    for name in leftovers + [unrelated] {
+    let unrelated = [
+      ".notes.md.\(UUID().uuidString).bak", ".call-speakers.json.keep.bak",
+      ".call-speakers.json.\(UUID().uuidString).tmp.old", ".call-speakers.json..bak",
+      "call-speakers.json.\(UUID().uuidString).bak",
+    ]
+    for name in leftovers + unrelated {
       try Data("x".utf8).write(to: folder.appendingPathComponent(name))
     }
 
@@ -213,7 +266,7 @@ struct MeetingCallSpeakersStoreTests {
     #expect(store.loadCallSpeakers(meeting: record.id) == .absent)
     let names = Set(try FileManager.default.contentsOfDirectory(atPath: folder.path))
     #expect(names.isDisjoint(with: leftovers))
-    #expect(names.contains(unrelated))
+    #expect(Set(unrelated).isSubset(of: names), "near-miss names are not the writer's leftovers")
     #expect(names.contains(MeetingStore.recordFileName))
     #expect(try store.loadDocuments(meeting: record.id).notes == "Agenda")
     // Repeatable: nothing left is not an error.

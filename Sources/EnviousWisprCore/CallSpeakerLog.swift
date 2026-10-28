@@ -213,6 +213,8 @@ extension CallSpeakerLog: Codable {
     guard version <= Self.currentFormatVersion else {
       throw DecodeError.unsupportedFormatVersion(version)
     }
+    // Only versions this build wrote are admitted; there was never a version below 1.
+    guard version >= 1 else { throw DecodeError.invalid("formatVersion") }
     formatVersion = version
     surfaceRaw = try container.decodeIfPresent(String.self, forKey: .surface)
     sourceRaw = try container.decodeIfPresent(String.self, forKey: .source)
