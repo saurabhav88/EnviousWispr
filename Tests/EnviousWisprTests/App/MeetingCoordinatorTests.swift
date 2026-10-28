@@ -169,8 +169,9 @@ struct MeetingCoordinatorTests {
 
     private let landing = OSAllocatedUnfairLock<[@Sendable (MeetingRecord) -> Bool]>(
       initialState: [])
-    /// #3973 C2: writes of records matching `predicate` land on disk, then report failure (a
-    /// sync that failed after the file was replaced).
+    /// #3973 C2: the next write of a record matching `predicate` lands on disk, then reports
+    /// failure (a sync that failed after the file was replaced). Once only: a write that
+    /// `onLandingFailure` starts must not fail again, or each failure starts another.
     func failAfterLanding(where predicate: @escaping @Sendable (MeetingRecord) -> Bool) {
       landing.withLock { $0.append(predicate) }
     }
@@ -179,7 +180,12 @@ struct MeetingCoordinatorTests {
     let onLandingFailure = OSAllocatedUnfairLock<(@Sendable () -> Void)?>(initialState: nil)
 
     func failIfLandingFails(_ record: MeetingRecord) throws {
-      if landing.withLock({ $0 }).contains(where: { $0(record) }) {
+      let matched = landing.withLock { predicates -> Bool in
+        guard let index = predicates.firstIndex(where: { $0(record) }) else { return false }
+        predicates.remove(at: index)
+        return true
+      }
+      if matched {
         onLandingFailure.withLock { $0 }?()
         throw InjectedFailure()
       }

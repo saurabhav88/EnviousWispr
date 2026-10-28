@@ -459,6 +459,8 @@ struct MeetingWiringTests {
     record.state = .ready
     try rig.store.save(record)
     coordinator.launch()
+    // Delete All marks only listed meetings; one still being listed is refused (#3973 C2).
+    await MeetingCoordinatorTests.eventually("listed") { coordinator.meetings.count == 1 }
     try await rig.transcripts.saveAndShowDurably(
       Transcript(
         id: record.transcriptID, text: "standup", backendType: .parakeet, meetingID: record.id))
@@ -479,6 +481,8 @@ struct MeetingWiringTests {
     let folder = rig.store.folder(for: record.id)
     try MeetingAudioFixture.writeSegment(in: folder, index: 1, startMs: 0, frames: 8_000)
     coordinator.launch()
+    // Listed first, so the refusal comes from the unwritable folder (#3973 C2).
+    await MeetingCoordinatorTests.eventually("listed") { coordinator.meetings.count == 1 }
     let row = Transcript(
       id: record.transcriptID, text: "standup", backendType: .parakeet, meetingID: record.id)
     try await rig.transcripts.saveAndShowDurably(row)
