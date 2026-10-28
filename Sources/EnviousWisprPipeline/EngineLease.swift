@@ -92,6 +92,10 @@ package final class EngineLease {
   /// reservation is withdrawn. Present exactly while `reservation` is.
   private var reservationWaiter: CheckedContinuation<Token?, Never>?
 
+  /// #3973 C1: called when a dictation's reservation is withdrawn without a grant, so a meeting
+  /// that waited behind it looks again. Not `onReleased`: nothing was released.
+  package var onReservationWithdrawn: (@MainActor () -> Void)?
+
   /// #3546 A3: called after every effective release, so work deferred because the engine
   /// was held (the in-session Parakeet Ultra activation) is offered again whoever held it,
   /// without each holder remembering to say so. Synchronous; it must not re-enter `admit`.
@@ -154,6 +158,7 @@ package final class EngineLease {
     let waiter = reservationWaiter
     reservationWaiter = nil
     waiter?.resume(returning: nil)
+    onReservationWithdrawn?()
     return true
   }
 

@@ -278,9 +278,9 @@ struct EngineLeaseTests {
 }
 
 /// One reservation handed from the subject's `onReserved` to the waiting test, or nil after a
-/// 5 s deadline (#3973 C1).
+/// 5 s deadline (#3973 C1). Shared with the meeting wiring rows.
 @MainActor
-private final class ReservationSignal {
+final class ReservationSignal {
   private var delivered: EngineLease.Reservation?
   private var waiter: CheckedContinuation<EngineLease.Reservation?, Never>?
 

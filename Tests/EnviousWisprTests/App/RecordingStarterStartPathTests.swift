@@ -54,6 +54,8 @@ import Testing
     let pendingRequests: PendingDictationRequests
     let turnLog: TurnLogSink
     let turnClock: TurnClock
+    /// #3973 C1: the real lifecycle owner, when the fixture was asked for one (`withLifecycle`).
+    let lifecycle: DictationLifecycleCoordinator?
   }
 
   /// What the pill is showing, as a person would describe it (#2292 C6).
@@ -133,7 +135,8 @@ import Testing
     micStatus: AVAuthorizationStatus = .authorized,
     micPrompt: MicPromptStub? = nil,
     duringRecoveryArm: (@MainActor () -> Void)? = nil,
-    onRecoveryArm: (@MainActor (ASRBackendType) -> Void)? = nil
+    onRecoveryArm: (@MainActor (ASRBackendType) -> Void)? = nil,
+    withLifecycle: Bool = false
   ) -> Fixture {
     // The overlay used to post an `NSAccessibility` notification against
     // `NSApp.mainWindow` on every `.recording` push, and `NSApp` is an
@@ -221,6 +224,31 @@ import Testing
         }
         return nil
       }
+    // #3973 C1: production's lifecycle owner, installed, releasing into the fixture's lease, so a
+    // row can follow the starter's real token hand-off to the session's accepted terminal.
+    let lifecycle: DictationLifecycleCoordinator?
+    if withLifecycle {
+      let hotkey = HotkeyService(effects: RecordingDesktopHotkeyEffects())
+      let coordinator = DictationLifecycleCoordinator(
+        kernelDriver: pipeline,
+        whisperKernelDriver: whisperKernelDriver,
+        recordingOverlay: overlay,
+        hotkeyService: hotkey,
+        settingsSync: PipelineSettingsSync(
+          kernelDriver: pipeline, whisperKernelDriver: whisperKernelDriver, audioCapture: audio,
+          asrManager: asr, hotkeyService: hotkey, ollamaRemotenessLookup: { _ in nil }),
+        audioCapture: audio,
+        transcriptCoordinator: TranscriptCoordinator(store: store),
+        settings: settings,
+        lastRecordingResult: lastRecordingResult,
+        languageSuggestionPresenter: nil,
+        recordingLockedAccess: lockAccess,
+        releaseEngineClaim: { [engineLease] token in engineLease.release(token) })
+      coordinator.install()
+      lifecycle = coordinator
+    } else {
+      lifecycle = nil
+    }
     let starter = RecordingStarter(
       audioCapture: audio,
       asrManager: asr,
@@ -233,7 +261,7 @@ import Testing
       recordingLockedAccess: lockAccess,
       lastUserStopAccess: finalizer.lastUserStopAccess,
       lastRecordingResult: lastRecordingResult,
-      dictationLifecycleCoordinator: nil,
+      dictationLifecycleCoordinator: lifecycle,
       accessibilityRefresh: accessibilityRefresh,
       recovery: RecordingStarter.RecoveryAccess(
         makeDirective: makeRecoveryDirective,
@@ -267,7 +295,8 @@ import Testing
       engineLease: engineLease,
       pendingRequests: pendingRequests,
       turnLog: turnLog,
-      turnClock: turnClock
+      turnClock: turnClock,
+      lifecycle: lifecycle
     )
   }
 
@@ -1094,6 +1123,55 @@ import Testing
     #expect(fx.turnLog.outcomes.map { $0.split(separator: " ").first.map(String.init) } == [
       "cancelled"
     ])
+  }
+
+  /// The real hand-off (#3973 C1): a press that waited behind a meeting mints a genuine session
+  /// and the STARTER transfers the reserved token to the installed lifecycle owner. The lease stays
+  /// with dictation after the starter returns (a meeting or import cannot claim), a published
+  /// terminal state and the other backend's terminal leave it alone, and the minting backend's
+  /// accepted terminal releases it once, after which meeting work can claim again.
+  @Test(arguments: [false, true])
+  func theWaitedForTokenLivesUntilTheSessionsAcceptedTerminal(useToggle: Bool) async {
+    let fx = Self.makeFixture(withLifecycle: true)
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = true
+    guard
+      let parked = await Self.parkPress(
+        fx,
+        {
+          if useToggle {
+            await fx.starter.toggle(source: .toggleHotkey)
+          } else {
+            _ = await fx.starter.start()
+          }
+        })
+    else { return }
+    #expect(fx.engineLease.release(parked.meeting))
+    await parked.task.value
+
+    #expect(fx.kernelDriver.state.isActive, "the waited-for press minted a session")
+    #expect(fx.engineLease.currentHolder == .dictation, "the session kept the reserved token")
+    for holder in [SharedEngineHolder.meeting, .fileImport] {
+      guard case .refused(by: .dictation) = fx.engineLease.admit(holder) else {
+        Issue.record("\(holder) claimed the engine under a live dictation")
+        return
+      }
+    }
+    fx.kernelDriver.onStateChange?(.idle)
+    #expect(fx.engineLease.currentHolder == .dictation, "a published state released the token")
+    fx.whisperKernelDriver.onSessionTerminalAccepted?("someone-elses-take")
+    #expect(fx.engineLease.currentHolder == .dictation, "the other backend's terminal released it")
+
+    let epoch = fx.engineLease.admissionEpoch
+    fx.kernelDriver.onSessionTerminalAccepted?("take-1")
+    #expect(fx.engineLease.isBusy == false, "the accepted terminal released the token")
+    fx.kernelDriver.onSessionTerminalAccepted?("take-1")
+    #expect(fx.engineLease.admissionEpoch == epoch, "nothing else was granted or released twice")
+    guard case .granted(let meeting) = fx.engineLease.admit(.meeting) else {
+      Issue.record("meeting work could not resume after the dictation ended")
+      return
+    }
+    fx.engineLease.release(meeting)
   }
 
   /// Engine facts are read after the wait, not before it: a gate that now fails refuses, and a

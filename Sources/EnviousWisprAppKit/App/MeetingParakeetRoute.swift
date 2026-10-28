@@ -4,16 +4,21 @@ import EnviousWisprPipeline
 import Foundation
 import os
 
-/// Which Parakeet one EnviousMeet final pass decodes on (#4052), and the claim, decode and
-/// release that choice needs. Built per pass by `MeetingWiring.makeJob`; implements the job's
-/// engine dependencies, so `MeetingTranscriptionJob` keeps its shape.
+/// Which Parakeet one EnviousMeet final-pass engine operation decodes on (#4052), and the
+/// claim, decode and release that choice needs. Built per pass by `MeetingWiring.makeJob`;
+/// implements the job's engine dependencies, so `MeetingTranscriptionJob` keeps its shape.
+///
+/// **One engine operation at a time (#3973 C1).** The job acquires through this route before
+/// each decode and gives everything back after it (`endModelUse`), so the route is chosen
+/// afresh, against current facts, for every operation.
 ///
 /// **Same engine, one copy.** When dictation's selected and active engine is Parakeet (the
-/// meeting engine is always Parakeet until #3973 adds a choice), the pass borrows dictation's
-/// loaded Parakeet under the shared engine lease as `.meeting`, exactly as Transcribe a File
-/// does: dictation is refused ("Transcribing a meeting. Please wait.") until the lease is
-/// released, and no second Parakeet is loaded. When dictation runs Whisper, the pass keeps
-/// its own `MeetingParakeetEngine`, as before #4052.
+/// meeting engine is always Parakeet until #3973 adds a choice), the operation borrows
+/// dictation's loaded Parakeet under the shared engine lease as `.meeting`: a dictation press
+/// meanwhile reserves the next turn and gets the engine when the operation releases it, and no
+/// second Parakeet is loaded. When dictation runs Whisper, the operation loads its own
+/// `MeetingParakeetEngine` and unloads it at the end of the operation, so a switch of
+/// dictation into Parakeet (gate 6d) waits for one operation, never the whole pass.
 ///
 /// **No wait for engine ownership runs under the lease.** Readiness and the install claim are
 /// taken with nothing held; the lease is taken in one synchronous main-actor step that
@@ -128,10 +133,11 @@ final class MeetingParakeetRoute {
     var publicationLosses = 0
     while true {
       // 1. Admission, lease and engine settled. Nothing is held here.
+      // #3973 C1: a dictation waiting for its turn goes first, on both routes.
       let ready: @MainActor () -> Bool = {
         [isAdmitted = deps.isAdmitted, holder = deps.admission.currentHolder,
-        settled = deps.isSwitchSettled] in
-        isAdmitted() && holder() == nil && settled()
+        reserved = deps.admission.hasPendingReservation, settled = deps.isSwitchSettled] in
+        isAdmitted() && holder() == nil && !reserved() && settled()
       }
       try await wait(until: ready)
 
@@ -261,6 +267,7 @@ final class MeetingParakeetRoute {
     case .own:
       await deps.ownClaim.release()
       ownActive = false
+      deps.log("meeting engine route=own released meeting=\(meetingID)")
     case nil: break
     }
     route = nil

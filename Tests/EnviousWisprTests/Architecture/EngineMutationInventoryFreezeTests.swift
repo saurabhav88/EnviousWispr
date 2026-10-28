@@ -431,16 +431,9 @@ import EnviousWisprAppKitTestSupport
     CallSite(
       file: "Sources/EnviousWisprPipeline/MeetingTranscriptionJob.swift", matcher: "unloadEngine",
       text: "self.unloadEngine = unloadEngine", classification: .structurallySafe),
-    CallSite(
-      file: "Sources/EnviousWisprPipeline/MeetingTranscriptionJob.swift", matcher: "unloadEngine",
-      text: "await unitIgnoringCancel { await self.dependencies.unloadEngine() }",
-      classification: .structurallySafe),
-    CallSite(
-      file: "Sources/EnviousWisprPipeline/MeetingTranscriptionJob.swift", matcher: "unloadEngine",
-      text: "await unitIgnoringCancel { await self.dependencies.unloadEngine() }",
-      classification: .structurallySafe),
-    // Three unload sites: the ordinary end of a pass, the teardown on cancel, pressure, pause or
-    // R32, and a prolonged pause. All unload the meeting's own engine, never dictation's.
+    // One unload site since #3973 C1: `releaseEngine`, reached at the end of every engine
+    // operation and on cancel, pressure, a model change or R32. It unloads the meeting's own
+    // engine (or gives back the shared one), never dictation's.
     CallSite(
       file: "Sources/EnviousWisprPipeline/MeetingTranscriptionJob.swift", matcher: "unloadEngine",
       text: "await unitIgnoringCancel { await self.dependencies.unloadEngine() }",

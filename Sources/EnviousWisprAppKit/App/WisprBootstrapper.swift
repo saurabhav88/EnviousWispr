@@ -1545,6 +1545,9 @@ package final class WisprBootstrapper {
       // #4052: a meeting pass waiting for the engine takes its turn.
       meetingWakes.poke()
     }
+    // #3973 C1: a meeting operation waiting behind a dictation's reservation looks again when
+    // that press ends without taking the turn.
+    engineLease.onReservationWithdrawn = { [meetingWakes] in meetingWakes.poke() }
     // GitHub cloud review, PR #1732: now that `engineCoordinator` exists,
     // `isDictationActive` (wired above) can read its minting state.
     engineCoordinatorForRecoveryGate = engineCoordinator
