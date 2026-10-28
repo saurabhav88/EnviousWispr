@@ -40,8 +40,7 @@ struct CallDetectionPolicyTests {
     var interaction: Policy.Interaction { policy.interaction }
 
     /// A reading of these holders, then a step.
-    mutating func read(_ holders: [Policy.Holder], complete: Bool = true, ambiguous: Bool = false)
-    {
+    mutating func read(_ holders: [Policy.Holder], complete: Bool = true, ambiguous: Bool = false) {
       sequence += 1
       policy.observe(
         .init(
@@ -175,21 +174,23 @@ struct CallDetectionPolicyTests {
 
   // MARK: - Starting
 
-  @Test("A Teams microphone test never starts automatic recording",
+  @Test(
+    "A Teams microphone test never starts automatic recording",
     .bug("https://github.com/saurabhav88/EnviousWispr/issues/4094"))
   func teamsMicrophoneTestDoesNotStartAutomatically() {
     let fixture = CallEvidenceReaderTests.Fixture()
     var s = Story()
     s.mode = .startByItself
     s.read([
-      .init(pid: fixture.pid, rule: .callApp(.teams), input: .active,
+      .init(
+        pid: fixture.pid, rule: .callApp(.teams), input: .active,
         evidence: CallEvidenceReader.nativeCallEvidence(
           family: .teams, holderPID: fixture.pid, access: fixture.access))
     ])
-    #expect(s.starts.isEmpty,
+    #expect(
+      s.starts.isEmpty,
       "Microphone activity without a Teams call control must not start recording: \(s.starts)")
   }
-
 
   @Test("a Zoom meeting window with the microphone on asks once")
   func zoomAsksOnce() {
@@ -211,11 +212,12 @@ struct CallDetectionPolicyTests {
     ] as [(SlackHuddleWindow.Read, String, Bool)] {
       let verdict = SlackHuddleWindow.classify(
         windowCount: 1, identifier: { _ in signal }, title: { _ in .value(title) })
-      let evidence: CallEvidenceReader.Evidence = switch verdict {
-      case .call: .call(family: .slack, room: "solo")
-      case .none: .none
-      case .unknown: .unknown
-      }
+      let evidence: CallEvidenceReader.Evidence =
+        switch verdict {
+        case .call: .call(family: .slack, room: "solo")
+        case .none: .none
+        case .unknown: .unknown
+        }
       var s = Story()
       s.read([.init(pid: 300, rule: .callWindow(.slack), input: .active, evidence: evidence)])
       #expect(isAsk(s.interaction, .slack) == shouldAsk, "\(title)")
@@ -719,10 +721,14 @@ struct CallDetectionPolicyTests {
   @Test("two Chrome processes showing one meeting are one call")
   func browserProcessesOneCall() {
     var s = Story()
-    s.read([Self.chrome(.active, url: Self.meetA, pid: 1), Self.chrome(.active, url: Self.meetA, pid: 2)])
+    s.read([
+      Self.chrome(.active, url: Self.meetA, pid: 1), Self.chrome(.active, url: Self.meetA, pid: 2),
+    ])
     s.press(.no)
     s.press(.close)
-    s.read([Self.chrome(.inactive, url: nil, pid: 1), Self.chrome(.active, url: Self.meetA, pid: 3)])
+    s.read([
+      Self.chrome(.inactive, url: nil, pid: 1), Self.chrome(.active, url: Self.meetA, pid: 3),
+    ])
     #expect(s.interaction == .none)
   }
 
@@ -754,7 +760,8 @@ struct CallDetectionPolicyTests {
     #expect(s.stops == 0)
   }
 
-  @Test("#4135 one meeting seen at both Meet addresses is one call: the question stays, and No holds")
+  @Test(
+    "#4135 one meeting seen at both Meet addresses is one call: the question stays, and No holds")
   func meetBothAddressForms() {
     var s = Story()
     s.read([Self.chrome(.active, url: Self.meetA)])
@@ -773,6 +780,46 @@ struct CallDetectionPolicyTests {
     s.hold([Self.chrome(.active, url: "https://meet.google.com/meet/abc-defg-hij")], for: 20)
     s.read([Self.chrome(.active, url: Self.meetA)])
     #expect(s.interaction == .none, "No to the room holds under either address")
+  }
+
+  static let teamsLink = "https://teams.live.com/meet/9318226891234"
+  static let teamsLight =
+    "https://teams.live.com/light-meetings/launch?p=AbCdEfGh12345678Xy&anon=true"
+
+  @Test(
+    "#4162 Teams web's hand-off from the meeting link to the call page is a new room: a new question"
+  )
+  func teamsWebRedirectWhileAsking() {
+    // The two addresses give different rooms: no mapping between the link number and the
+    // page's code is known, so the call page is asked about as itself.
+    var s = Story()
+    s.read([Self.chrome(.active, url: Self.teamsLink)])
+    guard case .ask(let first, .teams, _) = s.interaction else {
+      Issue.record("no question on the meeting link")
+      return
+    }
+    s.read([Self.chrome(.active, url: Self.teamsLight)])
+    guard case .ask(let second, .teams, _) = s.interaction else {
+      Issue.record("no question on the call page")
+      return
+    }
+    #expect(second != first)
+    #expect(s.starts.isEmpty)
+  }
+
+  @Test(
+    "#4162 a recording started on the Teams meeting link asks to switch on the call page; No keeps it"
+  )
+  func teamsWebRedirectWhileRecording() {
+    var s = Story()
+    s.read([Self.chrome(.active, url: Self.teamsLink)])
+    s.press(.yes)
+    s.startFinished(.recording(meetingID: UUID()))
+    s.read([Self.chrome(.active, url: Self.teamsLight)])
+    #expect(isSwitch(s.interaction))
+    s.press(.no)
+    s.hold([Self.chrome(.active, url: Self.teamsLight)], for: 20)
+    #expect(s.stops == 0)
   }
 
   @Test("Off mode forgets every call; the same app is asked about again after")
@@ -796,7 +843,9 @@ struct CallDetectionPolicyTests {
       return
     }
     s.read([Self.chrome(.active, url: "https://mail.google.com/")])
-    if case .ask(let still, _, _) = s.interaction { #expect(still == first, "a page that is no meeting keeps it") }
+    if case .ask(let still, _, _) = s.interaction {
+      #expect(still == first, "a page that is no meeting keeps it")
+    }
     s.read([Self.chrome(.active, url: Self.meetB)])
     guard case .ask(let second, .googleMeet, _) = s.interaction else {
       Issue.record("the new meeting was not asked about")
@@ -879,7 +928,8 @@ struct CallDetectionPolicyTests {
     #expect(CallMeetingURL.classify("https://meet.google.com/meet") == nil)
     #expect(CallMeetingURL.classify("https://meet.google.com/meet/") == nil)
     #expect(CallMeetingURL.classify("https://meet.google.com/meet/landing") == nil)
-    #expect(CallMeetingURL.classify("https://meet.google.com/meet/abc-defg-hi") == nil, "malformed code")
+    #expect(
+      CallMeetingURL.classify("https://meet.google.com/meet/abc-defg-hi") == nil, "malformed code")
     #expect(CallMeetingURL.classify("https://meet.google.com/meet/abc-defg-hij/x") == nil)
     #expect(CallMeetingURL.classify("https://meet.google.com.evil.com/meet/abc-defg-hij") == nil)
     #expect(CallMeetingURL.classify("http://meet.google.com/meet/abc-defg-hij") == nil)
@@ -896,13 +946,33 @@ struct CallDetectionPolicyTests {
         == .teams)
     #expect(CallMeetingURL.classify("https://teams.live.com/meet/9318226891234")?.family == .teams)
     #expect(CallMeetingURL.classify("https://teams.microsoft.com/v2/") == nil, "chat is not a call")
+    // #4162: the page a teams.live.com meeting runs on; the p code is the room.
+    let light = "https://teams.live.com/light-meetings/launch?p=AbCdEfGh12345678Xy&anon=true"
+    #expect(CallMeetingURL.classify(light)?.family == .teams)
+    #expect(
+      CallMeetingURL.classify(
+        "https://teams.live.com/light-meetings/launch?anon=true&p=AbCdEfGh12345678Xy")?
+        .room == CallMeetingURL.classify(light)?.room, "other parameters do not change the room")
+    #expect(
+      CallMeetingURL.classify("https://teams.live.com/light-meetings/launch?p=Other1234567890Abc")?
+        .room
+        != CallMeetingURL.classify(light)?.room)
+    #expect(CallMeetingURL.classify("https://teams.live.com/light-meetings/launch") == nil)
+    #expect(CallMeetingURL.classify("https://teams.live.com/light-meetings/launch?p=") == nil)
+    #expect(CallMeetingURL.classify("https://teams.live.com/light-meetings/other?p=AbCd") == nil)
+    #expect(
+      CallMeetingURL.classify("https://teams.live.com/v2/?p=AbCd") == nil, "chat is not a call")
+    #expect(
+      CallMeetingURL.classify("https://teams.microsoft.com/light-meetings/launch?p=AbCd") == nil,
+      "not seen on the work client")
     #expect(CallMeetingURL.classify("https://acme.webex.com/meet/jdoe")?.family == .webex)
     #expect(
       CallMeetingURL.classify("https://acme.webex.com/acme/j.php?MTID=m123")?.family == .webex)
     #expect(CallMeetingURL.classify("https://www.webex.com/pricing.html") == nil)
     #expect(
       CallMeetingURL.classify("https://acme.webex.com/acme/j.php?MTID=m123&siteurl=acme")?.room
-        == CallMeetingURL.classify("https://acme.webex.com/acme/j.php?siteurl=acme&MTID=m123")?.room)
+        == CallMeetingURL.classify("https://acme.webex.com/acme/j.php?siteurl=acme&MTID=m123")?.room
+    )
     #expect(
       CallMeetingURL.classify("https://acme.webex.com/acme/j.php?MTID=m111")?.room
         != CallMeetingURL.classify("https://acme.webex.com/acme/j.php?MTID=m222")?.room)
@@ -966,7 +1036,8 @@ struct CallDetectionPolicyTests {
   @Test("Teams microphone-only evidence asks; only call proof permits automatic recording")
   func teamsEvidenceAdmission() {
     for proof in [false, true] {
-      let evidence: CallEvidenceReader.Evidence = proof
+      let evidence: CallEvidenceReader.Evidence =
+        proof
         ? .call(family: .teams, room: "pid-300") : .microphoneOnly(family: .teams, room: "pid-300")
       let modes: [Policy.Mode] = [.ask, .startByItself, .off]
       for mode in modes {
@@ -1037,7 +1108,8 @@ struct CallDetectionPolicyTests {
       s.press(.yes)
       #expect(s.stops == 1)
       s.mode = .startByItself
-      let evidence: CallEvidenceReader.Evidence = proof
+      let evidence: CallEvidenceReader.Evidence =
+        proof
         ? .call(family: .teams, room: "pid-300") : .microphoneOnly(family: .teams, room: "pid-300")
       s.read([Self.teams(evidence: evidence)])
       s.stopFinished()
@@ -1046,7 +1118,8 @@ struct CallDetectionPolicyTests {
     }
   }
 
-  @Test("A chosen Teams Ask start survives mode/proof changes and still ends from microphone readings")
+  @Test(
+    "A chosen Teams Ask start survives mode/proof changes and still ends from microphone readings")
   func teamsChosenStartAndEnd() {
     var s = Story()
     s.read([Self.teams()])
@@ -1069,8 +1142,11 @@ struct CallDetectionPolicyTests {
   func otherNativeAppsStayAutomatic() {
     var s = Story()
     s.mode = .startByItself
-    s.read([.init(pid: 400, rule: .callApp(.facetime), input: .active,
-      evidence: .call(family: .facetime, room: "pid-400"))])
+    s.read([
+      .init(
+        pid: 400, rule: .callApp(.facetime), input: .active,
+        evidence: .call(family: .facetime, room: "pid-400"))
+    ])
     #expect(s.starts == [.facetime])
   }
 
