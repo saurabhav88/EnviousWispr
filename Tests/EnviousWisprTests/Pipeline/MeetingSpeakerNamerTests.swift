@@ -3,6 +3,7 @@ import Testing
 
 @testable import EnviousWisprCore
 @testable import EnviousWisprPipeline
+@testable import EnviousWisprServices
 
 /// #4013 r2 items 7-8, r3 F1: when these fail, a meeting names the wrong person, names someone
 /// on thin or tied evidence, names the user's own voice, or names a stretch that was a
@@ -46,11 +47,12 @@ struct MeetingSpeakerNamerTests {
   private static func log(
     _ samples: [(Int, [String])], roster: [String] = ["Alex Rivera", "Priya Shah", "Dana Lee"],
     selfNames: [String] = ["Saurabh Vaish"], lag: Int? = 0, fromList: Bool? = true,
-    status: CallSpeakerObservationStatus? = .observed
+    status: CallSpeakerObservationStatus? = .observed, surface: CallSpeakerSurface? = .teamsApp,
+    source: CallSpeakerSource? = .app, rules: FrozenTalkerRules? = nil
   ) -> CallSpeakerLog {
     CallSpeakerLog(
-      surface: .teamsApp, source: .app, status: status,
-      lag: lag.map { CallSpeakerLag(milliseconds: $0) }, rules: nil,
+      surface: surface, source: source, status: status,
+      lag: lag.map { CallSpeakerLag(milliseconds: $0) }, rules: rules,
       roster: CallSpeakerRoster(names: roster + selfNames, selfNames: selfNames),
       rosterFromParticipantList: fromList,
       observations: samples.map { CallSpeakerObservation(observationMs: $0.0, speaking: $0.1) })
@@ -242,7 +244,7 @@ struct MeetingSpeakerNamerTests {
     "a failed-piece marker inside a genuine speaker's turn removes its stretch, even beside speech")
   func boundedMarker() {
     let turns = [Self.turn(Self.a, 0, 10_000)]
-    let marker = MeetingNamingMarker(startMs: 1_000, endMs: 2_000)
+    let marker = MeetingNamingMarker(track: .callSound, startMs: 1_000, endMs: 2_000)
     let inside = propose(
       turns, Self.eligibility([Self.a], markers: [marker]),
       Self.log(Self.votes("Alex Rivera", from: 1_000, count: 5)))
@@ -257,7 +259,7 @@ struct MeetingSpeakerNamerTests {
   @Test("an open-ended damaged-audio marker removes everything from its start, with no guessed end")
   func openEndedMarker() {
     let turns = [Self.turn(Self.a, 0, 100_000)]
-    let marker = MeetingNamingMarker(startMs: 5_000, endMs: nil)
+    let marker = MeetingNamingMarker(track: .callSound, startMs: 5_000, endMs: nil)
     let late = propose(
       turns, Self.eligibility([Self.a], markers: [marker]),
       Self.log(Self.votes("Alex Rivera", from: 90_000, count: 5)))
@@ -272,12 +274,71 @@ struct MeetingSpeakerNamerTests {
   func markerOnlySpeaker() {
     let result = propose(
       [Self.turn(Self.a, 1_000, 2_000)],
-      Self.eligibility([Self.a], markers: [MeetingNamingMarker(startMs: 1_000, endMs: 2_000)]),
+      Self.eligibility([Self.a], markers: [MeetingNamingMarker(track: .callSound, startMs: 1_000, endMs: 2_000)]),
       Self.log(Self.votes("Alex Rivera", from: 1_000, count: 5)))
     #expect(result.outcome == .noEligibleSpeakers)
   }
 
+  @Test("a microphone marker, bounded or open-ended, never removes call-sound evidence")
+  func microphoneMarkers() {
+    let turns = [Self.turn(Self.a, 0, 10_000)]
+    for marker in [
+      MeetingNamingMarker(track: .microphone, startMs: 0, endMs: 10_000),
+      MeetingNamingMarker(track: .microphone, startMs: 0, endMs: nil),
+    ] {
+      let result = propose(
+        turns, Self.eligibility([Self.a], markers: [marker]),
+        Self.log(Self.votes("Alex Rivera", from: 1_000, count: 3)))
+      #expect(result.proposals == [Self.a: "Alex Rivera"], "marker: \(marker)")
+    }
+  }
+
   // MARK: - Saved evidence
+
+  private static func frozen(_ selectors: String) -> FrozenTalkerRules {
+    FrozenTalkerRules(
+      version: 1,
+      payload: #"{"schema":1,"revision":1,"lagMs":{},"selectors":[\#(selectors)]}"#)
+  }
+
+  private static let verifiedMeet = frozen(
+    #"{"surface":"meet","tileClass":"dkjMxf","nameSource":"firstStaticText","talkingClasses":["kssMZb"],"verification":"verified"}"#
+  )
+
+  @Test("a rules-driven log names only under frozen rules that decode and could report a talker")
+  func rulesDrivenEvidence() {
+    let turns = [Self.turn(Self.a, 0, 10_000)]
+    let samples = Self.votes("Alex Rivera", from: 0, count: 3)
+    let eligible = Self.eligibility([Self.a])
+    func run(_ rules: FrozenTalkerRules?, source: CallSpeakerSource = .rules) -> MeetingNamingResult {
+      propose(turns, eligible, Self.log(samples, surface: .meet, source: source, rules: rules))
+    }
+    #expect(run(Self.verifiedMeet).proposals == [Self.a: "Alex Rivera"])
+    #expect(run(nil).outcome == .rulesUnusable)
+    #expect(run(FrozenTalkerRules(version: 1, payload: "{not json")).outcome == .rulesUnusable)
+    #expect(run(FrozenTalkerRules(version: 2, payload: Self.verifiedMeet.payload)).outcome == .rulesUnusable)
+    #expect(run(Self.frozen("")).outcome == .rulesUnusable, "no Meet entry: unconfigured")
+    let unverified = Self.frozen(
+      #"{"surface":"meet","tileClass":"dkjMxf","nameSource":"firstStaticText","talkingClasses":["kssMZb"],"verification":"unverified"}"#
+    )
+    #expect(run(unverified).outcome == .rulesUnusable)
+    #expect(run(Self.verifiedMeet, source: .app).outcome == .unsupported)
+  }
+
+  @Test("an unknown, roster-only or mismatched surface never names")
+  func unsupportedSurfaces() {
+    let turns = [Self.turn(Self.a, 0, 10_000)]
+    let samples = Self.votes("Alex Rivera", from: 0, count: 3)
+    let eligible = Self.eligibility([Self.a])
+    #expect(propose(turns, eligible, Self.log(samples, surface: nil)).outcome == .unsupported)
+    for surface in [CallSpeakerSurface.facetime, .webex, .jitsi] {
+      #expect(propose(turns, eligible, Self.log(samples, surface: surface)).outcome == .unsupported)
+    }
+    #expect(propose(turns, eligible, Self.log(samples, source: .rules)).outcome == .unsupported)
+    #expect(propose(turns, eligible, Self.log(samples, source: nil)).outcome == .unsupported)
+    #expect(
+      propose(turns, eligible, Self.log(samples, surface: .zoomWeb)).proposals == [Self.a: "Alex Rivera"])
+  }
 
   @Test("missing, unread or uncertain evidence keeps the fallback labels, each with its reason")
   func abstentions() {

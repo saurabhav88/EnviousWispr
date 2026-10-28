@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprServices
 import Foundation
 
 /// One stretch of the meeting timeline, half-open: `startMs` is inside, `endMs` is not.
@@ -19,11 +20,14 @@ package struct MeetingNamingInterval: Sendable, Equatable {
 /// A stretch the pass wrote a marker for instead of speech (#4013 r3 F1): a piece that failed
 /// twice, or audio that exists but cannot be read. `endMs` is `nil` when nothing bounds it (a
 /// damaged last file); such a marker excludes everything from its start on, never a guessed end.
+/// A marker belongs to one track: only a call-sound marker removes call-sound evidence.
 package struct MeetingNamingMarker: Sendable, Equatable {
+  package let track: MeetingTrackKind
   package let startMs: Int
   package let endMs: Int?
 
-  package init(startMs: Int, endMs: Int?) {
+  package init(track: MeetingTrackKind, startMs: Int, endMs: Int?) {
+    self.track = track
     self.startMs = startMs
     self.endMs = endMs
   }
@@ -41,7 +45,8 @@ package struct MeetingNamingEligibility: Sendable, Equatable {
   package let callSpeakerIDs: Set<String>
   /// Where the call sound held transcribed speech.
   package let callSpeech: [MeetingNamingInterval]
-  /// Markers on either track. Every one is excluded, whichever speaker composition gave it.
+  /// Markers on both tracks. Every call-sound marker is excluded, whichever speaker composition
+  /// gave it; a microphone marker says nothing about the call sound and is not.
   package let markers: [MeetingNamingMarker]
 
   package init(
@@ -67,8 +72,12 @@ package struct MeetingNamingResult: Sendable, Equatable {
     case noPermission
     /// The call app was found but could not be read.
     case unreadable
-    /// The call app has no talker reader.
+    /// The saved evidence is from a call app with no talker reader, or does not say which
+    /// app, or its source does not match that app's reader.
     case unsupported
+    /// A rules-driven call app whose frozen rules are missing, no longer decode, or could not
+    /// have reported a talker.
+    case rulesUnusable
     /// The saved evidence does not say how observation went (an older or newer log).
     case statusUnknown
     /// The talking indicator's lag on this call app was never measured; votes cannot be
@@ -118,6 +127,7 @@ package enum MeetingSpeakerNamer {
     case .unsupported: return none(.unsupported)
     case nil: return none(.statusUnknown)
     }
+    if let refusal = evidenceRefusal(log) { return none(refusal) }
     guard let lag = log.lag else { return none(.lagUnmeasured) }
     guard log.rosterFromParticipantList == true else { return none(.rosterUncertain) }
     guard let eligibility else { return none(.noEligibleSpeakers) }
@@ -164,6 +174,26 @@ package enum MeetingSpeakerNamer {
       proposals: proposals, outcome: proposals.isEmpty ? .ambiguous : .named)
   }
 
+  /// Whether the log could only have come from a reader that reports talkers: a talker surface,
+  /// the source that surface's reader writes, and for a rules-driven surface frozen rules that
+  /// still decode (the rules store's own decoder) and allow that surface to report a talker.
+  static func evidenceRefusal(_ log: CallSpeakerLog) -> MeetingNamingResult.Outcome? {
+    guard let surface = log.surface else { return .unsupported }
+    switch surface {
+    // Native readers: the app's own words, or Zoom web's layout, never selector rules.
+    case .zoomApp, .teamsApp, .zoomWeb:
+      return log.source == .app ? nil : .unsupported
+    case .meet, .teamsWeb, .slackApp, .slackWeb:
+      guard log.source == .rules else { return .unsupported }
+      guard let frozen = log.rules, let rules = TalkerRulesSnapshot.thaw(frozen),
+        rules.rule(for: surface).mayReportTalker
+      else { return .rulesUnusable }
+      return nil
+    case .facetime, .webex, .dialpad, .gather, .lark, .voov, .whereby, .jitsi:
+      return .unsupported
+    }
+  }
+
   /// Each genuine call-sound speaker's turns, cut to call speech and with every marker removed.
   /// Speakers left with no eligible time are absent.
   static func eligibleSpeech(
@@ -180,7 +210,9 @@ package enum MeetingSpeakerNamer {
     }
     for (speaker, turns) in result {
       var kept = intersect(normalized(turns), callSpeech)
-      for marker in eligibility.markers { kept = subtract(marker, from: kept) }
+      for marker in eligibility.markers where marker.track == .callSound {
+        kept = subtract(marker, from: kept)
+      }
       result[speaker] = kept.isEmpty ? nil : kept
     }
     return result

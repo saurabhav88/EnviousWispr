@@ -57,8 +57,9 @@ package struct SpeakerSelectorRule: Sendable, Equatable {
       talkingClasses: [], participantListClass: nil, verification: .unverified)
   }
 
-  /// Roster-only surfaces never report a talker, whatever the rule says (#4013 D4).
-  var mayReportTalker: Bool {
+  /// Roster-only surfaces never report a talker, whatever the rule says (#4013 D4). The namer
+  /// also reads this, so a saved log is trusted only under rules that could have reported it.
+  package var mayReportTalker: Bool {
     verification == .verified && !talkingClasses.isEmpty && !Self.rosterOnly.contains(surface)
   }
 
