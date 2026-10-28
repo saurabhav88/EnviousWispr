@@ -608,6 +608,8 @@ public enum CallEvidenceReader {
     else { return .init(startEvidence: .unknown) }
     let call = Evidence.call(family: .zoom, room: "pid-\(appPID)")
     var failed = false
+    var leaveOngoing = false
+    var homeIdentifierMissing = false
     for window in windows {
       guard access.now() < deadline else { return .init(startEvidence: .unknown) }
       // The classifier's count-one form preserves identifier-first/positive-wins behavior;
@@ -616,9 +618,20 @@ public enum CallEvidenceReader {
       let verdict = ZoomCallWindow.classify(
         windowCount: 1,
         identifier: { _ in
-          let read = stringRead(window, kAXIdentifierAttribute as CFString, until: deadline, access: access)
-          if case .value(let value) = read, value == ZoomCallWindow.meetingIdentifier { exact = true }
-          return read
+          // Legacy start fallback may project malformed metadata to missing. Terminal
+          // support must retain the raw distinction, not inherit that projection.
+          let read = boundedCopy(window, kAXIdentifierAttribute as CFString, until: deadline, access: access)
+          switch read {
+          case .value(let raw):
+            guard let value = raw as? String else { return .missing }
+            if value == ZoomCallWindow.meetingIdentifier { exact = true }
+            if value == "zm.meeting.window.leave" { leaveOngoing = true }
+            return .value(value)
+          case .missing:
+            homeIdentifierMissing = windows.count == 1
+            return .missing
+          case .failed, .unavailable: return .failed
+          }
         },
         title: { _ in
           stringRead(window, kAXTitleAttribute as CFString, until: deadline, access: access)
@@ -627,12 +640,137 @@ public enum CallEvidenceReader {
         return .init(startEvidence: call, continuity: .ongoing(family: .zoom, room: "pid-\(appPID)"))
       }
       switch verdict {
-      case .call: return .init(startEvidence: call)
+      case .call:
+        return .init(startEvidence: call, continuity: leaveOngoing
+          ? .ongoing(family: .zoom, room: "pid-\(appPID)") : .unknown)
       case .unknown: failed = true
       case .none: break
       }
     }
-    return .init(startEvidence: failed ? .unknown : .none)
+    let start: Evidence = failed ? .unknown : .none
+    if leaveOngoing {
+      return .init(startEvidence: start, continuity: .ongoing(family: .zoom, room: "pid-\(appPID)"))
+    }
+    // A minimized live Zoom call can lose its main identifier and report minimized=false.
+    // Only a positively scoped Home control, never missing call UI, can establish end.
+    guard !failed, windows.count == 1, homeIdentifierMissing else { return .init(startEvidence: start) }
+    switch zoomHomeWindow(windows[0], until: deadline, access: access) {
+    case .ongoing:
+      return .init(startEvidence: start, continuity: .ongoing(family: .zoom, room: "pid-\(appPID)"))
+    case .home:
+      guard case .value(let current) = boundedCopy(
+        app, kAXWindowsAttribute as CFString, until: deadline, access: access),
+        let current = current as? [AXUIElement], current.count == 1, CFEqual(current[0], windows[0])
+      else { return .init(startEvidence: start) }
+      return .init(startEvidence: .none, continuity: .ended(family: .zoom, room: "pid-\(appPID)"))
+    case .unknown: return .init(startEvidence: start)
+    }
+  }
+
+  private enum ZoomHome { case home, ongoing, unknown }
+
+  /// Zoom's observed Home route owns this positive control state. Native chrome and
+  /// embedded AI/chat documents cannot lend a label; this is not a negative tree scan.
+  private static func zoomHomeWindow(
+    _ window: AXUIElement, until deadline: ContinuousClock.Instant, access: Access
+  ) -> ZoomHome {
+    var remainingNodes = 800
+    func role(_ element: AXUIElement) -> String? {
+      guard remainingNodes > 0 else { return nil }
+      remainingNodes -= 1
+      guard case .value(let raw) = boundedCopy(
+        element, kAXRoleAttribute as CFString, until: deadline, access: access),
+        let value = raw as? String, !value.isEmpty
+      else { return nil }
+      return value
+    }
+    func children(_ element: AXUIElement) -> [AXUIElement]? {
+      guard case .value(let raw) = boundedCopy(
+        element, kAXChildrenAttribute as CFString, until: deadline, access: access),
+        let value = raw as? [AXUIElement], value.count <= 800
+      else { return nil }
+      return value
+    }
+    func homeURL(_ root: AXUIElement) -> Bool {
+      guard case .value(let raw) = boundedCopy(
+        root, kAXURLAttribute as CFString, until: deadline, access: access),
+        let address = (raw as? URL)?.absoluteString ?? (raw as? String)
+      else { return false }
+      // Match only the fixed observed route spellings. Decoding URL components could
+      // accept an unobserved encoded path/fragment that the app routes differently.
+      return address == "https://new-home-page.localhost/index.html#/home"
+        || address == "http://new-home-page.localhost/index.html#/home"
+    }
+    func pathToHome() -> [AXUIElement]? {
+      guard role(window) == "AXWindow",
+        case .value(let rawSubrole) = boundedCopy(
+          window, kAXSubroleAttribute as CFString, until: deadline, access: access),
+        (rawSubrole as? String) == "AXStandardWindow",
+        case .missing = boundedCopy(window, kAXIdentifierAttribute as CFString, until: deadline, access: access),
+        case .value(let minimized) = boundedCopy(
+          window, kAXMinimizedAttribute as CFString, until: deadline, access: access),
+        CFGetTypeID(minimized) == CFBooleanGetTypeID(), (minimized as? Bool) == false
+      else { return nil }
+      var paths = [[window]]
+      for required in ["AXSplitGroup", "AXGroup", "AXGroup", "AXScrollArea", "AXWebArea"] {
+        var next: [[AXUIElement]] = []
+        for path in paths {
+          guard let last = path.last, let values = children(last) else { return nil }
+          for value in values {
+            guard let valueRole = role(value) else { return nil }
+            if ["AXWindow", "AXSheet", "AXDialog", "AXSystemDialog", "AXDrawer"].contains(valueRole) {
+              return nil
+            }
+            if valueRole == required {
+              guard !path.contains(where: { CFEqual($0, value) }) else { return nil }
+              next.append(path + [value])
+            }
+          }
+        }
+        guard !next.isEmpty else { return nil }
+        paths = next
+      }
+      guard paths.count == 1, let root = paths[0].last, homeURL(root) else { return nil }
+      return paths[0]
+    }
+    func control(_ root: AXUIElement) -> (button: AXUIElement, ongoing: Bool)? {
+      guard let values = children(root) else { return nil }
+      var meets: [AXUIElement] = []
+      var backs: [AXUIElement] = []
+      var uncertain = false
+      for value in values {
+        guard let valueRole = role(value) else { uncertain = true; continue }
+        guard ["AXGroup", "AXButton", "AXStaticText", "AXPopUpButton"].contains(valueRole) else {
+          uncertain = true; continue
+        }
+        guard valueRole == "AXButton" else { continue }
+        let title = controlText(value, kAXTitleAttribute as CFString, until: deadline, access: access)
+        let description = controlText(value, kAXDescriptionAttribute as CFString, until: deadline, access: access)
+        guard title.valid, description.valid, let titleText = title.text,
+          let descriptionText = description.text
+        else { uncertain = true; continue }
+        let mentionsMeet = titleText == "Meet" || descriptionText == "Meet"
+        let mentionsBack = titleText == "Back to meeting" || descriptionText == "Back to meeting"
+        if titleText == "Back to meeting", descriptionText == "Back to meeting" { backs.append(value) }
+        else if titleText == "Meet", descriptionText == "Meet" { meets.append(value) }
+        else if mentionsMeet || mentionsBack {
+          uncertain = true
+        }
+      }
+      if let back = backs.first { return (back, true) }
+      guard !uncertain, meets.count == 1 else { return nil }
+      return (meets[0], false)
+    }
+    guard let path = pathToHome(), let root = path.last, let first = control(root), homeURL(root)
+    else { return .unknown }
+    if first.ongoing { return .ongoing }
+    // Old readable handles do not prove current membership: repeat the typed window
+    // connection and the root's direct children, then require the same unique button.
+    guard let currentPath = pathToHome(), currentPath.count == path.count,
+      zip(path, currentPath).allSatisfy({ CFEqual($0.0, $0.1) }),
+      let current = control(root), !current.ongoing, CFEqual(current.button, first.button), homeURL(root)
+    else { return .unknown }
+    return .home
   }
 
   private static func stringRead(

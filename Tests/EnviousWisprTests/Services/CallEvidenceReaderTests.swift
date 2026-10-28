@@ -103,6 +103,275 @@ struct CallEvidenceReaderTests {
     }
   }
 
+  private func zoomHomeFixture() -> (fixture: Fixture, containers: [AXUIElement]) {
+    let fixture = Fixture()
+    fixture.identifier = nil
+    fixture.ownerBundle = "us.zoom.xos"
+    fixture.pageURL = "https://new-home-page.localhost/index.html#/home"
+    fixture.leaveTitle = "Meet"
+    fixture.leaveDescription = "Meet"
+    let containers = (0..<4).map { AXUIElementCreateApplication(Int32(81_000 + $0)) }
+    let roles = ["AXSplitGroup", "AXGroup", "AXGroup", "AXScrollArea"]
+    fixture.response = { f, element, attribute in
+      if CFEqual(element, f.window) {
+        switch attribute {
+        case "AXSubrole": return .value("AXStandardWindow" as CFString)
+        case "AXMinimized": return .value(kCFBooleanFalse)
+        case "AXChildren": return .value([containers[0]] as CFArray)
+        default: return nil
+        }
+      }
+      if let index = containers.firstIndex(where: { CFEqual($0, element) }) {
+        switch attribute {
+        case "AXRole": return .value(roles[index] as CFString)
+        case "AXChildren":
+          return .value([index + 1 < containers.count ? containers[index + 1] : f.page] as CFArray)
+        default: return .missing
+        }
+      }
+      if CFEqual(element, f.page), attribute == "AXURL" {
+        return .value(URL(string: f.pageURL!)! as NSURL)
+      }
+      return nil
+    }
+
+    return (fixture, containers)
+  }
+
+  @Test("A positively scoped Zoom Home after Leave proves the tracked local call ended",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4142"))
+  func zoomScopedHomeEndsLocalCall() {
+    let (fixture, _) = zoomHomeFixture()
+    #expect(Reader.callWindowSnapshot(family: .zoom, appPID: fixture.pid, access: fixture.access)
+      == .init(startEvidence: .none, continuity: .ended(family: .zoom, room: "pid-70000")))
+    let attributed = Reader.snapshot(for: .callWindow(.zoom), holderPID: fixture.pid, access: fixture.access)
+    #expect(attributed.continuity == .ended(family: .zoom, room: "pid-70000"))
+    #expect(attributed.owner?.bundleIdentifier == "us.zoom.xos")
+    #expect(fixture.refused.isEmpty)
+    #expect(fixture.issued.allSatisfy { $0 > 0 && $0 <= 0.25 })
+  }
+
+  @Test("Scoped Zoom Home accepts the observed URL bridge without borrowing a title",
+    arguments: [true, false])
+  func zoomHomeURLBridge(nativeURL: Bool) {
+    let (fixture, _) = zoomHomeFixture()
+    let base = fixture.response
+    fixture.response = { f, element, attribute in
+      if CFEqual(element, f.page), attribute == "AXURL" {
+        return nativeURL ? .value(URL(string: f.pageURL!)! as NSURL) : .value(f.pageURL! as CFString)
+      }
+      return base?(f, element, attribute)
+    }
+    #expect(Reader.callWindowSnapshot(family: .zoom, appPID: fixture.pid, access: fixture.access)
+      .continuity == .ended(family: .zoom, room: "pid-70000"))
+  }
+
+  @Test("Live Zoom proof wins Home while extra or masked windows cannot establish end",
+    arguments: ["main", "leave", "leaveTitle", "back", "extra", "duplicateWindow", "dialog", "minimized", "nonBoolean"])
+  func zoomHomeLiveAndWindowContradictions(condition: String) {
+    let (fixture, _) = zoomHomeFixture()
+    let base = fixture.response
+    switch condition {
+    case "main": fixture.identifier = "zm.meeting.window.main"
+    case "leave", "leaveTitle":
+      fixture.identifier = "zm.meeting.window.leave"
+      if condition == "leaveTitle" { fixture.title = "Zoom Meeting" }
+    case "back": fixture.leaveTitle = "Back to meeting"; fixture.leaveDescription = "Back to meeting"
+    case "extra": fixture.windows.append(AXUIElementCreateApplication(82_500))
+    case "duplicateWindow": fixture.windows.append(fixture.window)
+    default: break
+    }
+    fixture.response = { f, element, attribute in
+      if CFEqual(element, f.window) {
+        if condition == "dialog", attribute == "AXSubrole" { return .value("AXSystemDialog" as CFString) }
+        if condition == "minimized", attribute == "AXMinimized" { return .value(kCFBooleanTrue) }
+        if condition == "nonBoolean", attribute == "AXMinimized" { return .value(NSNumber(value: 0)) }
+      }
+      return base?(f, element, attribute)
+    }
+    let value = Reader.callWindowSnapshot(family: .zoom, appPID: fixture.pid, access: fixture.access)
+    #expect(value.continuity == (["main", "leave", "leaveTitle", "back"].contains(condition)
+      ? .ongoing(family: .zoom, room: "pid-70000") : .unknown))
+    #expect(fixture.refused.isEmpty)
+  }
+
+  @Test("Zoom Home never borrows a label from unsupported scope or malformed metadata",
+    arguments: ["wrongRoute", "wrongOrigin", "query", "port", "encodedHost", "encodedPath", "encodedFragment",
+      "nestedLabel", "nonButton", "mismatch",
+      "missingDescription", "malformedIdentifier", "wrongRootRole", "duplicateButton", "extraRoot"])
+  func zoomHomeUnsupportedScopes(condition: String) {
+    let (fixture, containers) = zoomHomeFixture()
+    let base = fixture.response
+    if condition == "wrongRoute" { fixture.pageURL = "https://new-home-page.localhost/index.html#/chat" }
+    if condition == "wrongOrigin" { fixture.pageURL = "https://new-home-page.localhost.example/index.html#/home" }
+    if condition == "query" { fixture.pageURL = "https://new-home-page.localhost/index.html?other=1#/home" }
+    if condition == "port" { fixture.pageURL = "https://new-home-page.localhost:443/index.html#/home" }
+    if condition == "encodedHost" { fixture.pageURL = "https://new%2Dhome-page.localhost/index.html#/home" }
+    if condition == "encodedPath" { fixture.pageURL = "https://new-home-page.localhost/%69ndex.html#/home" }
+    if condition == "encodedFragment" { fixture.pageURL = "https://new-home-page.localhost/index.html#%2Fhome" }
+    if condition == "mismatch" { fixture.leaveDescription = "Back to meeting" }
+    if condition == "missingDescription" { fixture.leaveDescription = nil }
+    fixture.response = { f, element, attribute in
+      if condition == "malformedIdentifier", CFEqual(element, f.window), attribute == "AXIdentifier" {
+        return .value(NSNumber(value: 7))
+      }
+      if condition == "wrongRootRole", CFEqual(element, f.page), attribute == "AXRole" {
+        return .value("AXGroup" as CFString)
+      }
+      if condition == "nonButton", CFEqual(element, f.leave), attribute == "AXRole" {
+        return .value("AXStaticText" as CFString)
+      }
+      if condition == "nestedLabel", CFEqual(element, f.page), attribute == "AXChildren" {
+        return .value([f.heading] as CFArray)
+      }
+      if condition == "extraRoot", CFEqual(element, containers.last!), attribute == "AXChildren" {
+        return .value([f.page, f.heading] as CFArray)
+      }
+      if condition == "duplicateButton", CFEqual(element, f.page), attribute == "AXChildren" {
+        return .value([f.leave, f.heading] as CFArray)
+      }
+      if CFEqual(element, f.heading) {
+        if attribute == "AXRole" { return .value((condition == "duplicateButton" ? "AXButton" : "AXWebArea") as CFString) }
+        if attribute == "AXTitle" || attribute == "AXDescription" { return .value("Meet" as CFString) }
+        if attribute == "AXURL" { return .value(f.pageURL! as CFString) }
+        if attribute == "AXChildren" { return .value([f.leave] as CFArray) }
+      }
+      return base?(f, element, attribute)
+    }
+    #expect(Reader.callWindowSnapshot(family: .zoom, appPID: fixture.pid, access: fixture.access)
+      .continuity == .unknown)
+    #expect(fixture.refused.isEmpty)
+  }
+
+  @Test("Readable old Zoom controls and roots cannot survive detachment or identity changes",
+    arguments: ["detachedControl", "replacedControl", "replacedRoot", "reparentedPath", "labelChanged",
+      "rootURLChanged", "windowSet", "sourceRun"])
+  func zoomHomeRevalidatesCurrentMembership(condition: String) {
+    let (fixture, containers) = zoomHomeFixture()
+    let base = fixture.response
+    var childrenReads = 0
+    var urlReads = 0
+    var windowReads = 0
+    var titleReads = 0
+    fixture.response = { f, element, attribute in
+      if attribute == "AXWindows" {
+        windowReads += 1
+        if condition == "windowSet", windowReads > 1 { return .value([f.heading] as CFArray) }
+      }
+      if CFEqual(element, f.page), attribute == "AXURL" {
+        urlReads += 1
+        if condition == "sourceRun", urlReads == 1 { f.ownerBirth += 1 }
+        if condition == "rootURLChanged", urlReads > 2 { return .value("https://new-home-page.localhost/index.html#/chat" as CFString) }
+      }
+      if condition == "labelChanged", CFEqual(element, f.leave), attribute == "AXTitle" {
+        titleReads += 1
+        if titleReads > 1 { f.leaveTitle = "Back to meeting"; f.leaveDescription = "Back to meeting" }
+      }
+      if ["detachedControl", "replacedControl"].contains(condition), CFEqual(element, f.page), attribute == "AXChildren" {
+        childrenReads += 1
+        if childrenReads > 1 { return .value((condition == "detachedControl" ? [] : [f.heading]) as CFArray) }
+      }
+      if condition == "replacedRoot", CFEqual(element, containers.last!), attribute == "AXChildren" {
+        childrenReads += 1
+        if childrenReads > 1 { return .value([f.heading] as CFArray) }
+      }
+      if condition == "reparentedPath", CFEqual(element, containers[0]), attribute == "AXChildren" {
+        childrenReads += 1
+        if childrenReads > 1 { return .value([f.heading] as CFArray) }
+      }
+      if CFEqual(element, f.heading) {
+        switch attribute {
+        case "AXRole": return .value((condition == "replacedRoot" ? "AXWebArea" : condition == "reparentedPath" ? "AXGroup" : "AXButton") as CFString)
+        case "AXURL": return .value(f.pageURL! as CFString)
+        case "AXTitle", "AXDescription": return .value("Meet" as CFString)
+        case "AXChildren": return .value((condition == "reparentedPath" ? [containers[2]] : [f.leave]) as CFArray)
+        default: return .missing
+        }
+      }
+      return base?(f, element, attribute)
+    }
+    let value = condition == "sourceRun"
+      ? Reader.snapshot(for: .callWindow(.zoom), holderPID: fixture.pid, access: fixture.access)
+      : Reader.callWindowSnapshot(family: .zoom, appPID: fixture.pid, access: fixture.access)
+    #expect(value.continuity == .unknown)
+    if condition == "detachedControl" {
+      let old = Reader.boundedCopy(fixture.leave, kAXTitleAttribute as CFString,
+        until: fixture.instant.advanced(by: .seconds(1)), access: fixture.access)
+      guard case .value(let title) = old else { Issue.record("Old detached button must remain readable"); return }
+      #expect((title as? String) == "Meet")
+    }
+    #expect(fixture.refused.isEmpty)
+  }
+
+  @Test("Zoom Home bounds and failed reads never authorize a terminal state",
+    arguments: ["windowRead", "scopeRead", "childRead", "deadline", "urlType", "nodeLimit", "cycle"])
+  func zoomHomeReadBoundaries(condition: String) {
+    let (fixture, containers) = zoomHomeFixture()
+    let base = fixture.response
+    fixture.response = { f, element, attribute in
+      if condition == "windowRead", CFEqual(element, f.window), attribute == "AXMinimized" { return .failed }
+      if CFEqual(element, f.page), attribute == "AXURL" {
+        if condition == "scopeRead" { return .failed }
+        if condition == "urlType" { return .value(NSNumber(value: 1)) }
+        if condition == "deadline" { f.instant = f.instant.advanced(by: .seconds(1)) }
+      }
+      if condition == "childRead", CFEqual(element, f.page), attribute == "AXChildren" { return .failed }
+      if condition == "nodeLimit", CFEqual(element, f.window), attribute == "AXChildren" {
+        return .value(Array(repeating: containers[0], count: 801) as CFArray)
+      }
+      if condition == "cycle", CFEqual(element, containers[1]), attribute == "AXChildren" {
+        return .value([containers[1]] as CFArray)
+      }
+      return base?(f, element, attribute)
+    }
+    #expect(Reader.callWindowSnapshot(family: .zoom, appPID: fixture.pid, access: fixture.access)
+      .continuity == .unknown)
+    #expect(fixture.refused.isEmpty)
+    #expect(fixture.issued.allSatisfy { $0 > 0 && $0 <= 0.25 })
+  }
+
+  @Test("A separate Meet button cannot cover unresolved sibling control metadata",
+    arguments: [false, true])
+  func zoomHomeUnresolvedSiblingButton(late: Bool) {
+    let (fixture, _) = zoomHomeFixture()
+    let base = fixture.response
+    var rootReads = 0
+    fixture.response = { f, element, attribute in
+      if CFEqual(element, f.page), attribute == "AXChildren" {
+        rootReads += 1
+        return .value([f.leave, f.heading] as CFArray)
+      }
+      if CFEqual(element, f.heading) {
+        switch attribute {
+        case "AXRole": return .value("AXButton" as CFString)
+        case "AXTitle", "AXDescription":
+          return !late || rootReads > 1 ? .missing : .value("Other action" as CFString)
+        default: return .missing
+        }
+      }
+      return base?(f, element, attribute)
+    }
+    #expect(Reader.callWindowSnapshot(family: .zoom, appPID: fixture.pid, access: fixture.access)
+      .continuity == .unknown)
+  }
+
+  @Test("Exact Back to meeting proof wins unresolved sibling button labels")
+  func zoomHomeBackWinsMissingSibling() {
+    let (fixture, _) = zoomHomeFixture()
+    fixture.leaveTitle = "Back to meeting"
+    fixture.leaveDescription = "Back to meeting"
+    let base = fixture.response
+    fixture.response = { f, element, attribute in
+      if CFEqual(element, f.page), attribute == "AXChildren" { return .value([f.leave, f.heading] as CFArray) }
+      if CFEqual(element, f.heading) {
+        return attribute == "AXRole" ? .value("AXButton" as CFString) : .missing
+      }
+      return base?(f, element, attribute)
+    }
+    #expect(Reader.callWindowSnapshot(family: .zoom, appPID: fixture.pid, access: fixture.access)
+      .continuity == .ongoing(family: .zoom, room: "pid-70000"))
+  }
+
   @Test("Healthy browser descendant URL still proves the call")
   func healthyBrowserURL() {
     let fixture = Fixture()
