@@ -71,7 +71,7 @@ const steps = ['Tap the bubble', 'Speak', 'Words land'];
   </div>
   <figcaption class="ad-steps">
     <ol>{steps.map((step, i) => <li data-step-index={i}><span>{i + 1}</span>{step}</li>)}</ol>
-    <button type="button" class="ad-toggle" data-android-demo-toggle hidden>Pause</button>
+    <div class="ad-toggle-slot"><button type="button" class="ad-toggle" data-android-demo-toggle hidden>Pause</button></div>
   </figcaption>
 </figure>
 

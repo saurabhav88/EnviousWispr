@@ -58,6 +58,7 @@
 }
 .ad-email {
   display: flex;
+  color: #e8eaed;
   flex-direction: column;
   margin: 0;
   font-size: calc(13 * var(--u));
@@ -306,6 +307,11 @@
 .android-demo[data-step='2'] li[data-step-index='2'] span {
   background: var(--accent);
   color: var(--bg, #fff);
+}
+.ad-toggle-slot {
+  flex: 0 0 100%;
+  min-height: 34px;
+  text-align: center;
 }
 .ad-toggle {
   padding: 6px 4px;

@@ -40,7 +40,7 @@ export function tapFrame(t) {
     pressed: (t >= 0.5 && t < 0.62) || (t >= 2.58 && t < 2.7),
     ring: (t - contactAt) / 0.35,
     landed: t >= LANDS,
-    step: t >= 2.6 ? 2 : t >= 0.9 ? 1 : 0,
+    step: t >= LANDS ? 2 : t >= 0.9 ? 1 : 0,
   };
 }
 
@@ -56,6 +56,7 @@ function init(root) {
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   let visible = false;
   let paused = false;
+  let failed = false;
   let raf = 0;
   let last = 0;
   let elapsed = 0;
@@ -98,14 +99,22 @@ function init(root) {
     root.dataset.step = '2';
   }
 
-  const running = () => visible && !paused && !reduced.matches && !document.hidden;
+  const running = () => !failed && visible && !paused && !reduced.matches && !document.hidden;
   function tick(now) {
     raf = 0;
     if (!running()) return;
     if (last) elapsed = (elapsed + Math.min(now - last, 100) / 1000) % LOOP;
     last = now;
-    draw(elapsed);
-    raf = requestAnimationFrame(tick);
+    try {
+      draw(elapsed);
+      raf = requestAnimationFrame(tick);
+    } catch (error) {
+      // A drawing error leaves the finished frame, never a half-drawn one.
+      failed = true;
+      rest();
+      toggle.hidden = true;
+      console.error('Android demo stopped; the finished frame remains.', error);
+    }
   }
   function update() {
     if (running()) {
@@ -118,7 +127,7 @@ function init(root) {
       raf = 0;
       if (reduced.matches) rest();
     }
-    toggle.hidden = reduced.matches;
+    toggle.hidden = reduced.matches || failed;
     toggle.textContent = paused ? 'Play' : 'Pause';
     toggle.setAttribute('aria-label', paused ? 'Play the demonstration' : 'Pause the demonstration');
   }
