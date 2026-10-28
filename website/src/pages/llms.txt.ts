@@ -22,7 +22,7 @@ const SITE = 'https://enviouswispr.com';
 // Pages whose catalog entry has no card line of its own.
 const CATALOG_NOTES: Record<string, string> = {
   features: 'Every feature of the free Mac app, each on its own page.',
-  privacy: 'What cloud dictation sends away, what EnviousWispr keeps local, and what goes out only if you choose cloud text polish.',
+  privacy: 'What cloud dictation sends away, what EnviousWispr keeps local, and what goes out only if you choose cloud text polish or cloud meeting summaries.',
   customization: 'Record key, start and stop sounds, how text lands, and the overlay position.',
 };
 
@@ -41,8 +41,8 @@ const COMPARISONS: [string, string, string][] = [
   ['vox', 'vs Vox', 'Two Mac dictation apps compared.'],
   ['juno', 'vs Juno', 'Two Mac dictation apps compared.'],
   ['willow-voice', 'vs Willow Voice', 'A free on-device alternative to a cloud-first subscription.'],
-  ['otter-ai', 'vs Otter.ai', 'Personal dictation versus meeting transcription.'],
-  ['notta', 'vs Notta', 'Personal on-device dictation versus a cloud transcription service.'],
+  ['otter-ai', 'vs Otter.ai', 'Meetings recorded on your Mac with no bot, plus dictation, versus a cloud meeting service.'],
+  ['notta', 'vs Notta', 'On-device meeting recording and dictation versus a cloud meeting platform.'],
   ['dragon', 'vs Dragon', 'A modern on-device alternative to legacy desktop dictation.'],
   ['google-docs-voice-typing', 'vs Google Docs voice typing', 'System-wide dictation versus Docs-only voice typing.'],
   ['whisper-cpp', 'vs whisper.cpp', 'A finished Mac app versus a command-line library.'],
@@ -66,7 +66,7 @@ export async function GET() {
   const out: string[] = [
     '# EnviousWispr',
     '',
-    '> Free, private voice-to-text for macOS. Hold a keybind, speak, release. Polished text lands on your clipboard or pastes directly. Transcription runs on-device with Parakeet (25 European languages) or Whisper Large v3 Turbo (99+ languages). Optional AI polish can stay on-device with EG-1, Apple Intelligence, or a local Ollama model; Ollama also offers hosted models that run on its servers, and OpenAI, Gemini and Claude are optional bring-your-own-key cloud providers. No account, no subscription. Free download.',
+    '> Free, private voice-to-text for macOS. Hold a keybind, speak, release. Polished text lands on your clipboard or pastes directly. Transcription runs on-device with Parakeet (25 European languages) or Whisper Large v3 Turbo (99+ languages). Optional AI polish can stay on-device with EG-1, Apple Intelligence, or a local Ollama model; Ollama also offers hosted models that run on its servers, and OpenAI, Gemini and Claude are optional bring-your-own-key cloud providers. EnviousMeet, built in, records calls and in-person meetings on the Mac with no bot (the microphone, plus the sound the Mac plays on macOS 14.2+) and writes a transcript with who said what on the Mac, with notes and an optional summary from the user\'s AI provider. No account, no subscription. Free download.',
     '',
     'Maker: Envious Labs LLC (Connecticut, USA). Founder: Saurabh Vaish.',
     'License: GNU General Public License v3 (GPLv3, open source on GitHub).',
