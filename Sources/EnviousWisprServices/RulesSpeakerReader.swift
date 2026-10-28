@@ -62,6 +62,19 @@ package struct SpeakerSelectorRule: Sendable, Equatable {
     verification == .verified && !talkingClasses.isEmpty && !Self.rosterOnly.contains(surface)
   }
 
+  /// The call family a browser page must classify as for this surface; `nil` for app surfaces.
+  var webFamily: CallAppFamily? {
+    switch surface {
+    case .meet: .googleMeet
+    case .teamsWeb: .teams
+    case .slackWeb: .slack
+    case .zoomWeb: .zoom
+    case .whereby: .whereby
+    case .jitsi: .jitsi
+    case .zoomApp, .teamsApp, .slackApp, .facetime, .webex, .dialpad, .gather, .lark, .voov: nil
+    }
+  }
+
   static let rosterOnly: Set<CallSpeakerSurface> = [
     .facetime, .webex, .dialpad, .gather, .lark, .voov, .whereby, .jitsi,
   ]
@@ -79,33 +92,42 @@ package struct SpeakerSelectorRule: Sendable, Equatable {
 /// fixed by a new rules file rather than an app release (#4013 D3).
 package enum RulesSpeakerReader {
 
-  /// A browser surface: reads the single page whose address classifies as `family`. No page, or
-  /// two call pages, reads nothing.
-  package static func read(
-    documents: [CallAXDocument], family: CallAppFamily, rule: SpeakerSelectorRule
-  ) -> CallSpeakerReading? {
+  /// A browser surface: reads the single page whose address classifies as the rule's surface
+  /// family. An app rule, no call page, or two call pages read nothing.
+  package static func read(documents: [CallAXDocument], rule: SpeakerSelectorRule)
+    -> CallSpeakerReading?
+  {
+    guard let family = rule.webFamily else { return nil }
     let pages = documents.filter { $0.url.flatMap(CallMeetingURL.classify)?.family == family }
     guard pages.count == 1, let page = pages.first else { return nil }
     return read(root: page.root, rule: rule)
   }
 
-  /// An app surface (Slack app, roster-only apps): reads every window of that app.
+  /// An app surface (Slack app, roster-only apps): reads every window of that app. A browser
+  /// rule reads nothing here.
   package static func read(windows: [CallAXWindow], rule: SpeakerSelectorRule)
-    -> CallSpeakerReading
+    -> CallSpeakerReading?
   {
-    read(root: CallAXNode(role: "AXApplication", children: windows.map(\.root)), rule: rule)
+    guard rule.webFamily == nil else { return nil }
+    return read(root: CallAXNode(role: "AXApplication", children: windows.map(\.root)), rule: rule)
   }
 
   static func read(root: CallAXNode, rule: SpeakerSelectorRule) -> CallSpeakerReading {
     var tileNames: [String] = []
     var speaking: [String] = []
+    var unnamedTalker = false
     for tile in tiles(in: root, rule: rule) {
-      // A tile without a readable name is skipped, and its talking signal with it: a signal is
-      // never given another tile's name.
-      guard let name = name(of: tile, rule: rule) else { continue }
+      let talking = rule.mayReportTalker && isTalking(tile, rule: rule)
+      // A signal is never given another tile's name. A talking tile without a readable name
+      // means someone unknown is also talking, so this scan reports no talker at all.
+      guard let name = name(of: tile, rule: rule) else {
+        if talking { unnamedTalker = true }
+        continue
+      }
       tileNames.append(name)
-      if rule.mayReportTalker, isTalking(tile, rule: rule) { speaking.append(name) }
+      if talking { speaking.append(name) }
     }
+    if unnamedTalker { speaking = [] }
     let listNames = participantList(in: root, rule: rule)
     let fromList = listNames != nil
     return CallSpeakerReading(
@@ -159,14 +181,26 @@ package enum RulesSpeakerReader {
     return nodes
   }
 
-  /// The participant list's names, one per direct child entry, when exactly one list exists.
-  /// `nil` when the rule names no list, the list is absent, or more than one matches.
+  /// The participant list's names, one per direct child entry, when exactly one list exists and
+  /// every entry has exactly one name. `nil` otherwise (no list rule, no list, two lists, or an
+  /// entry with no name or several).
   static func participantList(in root: CallAXNode, rule: SpeakerSelectorRule) -> [String]? {
     guard let listClass = rule.participantListClass else { return nil }
     let lists = root.allNodes.filter { $0.domClassList.contains(listClass) }
     guard lists.count == 1, let list = lists.first else { return nil }
-    let names = list.children.compactMap { entry in
-      entry.allNodes.first { $0.role == "AXStaticText" && $0.label?.isEmpty == false }?.label
+    // Trust the list only when every entry holds exactly one distinct name; an unreadable or
+    // doubtful entry could hide a person, so the whole list is set aside.
+    var names: [String] = []
+    for entry in list.children {
+      let texts = Set(
+        entry.allNodes.compactMap { node -> String? in
+          guard node.role == "AXStaticText", let label = node.label, !label.isEmpty else {
+            return nil
+          }
+          return label
+        })
+      guard texts.count == 1, let name = texts.first else { return nil }
+      names.append(name)
     }
     return names.isEmpty ? nil : names
   }

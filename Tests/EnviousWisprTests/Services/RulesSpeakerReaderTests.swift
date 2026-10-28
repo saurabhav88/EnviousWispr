@@ -10,7 +10,7 @@ import Testing
 /// on the 2026-10-27 Meet call (`docs/audits/2026-10-27-4013/meet-chrome-names-findings.md`);
 /// the Teams web tile label `<Name> Unverified` on the Teams web call
 /// (`teams-web-names-findings.md`); the Slack tokens are Wispr Flow's defaults
-/// (`.claude/knowledge/competitor-meeting-notes.md` FACT: speaker-naming-sources), never seen
+/// in its shipped app, never seen
 /// here. Every tree shape is SYNTHETIC: the captures did not record full tile hierarchies.
 @Suite("Rules speaker reader", .tags(.productOutcome))
 struct RulesSpeakerReaderTests {
@@ -43,7 +43,7 @@ struct RulesSpeakerReaderTests {
               meetTile("Saurabh Vaish"), meetTile("Alex Rivera", talking: true),
               meetTile("Priya Shah"),
             ])
-        ], family: .googleMeet, rule: meetRule))
+        ], rule: meetRule))
     #expect(reading.speaking == ["Alex Rivera"])
     #expect(reading.roster.names == ["Saurabh Vaish", "Alex Rivera", "Priya Shah"])
     #expect(reading.roster.selfNames.isEmpty)
@@ -59,8 +59,7 @@ struct RulesSpeakerReaderTests {
       RulesSpeakerReader.read(
         documents: [
           page(meetURL, [meetTile("Alex Rivera", talking: true), meetTile("Priya Shah")])
-        ],
-        family: .googleMeet, rule: rule))
+        ], rule: rule))
     #expect(reading.speaking.isEmpty)
     #expect(reading.roster.names == ["Alex Rivera", "Priya Shah"])
   }
@@ -79,18 +78,19 @@ struct RulesSpeakerReaderTests {
               meetTile("Alex Rivera", talking: true), lookalike,
               meetTile("Priya Shah", talking: true),
             ])
-        ], family: .googleMeet, rule: meetRule))
+        ], rule: meetRule))
     #expect(reading.speaking == ["Alex Rivera", "Priya Shah"])
   }
 
-  @Test("a talking signal never borrows another tile's name")
+  @Test("a talking signal never borrows another tile's name; an unnamed talker cancels the scan's talkers")
   func tileNameAssociation() throws {
     // A nameless talking tile, and a talking token on a tile nested inside a named tile.
     let nested = meetTile("Outer Name", extra: [meetTile(nil, talking: true)])
     let reading = try #require(
       RulesSpeakerReader.read(
-        documents: [page(meetURL, [meetTile(nil, talking: true), nested, meetTile("Priya Shah")])],
-        family: .googleMeet, rule: meetRule))
+        documents: [
+          page(meetURL, [meetTile(nil, talking: true), nested, meetTile("Priya Shah", talking: true)])
+        ], rule: meetRule))
     #expect(reading.speaking.isEmpty)
     #expect(reading.roster.names == ["Outer Name", "Priya Shah"])
   }
@@ -109,8 +109,7 @@ struct RulesSpeakerReaderTests {
     }
     let one = try #require(
       RulesSpeakerReader.read(
-        documents: [page(meetURL, [list(), meetTile("Alex Rivera"), meetTile("Alex Rivera")])],
-        family: .googleMeet, rule: rule))
+        documents: [page(meetURL, [list(), meetTile("Alex Rivera"), meetTile("Alex Rivera")])], rule: rule))
     #expect(one.roster.names == ["Alex Rivera", "Alex Rivera", "Priya Shah"])
     #expect(one.rosterFromParticipantList)
 
@@ -118,8 +117,7 @@ struct RulesSpeakerReaderTests {
       RulesSpeakerReader.read(
         documents: [
           page(meetURL, [list(), list(), meetTile("Alex Rivera"), meetTile("Alex Rivera")])
-        ],
-        family: .googleMeet, rule: rule))
+        ], rule: rule))
     #expect(two.roster.names == ["Alex Rivera"])
     #expect(!two.rosterFromParticipantList)
   }
@@ -139,13 +137,13 @@ struct RulesSpeakerReaderTests {
               CallAXNode(role: "AXMenuItem", title: "Alex Rivera Unverified"),
               CallAXNode(role: "AXMenuItem", title: "Lee, Dana (Unverified Co.)"),
             ])
-        ], family: .teams, rule: rule))
+        ], rule: rule))
     #expect(reading.roster.names == ["Alex Rivera", "Lee, Dana (Unverified Co.)"])
     #expect(reading.speaking.isEmpty)
   }
 
   @Test("a roster-only surface never reports a talker, even with a verified talking token")
-  func rosterOnly() {
+  func rosterOnly() throws {
     let rule = SpeakerSelectorRule(
       surface: .webex, tileRole: nil, tileClass: "tile", nameSource: .firstStaticText,
       talkingClasses: ["speaking"], participantListClass: nil, verification: .verified)
@@ -158,23 +156,23 @@ struct RulesSpeakerReaderTests {
             role: "AXGroup", domClassList: ["tile", "speaking"],
             children: [CallAXNode(role: "AXStaticText", value: "Alex Rivera")])
         ]))
-    let reading = RulesSpeakerReader.read(windows: [window], rule: rule)
+    let reading = try #require(RulesSpeakerReader.read(windows: [window], rule: rule))
     #expect(reading.speaking.isEmpty)
     #expect(reading.roster.names == ["Alex Rivera"])
   }
 
   @Test("an unconfigured surface reads nothing")
-  func unconfigured() {
+  func unconfigured() throws {
     let window = CallAXWindow(
       title: "FaceTime",
       root: CallAXNode(
         role: "AXWindow", children: [CallAXNode(role: "AXStaticText", value: "Alex Rivera")]))
-    let reading = RulesSpeakerReader.read(windows: [window], rule: .unconfigured(.facetime))
+    let reading = try #require(RulesSpeakerReader.read(windows: [window], rule: .unconfigured(.facetime)))
     #expect(reading.speaking.isEmpty)
     #expect(reading.roster.names.isEmpty)
   }
 
-  @Test("Slack: competitor tokens stay unverified, so names only; app and web stay separate")
+  @Test("Slack: competitor tokens stay unverified, so names only")
   func slackUnverified() throws {
     let rule = SpeakerSelectorRule(
       surface: .slackWeb, tileRole: nil, tileClass: "p-huddle_peer_tile",
@@ -189,7 +187,7 @@ struct RulesSpeakerReaderTests {
       ])
     let reading = try #require(
       RulesSpeakerReader.read(
-        documents: [page("https://app.slack.com/huddle/T1/C1", [tile])], family: .slack, rule: rule)
+        documents: [page("https://app.slack.com/huddle/T1/C1", [tile])], rule: rule)
     )
     #expect(reading.speaking.isEmpty)
     #expect(reading.roster.names == ["Alex Rivera"])
@@ -201,11 +199,50 @@ struct RulesSpeakerReaderTests {
     let other = page("https://example.com/notes", [meetTile("Somebody Else", talking: true)])
     let secondCall = page("https://meet.google.com/abc-defg-hij", [meetTile("Dana Lee")])
     #expect(
-      RulesSpeakerReader.read(documents: [other, call], family: .googleMeet, rule: meetRule)?
+      RulesSpeakerReader.read(documents: [other, call], rule: meetRule)?
         .roster.names == ["Alex Rivera"])
     #expect(
-      RulesSpeakerReader.read(documents: [call, secondCall], family: .googleMeet, rule: meetRule)
+      RulesSpeakerReader.read(documents: [call, secondCall], rule: meetRule)
         == nil)
-    #expect(RulesSpeakerReader.read(documents: [other], family: .googleMeet, rule: meetRule) == nil)
+    #expect(RulesSpeakerReader.read(documents: [other], rule: meetRule) == nil)
+  }
+
+  @Test("a list with an unreadable entry or an entry with two names is not trusted")
+  func doubtfulParticipantList() throws {
+    let rule = SpeakerSelectorRule(
+      surface: .meet, tileRole: nil, tileClass: "dkjMxf", nameSource: .firstStaticText,
+      talkingClasses: ["kssMZb"], participantListClass: "people-list", verification: .verified)
+    let entry = { (texts: [String]) in
+      CallAXNode(role: "AXGroup", children: texts.map { CallAXNode(role: "AXStaticText", value: $0) })
+    }
+    for badEntry in [entry([]), entry(["Alex Rivera", "Presenting"])] {
+      let list = CallAXNode(
+        role: "AXList", domClassList: ["people-list"], children: [entry(["Priya Shah"]), badEntry])
+      let reading = try #require(
+        RulesSpeakerReader.read(
+          documents: [page(meetURL, [list, meetTile("Priya Shah"), meetTile("Alex Rivera")])],
+          rule: rule))
+      #expect(reading.roster.names == ["Priya Shah", "Alex Rivera"])
+      #expect(!reading.rosterFromParticipantList)
+    }
+  }
+
+  @Test("a rule reads only its own surface's pages, and app and web rules use their own entry")
+  func surfaceAndEntrypoint() {
+    let teamsPage = page("https://teams.live.com/meet/9379651200261?p=x", [meetTile("Alex Rivera")])
+    #expect(RulesSpeakerReader.read(documents: [teamsPage], rule: meetRule) == nil)
+
+    let slackWeb = SpeakerSelectorRule(
+      surface: .slackWeb, tileRole: nil, tileClass: "p-huddle_peer_tile", nameSource: .firstStaticText,
+      talkingClasses: [], participantListClass: nil, verification: .unverified)
+    let slackApp = SpeakerSelectorRule(
+      surface: .slackApp, tileRole: nil, tileClass: "p-huddle_peer_tile", nameSource: .firstStaticText,
+      talkingClasses: [], participantListClass: nil, verification: .unverified)
+    let window = CallAXWindow(title: "Huddle", root: CallAXNode(role: "AXWindow"))
+    #expect(RulesSpeakerReader.read(windows: [window], rule: slackWeb) == nil)
+    #expect(RulesSpeakerReader.read(windows: [window], rule: slackApp) != nil)
+    let slackPage = page("https://app.slack.com/huddle/T1/C1", [])
+    #expect(RulesSpeakerReader.read(documents: [slackPage], rule: slackApp) == nil)
+    #expect(RulesSpeakerReader.read(documents: [slackPage], rule: slackWeb) != nil)
   }
 }
