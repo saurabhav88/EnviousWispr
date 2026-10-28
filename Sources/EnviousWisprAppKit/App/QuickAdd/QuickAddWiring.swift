@@ -357,7 +357,16 @@ final class QuickAddWiring {
 
   private func finishAccept(_ candidate: QuickAddRanker.Candidate, model: QuickAddPanelModel) async
   {
-    let result = await coordinator.accept(candidate, from: model)
+    // One dictionary command (#4086): resolving the row's word, the already-has check and the
+    // write all see the library after every earlier save, so a word deleted or changed by a
+    // save still queued is never judged from the list as it was.
+    let result = await customWords.performAction(
+      closing: .refused(CustomWordsCoordinator.quittingMessage)
+    ) { [self] in
+      let result = await coordinator.accept(candidate, from: model)
+      if case .refused(let message) = result { _ = customWords.notSaved(message) }
+      return result
+    }
     let refused: Bool
     if case .refused = result { refused = true } else { refused = false }
     guard handleCompletion(of: model, refused: refused) == .present else { return }

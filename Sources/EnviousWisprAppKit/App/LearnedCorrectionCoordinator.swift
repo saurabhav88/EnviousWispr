@@ -446,19 +446,23 @@ final class LearnedCorrectionCoordinator {
   /// the post-save snapshot; otherwise write nothing.
   @discardableResult
   func undo(pillID: UUID) async -> UndoOutcome {
-    let result = ActionResult<UndoOutcome>(.stale)
-    await vocabulary.perform { [self] in result.value = await undoInsideAction(pillID: pillID) }
-    return result.value
-  }
-
-  /// The Undo itself, inside one dictionary command: the live-word check, the inverse
-  /// write, its proof and the learning-memory "no" happen with no command in between.
-  private func undoInsideAction(pillID: UUID) async -> UndoOutcome {
+    // Claimed at the click (#4086): the Undo may wait behind an earlier dictionary command,
+    // and the pill expiring meanwhile must not take the accepted Undo with it.
     guard let record = undoRecord, record.pillID == pillID else {
       presenter?.close(pillID: pillID)
       return .stale
     }
     undoRecord = nil
+    let result = ActionResult<UndoOutcome>(.stale)
+    await vocabulary.perform { [self] in
+      result.value = await undoInsideAction(record, pillID: pillID)
+    }
+    return result.value
+  }
+
+  /// The Undo itself, inside one dictionary command: the live-word check, the inverse
+  /// write, its proof and the learning-memory "no" happen with no command in between.
+  private func undoInsideAction(_ record: UndoRecord, pillID: UUID) async -> UndoOutcome {
     // This reads the live list THIS process holds. A change another window saved to the
     // shared file is caught by the writes below, which apply only while the saved word
     // still equals `postSave` under the file lock (#4086).

@@ -69,7 +69,8 @@ final class LearnedCorrectionOverlayPresenter: LearnedCorrectionPresenting {
       // Read by the director at the last moment before the pill is drawn: a
       // record a newer learn replaced is not offered.
       isStillWanted: { coordinator.undoRecord?.pillID == pill.id },
-      // A retained task: the Undo is one dictionary command and outlives the pill.
+      // A retained task: the Undo claims its record at the click, then runs as one dictionary
+      // command that may finish after the pill is gone.
       onUndo: { [weak self] in
         let undo = Task { _ = await coordinator.undo(pillID: pill.id) }
         self?.undoInFlight = undo

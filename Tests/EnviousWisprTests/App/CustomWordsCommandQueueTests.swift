@@ -1001,4 +1001,36 @@ import Testing
     #expect(await settleUntilObserved { !replies.values.isEmpty })
     #expect(replies.values == [false])
   }
+
+  @Test("an Undo clicked in time still undoes when the pill expires while it waits behind a slow save")
+  func acceptedUndoSurvivesPillExpiry() async throws {
+    let target = CustomWord(canonical: "Kwmala")
+    let f = try await fixture(seed: [target])
+    let learner = LearnedCorrectionCoordinator(
+      vocabulary: LearnFromEditsWiring.vocabulary(customWords: f.words, packTerms: { [] }),
+      memory: f.words.learnMemory, telemetry: LearnedTelemetrySpy())
+    let outcome = await learner.learn(
+      original: "kumala", corrected: "Kwmala", expectedTarget: .existingWord(target.id))
+    guard case .learned(let pill) = outcome else {
+      Issue.record("the learn did not save: \(outcome)")
+      return
+    }
+    let gate = WorkerGate()
+    f.manager.fileWorkWillStartForTesting = gate.hook
+    let slowSave = Task { await f.words.add(CustomWord(canonical: "Alpha")) }
+    #expect(await settleUntilObserved { gate.arrived })
+
+    let undo = Task { await learner.undo(pillID: pill.id) }
+    #expect(
+      await settleUntilObserved {
+        f.events.all.filter { if case .admitted(_, .action) = $0 { true } else { false } }.count >= 2
+      })
+    learner.pillEnded(pillID: pill.id)  // the pill's time runs out while the Undo waits
+    gate.release()
+
+    #expect(await slowSave.value == nil)
+    #expect(await undo.value == .undone)
+    #expect(onDisk(f.url).first { $0.id == target.id }?.aliases == [])
+    #expect(gate.timedOut == false)
+  }
 }

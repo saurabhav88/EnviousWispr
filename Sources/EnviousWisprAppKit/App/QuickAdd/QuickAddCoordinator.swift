@@ -270,7 +270,7 @@ final class QuickAddCoordinator {
   /// The canonical rides along for the same reason: the user can have renamed the word in Settings
   /// while the panel sat open, and naming the snapshot's spelling would confirm a word that no
   /// longer exists under that name.
-  enum AcceptResult: Equatable {
+  enum AcceptResult: Equatable, Sendable {
     /// The spelling was written onto this word.
     case saved(word: String)
     /// The live word already carried the spelling, so nothing was written and nothing needed to be.
