@@ -44,15 +44,15 @@ struct MeetingLiveWordsPresentationTests {
       (.off(.notCaptured), nil),
       (
         .off(.notSetUp),
-        "Live words are not set up. Choose an engine in EnviousMeet settings, General, Live words."
+        "Live words are not set up. Choose an engine in EnviousMeet settings, Models, Live words."
       ),
       (
         .off(.engineNotDownloaded(engine: .universal, languageName: "German")),
-        "Live words need the Universal engine. Download it in EnviousMeet settings, General, Live words."
+        "Live words need the Universal engine. Download it in EnviousMeet settings, Models, Live words."
       ),
       (
         .off(.engineNotDownloaded(engine: .apple, languageName: "German")),
-        "Live words need Apple's German model. Download it in EnviousMeet settings, General, Live words."
+        "Live words need Apple's German model. Download it in EnviousMeet settings, Models, Live words."
       ),
       (
         .off(.previousStillClosing),
@@ -94,7 +94,7 @@ struct MeetingLiveWordsPresentationTests {
         callSoundRecorded: true)
         == [
           Self.intro,
-          "Live words need the Universal engine. Download it in EnviousMeet settings, General, Live words.",
+          "Live words need the Universal engine. Download it in EnviousMeet settings, Models, Live words.",
           Self.echo,
         ])
     // Different outcomes per track: each said, microphone first.

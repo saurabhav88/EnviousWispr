@@ -14,7 +14,7 @@ import SwiftUI
 // - `LaunchOfferDriver`: the order of "answer the offer, start the app, then show the failure
 //   card". Only a bad-location launch has one.
 
-/// The five lifecycle methods `WisprBootstrapper` already has, so launch ordering can be tested
+/// The lifecycle methods `WisprBootstrapper` has, so launch ordering can be tested
 /// in the app-shell library with a fake target. `EnviousWisprTests` links this module, not the
 /// live composition root (`Package.swift`).
 @MainActor
@@ -23,6 +23,9 @@ package protocol LaunchTarget: AnyObject {
   func applicationDidFinishLaunching()
   func applicationDidBecomeActive()
   func applicationShouldHandleReopen() -> Bool
+  /// True when the app may quit now. Otherwise the target calls `reply` exactly once,
+  /// later, with whether to quit (#4086).
+  func applicationShouldTerminate(reply: @escaping @MainActor (Bool) -> Void) -> Bool
   func applicationWillTerminate()
 }
 
@@ -111,6 +114,12 @@ package final class LaunchSequencer<Target: LaunchTarget> {
   /// Reopen with no target has nothing to open yet: the system keeps its default handling.
   package func applicationShouldHandleReopen() -> Bool {
     phase == .started ? (target?.applicationShouldHandleReopen() ?? true) : true
+  }
+
+  /// Only a running target can have work to finish first; with none, quit now.
+  package func applicationShouldTerminate(reply: @escaping @MainActor (Bool) -> Void) -> Bool {
+    guard phase == .started, let target else { return true }
+    return target.applicationShouldTerminate(reply: reply)
   }
 
   package func applicationWillTerminate() {

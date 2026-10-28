@@ -63,8 +63,8 @@ struct SpokenFinalFullStopTests {
   func englishTextUnchangedByReporting() {
     let input = "See you period new paragraph thanks"
     // The released break shape keeps a space on each side (pinned by SpokenPunctuationToggleTests).
-    #expect(english(input).0 == "See you. \n\n Thanks")
-    #expect(normalizer.normalize(input, spokenPunctuation: true) == "See you. \n\n Thanks")
+    #expect(english(input).0 == "See you.\n\nThanks")
+    #expect(normalizer.normalize(input, spokenPunctuation: true) == "See you.\n\nThanks")
   }
 
   @Test("Start word: a final period command reports true")

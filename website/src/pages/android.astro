@@ -1,0 +1,260 @@
+---
+// EnviousWispr for Android (#4161). Every product claim on this page traces to
+// the submitted Play listing (EnviousWispr-Android
+// docs/play-listing/store-listing.md) or to the app's own screen copy shown in
+// the screenshots below (languages and spoken commands: ui/TranscriptionScreen.kt). Requirements follow that listing's WHAT YOU NEED
+// paragraph and docs/device-support-decision.md; change them together.
+import { Image } from 'astro:assets';
+import FeatureShell from '../layouts/FeatureShell.astro';
+import PlayButton from '../components/PlayButton.astro';
+import AndroidDemo from '../components/AndroidDemo.astro';
+import FeatureFaq from '../components/features/FeatureFaq.astro';
+import DownloadClosing from '../components/DownloadClosing.astro';
+import { downloadUrl, playUrl } from '../data/site-navigation.js';
+import '../styles/android.css';
+import cleanup from '../assets/android/transcription-3.png';
+import dictionary from '../assets/android/dictionary.png';
+import history from '../assets/android/history.png';
+import privacy from '../assets/android/privacy-1.png';
+
+const androidRepo = 'https://github.com/Envious-Labs-LLC/EnviousWispr-Android';
+const description =
+  'Free on-device dictation for Android. Tap the bubble, speak, and polished text lands where you type. Your voice never leaves your phone. On Google Play.';
+
+const steps = [
+  ['Tap the bubble.', 'A small recording bubble sits beside the keyboard you already use. Tap it, or hold it and let go when you finish.'],
+  ['Speak naturally.', 'Speech becomes text on your phone. Filler words go, and AI polish turns it into clear writing.'],
+  ['Your words land.', 'Finished text lands at your cursor in apps such as Gmail, WhatsApp and Chrome.'],
+];
+
+// The AI Polish tab's three places to polish (PolishScreen.kt "1 · WHERE POLISH RUNS") and the
+// S1-mini Writing style card (PolishLadder.kt S1ControlCopy; hints verbatim, shared with the Mac).
+const polishOptions = [
+  { name: 'Off', title: 'Cleanup only.', copy: 'Your words land after the cleanup rules on your phone, with no AI polish step.' },
+  { name: 'This phone', title: 'S1-mini, on device.', copy: 'A small AI model that runs on your phone and works offline after setup. Your dictated words stay on the phone.', featured: true },
+  { name: 'Cloud', title: 'Your own key.', copy: 'Connect OpenAI, Claude or Gemini with your own key. Selected text and your custom words then go straight to that provider.' },
+];
+const styleSettings = [
+  { name: 'Tone', options: ['Casual', 'Semi-casual', 'Semi-formal', 'Formal'], shown: 'Semi-formal', hint: 'Semi-formal keeps capitals and full stops. Casual and semi-casual write the way you would text.' },
+  { name: 'Structure', options: ['Prose', 'Lists'], shown: 'Lists', hint: 'Lists turns a spoken run of items into bullet points. Prose keeps everything as sentences.' },
+  { name: 'Context', options: ['General', 'Email'], shown: 'Email', hint: 'Email lays out a greeting line and a sign-off block when you dictate them. It changes nothing else.' },
+];
+
+const faqs = [
+  {
+    q: 'Is EnviousWispr for Android free?',
+    a: 'Yes. There is no app subscription, trial, account or ads. If you connect your own OpenAI, Anthropic or Google Gemini key for cloud polish, that provider’s charges and terms apply.',
+  },
+  {
+    q: 'Does it replace my keyboard?',
+    a: 'No. You keep the keyboard you already use. A floating bubble appears beside a compatible text box, and the finished text lands at your cursor.',
+  },
+  {
+    q: 'Does it work without an internet connection?',
+    a: 'Setup downloads two on-device models, about 1.2 GB, so Wi-Fi is recommended. After that, speech recognition and on-phone AI polish run on your phone. Cloud polish needs a connection.',
+  },
+  {
+    q: 'Which phones does it support?',
+    a: 'Android 13 or newer on a 64-bit ARM phone with at least 6 GB of memory. It works best on recent flagship phones such as the Galaxy S26 Ultra and Pixel 8. Many mid-range phones work, with dictation and AI polish taking a few seconds longer. Entry-level phones with older processors are not supported.',
+  },
+  {
+    q: 'Why does it ask for Accessibility access?',
+    a: 'EnviousWispr uses Android’s Accessibility access to find the text box you are typing in, show the floating bubble and insert text after you start dictation. It does not operate your phone on its own or send field contents to Envious Labs. You can turn this access off in Android Settings.',
+  },
+  {
+    q: 'Does it sync with EnviousWispr for Mac?',
+    a: 'No. There is no account, and nothing you dictate passes through Envious Labs, so each app keeps its own History and Dictionary on its own device.',
+  },
+];
+
+const softwareApplication = {
+  '@context': 'https://schema.org',
+  '@type': 'MobileApplication',
+  name: 'EnviousWispr: Voice to Text',
+  operatingSystem: 'Android 13 or later',
+  applicationCategory: 'ProductivityApplication',
+  description,
+  url: 'https://enviouswispr.com/android/',
+  downloadUrl: playUrl('structured-data'),
+  installUrl: playUrl('structured-data'),
+  offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+  publisher: { '@type': 'Organization', name: 'Envious Labs LLC', url: 'https://enviouswispr.com/' },
+};
+---
+
+<FeatureShell
+  path="/android/"
+  activePage="android"
+  title="EnviousWispr for Android: free on-device dictation"
+  description={description}
+  extraLd={[softwareApplication]}
+>
+  <section class="product-hero android-hero wrap">
+    <div class="hero-message">
+      <span class="page-label">EnviousWispr for Android</span>
+      <h1>Talk to your phone.<br /><span class="accent-ink">Get finished text.</span></h1>
+      <p>
+        Tap the bubble beside your keyboard, speak, and polished text lands where you were typing. Free, with no account,
+        and your voice never leaves your phone.
+      </p>
+      <div class="hero-actions">
+        <PlayButton source="android-hero" label="Get it on Google Play" />
+        <small>Free · Android 13+ · 64-bit · 6 GB memory or more</small>
+        <a class="android-mac-link" href={downloadUrl} data-download-source="android-hero">On a Mac? Download for Mac</a>
+      </div>
+    </div>
+    <div class="hero-visual">
+      <AndroidDemo />
+    </div>
+  </section>
+
+  <div class="band">
+    <section class="section wrap">
+      <div class="section-top">
+        <div><span class="eyebrow">How it works</span><h2>Press, speak,<br />done.</h2></div>
+        <p>Start from the floating bubble, the Quick Settings tile or the notification. Use the phone microphone or connected earbuds.</p>
+      </div>
+      <ol class="android-steps">
+        {
+          steps.map(([title, copy], i) => (
+            <li>
+              <span>{i + 1}</span>
+              <h3>{title}</h3>
+              <p>{copy}</p>
+            </li>
+          ))
+        }
+      </ol>
+    </section>
+  </div>
+
+  <section class="benefit wrap">
+    <div class="benefit-copy">
+      <span class="eyebrow">Cleaner writing</span>
+      <h2>Cleans up<br />as you speak.</h2>
+      <p>Filler words disappear. Optional switches turn “thumbs up emoji” into the emoji and spoken commands such as “new paragraph” into punctuation. Pick American or British spelling, and speak in any of 25 European languages.</p>
+    </div>
+    <div class="benefit-visual">
+      <figure class="android-phone">
+        <Image src={cleanup} alt="The Transcription screen: switches for removing filler words, spoken emoji and spoken punctuation, and a choice of American or British spelling." widths={[340, 680]} sizes="(max-width: 900px) 70vw, 340px" />
+      </figure>
+    </div>
+  </section>
+
+  <section class="android-polish wrap" aria-labelledby="android-polish-title">
+    <div class="android-polish-top">
+      <div>
+        <span class="eyebrow">AI polish</span>
+        <h2 id="android-polish-title">Choose where<br />polish runs.</h2>
+      </div>
+      <p>Pick it in the AI Polish tab, and change it any time.</p>
+    </div>
+    <div class="polish-options">
+      {
+        polishOptions.map((option) => (
+          <div class:list={['polish-option', { featured: option.featured }]}>
+            <span class="polish-option-name">{option.name}</span>
+            <h3>{option.title}</h3>
+            <p>{option.copy}</p>
+          </div>
+        ))
+      }
+    </div>
+    <div class="polish-style">
+      <div class="polish-style-intro">
+        <h3>S1-mini writing style</h3>
+        <p>S1-mini was trained on three settings. Change them any time; a new pick applies to your next dictation.</p>
+      </div>
+      <dl>
+        {
+          styleSettings.map((setting) => (
+            <div class="polish-setting">
+              <dt>{setting.name}</dt>
+              <dd>
+                <span class="polish-chips">
+                  {setting.options.map((option) => (
+                    <span class:list={['polish-chip', { on: option === setting.shown }]}>{option}</span>
+                  ))}
+                </span>
+                <span class="polish-hint">{setting.hint}</span>
+              </dd>
+            </div>
+          ))
+        }
+      </dl>
+    </div>
+  </section>
+
+  <section class="benefit reverse wrap">
+    <div class="benefit-copy">
+      <span class="eyebrow">Your dictionary</span>
+      <h2>Teach it<br />your names.</h2>
+      <p>Add names, product terms and the ways they get misheard, so EnviousWispr can recognize your words.</p>
+    </div>
+    <div class="benefit-visual">
+      <figure class="android-phone">
+        <Image src={dictionary} alt="The Dictionary screen with sample names and terms, such as Priya Shah, Grafana and Kubernetes, each with its aliases." widths={[340, 680]} sizes="(max-width: 900px) 70vw, 340px" />
+      </figure>
+    </div>
+  </section>
+
+  <section class="benefit wrap">
+    <div class="benefit-copy">
+      <span class="eyebrow">History</span>
+      <h2>Your dictations,<br />saved on your phone.</h2>
+      <p>Completed dictations are saved in History. Search what you said and copy it again any time. History stays on your phone.</p>
+    </div>
+    <div class="benefit-visual">
+      <figure class="android-phone">
+        <Image src={history} alt="The History screen: a search box above recent sample dictations, such as an email to Priya and a grocery list." widths={[340, 680]} sizes="(max-width: 900px) 70vw, 340px" />
+      </figure>
+    </div>
+  </section>
+
+  <div class="band">
+    <section class="benefit reverse wrap android-privacy">
+      <div class="benefit-copy">
+        <span class="eyebrow">Privacy</span>
+        <h2>Your voice never<br />leaves your phone.</h2>
+        <p>Speech recognition and local AI polish run on your phone. Audio is never uploaded.</p>
+        <p>EnviousWispr sends limited usage and crash reports so problems can be found and fixed. They exclude audio, dictated words, names you enter, file contents and API keys.</p>
+        <p>The app is open source under GPLv3, so anyone can read exactly what it does.</p>
+        <p class="android-links">
+          <a class="text-link" href="/privacy-policy/">Read the privacy policy ↗</a>
+          <a class="text-link" href={androidRepo} rel="noopener">View the Android code ↗</a>
+        </p>
+      </div>
+      <div class="benefit-visual">
+        <figure class="android-phone">
+          <Image src={privacy} alt="The app’s Privacy page, explaining that your voice stays on the phone and what the usage and crash reports contain." widths={[340, 680]} sizes="(max-width: 900px) 70vw, 340px" />
+        </figure>
+      </div>
+    </section>
+  </div>
+
+  <section class="android-needs wrap" aria-labelledby="android-needs-title">
+    <div>
+      <span class="eyebrow">What you need</span>
+      <h2 id="android-needs-title">Check your phone.</h2>
+    </div>
+    <ul>
+      <li><strong>Android 13</strong> or newer</li>
+      <li>A <strong>64-bit ARM</strong> phone</li>
+      <li>At least <strong>6 GB of memory</strong></li>
+      <li>About <strong>1.2 GB</strong> of free storage for the two on-device models</li>
+    </ul>
+    <p>
+      Works best on recent flagship phones such as the Galaxy S26 Ultra and Pixel 8. Many mid-range phones work, with dictation
+      and AI polish taking a few seconds longer. Entry-level phones with older processors are not supported. Wi-Fi is recommended
+      for setup.
+    </p>
+  </section>
+
+  <FeatureFaq items={faqs} />
+  <DownloadClosing
+    title="Put your voice to work on the go."
+    description="Free on-device dictation for Android. No account. No subscription. No ads."
+    source="android-closing"
+    android="primary"
+  />
+</FeatureShell>

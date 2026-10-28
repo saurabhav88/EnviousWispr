@@ -350,14 +350,21 @@ struct SettingsArrivalFocusTests {
     ("dictionary.learnFrom", [.selfLearningDictionary, .contactsSyncOnLaunch, .importContacts], [.learnFrom]),
     ("appSettings.permissions", [], [.sectionPermissions]),
     ("transcribeFile", [], [.transcribeFileSteps]),
-    // #4105: both menus of each row are pickers.
     (
       "meetings.general",
       [
         .meetingCallDetection, .meetingCaptureCallSound, .meetingWriteSummary,
-        .meetingTurnsOffDictation, .meetingUseCalendarForNames, .meetingLiveWords,
-        .meetingTranscriptLanguage, .meetingsTabGeneral, .meetingsTabCallApps,
-        .meetingsTabPermissions,
+        .meetingTurnsOffDictation, .meetingUseCalendarForNames, .meetingsTabGeneral,
+        .meetingsTabModels, .meetingsTabCallApps, .meetingsTabPermissions,
+      ],
+      []
+    ),
+    // #4105: both menus of each row are pickers. #3973 PR B: they live on the Models tab.
+    (
+      "meetings.models",
+      [
+        .meetingLiveWords, .meetingTranscriptLanguage, .meetingsTabGeneral,
+        .meetingsTabModels, .meetingsTabCallApps, .meetingsTabPermissions,
       ],
       []
     ),

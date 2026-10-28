@@ -62,7 +62,22 @@ public enum RawAudioDeadAirClassifier {
   package struct DeadAirMeasurement: Sendable, Equatable {
     package let wholeBufferRMS: Float?
     package let maxWindowRMS: Float?
+    /// #4154 (D-Q): decision-only whole-buffer RMS whose denominator leaves out
+    /// exact-zero runs of at least the caller's `minRun`. `nil` when the caller
+    /// did not ask for it or the classification returned before computing it.
+    /// Never telemetry: `wholeBufferRMS` keeps its raw whole-buffer meaning.
+    package let wholeBufferRMSExcludingZeroRuns: Float?
     package let isDeadAir: Bool
+
+    package init(
+      wholeBufferRMS: Float?, maxWindowRMS: Float?,
+      wholeBufferRMSExcludingZeroRuns: Float? = nil, isDeadAir: Bool
+    ) {
+      self.wholeBufferRMS = wholeBufferRMS
+      self.maxWindowRMS = maxWindowRMS
+      self.wholeBufferRMSExcludingZeroRuns = wholeBufferRMSExcludingZeroRuns
+      self.isDeadAir = isDeadAir
+    }
   }
 
   /// The classification above, plus the intermediate energy values it computed.
@@ -73,12 +88,26 @@ public enum RawAudioDeadAirClassifier {
   /// recomputing them at the call site would be a second implementation of the
   /// thing being measured.
   ///
-  /// Short-circuit ORDER and RESULTS are identical to the pre-#1845 code —
+  /// With exclusion off (`nil`, every caller but one), short-circuit ORDER and
+  /// RESULTS are identical to the pre-#1845 code —
   /// peak, then empty, then whole-buffer RMS, then the short-buffer reuse, then
   /// the tiled window loop. Nothing added here may change what the gate decides.
+  ///
+  /// #4154 (D-Q): `excludingExactZeroRunsOfAtLeast` is `nil` for every caller
+  /// except the kernel's no-speech gate on a confirmed-bound USB take. With a
+  /// value, the whole-buffer RMS COMPARISON uses a denominator that leaves out
+  /// every run of exact 0.0 at least that long, so long digital silence cannot
+  /// dilute quiet input that was audible on its own. Valid digital silence is
+  /// ambiguous, so this is a deliberate averaging change for that one caller,
+  /// not a claim that the zeros were "no audio". The sum of squares, the peak,
+  /// sample positions and the 40 ms window loop are untouched, and an all-run
+  /// buffer gets a decision RMS of 0 (never NaN) so it stays dead air. A
+  /// non-positive length is treated as `nil`. Defaulted so the unchanged
+  /// attribution call keeps today's literal call shape.
   package static func measure<C: RandomAccessCollection>(
     _ samples: C,
-    peak: Float
+    peak: Float,
+    excludingExactZeroRunsOfAtLeast minRun: Int? = nil
   ) -> DeadAirMeasurement
   where C.Element == Float, C.Index == Int {
     guard peak < DeadAirFloor.peak else {
@@ -87,11 +116,30 @@ public enum RawAudioDeadAirClassifier {
     guard !samples.isEmpty else {
       return DeadAirMeasurement(wholeBufferRMS: nil, maxWindowRMS: nil, isDeadAir: true)
     }
+    let minRun = minRun.flatMap { $0 > 0 ? $0 : nil }
     var sumSquares: Float = 0
-    for s in samples { sumSquares += s * s }
+    var excludedCount = 0
+    var zeroRun = 0
+    for s in samples {
+      sumSquares += s * s
+      guard let minRun else { continue }
+      if s == 0 {
+        zeroRun += 1
+      } else {
+        if zeroRun >= minRun { excludedCount += zeroRun }
+        zeroRun = 0
+      }
+    }
+    if let minRun, zeroRun >= minRun { excludedCount += zeroRun }
     let rms = (sumSquares / Float(samples.count)).squareRoot()
-    guard rms < DeadAirFloor.rms else {
-      return DeadAirMeasurement(wholeBufferRMS: rms, maxWindowRMS: nil, isDeadAir: false)
+    let decisionRMS: Float? = minRun.map { _ in
+      let kept = samples.count - excludedCount
+      return kept > 0 ? (sumSquares / Float(kept)).squareRoot() : 0
+    }
+    guard (decisionRMS ?? rms) < DeadAirFloor.rms else {
+      return DeadAirMeasurement(
+        wholeBufferRMS: rms, maxWindowRMS: nil,
+        wholeBufferRMSExcludingZeroRuns: decisionRMS, isDeadAir: false)
     }
     // Loudest non-overlapping 40 ms window. A faint word lifts a local
     // window's RMS even when most of the buffer is silence around it; tiled
@@ -105,7 +153,8 @@ public enum RawAudioDeadAirClassifier {
       // whole-buffer RMS IS the loudest-window value. Reported rather than left
       // nil: it was computed, and the gate compared it.
       return DeadAirMeasurement(
-        wholeBufferRMS: rms, maxWindowRMS: rms, isDeadAir: rms < DeadAirFloor.windowRms)
+        wholeBufferRMS: rms, maxWindowRMS: rms,
+        wholeBufferRMSExcludingZeroRuns: decisionRMS, isDeadAir: rms < DeadAirFloor.windowRms)
     }
     var maxWindowRms = rms
     var windowStart = samples.startIndex
@@ -118,6 +167,7 @@ public enum RawAudioDeadAirClassifier {
     }
     return DeadAirMeasurement(
       wholeBufferRMS: rms, maxWindowRMS: maxWindowRms,
+      wholeBufferRMSExcludingZeroRuns: decisionRMS,
       isDeadAir: maxWindowRms < DeadAirFloor.windowRms)
   }
 

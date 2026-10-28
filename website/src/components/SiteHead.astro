@@ -40,6 +40,8 @@ const ogImageUrl = ogImage.startsWith('http') ? ogImage : `${siteUrl}${ogImage}`
   addEventListener('load', function () {
     if (!document.querySelector('.chrome-header[data-nav-ready]')) delete document.documentElement.dataset.navJs;
   });
+  // #4161: an Android phone sees the Google Play button first.
+  if (/Android/i.test(navigator.userAgent)) document.documentElement.dataset.device = 'android';
 </script>
 <title>{title}</title>
 <meta name="description" content={description} />

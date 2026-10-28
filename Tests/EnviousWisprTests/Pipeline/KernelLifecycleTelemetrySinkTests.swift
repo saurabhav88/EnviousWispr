@@ -125,11 +125,12 @@ import Testing
     backend: ASRBackendType = .parakeet,
     context: KernelSessionContext = KernelSessionContext(),
     telemetryState: KernelTelemetryState = KernelTelemetryState(),
-    captureTelemetry: CaptureTelemetryState = CaptureTelemetryState()
+    captureTelemetry: CaptureTelemetryState = CaptureTelemetryState(),
+    audioCapture: FakeAudioCapture = FakeAudioCapture()
   ) -> KernelLifecycleTelemetrySink {
     KernelLifecycleTelemetrySink(
       backend: backend,
-      audioCapture: FakeAudioCapture(),
+      audioCapture: audioCapture,
       context: context,
       captureTelemetry: captureTelemetry,
       telemetryState: telemetryState,
@@ -480,6 +481,100 @@ import Testing
 
     #expect(recorder.deadMicRecoveries.count == 1)
     #expect(recorder.deadMicRecoveries.first?.recovered == true)
+    #expect(recorder.deadMicRecoveries.first?.resolution == "later_success")
+  }
+
+  // MARK: - #4154 — a USB suffix completion resolves an earlier retire watch
+
+  /// One simulator session drives two real takes: a whole-zero take that really
+  /// retires (arming the watch through the kernel), then a confirmed-bound USB
+  /// take ending in a zero suffix, which no longer retires. The sink shares the
+  /// simulator's capture, telemetry state and watch store, as production does.
+  private func priorRetireThenUSBSuffix() async throws -> (
+    KernelRecordingSession, FakeAudioCapture
+  ) {
+    let clock = FakeClock()
+    let capture = FakeAudioCapture()
+    let vad = FakeVADSignalSource()
+    let wrapper = KernelRecordingSession(
+      engine: FakeEngine(behavior: .batchSuccess(text: "hello"), clock: clock),
+      capture: capture, vad: vad, clock: clock, paste: FakePasteTarget(),
+      minimumRecordingTicks: 0)
+    capture.liveResolvedRoute = ResolvedRouteTransports(
+      selected: "unknown", effective: "usb", routeReason: "system_default",
+      routeFallbackReason: nil, inputSelectionMode: "auto", outputTransport: "display_port",
+      routeResolutionSource: "helper_reported")
+
+    // Take 1: whole-zero, eligible by default -> zero-signal terminal + retire.
+    vad.evidence = .confirmedNoSpeech
+    await wrapper.apply(.start)
+    await wrapper.drainReadyWork()
+    capture.deliverBuffer(frameCount: 32_000, amplitude: 0)
+    await wrapper.drainReadyWork()
+    await wrapper.apply(.stop)
+    await wrapper.drainUntilConcluded()
+    try #require(wrapper.testKernel.recordingOutcome == .failed(.zeroSignal))
+    try #require(capture.retireCapturingSourceCallCount == 1, "precondition: take 1 retired")
+
+    // Take 2: speech, then a qualifying zero suffix -> normal completion, no retire.
+    vad.evidence = .voiced
+    await wrapper.apply(.start)
+    await wrapper.drainReadyWork()
+    capture.deliverBuffer(frameCount: 24_000, amplitude: 0.2)
+    capture.deliverBuffer(frameCount: 16_000, amplitude: 0)
+    await wrapper.drainReadyWork()
+    await wrapper.apply(.stop)
+    await wrapper.drainUntilConcluded()
+    try #require(wrapper.testKernel.recordingOutcome == .completed)
+    try #require(capture.retireCapturingSourceCallCount == 1, "precondition: take 2 did not retire")
+    try #require(wrapper.deadMicRecoveries.isEmpty, "the kernel did not resolve it as later_retire")
+    return (wrapper, capture)
+  }
+
+  /// When this fails, the dead-mic recovery series misattributes a later durable
+  /// completion: the earlier retire is never resolved, or is resolved twice. The
+  /// resolution is mechanical; it does not establish that the mic recovered.
+  @Test("#4154: a USB suffix completion resolves the earlier retire watch exactly once")
+  func priorRetireThenUSBSuffixResolvesLaterSuccessExactlyOnce() async throws {
+    let (wrapper, capture) = try await priorRetireThenUSBSuffix()
+    let recorder = Recorder()
+    let sink = makeSink(
+      recorder: recorder, telemetryState: wrapper.telemetryState,
+      captureTelemetry: wrapper.captureTelemetry, audioCapture: capture)
+
+    sink.emit(.pipelineCompleted)
+    sink.emit(.pipelineCompleted)
+
+    #expect(recorder.deadMicRecoveries.count == 1)
+    let outcome = try #require(recorder.deadMicRecoveries.first)
+    #expect(outcome.recovered == true)
+    #expect(outcome.resolution == "later_success")
+    #expect(outcome.retireShape == "all_zero_from_start")
+    #expect(outcome.retireTransport == "usb")
+  }
+
+  /// A degraded save is not a durable success: while the shared flag is set the
+  /// sink leaves the earlier watch pending, and once it is cleared the sink's next
+  /// completion resolves it exactly once. This does not run a later successful
+  /// take. The flag's producer (`KernelFinalizationWiring`) is outside this
+  /// simulator and is covered by `KernelFinalizationWiringTests`
+  /// (`storeAbsorbsStorageFailure`, `storageFailureStillDeliversExactlyOnce`), so
+  /// the test sets the flag the sink reads.
+  @Test("#4154: a degraded save keeps the earlier watch pending until the flag clears")
+  func historySaveFailureKeepsPriorWatchPending() async throws {
+    let (wrapper, capture) = try await priorRetireThenUSBSuffix()
+    let recorder = Recorder()
+    let sink = makeSink(
+      recorder: recorder, telemetryState: wrapper.telemetryState,
+      captureTelemetry: wrapper.captureTelemetry, audioCapture: capture)
+
+    wrapper.telemetryState.historySaveFailed = true
+    sink.emit(.pipelineCompleted)
+    #expect(recorder.deadMicRecoveries.isEmpty, "degraded save must not resolve")
+
+    wrapper.telemetryState.historySaveFailed = false
+    sink.emit(.pipelineCompleted)
+    #expect(recorder.deadMicRecoveries.count == 1, "the watch was still pending")
     #expect(recorder.deadMicRecoveries.first?.resolution == "later_success")
   }
 

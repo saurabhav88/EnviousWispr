@@ -352,7 +352,7 @@ struct SpokenSlashReadingTests {
         == "Run /help on version 2. They trim packaging and slash shipping costs.")
     // With the setting on, the recogniser's period after "New line" is absorbed into the line
     // break (#3041), and the command after the break still converts.
-    #expect(Self.on("Run slash help. New line. Slash exit.") == "Run /help. \n/exit.")
+    #expect(Self.on("Run slash help. New line. Slash exit.") == "Run /help.\n/exit.")
   }
 
   @Test("A chain spoken as \"forward slash\" is the same chain")

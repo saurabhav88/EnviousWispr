@@ -1,14 +1,14 @@
 ---
 title: "System Requirements"
-description: "EnviousWispr needs a Mac with Apple Silicon and macOS 14 or later, plus some disk space for its models."
+description: "EnviousWispr for Mac needs Apple Silicon and macOS 14 or later, plus some disk space for its models."
 category: "getting-started"
 section: "Basics"
 order: 2
 keywords: ["requirements", "supported macs", "will it run", "intel", "apple silicon", "m1", "m2", "m3", "m4", "macos version", "sonoma", "sequoia", "compatible", "does it work on my mac", "old mac", "disk space", "how much space", "download size", "storage", "8 GB", "memory"]
-updated: 2026-09-29
+updated: 2026-10-28
 deflection: "can_resolve"
 ---
-EnviousWispr is a free dictation app for macOS. It runs on any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or later. Intel Macs are not supported.
+EnviousWispr is a free dictation app for macOS. It runs on any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or later. Intel Macs are not supported. The separate [Android app](/android/) needs Android 13 or later on a 64-bit phone with at least 6 GB of memory.
 
 ### Will EnviousWispr run on my Mac?
 

@@ -280,6 +280,8 @@ struct CustomWordsImportReviewFlowTests {
 
     model.confirm()
 
+    await model.awaitCommitForTesting()
+
     let plan = try! #require(commit.plans.first)
     #expect(plan.replacements.isEmpty)
     #expect(plan.additions.map(\.canonical) == ["Kubernetes"])
@@ -301,6 +303,8 @@ struct CustomWordsImportReviewFlowTests {
       model, candidates: [Self.candidate("Kubernetes")], enrichmentEligible: false)
 
     model.confirm()
+
+    await model.awaitCommitForTesting()
 
     #expect(try! #require(commit.plans.first).enrichmentEligible == false)
   }
@@ -324,6 +328,7 @@ struct CustomWordsImportReviewFlowTests {
     // Second, unrelated load — the eligible default this time.
     await Self.runToReview(model, candidates: [Self.candidate("Qualtrics")])
     model.confirm()
+    await model.awaitCommitForTesting()
 
     #expect(try! #require(commit.plans.first).enrichmentEligible == true)
   }
@@ -339,6 +344,8 @@ struct CustomWordsImportReviewFlowTests {
     await Self.runToReview(model, candidates: [Self.candidate("GitHub")])
 
     model.confirm()
+
+    await model.awaitCommitForTesting()
 
     #expect(commit.plans.isEmpty)
     #expect(model.step == .result(.nothingApproved))
@@ -359,6 +366,7 @@ struct CustomWordsImportReviewFlowTests {
 
     model.confirm()
     model.confirm()
+    await model.awaitCommitForTesting()
 
     #expect(commit.plans.count == 1)
   }
@@ -383,6 +391,8 @@ struct CustomWordsImportReviewFlowTests {
     #expect(model.rows[0].decision == .add)
 
     model.confirm()
+
+    await model.awaitCommitForTesting()
     await Self.settle(model, waitingFor: "the rebuilt review screen") { $0.step == .review }
 
     #expect(model.rows.count == 1)
@@ -423,6 +433,8 @@ struct CustomWordsImportReviewFlowTests {
 
     model.confirm()
 
+    await model.awaitCommitForTesting()
+
     #expect(
       report.reports == [CustomWordsImportReport(sourceID: "test", found: 2, imported: 1)])
     #expect(report.reports.first?.skipped == 1)
@@ -450,11 +462,14 @@ struct CustomWordsImportReviewFlowTests {
     await Self.runToReview(model, candidates: [Self.candidate("Kubernetes")])
 
     model.confirm()
+
+    await model.awaitCommitForTesting()
     await Self.settle(model, waitingFor: "the rebuilt review screen") { $0.step == .review }
     #expect(report.reports.isEmpty, "a stale commit wrote nothing and must not report")
 
     model.setDecision(.add, forRow: model.rows[0].id)
     model.confirm()
+    await model.awaitCommitForTesting()
 
     #expect(
       report.reports == [CustomWordsImportReport(sourceID: "test", found: 1, imported: 1)])
@@ -477,6 +492,7 @@ struct CustomWordsImportReviewFlowTests {
 
     model.cancel()
     model.confirm()
+    await model.awaitCommitForTesting()
 
     #expect(commit.plans.isEmpty)
     #expect(report.reports.isEmpty)
@@ -496,12 +512,14 @@ struct CustomWordsImportReviewFlowTests {
 
     await Self.runToReview(model, candidates: [Self.candidate("Kubernetes")])
     model.confirm()
+    await model.awaitCommitForTesting()
     #expect(model.step == .result(.failed(message: "disk full")))
 
     // A second import opens a fresh model, as the sheet does; the reporter is shared.
     let second = Self.makeModel(compare: compare, commit: commit, report: report)
     await Self.runToReview(second, candidates: [Self.candidate("GitHub")])
     second.confirm()
+    await second.awaitCommitForTesting()
     #expect(second.step == .result(.nothingApproved))
 
     #expect(report.reports.isEmpty)
@@ -594,6 +612,8 @@ struct CustomWordsImportReviewFlowTests {
     await Self.runToReview(model, candidates: [Self.candidate("Kubernetes")])
 
     model.confirm()
+
+    await model.awaitCommitForTesting()
 
     #expect(model.droppedAliasCollisionCount == 1)
     #expect(

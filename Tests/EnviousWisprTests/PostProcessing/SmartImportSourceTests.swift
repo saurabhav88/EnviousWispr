@@ -2382,7 +2382,7 @@ struct SmartImportSourceTests {
 
     let manager = CustomWordsManager(fileURL: dir.appendingPathComponent("custom-words.json"))
     var live = manager.load() ?? []
-    let receipt = try manager.commitImport(
+    let receipt = try await manager.commitImport(
       CustomWordsImportCommitPlan(
         baseline: CustomWordsImportLibrarySnapshot(words: live),
         additions: additions, replacements: []),
@@ -2482,7 +2482,7 @@ struct SmartImportSourceTests {
 
     let manager = CustomWordsManager(fileURL: dir.appendingPathComponent("custom-words.json"))
     var live = manager.load() ?? []
-    let receipt = try manager.commitImport(
+    let receipt = try await manager.commitImport(
       CustomWordsImportCommitPlan(
         baseline: CustomWordsImportLibrarySnapshot(words: live),
         additions: additions, replacements: []),

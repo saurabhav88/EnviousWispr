@@ -11,7 +11,7 @@ const meta = {
   "breadcrumb": "EnviousWispr vs Handy",
   "ogImage": "/og-image.png",
   "datePublished": "2026-08-21T16:00:00Z",
-  "dateModified": "2026-10-17T00:00:00Z"
+  "dateModified": "2026-10-28T00:00:00Z"
 };
 
 const faqs = [
@@ -21,7 +21,7 @@ const faqs = [
   },
   {
     "q": "How is EnviousWispr different from Handy?",
-    "a": "Both transcribe on-device with no cloud dependency for speech recognition, and both can run AI cleanup afterward. The difference is how that cleanup works. EnviousWispr's polish runs on the same hotkey as transcription, automatically once it is on, and never needs a second hotkey: on macOS 26+, Apple Intelligence is the default provider and needs no download, when it's turned on for your Mac; on earlier versions, deterministic cleanup (removing filler words like um and uh, and converting spoken numbers, dates, and times to digits when dictating in English) still runs automatically, and EG-1, our own model, adds the harder cases like formatting spoken lists once you pick it, no account or API key, after a one-time 2.9GB download. EnviousWispr also adds a Live Preview of your words as you speak and Escape Recovery for accidentally cancelled dictations. Handy's cleanup, called Post-Processing, is genuinely capable, supporting more cloud providers than we do (OpenAI, Anthropic, OpenRouter, Groq, Cerebras, Z.AI, or Apple Intelligence), and it now ships a ready-made default prompt, so you are not required to write your own. But it is off until you turn it on, always asks you to enable it and supply an API key or switch to a keyless option, and fires on a separate dedicated hotkey from plain transcription. Handy in turn runs on Windows and Linux in addition to Mac, and lets you choose among several Whisper model sizes for a speed-versus-accuracy trade-off; EnviousWispr is Apple Silicon Mac only."
+    "a": "Both transcribe on-device with no cloud dependency for speech recognition, and both can run AI cleanup afterward. The difference is how that cleanup works. EnviousWispr's polish runs on the same hotkey as transcription, automatically once it is on, and never needs a second hotkey: on macOS 26+, Apple Intelligence is the default provider and needs no download, when it's turned on for your Mac; on earlier versions, deterministic cleanup (removing filler words like um and uh, and converting spoken numbers, dates, and times to digits when dictating in English) still runs automatically, and EG-1, our own model, adds the harder cases like formatting spoken lists once you pick it, no account or API key, after a one-time 2.9GB download. EnviousWispr also adds a Live Preview of your words as you speak and Escape Recovery for accidentally cancelled dictations. Handy's cleanup, called Post-Processing, is genuinely capable, supporting more cloud providers than we do (OpenAI, Anthropic, OpenRouter, Groq, Cerebras, Z.AI, or Apple Intelligence), and it now ships a ready-made default prompt, so you are not required to write your own. But it is off until you turn it on, always asks you to enable it and supply an API key or switch to a keyless option, and fires on a separate dedicated hotkey from plain transcription. Handy in turn runs on Windows and Linux in addition to Mac, and lets you choose among several Whisper model sizes for a speed-versus-accuracy trade-off; EnviousWispr runs on Apple Silicon Macs and Android phones, not Windows or Linux."
   },
   {
     "q": "Does Handy have AI cleanup or polish?",
@@ -41,7 +41,7 @@ const faqs = [
   },
   {
     "q": "Does EnviousWispr work on Windows or Linux like Handy?",
-    "a": "Not today. EnviousWispr runs on Apple Silicon Macs only (macOS 14 Sonoma or later). Handy supports macOS (Intel and Apple Silicon), Windows, and Linux, which is a real advantage if you need one dictation tool across multiple operating systems."
+    "a": "Not today. EnviousWispr runs on Apple Silicon Macs (macOS 14 Sonoma or later) and Android phones (Android 13 or later), with no Windows or Linux app. Handy supports macOS (Intel and Apple Silicon), Windows, and Linux, which is a real advantage if you need one dictation tool across multiple operating systems."
   },
   {
     "q": "What Mac do I need for EnviousWispr?",
@@ -420,7 +420,7 @@ const faqs = [
           </tr>
           <tr>
             <td>Platform support</td>
-            <td>macOS (Apple Silicon only)</td>
+            <td>macOS (Apple Silicon only) and Android 13+</td>
             <td><span class="table-check">macOS (Intel + Apple Silicon), Windows and Linux, including ARM builds</span></td>
           </tr>
           <tr>
@@ -618,7 +618,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">🖥️</div>
         <div class="advantage-title">You need Windows or Linux</div>
-        <p class="advantage-desc">Handy runs on macOS (Intel and Apple Silicon), Windows, and Linux from one codebase, with ARM builds for Windows and Linux too. EnviousWispr is Apple Silicon Mac only. If your dictation needs to follow you across operating systems, Handy already does that.</p>
+        <p class="advantage-desc">Handy runs on macOS (Intel and Apple Silicon), Windows, and Linux from one codebase, with ARM builds for Windows and Linux too. EnviousWispr runs on Apple Silicon Macs and Android phones, not Windows or Linux. If your dictation needs to follow you across operating systems, Handy already does that.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🎚️</div>
@@ -664,7 +664,7 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">How is EnviousWispr different from Handy?</div>
-        <p class="faq-a">Both transcribe on-device with no cloud dependency for speech recognition, and both can run AI cleanup afterward. The difference is how that cleanup works. EnviousWispr's polish runs on the same hotkey as transcription, automatically once it is on, and never needs a second hotkey: on macOS 26+, Apple Intelligence is the default provider and needs no download, when it's turned on for your Mac; on earlier versions, deterministic cleanup (removing filler words like um and uh, and converting spoken numbers, dates, and times to digits when dictating in English) still runs automatically, and EG-1, our own model, adds the harder cases like formatting spoken lists once you pick it, no account or API key, after a one-time 2.9GB download. EnviousWispr also adds a Live Preview of your words as you speak and Escape Recovery for accidentally cancelled dictations. Handy's cleanup, called Post-Processing, is genuinely capable, supporting more cloud providers than we do (OpenAI, Anthropic, OpenRouter, Groq, Cerebras, Z.AI, or Apple Intelligence), and it now ships a ready-made default prompt, so you are not required to write your own. But it is off until you turn it on, always asks you to enable it and supply an API key or switch to a keyless option, and fires on a separate dedicated hotkey from plain transcription. Handy in turn runs on Windows and Linux in addition to Mac, and lets you choose among several Whisper model sizes for a speed-versus-accuracy trade-off; EnviousWispr is Apple Silicon Mac only.</p>
+        <p class="faq-a">Both transcribe on-device with no cloud dependency for speech recognition, and both can run AI cleanup afterward. The difference is how that cleanup works. EnviousWispr's polish runs on the same hotkey as transcription, automatically once it is on, and never needs a second hotkey: on macOS 26+, Apple Intelligence is the default provider and needs no download, when it's turned on for your Mac; on earlier versions, deterministic cleanup (removing filler words like um and uh, and converting spoken numbers, dates, and times to digits when dictating in English) still runs automatically, and EG-1, our own model, adds the harder cases like formatting spoken lists once you pick it, no account or API key, after a one-time 2.9GB download. EnviousWispr also adds a Live Preview of your words as you speak and Escape Recovery for accidentally cancelled dictations. Handy's cleanup, called Post-Processing, is genuinely capable, supporting more cloud providers than we do (OpenAI, Anthropic, OpenRouter, Groq, Cerebras, Z.AI, or Apple Intelligence), and it now ships a ready-made default prompt, so you are not required to write your own. But it is off until you turn it on, always asks you to enable it and supply an API key or switch to a keyless option, and fires on a separate dedicated hotkey from plain transcription. Handy in turn runs on Windows and Linux in addition to Mac, and lets you choose among several Whisper model sizes for a speed-versus-accuracy trade-off; EnviousWispr runs on Apple Silicon Macs and Android phones, not Windows or Linux.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does Handy have AI cleanup or polish?</div>
@@ -684,7 +684,7 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does EnviousWispr work on Windows or Linux like Handy?</div>
-        <p class="faq-a">Not today. EnviousWispr runs on Apple Silicon Macs only (macOS 14 Sonoma or later). Handy supports macOS (Intel and Apple Silicon), Windows, and Linux, which is a real advantage if you need one dictation tool across multiple operating systems.</p>
+        <p class="faq-a">Not today. EnviousWispr runs on Apple Silicon Macs (macOS 14 Sonoma or later) and Android phones (Android 13 or later), with no Windows or Linux app. Handy supports macOS (Intel and Apple Silicon), Windows, and Linux, which is a real advantage if you need one dictation tool across multiple operating systems.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">What Mac do I need for EnviousWispr?</div>

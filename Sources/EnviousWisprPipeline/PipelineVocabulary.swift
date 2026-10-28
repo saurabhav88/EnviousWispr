@@ -64,7 +64,8 @@ public enum SharedEngineHolder: String, Sendable, Equatable, CaseIterable {
   /// never did — so the honest answer to the next record press is "restart".
   case abandonedDecode
   /// #4052: EnviousMeet's after-meeting transcript is being written on dictation's own
-  /// Parakeet, so the Mac holds one copy of the model. Dictation waits until it is done.
+  /// Parakeet, so the Mac holds one copy of the model. A dictation press waits for the meeting to
+  /// give the engine back, then goes first (#3973 C1, `EngineLease.waitForReservedTurn`).
   case meeting
 }
 

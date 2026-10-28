@@ -274,6 +274,28 @@ struct HeartPathTelemetryEmitterTests {
     }
   }
 
+  /// #4154: a whole-zero USB take is now classified only at stop, so the stall
+  /// the emitter sees is the stop-time context. It must still latch, so the
+  /// session's `no_audio_captured` stays a deduped breadcrumb, never an error.
+  @Test("#4154: a USB stop-time all-zero context still dedups noAudioCaptured")
+  func usbStopTimeContextDedupsNoAudio() {
+    let recorder = Recorder()
+    let emitter = Self.makeEmitter(backend: .parakeet, recorder: recorder)
+    let stopTime = CaptureStallContext(
+      sessionID: 9, armedAtUptimeNs: 0, firedAtUptimeNs: 1, route: "usb",
+      sourceType: "stop_time_classification", engineStartedSuccessfully: true,
+      tapInstalled: true, formatMismatchObserved: false, inputDeviceUIDPreferred: nil,
+      inputDeviceUIDSystemDefault: nil, failureMode: .allZeroFromStart,
+      effectiveTransport: "usb", routeResolutionSource: "helper_reported")
+
+    emitter.stallFired(ctx: stopTime, isActivelyCapturing: false)
+    emitter.noAudioCaptured(ctx: Self.noAudioContext(sessionID: 9))
+
+    #expect(recorder.errors.isEmpty)
+    #expect(recorder.breadcrumbs.count == 1)
+    #expect(recorder.breadcrumbs.first?.message == "No audio captured (deduped)")
+  }
+
   @Test("noAudioCaptured dedup breadcrumb for Whisper carries Whisper-tagged message")
   func noAudioDedupBreadcrumbWhisperTag() {
     let recorder = Recorder()

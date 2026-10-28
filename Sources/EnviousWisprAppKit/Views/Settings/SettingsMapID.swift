@@ -265,6 +265,7 @@ enum SettingsMapID: String, CaseIterable, Hashable, Sendable {
   case snippetsAddFirst = "snippets.addFirst"
   case snippetsClearSearch = "snippets.clearSearch"
   case meetingsTabGeneral = "meetings.tab.general"
+  case meetingsTabModels = "meetings.tab.models"
   case meetingsTabCallApps = "meetings.tab.callApps"
   case meetingsTabPermissions = "meetings.tab.permissions"
   case appSettingsTabAppearance = "appSettings.tab.appearance"

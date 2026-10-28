@@ -2377,9 +2377,19 @@ public struct InverseTextNormalizer: Sendable {
     // pull it back over the line break and double the previous period (#3041). "On its own" means
     // it follows a sentence end (a closing quote or bracket may sit between); "Add a new line."
     // keeps its period.
-    (#"(?<=[.!?…][”’"')\]}»]{0,3}\s)new paragraph\b[.,]?"#, "\n\n"),
-    (#"(?<=[.!?…][”’"')\]}»]{0,3}\s)new line\b[.,]?"#, "\n"),
-    (#"\bnew paragraph\b"#, "\n\n"), (#"\bnew line\b"#, "\n"),
+    // #4149: the break rows also eat the spaces or tabs on both sides of the phrase, so the next
+    // line never starts with a space ("Hello. \n\n World"). After a sentence end the phrase must
+    // still follow a space, or a line break an earlier break row wrote ("new line new line").
+    // Spaces next to a line break the user did not dictate are left alone.
+    (
+      #"(?:(?<=[.!?…][”’"')\]}»]{0,3})[ \t]+|(?<=[.!?…][”’"')\]}»]{0,3}[\r\n]))new paragraph\b[.,]?[ \t]*"#,
+      "\n\n"
+    ),
+    (
+      #"(?:(?<=[.!?…][”’"')\]}»]{0,3})[ \t]+|(?<=[.!?…][”’"')\]}»]{0,3}[\r\n]))new line\b[.,]?[ \t]*"#,
+      "\n"
+    ),
+    (#"[ \t]*\bnew paragraph\b[ \t]*"#, "\n\n"), (#"[ \t]*\bnew line\b[ \t]*"#, "\n"),
     (#"\s+comma\b"#, ","), (periodRow, "."), (fullStopRow, "."),
     (#"\s+question mark\b"#, "?"), (#"\s+exclamation (mark|point)\b"#, "!"),
     (#"\s+colon\b"#, ":"), (#"\s+semicolon\b"#, ";"),

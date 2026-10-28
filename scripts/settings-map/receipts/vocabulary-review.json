@@ -81,13 +81,18 @@
    "id": "meetingTranscriptLanguage",
    "review": "additions/meetingTranscriptLanguage.json",
    "reviewSHA256": "552a802f865a7e728c7d130b5c98616d712bc2de283f52692b53f68ffe87312e"
+  },
+  {
+   "id": "meetings.tab.models",
+   "review": "additions/meetings.tab.models.json",
+   "reviewSHA256": "c7597f37284c34d0f94680dafb69363ee63c5959bcff3f5e430c3f5a421f977e"
   }
  ],
  "retiredIDs": [],
  "resource": {
   "path": "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json",
-  "sha256": "3273414fce296c2df8ccc686342e09b2d3855db129220ec053e2c269cf77bd14",
-  "bytes": 1693646
+  "sha256": "2e35019d9014352b1f131ed67cc84f82ffc652bfdc674508d9b26d2ebcae63e5",
+  "bytes": 1696469
  },
  "sources": [
   {
@@ -371,7 +376,7 @@
  "languages": [
   {
    "language": "ar",
-   "contentSHA256": "3a91aaf97a763c63d5bb50143190ea79759f8fc1b7c714023c0743d9b399822e",
+   "contentSHA256": "ba811c8f87c77d9463041f1c6205d50b2ba615646e5484818782bad46d55e1ab",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -814,13 +819,32 @@
       "sha256": "62174ae6876047160a53875b5341f55844b040c35e35fb23c1a0f8b989e8de0a"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.models",
+     "method": "Codex, one fresh isolated session for this language reviewing the new EnviousMeet Models tab (accuracy, naturalness, collisions with the General tab, Live words, Transcript language, the dictation engine, the AI Polish provider and the Call Apps tab); first draft by scripts/settings-map/draft-vocabulary.sh",
+     "date": "2026-10-27",
+     "draft": {
+      "path": "additions/meetings.tab.models/draft.json",
+      "sha256": "f5a75c626a10e3ac83ba6bc71fba21d98eeecc94d8e7f2b5efa379d0848321aa"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.models/review-driver.py.txt",
+      "sha256": "764221ea642874a7a47180f3061e2390a377e9cc05074f57f6434c7ac50e3f05"
+     },
+     "output": {
+      "path": "additions/meetings.tab.models/review-ar.txt",
+      "sha256": "c47d6941ef1b1edf9420e7f579ba37648ead416a35af0ba55ff953a10aa6961b"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.models.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "bg",
-   "contentSHA256": "4f1366e1638e9301a78fb8119f4c340789ae2782ed8f9568ab358c4b9c3511bc",
+   "contentSHA256": "d26da5aaacba08dff3e1319774736dde0233046690367cc4e543a66551dd8191",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1254,13 +1278,32 @@
       "sha256": "63350bc38567618bab1dad7dcb61d6ddc27a56e9c5059e0e6243dc84fede6dfc"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.models",
+     "method": "Codex, one fresh isolated session for this language reviewing the new EnviousMeet Models tab (accuracy, naturalness, collisions with the General tab, Live words, Transcript language, the dictation engine, the AI Polish provider and the Call Apps tab); first draft by scripts/settings-map/draft-vocabulary.sh",
+     "date": "2026-10-27",
+     "draft": {
+      "path": "additions/meetings.tab.models/draft.json",
+      "sha256": "f5a75c626a10e3ac83ba6bc71fba21d98eeecc94d8e7f2b5efa379d0848321aa"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.models/review-driver.py.txt",
+      "sha256": "764221ea642874a7a47180f3061e2390a377e9cc05074f57f6434c7ac50e3f05"
+     },
+     "output": {
+      "path": "additions/meetings.tab.models/review-bg.txt",
+      "sha256": "6675f86f60c010fd963023f66b049fdaea0f2903e110f15bd47b8db8d3be4ad2"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.models.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "cs",
-   "contentSHA256": "94c306298f7db4947642b09c61cd5055d1842d2698f88ecb6383fdf4914cbf6a",
+   "contentSHA256": "aa9bd924cdf60fc4a5131d798d89407de17b3502925303bd9620cd06ba3bbced",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1694,13 +1737,32 @@
       "sha256": "d0b4e7628d6aa2930e5bf74584642140e42cb052edccc2b49c816d389a26beef"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.models",
+     "method": "Codex, one fresh isolated session for this language reviewing the new EnviousMeet Models tab (accuracy, naturalness, collisions with the General tab, Live words, Transcript language, the dictation engine, the AI Polish provider and the Call Apps tab); first draft by scripts/settings-map/draft-vocabulary.sh",
+     "date": "2026-10-27",
+     "draft": {
+      "path": "additions/meetings.tab.models/draft.json",
+      "sha256": "f5a75c626a10e3ac83ba6bc71fba21d98eeecc94d8e7f2b5efa379d0848321aa"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.models/review-driver.py.txt",
+      "sha256": "764221ea642874a7a47180f3061e2390a377e9cc05074f57f6434c7ac50e3f05"
+     },
+     "output": {
+      "path": "additions/meetings.tab.models/review-cs.txt",
+      "sha256": "e8e52f75c1a21a4b368e55305b406cddf5632df4c69aa7b63788cb9261a473df"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.models.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "da",
-   "contentSHA256": "a6650c007711bf76845229c2e173fdebaa11b51f9c75702ef6946e45a0183ca0",
+   "contentSHA256": "6e43c5009fdf130eb9e9447f4ebc9ab7af23163bd651378366d90385118e1c47",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2134,13 +2196,32 @@
       "sha256": "83e6958c4e46030218d94a06474612f84dcafb90ebd8fa70bd9e6944a850bbf7"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.models",
+     "method": "Codex, one fresh isolated session for this language reviewing the new EnviousMeet Models tab (accuracy, naturalness, collisions with the General tab, Live words, Transcript language, the dictation engine, the AI Polish provider and the Call Apps tab); first draft by scripts/settings-map/draft-vocabulary.sh",
+     "date": "2026-10-27",
+     "draft": {
+      "path": "additions/meetings.tab.models/draft.json",
+      "sha256": "f5a75c626a10e3ac83ba6bc71fba21d98eeecc94d8e7f2b5efa379d0848321aa"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.models/review-driver.py.txt",
+      "sha256": "764221ea642874a7a47180f3061e2390a377e9cc05074f57f6434c7ac50e3f05"
+     },
+     "output": {
+      "path": "additions/meetings.tab.models/review-da.txt",
+      "sha256": "dcbbea32198b9a6f4646d150bfe91cde967ddb93f14ee87e2eb15db01fbdee62"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.models.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "de",
-   "contentSHA256": "cfd5e5bf8c4fef4c30312521d981ecebc87570cca2ad59c00a88a190a9559ada",
+   "contentSHA256": "08794e4c04aee183582a6efb64394c1243999243ec87815586cf119605364ac7",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2660,13 +2741,36 @@
       "path": "additions/meetingLiveWords/council-de.json",
       "sha256": "80d93477534418f3654b410327685c960d9a2b7c59c919d254ce83083bd32a34"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.models",
+     "method": "Codex, one fresh isolated session for this language reviewing the new EnviousMeet Models tab (accuracy, naturalness, collisions with the General tab, Live words, Transcript language, the dictation engine, the AI Polish provider and the Call Apps tab); first draft by scripts/settings-map/draft-vocabulary.sh",
+     "date": "2026-10-27",
+     "draft": {
+      "path": "additions/meetings.tab.models/draft.json",
+      "sha256": "f5a75c626a10e3ac83ba6bc71fba21d98eeecc94d8e7f2b5efa379d0848321aa"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.models/review-driver.py.txt",
+      "sha256": "764221ea642874a7a47180f3061e2390a377e9cc05074f57f6434c7ac50e3f05"
+     },
+     "output": {
+      "path": "additions/meetings.tab.models/review-de.txt",
+      "sha256": "7b261fe4906a6e2cbda8f0f7cac29ba49eedf88ea4a89ed51871ee6f0820bc4d"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.models.json); German council: Gemini OK, GPT proposed adding sibling-row terms (Transkriptsprache, summaries), rejected as collisions with the Transcript language and summary rows (additions/meetings.tab.models/council-de-adjudication.txt)",
+     "council": {
+      "path": "additions/meetings.tab.models/council-de.json",
+      "sha256": "0ddcee25e994eff313474c9c25c1af5d914f178a0e160a9566c9757fc3f14869"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "el",
-   "contentSHA256": "6cf1f71c1159df01434fc50a84c0c10f5f066aff9cb3415e60d603335f83d5b5",
+   "contentSHA256": "e991b0273e5b69519165614ba88f9e9987650efc541a23b2d5385f6d76f5add2",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3109,13 +3213,32 @@
       "sha256": "079581762bf0227c7164e026ff99c9c84c39b3c0f29eace2b4880a501305a583"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.models",
+     "method": "Codex, one fresh isolated session for this language reviewing the new EnviousMeet Models tab (accuracy, naturalness, collisions with the General tab, Live words, Transcript language, the dictation engine, the AI Polish provider and the Call Apps tab); first draft by scripts/settings-map/draft-vocabulary.sh",
+     "date": "2026-10-27",
+     "draft": {
+      "path": "additions/meetings.tab.models/draft.json",
+      "sha256": "f5a75c626a10e3ac83ba6bc71fba21d98eeecc94d8e7f2b5efa379d0848321aa"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.models/review-driver.py.txt",
+      "sha256": "764221ea642874a7a47180f3061e2390a377e9cc05074f57f6434c7ac50e3f05"
+     },
+     "output": {
+      "path": "additions/meetings.tab.models/review-el.txt",
+      "sha256": "204640139c342bfce42d2b01d714d940757261399231284c6536153de58ce522"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.models.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "en",
-   "contentSHA256": "0f8d87ee7b19d9d46a68109e5d84967703653fbc59ccfd79acf9175d8cd02074",
+   "contentSHA256": "be27e07c012b799f2a45ebdd406dbb6d56040905fb2b46c988c28f78ffc4b876",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3564,13 +3687,32 @@
       "sha256": "1885bf108128777b0a475bf232c621a34326629221676b534e508e005990bb9f"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.models",
+     "method": "Codex, one fresh isolated session for this language reviewing the new EnviousMeet Models tab (accuracy, naturalness, collisions with the General tab, Live words, Transcript language, the dictation engine, the AI Polish provider and the Call Apps tab); first draft by scripts/settings-map/draft-vocabulary.sh",
+     "date": "2026-10-27",
+     "draft": {
+      "path": "additions/meetings.tab.models/draft.json",
+      "sha256": "f5a75c626a10e3ac83ba6bc71fba21d98eeecc94d8e7f2b5efa379d0848321aa"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.models/review-driver.py.txt",
+      "sha256": "764221ea642874a7a47180f3061e2390a377e9cc05074f57f6434c7ac50e3f05"
+     },
+     "output": {
+      "path": "additions/meetings.tab.models/review-en.txt",
+      "sha256": "6571269d6635f40fb26466b2d8e7edbdc0ede2cdb8766fd7c02ccbe34f246a3d"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.models.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "es",
-   "contentSHA256": "0f082fee2f7409ef9cbd4e7da113b079d2ffe80925578be441afa288943b7213",
+   "contentSHA256": "56f5452ce75b757eb983cf9b3d4bf13d4c50c1fa2fd58f9e2abd397da12fb87a",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4013,13 +4155,32 @@
       "sha256": "811da231982050fae6327dcdb2020ca0a58ab6835bd5a600edb9eb75db82583e"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.models",
+     "method": "Codex, one fresh isolated session for this language reviewing the new EnviousMeet Models tab (accuracy, naturalness, collisions with the General tab, Live words, Transcript language, the dictation engine, the AI Polish provider and the Call Apps tab); first draft by scripts/settings-map/draft-vocabulary.sh",
+     "date": "2026-10-27",
+     "draft": {
+      "path": "additions/meetings.tab.models/draft.json",
+      "sha256": "f5a75c626a10e3ac83ba6bc71fba21d98eeecc94d8e7f2b5efa379d0848321aa"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.models/review-driver.py.txt",
+      "sha256": "764221ea642874a7a47180f3061e2390a377e9cc05074f57f6434c7ac50e3f05"
+     },
+     "output": {
+      "path": "additions/meetings.tab.models/review-es.txt",
+      "sha256": "cba35e95a5340835cd6e1404482097b31134db370fc9fbade9f8ff88f2c9497f"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.models.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "et",
-   "contentSHA256": "4c71685a21f81a046d940fd4dcaad3932c005d12b59259a7b16fca267ed275ac",
+   "contentSHA256": "66b79b82c88450a645f375d020b63bc6cb14ae20cff9834a3648ffdc8aae1560",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4453,13 +4614,32 @@
       "sha256": "b7450b8bc6587651673916b858beaf2111b666406d9bd1943e0726bfbec3cd95"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.models",
+     "method": "Codex, one fresh isolated session for this language reviewing the new EnviousMeet Models tab (accuracy, naturalness, collisions with the General tab, Live words, Transcript language, the dictation engine, the AI Polish provider and the Call Apps tab); first draft by scripts/settings-map/draft-vocabulary.sh",
+     "date": "2026-10-27",
+     "draft": {
+      "path": "additions/meetings.tab.models/draft.json",
+      "sha256": "f5a75c626a10e3ac83ba6bc71fba21d98eeecc94d8e7f2b5efa379d0848321aa"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.models/review-driver.py.txt",
+      "sha256": "764221ea642874a7a47180f3061e2390a377e9cc05074f57f6434c7ac50e3f05"
+     },
+     "output": {
+      "path": "additions/meetings.tab.models/review-et.txt",
+      "sha256": "48ed60aacda813fa7f98fa7cfab24024dc366865ba846fe1e71acf751d81ff6b"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.models.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fi",
-   "contentSHA256": "f8e5602642da8234cd68d6adac33fab81b5d98442afc81ebf71a9cb1744c2307",
+   "contentSHA256": "b271f10bbec0322ab2a3484f0832aa19f25838b90f215bf30824da386596a1ad",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4893,13 +5073,32 @@
       "sha256": "3e0f2c1735c5498f92da445d104c8201596784a76da192e9f56b176f9ad2c23b"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.models",
+     "method": "Codex, one fresh isolated session for this language reviewing the new EnviousMeet Models tab (accuracy, naturalness, collisions with the General tab, Live words, Transcript language, the dictation engine, the AI Polish provider and the Call Apps tab); first draft by scripts/settings-map/draft-vocabulary.sh",
+     "date": "2026-10-27",
+     "draft": {
+      "path": "additions/meetings.tab.models/draft.json",
+      "sha256": "f5a75c626a10e3ac83ba6bc71fba21d98eeecc94d8e7f2b5efa379d0848321aa"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.models/review-driver.py.txt",
+      "sha256": "764221ea642874a7a47180f3061e2390a377e9cc05074f57f6434c7ac50e3f05"
+     },
+     "output": {
+      "path": "additions/meetings.tab.models/review-fi.txt",
+      "sha256": "d0447fc2206abbbba956a7a74bb96dda2ecf67f01f2fbb634427d71e77fe9dae"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.models.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fr",
-   "contentSHA256": "16cafca5f7fe8f5bc231ed83375921060ec2514ba444baef60535cdf6ac2a159",
+   "contentSHA256": "9fdc03d00f0ba815d6dbb5fee26ca0afbe3e8e130fa677ce842ccf1302666d90",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5333,13 +5532,32 @@
       "sha256": "a8726c6af132db48edd39be9fa3ec81329ff58e6f77ce6e6d378e995585f2012"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.models",
+     "method": "Codex, one fresh isolated session for this language reviewing the new EnviousMeet Models tab (accuracy, naturalness, collisions with the General tab, Live words, Transcript language, the dictation engine, the AI Polish provider and the Call Apps tab); first draft by scripts/settings-map/draft-vocabulary.sh",
+     "date": "2026-10-27",
+     "draft": {
+      "path": "additions/meetings.tab.models/draft.json",
+      "sha256": "f5a75c626a10e3ac83ba6bc71fba21d98eeecc94d8e7f2b5efa379d0848321aa"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.models/review-driver.py.txt",
+      "sha256": "764221ea642874a7a47180f3061e2390a377e9cc05074f57f6434c7ac50e3f05"
+     },
+     "output": {
+      "path": "additions/meetings.tab.models/review-fr.txt",
+      "sha256": "cd9251230e069b4b9f8de8b811ae032590e4aa8880d108fa5e8e5c89175cc778"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.models.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hi",
-   "contentSHA256": "f2c2df1332b18ff7dd414ea9411805ddc3217fa609166da63034225d171099d2",
+   "contentSHA256": "1de7b733a5108649145129629903bda69dc69e3f9d9bc2c4250033e1e0cc4349",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5773,13 +5991,32 @@
       "sha256": "6e4ff888f5a7f6357ed6adc9a392dbcd012ffc97d0697a40adeb3e04d055b4a6"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.models",
+     "method": "Codex, one fresh isolated session for this language reviewing the new EnviousMeet Models tab (accuracy, naturalness, collisions with the General tab, Live words, Transcript language, the dictation engine, the AI Polish provider and the Call Apps tab); first draft by scripts/settings-map/draft-vocabulary.sh",
+     "date": "2026-10-27",
+     "draft": {
+      "path": "additions/meetings.tab.models/draft.json",
+      "sha256": "f5a75c626a10e3ac83ba6bc71fba21d98eeecc94d8e7f2b5efa379d0848321aa"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.models/review-driver.py.txt",
+      "sha256": "764221ea642874a7a47180f3061e2390a377e9cc05074f57f6434c7ac50e3f05"
+     },
+     "output": {
+      "path": "additions/meetings.tab.models/review-hi.txt",
+      "sha256": "16ab2daa53f71de1d32b0ec5435f77763f331e1e042c36963389e0a1d97f55ea"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.models.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hr",
-   "contentSHA256": "9366660491a786da7fb622a3b9d3db54f8dbbdb8b219216f8fc2d093f8aaf2b6",
+   "contentSHA256": "d6d9c4187ce23a616a2e77b28d103c46158fb0742eedac5f4f952522c0df9202",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -6213,13 +6450,32 @@
       "sha256": "83c0b0597c2e06f8adf2c1c45d8912baed44c70615b56af0acc0e9dd829ad229"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.models",
+     "method": "Codex, one fresh isolated session for this language reviewing the new EnviousMeet Models tab (accuracy, naturalness, collisions with the General tab, Live words, Transcript language, the dictation engine, the AI Polish provider and the Call Apps tab); first draft by scripts/settings-map/draft-vocabulary.sh",
+     "date": "2026-10-27",
+     "draft": {
+      "path": "additions/meetings.tab.models/draft.json",
+      "sha256": "f5a75c626a10e3ac83ba6bc71fba21d98eeecc94d8e7f2b5efa379d0848321aa"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.models/review-driver.py.txt",
+      "sha256": "764221ea642874a7a47180f3061e2390a377e9cc05074f57f6434c7ac50e3f05"
+     },
+     "output": {
+      "path": "additions/meetings.tab.models/review-hr.txt",
+      "sha256": "f40c0666ebe086b0e9e47082506fb3987e61c16357347c1e4cacbd8e717cbff5"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.models.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hu",
-   "contentSHA256": "7bf7c8e70058e4c5cdff668dc83488187191d09b60b7ff36f2a0f1f2adee6a31",
+   "contentSHA256": "ae102bcd273b9f14b452fcc69278c78e1979a7956d5c85e7fe2c1fd9c19a2bf8",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -6653,13 +6909,32 @@
       "sha256": "0417d5679db872faaaa9f2cfabdc7aab9920acb325bdd7b763c7f1bccf360f73"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.models",
+     "method": "Codex, one fresh isolated session for this language reviewing the new EnviousMeet Models tab (accuracy, naturalness, collisions with the General tab, Live words, Transcript language, the dictation engine, the AI Polish provider and the Call Apps tab); first draft by scripts/settings-map/draft-vocabulary.sh",
+     "date": "2026-10-27",
+     "draft": {
+      "path": "additions/meetings.tab.models/draft.json",
+      "sha256": "f5a75c626a10e3ac83ba6bc71fba21d98eeecc94d8e7f2b5efa379d0848321aa"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.models/review-driver.py.txt",
+      "sha256": "764221ea642874a7a47180f3061e2390a377e9cc05074f57f6434c7ac50e3f05"
+     },
+     "output": {
+      "path": "additions/meetings.tab.models/review-hu.txt",
+      "sha256": "e22b3a9942f729748b7dff7400336b2101eaa50f942c149ca8e9670d589d390a"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.models.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "it",
-   "contentSHA256": "d83ea89ef97d0f8a18804bcd81d4adba510958e3c8e9b37b4f890566c9ea60ac",
+   "contentSHA256": "69d8d6dafff3ef2412cabdf8b5e67b6f0a1dfe8fd789ffcbc94b64be78a345ae",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -7102,13 +7377,32 @@
       "sha256": "c417cb5deeb7e197e6c44e9a54161c264cb8af48fb4edfa4427edfa03253bfe2"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.models",
+     "method": "Codex, one fresh isolated session for this language reviewing the new EnviousMeet Models tab (accuracy, naturalness, collisions with the General tab, Live words, Transcript language, the dictation engine, the AI Polish provider and the Call Apps tab); first draft by scripts/settings-map/draft-vocabulary.sh",
+     "date": "2026-10-27",
+     "draft": {
+      "path": "additions/meetings.tab.models/draft.json",
+      "sha256": "f5a75c626a10e3ac83ba6bc71fba21d98eeecc94d8e7f2b5efa379d0848321aa"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.models/review-driver.py.txt",
+      "sha256": "764221ea642874a7a47180f3061e2390a377e9cc05074f57f6434c7ac50e3f05"
+     },
+     "output": {
+      "path": "additions/meetings.tab.models/review-it.txt",
+      "sha256": "786cd0e36f88bea192b540d3f82b690dd5997db1706fba59ffb4f184da47caed"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.models.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ja",
-   "contentSHA256": "6bcd5452cc8da151f23b768a274e96d98ae7e337d4d889c317f221b28b70658c",
+   "contentSHA256": "d833d3d25a6c03a4e735ed529c2586848a2cc89d715cf90116025e68e3ccbc7c",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -7542,13 +7836,32 @@
       "sha256": "5c8a3e0b0589a345d37ece43012378f910e8ea434376913cbbb39a38110cf47a"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.models",
+     "method": "Codex, one fresh isolated session for this language reviewing the new EnviousMeet Models tab (accuracy, naturalness, collisions with the General tab, Live words, Transcript language, the dictation engine, the AI Polish provider and the Call Apps tab); first draft by scripts/settings-map/draft-vocabulary.sh",
+     "date": "2026-10-27",
+     "draft": {
+      "path": "additions/meetings.tab.models/draft.json",
+      "sha256": "f5a75c626a10e3ac83ba6bc71fba21d98eeecc94d8e7f2b5efa379d0848321aa"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.models/review-driver.py.txt",
+      "sha256": "764221ea642874a7a47180f3061e2390a377e9cc05074f57f6434c7ac50e3f05"
+     },
+     "output": {
+      "path": "additions/meetings.tab.models/review-ja.txt",
+      "sha256": "07681cc2b3d2e85ea764e17a5d9e227e9c41bb040d23f63349c72c18862a7931"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.models.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ko",
-   "contentSHA256": "d455e2e7add67c7b6f63af4a5fab9c533201b6a0d803903a2cfb87a4b3af7dd9",
+   "contentSHA256": "a61fbc3e8b80a30c8daef75daf95f0759a33e128724dc93c0e65a97a9e1af54a",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -7982,13 +8295,32 @@
       "sha256": "1ff75464d7aa8d3aff1b7094629fce0e703e8394c9ddb9629f1c0f565a607bf2"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.models",
+     "method": "Codex, one fresh isolated session for this language reviewing the new EnviousMeet Models tab (accuracy, naturalness, collisions with the General tab, Live words, Transcript language, the dictation engine, the AI Polish provider and the Call Apps tab); first draft by scripts/settings-map/draft-vocabulary.sh",
+     "date": "2026-10-27",
+     "draft": {
+      "path": "additions/meetings.tab.models/draft.json",
+      "sha256": "f5a75c626a10e3ac83ba6bc71fba21d98eeecc94d8e7f2b5efa379d0848321aa"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.models/review-driver.py.txt",
+      "sha256": "764221ea642874a7a47180f3061e2390a377e9cc05074f57f6434c7ac50e3f05"
+     },
+     "output": {
+      "path": "additions/meetings.tab.models/review-ko.txt",
+      "sha256": "d61e81629eda199dabe2bc77d93b17a8bad12f60cda605b52c8205a5c7cb1f30"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.models.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lt",
-   "contentSHA256": "703e99fb7954683cef5a8c70c1c46d1221bf5d33f307c6fa58a52dbb83655123",
+   "contentSHA256": "f2441a7d7cf148fd22af9d73869d0cb5695b657d080522169d8e79669c681570",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -8431,13 +8763,32 @@
       "sha256": "ad3ba698875675998f60113306c4b1d8aecb5afe9545e48ea04740ed982fa525"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.models",
+     "method": "Codex, one fresh isolated session for this language reviewing the new EnviousMeet Models tab (accuracy, naturalness, collisions with the General tab, Live words, Transcript language, the dictation engine, the AI Polish provider and the Call Apps tab); first draft by scripts/settings-map/draft-vocabulary.sh",
+     "date": "2026-10-27",
+     "draft": {
+      "path": "additions/meetings.tab.models/draft.json",
+      "sha256": "f5a75c626a10e3ac83ba6bc71fba21d98eeecc94d8e7f2b5efa379d0848321aa"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.models/review-driver.py.txt",
+      "sha256": "764221ea642874a7a47180f3061e2390a377e9cc05074f57f6434c7ac50e3f05"
+     },
+     "output": {
+      "path": "additions/meetings.tab.models/review-lt.txt",
+      "sha256": "ca36c32802bc903e0f79943c13f5e9b9534ba4bd1252b86dac6907959f56d2ca"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.models.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lv",
-   "contentSHA256": "add423eb58d6d208ff3e4d3213f60db68a5655b42f500c07081969d43ed9dfa4",
+   "contentSHA256": "69bc91c14548bc8e2d782b9032efe88d531034c2c2653ea156bc1e2af08d8eef",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -8871,13 +9222,32 @@
       "sha256": "52448de2517feb76e7445d6932060e3174b3cd1051e94d1bc4e33b0a69ea2339"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.models",
+     "method": "Codex, one fresh isolated session for this language reviewing the new EnviousMeet Models tab (accuracy, naturalness, collisions with the General tab, Live words, Transcript language, the dictation engine, the AI Polish provider and the Call Apps tab); first draft by scripts/settings-map/draft-vocabulary.sh",
+     "date": "2026-10-27",
+     "draft": {
+      "path": "additions/meetings.tab.models/draft.json",
+      "sha256": "f5a75c626a10e3ac83ba6bc71fba21d98eeecc94d8e7f2b5efa379d0848321aa"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.models/review-driver.py.txt",
+      "sha256": "764221ea642874a7a47180f3061e2390a377e9cc05074f57f6434c7ac50e3f05"
+     },
+     "output": {
+      "path": "additions/meetings.tab.models/review-lv.txt",
+      "sha256": "22cb476d2b569f3d6500b5a784dd5278698ca6fb5187c11faba91167f63e6224"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.models.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "mt",
-   "contentSHA256": "19ddcdafe27c38a5f4590875fffb67453396cafd361f6bf4587f1282c4e52673",
+   "contentSHA256": "6a17107dc9144039e7b455e94041433f713a86c66b2c64d1ea5cf891624a77a9",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -9320,13 +9690,32 @@
       "sha256": "94b5eb09031fb26bddfc977b02b9c100568e35be3d56f2c22d6dce746fd02d3b"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.models",
+     "method": "Codex, one fresh isolated session for this language reviewing the new EnviousMeet Models tab (accuracy, naturalness, collisions with the General tab, Live words, Transcript language, the dictation engine, the AI Polish provider and the Call Apps tab); first draft by scripts/settings-map/draft-vocabulary.sh",
+     "date": "2026-10-27",
+     "draft": {
+      "path": "additions/meetings.tab.models/draft.json",
+      "sha256": "f5a75c626a10e3ac83ba6bc71fba21d98eeecc94d8e7f2b5efa379d0848321aa"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.models/review-driver.py.txt",
+      "sha256": "764221ea642874a7a47180f3061e2390a377e9cc05074f57f6434c7ac50e3f05"
+     },
+     "output": {
+      "path": "additions/meetings.tab.models/review-mt.txt",
+      "sha256": "45cefc788edf02faec71ebce3d3af9a3cc75c85bb73ed5a657089b21027835dc"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.models.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "nl",
-   "contentSHA256": "5ee8f9509d45f4d4ea05cf85bd2f3ad415a26088d8fcd0ce4b6dbde341069a08",
+   "contentSHA256": "00294301e212d230ca795dd475b8aa95843937e27d052472e781d80650ef3165",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -9760,13 +10149,32 @@
       "sha256": "715aa4be46b11c1a5209bec4e397641deb8592c1c6d1371ff6eb16e0616c4aff"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.models",
+     "method": "Codex, one fresh isolated session for this language reviewing the new EnviousMeet Models tab (accuracy, naturalness, collisions with the General tab, Live words, Transcript language, the dictation engine, the AI Polish provider and the Call Apps tab); first draft by scripts/settings-map/draft-vocabulary.sh",
+     "date": "2026-10-27",
+     "draft": {
+      "path": "additions/meetings.tab.models/draft.json",
+      "sha256": "f5a75c626a10e3ac83ba6bc71fba21d98eeecc94d8e7f2b5efa379d0848321aa"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.models/review-driver.py.txt",
+      "sha256": "764221ea642874a7a47180f3061e2390a377e9cc05074f57f6434c7ac50e3f05"
+     },
+     "output": {
+      "path": "additions/meetings.tab.models/review-nl.txt",
+      "sha256": "7458bac5ab3d2c2709948aa94d697f5297b5dbfd7484c66c6951aeb16fe14cb1"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.models.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pl",
-   "contentSHA256": "9a21e5d9aae71315cf0e368758e762708564e6b6403d24b0c1906eb6ffd8245b",
+   "contentSHA256": "c0c418882448dbd6335869fbb9f713eb5bffb40ffc55a1d920129fc730cd2620",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -10200,13 +10608,32 @@
       "sha256": "8bc596a9f500ad0a2e20441b522fd0a6a899dc6c69d64a35c7370dd015f89ea2"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.models",
+     "method": "Codex, one fresh isolated session for this language reviewing the new EnviousMeet Models tab (accuracy, naturalness, collisions with the General tab, Live words, Transcript language, the dictation engine, the AI Polish provider and the Call Apps tab); first draft by scripts/settings-map/draft-vocabulary.sh",
+     "date": "2026-10-27",
+     "draft": {
+      "path": "additions/meetings.tab.models/draft.json",
+      "sha256": "f5a75c626a10e3ac83ba6bc71fba21d98eeecc94d8e7f2b5efa379d0848321aa"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.models/review-driver.py.txt",
+      "sha256": "764221ea642874a7a47180f3061e2390a377e9cc05074f57f6434c7ac50e3f05"
+     },
+     "output": {
+      "path": "additions/meetings.tab.models/review-pl.txt",
+      "sha256": "5d89fae02334fd2309b7ec7a5138c9850106194c65b83e25e335613f8ec26cab"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.models.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pt",
-   "contentSHA256": "d6a1444108e6af54e6d1a37ef6b245a42097c27254dd5d206c723994424f20d2",
+   "contentSHA256": "65b3c8989801b7224c07fb9a0235cda3f7c4362ce1392d7715967555b6b0545e",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -10648,13 +11075,32 @@
       "sha256": "b9bd0b85b0a96f02f433c28eded3ea4d7c1ff296b4f32316fbbe44830846d223"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.models",
+     "method": "Codex, one fresh isolated session for this language reviewing the new EnviousMeet Models tab (accuracy, naturalness, collisions with the General tab, Live words, Transcript language, the dictation engine, the AI Polish provider and the Call Apps tab); first draft by scripts/settings-map/draft-vocabulary.sh",
+     "date": "2026-10-27",
+     "draft": {
+      "path": "additions/meetings.tab.models/draft.json",
+      "sha256": "f5a75c626a10e3ac83ba6bc71fba21d98eeecc94d8e7f2b5efa379d0848321aa"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.models/review-driver.py.txt",
+      "sha256": "764221ea642874a7a47180f3061e2390a377e9cc05074f57f6434c7ac50e3f05"
+     },
+     "output": {
+      "path": "additions/meetings.tab.models/review-pt.txt",
+      "sha256": "ac47c163d8be943a95e1db7ffb2e29f0265e55f2322234d0c128c559dcb70b48"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.models.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ro",
-   "contentSHA256": "55f3fc049cb4674e967a62221d2371470f789852852f00573dd7b5b79fe81d46",
+   "contentSHA256": "d661b35b0e841116131ae1312bd394321a9fff361b510bd788770d9f6d18f062",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -11088,13 +11534,32 @@
       "sha256": "e04a4d1627439ba24b4c187a85278c4c8d333b1d31a951775a4c9832d7dfa38f"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.models",
+     "method": "Codex, one fresh isolated session for this language reviewing the new EnviousMeet Models tab (accuracy, naturalness, collisions with the General tab, Live words, Transcript language, the dictation engine, the AI Polish provider and the Call Apps tab); first draft by scripts/settings-map/draft-vocabulary.sh",
+     "date": "2026-10-27",
+     "draft": {
+      "path": "additions/meetings.tab.models/draft.json",
+      "sha256": "f5a75c626a10e3ac83ba6bc71fba21d98eeecc94d8e7f2b5efa379d0848321aa"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.models/review-driver.py.txt",
+      "sha256": "764221ea642874a7a47180f3061e2390a377e9cc05074f57f6434c7ac50e3f05"
+     },
+     "output": {
+      "path": "additions/meetings.tab.models/review-ro.txt",
+      "sha256": "7319a7cba61e8cb76eadd9943369fab13082f46d387b28db7dac7f2f13e76b68"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.models.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ru",
-   "contentSHA256": "c53ec10025c2ae71e3d909255d52d1d1837ef589e8a50ccdb0f3f141c8ed4ed4",
+   "contentSHA256": "3026f672f42b7d50687405fe9409b5c4986b2452cd402047f8e4aa8285e99ef8",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -11528,13 +11993,32 @@
       "sha256": "09ab9342516d18480a477703f2f158b1b34ddac013739b674dfafe34a9d75884"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.models",
+     "method": "Codex, one fresh isolated session for this language reviewing the new EnviousMeet Models tab (accuracy, naturalness, collisions with the General tab, Live words, Transcript language, the dictation engine, the AI Polish provider and the Call Apps tab); first draft by scripts/settings-map/draft-vocabulary.sh",
+     "date": "2026-10-27",
+     "draft": {
+      "path": "additions/meetings.tab.models/draft.json",
+      "sha256": "f5a75c626a10e3ac83ba6bc71fba21d98eeecc94d8e7f2b5efa379d0848321aa"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.models/review-driver.py.txt",
+      "sha256": "764221ea642874a7a47180f3061e2390a377e9cc05074f57f6434c7ac50e3f05"
+     },
+     "output": {
+      "path": "additions/meetings.tab.models/review-ru.txt",
+      "sha256": "0e64a4f9b5419918ffbe14c85beb2088f78b3ee885332812eb866038201840d7"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.models.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sk",
-   "contentSHA256": "35238aa5ccb31ddfca4b55b9de1a14a29eb6cf83e14dc35facb851190021c304",
+   "contentSHA256": "2aeab574e62c43d2e8ad56a69e21bfc6ff46d023258bf3781a17e60d6209d2b9",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -11968,13 +12452,32 @@
       "sha256": "ce71fbbe64d8a1923ddee84a3744f922c962f05c495be341390d9071f19775f2"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.models",
+     "method": "Codex, one fresh isolated session for this language reviewing the new EnviousMeet Models tab (accuracy, naturalness, collisions with the General tab, Live words, Transcript language, the dictation engine, the AI Polish provider and the Call Apps tab); first draft by scripts/settings-map/draft-vocabulary.sh",
+     "date": "2026-10-27",
+     "draft": {
+      "path": "additions/meetings.tab.models/draft.json",
+      "sha256": "f5a75c626a10e3ac83ba6bc71fba21d98eeecc94d8e7f2b5efa379d0848321aa"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.models/review-driver.py.txt",
+      "sha256": "764221ea642874a7a47180f3061e2390a377e9cc05074f57f6434c7ac50e3f05"
+     },
+     "output": {
+      "path": "additions/meetings.tab.models/review-sk.txt",
+      "sha256": "e4839a3358ef008fb7a4df128e8aab04a759b55f917be877e6617f7aecc17c33"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.models.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sl",
-   "contentSHA256": "fb2793d637a055d8daf6ccd4f2e9fdaa5148872e04eb870ad7b3b9ec17c4dba3",
+   "contentSHA256": "421dc7514c3e9fa7d03bb7d78e16e0de5818c2c8cf693464235a8f502497392d",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -12417,13 +12920,32 @@
       "sha256": "a541adc4f96a939fe8de596794617b022c047df17e6c951fc523d4b7ca57bfbe"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.models",
+     "method": "Codex, one fresh isolated session for this language reviewing the new EnviousMeet Models tab (accuracy, naturalness, collisions with the General tab, Live words, Transcript language, the dictation engine, the AI Polish provider and the Call Apps tab); first draft by scripts/settings-map/draft-vocabulary.sh",
+     "date": "2026-10-27",
+     "draft": {
+      "path": "additions/meetings.tab.models/draft.json",
+      "sha256": "f5a75c626a10e3ac83ba6bc71fba21d98eeecc94d8e7f2b5efa379d0848321aa"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.models/review-driver.py.txt",
+      "sha256": "764221ea642874a7a47180f3061e2390a377e9cc05074f57f6434c7ac50e3f05"
+     },
+     "output": {
+      "path": "additions/meetings.tab.models/review-sl.txt",
+      "sha256": "299326f5ebe3cdee4525d083aa2e7b5f6688eb777a887284244fe7fac972f76f"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.models.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sv",
-   "contentSHA256": "e649a3c062b871dece46d82ed247235effcd22944b6e93bad25e4ffdb50ee46e",
+   "contentSHA256": "824d41b1a619b2cd6e1626e952135fce6f392cc63a2df3cab39d2ce1e861805c",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -12857,13 +13379,32 @@
       "sha256": "30ff96c9e0f600f9ca9381b1d99352865b271d6877a147aaf5089e048399e73d"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.models",
+     "method": "Codex, one fresh isolated session for this language reviewing the new EnviousMeet Models tab (accuracy, naturalness, collisions with the General tab, Live words, Transcript language, the dictation engine, the AI Polish provider and the Call Apps tab); first draft by scripts/settings-map/draft-vocabulary.sh",
+     "date": "2026-10-27",
+     "draft": {
+      "path": "additions/meetings.tab.models/draft.json",
+      "sha256": "f5a75c626a10e3ac83ba6bc71fba21d98eeecc94d8e7f2b5efa379d0848321aa"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.models/review-driver.py.txt",
+      "sha256": "764221ea642874a7a47180f3061e2390a377e9cc05074f57f6434c7ac50e3f05"
+     },
+     "output": {
+      "path": "additions/meetings.tab.models/review-sv.txt",
+      "sha256": "205b2a8ba8e968fc60f9b544bbf1d93e77b08bf2b492a934f9a99e13fc05c22f"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.models.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "tr",
-   "contentSHA256": "31490a2d12b96fcb8484bf42fd8d9008d1b76041e6657b71ab37cfe9584150e7",
+   "contentSHA256": "0e77b9fc858be1236bf6f7e5e5e9f83b367eb0ecaf69a1b15ce0b7d72d9200e1",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -13297,13 +13838,32 @@
       "sha256": "e6042902a5ae63e900f2a247e2d9de28fb9bc03a30ccd43d38ba4faf15f6b036"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.models",
+     "method": "Codex, one fresh isolated session for this language reviewing the new EnviousMeet Models tab (accuracy, naturalness, collisions with the General tab, Live words, Transcript language, the dictation engine, the AI Polish provider and the Call Apps tab); first draft by scripts/settings-map/draft-vocabulary.sh",
+     "date": "2026-10-27",
+     "draft": {
+      "path": "additions/meetings.tab.models/draft.json",
+      "sha256": "f5a75c626a10e3ac83ba6bc71fba21d98eeecc94d8e7f2b5efa379d0848321aa"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.models/review-driver.py.txt",
+      "sha256": "764221ea642874a7a47180f3061e2390a377e9cc05074f57f6434c7ac50e3f05"
+     },
+     "output": {
+      "path": "additions/meetings.tab.models/review-tr.txt",
+      "sha256": "66a511838e7eee0cb67929c14a1168403e6f47adde7ea20a30c2053fd0e6c858"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.models.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "uk",
-   "contentSHA256": "a7ce0ffce937ca935e8646e8b976aece73134a3868213ecdbd63f6afa8c5acde",
+   "contentSHA256": "bbd8ebd399f1db2746d4a1434253d8c40af8158438af345cb3e3255dc9b86223",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -13746,13 +14306,32 @@
       "sha256": "db45301d6bf41e254a99f62b9925543d3980280968b484cd1c6e6e5cdbe0397d"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.models",
+     "method": "Codex, one fresh isolated session for this language reviewing the new EnviousMeet Models tab (accuracy, naturalness, collisions with the General tab, Live words, Transcript language, the dictation engine, the AI Polish provider and the Call Apps tab); first draft by scripts/settings-map/draft-vocabulary.sh",
+     "date": "2026-10-27",
+     "draft": {
+      "path": "additions/meetings.tab.models/draft.json",
+      "sha256": "f5a75c626a10e3ac83ba6bc71fba21d98eeecc94d8e7f2b5efa379d0848321aa"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.models/review-driver.py.txt",
+      "sha256": "764221ea642874a7a47180f3061e2390a377e9cc05074f57f6434c7ac50e3f05"
+     },
+     "output": {
+      "path": "additions/meetings.tab.models/review-uk.txt",
+      "sha256": "e9c2bd9afb2a028b8fdbf07a4c7f4f212fc7c61597c00462fb522b9c6c58afa9"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.models.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "vi",
-   "contentSHA256": "9a29143ced1a05502d3a949fa4bd4923a23b80dbfcde589febe1865abe4ea053",
+   "contentSHA256": "8ad9f99241403eaf6293079fe7d303ac16bee00784b22d0ce4b3b4b2915bd37a",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -14186,13 +14765,32 @@
       "sha256": "c4c80731fe0a2c5da52c0294d6762bb742238a01d5bf21d9f0144da109f6c34f"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.models",
+     "method": "Codex, one fresh isolated session for this language reviewing the new EnviousMeet Models tab (accuracy, naturalness, collisions with the General tab, Live words, Transcript language, the dictation engine, the AI Polish provider and the Call Apps tab); first draft by scripts/settings-map/draft-vocabulary.sh",
+     "date": "2026-10-27",
+     "draft": {
+      "path": "additions/meetings.tab.models/draft.json",
+      "sha256": "f5a75c626a10e3ac83ba6bc71fba21d98eeecc94d8e7f2b5efa379d0848321aa"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.models/review-driver.py.txt",
+      "sha256": "764221ea642874a7a47180f3061e2390a377e9cc05074f57f6434c7ac50e3f05"
+     },
+     "output": {
+      "path": "additions/meetings.tab.models/review-vi.txt",
+      "sha256": "26c1f2bd5de087949a2ef1eab148882fd99bddbb3d3505cecd99b3ee9ebbf558"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.models.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "zh",
-   "contentSHA256": "61ba6aef68ae29cd3558d1d0794293388cf5152db1e7ab959ba6ee25d728b9da",
+   "contentSHA256": "d5f65a61162b7186a693fcbcd7babc8d2dbdbf0df66b92d1e65173171a306584",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -14626,6 +15224,25 @@
       "sha256": "d977d505bb0f43565e4daeb54ddb188e21833a5189e5902c0d2ad6afdb87c5f6"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetings.tab.models",
+     "method": "Codex, one fresh isolated session for this language reviewing the new EnviousMeet Models tab (accuracy, naturalness, collisions with the General tab, Live words, Transcript language, the dictation engine, the AI Polish provider and the Call Apps tab); first draft by scripts/settings-map/draft-vocabulary.sh",
+     "date": "2026-10-27",
+     "draft": {
+      "path": "additions/meetings.tab.models/draft.json",
+      "sha256": "f5a75c626a10e3ac83ba6bc71fba21d98eeecc94d8e7f2b5efa379d0848321aa"
+     },
+     "prompt": {
+      "path": "additions/meetings.tab.models/review-driver.py.txt",
+      "sha256": "764221ea642874a7a47180f3061e2390a377e9cc05074f57f6434c7ac50e3f05"
+     },
+     "output": {
+      "path": "additions/meetings.tab.models/review-zh.txt",
+      "sha256": "1e15d847e85c2625d482378717fdf39d26d16403138c3294ac19100bfe712774"
+     },
+     "disposition": "adopted as returned by the review (additions/meetings.tab.models.json)"
     }
    ],
    "phraseExemptions": []
@@ -14893,7 +15510,8 @@
   "meetingLiveWords": "9e915d19a4086e95aef2223ab2f4d302a1877fbfda1b62c1f6c8c8d28b12716a",
   "meetingLiveWords.apple": "f0c4896f86584c8eb2002ee647d666324d0cfce50440b66b2fc92e317bd713a8",
   "meetingLiveWords.universal": "c1acb29da84332b353c621c52d433c95655b48cfc27b5dedcd0832d5a7642028",
-  "meetingTranscriptLanguage": "8f1068d3be1a5a74a76c5fc44f4de759b203370dc7e2d8347da334451717ee6d"
+  "meetingTranscriptLanguage": "8f1068d3be1a5a74a76c5fc44f4de759b203370dc7e2d8347da334451717ee6d",
+  "meetings.tab.models": "abbd57d935d39352b3af5d99640756cf7b634b658709f15d9beaf5cb1ae335c7"
  },
  "reviewedSourceNote": "Per searchable id, the SHA-256 of the English title and description its translations were reviewed against (reference/settings-map.json; SettingsSearchVocabularyTests.sourceFingerprint). First recorded 2026-10-07 at be0086b6 from the export the Phase 0 and council reviews covered. When a test names an id here, re-review that id's translated blocks, then record the hash the test prints. Limit: dynamic titles are bound by resolver name, not template wording."
 }

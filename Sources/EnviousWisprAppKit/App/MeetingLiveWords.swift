@@ -52,7 +52,7 @@ final class MeetingLiveWords {
     /// This track is not being recorded.
     case notCaptured
     /// #4105: no live words engine and language are chosen, and no ready one could be guessed.
-    /// The note points to EnviousMeet > General > Live words.
+    /// The note points to EnviousMeet > Models > Live words.
     case notSetUp
     /// #4105: the chosen engine has no model for the chosen language on this Mac; nothing is
     /// downloaded for it, and no other engine is used instead.

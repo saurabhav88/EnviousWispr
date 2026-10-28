@@ -2,7 +2,7 @@ import EnviousWisprCore
 import EnviousWisprServices
 import SwiftUI
 
-/// #4105: EnviousMeet > General's Live words row. The engine and language menus, the row's
+/// #4105: EnviousMeet > Models' Live words row (on General until #3973 PR B). The engine and language menus, the row's
 /// state and its Download, all from the app-owned `MeetingLiveWordsRowModel`; this view keeps no
 /// state of its own, so closing Settings never drops a download.
 ///
@@ -172,7 +172,7 @@ struct MeetingLiveWordsRow: View {
   }
 }
 
-/// #4105: EnviousMeet > General's Transcript language row. Auto plus the final engine's
+/// #4105: EnviousMeet > Models' Transcript language row (on General until #3973 PR B). Auto plus the final engine's
 /// languages; a change applies to the next meeting. The note under it says when live words use
 /// another language, and never blocks either choice.
 struct MeetingTranscriptLanguageRow: View {

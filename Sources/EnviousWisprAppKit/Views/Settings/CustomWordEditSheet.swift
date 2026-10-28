@@ -22,20 +22,38 @@ struct CustomWordEditSheet: View {
   @State private var noSuggestionsAvailable = false
   @State private var showingDeleteConfirmation = false
   @State private var saveError: String?
+  /// A Save or Delete is running (#4086). The buttons wait for its answer, so a second
+  /// press cannot send the same change twice.
+  @State private var isSubmitting = false
   let wordSuggestionService: WordSuggestionService?
-  let onSave: (CustomWord) -> String?
-  let onDelete: (() -> Void)?
+  /// Returns nil when the word was saved, or the reason it was not.
+  let onSave: @MainActor (CustomWord) async -> String?
+  /// Returns nil when the word was deleted, or the reason it was not.
+  let onDelete: (@MainActor () async -> String?)?
   @Environment(\.dismiss) private var dismiss
 
   init(
     word: CustomWord, wordSuggestionService: WordSuggestionService? = nil,
-    onSave: @escaping (CustomWord) -> String?,
-    onDelete: (() -> Void)? = nil
+    onSave: @escaping @MainActor (CustomWord) async -> String?,
+    onDelete: (@MainActor () async -> String?)? = nil
   ) {
     _word = State(initialValue: word)
     self.wordSuggestionService = wordSuggestionService
     self.onSave = onSave
     self.onDelete = onDelete
+  }
+
+  /// Runs one Save or Delete and closes the sheet only when it succeeded. The change is
+  /// a dictionary command: closing the window does not stop it.
+  private func submit(_ change: @escaping @MainActor () async -> String?) {
+    guard !isSubmitting else { return }
+    isSubmitting = true
+    Task { @MainActor in
+      let error = await change()
+      isSubmitting = false
+      saveError = error
+      if error == nil { dismiss() }
+    }
   }
 
   /// Round-trip binding for the Match Strictness picker.
@@ -75,33 +93,38 @@ struct CustomWordEditSheet: View {
           .foregroundStyle(.stTextSecondary)
       }
 
-      // Canonical
-      VStack(alignment: .leading, spacing: 5) {
-        groupLabel(
-          LocalizedStringResource(
-            "The correct word",
-            comment: "Edit word sheet: section label for the word as it should be written."))
-        TextField("How it should be written", text: $word.canonical)
-          .focused($wordFieldFocused)
-          .settingsFieldChrome(focused: $wordFieldFocused)
-      }
-
-      // Category
-      VStack(alignment: .leading, spacing: 5) {
-        groupLabel(
-          LocalizedStringResource(
-            "Category", comment: "Edit word sheet: section label for the word's category."))
-        Picker("Category", selection: $word.category) {
-          ForEach(WordCategory.allCases, id: \.self) { cat in
-            Text(cat.displayName).tag(cat)
-          }
+      // The fields hold still while a Save or Delete runs (#4086): that command carries the
+      // draft as it was pressed, so a later keystroke would be dropped when it closes.
+      Group {
+        // Canonical
+        VStack(alignment: .leading, spacing: 5) {
+          groupLabel(
+            LocalizedStringResource(
+              "The correct word",
+              comment: "Edit word sheet: section label for the word as it should be written."))
+          TextField("How it should be written", text: $word.canonical)
+            .focused($wordFieldFocused)
+            .settingsFieldChrome(focused: $wordFieldFocused)
         }
-        .labelsHidden()
-        .pickerStyle(.segmented)
-      }
 
-      aliasesCard
-      recognitionCard
+        // Category
+        VStack(alignment: .leading, spacing: 5) {
+          groupLabel(
+            LocalizedStringResource(
+              "Category", comment: "Edit word sheet: section label for the word's category."))
+          Picker("Category", selection: $word.category) {
+            ForEach(WordCategory.allCases, id: \.self) { cat in
+              Text(cat.displayName).tag(cat)
+            }
+          }
+          .labelsHidden()
+          .pickerStyle(.segmented)
+        }
+
+        aliasesCard
+        recognitionCard
+      }
+      .disabled(isSubmitting)
 
       if let saveError {
         Label(saveError, systemImage: "exclamationmark.triangle.fill")
@@ -142,7 +165,7 @@ struct CustomWordEditSheet: View {
       // Actions
       HStack {
         if onDelete != nil {
-          SettingsActionButton(title: "Delete", isEnabled: true, emphasis: .destructive) {
+          SettingsActionButton(title: "Delete", isEnabled: !isSubmitting, emphasis: .destructive) {
             showingDeleteConfirmation = true
           }
         }
@@ -152,16 +175,11 @@ struct CustomWordEditSheet: View {
         }
         SettingsActionButton(
           title: "Save",
-          isEnabled: !word.canonical.trimmingCharacters(in: .whitespaces).isEmpty,
+          isEnabled: !isSubmitting && !word.canonical.trimmingCharacters(in: .whitespaces).isEmpty,
           emphasis: .filled,
           shortcut: .defaultAction
         ) {
-          if let error = onSave(word) {
-            saveError = error
-          } else {
-            saveError = nil
-            dismiss()
-          }
+          submit { await onSave(word) }
         }
       }
     }
@@ -171,8 +189,8 @@ struct CustomWordEditSheet: View {
       titleVisibility: .visible
     ) {
       Button("Delete", role: .destructive) {
-        onDelete?()
-        dismiss()
+        guard let onDelete else { return }
+        submit { await onDelete() }
       }
       Button("Cancel", role: .cancel) {}
     } message: {

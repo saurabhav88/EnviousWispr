@@ -13,9 +13,10 @@ import Foundation
 /// adds one call instead of a page of closures.
 ///
 /// What it connects, and why each piece is separate from dictation:
-/// - The final pass's engine through `MeetingParakeetRoute` (#4052): dictation's own loaded
-///   Parakeet under the shared engine lease when dictation runs Parakeet (one copy; dictation
-///   waits, as for Transcribe a File), else its own `MeetingParakeetEngine`. The live preview
+/// - The final pass's engine through `MeetingParakeetRoute` (#4052), one decode at a time
+///   (#3973 C1): dictation's own loaded Parakeet under the shared engine lease when dictation
+///   runs Parakeet (one copy; a dictation press waits for the current decode, then goes first),
+///   else its own `MeetingParakeetEngine`. The live preview
 ///   keeps its own engine. Either way behind the model-use gate the delivery controller owns, so
 ///   no install changes under a meeting load or decode (R26).
 /// - Dictation activity read from the same facts the engine switch reads, so a pass unit never
@@ -231,6 +232,15 @@ enum MeetingWiring {
               of: row, info: historyInfo(coordinator, meetingID: meetingID))
           else { return nil }
           return .init(text: text, speakerNames: row.speakerNames ?? [:])
+        },
+        hasNoWords: {
+          [weak coordinator, transcriptCoordinator = inputs.transcriptCoordinator] meetingID in
+          // #4148: the same live reads and projection; a missing record or row is not empty.
+          guard let record = coordinator?.record(id: meetingID),
+            let row = transcriptCoordinator.currentRow(id: record.transcriptID)
+          else { return false }
+          return transcriptCoordinator.summaryHasNoWords(
+            of: row, info: historyInfo(coordinator, meetingID: meetingID))
         },
         isLocalTurn: { [weak coordinator] in
           isIdle() && lane.asrUnits == 0 && !(coordinator?.hasFinalPassWork ?? false)

@@ -28,61 +28,46 @@ struct CustomTermsSection<Actions: View>: View {
   /// #3482); the app always opens it empty.
   init(initialSearchQuery: String = "", @ViewBuilder actions: () -> Actions) {
     self.actions = actions()
-    _searchQuery = State(initialValue: initialSearchQuery)
+    _list = State(initialValue: CustomTermListProjection(initialQuery: initialSearchQuery))
   }
 
   @Environment(CustomWordsCoordinator.self) private var customWordsCoordinator
+  @Environment(\.customWordsProbe) private var customWordsProbe
   /// See `EnvironmentValues.dictionaryScrollToTop`. This list has paged since
   /// it shipped and has always swapped rows under an unchanged scroll offset;
   /// the cloud review that named it on the pack list applies here too, so both
   /// are fixed through the one owner rather than one of them.
   @Environment(\.dictionaryScrollToTop) private var scrollToTop
-  @State private var searchQuery: String = ""
-  /// #2494: `nil` is "All categories," the default pill. One combined
-  /// projection (`filteredWords`) feeds search, this filter, count,
-  /// pagination, selection, and the empty state — never two separate lists
-  /// that could disagree about which words are showing.
-  @State private var selectedCategory: WordCategory?
-  /// #996: the Auto-learned pill, independent of the category pills; a word
-  /// must satisfy both. Never persisted.
-  @State private var autoLearnedOnly = false
-  @State private var currentPage: Int = 0
+  /// #2494/#4086: search, the category and Auto-learned pills, the page and the
+  /// selection, plus the one prepared list they produce. One combined projection
+  /// feeds search, the filters, count, pagination, selection, and the empty state
+  /// — never two separate lists that could disagree about which words are showing.
+  @State private var list: CustomTermListProjection
   @State private var editingWord: CustomWord?
   @State private var isSelecting = false
-  @State private var selectedIDs: Set<UUID> = []
   @State private var pendingBulkDelete: BulkDeleteRequest?
 
   private var allWords: [CustomWord] {
     customWordsCoordinator.customWords
   }
 
-  private var filteredWords: [CustomWord] {
-    CustomTermListPolicy.filtered(
-      allWords, query: searchQuery, category: selectedCategory, autoLearnedOnly: autoLearnedOnly)
-  }
+  private var filteredWords: [CustomWord] { list.prepared.words }
 
   /// IDs eligible for bulk selection within the current search/filter — never
   /// the whole library, and never a built-in or vocabulary-pack term. One
   /// projection reused by both the Select-All control and row rendering.
-  private var filteredSelectableIDs: Set<UUID> {
-    CustomTermListPolicy.selectableIDs(in: filteredWords)
-  }
+  private var filteredSelectableIDs: Set<UUID> { list.prepared.selectableIDs }
 
-  private var pageCount: Int {
-    CustomTermListPolicy.pageCount(of: filteredWords.count)
-  }
+  private var pageCount: Int { list.prepared.pageCount }
 
-  private var pagedWords: [CustomWord] {
-    let safePage = max(0, min(currentPage, pageCount - 1))
-    return CustomTermListPolicy.paged(filteredWords, page: safePage)
-  }
+  private var pagedWords: [CustomWord] { list.pagedWords }
 
   /// #2494 review: an empty result can mean four different things — say
   /// which one, don't claim the whole dictionary is empty when it's really
   /// "no words in this category." The table lives in the policy (#996).
   private var emptyStateMessage: String {
     CustomTermListPolicy.emptyStateMessage(
-      query: searchQuery, autoLearnedOnly: autoLearnedOnly, category: selectedCategory)
+      query: list.query, autoLearnedOnly: list.autoLearnedOnly, category: list.category)
   }
 
   var body: some View {
@@ -146,19 +131,13 @@ struct CustomTermsSection<Actions: View>: View {
               .foregroundStyle(.stTextSecondary)
               .font(.system(size: 12))
               .accessibilityHidden(true)
-            TextField(String(localized: SettingsItemCopy.Dictionary.searchWords), text: $searchQuery)
+            TextField(String(localized: SettingsItemCopy.Dictionary.searchWords), text: Bindable(list).query)
               .textFieldStyle(.plain)
               .settingsArrivalFocusControl(textEntry: true)
               .settingsMapRegistration(.yourWordsSearch)
-              .onChange(of: searchQuery) { _, _ in currentPage = 0 }
-              .onChange(of: selectedCategory) { _, _ in currentPage = 0 }
-              .onChange(of: autoLearnedOnly) { _, _ in currentPage = 0 }
-              .onChange(of: pageCount) { _, newCount in
-                if currentPage >= newCount { currentPage = max(0, newCount - 1) }
-              }
-            if !searchQuery.isEmpty {
+            if !list.query.isEmpty {
               Button {
-                searchQuery = ""
+                list.query = ""
               } label: {
                 Image(systemName: "xmark.circle.fill")
                   .foregroundStyle(.stTextSecondary)
@@ -202,10 +181,10 @@ struct CustomTermsSection<Actions: View>: View {
       // Rendered directly under the search/selection row — above the term
       // list and pagination — so it never requires scrolling past a full
       // page of results to reach (founder feedback 2026-07-24).
-      if isSelecting, !selectedIDs.isEmpty {
+      if isSelecting, !list.selectedIDs.isEmpty {
         BrandedRow(showDivider: true) {
           HStack {
-            Text("\(selectedIDs.count) selected")
+            Text("\(list.selectedIDs.count) selected")
               .font(.stHelper)
               .foregroundStyle(.stTextSecondary)
             Spacer()
@@ -213,7 +192,7 @@ struct CustomTermsSection<Actions: View>: View {
             // role renders as ordinary grey here, so the control that deletes a
             // word list looked exactly like the control that cancels.
             SettingsActionButton(title: "Delete…", isEnabled: true, emphasis: .destructive) {
-              pendingBulkDelete = BulkDeleteRequest(ids: selectedIDs)
+              pendingBulkDelete = BulkDeleteRequest(ids: list.selectedIDs)
             }
           }
         }
@@ -230,23 +209,29 @@ struct CustomTermsSection<Actions: View>: View {
     // Every page starts at its first row. Keyed on the page rather than fired
     // from the buttons, so it also covers the clamps that reset to page one
     // when a search or category filter shortens the list.
-    .onChange(of: currentPage) { _, _ in scrollToTop() }
-    .onChange(of: allWords) { _, newWords in
-      // Prune against current ELIGIBILITY, not merely current ID existence:
-      // if a live refresh replaces an already-selected ID with a word that
-      // still exists but is no longer the user's own, drop it too (#1703).
-      selectedIDs.formIntersection(CustomTermListPolicy.selectableIDs(in: newWords))
+    .onChange(of: list.currentPage) { _, _ in scrollToTop() }
+    // The list is prepared here, where the library changes, not while drawing
+    // (#4086). `initial: true` hands over the library the first time the view
+    // appears; the selection pruning (#1703) lives in `libraryChanged`.
+    .onChange(of: customWordsCoordinator.customWordsRevision, initial: true) { _, revision in
+      list.probe = customWordsProbe
+      list.libraryChanged(allWords, revision: revision)
+    }
+    .onReceive(NotificationCenter.default.publisher(for: NSLocale.currentLocaleDidChangeNotification)) { _ in
+      list.localeChanged()
     }
     .sheet(item: $editingWord) { word in
       CustomWordEditSheet(
         word: word,
         wordSuggestionService: customWordsCoordinator.suggestionService,
         // #3975: a user's own edit or delete is their "no" for a learned pair.
-        onSave: { updated in
-          customWordsCoordinator.updateByUser(updated)
+        // `word` is the sheet's item, fixed when it opened: the base both commands
+        // compare against under the lock (#4086), never the draft.
+        onSave: { draft in
+          await customWordsCoordinator.updateByUser(base: word, draft: draft)
         },
         onDelete: {
-          customWordsCoordinator.deleteByUser(id: word.id)
+          await customWordsCoordinator.deleteByUser(shownAs: word)
         }
       )
     }
@@ -254,7 +239,10 @@ struct CustomTermsSection<Actions: View>: View {
       BulkDeleteConfirmSheet(
         ids: request.ids,
         onDeleted: {
-          selectedIDs.subtract(request.ids)
+          list.selectedIDs.subtract(request.ids)
+          // The delete can finish after this sheet closed and another opened (#4086): it
+          // closes only its own sheet.
+          guard pendingBulkDelete?.id == request.id else { return }
           isSelecting = false
           pendingBulkDelete = nil
         },
@@ -267,7 +255,10 @@ struct CustomTermsSection<Actions: View>: View {
   private var listCard: some View {
     CardHalf(edge: .bottom) {
       // List or empty state
-      if pagedWords.isEmpty {
+      if !list.hasLibrary {
+        // Not handed the library yet: show no message rather than "No words yet".
+        EmptyView()
+      } else if pagedWords.isEmpty {
         BrandedRow(showDivider: false) {
           Text(emptyStateMessage)
             .font(.stHelper)
@@ -286,27 +277,27 @@ struct CustomTermsSection<Actions: View>: View {
         BrandedRow(showDivider: false) {
           HStack {
             Button {
-              if currentPage > 0 { currentPage -= 1 }
+              if list.currentPage > 0 { list.currentPage -= 1 }
             } label: {
               Image(systemName: "chevron.left")
-                .settingsHoverQuiet(isEnabled: currentPage > 0)
+                .settingsHoverQuiet(isEnabled: list.currentPage > 0)
             }
             .buttonStyle(.plain)
-            .disabled(currentPage == 0)
+            .disabled(list.currentPage == 0)
             .accessibilityLabel("Previous page")
             Spacer()
-            Text("Page \(currentPage + 1) of \(pageCount)")
+            Text("Page \(list.currentPage + 1) of \(pageCount)")
               .font(.stHelper)
               .foregroundStyle(.stTextSecondary)
             Spacer()
             Button {
-              if currentPage < pageCount - 1 { currentPage += 1 }
+              if list.currentPage < pageCount - 1 { list.currentPage += 1 }
             } label: {
               Image(systemName: "chevron.right")
-                .settingsHoverQuiet(isEnabled: currentPage < pageCount - 1)
+                .settingsHoverQuiet(isEnabled: list.currentPage < pageCount - 1)
             }
             .buttonStyle(.plain)
-            .disabled(currentPage >= pageCount - 1)
+            .disabled(list.currentPage >= pageCount - 1)
             .accessibilityLabel("Next page")
           }
         }
@@ -319,12 +310,12 @@ struct CustomTermsSection<Actions: View>: View {
     if isSelecting, filteredSelectableIDs.contains(word.id) {
       Toggle(
         isOn: Binding(
-          get: { selectedIDs.contains(word.id) },
+          get: { list.selectedIDs.contains(word.id) },
           set: { selected in
             if selected {
-              selectedIDs.insert(word.id)
+              list.selectedIDs.insert(word.id)
             } else {
-              selectedIDs.remove(word.id)
+              list.selectedIDs.remove(word.id)
             }
           }
         )
@@ -341,6 +332,7 @@ struct CustomTermsSection<Actions: View>: View {
         // apply to the same row at once.
         if !isSelecting {
           SettingsActionButton(title: "Edit", isEnabled: true) {
+            customWordsProbe?.emit(.editRequested(wordID: word.id))
             editingWord = word
           }
         }
@@ -391,26 +383,26 @@ struct CustomTermsSection<Actions: View>: View {
   }
 
   /// #2494: one pill per `WordCategory` plus "All categories," selected
-  /// state driven by `selectedCategory`. `WrappingHStack` (not a horizontal
+  /// state driven by `list.category`. `WrappingHStack` (not a horizontal
   /// scroller) so the row is fully visible and never hides a category behind
   /// a scroll gesture.
   private var categoryFilterRow: some View {
     WrappingHStack(spacing: 6) {
       categoryPill(
         title: String(localized: SettingsItemCopy.Dictionary.allCategories),
-        isSelected: selectedCategory == nil
+        isSelected: list.category == nil
       ) {
-        selectedCategory = nil
+        list.category = nil
       }
       ForEach(WordCategory.allCases, id: \.self) { category in
-        categoryPill(title: category.displayName, isSelected: selectedCategory == category) {
-          selectedCategory = category
+        categoryPill(title: category.displayName, isSelected: list.category == category) {
+          list.category = category
         }
       }
       // #996: not a category. Its own selected state, combined with the
       // category pill by AND, so "Person + Auto-learned" is one click each.
-      categoryPill(title: CustomTermProvenanceCopy.filterPill, isSelected: autoLearnedOnly) {
-        autoLearnedOnly.toggle()
+      categoryPill(title: CustomTermProvenanceCopy.filterPill, isSelected: list.autoLearnedOnly) {
+        list.autoLearnedOnly.toggle()
       }
     }
     .settingsMapRegistration(.yourWordsCategoryFilter)
@@ -459,17 +451,17 @@ struct CustomTermsSection<Actions: View>: View {
   private var selectionControls: some View {
     if isSelecting {
       let allSelected =
-        !filteredSelectableIDs.isEmpty && filteredSelectableIDs.isSubset(of: selectedIDs)
+        !filteredSelectableIDs.isEmpty && filteredSelectableIDs.isSubset(of: list.selectedIDs)
       SettingsActionButton(
         title: allSelected ? "Deselect All" : "Select All",
         isEnabled: !filteredSelectableIDs.isEmpty
       ) {
-        selectedIDs = CustomTermListPolicy.toggledSelection(
-          current: selectedIDs, target: filteredSelectableIDs)
+        list.selectedIDs = CustomTermListPolicy.toggledSelection(
+          current: list.selectedIDs, target: filteredSelectableIDs)
       }
 
       SettingsActionButton(title: "Cancel", isEnabled: true) {
-        selectedIDs = []
+        list.selectedIDs = []
         isSelecting = false
       }
     } else if !filteredSelectableIDs.isEmpty {

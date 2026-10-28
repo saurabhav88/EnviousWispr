@@ -58,7 +58,7 @@ struct CustomWordsManagerCountingTests {
   }
 
   @Test("A single below-threshold record stays pending on disk until flush")
-  func singleCallStaysPendingUntilFlush() throws {
+  func singleCallStaysPendingUntilFlush() async throws {
     let path = Self.tempFileURL()
     defer { Self.cleanup(path) }
     let word = CustomWord(canonical: "Kubernetes")
@@ -72,21 +72,21 @@ struct CustomWordsManagerCountingTests {
       Self.freq(try Self.readWords(at: path), word.id) == 0,
       "below-threshold record must not persist before flush")
 
-    manager.flushPendingIncrementsForTesting()
+    await manager.flushPendingIncrementsForTesting()
     #expect(
       Self.freq(try Self.readWords(at: path), word.id) == 1,
       "flush persists the pending increment")
   }
 
   @Test("flushPendingIncrementsForTesting with no pending increments leaves the file untouched")
-  func flushEmptyIsNoOp() throws {
+  func flushEmptyIsNoOp() async throws {
     let path = Self.tempFileURL()
     defer { Self.cleanup(path) }
     let word = CustomWord(canonical: "Snowflake")
     try Self.seed(path: path, words: [word])
 
     let manager = CustomWordsManager(fileURL: path)
-    manager.flushPendingIncrementsForTesting()  // nothing recorded
+    await manager.flushPendingIncrementsForTesting()  // nothing recorded
 
     let after = try Self.readWords(at: path)
     #expect(after.count == 1, "no spurious word added")
@@ -94,7 +94,7 @@ struct CustomWordsManagerCountingTests {
   }
 
   @Test("The 50-count threshold auto-flushes; 49 stays pending (boundary)")
-  func thresholdAutoFlushesAt50() throws {
+  func thresholdAutoFlushesAt50() async throws {
     let path = Self.tempFileURL()
     defer { Self.cleanup(path) }
     let words = (0..<50).map { _ in CustomWord(canonical: "w-\(UUID().uuidString)") }
@@ -114,6 +114,8 @@ struct CustomWordsManagerCountingTests {
     // The 50th unique increment crosses the threshold → immediate auto-flush,
     // with NO manual flush call.
     manager.recordReplacements([words[49].id])
+    // The flush runs on the file worker (#4086); wait for that write, not a clock.
+    await manager.awaitThresholdFlushForTesting()
     let at50 = try Self.readWords(at: path)
     #expect(
       at50.count == 50,
@@ -125,7 +127,7 @@ struct CustomWordsManagerCountingTests {
   }
 
   @Test("The same id recorded ten times accumulates to frequencyUsed 10")
-  func sameIDAccumulatesToTen() throws {
+  func sameIDAccumulatesToTen() async throws {
     let path = Self.tempFileURL()
     defer { Self.cleanup(path) }
     let word = CustomWord(canonical: "Databricks")
@@ -133,7 +135,7 @@ struct CustomWordsManagerCountingTests {
 
     let manager = CustomWordsManager(fileURL: path)
     for _ in 0..<10 { manager.recordReplacements([word.id]) }  // total count 10, below 50
-    manager.flushPendingIncrementsForTesting()
+    await manager.flushPendingIncrementsForTesting()
 
     #expect(
       Self.freq(try Self.readWords(at: path), word.id) == 10,
@@ -141,7 +143,7 @@ struct CustomWordsManagerCountingTests {
   }
 
   @Test("Mixed bulk + single records aggregate per id")
-  func mixedBulkAndSingleAggregate() throws {
+  func mixedBulkAndSingleAggregate() async throws {
     let path = Self.tempFileURL()
     defer { Self.cleanup(path) }
     let words = (0..<25).map { _ in CustomWord(canonical: "w-\(UUID().uuidString)") }
@@ -150,7 +152,7 @@ struct CustomWordsManagerCountingTests {
     let manager = CustomWordsManager(fileURL: path)
     manager.recordReplacements(words.map(\.id))  // all 25 once
     manager.recordReplacements(words.prefix(10).map(\.id))  // first 10 again
-    manager.flushPendingIncrementsForTesting()
+    await manager.flushPendingIncrementsForTesting()
 
     let after = try Self.readWords(at: path)
     let firstTen = words.prefix(10).map(\.id)

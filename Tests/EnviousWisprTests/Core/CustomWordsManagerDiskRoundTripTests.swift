@@ -52,7 +52,7 @@ struct CustomWordsManagerDiskRoundTripTests {
   }
 
   @Test("recordReplacements + flush updates frequencyUsed on disk")
-  func frequencyUsedPersisted() throws {
+  func frequencyUsedPersisted() async throws {
     let path = Self.tempFileURL()
     defer { Self.cleanup(path) }
 
@@ -64,7 +64,7 @@ struct CustomWordsManagerDiskRoundTripTests {
     let manager = CustomWordsManager(fileURL: path)
     // word1 hit once, word2 hit twice, word3 not hit.
     manager.recordReplacements([word1.id, word2.id, word2.id])
-    manager.flushPendingIncrementsForTesting()
+    await manager.flushPendingIncrementsForTesting()
 
     let after = try Self.readWords(at: path)
     let byID = Dictionary(uniqueKeysWithValues: after.map { ($0.id, $0) })
@@ -74,7 +74,7 @@ struct CustomWordsManagerDiskRoundTripTests {
   }
 
   @Test("recordReplacements + flush updates lastUsed on disk")
-  func lastUsedPersisted() throws {
+  func lastUsedPersisted() async throws {
     let path = Self.tempFileURL()
     defer { Self.cleanup(path) }
 
@@ -84,7 +84,7 @@ struct CustomWordsManagerDiskRoundTripTests {
 
     let manager = CustomWordsManager(fileURL: path)
     manager.recordReplacements([word.id])
-    manager.flushPendingIncrementsForTesting()
+    await manager.flushPendingIncrementsForTesting()
 
     let after = try Self.readWords(at: path)
     let lastUsed = after.first(where: { $0.id == word.id })?.lastUsed
@@ -98,7 +98,7 @@ struct CustomWordsManagerDiskRoundTripTests {
   }
 
   @Test("Unknown UUIDs are skipped silently — no file mutation")
-  func unknownIDsSkipped() throws {
+  func unknownIDsSkipped() async throws {
     let path = Self.tempFileURL()
     defer { Self.cleanup(path) }
 
@@ -108,14 +108,14 @@ struct CustomWordsManagerDiskRoundTripTests {
     let manager = CustomWordsManager(fileURL: path)
     let randomID = UUID()
     manager.recordReplacements([randomID])
-    manager.flushPendingIncrementsForTesting()
+    await manager.flushPendingIncrementsForTesting()
 
     let after = try Self.readWords(at: path)
     #expect(after.first?.frequencyUsed == 0, "Unknown ID does not bump existing entries")
   }
 
   @Test("Mixed known + unknown IDs: known increments, unknown silently dropped")
-  func mixedKnownUnknown() throws {
+  func mixedKnownUnknown() async throws {
     let path = Self.tempFileURL()
     defer { Self.cleanup(path) }
 
@@ -124,14 +124,14 @@ struct CustomWordsManagerDiskRoundTripTests {
 
     let manager = CustomWordsManager(fileURL: path)
     manager.recordReplacements([word.id, UUID(), UUID()])
-    manager.flushPendingIncrementsForTesting()
+    await manager.flushPendingIncrementsForTesting()
 
     let after = try Self.readWords(at: path)
     #expect(after.first?.frequencyUsed == 1)
   }
 
   @Test("add persists aliases and matching policy in one write")
-  func addPersistsFullCustomWord() throws {
+  func addPersistsFullCustomWord() async throws {
     let path = Self.tempFileURL()
     defer { Self.cleanup(path) }
 
@@ -145,7 +145,7 @@ struct CustomWordsManagerDiskRoundTripTests {
       minSimilarityOverride: 0.92
     )
 
-    try manager.add(word: word, to: &words)
+    try await manager.add(word: word, to: &words)
 
     let after = try Self.readWords(at: path)
     #expect(after.count == 1)
@@ -159,7 +159,7 @@ struct CustomWordsManagerDiskRoundTripTests {
   }
 
   @Test("Multiple flushes accumulate frequencyUsed across writes")
-  func multipleFlushesAccumulate() throws {
+  func multipleFlushesAccumulate() async throws {
     let path = Self.tempFileURL()
     defer { Self.cleanup(path) }
 
@@ -168,11 +168,11 @@ struct CustomWordsManagerDiskRoundTripTests {
 
     let manager = CustomWordsManager(fileURL: path)
     manager.recordReplacements([word.id])
-    manager.flushPendingIncrementsForTesting()
+    await manager.flushPendingIncrementsForTesting()
     manager.recordReplacements([word.id, word.id])
-    manager.flushPendingIncrementsForTesting()
+    await manager.flushPendingIncrementsForTesting()
     manager.recordReplacements([word.id])
-    manager.flushPendingIncrementsForTesting()
+    await manager.flushPendingIncrementsForTesting()
 
     let after = try Self.readWords(at: path)
     #expect(after.first?.frequencyUsed == 4, "1 + 2 + 1 = 4 across three flushes")
@@ -196,7 +196,7 @@ struct CustomWordsManagerDiskRoundTripTests {
   /// fixed name being the whole mechanism. A writer using a unique name plus
   /// `O_EXCL` cannot touch it.
   @Test("a save never writes through another instance's scratch file")
-  func saveDoesNotClobberAForeignTemporaryFile() throws {
+  func saveDoesNotClobberAForeignTemporaryFile() async throws {
     let path = Self.tempFileURL()
     defer { Self.cleanup(path) }
     try Self.seed(path: path, words: [])
@@ -209,7 +209,7 @@ struct CustomWordsManagerDiskRoundTripTests {
 
     let manager = CustomWordsManager(fileURL: path)
     var words = manager.load() ?? []
-    try manager.add(word: CustomWord(canonical: "Kubernetes"), to: &words)
+    try await manager.add(word: CustomWord(canonical: "Kubernetes"), to: &words)
 
     // Untouched: not truncated, not renamed away, not adopted as our publish.
     #expect(
@@ -226,14 +226,14 @@ struct CustomWordsManagerDiskRoundTripTests {
   /// A save must never leave its scratch file behind, and never a shared one:
   /// a fixed name is what let two writers collide in the first place.
   @Test("a save leaves no temp file, and never a fixed shared name")
-  func saveLeavesNoTemporaryFile() throws {
+  func saveLeavesNoTemporaryFile() async throws {
     let path = Self.tempFileURL()
     defer { Self.cleanup(path) }
     try Self.seed(path: path, words: [])
 
     let manager = CustomWordsManager(fileURL: path)
     var words = manager.load() ?? []
-    try manager.add(word: CustomWord(canonical: "Kubernetes"), to: &words)
+    try await manager.add(word: CustomWord(canonical: "Kubernetes"), to: &words)
 
     let leftovers = try FileManager.default
       .contentsOfDirectory(atPath: path.deletingLastPathComponent().path)
@@ -245,7 +245,7 @@ struct CustomWordsManagerDiskRoundTripTests {
   /// had become world-readable stayed that way through every later save — a
   /// file full of personal names. `rename` keeps the temp file's own 0600.
   @Test("saving over a world-readable file restores owner-only permissions")
-  func saveEnforcesOwnerOnlyPermissions() throws {
+  func saveEnforcesOwnerOnlyPermissions() async throws {
     let path = Self.tempFileURL()
     defer { Self.cleanup(path) }
     try Self.seed(path: path, words: [])
@@ -253,7 +253,7 @@ struct CustomWordsManagerDiskRoundTripTests {
 
     let manager = CustomWordsManager(fileURL: path)
     var words = manager.load() ?? []
-    try manager.add(word: CustomWord(canonical: "Kubernetes"), to: &words)
+    try await manager.add(word: CustomWord(canonical: "Kubernetes"), to: &words)
 
     let attributes = try FileManager.default.attributesOfItem(atPath: path.path)
     let permissions = try #require(attributes[.posixPermissions] as? NSNumber)

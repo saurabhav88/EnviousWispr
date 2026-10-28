@@ -29,8 +29,8 @@ struct CustomWordsBackupRoundTripTests {
     // Mac A: two authored words, one carrying full configuration.
     let (source, _) = makeManager()
     var live = source.load() ?? []
-    try source.add(word: CustomWord(canonical: "Qualtrics", aliases: ["qualtrix"]), to: &live)
-    try source.add(
+    try await source.add(word: CustomWord(canonical: "Qualtrics", aliases: ["qualtrix"]), to: &live)
+    try await source.add(
       word: CustomWord(
         canonical: "Kubernetes", aliases: ["k8s"], category: .brand, priority: 4,
         forceReplace: true, caseSensitive: true, minSimilarityOverride: 0.75),
@@ -59,7 +59,7 @@ struct CustomWordsBackupRoundTripTests {
     )
     #expect(comparisons.allSatisfy { $0.classification == .new })
 
-    let receipt = try destination.commitImport(
+    let receipt = try await destination.commitImport(
       CustomWordsImportCommitPlan(
         baseline: CustomWordsImportLibrarySnapshot(words: fresh),
         additions: comparisons.map(\.candidate),
@@ -97,7 +97,7 @@ struct CustomWordsBackupRoundTripTests {
     #expect(github.source == .builtin)
     var edited = github
     edited.aliases = ["git hub", "gh"]
-    try source.update(word: edited, in: &live)
+    try await source.update(word: edited, in: &live)
 
     let exported = live.filter { $0.source == .user }
     #expect(
@@ -124,7 +124,7 @@ struct CustomWordsBackupRoundTripTests {
     // and the user's edit would not come back. That gap is the reason backup
     // restore is the first real consumer of the alias-merge offer (#1619), and
     // PR-U1 must surface it rather than silently skipping.
-    let receipt = try destination.commitImport(
+    let receipt = try await destination.commitImport(
       CustomWordsImportCommitPlan(
         baseline: CustomWordsImportLibrarySnapshot(words: fresh),
         additions: [],
@@ -140,11 +140,11 @@ struct CustomWordsBackupRoundTripTests {
   }
 
   @Test("deleted built-ins are not carried by a backup, by design")
-  func deletedBuiltinTombstonesAreANonGoal() throws {
+  func deletedBuiltinTombstonesAreANonGoal() async throws {
     let (source, _) = makeManager()
     var live = try #require(source.load())
     let claude = try #require(live.first { $0.canonical == "Claude" })
-    try source.remove(id: claude.id, from: &live)
+    try await source.remove(id: claude.id, from: &live)
     #expect(live.contains { $0.canonical == "Claude" } == false)
 
     let exported = live.filter { $0.source == .user }
@@ -164,11 +164,11 @@ struct CustomWordsBackupRoundTripTests {
     let (source, _) = makeManager()
     var live = source.load() ?? []
     let learnedAt = Date(timeIntervalSince1970: 1_800_000_000)
-    try source.add(
+    try await source.add(
       word: CustomWord(
         canonical: "Tuist", aliases: ["twist", "to-ist"], learnedAliases: ["twist"], learnedAt: learnedAt),
       to: &live)
-    try source.add(word: CustomWord(canonical: "Plain", aliases: ["plane"]), to: &live)
+    try await source.add(word: CustomWord(canonical: "Plain", aliases: ["plane"]), to: &live)
     let backup = try CustomWordsTransferDocument(
       data: CustomWordsTransferDocument(words: live.filter { $0.source == .user }).encoded())
 
@@ -176,7 +176,7 @@ struct CustomWordsBackupRoundTripTests {
     var fresh = try #require(destination.load())
     let comparisons = try await CustomWordsImportCompareEngine().compare(
       candidates: try backup.candidatesForImport(), against: fresh, fuzzyPolicy: .disabled)
-    _ = try destination.commitImport(
+    _ = try await destination.commitImport(
       CustomWordsImportCommitPlan(
         baseline: CustomWordsImportLibrarySnapshot(words: fresh),
         additions: comparisons.map(\.candidate), replacements: []),

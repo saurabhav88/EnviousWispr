@@ -5,7 +5,7 @@ import EnviousWisprServices
 import Foundation
 import Observation
 
-/// #4105: the state and commands behind EnviousMeet > General's Live words and transcript
+/// #4105: the state and commands behind EnviousMeet > Models' Live words and transcript
 /// language rows (plan §3.5, R1.2-R1.6, R2.4-R2.5, R3.1).
 ///
 /// The bootstrapper owns one instance for the life of the app, so closing Settings mid-download

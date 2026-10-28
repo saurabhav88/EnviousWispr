@@ -299,6 +299,27 @@ struct AudioCaptureManagerDeadAirLatchTests {
         == AudioConstants.minimumTranscriptionSamples)
   }
 
+  // MARK: - #4154 — only a confirmed-bound USB microphone tolerates zero runs
+
+  /// Every label `AudioDeviceEnumerator.transportLabel(forTransportType:)` can
+  /// produce, plus near-miss spellings, nil and unknown. Only exact "usb" opts out
+  /// of zero-signal termination; everything else keeps today's behaviour.
+  @Test("only exact usb opts out of zero-signal termination")
+  func onlyUSBOptsOutOfZeroSignalTermination() {
+    #expect(AudioCaptureManager.zeroSamplesEndTake(forEffectiveTransport: "usb") == false)
+    let keepToday = [
+      "built_in", "bluetooth", "aggregate", "virtual", "display_port", "hdmi", "air_play",
+      "pci", "fire_wire", "thunderbolt", "continuity_capture_wired",
+      "continuity_capture_wireless", "avb", "unknown", "", "USB", "Usb", "usb ",
+    ]
+    for transport in keepToday {
+      #expect(
+        AudioCaptureManager.zeroSamplesEndTake(forEffectiveTransport: transport) == true,
+        "\(transport) must keep today's zero-signal behaviour")
+    }
+    #expect(AudioCaptureManager.zeroSamplesEndTake(forEffectiveTransport: nil) == true)
+  }
+
   // The override exists ONLY in DEBUG, so these two tests are mirror images and
   // both must be compiled — asserting the override works where it exists, and
   // asserting it is genuinely ABSENT where it must not exist. A single
@@ -381,6 +402,12 @@ struct AudioCaptureManagerDeadAirLatchTests {
     @Test("a refusal leaves the genuine capture-stall path armed for the same take")
     func refusalDoesNotConsumeTheStallLatch() async throws {
       let stub = BoundDeviceAdoptionTests.StubSource()
+      // #4154: the stub binds "usb" by default, and a USB bind now tolerates zero
+      // runs without classifying them, so it can no longer produce the refusal
+      // this test needs. Pin a non-USB bind; the outcome asserted is unchanged.
+      stub.boundToReturn = BoundInputDevice(
+        deviceID: 99, deviceUID: "stub-uid-99", transportLabel: "built_in",
+        resolutionSource: "system_default", inputChannel: 0)
       let manager = Self.makeManager(stub)
       var stalls: [CaptureStallContext] = []
       manager.onCaptureStalled = { stalls.append($0) }
@@ -411,6 +438,98 @@ struct AudioCaptureManagerDeadAirLatchTests {
           failureMode: .noBuffers))
 
       #expect(stalls.count == 1)
+    }
+
+    // MARK: #4154 — a confirmed-bound USB take tolerates zero runs
+
+    /// A manager in a real session bound to the stub with `transport`.
+    private static func boundSession(transport: String) async throws -> (
+      AudioCaptureManager, BoundDeviceAdoptionTests.StubSource
+    ) {
+      let stub = BoundDeviceAdoptionTests.StubSource()
+      stub.boundToReturn = BoundInputDevice(
+        deviceID: 99, deviceUID: "stub-uid-99", transportLabel: transport,
+        resolutionSource: "system_default", inputChannel: 0)
+      let manager = Self.makeManager(stub)
+      try await manager.startEnginePhase()
+      _ = try await manager.beginCapturePhase()
+      try #require(manager.zeroSignalDiscriminatorDevice?.transportLabel == transport)
+      return (manager, stub)
+    }
+
+    /// When this fails, a USB-mic user's take ends (or is refused and relabelled)
+    /// because they paused, or because they thought for a second before speaking.
+    /// Zeros at the start, then signal, a 2 s zero run, and resumed signal: no
+    /// stall, no refusal, no classification, and every sample is still captured.
+    @Test("a USB bind tolerates startup and mid-take zero runs and keeps capturing")
+    func usbBindToleratesZeroRunsAndKeepsCapturing() async throws {
+      let (manager, _) = try await Self.boundSession(transport: "usb")
+      var stalls: [CaptureStallContext] = []
+      var refusals: [ZeroSignalRefusalContext] = []
+      manager.onCaptureStalled = { stalls.append($0) }
+      manager.onZeroSignalRefused = {
+        refusals.append($0)
+        return true
+      }
+
+      let batches: [[Float]] = [
+        Self.zeros(32_000),
+        [Float](repeating: 0.5, count: 8_000),
+        Self.zeros(32_000),
+        [Float](repeating: 0.25, count: 8_000),
+      ]
+      for batch in batches { manager.ingestSamples(batch, level: 0) }
+
+      #expect(stalls.isEmpty, "a USB zero run must not end the take")
+      #expect(refusals.isEmpty, "a USB zero run must not be classified at all")
+      #expect(manager.zeroSignalRefusalReason == nil)
+      #expect(manager.zeroSignalRunWasClassifiedReactively == false)
+      #expect(manager.takePendingZeroSignalRefusals().isEmpty)
+      #expect(manager.isCapturing == true)
+      #expect(manager.capturedSamples.count == 80_000, "every batch was captured")
+      #expect(manager.capturedSamples.last == 0.25, "the resumed speech reached capture")
+    }
+
+    /// The same input on a non-USB bind keeps today's behaviour: the zero run is
+    /// classified (the stub cannot pass the identity re-check, so it is refused).
+    /// This is the control that shows the USB row is the policy, not the fixture.
+    @Test("a non-USB bind still classifies the same zero run")
+    func nonUSBBindStillClassifiesTheZeroRun() async throws {
+      let (manager, _) = try await Self.boundSession(transport: "built_in")
+      manager.ingestSamples([Float](repeating: 0.5, count: 8_000), level: 0)
+      manager.ingestSamples(Self.zeros(32_000), level: 0)
+
+      #expect(manager.zeroSignalRefusalReason != nil)
+      #expect(manager.zeroSignalRunWasClassifiedReactively == true)
+    }
+
+    /// Tolerating USB zeros must not consume the shared stall latch: a genuine
+    /// no-buffer stall from the source in the same take still reaches the consumer.
+    @Test("a genuine no-buffer stall still forwards after tolerated USB zeros")
+    func noBufferStallStillForwardsAfterToleratedUSBZeros() async throws {
+      let (manager, stub) = try await Self.boundSession(transport: "usb")
+      var stalls: [CaptureStallContext] = []
+      manager.onCaptureStalled = { stalls.append($0) }
+
+      manager.ingestSamples(Self.zeros(32_000), level: 0)
+      #expect(stalls.isEmpty, "precondition: tolerated")
+
+      stub.onCaptureStalled?(
+        CaptureStallContext(
+          sessionID: manager.currentCaptureSessionID,
+          armedAtUptimeNs: 0,
+          firedAtUptimeNs: 1,
+          route: "stub",
+          sourceType: "stub",
+          engineStartedSuccessfully: true,
+          tapInstalled: true,
+          formatMismatchObserved: false,
+          inputDeviceUIDPreferred: nil,
+          inputDeviceUIDSystemDefault: nil,
+          failureMode: .noBuffers))
+
+      #expect(stalls.count == 1)
+      #expect(stalls.first?.failureMode == .noBuffers)
     }
   }
 

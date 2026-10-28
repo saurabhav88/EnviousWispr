@@ -46,21 +46,32 @@ struct MeetingSummaryView: View {
     // From the current setting, whatever any attempt did (R39): no provider, or one that
     // cannot summarize, is explained with the way to fix it.
     let configurationProblem = summaries?.configurationProblem()
+    // #4148: a ready meeting with no summary and no visible transcript text has nothing a
+    // model could summarize; say so instead of any attempt's progress or problem. Only once its
+    // documents are read: before that (or after a failed read) the summary is unknown, and
+    // Write summary stays the way to read them again.
+    let nothingToSummarize =
+      documents.loadState(meetingID) == .loaded && documents.summary(meetingID) == nil
+      && summaries?.hasNothingToSummarize(meetingID) == true
     VStack(alignment: .leading, spacing: 10) {
-      switch activity {
-      case .waiting:
-        busy(
-          String(
-            localized: "Waiting for your dictation and other meeting work to finish.",
-            comment: "History, a meeting: the summary waits before a model on this Mac is used."))
-      case .writing:
-        busy(
-          String(
-            localized: "Writing the summary.",
-            comment: "History, a meeting: the summary is being written."))
-      case .failed, nil:
-        if let shown = Self.shownProblem(activity: activity, configuration: configurationProblem) {
-          problemView(shown)
+      if !nothingToSummarize {
+        switch activity {
+        case .waiting:
+          busy(
+            String(
+              localized: "Waiting for your dictation and other meeting work to finish.",
+              comment: "History, a meeting: the summary waits before a model on this Mac is used."))
+        case .writing:
+          busy(
+            String(
+              localized: "Writing the summary.",
+              comment: "History, a meeting: the summary is being written."))
+        case .failed, nil:
+          if let shown = Self.shownProblem(
+            activity: activity, configuration: configurationProblem)
+          {
+            problemView(shown)
+          }
         }
       }
 
@@ -115,6 +126,15 @@ struct MeetingSummaryView: View {
           }
           .accessibilityIdentifier("history.meeting.summarySaveFailed")
         }
+      } else if nothingToSummarize {
+        Text(
+          "Nothing to summarize. No transcript text remains once probable echo is hidden.",
+          comment:
+            "History, a ready meeting's Summary tab: summaries always leave out probable echo (lines the microphone picked up from the call sound), and no other transcript text is left; this does not mean recording failed."
+        )
+        .font(.stBody)
+        .foregroundStyle(.stTextSecondary)
+        .accessibilityIdentifier("history.meeting.nothingToSummarize")
       } else if activity == nil, configurationProblem == nil {
         Text(
           settings.meetingWriteSummary
@@ -140,7 +160,7 @@ struct MeetingSummaryView: View {
               : String(
                 localized: "Write again", comment: "History, a meeting: writes its summary again."))
         }
-        .disabled(writing || requesting || configurationProblem != nil)
+        .disabled(writing || requesting || configurationProblem != nil || nothingToSummarize)
         .accessibilityIdentifier("history.meeting.writeSummary")
         if let text = documents.summary(meetingID), !text.isEmpty {
           Button {

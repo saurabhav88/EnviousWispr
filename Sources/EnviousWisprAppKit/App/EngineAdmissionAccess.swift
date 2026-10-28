@@ -32,12 +32,32 @@ struct EngineAdmissionAccess {
   /// certain.
   let currentHolder: @MainActor () -> EngineLease.Holder?
 
+  /// #3973 C1: dictation's wait for its turn while a meeting operation holds the engine
+  /// (`EngineLease.waitForReservedTurn`). Answers nil at once for any other participant: only
+  /// dictation has priority.
+  let waitForReservedTurn:
+    @MainActor (_ onReserved: (EngineLease.Reservation) -> Void) async ->
+      EngineLease.Token?
+
+  /// Withdraws a reservation `waitForReservedTurn` made.
+  let cancelReservation: @MainActor (EngineLease.Reservation) -> Void
+
+  /// #3973 C1: a dictation is waiting for the next turn. A meeting starts no new engine
+  /// operation while this is true.
+  let hasPendingReservation: @MainActor () -> Bool
+
   /// Binds a participant to the one live lease.
   static func live(lease: EngineLease, as holder: EngineLease.Holder) -> Self {
     Self(
       claim: { lease.admit(holder) },
       release: { lease.release($0) },
-      currentHolder: { lease.currentHolder })
+      currentHolder: { lease.currentHolder },
+      waitForReservedTurn: { onReserved in
+        guard holder == .dictation else { return nil }
+        return await lease.waitForReservedTurn(onReserved: onReserved)
+      },
+      cancelReservation: { lease.cancelReservation($0) },
+      hasPendingReservation: { lease.hasPendingReservation })
   }
 
   /// Same structural mitigation as `RecoveryEngineClaim.alwaysAllowedForTesting`
@@ -51,5 +71,8 @@ struct EngineAdmissionAccess {
   internal static let alwaysAllowedForTesting = Self(
     claim: { EngineLease().admit(.dictation) },
     release: { _ in },
-    currentHolder: { nil })
+    currentHolder: { nil },
+    waitForReservedTurn: { _ in nil },
+    cancelReservation: { _ in },
+    hasPendingReservation: { false })
 }

@@ -1545,6 +1545,9 @@ package final class WisprBootstrapper {
       // #4052: a meeting pass waiting for the engine takes its turn.
       meetingWakes.poke()
     }
+    // #3973 C1: a meeting operation waiting behind a dictation's reservation looks again when
+    // that press ends without taking the turn.
+    engineLease.onReservationWithdrawn = { [meetingWakes] in meetingWakes.poke() }
     // GitHub cloud review, PR #1732: now that `engineCoordinator` exists,
     // `isDictationActive` (wired above) can read its minting state.
     engineCoordinatorForRecoveryGate = engineCoordinator
@@ -2069,6 +2072,8 @@ package final class WisprBootstrapper {
       kernelDriver.applyEngineUnloadPolicy(settings.modelUnloadPolicy)
       whisperKernelDriver.applyEngineUnloadPolicy(settings.modelUnloadPolicy)
     }
+    // #3973 C1: a press handed the engine by a meeting, then given back unused, re-arms them.
+    dictationRuntime.onTurnGivenBackUnused(rearmEngineTimers)
 
     let fileImportCoordinator = FileImportCoordinator(
       decode: { url in try await AudioFileDecoder.decode(url: url) },
@@ -3002,6 +3007,12 @@ package final class WisprBootstrapper {
     sparkleUpdateController.updateCoordinator?.checkForUpdatesProactively(trigger: "foreground")
   }
 
+  /// #4086: dictionary saves already queued finish before the app quits. Nothing else
+  /// asks to finish first today.
+  package func applicationShouldTerminate(reply: @escaping @MainActor (Bool) -> Void) -> Bool {
+    customWordsCoordinator.requestQuit(reply: reply)
+  }
+
   package func applicationWillTerminate() {
     #if DEBUG
       // #2885: stop answering, and stop watching, before anything below tears down.
@@ -3015,6 +3026,8 @@ package final class WisprBootstrapper {
     // a Cocoa quit concludes no take, so this is the only path that restores
     // the volume for a quit mid-dictation.
     dictationRuntime.otherAudioHold.finishForTermination()
+    // #3973 C1: before the meeting below gives the engine back, so no waiting press takes it.
+    dictationRuntime.closeDictationRequests()
     // #3972 R18: close meeting admission, cancel its pass, stop capture and close both files
     // against one shared one-second deadline.
     callDetection.shutDown()

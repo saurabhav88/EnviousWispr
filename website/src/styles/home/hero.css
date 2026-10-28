@@ -60,6 +60,14 @@
   min-height: 63px;
   padding: 16px 28px;
 }
+.screen-hero-choices {
+  margin-top: 27px;
+}
+.screen-hero-compatibility a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 .screen-hero-values {
   display: flex;
   flex-direction: column;

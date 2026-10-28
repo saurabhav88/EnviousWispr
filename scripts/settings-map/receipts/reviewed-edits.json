@@ -12416,6 +12416,236 @@
    },
    "review": "additions/meetingTranscriptLanguage.json",
    "reviewSHA256": "552a802f865a7e728c7d130b5c98616d712bc2de283f52692b53f68ffe87312e"
+  },
+  "meetings.tab.models": {
+   "blocks": {
+    "ar": {
+     "title": "النماذج",
+     "words": [],
+     "phrases": [
+      "نماذج الاجتماعات"
+     ]
+    },
+    "bg": {
+     "title": "модели",
+     "words": [],
+     "phrases": [
+      "модели за срещи"
+     ]
+    },
+    "cs": {
+     "title": "modely",
+     "words": [],
+     "phrases": [
+      "modely pro schůzky"
+     ]
+    },
+    "da": {
+     "title": "modeller",
+     "words": [],
+     "phrases": [
+      "modeller til møder"
+     ]
+    },
+    "de": {
+     "words": [],
+     "phrases": [
+      "Modelle für Meetings",
+      "Modelle in EnviousMeet"
+     ]
+    },
+    "el": {
+     "title": "μοντέλα",
+     "words": [],
+     "phrases": [
+      "μοντέλα για συναντήσεις"
+     ]
+    },
+    "en": {
+     "words": [],
+     "phrases": [
+      "meeting models",
+      "EnviousMeet models"
+     ]
+    },
+    "es": {
+     "title": "modelos",
+     "words": [],
+     "phrases": [
+      "modelos para reuniones"
+     ]
+    },
+    "et": {
+     "title": "mudelid",
+     "words": [],
+     "phrases": [
+      "koosolekute mudelid"
+     ]
+    },
+    "fi": {
+     "title": "mallit",
+     "words": [],
+     "phrases": [
+      "EnviousMeetin mallit"
+     ]
+    },
+    "fr": {
+     "title": "modèles",
+     "words": [],
+     "phrases": [
+      "modèles pour les réunions"
+     ]
+    },
+    "hi": {
+     "title": "मॉडल",
+     "words": [],
+     "phrases": [
+      "मीटिंग के लिए मॉडल"
+     ]
+    },
+    "hr": {
+     "title": "modeli",
+     "words": [],
+     "phrases": [
+      "modeli za sastanke"
+     ]
+    },
+    "hu": {
+     "title": "modellek",
+     "words": [],
+     "phrases": [
+      "modellek megbeszélésekhez"
+     ]
+    },
+    "it": {
+     "title": "modelli",
+     "words": [],
+     "phrases": [
+      "modelli per le riunioni"
+     ]
+    },
+    "ja": {
+     "title": "モデル",
+     "words": [],
+     "phrases": [
+      "会議用モデル"
+     ]
+    },
+    "ko": {
+     "title": "모델",
+     "words": [],
+     "phrases": [
+      "회의용 모델"
+     ]
+    },
+    "lt": {
+     "title": "modeliai",
+     "words": [],
+     "phrases": [
+      "susitikimų modeliai"
+     ]
+    },
+    "lv": {
+     "title": "modeļi",
+     "words": [],
+     "phrases": [
+      "sapulču modeļi"
+     ]
+    },
+    "mt": {
+     "title": "mudelli",
+     "words": [],
+     "phrases": [
+      "mudelli għal-laqgħat"
+     ]
+    },
+    "nl": {
+     "title": "modellen",
+     "words": [],
+     "phrases": [
+      "modellen voor vergaderingen"
+     ]
+    },
+    "pl": {
+     "title": "modele",
+     "words": [],
+     "phrases": [
+      "modele do spotkań"
+     ]
+    },
+    "pt": {
+     "title": "modelos",
+     "words": [],
+     "phrases": [
+      "modelos para reuniões"
+     ]
+    },
+    "ro": {
+     "title": "modele",
+     "words": [],
+     "phrases": [
+      "modele pentru ședințe"
+     ]
+    },
+    "ru": {
+     "title": "модели",
+     "words": [],
+     "phrases": [
+      "модели для встреч"
+     ]
+    },
+    "sk": {
+     "title": "modely",
+     "words": [],
+     "phrases": [
+      "modely pre schôdze"
+     ]
+    },
+    "sl": {
+     "title": "modeli",
+     "words": [],
+     "phrases": [
+      "modeli za sestanke"
+     ]
+    },
+    "sv": {
+     "title": "modeller",
+     "words": [],
+     "phrases": [
+      "modeller för möten"
+     ]
+    },
+    "tr": {
+     "title": "modeller",
+     "words": [],
+     "phrases": [
+      "toplantı modelleri"
+     ]
+    },
+    "uk": {
+     "title": "моделі",
+     "words": [],
+     "phrases": [
+      "моделі для зустрічей"
+     ]
+    },
+    "vi": {
+     "title": "mô hình",
+     "words": [],
+     "phrases": [
+      "mô hình cho cuộc họp"
+     ]
+    },
+    "zh": {
+     "title": "模型",
+     "words": [],
+     "phrases": [
+      "会议用的模型"
+     ]
+    }
+   },
+   "review": "additions/meetings.tab.models.json",
+   "reviewSHA256": "c7597f37284c34d0f94680dafb69363ee63c5959bcff3f5e430c3f5a421f977e"
   }
  }
 }
