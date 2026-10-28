@@ -15,7 +15,7 @@ import Foundation
   ) -> MeetingText {
     let inputs = SearchTextInputs(
       text: row.text, turns: row.turns ?? [], speakerNames: row.speakerNames ?? [:],
-      info: info, showEcho: showEcho, locale: locale, localizations: localizations)
+      info: info?.matching(row), showEcho: showEcho, locale: locale, localizations: localizations)
     if bypass { return Self.meetingText(row, inputs) }
     if let kept = searchTextCache[row.id], kept.inputs == inputs,
       MeetingDocumentHash.sameBytes(kept.inputs.text, inputs.text),
@@ -41,7 +41,7 @@ import Foundation
   ) -> MeetingText {
     let inputs = SearchTextInputs(
       text: row.text, turns: row.turns ?? [], speakerNames: row.speakerNames ?? [:],
-      info: info, showEcho: false, locale: locale, localizations: localizations)
+      info: info?.matching(row), showEcho: false, locale: locale, localizations: localizations)
     let text: MeetingText
     if !bypass, let kept = summaryTextCache[row.id], kept.inputs == inputs,
       MeetingDocumentHash.sameBytes(kept.inputs.text, inputs.text),

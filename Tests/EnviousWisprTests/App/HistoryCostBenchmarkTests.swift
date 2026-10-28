@@ -99,7 +99,7 @@ struct HistoryCostBenchmarkTests {
     coordinator.setTranscriptsForTesting(rows)
     coordinator.meetingRecords = { records }
     let byID = Dictionary(uniqueKeysWithValues: records.map { ($0.id, $0) })
-    coordinator.meetingInfo = { id in byID[id].map(MeetingHistoryInfo.init(record:)) }
+    coordinator.meetingInfo = { id in byID[id].flatMap { MeetingHistoryInfo.paired(with: $0) } }
     coordinator.meetingNotes = { _ in "Ask Maria about screenshots" }
     return Fixture(coordinator: coordinator, records: records)
   }

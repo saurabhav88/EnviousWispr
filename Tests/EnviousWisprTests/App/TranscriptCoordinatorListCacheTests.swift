@@ -53,7 +53,7 @@
           c.meetingRecords = { [unowned self] in sources.records }
           c.meetingInfo = { [unowned self] id in
             sources.infoOverride[id]
-              ?? sources.records.first { $0.id == id }.flatMap(MeetingHistoryInfo.paired(with:))
+              ?? sources.records.first { $0.id == id }.flatMap { MeetingHistoryInfo.paired(with: $0) }
           }
           c.meetingNotes = { [unowned self] in sources.notes[$0] }
         }

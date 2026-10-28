@@ -69,3 +69,12 @@ public struct MeetingResolvedAttempt: Sendable, Equatable, Codable {
     self.fallbackReason = fallbackReason
   }
 }
+
+extension MeetingEngineChoice {
+  /// The History row's engine for a transcript this engine wrote.
+  public var backendType: ASRBackendType {
+    switch self {
+    case .parakeet: .parakeet
+    }
+  }
+}

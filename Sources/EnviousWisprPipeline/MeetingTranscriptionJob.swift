@@ -344,7 +344,6 @@ package final class MeetingTranscriptionJob {
     // #3973 C2: the model identity is read before any reuse, so even a fully covered checkpoint
     // from another model is never reused. C2 resolves every attempt to its requested engine.
     if !order.isEmpty {
-      try await waitForNormalMemory()
       firstEngineIdentity = try await probeEngineIdentity()
     }
     let resolved = MeetingResolvedAttempt(
@@ -573,7 +572,18 @@ package final class MeetingTranscriptionJob {
   /// any checkpointed piece is reused. Nothing is loaded and nothing stays held: the reused-piece
   /// walk, checkpoint saves and waits that follow run with the engine free.
   private func probeEngineIdentity() async throws -> String? {
-    if !dependencies.isDictationIdle() { try await waitForDictationHoldingNothing() }
+    // #3973 C2: memory pressure that rose during a dictation wait is waited out before the
+    // claim (taking it may load the shared model); both are rechecked in the same main-actor
+    // step as the claim, so neither can change in between.
+    while true {
+      if dependencies.isMemoryPressureElevated() {
+        try await waitForNormalMemory()
+      } else if !dependencies.isDictationIdle() {
+        try await waitForDictationHoldingNothing()
+      } else {
+        break
+      }
+    }
     engineResident = true
     do {
       try await cancellableWait { try await self.dependencies.beginModelUse() }

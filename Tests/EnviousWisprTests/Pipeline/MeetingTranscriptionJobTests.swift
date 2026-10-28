@@ -741,6 +741,40 @@ struct MeetingTranscriptionJobTests {
     #expect(newAttempt.calls.count == total)
   }
 
+  /// #3973 C2 (chunk review): the model identity is read under a claim that may load the shared
+  /// model, so memory pressure that rose while the pass waited for dictation is waited out
+  /// before the claim, even when the checkpoint already covers every piece.
+  @Test("pressure that rises during the dictation wait is waited out before the identity claim")
+  func identityClaimWaitsForNormalMemory() async throws {
+    let dir = try folder()
+    let audio = MeetingTrackAudio(files: [try segment(in: dir, index: 1, startMs: 0, seconds: 5)])
+    var dictating = true
+    var pressure = false
+    var log: [String] = []
+    let job = MeetingTranscriptionJob(
+      dependencies: .init(
+        isDictationIdle: { !dictating },
+        waitUntilDictationIdle: {
+          log.append("dictation wait")
+          pressure = true  // rises while dictation runs
+          dictating = false
+        },
+        beginModelUse: { log.append(pressure ? "use under pressure" : "use") },
+        endModelUse: {}, loadEngine: {},
+        transcribe: { samples, _ in FakeSpeech.transcribe(samples) },
+        unloadEngine: {},
+        analyzeSpeakers: { _ in MeetingSpeakerAnalysis(outcome: .single, segments: []) },
+        engineIdentity: { "ultra:r1" },
+        isMemoryPressureElevated: { pressure },
+        waitUntilMemoryNormal: {
+          log.append("memory wait")
+          pressure = false
+        }))
+    _ = try await job.runTestAttempt(tracks: [.microphone: audio], language: nil) { _ in }
+    #expect(Array(log.prefix(3)) == ["dictation wait", "memory wait", "use"])
+    #expect(!log.contains("use under pressure"))
+  }
+
   /// #3973 C2: the language and the attempt come from the same saved attempt; a pass given two
   /// that disagree refuses before it reads a checkpoint or decodes anything.
   @Test("a language that disagrees with the attempt is refused before any work")

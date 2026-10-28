@@ -239,7 +239,8 @@
         return .failure(
           .tooLarge, "the stored text is \(textBytes) bytes; page the turns instead")
       }
-      let echo = Set(record.echoTurnIDs)
+      // #3973 C2: the row's own generation's echo lines (a kept row while a rerun runs).
+      let echo = transcripts.meetingEchoTurnIDs(of: row) ?? []
       let turns = row.turns ?? []
       let page = turns.dropFirst(offset).prefix(limit)
       let projection = transcripts.meetingProjection(of: row)
@@ -254,7 +255,7 @@
         "rowID": row.id.uuidString,
         "textBytes": textBytes,
         "speakerNames": row.speakerNames ?? [:],
-        "echoTurnIDs": record.echoTurnIDs,
+        "echoTurnIDs": echo.sorted(),
         "totalTurns": turns.count,
         "turnOffset": offset,
         "turns": page.map { turn -> [String: Any] in
@@ -267,6 +268,9 @@
           ]
         },
         "projection": projected,
+        // #3973 C2: the attempt this History row came from (nil before attempts).
+        "attemptID": row.meetingTranscriptAttemptID?.uuidString as Any? ?? NSNull(),
+        "backendType": row.backendType.rawValue,
       ]
       if includeText { transcript["text"] = row.text }
       reply["transcript"] = transcript
@@ -687,6 +691,20 @@
         "closeOwned": coordinator.isCloseOwned(record.id),
         "writable": record.isWritableByThisBuild,
         "tracks": tracks,
+        // #3973 C2: the attempt still to finish and the committed transcript's generation.
+        "formatVersion": record.formatVersion,
+        "pendingAttempt": record.pendingAttempt.map {
+          [
+            "attemptID": $0.attemptID.uuidString, "engine": $0.requestedEngine.rawValue,
+            "language": $0.requestedEffectiveLanguage as Any? ?? NSNull(),
+          ] as Any
+        } ?? NSNull(),
+        "committedAttemptID": record.committedTranscriptGeneration?.uuidString as Any? ?? NSNull(),
+        "requestedTranscriptEngine": record.requestedTranscriptEngine?.rawValue as Any? ?? NSNull(),
+        "transcriptEngineUsed": record.transcriptEngineUsed?.rawValue as Any? ?? NSNull(),
+        "transcriptEngineFallbackReason":
+          record.transcriptEngineFallbackReason?.rawValue as Any? ?? NSNull(),
+        "commitReceiptPending": coordinator.isCommitReceiptPending(record.id),
       ]
     }
 

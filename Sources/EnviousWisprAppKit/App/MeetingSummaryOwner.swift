@@ -76,6 +76,8 @@ final class MeetingSummaryOwner {
   struct VisibleTranscript: Equatable {
     let text: String
     let speakerNames: [String: String]
+    /// #3973 C2: the History row's transcript attempt; nil for a row written before attempts.
+    var transcriptAttemptID: UUID? = nil
   }
 
   /// What the Summary tab shows about a summary being written or that could not be.
@@ -539,7 +541,8 @@ final class MeetingSummaryOwner {
         promptVersion: MeetingSummary.promptVersion,
         providerID: selection.provider.rawValue,
         configurationSHA256: MeetingSummary.configurationFingerprint(
-          provider: selection.provider, model: selection.model)))
+          provider: selection.provider, model: selection.model),
+        transcriptAttemptID: transcript.transcriptAttemptID))
   }
 
   /// #4148: true when the meeting is ready and has no visible transcript text, so the Summary

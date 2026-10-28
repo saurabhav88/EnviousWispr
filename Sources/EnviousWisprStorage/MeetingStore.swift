@@ -54,6 +54,8 @@ public struct MeetingStore: Sendable {
     case privacySetupFailed
     /// A listed audio file's size could not be read (gone since the listing, or not a file).
     case unmeasurableAudio
+    /// The meeting's `meeting.json` is gone: a late write never recreates the meeting.
+    case meetingMissing
   }
 
   /// One folder found under the root.

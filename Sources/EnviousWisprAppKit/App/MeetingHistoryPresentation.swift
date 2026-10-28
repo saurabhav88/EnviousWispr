@@ -5,36 +5,67 @@ import Foundation
 /// EnviousMeet's in-memory durable copy through `TranscriptCoordinator.meetingInfo`, never
 /// from the meeting's files while rendering, searching or exporting.
 struct MeetingHistoryInfo: Equatable, Sendable {
+  /// #3973 C2: the transcript generation (attempt) these facts belong to. A History row is
+  /// paired only with the facts of its own generation (`matching(_:)`).
+  let generation: UUID
   /// Ids of the row's turns that repeat the call sound (hidden unless shown).
   let echoTurnIDs: Set<String>
   let title: String?
   let speakerOutcomes: [MeetingTrackKind: MeetingSpeakerOutcome]
+  /// #3973 C2: the previously committed generation's facts, while its replacement is
+  /// committed but not yet published to History (the History row is still the previous one).
+  let previous: Previous?
 
-  /// The facts History may use for `record`'s row, or nil (History then shows and delivers
-  /// nothing). Only a DURABLY ready record's echo IDs belong to the row History holds: the
-  /// pass writes the new row first and the ready record after it, and Retry writes queued
-  /// before its new row, so in any other state the row and the echo IDs may come from
-  /// different passes. Pass the durable copy (`MeetingCoordinator.record(id:)`), never the
-  /// latest intent. A meeting marked for deletion is nil too: nothing of it may be shown,
-  /// copied, shared or pasted while its deletion runs, stalls or failed (Codex C8 r2).
-  static func paired(with record: MeetingRecord?) -> MeetingHistoryInfo? {
-    guard let record, record.state == .ready, !record.deletionRequested else { return nil }
-    return MeetingHistoryInfo(record: record)
+  struct Previous: Equatable, Sendable {
+    let generation: UUID
+    let echoTurnIDs: Set<String>
+    let speakerOutcomes: [MeetingTrackKind: MeetingSpeakerOutcome]
   }
 
-  init(record: MeetingRecord) {
-    echoTurnIDs = Set(record.echoTurnIDs)
-    title = record.title
-    speakerOutcomes = record.speakerOutcomes
+  /// The facts History may use for `record`'s rows, or nil (History then shows and delivers
+  /// nothing). Only the record's COMMITTED generation has facts: the ready barrier changes the
+  /// generation and its echo IDs together, and a running, failed or queued attempt changes
+  /// neither, so the transcript shown before a Transcribe again stays readable with its own
+  /// facts. Pass the durable copy (`MeetingCoordinator.record(id:)`), never the latest intent.
+  /// A meeting marked for deletion is nil too: nothing of it may be shown, copied, shared or
+  /// pasted while its deletion runs, stalls or failed (Codex C8 r2).
+  static func paired(with record: MeetingRecord?, previous: Previous? = nil) -> MeetingHistoryInfo? {
+    guard let record, !record.deletionRequested,
+      let generation = record.committedTranscriptGeneration
+    else { return nil }
+    return MeetingHistoryInfo(
+      generation: generation, echoTurnIDs: Set(record.echoTurnIDs), title: record.title,
+      speakerOutcomes: record.speakerOutcomes, previous: previous)
   }
 
   init(
-    echoTurnIDs: Set<String>, title: String? = nil,
-    speakerOutcomes: [MeetingTrackKind: MeetingSpeakerOutcome] = [:]
+    generation: UUID = MeetingRecord.legacyTranscriptAttemptID, echoTurnIDs: Set<String>,
+    title: String? = nil, speakerOutcomes: [MeetingTrackKind: MeetingSpeakerOutcome] = [:],
+    previous: Previous? = nil
   ) {
+    self.generation = generation
     self.echoTurnIDs = echoTurnIDs
     self.title = title
     self.speakerOutcomes = speakerOutcomes
+    self.previous = previous
+  }
+
+  /// These facts as they apply to `row`: its own generation's, or nil when `row` belongs to
+  /// another generation (fails closed: the row shows nothing rather than another pass's
+  /// echo lines).
+  func matching(_ row: Transcript) -> MeetingHistoryInfo? {
+    guard let rowGeneration = row.meetingTranscriptGeneration else { return nil }
+    if rowGeneration == generation { return previous == nil ? self : withoutPrevious }
+    guard let previous, previous.generation == rowGeneration else { return nil }
+    return MeetingHistoryInfo(
+      generation: previous.generation, echoTurnIDs: previous.echoTurnIDs, title: title,
+      speakerOutcomes: previous.speakerOutcomes)
+  }
+
+  private var withoutPrevious: MeetingHistoryInfo {
+    MeetingHistoryInfo(
+      generation: generation, echoTurnIDs: echoTurnIDs, title: title,
+      speakerOutcomes: speakerOutcomes)
   }
 }
 
@@ -56,7 +87,7 @@ enum MeetingHistoryPresentation {
     _ row: Transcript, info: MeetingHistoryInfo?, showEcho: Bool,
     gapForms: MeetingGapPresentation.Forms = .interface
   ) -> Projection {
-    guard let info else { return .unavailable }
+    guard let info = info?.matching(row) else { return .unavailable }
     let turns = row.turns ?? []
     let visible = MeetingTranscriptProjection.visible(
       turns: turns, echoTurnIDs: info.echoTurnIDs, showEcho: showEcho)

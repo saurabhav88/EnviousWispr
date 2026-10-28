@@ -1,0 +1,205 @@
+import EnviousWisprAppKitTestSupport
+import Foundation
+import Testing
+
+@testable import EnviousWisprAppKit
+@testable import EnviousWisprCore
+@testable import EnviousWisprPipeline
+@testable import EnviousWisprStorage
+
+/// #3973 C2 (plan §3 item 5, G4): when these fail, Transcribe again loses the transcript the
+/// user had, shows it with another pass's hidden echo lines, or a crash leaves a meeting whose
+/// committed transcript never reaches History.
+@MainActor
+@Suite("MeetingTranscriptReplacement", .tags(.productOutcome), .timeLimit(.minutes(1)))
+struct MeetingTranscriptReplacementTests {
+  typealias Harness = MeetingCoordinatorTests.Harness
+
+  /// Waits through Observation: the condition must read observable state (a file read alone is
+  /// never re-evaluated), so file checks follow an observable wait.
+  private func eventually(_ label: String, _ condition: @escaping @MainActor () -> Bool) async {
+    await MeetingCoordinatorTests.eventually(label, condition)
+  }
+
+  private func receipt(_ harness: Harness, _ meetingID: UUID) -> MeetingTranscriptReplacement? {
+    if case .receipt(let receipt) = harness.store.loadTranscriptReplacement(meeting: meetingID) {
+      return receipt
+    }
+    return nil
+  }
+
+  private func hasNoReceipt(_ harness: Harness, _ meetingID: UUID) -> Bool {
+    if case .none = harness.store.loadTranscriptReplacement(meeting: meetingID) { return true }
+    return false
+  }
+
+  /// A ready meeting with one committed transcript ("hello there", echo `mic-3`).
+  private func readyMeeting(_ harness: Harness) async throws -> (UUID, Transcript) {
+    let coordinator = harness.coordinator
+    await coordinator.start(from: .history)
+    let meetingID = try #require(harness.recorders.first).configuration.meetingID
+    await coordinator.stop()
+    await eventually("first ready") {
+      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
+    }
+    return (meetingID, try #require(harness.saved.last))
+  }
+
+  private static func rerunResult(_ access: MeetingTranscriptionJob.CheckpointAccess?)
+    -> MeetingTranscriptionJob.Result
+  {
+    let first = MeetingCoordinatorTests.result()
+    return MeetingTranscriptionJob.Result(
+      composition: MeetingComposition(
+        text: "hello again", turns: [], speakerNames: [:], echoTurnIDs: ["mic-9"],
+        speakerCount: 1),
+      speakerOutcomes: first.speakerOutcomes, forcedCuts: 0, failedPieces: 0, failedRanges: [:],
+      resumedPieces: 0, checkpointSaveFailures: 0, yieldCount: 0, processingSeconds: 1,
+      audioSeconds: 1, resolved: MeetingCoordinatorTests.placeholderResolved)
+  }
+
+  @Test(
+    "a crash after the ready barrier: the next launch shows the earlier row with its own facts, then publishes the committed one"
+  )
+  func crashAfterBarrierPublishesTheCommittedRow() async throws {
+    let harness = try Harness()
+    let (meetingID, earlier) = try await readyMeeting(harness)
+    harness.jobBehavior = Self.rerunResult
+    let save = MeetingCoordinatorTests.Gate()
+    harness.saveGate = save
+    #expect(await harness.coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet))
+    await eventually("History save parked") { save.parked }
+    // A crash now: the record on disk is committed, History still holds the earlier row.
+    let committed = try harness.store.load(id: meetingID)
+    let kept = try #require(receipt(harness, meetingID))
+    #expect(committed.state == .ready)
+    #expect(committed.committedTranscriptGeneration == kept.candidate.generation)
+    #expect(kept.previous?.echoTurnIDs == ["mic-3"])
+    #expect(kept.candidateRow.text == "hello again")
+
+    let relaunched = try Harness(copying: harness.root)
+    let publish = MeetingCoordinatorTests.Gate()
+    relaunched.saveGate = publish
+    relaunched.coordinator.launch()
+    await eventually("publication parked") { publish.parked }
+    // Until it is published, History's earlier row is read with the earlier facts only.
+    let info = MeetingWiring.historyInfo(relaunched.coordinator, meetingID: meetingID)
+    #expect(info?.matching(earlier)?.echoTurnIDs == ["mic-3"])
+    #expect(info?.matching(kept.candidateRow)?.echoTurnIDs == ["mic-9"])
+    publish.open()
+    await eventually("published") { relaunched.saved.count == 1 }
+    #expect(relaunched.saved.first?.meetingTranscriptAttemptID == kept.candidate.generation)
+    await eventually("receipt settled") {
+      !relaunched.coordinator.isCommitReceiptPending(meetingID)
+    }
+    #expect(hasNoReceipt(relaunched, meetingID))
+    let after = MeetingWiring.historyInfo(relaunched.coordinator, meetingID: meetingID)
+    #expect(after?.matching(earlier) == nil, "the earlier generation's facts are gone")
+    save.open()
+  }
+
+  @Test(
+    "a receipt whose candidate the record never committed is dropped at launch; nothing is published"
+  )
+  func uncommittedReceiptIsDropped() async throws {
+    let harness = try Harness()
+    let (meetingID, earlier) = try await readyMeeting(harness)
+    let record = try harness.store.load(id: meetingID)
+    // A crash between the receipt and the ready barrier leaves exactly this.
+    let candidate = MeetingTranscriptReplacement.Facts(
+      generation: UUID(), echoTurnIDs: ["mic-9"], speakerOutcomes: [:])
+    try harness.store.saveTranscriptReplacement(
+      MeetingTranscriptReplacement(
+        meetingID: meetingID,
+        previous: .init(
+          generation: try #require(record.committedTranscriptGeneration),
+          echoTurnIDs: record.echoTurnIDs, speakerOutcomes: record.speakerOutcomes),
+        previousRow: earlier, candidate: candidate,
+        candidateRow: Transcript(
+          id: record.transcriptID, text: "never committed", meetingID: meetingID,
+          meetingTranscriptAttemptID: candidate.generation)))
+
+    let relaunched = try Harness(copying: harness.root)
+    relaunched.coordinator.launch()
+    await eventually("launch over") { relaunched.coordinator.canTranscribeAgain(meetingID) }
+    #expect(hasNoReceipt(relaunched, meetingID), "the uncommitted receipt was dropped")
+    #expect(relaunched.saved.isEmpty, "nothing was published")
+    let info = MeetingWiring.historyInfo(relaunched.coordinator, meetingID: meetingID)
+    #expect(info?.matching(earlier)?.echoTurnIDs == ["mic-3"])
+  }
+
+  @Test(
+    "a ready write that fails without landing drops the receipt; Transcribe again works at once")
+  func failedReadyWriteSettlesFromDisk() async throws {
+    let harness = try Harness()
+    let (meetingID, earlier) = try await readyMeeting(harness)
+    harness.jobBehavior = Self.rerunResult
+    harness.writeGate.failWrites { $0.state == .ready && $0.echoTurnIDs == ["mic-9"] }
+    #expect(await harness.coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet))
+    await eventually("pass over and settled") {
+      harness.coordinator.processing == nil
+        && !harness.coordinator.isCommitReceiptPending(meetingID)
+    }
+    #expect(hasNoReceipt(harness, meetingID))
+    #expect(harness.saved.count == 1, "the earlier row only")
+    let info = MeetingWiring.historyInfo(harness.coordinator, meetingID: meetingID)
+    #expect(info?.matching(earlier)?.echoTurnIDs == ["mic-3"])
+    #expect(harness.coordinator.canTranscribeAgain(meetingID))
+  }
+
+  @Test("Delete audio keeps an unsettled receipt; deleting the meeting removes it")
+  func deletionAndReceipts() async throws {
+    let harness = try Harness()
+    let (meetingID, earlier) = try await readyMeeting(harness)
+    let receipt = MeetingTranscriptReplacement(
+      meetingID: meetingID, previous: nil, previousRow: nil,
+      candidate: .init(generation: UUID(), echoTurnIDs: [], speakerOutcomes: [:]),
+      candidateRow: earlier)
+    try harness.store.saveTranscriptReplacement(receipt)
+    try harness.store.deleteAudio(meeting: meetingID)
+    #expect(self.receipt(harness, meetingID) != nil, "Delete audio keeps it")
+    #expect(await harness.coordinator.delete(meetingID: meetingID))
+    #expect(
+      !FileManager.default.fileExists(
+        atPath: harness.store.transcriptReplacementURL(for: meetingID).path))
+  }
+
+  @Test("a receipt round-trips; another format or another meeting's is unusable, never trusted")
+  func receiptStorage() throws {
+    let harness = try Harness()
+    let record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    try harness.store.create(record)
+    #expect(hasNoReceipt(harness, record.id))
+    let row = Transcript(
+      id: record.transcriptID, text: "héllo 👋", meetingID: record.id,
+      meetingTranscriptAttemptID: UUID())
+    let saved = MeetingTranscriptReplacement(
+      meetingID: record.id, previous: nil, previousRow: nil,
+      candidate: .init(
+        generation: try #require(row.meetingTranscriptAttemptID), echoTurnIDs: ["m1"],
+        speakerOutcomes: [.microphone: .single]),
+      candidateRow: row)
+    try harness.store.saveTranscriptReplacement(saved)
+    let loaded = try #require(receipt(harness, record.id))
+    #expect(loaded.candidate == saved.candidate)
+    #expect(loaded.candidateRow.text == "héllo 👋")
+    #expect(loaded.candidateRow.meetingTranscriptAttemptID == row.meetingTranscriptAttemptID)
+
+    var object = try #require(
+      try JSONSerialization.jsonObject(
+        with: Data(contentsOf: harness.store.transcriptReplacementURL(for: record.id)))
+        as? [String: Any])
+    object["formatVersion"] = 2
+    try JSONSerialization.data(withJSONObject: object)
+      .write(to: harness.store.transcriptReplacementURL(for: record.id))
+    guard case .unusable = harness.store.loadTranscriptReplacement(meeting: record.id) else {
+      Issue.record("a newer receipt format was trusted")
+      return
+    }
+    // A meeting folder that is gone is never recreated by a late receipt.
+    try harness.store.deleteFolder(meeting: record.id)
+    #expect(throws: MeetingStore.StoreError.meetingMissing) {
+      try harness.store.saveTranscriptReplacement(saved)
+    }
+  }
+}

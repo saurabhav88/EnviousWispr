@@ -456,29 +456,35 @@ struct MeetingHistoryPresentationTests {
     await MeetingCoordinatorTests.eventually(label, condition)
   }
 
-  @Test("History reads a meeting's facts only once its row and its ready record are both saved")
+  /// #3973 C2: the ready record (with the echo IDs) is written before the History row, so while
+  /// it is being written History has no row and no facts; once both are saved the row is read
+  /// with its own generation's facts.
+  @Test("History reads a meeting's facts only once its ready record and its row are both saved")
   func factsWaitForTheReadyWrite() async throws {
     let harness = try Harness()
-    let save = MeetingCoordinatorTests.Gate()
-    harness.saveGate = save
+    let gate = harness.writeGate
+    harness.jobBehavior = { _ in
+      gate.arm()  // the next meeting.json write is the ready barrier
+      return MeetingCoordinatorTests.result()
+    }
     let coordinator = harness.coordinator
     await coordinator.start(from: .history)
     let meetingID = try #require(harness.recorders.first).configuration.meetingID
     await coordinator.stop()
-    await eventually("history save parked") { save.parked }
-    #expect(MeetingWiring.historyInfo(coordinator, meetingID: meetingID) == nil)
-    let gate = harness.writeGate
-    gate.arm()
-    save.open()
     #expect(
       await Task.detached { MeetingCoordinatorTests.waitBlocking(gate.entered) }.value == .success)
-    // The new row is saved; its ready record, with the echo IDs, is still being written.
-    #expect(harness.saved.count == 1)
+    // The ready record is still being written: no row yet, and no facts.
+    #expect(harness.saved.isEmpty)
     #expect(MeetingWiring.historyInfo(coordinator, meetingID: meetingID) == nil)
     gate.release.signal()
-    await eventually("ready") { coordinator.record(id: meetingID)?.state == .ready }
+    await eventually("ready and published") {
+      coordinator.record(id: meetingID)?.state == .ready && harness.saved.count == 1
+    }
     #expect(gate.timedOut.withLock { $0 } == false, "a held write waited out its bound")
-    #expect(MeetingWiring.historyInfo(coordinator, meetingID: meetingID)?.echoTurnIDs == ["mic-3"])
+    let row = try #require(harness.saved.first)
+    #expect(
+      MeetingWiring.historyInfo(coordinator, meetingID: meetingID)?.matching(row)?.echoTurnIDs
+        == ["mic-3"])
   }
 
   @Test("a ready write that fails leaves History showing nothing for the meeting")
@@ -489,12 +495,18 @@ struct MeetingHistoryPresentationTests {
     await coordinator.start(from: .history)
     let meetingID = try #require(harness.recorders.first).configuration.meetingID
     await coordinator.stop()
-    await eventually("pass over") { harness.saved.count == 1 && coordinator.processing == nil }
+    await eventually("pass over") {
+      coordinator.processing == nil && !coordinator.hasFinalPassWork
+    }
     #expect(coordinator.record(id: meetingID)?.state != .ready)
+    #expect(harness.saved.isEmpty, "#3973 C2: no row is written before the ready barrier")
     #expect(MeetingWiring.historyInfo(coordinator, meetingID: meetingID) == nil)
   }
 
-  @Test("a Retry's new row is read with the Retry's echo IDs, never the earlier pass's")
+  /// #3973 C2 (plan G4): while Transcribe again runs and until its row is published, the earlier
+  /// row stays readable with ITS echo IDs; once published, the new row is read with the new
+  /// echo IDs and the earlier generation's facts are gone.
+  @Test("Transcribe again keeps the earlier row readable with its own echo IDs until the new one is published")
   func retryFactsFollowTheNewRow() async throws {
     let harness = try Harness()
     let coordinator = harness.coordinator
@@ -518,18 +530,54 @@ struct MeetingHistoryPresentationTests {
         processingSeconds: 1, audioSeconds: 1,
         resolved: MeetingCoordinatorTests.placeholderResolved)
     }
+    let earlier = try #require(harness.saved.last)
+    func facts(of row: Transcript) -> Set<String>? {
+      MeetingWiring.historyInfo(coordinator, meetingID: meetingID)?.matching(row)?.echoTurnIDs
+    }
     let save = MeetingCoordinatorTests.Gate()
     harness.saveGate = save
     await coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet)
+    #expect(coordinator.record(id: meetingID)?.state == .queued)
+    #expect(facts(of: earlier) == ["mic-3"], "queued: the earlier row keeps its echo IDs")
     await eventually("retry save parked") { save.parked }
-    // The earlier row is still listed, but its record is no longer ready: nothing is read.
-    #expect(MeetingWiring.historyInfo(coordinator, meetingID: meetingID) == nil)
+    // Committed, not yet published: History still holds the earlier row, read with its own IDs.
+    #expect(coordinator.record(id: meetingID)?.state == .ready)
+    #expect(facts(of: earlier) == ["mic-3"])
     save.open()
     await eventually("retry ready") {
       coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
     }
-    #expect(harness.saved.last?.text == "hello again")
-    #expect(MeetingWiring.historyInfo(coordinator, meetingID: meetingID)?.echoTurnIDs == ["mic-9"])
+    let replaced = try #require(harness.saved.last)
+    #expect(replaced.text == "hello again")
+    #expect(replaced.id == earlier.id, "the same row, replaced")
+    #expect(replaced.meetingTranscriptAttemptID != earlier.meetingTranscriptAttemptID)
+    #expect(facts(of: replaced) == ["mic-9"])
+    #expect(facts(of: earlier) == nil, "the earlier generation's facts are gone")
+  }
+
+  /// #3973 C2 (plan G4): a Transcribe again that fails leaves the earlier transcript readable
+  /// with its own facts, and the meeting offers Transcribe again.
+  @Test("a failed Transcribe again keeps the earlier row readable with its own echo IDs")
+  func failedRetryKeepsTheEarlierRow() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    await coordinator.start(from: .history)
+    let meetingID = try #require(harness.recorders.first).configuration.meetingID
+    await coordinator.stop()
+    await eventually("first ready") {
+      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
+    }
+    let earlier = try #require(harness.saved.last)
+    harness.jobBehavior = { _ in throw MeetingTranscriptionJob.JobError.engineUnavailable("x") }
+    #expect(await coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet))
+    await eventually("retry failed") {
+      coordinator.record(id: meetingID)?.state == .failed && coordinator.processing == nil
+    }
+    let info = MeetingWiring.historyInfo(coordinator, meetingID: meetingID)
+    #expect(info?.matching(earlier)?.echoTurnIDs == ["mic-3"])
+    #expect(harness.saved.count == 1, "no second row was written")
+    #expect(coordinator.canTranscribeAgain(meetingID))
+    #expect(coordinator.record(id: meetingID)?.pendingAttempt != nil, "the failed attempt is kept")
   }
 
   @Test("a meeting whose ready save failed is recovered by Transcribe again into one readable row")
@@ -555,13 +603,15 @@ struct MeetingHistoryPresentationTests {
     }
     let record = try #require(coordinator.record(id: meetingID))
     #expect(
-      MeetingWiring.historyInfo(coordinator, meetingID: meetingID) == nil, "hidden until ready")
+      MeetingWiring.historyInfo(coordinator, meetingID: meetingID) == nil,
+      "nothing committed: no facts")
     func rows() async throws -> [Transcript] {
       try await TranscriptStore(directory: history.directory).loadAll().filter {
         $0.meetingID == meetingID
       }
     }
-    #expect(try await rows().map(\.id) == [record.transcriptID])
+    // #3973 C2: the row is written only after the ready barrier, so nothing reached History.
+    #expect(try await rows().isEmpty)
 
     harness.jobBehavior = { _ in
       let first = MeetingCoordinatorTests.result()

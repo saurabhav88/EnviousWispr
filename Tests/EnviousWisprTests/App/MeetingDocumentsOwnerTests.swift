@@ -278,7 +278,8 @@ struct MeetingDocumentsOwnerTests {
         && coordinator.record(id: damaged.id)?.state == .failed
     }
     let notesOnly = try harness.store.load(id: empty.id)
-    #expect(notesOnly.formatVersion == MeetingRecord.notesOnlyFormatVersion)
+    // #3973 C2: the pass's attempt raised it to the attempt format first; never lower.
+    #expect(notesOnly.formatVersion == MeetingRecord.attemptFormatVersion)
     #expect(notesOnly.failureCode == "no_audio")
     #expect(Self.notesOnDisk(harness, empty.id) == "Kept")
     let notesOnlyActions = MeetingsPresentation.actions(

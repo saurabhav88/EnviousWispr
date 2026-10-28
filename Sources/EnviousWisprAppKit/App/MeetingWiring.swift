@@ -165,6 +165,9 @@ enum MeetingWiring {
         saveTranscript: { [transcriptCoordinator = inputs.transcriptCoordinator] transcript in
           try await transcriptCoordinator.saveAndShowDurably(transcript)
         },
+        historyRow: { [transcriptCoordinator = inputs.transcriptCoordinator] id in
+          transcriptCoordinator.currentRow(id: id)
+        },
         removeTranscriptRow: { [transcriptCoordinator = inputs.transcriptCoordinator] id in
           try await transcriptCoordinator.removeRow(id: id)
         },
@@ -231,7 +234,9 @@ enum MeetingWiring {
             let text = transcriptCoordinator.summaryVisibleText(
               of: row, info: historyInfo(coordinator, meetingID: meetingID))
           else { return nil }
-          return .init(text: text, speakerNames: row.speakerNames ?? [:])
+          return .init(
+            text: text, speakerNames: row.speakerNames ?? [:],
+            transcriptAttemptID: row.meetingTranscriptAttemptID)
         },
         hasNoWords: {
           [weak coordinator, transcriptCoordinator = inputs.transcriptCoordinator] meetingID in
@@ -262,12 +267,14 @@ enum MeetingWiring {
     { dictationIdle() && !lane.summaryCallRunning }
   }
 
-  /// History's meeting facts, from the coordinator's in-memory durable copy (observable), and
-  /// only while that copy is ready (`MeetingHistoryInfo.paired(with:)`).
+  /// History's meeting facts, from the coordinator's in-memory durable copy (observable): the
+  /// committed transcript generation's, plus the previous generation's while a committed one is
+  /// not yet published (`MeetingHistoryInfo.paired(with:previous:)`, #3973 C2).
   static func historyInfo(_ coordinator: MeetingCoordinator?, meetingID: UUID)
     -> MeetingHistoryInfo?
   {
-    MeetingHistoryInfo.paired(with: coordinator?.record(id: meetingID))
+    MeetingHistoryInfo.paired(
+      with: coordinator?.record(id: meetingID), previous: coordinator?.historyPrevious(meetingID))
   }
 
   /// The final pass's job. It decodes through a `MeetingParakeetRoute` (#4052), whole runs at a

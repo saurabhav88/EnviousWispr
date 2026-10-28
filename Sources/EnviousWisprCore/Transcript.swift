@@ -473,6 +473,17 @@ public struct Transcript: Codable, Identifiable, Sendable {
   /// Whether this row is an EnviousMeet meeting transcript. Derived, never stored twice.
   public var isMeeting: Bool { meetingID != nil }
 
+  /// #3973 C2: the meeting transcription attempt this row came from, so History pairs it only
+  /// with that attempt's meeting facts (probable-echo lines, speaker outcomes). Nil on rows
+  /// written before attempts: the legacy generation (`MeetingRecord.legacyTranscriptAttemptID`).
+  public let meetingTranscriptAttemptID: UUID?
+
+  /// The generation this row belongs to, or nil for a row that is not a meeting's.
+  public var meetingTranscriptGeneration: UUID? {
+    guard isMeeting else { return nil }
+    return meetingTranscriptAttemptID ?? MeetingRecord.legacyTranscriptAttemptID
+  }
+
   public init(
     id: UUID = UUID(),
     text: String,
@@ -495,7 +506,8 @@ public struct Transcript: Codable, Identifiable, Sendable {
     speakerAnalysis: TranscriptSpeakerAnalysis? = nil,
     speakerNames: [String: String]? = nil,
     turns: [Turn]? = nil,
-    meetingID: UUID? = nil
+    meetingID: UUID? = nil,
+    meetingTranscriptAttemptID: UUID? = nil
   ) {
     precondition(
       meetingID == nil || importedFileName == nil,
@@ -522,6 +534,7 @@ public struct Transcript: Codable, Identifiable, Sendable {
     self.speakerNames = speakerNames
     self.turns = turns
     self.meetingID = meetingID
+    self.meetingTranscriptAttemptID = meetingTranscriptAttemptID
   }
 
   /// A copy promoted to permanent History: the clock is cleared, everything else is
