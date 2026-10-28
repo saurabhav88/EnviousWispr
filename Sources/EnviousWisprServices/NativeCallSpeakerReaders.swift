@@ -145,6 +145,14 @@ package enum TeamsAppSpeakerReader {
     var speaking: [String] = []
     var rosterNames: [String] = []
     var selfTiles: [String] = []
+    // Each window's roster rows and the "In this meeting, N total" counts shown in that window.
+    var rosters: [(names: [String], counts: Set<Int>)] = []
+    for window in windows {
+      let nodes = window.root.allNodes
+      let names = nodes.filter { $0.role == "AXRow" }.compactMap { $0.label.flatMap(rosterName) }
+      let counts = Set(nodes.compactMap { $0.label.flatMap(meetingCount) })
+      if !names.isEmpty { rosters.append((names, counts)) }
+    }
     for node in windows.flatMap({ $0.root.allNodes }) {
       guard let label = node.label else { continue }
       switch node.role {
@@ -173,10 +181,28 @@ package enum TeamsAppSpeakerReader {
       }
     }
     let selfNames = candidates.count == 1 ? candidates : []
+    // A complete participant list (C1 Teams run, 2026-10-28): roster rows in exactly one window,
+    // whose own "In this meeting, N total" count is the one count there and equals the people
+    // read. Duplicate names stay; a partial, uncounted or contested list keeps its names for
+    // suggestions but is not a participant list.
+    let complete =
+      rosters.count == 1 && rosters[0].counts == [rosters[0].names.count]
     return CallSpeakerReading(
       speaking: uniqueInOrder(speaking),
       roster: CallSpeakerRoster(names: rosterNames, selfNames: selfNames),
-      rosterFromParticipantList: !rosterNames.isEmpty)
+      rosterFromParticipantList: complete)
+  }
+
+  /// `In this meeting, 4 total` or `In this meeting, 4 total Mute all` → 4. Any other text → nil.
+  static func meetingCount(_ label: String) -> Int? {
+    let prefix = "In this meeting, "
+    guard label.hasPrefix(prefix) else { return nil }
+    let rest = label.dropFirst(prefix.count)
+    let digits = rest.prefix { $0.isASCII && $0.isNumber }
+    guard !digits.isEmpty, rest.dropFirst(digits.count).hasPrefix(" total") else { return nil }
+    let tail = rest.dropFirst(digits.count + " total".count)
+    guard tail.isEmpty || tail == " Mute all" else { return nil }
+    return Int(digits)
   }
 
   /// `Alex Rivera (Guest), Meeting guest, Muted` → `Alex Rivera`. Read from the end: an optional

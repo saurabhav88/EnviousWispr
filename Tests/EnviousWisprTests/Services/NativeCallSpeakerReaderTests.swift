@@ -218,7 +218,7 @@ struct NativeCallSpeakerReaderTests {
       window(
         "Meeting with Saurabh Vaish",
         [
-          CallAXNode(role: "AXRow", description: "In this meeting, 4 total"),
+          CallAXNode(role: "AXRow", description: "In this meeting, 3 total Mute all"),
           CallAXNode(role: "AXRow", description: "Saurabh Vaish, Organizer, Muted"),
           CallAXNode(role: "AXRow", description: "Alex Rivera (Guest), Meeting guest, Muted"),
           CallAXNode(role: "AXRow", description: "Priya Shah (Guest), Meeting guest, Muted"),
@@ -233,6 +233,48 @@ struct NativeCallSpeakerReaderTests {
     #expect(reading.roster.names == ["Saurabh Vaish", "Alex Rivera", "Priya Shah"])
     #expect(reading.roster.selfNames == ["Saurabh Vaish"])
     #expect(reading.rosterFromParticipantList)
+  }
+
+  private func teamsRoster(_ rows: [String], counts: [String], title: String = "Meeting with Saurabh Vaish")
+    -> CallAXWindow
+  {
+    window(
+      title,
+      counts.map { CallAXNode(role: "AXGroup", description: $0) }
+        + rows.map { CallAXNode(role: "AXRow", description: $0) })
+  }
+
+  /// SURVEY (C1 Teams run, 2026-10-28): four people, two named "Alex Rivera", counted
+  /// "In this meeting, 4 total". SYNTHETIC: partial, uncounted, conflicting, elsewhere-counted
+  /// and doubled lists.
+  @Test("Teams: only one counted, complete roster is the participant list; names stay either way")
+  func teamsRosterCompleteness() {
+    let rows = [
+      "Saurabh Vaish, Organizer, Muted", "Alex Rivera (Guest), Meeting guest, Muted",
+      "Alex Rivera (Guest), Meeting guest, Unmuted", "Priya Shah (Guest), Meeting guest, Muted",
+    ]
+    let complete = TeamsAppSpeakerReader.read(windows: [
+      teamsRoster(rows, counts: ["In this meeting, 4 total", "In this meeting, 4 total Mute all"])
+    ])
+    #expect(complete.rosterFromParticipantList)
+    #expect(complete.roster.names == ["Saurabh Vaish", "Alex Rivera", "Alex Rivera", "Priya Shah"])
+
+    let incomplete: [[CallAXWindow]] = [
+      [teamsRoster(rows, counts: ["In this meeting, 12 total"])],
+      [teamsRoster(rows, counts: [])],
+      [teamsRoster(rows, counts: ["In this meeting, 4 total", "In this meeting, 5 total"])],
+      [teamsRoster(rows, counts: []), window("Other", [CallAXNode(role: "AXGroup", description: "In this meeting, 4 total")])],
+      [teamsRoster(rows, counts: ["In this meeting, 4 total"]), teamsRoster(rows, counts: ["In this meeting, 4 total"], title: "Second")],
+    ]
+    for windows in incomplete {
+      let reading = TeamsAppSpeakerReader.read(windows: windows)
+      #expect(!reading.rosterFromParticipantList)
+      #expect(reading.roster.names.contains("Priya Shah"), "names stay for suggestions")
+    }
+    #expect(TeamsAppSpeakerReader.meetingCount("In this meeting, 3 total Mute all") == 3)
+    for text in ["In this meeting, total", "In this meeting, 3 totally", "In the lobby, 2 total", "In this meeting, 3 total Admit all"] {
+      #expect(TeamsAppSpeakerReader.meetingCount(text) == nil, "\(text)")
+    }
   }
 
   /// SURVEY main window alone (no compact view): roster yes, talker no. SYNTHETIC: Organizer
