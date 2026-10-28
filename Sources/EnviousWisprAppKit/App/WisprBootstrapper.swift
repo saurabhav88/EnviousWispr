@@ -801,10 +801,14 @@ package final class WisprBootstrapper {
     // 2c: the Remove drain's engine-unload seam — assignable only now that the
     // driver (and its adapter) exist; the wiring that built the coordinator ran
     // before them. L1: the drain awaits this BEFORE the delivery deletion.
-    // #3973 C3: EnviousMeet's own Turbo copy is freed too, before the bytes go.
+    // #3973 C3: EnviousMeet's own Turbo copy is freed too, before the bytes go, and it
+    // starts no load until the deletion has finished.
     whisper.removal.unloadForRemoval = { [weak whisperKernelDriver, meetingWhisperEngine] in
       await whisperKernelDriver?.unloadEngine()
-      await meetingWhisperEngine.unload()
+      await meetingWhisperEngine.closeForRemoval()
+    }
+    whisper.removal.finishRemoval = { [meetingWhisperEngine] in
+      await meetingWhisperEngine.reopenAfterRemoval()
     }
     // ONE lookup, three readers: the polish-runtime eviction rule below, the
     // import page's privacy line, and the configuration an import freezes at

@@ -200,7 +200,7 @@ struct MeetingProcessingRealBoundaryTests {
               })
           },
           engineIdentity: { "whisper-large-v3-turbo-gguf:eval" },
-          resolution: MeetingEngineResolution(engine: .whisper)),
+          resolution: MeetingEngineResolution(engine: .whisper, effectiveLanguage: "en")),
         configuration: configuration)
     }
     let saved = OSAllocatedUnfairLock<MeetingProcessingCheckpoint?>(initialState: nil)

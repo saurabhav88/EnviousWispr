@@ -9,31 +9,35 @@ import Foundation
 ///
 /// `segments` (#3973 C3) are an engine's segment timings for an engine with no word timings
 /// (Whisper): ranges into this piece's `text`, times on the meeting timeline. A track whose
-/// speech pieces carry segments and no words is assembled by segment.
+/// speech pieces carry segments and no words is assembled by segment. `isSegmentLevel` marks
+/// a piece from such an engine even when none of its segments could be bound to its text, so
+/// it is never given invented word times.
 public struct MeetingTrackPiece: Sendable, Equatable {
   public let text: String
   public let startMs: Int
   public let endMs: Int
   public let words: [ASRWordTiming]
   public let segments: [ASRSegmentTiming]
+  public let isSegmentLevel: Bool
   /// False for a marker the job writes in place of speech it could not transcribe ("[Could not
   /// transcribe ...]"): a marker on the call track is not the far side talking (#4138).
   public let isSpeech: Bool
 
   public init(
     text: String, startMs: Int, endMs: Int, words: [ASRWordTiming],
-    segments: [ASRSegmentTiming] = [], isSpeech: Bool = true
+    segments: [ASRSegmentTiming] = [], isSegmentLevel: Bool = false, isSpeech: Bool = true
   ) {
     self.text = text
     self.startMs = startMs
     self.endMs = endMs
     self.words = words
     self.segments = segments
+    self.isSegmentLevel = isSegmentLevel || !segments.isEmpty
     self.isSpeech = isSpeech
   }
 
   /// #3973 C3: speech timed by segment only.
-  var isSegmentTimed: Bool { isSpeech && words.isEmpty && !segments.isEmpty }
+  var isSegmentTimed: Bool { isSpeech && words.isEmpty && isSegmentLevel }
 }
 
 /// Everything one track contributes: its transcribed pieces in time order and its speaker
@@ -124,8 +128,10 @@ public enum MeetingTranscriptComposer {
       let fallback = fallbackSpeakerID(for: track.kind)
       var flagged: [(turn: Turn, echo: Bool)]
       if let timings = joined.segmentTimings {
-        // #3973 C3: a segment takes one label (mixed or unbound segments are Both). No word
-        // times exist, so no pause or echo splitting.
+        // #3973 C3: a segment takes one label (mixed or unbound segments are Both). A speaker's
+        // run is split where its segments pause, as the word path splits at its words, so the
+        // tracks still interleave in the order people spoke. No word times exist, so no echo
+        // splitting.
         var turns =
           segments.isEmpty
           ? []
@@ -134,7 +140,11 @@ public enum MeetingTranscriptComposer {
         if turns.isEmpty {
           turns = [singleTurn(entries: joined.entries, speaker: fallback, granularity: .segment)]
         }
-        flagged = turns.map { ($0, false) }
+        let spans = timings.map {
+          ASRWordTiming(word: "", range: $0.range, startMs: $0.startMs, endMs: $0.endMs)
+        }
+        flagged = turns.flatMap { splitAtPauses($0, entries: spans, granularity: .segment) }
+          .map { ($0, false) }
       } else {
         var turns: [Turn]
         if segments.isEmpty {
@@ -306,7 +316,9 @@ public enum MeetingTranscriptComposer {
   /// this lets the merge interleave the two tracks in the order people spoke.
   public static let turnSplitPauseMs = 1_500
 
-  static func splitAtPauses(_ turn: Turn, entries: [ASRWordTiming]) -> [Turn] {
+  static func splitAtPauses(
+    _ turn: Turn, entries: [ASRWordTiming], granularity: TurnGranularity = .word
+  ) -> [Turn] {
     let members = entries.filter {
       $0.range.lowerBound >= turn.originalTextRange.lowerBound
         && $0.range.upperBound <= turn.originalTextRange.upperBound
@@ -328,7 +340,8 @@ public enum MeetingTranscriptComposer {
       let range = group.first!.range.lowerBound..<group.last!.range.upperBound
       return Turn(
         id: "\(range.lowerBound)-\(range.upperBound)", speakerId: turn.speakerId,
-        startMs: starts.min(), endMs: ends.max(), originalTextRange: range, granularity: .word)
+        startMs: starts.min(), endMs: ends.max(), originalTextRange: range,
+        granularity: granularity)
     }
   }
 

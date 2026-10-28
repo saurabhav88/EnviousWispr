@@ -492,6 +492,26 @@ struct MeetingTranscriptComposerTests {
     #expect(result.turns.allSatisfy { $0.granularity == .segment }, "never presented as words")
   }
 
+  @Test("#3973 C3: Whisper text with no bound sentence stays sentence-level: never given word times")
+  func segmentLevelPieceWithoutSegments() {
+    let call = MeetingTrackInput(
+      kind: .callSound,
+      pieces: [
+        MeetingTrackPiece(
+          text: "Hello", startMs: 0, endMs: 4_000, words: [], segments: [], isSegmentLevel: true)
+      ],
+      speakerSegments: [
+        SpeakerSegment(speakerId: "A", startMs: 0, endMs: 1_000, quality: 1),
+        SpeakerSegment(speakerId: "B", startMs: 1_000, endMs: 4_000, quality: 1),
+      ])
+
+    let result = MeetingTranscriptComposer.compose(tracks: [call])
+
+    #expect(result.turns.map { slice($0.originalTextRange, of: result.text) } == ["Hello"])
+    #expect(result.turns.map(\.speakerId) == [TurnAssembler.bothSpeakersID])
+    #expect(result.turns.allSatisfy { $0.granularity == .segment })
+  }
+
   @Test("#3973 C3: a Whisper microphone on a call is You; a gap marker keeps its place in the text")
   func segmentMicrophoneOnACall() {
     let call = MeetingTrackInput(
@@ -521,6 +541,30 @@ struct MeetingTranscriptComposerTests {
     #expect(result.turns.map(\.speakerId) == ["sys:S1", "mic:you", "mic:you"])
     #expect(result.speakerNames["mic:you"] == "You")
     #expect(result.echoTurnIDs.isEmpty, "no word times, so no echo pairing")
+  }
+
+  @Test("#3973 C3: Whisper tracks interleave in the order people spoke, split where a speaker pauses")
+  func segmentTracksInterleave() {
+    let call = MeetingTrackInput(
+      kind: .callSound,
+      pieces: [
+        segmentPiece(
+          [("Can you hear me?", 0, 1_000), ("Great, let us start.", 4_000, 5_000)], start: 0,
+          end: 5_000)
+      ],
+      speakerSegments: [SpeakerSegment(speakerId: "S1", startMs: 0, endMs: 5_000, quality: 1)])
+    let mic = MeetingTrackInput(
+      kind: .microphone,
+      pieces: [segmentPiece([("Yes, loud and clear.", 2_000, 3_000)], start: 2_000, end: 3_000)],
+      speakerSegments: [SpeakerSegment(speakerId: "S1", startMs: 2_000, endMs: 3_000, quality: 1)])
+
+    let result = MeetingTranscriptComposer.compose(tracks: [call, mic])
+
+    #expect(
+      result.turns.map { slice($0.originalTextRange, of: result.text) } == [
+        "Can you hear me?", "Yes, loud and clear.", "Great, let us start.",
+      ])
+    #expect(result.turns.allSatisfy { $0.granularity == .segment })
   }
 
   @Test("#3973 C3: a Whisper track without speaker analysis is one turn, still by segment")

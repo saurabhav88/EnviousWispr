@@ -115,6 +115,32 @@ struct TranscribeCppWhisperBackendTests {
     #expect(await backend.isReady == false)
   }
 
+  @Test("#3973 C3: Remove during a meeting model load frees the late model before it returns")
+  func meetingEngineRemovalFreesALateLoad() async throws {
+    let driver = FakeWhisperDriver()
+    driver.holdLoad("turbo.gguf")
+    let engine = MeetingWhisperEngine(driver: driver)
+    let load = Task { try await engine.load(modelPath: "turbo.gguf") }
+    await driver.waitForLog("load turbo.gguf")
+    let removal = Task { await engine.closeForRemoval() }
+    let closed = Task {
+      while await !engine.isClosedForRemoval { await Task.yield() }
+    }
+    try await driver.bounded(closed)
+    #expect(!driver.log.contains("unload 1"), "control: the load has not returned yet")
+    driver.releaseLoad("turbo.gguf")
+    try await driver.bounded(removal)
+    #expect(driver.log.contains("unload 1"), "Remove returned only after the late model was freed")
+    await #expect(throws: MeetingEngineYield.self) { try await driver.bounded(load) }
+    #expect(await engine.isLoaded == false)
+    await #expect(throws: MeetingEngineYield.self, "no load starts until Remove ends") {
+      try await engine.load(modelPath: "turbo.gguf")
+    }
+    await engine.reopenAfterRemoval()
+    try await engine.load(modelPath: "turbo.gguf")
+    #expect(await engine.isLoaded)
+  }
+
   @Test("an unload joins a load still travelling to the executor before it settles")
   func unloadJoinsBlockedLoad() async throws {
     let driver = FakeWhisperDriver()

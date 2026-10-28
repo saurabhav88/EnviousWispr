@@ -171,7 +171,9 @@ enum WhisperDeliveryWiring {
         guard migration.decline(.dictation) == .done else { return .failed }
         await handle.cancelActiveFetch()
         await removal.unloadForRemoval()
-        return await handle.remove() ? nil : .failed
+        let removed = await handle.remove()
+        await removal.finishRemoval()
+        return removed ? nil : .failed
       })
 
     // One delivery-state stream projected onto the setup states the Settings row already
@@ -281,6 +283,9 @@ extension WhisperDeliveryWiring {
 /// delivery deletion, so no loaded model is unlinked underneath its engine.
 @MainActor final class WhisperRemovalHook {
   var unloadForRemoval: @MainActor () async -> Void = {}
+  /// Awaited AFTER the deletion, whatever its result: engines closed for the removal may load
+  /// again.
+  var finishRemoval: @MainActor () async -> Void = {}
 }
 
 /// Monotonic freshness guard for the `.notReady` case's async disk read (Codex

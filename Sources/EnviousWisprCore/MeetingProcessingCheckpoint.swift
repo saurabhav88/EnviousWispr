@@ -127,7 +127,8 @@ public struct MeetingProcessingCheckpoint: Codable, Equatable, Sendable {
     public let text: String?
     public let words: [Word]?
     /// #3973 C3: the engine's segment timings (Whisper), ranges into `text`, times on the
-    /// meeting timeline. Nil for a word-timed engine and for a failed piece.
+    /// meeting timeline. Nil for a word-timed engine and for a failed piece; empty for a
+    /// segment-timed piece none of whose segments could be bound to its text.
     public let segments: [SegmentTiming]?
 
     public init(

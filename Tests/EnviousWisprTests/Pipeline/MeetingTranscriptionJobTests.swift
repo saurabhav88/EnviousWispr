@@ -1613,13 +1613,16 @@ struct MeetingTranscriptionJobTests {
     analyze: @escaping @Sendable (MeetingTrackAudio) async -> MeetingSpeakerAnalysis = { _ in
       MeetingSpeakerAnalysis(outcome: .single, segments: [])
     },
-    resolution: MeetingEngineResolution? = nil
+    resolution: MeetingEngineResolution? = nil,
+    isDictationIdle: @escaping @MainActor () -> Bool = { true },
+    waitUntilDictationIdle: @escaping @MainActor () async -> Void = {}
   ) -> MeetingTranscriptionJob {
     var config = MeetingTranscriptionJob.Configuration()
     config.cutsPieces = false
     return MeetingTranscriptionJob(
       dependencies: .init(
-        isDictationIdle: { true }, waitUntilDictationIdle: {}, beginModelUse: {}, endModelUse: {},
+        isDictationIdle: isDictationIdle, waitUntilDictationIdle: waitUntilDictationIdle,
+        beginModelUse: {}, endModelUse: {},
         loadEngine: {}, transcribe: transcribe, unloadEngine: {}, analyzeSpeakers: analyze,
         resolution: resolution),
       configuration: config)
@@ -1660,21 +1663,36 @@ struct MeetingTranscriptionJobTests {
     #expect(result.composition.turns.allSatisfy { $0.granularity == .segment })
   }
 
-  @Test("#3973 C3: a decode that gave way to dictation runs again, with no gap counted")
+  @Test("#3973 C3: a decode that gave way to dictation waits for it and runs again, with no gap counted")
   func yieldIsRetriedNotFailed() async throws {
     let dir = try folder()
     let files = [try segment(in: dir, index: 1, startMs: 0, seconds: 3)]
+    // Dictation is pressed during each of the first four decodes and preempts it: more yields
+    // than the two failures a piece may have, so only the wait-and-retry path can succeed.
+    let yields = 4
     var calls = 0
-    let job = wholeRunJob(transcribe: { samples, _ in
-      calls += 1
-      if calls == 1 { throw MeetingEngineYield() }
-      return FakeSpeech.transcribe(samples)
-    })
+    var waits = 0
+    var dictating = false
+    let job = wholeRunJob(
+      transcribe: { samples, _ in
+        calls += 1
+        if calls <= yields {
+          dictating = true
+          throw MeetingEngineYield()
+        }
+        return FakeSpeech.transcribe(samples)
+      },
+      isDictationIdle: { !dictating },
+      waitUntilDictationIdle: {
+        waits += 1
+        dictating = false
+      })
 
     let result = try await job.runTestAttempt(
       tracks: [.microphone: MeetingTrackAudio(files: files)], language: nil) { _ in }
 
-    #expect(calls == 2)
+    #expect(calls == yields + 1)
+    #expect(waits == yields, "each yield waited for dictation before decoding again")
     #expect(result.failedPieces == 0)
     #expect(!result.composition.text.isEmpty)
   }
@@ -1694,6 +1712,24 @@ struct MeetingTranscriptionJobTests {
 
     #expect(calls == 2 * MeetingTranscriptionJob.idleYieldLimit)
     #expect(result.failedPieces == 1)
+  }
+
+  @Test("#3973 C3: a Whisper result with no bound sentence stays sentence-level, also after a resume")
+  func unboundWhisperResultStaysSegmentLevel() {
+    let result = ASRResult(
+      text: "Hello", language: "en", duration: 4, processingTime: 0, backendType: .whisper,
+      wordTimings: nil, wordTimingCoverage: nil, segmentTimings: [])
+    let piece = MeetingTranscriptionJob.wholeRunPiece(result: result, startMs: 0, endMs: 4_000)
+    #expect(piece.isSegmentLevel)
+
+    let stored = MeetingProcessingCheckpoint.Piece(
+      startSample: 0, endSample: 64_000, forcedCut: false, text: "Hello", words: [], segments: [])
+    #expect(MeetingTranscriptionJob.trackPiece(stored)?.isSegmentLevel == true)
+
+    let parakeet = ASRResult(
+      text: "Hello", language: "en", duration: 4, processingTime: 0, backendType: .parakeet,
+      wordTimings: nil, wordTimingCoverage: nil, segmentTimings: nil)
+    #expect(!MeetingTranscriptionJob.wholeRunPiece(result: parakeet, startMs: 0, endMs: 4_000).isSegmentLevel)
   }
 
   @Test("#3973 C3: the result names the engine the pass resolved to and why, not the one asked for")

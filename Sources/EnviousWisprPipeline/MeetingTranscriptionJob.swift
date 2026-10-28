@@ -638,8 +638,10 @@ package final class MeetingTranscriptionJob {
           word: $0.word, lower: $0.range.lowerBound, upper: $0.range.upperBound,
           startMs: $0.startMs, endMs: $0.endMs)
       },
+      // A segment-level piece stores its segments even when there are none, so a resumed pass
+      // still knows it has no word times.
       segments: owned.flatMap { piece in
-        piece.segments.isEmpty
+        !piece.isSegmentLevel
           ? nil
           : piece.segments.map {
             .init(
@@ -701,7 +703,7 @@ package final class MeetingTranscriptionJob {
       },
       segments: (piece.segments ?? []).map {
         ASRSegmentTiming(range: $0.lower..<$0.upper, startMs: $0.startMs, endMs: $0.endMs)
-      })
+      }, isSegmentLevel: piece.segments != nil)
   }
 
   /// Whether a stored checkpoint is internally sound for these tracks before any of it is used:
@@ -883,7 +885,8 @@ package final class MeetingTranscriptionJob {
   /// #4052: a whole run decoded in one call has no seam, so nothing is filtered: the engine's
   /// text and every word are kept as returned (boundary and untimed words included), with the
   /// word times moved onto the meeting timeline. Text ranges are unchanged. #3973 C3: an
-  /// engine with segment timings and no words (Whisper) keeps its segments the same way.
+  /// engine with segment timings and no words (Whisper) keeps its segments the same way, and
+  /// its piece stays segment-level when no segment could be bound.
   nonisolated static func wholeRunPiece(result: ASRResult, startMs: Int, endMs: Int)
     -> MeetingTrackPiece
   {
@@ -900,7 +903,8 @@ package final class MeetingTranscriptionJob {
           ASRSegmentTiming(
             range: $0.range, startMs: $0.startMs.map { startMs + $0 },
             endMs: $0.endMs.map { startMs + $0 })
-        } : [])
+        } : [],
+      isSegmentLevel: words.isEmpty && result.segmentTimings != nil)
   }
 
   /// The words of `result` whose midpoint falls in this piece's own range, as a piece on the
