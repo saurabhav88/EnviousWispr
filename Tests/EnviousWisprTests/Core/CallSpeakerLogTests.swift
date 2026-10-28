@@ -82,4 +82,60 @@ struct CallSpeakerLogTests {
     #expect(CallSpeakerLag(milliseconds: -250).audioAlignedMs(10_000) == 10_250)
     #expect(CallSpeakerLag(milliseconds: 0).audioAlignedMs(42) == 42)
   }
+
+  @Test("roster source reads back as saved, and a log without it reads as unknown")
+  func rosterSource() throws {
+    for value in [true, false] {
+      let log = CallSpeakerLog(
+        surface: .meet, source: .rules, status: .observed, lag: nil, rules: nil,
+        roster: CallSpeakerRoster(names: ["Alex Rivera", "Alex Rivera"], selfNames: []),
+        rosterFromParticipantList: value, observations: [])
+      let back = try JSONDecoder().decode(CallSpeakerLog.self, from: JSONEncoder().encode(log))
+      #expect(back.rosterFromParticipantList == value)
+    }
+    let legacy = try JSONDecoder().decode(
+      CallSpeakerLog.self, from: Data(#"{"formatVersion":1}"#.utf8))
+    #expect(legacy.rosterFromParticipantList == nil)
+  }
+
+  @Test(
+    "a log with a bad lag, time, order, name or frozen rules is refused whole",
+    arguments: [
+      #"{"formatVersion":1,"lag":{"milliseconds":-9223372036854775808}}"#,
+      #"{"formatVersion":1,"lag":{"milliseconds":60001}}"#,
+      #"{"formatVersion":1,"observations":[{"observationMs":-1,"speaking":[]}]}"#,
+      #"{"formatVersion":1,"observations":[{"observationMs":172800001,"speaking":[]}]}"#,
+      #"{"formatVersion":1,"observations":[{"observationMs":5,"speaking":[]},{"observationMs":4,"speaking":[]}]}"#,
+      #"{"formatVersion":1,"observations":[{"observationMs":5,"speaking":[""]}]}"#,
+      #"{"formatVersion":1,"roster":{"names":[""],"selfNames":[]}}"#,
+      #"{"formatVersion":1,"rules":{"version":0,"payload":"{}"}}"#,
+      #"{"formatVersion":1,"rules":{"version":1,"payload":""}}"#,
+    ])
+  func shapeRefusals(json: String) {
+    #expect(throws: CallSpeakerLog.DecodeError.self) {
+      try JSONDecoder().decode(CallSpeakerLog.self, from: Data(json.utf8))
+    }
+  }
+
+  @Test("the bounds themselves are admitted: lag of a minute, two days of clock, equal times")
+  func shapeBounds() throws {
+    let json = """
+      {"formatVersion":1,"lag":{"milliseconds":-60000},
+       "observations":[{"observationMs":0,"speaking":[]},{"observationMs":0,"speaking":["A"]},
+                       {"observationMs":172800000,"speaking":[]}]}
+      """
+    let log = try JSONDecoder().decode(CallSpeakerLog.self, from: Data(json.utf8))
+    #expect(log.observations.count == 3)
+    let payload = String(repeating: "x", count: FrozenTalkerRules.maximumPayloadBytes)
+    let big = CallSpeakerLog(
+      surface: nil, source: nil, status: nil, lag: nil,
+      rules: FrozenTalkerRules(version: 1, payload: payload), roster: .empty,
+      rosterFromParticipantList: nil, observations: [])
+    #expect(big.shapeProblem == nil)
+    let tooBig = CallSpeakerLog(
+      surface: nil, source: nil, status: nil, lag: nil,
+      rules: FrozenTalkerRules(version: 1, payload: payload + "x"), roster: .empty,
+      rosterFromParticipantList: nil, observations: [])
+    #expect(tooBig.shapeProblem == "rules.payload")
+  }
 }

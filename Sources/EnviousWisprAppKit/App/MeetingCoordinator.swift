@@ -197,7 +197,8 @@ final class MeetingFileWriter: Sendable {
   ) async -> BoundedOutcome {
     let operation = BoundedOperation()
     pending.withLock { $0 += 1 }
-    return await withUnsafeContinuation { (continuation: UnsafeContinuation<BoundedOutcome, Never>) in
+    return await withUnsafeContinuation {
+      (continuation: UnsafeContinuation<BoundedOutcome, Never>) in
       let answered = OSAllocatedUnfairLock(initialState: false)
       let answer: @Sendable (BoundedOutcome) -> Void = { outcome in
         let first = answered.withLock { done -> Bool in
@@ -228,6 +229,18 @@ final class MeetingFileWriter: Sendable {
   ) -> BoundedOutcome {
     let write = writeRecord
     return runBounded(until: deadline, { try write($0, record) }, late: late)
+  }
+
+  /// #4013: saves the meeting's call-speaker evidence on this queue, so it lands in order with
+  /// the record writes and deletions around it; `saveCallSpeakers` refuses a meeting deleted or
+  /// without audio by then.
+  func saveCallSpeakers(_ log: CallSpeakerLog, meeting id: UUID) async throws {
+    try await run { try $0.saveCallSpeakers(log, meeting: id) }
+  }
+
+  /// #4013: the meeting's call-speaker evidence, read on this queue after every write before it.
+  func loadCallSpeakers(meeting id: UUID) async throws -> MeetingStore.CallSpeakersLoad {
+    try await run { $0.loadCallSpeakers(meeting: id) }
   }
 
   /// `saveBounded` for a caller that may suspend (#4102).
@@ -1319,7 +1332,8 @@ final class MeetingCoordinator {
         failed.state = .failed
       }
       if await persist(failed) {
-        endAttempt(failed, outcome: .failed, gapCount: MeetingDamagedAudio.markerCount(missingAudio))
+        endAttempt(
+          failed, outcome: .failed, gapCount: MeetingDamagedAudio.markerCount(missingAudio))
       }
       return
     }

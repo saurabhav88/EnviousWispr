@@ -22,7 +22,7 @@ import Foundation
 package struct TalkerRules: Sendable, Equatable {
   package static let supportedSchema = 1
   /// The approved size cap (#4013 R7). Checked before parsing, and by the download while it reads.
-  package static let maximumBytes = 32 * 1024
+  package static let maximumBytes = FrozenTalkerRules.maximumPayloadBytes
   /// Measured lags are a few hundred milliseconds; anything beyond five seconds is a typo.
   package static let lagBoundMs = 5_000
   /// Revisions are small counters; the bound keeps both validators on exactly representable
