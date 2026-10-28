@@ -167,6 +167,18 @@ struct MeetingCoordinatorTests {
 
     func failWrites(inState state: MeetingState) { failWrites { $0.state == state } }
 
+    private let landing = OSAllocatedUnfairLock<[@Sendable (MeetingRecord) -> Bool]>(
+      initialState: [])
+    /// #3973 C2: writes of records matching `predicate` land on disk, then report failure (a
+    /// sync that failed after the file was replaced).
+    func failAfterLanding(where predicate: @escaping @Sendable (MeetingRecord) -> Bool) {
+      landing.withLock { $0.append(predicate) }
+    }
+
+    func failIfLandingFails(_ record: MeetingRecord) throws {
+      if landing.withLock({ $0 }).contains(where: { $0(record) }) { throw InjectedFailure() }
+    }
+
     /// Every record written, in write order.
     let written = OSAllocatedUnfairLock<[MeetingRecord]>(initialState: [])
 
@@ -424,6 +436,7 @@ struct MeetingCoordinatorTests {
           try writeGate.failIfInFailingState(record)
           try store.save(record)
           writeGate.written.withLock { $0.append(record) }
+          try writeGate.failIfLandingFails(record)
         })
     }
 

@@ -538,6 +538,47 @@ struct MeetingSummaryOwnerTests {
     #expect(rig.world.finished.count == 1)
   }
 
+  /// #3973 C2 (chunk review 2): a first transcript is committed before its History row is
+  /// written. When the row cannot be written, the scheduled summary stays owed (never started
+  /// against a missing transcript, never dropped) until a launch publishes the row.
+  @Test("an unpublished first transcript keeps its summary owed until a launch publishes it")
+  func unpublishedFirstTranscriptKeepsItsSummaryOwed() async throws {
+    let harness = try MeetingCoordinatorTests.Harness()
+    harness.saveError = CocoaError(.fileWriteOutOfSpace)
+    let rig = try Rig()
+    let coordinator = harness.coordinator
+    coordinator.summaries = rig.makeOwner(documents: coordinator.documents)
+    await coordinator.start(from: .history)
+    let meetingID = try #require(coordinator.meetings.first?.id)
+    await coordinator.stop()
+    await Self.eventually("committed") {
+      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
+    }
+    #expect(rig.world.finished.isEmpty, "no summary without a published row")
+    #expect(try harness.store.loadDocuments(meeting: meetingID).manifest.summaryPending == true)
+
+    // A launch that still cannot publish leaves it owed.
+    let stuck = try MeetingCoordinatorTests.Harness(copying: harness.root)
+    stuck.saveError = CocoaError(.fileWriteOutOfSpace)
+    let stuckRig = try Rig()
+    stuck.coordinator.summaries = stuckRig.makeOwner(documents: stuck.coordinator.documents)
+    stuck.coordinator.launch()
+    await Self.eventually("reconciled") { stuck.coordinator.isCommitReceiptPending(meetingID) }
+    try await Task.sleep(for: .milliseconds(300))  // deadline-fallback: proves nothing starts
+    #expect(stuckRig.world.finished.isEmpty)
+    #expect(stuckRig.world.callsWaiting == 0)
+    #expect(try stuck.store.loadDocuments(meeting: meetingID).manifest.summaryPending == true)
+
+    // A launch that publishes the row then resumes the owed summary.
+    let healed = try MeetingCoordinatorTests.Harness(copying: stuck.root)
+    let healedRig = try Rig()
+    healed.coordinator.summaries = healedRig.makeOwner(documents: healed.coordinator.documents)
+    healed.coordinator.launch()
+    await Self.eventually("published") { healed.saved.count == 1 }
+    await Self.eventually("written") { healedRig.world.finished.count == 1 }
+    #expect(healedRig.world.finished == [Self.row(.written, .hosted)])
+  }
+
   @Test("Transcribe again on a meeting whose local summary waits behind another never deadlocks")
   func retryBehindAWaitingLocalSummary() async throws {
     let harness = try MeetingCoordinatorTests.Harness()

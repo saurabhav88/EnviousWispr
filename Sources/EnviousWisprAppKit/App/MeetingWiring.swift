@@ -229,8 +229,11 @@ enum MeetingWiring {
           [weak coordinator, transcriptCoordinator = inputs.transcriptCoordinator] meetingID in
           // #4001 step 2b-C: the record, the row and the meeting facts are read live here;
           // the coordinator keeps the projection they make.
+          // #3973 C2: only the committed generation's row: while a committed replacement is
+          // not yet in History, the inputs are unknown (out of date, nothing written).
           guard let record = coordinator?.record(id: meetingID),
             let row = transcriptCoordinator.currentRow(id: record.transcriptID),
+            isCommittedRow(row, of: record),
             let text = transcriptCoordinator.summaryVisibleText(
               of: row, info: historyInfo(coordinator, meetingID: meetingID))
           else { return nil }
@@ -242,7 +245,8 @@ enum MeetingWiring {
           [weak coordinator, transcriptCoordinator = inputs.transcriptCoordinator] meetingID in
           // #4148: the same live reads and projection; a missing record or row is not empty.
           guard let record = coordinator?.record(id: meetingID),
-            let row = transcriptCoordinator.currentRow(id: record.transcriptID)
+            let row = transcriptCoordinator.currentRow(id: record.transcriptID),
+            isCommittedRow(row, of: record)
           else { return false }
           return transcriptCoordinator.summaryHasNoWords(
             of: row, info: historyInfo(coordinator, meetingID: meetingID))
@@ -257,6 +261,13 @@ enum MeetingWiring {
           await coordinator?.assignAITitle(meetingID: meetingID, title: title)
         }),
       documents: coordinator.documents, lane: lane)
+  }
+
+  /// #3973 C2: whether `row` is `record`'s committed transcript generation, the only row a
+  /// summary is written from or judged against.
+  static func isCommittedRow(_ row: Transcript, of record: MeetingRecord) -> Bool {
+    guard let committed = record.committedTranscriptGeneration else { return false }
+    return row.meetingTranscriptGeneration == committed
   }
 
   /// When a final-pass unit may start: dictation first, then the lane's order (R50): it yields

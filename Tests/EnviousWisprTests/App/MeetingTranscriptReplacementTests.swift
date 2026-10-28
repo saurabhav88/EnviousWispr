@@ -147,6 +147,56 @@ struct MeetingTranscriptReplacementTests {
     #expect(harness.coordinator.canTranscribeAgain(meetingID))
   }
 
+  /// #3973 C2 (chunk review 1): a ready write that landed but reported failure has committed
+  /// the new transcript. The record read back is adopted, so a later rename never writes the
+  /// older record over it, and the new row is published.
+  @Test("a ready write that lands but reports failure is adopted; a later rename keeps the commit")
+  func landedReadyWriteIsAdopted() async throws {
+    let harness = try Harness()
+    let (meetingID, earlier) = try await readyMeeting(harness)
+    harness.jobBehavior = Self.rerunResult
+    harness.writeGate.failAfterLanding { $0.state == .ready && $0.echoTurnIDs == ["mic-9"] }
+    #expect(await harness.coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet))
+    await eventually("published") {
+      harness.saved.count == 2 && harness.coordinator.processing == nil
+        && !harness.coordinator.isCommitReceiptPending(meetingID)
+    }
+    let committed = try #require(harness.saved.last?.meetingTranscriptAttemptID)
+    #expect(harness.saved.last?.text == "hello again")
+    #expect(harness.coordinator.record(id: meetingID)?.committedTranscriptGeneration == committed)
+    #expect(hasNoReceipt(harness, meetingID))
+    let info = MeetingWiring.historyInfo(harness.coordinator, meetingID: meetingID)
+    #expect(info?.matching(earlier) == nil)
+
+    await harness.coordinator.rename(meetingID: meetingID, title: "Renamed")
+    let onDisk = try harness.store.load(id: meetingID)
+    #expect(onDisk.title == "Renamed")
+    #expect(onDisk.committedTranscriptGeneration == committed, "the rename kept the commit")
+    #expect(onDisk.echoTurnIDs == ["mic-9"])
+  }
+
+  /// #3973 C2 (chunk review 3): a summary is written from, and judged against, only the
+  /// committed generation's row. While a committed replacement is not yet in History the row
+  /// History holds is the earlier one, so it counts as no row.
+  @Test("only the committed generation's row feeds a summary")
+  func summariesReadOnlyTheCommittedRow() {
+    var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    let legacyRow = Transcript(text: "a", meetingID: record.id)
+    #expect(!MeetingWiring.isCommittedRow(legacyRow, of: record), "nothing committed")
+    record.state = .ready
+    #expect(MeetingWiring.isCommittedRow(legacyRow, of: record), "a legacy ready record and row")
+    let attempt = MeetingAttemptConfiguration(requestedEngine: .parakeet, language: .auto)
+    record.beginAttempt(attempt)
+    record.commitAttempt(
+      MeetingResolvedAttempt(
+        attemptID: attempt.attemptID, requestedEngine: .parakeet, resolvedEngine: .parakeet,
+        effectiveLanguage: nil, modelIdentity: nil, fallbackReason: nil))
+    #expect(!MeetingWiring.isCommittedRow(legacyRow, of: record), "the earlier row, unpublished")
+    let newRow = Transcript(
+      text: "a", meetingID: record.id, meetingTranscriptAttemptID: attempt.attemptID)
+    #expect(MeetingWiring.isCommittedRow(newRow, of: record))
+  }
+
   @Test("Delete audio keeps an unsettled receipt; deleting the meeting removes it")
   func deletionAndReceipts() async throws {
     let harness = try Harness()

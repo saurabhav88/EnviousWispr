@@ -637,7 +637,12 @@ final class MeetingCoordinator {
     // Notes are searched with their meeting's transcript (R38): read every meeting's notes
     // once, behind the listing, on the file queue.
     let toRead = loaded
-    let ready = loaded.filter { live[$0]?.state == .ready && live[$0]?.deletionRequested != true }
+    // #3973 C2: a meeting whose committed row could not be published keeps its owed summary
+    // for the launch that publishes it; resumed now it would find no transcript and drop it.
+    let ready = loaded.filter {
+      live[$0]?.state == .ready && live[$0]?.deletionRequested != true
+        && unpublishedReceipts[$0] == nil
+    }
     Task { [weak self] in
       for meetingID in toRead { await self?.documents.load(meetingID) }
       // A summary a quit interrupted is finished now (R50), after the notes are read.
@@ -1412,10 +1417,13 @@ final class MeetingCoordinator {
     unresolvedReceipts.insert(meetingID)
     // The ready write (file and directory synced) is the barrier before progress is cleared. A
     // failed write is no proof the file is unchanged: the record on disk decides.
-    guard await persist(ready) else {
-      unpublishedReceipts[meetingID] = nil
-      await settleAfterFailedBarrier(receipt)
-      return
+    if !(await persist(ready)) {
+      guard await settleAfterFailedBarrier(receipt) else {
+        unpublishedReceipts[meetingID] = nil
+        return
+      }
+      // The write landed and only its report failed: the adopted record is committed.
+      ready = live[meetingID] ?? ready
     }
     // #3973: the transcript now replaces this meeting's live words. A failed, cancelled or
     // uncommitted pass keeps them.
@@ -1474,17 +1482,23 @@ final class MeetingCoordinator {
   }
 
   /// #3973 C2: a ready write failed, which proves nothing about the file. The record is read
-  /// back: one that did not commit the candidate means nothing was committed, so the receipt is
-  /// removed and Transcribe again works as before; one that did (the write landed and only its
-  /// report failed), or one that cannot be read, keeps the receipt for the next launch, which
-  /// publishes or drops it from the record it reads.
-  private func settleAfterFailedBarrier(_ receipt: MeetingTranscriptReplacement) async {
+  /// back. One that committed the candidate (the write landed and only its report failed) is
+  /// adopted as the durable copy, so no later edit writes the older record back over it, and
+  /// the commit goes on (true). One that did not means nothing was committed: the receipt is
+  /// removed and Transcribe again works as before (false). One that cannot be read keeps the
+  /// receipt and blocks Transcribe again for the next launch, which decides from the file.
+  private func settleAfterFailedBarrier(_ receipt: MeetingTranscriptReplacement) async -> Bool {
     let meetingID = receipt.meetingID
-    let onDisk = try? await writer.run { try $0.load(id: meetingID) }
-    guard let onDisk, onDisk.committedTranscriptGeneration != receipt.candidate.generation else {
+    guard let onDisk = try? await writer.run({ try $0.load(id: meetingID) }) else {
       deps.log("meeting commit unsettled; next launch reconciles")
       notice = .storageFailed
-      return
+      return false
+    }
+    if onDisk.committedTranscriptGeneration == receipt.candidate.generation {
+      records[meetingID] = onDisk
+      live[meetingID] = onDisk
+      publish()
+      return true
     }
     do {
       try await writer.run { try $0.clearTranscriptReplacement(meeting: meetingID) }
@@ -1493,6 +1507,7 @@ final class MeetingCoordinator {
       deps.log("meeting commit receipt clear failed error=\(type(of: error))")
       notice = .storageFailed
     }
+    return false
   }
 
   /// #3973 C2: whether the meeting's commit receipt is not settled in this session.
