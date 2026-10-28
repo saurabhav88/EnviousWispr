@@ -666,7 +666,6 @@ final class TranscriptCoordinator {
     return transcripts.filter { $0.escapeRecoveredAt != nil && Self.isVisible($0, at: now) }.count
   }
 
-
   /// A held row is visible only while `PendingAdmission` calls it live.
   /// Permanent rows carry no stamp and are always visible.
   ///
@@ -912,7 +911,6 @@ final class TranscriptCoordinator {
     startPulseIfNeeded()
   }
 
-
   /// Thrown by an ordinary write to a row whose durable meeting write is still in flight.
   struct RowWriteInFlight: Error {}
 
@@ -929,7 +927,9 @@ final class TranscriptCoordinator {
   func saveAndShow(_ transcript: Transcript) async throws {
     // #3972 C4a: refused at admission, so ordinary writes admitted before a durable one stay
     // valid while later ones are refused until it lands.
-    guard !transactionExecutor.isDurableWriteInFlight(transcript.id) else { throw RowWriteInFlight() }
+    guard !transactionExecutor.isDurableWriteInFlight(transcript.id) else {
+      throw RowWriteInFlight()
+    }
     try Task.checkCancellation()
     _ = try await transactionExecutor.admit { [self] in
       await transactionExecutor.capture { try await performWrite(transcript, insertIfAbsent: true) }
@@ -972,7 +972,9 @@ final class TranscriptCoordinator {
   /// sync) OFF the main actor, then shown. EnviousMeet marks the meeting ready only after this
   /// returns, and its deletion awaits the commit that calls this, so no delete races the write.
   func saveAndShowDurably(_ transcript: Transcript) async throws {
-    guard !transactionExecutor.isDurableWriteInFlight(transcript.id) else { throw RowWriteInFlight() }
+    guard !transactionExecutor.isDurableWriteInFlight(transcript.id) else {
+      throw RowWriteInFlight()
+    }
     // Registered at admission and held until its publication or failure, so ordinary writes
     // admitted after it are refused and those admitted before it stay valid.
     transactionExecutor.reserveDurableWrite(transcript.id)
@@ -990,7 +992,13 @@ final class TranscriptCoordinator {
     }.get()
   }
 
-  private func performDurableWrite(_ transcript: Transcript) async throws {
+  private func performDurableWrite(_ incoming: Transcript) async throws {
+    // #4013 r2 item 4: the user's speaker names are carried over from the row as it is NOW,
+    // read when this command runs, so a rename admitted while the meeting was processing is
+    // kept. The reconciled row is what is written and what is shown.
+    let transcript =
+      currentRow(id: incoming.id).map { incoming.reconcilingSpeakerNames(withCurrent: $0) }
+      ?? incoming
     try await transactionExecutor.writeDurably(transcript)
     diskReconciler.noteWritten(transcript.id)
     if let existing = transcripts.firstIndex(where: { $0.id == transcript.id }) {
@@ -1022,7 +1030,9 @@ final class TranscriptCoordinator {
   /// this actor, and the list is what the user is looking at.
   @discardableResult
   func updateExistingRow(_ transcript: Transcript) async throws -> Bool {
-    guard !transactionExecutor.isDurableWriteInFlight(transcript.id) else { throw RowWriteInFlight() }
+    guard !transactionExecutor.isDurableWriteInFlight(transcript.id) else {
+      throw RowWriteInFlight()
+    }
     try Task.checkCancellation()
     return try await transactionExecutor.admit { [self] in
       await transactionExecutor.capture {
@@ -1187,7 +1197,6 @@ final class TranscriptCoordinator {
     guard displayedTurnIDs.insert(id).inserted else { return }
     emitTurnsDisplayedTelemetry()
   }
-
 
   /// EnviousMeet published a change to its meetings (`MeetingCoordinator.onMeetingsPublished`):
   /// a meeting removed elsewhere (a peer, dev control) leaves no stale selection (Codex C8 r1).
@@ -1458,7 +1467,8 @@ final class TranscriptCoordinator {
     // #4075 S1: the press time, for the kept event's age; eligibility is judged when the
     // command runs.
     let pressedAt = now()
-    await transactionExecutor.admit { [self] in await performKeep(transcript, pressedAt: pressedAt) }
+    await transactionExecutor.admit { [self] in await performKeep(transcript, pressedAt: pressedAt)
+    }
   }
 
   private func performKeep(_ transcript: Transcript, pressedAt: Date) async {
@@ -1518,7 +1528,6 @@ final class TranscriptCoordinator {
       }
     }
   }
-
 
   /// The coordinator's clock for Keep, so a test can tell the press from the execution.
   private func now() -> Date {
@@ -1755,7 +1764,6 @@ final class TranscriptCoordinator {
 
   // MARK: - Escape Recovery expiry pulse (#2087)
 
-
   private func startPulseIfNeeded() {
     guard pulseTask == nil,
       diskReconciler.pendingPulseHasWork(liveInMemory: livePendingCount)
@@ -1836,7 +1844,6 @@ final class TranscriptCoordinator {
     }
   }
 
-
   /// Held so a test can await the refresh rather than guess at a duration —
   /// a signal the subject itself fires, never a sleep or a yield count.
   private var refreshTask: Task<Void, Never>?
@@ -1863,7 +1870,6 @@ final class TranscriptCoordinator {
     /// after a sweep rather than keeping the directory walk alive.
     // periphery:ignore - test seam
     var lapsedPendingCountForTesting: Int { lapsedPendingCount }
-
 
     /// Awaits the post-removal disk refresh. Captured before awaiting because
     /// the task clears nothing but may be replaced by a later removal.

@@ -371,7 +371,7 @@ public enum TurnAssembler {
   public static func defaultSpeakerNames(
     for turns: [Turn], existingNames: [String: String] = [:]
   ) -> [String: String] {
-    let usedNumbers = Set(existingNames.values.compactMap(speakerNumber(in:)))
+    let usedNumbers = Set(existingNames.values.compactMap(defaultSpeakerNumber(in:)))
     var nextNumber = (usedNumbers.max() ?? 0) + 1
     var names: [String: String] = [:]
     for turn in turns
@@ -383,7 +383,9 @@ public enum TurnAssembler {
     return names
   }
 
-  private static func speakerNumber(in name: String) -> Int? {
+  /// N for a generated "Speaker N" label, else `nil`. #4013: also how a row written before
+  /// name provenance tells a generated label from a name the user typed.
+  static func defaultSpeakerNumber(in name: String) -> Int? {
     let prefix = "Speaker "
     guard name.hasPrefix(prefix) else { return nil }
     return Int(name.dropFirst(prefix.count))
