@@ -31,7 +31,7 @@ The permission shows as **Granted** when it worked.
 
 ### Auto-paste was switched off
 
-If the **Permissions** page in Settings says **Auto-paste was switched off**, the EnviousWispr accessibility shortcut is probably on, and using it switched auto-paste off. It can also happen when Android stops the app.
+If the **Permissions** page in Settings says **Auto-paste was switched off**, Android turned the EnviousWispr service off. This can happen when the app is stopped, or when the EnviousWispr accessibility shortcut is used. If the shortcut is on, the page says so.
 
 **Turn the shortcut off and the service back on.** Tap **Accessibility settings**, turn off the EnviousWispr shortcut, and switch the EnviousWispr service back on.
 

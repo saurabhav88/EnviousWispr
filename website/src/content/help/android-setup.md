@@ -17,7 +17,7 @@ EnviousWispr for Android is a free dictation app for your phone. You tap a float
 
 ### Walk through setup
 
-Setup runs in a fixed order and does not let you skip ahead, because dictation needs every step.
+Setup runs in a fixed order. The downloads and the microphone and Accessibility permissions come first, because dictation needs them; you can skip the demo and the practice.
 
 1. **Welcome.** Tap **Get Started!**
 2. **Download the models.** EnviousWispr downloads its speech model (Parakeet Ultra, 667.8 MB) and then its AI polish model (S1-mini, 484.2 MB). Downloads wait for Wi-Fi unless you tap **Use mobile data**. Setup continues when both show **Ready**. See [Model Downloads and Updates on Android](/help/android-model-downloads/).
@@ -25,7 +25,7 @@ Setup runs in a fixed order and does not let you skip ahead, because dictation n
 4. **Allow Accessibility.** Tap **Grant** beside **Accessibility**. EnviousWispr explains what it uses this for and asks you to **Agree**, then shows a short guide to switching it on in Android Settings. See [Accessibility Access on Android](/help/android-accessibility-access/).
 5. **Notifications (optional).** Tap **Grant** beside **Notifications** if you want recording controls in your notification panel. You can turn them on later.
 6. **Watch the demo.** A short animation shows how to tap the bubble and how to hold it. Tap **Skip to practice** if you already know.
-7. **Practice.** Tap the bubble beside the practice box and say the sample sentence, then try press and hold. Tap **Finish setup** when you are done.
+7. **Practice.** Tap the bubble beside the practice box and say the sample sentence, then try press and hold. Tap **Finish setup** when you are done, or **Skip practice**.
 
 ### How you know it worked
 

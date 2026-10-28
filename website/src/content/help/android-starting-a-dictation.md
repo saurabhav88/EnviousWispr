@@ -20,7 +20,7 @@ The bubble appears whenever a text box is active, just above the keyboard on the
 | **Tap** the bubble | Tap the **check** | Longer thoughts, hands free while you talk |
 | **Hold** the bubble | Let go | Short messages |
 
-When you tap, the bubble opens into a recording pill with a clock, a sound meter, an **X** to cancel and a **check** to finish. When you hold, the pill shows **Recording. Let go to finish.** A recording stops at 10 minutes, with a warning when less than a minute is left.
+When you tap, the bubble opens into a recording pill with a clock, a sound meter, an **X** to cancel and a **check** to finish. When you hold, the pill shows a recording mark and the sound meter until you let go. A recording stops at 10 minutes, with a warning when less than a minute is left.
 
 ### Move or hide the bubble
 
@@ -32,7 +32,7 @@ When you tap, the bubble opens into a recording pill with a clock, a sound meter
 
 ### Other ways to start
 
-**Quick Settings tile.** Add the EnviousWispr tile to your Quick Settings panel. Tap it to start and tap it again to stop. Because the tile is not tied to a text box, your words go to the clipboard, ready to paste.
+**Quick Settings tile.** Add the EnviousWispr tile to your Quick Settings panel. Tap it to start and tap it again to stop. Because the tile is not tied to a text box, your words go to the clipboard, ready to paste, or to History if you turned **Auto-copy to clipboard** off.
 
 **The microphone button.** Inside the app, tap the microphone button at the top of the screen.
 

@@ -16,7 +16,7 @@ The **Dictionary** tab teaches EnviousWispr how to spell names and terms it migh
 1. **Open Dictionary.** Tap the **Dictionary** tab, then **Add**.
 2. **Type the spelling.** Under **Preferred spelling**, type the word the way you want it written.
 3. **Add what it might hear.** Under **What EnviousWispr might hear**, add misspellings or aliases, such as a nickname or a common mishearing.
-4. **Pick how strict it is.** **Match strictness** can be Loose, Default or Strict.
+4. **Pick how strict it is and save.** Choose Loose, Default or Strict under **Match strictness**, then tap **Save**.
 
 ### Import or export your words
 
@@ -28,4 +28,4 @@ The **Dictionary** tab teaches EnviousWispr how to spell names and terms it migh
 
 Open the **History** tab and use **Search history**. Each card has **Copy**, **Keep** (kept dictations stay at the top) and **Delete**. Open a card to see the final text, the original transcript and which microphone recorded it.
 
-History only holds completed dictations. A recording that produced no words, or one you cancelled, is not saved.
+A recording that produced no words, or one you cancelled, is not saved. If the app was closed in the middle of a dictation, History can show that interrupted recording so you know words were lost.

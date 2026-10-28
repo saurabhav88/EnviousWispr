@@ -9,7 +9,7 @@ related: ["android-phone-requirements", "android-privacy", "android-model-downlo
 updated: 2026-10-28
 deflection: "never_intervene"
 ---
-AI polish turns what you said into clear writing after speech recognition finishes. On Android you choose where it runs in the **AI Polish** tab, under **1 · Where polish runs**.
+AI polish turns what you said into clear writing after speech recognition finishes. On Android you choose where it runs in the **AI Polish** tab, under **1 · WHERE POLISH RUNS**.
 
 ### Choose where polish runs
 
@@ -29,13 +29,13 @@ S1-mini works offline. On some mid-range phones, setup and the AI Polish tab not
 
 1. **Pick a provider.** Tap **Cloud**, then choose **OpenAI**, **Gemini** or **Claude**.
 2. **Add your key.** Paste your API key and tap **Check**. The tab links to the page where you can get a key. Your key is encrypted in the Android Keystore and never written to logs.
-3. **Pick a model.** Under **4 · Model**, choose a model from the list.
+3. **Pick a model.** Under **4 · MODEL**, choose a model from the list.
 
 With cloud polish on, the selected text and your custom words go directly to that provider. Your audio stays on your phone either way. The provider's charges and terms apply.
 
 ### Set S1-mini's writing style
 
-Under **Writing style**, three settings shape S1-mini's output. A new pick applies to your next dictation.
+Under **WRITING STYLE**, three settings shape S1-mini's output. A new pick applies to your next dictation.
 
 | Setting | Options | What it changes |
 |---|---|---|

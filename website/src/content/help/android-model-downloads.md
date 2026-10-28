@@ -19,15 +19,15 @@ Model downloads wait for Wi-Fi unless you allow mobile data, so a large download
 
 ### Pause, resume or retry
 
-While a model downloads, a notification shows **Downloading** with **Pause**, **Resume** and **Cancel**. In the app, use **Pause download**, **Resume download** or **Retry download** on the model's card. A model shows **Ready** when it is installed and checked.
+While a model downloads, a notification shows **Downloading** with **Pause** and **Cancel**, and **Resume** once paused. In the app, the model's card offers **Pause**, **Resume** or **Retry**. A model shows **Ready** when it is installed and checked.
 
 ### When a model update arrives
 
-When a new model is ready and you are not on Wi-Fi, EnviousWispr asks once: **New speech model available** or **New polish model available**, with its size.
+When downloads are set to Wi-Fi only, a new model is waiting, and you open the app off Wi-Fi, EnviousWispr asks: **New speech model available** or **New polish model available**, with its size. If you close the question without answering, it asks again next time.
 
 | Choice | What happens |
 |---|---|
 | **Download now** | Downloads this update on mobile data. Your setting does not change. |
 | **Wait for Wi-Fi** | Waits until you are on Wi-Fi. |
 
-Dictation keeps working with your current model until the update finishes. While the files are swapped, a dictation you start may show **A model is updating. Try again in a moment.**
+If your current model is working, dictation keeps using it until the update finishes. While the files are swapped, a dictation you start may show **A model is updating. Try again in a moment.**

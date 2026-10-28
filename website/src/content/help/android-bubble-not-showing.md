@@ -13,7 +13,7 @@ The bubble appears only when a text box is active, and only while Android's Acce
 
 ### Tap into a text box
 
-**Put the cursor in a text box.** The bubble shows when a text box you can type in is focused and the keyboard is up. Tap into the message or search field you want. In split screen, the window with the text box must be the one you are typing in.
+**Put the cursor in a text box.** The bubble shows when a text box you can type in has focus. Tap into the message or search field you want. In split screen, the window with the text box must be the one you are typing in.
 
 ### Check Accessibility access
 
@@ -25,8 +25,8 @@ The bubble appears only when a text box is active, and only while Android's Acce
 
 ### Check that your phone is supported
 
-If EnviousWispr shows **This phone isn't supported**, dictation is turned off on that phone and the bubble never appears. See [Which Android Phones Are Supported](/help/android-phone-requirements/).
+If EnviousWispr shows **This phone isn't supported**, dictation and model downloads are turned off on that phone, so tapping the bubble shows **EnviousWispr isn't supported on this phone** instead of recording. See [Which Android Phones Are Supported](/help/android-phone-requirements/).
 
 ### Start without the bubble
 
-While you sort it out, you can still dictate from the Quick Settings tile or the microphone button in the app. Your words go to the clipboard, ready to paste.
+While you sort it out, you can still dictate from the Quick Settings tile or the microphone button in the app. Your words go to the clipboard, or to History if you turned **Auto-copy to clipboard** off.
