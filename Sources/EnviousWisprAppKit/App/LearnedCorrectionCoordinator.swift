@@ -175,6 +175,10 @@ final class LearnedCorrectionCoordinator {
     /// The user refused this pair twice (#3975): nothing written, no pill,
     /// no `learn_save_failed`. The watcher counts it as `learn_blocked_seen`.
     case blocked
+    /// The learn never ran (#4086): its caller's watch moved on while it waited
+    /// behind an earlier dictionary command, or Quit refused the command. Nothing
+    /// written, no pill, nothing counted.
+    case noLongerWanted
   }
 
   enum UndoOutcome: Equatable, Sendable {
@@ -252,14 +256,20 @@ final class LearnedCorrectionCoordinator {
   /// form the user replaced, `corrected` what they typed, `expectedTarget`
   /// what the filter saw at judge time, `via` how it was learned (telemetry
   /// only; the save is identical). Returns after the write is proven (or
-  /// refused) and the pill offered.
+  /// refused) and the pill offered. `stillWanted` runs first inside the
+  /// command, so a learn that waited behind an earlier command is dropped when
+  /// its caller no longer wants it (#4086).
   @discardableResult
   func learn(
     original: String, corrected: String, expectedTarget: LearnTargetState,
-    via: T.LearnVia = .judge
+    via: T.LearnVia = .judge, stillWanted: @escaping @MainActor () -> Bool = { true }
   ) async -> LearnOutcome {
-    let result = ActionResult<LearnOutcome>(.blocked)
+    let result = ActionResult<LearnOutcome>(.noLongerWanted)
     await vocabulary.perform { [self] in
+      guard stillWanted() else {
+        result.value = .noLongerWanted
+        return
+      }
       result.value = await learnInsideAction(
         original: original, corrected: corrected, expectedTarget: expectedTarget, via: via)
     }

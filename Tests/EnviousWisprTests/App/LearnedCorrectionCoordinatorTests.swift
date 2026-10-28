@@ -80,6 +80,11 @@ final class LearnedLibraryFake {
   /// Runs once, at the start of the first `save`, after the coordinator
   /// resolved its target: the race window.
   var beforeWrite: (() -> Void)?
+  /// Holds the next dictionary command at its start, the way an earlier command in
+  /// the real queue does (#4086). Taken once.
+  var holdNextAction: (@MainActor () async -> Void)?
+  /// Refuses every dictionary command, the way Quit does once it has started (#4086).
+  var refuseActions = false
   private var reads = 0
   private(set) var saves: [(CustomWord, String)] = []
   private(set) var removes: [UUID] = []
@@ -179,7 +184,13 @@ final class LearnedLibraryFake {
         return .applied
       },
       classify: { _ in .person },
-      perform: { action in await action() })
+      perform: { [unowned self] action in
+        let hold = self.holdNextAction
+        self.holdNextAction = nil
+        await hold?()
+        guard !self.refuseActions else { return }
+        await action()
+      })
   }
 }
 
@@ -301,6 +312,15 @@ struct LearnedCorrectionCoordinatorTests {
       f.telemetry.events.suffix(2) == [
         .undone(.updated, .undone, .judge, .watching), .refusedByUser(.undo, .watching),
       ])
+  }
+
+  @Test("a learn Quit refuses is not reported as blocked: nothing written, no pill (#4086)")
+  func learnRefusedByQuitIsNotBlocked() async {
+    let f = fixture()
+    f.library.refuseActions = true
+    let outcome = await f.coordinator.learn(original: "kumala", corrected: "Kwmala", expectedTarget: .newWord)
+    #expect(outcome == .noLongerWanted)
+    #expect(f.library.saves.isEmpty && f.presenter.offers.isEmpty && f.telemetry.events.isEmpty)
   }
 
   @Test(
