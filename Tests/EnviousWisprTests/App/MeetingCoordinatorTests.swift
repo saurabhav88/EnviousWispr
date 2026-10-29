@@ -522,6 +522,22 @@ struct MeetingCoordinatorTests {
       tracks: [:])
   }
 
+  /// #4208: Transcribe again once the meeting offers it, and require that it was queued. A
+  /// meeting reads `.ready` before its History row is published and its commit receipt is
+  /// cleared, and Transcribe again is refused until then (`canTranscribeAgain`). A call made on
+  /// `.ready` alone can be refused under load, and the test then waits for work that never
+  /// starts.
+  static func transcribeAgainOnceOffered(
+    _ coordinator: MeetingCoordinator, meetingID: UUID, engine: MeetingEngineChoice = .parakeet,
+    sourceLocation: SourceLocation = #_sourceLocation
+  ) async {
+    await eventually(
+      "Transcribe again offered", { coordinator.canTranscribeAgain(meetingID) },
+      sourceLocation: sourceLocation)
+    let queued = await coordinator.transcribeAgain(meetingID: meetingID, engine: engine)
+    #expect(queued, "Transcribe again was refused", sourceLocation: sourceLocation)
+  }
+
   /// Waits for `condition` through Observation, with a deadline that only fails the test.
   static func eventually(
     _ label: String, timeout: Duration = .seconds(10),

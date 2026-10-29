@@ -517,7 +517,7 @@ struct MeetingSummaryOwnerTests {
     await coordinator.stop()
     await Self.eventually("old call") { rig.world.callsWaiting == 1 }
 
-    await coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet)
+    await MeetingCoordinatorTests.transcribeAgainOnceOffered(coordinator, meetingID: meetingID)
     // The new transcript waits for the old summary: it is not committed while that call runs.
     try await Task.sleep(for: .milliseconds(200))  // deadline-fallback: proves nothing moves
     #expect(coordinator.record(id: meetingID)?.state == .processing)
@@ -603,7 +603,7 @@ struct MeetingSummaryOwnerTests {
 
     // Transcribe again on the second: its waiting summary is cancelled and settles at once,
     // so the final pass is not held behind the first meeting's summary.
-    await coordinator.transcribeAgain(meetingID: second, engine: .parakeet)
+    await MeetingCoordinatorTests.transcribeAgainOnceOffered(coordinator, meetingID: second)
     await Self.eventually("retry ready") {
       coordinator.record(id: second)?.state == .ready && coordinator.processing == nil
     }
