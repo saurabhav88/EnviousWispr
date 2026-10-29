@@ -165,6 +165,7 @@ struct ApplicationRelocationCoordinatorTests {
     let handshake: FakeHandshake
     let telemetry: FakeTelemetry
     let terminate: TerminateBox
+    let clock: PreflightWatchdogClock
   }
 
   static func makeHarness(
@@ -187,6 +188,7 @@ struct ApplicationRelocationCoordinatorTests {
     let handshake = FakeHandshake()
     let telemetry = FakeTelemetry()
     let terminate = TerminateBox()
+    let clock = PreflightWatchdogClock()
     let coordinator = ApplicationRelocationCoordinator(
       env: RelocationEnvironment(
         bundleURL: bundleURL, bundleIdentifier: "com.enviouswispr.app",
@@ -204,26 +206,29 @@ struct ApplicationRelocationCoordinatorTests {
       now: { now },
       terminate: { terminate.count += 1 },
       makeAttemptID: { "attempt-1" },
+      watchdogSleep: { try await clock.parkUntilFired($0) },
       destinationIsRunning: destinationIsRunning)
     return Harness(
       coordinator: coordinator, suppression: suppression, presenter: presenter, mover: mover,
-      relauncher: relauncher, handshake: handshake, telemetry: telemetry, terminate: terminate)
+      relauncher: relauncher, handshake: handshake, telemetry: telemetry, terminate: terminate,
+      clock: clock)
   }
 
   /// Routing adapter preserving the existing coordinator assertions. It does not start a target
   /// or verify startup/card ordering; `LaunchOfferDriverTests` cover that production owner.
   /// The launch decision, then the pre-flight run under a deadline, then the failure card.
-  /// nil: no offer, or the run never completed (recorded as a failure).
+  /// nil: no offer. Missing completion throws so dependent assertions never run.
   @discardableResult
-  static func launchOffer(_ h: Harness) async -> PreflightOutcome? {
+  static func launchOffer(
+    _ h: Harness, sourceLocation: SourceLocation = #_sourceLocation
+  ) async throws -> PreflightOutcome? {
     guard case .offerFirst(let state) = h.coordinator.launchDecision() else { return nil }
     let run = Task { @MainActor in
       await h.coordinator.runPreflight(state: state)
     }
-    guard let outcome = await preflightBoundedValue(of: run) else {
-      Issue.record("launchOffer: runPreflight never completed")
-      return nil
-    }
+    let outcome = try #require(
+      await preflightBoundedValue(of: run),
+      "launchOffer: runPreflight never completed", sourceLocation: sourceLocation)
     if case .continueNormally(let card?) = outcome { h.coordinator.presentFailure(card) }
     return outcome
   }
@@ -231,7 +236,7 @@ struct ApplicationRelocationCoordinatorTests {
   // MARK: install_resolution keeps the existing-copy distinction
 
   @Test("a strip failure at the destination is recorded as existing_usable, not unresolved")
-  func stripFailureAtDestinationKeepsTheRoute() async {
+  func stripFailureAtDestinationKeepsTheRoute() async throws {
     // This failure can arise ONLY on the existing-copy route, which is the
     // repeat path that made every retry fail identically. Recording it as
     // `unresolved` would erase the one distinction the field exists to measure
@@ -239,28 +244,30 @@ struct ApplicationRelocationCoordinatorTests {
     let h = Self.makeHarness(
       bundleURL: Self.translocatedURL,
       moverResult: .failure(.stripFailedAtDestination))
-    await Self.launchOffer(h)
+    try await Self.launchOffer(h)
     #expect(h.telemetry.failedEvents.map(\.1) == ["stripFailedAtDestination"])
     #expect(h.telemetry.lastFailedInstallResolution == "existing_usable")
     // A placed-but-suspect copy must never be offered for opening.
-    if case .nothingMoved = h.presenter.presentations[0] {
+    let presentation = try #require(h.presenter.presentations.first)
+    if case .nothingMoved = presentation {
     } else {
       Issue.record("a partially stripped destination must produce Message A")
     }
   }
 
   @Test("a post-placement verify failure reports installed, not existing_usable")
-  func postPlacementStripFailureKeepsTheInstalledRoute() async {
+  func postPlacementStripFailureKeepsTheInstalledRoute() async throws {
     // We placed this copy ourselves. Reusing the existing-destination case
     // here reported a FRESH install as an existing copy, erasing the route
     // distinction in the opposite direction (cloud review, second round).
     let h = Self.makeHarness(
       bundleURL: Self.translocatedURL,
       moverResult: .failure(.stripFailedAfterPlacement))
-    await Self.launchOffer(h)
+    try await Self.launchOffer(h)
     #expect(h.telemetry.lastFailedInstallResolution == "installed")
     // Still Message A: a copy that may be unclean is never offered for opening.
-    if case .nothingMoved = h.presenter.presentations[0] {
+    let presentation = try #require(h.presenter.presentations.first)
+    if case .nothingMoved = presentation {
     } else {
       Issue.record("a possibly-unclean placed copy must produce Message A")
     }
@@ -278,12 +285,12 @@ struct ApplicationRelocationCoordinatorTests {
   }
 
   @Test("a genuinely pre-placement failure still reports unresolved")
-  func prePlacementFailureIsUnresolved() async {
+  func prePlacementFailureIsUnresolved() async throws {
     // The two-way control: without it, a mapping that returned existing_usable
     // for EVERYTHING would pass the test above.
     let h = Self.makeHarness(
       bundleURL: Self.translocatedURL, moverResult: .failure(.diskFull))
-    await Self.launchOffer(h)
+    try await Self.launchOffer(h)
     #expect(h.telemetry.lastFailedInstallResolution == "unresolved")
   }
 
@@ -463,10 +470,10 @@ struct ApplicationRelocationCoordinatorTests {
   // MARK: Decline
 
   @Test("Not Now: records decline + declined telemetry, no move")
-  func declineFlow() async {
+  func declineFlow() async throws {
     let h = Self.makeHarness(bundleURL: Self.translocatedURL)
     h.presenter.choice = .notNow
-    await Self.launchOffer(h)
+    try await Self.launchOffer(h)
     #expect(h.telemetry.offeredEvents.count == 1)
     #expect(h.telemetry.declinedEvents == ["translocated"])
     #expect(h.suppression.stored?.version == "2.3.0")
@@ -477,11 +484,11 @@ struct ApplicationRelocationCoordinatorTests {
   // MARK: Move success + handshake (A1)
 
   @Test("Move accepted -> install -> ack healthy -> relaunched telemetry + terminate")
-  func moveSuccessConfirmed() async {
+  func moveSuccessConfirmed() async throws {
     let h = Self.makeHarness(bundleURL: Self.translocatedURL)
     h.presenter.choice = .move
     h.handshake.ackHealthy = true
-    await Self.launchOffer(h)
+    try await Self.launchOffer(h)
     #expect(h.telemetry.acceptedEvents.count == 1)
     #expect(h.mover.calls == 1)
     #expect(h.relauncher.lastAttemptID == "attempt-1")
@@ -494,11 +501,11 @@ struct ApplicationRelocationCoordinatorTests {
   // MARK: Handshake failure keeps the original alive (A1)
 
   @Test("ack unconfirmed -> original NEVER terminates, and reports the SPECIFIC reason")
-  func moveAckTimeout() async {
+  func moveAckTimeout() async throws {
     let h = Self.makeHarness(bundleURL: Self.translocatedURL)
     // A read-only-volume child: unhealthy for a reason that is NOT translocation.
     h.handshake.outcome = .unhealthy(stateLabel: "read_only_volume")
-    await Self.launchOffer(h)
+    try await Self.launchOffer(h)
     #expect(h.terminate.count == 0)  // the only known-good copy stays alive
     #expect(h.telemetry.relaunchedEvents.isEmpty)
     // #2006: this used to be the single `relaunchUnconfirmed` bucket for four
@@ -506,7 +513,8 @@ struct ApplicationRelocationCoordinatorTests {
     // Message A because an unhealthy child is NOT evidence of a good copy.
     #expect(h.telemetry.failedEvents.map(\.1) == ["ackUnhealthyOther"])
     #expect(h.presenter.presentations.count == 1)
-    if case .nothingMoved(let f) = h.presenter.presentations[0] {
+    let presentation = try #require(h.presenter.presentations.first)
+    if case .nothingMoved(let f) = presentation {
       #expect(f == .ackUnhealthyOther)
     } else {
       Issue.record("an unhealthy child must never produce Message B")
@@ -514,30 +522,32 @@ struct ApplicationRelocationCoordinatorTests {
   }
 
   @Test("a STILL-TRANSLOCATED child is classified apart, and never told to just open it")
-  func moveAckStillTranslocated() async {
+  func moveAckStillTranslocated() async throws {
     let h = Self.makeHarness(bundleURL: Self.translocatedURL)
     h.handshake.outcome = .unhealthy(stateLabel: "translocated")
-    await Self.launchOffer(h)
+    try await Self.launchOffer(h)
     #expect(h.terminate.count == 0)
     #expect(h.telemetry.failedEvents.map(\.1) == ["ackUnhealthyTranslocated"])
     // The loop person A repeated four times: "open it from Applications" when
     // the Applications copy is itself still trapped. Must be Message A.
-    if case .nothingMoved = h.presenter.presentations[0] {
+    let presentation = try #require(h.presenter.presentations.first)
+    if case .nothingMoved = presentation {
     } else {
       Issue.record("a still-translocated child must never produce Message B")
     }
   }
 
   @Test("a healthy ack that never arrives DOES offer the Applications copy")
-  func moveAckTimedOutOffersDestination() async {
+  func moveAckTimedOutOffersDestination() async throws {
     let h = Self.makeHarness(bundleURL: Self.translocatedURL)
     h.handshake.outcome = .timedOut
-    await Self.launchOffer(h)
+    try await Self.launchOffer(h)
     #expect(h.terminate.count == 0)
     #expect(h.telemetry.failedEvents.map(\.1) == ["ackTimeout"])
     // Placed and signature-verified, no evidence of breakage -> Message B,
     // carrying the destination so Show in Finder has a real target.
-    if case .installedNotConfirmed(_, let url) = h.presenter.presentations[0] {
+    let presentation = try #require(h.presenter.presentations.first)
+    if case .installedNotConfirmed(_, let url) = presentation {
       #expect(url.path == "/Applications/EnviousWispr.app")
     } else {
       Issue.record("a timed-out ack on a verified copy should produce Message B")
@@ -545,7 +555,7 @@ struct ApplicationRelocationCoordinatorTests {
   }
 
   @Test("the expected version comes from the MOVER, not the running app")
-  func expectedVersionComesFromMover() async {
+  func expectedVersionComesFromMover() async throws {
     // A NEWER copy already at the destination is explicitly allowed. If the
     // parent compared against its own version, this would be reported as a
     // mismatch and the user told to quit every copy — a false failure.
@@ -554,15 +564,15 @@ struct ApplicationRelocationCoordinatorTests {
       moverResult: .success(
         .existingUsable(
           URL(fileURLWithPath: "/Applications/EnviousWispr.app"), bundleVersion: "9.9")))
-    await Self.launchOffer(h)
+    try await Self.launchOffer(h)
     #expect(h.handshake.lastExpectedVersion == "9.9")
   }
 
   @Test("relaunch rejected -> failure, no terminate")
-  func relaunchRejected() async {
+  func relaunchRejected() async throws {
     let h = Self.makeHarness(bundleURL: Self.translocatedURL)
     h.relauncher.success = false
-    await Self.launchOffer(h)
+    try await Self.launchOffer(h)
     #expect(h.terminate.count == 0)
     #expect(h.telemetry.failedEvents.map(\.1) == ["relaunchRejected"])
     #expect(h.presenter.failures == [.relaunchRejected])
@@ -571,10 +581,10 @@ struct ApplicationRelocationCoordinatorTests {
   // MARK: Move failure
 
   @Test("mover failure -> showFailure, dismiss progress, no terminate")
-  func moveFailure() async {
+  func moveFailure() async throws {
     let h = Self.makeHarness(
       bundleURL: Self.translocatedURL, moverResult: .failure(.diskFull))
-    await Self.launchOffer(h)
+    try await Self.launchOffer(h)
     #expect(h.terminate.count == 0)
     #expect(h.telemetry.failedEvents.map(\.1) == ["diskFull"])
     #expect(h.presenter.failures == [.diskFull])
@@ -663,13 +673,13 @@ struct ApplicationRelocationCoordinatorTests {
   // MARK: existingUsable still handshakes (never terminate blind)
 
   @Test("existingUsable: still relaunches + requires ack before terminate")
-  func existingUsableHandshakes() async {
+  func existingUsableHandshakes() async throws {
     let dest = URL(fileURLWithPath: "/Applications/EnviousWispr.app")
     let h = Self.makeHarness(
       bundleURL: Self.translocatedURL,
       moverResult: .success(.existingUsable(dest, bundleVersion: "1.0")))
     h.handshake.ackHealthy = true
-    await Self.launchOffer(h)
+    try await Self.launchOffer(h)
     #expect(h.relauncher.lastAttemptID == "attempt-1")
     #expect(h.terminate.count == 1)
   }
@@ -678,12 +688,12 @@ struct ApplicationRelocationCoordinatorTests {
 
   @Test(
     "existingRunning: activates the running copy, no fresh launch, no handshake, then terminates")
-  func existingRunningActivates() async {
+  func existingRunningActivates() async throws {
     let dest = URL(fileURLWithPath: "/Applications/EnviousWispr.app")
     let h = Self.makeHarness(
       bundleURL: Self.translocatedURL,
       moverResult: .success(.existingRunning(dest, bundleVersion: "1.0")))
-    await Self.launchOffer(h)
+    try await Self.launchOffer(h)
     #expect(h.relauncher.activatedURL == dest)  // brought the live copy to front
     #expect(h.relauncher.relaunchCalls == 0)  // NO duplicate instance spawned
     #expect(h.handshake.awaitCalls == 0)  // no handshake needed for an already-live copy
@@ -692,13 +702,13 @@ struct ApplicationRelocationCoordinatorTests {
   }
 
   @Test("existingRunning: activate failure keeps the original alive")
-  func existingRunningActivateFailure() async {
+  func existingRunningActivateFailure() async throws {
     let dest = URL(fileURLWithPath: "/Applications/EnviousWispr.app")
     let h = Self.makeHarness(
       bundleURL: Self.translocatedURL,
       moverResult: .success(.existingRunning(dest, bundleVersion: "1.0")))
     h.relauncher.activateSuccess = false
-    await Self.launchOffer(h)
+    try await Self.launchOffer(h)
     #expect(h.terminate.count == 0)
     #expect(h.telemetry.failedEvents.map(\.1) == ["relaunchRejected"])
   }
