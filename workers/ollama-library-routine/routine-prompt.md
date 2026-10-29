@@ -44,8 +44,9 @@ marketing. Adding nothing is a good outcome; never add to reach three.
 
 ## Steps
 
-1. `git fetch origin main` then `git switch -c data/ollama-library-$(date -u +%Y%m%d) origin/main` (a local
-   working branch; you only push it in `pr` mode)
+1. `git fetch origin main`. In `issue` mode work on the checkout you were given and do not create a branch or
+   commit anything. Only in `pr` mode create the working branch
+   `git switch -c data/ollama-library-$(date -u +%Y%m%d) origin/main`.
 2. `python3 -I scripts/ollama-library/scan.py --out candidates.json`
    If it exits non-zero, go to "When something fails".
 3. Read `candidates.json`. Choose 0 to 3 candidates. For each, write:
@@ -61,24 +62,38 @@ marketing. Adding nothing is a good outcome; never add to reach three.
    then `python3 -I scripts/ollama-library/validate-feed.py --registry --base origin/main --feed website/public/ollama-library.json`.
    Both must print `ok:`. If one fails, fix your rows once (usually a typo); if it still fails, go to
    "When something fails". Delete `candidates.json` before committing.
-6. If you chose nothing, stop. Do not open a pull request or an issue.
-7. **Publication mode.** The line `PUBLICATION_MODE: issue` below is the default. A person changes it
-   to `pr` only after recording on #2778 that the repository's review gates can be met in this
-   environment or that the founder granted a written exemption for feed-only changes. Deterministic
-   validation does not replace independent review, and this environment has no independent reviewer,
-   so it never pushes in `issue` mode.
+6. If you chose nothing, do not open a pull request or an issue; go to step 8.
+7. **Publication mode.** The founder approved automatic publication on 2026-10-29 (recorded on #2778):
+   feed-only pull requests from this routine merge on the deterministic checks (both validator
+   commands above, then CI's offline validator and production-parser test) with no per-week person
+   review. A person can switch the line below back to `issue`.
 
-   PUBLICATION_MODE: issue
+   PUBLICATION_MODE: pr
 
    - `issue` mode: do not commit or push. File one GitHub issue (label `area:polish`) titled
      `Ollama library: proposed additions <date>` whose body holds the exact rows to append (a JSON
      array, ready to paste), each model's reason and size, and the output of both validator commands.
-     An engineering session on the Mac reviews the rows, completes the pre-push gates, and publishes.
-   - `pr` mode: commit only `website/public/ollama-library.json` with the message
-     `data(ollama): add <names> (#2778)`, push the branch, and open a pull request titled the same,
-     with a body listing each added model, its reason and size. Do not enable auto-merge and do not
-     merge. If a later gate is unavailable after publication, leave the pull request for an
-     engineering session without enabling auto-merge.
+     An engineering session on the Mac reviews the rows and publishes.
+   - `pr` mode:
+     1. `git add website/public/ollama-library.json` and nothing else; `git status --short` must list
+        only that file. Commit with the message `data(ollama): add <names> (#2778)`, with no
+        `Co-Authored-By` trailer and no "Generated with" line.
+     2. `git push -u origin data/ollama-library-$(date -u +%Y%m%d)` (one push per command).
+     3. Open a pull request into `main` with the GitHub tool `create_pull_request`, titled the same as
+        the commit. The body lists each added model with its size and reason, the output of both
+        validator commands, and the line `Part of #2778.`
+     4. Turn on auto-merge with the GitHub tool `enable_pr_auto_merge`, merge method `squash`. Never
+        merge it yourself and never skip a check: GitHub merges it only after the required CI check
+        passes. If auto-merge cannot be turned on, leave the pull request open and go to "When
+        something fails".
+8. **Run receipt (every run, every mode, including runs that add nothing and runs that fail).** As your
+   last action, post ONE comment on issue #4215 with the GitHub tool `add_issue_comment`. The comment is
+   exactly one line:
+
+   `routine-run date=<YYYY-MM-DD> scanned=<number of candidates in candidates.json, or 0> picked=<0..3> mode=<issue|pr> outcome=<success|failure> result=<URL|none>`
+
+   `result` is the issue or pull request you opened, the failure issue on a failure, or `none`. The
+   weekly digest (#3837) reads this line; a missing receipt reads as "the routine may have stopped".
 
 ## When something fails
 
@@ -86,4 +101,5 @@ File one GitHub issue (label `area:polish`), titled `Ollama library routine: <wh
 failing command, its exit code and its last ten lines of output. Do not retry more than once. Do not
 open a pull request. If the file is full, title it `Ollama library list is full (40 rows)` and say a
 person must decide what to retire. Before filing, search open issues for the same title and comment
-on the existing one instead of opening a duplicate.
+on the existing one instead of opening a duplicate. Then post the run receipt (step 8) with
+`outcome=failure` and `result=<that issue URL>`.

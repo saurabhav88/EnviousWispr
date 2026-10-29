@@ -1,7 +1,26 @@
 # weekly-digest
 
 Posts one Discord digest every Monday: website traffic, tracked visitor
-activity, downloads, and app usage for the previous seven days.
+activity, downloads, and app usage for the previous seven days, the Ollama
+model list and its weekly routine, and the week's errors.
+
+## Ollama model list section (#3837)
+
+Reads `OLLAMA_LIBRARY_FEED_URL` (row count and `updated` date) and the comments
+on run-log issue `OLLAMA_ROUTINE_LOG_ISSUE` (#4215) from the last 14 days. It
+accepts a comment only from the routine's account (`saurabhav88`) whose first
+line is a whole receipt (`routine-run date=... outcome=... result=...`); the
+routine's GitHub tool footer below it is allowed, anything else is ignored.
+Freshness uses GitHub's creation time. A receipt older than 8 days, or none,
+prints a WARNING line; the 8 days cover summer, when the digest (13:00 UTC)
+runs before that Monday's routine (13:30 UTC). This is evaluated when the
+digest runs; it does not promise notice within 8 days of a missed run.
+
+`OLLAMA_ROUTINE_ENABLED` must be exactly `"true"` or `"false"`; it is what the
+config says, not a read of the scheduler. Flip it, and redeploy, in the same
+step that enables or disables the routine. Missing or invalid vars, a non-200,
+or a wrong shape make this section unavailable and fail the run after delivery,
+like every other section.
 
 - Endpoint: `https://enviouswispr-weekly-digest.saurabhav.workers.dev`
 - Schedule: QStash `enviouswispr-weekly-digest`,
