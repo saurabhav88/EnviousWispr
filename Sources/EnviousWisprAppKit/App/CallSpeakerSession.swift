@@ -18,9 +18,10 @@ import Foundation
 /// - Owns saving, through one queue of saves: every 10 seconds, and when a segment ends, it
 ///   writes all segments so far through `save`, in the order asked, even while no call is read.
 ///   Once admission closes no new save starts; the final save after Stop is the last.
-/// - Opens at most `CallSpeakerLog.maximumSegments` segments; past that it reads nothing more
-///   and counts the refusal. All segments' observations together stay within
-///   `observationByteBudget`, so the log always fits what storage accepts.
+/// - Keeps the recording within its caps (#4013 13B.5): at most `CallSpeakerLog.maximumSegments`
+///   segments, and all segments' evidence within `limits` together. When a cap is reached the
+///   open segment ends (`capacityReached`), nothing more is read, and session health names the
+///   cap; what was kept stays.
 ///
 /// It never starts or stops audio, and nothing here is on the dictation path: discovery's reads
 /// and the copies run off the main actor; a tick only compares cached answers.
@@ -46,8 +47,7 @@ final class CallSpeakerSession {
     var observerTick: Duration = .milliseconds(500)
     /// Checks between periodic saves: 10 seconds.
     var saveEvery = 20
-    /// What all segments' observations may reach together, encoded.
-    var observationByteBudget = CallSpeakerLog.maximumObservationBytes
+    var limits = CallEvidenceLimits.current
   }
 
   /// `finishing`: Stop is saving the final log. `saved`: the final log is on disk, or was handed
@@ -63,8 +63,8 @@ final class CallSpeakerSession {
   private var loop: Task<Void, Never>?
   private var demanding = false
   private var closed: [CallSpeakerSegment] = []
-  /// The encoded size of the closed segments' observations.
-  private var closedObservationBytes = 0
+  /// What the closed segments use of `limits`.
+  private var closedUsage = CallEvidenceUsage()
   private var current: (source: CallSpeakerSourceAnswer.Source, observer: CallSpeakerObserver)?
   /// A different answer and when it was first seen.
   private var pending: (answer: CallSpeakerSourceAnswer, sinceMs: Int)?
@@ -125,7 +125,13 @@ final class CallSpeakerSession {
     case .ambiguous: health.ambiguousSources += 1
     case .unavailable: health.unavailableSources += 1
     }
+    guard health.capacityReason == nil else { return }
     let now = nowMs
+    if let full = current?.observer.capacityReached {
+      closeCurrent(at: now, reason: .capacityReached)
+      reachedCapacity(full)
+      return
+    }
     if case .unique(let source) = answer, current?.source == source {
       pending = nil
       return
@@ -156,7 +162,7 @@ final class CallSpeakerSession {
 
   private func open(_ source: CallSpeakerSourceAnswer.Source, at startMs: Int) {
     guard closed.count < CallSpeakerLog.maximumSegments else {
-      health.refusedSegments += 1
+      reachedCapacity(.segments)
       return
     }
     guard
@@ -170,8 +176,7 @@ final class CallSpeakerSession {
     let family = source.family
     let observer = CallSpeakerObserver(
       surface: surface, family: family, anchor: anchor, startMs: startMs, rules: rules,
-      presencePolicy: presencePolicy, lag: lag,
-      observationByteBudget: max(0, deps.observationByteBudget - closedObservationBytes),
+      presencePolicy: presencePolicy, lag: lag, limits: deps.limits, baseline: closedUsage,
       dependencies: .init(
         // This segment's app instance only while it is still the single live call.
         target: { sources.speakerSource() == .unique(source) ? source.target : nil },
@@ -190,8 +195,16 @@ final class CallSpeakerSession {
     let segment = current.observer.segment(
       endingAt: max(endMs, current.observer.currentSegment.startMs), reason: reason)
     closed.append(segment)
-    closedObservationBytes += current.observer.observationBytes
+    closedUsage.add(segment)
     self.current = nil
+  }
+
+  /// Collection stops for good; what was kept is saved.
+  private func reachedCapacity(_ cap: CallEvidenceCapacity) {
+    pending = nil
+    health.capacityReason = cap.rawValue
+    deps.log("meeting speaker evidence full cap=\(cap.rawValue)")
+    requestSave()
   }
 
   /// Saves still start: the session is open and admission has not closed.

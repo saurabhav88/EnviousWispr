@@ -84,6 +84,8 @@ extension MeetingStore {
   public func saveCallSpeakers(_ log: CallSpeakerLog, meeting id: UUID) throws {
     if let problem = log.shapeProblem { throw CallSpeakersError.invalidLog(problem) }
     let data = try Self.encoder.encode(log)
+    // A well-formed log always fits (`CallEvidenceLimits`, checked by `CallSpeakerLogSizeTests`);
+    // this refuses one only if those caps and this limit ever drift apart.
     guard data.count <= Self.maximumCallSpeakersBytes else { throw CallSpeakersError.tooLarge }
     try refuseCallSpeakersWrite(id)
     try refuseReplacingUnknownCallSpeakers(id)

@@ -134,9 +134,10 @@ public struct CallCaptureHealth: Sendable, Equatable, Codable {
   public var missingPermissionTicks = 0
   /// Copies dropped at delivery because something changed while they were taken.
   public var staleResultDrops = 0
-  /// Admitted observations not kept because the recording's observations reached
-  /// `CallSpeakerLog.maximumObservationBytes`.
-  public var observationCapacityDrops = 0
+  /// Readings not kept because a name in them is longer than a log may hold.
+  public var invalidNameReadings = 0
+  /// Readings not kept because the recording's evidence reached `CallEvidenceLimits`.
+  public var evidenceCapacityDrops = 0
   public var walkDurationCount = 0
   public var walkDurationTotalUs = 0
   public var walkDurationMaxUs = 0
@@ -165,8 +166,9 @@ public struct CallSessionHealth: Sendable, Equatable, Codable {
   public var unavailableSources = 0
   public var saveAttempts = 0
   public var saveFailures = 0
-  /// Segments not opened because the log already held `CallSpeakerLog.maximumSegments`.
-  public var refusedSegments = 0
+  /// The cap that stopped speaker collection (`CallEvidenceCapacity` raw value); `nil` while
+  /// none was reached.
+  public var capacityReason: String?
 
   public init() {}
 }

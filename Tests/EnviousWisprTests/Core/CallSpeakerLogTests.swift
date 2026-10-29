@@ -9,7 +9,7 @@ import Testing
 struct CallSpeakerLogTests {
 
   /// A format-1 log, read back from literal JSON so the stored shape is pinned: one `legacy`
-  /// segment from 0 with no end, every field kept, and saved again as format 2.
+  /// segment from 0 with no end, every field kept, and saved again as the current format.
   @Test("a format-1 log reads back as one legacy segment with every field")
   func readsStoredShape() throws {
     let json = """
@@ -40,12 +40,12 @@ struct CallSpeakerLogTests {
 
     let reencoded = try JSONDecoder().decode(
       CallSpeakerLog.self, from: try JSONEncoder().encode(log))
-    #expect(reencoded.formatVersion == 2)
+    #expect(reencoded.formatVersion == CallSpeakerLog.currentFormatVersion)
     #expect(reencoded.segments == log.segments)
     #expect(reencoded.rules == log.rules)
   }
 
-  /// Format 2 as this build writes it, pinned from literal JSON.
+  /// Format 2 as the earlier build wrote it, pinned from literal JSON.
   @Test("a format-2 log reads back from its stored JSON with every segment")
   func readsSegments() throws {
     let json = """
@@ -67,7 +67,10 @@ struct CallSpeakerLogTests {
     #expect(log.segments[1].status == .noPermission)
     #expect(log.singleSurface == nil, "a mixed recording reports no one surface")
     let back = try JSONDecoder().decode(CallSpeakerLog.self, from: JSONEncoder().encode(log))
-    #expect(back == log)
+    #expect(
+      back.formatVersion == CallSpeakerLog.currentFormatVersion, "saved as the current format")
+    #expect(back.segments == log.segments)
+    #expect(back.rules == log.rules)
   }
 
   @Test(
@@ -227,8 +230,8 @@ struct CallSpeakerLogTests {
 
   @Test("a log from a newer format fails to decode instead of being misread")
   func newerFormatRefused() {
-    #expect(throws: CallSpeakerLog.DecodeError.unsupportedFormatVersion(3)) {
-      try JSONDecoder().decode(CallSpeakerLog.self, from: Data(#"{"formatVersion":3}"#.utf8))
+    #expect(throws: CallSpeakerLog.DecodeError.unsupportedFormatVersion(4)) {
+      try JSONDecoder().decode(CallSpeakerLog.self, from: Data(#"{"formatVersion":4}"#.utf8))
     }
   }
 
@@ -249,8 +252,8 @@ struct CallSpeakerLogTests {
           CallSpeakerLog.self, from: Data(#"{"formatVersion":\#(version)}"#.utf8))
       }
     }
-    #expect(throws: CallSpeakerLog.DecodeError.unsupportedFormatVersion(3)) {
-      try JSONDecoder().decode(CallSpeakerLog.self, from: Data(#"{"formatVersion":3}"#.utf8))
+    #expect(throws: CallSpeakerLog.DecodeError.unsupportedFormatVersion(4)) {
+      try JSONDecoder().decode(CallSpeakerLog.self, from: Data(#"{"formatVersion":4}"#.utf8))
     }
   }
 
@@ -308,5 +311,125 @@ struct CallSpeakerLogTests {
       rules: FrozenTalkerRules(version: 1, payload: payload + "x"), roster: .empty,
       rosterFromParticipantList: nil, observations: [])
     #expect(tooBig.shapeProblem == "rules.payload")
+  }
+
+  // MARK: - Format 3 (#4013 13B.5)
+
+  private static func segment(
+    startMs: Int, endMs: Int?, observations: [CallSpeakerObservation],
+    presence: [CallNamePresence]? = nil
+  ) -> CallSpeakerSegment {
+    CallSpeakerSegment(
+      startMs: startMs, endMs: endMs, endReason: endMs == nil ? nil : .sourceChanged,
+      surface: .teamsApp, source: .app, status: .observed, lag: CallSpeakerLag(milliseconds: -350),
+      roster: CallSpeakerRoster(
+        names: ["Alex Rivera", "Priya Shah", "Alex Rivera"], selfNames: ["Saurabh Vaish"]),
+      rosterFromParticipantList: true, observations: observations, presence: presence,
+      health: CallCaptureHealth())
+  }
+
+  @Test("format 3 reads back exactly the samples it was written from, in runs and a name table")
+  func formatThreeRoundTrip() throws {
+    func at(_ ms: Int, _ speaking: [String]) -> CallSpeakerObservation {
+      CallSpeakerObservation(observationMs: ms, speaking: speaking)
+    }
+    let log = CallSpeakerLog(
+      rules: FrozenTalkerRules(version: 3, payload: #"{"meet":["kssMZb"]}"#),
+      presencePolicy: .current,
+      segments: [
+        Self.segment(
+          startMs: 0, endMs: 10_000,
+          observations: [
+            // Jittered times and a busy gap inside one run; a quiet run; two talkers; a gap
+            // past the run limit; equal times.
+            at(1_000, ["Alex Rivera"]), at(1_520, ["Alex Rivera"]), at(2_110, ["Alex Rivera"]),
+            at(3_700, ["Alex Rivera"]), at(3_900, []), at(4_400, []),
+            at(4_900, ["Priya Shah", "Alex Rivera"]), at(4_900, ["Priya Shah", "Alex Rivera"]),
+            at(7_000, ["Priya Shah", "Alex Rivera"]), at(7_500, ["Alex Rivera", "Priya Shah"]),
+          ],
+          presence: [
+            CallNamePresence(
+              name: "Priya Shah",
+              sightings: [
+                .init(firstSeenMs: 1_000, lastSeenMs: 2_000, absenceConfirmed: true),
+                .init(firstSeenMs: 6_000, lastSeenMs: 9_000, absenceConfirmed: false),
+              ],
+              absences: [.init(firstMissingMs: 2_500, confirmedAtMs: 3_600)])
+          ]),
+        Self.segment(
+          startMs: 10_000, endMs: nil, observations: [at(10_500, ["Dana Okafor"])]),
+      ],
+      sessionHealth: CallSessionHealth())
+    let data = try JSONEncoder().encode(log)
+    let decoded = try JSONDecoder().decode(CallSpeakerLog.self, from: data)
+    #expect(decoded == log)
+    let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    #expect(object["formatVersion"] as? Int == 3)
+    #expect(
+      object["names"] as? [String]
+        == ["Alex Rivera", "Priya Shah", "Saurabh Vaish", "Dana Okafor"], "each name once")
+    let segments = try #require(object["segments"] as? [[String: Any]])
+    let runs = try #require(segments.first?["runs"] as? [[String: Any]])
+    #expect(runs.count == 6)
+    #expect(runs.first?["offsets"] as? [Int] == [0, 520, 1_110], "exact times, not a count")
+  }
+
+  @Test("a format-3 log pointing outside its name table, or with a broken run, is refused")
+  func formatThreeDamage() {
+    let base = #"{"formatVersion":3,"names":["Alex Rivera"],"segments":[{"startMs":0,"#
+    for (json, problem) in [
+      (base + #""roster":{"names":[1],"selfNames":[]},"runs":[]}]}"#, "name id"),
+      (
+        base
+          + #""roster":{"names":[],"selfNames":[]},"runs":[{"startMs":5,"speaking":[0],"offsets":[]}]}]}"#,
+        "runs"
+      ),
+      (
+        base
+          + #""roster":{"names":[],"selfNames":[]},"runs":[{"startMs":5,"speaking":[0],"offsets":[3]}]}]}"#,
+        "runs"
+      ),
+      (
+        base
+          + #""roster":{"names":[],"selfNames":[]},"runs":[{"startMs":5,"speaking":[0],"offsets":[0,9,4]}]}]}"#,
+        "runs"
+      ),
+      (#"{"formatVersion":3,"names":["A","A"],"segments":[]}"#, "names"),
+    ] {
+      #expect(throws: CallSpeakerLog.DecodeError.invalid(problem)) {
+        try JSONDecoder().decode(CallSpeakerLog.self, from: Data(json.utf8))
+      }
+    }
+  }
+
+  @Test("a name too long in characters or in bytes is no name")
+  func nameBounds() {
+    #expect(CallSpeakerLog.isName(String(repeating: "a", count: 256)))
+    #expect(!CallSpeakerLog.isName(String(repeating: "a", count: 257)))
+    // One character holding 600 combining marks: 1,201 bytes.
+    let heavy = "a" + String(repeating: "\u{0301}", count: 600)
+    #expect(heavy.count == 1)
+    #expect(!CallSpeakerLog.isName(heavy))
+  }
+
+  @Test("a format-3 log past a cap is refused; an older format is read as it was written")
+  func formatThreeCaps() throws {
+    var limits = CallEvidenceLimits.current
+    let names = (0...limits.names).map { "Person \($0)" }
+    let roster = CallSpeakerRoster(names: names, selfNames: [])
+    let segment = CallSpeakerSegment(
+      startMs: 0, endMs: nil, endReason: nil, surface: .teamsApp, source: .app,
+      status: .observed, lag: nil, roster: roster, rosterFromParticipantList: true,
+      observations: [])
+    let log = CallSpeakerLog(rules: nil, segments: [segment])
+    #expect(log.shapeProblem == "capacity.names")
+    limits.names += 1
+    #expect(CallEvidenceUsage([segment]).exceeded(limits) == nil, "control: one more fits")
+    let older =
+      #"{"formatVersion":2,"segments":[{"startMs":0,"roster":{"names":"#
+      + "[\(names.map { "\"\($0)\"" }.joined(separator: ","))],\"selfNames\":[]}}]}"
+    let read = try JSONDecoder().decode(CallSpeakerLog.self, from: Data(older.utf8))
+    #expect(read.formatVersion == 2)
+    #expect(read.segments.first?.roster.names.count == names.count)
   }
 }

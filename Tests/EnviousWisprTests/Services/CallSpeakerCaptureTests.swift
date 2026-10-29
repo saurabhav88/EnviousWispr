@@ -251,7 +251,9 @@ struct CallSpeakerCaptureTests {
     let proof = CallSpeakerReading(
       speaking: [], roster: CallSpeakerRoster(names: ["Alex Rivera"], selfNames: []),
       rosterFromParticipantList: false,
-      participants: [CallParticipant(key: "0", name: "Alex Rivera", isTalking: false, isSelf: false)],
+      participants: [
+        CallParticipant(key: "0", name: "Alex Rivera", isTalking: false, isSelf: false)
+      ],
       participantIdentityEstablished: true, sharedNames: ["Alex Rivera"])
     log.add(proof, context: Self.good, observationMs: 2)
     log.add(reading([("Alex Rivera", true)]), context: Self.good, observationMs: 3)
@@ -295,8 +297,11 @@ struct CallSpeakerCaptureTests {
     log.add(list(["Alex Rivera", "Priya Shah"]), context: Self.good, observationMs: 1_000)
     log.add(list(["Alex Rivera"]), context: Self.good, observationMs: 1_500)
     log.add(list(["Alex Rivera", "Priya Shah"]), context: Self.good, observationMs: 2_000)
-    #expect(presence(log, "Priya Shah")?.absences.isEmpty == true, "one missing list is not a leave")
-    for ms in [2_500, 3_000] { log.add(list(["Alex Rivera"]), context: Self.good, observationMs: ms) }
+    #expect(
+      presence(log, "Priya Shah")?.absences.isEmpty == true, "one missing list is not a leave")
+    for ms in [2_500, 3_000] {
+      log.add(list(["Alex Rivera"]), context: Self.good, observationMs: ms)
+    }
     #expect(presence(log, "Priya Shah")?.absences.isEmpty == true, "two lists over 500 ms")
     log.add(list(["Alex Rivera"]), context: Self.good, observationMs: 3_500)
     let gone = presence(log, "Priya Shah")
@@ -307,17 +312,21 @@ struct CallSpeakerCaptureTests {
     log.add(list(["Alex Rivera", "Priya Shah"]), context: Self.good, observationMs: 9_000)
     let back = presence(log, "Priya Shah")
     #expect(back?.sightings.count == 2)
-    #expect(back?.sightings.last == .init(firstSeenMs: 9_000, lastSeenMs: 9_000, absenceConfirmed: false))
+    #expect(
+      back?.sightings.last == .init(firstSeenMs: 9_000, lastSeenMs: 9_000, absenceConfirmed: false))
     #expect(back?.isConfirmedAbsent(at: 8_999) == true)
     #expect(back?.isConfirmedAbsent(at: 9_000) == false)
     #expect(back?.isConfirmedAbsent(at: 500) == false, "before the first sighting is not absence")
   }
 
-  @Test("tiles only, a partial list, a gap, an unreadable copy or a dictation pause never prove a leave")
+  @Test(
+    "tiles only, a partial list, a gap, an unreadable copy or a dictation pause never prove a leave"
+  )
   func noLeaveWithoutCompleteLists() {
     // Tiles only: never.
     var tiles = CallSpeakerAccumulator(surface: .meet, rules: nil, lag: nil)
-    tiles.add(list(["Alex Rivera", "Priya Shah"], complete: false), context: Self.good, observationMs: 0)
+    tiles.add(
+      list(["Alex Rivera", "Priya Shah"], complete: false), context: Self.good, observationMs: 0)
     for ms in stride(from: 500, through: 5_000, by: 500) {
       tiles.add(list(["Alex Rivera"], complete: false), context: Self.good, observationMs: ms)
     }
@@ -334,22 +343,29 @@ struct CallSpeakerCaptureTests {
       return log
     }
     let unreadable = run {
-      $0.add(nil, context: CallCaptureContext(completeness: .unreadable, scope: .resolved), observationMs: 1_200)
+      $0.add(
+        nil, context: CallCaptureContext(completeness: .unreadable, scope: .resolved),
+        observationMs: 1_200)
     }
     #expect(presence(unreadable, "Priya Shah")?.absences.isEmpty == true)
     let dictation = run { $0.noteDictationSkip() }
     #expect(presence(dictation, "Priya Shah")?.absences.isEmpty == true)
     let stale = run { $0.noteStaleDrop() }
     #expect(presence(stale, "Priya Shah")?.absences.isEmpty == true)
-    let partial = run { $0.add(list(["Alex Rivera"], complete: false), context: Self.good, observationMs: 1_200) }
+    let partial = run {
+      $0.add(list(["Alex Rivera"], complete: false), context: Self.good, observationMs: 1_200)
+    }
     #expect(presence(partial, "Priya Shah")?.absences.isEmpty == true)
     let control = run { _ in }
-    #expect(presence(control, "Priya Shah")?.absences.count == 1, "without a break the run confirms")
+    #expect(
+      presence(control, "Priya Shah")?.absences.count == 1, "without a break the run confirms")
 
     // A list read more than 1.5 s after the one before starts a new run.
     var gap = CallSpeakerAccumulator(surface: .teamsApp, rules: nil, lag: nil)
     gap.add(list(["Alex Rivera", "Priya Shah"]), context: Self.good, observationMs: 0)
-    for ms in [500, 1_000, 3_000] { gap.add(list(["Alex Rivera"]), context: Self.good, observationMs: ms) }
+    for ms in [500, 1_000, 3_000] {
+      gap.add(list(["Alex Rivera"]), context: Self.good, observationMs: ms)
+    }
     #expect(presence(gap, "Priya Shah")?.absences.isEmpty == true)
   }
 
@@ -395,8 +411,12 @@ struct CallSpeakerCaptureTests {
     log.add(
       reading([("Alex Rivera", true), ("Alex Rivera", false)]), context: Self.good,
       observationMs: 3)
-    log.add(nil, context: CallCaptureContext(completeness: .truncated, scope: .resolved), observationMs: 4)
-    log.add(nil, context: CallCaptureContext(completeness: .complete, scope: .unresolved), observationMs: 5)
+    log.add(
+      nil, context: CallCaptureContext(completeness: .truncated, scope: .resolved), observationMs: 4
+    )
+    log.add(
+      nil, context: CallCaptureContext(completeness: .complete, scope: .unresolved),
+      observationMs: 5)
     log.noteBusySkip()
     log.noteDictationSkip()
     log.noteNoPermission()
@@ -443,7 +463,8 @@ struct CallSpeakerCaptureTests {
     func window(_ title: String?, _ label: String) -> CallAXWindow {
       CallAXWindow(
         title: title,
-        root: CallAXNode(role: "AXWindow", children: [CallAXNode(role: "AXGroup", description: label)]))
+        root: CallAXNode(
+          role: "AXWindow", children: [CallAXNode(role: "AXGroup", description: label)]))
     }
     func scope(_ windows: [CallAXWindow]) -> CallCaptureContext.Scope {
       CallSpeakerSurfaceReader.scope(
@@ -467,7 +488,8 @@ struct CallSpeakerCaptureTests {
   func zoomAppScope() {
     func meeting() -> CallAXWindow {
       CallAXWindow(
-        title: "Zoom Meeting", root: CallAXNode(role: "AXWindow", identifier: "zm.meeting.window.main"))
+        title: "Zoom Meeting",
+        root: CallAXNode(role: "AXWindow", identifier: "zm.meeting.window.main"))
     }
     func scope(_ windows: [CallAXWindow]) -> CallCaptureContext.Scope {
       CallSpeakerSurfaceReader.scope(
@@ -504,5 +526,75 @@ struct CallSpeakerCaptureTests {
       CallSpeakerSurfaceChoice.surface(family: .googleMeet, rule: .callApp(.googleMeet)) == nil)
     #expect(CallSpeakerSurfaceChoice.source(for: .meet) == .rules)
     #expect(CallSpeakerSurfaceChoice.source(for: .zoomApp) == .app)
+  }
+
+  // MARK: - Capacity (#4013 13B.5)
+
+  @Test(
+    "a reading that would pass a cap is not kept at all, and collection stops keeping what it had")
+  func capacityIsWholeReading() {
+    var limits = CallEvidenceLimits.current
+    limits.names = 3
+    var log = CallSpeakerAccumulator(surface: .meet, rules: nil, lag: nil, limits: limits)
+    log.add(
+      reading([("Alex Rivera", true), ("Priya Shah", false)]), context: Self.good,
+      observationMs: 1_000)
+    let kept = log.log
+    log.add(
+      reading([("Alex Rivera", true), ("Sam", false), ("Dana Okafor", false)]), context: Self.good,
+      observationMs: 1_500)
+    #expect(log.capacityReached == .names)
+    #expect(log.log.roster == kept.roster, "no part of the reading is kept")
+    #expect(log.log.observations == kept.observations)
+    #expect(log.log.segments.first?.presence == kept.segments.first?.presence)
+    log.add(reading([("Alex Rivera", true)]), context: Self.good, observationMs: 2_000)
+    #expect(log.log.observations == kept.observations, "stopped for good")
+    #expect(log.health.evidenceCapacityDrops == 2)
+    #expect(log.log.shapeProblem == nil)
+  }
+
+  @Test("each cap stops collection at the reading that would pass it")
+  func eachCap() {
+    func reached(
+      _ set: (inout CallEvidenceLimits) -> Void, baseline: CallEvidenceUsage = .init(),
+      _ readings: [CallSpeakerReading]
+    ) -> CallEvidenceCapacity? {
+      var limits = CallEvidenceLimits.current
+      set(&limits)
+      var log = CallSpeakerAccumulator(
+        surface: .meet, rules: nil, lag: nil, limits: limits, baseline: baseline)
+      for (n, reading) in readings.enumerated() {
+        log.add(reading, context: Self.good, observationMs: 1_000 + n * 500)
+      }
+      return log.capacityReached
+    }
+    let alex = reading([("Alex Rivera", true)])
+    let priya = reading([("Priya Shah", true), ("Alex Rivera", false)])
+    #expect(reached({ $0.runs = 1 }, [alex, alex]) == nil, "control: one run")
+    #expect(reached({ $0.runs = 1 }, [alex, priya]) == .runs)
+    #expect(reached({ $0.samples = 2 }, [alex, alex, alex]) == .samples)
+    #expect(reached({ $0.speakingReferences = 1 }, [alex, priya]) == .speakingReferences)
+    #expect(reached({ $0.rosterReferences = 1 }, [priya]) == .rosterReferences)
+    #expect(reached({ $0.presenceEntries = 1 }, [priya]) == .presenceEntries)
+    var earlier = CallEvidenceUsage()
+    earlier.names = ["Dana Okafor", "Sam"]
+    #expect(
+      reached({ $0.names = 3 }, baseline: earlier, [priya]) == .names,
+      "earlier segments count too")
+  }
+
+  @Test("a reading with a name too long for the log is not kept and proves no one left")
+  func overlongName() {
+    var log = CallSpeakerAccumulator(surface: .meet, rules: nil, lag: nil)
+    log.add(reading([("Alex Rivera", true)]), context: Self.good, observationMs: 1_000)
+    let kept = log.log
+    log.add(
+      reading([(String(repeating: "x", count: 300), true)]), context: Self.good,
+      observationMs: 1_500)
+    #expect(log.log.roster == kept.roster)
+    #expect(log.log.observations == kept.observations)
+    #expect(log.log.segments.first?.presence == kept.segments.first?.presence)
+    #expect(log.health.invalidNameReadings == 1)
+    #expect(log.capacityReached == nil)
   }
 }

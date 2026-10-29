@@ -65,12 +65,12 @@ final class CallSpeakerObserver {
   private var seenDictationChanges = 0
 
   /// `rules` and `lag` are the recording's frozen ones; `anchor` is the recorder's; `startMs` is
-  /// where this segment starts on the recording clock; `observationByteBudget` is what this
-  /// segment's observations may add to the recording's.
+  /// where this segment starts on the recording clock; `baseline` is what the recording's
+  /// earlier segments use of `limits`.
   init(
     surface: CallSpeakerSurface, family: CallAppFamily, anchor: UInt64, startMs: Int,
     rules: TalkerRulesSnapshot, presencePolicy: CallPresencePolicy, lag: CallSpeakerLag?,
-    observationByteBudget: Int = CallSpeakerLog.maximumObservationBytes,
+    limits: CallEvidenceLimits = .current, baseline: CallEvidenceUsage = CallEvidenceUsage(),
     dependencies: Dependencies
   ) {
     self.deps = dependencies
@@ -80,13 +80,12 @@ final class CallSpeakerObserver {
     self.accumulator = CallSpeakerAccumulator(
       surface: surface, rules: rules.frozen, lag: lag,
       status: CallSpeakerSurfaceChoice.hasTalkerReader(surface) ? nil : .unsupported,
-      presencePolicy: presencePolicy, startMs: startMs,
-      observationByteBudget: observationByteBudget)
+      presencePolicy: presencePolicy, startMs: startMs, limits: limits, baseline: baseline)
     watchDictation()
   }
 
-  /// The encoded size of this segment's observations so far.
-  var observationBytes: Int { accumulator.observationBytes }
+  /// The cap that stopped this segment's collection, if one did; then no copy is taken.
+  var capacityReached: CallEvidenceCapacity? { accumulator.capacityReached }
 
   /// This segment as collected so far, still open.
   var currentSegment: CallSpeakerSegment { accumulator.segment(endMs: nil, endReason: nil) }
@@ -124,7 +123,9 @@ final class CallSpeakerObserver {
   /// One tick. Eligibility is checked every tick, even while a copy is in flight, so a change
   /// drops that copy; a copy starts only when eligible and the lane is free.
   func tick() {
-    guard open, CallSpeakerSurfaceChoice.hasTalkerReader(accumulator.surface) else { return }
+    guard open, accumulator.capacityReached == nil,
+      CallSpeakerSurfaceChoice.hasTalkerReader(accumulator.surface)
+    else { return }
     // A whole dictation between two ticks still interrupts presence.
     let changes = dictationChanges.withLock { $0 }
     if changes != seenDictationChanges {

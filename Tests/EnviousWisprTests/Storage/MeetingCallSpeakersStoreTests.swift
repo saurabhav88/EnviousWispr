@@ -94,7 +94,7 @@ struct MeetingCallSpeakersStoreTests {
     arguments: [
       ("{\"formatVersion\":1,\"roster\"", MeetingStore.CallSpeakersLoad.Reason.invalid),
       ("not json", .invalid),
-      (#"{"formatVersion":3}"#, .newerFormat),
+      (#"{"formatVersion":4}"#, .newerFormat),
       (#"{"formatVersion":2,"segments":[{"startMs":0},{"startMs":10}]}"#, .invalid),
       (#"{"formatVersion":2}"#, .invalid),
       (#"{"formatVersion":2,"segments":null}"#, .invalid),
@@ -163,7 +163,7 @@ struct MeetingCallSpeakersStoreTests {
   @Test("a file a newer build wrote is never overwritten, and a malformed log is never written")
   func protectedContent() throws {
     let (store, record) = try makeMeeting()
-    let newer = #"{"formatVersion":3,"future":true}"#
+    let newer = #"{"formatVersion":4,"future":true}"#
     try writeRaw(newer, meeting: record.id, in: store)
     #expect(throws: MeetingStore.CallSpeakersError.newerFormat) {
       try store.saveCallSpeakers(Self.log(), meeting: record.id)
@@ -182,21 +182,6 @@ struct MeetingCallSpeakersStoreTests {
       try store2.saveCallSpeakers(backwards, meeting: record2.id)
     }
     #expect(store2.loadCallSpeakers(meeting: record2.id) == .absent)
-  }
-
-  @Test("a log too large to read back is not saved, and the previous log stays")
-  func oversizedLogRefused() throws {
-    let (store, record) = try makeMeeting()
-    try store.saveCallSpeakers(Self.log(), meeting: record.id)
-    let before = try Data(contentsOf: store.callSpeakersURL(for: record.id))
-    let names = (0..<60).map { "Participant \($0) " + String(repeating: "x", count: 230) }
-    let huge = Self.log(
-      observations: (0..<1_200).map { CallSpeakerObservation(observationMs: $0, speaking: names) })
-    #expect(huge.shapeProblem == nil, "the log is well formed, only large")
-    #expect(throws: MeetingStore.CallSpeakersError.tooLarge) {
-      try store.saveCallSpeakers(huge, meeting: record.id)
-    }
-    #expect(try Data(contentsOf: store.callSpeakersURL(for: record.id)) == before)
   }
 
   @Test(
@@ -226,11 +211,15 @@ struct MeetingCallSpeakersStoreTests {
   func emptySegments() throws {
     let (store, record) = try makeMeeting()
     try writeRaw(#"{"formatVersion":2,"segments":[]}"#, meeting: record.id, in: store)
-    #expect(
-      store.loadCallSpeakers(meeting: record.id) == .usable(CallSpeakerLog(rules: nil, segments: [])))
+    guard case .usable(let log) = store.loadCallSpeakers(meeting: record.id) else {
+      Issue.record("an empty segment list did not load")
+      return
+    }
+    #expect(log.formatVersion == 2)
+    #expect(log.segments.isEmpty)
   }
 
-  @Test("a format-1 file is replaced by a format-2 save")
+  @Test("a format-1 file is replaced by a current-format save")
   func formatOneReplaced() throws {
     let (store, record) = try makeMeeting()
     try writeRaw(#"{"formatVersion":1,"surface":"meet"}"#, meeting: record.id, in: store)
@@ -239,7 +228,7 @@ struct MeetingCallSpeakersStoreTests {
       Issue.record("the replaced log did not load")
       return
     }
-    #expect(log.formatVersion == 2)
+    #expect(log.formatVersion == CallSpeakerLog.currentFormatVersion)
     #expect(log == Self.log())
   }
 

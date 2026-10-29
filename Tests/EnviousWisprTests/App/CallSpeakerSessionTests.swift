@@ -6,7 +6,6 @@ import os
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprCore
 @testable import EnviousWisprServices
-@testable import EnviousWisprStorage
 
 /// #4013 13B.4: when these fail, a recording reads the wrong call after the user switches
 /// calls, splits one call into pieces on a brief flicker, keeps reading when two calls compete,
@@ -36,15 +35,11 @@ struct CallSpeakerSessionTests {
   }
 
   private static let meet = CallSpeakerObserverTests.meetCall
-  /// The same call family in a second browser instance: a different source.
-  private static let otherMeet = CallSpeakerSourceAnswer.unique(
-    .init(family: .googleMeet, target: CallSpeakerTarget(pid: 3, rule: .browser(.chrome))))
   private static let zoom = CallSpeakerSourceAnswer.unique(
     .init(family: .zoom, target: CallSpeakerTarget(pid: 2, rule: .callApp(.zoom))))
 
   private func session(
     _ sources: Sources, clock: Clock, settleMs: Int = 2_000, tick: Duration = .seconds(3_600),
-    observationBytes: Int = CallSpeakerLog.maximumObservationBytes,
     saved: @escaping @MainActor (CallSpeakerLog) async throws -> Void = { _ in }
   ) throws -> CallSpeakerSession {
     let rules = try TalkerRulesSnapshot(
@@ -65,8 +60,7 @@ struct CallSpeakerSessionTests {
         },
         isTrusted: { true }, isDictationIdle: { true }, save: { try await saved($0) },
         lane: .init(), hostTime: { clock.host() }, tick: tick,
-        settle: .milliseconds(settleMs), observerTick: .seconds(3_600), saveEvery: 2,
-        observationByteBudget: observationBytes))
+        settle: .milliseconds(settleMs), observerTick: .seconds(3_600), saveEvery: 2))
   }
 
   /// One observer tick and its copy delivered.
@@ -265,43 +259,8 @@ struct CallSpeakerSessionTests {
     }
     let log = session.currentLog
     #expect(log.segments.count == CallSpeakerLog.maximumSegments)
-    #expect(log.sessionHealth?.refusedSegments == 1)
+    #expect(log.sessionHealth?.capacityReason == "segments")
     #expect(log.shapeProblem == nil, "the log still saves")
-    session.cancel()
-  }
-
-  @Test(
-    "observations stop at the byte budget across segments, and what is kept fits it as storage writes it"
-  )
-  func observationBudget() async throws {
-    #expect(CallSpeakerLog.maximumObservationBytes * 2 <= MeetingStore.maximumCallSpeakersBytes)
-    let one =
-      try MeetingStore.encoder.encode(
-        CallSpeakerObservation(observationMs: 1_000, speaking: ["Alex Rivera"])
-      ).count + 1
-    // Room for two such observations, not three.
-    let budget = one * 2 + one / 2
-    let sources = Sources(Self.meet)
-    let clock = Clock()
-    let session = try session(sources, clock: clock, settleMs: 0, observationBytes: budget)
-    session.start()
-    for ms in [1_000, 2_000] {
-      clock.ms.withLock { $0 = ms }
-      await read(session)
-    }
-    clock.ms.withLock { $0 = 3_000 }
-    sources.answer = Self.otherMeet
-    session.check()
-    session.check()
-    clock.ms.withLock { $0 = 4_000 }
-    await read(session)
-    let log = session.currentLog
-    #expect(log.segments.count == 2)
-    let kept = log.segments.flatMap(\.observations)
-    #expect(kept.count == 2, "the second segment had only what the first left")
-    #expect(log.segments.last?.health?.observationCapacityDrops == 1)
-    #expect(try MeetingStore.encoder.encode(kept).count <= budget + 1)
-    #expect(log.shapeProblem == nil)
     session.cancel()
   }
 }
