@@ -14,6 +14,18 @@ import Testing
 @Suite(.tags(.productOutcome))
 struct TranscriptSplitterTests {
 
+  @Test("sentence pieces leave boundary whitespace in the source gap (#3859)",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/3859", "lost sentence separator"),
+    arguments: ["", " \t\n"])
+  func sentencePiecesExcludeOuterWhitespace(prefix: String) {
+    let left = "The  report must arrive by Friday."
+    let right = "Please send the summary tomorrow."
+    let raw = prefix + left + " \t \n" + right + " \n"
+    let parts = TranscriptSplitter.split(raw, maximumWords: 6)
+    #expect(parts == [left, right], "preserve internal spacing while excluding source-edge whitespace")
+    #expect(parts.allSatisfy { TranscriptSplitter.wordCount(in: $0) <= 6 })
+  }
+
   // MARK: - Inputs
 
   /// Deterministic prose with real sentence structure: varied lengths, abbreviations, decimals,
