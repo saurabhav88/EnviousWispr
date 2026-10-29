@@ -230,10 +230,25 @@ export EW_SEED_ROOT="$TMPROOT/spm-seed"
 # shellcheck source=scripts/lib/spm-seed-lock.sh
 . "$HERE/spm-seed-lock.sh"
 
+# Intended-positive acquisition is setup, not the refusal behavior under test.
+# Observe both the published registry and actual owner before dependent cases;
+# absence after failed setup must never masquerade as successful cleanup.
+require_owned_acquire() {
+  local key="$1" record
+  if ! ew_seed_lock_acquire "$key" || ! record="$(_ew_seed_find_lock "$key")" \
+     || [ "${_EW_SEED_R_PHASE[$record]:-}" != published ] \
+     || [ -z "${_EW_SEED_R_IDENT[$record]:-}" ] \
+     || [ ! -f "$EW_SEED_ROOT/.locks/$key/owner" ] \
+     || [ "$(sed -n 's/^pid=//p' "$EW_SEED_ROOT/.locks/$key/owner")" != "$$" ]; then
+    bad "positive acquisition setup" "$key did not publish a registered owner"
+    exit 1
+  fi
+}
+
 K="testkey"
 
 # --- acquire / refuse ---------------------------------------------------------
-if ew_seed_lock_acquire "$K"; then ok "acquires a free lock"; else bad "acquire free lock" "refused a free key"; fi
+if require_owned_acquire "$K"; then ok "acquires a free lock"; else bad "acquire free lock" "refused a free key"; fi
 
 # The twin. Without it, a function that always returns 0 passes the case above.
 if ew_seed_lock_acquire "$K"; then
@@ -242,7 +257,7 @@ else
   ok "refuses a lock already held (the twin: proves acquire is not always-yes)"
 fi
 
-if ew_seed_lock_acquire "otherkey"; then ok "a DIFFERENT key is unaffected"; else bad "per-key locking" "refused an unrelated key"; fi
+if require_owned_acquire "otherkey"; then ok "a DIFFERENT key is unaffected"; else bad "per-key locking" "refused an unrelated key"; fi
 ew_seed_lock_release "otherkey"
 
 # --- ownership record ---------------------------------------------------------
@@ -257,11 +272,11 @@ fi
 # --- release ------------------------------------------------------------------
 ew_seed_lock_release "$K"
 if [ ! -d "$EW_SEED_ROOT/.locks/$K" ]; then ok "release removes the lock"; else bad "release" "lock directory survived"; fi
-if ew_seed_lock_acquire "$K"; then ok "the key is acquirable again after release"; else bad "re-acquire" "still refused after release"; fi
+if require_owned_acquire "$K"; then ok "the key is acquirable again after release"; else bad "re-acquire" "still refused after release"; fi
 
 # --- release_all --------------------------------------------------------------
-ew_seed_lock_acquire "bulk1" >/dev/null 2>&1
-ew_seed_lock_acquire "bulk2" >/dev/null 2>&1
+require_owned_acquire "bulk1" >/dev/null 2>&1
+require_owned_acquire "bulk2" >/dev/null 2>&1
 ew_seed_release_all
 if [ -z "$(ls -A "$EW_SEED_ROOT/.locks" 2>/dev/null)" ]; then
   ok "release_all clears every lock this process owns"
@@ -273,7 +288,7 @@ fi
 # --- reclamation: THE DANGEROUS DIRECTION FIRST -------------------------------
 # A live owner must NEVER be reclaimed. Getting this wrong deletes a tree while
 # another process is cloning it.
-ew_seed_lock_acquire "$K" >/dev/null 2>&1
+require_owned_acquire "$K" >/dev/null 2>&1
 # BACKDATE the lock so the AGE condition is satisfied. Without this the case
 # passes for the wrong reason — `find -mmin +0` refuses a just-created directory,
 # so the age check returns first and the liveness check is never reached. Caught
@@ -399,7 +414,7 @@ ew_seed_process_identity() {
   printf '%s\n' "$seen" > "$ORDER_PROBE"
   printf 'probe-identity\n'
 }
-ew_seed_lock_acquire ordering >/dev/null 2>&1
+require_owned_acquire ordering >/dev/null 2>&1
 eval "$_real_identity_body"
 if [ "$(cat "$ORDER_PROBE" 2>/dev/null)" = "yes" ]; then
   ok "the lock is registered for cleanup BEFORE its owner record is written"
@@ -412,7 +427,7 @@ ew_seed_lock_release ordering
 # A partial record is PERMANENT: `is_reclaimable` refuses an unknown version, so
 # a truncated `version=` would make that key read as busy for the life of the
 # machine. Atomicity is what makes "absent or complete" the only two states.
-ew_seed_lock_acquire atomicowner >/dev/null 2>&1
+require_owned_acquire atomicowner >/dev/null 2>&1
 _leftover=0
 for _t in "$EW_SEED_ROOT/.locks/atomicowner"/.owner.*; do
   [ -e "$_t" ] && _leftover=$((_leftover + 1))
@@ -531,7 +546,7 @@ fi
 
 # THE TWIN: with a working tool the same key acquires normally and records a
 # start identity a judge can actually use.
-if ew_seed_lock_acquire noidentity >/dev/null 2>&1 \
+if require_owned_acquire noidentity >/dev/null 2>&1 \
    && [ -n "$(sed -n 's/^started=//p' "$EW_SEED_ROOT/.locks/noidentity/owner")" ]; then
   ok "acquire succeeds with a working tool and records a usable identity (the twin)"
 else
@@ -550,7 +565,7 @@ mkdir -p "$EW_SEED_ROOT/.locks/abandoned"
   printf 'pid=%s\n' 999998
   printf 'started=Thu Jan  1 00:00:00 2020\n'; } > "$EW_SEED_ROOT/.locks/abandoned/owner"
 touch -t 202001010000 "$EW_SEED_ROOT/.locks/abandoned"
-if ew_seed_lock_acquire abandoned >/dev/null 2>&1; then
+if require_owned_acquire abandoned >/dev/null 2>&1; then
   ok "acquire RECLAIMS an aged lock whose owner is provably dead"
 else
   bad "acquire reclaim" "an abandoned lock stayed locked forever — seeding lost for that key"
@@ -588,7 +603,7 @@ printf keep > "$EW_SEED_ROOT/.locks/unheld/sentinel"
 ew_seed_lock_release unheld
 if [ -f "$EW_SEED_ROOT/.locks/unheld/sentinel" ]; then ok "unheld release cannot delete an existing key"; else bad "unheld release" "deleted foreign state"; fi
 
-ew_seed_lock_acquire reload
+require_owned_acquire reload
 _reload_count="$_EW_SEED_NEXT"
 . "$HERE/spm-seed-lock.sh"
 if [ "$_EW_SEED_NEXT" = "$_reload_count" ] && _ew_seed_find_lock reload >/dev/null; then ok "same-source reload preserves active registry"; else bad "reload" "lost ownership"; fi
@@ -600,9 +615,9 @@ if [ "$_reload_rc" = 2 ] && [ "$_EW_SEED_ORIGIN" = "$HERE" ] && _ew_seed_find_lo
 if [ -f "$EW_SEED_ROOT/.locks/reload/owner" ]; then ok "inherited subshell cannot release its parent's ownership"; else bad "subshell release" "deleted parent lock"; fi
 ew_seed_lock_release reload
 
-ew_seed_lock_acquire retained
-ew_seed_begin_temp retained "$TMPROOT" "$TMPROOT/.SourcePackages.seed.retained.1"
-ew_seed_lock_acquire healthy
+require_owned_acquire retained
+if ! ew_seed_begin_temp retained "$TMPROOT" "$TMPROOT/.SourcePackages.seed.retained.1" || [ ! -d "$TMPROOT/.SourcePackages.seed.retained.1" ]; then bad "retained staging setup" "creation failed"; exit 1; fi
+require_owned_acquire healthy
 python3() {
   if [ "${1:-}" = "$_EW_SEED_HELPER" ] && [ "${2:-}" = remove ] && [ "${4:-}" = "$TMPROOT/.SourcePackages.seed.retained.1" ]; then return 1; fi
   command python3 "$@"
@@ -614,7 +629,7 @@ unset -f python3
 ew_seed_release_all
 if [ "$EW_SEED_CLEANUP_COMPLETE" = 1 ] && [ ! -e "$EW_SEED_ROOT/.locks/retained" ] && [ ! -e "$TMPROOT/.SourcePackages.seed.retained.1" ]; then ok "retained cleanup can retry its captured instance"; else bad "retry cleanup" "state survived"; fi
 
-ew_seed_lock_acquire partialowner
+require_owned_acquire partialowner
 _partial_owner="$(cat "$EW_SEED_ROOT/.locks/partialowner/owner")"
 python3() {
   if [ "${1:-}" = "$_EW_SEED_HELPER" ] && [ "${2:-}" = remove ] && [ "${4:-}" = "$EW_SEED_ROOT/.locks/partialowner" ]; then
@@ -628,7 +643,7 @@ unset -f python3
 if [ "$EW_SEED_CLEANUP_COMPLETE" = 0 ] && [ "$(cat "$EW_SEED_ROOT/.locks/partialowner/owner")" = "$_partial_owner" ] && [ ! -e "$EW_SEED_ROOT/.mutations/partialowner" ]; then ok "partial owner deletion restores exact v1 bytes before releasing gate"; else bad "owner restoration" "lost protection or released uncertain gate"; fi
 ew_seed_lock_release partialowner
 
-ew_seed_lock_acquire failedrestore
+require_owned_acquire failedrestore
 python3() {
   if [ "${1:-}" = "$_EW_SEED_HELPER" ] && [ "${2:-}" = remove ] && [ "${4:-}" = "$EW_SEED_ROOT/.locks/failedrestore" ]; then
     command rm -f "$EW_SEED_ROOT/.locks/failedrestore/owner"
@@ -645,9 +660,9 @@ ew_seed_lock_release failedrestore
 ew_seed_lock_release failedrestore
 if [ "$EW_SEED_CLEANUP_COMPLETE" = 1 ] && [ ! -e "$EW_SEED_ROOT/.mutations/failedrestore" ] && [ ! -e "$EW_SEED_ROOT/.locks/failedrestore" ]; then ok "verified retained gate can restore protection then complete its own cleanup"; else bad "retained gate retry" "did not complete"; fi
 
-ew_seed_lock_acquire stagingroot
+require_owned_acquire stagingroot
 _consumer_root="$TMPROOT/consumer-root"; mkdir "$_consumer_root"
-ew_seed_begin_temp stagingroot "$_consumer_root" "$_consumer_root/.SourcePackages.seed.stagingroot.1"
+if ! ew_seed_begin_temp stagingroot "$_consumer_root" "$_consumer_root/.SourcePackages.seed.stagingroot.1"; then bad "bound staging setup" "creation failed"; exit 1; fi
 printf keep > "$_consumer_root/.SourcePackages.seed.stagingroot.1/sentinel"
 mv "$_consumer_root" "$TMPROOT/original-consumer-root"; mkdir "$_consumer_root"
 ew_seed_lock_release stagingroot
@@ -656,8 +671,8 @@ rmdir "$_consumer_root"; mv "$TMPROOT/original-consumer-root" "$_consumer_root"
 ew_seed_lock_release stagingroot
 if [ "$EW_SEED_CLEANUP_COMPLETE" = 1 ] && [ ! -e "$_consumer_root/.SourcePackages.seed.stagingroot.1" ] && [ ! -e "$EW_SEED_ROOT/.locks/stagingroot" ]; then ok "restoring captured staging root permits ordinary cleanup retry"; else bad "staging root retry" "did not complete"; fi
 
-ew_seed_lock_acquire intentroot
-ew_seed_track_temp "$_consumer_root/.SourcePackages.seed.intentroot.1" "$_consumer_root" intentroot
+require_owned_acquire intentroot
+if ! ew_seed_track_temp "$_consumer_root/.SourcePackages.seed.intentroot.1" "$_consumer_root" intentroot; then bad "intent staging setup" "registration failed"; exit 1; fi
 mkdir "$_consumer_root/.SourcePackages.seed.intentroot.1"
 mv "$_consumer_root" "$TMPROOT/original-intent-root"; mkdir "$_consumer_root"
 ew_seed_lock_release intentroot
@@ -668,7 +683,7 @@ rmdir "$_consumer_root"; mv "$TMPROOT/original-intent-root" "$_consumer_root"
 rm -rf "$_consumer_root/.SourcePackages.seed.intentroot.1"
 ew_seed_lock_release intentroot
 
-ew_seed_lock_acquire changedroot
+require_owned_acquire changedroot
 _old_root="$EW_SEED_ROOT"
 EW_SEED_ROOT="$TMPROOT/unrelated-root"; mkdir "$EW_SEED_ROOT"
 printf keep > "$EW_SEED_ROOT/sentinel"
@@ -683,7 +698,7 @@ python3() {
   fi
   command python3 "$@"
 }
-ew_seed_lock_acquire replacedgate
+require_owned_acquire replacedgate
 unset -f python3
 ew_seed_lock_release replacedgate
 if [ "$EW_SEED_CLEANUP_COMPLETE" = 0 ] && [ -d "$EW_SEED_ROOT/.mutations/replacedgate" ] && [ -f "$EW_SEED_ROOT/.locks/replacedgate/owner" ]; then ok "changed gate identity is retained and cannot authorize key cleanup"; else bad "replaced gate" "unknown instance was adopted"; fi
@@ -691,10 +706,10 @@ if [ "$EW_SEED_CLEANUP_COMPLETE" = 0 ] && [ -d "$EW_SEED_ROOT/.mutations/replace
 rmdir "$EW_SEED_ROOT/.mutations/replacedgate"
 mv "$TMPROOT/original-gate" "$EW_SEED_ROOT/.mutations/replacedgate"
 ew_seed_lock_release replacedgate
-if [ "$EW_SEED_CLEANUP_COMPLETE" = 1 ]; then ok "only the original verified gate can resume retained cleanup"; else bad "gate identity retry" "original could not resume"; fi
+if [ "$EW_SEED_CLEANUP_COMPLETE" = 1 ] && [ ! -e "$EW_SEED_ROOT/.mutations/replacedgate" ] && [ ! -e "$EW_SEED_ROOT/.locks/replacedgate" ]; then ok "only the original verified gate can resume retained cleanup"; else bad "gate identity retry" "original could not resume or paths survived"; fi
 
 _literal_key=$'literal space\nquote"dollar$'
-if ew_seed_lock_acquire "$_literal_key"; then
+if require_owned_acquire "$_literal_key"; then
   ew_seed_lock_release "$_literal_key"
   if [ "$EW_SEED_CLEANUP_COMPLETE" = 1 ] && [ ! -e "$EW_SEED_ROOT/.locks/$_literal_key" ]; then ok "literal whitespace and shell characters remain key data"; else bad "literal key release" "incomplete"; fi
 else bad "literal key" "valid literal component refused"; fi
@@ -707,7 +722,7 @@ mkdir -p "$EW_SEED_ROOT/.mutations/stranded"
 if ew_seed_lock_acquire stranded; then bad "stranded gate" "automatically reclaimed unknown gate"; else ok "unknown mutation gate stays busy without automatic reclamation"; fi
 if ew_seed_lock_acquire .mutations; then bad "hidden key" "accepted reserved namespace"; else ok "hidden metadata cannot be a key even under dotglob"; fi
 
-if /bin/bash -c 'set -e; . "$1"; trap "ew_seed_on_exit" EXIT; ew_seed_lock_acquire exitstatus; exit 7' fixture "$HERE/spm-seed-lock.sh"; then _exit_rc=0; else _exit_rc=$?; fi
+if /bin/bash -c 'set -e; . "$1"; trap "ew_seed_on_exit" EXIT; ew_seed_lock_acquire exitstatus; [ -f "$EW_SEED_ROOT/.locks/exitstatus/owner" ]; record="$(_ew_seed_find_lock exitstatus)"; [ "${_EW_SEED_R_PHASE[$record]}" = published ]; exit 7' fixture "$HERE/spm-seed-lock.sh"; then _exit_rc=0; else _exit_rc=$?; fi
 if [ "$_exit_rc" = 7 ] && [ ! -e "$EW_SEED_ROOT/.locks/exitstatus" ]; then ok "set-e EXIT cleanup preserves original failure status"; else bad "EXIT status" "status=$_exit_rc or lock survived"; fi
 
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"

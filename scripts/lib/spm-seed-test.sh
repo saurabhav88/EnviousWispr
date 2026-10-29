@@ -317,7 +317,10 @@ else
 fi
 
 # --- a held lock makes consume a cache MISS, never a failure -------------------
-ew_seed_lock_acquire "$KEY" >/dev/null 2>&1
+if ! ew_seed_lock_acquire "$KEY" >/dev/null 2>&1 || ! _setup_record="$(_ew_seed_find_lock "$KEY")" \
+   || [ "${_EW_SEED_R_PHASE[$_setup_record]:-}" != published ] || [ ! -f "$EW_SEED_ROOT/.locks/$KEY/owner" ]; then
+  bad "held seed setup" "$KEY has no registered published owner"; exit 1
+fi
 DD7="$TMPROOT/dd7"
 ew_seed_consume "$ROOT" "$DD7" > "$TMPROOT/captured-output" 2>&1
 rc=$?
@@ -644,7 +647,10 @@ fi
 
 # A snapshot whose lock is HELD is in use right now, whatever its age says.
 mkdir -p "$PR/busykey"; make_tree "$PR/busykey/SourcePackages"; touch -t 202001010000 "$PR/busykey"
-ew_seed_lock_acquire busykey >/dev/null 2>&1
+if ! ew_seed_lock_acquire busykey >/dev/null 2>&1 || ! _setup_record="$(_ew_seed_find_lock busykey)" \
+   || [ "${_EW_SEED_R_PHASE[$_setup_record]:-}" != published ] || [ ! -f "$EW_SEED_ROOT/.locks/busykey/owner" ]; then
+  bad "held seed setup" "busykey has no registered published owner"; exit 1
+fi
 EW_SEED_MAX_AGE_DAYS=14 ew_seed_prune >/dev/null 2>&1
 if [ -d "$PR/busykey/SourcePackages" ]; then
   ok "a LOCKED snapshot is never pruned, however old (a consumer may be mid-clone)"
