@@ -87,7 +87,8 @@ struct MeetingNamingTelemetryTests {
     #expect(summary == .init(surface: .zoomApp, outcome: .named, autoNamedCount: 1))
     let event = MeetingEndedTelemetry(
       outcome: .ready, entryPoint: .detected, durationSeconds: 60, microphoneTrack: .captured,
-      callSoundTrack: .captured, speakerCount: 2, processingSeconds: 3, audioSeconds: 60,
+      callSoundTrack: .captured, engine: .parakeet, speakerCount: 2, processingSeconds: 3,
+      audioSeconds: 60,
       yieldCount: 0, gapCount: 0, echoHiddenCount: 0, diskStopped: false,
       summaryPlan: .scheduled, hasNotes: false, speakerNaming: summary)
     let values = TelemetryService.meetingEndedProperties(event).values.map { "\($0)" }
