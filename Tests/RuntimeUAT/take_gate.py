@@ -22,6 +22,8 @@ import os
 import re
 import subprocess
 
+import preflight
+
 SWITCH = "/opt/homebrew/bin/SwitchAudioSource"
 SILENT_DEVICE = "BlackHole 2ch"
 LOG = os.path.expanduser("~/Library/Logs/EnviousWispr/app.log")
@@ -169,18 +171,42 @@ def frontmost_bundle():
     return m.group(1)
 
 
+def check_loopback_output():
+    """Prove the current loopback route and mute state at this admission point (#4133).
+
+    The bookends refuse an observed route change; they are not an atomic OS snapshot.
+    Read only: mute/volume changes would need device-specific recovery journals.
+    """
+    device = output_device()
+    if device != SILENT_DEVICE:
+        raise SetupFailed(
+            "audio-route",
+            f"output is {device!r}, not {SILENT_DEVICE!r}. Use audio_rig.AudioRig, or set "
+            "EW_UAT_SPEAKER_REASON for a deliberate speaker take")
+    _classification, _detail, _level, muted = preflight.output_volume()
+    after = output_device()
+    if after != device:
+        raise SetupFailed("audio-route", f"output changed from {device!r} to {after!r} while reading mute")
+    if muted is True:
+        raise SetupFailed(
+            "audio-output",
+            f"{SILENT_DEVICE} is muted. Cleanup may restore your physical output; verify "
+            "BlackHole's identity before clearing its mute and retrying. Do not blindly "
+            "unmute the current default output")
+    if muted is not False:
+        raise SetupFailed("audio-output", f"could not read {SILENT_DEVICE}'s output mute state; "
+                          "repair the osascript output-volume probe before retrying")
+    # The reader also classifies an acoustic volume floor. Loopback mute admission does
+    # not inherit that physical-speaker policy; an unmuted flag is not signal proof.
+
+
 def check_before_play():
     """Refuse to play take audio unless the setup holds. Call right before the sound starts."""
     reason = speaker_reason()
     if reason:
         print(f"SPEAKER TAKE (EW_UAT_SPEAKER_REASON={reason!r}): BlackHole check skipped", flush=True)
     else:
-        device = output_device()
-        if device != SILENT_DEVICE:
-            raise SetupFailed(
-                "audio-route",
-                f"output is {device!r}, not {SILENT_DEVICE!r}. Use audio_rig.AudioRig, or set "
-                "EW_UAT_SPEAKER_REASON for a deliberate speaker take")
+        check_loopback_output()
     if _target is None:
         raise SetupFailed(
             "paste-target",
@@ -306,6 +332,58 @@ def check_after_take(evidence):
     return detail
 
 
+def _output_mute_self_test():
+    """Harness contract: exercise real admission with fake OS reads, never audio or an app."""
+    from unittest import mock
+    import preflight
+
+    passed = True
+    target = "com.example.MuteControl"
+    rows = (
+        ("muted output refuses", 75, True, [SILENT_DEVICE] * 2, "audio-output"),
+        ("unmuted output admits", 75, False, [SILENT_DEVICE] * 2, None),
+        ("loopback does not inherit the acoustic volume floor", 19, False, [SILENT_DEVICE] * 2, None),
+        ("unknown mute refuses", None, None, [SILENT_DEVICE] * 2, "audio-output"),
+        ("wrong output refuses", 75, False, ["Speakers"], "audio-route"),
+        ("output changes during the mute read", 75, False, [SILENT_DEVICE, "Speakers"], "audio-route"),
+    )
+    with mock.patch.dict(os.environ, {"EW_UAT_SPEAKER_REASON": ""}), \
+            mock.patch(__name__ + "._target", target), \
+            mock.patch(__name__ + ".frontmost_bundle", return_value=target):
+        for name, level, muted, devices, expected in rows:
+            reading = (*preflight.classify_volume(level, muted), level, muted)
+            with mock.patch(__name__ + ".output_device", side_effect=devices), \
+                    mock.patch.object(preflight, "output_volume", return_value=reading):
+                got = None
+                try:
+                    check_before_play()
+                except SetupFailed as exc:
+                    got = exc.step
+                good = got == expected
+                passed &= good
+                print(f"  {'PASS' if good else 'FAIL'}  {name}: step={got!r}, expected={expected!r}")
+
+        with mock.patch(__name__ + ".output_device", return_value=SILENT_DEVICE), \
+                mock.patch.object(preflight, "output_volume", side_effect=[
+                    ("ok", "unmuted", 75, False), ("warn", "muted", 75, True)]) as reader:
+            check_before_play()
+            refused = False
+            try:
+                check_before_play()
+            except SetupFailed as exc:
+                refused = exc.step == "audio-output"
+            good = refused and reader.call_count == 2
+            passed &= good
+            print(f"  {'PASS' if good else 'FAIL'}  a later take re-reads mute instead of caching readiness")
+
+        with mock.patch.dict(os.environ, {"EW_UAT_SPEAKER_REASON": "self-test"}), \
+                mock.patch(__name__ + ".output_device", side_effect=AssertionError("speaker route queried")), \
+                mock.patch.object(preflight, "output_volume", side_effect=AssertionError("speaker mute queried")):
+            check_before_play()
+            print("  PASS  deliberate speaker take keeps its existing loopback bypass")
+    return bool(passed)
+
+
 def _self_test():
     ok = True
 
@@ -377,6 +455,7 @@ def _self_test():
     finally:
         os.environ.pop("EW_UAT_SPEAKER_REASON", None)
         clear_target()
+    ok = _output_mute_self_test() and ok
     print("PASS" if ok else "FAIL")
     return ok
 
