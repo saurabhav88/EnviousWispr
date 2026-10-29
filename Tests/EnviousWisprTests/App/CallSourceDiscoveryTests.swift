@@ -47,6 +47,9 @@ struct CallSourceDiscoveryTests {
       hold.withLock { $0 = false }
       release.signal()
     }
+
+    /// Lets the held call return and keeps holding the next.
+    func step() { release.signal() }
   }
 
   private static let zoom = CallMicrophoneWatcher.Holder(
@@ -58,14 +61,15 @@ struct CallSourceDiscoveryTests {
       CallEvidenceReader.Evidence =
       { _, _ in .unknown }
   ) -> CallSourceDiscovery {
-    CallSourceDiscovery(dependencies: .init(evidence: evidence, scan: { scan.read() }))
+    CallSourceDiscovery(
+      dependencies: .init(evidence: evidence, scan: { scan.read() }, listens: false))
   }
 
   private func eventually(_ label: String, _ condition: @escaping @MainActor () -> Bool) async {
     #expect(await waitUntil(deadlineMs: 10_000, condition), "\(label)")
   }
 
-  @Test("a slow read never builds a queue: asks meanwhile share one more read")
+  @Test("a slow read never builds a queue: asks meanwhile share exactly one more read")
   func oneScanAtATime() async throws {
     let scan = Scan()
     scan.hold.withLock { $0 = true }
@@ -79,14 +83,33 @@ struct CallSourceDiscoveryTests {
       await sources.refreshNow()
       refreshed = true
     }
-    // settle: absence check; lets queued asks reach the watcher while the first read is held
-    try await Task.sleep(for: .milliseconds(100))
+    await eventually("refresh waits for the read after it") {
+      sources.waitingForNextScanForTesting == 1
+    }
     #expect(scan.calls.withLock { $0 } == 1, "no second read while one runs")
+    scan.step()
+    await eventually("one follow-up read started") { scan.calls.withLock { $0 } == 2 }
+    #expect(!refreshed, "the refresh waits for the follow-up read, not the one before it")
     scan.letGo()
     await refresh.value
     #expect(refreshed)
-    #expect(scan.running.withLock { $0.most } == 1, "never two reads at once")
-    #expect(scan.calls.withLock { $0 } >= 2, "the asks were answered by a read after them")
+    #expect(scan.calls.withLock { $0 } == 2, "six asks during one read cost exactly one more")
+  }
+
+  @Test("a simulation survives prompts and recordings starting and stopping")
+  func simulationSurvivesDemand() {
+    let sources = discovery(Scan())
+    defer { sources.shutDown() }
+    sources.simulate([.init(holder: Self.zoom, evidence: .call(family: .zoom, room: "sim"))])
+    sources.promptDemand = true
+    sources.beginRecordingDemand()
+    sources.repeatSimulation()
+    #expect(sources.speakerTarget(for: .zoom)?.pid == 900_010)
+    sources.endRecordingDemand()
+    sources.promptDemand = false
+    sources.repeatSimulation()
+    #expect(sources.holders == [Self.zoom])
+    #expect(!sources.watching)
   }
 
   @Test("a read from before a stop is never kept after a restart")

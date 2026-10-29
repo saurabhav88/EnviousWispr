@@ -25,6 +25,8 @@ final class CallSourceDiscovery {
     }
     /// One whole microphone reading, off the main actor; nil reads Core Audio (tests stand in).
     var scan: CallMicrophoneWatcher.Scan?
+    /// Whether the watcher listens for process-list changes (tests poll by hand).
+    var listens = true
   }
 
   /// Seconds between polls while a call may be on; without the process-list listener, between
@@ -39,6 +41,7 @@ final class CallSourceDiscovery {
     // The owning app is read with the reading, off the main actor, so a speaker tick only looks.
     owner: { CallSpeakerTarget.owner(ofHolder: $0) },
     scan: deps.scan,
+    listens: deps.listens,
     onReading: { [weak self] reading in self?.received(reading) })
   /// Bumped whenever discovery stops: evidence reads from before it apply and report nothing.
   private var lifecycle = 0
@@ -111,9 +114,10 @@ final class CallSourceDiscovery {
 
   private func updateWatching() {
     #if DEBUG
-      // A simulation owns the readings: the real watcher stays off until it is cleared.
+      // A simulation owns the readings: the real watcher stays off until it is cleared, and its
+      // standing reading is kept.
       if simulation != nil {
-        stopReal()
+        stopCollecting()
         return
       }
     #endif
@@ -133,6 +137,14 @@ final class CallSourceDiscovery {
 
   /// Stops the watcher, its timer and any evidence read, and forgets the last reading.
   private func stopReal() {
+    stopCollecting()
+    holders = []
+    evidence = [:]
+    complete = false
+  }
+
+  /// Stops the watcher, its timer and any evidence read; the last reading stays.
+  private func stopCollecting() {
     lifecycle += 1
     evidenceTask = nil
     rereadWanted = false
@@ -140,9 +152,6 @@ final class CallSourceDiscovery {
     watching = false
     timer?.invalidate()
     timer = nil
-    holders = []
-    evidence = [:]
-    complete = false
   }
 
   private func startTimer() {
@@ -370,7 +379,7 @@ final class CallSourceDiscovery {
       simulation = list
       if let list {
         // The real watcher stops while a simulation owns the readings.
-        stopReal()
+        stopCollecting()
         evidence = Dictionary(
           list.map { ($0.holder.pid, ($0.holder, $0.evidence, sequence)) },
           uniquingKeysWith: { a, _ in a })
@@ -404,6 +413,7 @@ final class CallSourceDiscovery {
     }
 
     var recordingDemandForTesting: Int { recordingDemand }
+    var waitingForNextScanForTesting: Int { watcher.waitingForNextScanForTesting }
   #endif
 
   // MARK: - Helpers

@@ -82,6 +82,8 @@ public final class CallMicrophoneWatcher {
   private let queue = DispatchQueue(label: "com.enviouswispr.call-microphone-watcher", qos: .utility)
   /// Between `start()` and `stop()`.
   private var running = false
+  /// Whether `start()` registers the process-list listener (tests poll by hand).
+  private let listens: Bool
   /// Bumped by `stop()`: a scan started before it reports nothing.
   private var generation = 0
   /// One physical scan at a time; asks meanwhile become one more scan after it.
@@ -95,8 +97,10 @@ public final class CallMicrophoneWatcher {
     mayBeCandidate: @escaping UnnamedFilter,
     owner: @escaping OwnerFilter = { _ in nil },
     scan: Scan? = nil,
+    listens: Bool = true,
     onReading: @escaping @MainActor (Reading) -> Void
   ) {
+    self.listens = listens
     let ownPID = getpid()
     self.scan =
       scan ?? {
@@ -113,6 +117,10 @@ public final class CallMicrophoneWatcher {
   public func start() {
     guard Self.isSupported, !running else { return }
     running = true
+    guard listens else {
+      poll()
+      return
+    }
     var address = Self.processListAddress
     let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
       Task { @MainActor in self?.poll() }
@@ -173,6 +181,11 @@ public final class CallMicrophoneWatcher {
       }
     }
   }
+
+  #if DEBUG
+    /// Callers waiting for the scan after the running one.
+    public var waitingForNextScanForTesting: Int { nextWaiters.count }
+  #endif
 
   private func scanFinished(_ reading: Reading, generation taken: Int) {
     scanning = false
