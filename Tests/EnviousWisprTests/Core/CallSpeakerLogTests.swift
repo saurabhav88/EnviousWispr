@@ -115,6 +115,55 @@ struct CallSpeakerLogTests {
     #expect(log(outside).shapeProblem != nil)
   }
 
+  @Test(
+    "contradictory presence is refused",
+    arguments: [
+      // An absence with no confirmed sighting before it.
+      CallNamePresence(
+        name: "Alex Rivera",
+        sightings: [.init(firstSeenMs: 3_000, lastSeenMs: 3_500, absenceConfirmed: false)],
+        absences: [.init(firstMissingMs: 1_000, confirmedAtMs: 2_000)]),
+      // An unconfirmed sighting before another.
+      CallNamePresence(
+        name: "Alex Rivera",
+        sightings: [
+          .init(firstSeenMs: 1_000, lastSeenMs: 1_500, absenceConfirmed: false),
+          .init(firstSeenMs: 3_000, lastSeenMs: 3_500, absenceConfirmed: false),
+        ], absences: []),
+      // A confirmed sighting with no absence.
+      CallNamePresence(
+        name: "Alex Rivera",
+        sightings: [.init(firstSeenMs: 1_000, lastSeenMs: 1_500, absenceConfirmed: true)],
+        absences: []),
+      // Seen again before the absence was confirmed.
+      CallNamePresence(
+        name: "Alex Rivera",
+        sightings: [
+          .init(firstSeenMs: 1_000, lastSeenMs: 1_500, absenceConfirmed: true),
+          .init(firstSeenMs: 2_500, lastSeenMs: 3_500, absenceConfirmed: false),
+        ], absences: [.init(firstMissingMs: 2_000, confirmedAtMs: 3_000)]),
+    ])
+  func contradictoryPresence(presence: CallNamePresence) {
+    let segment = CallSpeakerSegment(
+      startMs: 0, endMs: nil, endReason: nil, surface: .teamsApp, source: .app, status: .observed,
+      lag: nil, roster: .empty, rosterFromParticipantList: true, observations: [],
+      presence: [presence])
+    #expect(segment.shapeProblem != nil)
+  }
+
+  @Test("one name listed twice in a segment's presence is refused")
+  func duplicatePresence() {
+    let entry = CallNamePresence(
+      name: "Alex Rivera",
+      sightings: [.init(firstSeenMs: 1_000, lastSeenMs: 1_500, absenceConfirmed: false)],
+      absences: [])
+    let segment = CallSpeakerSegment(
+      startMs: 0, endMs: nil, endReason: nil, surface: .teamsApp, source: .app, status: .observed,
+      lag: nil, roster: .empty, rosterFromParticipantList: true, observations: [],
+      presence: [entry, entry])
+    #expect(segment.shapeProblem == "presence names repeat")
+  }
+
   @Test("more segments than the bound are refused")
   func segmentBound() {
     let segments = (0...CallSpeakerLog.maximumSegments).map {

@@ -265,6 +265,85 @@ struct CallSpeakerObserverTests {
     #expect(observer.takeFinalLog() == nil, "handed over once")
   }
 
+  /// A Teams app copy whose People list (count-checked) shows `names`, read at `ms` on the
+  /// recording clock (anchor 0).
+  nonisolated static func teamsCopy(_ names: [String], atMs ms: Int) -> CallAXCapture {
+    let rows = names.map { CallAXNode(role: "AXRow", description: "\($0), Attendee, Muted") }
+    let count = CallAXNode(role: "AXStaticText", value: "In this meeting, \(names.count) total")
+    let base = CallSpeakerTimeline.liveTimebase
+    let host = UInt64(Double(ms) * 1_000_000 * Double(base.denom) / Double(base.numer))
+    return CallAXCapture(
+      windows: [
+        CallAXWindow(
+          title: "Meeting with Saurabh Vaish",
+          root: CallAXNode(role: "AXWindow", children: [count] + rows))
+      ], documents: [], completeness: .complete, readStartHostTime: host, readEndHostTime: host)
+  }
+
+  /// Hands out prepared copies in order, the last one repeated.
+  final class Copies: Sendable {
+    let list: OSAllocatedUnfairLock<[CallAXCapture]>
+    init(_ list: [CallAXCapture]) { self.list = OSAllocatedUnfairLock(initialState: list) }
+    func take() -> CallAXCapture {
+      list.withLock { $0.count > 1 ? $0.removeFirst() : $0[0] }
+    }
+  }
+
+  private func teamsObserver(
+    _ copies: Copies, dictation: Dictation, saved: @escaping @MainActor () -> Void = {}
+  ) throws -> CallSpeakerObserver {
+    CallSpeakerObserver(
+      surface: .teamsApp, family: .teams, anchor: 0, rules: try Self.bundled(),
+      lag: CallSpeakerLag(milliseconds: 0),
+      dependencies: .init(
+        target: { CallSpeakerTarget(pid: 1, rule: .callApp(.teams)) },
+        capture: { _ in copies.take() }, isTrusted: { true },
+        isDictationIdle: { dictation.idle }, save: { _ in saved() }, lane: .init()))
+  }
+
+  @Test("a whole dictation between two ticks breaks a run of missing lists")
+  func dictationBetweenTicksBreaksPresence() async throws {
+    func run(dictateBetween: Bool) async throws -> CallNamePresence? {
+      let copies = Copies([
+        Self.teamsCopy(["Alex Rivera", "Priya Shah"], atMs: 1_000),
+        Self.teamsCopy(["Alex Rivera"], atMs: 1_500),
+        Self.teamsCopy(["Alex Rivera"], atMs: 2_000),
+        Self.teamsCopy(["Alex Rivera"], atMs: 2_500),
+      ])
+      let dictation = Dictation()
+      let observer = try teamsObserver(copies, dictation: dictation)
+      for n in 1...4 {
+        if n == 4, dictateBetween {
+          // Observation reports each change as it happens, before the next tick.
+          dictation.idle = false
+          dictation.idle = true
+        }
+        observer.tick()
+        await eventually("copy \(n) delivered") { observer.deliveriesForTesting == n }
+      }
+      return observer.currentLog.segments.first?.presence?.first { $0.name == "Priya Shah" }
+    }
+    #expect(try await run(dictateBetween: false)?.absences.count == 1, "control: the run confirms")
+    #expect(try await run(dictateBetween: true)?.absences.isEmpty == true)
+  }
+
+  @Test("health-only changes are saved at the next interval")
+  func healthChangesSaved() async throws {
+    let copies = Copies([Self.teamsCopy(["Alex Rivera"], atMs: 1_000)])
+    let dictation = Dictation()
+    var saves = 0
+    let observer = try teamsObserver(copies, dictation: dictation, saved: { saves += 1 })
+    observer.tick()
+    await eventually("copy delivered") { observer.deliveriesForTesting == 1 }
+    observer.saveNowForTesting()
+    await eventually("first save") { saves == 1 }
+    dictation.idle = false
+    observer.tick()
+    observer.saveNowForTesting()
+    await eventually("a skipped tick alone is saved") { saves == 2 }
+    #expect(observer.currentLog.segments.first?.health?.skippedDictationTicks == 1)
+  }
+
   // MARK: - With a recording
 
   /// A coordinator whose recording of a Meet call reads `capture`.

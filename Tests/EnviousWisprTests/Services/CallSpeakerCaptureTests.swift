@@ -353,6 +353,40 @@ struct CallSpeakerCaptureTests {
     #expect(presence(gap, "Priya Shah")?.absences.isEmpty == true)
   }
 
+  @Test("an interruption between lists restarts the run")
+  func interruptionBreaksRun() {
+    var log = CallSpeakerAccumulator(surface: .teamsApp, rules: nil, lag: nil)
+    log.add(list(["Alex Rivera", "Priya Shah"]), context: Self.good, observationMs: 0)
+    log.add(list(["Alex Rivera"]), context: Self.good, observationMs: 500)
+    log.add(list(["Alex Rivera"]), context: Self.good, observationMs: 1_000)
+    log.noteInterruption()
+    log.add(list(["Alex Rivera"]), context: Self.good, observationMs: 1_500)
+    #expect(presence(log, "Priya Shah")?.absences.isEmpty == true)
+  }
+
+  @Test("a name seen again after its sightings are full is no longer treated as gone")
+  func sightingsFull() throws {
+    var log = CallSpeakerAccumulator(surface: .teamsApp, rules: nil, lag: nil)
+    var ms = 0
+    for _ in 0..<CallNamePresence.maximumSightings {
+      log.add(list(["Alex Rivera", "Priya Shah"]), context: Self.good, observationMs: ms)
+      for _ in 0..<3 {
+        ms += 500
+        log.add(list(["Alex Rivera"]), context: Self.good, observationMs: ms)
+      }
+      ms += 500
+    }
+    #expect(presence(log, "Priya Shah")?.sightings.count == CallNamePresence.maximumSightings)
+    let last = ms
+    log.add(list(["Alex Rivera", "Priya Shah"]), context: Self.good, observationMs: last)
+    let saved = try #require(presence(log, "Priya Shah"))
+    #expect(saved.sightingsFull == true)
+    #expect(!saved.isConfirmedAbsent(at: last + 1_000), "seen again: not known to be gone")
+    let back = try JSONDecoder().decode(
+      CallSpeakerLog.self, from: JSONEncoder().encode(log.log))
+    #expect(back.segments.first?.presence?.first { $0.name == "Priya Shah" }?.sightingsFull == true)
+  }
+
   @Test("health counts every capture, admission and skipped tick, with no names")
   func healthCounts() {
     var log = CallSpeakerAccumulator(surface: .meet, rules: nil, lag: nil)

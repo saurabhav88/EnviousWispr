@@ -210,6 +210,7 @@ public struct CallSpeakerSegment: Sendable, Equatable {
     }
     if let presence {
       guard presence.count <= Self.maximumPresenceNames else { return "presence" }
+      guard Set(presence.map(\.name)).count == presence.count else { return "presence names repeat" }
       for (index, entry) in presence.enumerated() {
         guard CallSpeakerLog.isName(entry.name) else { return "presence[\(index)].name" }
         if let problem = entry.shapeProblem { return "presence[\(index)] \(problem)" }

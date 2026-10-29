@@ -182,11 +182,13 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
     var absences: [CallNamePresence.Absence] = []
     var missingSince: Int?
     var missingCount = 0
+    /// Seen again when no sighting could be opened.
+    var full = false
 
     static func == (a: Tracked, b: Tracked) -> Bool {
       a.sightings == b.sightings && a.open?.first == b.open?.first && a.open?.last == b.open?.last
         && a.absences == b.absences && a.missingSince == b.missingSince
-        && a.missingCount == b.missingCount
+        && a.missingCount == b.missingCount && a.full == b.full
     }
   }
 
@@ -274,6 +276,9 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
         tracked.open = (open.first, ms)
       } else if tracked.sightings.count < CallNamePresence.maximumSightings {
         tracked.open = (ms, ms)
+      } else {
+        // Shown again with no room to record it: its last absence is no longer known to hold.
+        tracked.full = true
       }
       tracked.missingSince = nil
       tracked.missingCount = 0
@@ -324,6 +329,12 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
     if !usable { status = .noPermission }
   }
 
+  /// Dictation started or ended since the last tick, with no copy in flight to drop: a pause
+  /// that breaks any run of missing lists, counted nowhere else.
+  package mutating func noteInterruption() {
+    breakAbsenceRuns()
+  }
+
   /// A tick took no copy because dictation was running.
   package mutating func noteDictationSkip() {
     health.skippedDictationTicks += 1
@@ -365,7 +376,7 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
             }
             return CallNamePresence(
               name: name, sightings: tracked.sightings + (open.map { [$0] } ?? []),
-              absences: tracked.absences)
+              absences: tracked.absences, sightingsFull: tracked.full ? true : nil)
           },
           health: health)
       ])

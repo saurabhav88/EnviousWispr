@@ -70,6 +70,8 @@ final class CallSpeakerObserver {
   private var closed = false
   private var open: Bool { lifecycle == .open && !closed }
   private var lastTarget: CallSpeakerTarget?
+  /// `dictationChanges` as the last tick saw it.
+  private var seenDictationChanges = 0
   private var savedVersion = -1
   private var version = 0
   private var saving: Task<Void, Never>?
@@ -124,9 +126,17 @@ final class CallSpeakerObserver {
   /// drops that copy; a copy starts only when eligible and the lane is free.
   func tick() {
     guard open, CallSpeakerSurfaceChoice.hasTalkerReader(accumulator.surface) else { return }
+    // A whole dictation between two ticks still interrupts presence.
+    let changes = dictationChanges.withLock { $0 }
+    if changes != seenDictationChanges {
+      seenDictationChanges = changes
+      accumulator.noteInterruption()
+      version += 1
+    }
     guard deps.isDictationIdle() else {
       generation += 1
       accumulator.noteDictationSkip()
+      version += 1
       return
     }
     guard deps.isTrusted() else {
@@ -149,6 +159,7 @@ final class CallSpeakerObserver {
     }
     guard claimed else {
       accumulator.noteBusySkip()
+      version += 1
       return
     }
     let taken = Taken(
@@ -185,6 +196,8 @@ final class CallSpeakerObserver {
       durationUs: CallSpeakerTimeline.microseconds(
         from: copy.readStartHostTime, to: copy.readEndHostTime),
       nodes: copy.nodesVisited)
+    // Every change to what is saved, health included, is saved at the next interval.
+    version += 1
     // Read again at delivery: nothing that would have stopped the copy may have happened since.
     guard trustedAfter, taken.generation == generation,
       taken.dictation == dictationChanges.withLock({ $0 }), taken.source == deps.sourceRevision(),

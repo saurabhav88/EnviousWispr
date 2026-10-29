@@ -62,35 +62,54 @@ public struct CallNamePresence: Sendable, Equatable, Codable {
   public let name: String
   public let sightings: [Sighting]
   public let absences: [Absence]
+  /// The name was seen again after its sightings were full, so whether it is still gone after
+  /// its last absence is not known (`nil` in older logs means false).
+  public let sightingsFull: Bool?
 
-  public init(name: String, sightings: [Sighting], absences: [Absence]) {
+  public init(name: String, sightings: [Sighting], absences: [Absence], sightingsFull: Bool? = nil)
+  {
     self.name = name
     self.sightings = sightings
     self.absences = absences
+    self.sightingsFull = sightingsFull
   }
 
   /// Whether the name was confirmed gone at `ms`: after a confirmed absence began and before it
-  /// was next seen. Time before its first sighting or after its last one is not an absence.
+  /// was next seen. Time before its first sighting or after its last one is not an absence, and
+  /// nor is time after the last absence once the sightings were full.
   public func isConfirmedAbsent(at ms: Int) -> Bool {
     absences.contains { absence in
       guard ms >= absence.firstMissingMs else { return false }
-      let back = sightings.first { $0.firstSeenMs > absence.firstMissingMs }
-      return back.map { ms < $0.firstSeenMs } ?? true
+      guard let back = sightings.first(where: { $0.firstSeenMs > absence.firstMissingMs }) else {
+        return sightingsFull != true
+      }
+      return ms < back.firstSeenMs
     }
   }
 
+  /// Sightings in time order without overlap, only the last unconfirmed; one absence after
+  /// each confirmed sighting and before the next sighting, in the same order.
   var shapeProblem: String? {
     guard sightings.count <= Self.maximumSightings, absences.count <= Self.maximumSightings
     else { return "too many" }
-    var previous = Int.min
-    for sighting in sightings {
-      guard sighting.firstSeenMs >= previous, sighting.lastSeenMs >= sighting.firstSeenMs else {
-        return "sightings out of order"
+    var previous: Int?
+    for (index, sighting) in sightings.enumerated() {
+      guard sighting.lastSeenMs >= sighting.firstSeenMs, previous.map({ sighting.firstSeenMs > $0 }) ?? true
+      else { return "sightings out of order" }
+      if !sighting.absenceConfirmed, index != sightings.count - 1 {
+        return "an unconfirmed sighting before another"
       }
       previous = sighting.lastSeenMs
     }
-    for absence in absences where absence.confirmedAtMs < absence.firstMissingMs {
-      return "absence ends before it starts"
+    let confirmed = sightings.enumerated().filter(\.element.absenceConfirmed)
+    guard confirmed.count == absences.count else { return "absences do not match sightings" }
+    for ((index, sighting), absence) in zip(confirmed, absences) {
+      guard sighting.lastSeenMs < absence.firstMissingMs,
+        absence.firstMissingMs <= absence.confirmedAtMs
+      else { return "absence out of order" }
+      if index + 1 < sightings.count, sightings[index + 1].firstSeenMs <= absence.confirmedAtMs {
+        return "seen again before the absence was confirmed"
+      }
     }
     return nil
   }
