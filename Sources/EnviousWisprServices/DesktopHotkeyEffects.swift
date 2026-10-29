@@ -215,6 +215,11 @@ package protocol DesktopHotkeyEffects: AnyObject {
     _ sink: @escaping @Sendable (KeyEventValue) -> KeyboardEventDisposition
   ) -> DesktopEffectToken?
 
+  /// Whether this process holds the Accessibility grant an active event tap needs (#3848). Read
+  /// live on every access, never cached here: the caller reads it right after a failed listener
+  /// install to tell a missing grant (an OS permission condition) from a tap failure that may be ours.
+  var isAccessibilityTrusted: Bool { get }
+
   /// The listener's state: the installed one's, or the last removed one's final state (read after
   /// its removal, so its last callback is counted). Nil otherwise.
   func keyboardListenerHealth(_ token: DesktopEffectToken) -> KeyboardListenerHealth?

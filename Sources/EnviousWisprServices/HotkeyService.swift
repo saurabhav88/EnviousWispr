@@ -391,6 +391,12 @@ public final class HotkeyService {
 
   /// One `registrationFailed(event_tap)` per run of failed installs, not one per retry.
   private var listenerFailureReported = false
+  /// One `listenerAwaitingAccessibility` per run of failed installs without the grant (#3848).
+  private var listenerAccessibilityWaitReported = false
+  /// The last failed install found no Accessibility grant (#3848). The next failure that finds the
+  /// grant is not reported: macOS can answer trusted before it lets an active tap be created, so
+  /// one attempt of grace keeps a grant in progress out of Sentry. A second one reports.
+  private var listenerLastFailureUntrusted = false
   /// How long after a disable storm stopped the listener before a fresh one is installed
   /// (#3544 P3). An engineering backoff bound, reviewed in the P3 build: it reuses the storm window
   /// so replacements can never themselves storm faster than the rule that detects storms. It is
@@ -1354,7 +1360,9 @@ public final class HotkeyService {
   /// event passes through to the system. A failure leaves bare-modifier shortcuts silent, as
   /// without Accessibility (plan Architecture DoD); it is reported once and retried while the
   /// service is running and not suspended, at the cadence the app already polls a missing
-  /// Accessibility grant (`TimingConstants.accessibilityPollIntervalSec`), the usual cause.
+  /// Accessibility grant (`TimingConstants.accessibilityPollIntervalSec`), the usual cause. The
+  /// report's route depends on the grant, read at each failure (#3848): without it, an OS permission
+  /// condition; with it, a registration failure that may be ours.
   private func installKeyboardListener() {
     guard isEnabled, !isSuspended else { return }
     listenerRetry?.cancel()
@@ -1409,6 +1417,8 @@ public final class HotkeyService {
     if let token = effects.installKeyboardListener(sink) {
       keyboardListenerToken = token
       listenerFailureReported = false
+      listenerAccessibilityWaitReported = false
+      listenerLastFailureUntrusted = false
       listenerInstalls += 1
       keyboardListenerIngress = ingress
       // The new installation's own watchdog covers a hold it never saw down.
@@ -1425,14 +1435,33 @@ public final class HotkeyService {
     ingress.close()
     listenerInstallFailures += 1
     listenerFailuresSinceInstall += 1
-    if !listenerFailureReported {
-      listenerFailureReported = true
-      telemetry.registrationFailed(
-        "event_tap", ShortcutRole.record.telemetryKind, nil,
-        recordBinding.isBareModifier ? "modifier_only" : "chord")
-    }
+    reportListenerInstallFailure(
+      kind: ShortcutRole.record.telemetryKind,
+      keyShape: recordBinding.isBareModifier ? "modifier_only" : "chord")
     scheduleListenerRetry(generation)
     armOrphanedHoldCheck()
+  }
+
+  /// Route one failed listener install (#3848). A missing Accessibility grant is an OS permission
+  /// condition, not our defect (founder 2026-10-17), reported once per failure run as
+  /// `listenerAwaitingAccessibility`. With the grant, the failure may be ours and
+  /// is reported once as `registrationFailed`, after one attempt of grace when the previous
+  /// failure lacked the grant. The grant is read here, at each failure, never cached.
+  private func reportListenerInstallFailure(kind: String, keyShape: String) {
+    if effects.isAccessibilityTrusted {
+      if listenerLastFailureUntrusted {
+        listenerLastFailureUntrusted = false
+      } else if !listenerFailureReported {
+        listenerFailureReported = true
+        telemetry.registrationFailed("event_tap", kind, nil, keyShape)
+      }
+    } else {
+      listenerLastFailureUntrusted = true
+      if !listenerAccessibilityWaitReported {
+        listenerAccessibilityWaitReported = true
+        telemetry.listenerAwaitingAccessibility(kind, keyShape)
+      }
+    }
   }
 
   /// Field health for a decision the listener already committed (#3544 P6). Telemetry only, and

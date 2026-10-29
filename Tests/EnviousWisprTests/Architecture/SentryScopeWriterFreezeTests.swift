@@ -58,8 +58,12 @@ struct SentryScopeWriterFreezeTests {
   /// when something outside the app stopped a ready local polish server: fixed stage
   /// `local_polish`, fixed message, data = the accepted `ChildProcessFailure`'s closed strings
   /// and integers plus closed `stop_kind` and `memory_pressure`. No argv, path or text.
+  /// #3848: `HotkeyTelemetrySink.live` (`listenerAwaitingAccessibility`) adds one metadata-only
+  /// breadcrumb when the keyboard listener cannot install without the Accessibility grant: fixed
+  /// stage `input`, fixed message, data = fixed `mechanism` and `hotkey.failure_mode` plus the
+  /// closed `hotkey_kind` and `key_shape` strings. No key code or text.
   static let inventoryFingerprint =
-    "19f8be2b5c3902b070fb60027573632f2d00491880e8340b7c6cdd580e800c8f"
+    "a4b1021642dd06a61ed642c40149244be549fc2dc1ecdfff9e56148037fd99ff"
 
   struct Site: Hashable, Comparable {
     let file: String
