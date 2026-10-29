@@ -2,47 +2,69 @@ import ApplicationServices
 import EnviousWisprCore
 import EnviousWisprServices
 import Foundation
+import Observation
+import os
 
 /// Collects one recording's speaker evidence from its call app while it records (#4013 chunk
 /// 13A). Bound to the call-app family the recording was started for, one surface per
 /// recording, as Granola binds its speaker monitors.
 ///
-/// Every 500 ms it takes one bounded Accessibility copy of the app on its own serial queue; a
-/// tick that finds a copy still being taken is skipped (no catch-up). While dictation is not
-/// idle it takes none and drops any copy in flight. Each copy is read by the surface's reader
-/// and goes through `CallSpeakerAccumulator` (admission, roster rule), placed on the meeting
-/// timeline from the recorder's anchor. The log is saved every 10 seconds and once more at
-/// `finish()`; after `finish()` or `cancel()` nothing is added or saved.
+/// Every 500 ms it takes one bounded Accessibility copy of the app on the shared capture lane;
+/// a tick that finds the lane busy (this recording's copy, or an older recording's copy still
+/// blocked) is skipped, with no catch-up. A copy counts only when nothing changed while it was
+/// taken: dictation did not start or end, Accessibility trust held and the same app instance
+/// is still the one to read. Each copy is read by the surface's reader and goes through
+/// `CallSpeakerAccumulator` (admission, roster rule), placed on the meeting timeline from the
+/// recorder's anchor. The log is saved every 10 seconds and once more at `finish()` (or
+/// `takeFinalLog()` at quit); after either, or `cancel()`, nothing is added or saved.
 @MainActor
 final class CallSpeakerObserver {
+  /// Where copies run, and whether one is still running. One for the whole app, so a copy
+  /// still blocked from a recording that ended keeps a new recording from starting another.
+  /// A test makes its own.
+  final class Lane: Sendable {
+    let queue = DispatchQueue(label: "com.enviouswispr.call-speaker-capture", qos: .utility)
+    let busy = OSAllocatedUnfairLock(initialState: false)
+    static let shared = Lane()
+
+    var isBusy: Bool { busy.withLock { $0 } }
+  }
+
   struct Dependencies {
     /// The app instance to read now; `nil` when there is none, or more than one.
     var target: @MainActor () -> CallSpeakerTarget?
-    /// One bounded copy of that app, run on the observer's queue.
+    /// One bounded copy of that app, run on the lane's queue.
     var capture: @Sendable (CallSpeakerTarget) -> CallAXCapture
     var isTrusted: @Sendable () -> Bool = { AXIsProcessTrusted() }
+    /// Read inside Observation tracking, so any change to what it reads invalidates copies in
+    /// flight at once, even a whole dictation that starts and ends between two ticks.
     var isDictationIdle: @MainActor () -> Bool
     /// Saves the log; throws when it could not (recording goes on).
     var save: @MainActor (CallSpeakerLog) async throws -> Void
     var log: @MainActor (String) -> Void = { _ in }
+    var lane: Lane = .shared
     var tick: Duration = .milliseconds(500)
     var saveEvery: Int = 20  // ticks: 10 seconds
     var sleep: @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
   }
+
+  private enum Lifecycle { case open, finishing, done }
 
   private let deps: Dependencies
   private let family: CallAppFamily
   private let anchor: UInt64
   private let rules: TalkerRules
   private var accumulator: CallSpeakerAccumulator
-  private let queue = DispatchQueue(label: "com.enviouswispr.call-speaker-capture", qos: .utility)
   private var loop: Task<Void, Never>?
-  /// A copy is being taken on the queue (kept until the queue work itself returns).
-  private var captureInFlight = false
-  /// Bumped whenever results in flight must no longer count.
+  /// Bumped whenever copies in flight must no longer count: Stop, dictation running, trust
+  /// lost, a different app instance.
   private var generation = 0
-  private var open = true
-  private var finished = false
+  /// Bumped synchronously by the Observation change handler, which may run off the main actor.
+  private let dictationChanges = OSAllocatedUnfairLock(initialState: 0)
+  private var lifecycle = Lifecycle.open
+  private var closed = false
+  private var open: Bool { lifecycle == .open && !closed }
+  private var lastTarget: CallSpeakerTarget?
   private var savedVersion = -1
   private var version = 0
   private var saving: Task<Void, Never>?
@@ -59,6 +81,7 @@ final class CallSpeakerObserver {
     self.accumulator = CallSpeakerAccumulator(
       surface: surface, rules: rules.frozen, lag: lag,
       status: CallSpeakerSurfaceChoice.hasTalkerReader(surface) ? nil : .unsupported)
+    watchDictation()
   }
 
   /// The log as collected so far.
@@ -79,34 +102,69 @@ final class CallSpeakerObserver {
     }
   }
 
-  /// One tick: skipped while a copy is in flight; while dictation runs, copies in flight are
-  /// dropped and none is taken.
-  func tick() {
+  /// Any change to what `isDictationIdle` reads bumps `dictationChanges` before it lands; then
+  /// tracking is armed again.
+  private func watchDictation() {
     guard open else { return }
+    let changes = dictationChanges
+    withObservationTracking {
+      _ = deps.isDictationIdle()
+    } onChange: { [weak self] in
+      changes.withLock { $0 += 1 }
+      Task { @MainActor [weak self] in self?.watchDictation() }
+    }
+  }
+
+  /// One tick. Eligibility is checked every tick, even while a copy is in flight, so a change
+  /// drops that copy; a copy starts only when eligible and the lane is free.
+  func tick() {
+    guard open, CallSpeakerSurfaceChoice.hasTalkerReader(accumulator.surface) else { return }
     guard deps.isDictationIdle() else {
       generation += 1
       return
     }
-    guard !captureInFlight, CallSpeakerSurfaceChoice.hasTalkerReader(accumulator.surface)
-    else { return }
     guard deps.isTrusted() else {
+      generation += 1
       accumulator.noteNoPermission()
       version += 1
       return
     }
-    guard let target = deps.target() else { return }
-    captureInFlight = true
-    let current = generation
+    let target = deps.target()
+    if target != lastTarget {
+      generation += 1
+      lastTarget = target
+    }
+    guard let target else { return }
+    let busy = deps.lane.busy
+    let claimed = busy.withLock { running -> Bool in
+      if running { return false }
+      running = true
+      return true
+    }
+    guard claimed else { return }
+    let takenGeneration = generation
+    let takenDictation = dictationChanges.withLock { $0 }
     let capture = deps.capture
-    queue.async { [weak self] in
+    deps.lane.queue.async { [weak self] in
       let copy = capture(target)
-      Task { @MainActor [weak self] in self?.captured(copy, generation: current) }
+      // The lane frees only once the physical work returned.
+      busy.withLock { $0 = false }
+      Task { @MainActor [weak self] in
+        self?.captured(
+          copy, target: target, generation: takenGeneration, dictation: takenDictation)
+      }
     }
   }
 
-  private func captured(_ copy: CallAXCapture, generation taken: Int) {
-    captureInFlight = false
-    guard open, taken == generation, deps.isDictationIdle() else { return }
+  private func captured(
+    _ copy: CallAXCapture, target: CallSpeakerTarget, generation takenGeneration: Int,
+    dictation takenDictation: Int
+  ) {
+    // Read again at delivery: nothing that would have stopped the copy may have happened since.
+    guard open, takenGeneration == generation,
+      takenDictation == dictationChanges.withLock({ $0 }), deps.isDictationIdle(),
+      deps.isTrusted(), deps.target() == target
+    else { return }
     guard
       let ms = CallSpeakerTimeline.observationMs(
         readStart: copy.readStartHostTime, readEnd: copy.readEndHostTime, anchor: anchor)
@@ -120,39 +178,45 @@ final class CallSpeakerObserver {
     version += 1
   }
 
-  /// Starts a save when the log changed since the last one; never two at once.
+  /// Starts a save when the log changed since the last one; never two at once. A save that has
+  /// not reached the writer when admission closes does not run, so it never lands after the
+  /// final one.
   private func saveIfChanged() {
     guard open, saving == nil, version != savedVersion else { return }
     let log = accumulator.log
     let saved = version
     saving = Task { [weak self] in
       guard let self else { return }
+      defer { self.saving = nil }
+      guard self.open else { return }
       do {
         try await self.deps.save(log)
         self.savedVersion = saved
       } catch {
         self.deps.log("call speakers save failed error=\(type(of: error))")
       }
-      self.saving = nil
     }
   }
 
   /// Closes admission at once: no more copies, results in flight no longer count, no periodic
   /// save starts. Synchronous, so a Stop calls it before its first wait.
   func close() {
-    open = false
+    closed = true
     generation += 1
     loop?.cancel()
     loop = nil
   }
 
   /// Normal stop: closes admission, waits for a save already running, then saves the final log
-  /// once. Returns after the final save, so processing reads it.
+  /// once. Returns after the final save, so processing reads it. A quit or cancel meanwhile
+  /// takes over the final log, and this saves nothing.
   func finish() async {
     close()
-    guard !finished else { return }
-    finished = true
+    guard lifecycle == .open else { return }
+    lifecycle = .finishing
     await saving?.value
+    guard lifecycle == .finishing else { return }
+    lifecycle = .done
     do {
       try await deps.save(accumulator.log)
     } catch {
@@ -160,15 +224,26 @@ final class CallSpeakerObserver {
     }
   }
 
-  /// Delete, quit or a failed start: closes admission and saves nothing more. A save already
-  /// running finishes on its own; the caller's deletion runs after the file writer drains.
+  /// Quit: closes admission and hands back the final log for the caller to save within its own
+  /// deadline; nil when the final log was already saved, taken or cancelled.
+  func takeFinalLog() -> CallSpeakerLog? {
+    close()
+    guard lifecycle != .done else { return nil }
+    lifecycle = .done
+    return accumulator.log
+  }
+
+  /// Delete or a failed start: closes admission and saves nothing more. A save already running
+  /// finishes on its own; the caller's deletion runs after the file writer drains.
   func cancel() {
     close()
-    finished = true
+    lifecycle = .done
   }
 
   #if DEBUG
-    var isCaptureInFlightForTesting: Bool { captureInFlight }
     func savingForTesting() async { await saving?.value }
+    var laneBusy: Bool { deps.lane.isBusy }
+    /// The periodic save, now.
+    func saveNowForTesting() { saveIfChanged() }
   #endif
 }

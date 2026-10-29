@@ -3,6 +3,7 @@ import EnviousWisprCore
 import Foundation
 import Testing
 
+@testable import EnviousWisprPipeline
 @testable import EnviousWisprServices
 
 /// #4013 chunk 13A: when these fail, a live speaker copy can run forever on a looping or huge
@@ -100,6 +101,17 @@ struct CallSpeakerCaptureTests {
     for id in 2...40 { slow.node(id) }
     #expect(
       capture(slow, bounds: CallAXBounds(maxNodes: 1_000, maxDepth: 64, budget: .milliseconds(100)))
+        .completeness == .truncated)
+  }
+
+  @Test("a single slow last element still makes the copy truncated")
+  func slowLastLeaf() {
+    let tree = Tree()
+    tree.node(1, "AXWindow")
+    // Each read advances the clock 50 ms: the one element's eight reads end past 100 ms.
+    tree.tickPerRead = .milliseconds(50)
+    #expect(
+      capture(tree, bounds: CallAXBounds(maxNodes: 1_000, maxDepth: 64, budget: .milliseconds(100)))
         .completeness == .truncated)
   }
 
@@ -217,6 +229,21 @@ struct CallSpeakerCaptureTests {
       log.log.roster.names.filter { $0 == "Alex Rivera" }.count == 2,
       "two people sharing a name stay two")
     #expect(log.log.roster.selfNames == ["Sam"])
+  }
+
+  @Test("a name a reader proved two people share is never nameable, even after a single view")
+  func sharedNamesStay() {
+    var log = CallSpeakerAccumulator(surface: .meet, rules: nil, lag: nil)
+    log.add(reading([("Alex Rivera", true)]), context: Self.good, observationMs: 1)
+    let proof = CallSpeakerReading(
+      speaking: [], roster: CallSpeakerRoster(names: ["Alex Rivera"], selfNames: []),
+      rosterFromParticipantList: false,
+      participants: [CallParticipant(key: "0", name: "Alex Rivera", isTalking: false, isSelf: false)],
+      participantIdentityEstablished: true, sharedNames: ["Alex Rivera"])
+    log.add(proof, context: Self.good, observationMs: 2)
+    log.add(reading([("Alex Rivera", true)]), context: Self.good, observationMs: 3)
+    #expect(log.log.roster.names.filter { $0 == "Alex Rivera" }.count == 2)
+    #expect(MeetingSpeakerNamer.uniqueRosterNames(log.log.roster).isEmpty)
   }
 
   @Test("status: unreadable copies only, then observed; no permission only before any use")

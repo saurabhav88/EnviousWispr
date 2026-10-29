@@ -67,6 +67,10 @@ enum MeetingWiring {
     var detectedStartWanted: @MainActor () async -> Bool = { true }
     /// #4013 chunk 13A: the app instance a recording's speaker capture reads for a call family.
     var callSpeakerTarget: @MainActor (CallAppFamily) -> CallSpeakerTarget? = { _ in nil }
+    /// #4013 chunk 13A: starts the day's talker-rules download without waiting for it
+    /// (`TalkerRulesStore.refreshIfDue`, at most once a day). The app passes the live store;
+    /// tests never reach the network.
+    var refreshTalkerRules: @Sendable () -> Void = {}
     /// The `meeting.summary_finished` emitter.
     var emitSummaryFinished: @MainActor (MeetingSummaryFinishedTelemetry) -> Void = {
       TelemetryService.shared.trackMeetingSummaryFinished($0)
@@ -187,8 +191,10 @@ enum MeetingWiring {
         workChanged: inputs.workChanged,
         isDictationIdle: inputs.isDictationIdle,
         callSpeakerTarget: inputs.callSpeakerTarget,
-        talkerRules: {
+        talkerRules: { [refreshTalkerRules = inputs.refreshTalkerRules] in
           let selected = await TalkerRulesStore.live.current()
+          // The day's download, never waited for: this recording keeps the rules read above.
+          refreshTalkerRules()
           guard
             let bundled = TalkerRulesStore.bundledURL.flatMap({ try? Data(contentsOf: $0) })
               .flatMap({ try? TalkerRulesSnapshot(validating: $0, origin: .bundled) })

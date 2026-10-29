@@ -119,7 +119,8 @@ package enum CallSpeakerTimeline {
 /// withheld for an ambiguous or unnamed talker. Each name is kept as many times as the most
 /// times any one such reading showed it, so a repeated snapshot never invents a second person
 /// and a later snapshot never erases two people already seen sharing a name. Self names are
-/// the union of the names a reader marked as the user.
+/// the union of the names a reader marked as the user. A name a reader proved two people share
+/// (`CallSpeakerReading.sharedNames`) is kept at least twice, so the namer never names it.
 package struct CallSpeakerAccumulator: Sendable, Equatable {
   package let surface: CallSpeakerSurface
   package let rules: FrozenTalkerRules?
@@ -166,6 +167,12 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
     }
     for name in reading.roster.selfNames where !selfNames.contains(name) {
       selfNames.append(name)
+    }
+    // A name the reader proved two people share stays at least twice, so a later reading that
+    // shows it once never makes it nameable.
+    for name in reading.sharedNames.sorted() {
+      if nameCounts[name] == nil { nameOrder.append(name) }
+      nameCounts[name] = max(nameCounts[name] ?? 0, 2)
     }
     if reading.rosterFromParticipantList { fromParticipantList = true }
     if let speaking = CallSpeakerAdmission.observationSpeaking(reading, context: context) {

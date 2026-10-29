@@ -66,34 +66,61 @@ struct CallSpeakerObserverTests {
       if hold.withLock({ $0 }) { _ = release.wait(timeout: .now() + 10) }
       return CallSpeakerObserverTests.meetCopy()
     }
+
+    func letGo() {
+      hold.withLock { $0 = false }
+      release.signal()
+    }
+  }
+
+  /// Dictation as Observation sees it, like `LiveRecordingState.isDictationActive`.
+  @Observable @MainActor
+  final class Dictation {
+    var idle = true
+  }
+
+  /// The facts the observer reads at each tick and again at delivery.
+  @MainActor
+  final class World {
+    /// Read by a `@Sendable` dependency, so behind a lock.
+    let trustedLock = OSAllocatedUnfairLock(initialState: true)
+    var trusted: Bool {
+      get { trustedLock.withLock { $0 } }
+      set { trustedLock.withLock { $0 = newValue } }
+    }
+    var target: CallSpeakerTarget? = CallSpeakerTarget(pid: 1, rule: .browser(.chrome))
   }
 
   private func observer(
-    capture: Capture, idle: @escaping @MainActor () -> Bool = { true },
-    saved: @escaping @MainActor (CallSpeakerLog) -> Void = { _ in }
+    capture: Capture, dictation: Dictation = Dictation(), world: World = World(),
+    lane: CallSpeakerObserver.Lane = .init(),
+    saved: @escaping @MainActor (CallSpeakerLog) async throws -> Void = { _ in }
   ) throws -> CallSpeakerObserver {
-    CallSpeakerObserver(
+    let trusted = world.trustedLock
+    return CallSpeakerObserver(
       surface: .meet, family: .googleMeet, anchor: 0, rules: try Self.bundled(),
       lag: CallSpeakerLag(milliseconds: 500),
       dependencies: .init(
-        target: { CallSpeakerTarget(pid: 1, rule: .browser(.chrome)) },
-        capture: { _ in capture.take() }, isTrusted: { true }, isDictationIdle: idle,
-        save: { saved($0) }))
+        target: { world.target },
+        capture: { _ in capture.take() },
+        isTrusted: { trusted.withLock { $0 } },
+        isDictationIdle: { dictation.idle },
+        save: { try await saved($0) }, lane: lane))
   }
 
   @Test("one copy at a time: ticks while a copy is being taken take none")
   func oneCopyAtATime() async throws {
     let capture = Capture()
     capture.hold.withLock { $0 = true }
-    let observer = try observer(capture: capture)
+    let lane = CallSpeakerObserver.Lane()
+    let observer = try observer(capture: capture, lane: lane)
     observer.tick()
     await eventually("copy started") { capture.calls.withLock { $0 } == 1 }
     observer.tick()
     observer.tick()
     #expect(capture.calls.withLock { $0 } == 1)
-    capture.hold.withLock { $0 = false }
-    capture.release.signal()
-    await eventually("copy landed") { !observer.isCaptureInFlightForTesting }
+    capture.letGo()
+    await eventually("copy landed") { observer.currentLog.observations.count == 1 }
     #expect(observer.currentLog.observations.map(\.speaking) == [["Alex Rivera"]])
     #expect(observer.currentLog.lag?.milliseconds == 500)
     #expect(observer.currentLog.surface == .meet)
@@ -101,25 +128,78 @@ struct CallSpeakerObserverTests {
     await eventually("second copy") { observer.currentLog.observations.count == 2 }
   }
 
-  @Test("dictation drops a copy in flight and takes none until it ends")
-  func dictationPauses() async throws {
+  @Test("a copy still blocked from an ended recording keeps a new recording from starting one")
+  func sharedLane() async throws {
+    let lane = CallSpeakerObserver.Lane()
+    let old = Capture()
+    old.hold.withLock { $0 = true }
+    let ended = try observer(capture: old, lane: lane)
+    ended.tick()
+    await eventually("old copy started") { old.calls.withLock { $0 } == 1 }
+    ended.cancel()
+    let fresh = Capture()
+    let next = try observer(capture: fresh, lane: lane)
+    next.tick()
+    #expect(fresh.calls.withLock { $0 } == 0, "no second copy while the old one is blocked")
+    old.letGo()
+    await eventually("lane free") { !lane.isBusy }
+    next.tick()
+    await eventually("new copy") { next.currentLog.observations.count == 1 }
+    #expect(ended.currentLog.observations.isEmpty)
+  }
+
+  @Test("dictation that starts and ends while a copy is taken drops that copy, with no tick")
+  func dictationBetweenTicks() async throws {
     let capture = Capture()
     capture.hold.withLock { $0 = true }
-    var idle = true
-    let observer = try observer(capture: capture, idle: { idle })
+    let dictation = Dictation()
+    let observer = try observer(capture: capture, dictation: dictation)
     observer.tick()
     await eventually("copy started") { capture.calls.withLock { $0 } == 1 }
-    idle = false
-    observer.tick()
-    capture.hold.withLock { $0 = false }
-    capture.release.signal()
-    await eventually("copy returned") { !observer.isCaptureInFlightForTesting }
+    dictation.idle = false
+    dictation.idle = true
+    capture.letGo()
+    await eventually("copy returned") { capture.calls.withLock { $0 } == 1 && !observer.laneBusy }
+    // settle: absence check; the delivery hop is one main-actor task after the lane frees
+    try await Task.sleep(for: .milliseconds(200))
     #expect(observer.currentLog.observations.isEmpty)
     observer.tick()
-    #expect(capture.calls.withLock { $0 } == 1, "no copy while dictating")
-    idle = true
+    await eventually("next copy counts") { observer.currentLog.observations.count == 1 }
+  }
+
+  @Test("no copy is taken while dictating")
+  func noCopyWhileDictating() async throws {
+    let capture = Capture()
+    let dictation = Dictation()
+    dictation.idle = false
+    let observer = try observer(capture: capture, dictation: dictation)
+    observer.tick()
+    #expect(capture.calls.withLock { $0 } == 0)
+    dictation.idle = true
     observer.tick()
     await eventually("copy after dictation") { observer.currentLog.observations.count == 1 }
+  }
+
+  @Test("a copy whose app instance changed or whose trust was lost before delivery adds nothing")
+  func sourceAndTrustAtDelivery() async throws {
+    for change in ["target", "trust"] {
+      let capture = Capture()
+      capture.hold.withLock { $0 = true }
+      let world = World()
+      let observer = try observer(capture: capture, world: world)
+      observer.tick()
+      await eventually("copy started") { capture.calls.withLock { $0 } == 1 }
+      if change == "target" {
+        world.target = CallSpeakerTarget(pid: 2, rule: .browser(.chrome))
+      } else {
+        world.trusted = false
+      }
+      capture.letGo()
+      await eventually("copy returned") { !observer.laneBusy }
+      // settle: absence check; the delivery hop is one main-actor task after the lane frees
+      try await Task.sleep(for: .milliseconds(200))
+      #expect(observer.currentLog.observations.isEmpty, "\(change)")
+    }
   }
 
   @Test("finish saves the final log once; a copy landing after it adds nothing; cancel saves none")
@@ -132,30 +212,65 @@ struct CallSpeakerObserverTests {
     await eventually("copy started") { capture.calls.withLock { $0 } == 1 }
     await observer.finish()
     #expect(saves.count == 1)
-    capture.hold.withLock { $0 = false }
-    capture.release.signal()
-    await eventually("late copy returned") { !observer.isCaptureInFlightForTesting }
+    capture.letGo()
+    await eventually("late copy returned") { !observer.laneBusy }
+    // settle: absence check; the delivery hop is one main-actor task after the lane frees
+    try await Task.sleep(for: .milliseconds(200))
     #expect(observer.currentLog.observations.isEmpty, "a copy after Stop never counts")
     await observer.finish()
     #expect(saves.count == 1)
+    #expect(observer.takeFinalLog() == nil, "quit after the final save has nothing to save")
 
     var cancelledSaves = 0
     let cancelled = try self.observer(capture: Capture(), saved: { _ in cancelledSaves += 1 })
     cancelled.cancel()
     await cancelled.finish()
     #expect(cancelledSaves == 0)
+    #expect(cancelled.takeFinalLog() == nil)
+  }
+
+  @Test("a quit while Stop waits on a periodic save takes the final log; Stop then saves none")
+  func quitDuringFinish() async throws {
+    let gate = AsyncStream<Void>.makeStream()
+    var saves = 0
+    let capture = Capture()
+    let observer = try observer(
+      capture: capture,
+      saved: { _ in
+        saves += 1
+        if saves == 1 { for await _ in gate.stream { break } }
+      })
+    observer.tick()
+    await eventually("copy landed") { observer.currentLog.observations.count == 1 }
+    observer.saveNowForTesting()
+    await eventually("periodic save parked") { saves == 1 }
+    let stopping = Task { await observer.finish() }
+    // settle: lets Stop reach its wait on the parked periodic save
+    try await Task.sleep(for: .milliseconds(100))
+    let final = observer.takeFinalLog()
+    #expect(final?.observations.count == 1)
+    gate.continuation.yield()
+    await stopping.value
+    #expect(saves == 1, "Stop saved nothing after quit took the final log")
   }
 
   // MARK: - With a recording
 
   /// A coordinator whose recording of a Meet call reads `capture`.
-  private func coordinator(_ harness: Harness, capture: Capture) throws -> MeetingCoordinator {
+  /// `rulesGate`, when given, holds the rules read until it yields.
+  private func coordinator(
+    _ harness: Harness, capture: Capture, rulesGate: AsyncStream<Void>? = nil
+  ) throws -> MeetingCoordinator {
     let rules = try Self.bundled()
     var deps = harness.dependencies()
     deps.callSpeakerTarget = { family in
       family == .googleMeet ? CallSpeakerTarget(pid: 1, rule: .browser(.chrome)) : nil
     }
-    deps.talkerRules = { (rules, rules.rules) }
+    deps.talkerRules = {
+      if let rulesGate { for await _ in rulesGate { break } }
+      return (rules, rules.rules)
+    }
+    deps.speakerCaptureLane = .init()
     deps.captureCallApp = { _, _ in capture.take() }
     deps.isAccessibilityTrusted = { true }
     return MeetingCoordinator(dependencies: deps)
@@ -219,5 +334,44 @@ struct CallSpeakerObserverTests {
     #expect(capture.calls.withLock { $0 } == taken)
     #expect(
       !FileManager.default.fileExists(atPath: harness.store.callSpeakersURL(for: meetingID).path))
+  }
+
+  @Test("a Stop while the rules are read leaves the recording stopped and starts no capture")
+  func stopWhileRulesLoad() async throws {
+    let harness = try Harness()
+    let capture = Capture()
+    let gate = AsyncStream<Void>.makeStream()
+    let coordinator = try coordinator(harness, capture: capture, rulesGate: gate.stream)
+    let outcome = await coordinator.start(from: .detected, callApp: .googleMeet)
+    let meetingID = try #require(harness.recorders.first).configuration.meetingID
+    #expect(outcome == .recording(meetingID: meetingID), "Start does not wait for the rules")
+    await coordinator.stop()
+    gate.continuation.yield()
+    await eventually("ready") {
+      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
+    }
+    // settle: absence check; the capture loop ticks every 500 ms, so 1.2 s covers two ticks
+    try await Task.sleep(for: .milliseconds(1_200))
+    #expect(capture.calls.withLock { $0 } == 0)
+    #expect(coordinator.phase == .idle)
+  }
+
+  @Test("quit while recording saves the speaker log collected so far, within the quit deadline")
+  func quitSavesFinalLog() async throws {
+    let harness = try Harness()
+    let capture = Capture()
+    let coordinator = try coordinator(harness, capture: capture)
+    _ = await coordinator.start(from: .detected, callApp: .googleMeet)
+    let meetingID = try #require(harness.recorders.first).configuration.meetingID
+    await eventually("copies taken") { capture.calls.withLock { $0 } >= 2 }
+    // settle: lets the last copy's delivery reach the main actor
+    try await Task.sleep(for: .milliseconds(100))
+    coordinator.prepareForTermination(deadline: .now() + 2)
+    guard case .usable(let log) = harness.store.loadCallSpeakers(meeting: meetingID) else {
+      Issue.record("quit saved no speaker log")
+      return
+    }
+    #expect(!log.observations.isEmpty)
+    #expect(log.observations.allSatisfy { $0.speaking == ["Alex Rivera"] })
   }
 }

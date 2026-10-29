@@ -2581,6 +2581,12 @@ package final class WisprBootstrapper {
           meetingBox.callDetection?.detectedStartStillWanted() ?? false
         })
     meetingInputs.liveWords = meetingLiveWords
+    let refreshTalkerRules: @Sendable () -> Void = {
+      Task.detached(priority: .utility) { _ = await TalkerRulesStore.live.refreshIfDue() }
+    }
+    meetingInputs.refreshTalkerRules = refreshTalkerRules
+    // The day's talker-rules download at launch, off the launch path.
+    refreshTalkerRules()
     meetingInputs.callSpeakerTarget = { [meetingBox] family in
       meetingBox.callDetection?.speakerTarget(for: family)
     }

@@ -95,7 +95,8 @@ package enum CallSpeakerCapture {
   /// whether a web area is the meeting; any other page is cut at its own node, so no other
   /// page's content is copied. A required read that fails (a role, children, the window list)
   /// or an optional read that fails makes the copy unreadable; reaching a bound makes it
-  /// truncated; an element already copied (a cycle) is not copied again.
+  /// truncated, as does a copy whose reads ran past the time budget; an element already copied
+  /// (a cycle) is not copied again.
   package static func capture<Element>(
     windows: [Element], access: CallAXTreeAccess<Element>, bounds: CallAXBounds,
     keepPage: @escaping (String) -> Bool, hostTime: () -> UInt64
@@ -114,6 +115,8 @@ package enum CallSpeakerCapture {
       }
       copied.append(CallAXWindow(title: title, root: root))
     }
+    // The budget covers every read, the last element's included, not only node entry.
+    if access.now() >= deadline { walk.truncated = true }
     let completeness: CallCaptureContext.Completeness =
       walk.unreadable ? .unreadable : (walk.truncated ? .truncated : .complete)
     return CallAXCapture(
