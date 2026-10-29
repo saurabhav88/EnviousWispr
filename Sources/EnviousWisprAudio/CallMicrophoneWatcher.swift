@@ -27,12 +27,18 @@ public final class CallMicrophoneWatcher {
     /// The Core Audio process object: a new one for every run of a process, so it tells a
     /// relaunched process from the one before even when the pid comes back.
     public let object: UInt32
+    /// The regular app owning this process (itself, or a helper's parent), read with the
+    /// reading off the main actor (`OwnerFilter`); nil when there is none.
+    public let ownerPID: Int32?
 
-    public init(pid: Int32, bundleID: String, input: Input, object: UInt32 = 0) {
+    public init(
+      pid: Int32, bundleID: String, input: Input, object: UInt32 = 0, ownerPID: Int32? = nil
+    ) {
       self.pid = pid
       self.bundleID = bundleID
       self.input = input
       self.object = object
+      self.ownerPID = ownerPID
     }
   }
 
@@ -59,27 +65,45 @@ public final class CallMicrophoneWatcher {
   /// `mayBeCandidate(bundleID)`: whether a process whose executable cannot be read may still
   /// be a call app.
   public typealias UnnamedFilter = @Sendable (String?) -> Bool
+  /// `owner(pid)`: the regular app owning a call process, or nil.
+  public typealias OwnerFilter = @Sendable (Int32) -> Int32?
+  /// One whole read of the process list (tests stand in for Core Audio).
+  public typealias Scan = @Sendable () -> Reading
 
   /// macOS 14.2 added the process objects; below it the watcher never starts.
-  public static var isSupported: Bool {
+  public nonisolated static var isSupported: Bool {
     if #available(macOS 14.2, *) { return true }
     return false
   }
 
-  private let candidateBundleID: CandidateFilter
-  private let mayBeCandidate: UnnamedFilter
+  private let scan: Scan
   private let onReading: @MainActor (Reading) -> Void
   private var listener: AudioObjectPropertyListenerBlock?
-  private let ownPID = getpid()
   private let queue = DispatchQueue(label: "com.enviouswispr.call-microphone-watcher", qos: .utility)
+  /// Between `start()` and `stop()`.
+  private var running = false
+  /// Bumped by `stop()`: a scan started before it reports nothing.
+  private var generation = 0
+  /// One physical scan at a time; asks meanwhile become one more scan after it.
+  private var scanning = false
+  private var scanWaiters: [@MainActor () -> Void] = []
+  private var nextWanted = false
+  private var nextWaiters: [@MainActor () -> Void] = []
 
   public init(
     candidateBundleID: @escaping CandidateFilter,
     mayBeCandidate: @escaping UnnamedFilter,
+    owner: @escaping OwnerFilter = { _ in nil },
+    scan: Scan? = nil,
     onReading: @escaping @MainActor (Reading) -> Void
   ) {
-    self.candidateBundleID = candidateBundleID
-    self.mayBeCandidate = mayBeCandidate
+    let ownPID = getpid()
+    self.scan =
+      scan ?? {
+        Self.read(
+          candidateBundleID: candidateBundleID, mayBeCandidate: mayBeCandidate, owner: owner,
+          ownPID: ownPID)
+      }
     self.onReading = onReading
   }
 
@@ -87,7 +111,8 @@ public final class CallMicrophoneWatcher {
   public var isListening: Bool { listener != nil }
 
   public func start() {
-    guard Self.isSupported, listener == nil else { return }
+    guard Self.isSupported, !running else { return }
+    running = true
     var address = Self.processListAddress
     let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
       Task { @MainActor in self?.poll() }
@@ -100,6 +125,8 @@ public final class CallMicrophoneWatcher {
     poll()
   }
 
+  /// Stops listening and reporting: a scan still running reports nothing, and every caller
+  /// waiting for a reading is let go at once.
   public func stop() {
     if let listener {
       var address = Self.processListAddress
@@ -107,25 +134,58 @@ public final class CallMicrophoneWatcher {
         AudioObjectID(kAudioObjectSystemObject), &address, DispatchQueue.main, listener)
     }
     listener = nil
+    running = false
+    generation += 1
+    nextWanted = false
+    let waiting = scanWaiters + nextWaiters
+    scanWaiters = []
+    nextWaiters = []
+    for waiter in waiting { waiter() }
   }
 
-  /// Reads now (a process-list change, a poll, a wake from sleep) off the main actor, then
-  /// reports the reading on the main queue and calls `done` after it. Readings are reported in
-  /// the order the polls were asked for.
+  /// Reads now (a process-list change, a poll, a wake from sleep) off the main actor and
+  /// reports the reading on the main queue, then calls `done`. One scan runs at a time: an ask
+  /// while one runs is answered by one more scan right after it (asks meanwhile share it), so a
+  /// slow read never builds a queue, and `done` always follows a reading taken after the ask.
+  /// While stopped, `done` is called at once and nothing is read.
   public func poll(done: (@MainActor () -> Void)? = nil) {
-    let candidateBundleID = candidateBundleID
-    let mayBeCandidate = mayBeCandidate
-    let ownPID = ownPID
+    guard running else {
+      done?()
+      return
+    }
+    if scanning {
+      nextWanted = true
+      if let done { nextWaiters.append(done) }
+      return
+    }
+    beginScan(waiters: done.map { [$0] } ?? [])
+  }
+
+  private func beginScan(waiters: [@MainActor () -> Void]) {
+    scanning = true
+    scanWaiters = waiters
+    let taken = generation
+    let scan = scan
     queue.async { [weak self] in
-      let reading = Self.read(
-        candidateBundleID: candidateBundleID, mayBeCandidate: mayBeCandidate, ownPID: ownPID)
-      // The main queue keeps the order the serial queue produced them in.
+      let reading = scan()
       DispatchQueue.main.async {
-        MainActor.assumeIsolated {
-          self?.onReading(reading)
-          done?()
-        }
+        MainActor.assumeIsolated { self?.scanFinished(reading, generation: taken) }
       }
+    }
+  }
+
+  private func scanFinished(_ reading: Reading, generation taken: Int) {
+    scanning = false
+    let waiting = scanWaiters
+    scanWaiters = []
+    // A scan from before a stop reports nothing; its waiters were let go by the stop.
+    if taken == generation { onReading(reading) }
+    for waiter in waiting { waiter() }
+    if running, nextWanted {
+      nextWanted = false
+      let next = nextWaiters
+      nextWaiters = []
+      beginScan(waiters: next)
     }
   }
 
@@ -137,7 +197,8 @@ public final class CallMicrophoneWatcher {
   }
 
   private nonisolated static func read(
-    candidateBundleID: CandidateFilter, mayBeCandidate: UnnamedFilter, ownPID: pid_t
+    candidateBundleID: CandidateFilter, mayBeCandidate: UnnamedFilter, owner: OwnerFilter,
+    ownPID: pid_t
   ) -> Reading {
     guard let objects = Self.processObjects() else { return .failed }
     var holders: [Holder] = []
@@ -150,7 +211,9 @@ public final class CallMicrophoneWatcher {
       if let bundle = candidateBundleID(ownBundle ?? "", path) {
         if let pid {
           holders.append(
-            Holder(pid: pid, bundleID: bundle, input: Self.input(of: object), object: object))
+            Holder(
+              pid: pid, bundleID: bundle, input: Self.input(of: object), object: object,
+              ownerPID: owner(pid)))
         } else if Self.input(of: object) != .inactive {
           // A call app whose process cannot be read: it can never start a call, and while it
           // may hold the microphone no call is confirmed over (review r14 F1).

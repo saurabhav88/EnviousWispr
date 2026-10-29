@@ -23,9 +23,8 @@ final class CallSourceDiscovery {
     var now: @MainActor () -> Date = {
       Date(timeIntervalSinceReferenceDate: ProcessInfo.processInfo.systemUptime)
     }
-    /// The regular app owning a microphone-holding process (`CallSpeakerTarget.owner`); tests
-    /// stand in for running apps.
-    var speakerOwner: @MainActor (pid_t) -> pid_t? = { CallSpeakerTarget.owner(ofHolder: $0) }
+    /// One whole microphone reading, off the main actor; nil reads Core Audio (tests stand in).
+    var scan: CallMicrophoneWatcher.Scan?
   }
 
   /// Seconds between polls while a call may be on; without the process-list listener, between
@@ -37,7 +36,12 @@ final class CallSourceDiscovery {
   private lazy var watcher = CallMicrophoneWatcher(
     candidateBundleID: { bundle, path in Self.callBundleID(bundle: bundle, executablePath: path) },
     mayBeCandidate: { CallAppCatalog.mayBeCallApp(bundleID: $0) },
+    // The owning app is read with the reading, off the main actor, so a speaker tick only looks.
+    owner: { CallSpeakerTarget.owner(ofHolder: $0) },
+    scan: deps.scan,
     onReading: { [weak self] reading in self?.received(reading) })
+  /// Bumped whenever discovery stops: evidence reads from before it apply and report nothing.
+  private var lifecycle = 0
   private var timer: Timer?
   private(set) var watching = false
 
@@ -108,25 +112,37 @@ final class CallSourceDiscovery {
   private func updateWatching() {
     #if DEBUG
       // A simulation owns the readings: the real watcher stays off until it is cleared.
-      if simulation != nil { return }
+      if simulation != nil {
+        stopReal()
+        return
+      }
     #endif
     if wanted == watching {
       // Prompts turned on while a recording already watches: read now, as a fresh start would.
       if watching { pollNow() }
       return
     }
-    watching = wanted
-    if watching {
+    if wanted {
+      watching = true
       watcher.start()
       startTimer()
     } else {
-      watcher.stop()
-      timer?.invalidate()
-      timer = nil
-      holders = []
-      evidence = [:]
-      complete = false
+      stopReal()
     }
+  }
+
+  /// Stops the watcher, its timer and any evidence read, and forgets the last reading.
+  private func stopReal() {
+    lifecycle += 1
+    evidenceTask = nil
+    rereadWanted = false
+    if watching { watcher.stop() }
+    watching = false
+    timer?.invalidate()
+    timer = nil
+    holders = []
+    evidence = [:]
+    complete = false
   }
 
   private func startTimer() {
@@ -142,7 +158,10 @@ final class CallSourceDiscovery {
   func shutDown() {
     promptDemand = false
     recordingDemand = 0
-    updateWatching()
+    #if DEBUG
+      simulation = nil
+    #endif
+    stopReal()
   }
 
   /// Wake from sleep: read again at once.
@@ -225,12 +244,16 @@ final class CallSourceDiscovery {
     guard !targets.isEmpty else { return }
     let read = deps.evidence
     let forReading = sequence
+    let started = lifecycle
     evidenceTask = Task {
       var fresh: [Int32: (CallMicrophoneWatcher.Holder, CallEvidenceReader.Evidence)] = [:]
       for holder in targets {
+        // Discovery stopped meanwhile: no more reads, nothing applied or reported.
+        guard self.lifecycle == started else { return }
         guard let rule = CallAppCatalog.rule(forBundleID: holder.bundleID) else { continue }
         fresh[holder.pid] = (holder, await read(rule, holder.pid))
       }
+      guard self.lifecycle == started else { return }
       // The answers belong to the reading they were read for (C2): a newer reading that came
       // meanwhile (the process list changed) gets its own read instead, and a process that
       // left, or a new run of it under the same pid, never gets these.
@@ -324,7 +347,7 @@ final class CallSourceDiscovery {
           matches = false
         }
       }
-      guard matches, let owner = deps.speakerOwner(holder.pid) else { continue }
+      guard matches, let owner = holder.ownerPID else { continue }
       owners[owner] = rule
     }
     guard owners.count == 1, let (pid, rule) = owners.first else { return nil }
@@ -346,6 +369,8 @@ final class CallSourceDiscovery {
     func simulate(_ list: [SimulatedHolder]?) {
       simulation = list
       if let list {
+        // The real watcher stops while a simulation owns the readings.
+        stopReal()
         evidence = Dictionary(
           list.map { ($0.holder.pid, ($0.holder, $0.evidence, sequence)) },
           uniquingKeysWith: { a, _ in a })

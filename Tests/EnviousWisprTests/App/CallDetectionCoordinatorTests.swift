@@ -99,8 +99,7 @@
                 evidenceReads.withLock { $0 += 1 }
                 return evidenceAnswer.withLock { $0 }
               },
-              now: { [weak self] in self?.clock ?? Date() },
-              speakerOwner: { $0 })))
+              now: { [weak self] in self?.clock ?? Date() })))
       }
 
       /// One faked Zoom process with its meeting window open, the microphone `input`.
@@ -133,27 +132,26 @@
     func speakerSource() throws {
       let rig = try Rig()
       let sources = rig.coordinator.discovery
-      rig.coordinator.deliverWatcherReading(
-        [.init(pid: 900_010, bundleID: "us.zoom.xos", input: .active)])
+      func zoom(_ pid: Int32 = 900_010) -> CallMicrophoneWatcher.Holder {
+        .init(pid: pid, bundleID: "us.zoom.xos", input: .active, ownerPID: pid)
+      }
+      rig.coordinator.deliverWatcherReading([zoom()])
       #expect(sources.speakerTarget(for: .zoom)?.pid == 900_010)
       #expect(sources.speakerTarget(for: .teams) == nil)
       let first = sources.speakerSourceRevision
       rig.coordinator.deliverWatcherReading(
-        [.init(pid: 900_010, bundleID: "us.zoom.xos", input: .active)])
+        [zoom()])
       #expect(sources.speakerSourceRevision == first, "the same reading again is no change")
       rig.coordinator.deliverWatcherReading(
-        [.init(pid: 900_010, bundleID: "us.zoom.xos", input: .active)], ambiguous: true)
+        [zoom()], ambiguous: true)
       #expect(sources.speakerTarget(for: .zoom) == nil)
       #expect(sources.speakerSourceRevision > first)
       let ambiguous = sources.speakerSourceRevision
       rig.coordinator.deliverWatcherReading(
-        [.init(pid: 900_010, bundleID: "us.zoom.xos", input: .active)])
+        [zoom()])
       #expect(sources.speakerSourceRevision > ambiguous, "back to the same source is a change")
       rig.coordinator.deliverWatcherReading(
-        [
-          .init(pid: 900_010, bundleID: "us.zoom.xos", input: .active),
-          .init(pid: 900_011, bundleID: "us.zoom.xos", input: .active),
-        ])
+        [zoom(), zoom(900_011)])
       #expect(sources.speakerTarget(for: .zoom) == nil, "two app instances")
     }
 
@@ -189,7 +187,8 @@
       rig.coordinator.discovery.beginRecordingDemand()
       defer { rig.coordinator.discovery.endRecordingDemand() }
       rig.evidenceAnswer.withLock { $0 = .call(family: .zoom, room: "pid-900010") }
-      rig.reading("us.zoom.xos", .active)
+      rig.coordinator.deliverWatcherReading(
+        [.init(pid: 900_010, bundleID: "us.zoom.xos", input: .active, ownerPID: 900_010)])
       await settleStarts()
       #expect(rig.panel.content == nil)
       #expect(rig.starts.isEmpty)
