@@ -189,7 +189,8 @@ struct OverlayPanelSizeOwnershipTests {
     let countdownExpected = String(format: try german(countdown.key), locale: Locale(identifier: "de"), Int64(seconds))
     #expect(String(localized: transform(countdown, language: "de")) == countdownExpected,
       "German countdown lookup must preserve integer interpolation")
-    for key in ["Start recording", "Start a new recording", "Not now"] {
+    for key in ["Start recording", "Start a new recording", "Not now", "Stop recording", "Keep recording",
+      "Did your call end?", "I'll keep recording unless you choose Stop recording."] {
       let original = LocalizedStringResource(String.LocalizationValue(stringLiteral: key))
       #expect(String(localized: transform(original, language: "de")) == (try german(key)))
     }
@@ -200,6 +201,11 @@ struct OverlayPanelSizeOwnershipTests {
       ("en", true, .ask(appName: "Zoom"), "ask"),
       ("de", false, .ask(appName: appName), "ask"),
       ("de", true, .countdown(secondsLeft: 9), "countdown"),
+      ("en", false, .endConfirmation, "end-confirmation"),
+      ("en", true, .endConfirmation, "end-confirmation"),
+      ("de", false, .endConfirmation, "end-confirmation"),
+      ("de", true, .endConfirmation, "end-confirmation"),
+      ("de", true, .stoppedByUser, "user-stopped"),
       ("de", true, .lastTip(appName: "Microsoft Teams (Geschäfts- oder Schulkonto)"), "long-tip"),
     ]
     for (language, dark, content, name) in cases {

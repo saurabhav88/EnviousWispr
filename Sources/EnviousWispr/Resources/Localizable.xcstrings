@@ -3690,13 +3690,13 @@
         }
       }
     },
-    "Ask shows Record this call? under the menu bar. Start by itself starts recording without asking. Off never notices calls. A recording EnviousMeet started stops 10 seconds after the call ends, unless you choose Keep recording. A recording you started yourself never stops by itself." : {
+    "Ask offers to record when a call app uses the microphone. Start by itself can record without asking. Off disables call prompts and automatic recording. A recording you start manually can still be linked to an already detected call. Confirmed endings in the native Zoom or Teams app show a 10-second countdown with Keep recording. For uncertain browser endings, recording continues unless you choose Stop recording. Call detection never auto-stops an unlinked recording." : {
       "comment" : "EnviousMeet page: help for When a call starts.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "„Fragen“ zeigt „Diesen Anruf aufnehmen?“ unter der Menüleiste an. „Automatisch starten“ beginnt die Aufnahme ohne Nachfrage. Bei „Aus“ erkennt EnviousMeet keine Anrufe. Eine von EnviousMeet gestartete Aufnahme endet 10 Sekunden nach Anrufende, außer du wählst „Weiter aufnehmen“. Eine Aufnahme, die du selbst gestartet hast, endet nie automatisch."
+            "value" : "„Fragen“ bietet eine Aufnahme an, wenn eine Anruf-App das Mikrofon nutzt. „Automatisch starten“ kann ohne Nachfrage aufnehmen. „Aus“ deaktiviert Anrufhinweise und automatische Aufnahmen. Auch eine manuell gestartete Aufnahme kann mit einem bereits erkannten Anruf verknüpft sein. Bei einem bestätigten Anrufende in der nativen Zoom- oder Teams-App erscheint ein 10-Sekunden-Countdown mit „Weiter aufnehmen“. Bei einem unklaren Ende im Browser läuft die Aufnahme weiter, solange du nicht „Aufnahme stoppen“ auswählst. Die Anruferkennung stoppt eine nicht verknüpfte Aufnahme nie automatisch."
           }
         }
       }
@@ -6980,6 +6980,17 @@
         }
       }
     },
+    "Did your call end?" : {
+      "comment" : "EnviousMeet: uncertain browser page ending; recording continues until the user explicitly stops it.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ist dein Gespräch zu Ende?"
+          }
+        }
+      }
+    },
     "Discard" : {
       "comment" : "Button to discard pending work, including a recovering recording or an uncommitted word or snippet import.",
       "localizations" : {
@@ -9666,6 +9677,17 @@
         }
       }
     },
+    "I'll keep recording unless you choose Stop recording." : {
+      "comment" : "EnviousMeet: uncertain browser ending only, never the native countdown. No answer or Keep recording continues recording.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ich nehme weiter auf, bis du „Aufnahme stoppen“ auswählst."
+          }
+        }
+      }
+    },
     "IN USE" : {
       "comment" : "Chimes settings: small badge on the chime that recordings use, in capitals.",
       "localizations" : {
@@ -10252,7 +10274,7 @@
       }
     },
     "Keep recording" : {
-      "comment" : "EnviousMeet: stops the countdown; the meeting goes on.",
+      "comment" : "EnviousMeet: keep recording after an uncertain browser ending.\nEnviousMeet: stops the countdown; the meeting goes on.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -18665,6 +18687,7 @@
       }
     },
     "Stop recording" : {
+      "comment" : "EnviousMeet: explicitly confirm stopping after an uncertain browser ending.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
