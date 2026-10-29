@@ -92,10 +92,12 @@
       #expect(fx.settings.isDevControlWrite == false)
       #expect(fx.events.seen.isEmpty)
       #expect(fx.presence.state(for: .openAI) == .unknown)
+      #expect(fx.presence.hasPendingMutation(for: .openAI) == true)
       request.cancel()
       storage.release()
       await request.value
       #expect(accepted == true)
+      #expect(fx.presence.hasPendingMutation(for: .openAI) == false)
       #expect(fx.settings.isDevControlWrite == false)
       #expect(fx.presence.state(for: .openAI) == .present)
       #expect(fx.events.seen == [["openAI", "save", "success"]])

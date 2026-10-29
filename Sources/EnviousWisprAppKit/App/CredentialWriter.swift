@@ -81,14 +81,18 @@ struct CredentialWriter {
   struct Admission {
     let turn: CredentialAccessLane.Turn
     let discovery: LLMModelDiscoveryCoordinator.CredentialAdmission
+    let pendingID: UUID
   }
 
   /// Admit synchronously at the UI/door ingress, before a task can yield to a newer choice.
   func admit(
-    _ provider: CredentialProvider, settings: SettingsManager, surface: ProviderSetupSurface
+    _ provider: CredentialProvider, settings: SettingsManager?, surface: ProviderSetupSurface
   ) -> Admission {
-    Admission(turn: access.reserve(), discovery: discovery.admitCredentialMutation(
-      provider: provider.llmProvider, settings: settings, surface: surface))
+    let pendingID = presence.beginMutation(for: provider.llmProvider)
+    let turn = access.reserve()
+    let discoveryAdmission = discovery.admitCredentialMutation(
+      provider: provider.llmProvider, settings: settings, surface: surface)
+    return Admission(turn: turn, discovery: discoveryAdmission, pendingID: pendingID)
   }
 
   /// Storage and shared-state publication are one ordered operation; validation is separate.
@@ -99,6 +103,7 @@ struct CredentialWriter {
   ) async -> SaveOutcome {
     let admitted = admission ?? admit(provider, settings: settings, surface: surface)
     return await access.run(turn: admitted.turn) {
+      defer { presence.endMutation(admitted.pendingID) }
       let result = await CredentialIO.perform(.store(provider.keyID, value), using: keychainManager)
       switch result {
       case .failure(let error):
@@ -129,10 +134,9 @@ struct CredentialWriter {
     surface: ProviderSetupSurface = .dictation,
     admission: Admission? = nil
   ) async -> ClearOutcome {
-    let admitted = admission ?? Admission(turn: access.reserve(),
-      discovery: discovery.admitCredentialMutation(
-        provider: provider.llmProvider, settings: settings, surface: surface))
+    let admitted = admission ?? admit(provider, settings: settings, surface: surface)
     return await access.run(turn: admitted.turn) {
+      defer { presence.endMutation(admitted.pendingID) }
       let result = await CredentialIO.perform(.delete(provider.keyID), using: keychainManager)
       switch result {
       case .failure(let error):

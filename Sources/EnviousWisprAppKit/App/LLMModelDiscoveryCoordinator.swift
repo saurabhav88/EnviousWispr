@@ -108,6 +108,9 @@ final class LLMModelDiscoveryCoordinator {
     provider: LLMProvider, settings: SettingsManager?, surface: ProviderSetupSurface
   ) -> CredentialAdmission {
     invalidateInFlightDiscovery()
+    // A previous key's terminal display verdict must not label the replacement valid
+    // while it is being stored, even if reopening supersedes its automatic validation.
+    if stateProvider == provider { keyValidationState = .idle }
     let selected: LLMProvider?
     switch surface {
     case .dictation: selected = settings?.llmProvider
@@ -275,13 +278,13 @@ final class LLMModelDiscoveryCoordinator {
     stateProvider = provider
     keyValidationState = .validating
     isDiscoveringModels = true
-    // The credential this check is about, captured before any read or network work. A save
-    // or clear while it runs moves the revision, and nothing this request learned about the
-    // old key may then publish (#3438).
-    let revisionAtStart = credentialRevision(for: provider)
+    // Exact saved-key checks keep their committed revision. Ordinary Refresh captures the
+    // credential revision again when its ordered read begins, so a preceding Save is not
+    // mistaken for a mutation after that read. Later mutations still reject publication.
+    var revisionAtStart = credentialRevision(for: provider)
     let selectionRevisionAtStart = surface.selectionRevision(in: settings)
     @MainActor
-    func requestStillCurrent() -> Bool {
+    func requestIdentityIsCurrent() -> Bool {
       guard discoveryGeneration == generation else { return false }
       guard surface.selectionRevision(in: settings) == selectionRevisionAtStart else {
         isDiscoveringModels = false
@@ -289,12 +292,18 @@ final class LLMModelDiscoveryCoordinator {
         pendingVerdicts[provider] = nil
         return false
       }
-      return credentialStillCurrent(provider, revisionAtStart)
+      return true
     }
-    pendingVerdicts[provider] = revisionAtStart.map {
-      PolishCloudVerdict(
-        provider: provider, credentialRevision: $0, result: .checking,
-        definitive: lastDefinitive(provider, revision: $0))
+    @MainActor
+    func requestStillCurrent() -> Bool {
+      requestIdentityIsCurrent() && credentialStillCurrent(provider, revisionAtStart)
+    }
+    if savedCredential != nil || provider == .ollama || provider == .appleIntelligence {
+      pendingVerdicts[provider] = revisionAtStart.map {
+        PolishCloudVerdict(
+          provider: provider, credentialRevision: $0, result: .checking,
+          definitive: lastDefinitive(provider, revision: $0))
+      }
     }
     // Lowered by whoever raised it, and only if nothing newer has raised it since. An
     // unconditional clear on the way out of a SUPERSEDED request turns off the spinner a
@@ -334,9 +343,17 @@ final class LLMModelDiscoveryCoordinator {
       }
       let readTurn = credentialAccess.reserve()
       let read = await credentialAccess.run(turn: readTurn) {
-        await CredentialIO.perform(.read(keychainId), using: keychainManager)
+        guard requestIdentityIsCurrent() else { return nil as Result<String?, any Error>? }
+        // Refresh may wait behind Save. This is the revision of the key actually read,
+        // not the earlier revision present when the refresh request was admitted.
+        revisionAtStart = credentialRevision(for: provider)
+        pendingVerdicts[provider] = revisionAtStart.map {
+          PolishCloudVerdict(provider: provider, credentialRevision: $0, result: .checking,
+            definitive: lastDefinitive(provider, revision: $0))
+        }
+        return await CredentialIO.perform(.read(keychainId), using: keychainManager)
       }
-      guard requestStillCurrent() else { return }
+      guard let read, requestStillCurrent() else { return }
       if case .fileImport = surface {
         guard settings.fileImportLLMProvider == importOverrideAtStart else { return }
       }

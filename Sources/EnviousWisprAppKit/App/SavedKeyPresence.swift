@@ -1,6 +1,7 @@
 import EnviousWisprCore
 import EnviousWisprLLM
 import Observation
+import Foundation
 
 /// Which cloud providers have an API key saved on this Mac, for every surface that is not the
 /// AI Polish editor (#3438). Presence and a process-lifetime credential revision per provider;
@@ -27,6 +28,20 @@ final class SavedKeyPresence {
     .openAI: .unknown, .gemini: .unknown, .claude: .unknown,
   ]
   private(set) var revisions: [LLMProvider: UInt64] = [.openAI: 0, .gemini: 0, .claude: 0]
+  /// Accepted but not yet reconciled writes, shared by editors and the dev door. These
+  /// transient tokens never change durable presence/revisions before storage completes.
+  private var pendingMutations: [UUID: LLMProvider] = [:]
+
+  func beginMutation(for provider: LLMProvider) -> UUID {
+    let id = UUID()
+    pendingMutations[id] = provider
+    return id
+  }
+  func endMutation(_ id: UUID) { pendingMutations[id] = nil }
+  func hasPendingMutation(for provider: LLMProvider) -> Bool {
+    pendingMutations.values.contains(provider)
+  }
+
   /// When the newest answer about each provider was produced. A read reported later but taken
   /// earlier (a dictation's key read arriving after the editor's Check again) is not newer, so
   /// it never replaces a newer answer.

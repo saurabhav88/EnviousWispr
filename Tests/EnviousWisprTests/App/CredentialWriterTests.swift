@@ -146,6 +146,7 @@ struct CredentialWriterTests {
     #expect(events == ["save", "remove"])
     #expect(fx.presence.state(for: .openAI) == .absent)
     #expect(fx.presence.revision(for: .openAI) == 2)
+    #expect(fx.presence.hasPendingMutation(for: .openAI) == false)
     #expect(fx.log.asked.isEmpty)
   }
 
@@ -173,6 +174,7 @@ struct CredentialWriterTests {
       }
     }
     try #require(await storage.entered.wait())
+    #expect(fx.presence.hasPendingMutation(for: .openAI) == true)
     fx.settings.llmProvider = .gemini
     let newer = Task {
       await fx.discovery.validateKeyAndDiscoverModels(provider: .gemini, settings: fx.settings)
@@ -183,6 +185,7 @@ struct CredentialWriterTests {
     await mutation.value
     await newer.value
     #expect(succeeded == (scenario.fails == false))
+    #expect(fx.presence.hasPendingMutation(for: .openAI) == false)
     #expect(fx.log.asked == [.gemini])
     #expect(fx.log.keys == ["gemini-key"])
     #expect(fx.discovery.stateProvider == .gemini)
@@ -264,6 +267,60 @@ struct CredentialWriterTests {
     #expect(fx.presence.state(for: .openAI) == .absent)
     #expect(fx.presence.revision(for: .openAI) == 2)
     #expect(throws: (any Error).self) { try fx.keychain.retrieve(key: KeychainManager.openAIKeyID) }
+  }
+
+  @Test("Refresh queued behind Save validates the newly committed credential once")
+  func refreshDuringSaveUsesReadTimeRevision() async throws {
+    let storage = ThreadRecordingCredentialStore(pausing: .store)
+    let fx = Self.fixture(storage: storage)
+    fx.settings.llmProvider = .openAI
+    let queued = CredentialTestSignal()
+    fx.writer.access.onQueuedForTesting = { queued.open() }
+    defer { storage.release() }
+    let saving = Task {
+      if case .stored(let validation, _) = await fx.writer.save(
+        "new-key", for: .openAI, settings: fx.settings, surface: .dictation) {
+        await validation.value
+      }
+    }
+    try #require(await storage.entered.wait())
+    let refreshing = Task {
+      await fx.discovery.validateKeyAndDiscoverModels(provider: .openAI, settings: fx.settings)
+    }
+    try #require(await queued.wait())
+    storage.release()
+    await saving.value
+    await refreshing.value
+    #expect(fx.log.asked == [.openAI])
+    #expect(fx.log.keys == ["new-key"])
+    #expect(fx.discovery.keyValidationState == .valid)
+    #expect(fx.discovery.cloudVerdict?.credentialRevision == fx.presence.revision(for: .openAI))
+  }
+
+  @Test("replacement admission clears the old displayed key verdict before a reopen")
+  func reopenDuringReplacementNeverShowsOldValid() async throws {
+    let storage = ThreadRecordingCredentialStore(pausing: .store)
+    try storage.seed("old-key", key: KeychainManager.openAIKeyID)
+    let fx = Self.fixture(storage: storage)
+    fx.settings.llmProvider = .openAI
+    fx.presence.recordSaved(.openAI)
+    await fx.discovery.validateKeyAndDiscoverModels(provider: .openAI, settings: fx.settings)
+    try #require(fx.discovery.keyValidationState == .valid)
+    defer { storage.release() }
+    let saving = Task {
+      if case .stored(let validation, _) = await fx.writer.save(
+        "replacement", for: .openAI, settings: fx.settings, surface: .dictation) {
+        await validation.value
+      }
+    }
+    try #require(await storage.entered.wait())
+    #expect(fx.discovery.keyValidationState == .idle)
+    fx.discovery.loadCachedModels(for: .openAI, settings: fx.settings, surface: .dictation)
+    storage.release()
+    await saving.value
+    #expect(fx.discovery.keyValidationState == .idle)
+    #expect(fx.log.keys == ["old-key"])
+    #expect(try fx.keychain.retrieve(key: KeychainManager.openAIKeyID) == "replacement")
   }
 
   @Test("the providers are exactly the three cloud providers, each with its fixed key id")
@@ -422,6 +479,7 @@ enum CredentialMutationScenario: Sendable, CaseIterable {
 final class ThreadRecordingCredentialStore: LegacyKeyFileStorage, @unchecked Sendable {
   private let lock = NSLock()
   private var entries: [Bool] = []
+  private var reads = 0
   private var paused = false
   private let pausing: CredentialStoreOperation?
   private let failing: Bool
@@ -434,11 +492,13 @@ final class ThreadRecordingCredentialStore: LegacyKeyFileStorage, @unchecked Sen
     self.failing = failing
   }
   var mainThreadEntries: [Bool] { lock.withLock { entries } }
+  var readEntries: Int { lock.withLock { reads } }
   func release() { releaseGate.signal() }
   func seed(_ value: String, key: String) throws { try store.store(key: key, value: value) }
   private func visit(_ operation: CredentialStoreOperation) throws {
     let hold = lock.withLock { () -> Bool in
-      if operation != .read { entries.append(Thread.isMainThread) }
+      if operation == .read { reads += 1 }
+      else { entries.append(Thread.isMainThread) }
       guard pausing == operation && paused == false else { return false }
       paused = true
       return true
