@@ -757,7 +757,7 @@ struct CallEvidenceReaderTests {
     #expect(value.continuity == .unknown)
   }
 
-  @Test("Normal Meet Leave has attributed ended continuity and suppresses start admission")
+  @Test("Meet leave-heading scan reports page-end evidence and suppresses start admission")
   func normalMeetLeaveSnapshot() {
     let fixture = Fixture()
     fixture.meetHeading = "You left the meeting"
@@ -1133,7 +1133,7 @@ struct CallEvidenceReaderTests {
     return fixture
   }
 
-  @Test("Exact Zoom and Slack proof supplies attributed ongoing continuity",
+  @Test("Exact Zoom and Slack window scans report ongoing continuity",
     arguments: [CallAppFamily.zoom, .slack])
   func exactCallWindowSnapshot(_ family: CallAppFamily) {
     let fixture = family == .zoom ? Fixture()

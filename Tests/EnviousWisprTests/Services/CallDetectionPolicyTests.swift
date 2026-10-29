@@ -475,6 +475,123 @@ struct CallDetectionPolicyTests {
     #expect(!isCountdown(s.interaction), "the new run has only one ended observation")
   }
 
+  @Test("A verified replacement source gets its own idle episode without borrowing an obsolete Yes",
+    arguments: [false, true])
+  func verifiedSourceReplacesOwnerlessIdleEpisode(offered: Bool) throws {
+    var s = Story()
+    let call = Self.zoom(.active)
+    let original = Policy.Source(id: 41, pid: call.pid, rule: call.rule)
+    let replacement = Policy.Source(id: 42, pid: call.pid, rule: call.rule)
+    let owner = CallEvidenceReader.AppRun(pid: call.pid, bundleIdentifier: "us.zoom.xos",
+      birthSeconds: 1, birthMicroseconds: 0)
+    s.observeCall(.unknown, holder: call, sourceObservation: (original, nil))
+    s.read([call])
+    if offered {
+      s.wait(Policy.questionReadiness)
+      s.read([call])
+      #expect(isAsk(s.interaction, .zoom))
+    }
+    let oldEpisode = try #require(s.policy.episodes.first?.id)
+    let oldToken = s.policy.token
+
+    // Discovery replaced the Core Audio object without changing its PID. A current frame
+    // contains the new source only, not the historical source retained in the episode.
+    s.sources = [replacement]
+    s.observeCall(.ongoing(family: .zoom, room: "w"), holder: call,
+      sourceObservation: (replacement, owner))
+    s.read([call])
+    let current = try #require(s.policy.episodes.first { $0.id != oldEpisode && $0.owner == owner },
+      "a verified replacement must not stay trapped in an obsolete ownerless idle episode")
+    #expect(!s.policy.episodes.contains { $0.id == oldEpisode })
+    #expect(current.sources == [replacement])
+    #expect(s.interaction == .none, "source replacement is not a fresh microphone-app opportunity")
+    s.press(.yes, token: oldToken)
+    #expect(s.starts.isEmpty && s.stops == 0, "an obsolete captured Yes cannot start or switch the replacement")
+
+    let request = s.acceptManual()
+    let recording = UUID()
+    s.meeting = .recording(meetingID: recording)
+    s.settleManual(request, recordingID: recording)
+    end(&s, [Self.zoom(.inactive)], call: call, sourceObservation: (replacement, owner))
+    #expect(isCountdown(s.interaction), "the replacement's real ownership supports the matching manual fallback")
+    s.hold([Self.zoom(.inactive)], for: Policy.countdownLength)
+    #expect(s.commands.contains { if case .stop(_, recording) = $0 { true } else { false } })
+    #expect(s.starts.isEmpty)
+  }
+
+  enum OwnerlessSourceGuard: CaseIterable, Equatable, Sendable {
+    case sameSource, coexistingSource, ambiguousReplacement, unverifiedReplacement, recording
+  }
+
+  @Test("Source uncertainty, coexistence and recordings cannot be retired as obsolete idle offers",
+    arguments: OwnerlessSourceGuard.allCases)
+  func ownerlessSourceTransitionGuards(kind: OwnerlessSourceGuard) throws {
+    var s = Story()
+    let call = Self.zoom(.active)
+    let original = Policy.Source(id: 41, pid: call.pid, rule: call.rule)
+    s.observeCall(.unknown, holder: call, sourceObservation: (original, nil))
+    s.ready([call])
+    let oldEpisode = try #require(s.policy.episodes.first?.id)
+    let recording = UUID()
+    if kind == .recording {
+      s.press(.yes)
+      s.startFinished(.recording(meetingID: recording))
+    }
+    let oldToken = s.policy.token
+    let nextCall = Self.zoom(.active, pid: kind == .coexistingSource ? call.pid + 1 : call.pid)
+    let nextSource = kind == .sameSource ? original
+      : Policy.Source(id: 42, pid: nextCall.pid, rule: nextCall.rule)
+    let nextOwner: CallEvidenceReader.AppRun? = kind == .unverifiedReplacement ? nil
+      : .init(pid: nextCall.pid, bundleIdentifier: "us.zoom.xos", birthSeconds: 1, birthMicroseconds: 0)
+    s.sources = kind == .coexistingSource ? [original, nextSource] : [nextSource]
+    s.observeCall(kind == .unverifiedReplacement ? .unknown : .ongoing(family: .zoom, room: "w"),
+      holder: nextCall, sourceObservation: (nextSource, nextOwner))
+    s.read(kind == .coexistingSource ? [call, nextCall] : [nextCall],
+      ambiguous: kind == .ambiguousReplacement)
+    let current = try #require(s.policy.episodes.first { $0.id == oldEpisode })
+    #expect(s.policy.episodes.count == 1)
+    #expect(current.sources == [original])
+    #expect(s.policy.token == oldToken, "uncertainty or compatible ownership does not renew the question")
+    if kind == .sameSource {
+      #expect(current.owner == nextOwner)
+      s.press(.yes, token: oldToken)
+      #expect(s.starts == [.zoom], "same-source owner adoption preserves the original valid Yes")
+    } else {
+      #expect(current.owner == nil, "an unrelated or uncertain source cannot silently supply ownership")
+      if kind == .recording {
+        #expect(s.meeting == .recording(meetingID: recording))
+        #expect(s.starts == [.zoom] && s.stops == 0)
+      } else {
+        #expect(s.starts.isEmpty && s.stops == 0)
+      }
+    }
+  }
+
+  @Test("Replacing an obsolete idle offer cannot stop an unrelated current recording")
+  func ownerlessReplacementPreservesUnrelatedRecording() throws {
+    var s = Story()
+    let call = Self.zoom(.active)
+    let original = Policy.Source(id: 41, pid: call.pid, rule: call.rule)
+    let replacement = Policy.Source(id: 42, pid: call.pid, rule: call.rule)
+    let owner = CallEvidenceReader.AppRun(pid: call.pid, bundleIdentifier: "us.zoom.xos",
+      birthSeconds: 1, birthMicroseconds: 0)
+    s.observeCall(.unknown, holder: call, sourceObservation: (original, nil))
+    s.ready([call])
+    let oldEpisode = try #require(s.policy.episodes.first?.id)
+    let oldToken = s.policy.token
+    let unrelated = UUID()
+    s.meeting = .recording(meetingID: unrelated)
+    s.sources = [replacement]
+    s.observeCall(.ongoing(family: .zoom, room: "w"), holder: call,
+      sourceObservation: (replacement, owner))
+    s.read([call])
+    #expect(!s.policy.episodes.contains { $0.id == oldEpisode })
+    #expect(s.policy.episodes.contains { $0.owner == owner && $0.sources == [replacement] })
+    s.press(.yes, token: oldToken)
+    #expect(s.meeting == .recording(meetingID: unrelated))
+    #expect(s.stops == 0 && s.starts.isEmpty)
+  }
+
   @Test("A timed-out native Ask can link the matching manual fallback once, without another Start or Yes")
   func timedOutManualFallbackLinks() {
     var s = Story()
@@ -810,6 +927,7 @@ struct CallDetectionPolicyTests {
 
   /// One policy, a clock, the meeting side and everything the policy asked for.
   struct Story {
+    typealias SourceObservation = (source: Policy.Source, owner: CallEvidenceReader.AppRun?)
     var policy = Policy()
     var now = Date(timeIntervalSince1970: 2_000_000)
     var sequence = 0
@@ -830,10 +948,15 @@ struct CallDetectionPolicyTests {
     /// Explicit test facts, never inferred from microphone state or absent windows.
     mutating func observeCall(_ value: CallEvidenceReader.Continuity, holder: Policy.Holder,
       owner: CallEvidenceReader.AppRun? = nil,
-      retained: CallEvidenceReader.RetainedTarget? = nil) {
-      let source = Policy.Source(id: Int(holder.pid), pid: holder.pid, rule: holder.rule)
+      retained: CallEvidenceReader.RetainedTarget? = nil,
+      sourceObservation: SourceObservation? = nil) {
+      let source = sourceObservation?.source ?? Policy.Source(id: Int(holder.pid), pid: holder.pid, rule: holder.rule)
       if !sources.contains(source) { sources.append(source) }
-      let run = owner ?? Self.owner(for: holder)
+      // An explicit observation preserves nil attribution. Omitted observations keep the
+      // original fixture defaults for the older stories.
+      let run: CallEvidenceReader.AppRun?
+      if let sourceObservation { run = sourceObservation.owner }
+      else { run = owner ?? Self.owner(for: holder) }
       observations.removeAll { $0.source == source && $0.retainedTarget == retained }
       observations.append(.init(id: nextObservation, source: source, beganAt: now,
         completedAt: now, owner: run, value: value, retainedTarget: retained))
@@ -1009,14 +1132,14 @@ struct CallDetectionPolicyTests {
 
   /// Two explicit completed UI end observations of the already-established call.
   func end(_ s: inout Story, _ holders: [Policy.Holder] = [zoom(.inactive)],
-    call: Policy.Holder = zoom(.active)) {
+    call: Policy.Holder = zoom(.active), sourceObservation: Story.SourceObservation? = nil) {
     guard case .call(let family, let room)? = call.evidence else {
       Issue.record("end fixture requires an explicit scoped call"); return
     }
-    s.observeCall(.ended(family: family, room: room), holder: call)
+    s.observeCall(.ended(family: family, room: room), holder: call, sourceObservation: sourceObservation)
     s.read(holders)
     s.wait(2)
-    s.observeCall(.ended(family: family, room: room), holder: call)
+    s.observeCall(.ended(family: family, room: room), holder: call, sourceObservation: sourceObservation)
     s.read(holders)
   }
 

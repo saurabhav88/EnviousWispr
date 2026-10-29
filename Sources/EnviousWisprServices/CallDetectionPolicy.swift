@@ -831,6 +831,23 @@ public struct CallDetectionPolicy: Sendable {
       let (source, observed) = attribution(for: holder, c)
       let owner = observed?.owner
       if let observed, case .ended = observed.value { continue }
+      if let source, owner != nil, !reading.ambiguous {
+        // An absent provisional source cannot lend its question or ownerless episode to a
+        // verified replacement. Presence (even inactive/unknown) preserves uncertainty;
+        // a recording or an operation is never retired by this idle-admission transition.
+        let obsolete = episodes.compactMap { episode -> Int? in
+          guard episode.owner == nil, episode.rule == holder.rule,
+            episode.family == family, episode.room == room,
+            !episode.sources.contains(source),
+            !episode.sources.contains(where: { reading.sources.contains($0) })
+          else { return nil }
+          switch episode.phase {
+          case .waiting, .offered: return episode.id
+          default: return nil
+          }
+        }
+        for id in obsolete { remove(episode: id) }
+      }
       if let index = episodes.firstIndex(where: {
         guard $0.rule == holder.rule && $0.family == family && $0.room == room else { return false }
         if let old = $0.owner, let owner { return old == owner }
