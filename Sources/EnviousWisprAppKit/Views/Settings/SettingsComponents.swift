@@ -519,7 +519,7 @@ struct SettingsInfoButton<Content: View>: View {
         .settingsHoverQuiet(tint: .stAccent, recoloursContent: false)
         .onHover {
           pointerInside = $0
-          helpTrace.pointerChanged($0, popoverIsPresented: showPopover)
+          helpTrace.pointerChanged($0)
         }
     }
     .buttonStyle(.borderless)

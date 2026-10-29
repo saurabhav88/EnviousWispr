@@ -20,7 +20,6 @@ final class SettingsHelpTrace {
   private let windowState: () -> (appActive: Bool, hasKeyWindow: Bool)
   private let emit: (SettingsHelpObservation) -> Void
   private var pointerInside = false
-  private var hover: Interaction?
   private var popover: Interaction?
 
   init(
@@ -35,20 +34,11 @@ final class SettingsHelpTrace {
     self.emit = emit
   }
 
-  func pointerChanged(_ inside: Bool, popoverIsPresented: Bool) {
-    guard inside != pointerInside else { return }
-    pointerInside = inside
-    if inside {
-      if !popoverIsPresented { hover = begin() }
-    } else {
-      finishHover()
-    }
-  }
+  /// Pointer context only: moving over or away from help never emits telemetry.
+  func pointerChanged(_ inside: Bool) { pointerInside = inside }
 
   func requested(alreadyPresented: Bool) {
     guard !alreadyPresented else { return }
-    // A click consumes its preceding hover dwell; closing does not invent another entry.
-    hover = nil
     finishPopover(.supersededByRequest)
     var interaction = begin()
     publish(.requested, kind: .popover, interaction: &interaction)
@@ -60,19 +50,12 @@ final class SettingsHelpTrace {
   func bindingFalseObserved() { finishPopover(.bindingFalseObserved) }
 
   func anchorDisappeared() {
-    finishHover()
     finishPopover(.anchorDisappeared)
     pointerInside = false
   }
 
   private func begin() -> Interaction {
     Interaction(started: now(), eligible: captureAvailable())
-  }
-
-  private func finishHover() {
-    guard var interaction = hover else { return }
-    hover = nil
-    publish(.hoverEnded, kind: .hover, interaction: &interaction)
   }
 
   private func finishPopover(_ phase: SettingsHelpObservation.Phase) {

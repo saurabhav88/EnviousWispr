@@ -1,5 +1,5 @@
 @testable import EnviousWisprAppKit
-import EnviousWisprServices
+@testable import EnviousWisprServices
 import Foundation
 import Testing
 
@@ -52,24 +52,21 @@ struct SettingsHelpTraceTests {
     #expect(r.rows[0].interactionID != r.rows[2].interactionID)
   }
 
-  @Test("hover is a dwell summary; clicking discards it and closing invents no entry")
-  func hoverAndClick() throws {
+  @Test("pointer movement updates click context without sending hover records")
+  func pointerContextOnly() throws {
     let r = Rig()
-    r.trace.pointerChanged(true, popoverIsPresented: false)
+    r.trace.pointerChanged(true)
     r.time += 1
-    r.trace.pointerChanged(true, popoverIsPresented: false)
-    r.trace.pointerChanged(false, popoverIsPresented: false)
-    try #require(r.rows.count == 1)
-    #expect(r.rows[0].phase == .hoverEnded)
-    #expect(r.rows[0].elapsedMilliseconds == 1_000)
-    #expect(r.rows[0].pointerInside == false)
-    r.trace.pointerChanged(true, popoverIsPresented: false)
+    r.trace.pointerChanged(false)
+    r.trace.pointerChanged(true)
+    #expect(r.rows.isEmpty)
     r.trace.requested(alreadyPresented: false)
-    r.trace.pointerChanged(false, popoverIsPresented: true)
-    r.trace.pointerChanged(true, popoverIsPresented: true)
+    r.trace.pointerChanged(false)
     r.trace.bindingFalseObserved()
-    r.trace.pointerChanged(false, popoverIsPresented: false)
-    #expect(r.rows.map(\.phase) == [.hoverEnded, .requested, .bindingFalseObserved])
+    #expect(r.rows.map(\.phase) == [.requested, .bindingFalseObserved])
+    try #require(r.rows.count == 2)
+    #expect(r.rows[0].pointerInside)
+    #expect(r.rows[1].pointerInside == false)
   }
 
   @Test("capture off suppresses current observations and an off-start attempt is never replayed")
@@ -87,6 +84,34 @@ struct SettingsHelpTraceTests {
     r.available = true
     r.trace.bindingFalseObserved()
     #expect(r.rows.count == 1)
+  }
+
+
+  @Test("two button traces share one process admission budget without affecting their UI callbacks")
+  func sharedAcrossButtons() {
+    var budget = SettingsHelpCaptureBudget()
+    var rows: [SettingsHelpObservation] = []
+    var available = true
+    let makeTrace = {
+      SettingsHelpTrace(
+        now: { 10 }, captureAvailable: { available }, windowState: { (true, true) },
+        emit: { if budget.admit($0, captureAvailable: available) { rows.append($0) } })
+    }
+    let first = makeTrace(), second = makeTrace()
+    for index in 0..<6 {
+      let trace = index.isMultiple(of: 2) ? first : second
+      trace.requested(alreadyPresented: false)
+      trace.bindingFalseObserved()
+    }
+    #expect(rows.count == 10)
+    #expect(Set(rows.map(\.interactionID)).count == 5)
+    available = false
+    first.requested(alreadyPresented: false)
+    first.bindingFalseObserved()
+    available = true
+    second.requested(alreadyPresented: false)
+    second.bindingFalseObserved()
+    #expect(rows.count == 10)
   }
 
 }

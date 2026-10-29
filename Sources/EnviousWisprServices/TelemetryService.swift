@@ -235,6 +235,7 @@ public enum ASRRetryDeadlineDisposition: String, Sendable {
 @MainActor
 public final class TelemetryService {
   public static let shared = TelemetryService()
+  private var settingsHelpCaptureBudget = SettingsHelpCaptureBudget()
   private init() {
     takeStages = TakeStageLedger()
     feedbackRefusalCaptureAvailable = { ObservabilityBootstrap.isUsageCaptureRunning }
@@ -1276,7 +1277,9 @@ public final class TelemetryService {
   /// #3862: help callback observations, never a claim of visible text or a failure.
   /// Native hover tooltip visibility is outside this event's observation boundary.
   package func settingsHelpObserved(_ observation: SettingsHelpObservation) {
-    guard ObservabilityBootstrap.isUsageCaptureRunning else { return }
+    guard settingsHelpCaptureBudget.admit(
+      observation, captureAvailable: ObservabilityBootstrap.isUsageCaptureRunning
+    ) else { return }
     let props = Self.settingsHelpProperties(
       observation, osVersion: ProcessInfo.processInfo.operatingSystemVersionString)
     #if DEBUG

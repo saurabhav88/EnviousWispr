@@ -1,12 +1,11 @@
 import Foundation
 
-/// #3862: callback observations only. Neither pointer dwell nor a false presentation
-/// binding establishes whether help was visible or whether its dismissal was a defect.
+/// #3862: callback observations only. A false presentation
+/// binding does not establish whether help was visible or whether dismissal was a defect.
 package struct SettingsHelpObservation: Equatable, Sendable {
-  package enum Interaction: String, Sendable { case hover, popover }
+  package enum Interaction: String, Sendable { case popover }
   package enum Phase: String, Sendable {
     case requested
-    case hoverEnded = "hover_ended"
     case bindingFalseObserved = "binding_false_observed"
     case anchorDisappeared = "anchor_disappeared"
     case supersededByRequest = "superseded_by_request"
