@@ -153,6 +153,9 @@ package final class LiveDesktopHotkeyEffects: DesktopHotkeyEffects {
     return token
   }
 
+  /// The OS answer, asked again on every read (#3848).
+  package var isAccessibilityTrusted: Bool { AXIsProcessTrusted() }
+
   /// The last removed listener's final state, kept so a report read after removal includes its
   /// final callback. One slot, in every build: the owner accounts each installation's final
   /// health once, after its removal (#3544 P3).

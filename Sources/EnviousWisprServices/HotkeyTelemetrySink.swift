@@ -17,7 +17,9 @@ import Foundation
 /// latency-critical press path and we want the rare failure durable.
 public struct HotkeyTelemetrySink: Sendable {
   /// A hotkey registration failed. `osStatus` is the Carbon `OSStatus` (nil for
-  /// the `NSEvent` monitor path). All args are metadata — never key codes.
+  /// the keyboard listener's event tap). An event-tap failure arrives here only
+  /// while the Accessibility grant is present (#3848); without it the failure goes
+  /// to `listenerAwaitingAccessibility`. All args are metadata — never key codes.
   public var registrationFailed:
     @MainActor (_ mechanism: String, _ hotkeyKind: String, _ osStatus: Int32?, _ keyShape: String)
       ->
@@ -48,26 +50,36 @@ public struct HotkeyTelemetrySink: Sendable {
   /// #3544 P3 — the keyboard listener had trouble; a healthy launch sends nothing. Metadata only.
   public var listenerHealth: @MainActor (HotkeyListenerHealthReport) -> Void
 
+  /// #3848 — the keyboard listener could not install while the process lacks the Accessibility
+  /// grant: an OS permission condition, not a defect of ours. `HotkeyService` decides the
+  /// route; a failure with the grant present still goes to `registrationFailed`. Metadata only.
+  public var listenerAwaitingAccessibility:
+    @MainActor (_ hotkeyKind: String, _ keyShape: String) -> Void
+
   public init(
     registrationFailed: @escaping @MainActor (String, String, Int32?, String) -> Void,
     pressed: @escaping @MainActor (String, String, String, String, String, String?) -> Void,
     lockResolved: @escaping @MainActor (Bool, String) -> Void = { _, _ in },
-    listenerHealth: @escaping @MainActor (HotkeyListenerHealthReport) -> Void = { _ in }
+    listenerHealth: @escaping @MainActor (HotkeyListenerHealthReport) -> Void = { _ in },
+    listenerAwaitingAccessibility: @escaping @MainActor (String, String) -> Void = { _, _ in }
   ) {
     self.registrationFailed = registrationFailed
     self.pressed = pressed
     self.lockResolved = lockResolved
     self.listenerHealth = listenerHealth
+    self.listenerAwaitingAccessibility = listenerAwaitingAccessibility
   }
 
   /// Inert sink — the default for tests and any non-app construction.
   public static let noop = HotkeyTelemetrySink(
     registrationFailed: { _, _, _, _ in }, pressed: { _, _, _, _, _, _ in },
-    lockResolved: { _, _ in }, listenerHealth: { _ in })
+    lockResolved: { _, _ in }, listenerHealth: { _ in }, listenerAwaitingAccessibility: { _, _ in })
 
   /// Production sink. Registration failure → PostHog breakdown + Sentry handled
-  /// error (synchronous, durable). Press → PostHog, deferred to the next run loop
-  /// so the input-press turn does zero telemetry I/O before the recording callback.
+  /// error (synchronous, durable). A listener waiting for Accessibility → the same
+  /// PostHog row + a Sentry breadcrumb, never an alerting error (#3848). Press →
+  /// PostHog, deferred to the next run loop so the input-press turn does zero
+  /// telemetry I/O before the recording callback.
   public static let live = HotkeyTelemetrySink(
     registrationFailed: { mechanism, hotkeyKind, osStatus, keyShape in
       TelemetryService.shared.hotkeyRegistration(
@@ -115,6 +127,20 @@ public struct HotkeyTelemetrySink: Sendable {
       DispatchQueue.main.async {
         MainActor.assumeIsolated { TelemetryService.shared.hotkeyListenerHealth(report) }
       }
+    },
+    listenerAwaitingAccessibility: { hotkeyKind, keyShape in
+      // #3848: a missing Accessibility grant is an OS permission condition, not our defect
+      // (founder 2026-10-17: Sentry carries our bugs; user and OS conditions are counted in
+      // PostHog with Sentry context). The PostHog payload is the one
+      // `registrationFailed("event_tap", ...)` sends; Sentry gets a breadcrumb, not an error.
+      TelemetryService.shared.hotkeyRegistration(
+        mechanism: "event_tap", hotkeyKind: hotkeyKind, osStatus: nil, keyShape: keyShape)
+      SentryBreadcrumb.add(
+        stage: "input", message: "Keyboard listener waiting for Accessibility",
+        data: [
+          "mechanism": "event_tap", "hotkey_kind": hotkeyKind, "key_shape": keyShape,
+          "hotkey.failure_mode": "accessibility_not_granted",
+        ])
     })
 }
 

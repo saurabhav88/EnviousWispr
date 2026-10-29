@@ -959,9 +959,10 @@ public final class TelemetryService {
   // MARK: - Hotkey / input (Telemetry Bible Phase 6, #1175)
 
   /// A hotkey registration FAILED (Carbon `RegisterEventHotKey` returned
-  /// non-`noErr`, or an `NSEvent` modifier monitor installed `nil`). Emitted only
-  /// on failure — the actionable signal is the Sentry handled error composed in
-  /// `HotkeyTelemetrySink.live`; this is the PostHog breakdown by mechanism /
+  /// non-`noErr`, or the keyboard listener's event tap did not install). Emitted
+  /// only on failure. `HotkeyTelemetrySink.live` pairs it with a Sentry handled
+  /// error, or, for an event-tap failure without the Accessibility grant, with a
+  /// Sentry breadcrumb (#3848); this is the PostHog breakdown by mechanism /
   /// kind / key shape. `osStatus` present only for the Carbon path. Metadata
   /// only — never the key codes.
   public func hotkeyRegistration(

@@ -1,5 +1,6 @@
 import EnviousWisprCore
 import Foundation
+import Sentry
 import Testing
 
 @testable import EnviousWisprServices
@@ -422,6 +423,97 @@ import Testing
           "window_timing": "after_stop_timer",
         ])
       #expect(box.value?.intProps.isEmpty == true)
+    }
+
+    /// Everything one sink call sent to the two vendors' test hooks.
+    final class VendorCapture: @unchecked Sendable {
+      struct Crumb {
+        let stage: String
+        let message: String
+        let level: SentryLevel
+        let data: [String: Any]?
+      }
+      private let lock = NSLock()
+      private var storedEvents: [CapturedTelemetryEvent] = []
+      private var storedErrors: [SentryBreadcrumb.ErrorCategory] = []
+      private var storedCrumbs: [Crumb] = []
+
+      func add(_ event: CapturedTelemetryEvent) { lock.withLock { storedEvents.append(event) } }
+      func add(_ category: SentryBreadcrumb.ErrorCategory) {
+        lock.withLock { storedErrors.append(category) }
+      }
+      func add(_ crumb: Crumb) { lock.withLock { storedCrumbs.append(crumb) } }
+      var events: [CapturedTelemetryEvent] { lock.withLock { storedEvents } }
+      var errors: [SentryBreadcrumb.ErrorCategory] { lock.withLock { storedErrors } }
+      var crumbs: [Crumb] { lock.withLock { storedCrumbs } }
+    }
+
+    /// Run `body` with the PostHog test hook and both Sentry delegates pointed at one capture,
+    /// restoring all three afterwards. Synchronous: nothing crosses an `await`.
+    func capturingVendors(_ body: () -> Void) -> VendorCapture {
+      let capture = VendorCapture()
+      let previousHook = TelemetryService.shared.testEventHook
+      let previousError = SentryBreadcrumb.captureErrorDelegate
+      let previousCrumb = SentryBreadcrumb.breadcrumbDelegate
+      TelemetryService.shared.testEventHook = { event in
+        if event.name == "hotkey.registration" { capture.add(event) }
+      }
+      SentryBreadcrumb.captureErrorDelegate = { _, category, _, _ in capture.add(category) }
+      SentryBreadcrumb.breadcrumbDelegate = { stage, message, level, data in
+        capture.add(VendorCapture.Crumb(stage: stage, message: message, level: level, data: data))
+      }
+      defer {
+        TelemetryService.shared.testEventHook = previousHook
+        SentryBreadcrumb.captureErrorDelegate = previousError
+        SentryBreadcrumb.breadcrumbDelegate = previousCrumb
+      }
+      body()
+      return capture
+    }
+
+    /// #3848: a listener that cannot install without the Accessibility grant keeps the PostHog
+    /// row it always sent and gives Sentry a breadcrumb, never an alerting error. The existing
+    /// `registrationFailed("event_tap", ...)` route is the positive control: the same hooks see
+    /// its error, so an empty error list on the new route is not a deaf hook.
+    @Test("a listener waiting for Accessibility keeps the PostHog row and files no Sentry error (#3848)")
+    func awaitingAccessibilityRoutesToBreadcrumb() throws {
+      let control = capturingVendors {
+        HotkeyTelemetrySink.live.registrationFailed("event_tap", "toggle", nil, "modifier_only")
+      }
+      let awaiting = capturingVendors {
+        HotkeyTelemetrySink.live.listenerAwaitingAccessibility("toggle", "modifier_only")
+      }
+
+      #expect(control.errors == [.hotkeyRegistrationFailed])
+      #expect(awaiting.errors.isEmpty)
+
+      let expected = CapturedTelemetryEvent(
+        name: "hotkey.registration",
+        stringProps: ["mechanism": "event_tap", "hotkey_kind": "toggle", "key_shape": "modifier_only"])
+      #expect(control.events == [expected])
+      #expect(awaiting.events == [expected])
+      let event = try #require(awaiting.events.first)
+      #expect(event.intProps["os_status"] == nil)
+      #expect(event.intProps.isEmpty && event.doubleProps.isEmpty && event.boolProps.isEmpty)
+
+      let expectedData = [
+        "mechanism": "event_tap", "hotkey_kind": "toggle", "key_shape": "modifier_only",
+        "hotkey.failure_mode": "accessibility_not_granted",
+      ]
+      #expect(awaiting.crumbs.count == 1)
+      let crumb = try #require(awaiting.crumbs.first)
+      #expect(crumb.stage == "input")
+      #expect(crumb.message == "Keyboard listener waiting for Accessibility")
+      #expect(crumb.level == .info)
+      #expect(crumb.data as? [String: String] == expectedData)
+
+      // What Sentry would hold after the send-side filter.
+      let sent = SentryBreadcrumb.makeBreadcrumb(
+        stage: crumb.stage, message: crumb.message, level: crumb.level, data: crumb.data)
+      #expect(sent.category == "pipeline.input")
+      #expect(sent.message == "Keyboard listener waiting for Accessibility")
+      #expect(sent.level == .info)
+      #expect(sent.data as? [String: String] == expectedData)
     }
   #endif
 
