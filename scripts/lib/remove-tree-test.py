@@ -7,6 +7,7 @@ not the candidate helper or the command being fault-injected. No live mounts.
 """
 
 import argparse
+import base64
 import contextlib
 import hashlib
 import io
@@ -177,6 +178,25 @@ class PortableTests(unittest.TestCase):
             self.assertEqual(H.main(["helper"]), 2)
             self.assertEqual(H.main(["helper", "inspect"]), 2)
 
+    def test_owner_primitives_reject_platform_or_namespace_before_open(self):
+        with FakeFS() as fs, mock.patch.object(H.os, "open") as opened:
+            self.assertEqual(H.main(["helper", "owner", "/cache", "/cache/../elsewhere"]), 1)
+            self.assertEqual(H.main(["helper", "publish-owner", "/cache", "/cache/old", "1:99", "eA=="]), 1)
+            self.assertEqual(H.main(["helper", "publish-owner", "/cache", "/cache/old", "1:3", "?"]), 1)
+            opened.assert_not_called()
+            fs.run.assert_not_called()
+        with FakeFS(), mock.patch.object(H.sys, "platform", "linux"), mock.patch.object(H.os, "open") as opened:
+            self.assertEqual(H.main(["helper", "owner", "/cache", "/cache/old"]), 2)
+            self.assertEqual(H.main(["helper", "rmdir", "/cache", "/cache/old", "1:3"]), 2)
+            opened.assert_not_called()
+
+    def test_owner_and_gate_absence_are_nondestructive(self):
+        with FakeFS() as fs, mock.patch.object(H.os, "open") as opened:
+            self.assertFalse(H.inspect_owner("/cache", "/cache/missing")["exists"])
+            self.assertEqual(H.remove_empty("/cache", "/cache/missing", "1:99"), 3)
+            opened.assert_not_called()
+            fs.run.assert_not_called()
+
 
 @unittest.skipUnless(sys.platform == "darwin", "native macOS find boundary")
 class NativeTests(unittest.TestCase):
@@ -278,6 +298,58 @@ class NativeTests(unittest.TestCase):
         self.assertFalse(H.inspect_namespace(str(future))["exists"])
         self.assertFalse((self.root / "future").exists())
         self.assertEqual((self.target / "payload").read_bytes(), before)
+
+    def test_owner_snapshot_and_atomic_publication_preserve_exact_bytes(self):
+        expected = H.inspect_target(str(self.root), str(self.target))["identity"]
+        before = H.inspect_owner(str(self.root), str(self.target), expected)
+        self.assertFalse(before["owner_exists"])
+        data = b"version=1\npid=123\nstarted=fixture identity\n"
+        encoded = base64.b64encode(data).decode("ascii")
+        self.assertEqual(H.main(["helper", "publish-owner", str(self.root), str(self.target), expected, encoded]), 0)
+        after = H.inspect_owner(str(self.root), str(self.target), expected)
+        self.assertEqual(base64.b64decode(after["owner_base64"]), data)
+        self.assertEqual((self.target / "owner").read_bytes(), data)
+        self.assertEqual(list(self.target.glob(".owner.*")), [])
+        self.assertEqual(H.publish_owner(str(self.root), str(self.target), expected, encoded), 0)
+        different = base64.b64encode(b"somebody else's owner\n").decode("ascii")
+        with self.assertRaisesRegex(ValueError, "refusing overwrite"):
+            H.publish_owner(str(self.root), str(self.target), expected, different)
+        self.assertEqual((self.target / "owner").read_bytes(), data)
+
+    def test_owner_link_and_oversized_metadata_are_unknown_not_followed(self):
+        foreign = self.root / "foreign"
+        foreign.write_bytes(b"sentinel")
+        owner = self.target / "owner"
+        owner.symlink_to(foreign)
+        expected = H.inspect_target(str(self.root), str(self.target))["identity"]
+        with self.assertRaisesRegex(ValueError, "not a regular file"):
+            H.inspect_owner(str(self.root), str(self.target), expected)
+        self.assertEqual(foreign.read_bytes(), b"sentinel")
+        owner.unlink()
+        owner.write_bytes(b"x" * (H.MAX_OWNER_BYTES + 1))
+        with self.assertRaisesRegex(ValueError, "envelope"):
+            H.inspect_owner(str(self.root), str(self.target), expected)
+        self.assertEqual(owner.stat().st_size, H.MAX_OWNER_BYTES + 1)
+
+    def test_empty_gate_removal_is_nonrecursive_and_identity_checked(self):
+        expected = H.inspect_target(str(self.root), str(self.target))["identity"]
+        with self.assertRaises(OSError):
+            H.remove_empty(str(self.root), str(self.target), expected)
+        self.assertEqual((self.target / "payload").read_text(), "fixture")
+        with self.assertRaisesRegex(ValueError, "identity changed"):
+            H.remove_empty(str(self.root), str(self.target), "wrong-instance")
+        (self.target / "payload").unlink()
+        self.assertEqual(H.remove_empty(str(self.root), str(self.target), expected), 0)
+        self.assertEqual(H.remove_empty(str(self.root), str(self.target), expected), 3)
+
+    def test_owner_publication_requires_a_present_registered_instance(self):
+        absent = self.root / "absent"
+        encoded = base64.b64encode(b"owner bytes").decode("ascii")
+        with self.assertRaisesRegex(ValueError, "absent directory"):
+            H.publish_owner(str(self.root), str(absent), "unknown", encoded)
+        with self.assertRaisesRegex(ValueError, "identity changed"):
+            H.inspect_owner(str(self.root), str(self.target), "wrong-instance")
+        self.assertFalse(absent.exists())
 
     def test_frozen_original_rejects_new_absence_contract_for_expected_reason(self):
         if BASELINE is None:

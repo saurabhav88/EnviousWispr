@@ -86,7 +86,7 @@ ew_validation_lock() {
   fi
   return 0
 }
-trap 'ew_validation_cleanup; ew_seed_release_all' EXIT
+trap 'ew_validation_cleanup; ew_seed_on_exit' EXIT
 # bash exits on a signal WITHOUT running the EXIT trap, which would strand a
 # seed lock. Converting each signal into a normal exit makes EXIT run.
 ew_validation_interrupt() {

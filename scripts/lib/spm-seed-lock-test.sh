@@ -15,9 +15,203 @@
 # build, no network and no signing identity.
 set -uo pipefail
 
+# Private-copy race controls. The only pause is inserted into the copied
+# subject after a checked one-site match; production has no pause/test knob.
+if [ "${1:-}" = "--race-control" ]; then
+  shift
+  PYTHONDONTWRITEBYTECODE=1 python3 - "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" "$@" <<'PYRACE'
+import hashlib, json, os, pathlib, select, signal, stat, subprocess, sys, tempfile
+
+here = pathlib.Path(sys.argv[1])
+mode, baseline = sys.argv[2], pathlib.Path(sys.argv[3])
+assert mode in ('baseline', 'serialized', 'replacement', 'holder')
+old = baseline.read_text()
+assert hashlib.sha256(old.encode()).hexdigest() == 'cdbbe85888a0b7e9561989624e6de3878a544042fd5133eb5f78fbe145af059f'
+base = pathlib.Path(tempfile.mkdtemp(prefix='ew-4197-race-')).resolve()
+anchor = os.lstat(base)
+root = base / 'seed'
+lock = root / '.locks/race'
+children, descriptors = [], []
+
+def pipe():
+    r, w = os.pipe()
+    descriptors.extend((r, w))
+    return r, w
+
+def receive(fd):
+    # deadline-fallback: hang guard, same 30s fixture precedent as
+    # scripts/lib/dev-app-lock-test.py:94; elapsed time is never the oracle.
+    if not select.select([fd], [], [], 30)[0]:
+        evidence = [(proc.returncode, proc.communicate(timeout=1))
+                    for proc in children if proc.poll() is not None]
+        raise AssertionError(('subject did not signal completion', evidence))
+    token = os.read(fd, 1)
+    assert token in (b'R', b'H', b'M'), ('unexpected subject signal', token)
+    return token
+
+actor = r'''
+set -uo pipefail
+_fixture_pause() {
+  printf R >&"$PROBE_READY_FD"
+  IFS= read -r _fixture_resume <&"$PROBE_GO_FD"
+}
+rm() {
+  if [ "$#" -ne 2 ] || [ "$1" != -rf ]; then return 91; fi
+  case "$2" in "$EW_SEED_ROOT"/*) ;; *) return 92 ;; esac
+  if /usr/bin/python3 "$PROBE_HELPER" "$EW_SEED_ROOT" "$2"; then return 0; else
+    _fixture_rc=$?; [ "$_fixture_rc" -eq 3 ]
+  fi
+}
+. "$PROBE_SOURCE"
+if ew_seed_lock_acquire race; then
+  if [ "$PROBE_ROLE" = B ]; then printf sentinel > "$EW_SEED_ROOT/.locks/race/replacement-sentinel"; fi
+  printf H >&"$PROBE_HELD_FD"
+  IFS= read -r _fixture_stop <&"$PROBE_STOP_FD"
+  ew_seed_lock_release race
+else
+  printf M >&"$PROBE_HELD_FD"
+fi
+'''
+
+def source_copy(label, text, pause):
+    directory = base / label
+    directory.mkdir()
+    if pause:
+        if label.startswith('old'):
+            needle = '      rm -rf "$dir" 2>/dev/null || true\n      mkdir "$dir" 2>/dev/null || return 1'
+            replacement = '      _fixture_pause\n' + needle
+        else:
+            needle = '    if _ew_seed_remove_record "$candidate"; then'
+            replacement = '    _fixture_pause\n' + needle
+        assert text.count(needle) == 1, 'private pause rewrite did not match one site'
+        text = text.replace(needle, replacement, 1)
+    path = directory / 'spm-seed-lock.sh'
+    path.write_text(text)
+    (directory / 'remove-tree.py').write_bytes((here / 'remove-tree.py').read_bytes())
+    return path
+
+def launch(role, source, ready_w, go_r, held_w, stop_r):
+    env = {'PATH': '/usr/bin:/bin:/usr/sbin:/sbin', 'LC_ALL': 'C',
+           'PYTHONDONTWRITEBYTECODE': '1', 'TMPDIR': str(base),
+           'EW_SEED_ROOT': str(root), 'PROBE_SOURCE': str(source),
+           'PROBE_HELPER': str(here / 'remove-tree.py'), 'PROBE_ROLE': role,
+           'PROBE_READY_FD': str(ready_w), 'PROBE_GO_FD': str(go_r),
+           'PROBE_HELD_FD': str(held_w), 'PROBE_STOP_FD': str(stop_r)}
+    if 'HOME' in os.environ: env['HOME'] = os.environ['HOME']
+    proc = subprocess.Popen(['/bin/bash', '-c', actor], cwd=base, env=env,
+                            pass_fds=(ready_w, go_r, held_w, stop_r),
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            text=True, start_new_session=True)
+    children.append(proc)
+    return proc
+
+try:
+    lock.mkdir(parents=True)
+    dead = subprocess.Popen(['/bin/sh', '-c', 'exit 0'])
+    assert dead.wait(timeout=30) == 0
+    (lock / 'owner').write_text('version=1\npid={}\nstarted=fixture-dead-process\n'.format(dead.pid))
+    os.utime(lock, (1577836800, 1577836800))
+    sibling = root / 'sibling-sentinel'
+    sibling.write_text('keep')
+    a_text = old if mode == 'baseline' else (here / 'spm-seed-lock.sh').read_text()
+    b_text = (here / 'spm-seed-lock.sh').read_text() if mode in ('serialized', 'holder') else old
+    a_src = source_copy('old-a' if mode == 'baseline' else 'new-a', a_text, mode != 'holder')
+    b_src = source_copy('new-b' if mode in ('serialized', 'holder') else 'old-b', b_text, False)
+    ready_r, ready_w = pipe(); go_r, go_w = pipe()
+    a_r, a_w = pipe(); b_r, b_w = pipe()
+    a_stop_r, a_stop_w = pipe(); b_stop_r, b_stop_w = pipe()
+    a = launch('A', a_src, ready_w, go_r, a_w, a_stop_r)
+    if mode == 'holder':
+        a_result = receive(a_r)
+        assert a_result == b'H' and a.poll() is None
+        assert not (root / '.mutations/race').exists()
+        assert 'pid={}\n'.format(a.pid) in (lock / 'owner').read_text()
+    else:
+        assert receive(ready_r) == b'R'
+    b = launch('B', b_src, ready_w, go_r, b_w, b_stop_r)
+    b_result = receive(b_r)
+    if mode not in ('serialized', 'holder'):
+        assert b_result == b'H' and b.poll() is None
+        assert (lock / 'replacement-sentinel').read_text() == 'sentinel'
+    else:
+        assert b_result == b'M'
+    # A pipe retains an early release, so arrived-before-read cannot lose wakeup.
+    if mode != 'holder':
+        os.write(go_w, b'continue\n')
+        a_result = receive(a_r)
+    else:
+        assert not (root / '.mutations/race').exists()
+        assert 'pid={}\n'.format(a.pid) in (lock / 'owner').read_text()
+    sentinel = (lock / 'replacement-sentinel').exists()
+    if mode == 'baseline':
+        assert a_result == b'H' and not sentinel and b.poll() is None
+        assert 'pid={}\n'.format(a.pid) in (lock / 'owner').read_text()
+    elif mode in ('serialized', 'holder'):
+        assert a_result == b'H' and not sentinel
+        assert 'pid={}\n'.format(a.pid) in (lock / 'owner').read_text()
+    else:
+        assert a_result == b'M' and sentinel
+        assert 'pid={}\n'.format(b.pid) in (lock / 'owner').read_text()
+    assert sibling.read_text() == 'keep'
+    for proc, outcome, stop in [(a, a_result, a_stop_w), (b, b_result, b_stop_w)]:
+        if outcome == b'H': os.write(stop, b'finish\n')
+        out, err = proc.communicate(timeout=30)
+        assert proc.returncode == 0, (out, err)
+    if mode == 'holder':
+        assert not lock.exists() and not (root / '.mutations/race').exists()
+    print(json.dumps({'mode': mode, 'participants_completed': 2,
+                      'a': a_result.decode(), 'b': b_result.decode(),
+                      'replacement_sentinel_survived': sentinel,
+                      'rightful_holder_released': mode == 'holder',
+                      'sibling_survived': True,
+                      'baseline_bug_reproduced': mode == 'baseline'}))
+finally:
+    for proc in children:
+        if proc.poll() is None:
+            # This Popen created the entire session; no name-based/shared kill.
+            assert os.getpgid(proc.pid) == proc.pid
+            os.killpg(proc.pid, signal.SIGTERM)
+            proc.communicate(timeout=30)
+    for fd in descriptors:
+        os.close(fd)
+    current, parent = os.lstat(base), os.stat(base.parent)
+    assert stat.S_ISDIR(current.st_mode)
+    assert (current.st_dev, current.st_ino) == (anchor.st_dev, anchor.st_ino)
+    assert current.st_dev == parent.st_dev and current.st_ino != parent.st_ino
+    # Independently dependable bounded fixture teardown, not the injected rm.
+    subprocess.run(['/usr/bin/find', '-P', str(base), '-xdev', '-delete'], check=True)
+    assert not os.path.lexists(base)
+PYRACE
+  exit "$?"
+fi
+
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PASS=0; FAIL=0; TMPROOT=""; KIDS=()
 
+# Independent bounded fixture teardown; never call the helper being tested.
+rm() {
+  if [ "$#" = 2 ] && [ "$1" = -rf ]; then
+    python3 - "$TMPROOT" "$FIXTURE_ID" "$2" <<'PYREMOVE'
+import os, stat, subprocess, sys
+root, expected, target = sys.argv[1:]
+root, target = os.path.abspath(root), os.path.abspath(target)
+s = os.lstat(root)
+assert stat.S_ISDIR(s.st_mode) and f'{s.st_dev}:{s.st_ino}' == expected
+assert target == root or target.startswith(root + os.sep)
+current = root
+for part in os.path.relpath(target, root).split(os.sep):
+    if part == '.': continue
+    current = os.path.join(current, part)
+    try: entry = os.lstat(current)
+    except FileNotFoundError: sys.exit(0)
+    assert stat.S_ISDIR(entry.st_mode) and entry.st_dev == s.st_dev
+subprocess.run(['/usr/bin/find', '-P', target, '-xdev', '-delete'], check=True)
+assert not os.path.lexists(target)
+PYREMOVE
+  else
+    command rm "$@"
+  fi
+}
 cleanup() {
   local p
   for p in ${KIDS[@]+"${KIDS[@]}"}; do kill "$p" 2>/dev/null || true; done
@@ -30,6 +224,8 @@ ok()  { PASS=$((PASS+1)); printf '  PASS  %s\n' "$1"; }
 bad() { FAIL=$((FAIL+1)); printf '  FAIL  %s — %s\n' "$1" "$2"; }
 
 TMPROOT="$(mktemp -d /tmp/ew-seed-lock-XXXXXX)"
+TMPROOT="$(cd "$TMPROOT" && pwd -P)"
+FIXTURE_ID="$(/usr/bin/stat -f '%d:%i' "$TMPROOT")"
 export EW_SEED_ROOT="$TMPROOT/spm-seed"
 # shellcheck source=scripts/lib/spm-seed-lock.sh
 . "$HERE/spm-seed-lock.sh"
@@ -199,9 +395,7 @@ ORDER_PROBE="$TMPROOT/order-probe"
 _real_identity_body="$(declare -f ew_seed_process_identity)"
 ew_seed_process_identity() {
   local d="$EW_SEED_ROOT/.locks/ordering" i seen=no
-  for i in ${EW_SEED_HELD_LOCKS[@]+"${EW_SEED_HELD_LOCKS[@]}"}; do
-    [ "$i" = "$d" ] && seen=yes
-  done
+  if i="$(_ew_seed_find_lock ordering)" && [ "${_EW_SEED_R_PATH[$i]}" = "$d" ]; then seen=yes; fi
   printf '%s\n' "$seen" > "$ORDER_PROBE"
   printf 'probe-identity\n'
 }
@@ -234,15 +428,15 @@ ew_seed_lock_release atomicowner
 # THE TWIN: when the rename fails, acquire must leave NOTHING — no lock
 # directory for others to trip over, and no entry in the cleanup list pointing
 # at a path that no longer exists.
-mv() { return 1; }
-_before="${#EW_SEED_HELD_LOCKS[@]}"
+_ew_seed_publish_owner() { return 1; }
+_before="$(_ew_seed_count_kind lock)"
 ew_seed_lock_acquire rollback >/dev/null 2>&1; _rc=$?
-unset -f mv
+. "$HERE/spm-seed-lock.sh"
 if [ "$_rc" -ne 0 ] && [ ! -e "$EW_SEED_ROOT/.locks/rollback" ] \
-   && [ "${#EW_SEED_HELD_LOCKS[@]}" -eq "$_before" ]; then
+   && [ "$(_ew_seed_count_kind lock)" -eq "$_before" ]; then
   ok "a failed owner write rolls the lock back completely (the twin)"
 else
-  bad "acquire rollback" "rc=$_rc dir_present=$([ -e "$EW_SEED_ROOT/.locks/rollback" ] && echo yes || echo no) tracked=${#EW_SEED_HELD_LOCKS[@]} was=$_before"
+  bad "acquire rollback" "rc=$_rc dir_present=$([ -e "$EW_SEED_ROOT/.locks/rollback" ] && echo yes || echo no) tracked=$(_ew_seed_count_kind lock) was=$_before"
 fi
 
 # --- liveness has THREE answers, and the third one used to be silent ----------
@@ -326,7 +520,9 @@ rm -rf "$EW_SEED_ROOT/.locks/badage"
 # lock: a cache miss costs one slow resolve, an unreclaimable lock costs this key
 # its seeding forever. This case exists because a mutation control found the
 # guard untested — the fix was in place and nothing would have noticed it going.
-( EW_SEED_PS="$TMPROOT/no-such-tool"; ew_seed_lock_acquire noidentity >/dev/null 2>&1 ); rc=$?
+_saved_ps="$EW_SEED_PS"; EW_SEED_PS="$TMPROOT/no-such-tool"
+ew_seed_lock_acquire noidentity >/dev/null 2>&1; rc=$?
+EW_SEED_PS="$_saved_ps"
 if [ "$rc" -ne 0 ] && [ ! -e "$EW_SEED_ROOT/.locks/noidentity" ]; then
   ok "acquire REFUSES when it cannot establish its own identity, and leaves nothing"
 else
@@ -385,6 +581,134 @@ if ew_seed_lock_acquire freshheld >/dev/null 2>&1; then
 else
   ok "a FRESH lock is never reclaimed by acquire, dead owner or not"
 fi
+
+# #4197 lifecycle obligations: state, not a pathname alone, grants cleanup.
+mkdir -p "$EW_SEED_ROOT/.locks/unheld"
+printf keep > "$EW_SEED_ROOT/.locks/unheld/sentinel"
+ew_seed_lock_release unheld
+if [ -f "$EW_SEED_ROOT/.locks/unheld/sentinel" ]; then ok "unheld release cannot delete an existing key"; else bad "unheld release" "deleted foreign state"; fi
+
+ew_seed_lock_acquire reload
+_reload_count="$_EW_SEED_NEXT"
+. "$HERE/spm-seed-lock.sh"
+if [ "$_EW_SEED_NEXT" = "$_reload_count" ] && _ew_seed_find_lock reload >/dev/null; then ok "same-source reload preserves active registry"; else bad "reload" "lost ownership"; fi
+mkdir "$TMPROOT/other-source"
+cp "$HERE/spm-seed-lock.sh" "$TMPROOT/other-source/spm-seed-lock.sh"
+if . "$TMPROOT/other-source/spm-seed-lock.sh"; then _reload_rc=0; else _reload_rc=$?; fi
+if [ "$_reload_rc" = 2 ] && [ "$_EW_SEED_ORIGIN" = "$HERE" ] && _ew_seed_find_lock reload >/dev/null; then ok "active different-source reload refuses before replacing cleanup"; else bad "source swap" "status=$_reload_rc origin=$_EW_SEED_ORIGIN"; fi
+(ew_seed_lock_release reload)
+if [ -f "$EW_SEED_ROOT/.locks/reload/owner" ]; then ok "inherited subshell cannot release its parent's ownership"; else bad "subshell release" "deleted parent lock"; fi
+ew_seed_lock_release reload
+
+ew_seed_lock_acquire retained
+ew_seed_begin_temp retained "$TMPROOT" "$TMPROOT/.SourcePackages.seed.retained.1"
+ew_seed_lock_acquire healthy
+python3() {
+  if [ "${1:-}" = "$_EW_SEED_HELPER" ] && [ "${2:-}" = remove ] && [ "${4:-}" = "$TMPROOT/.SourcePackages.seed.retained.1" ]; then return 1; fi
+  command python3 "$@"
+}
+ew_seed_release_all
+if [ "$EW_SEED_CLEANUP_COMPLETE" = 0 ] && [ -d "$EW_SEED_ROOT/.locks/retained" ] && [ ! -e "$EW_SEED_ROOT/.locks/healthy" ]; then ok "release_all aggregates a failed temp before a successful later key"; else bad "aggregate cleanup" "lost incomplete result or protection"; fi
+if [ ! -e "$EW_SEED_ROOT/.mutations/retained" ] && [ -d "$TMPROOT/.SourcePackages.seed.retained.1" ]; then ok "failed temp retains long key protection but releases valid short gate"; else bad "gate lifetime" "wrong retention"; fi
+unset -f python3
+ew_seed_release_all
+if [ "$EW_SEED_CLEANUP_COMPLETE" = 1 ] && [ ! -e "$EW_SEED_ROOT/.locks/retained" ] && [ ! -e "$TMPROOT/.SourcePackages.seed.retained.1" ]; then ok "retained cleanup can retry its captured instance"; else bad "retry cleanup" "state survived"; fi
+
+ew_seed_lock_acquire partialowner
+_partial_owner="$(cat "$EW_SEED_ROOT/.locks/partialowner/owner")"
+python3() {
+  if [ "${1:-}" = "$_EW_SEED_HELPER" ] && [ "${2:-}" = remove ] && [ "${4:-}" = "$EW_SEED_ROOT/.locks/partialowner" ]; then
+    command rm -f "$EW_SEED_ROOT/.locks/partialowner/owner"
+    return 1
+  fi
+  command python3 "$@"
+}
+ew_seed_lock_release partialowner
+unset -f python3
+if [ "$EW_SEED_CLEANUP_COMPLETE" = 0 ] && [ "$(cat "$EW_SEED_ROOT/.locks/partialowner/owner")" = "$_partial_owner" ] && [ ! -e "$EW_SEED_ROOT/.mutations/partialowner" ]; then ok "partial owner deletion restores exact v1 bytes before releasing gate"; else bad "owner restoration" "lost protection or released uncertain gate"; fi
+ew_seed_lock_release partialowner
+
+ew_seed_lock_acquire failedrestore
+python3() {
+  if [ "${1:-}" = "$_EW_SEED_HELPER" ] && [ "${2:-}" = remove ] && [ "${4:-}" = "$EW_SEED_ROOT/.locks/failedrestore" ]; then
+    command rm -f "$EW_SEED_ROOT/.locks/failedrestore/owner"
+    return 1
+  fi
+  command python3 "$@"
+}
+_ew_seed_publish_owner() { return 1; }
+ew_seed_lock_release failedrestore
+unset -f python3
+if [ "$EW_SEED_CLEANUP_COMPLETE" = 0 ] && [ -d "$EW_SEED_ROOT/.mutations/failedrestore" ] && [ -d "$EW_SEED_ROOT/.locks/failedrestore" ] && [ ! -e "$EW_SEED_ROOT/.locks/failedrestore/owner" ]; then ok "failed owner restoration retains the short gate and registered state"; else bad "failed restoration" "uncertain survivor exposed"; fi
+. "$HERE/spm-seed-lock.sh"
+ew_seed_lock_release failedrestore
+ew_seed_lock_release failedrestore
+if [ "$EW_SEED_CLEANUP_COMPLETE" = 1 ] && [ ! -e "$EW_SEED_ROOT/.mutations/failedrestore" ] && [ ! -e "$EW_SEED_ROOT/.locks/failedrestore" ]; then ok "verified retained gate can restore protection then complete its own cleanup"; else bad "retained gate retry" "did not complete"; fi
+
+ew_seed_lock_acquire stagingroot
+_consumer_root="$TMPROOT/consumer-root"; mkdir "$_consumer_root"
+ew_seed_begin_temp stagingroot "$_consumer_root" "$_consumer_root/.SourcePackages.seed.stagingroot.1"
+printf keep > "$_consumer_root/.SourcePackages.seed.stagingroot.1/sentinel"
+mv "$_consumer_root" "$TMPROOT/original-consumer-root"; mkdir "$_consumer_root"
+ew_seed_lock_release stagingroot
+if [ "$EW_SEED_CLEANUP_COMPLETE" = 0 ] && [ -d "$EW_SEED_ROOT/.locks/stagingroot" ] && [ "$(_ew_seed_count_kind temp)" = 1 ] && [ -f "$TMPROOT/original-consumer-root/.SourcePackages.seed.stagingroot.1/sentinel" ]; then ok "absent staging under a replaced root cannot erase captured cleanup authority"; else bad "staging root replacement" "false completion or lost original staging"; fi
+rmdir "$_consumer_root"; mv "$TMPROOT/original-consumer-root" "$_consumer_root"
+ew_seed_lock_release stagingroot
+if [ "$EW_SEED_CLEANUP_COMPLETE" = 1 ] && [ ! -e "$_consumer_root/.SourcePackages.seed.stagingroot.1" ] && [ ! -e "$EW_SEED_ROOT/.locks/stagingroot" ]; then ok "restoring captured staging root permits ordinary cleanup retry"; else bad "staging root retry" "did not complete"; fi
+
+ew_seed_lock_acquire intentroot
+ew_seed_track_temp "$_consumer_root/.SourcePackages.seed.intentroot.1" "$_consumer_root" intentroot
+mkdir "$_consumer_root/.SourcePackages.seed.intentroot.1"
+mv "$_consumer_root" "$TMPROOT/original-intent-root"; mkdir "$_consumer_root"
+ew_seed_lock_release intentroot
+if [ "$EW_SEED_CLEANUP_COMPLETE" = 0 ] && [ -d "$EW_SEED_ROOT/.locks/intentroot" ] && [ -d "$TMPROOT/original-intent-root/.SourcePackages.seed.intentroot.1" ]; then ok "unbound intent also retains authority when its captured root is replaced"; else bad "intent root replacement" "false absence completion"; fi
+rmdir "$_consumer_root"; mv "$TMPROOT/original-intent-root" "$_consumer_root"
+# An unbound new entry is never adopted, even after root restoration. Only
+# private fixture teardown removes it; verified absence then completes intent.
+rm -rf "$_consumer_root/.SourcePackages.seed.intentroot.1"
+ew_seed_lock_release intentroot
+
+ew_seed_lock_acquire changedroot
+_old_root="$EW_SEED_ROOT"
+EW_SEED_ROOT="$TMPROOT/unrelated-root"; mkdir "$EW_SEED_ROOT"
+printf keep > "$EW_SEED_ROOT/sentinel"
+ew_seed_lock_release changedroot
+if [ ! -e "$_old_root/.locks/changedroot" ] && [ -f "$EW_SEED_ROOT/sentinel" ]; then ok "release uses captured root after configuration changes"; else bad "captured root" "wrong namespace touched"; fi
+EW_SEED_ROOT="$_old_root"
+
+python3() {
+  if [ "${1:-}" = "$_EW_SEED_HELPER" ] && [ "${2:-}" = rmdir ] && [ "${4:-}" = "$EW_SEED_ROOT/.mutations/replacedgate" ]; then
+    mv "$EW_SEED_ROOT/.mutations/replacedgate" "$TMPROOT/original-gate"
+    mkdir "$EW_SEED_ROOT/.mutations/replacedgate"
+  fi
+  command python3 "$@"
+}
+ew_seed_lock_acquire replacedgate
+unset -f python3
+ew_seed_lock_release replacedgate
+if [ "$EW_SEED_CLEANUP_COMPLETE" = 0 ] && [ -d "$EW_SEED_ROOT/.mutations/replacedgate" ] && [ -f "$EW_SEED_ROOT/.locks/replacedgate/owner" ]; then ok "changed gate identity is retained and cannot authorize key cleanup"; else bad "replaced gate" "unknown instance was adopted"; fi
+# Private fixture restores its two known empty instances; production never does.
+rmdir "$EW_SEED_ROOT/.mutations/replacedgate"
+mv "$TMPROOT/original-gate" "$EW_SEED_ROOT/.mutations/replacedgate"
+ew_seed_lock_release replacedgate
+if [ "$EW_SEED_CLEANUP_COMPLETE" = 1 ]; then ok "only the original verified gate can resume retained cleanup"; else bad "gate identity retry" "original could not resume"; fi
+
+_literal_key=$'literal space\nquote"dollar$'
+if ew_seed_lock_acquire "$_literal_key"; then
+  ew_seed_lock_release "$_literal_key"
+  if [ "$EW_SEED_CLEANUP_COMPLETE" = 1 ] && [ ! -e "$EW_SEED_ROOT/.locks/$_literal_key" ]; then ok "literal whitespace and shell characters remain key data"; else bad "literal key release" "incomplete"; fi
+else bad "literal key" "valid literal component refused"; fi
+_saved_helper="$_EW_SEED_HELPER"; _EW_SEED_HELPER="$TMPROOT/no-such-helper"
+if ew_seed_lock_acquire missinghelper; then bad "missing helper" "granted without physical authority"; else ok "missing helper makes a cache miss before creating a key"; fi
+_EW_SEED_HELPER="$_saved_helper"
+if /bin/bash -c 'python3() { return 91; }; . "$1"' fixture "$HERE/spm-seed-lock.sh"; then ok "fresh source performs no Python dependency or metadata probes"; else bad "source probes" "startup depended on physical helper"; fi
+
+mkdir -p "$EW_SEED_ROOT/.mutations/stranded"
+if ew_seed_lock_acquire stranded; then bad "stranded gate" "automatically reclaimed unknown gate"; else ok "unknown mutation gate stays busy without automatic reclamation"; fi
+if ew_seed_lock_acquire .mutations; then bad "hidden key" "accepted reserved namespace"; else ok "hidden metadata cannot be a key even under dotglob"; fi
+
+if /bin/bash -c 'set -e; . "$1"; trap "ew_seed_on_exit" EXIT; ew_seed_lock_acquire exitstatus; exit 7' fixture "$HERE/spm-seed-lock.sh"; then _exit_rc=0; else _exit_rc=$?; fi
+if [ "$_exit_rc" = 7 ] && [ ! -e "$EW_SEED_ROOT/.locks/exitstatus" ]; then ok "set-e EXIT cleanup preserves original failure status"; else bad "EXIT status" "status=$_exit_rc or lock survived"; fi
 
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 if [ "$((PASS + FAIL))" -lt 32 ]; then
