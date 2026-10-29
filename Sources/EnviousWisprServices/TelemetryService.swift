@@ -235,6 +235,7 @@ public enum ASRRetryDeadlineDisposition: String, Sendable {
 @MainActor
 public final class TelemetryService {
   public static let shared = TelemetryService()
+  private var settingsHelpCaptureBudget = SettingsHelpCaptureBudget()
   private init() {
     takeStages = TakeStageLedger()
     feedbackRefusalCaptureAvailable = { ObservabilityBootstrap.isUsageCaptureRunning }
@@ -1271,6 +1272,36 @@ public final class TelemetryService {
           boolProps: ["committed": committed]))
     #endif
     PostHogSDK.shared.capture("hotkey.lock_resolved", properties: props)
+  }
+
+  /// #3862: help callback observations, never a claim of visible text or a failure.
+  /// Native hover tooltip visibility is outside this event's observation boundary.
+  package func settingsHelpObserved(_ observation: SettingsHelpObservation) {
+    guard settingsHelpCaptureBudget.admit(
+      observation, captureAvailable: ObservabilityBootstrap.isUsageCaptureRunning
+    ) else { return }
+    let props = Self.settingsHelpProperties(
+      observation, osVersion: ProcessInfo.processInfo.operatingSystemVersionString)
+    #if DEBUG
+      testEventHook?(CapturedTelemetryEvent(
+        name: "settings.help_observed",
+        stringProps: props.compactMapValues { $0 as? String },
+        intProps: props.compactMapValues { $0 as? Int },
+        doubleProps: props.compactMapValues { $0 as? Double },
+        boolProps: props.compactMapValues { $0 as? Bool }))
+      let line = "SETTINGS_HELP id=\(observation.interactionID.uuidString) interaction=\(observation.interaction.rawValue) phase=\(observation.phase.rawValue) sequence=\(observation.sequence) elapsed_ms=\(observation.elapsedMilliseconds) pointer_inside=\(observation.pointerInside) app_active=\(observation.appActive) has_key_window=\(observation.hasKeyWindow) escape_observed=\(observation.escapeObserved) os_version=\(ProcessInfo.processInfo.operatingSystemVersionString)"
+      Task { await AppLogger.shared.log(line, category: "SettingsHelp") }
+    #endif
+    PostHogSDK.shared.capture("settings.help_observed", properties: props)
+  }
+
+  /// Shared projection for the SDK boundary and its schema test. The live caller supplies OS metadata.
+  static func settingsHelpProperties(
+    _ observation: SettingsHelpObservation, osVersion: String
+  ) -> [String: Any] {
+    var props = observation.properties
+    props["os_version"] = osVersion
+    return props
   }
 
   /// #3482: one finished Settings search attempt (plan §8.1). Closed values and counts; the

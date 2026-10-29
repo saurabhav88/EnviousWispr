@@ -244,8 +244,12 @@ struct TelemetryEmitterRegistryTests {
   /// counted on meeting.ended (`call_reports_omitted`). Closed outcome and reason vocabularies,
   /// rates and a transport class; no device name or UID. Reader: Claude's weekly EnviousMeet
   /// launch check. The meeting.ended site did not move; it gained four optional keys.
+  /// #3862: one new per_user_action settings.help_observed site, kept whole. At most
+  /// request plus terminal per help click, or one completed hover summary; typed metadata
+  /// only. Reader: exact OS/build help-lifetime investigation after the carrying release.
+  /// Removing this one scanner-reported site reproduces the prior fingerprint exactly.
   static let sitesFingerprint =
-    "f692878768bd5b3f47c410c5169a2e4a793eab93862abf6bacd784fd14d327b1"
+    "2d56440d58b47ec7f3c5d836196b40cbefac6c808bc1dbda7b2afbb9012a151d"
   static let ungradedFingerprint =
     "676fe038e6e688fa79c33aae8cec75e5996979f10c3f79775755ec23c5dba168"
 
