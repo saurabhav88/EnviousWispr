@@ -756,7 +756,7 @@ struct TextProcessingRunnerCaptureTests {
     // Exact composed notice.
     #expect(
       result.polishError
-        == "AI polish failed: Gemini ended the response before cleanup finished. "
+        == "AI polish failed: Gemini ended the response before AI polish finished. "
         + "Pasted without AI polish. If this keeps happening, "
         + "choose another model or use a shorter dictation.")
     // Exactly one durable count with the right attribution; zero alerts.
