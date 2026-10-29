@@ -170,6 +170,10 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
   package let startMs: Int
   package private(set) var status: CallSpeakerObservationStatus?
   package private(set) var observations: [CallSpeakerObservation] = []
+  /// The encoded size of `observations`, as storage writes them, separators included.
+  package private(set) var observationBytes = 0
+  /// What this segment's observations may still add, in encoded bytes.
+  private let observationByteBudget: Int
   package private(set) var health = CallCaptureHealth()
   private var nameCounts: [String: Int] = [:]
   private var nameOrder: [String] = []
@@ -202,15 +206,23 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
   package init(
     surface: CallSpeakerSurface, rules: FrozenTalkerRules?, lag: CallSpeakerLag?,
     status: CallSpeakerObservationStatus? = nil, presencePolicy: CallPresencePolicy = .current,
-    startMs: Int = 0
+    startMs: Int = 0, observationByteBudget: Int = CallSpeakerLog.maximumObservationBytes
   ) {
     self.startMs = startMs
+    self.observationByteBudget = observationByteBudget
     self.surface = surface
     self.rules = rules
     self.lag = lag
     self.status = status
     self.presencePolicy = presencePolicy
   }
+
+  /// Compact and key-sorted, as storage writes the log.
+  private static let observationEncoder: JSONEncoder = {
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.sortedKeys]
+    return encoder
+  }()
 
   /// Adds one reading of a capture taken at `observationMs`.
   package mutating func add(
@@ -256,12 +268,21 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
     switch CallSpeakerAdmission.admission(of: reading, context: context) {
     case .admitted:
       let speaking = CallSpeakerAdmission.observationSpeaking(reading, context: context) ?? []
+      let observation = CallSpeakerObservation(observationMs: observationMs, speaking: speaking)
+      // One comma beside the next; an observation that cannot be measured is not kept.
+      guard let bytes = (try? Self.observationEncoder.encode(observation)).map({ $0.count + 1 }),
+        observationBytes + bytes <= observationByteBudget
+      else {
+        health.observationCapacityDrops += 1
+        return
+      }
       if speaking.isEmpty {
         health.admittedQuietObservations += 1
       } else {
         health.admittedSpeakingObservations += 1
       }
-      observations.append(CallSpeakerObservation(observationMs: observationMs, speaking: speaking))
+      observations.append(observation)
+      observationBytes += bytes
     case .withheld(let reason):
       health.withheldByReason[reason.rawValue, default: 0] += 1
     }

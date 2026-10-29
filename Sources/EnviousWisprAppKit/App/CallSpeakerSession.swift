@@ -19,7 +19,8 @@ import Foundation
 ///   writes all segments so far through `save`, in the order asked, even while no call is read.
 ///   Once admission closes no new save starts; the final save after Stop is the last.
 /// - Opens at most `CallSpeakerLog.maximumSegments` segments; past that it reads nothing more
-///   and counts the refusal.
+///   and counts the refusal. All segments' observations together stay within
+///   `observationByteBudget`, so the log always fits what storage accepts.
 ///
 /// It never starts or stops audio, and nothing here is on the dictation path: discovery's reads
 /// and the copies run off the main actor; a tick only compares cached answers.
@@ -45,6 +46,8 @@ final class CallSpeakerSession {
     var observerTick: Duration = .milliseconds(500)
     /// Checks between periodic saves: 10 seconds.
     var saveEvery = 20
+    /// What all segments' observations may reach together, encoded.
+    var observationByteBudget = CallSpeakerLog.maximumObservationBytes
   }
 
   /// `finishing`: Stop is saving the final log. `saved`: the final log is on disk, or was handed
@@ -60,6 +63,8 @@ final class CallSpeakerSession {
   private var loop: Task<Void, Never>?
   private var demanding = false
   private var closed: [CallSpeakerSegment] = []
+  /// The encoded size of the closed segments' observations.
+  private var closedObservationBytes = 0
   private var current: (source: CallSpeakerSourceAnswer.Source, observer: CallSpeakerObserver)?
   /// A different answer and when it was first seen.
   private var pending: (answer: CallSpeakerSourceAnswer, sinceMs: Int)?
@@ -166,6 +171,7 @@ final class CallSpeakerSession {
     let observer = CallSpeakerObserver(
       surface: surface, family: family, anchor: anchor, startMs: startMs, rules: rules,
       presencePolicy: presencePolicy, lag: lag,
+      observationByteBudget: max(0, deps.observationByteBudget - closedObservationBytes),
       dependencies: .init(
         // This segment's app instance only while it is still the single live call.
         target: { sources.speakerSource() == .unique(source) ? source.target : nil },
@@ -184,6 +190,7 @@ final class CallSpeakerSession {
     let segment = current.observer.segment(
       endingAt: max(endMs, current.observer.currentSegment.startMs), reason: reason)
     closed.append(segment)
+    closedObservationBytes += current.observer.observationBytes
     self.current = nil
   }
 

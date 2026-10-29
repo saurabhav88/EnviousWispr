@@ -65,10 +65,12 @@ final class CallSpeakerObserver {
   private var seenDictationChanges = 0
 
   /// `rules` and `lag` are the recording's frozen ones; `anchor` is the recorder's; `startMs` is
-  /// where this segment starts on the recording clock.
+  /// where this segment starts on the recording clock; `observationByteBudget` is what this
+  /// segment's observations may add to the recording's.
   init(
     surface: CallSpeakerSurface, family: CallAppFamily, anchor: UInt64, startMs: Int,
     rules: TalkerRulesSnapshot, presencePolicy: CallPresencePolicy, lag: CallSpeakerLag?,
+    observationByteBudget: Int = CallSpeakerLog.maximumObservationBytes,
     dependencies: Dependencies
   ) {
     self.deps = dependencies
@@ -78,9 +80,13 @@ final class CallSpeakerObserver {
     self.accumulator = CallSpeakerAccumulator(
       surface: surface, rules: rules.frozen, lag: lag,
       status: CallSpeakerSurfaceChoice.hasTalkerReader(surface) ? nil : .unsupported,
-      presencePolicy: presencePolicy, startMs: startMs)
+      presencePolicy: presencePolicy, startMs: startMs,
+      observationByteBudget: observationByteBudget)
     watchDictation()
   }
+
+  /// The encoded size of this segment's observations so far.
+  var observationBytes: Int { accumulator.observationBytes }
 
   /// This segment as collected so far, still open.
   var currentSegment: CallSpeakerSegment { accumulator.segment(endMs: nil, endReason: nil) }

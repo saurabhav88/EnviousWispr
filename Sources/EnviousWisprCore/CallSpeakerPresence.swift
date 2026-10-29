@@ -134,6 +134,9 @@ public struct CallCaptureHealth: Sendable, Equatable, Codable {
   public var missingPermissionTicks = 0
   /// Copies dropped at delivery because something changed while they were taken.
   public var staleResultDrops = 0
+  /// Admitted observations not kept because the recording's observations reached
+  /// `CallSpeakerLog.maximumObservationBytes`.
+  public var observationCapacityDrops = 0
   public var walkDurationCount = 0
   public var walkDurationTotalUs = 0
   public var walkDurationMaxUs = 0

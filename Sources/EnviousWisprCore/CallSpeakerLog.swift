@@ -186,8 +186,9 @@ public struct CallSpeakerSegment: Sendable, Equatable {
     let clock = 0...CallSpeakerObservation.maximumObservationMs
     guard clock.contains(startMs) else { return "startMs" }
     if let endMs, !(clock.contains(endMs) && endMs >= startMs) { return "endMs" }
-    if let lag, !(-CallSpeakerLag.maximumMagnitudeMs...CallSpeakerLag.maximumMagnitudeMs).contains(
-      lag.milliseconds)
+    if let lag,
+      !(-CallSpeakerLag.maximumMagnitudeMs...CallSpeakerLag.maximumMagnitudeMs).contains(
+        lag.milliseconds)
     {
       return "lag"
     }
@@ -210,7 +211,9 @@ public struct CallSpeakerSegment: Sendable, Equatable {
     }
     if let presence {
       guard presence.count <= Self.maximumPresenceNames else { return "presence" }
-      guard Set(presence.map(\.name)).count == presence.count else { return "presence names repeat" }
+      guard Set(presence.map(\.name)).count == presence.count else {
+        return "presence names repeat"
+      }
       for (index, entry) in presence.enumerated() {
         guard CallSpeakerLog.isName(entry.name) else { return "presence[\(index)].name" }
         if let problem = entry.shapeProblem { return "presence[\(index)] \(problem)" }
@@ -286,6 +289,12 @@ public struct CallSpeakerLog: Sendable, Equatable {
   public static let currentFormatVersion = 2
   /// Far more call changes than any recording has; bounds the work of reading a damaged file.
   public static let maximumSegments = 1_000
+  /// The encoded size all of one recording's observations may reach together: half of what
+  /// storage accepts for the whole file (`MeetingStore.maximumCallSpeakersBytes`), leaving the
+  /// other half to the rules, rosters, presence and health. Two observations a second of one
+  /// short name (about 53 bytes each) reach it after about twenty hours; past it, the
+  /// observations already kept stay and later ones are counted, not kept.
+  public static let maximumObservationBytes = 8 * 1024 * 1024
 
   public let formatVersion: Int
   public let rules: FrozenTalkerRules?
@@ -329,7 +338,9 @@ public struct CallSpeakerLog: Sendable, Equatable {
         counts[name] = 0
       }
       for (name, count) in here { counts[name] = max(counts[name] ?? 0, count) }
-      for name in segment.roster.selfNames where !selfNames.contains(name) { selfNames.append(name) }
+      for name in segment.roster.selfNames where !selfNames.contains(name) {
+        selfNames.append(name)
+      }
     }
     return CallSpeakerRoster(
       names: order.flatMap { Array(repeating: $0, count: counts[$0] ?? 0) }, selfNames: selfNames)
