@@ -475,6 +475,40 @@ import EnviousWisprAppKitTestSupport
       file: "Sources/EnviousWisprAppKit/App/WisprBootstrapper.swift", matcher: "transcribe",
       text: "return try await activeEngine.transcribe(samples, options, nil)",
       classification: .structurallySafe),
+    // #3973 C3: `MeetingWhisperEngine` owns its OWN Turbo handle (an actor built once by the
+    // bootstrapper, loaded per engine operation on the preview lane). Its load, decode and
+    // unloads reach only that handle, never dictation's backend or recovery's engine
+    // (structurallySafe (c): a different engine instance). The bootstrapper lines are the
+    // route's injected closures over that one instance.
+    CallSite(
+      file: "Sources/EnviousWisprASR/MeetingWhisperEngine.swift", matcher: "unload",
+      text: "await driver.unload(loaded)", classification: .structurallySafe),
+    CallSite(
+      file: "Sources/EnviousWisprASR/MeetingWhisperEngine.swift", matcher: "unload",
+      text: "await driver.unload(loaded)", classification: .structurallySafe),
+    CallSite(
+      file: "Sources/EnviousWisprASR/MeetingWhisperEngine.swift", matcher: "unload",
+      text: "await driver.unload(handle)", classification: .structurallySafe),
+    CallSite(
+      file: "Sources/EnviousWisprASR/MeetingWhisperEngine.swift", matcher: "unload",
+      text: "await unload()", classification: .structurallySafe),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/WisprBootstrapper.swift", matcher: "transcribe",
+      text: "try await meetingWhisperEngine.transcribe(samples: samples, language: language)",
+      classification: .structurallySafe),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/WisprBootstrapper.swift", matcher: "unload",
+      text: "ownUnload: { [meetingWhisperEngine] in await meetingWhisperEngine.unload() },",
+      classification: .structurallySafe),
+    // `meetingDecode`: the meeting's Whisper decode, on the meeting's own handle or, when
+    // dictation runs Whisper, on dictation's loaded handle, always at PREVIEW priority. It
+    // mutates no engine state: every session goes through the one executor, whose unload
+    // (dictation's switch, Remove, recovery) aborts and drains preview runs on that handle
+    // before freeing it, and a run whose model went away throws `MeetingEngineYield`, which
+    // the job retries (structurallySafe (c)).
+    CallSite(
+      file: "Sources/EnviousWisprASR/MeetingWhisperEngine.swift", matcher: "transcribe",
+      text: "run = try await driver.transcribe(", classification: .structurallySafe),
     // #3972 C13a: the meeting SUMMARY provider set-up (keychain read, Ollama version check,
     // connector choice). An AI Polish text model, not the ASR engine; it holds no adapter and no
     // audio. Matched only by method-name coincidence.
@@ -1463,7 +1497,7 @@ import EnviousWisprAppKitTestSupport
       classification: .transitivelyCoveredByCaller),
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/WisprBootstrapper.swift", matcher: "unloadForRemoval",
-      text: "whisper.removal.unloadForRemoval = { [weak whisperKernelDriver] in",
+      text: "whisper.removal.unloadForRemoval = { [weak whisperKernelDriver, meetingWhisperEngine] in",
       classification: .transitivelyCoveredByCaller),
   ]
 
