@@ -44,7 +44,7 @@ echo "==> Full log: $DEV_BUILD_LOG"
 . "$PROJECT_ROOT/scripts/lib/l10n-build-with-receipt.sh"
 # ONE cleanup handler, releasing every seed lock this process owns. A second
 # `trap EXIT` would silently REPLACE this one rather than adding to it.
-trap 'ew_seed_release_all' EXIT
+trap 'ew_seed_on_exit' EXIT
 # bash exits on a signal WITHOUT running the EXIT trap, which would strand a
 # seed lock. Converting each signal into a normal exit makes EXIT run.
 trap 'exit 129' HUP
