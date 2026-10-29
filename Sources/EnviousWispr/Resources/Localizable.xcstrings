@@ -13375,7 +13375,7 @@
       }
     },
     "Not now" : {
-      "comment" : "Card after a dictation: closes the card and leaves the setup for later.\nEnviousMeet setup: skips a permission for now.\nEnviousMeet: decline recording; do not ask again during this call.",
+      "comment" : "Card after a dictation: closes the card and leaves the setup for later.\nEnviousMeet setup: skips a permission for now.\nEnviousMeet: decline this recording offer; a later microphone-use opportunity may ask again after the cooldown.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
