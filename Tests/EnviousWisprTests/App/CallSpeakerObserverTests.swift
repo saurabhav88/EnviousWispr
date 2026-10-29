@@ -89,6 +89,7 @@ struct CallSpeakerObserverTests {
       set { trustedLock.withLock { $0 = newValue } }
     }
     var target: CallSpeakerTarget? = CallSpeakerTarget(pid: 1, rule: .browser(.chrome))
+    var sourceRevision = 0
   }
 
   private func observer(
@@ -102,6 +103,7 @@ struct CallSpeakerObserverTests {
       lag: CallSpeakerLag(milliseconds: 500),
       dependencies: .init(
         target: { world.target },
+        sourceRevision: { world.sourceRevision },
         capture: { _ in capture.take() },
         isTrusted: { trusted.withLock { $0 } },
         isDictationIdle: { dictation.idle },
@@ -159,9 +161,7 @@ struct CallSpeakerObserverTests {
     dictation.idle = false
     dictation.idle = true
     capture.letGo()
-    await eventually("copy returned") { capture.calls.withLock { $0 } == 1 && !observer.laneBusy }
-    // settle: absence check; the delivery hop is one main-actor task after the lane frees
-    try await Task.sleep(for: .milliseconds(200))
+    await eventually("copy delivered") { observer.deliveriesForTesting == 1 }
     #expect(observer.currentLog.observations.isEmpty)
     observer.tick()
     await eventually("next copy counts") { observer.currentLog.observations.count == 1 }
@@ -182,22 +182,22 @@ struct CallSpeakerObserverTests {
 
   @Test("a copy whose app instance changed or whose trust was lost before delivery adds nothing")
   func sourceAndTrustAtDelivery() async throws {
-    for change in ["target", "trust"] {
+    for change in ["target", "trust", "source that went and came back"] {
       let capture = Capture()
       capture.hold.withLock { $0 = true }
       let world = World()
       let observer = try observer(capture: capture, world: world)
       observer.tick()
       await eventually("copy started") { capture.calls.withLock { $0 } == 1 }
-      if change == "target" {
-        world.target = CallSpeakerTarget(pid: 2, rule: .browser(.chrome))
-      } else {
-        world.trusted = false
+      switch change {
+      case "target": world.target = CallSpeakerTarget(pid: 2, rule: .browser(.chrome))
+      case "trust": world.trusted = false
+      default:
+        // The call app left the microphone and came back: same target, newer revision.
+        world.sourceRevision += 2
       }
       capture.letGo()
-      await eventually("copy returned") { !observer.laneBusy }
-      // settle: absence check; the delivery hop is one main-actor task after the lane frees
-      try await Task.sleep(for: .milliseconds(200))
+      await eventually("copy delivered") { observer.deliveriesForTesting == 1 }
       #expect(observer.currentLog.observations.isEmpty, "\(change)")
     }
   }
@@ -213,9 +213,7 @@ struct CallSpeakerObserverTests {
     await observer.finish()
     #expect(saves.count == 1)
     capture.letGo()
-    await eventually("late copy returned") { !observer.laneBusy }
-    // settle: absence check; the delivery hop is one main-actor task after the lane frees
-    try await Task.sleep(for: .milliseconds(200))
+    await eventually("late copy delivered") { observer.deliveriesForTesting == 1 }
     #expect(observer.currentLog.observations.isEmpty, "a copy after Stop never counts")
     await observer.finish()
     #expect(saves.count == 1)
@@ -244,14 +242,27 @@ struct CallSpeakerObserverTests {
     await eventually("copy landed") { observer.currentLog.observations.count == 1 }
     observer.saveNowForTesting()
     await eventually("periodic save parked") { saves == 1 }
+    var waiting = false
+    observer.finishWillWaitForTesting = { waiting = true }
     let stopping = Task { await observer.finish() }
-    // settle: lets Stop reach its wait on the parked periodic save
-    try await Task.sleep(for: .milliseconds(100))
+    await eventually("Stop waits on the parked periodic save") { waiting }
     let final = observer.takeFinalLog()
     #expect(final?.observations.count == 1)
     gate.continuation.yield()
     await stopping.value
     #expect(saves == 1, "Stop saved nothing after quit took the final log")
+  }
+
+  @Test("a final save that failed leaves the final log for a quit to take")
+  func failedFinalSave() async throws {
+    struct Refused: Error {}
+    let capture = Capture()
+    let observer = try observer(capture: capture, saved: { _ in throw Refused() })
+    observer.tick()
+    await eventually("copy landed") { observer.currentLog.observations.count == 1 }
+    await observer.finish()
+    #expect(observer.takeFinalLog()?.observations.count == 1)
+    #expect(observer.takeFinalLog() == nil, "handed over once")
   }
 
   // MARK: - With a recording

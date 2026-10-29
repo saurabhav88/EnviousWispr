@@ -115,6 +115,19 @@ struct CallSpeakerCaptureTests {
         .completeness == .truncated)
   }
 
+  @Test("once the budget is spent the app is asked nothing more")
+  func noReadsPastBudget() {
+    let tree = Tree()
+    tree.node(1, "AXWindow", children: Array(2...40))
+    for id in 2...40 { tree.node(id) }
+    tree.tickPerRead = .milliseconds(10)
+    let copy = capture(
+      tree, bounds: CallAXBounds(maxNodes: 1_000, maxDepth: 64, budget: .milliseconds(100)))
+    #expect(copy.completeness == .truncated)
+    // Ten reads fit the budget; the read that finds it spent is not sent.
+    #expect(tree.ticks <= 10)
+  }
+
   @Test("a failed role, children or optional read makes the copy unreadable")
   func failedReadsAreUnreadable() {
     for failing in ["2.AXRole", "1.AXChildren", "2.AXTitle"] {
@@ -259,6 +272,49 @@ struct CallSpeakerCaptureTests {
     #expect(log.status == .observed)
     log.noteNoPermission()
     #expect(log.status == .observed, "earlier evidence is not erased")
+  }
+
+  @Test("Teams app: the compact view and its main window are one meeting; two meetings are not")
+  func teamsAppScope() {
+    func window(_ title: String?, _ label: String) -> CallAXWindow {
+      CallAXWindow(
+        title: title,
+        root: CallAXNode(role: "AXWindow", children: [CallAXNode(role: "AXGroup", description: label)]))
+    }
+    func scope(_ windows: [CallAXWindow]) -> CallCaptureContext.Scope {
+      CallSpeakerSurfaceReader.scope(
+        surface: .teamsApp,
+        capture: CallAXCapture(
+          windows: windows, documents: [], completeness: .complete, readStartHostTime: 0,
+          readEndHostTime: 0),
+        family: .teams)
+    }
+    let compact = window(
+      "Meeting compact view | Meeting with Saurabh Vaish", "Alex Rivera (Guest) is speaking")
+    let main = window("Meeting with Saurabh Vaish", "Priya Shah is speaking")
+    let other = window("Weekly sync", "Sam Lee is speaking")
+    let chat = window("Chat | Microsoft Teams", "nothing a reader reads")
+    #expect(scope([compact, main, chat]) == .resolved)
+    #expect(scope([compact, other]) == .unresolved, "a held call and the current one")
+    #expect(scope([window(nil, "Alex Rivera is speaking")]) == .unresolved)
+  }
+
+  @Test("Zoom app: two meeting windows are not one call")
+  func zoomAppScope() {
+    func meeting() -> CallAXWindow {
+      CallAXWindow(
+        title: "Zoom Meeting", root: CallAXNode(role: "AXWindow", identifier: "zm.meeting.window.main"))
+    }
+    func scope(_ windows: [CallAXWindow]) -> CallCaptureContext.Scope {
+      CallSpeakerSurfaceReader.scope(
+        surface: .zoomApp,
+        capture: CallAXCapture(
+          windows: windows, documents: [], completeness: .complete, readStartHostTime: 0,
+          readEndHostTime: 0),
+        family: .zoom)
+    }
+    #expect(scope([meeting()]) == .resolved)
+    #expect(scope([meeting(), meeting()]) == .unresolved)
   }
 
   @Test("the surface comes from the call family and whether a browser held the microphone")

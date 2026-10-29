@@ -33,6 +33,9 @@ final class CallSpeakerObserver {
   struct Dependencies {
     /// The app instance to read now; `nil` when there is none, or more than one.
     var target: @MainActor () -> CallSpeakerTarget?
+    /// Goes up whenever the apps holding the microphone (or what their pages are) change, so a
+    /// source that went away and came back between two checks still drops a copy in flight.
+    var sourceRevision: @MainActor () -> Int = { 0 }
     /// One bounded copy of that app, run on the lane's queue.
     var capture: @Sendable (CallSpeakerTarget) -> CallAXCapture
     var isTrusted: @Sendable () -> Bool = { AXIsProcessTrusted() }
@@ -48,7 +51,9 @@ final class CallSpeakerObserver {
     var sleep: @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
   }
 
-  private enum Lifecycle { case open, finishing, done }
+  /// `finishing`: Stop is saving the final log. `saved`: the final log is on disk, or was handed
+  /// to a quit. `cancelled`: nothing more is saved.
+  private enum Lifecycle { case open, finishing, saved, cancelled }
 
   private let deps: Dependencies
   private let family: CallAppFamily
@@ -142,28 +147,39 @@ final class CallSpeakerObserver {
       return true
     }
     guard claimed else { return }
-    let takenGeneration = generation
-    let takenDictation = dictationChanges.withLock { $0 }
+    let taken = Taken(
+      target: target, generation: generation, dictation: dictationChanges.withLock { $0 },
+      source: deps.sourceRevision())
     let capture = deps.capture
+    let isTrusted = deps.isTrusted
     deps.lane.queue.async { [weak self] in
       let copy = capture(target)
+      // Trust is read again the moment the reads end, not only at the next tick.
+      let trustedAfter = isTrusted()
       // The lane frees only once the physical work returned.
       busy.withLock { $0 = false }
       Task { @MainActor [weak self] in
-        self?.captured(
-          copy, target: target, generation: takenGeneration, dictation: takenDictation)
+        self?.captured(copy, taken: taken, trustedAfter: trustedAfter)
       }
     }
   }
 
-  private func captured(
-    _ copy: CallAXCapture, target: CallSpeakerTarget, generation takenGeneration: Int,
-    dictation takenDictation: Int
-  ) {
+  /// What a copy was started under.
+  private struct Taken: Sendable {
+    let target: CallSpeakerTarget
+    let generation: Int
+    let dictation: Int
+    let source: Int
+  }
+
+  private func captured(_ copy: CallAXCapture, taken: Taken, trustedAfter: Bool) {
+    #if DEBUG
+      deliveriesForTesting += 1
+    #endif
     // Read again at delivery: nothing that would have stopped the copy may have happened since.
-    guard open, takenGeneration == generation,
-      takenDictation == dictationChanges.withLock({ $0 }), deps.isDictationIdle(),
-      deps.isTrusted(), deps.target() == target
+    guard open, trustedAfter, taken.generation == generation,
+      taken.dictation == dictationChanges.withLock({ $0 }), taken.source == deps.sourceRevision(),
+      deps.isDictationIdle(), deps.isTrusted(), deps.target() == taken.target
     else { return }
     guard
       let ms = CallSpeakerTimeline.observationMs(
@@ -214,22 +230,26 @@ final class CallSpeakerObserver {
     close()
     guard lifecycle == .open else { return }
     lifecycle = .finishing
+    #if DEBUG
+      finishWillWaitForTesting?()
+    #endif
     await saving?.value
     guard lifecycle == .finishing else { return }
-    lifecycle = .done
     do {
       try await deps.save(accumulator.log)
+      // Only a save that landed counts; after a failure a quit can still take the final log.
+      if lifecycle == .finishing { lifecycle = .saved }
     } catch {
       deps.log("call speakers final save failed error=\(type(of: error))")
     }
   }
 
   /// Quit: closes admission and hands back the final log for the caller to save within its own
-  /// deadline; nil when the final log was already saved, taken or cancelled.
+  /// deadline; nil when the final log is already on disk or the observer was cancelled.
   func takeFinalLog() -> CallSpeakerLog? {
     close()
-    guard lifecycle != .done else { return nil }
-    lifecycle = .done
+    guard lifecycle == .open || lifecycle == .finishing else { return nil }
+    lifecycle = .saved
     return accumulator.log
   }
 
@@ -237,10 +257,14 @@ final class CallSpeakerObserver {
   /// finishes on its own; the caller's deletion runs after the file writer drains.
   func cancel() {
     close()
-    lifecycle = .done
+    lifecycle = .cancelled
   }
 
   #if DEBUG
+    /// Copies delivered to the main actor, counted or dropped.
+    private(set) var deliveriesForTesting = 0
+    /// Called when `finish()` is about to wait for a running periodic save.
+    var finishWillWaitForTesting: (() -> Void)?
     func savingForTesting() async { await saving?.value }
     var laneBusy: Bool { deps.lane.isBusy }
     /// The periodic save, now.

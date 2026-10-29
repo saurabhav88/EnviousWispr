@@ -2590,6 +2590,9 @@ package final class WisprBootstrapper {
     meetingInputs.callSpeakerTarget = { [meetingBox] family in
       meetingBox.callDetection?.speakerTarget(for: family)
     }
+    meetingInputs.callSpeakerSourceRevision = { [meetingBox] in
+      meetingBox.callDetection?.speakerSourceRevision ?? 0
+    }
     meetingInputs.liveVocabulary = { [weak livePreview] in
       livePreview?.vocabularySnapshot()
         ?? LivePreviewVocabulary(lookups: nil, contextualPhrases: [], dictionaryEnabled: false)

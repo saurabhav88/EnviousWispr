@@ -339,6 +339,9 @@ final class MeetingCoordinator {
     /// #4013 chunk 13A: the one app instance a recording's speaker capture reads for a call
     /// family (`CallDetectionCoordinator.speakerTarget(for:)`); nil when none or ambiguous.
     var callSpeakerTarget: @MainActor (CallAppFamily) -> CallSpeakerTarget? = { _ in nil }
+    /// #4013 chunk 13A: goes up whenever the microphone holders or their pages change
+    /// (`CallDetectionCoordinator.speakerSourceRevision`).
+    var callSpeakerSourceRevision: @MainActor () -> Int = { 0 }
     /// #4013 chunk 13A: the speaker rules in force now and the bundled ones, read without the
     /// network; frozen at recording start. Nil: no speaker capture for this recording.
     var talkerRules: @MainActor () async -> (selected: TalkerRulesSnapshot, bundled: TalkerRules)? =
@@ -2407,6 +2410,7 @@ final class MeetingCoordinator {
       surface: surface, family: family, anchor: recorder.anchor, rules: rules.selected, lag: lag,
       dependencies: .init(
         target: { [weak self] in self?.deps.callSpeakerTarget(family) },
+        sourceRevision: { [weak self] in self?.deps.callSpeakerSourceRevision() ?? 0 },
         capture: { capture($0, family) }, isTrusted: deps.isAccessibilityTrusted,
         isDictationIdle: { [weak self] in self?.deps.isDictationIdle() ?? false },
         save: { [weak self] log in

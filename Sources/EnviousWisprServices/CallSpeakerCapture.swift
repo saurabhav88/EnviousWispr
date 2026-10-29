@@ -108,9 +108,9 @@ package enum CallSpeakerCapture {
     for window in windows {
       guard let root = walk.node(window, depth: 0) else { continue }
       var title: String?
-      switch access.read(window, .title) {
-      case .text(let text): title = text
-      case .failed: walk.unreadable = true
+      switch walk.read(window, .title) {
+      case .text(let text)?: title = text
+      case .failed?: walk.unreadable = true
       default: break
       }
       copied.append(CallAXWindow(title: title, root: root))
@@ -145,6 +145,16 @@ package enum CallSpeakerCapture {
       self.keepPage = keepPage
     }
 
+    /// One read, or nil without asking the app once the time budget is spent (the copy is then
+    /// truncated), so a slow app is not messaged past the budget.
+    mutating func read(_ element: Element, _ attribute: CallAXAttribute) -> CallAXRead<Element>? {
+      guard access.now() < deadline else {
+        truncated = true
+        return nil
+      }
+      return access.read(element, attribute)
+    }
+
     /// Whether `element` was copied already; records it when not.
     mutating func seen(_ element: Element) -> Bool {
       let key = access.hash(element)
@@ -154,9 +164,9 @@ package enum CallSpeakerCapture {
     }
 
     mutating func text(_ element: Element, _ attribute: CallAXAttribute) -> String? {
-      switch access.read(element, attribute) {
-      case .text(let text): return text
-      case .failed:
+      switch read(element, attribute) {
+      case .text(let text)?: return text
+      case .failed?:
         unreadable = true
         return nil
       default: return nil
@@ -171,7 +181,8 @@ package enum CallSpeakerCapture {
       }
       guard !seen(element) else { return nil }
       count += 1
-      guard case .text(let role) = access.read(element, .role) else {
+      guard let roleRead = read(element, .role) else { return nil }
+      guard case .text(let role) = roleRead else {
         unreadable = true
         return nil
       }
@@ -180,19 +191,19 @@ package enum CallSpeakerCapture {
       let value = text(element, .value)
       let identifier = text(element, .identifier)
       var classes: [String] = []
-      switch access.read(element, .domClassList) {
-      case .texts(let list): classes = list
-      case .text(let one): classes = [one]
-      case .failed: unreadable = true
+      switch read(element, .domClassList) {
+      case .texts(let list)?: classes = list
+      case .text(let one)?: classes = [one]
+      case .failed?: unreadable = true
       default: break
       }
       var width: Double?
       var height: Double?
-      switch access.read(element, .size) {
-      case .size(let w, let h):
+      switch read(element, .size) {
+      case .size(let w, let h)?:
         width = w
         height = h
-      case .failed: unreadable = true
+      case .failed?: unreadable = true
       default: break
       }
       var url: String?
@@ -203,13 +214,13 @@ package enum CallSpeakerCapture {
       }
       var children: [CallAXNode] = []
       if keptPage {
-        switch access.read(element, .children) {
-        case .elements(let list):
+        switch read(element, .children) {
+        case .elements(let list)?:
           for child in list {
             if let copy = node(child, depth: depth + 1) { children.append(copy) }
-            if unreadable { break }
+            if unreadable || truncated { break }
           }
-        case .missing: break
+        case .missing?, nil: break
         default: unreadable = true
         }
       }

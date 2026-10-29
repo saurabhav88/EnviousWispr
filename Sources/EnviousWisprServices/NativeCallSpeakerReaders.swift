@@ -282,6 +282,34 @@ package enum TeamsAppSpeakerReader {
       sharedNames: rosters.reduce(into: repeatedNames(tileNames)) { $0.formUnion(repeatedNames($1.names)) })
   }
 
+  static let compactViewPrefix = "Meeting compact view | "
+
+  /// The meetings the windows showing meeting content belong to: each such window's title with
+  /// the compact-view prefix removed, so the compact view and its main window are one meeting.
+  /// `nil` when a window showing meeting content has no title (it cannot be matched).
+  package static func meetingTitles(windows: [CallAXWindow]) -> Set<String>? {
+    var titles: Set<String> = []
+    for window in windows where showsMeeting(window.root) {
+      guard let title = window.title, !title.isEmpty else { return nil }
+      let compact = title.hasPrefix(compactViewPrefix)
+      titles.insert(compact ? String(title.dropFirst(compactViewPrefix.count)) : title)
+    }
+    return titles
+  }
+
+  /// Whether a window holds anything this reader reads: a talker label, a roster row, a tile.
+  static func showsMeeting(_ root: CallAXNode) -> Bool {
+    root.allNodes.contains { node in
+      guard let label = node.label else { return node.role == "AXMenuItem" && hasTalkingFrame(node) }
+      switch node.role {
+      case "AXGroup": return label.hasSuffix(speakingSuffix)
+      case "AXRow": return rosterName(label) != nil
+      case "AXMenuItem": return label.hasPrefix(selfTilePrefix) || tileName(label) != nil
+      default: return false
+      }
+    }
+  }
+
   /// `Saurabh Vaish, Muted, Has context menu` (after "Myself video, ") → `Saurabh Vaish`:
   /// trailing tile states removed, the rest kept exactly.
   static func selfTileName(_ tile: String) -> String? {

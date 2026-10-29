@@ -57,7 +57,9 @@ final class CallDetectionCoordinator {
   private var wakeObserver: NSObjectProtocol?
 
   /// The last watcher reading, as it came.
-  private var holders: [CallMicrophoneWatcher.Holder] = []
+  private var holders: [CallMicrophoneWatcher.Holder] = [] {
+    didSet { noteSpeakerSources() }
+  }
   private var complete = false
   private var ambiguous = false
   private var takenAt = Date.distantPast
@@ -71,6 +73,26 @@ final class CallDetectionCoordinator {
   private var evidence:
     [Int32: (holder: CallMicrophoneWatcher.Holder, value: CallEvidenceReader.Evidence, reading: Int)] =
     [:]
+  {
+    didSet { noteSpeakerSources() }
+  }
+  /// #4013 chunk 13A: goes up whenever the active microphone holders, or the call a browser
+  /// holder's page reads as, change; a new reading of the same holders leaves it alone. Speaker
+  /// capture drops a copy taken across a change, even one that changed back.
+  private(set) var speakerSourceRevision = 0
+  private var speakerSources: Set<String> = []
+
+  private func noteSpeakerSources() {
+    var sources: Set<String> = []
+    for holder in holders where holder.input == .active {
+      var page = ""
+      if case .call(let family, _)? = evidence[holder.pid]?.value { page = "\(family)" }
+      sources.insert("\(holder.pid)|\(holder.bundleID)|\(page)")
+    }
+    guard sources != speakerSources else { return }
+    speakerSources = sources
+    speakerSourceRevision += 1
+  }
   /// The evidence read running now; `refreshNow` waits for it.
   private var evidenceTask: Task<Void, Never>?
   private var rereadWanted = false

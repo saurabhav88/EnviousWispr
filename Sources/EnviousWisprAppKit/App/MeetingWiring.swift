@@ -67,6 +67,8 @@ enum MeetingWiring {
     var detectedStartWanted: @MainActor () async -> Bool = { true }
     /// #4013 chunk 13A: the app instance a recording's speaker capture reads for a call family.
     var callSpeakerTarget: @MainActor (CallAppFamily) -> CallSpeakerTarget? = { _ in nil }
+    /// #4013 chunk 13A: the revision of what holds the microphone, for speaker capture.
+    var callSpeakerSourceRevision: @MainActor () -> Int = { 0 }
     /// #4013 chunk 13A: starts the day's talker-rules download without waiting for it
     /// (`TalkerRulesStore.refreshIfDue`, at most once a day). The app passes the live store;
     /// tests never reach the network.
@@ -191,6 +193,7 @@ enum MeetingWiring {
         workChanged: inputs.workChanged,
         isDictationIdle: inputs.isDictationIdle,
         callSpeakerTarget: inputs.callSpeakerTarget,
+        callSpeakerSourceRevision: inputs.callSpeakerSourceRevision,
         talkerRules: { [refreshTalkerRules = inputs.refreshTalkerRules] in
           let selected = await TalkerRulesStore.live.current()
           // The day's download, never waited for: this recording keeps the rules read above.

@@ -69,8 +69,12 @@ package enum CallSpeakerSurfaceReader {
     }
   }
 
-  /// Whether the capture is about one call: a browser capture with exactly one meeting page of
-  /// the family; an app capture taken from the one app instance resolved for the recording.
+  /// Whether the capture is about one call. A browser capture: exactly one meeting page of the
+  /// family. The Teams app: every window showing meeting content belongs to one meeting, the
+  /// compact view matched to its main window by title (observed 2026-10-27: "Meeting with
+  /// <title>" and "Meeting compact view | Meeting with <title>"). The Zoom app: at most one
+  /// meeting window (`zm.meeting.window.main`, the identifier Granola reads). Any other app
+  /// capture comes from the one app instance resolved for the recording.
   package static func scope(
     surface: CallSpeakerSurface, capture: CallAXCapture, family: CallAppFamily
   ) -> CallCaptureContext.Scope {
@@ -80,10 +84,21 @@ package enum CallSpeakerSurfaceReader {
         $0.url.map { CallSpeakerSurfaceChoice.isMeetingPage($0, family: family) } ?? false
       }
       return pages.count == 1 ? .resolved : .unresolved
+    case .teamsApp:
+      guard let titles = TeamsAppSpeakerReader.meetingTitles(windows: capture.windows) else {
+        return .unresolved
+      }
+      return titles.count <= 1 ? .resolved : .unresolved
+    case .zoomApp:
+      let meetings = capture.windows.filter { $0.root.identifier == zoomMeetingWindowID }
+      return meetings.count <= 1 ? .resolved : .unresolved
     default:
       return .resolved
     }
   }
+
+  /// The Zoom app's meeting window.
+  static let zoomMeetingWindowID = "zm.meeting.window.main"
 }
 
 /// Places a capture on the meeting timeline: milliseconds from the recorder's anchor (the host
