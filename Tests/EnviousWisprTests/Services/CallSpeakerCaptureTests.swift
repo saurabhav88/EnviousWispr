@@ -23,6 +23,12 @@ struct CallSpeakerCaptureTests {
     var classes: [Int: [String]] = [:]
     var children: [Int: [Int]] = [:]
     var hashes: [Int: Int] = [:]
+    /// An application element's menu bar.
+    var menuBars: [Int: Int] = [:]
+    /// Elements whose every read costs this much extra time.
+    var slow: Set<Int> = []
+    var slowRead: Duration = .milliseconds(30)
+    var extra: Duration = .zero
     var failing: Set<String> = []
     /// Every `id.attribute` the walk asked for.
     var queried: Set<String> = []
@@ -34,18 +40,20 @@ struct CallSpeakerCaptureTests {
       CallAXTreeAccess<Int>(
         read: { [self] id, attribute in
           ticks += 1
+          if slow.contains(id) { extra += slowRead }
           queried.insert("\(id).\(attribute.rawValue)")
           if failing.contains("\(id).\(attribute.rawValue)") { return .failed }
           switch attribute {
           case .role: return roles[id].map { .text($0) } ?? .missing
           case .children: return .elements(children[id] ?? [])
+          case .menuBar: return menuBars[id].map { .elements([$0]) } ?? .missing
           case .domClassList: return classes[id].map { .texts($0) } ?? .missing
           case .size: return .missing
           default: return texts[id]?[attribute].map { .text($0) } ?? .missing
           }
         },
         hash: { [self] in hashes[$0] ?? $0 }, same: { $0 == $1 },
-        now: { [self] in start.advanced(by: tickPerRead * ticks) })
+        now: { [self] in start.advanced(by: tickPerRead * ticks + extra) })
     }
 
     func node(_ id: Int, _ role: String = "AXGroup", children kids: [Int] = []) {
@@ -57,12 +65,12 @@ struct CallSpeakerCaptureTests {
   private func capture(
     _ tree: Tree, windows: [Int] = [1], bounds: CallAXBounds = .standard,
     policy: CallAXCapturePolicy = .standard, keepPage: @escaping (String) -> Bool = { _ in true },
-    menuBar: Int? = nil
+    app: Int? = nil
   ) -> CallAXCapture {
     var host: UInt64 = 100
     return CallSpeakerCapture.capture(
       windows: windows, access: tree.access(), bounds: bounds, policy: policy, keepPage: keepPage,
-      menuBar: menuBar,
+      app: app,
       hostTime: {
         host += 10
         return host
@@ -77,6 +85,8 @@ struct CallSpeakerCaptureTests {
   private func accountMenuTree(checked: Bool = true) -> Tree {
     let tree = Tree()
     tree.node(1, "AXWindow")
+    tree.node(99, "AXApplication")
+    tree.menuBars[99] = 100
     tree.node(100, "AXMenuBar", children: [101, 102])
     tree.node(101, "AXMenuBarItem")
     tree.node(102, "AXMenuBarItem", children: [103])
@@ -103,31 +113,47 @@ struct CallSpeakerCaptureTests {
 
   @Test("Zoom's checked account is read from its menu bar inside the copy, never pressed")
   func accountMenu() {
-    let read = capture(accountMenuTree(), policy: .zoomApp, menuBar: 100)
+    let read = capture(accountMenuTree(), policy: .zoomApp, app: 99)
     #expect(read.accountTitles == ["Saurabh A Vaish(saurabh@example.com)"])
     #expect(read.completeness == .complete)
     // Other surfaces never read it; an unchecked account is no account.
-    #expect(capture(accountMenuTree(), policy: .standard, menuBar: 100).accountTitles == nil)
+    #expect(capture(accountMenuTree(), policy: .standard, app: 99).accountTitles == nil)
     #expect(capture(accountMenuTree(), policy: .zoomApp).accountTitles == nil)
-    #expect(capture(accountMenuTree(checked: false), policy: .zoomApp, menuBar: 100).accountTitles == [])
-    // A menu that cannot be read gives no account and leaves the call's copy as it was.
-    for failing in ["100.AXChildren", "103.AXChildren", "108.AXTitle"] {
+    // An app with no menu bar has no account to read.
+    let noBar = accountMenuTree()
+    noBar.menuBars = [:]
+    #expect(capture(noBar, policy: .zoomApp, app: 99).accountTitles == nil)
+    #expect(capture(accountMenuTree(checked: false), policy: .zoomApp, app: 99).accountTitles == [])
+    // A menu that cannot be read whole gives no account and leaves the call's copy as it was:
+    // a failed list, a failed title, a failed mark, or another account entry (the unchecked
+    // one beside the checked one) whose identifier could not be read.
+    for failing in [
+      "99.AXMenuBar", "100.AXChildren", "103.AXChildren", "105.AXChildren", "108.AXTitle",
+      "108.AXMenuItemMarkChar", "109.AXIdentifier",
+    ] {
       let tree = accountMenuTree()
       tree.failing = [failing]
-      let copy = capture(tree, policy: .zoomApp, menuBar: 100)
+      let copy = capture(tree, policy: .zoomApp, app: 99)
       #expect(copy.accountTitles == nil, "\(failing)")
       #expect(copy.completeness == .complete, "\(failing)")
     }
-    // A failed mark read is not a check mark.
-    let unmarked = accountMenuTree()
-    unmarked.failing = ["108.AXMenuItemMarkChar"]
-    #expect(capture(unmarked, policy: .zoomApp, menuBar: 100).accountTitles == [])
+    // A submenu longer than the cap is not read at all.
+    let long = accountMenuTree()
+    long.children[107] = [108, 109, 110] + Array(200..<(200 + CallAccountMenu.maximumItems))
+    for id in 200..<(200 + CallAccountMenu.maximumItems) { long.node(id, "AXMenuItem") }
+    #expect(capture(long, policy: .zoomApp, app: 99).accountTitles == nil)
+    // A slow menu after a quick call copy: the copy and its time stand, the account is unknown.
+    let slowMenu = accountMenuTree()
+    slowMenu.slow = Set(99...113)
+    let quick = capture(slowMenu, policy: .zoomApp, app: 99)
+    #expect(quick.completeness == .complete)
+    #expect(quick.accountTitles == nil)
     // A spent budget reads no menu at all.
     let slow = accountMenuTree()
     slow.tickPerRead = .milliseconds(50)
     let late = capture(
       slow, bounds: CallAXBounds(maxNodes: 1_000, maxDepth: 64, budget: .milliseconds(100)),
-      policy: .zoomApp, menuBar: 100)
+      policy: .zoomApp, app: 99)
     #expect(late.accountTitles == nil)
   }
 

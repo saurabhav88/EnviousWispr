@@ -345,6 +345,14 @@ struct NativeCallSpeakerReaderTests {
     ])
     #expect(!unknown.participantListComplete)
     #expect(unknown.participantCount == nil)
+    // So is a row with no identifier that Zoom has not filled yet.
+    let empty = ZoomAppSpeakerReader.read(windows: [
+      zoomPanel(
+        entries: entries, counts: ["Participants (2)"],
+        extraRows: [CallAXNode(role: "AXRow", children: [CallAXNode(role: "AXCell")])])
+    ])
+    #expect(!empty.participantListComplete)
+    #expect(empty.participantCount == nil)
   }
 
   /// SURVEY (2026-10-29): Zoom's account menu titles read `<Display name>(<email>)`.

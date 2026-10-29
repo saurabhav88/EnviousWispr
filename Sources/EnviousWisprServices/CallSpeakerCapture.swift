@@ -124,7 +124,8 @@ package struct CallAXCapture: Sendable, Equatable {
   package let prunedControls: Int
   package let skippedWindows: Int
   /// The titles of the call app's checked accounts (`CallAccountMenu`), read from its menu bar
-  /// in the same copy and time budget; `nil` when not read or not readable. Never pressed.
+  /// after the windows, on the same queue, within its own small budget; `nil` when not read,
+  /// not wholly readable or out of time. Never pressed.
   package let accountTitles: [String]?
 
   package init(
@@ -156,7 +157,7 @@ package enum CallSpeakerCapture {
   package static func capture<Element>(
     windows: [Element], access: CallAXTreeAccess<Element>, bounds: CallAXBounds,
     policy: CallAXCapturePolicy = .standard, keepPage: @escaping (String) -> Bool,
-    menuBar: Element? = nil, hostTime: () -> UInt64
+    app: Element? = nil, hostTime: () -> UInt64
   ) -> CallAXCapture {
     let started = hostTime()
     let deadline = access.now().advanced(by: bounds.budget)
@@ -183,24 +184,30 @@ package enum CallSpeakerCapture {
       }
       copied.append(CallAXWindow(title: title, root: root))
     }
-    // The account is read after the call's windows, inside the same budget; it never makes the
-    // call's copy unreadable or truncated.
-    var accountTitles: [String]?
-    if policy == .zoomApp, let menuBar, !walk.unreadable, !walk.truncated {
-      accountTitles = CallAccountMenu.checkedTitles(menuBar: menuBar) { element, attribute in
-        guard access.now() < deadline else { return nil }
-        let result = access.read(element, attribute)
-        if case .failed = result { return nil }
-        return result
-      }
-    }
     // The budget covers every read, the last element's included, not only node entry.
     if access.now() >= deadline { walk.truncated = true }
     let completeness: CallCaptureContext.Completeness =
       walk.unreadable ? .unreadable : (walk.truncated ? .truncated : .complete)
+    let ended = hostTime()
+    // The account is read after the call's copy is settled, within its own budget, so it never
+    // changes that copy's completeness or timing; anything short of a whole read is unknown.
+    var accountTitles: [String]?
+    if policy == .zoomApp, let app, completeness == .complete {
+      let accountDeadline = access.now().advanced(by: CallAccountMenu.budget)
+      let read: (Element, CallAXAttribute) -> CallAXRead<Element>? = { element, attribute in
+        guard access.now() < accountDeadline else { return nil }
+        let result = access.read(element, attribute)
+        if case .failed = result { return nil }
+        return result
+      }
+      if case .elements(let bars)? = read(app, .menuBar), let menuBar = bars.first {
+        accountTitles = CallAccountMenu.checkedTitles(menuBar: menuBar, read: read)
+        if access.now() >= accountDeadline { accountTitles = nil }
+      }
+    }
     return CallAXCapture(
       windows: copied, documents: walk.documents, completeness: completeness,
-      readStartHostTime: started, readEndHostTime: hostTime(), nodesVisited: walk.count,
+      readStartHostTime: started, readEndHostTime: ended, nodesVisited: walk.count,
       failedReads: walk.failedReads, prunedControls: walk.prunedControls,
       skippedWindows: skippedWindows, accountTitles: accountTitles)
   }
@@ -389,13 +396,9 @@ package enum CallSpeakerCapture {
     _ = liveRead(app, .role)
     switch liveRead(app, .windows) {
     case .elements(let windows):
-      var menuBar: AXUIElement?
-      if policy == .zoomApp, case .elements(let bar) = liveRead(app, .menuBar) {
-        menuBar = bar.first
-      }
       return capture(
         windows: windows, access: liveAccess, bounds: bounds, policy: policy, keepPage: keepPage,
-        menuBar: menuBar, hostTime: { mach_absolute_time() })
+        app: app, hostTime: { mach_absolute_time() })
     case .missing:
       let now = mach_absolute_time()
       return CallAXCapture(
@@ -421,37 +424,52 @@ package enum CallAccountMenu {
   static let accountIdentifier = "menuItemDidClicked:"
   static let addAccountIdentifier = "addAccount:"
   static let checkedMark = "\u{2713}"
-  /// Reads are bounded: the app menu's items, then one level of submenus.
+  /// The most items any menu read here may hold; a longer menu is not read at all.
   static let maximumItems = 64
+  /// The whole account read's own time; measured at about 1 ms (2026-10-29).
+  static let budget: Duration = .milliseconds(50)
 
-  /// The checked account items' titles in the submenu that holds `addAccount:`, or `nil` when
-  /// the menu could not be read or no such submenu exists. `read` answers `nil` for a failed
-  /// read or a spent budget.
+  /// The checked account items' titles in the submenu that holds `addAccount:`, or `nil` unless
+  /// the read was whole: `read` answers `nil` for a failed read or a spent budget, and any such
+  /// answer, or a menu longer than `maximumItems`, makes the account unknown. A missing check
+  /// mark is an unchecked account; a mark that could not be read is unknown.
   package static func checkedTitles<Element>(
     menuBar: Element, read: (Element, CallAXAttribute) -> CallAXRead<Element>?
   ) -> [String]? {
+    /// `nil` when the children could not be read whole.
     func elements(_ element: Element) -> [Element]? {
       switch read(element, .children) {
-      case .elements(let list)?: return Array(list.prefix(maximumItems))
+      case .elements(let list)?: return list.count > maximumItems ? nil : list
       case .missing?: return []
       default: return nil
       }
     }
-    func text(_ element: Element, _ attribute: CallAXAttribute) -> String? {
-      if case .text(let text)? = read(element, attribute) { return text }
-      return nil
+    /// `.some(nil)` is a missing attribute; `nil` is a read that did not answer.
+    func text(_ element: Element, _ attribute: CallAXAttribute) -> String?? {
+      switch read(element, attribute) {
+      case .text(let text)?: return .some(text)
+      case .missing?: return .some(nil)
+      default: return nil
+      }
     }
-    guard let bar = elements(menuBar), bar.count > 1,
-      let appMenu = elements(bar[1])?.first, let items = elements(appMenu)
+    guard let bar = elements(menuBar), bar.count > 1, let appMenu = elements(bar[1])?.first,
+      let items = elements(appMenu)
     else { return nil }
     for item in items {
-      guard let submenu = elements(item)?.first, let entries = elements(submenu) else { continue }
-      let identifiers = entries.map { text($0, .identifier) }
+      guard let submenus = elements(item) else { return nil }
+      guard let submenu = submenus.first else { continue }
+      guard let entries = elements(submenu) else { return nil }
+      var identifiers: [String?] = []
+      for entry in entries {
+        guard let identifier = text(entry, .identifier) else { return nil }
+        identifiers.append(identifier)
+      }
       guard identifiers.contains(addAccountIdentifier) else { continue }
       var titles: [String] = []
       for (entry, identifier) in zip(entries, identifiers) where identifier == accountIdentifier {
-        guard text(entry, .markChar) == checkedMark else { continue }
-        guard let title = text(entry, .title) else { return nil }
+        guard let mark = text(entry, .markChar) else { return nil }
+        guard mark == checkedMark else { continue }
+        guard let title = text(entry, .title) ?? nil else { return nil }
         titles.append(title)
       }
       return titles

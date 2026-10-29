@@ -174,7 +174,8 @@ package enum ZoomAppSpeakerReader {
         }
       } else if let identifier = cell.identifier, notJoinedRowIdentifiers.contains(identifier) {
         continue
-      } else if cell.allNodes.contains(where: { $0.role == "AXStaticText" && $0.label != nil }) {
+      } else {
+        // A row of an unobserved kind, filled or still empty, may be a person.
         rows.unresolved = true
       }
     }
