@@ -499,8 +499,12 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
       firstMs: ms, lastMs: ms)
   }
 
+  /// The same names spelled the same, in any order: a call app can list the same two people the
+  /// other way round after a view change, and that is still the same stretch.
   private static func sameSpellings(_ a: [String], _ b: [String]) -> Bool {
-    a.count == b.count && zip(a, b).allSatisfy(CallSpeakerRun.sameSpelling)
+    a.count == b.count
+      && a.allSatisfy { x in b.contains { CallSpeakerRun.sameSpelling(x, $0) } }
+      && b.allSatisfy { y in a.contains { CallSpeakerRun.sameSpelling(y, $0) } }
   }
 
   /// Anything that is not a complete participant list read in time: no run of them goes on.

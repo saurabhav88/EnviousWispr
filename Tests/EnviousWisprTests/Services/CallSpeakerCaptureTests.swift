@@ -870,6 +870,18 @@ struct CallSpeakerCaptureTests {
     #expect(pairs.first?.selfNames == ["Saurabh Vaish"])
   }
 
+  @Test("the same two people listed the other way round continue the same stretch")
+  func pairStretchIgnoresOrder() {
+    var log = CallSpeakerAccumulator(surface: .zoomApp, rules: nil, lag: nil)
+    log.add(pair(["Alex Rivera", user], marked: [], account: [user]), context: Self.good, observationMs: 1_000)
+    log.add(pair([user, "Alex Rivera"], marked: [], account: [user]), context: Self.good, observationMs: 1_500)
+    // A different spelling of one name is a different stretch.
+    log.add(pair([user, "Alex rivera"], marked: [], account: [user]), context: Self.good, observationMs: 2_000)
+    let pairs = log.log.segments[0].pairs ?? []
+    #expect(pairs.map(\.firstMs) == [1_000, 2_000])
+    #expect(pairs.map(\.lastMs) == [1_500, 2_000])
+  }
+
   @Test("another reading or any interruption ends a stretch at its last reading")
   func pairStretchInterruptions() {
     func run(_ interrupt: (inout CallSpeakerAccumulator) -> Void) -> [CallPairStretch] {
