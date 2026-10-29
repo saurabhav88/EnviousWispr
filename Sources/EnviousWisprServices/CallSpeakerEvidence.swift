@@ -211,11 +211,15 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
 
   package var log: CallSpeakerLog {
     CallSpeakerLog(
-      surface: surface, source: CallSpeakerSurfaceChoice.source(for: surface), status: status,
-      lag: lag, rules: rules,
-      roster: CallSpeakerRoster(
-        names: nameOrder.flatMap { Array(repeating: $0, count: nameCounts[$0] ?? 0) },
-        selfNames: selfNames),
-      rosterFromParticipantList: fromParticipantList, observations: observations)
+      rules: rules,
+      segments: [
+        CallSpeakerSegment(
+          startMs: 0, endMs: nil, endReason: nil, surface: surface,
+          source: CallSpeakerSurfaceChoice.source(for: surface), status: status, lag: lag,
+          roster: CallSpeakerRoster(
+            names: nameOrder.flatMap { Array(repeating: $0, count: nameCounts[$0] ?? 0) },
+            selfNames: selfNames),
+          rosterFromParticipantList: fromParticipantList, observations: observations)
+      ])
   }
 }

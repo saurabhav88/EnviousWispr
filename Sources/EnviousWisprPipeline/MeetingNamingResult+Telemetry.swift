@@ -14,7 +14,8 @@ extension MeetingNamingResult {
   /// - `lagUnmeasured`: no saved indicator correction (an older log, or none configured).
   /// - `noEligibleSpeakers`: no one else spoke, or eligibility was not supplied.
   package func pass(log: CallSpeakerLog?) -> SpeakerNamingPass {
-    let surface = SpeakerNamingSummary.Surface(log?.surface)
+    // A recording read from more than one surface reports none, never its last.
+    let surface = SpeakerNamingSummary.Surface(log?.singleSurface)
     let reason: SpeakerNamingSummary.Outcome?
     switch outcome {
     case .named:

@@ -13,6 +13,29 @@ import Testing
 @MainActor
 struct SpeakerRenameSuggestionsTests {
 
+  @Test("permission shows as missing only when no segment of the recording could read its call")
+  func permissionAcrossSegments() {
+    func segment(_ start: Int, _ status: CallSpeakerObservationStatus, _ names: [String])
+      -> CallSpeakerSegment
+    {
+      CallSpeakerSegment(
+        startMs: start, endMs: start + 1_000, endReason: .sourceChanged, surface: .meet,
+        source: .rules, status: status, lag: nil,
+        roster: CallSpeakerRoster(names: names, selfNames: []), rosterFromParticipantList: nil,
+        observations: [])
+    }
+    let mixed = CallSpeakerEvidence(
+      CallSpeakerLog(
+        rules: nil,
+        segments: [segment(0, .noPermission, []), segment(2_000, .observed, ["Alex Rivera"])]))
+    #expect(!mixed.permissionMissing)
+    #expect(mixed.roster.names == ["Alex Rivera"])
+    let blocked = CallSpeakerEvidence(
+      CallSpeakerLog(rules: nil, segments: [segment(0, .noPermission, [])]))
+    #expect(blocked.permissionMissing)
+    #expect(!CallSpeakerEvidence(CallSpeakerLog(rules: nil, segments: [])).permissionMissing)
+  }
+
   @Test("the user's names come first, then the participants without the user, each listed once")
   func combineAndOrder() {
     let suggestions = SpeakerRenameSuggestions(

@@ -63,14 +63,16 @@ struct SpeakerRenameSuggestions: Equatable, Sendable {
 
 /// What History shows from a meeting's saved speaker evidence (#4013): the call's roster for the
 /// rename list, and whether the recording positively noted that Accessibility was not allowed.
-/// A missing, older or unreadable file gives no evidence at all, never a missing permission.
+/// A missing, older or unreadable file gives no evidence at all, never a missing permission; a
+/// recording with any segment that could read its call never shows permission as missing.
 struct CallSpeakerEvidence: Equatable {
   let roster: CallSpeakerRoster
   let permissionMissing: Bool
 
   init(_ log: CallSpeakerLog) {
-    roster = log.roster
-    permissionMissing = log.status == .noPermission
+    roster = log.combinedRoster
+    let statuses = log.segments.map(\.status)
+    permissionMissing = statuses.contains(.noPermission) && !statuses.contains(.observed)
   }
 }
 

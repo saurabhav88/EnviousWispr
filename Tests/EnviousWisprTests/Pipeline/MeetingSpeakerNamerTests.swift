@@ -73,6 +73,89 @@ struct MeetingSpeakerNamerTests {
       composition: Self.composition(turns), eligibility: eligibility, log: log)
   }
 
+  // MARK: - Segments (#4013 13B)
+
+  /// One segment of `log(...)`'s shape between `start` and `end`.
+  private static func segment(
+    _ start: Int, _ end: Int?, _ samples: [(Int, [String])], roster: [String], lag: Int? = 0,
+    status: CallSpeakerObservationStatus? = .observed, surface: CallSpeakerSurface = .teamsApp
+  ) -> CallSpeakerSegment {
+    CallSpeakerSegment(
+      startMs: start, endMs: end, endReason: end == nil ? nil : .sourceChanged, surface: surface,
+      source: .app, status: status, lag: lag.map { CallSpeakerLag(milliseconds: $0) },
+      roster: CallSpeakerRoster(names: roster, selfNames: []), rosterFromParticipantList: true,
+      observations: samples.map { CallSpeakerObservation(observationMs: $0.0, speaking: $0.1) })
+  }
+
+  @Test("votes from two segments add up, each placed by its own lag")
+  func segmentsAddUp() {
+    // Speaker A talks 0-5 s; each segment alone has two votes, too few to name.
+    let turns = [Self.turn(Self.a, 0, 5_000), Self.turn(Self.b, 6_000, 20_000)]
+    let first = Self.segment(
+      0, 3_000, [(1_000, ["Alex Rivera"]), (1_100, ["Alex Rivera"])], roster: ["Alex Rivera"])
+    // Observed at 4.2-4.3 s with a 300 ms lag: the voice was at 3.9-4.0 s, inside A.
+    let second = Self.segment(
+      3_000, nil, [(4_200, ["Alex Rivera"]), (4_300, ["Alex Rivera"])], roster: ["Alex Rivera"],
+      lag: 300, surface: .zoomApp)
+    let log = CallSpeakerLog(rules: nil, segments: [first, second])
+    let result = propose(turns, Self.eligibility([Self.a, Self.b]), log)
+    #expect(result.proposals == [Self.a: "Alex Rivera"])
+    #expect(result.outcome == .named)
+  }
+
+  @Test("a name one segment shows for two people is never named from another segment")
+  func sharedInAnySegment() {
+    let turns = [Self.turn(Self.a, 0, 10_000)]
+    let first = Self.segment(0, 1_000, [], roster: ["Alex Rivera", "Alex Rivera"])
+    let second = Self.segment(
+      1_000, nil, Self.votes("Alex Rivera", from: 2_000, count: 6), roster: ["Alex Rivera"])
+    let log = CallSpeakerLog(rules: nil, segments: [first, second])
+    #expect(propose(turns, Self.eligibility([Self.a]), log).proposals.isEmpty)
+  }
+
+  @Test("a segment that cannot vote does not stop one that can")
+  func unusableSegmentSkipped() {
+    let turns = [Self.turn(Self.a, 0, 10_000)]
+    let blocked = Self.segment(0, 1_000, [], roster: [], status: .noPermission)
+    let good = Self.segment(
+      1_000, nil, Self.votes("Alex Rivera", from: 2_000, count: 4), roster: ["Alex Rivera"])
+    let log = CallSpeakerLog(rules: nil, segments: [blocked, good])
+    #expect(propose(turns, Self.eligibility([Self.a]), log).proposals == [Self.a: "Alex Rivera"])
+  }
+
+  @Test("no segment: no call read; all segments refused for one reason: that reason; mixed: unknown")
+  func segmentRefusals() {
+    let turns = [Self.turn(Self.a, 0, 10_000)]
+    let eligible = Self.eligibility([Self.a])
+    #expect(propose(turns, eligible, CallSpeakerLog(rules: nil, segments: [])).outcome == .noLog)
+    let noPermission = CallSpeakerLog(
+      rules: nil,
+      segments: [
+        Self.segment(0, 1_000, [], roster: [], status: .noPermission),
+        Self.segment(2_000, nil, [], roster: [], status: .noPermission),
+      ])
+    #expect(propose(turns, eligible, noPermission).outcome == .noPermission)
+    let mixed = CallSpeakerLog(
+      rules: nil,
+      segments: [
+        Self.segment(0, 1_000, [], roster: [], status: .noPermission),
+        Self.segment(2_000, nil, [], roster: [], lag: nil),
+      ])
+    #expect(propose(turns, eligible, mixed).outcome == .statusUnknown)
+  }
+
+  @Test("a recording read from two surfaces reports no surface in telemetry")
+  func mixedSurfaceTelemetry() {
+    let log = CallSpeakerLog(
+      rules: nil,
+      segments: [
+        Self.segment(0, 1_000, [], roster: [], surface: .zoomApp),
+        Self.segment(2_000, nil, [], roster: [], surface: .teamsApp),
+      ])
+    let pass = MeetingNamingResult(proposals: [:], outcome: .noSignal).pass(log: log)
+    #expect(pass == .abstained(surface: nil, outcome: .noSignal))
+  }
+
   // MARK: - Thresholds
 
   @Test("three votes name a speaker; two do not")

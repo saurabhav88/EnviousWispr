@@ -111,26 +111,32 @@ public struct FrozenTalkerRules: Sendable, Equatable, Codable {
   }
 }
 
-/// Everything a recording's speaker readers saved, written beside the meeting as
-/// `call-speakers.json` and kept on this Mac only (#4013 §3, r2 item 3).
-///
-/// Surface, source and status are stored as text: an unknown value from a newer build reads as
-/// unknown (`nil`), never as a guess and never as a decode failure. A `formatVersion` newer than
-/// this build understands fails to decode, so the caller keeps the composer's fallback labels.
-///
-/// Decoding also checks the log's shape (bounded times and lag, observations in time order,
-/// non-empty names, a bounded frozen payload) and refuses the whole log when any part is wrong.
-/// It does not judge the frozen rules' content: that belongs to the rules store's decoder, which
-/// a later pass applies when it thaws them.
-public struct CallSpeakerLog: Sendable, Equatable {
-  public static let currentFormatVersion = 1
+/// Why a segment's collection ended. Stored as text, like the surface.
+public enum CallSpeakerSegmentEnd: String, Sendable, Equatable, CaseIterable {
+  /// The call moved to another app, page or app instance.
+  case sourceChanged = "source_changed"
+  /// No single call could be read any more (it ended, or two calls competed).
+  case sourceLost = "source_lost"
+  /// The recording stopped, was quit or failed.
+  case recordingEnded = "recording_ended"
+  /// A format-1 log: the whole recording as one segment, with no known boundaries.
+  case legacy
+}
 
-  public let formatVersion: Int
+/// One stretch of a recording read from one call source (#4013 13B): one surface, its source,
+/// status and lag, and what it saw. Times are milliseconds on the recording's clock (the
+/// recorder's host-time anchor). A recording that changed calls, or lost and found its call
+/// again, has several, in time order, never overlapping; a gap between two is time nothing was
+/// read.
+public struct CallSpeakerSegment: Sendable, Equatable {
+  public let startMs: Int
+  /// `nil` for a segment still collecting, or a format-1 log's only segment.
+  public let endMs: Int?
+  public let endReasonRaw: String?
   public let surfaceRaw: String?
   public let sourceRaw: String?
   public let statusRaw: String?
   public let lag: CallSpeakerLag?
-  public let rules: FrozenTalkerRules?
   public let roster: CallSpeakerRoster
   /// Whether `roster` came from the call app's participant list (true), only from tiles, where
   /// one person can appear twice and two can share a name (false), or is not known (`nil`, a log
@@ -143,47 +149,173 @@ public struct CallSpeakerLog: Sendable, Equatable {
   public var status: CallSpeakerObservationStatus? {
     statusRaw.flatMap(CallSpeakerObservationStatus.init(rawValue:))
   }
+  public var endReason: CallSpeakerSegmentEnd? {
+    endReasonRaw.flatMap(CallSpeakerSegmentEnd.init(rawValue:))
+  }
 
   public init(
-    surface: CallSpeakerSurface?, source: CallSpeakerSource?,
-    status: CallSpeakerObservationStatus?, lag: CallSpeakerLag?, rules: FrozenTalkerRules?,
+    startMs: Int, endMs: Int?, endReason: CallSpeakerSegmentEnd?, surface: CallSpeakerSurface?,
+    source: CallSpeakerSource?, status: CallSpeakerObservationStatus?, lag: CallSpeakerLag?,
     roster: CallSpeakerRoster, rosterFromParticipantList: Bool?,
     observations: [CallSpeakerObservation]
   ) {
-    self.formatVersion = Self.currentFormatVersion
+    self.startMs = startMs
+    self.endMs = endMs
+    self.endReasonRaw = endReason?.rawValue
     self.surfaceRaw = surface?.rawValue
     self.sourceRaw = source?.rawValue
     self.statusRaw = status?.rawValue
     self.lag = lag
-    self.rules = rules
     self.roster = roster
     self.rosterFromParticipantList = rosterFromParticipantList
     self.observations = observations
   }
 
-  /// The first shape problem, or `nil` when the log may be admitted as evidence.
+  /// The first shape problem, or `nil` when the segment may be admitted as evidence.
   public var shapeProblem: String? {
+    let clock = 0...CallSpeakerObservation.maximumObservationMs
+    guard clock.contains(startMs) else { return "startMs" }
+    if let endMs, !(clock.contains(endMs) && endMs >= startMs) { return "endMs" }
     if let lag, !(-CallSpeakerLag.maximumMagnitudeMs...CallSpeakerLag.maximumMagnitudeMs).contains(
       lag.milliseconds)
     {
       return "lag"
     }
+    if !(roster.names + roster.selfNames).allSatisfy(CallSpeakerLog.isName) { return "roster" }
+    var previous = startMs
+    for (index, observation) in observations.enumerated() {
+      guard clock.contains(observation.observationMs) else {
+        return "observations[\(index)].observationMs"
+      }
+      guard observation.observationMs >= previous else {
+        return "observations[\(index)] out of order or before the segment"
+      }
+      if let endMs, observation.observationMs > endMs {
+        return "observations[\(index)] after the segment"
+      }
+      guard observation.speaking.allSatisfy(CallSpeakerLog.isName) else {
+        return "observations[\(index)].speaking"
+      }
+      previous = observation.observationMs
+    }
+    return nil
+  }
+}
+
+extension CallSpeakerSegment: Codable {
+  private enum CodingKeys: String, CodingKey {
+    case startMs, endMs, endReason, surface, source, status, lag, roster
+    case rosterFromParticipantList, observations
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    startMs = try container.decode(Int.self, forKey: .startMs)
+    endMs = try container.decodeIfPresent(Int.self, forKey: .endMs)
+    endReasonRaw = try container.decodeIfPresent(String.self, forKey: .endReason)
+    surfaceRaw = try container.decodeIfPresent(String.self, forKey: .surface)
+    sourceRaw = try container.decodeIfPresent(String.self, forKey: .source)
+    statusRaw = try container.decodeIfPresent(String.self, forKey: .status)
+    lag = try container.decodeIfPresent(CallSpeakerLag.self, forKey: .lag)
+    roster = try container.decodeIfPresent(CallSpeakerRoster.self, forKey: .roster) ?? .empty
+    rosterFromParticipantList = try container.decodeIfPresent(
+      Bool.self, forKey: .rosterFromParticipantList)
+    observations =
+      try container.decodeIfPresent([CallSpeakerObservation].self, forKey: .observations) ?? []
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(startMs, forKey: .startMs)
+    try container.encodeIfPresent(endMs, forKey: .endMs)
+    try container.encodeIfPresent(endReasonRaw, forKey: .endReason)
+    try container.encodeIfPresent(surfaceRaw, forKey: .surface)
+    try container.encodeIfPresent(sourceRaw, forKey: .source)
+    try container.encodeIfPresent(statusRaw, forKey: .status)
+    try container.encodeIfPresent(lag, forKey: .lag)
+    try container.encode(roster, forKey: .roster)
+    try container.encodeIfPresent(rosterFromParticipantList, forKey: .rosterFromParticipantList)
+    try container.encode(observations, forKey: .observations)
+  }
+}
+
+/// Everything a recording's speaker readers saved, written beside the meeting as
+/// `call-speakers.json` and kept on this Mac only (#4013 §3, r2 item 3).
+///
+/// Format 2 (#4013 13B): the talker rules frozen once for the whole recording, and one segment
+/// per stretch read from one call source. A format-1 log (one surface for the whole recording)
+/// reads as one `legacy` segment from 0 with no end. Surface, source, status and end reason are
+/// stored as text: an unknown value from a newer build reads as unknown (`nil`), never as a
+/// guess and never as a decode failure. A `formatVersion` newer than this build understands
+/// fails to decode, so the caller keeps the composer's fallback labels.
+///
+/// Decoding also checks the log's shape (each segment's bounds, lag, names and observations in
+/// time order inside it; segments in order without overlap; a bounded frozen payload) and
+/// refuses the whole log when any part is wrong. It does not judge the frozen rules' content:
+/// that belongs to the rules store's decoder, which a later pass applies when it thaws them.
+public struct CallSpeakerLog: Sendable, Equatable {
+  public static let currentFormatVersion = 2
+  /// Far more call changes than any recording has; bounds the work of reading a damaged file.
+  public static let maximumSegments = 1_000
+
+  public let formatVersion: Int
+  public let rules: FrozenTalkerRules?
+  public let segments: [CallSpeakerSegment]
+
+  public init(rules: FrozenTalkerRules?, segments: [CallSpeakerSegment]) {
+    self.formatVersion = Self.currentFormatVersion
+    self.rules = rules
+    self.segments = segments
+  }
+
+  /// The one surface every segment shares, or `nil` with none or more than one (a mixed
+  /// recording is never reported as its last surface).
+  public var singleSurface: CallSpeakerSurface? {
+    let surfaces = Set(segments.map(\.surfaceRaw))
+    guard surfaces.count == 1, let only = surfaces.first else { return nil }
+    return only.flatMap(CallSpeakerSurface.init(rawValue:))
+  }
+
+  /// Every segment's participants as one list: each name as often as the segment that showed
+  /// it most (a person seen in two calls is one person; two people sharing a name stay two),
+  /// in first-seen order; self names from every segment.
+  public var combinedRoster: CallSpeakerRoster {
+    var counts: [String: Int] = [:]
+    var order: [String] = []
+    var selfNames: [String] = []
+    for segment in segments {
+      var here: [String: Int] = [:]
+      for name in segment.roster.names { here[name, default: 0] += 1 }
+      for name in segment.roster.names where counts[name] == nil {
+        order.append(name)
+        counts[name] = 0
+      }
+      for (name, count) in here { counts[name] = max(counts[name] ?? 0, count) }
+      for name in segment.roster.selfNames where !selfNames.contains(name) { selfNames.append(name) }
+    }
+    return CallSpeakerRoster(
+      names: order.flatMap { Array(repeating: $0, count: counts[$0] ?? 0) }, selfNames: selfNames)
+  }
+
+  /// The first shape problem, or `nil` when the log may be admitted as evidence.
+  public var shapeProblem: String? {
     if let rules {
       if rules.version < 1 { return "rules.version" }
       if rules.payload.isEmpty || rules.payload.utf8.count > FrozenTalkerRules.maximumPayloadBytes {
         return "rules.payload"
       }
     }
-    if !(roster.names + roster.selfNames).allSatisfy(Self.isName) { return "roster" }
-    var previous = 0
-    for (index, observation) in observations.enumerated() {
-      guard (0...CallSpeakerObservation.maximumObservationMs).contains(observation.observationMs)
-      else { return "observations[\(index)].observationMs" }
-      guard observation.observationMs >= previous else { return "observations[\(index)] out of order" }
-      guard observation.speaking.allSatisfy(Self.isName) else {
-        return "observations[\(index)].speaking"
+    guard segments.count <= Self.maximumSegments else { return "segments" }
+    var previousEnd: Int?
+    for (index, segment) in segments.enumerated() {
+      if let problem = segment.shapeProblem { return "segments[\(index)].\(problem)" }
+      if index > 0 {
+        // Only the last segment may be open; the next starts at or after its end.
+        guard let end = previousEnd, segment.startMs >= end else {
+          return "segments[\(index)] overlaps the one before"
+        }
       }
-      previous = observation.observationMs
+      previousEnd = segment.endMs
     }
     return nil
   }
@@ -191,7 +323,7 @@ public struct CallSpeakerLog: Sendable, Equatable {
   /// A display name as a call app shows one: not empty, not a paragraph.
   static let maximumNameLength = 256
 
-  private static func isName(_ name: String) -> Bool {
+  static func isName(_ name: String) -> Bool {
     !name.isEmpty && name.count <= maximumNameLength
   }
 }
@@ -204,8 +336,9 @@ extension CallSpeakerLog: Codable {
   }
 
   private enum CodingKeys: String, CodingKey {
-    case formatVersion, surface, source, status, lag, rules, roster, rosterFromParticipantList
-    case observations
+    case formatVersion, rules, segments
+    // Format 1's single-surface fields.
+    case surface, source, status, lag, roster, rosterFromParticipantList, observations
   }
 
   public init(from decoder: Decoder) throws {
@@ -217,29 +350,66 @@ extension CallSpeakerLog: Codable {
     // Only versions this build wrote are admitted; there was never a version below 1.
     guard version >= 1 else { throw DecodeError.invalid("formatVersion") }
     formatVersion = version
-    surfaceRaw = try container.decodeIfPresent(String.self, forKey: .surface)
-    sourceRaw = try container.decodeIfPresent(String.self, forKey: .source)
-    statusRaw = try container.decodeIfPresent(String.self, forKey: .status)
-    lag = try container.decodeIfPresent(CallSpeakerLag.self, forKey: .lag)
     rules = try container.decodeIfPresent(FrozenTalkerRules.self, forKey: .rules)
-    roster = try container.decodeIfPresent(CallSpeakerRoster.self, forKey: .roster) ?? .empty
-    rosterFromParticipantList = try container.decodeIfPresent(
-      Bool.self, forKey: .rosterFromParticipantList)
-    observations =
-      try container.decodeIfPresent([CallSpeakerObservation].self, forKey: .observations) ?? []
+    if version == 1 {
+      segments = [
+        CallSpeakerSegment(
+          startMs: 0, endMs: nil, endReason: .legacy,
+          surface: nil, source: nil, status: nil, lag: nil, roster: .empty,
+          rosterFromParticipantList: nil, observations: []
+        ).legacy(
+          surfaceRaw: try container.decodeIfPresent(String.self, forKey: .surface),
+          sourceRaw: try container.decodeIfPresent(String.self, forKey: .source),
+          statusRaw: try container.decodeIfPresent(String.self, forKey: .status),
+          lag: try container.decodeIfPresent(CallSpeakerLag.self, forKey: .lag),
+          roster: try container.decodeIfPresent(CallSpeakerRoster.self, forKey: .roster) ?? .empty,
+          rosterFromParticipantList: try container.decodeIfPresent(
+            Bool.self, forKey: .rosterFromParticipantList),
+          observations: try container.decodeIfPresent(
+            [CallSpeakerObservation].self, forKey: .observations) ?? [])
+      ]
+    } else {
+      segments = try container.decodeIfPresent([CallSpeakerSegment].self, forKey: .segments) ?? []
+    }
     if let problem = shapeProblem { throw DecodeError.invalid(problem) }
   }
 
+  /// Always written as the current format.
   public func encode(to encoder: Encoder) throws {
     var container = encoder.container(keyedBy: CodingKeys.self)
-    try container.encode(formatVersion, forKey: .formatVersion)
-    try container.encodeIfPresent(surfaceRaw, forKey: .surface)
-    try container.encodeIfPresent(sourceRaw, forKey: .source)
-    try container.encodeIfPresent(statusRaw, forKey: .status)
-    try container.encodeIfPresent(lag, forKey: .lag)
+    try container.encode(Self.currentFormatVersion, forKey: .formatVersion)
     try container.encodeIfPresent(rules, forKey: .rules)
-    try container.encode(roster, forKey: .roster)
-    try container.encodeIfPresent(rosterFromParticipantList, forKey: .rosterFromParticipantList)
-    try container.encode(observations, forKey: .observations)
+    try container.encode(segments, forKey: .segments)
+  }
+}
+
+extension CallSpeakerSegment {
+  /// A format-1 log's fields as its one segment, with its stored text kept as it was.
+  fileprivate func legacy(
+    surfaceRaw: String?, sourceRaw: String?, statusRaw: String?, lag: CallSpeakerLag?,
+    roster: CallSpeakerRoster, rosterFromParticipantList: Bool?,
+    observations: [CallSpeakerObservation]
+  ) -> CallSpeakerSegment {
+    CallSpeakerSegment(
+      startMs: startMs, endMs: endMs, endReasonRaw: endReasonRaw, surfaceRaw: surfaceRaw,
+      sourceRaw: sourceRaw, statusRaw: statusRaw, lag: lag, roster: roster,
+      rosterFromParticipantList: rosterFromParticipantList, observations: observations)
+  }
+
+  private init(
+    startMs: Int, endMs: Int?, endReasonRaw: String?, surfaceRaw: String?, sourceRaw: String?,
+    statusRaw: String?, lag: CallSpeakerLag?, roster: CallSpeakerRoster,
+    rosterFromParticipantList: Bool?, observations: [CallSpeakerObservation]
+  ) {
+    self.startMs = startMs
+    self.endMs = endMs
+    self.endReasonRaw = endReasonRaw
+    self.surfaceRaw = surfaceRaw
+    self.sourceRaw = sourceRaw
+    self.statusRaw = statusRaw
+    self.lag = lag
+    self.roster = roster
+    self.rosterFromParticipantList = rosterFromParticipantList
+    self.observations = observations
   }
 }

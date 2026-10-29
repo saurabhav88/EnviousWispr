@@ -91,7 +91,7 @@ extension MeetingStore {
   }
 
   /// Replacing is allowed only when nothing is there, or the file states a version this build
-  /// writes. Failing to read or recognise the file is never permission to replace it.
+  /// reads. Failing to read or recognise the file is never permission to replace it.
   private func refuseReplacingUnknownCallSpeakers(_ id: UUID) throws {
     let url = callSpeakersURL(for: id)
     let handle: FileHandle
@@ -109,9 +109,8 @@ extension MeetingStore {
     if stated.formatVersion > CallSpeakerLog.currentFormatVersion {
       throw CallSpeakersError.newerFormat
     }
-    guard stated.formatVersion == CallSpeakerLog.currentFormatVersion else {
-      throw CallSpeakersError.existingUnverifiable
-    }
+    // Any version this build reads (format 1 is read as one segment) may be replaced.
+    guard stated.formatVersion >= 1 else { throw CallSpeakersError.existingUnverifiable }
   }
 
   /// Only the version field, so a log whose other fields are damaged can still be recognised

@@ -94,7 +94,8 @@ struct MeetingCallSpeakersStoreTests {
     arguments: [
       ("{\"formatVersion\":1,\"roster\"", MeetingStore.CallSpeakersLoad.Reason.invalid),
       ("not json", .invalid),
-      (#"{"formatVersion":2}"#, .newerFormat),
+      (#"{"formatVersion":3}"#, .newerFormat),
+      (#"{"formatVersion":2,"segments":[{"startMs":0},{"startMs":10}]}"#, .invalid),
       (#"{"formatVersion":1,"lag":{"milliseconds":-9223372036854775808}}"#, .invalid),
       (#"{"formatVersion":1,"observations":[{"observationMs":-1,"speaking":[]}]}"#, .invalid),
       (
@@ -160,7 +161,7 @@ struct MeetingCallSpeakersStoreTests {
   @Test("a file a newer build wrote is never overwritten, and a malformed log is never written")
   func protectedContent() throws {
     let (store, record) = try makeMeeting()
-    let newer = #"{"formatVersion":2,"future":true}"#
+    let newer = #"{"formatVersion":3,"future":true}"#
     try writeRaw(newer, meeting: record.id, in: store)
     #expect(throws: MeetingStore.CallSpeakersError.newerFormat) {
       try store.saveCallSpeakers(Self.log(), meeting: record.id)
@@ -172,7 +173,10 @@ struct MeetingCallSpeakersStoreTests {
       CallSpeakerObservation(observationMs: 900, speaking: []),
       CallSpeakerObservation(observationMs: 800, speaking: []),
     ])
-    #expect(throws: MeetingStore.CallSpeakersError.invalidLog("observations[1] out of order")) {
+    #expect(
+      throws: MeetingStore.CallSpeakersError.invalidLog(
+        "segments[0].observations[1] out of order or before the segment")
+    ) {
       try store2.saveCallSpeakers(backwards, meeting: record2.id)
     }
     #expect(store2.loadCallSpeakers(meeting: record2.id) == .absent)
@@ -214,6 +218,19 @@ struct MeetingCallSpeakersStoreTests {
       try store.saveCallSpeakers(Self.log(), meeting: record.id)
     }
     #expect(try Data(contentsOf: url) == bytes)
+  }
+
+  @Test("a format-1 file is replaced by a format-2 save")
+  func formatOneReplaced() throws {
+    let (store, record) = try makeMeeting()
+    try writeRaw(#"{"formatVersion":1,"surface":"meet"}"#, meeting: record.id, in: store)
+    try store.saveCallSpeakers(Self.log(), meeting: record.id)
+    guard case .usable(let log) = store.loadCallSpeakers(meeting: record.id) else {
+      Issue.record("the replaced log did not load")
+      return
+    }
+    #expect(log.formatVersion == 2)
+    #expect(log == Self.log())
   }
 
   @Test("a damaged log that says it is this build's version is replaced")

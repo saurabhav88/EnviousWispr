@@ -60,10 +60,10 @@ package struct TalkerRules: Sendable, Equatable {
   /// The correction a recording freezes at its start (#4013 r5 item 3): the selected rules'
   /// value for the surface when that document has one (zero and negative values included),
   /// otherwise the bundled rules' value, otherwise `nil`. An unknown surface stays unknown. Pure:
-  /// it never fetches or rereads rules. The observer resolves it once at recording start and
-  /// stores the result in `CallSpeakerLog.lag` beside the frozen selected document, whose payload
-  /// stays exactly as downloaded; a bundled fallback is never written into that document.
-  /// Transcribe again uses the saved `log.lag`, never today's rules.
+  /// it never fetches or rereads rules. It is resolved once per segment from the rules frozen at
+  /// recording start and stored in `CallSpeakerSegment.lag`, beside the frozen selected document,
+  /// whose payload stays exactly as downloaded; a bundled fallback is never written into that
+  /// document. Transcribe again uses each segment's saved lag, never today's rules.
   package static func recordingStartLag(
     for surface: CallSpeakerSurface?, selected: TalkerRules, bundled: TalkerRules
   ) -> CallSpeakerLag? {

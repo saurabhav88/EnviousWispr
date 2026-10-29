@@ -116,37 +116,57 @@ package enum MeetingSpeakerNamer {
     func none(_ outcome: MeetingNamingResult.Outcome) -> MeetingNamingResult {
       MeetingNamingResult(proposals: [:], outcome: outcome)
     }
-    guard let log else { return none(.noLog) }
-    switch log.status {
-    case .observed: break
-    case .noPermission: return none(.noPermission)
-    case .unreadable: return none(.unreadable)
-    case .unsupported: return none(.unsupported)
-    case nil: return none(.statusUnknown)
+    // A log with no segment read no call at all.
+    guard let log, !log.segments.isEmpty else { return none(.noLog) }
+    // Each segment is evidence on its own: its status, its surface and source, its own lag.
+    var usable: [(segment: CallSpeakerSegment, lag: CallSpeakerLag)] = []
+    var refusals: [MeetingNamingResult.Outcome] = []
+    for segment in log.segments {
+      if let refusal = segmentRefusal(segment, rules: log.rules) {
+        refusals.append(refusal)
+      } else if let lag = segment.lag {
+        usable.append((segment, lag))
+      }
     }
-    if let refusal = evidenceRefusal(log) { return none(refusal) }
+    if usable.isEmpty {
+      // One reason when every segment gives the same one; mixed reasons are not guessed at.
+      let reasons = Set(refusals)
+      return none(reasons.count == 1 ? refusals[0] : .statusUnknown)
+    }
     // `rosterFromParticipantList` is provenance only (#4013 r5 item 1): a tile roster names
     // people too. Only observations admitted by `CallSpeakerAdmission` were saved, and a name
     // two distinct participants share is excluded below.
-    guard let lag = log.lag else { return none(.lagUnmeasured) }
     guard let eligibility else { return none(.noEligibleSpeakers) }
 
     let speech = eligibleSpeech(composition: composition, eligibility: eligibility)
     guard !speech.isEmpty else { return none(.noEligibleSpeakers) }
 
-    let nameable = uniqueRosterNames(log.roster)
-    let selfNames = Set(log.roster.selfNames)
+    // A name is nameable only where its own segment shows it once, and never when any segment
+    // shows it shared or as the user. Votes from every segment add up before any name is chosen.
+    let selfNames = Set(log.segments.flatMap(\.roster.selfNames))
+    let shared = Set(
+      log.segments.flatMap { segment -> [String] in
+        var counts: [String: Int] = [:]
+        for name in segment.roster.names { counts[name, default: 0] += 1 }
+        return counts.filter { $0.value > 1 }.map(\.key)
+      })
     var votes: [String: [String: Int]] = [:]
-    for observation in log.observations {
-      let others = observation.speaking.filter { !selfNames.contains($0) }
-      // Exactly one person talking, and that name names one person on this call.
-      guard others.count == 1, let name = others.first, nameable.contains(name) else { continue }
-      let (aligned, overflow) = observation.observationMs.subtractingReportingOverflow(
-        lag.milliseconds)
-      guard !overflow else { continue }
-      // At most one vote per speaker per observation, however many of its turns overlap.
-      for (speaker, intervals) in speech where intervals.contains(where: { $0.contains(aligned) }) {
-        votes[speaker, default: [:]][name, default: 0] += 1
+    for (segment, lag) in usable {
+      let nameable = uniqueRosterNames(segment.roster).subtracting(shared).subtracting(selfNames)
+      for observation in segment.observations {
+        let others = observation.speaking.filter { !selfNames.contains($0) }
+        // Exactly one person talking, and that name names one person on this call.
+        guard others.count == 1, let name = others.first, nameable.contains(name) else {
+          continue
+        }
+        let (aligned, overflow) = observation.observationMs.subtractingReportingOverflow(
+          lag.milliseconds)
+        guard !overflow else { continue }
+        // At most one vote per speaker per observation, however many of its turns overlap.
+        for (speaker, intervals) in speech where intervals.contains(where: { $0.contains(aligned) })
+        {
+          votes[speaker, default: [:]][name, default: 0] += 1
+        }
       }
     }
     guard !votes.isEmpty else { return none(.noSignal) }
@@ -173,18 +193,37 @@ package enum MeetingSpeakerNamer {
       proposals: proposals, outcome: proposals.isEmpty ? .ambiguous : .named)
   }
 
-  /// Whether the log could only have come from a reader that reports talkers: a talker surface,
-  /// the source that surface's reader writes, and for a rules-driven surface frozen rules that
-  /// still decode (the rules store's own decoder) and allow that surface to report a talker.
-  static func evidenceRefusal(_ log: CallSpeakerLog) -> MeetingNamingResult.Outcome? {
-    guard let surface = log.surface else { return .unsupported }
+  /// Why a segment is not naming evidence, in the order a single-surface log was judged: its
+  /// status, then its reader, then its lag. `nil` when it may vote.
+  static func segmentRefusal(_ segment: CallSpeakerSegment, rules: FrozenTalkerRules?)
+    -> MeetingNamingResult.Outcome?
+  {
+    switch segment.status {
+    case .observed: break
+    case .noPermission: return .noPermission
+    case .unreadable: return .unreadable
+    case .unsupported: return .unsupported
+    case nil: return .statusUnknown
+    }
+    if let refusal = evidenceRefusal(segment, rules: rules) { return refusal }
+    return segment.lag == nil ? .lagUnmeasured : nil
+  }
+
+  /// Whether the segment could only have come from a reader that reports talkers: a talker
+  /// surface, the source that surface's reader writes, and for a rules-driven surface frozen
+  /// rules that still decode (the rules store's own decoder) and allow that surface to report a
+  /// talker.
+  static func evidenceRefusal(_ segment: CallSpeakerSegment, rules frozenRules: FrozenTalkerRules?)
+    -> MeetingNamingResult.Outcome?
+  {
+    guard let surface = segment.surface else { return .unsupported }
     switch surface {
     // Native readers: the app's own words, or Zoom web's layout, never selector rules.
     case .zoomApp, .teamsApp, .zoomWeb:
-      return log.source == .app ? nil : .unsupported
+      return segment.source == .app ? nil : .unsupported
     case .meet, .teamsWeb, .slackApp, .slackWeb:
-      guard log.source == .rules else { return .unsupported }
-      guard let frozen = log.rules, let rules = TalkerRulesSnapshot.thaw(frozen),
+      guard segment.source == .rules else { return .unsupported }
+      guard let frozen = frozenRules, let rules = TalkerRulesSnapshot.thaw(frozen),
         rules.rule(for: surface).mayReportTalker
       else { return .rulesUnusable }
       return nil
