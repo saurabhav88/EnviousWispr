@@ -2385,7 +2385,7 @@ package final class WisprBootstrapper {
           }
           return FileImportPolishGate.readiness(
             provider: provider,
-            savedKey: FileImportPolishGate.savedKey(for: provider, keychain: keychainManager),
+            savedKey: FileImportPolishGate.savedKey(for: provider, keychain: keychainManager, presence: savedKeyPresence),
             hasUnsavedKeyDraft: false,
             importOllamaModel: settings.fileImportLLMProvider == nil
               ? settings.ollamaModel : settings.fileImportOllamaModel,

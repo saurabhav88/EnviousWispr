@@ -31,9 +31,12 @@
       let dispatcher: DevControlDispatcher
       let presence: SavedKeyPresence
       let events: Events
+      let settings: SettingsManager
     }
 
-    private static func make(failing: Bool = false) -> Fixture {
+    private static func make(
+      failing: Bool = false, storage: (any LegacyKeyFileStorage)? = nil
+    ) -> Fixture {
       let presence = SavedKeyPresence()
       let events = Events()
       let status = DevControlFixtures.StatusFake()
@@ -51,10 +54,10 @@
         models: DevControlFixtures.ModelFake().actions,
         dictation: DevControlFixtures.inertDictation(),
         credentials: DevControlFixtures.isolatedCredentials(
-          presence: presence, storage: failing ? FailingStorage() : nil,
+          presence: presence, storage: storage ?? (failing ? FailingStorage() : nil),
           emit: { events.seen.append([$0, $1, $2]) }),
         words: DevControlFixtures.unwrittenWords(), meetings: .unwired())
-      return Fixture(dispatcher: dispatcher, presence: presence, events: events)
+      return Fixture(dispatcher: dispatcher, presence: presence, events: events, settings: settings)
     }
 
     private func payload(_ result: DevControlDispatcher.Result) -> [String: Any]? {
@@ -73,6 +76,32 @@
     }
 
     private static let providers: [LLMProvider] = [.openAI, .gemini, .claude]
+
+    @Test("a cancelled key command reconciles storage without holding dev-write attribution")
+    func cancellationReconcilesWithoutLeakingAttribution() async throws {
+      let storage = ThreadRecordingCredentialStore(pausing: .store)
+      let fx = Self.make(storage: storage)
+      defer { storage.release() }
+      var accepted = false
+      let request = Task {
+        let result = await fx.dispatcher.handle(.keysSet,
+          args: ["provider": "openAI", "value": "synthetic"])
+        accepted = payload(result)?["stored"] as? Bool == true
+      }
+      try #require(await storage.entered.wait())
+      #expect(fx.settings.isDevControlWrite == false)
+      #expect(fx.events.seen.isEmpty)
+      #expect(fx.presence.state(for: .openAI) == .unknown)
+      #expect(fx.presence.hasPendingMutation(for: .openAI) == true)
+      request.cancel()
+      storage.release()
+      await request.value
+      #expect(accepted == true)
+      #expect(fx.presence.hasPendingMutation(for: .openAI) == false)
+      #expect(fx.settings.isDevControlWrite == false)
+      #expect(fx.presence.state(for: .openAI) == .present)
+      #expect(fx.events.seen == [["openAI", "save", "success"]])
+    }
 
     @Test("keys.set stores, reports presence and a started check, and never echoes the key")
     func setStoresWithoutEcho() async throws {

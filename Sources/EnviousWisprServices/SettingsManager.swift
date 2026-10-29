@@ -243,8 +243,17 @@ public final class SettingsManager {
     }
   }
 
+  // #3776: transient provider/ownership identities. Source setters record every change,
+  // including A -> B -> A before a view renders; these are not persisted user settings.
+  package private(set) var dictationProviderSelectionRevision: UInt64 = 0
+  package private(set) var importProviderSelectionRevision: UInt64 = 0
+
   public var llmProvider: LLMProvider {
     didSet {
+      if oldValue != llmProvider {
+        dictationProviderSelectionRevision &+= 1
+        if fileImportLLMProvider == nil { importProviderSelectionRevision &+= 1 }
+      }
       if oldValue != llmProvider {
         TelemetryService.shared.providerChanged(from: oldValue.rawValue, to: llmProvider.rawValue)
       }
@@ -404,6 +413,7 @@ public final class SettingsManager {
   /// following dictation again on the next change.
   public var fileImportLLMProvider: LLMProvider? {
     didSet {
+      if oldValue != fileImportLLMProvider { importProviderSelectionRevision &+= 1 }
       if let chosen = fileImportLLMProvider {
         defaults.set(chosen.rawValue, forKey: "fileImportLLMProvider")
       } else {

@@ -629,6 +629,111 @@ struct KeychainManagerTests {
     #expect(spy.accounts == [KeychainManager.openAIKeyID])  // the cleanup failure was observed
   }
 
+  @Test("migration cannot resurrect a key replaced or cleared by another manager", arguments: [false, true])
+  func migrationAndMutationAreSerialized(clear: Bool) throws {
+    let legacy = TransactionGateLegacyStore(gate: .read)
+    let storage = InMemoryKeychainStore()
+    let first = releaseStyleManager(legacyStore: legacy, keychainStore: storage)
+    let second = releaseStyleManager(legacyStore: legacy, keychainStore: storage)
+    let readDone = DispatchSemaphore(value: 0)
+    let mutationDone = DispatchSemaphore(value: 0)
+    let errors = TransactionErrors()
+    defer { legacy.release.signal() }
+    DispatchQueue.global().async {
+      do { _ = try first.retrieve(key: KeychainManager.openAIKeyID) }
+      catch { errors.record(error) }
+      readDone.signal()
+    }
+    try #require(legacy.entered.wait(timeout: .now() + 5) == .success)
+    DispatchQueue.global().async {
+      do {
+        if clear { try second.delete(key: KeychainManager.openAIKeyID) }
+        else { try second.store(key: KeychainManager.openAIKeyID, value: "new-key") }
+      } catch { errors.record(error) }
+      mutationDone.signal()
+    }
+    // deadline-fallback: correct exclusion keeps the mutation behind the deliberately parked
+    // migration. Release that gate when the second operation cannot finish yet. The wait is
+    // a deadlock net, not a performance assertion; this negative boundary needs one second.
+    let finishedEarly = mutationDone.wait(timeout: .now() + 1) == .success
+    legacy.release.signal()
+    try #require(readDone.wait(timeout: .now() + 5) == .success)
+    if finishedEarly == false {
+      try #require(mutationDone.wait(timeout: .now() + 5) == .success)
+    }
+    #expect(errors.messages.isEmpty)
+    #expect(storage.storedValue(service: testService, account: KeychainManager.openAIKeyID)
+      == (clear ? nil : "new-key"))
+  }
+
+  @Test("rollback cannot overwrite a newer transaction")
+  func rollbackIsInsideTransaction() throws {
+    let legacy = TransactionGateLegacyStore(gate: .failingDelete)
+    let storage = InMemoryKeychainStore()
+    try storage.store(service: testService, account: KeychainManager.openAIKeyID, value: "old-key")
+    let first = releaseStyleManager(legacyStore: legacy, keychainStore: storage)
+    let second = releaseStyleManager(legacyStore: legacy, keychainStore: storage)
+    let firstDone = DispatchSemaphore(value: 0)
+    let secondDone = DispatchSemaphore(value: 0)
+    let errors = TransactionErrors()
+    defer { legacy.release.signal() }
+    DispatchQueue.global().async {
+      do {
+        try first.store(key: KeychainManager.openAIKeyID, value: "rejected-key")
+        errors.recordMessage("expected cleanup failure")
+      } catch KeyStoreError.deleteFailed { }
+      catch { errors.record(error) }
+      firstDone.signal()
+    }
+    try #require(legacy.entered.wait(timeout: .now() + 5) == .success)
+    DispatchQueue.global().async {
+      do { try second.store(key: KeychainManager.openAIKeyID, value: "new-key") }
+      catch { errors.record(error) }
+      secondDone.signal()
+    }
+    // deadline-fallback: a correctly serialized second store waits for the parked rollback.
+    // The one-second net releases the fixture; no elapsed duration is asserted.
+    let finishedEarly = secondDone.wait(timeout: .now() + 1) == .success
+    legacy.release.signal()
+    try #require(firstDone.wait(timeout: .now() + 5) == .success)
+    if finishedEarly == false {
+      try #require(secondDone.wait(timeout: .now() + 5) == .success)
+    }
+    #expect(errors.messages.isEmpty)
+    #expect(storage.storedValue(service: testService, account: KeychainManager.openAIKeyID) == "new-key")
+  }
+
+  @Test("cleanup callbacks run after the transaction unlocks", arguments: [false, true])
+  func cleanupCallbackIsOutsideTransaction(migrate: Bool) throws {
+    let storage = InMemoryKeychainStore()
+    if migrate == false {
+      try storage.store(service: testService, account: KeychainManager.openAIKeyID, value: "existing-key")
+    }
+    let legacy = FailingDeleteLegacyStore()
+    let probe = releaseStyleManager(legacyStore: legacy, keychainStore: storage)
+    let observations = TransactionErrors()
+    let callbackDone = DispatchSemaphore(value: 0)
+    let sink = LLMTelemetrySink(
+      limbFailure: { _, _, _, _, _ in },
+      legacyKeyCleanupFailed: { _, _ in
+        observations.recordMessage("callback")
+        DispatchQueue.global().async {
+          do { _ = try probe.retrieve(key: KeychainManager.openAIKeyID) }
+          catch { observations.record(error) }
+          callbackDone.signal()
+        }
+        // deadline-fallback: a callback accidentally invoked under the storage lock must
+        // fail and return, so the probe can drain instead of stranding the test process.
+        #expect(callbackDone.wait(timeout: .now() + 1) == .success)
+      }, prewarmStarted: { _, _ in }, retryCompleted: { _, _, _, _, _ in })
+    let manager = KeychainManager(
+      backend: .keychain(service: testService), legacyStore: legacy,
+      keychainStore: storage, telemetrySink: sink)
+    #expect(try manager.retrieve(key: KeychainManager.openAIKeyID)
+      == (migrate ? "legacy" : "existing-key"))
+    #expect(observations.messages == ["callback"])
+  }
+
   private var testService: String { "com.enviouswispr.tests.api-keys" }
 
   private func releaseStyleManager(
@@ -723,4 +828,55 @@ private struct FailingDeleteLegacyStore: LegacyKeyFileStorage {
   func delete(key: String) throws {
     throw KeyStoreError.deleteFailed(-1)
   }
+}
+
+/// All mutable fake state is protected by its lock. Gates only hold a captured transaction
+/// boundary; teardown always releases them, and every blocked wait has a failure deadline.
+private final class TransactionGateLegacyStore: LegacyKeyFileStorage, @unchecked Sendable {
+  enum Gate: Sendable { case read, failingDelete }
+  let entered = DispatchSemaphore(value: 0)
+  let release = DispatchSemaphore(value: 0)
+  private let lock = NSLock()
+  private var value: String? = "legacy"
+  private var armed = true
+  private let gate: Gate
+  init(gate: Gate) { self.gate = gate }
+  func store(key: String, value: String) throws { lock.withLock { self.value = value } }
+  func retrieve(key: String) throws -> String {
+    let (snapshot, hold) = lock.withLock { () -> (String?, Bool) in
+      let hold = gate == .read && armed
+      if hold { armed = false }
+      return (value, hold)
+    }
+    guard let snapshot else { throw KeyStoreError.retrieveFailed(errSecItemNotFound) }
+    if hold { try park() }
+    return snapshot
+  }
+  func delete(key: String) throws {
+    let fail = lock.withLock { () -> Bool in
+      let fail = gate == .failingDelete && armed
+      if fail { armed = false } else { value = nil }
+      return fail
+    }
+    if fail {
+      try park()
+      throw KeyStoreError.deleteFailed(-1)
+    }
+  }
+  private func park() throws {
+    entered.signal()
+    // deadline-fallback: teardown safety if a test fails before releasing this gate.
+    guard release.wait(timeout: .now() + 10) == .success else {
+      throw KeyStoreError.retrieveFailed(-1)
+    }
+  }
+}
+
+/// Recording strings only, never synthetic or customer key values. All access is locked.
+private final class TransactionErrors: @unchecked Sendable {
+  private let lock = NSLock()
+  private var values: [String] = []
+  var messages: [String] { lock.withLock { values } }
+  func recordMessage(_ value: String) { lock.withLock { values.append(value) } }
+  func record(_ error: any Error) { recordMessage(String(describing: type(of: error))) }
 }

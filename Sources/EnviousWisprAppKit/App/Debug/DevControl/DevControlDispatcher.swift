@@ -213,9 +213,9 @@
       case .shortcutSet:
         return setShortcut(args)
       case .keysSet:
-        return setKey(args)
+        return await setKey(args)
       case .keysClear:
-        return clearKey(args)
+        return await clearKey(args)
       case .status:
         return .ok(status())
       case .historyList:
@@ -422,7 +422,7 @@
     /// `{provider, value}`. The value is used for the store and nothing else: no reply, log
     /// line or error message carries it. Admission matches the screen's Save, which is
     /// enabled for any non-empty field and stores it as typed.
-    private func setKey(_ args: [String: Any]) -> Result {
+    private func setKey(_ args: [String: Any]) async -> Result {
       guard Set(args.keys) == ["provider", "value"] else {
         return .failure(.badArgs, "keys.set takes provider and value only")
       }
@@ -432,10 +432,11 @@
       guard let value = args["value"] as? String, !value.isEmpty else {
         return .failure(.badArgs, "value must be a non-empty string")
       }
-      // The save itself changes no setting; the scope covers any synchronous consequence.
-      let outcome = DevControlSettings.attributed(settings) {
-        credentials.save(value, for: provider, settings: settings, surface: .dictation)
-      }
+      // Never hold the synchronous dev-write attribution flag across storage suspension.
+      // Discovery's later model repair retains its own system-write attribution.
+      let admission = credentials.admit(provider, settings: settings, surface: .dictation)
+      let outcome = await credentials.save(value, for: provider, settings: settings,
+        surface: .dictation, admission: admission)
       switch outcome {
       case .failed:
         return .failure(.storeFailed, "the key store refused the save; the key is now unknown")
@@ -446,14 +447,15 @@
     }
 
     /// `{provider}`.
-    private func clearKey(_ args: [String: Any]) -> Result {
+    private func clearKey(_ args: [String: Any]) async -> Result {
       guard Set(args.keys) == ["provider"] else {
         return .failure(.badArgs, "keys.clear takes provider only")
       }
       guard let provider = credentialProvider(args["provider"]) else {
         return .failure(.badValue, "provider must be openAI, gemini or claude")
       }
-      let outcome = DevControlSettings.attributed(settings) { credentials.clear(provider) }
+      let admission = credentials.admit(provider, settings: settings, surface: .dictation)
+      let outcome = await credentials.clear(provider, settings: settings, admission: admission)
       switch outcome {
       case .failed:
         return .failure(.storeFailed, "the key store refused the clear; the key is now unknown")
