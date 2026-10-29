@@ -16,6 +16,13 @@ name = "enviouswispr-download-counter"
 main = "src/index.js"
 compatibility_date = "2026-07-19"
 
+# Workers Logs (free plan: 0.5 GB/day shared across the account, 7-day
+# retention). Kept here so a redeploy cannot switch it off.
+[observability]
+enabled = true
+head_sampling_rate = 1
+redact_query_string = true
+
 [[durable_objects.bindings]]
 name = "DOWNLOAD_COUNTER"
 class_name = "DownloadCounter"
@@ -46,6 +53,11 @@ name = "enviouswispr-download-counter-smoke"
 
 [env.smoke.vars]
 SMOKE = "true"
+
+[env.smoke.observability]
+enabled = true
+head_sampling_rate = 1
+redact_query_string = true
 
 [[env.smoke.durable_objects.bindings]]
 name = "DOWNLOAD_COUNTER"
