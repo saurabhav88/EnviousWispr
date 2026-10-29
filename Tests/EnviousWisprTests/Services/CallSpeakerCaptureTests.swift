@@ -712,4 +712,75 @@ struct CallSpeakerCaptureTests {
     #expect(
       CallSpeakerSurfaceChoice.capturePolicy(family: .teams, rule: .callApp(.teams)) == .standard)
   }
+
+  // MARK: - Two-person stretches (#4013 chunk 14)
+
+  /// A reading of a two-person call: the app's count, both people named, the user marked.
+  private func pair(
+    _ names: [String] = ["Saurabh Vaish", "Alex Rivera"], marked: [String] = ["Saurabh Vaish"],
+    count: Int? = 2, identity: Bool = true, shared: Set<String> = [],
+    participants: [String?]? = nil
+  ) -> CallSpeakerReading {
+    CallSpeakerReading(
+      speaking: [], roster: CallSpeakerRoster(names: names, selfNames: marked),
+      rosterFromParticipantList: false,
+      participants: (participants ?? names).enumerated().map {
+        CallParticipant(key: "\($0.offset)", name: $0.element, isTalking: false, isSelf: false)
+      },
+      participantIdentityEstablished: identity, sharedNames: shared, participantCount: count)
+  }
+
+  @Test("only a reading the app itself counts as two people, both named, is two-person evidence")
+  func pairEvidence() {
+    #expect(CallSpeakerAccumulator.pairEvidence(pair())?.names == ["Saurabh Vaish", "Alex Rivera"])
+    #expect(CallSpeakerAccumulator.pairEvidence(pair(count: nil)) == nil, "two names alone")
+    #expect(CallSpeakerAccumulator.pairEvidence(pair(count: 3)) == nil)
+    #expect(CallSpeakerAccumulator.pairEvidence(pair(identity: false)) == nil)
+    #expect(CallSpeakerAccumulator.pairEvidence(pair(shared: ["Alex Rivera"])) == nil)
+    #expect(
+      CallSpeakerAccumulator.pairEvidence(pair(participants: ["Saurabh Vaish", nil])) == nil,
+      "an unnamed participant")
+    #expect(
+      CallSpeakerAccumulator.pairEvidence(pair(participants: ["Saurabh Vaish", "Priya Shah"]))
+        == nil, "participants that disagree with the roster")
+  }
+
+  @Test("a stretch grows while the same two are read within 7 s, and splits after")
+  func pairStretchGrowsAndSplits() {
+    var log = CallSpeakerAccumulator(surface: .zoomApp, rules: nil, lag: nil)
+    log.add(pair(), context: Self.good, observationMs: 1_000)
+    log.add(pair(), context: Self.good, observationMs: 8_000)
+    log.add(pair(), context: Self.good, observationMs: 15_001)
+    let pairs = log.log.segments[0].pairs ?? []
+    #expect(pairs.map(\.firstMs) == [1_000, 15_001])
+    #expect(pairs.map(\.lastMs) == [8_000, 15_001])
+    #expect(pairs.first?.selfNames == ["Saurabh Vaish"])
+  }
+
+  @Test("another reading or any interruption ends a stretch at its last reading")
+  func pairStretchInterruptions() {
+    func run(_ interrupt: (inout CallSpeakerAccumulator) -> Void) -> [CallPairStretch] {
+      var log = CallSpeakerAccumulator(surface: .zoomApp, rules: nil, lag: nil)
+      log.add(pair(), context: Self.good, observationMs: 1_000)
+      interrupt(&log)
+      log.add(pair(), context: Self.good, observationMs: 1_500)
+      return log.log.segments[0].pairs ?? []
+    }
+    #expect(run { _ in }.count == 1, "control: nothing in between extends it")
+    #expect(run { $0.noteDictationSkip() }.count == 2)
+    #expect(run { $0.noteBusySkip() }.count == 2)
+    #expect(run { $0.noteStaleDrop() }.count == 2)
+    #expect(run { $0.noteInterruption() }.count == 2)
+    #expect(run { $0.noteNoPermission() }.count == 2)
+    #expect(
+      run {
+        $0.add(
+          nil, context: CallCaptureContext(completeness: .truncated, scope: .resolved),
+          observationMs: 1_200)
+      }.count == 2)
+    #expect(run { $0.add(self.pair(count: 3), context: Self.good, observationMs: 1_200) }.count == 2)
+    #expect(
+      run { $0.add(self.pair(marked: []), context: Self.good, observationMs: 1_200) }.count == 3,
+      "different marks are a different stretch")
+  }
 }

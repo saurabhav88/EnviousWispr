@@ -513,4 +513,79 @@ struct CallSpeakerLogTests {
     #expect(!CallSpeakerLog.isLabel("tab\there"), "text that grows when written is no label")
     #expect(!CallSpeakerLog.isLabel("caf\u{00E9}"))
   }
+
+  // MARK: - Two-person stretches (#4013 chunk 14)
+
+  private static func withPairs(_ pairs: [CallPairStretch]?, endMs: Int? = 60_000)
+    -> CallSpeakerLog
+  {
+    CallSpeakerLog(
+      rules: nil,
+      segments: [
+        CallSpeakerSegment(
+          startMs: 1_000, endMs: endMs, endReason: endMs == nil ? nil : .recordingEnded,
+          surface: .zoomApp, source: .app, status: .observed,
+          lag: CallSpeakerLag(milliseconds: 500), roster: .empty, rosterFromParticipantList: true,
+          observations: [], pairs: pairs)
+      ])
+  }
+
+  @Test("two-person stretches round-trip through the name table; a log without them reads as unknown")
+  func pairsRoundTrip() throws {
+    let log = Self.withPairs([
+      CallPairStretch(
+        names: ["Saurabh Vaish", "Alex Rivera"], selfNames: ["Saurabh Vaish"], firstMs: 2_000,
+        lastMs: 20_000),
+      CallPairStretch(
+        names: ["Saurabh Vaish", "Priya Shah"], selfNames: [], firstMs: 30_000, lastMs: 30_000),
+    ])
+    let data = try JSONEncoder().encode(log)
+    #expect(try JSONDecoder().decode(CallSpeakerLog.self, from: data) == log)
+    let none = try JSONDecoder().decode(
+      CallSpeakerLog.self, from: JSONEncoder().encode(Self.withPairs(nil)))
+    #expect(none.segments[0].pairs == nil)
+    #expect(
+      try JSONDecoder().decode(CallSpeakerLog.self, from: JSONEncoder().encode(Self.withPairs([])))
+        .segments[0].pairs == [])
+  }
+
+  @Test("a stretch with the wrong names, out of order, or outside its segment is refused")
+  func pairShapes() {
+    func stretch(_ names: [String], _ first: Int, _ last: Int, marked: [String] = [])
+      -> CallPairStretch
+    {
+      CallPairStretch(names: names, selfNames: marked, firstMs: first, lastMs: last)
+    }
+    let two = ["Saurabh Vaish", "Alex Rivera"]
+    #expect(Self.withPairs([stretch(two, 1_000, 60_000)]).shapeProblem == nil, "the bounds hold")
+    for (pairs, why) in [
+      ([stretch(["Alex Rivera"], 2_000, 3_000)], "one name"),
+      ([stretch(["Alex Rivera", "Alex Rivera"], 2_000, 3_000)], "the same name twice"),
+      ([stretch(two + ["Priya Shah"], 2_000, 3_000)], "three names"),
+      ([stretch(two, 2_000, 3_000, marked: two + ["Priya Shah"])], "three marks"),
+      ([stretch(two, 3_000, 2_000)], "runs backwards"),
+      ([stretch(two, 500, 3_000)], "before the segment"),
+      ([stretch(two, 2_000, 60_001)], "after the segment"),
+      ([stretch(two, 2_000, 5_000), stretch(two, 5_000, 6_000)], "overlapping"),
+      ([stretch(two, 7_000, 8_000), stretch(two, 2_000, 3_000)], "out of order"),
+    ] {
+      #expect(Self.withPairs(pairs).shapeProblem != nil, "\(why)")
+    }
+  }
+
+  @Test("a format-3 file with too many stretches, or a stretch with too many names, is refused")
+  func pairCaps() {
+    let one = #"{"names":[0,1],"selfNames":[0],"firstMs":0,"lastMs":0}"#
+    func json(_ pairs: [String]) -> String {
+      #"{"formatVersion":3,"names":["A","B"],"segments":[{"startMs":0,"roster":{"names":[],"selfNames":[]},"runs":[],"pairs":["#
+        + pairs.joined(separator: ",") + "]}]}"
+    }
+    let tooMany = json(Array(repeating: one, count: CallEvidenceLimits.current.pairs + 1))
+    let tooWide = json([#"{"names":[0,1],"selfNames":[0,1,0],"firstMs":0,"lastMs":0}"#])
+    for text in [tooMany, tooWide] {
+      #expect(throws: CallSpeakerLog.DecodeError.invalid("capacity.pairs")) {
+        try JSONDecoder().decode(CallSpeakerLog.self, from: Data(text.utf8))
+      }
+    }
+  }
 }

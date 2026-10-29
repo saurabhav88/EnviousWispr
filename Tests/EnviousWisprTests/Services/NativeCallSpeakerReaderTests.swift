@@ -155,6 +155,64 @@ struct NativeCallSpeakerReaderTests {
       !ZoomAppSpeakerReader.read(windows: [uncounted, countElsewhere]).rosterFromParticipantList)
   }
 
+  // MARK: - Zoom head count (#4013 chunk 14)
+
+  @Test("Zoom: the closed-panel button's count is read only in its observed shape")
+  func zoomClosedPanelCount() {
+    #expect(ZoomAppSpeakerReader.closedPanelCount("Open participants panel, closed, 4 participants") == 4)
+    #expect(ZoomAppSpeakerReader.closedPanelCount("Open participants panel, closed, 1 participant") == 1)
+    for text in [
+      "Open participants panel, closed, 2 participant", "Open participants panel, closed, 1 participants",
+      "Open participants panel, closed, participants", "Participants, 2",
+      "Ouvrir le panneau des participants, fermé, 2 participants",
+      "Open participants panel, closed, 2 participants, 3 waiting",
+    ] {
+      #expect(ZoomAppSpeakerReader.closedPanelCount(text) == nil, "\(text)")
+    }
+  }
+
+  private func zoomOneOnOne(button: String?, extra: [CallAXNode] = []) -> CallAXWindow {
+    window(
+      "Zoom Meeting",
+      [
+        zoomTile("Saurabh A Vaish, Computer audio muted, Video off"),
+        zoomTile("Alex Rivera, Computer audio unmuted, Video off"),
+      ] + (button.map { [CallAXNode(role: "AXButton", description: $0)] } ?? []) + extra)
+  }
+
+  @Test("Zoom: with the panel closed the button's count is the call's head count")
+  func zoomHeadCount() {
+    let closed = ZoomAppSpeakerReader.read(windows: [
+      zoomOneOnOne(button: "Open participants panel, closed, 2 participants")
+    ])
+    #expect(closed.participantCount == 2)
+    #expect(CallSpeakerAccumulator.pairEvidence(closed)?.names == ["Saurabh A Vaish", "Alex Rivera"])
+    #expect(closed.roster.selfNames.isEmpty, "a closed panel never marks the user")
+    #expect(ZoomAppSpeakerReader.read(windows: [zoomOneOnOne(button: nil)]).participantCount == nil)
+    // Two buttons that disagree.
+    let twoCounts = zoomOneOnOne(
+      button: "Open participants panel, closed, 2 participants",
+      extra: [CallAXNode(role: "AXButton", description: "Open participants panel, closed, 3 participants")])
+    #expect(ZoomAppSpeakerReader.read(windows: [twoCounts]).participantCount == nil)
+  }
+
+  @Test("Zoom: an open panel's count stands only when the list matches it and the button agrees")
+  func zoomPanelHeadCount() {
+    let entries = ["Saurabh A Vaish (Host, me)", "Alex Rivera"]
+    #expect(
+      ZoomAppSpeakerReader.read(windows: [zoomPanel(entries: entries, counts: ["Participants (2)"])])
+        .participantCount == 2)
+    // A list that does not match its own count leaves the head count unknown, button or not.
+    let partial = zoomPanel(entries: entries, counts: ["Participants (3)"])
+    #expect(ZoomAppSpeakerReader.read(windows: [partial]).participantCount == nil)
+    let disagreeing = window(
+      "Zoom Meeting",
+      zoomPanel(entries: entries, counts: ["Participants (2)"]).root.children + [
+        CallAXNode(role: "AXButton", description: "Open participants panel, closed, 3 participants")
+      ])
+    #expect(ZoomAppSpeakerReader.read(windows: [disagreeing]).participantCount == nil)
+  }
+
   @Test("Zoom: only Zoom's own tags are taken off a panel entry")
   func zoomPanelEntry() {
     #expect(ZoomAppSpeakerReader.panelEntry("Saurabh A Vaish (Host, me)").name == "Saurabh A Vaish")

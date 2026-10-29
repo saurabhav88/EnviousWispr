@@ -87,13 +87,18 @@ package struct CallSpeakerReading: Sendable, Equatable {
   /// (#4013 13B). Only this can show that someone left; visible tiles or a list the app may
   /// draw only partly never can.
   package let participantListComplete: Bool
+  /// How many people the call app itself said are on the call (#4013 chunk 14), when every
+  /// count it showed agreed; `nil` when it showed none, the counts disagreed, or a list it
+  /// showed did not match its own count. Never a count of what was read.
+  package let participantCount: Int?
 
   package init(
     speaking: [String], roster: CallSpeakerRoster, rosterFromParticipantList: Bool,
     participants: [CallParticipant], participantIdentityEstablished: Bool,
-    sharedNames: Set<String>, participantListComplete: Bool = false
+    sharedNames: Set<String>, participantListComplete: Bool = false, participantCount: Int? = nil
   ) {
     self.participantListComplete = participantListComplete
+    self.participantCount = participantCount
     self.speaking = speaking
     self.roster = roster
     self.rosterFromParticipantList = rosterFromParticipantList

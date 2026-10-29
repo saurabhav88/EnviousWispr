@@ -17,10 +17,12 @@ import Testing
 struct CallSpeakerLogSizeTests {
   private static let limits = CallEvidenceLimits.current
 
-  /// The ceilings from the 13B.5 plan (`13b4-size-arch.txt.last` §2), by component.
+  /// The ceilings from the 13B.5 plan (`13b4-size-arch.txt.last` §2), by component, plus the
+  /// chunk-14 two-person stretches: at most 256 bytes each, 1 MiB for all of them.
   private static let namesCeiling = 512 * (6 * 1_024 + 3)
   private static let segmentFramesCeiling = 1_000 * 4_096
-  private static let wholeCeiling = 14_348_352
+  private static let pairCeiling = 256
+  private static let wholeCeiling = 14_348_352 + CallEvidenceLimits.current.pairs * 256
 
   /// `limits.names` distinct names of 256 control characters each.
   private static let names: [String] = (0..<limits.names).map { n in
@@ -70,6 +72,7 @@ struct CallSpeakerLogSizeTests {
     var segments: [CallSpeakerSegment] = []
     var presenceLeft = limits.presenceEntries
     var sightingsLeft = limits.sightings
+    var pairsLeft = limits.pairs
     for index in 0..<segmentCount {
       let start = index * span
       // 346 samples in the first segments, 345 after, to total exactly `limits.samples`.
@@ -109,6 +112,15 @@ struct CallSpeakerLogSizeTests {
             },
             sightingsFull: true))
       }
+      let pairsHere = pairsLeft / (segmentCount - index)
+      pairsLeft -= pairsHere
+      let pairs = (0..<pairsHere).map { k in
+        // Four of the longest names each, at the segment's largest times.
+        CallPairStretch(
+          names: [names[k % names.count], names[(k + 1) % names.count]],
+          selfNames: [names[(k + 2) % names.count], names[(k + 3) % names.count]],
+          firstMs: start + span - 1 - (pairsHere - k) * 2, lastMs: start + span - (pairsHere - k) * 2)
+      }
       segments.append(
         CallSpeakerSegment(
           startMs: start, endMs: start + span, endReason: .capacityReached, surface: .teamsApp,
@@ -116,7 +128,7 @@ struct CallSpeakerLogSizeTests {
           roster: CallSpeakerRoster(
             names: (0..<(rosterEach - 1)).map { _ in nextName() }, selfNames: [nextName()]),
           rosterFromParticipantList: true, observations: observations, presence: presence,
-          health: health))
+          health: health, pairs: pairs))
     }
     return CallSpeakerLog(
       rules: FrozenTalkerRules(
@@ -138,6 +150,7 @@ struct CallSpeakerLogSizeTests {
     #expect(usage.presenceEntries == Self.limits.presenceEntries)
     #expect(usage.sightings == Self.limits.sightings)
     #expect(usage.absences == Self.limits.absences)
+    #expect(usage.pairs == Self.limits.pairs)
 
     let data = try MeetingStore.encoder.encode(log)
     #expect(data.count <= Self.wholeCeiling)
@@ -204,6 +217,30 @@ struct CallSpeakerLogSizeTests {
             absences: [.init(firstMissingMs: far - 1, confirmedAtMs: far)], sightingsFull: true)
         ]) - none - entry
     #expect(pair <= 160)
+  }
+
+  @Test("one two-person stretch with four references and the largest times stays inside its ceiling")
+  func pairFrameCeiling() throws {
+    let far = CallSpeakerObservation.maximumObservationMs
+    func size(_ pairs: [CallPairStretch]) throws -> Int {
+      try MeetingStore.encoder.encode(
+        CallSpeakerLog(
+          rules: nil,
+          segments: [
+            CallSpeakerSegment(
+              startMs: 0, endMs: nil, endReason: nil, surface: .zoomApp, source: .app,
+              status: .observed, lag: nil,
+              roster: CallSpeakerRoster(names: Self.names, selfNames: []),
+              rosterFromParticipantList: true, observations: [], pairs: pairs)
+          ])
+      ).count
+    }
+    // The roster puts every name in the table first, so these ids have three digits.
+    let stretch = CallPairStretch(
+      names: [Self.names[508], Self.names[509]], selfNames: [Self.names[510], Self.names[511]],
+      firstMs: far - 1, lastMs: far)
+    let one = try size([stretch]) - size([])
+    #expect(one <= Self.pairCeiling)
   }
 
   @Test("a segment frame with the most metadata format 3 accepts stays inside its ceiling")
