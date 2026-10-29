@@ -13,6 +13,9 @@ import Foundation
 /// app but cannot be named makes it ambiguous. Nothing is remembered between readings, so a
 /// failed read is never turned into "off" or into an old answer. Which processes count is the
 /// injected filter: this module owns no app list.
+///
+/// The Core Audio and process reads run on the watcher's own serial queue (#4013 13B), never on
+/// the main actor; readings come back to the main queue in the order they were taken.
 @MainActor
 public final class CallMicrophoneWatcher {
   public enum Input: Sendable, Equatable { case active, inactive, unknown }
@@ -68,6 +71,7 @@ public final class CallMicrophoneWatcher {
   private let onReading: @MainActor (Reading) -> Void
   private var listener: AudioObjectPropertyListenerBlock?
   private let ownPID = getpid()
+  private let queue = DispatchQueue(label: "com.enviouswispr.call-microphone-watcher", qos: .utility)
 
   public init(
     candidateBundleID: @escaping CandidateFilter,
@@ -105,12 +109,36 @@ public final class CallMicrophoneWatcher {
     listener = nil
   }
 
-  /// Reads now (a process-list change, a poll, a wake from sleep) and reports the reading.
-  public func poll() {
-    onReading(read())
+  /// Reads now (a process-list change, a poll, a wake from sleep) off the main actor, then
+  /// reports the reading on the main queue and calls `done` after it. Readings are reported in
+  /// the order the polls were asked for.
+  public func poll(done: (@MainActor () -> Void)? = nil) {
+    let candidateBundleID = candidateBundleID
+    let mayBeCandidate = mayBeCandidate
+    let ownPID = ownPID
+    queue.async { [weak self] in
+      let reading = Self.read(
+        candidateBundleID: candidateBundleID, mayBeCandidate: mayBeCandidate, ownPID: ownPID)
+      // The main queue keeps the order the serial queue produced them in.
+      DispatchQueue.main.async {
+        MainActor.assumeIsolated {
+          self?.onReading(reading)
+          done?()
+        }
+      }
+    }
   }
 
-  private func read() -> Reading {
+  /// `poll`, awaited until its reading was reported.
+  public func pollAndWait() async {
+    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+      poll { continuation.resume() }
+    }
+  }
+
+  private nonisolated static func read(
+    candidateBundleID: CandidateFilter, mayBeCandidate: UnnamedFilter, ownPID: pid_t
+  ) -> Reading {
     guard let objects = Self.processObjects() else { return .failed }
     var holders: [Holder] = []
     var ambiguous = false
@@ -141,13 +169,13 @@ public final class CallMicrophoneWatcher {
 
   // MARK: - Core Audio reads
 
-  private static var processListAddress: AudioObjectPropertyAddress {
+  private nonisolated static var processListAddress: AudioObjectPropertyAddress {
     AudioObjectPropertyAddress(
       mSelector: kAudioHardwarePropertyProcessObjectList,
       mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
   }
 
-  private static func processObjects() -> [AudioObjectID]? {
+  private nonisolated static func processObjects() -> [AudioObjectID]? {
     var address = processListAddress
     var size: UInt32 = 0
     let system = AudioObjectID(kAudioObjectSystemObject)
@@ -163,7 +191,7 @@ public final class CallMicrophoneWatcher {
     return Array(ids.prefix(Int(size) / MemoryLayout<AudioObjectID>.size))
   }
 
-  private static func input(of object: AudioObjectID) -> Input {
+  private nonisolated static func input(of object: AudioObjectID) -> Input {
     var address = AudioObjectPropertyAddress(
       mSelector: kAudioProcessPropertyIsRunningInput, mScope: kAudioObjectPropertyScopeGlobal,
       mElement: kAudioObjectPropertyElementMain)
@@ -175,7 +203,7 @@ public final class CallMicrophoneWatcher {
     return value != 0 ? .active : .inactive
   }
 
-  private static func pid(of object: AudioObjectID) -> Int32? {
+  private nonisolated static func pid(of object: AudioObjectID) -> Int32? {
     var address = AudioObjectPropertyAddress(
       mSelector: kAudioProcessPropertyPID, mScope: kAudioObjectPropertyScopeGlobal,
       mElement: kAudioObjectPropertyElementMain)
@@ -186,7 +214,7 @@ public final class CallMicrophoneWatcher {
     return pid
   }
 
-  private static func string(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector)
+  private nonisolated static func string(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector)
     -> String?
   {
     var address = AudioObjectPropertyAddress(
@@ -201,7 +229,7 @@ public final class CallMicrophoneWatcher {
     return text.isEmpty ? nil : text
   }
 
-  private static func executablePath(_ pid: Int32) -> String? {
+  private nonisolated static func executablePath(_ pid: Int32) -> String? {
     var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN) * 4)
     let length = proc_pidpath(pid, &buffer, UInt32(buffer.count))
     guard length > 0 else { return nil }

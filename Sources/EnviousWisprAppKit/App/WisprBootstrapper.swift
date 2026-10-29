@@ -2587,11 +2587,16 @@ package final class WisprBootstrapper {
     meetingInputs.refreshTalkerRules = refreshTalkerRules
     // The day's talker-rules download at launch, off the launch path.
     refreshTalkerRules()
-    meetingInputs.callSpeakerTarget = { [meetingBox] family in
-      meetingBox.callDetection?.speakerTarget(for: family)
+    // #4013 13B: one owner of the microphone watcher for call prompts and speaker capture.
+    let callSources = CallSourceDiscovery(
+      dependencies: .init(evidence: { rule, pid in
+        await CallEvidenceRead.bounded(rule: rule, pid: pid)
+      }))
+    meetingInputs.callSpeakerTarget = { [callSources] family in
+      callSources.speakerTarget(for: family)
     }
-    meetingInputs.callSpeakerSourceRevision = { [meetingBox] in
-      meetingBox.callDetection?.speakerSourceRevision ?? 0
+    meetingInputs.callSpeakerSourceRevision = { [callSources] in
+      callSources.speakerSourceRevision
     }
     meetingInputs.liveVocabulary = { [weak livePreview] in
       livePreview?.vocabularySnapshot()
@@ -2676,10 +2681,10 @@ package final class WisprBootstrapper {
         },
         anchor: { [menuBarControllerHolder] in menuBarControllerHolder.controller?.statusItemFrame },
         emit: { TelemetryService.shared.trackMeetingCallPrompt($0) },
-        evidence: { rule, pid in await CallEvidenceRead.bounded(rule: rule, pid: pid) },
         makePresenter: { [overlayEffects] anchor in
           CallPromptPanel(anchor: anchor, makePanel: overlayEffects.makePanel)
-        }))
+        }),
+      discovery: callSources)
     meetingBox.callDetection = callDetection
     self.callDetection = callDetection
     self.meetingMemoryPressure = meetingMemoryPressure
@@ -3030,6 +3035,7 @@ package final class WisprBootstrapper {
     // #3972 R18: close meeting admission, cancel its pass, stop capture and close both files
     // against one shared one-second deadline.
     callDetection.shutDown()
+    callDetection.discovery.shutDown()
     meetingCoordinator.prepareForTermination(deadline: .now() + 1)
     meetingMemoryPressure.stop()
     // #3438: stop observing before the owners it reads are torn down.

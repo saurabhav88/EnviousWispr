@@ -91,12 +91,16 @@
             showMeetingPage: { [weak self] in self?.pageShown += 1 },
             anchor: { nil },
             emit: { [weak self] in self?.events.append($0) },
-            evidence: { [evidenceAnswer, evidenceReads] _, _ in
-              evidenceReads.withLock { $0 += 1 }
-              return evidenceAnswer.withLock { $0 }
-            },
             now: { [weak self] in self?.clock ?? Date() },
-            makePresenter: { [panel] _ in panel }, speakerOwner: { $0 }))
+            makePresenter: { [panel] _ in panel }),
+          discovery: CallSourceDiscovery(
+            dependencies: .init(
+              evidence: { [evidenceAnswer, evidenceReads] _, _ in
+                evidenceReads.withLock { $0 += 1 }
+                return evidenceAnswer.withLock { $0 }
+              },
+              now: { [weak self] in self?.clock ?? Date() },
+              speakerOwner: { $0 })))
       }
 
       /// One faked Zoom process with its meeting window open, the microphone `input`.
@@ -128,28 +132,68 @@
     @Test("speaker capture's source: one complete reading names it; incomplete or ambiguous does not")
     func speakerSource() throws {
       let rig = try Rig()
+      let sources = rig.coordinator.discovery
       rig.coordinator.deliverWatcherReading(
         [.init(pid: 900_010, bundleID: "us.zoom.xos", input: .active)])
-      #expect(rig.coordinator.speakerTarget(for: .zoom)?.pid == 900_010)
-      #expect(rig.coordinator.speakerTarget(for: .teams) == nil)
-      let first = rig.coordinator.speakerSourceRevision
+      #expect(sources.speakerTarget(for: .zoom)?.pid == 900_010)
+      #expect(sources.speakerTarget(for: .teams) == nil)
+      let first = sources.speakerSourceRevision
       rig.coordinator.deliverWatcherReading(
         [.init(pid: 900_010, bundleID: "us.zoom.xos", input: .active)])
-      #expect(rig.coordinator.speakerSourceRevision == first, "the same reading again is no change")
+      #expect(sources.speakerSourceRevision == first, "the same reading again is no change")
       rig.coordinator.deliverWatcherReading(
         [.init(pid: 900_010, bundleID: "us.zoom.xos", input: .active)], ambiguous: true)
-      #expect(rig.coordinator.speakerTarget(for: .zoom) == nil)
-      #expect(rig.coordinator.speakerSourceRevision > first)
-      let ambiguous = rig.coordinator.speakerSourceRevision
+      #expect(sources.speakerTarget(for: .zoom) == nil)
+      #expect(sources.speakerSourceRevision > first)
+      let ambiguous = sources.speakerSourceRevision
       rig.coordinator.deliverWatcherReading(
         [.init(pid: 900_010, bundleID: "us.zoom.xos", input: .active)])
-      #expect(rig.coordinator.speakerSourceRevision > ambiguous, "back to the same source is a change")
+      #expect(sources.speakerSourceRevision > ambiguous, "back to the same source is a change")
       rig.coordinator.deliverWatcherReading(
         [
           .init(pid: 900_010, bundleID: "us.zoom.xos", input: .active),
           .init(pid: 900_011, bundleID: "us.zoom.xos", input: .active),
         ])
-      #expect(rig.coordinator.speakerTarget(for: .zoom) == nil, "two app instances")
+      #expect(sources.speakerTarget(for: .zoom) == nil, "two app instances")
+    }
+
+    @Test("the watcher runs while prompts are on or a recording needs it, and not otherwise")
+    func watcherDemand() throws {
+      let rig = try Rig()
+      rig.settings.meetingCallDetection = CallDetectionPolicy.Mode.off.rawValue
+      rig.coordinator.start()
+      defer { rig.coordinator.shutDown() }
+      let sources = rig.coordinator.discovery
+      #expect(!sources.watching, "prompts off and nothing recording: no watcher")
+      sources.beginRecordingDemand()
+      #expect(sources.watching == CallMicrophoneWatcher.isSupported, "a recording keeps it on")
+      sources.endRecordingDemand()
+      #expect(!sources.watching)
+      rig.settings.meetingCallDetection = CallDetectionPolicy.Mode.ask.rawValue
+      rig.coordinator.tickForTesting()
+      #expect(sources.watching == CallMicrophoneWatcher.isSupported, "prompts on")
+      sources.beginRecordingDemand()
+      rig.settings.meetingCallDetection = CallDetectionPolicy.Mode.off.rawValue
+      rig.coordinator.tickForTesting()
+      #expect(sources.watching == CallMicrophoneWatcher.isSupported, "prompts off mid-recording")
+      sources.endRecordingDemand()
+      #expect(!sources.watching)
+    }
+
+    @Test("with prompts off, a recording's readings never ask about a call")
+    func promptsOffNeverAsk() async throws {
+      let rig = try Rig()
+      rig.settings.meetingCallDetection = CallDetectionPolicy.Mode.off.rawValue
+      rig.coordinator.start()
+      defer { rig.coordinator.shutDown() }
+      rig.coordinator.discovery.beginRecordingDemand()
+      defer { rig.coordinator.discovery.endRecordingDemand() }
+      rig.evidenceAnswer.withLock { $0 = .call(family: .zoom, room: "pid-900010") }
+      rig.reading("us.zoom.xos", .active)
+      await settleStarts()
+      #expect(rig.panel.content == nil)
+      #expect(rig.starts.isEmpty)
+      #expect(rig.coordinator.discovery.speakerTarget(for: .zoom)?.pid == 900_010)
     }
 
     @Test("a Zoom call asks; Yes records a Zoom meeting")
