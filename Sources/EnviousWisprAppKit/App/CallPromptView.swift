@@ -160,7 +160,7 @@ private struct CallPromptCard: View {
           actions.yes()
         }
         button(
-          LocalizedStringResource("Not now", comment: "EnviousMeet: decline recording; do not ask again during this call."),
+          LocalizedStringResource("Not now", comment: "EnviousMeet: decline this recording offer; a later microphone-use opportunity may ask again after the cooldown."),
           primary: false
         ) {
           actions.no()

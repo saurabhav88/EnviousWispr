@@ -275,7 +275,8 @@ public struct CallDetectionPolicy: Sendable {
     enum Phase: Sendable, Equatable {
       /// Known, not asked about yet.
       case waiting
-      /// Asked, answered, timed out or recorded once: never asked about again.
+      /// Already offered. A new idle Ask needs a fresh microphone opportunity (#4142 G1),
+      /// not a new recording owner or an invented logical-call identity.
       case offered
       /// A start (or a switch's stop and start) is running.
       case starting(operation: Int)
@@ -328,6 +329,9 @@ public struct CallDetectionPolicy: Sendable {
   private var reading: Reading?
   private var holdoffUntil: Date?
   private var lastQuestionShownAt: Date?
+  private var lastQuestionReadingSequence: Int?
+  private var lastQuestionAppCount: Int?
+  private var questionOpportunityAt: Date?
   private struct ManualCandidate {
     let episode: Int
     let owner: CallEvidenceReader.AppRun
@@ -416,6 +420,7 @@ public struct CallDetectionPolicy: Sendable {
   /// and every end is counted afresh (a sleep past a countdown's deadline never stops at once).
   public mutating func noteWakeOrRestart(at now: Date) {
     invalidateAcceptedStart()
+    questionOpportunityAt = nil
     holdoffUntil = now.addingTimeInterval(Self.wakeHoldoff)
     let consumed = reading?.continuity.map(\.id).max() ?? 0
     for index in episodes.indices {
@@ -432,6 +437,11 @@ public struct CallDetectionPolicy: Sendable {
       // watching resumes, every call is a new one. A running recording goes on as the user's.
       episodes = []
       pendingManual = nil
+      questionOpportunityAt = nil
+      lastQuestionAppCount = nil
+      if let sequence = reading?.sequence {
+        lastQuestionReadingSequence = max(lastQuestionReadingSequence ?? sequence, sequence)
+      }
       if case .recording(let id) = c.meeting { association = .rejected(id) }
       set(.none)
       return out
@@ -440,6 +450,7 @@ public struct CallDetectionPolicy: Sendable {
     expire(c, &out)
     trackEnds(c, &out)
     noticeCalls(c)
+    noticeQuestionOpportunity(c)
     offer(c, &out)
     return out
   }
@@ -449,6 +460,7 @@ public struct CallDetectionPolicy: Sendable {
   package mutating func acceptedStart(_ request: AcceptedStart, _ c: Context) -> [Command] {
     guard request.generation > latestAcceptedGeneration else { return [] }
     latestAcceptedGeneration = request.generation
+    questionOpportunityAt = nil
     pendingManual = nil
     guard request.route == .menu || request.route == .history,
       c.setUp, c.mode != .off, c.meeting == .idle, request.acceptedAt <= c.now
@@ -843,6 +855,45 @@ public struct CallDetectionPolicy: Sendable {
     }
   }
 
+  /// Only determinate microphone frames count apps; helper/process and AX changes are not
+  /// new opportunities. Recording/end provenance deliberately does not participate.
+  private func questionAppCount(_ c: Context) -> Int? {
+    guard isFresh(c), let reading, !reading.ambiguous,
+      !reading.holders.contains(where: { $0.input == .unknown }) else { return nil }
+    var rules: [CallAppCatalog.Rule] = []
+    for holder in reading.holders where holder.input == .active {
+      if !rules.contains(holder.rule) { rules.append(holder.rule) }
+    }
+    return rules.count
+  }
+
+  /// Granola-style prompt opportunities are separate from recording episodes (#4142).
+  /// Consuming a frame during cooldown/busy never queues a question for later polling.
+  private mutating func noticeQuestionOpportunity(_ c: Context) {
+    // A user Start can still be in setup while the meeting reports idle. Its operation
+    // suppresses idle Ask without changing startInFlight's automatic/Switch contract.
+    let userStartPending = operations.values.contains { operation in
+      if case .userStart = operation { return true }
+      return false
+    }
+    let suppressed = c.mode != .ask || c.meeting != .idle || pendingManual != nil
+      || startInFlight || userStartPending || inHoldoff(c)
+    if suppressed { questionOpportunityAt = nil }
+    guard let reading,
+      lastQuestionReadingSequence.map({ reading.sequence > $0 }) ?? true else { return }
+    lastQuestionReadingSequence = reading.sequence
+    guard let count = questionAppCount(c) else { return }
+    let changed = lastQuestionAppCount != count
+    lastQuestionAppCount = count
+    guard changed else { return }
+    questionOpportunityAt = nil
+    guard count > 0, !suppressed else { return }
+    switch interaction { case .ask, .switchCall: return; default: break }
+    if let lastQuestionShownAt,
+      c.now.timeIntervalSince(lastQuestionShownAt) < Self.questionInterval { return }
+    questionOpportunityAt = min(c.now, reading.takenAt)
+  }
+
   /// One question at a time; a Yes always answers the call on the panel (review r2 F1).
   private mutating func offer(_ c: Context, _ out: inout [Command]) {
     switch interaction {
@@ -850,12 +901,23 @@ public struct CallDetectionPolicy: Sendable {
     default: break
     }
     guard pendingManual == nil, !inHoldoff(c), !startInFlight else { return }
-    for index in episodes.indices where episodes[index].phase == .waiting {
+    let idleAsk = c.mode == .ask && c.meeting == .idle
+    for index in episodes.indices {
+      switch episodes[index].phase {
+      case .waiting: break
+      case .offered where idleAsk: break
+      default: continue
+      }
       let episode = episodes[index]
       guard isKnownLive(episode, c) else { continue }
       let displaysQuestion = c.mode != .startByItself || c.meeting != .idle
       if displaysQuestion {
-        guard c.now.timeIntervalSince(episode.noticedAt) >= Self.questionReadiness else { continue }
+        let since: Date
+        if idleAsk {
+          guard let opportunity = questionOpportunityAt, questionAppCount(c) != nil else { continue }
+          since = opportunity
+        } else { since = episode.noticedAt }
+        guard c.now.timeIntervalSince(since) >= Self.questionReadiness else { continue }
         if let lastQuestionShownAt, c.now.timeIntervalSince(lastQuestionShownAt) < Self.questionInterval { continue }
       }
       switch c.meeting {
@@ -871,6 +933,7 @@ public struct CallDetectionPolicy: Sendable {
           startingOperation = id
           out.append(.start(operation: id, family: episode.family))
         } else {
+          questionOpportunityAt = nil
           episodes[index].phase = .offered
           set(.ask(episode: episode.id, family: episode.family, since: c.now))
         }
@@ -1019,7 +1082,8 @@ public struct CallDetectionPolicy: Sendable {
         showNote(.couldNotStart, c)
       case .superseded:
         // Taken over during the start: the call is asked about again once it is known live
-        // (review r17 F1).
+        // (review r17 F1). Idle Ask additionally needs a fresh G1 opportunity; automatic
+        // admission retains its existing proof gate rather than inheriting that prompt gate.
         setPhase(e, .waiting)
       case .notStarted:
         setPhase(e, .offered)

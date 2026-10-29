@@ -542,6 +542,10 @@
       #expect(await settleUntilObserved { held.withLock { $0 } })
       rig.advance(0.5)
       #expect(rig.press("no"))
+      rig.polledHolders = [.init(pid: 900_011, bundleID: "com.microsoft.teams2", input: .active)]
+      rig.coordinator.deliverWatcherReading(rig.polledHolders)
+      rig.advance(CallDetectionPolicy.questionReadiness)
+      rig.coordinator.stepForTesting()
       #expect(await settleUntilObserved { rig.panel.content == .ask(appName: "Microsoft Teams") })
       #expect(rig.press("yes"))
       gate.signal()
@@ -2066,7 +2070,7 @@
       #expect(await settleUntilObserved { rig.userStarts == [.zoom] })
     }
 
-    @Test("a Start withdrawn for a moment of uncertainty asks again once the call reads known")
+    @Test("a withdrawn Start asks again only after a fresh microphone opportunity")
     func withdrawnStartAsksAgain() async throws {
       let rig = try Rig()
       rig.nextOutcome = .started(.superseded(meetingID: nil))
@@ -2076,6 +2080,9 @@
       rig.nextOutcome = nil
       rig.panel.hide()
       rig.advance(CallDetectionPolicy.questionInterval)
+      rig.zoomReady()
+      #expect(rig.panel.content == nil, "unchanged input cannot replay the superseded Ask")
+      rig.zoom(.inactive)
       rig.zoomReady()
       #expect(rig.panel.content == .ask(appName: "Zoom"))
     }

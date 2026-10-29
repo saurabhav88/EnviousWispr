@@ -15,6 +15,214 @@ import Testing
 struct CallDetectionPolicyTests {
   typealias Policy = CallDetectionPolicy
 
+  @Test("A running user Start cannot display or queue an idle Ask before setup accepts it")
+  func pendingUserStartSuppressesQuestion() {
+    var s = recordingZoom()
+    end(&s)
+    s.hold([Self.zoom(.inactive)], for: Policy.countdownLength)
+    s.stopFinished()
+    #expect(isStopped(s.interaction, .callEnded), "use the real stopped offer")
+    s.press(.startNewRecording)
+    let userStarts = s.commands.compactMap { command -> Int? in
+      if case .startByUser(let id, .zoom) = command { return id }
+      return nil
+    }
+    guard userStarts.count == 1 else { Issue.record("no actual user Start issued"); return }
+    #expect(s.meeting == .idle, "setup has not accepted the user Start yet")
+    s.hold([Self.zoom(.inactive)], for: Policy.questionInterval)
+    let meet = Self.chrome(.active, url: Self.meetA)
+    s.ready([meet])
+    #expect(s.interaction == .none, "the unaccepted manual request still owns its start interval")
+    s.startFinished(.notStarted)
+    s.read([meet])
+    #expect(s.interaction == .none, "the blocked opportunity cannot replay after refusal")
+    #expect(s.starts == [.zoom] && s.stops == 1)
+  }
+
+  @Test("A later native mic-use opportunity asks again without inventing a call-end identity",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4142"),
+    arguments: [CallAppFamily.zoom, .slack, .teams, .facetime, .webex, .dialpadMeetings,
+      .gather, .lark, .voov], [false, true])
+  func nativeRepeatOpportunity(family: CallAppFamily, missing: Bool) {
+    var s = Story()
+    let rule: CallAppCatalog.Rule = family == .zoom || family == .slack
+      ? .callWindow(family) : .callApp(family)
+    let call = Policy.Holder(pid: 100, rule: rule, input: .active,
+      evidence: .call(family: family, room: "native-fixture"))
+    s.ready([call])
+    #expect(isAsk(s.interaction, family), "the first real Ask must be displayed")
+    s.press(.no)
+    s.press(.close)
+    s.hold([call], for: Policy.questionInterval)
+    #expect(s.interaction == .none, "unchanged microphone polling cannot renew the Ask")
+    let inactive = Policy.Holder(pid: call.pid, rule: rule, input: .inactive,
+      evidence: call.evidence)
+    s.read(missing ? [] : [inactive])
+    s.ready([call])
+    #expect(isAsk(s.interaction, family), "a fresh eligible edge must not stay suppressed for the app run")
+    #expect(s.answers == [.no], "offering again neither invents No nor changes the previous answer")
+    #expect(s.starts.isEmpty && s.stops == 0)
+    #expect(s.observations.isEmpty, "this story supplies no logical-call end proof")
+  }
+
+  @Test("Uncertain frames, duplicate projections and helper changes cannot renew an idle Ask",
+    arguments: ["unknown", "incomplete", "ambiguous", "stale", "duplicate", "helper", "replacement"])
+  func unusableQuestionEdges(kind: String) {
+    var s = Story()
+    let zoom = Self.zoom(.active)
+    s.ready([zoom])
+    s.press(.no)
+    s.press(.close)
+    s.hold([zoom], for: Policy.questionInterval)
+    switch kind {
+    case "unknown": s.read([Self.zoom(.unknown)])
+    case "incomplete": s.read([], complete: false)
+    case "ambiguous": s.read([], ambiguous: true)
+    case "stale":
+      s.sequence += 1
+      s.policy.observe(.init(sequence: s.sequence, takenAt: s.now.addingTimeInterval(-Policy.staleAfter - 1),
+        complete: true, holders: []))
+      s.step()
+    case "duplicate":
+      s.policy.observe(.init(sequence: s.sequence, takenAt: s.now, complete: true, holders: []))
+      s.step()
+    case "helper": s.read([zoom, Self.zoom(.active, pid: 101)])
+    default: s.ready([Self.chrome(.active, url: Self.meetA)])
+    }
+    s.ready([zoom])
+    #expect(s.interaction == .none, "only a new determinate app-count edge can renew Ask")
+    #expect(s.answers == [.no] && s.starts.isEmpty && s.stops == 0)
+  }
+
+  @Test("A cooldown-rejected edge is consumed rather than queued until time passes")
+  func cooldownEdgesAreConsumed() {
+    var s = Story()
+    let zoom = Self.zoom(.active)
+    s.ready([zoom])
+    s.press(.no)
+    s.press(.close)
+    s.read([Self.zoom(.inactive)])
+    s.ready([zoom])
+    s.hold([zoom], for: Policy.questionInterval)
+    #expect(s.interaction == .none)
+    s.read([Self.zoom(.inactive)])
+    s.ready([zoom])
+    #expect(isAsk(s.interaction, .zoom))
+    #expect(s.answers == [.no])
+  }
+
+  @Test("A positive count decrease gets its own exact two-second opportunity clock")
+  func positiveDecreaseUsesOpportunityClock() {
+    var s = Story()
+    let zoom = Self.zoom(.active)
+    let meet = Self.chrome(.active, url: Self.meetA)
+    s.ready([zoom, meet])
+    s.press(.no)
+    s.press(.close)
+    s.hold([zoom, meet], for: Policy.questionInterval)
+    #expect(s.interaction == .none)
+    s.read([meet])
+    s.wait(1.999)
+    s.read([meet])
+    #expect(s.interaction == .none, "old episode age cannot skip opportunity readiness")
+    s.wait(0.001)
+    s.read([meet])
+    #expect(isAsk(s.interaction, .googleMeet))
+  }
+
+  @Test("An undisplayed opportunity cannot survive busy or an accepted manual recording",
+    arguments: [false, true])
+  func pendingQuestionDiscarded(manual: Bool) {
+    var s = Story()
+    let zoom = Self.zoom(.active)
+    s.dictation = true
+    s.ongoing(zoom)
+    #expect(s.interaction == .none)
+    if manual {
+      let request = s.acceptManual()
+      let id = UUID()
+      s.meeting = .recording(meetingID: id)
+      s.settleManual(request, recordingID: id)
+    } else {
+      s.meeting = .busy
+      s.step()
+    }
+    s.meeting = .idle
+    s.dictation = false
+    s.read([zoom])
+    #expect(s.interaction == .none, "returning idle cannot revive an old pending opportunity")
+    #expect(s.starts.isEmpty && s.stops == 0)
+  }
+
+  @Test("Off and incomplete setup require a new microphone frame before initial-positive eligibility",
+    arguments: [false, true])
+  func questionBaselineRestarts(setup: Bool) {
+    var s = Story()
+    let zoom = Self.zoom(.active)
+    s.ready([zoom])
+    s.press(.no)
+    s.press(.close)
+    s.hold([zoom], for: Policy.questionInterval)
+    if setup { s.setUp = false } else { s.mode = .off }
+    s.step()
+    s.setUp = true
+    s.mode = .ask
+    s.wait(Policy.questionReadiness)
+    s.step()
+    #expect(s.interaction == .none, "a cached disabled-lifetime frame cannot restart Ask")
+    s.ready([zoom])
+    #expect(isAsk(s.interaction, .zoom))
+  }
+
+  @Test("Wake consumes holdoff edges without queuing an Ask for holdoff expiry")
+  func wakeConsumesQuestionEdges() {
+    var s = Story()
+    let zoom = Self.zoom(.active)
+    s.ready([zoom])
+    s.press(.no)
+    s.press(.close)
+    s.hold([zoom], for: Policy.questionInterval)
+    s.policy.noteWakeOrRestart(at: s.now)
+    s.read([Self.zoom(.inactive)])
+    s.read([zoom])
+    s.hold([zoom], for: Policy.wakeHoldoff + Policy.questionReadiness)
+    #expect(s.interaction == .none)
+    s.read([Self.zoom(.inactive)])
+    s.ready([zoom])
+    #expect(isAsk(s.interaction, .zoom))
+  }
+
+  @Test("A count change while Ask is visible never restarts its token or original lifetime")
+  func countChangeKeepsQuestionDeadline() {
+    var s = Story()
+    let zoom = Self.zoom(.active)
+    let both = [zoom, Self.chrome(.active, url: Self.meetA)]
+    s.ready([zoom])
+    let token = s.policy.token
+    s.wait(30)
+    s.read(both)
+    #expect(s.policy.token == token && isAsk(s.interaction, .zoom))
+    s.hold(both, for: Policy.promptTimeout - 30 - 0.001)
+    #expect(isAsk(s.interaction, .zoom))
+    s.wait(0.001)
+    s.read(both)
+    #expect(s.interaction == .none)
+    #expect(s.answers == [.timeout], "the other waiting app was not queued behind this question")
+  }
+
+  @Test("Microphone edges after cooldown cannot prompt or stop an active Ask-owned recording")
+  func recordingIgnoresQuestionEdges() {
+    var s = recordingZoom()
+    let recording = s.meeting
+    let zoom = Self.zoom(.active)
+    s.hold([zoom], for: Policy.questionInterval)
+    s.read([])
+    s.ready([zoom])
+    #expect(s.meeting == recording && s.interaction == .none)
+    #expect(s.starts == [.zoom] && s.stops == 0)
+    #expect(s.answers == [.yes])
+  }
+
   @Test("Microphone inactivity or disappearance alone never ends a policy-owned recording",
     .bug("https://github.com/saurabhav88/EnviousWispr/issues/4142"), arguments: [true, false])
   func microphoneLossIsNotCallEnd(missing: Bool) throws {
@@ -130,7 +338,7 @@ struct CallDetectionPolicyTests {
     #expect(s.stops == 0)
   }
 
-  @Test("Not now survives inactive, unknown and missing holders without independent end",
+  @Test("Unknown cannot renew Not now; a determinate mic-use edge after cooldown can",
     arguments: [0, 1, 2])
   func declinedCallSurvivesMicrophoneLoss(kind: Int) {
     var s = Story()
@@ -140,7 +348,7 @@ struct CallDetectionPolicyTests {
     let holders = kind == 0 ? [Self.zoom(.inactive)] : kind == 1 ? [Self.zoom(.unknown)] : []
     s.hold(holders, for: 130)
     s.ready([Self.zoom(.active)])
-    #expect(s.interaction == .none)
+    #expect(kind == 1 ? s.interaction == .none : isAsk(s.interaction, .zoom))
     #expect(s.answers == [.no])
   }
 
@@ -191,7 +399,11 @@ struct CallDetectionPolicyTests {
     s.read([zoom, Self.chromeUnknown(.active)])
     #expect(s.interaction == .none, "interval expiry cannot reuse stale eligibility")
     s.read([zoom, meet])
-    #expect(isAsk(s.interaction, .googleMeet))
+    #expect(s.interaction == .none, "cooldown expiry does not replay its rejected edge")
+    s.read([Self.chromeUnknown(.active)])
+    s.wait(Policy.questionReadiness)
+    s.read([meet])
+    #expect(isAsk(s.interaction, .googleMeet), "a new 2-to-1 edge waits for fresh proof")
   }
 
   @Test("Pending evidence cannot refresh an old end or reuse it as a second confirmation")
@@ -250,8 +462,9 @@ struct CallDetectionPolicyTests {
     s.read([call])
     #expect(s.interaction == .none)
     s.wait(Policy.questionInterval)
+    s.read([Self.zoom(.inactive)])
     s.observeCall(.ongoing(family: .zoom, room: "w"), holder: call, owner: replacement)
-    s.read([call])
+    s.ready([call])
     guard case .ask(let second, _, _) = s.interaction else { Issue.record("no replacement question"); return }
     #expect(first != second)
     s.press(.yes)
@@ -1014,7 +1227,7 @@ struct CallDetectionPolicyTests {
     #expect(note(s.interaction) == .lastTip(rule: .browser(.chrome), family: .googleMeet))
   }
 
-  @Test("a No lasts for the call: it is not asked again until the call ends")
+  @Test("a No stays quiet on unchanged input; a later call with a fresh edge asks again")
   func noLastsForTheCall() {
     var s = Story()
     s.ongoing(Self.zoom(.active))
@@ -1039,7 +1252,7 @@ struct CallDetectionPolicyTests {
     #expect(!s.commands.contains(.countNo(switchID: "zoom")))
   }
 
-  @Test("one question at a time: a second call waits until the first is answered")
+  @Test("one question at a time; the other app needs a new opportunity after cooldown")
   func oneQuestionAtATime() {
     var s = Story()
     let both = [Self.zoom(.active), Self.chrome(.active, url: Self.meetA)]
@@ -1054,6 +1267,9 @@ struct CallDetectionPolicyTests {
     // The next call waits for the global display interval.
     #expect(!isAsk(s.interaction, .googleMeet))
     s.hold(both, for: Policy.questionInterval)
+    #expect(s.interaction == .none, "another waiting episode is not a queued opportunity")
+    let other = first == .zoom ? [Self.chrome(.active, url: Self.meetA)] : [Self.zoom(.active)]
+    s.ready(other)
     guard case .ask(_, let second, _) = s.interaction else {
       Issue.record("the second call was never asked about")
       return
@@ -1232,7 +1448,7 @@ struct CallDetectionPolicyTests {
 
   // MARK: - Starts and switches
 
-  @Test("a start that fails, is refused or needs attention says so; superseded asks again")
+  @Test("failed starts say so; a superseded Start needs a fresh idle Ask opportunity")
   func startOutcomes() {
     for (result, expected) in [
       (Policy.StartResult.couldNotStart, Policy.Note.couldNotStart),
@@ -1245,12 +1461,16 @@ struct CallDetectionPolicyTests {
       #expect(note(s.interaction) == expected)
     }
     var s = Story()
-    s.read([Self.zoom(.active)])
+    s.ready([Self.zoom(.active)])
     s.press(.yes)
+    #expect(s.lastStart != nil, "the superseded result must settle an actual issued Start")
     s.startFinished(.superseded)
     s.wait(Policy.questionInterval)
     s.read([Self.zoom(.active)])
-    #expect(isAsk(s.interaction, .zoom), "a superseded Start is asked about again")
+    #expect(s.interaction == .none, "settlement plus unchanged polling cannot renew Ask")
+    s.read([Self.zoom(.inactive)])
+    s.ready([Self.zoom(.active)])
+    #expect(isAsk(s.interaction, .zoom), "a new opportunity can ask again after supersession")
   }
 
   @Test("a start in flight is never dropped: uncertainty keeps it wanted, success records")
@@ -1286,7 +1506,7 @@ struct CallDetectionPolicyTests {
     #expect(!off.policy.isStartWanted(off.context))
   }
 
-  @Test("a late start result after a newer question settles its call but keeps the question")
+  @Test("busy Start opportunities do not replay; an obsolete result keeps a newer question")
   func lateStartKeepsQuestion() {
     var s = Story()
     s.ready([Self.zoom(.active)])
@@ -1298,9 +1518,13 @@ struct CallDetectionPolicyTests {
     s.read([Self.zoom(.active), Self.chrome(.active, url: Self.meetA)])
     s.meeting = .idle
     s.startFinished(.couldNotStart)
+    #expect(note(s.interaction) == .couldNotStart, "busy count edges cannot queue an Ask")
+    s.ready([Self.chrome(.active, url: Self.meetA)])
     #expect(isAsk(s.interaction, .googleMeet), "the next call's question owns the panel")
+    s.startFinished(.couldNotStart)
+    #expect(isAsk(s.interaction, .googleMeet), "obsolete completion cannot cover the newer question")
     s.press(.close)
-    s.hold([Self.zoom(.active), Self.chrome(.active, url: Self.meetA)], for: 4)
+    s.hold([Self.chrome(.active, url: Self.meetA)], for: 4)
     #expect(s.interaction == .none, "the failed call is not asked about again")
   }
 
@@ -1445,7 +1669,7 @@ struct CallDetectionPolicyTests {
     #expect(isAsk(s.interaction, .zoom))
   }
 
-  @Test("a question about one meeting goes when the browser shows another; that one is asked")
+  @Test("a moved room withdraws its question; only a new microphone opportunity asks again")
   func movedQuestion() {
     var s = Story()
     s.ready([Self.chrome(.active, url: Self.meetA)])
@@ -1459,6 +1683,9 @@ struct CallDetectionPolicyTests {
     #expect(s.interaction == .none, "old room question withdraws during global cooldown")
     s.wait(Policy.questionInterval)
     s.read([Self.chrome(.active, url: Self.meetB)])
+    #expect(s.interaction == .none, "a room change with unchanged app count cannot renew Ask")
+    s.read([Self.chrome(.inactive, url: Self.meetB)])
+    s.ready([Self.chrome(.active, url: Self.meetB)])
     guard case .ask(let second, .googleMeet, _) = s.interaction else {
       Issue.record("the new meeting was not asked about")
       return
