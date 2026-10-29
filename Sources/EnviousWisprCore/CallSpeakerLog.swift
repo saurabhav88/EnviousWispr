@@ -372,6 +372,17 @@ public struct CallSpeakerLog: Sendable, Equatable {
   /// The longest text a log keeps for a surface, source, status, end reason, health key or
   /// capacity reason (every value this build writes is far shorter), and the most health keys.
   public static let maximumLabelBytes = 64
+
+  /// A label as this build writes one: ASCII letters, digits and underscores, so it never
+  /// grows when written, at most `maximumLabelBytes`.
+  public static func isLabel(_ text: String) -> Bool {
+    text.utf8.count <= maximumLabelBytes
+      && text.utf8.allSatisfy { byte in
+        (UInt8(ascii: "a")...UInt8(ascii: "z")).contains(byte)
+          || (UInt8(ascii: "A")...UInt8(ascii: "Z")).contains(byte)
+          || (UInt8(ascii: "0")...UInt8(ascii: "9")).contains(byte) || byte == UInt8(ascii: "_")
+      }
+  }
   public static let maximumHealthKeys = 16
 
   private var currentFormatOnlyProblem: String? {
@@ -381,7 +392,7 @@ public struct CallSpeakerLog: Sendable, Equatable {
     guard usage.names.allSatisfy({ Self.isName(String(decoding: $0, as: UTF8.self)) }) else {
       return "names"
     }
-    func isLabel(_ text: String?) -> Bool { (text?.utf8.count ?? 0) <= Self.maximumLabelBytes }
+    func isLabel(_ text: String?) -> Bool { text.map(Self.isLabel) ?? true }
     guard isLabel(sessionHealth?.capacityReason) else { return "sessionHealth.capacityReason" }
     for (index, segment) in segments.enumerated() {
       guard

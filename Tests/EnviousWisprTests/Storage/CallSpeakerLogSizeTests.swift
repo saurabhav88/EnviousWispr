@@ -205,4 +205,31 @@ struct CallSpeakerLogSizeTests {
         ]) - none - entry
     #expect(pair <= 160)
   }
+
+  @Test("a segment frame with the most metadata format 3 accepts stays inside its ceiling")
+  func largestAcceptedFrame() throws {
+    let label = String(repeating: "W", count: CallSpeakerLog.maximumLabelBytes)
+    var health = CallCaptureHealth()
+    for n in 0..<CallSpeakerLog.maximumHealthKeys {
+      health.withheldByReason[String(format: "%02d", n) + label.dropFirst(2)] = 1
+    }
+    health = try Self.maxed(health)
+    let healthJSON = String(decoding: try JSONEncoder().encode(health), as: UTF8.self)
+    let json =
+      #"{"startMs":172799999,"endMs":172800000,"endReason":""# + label + #"","surface":""#
+      + label + #"","source":""# + label + #"","status":""# + label
+      + #"","lag":{"milliseconds":-60000},"roster":{"names":[],"selfNames":[]},"#
+      + #""rosterFromParticipantList":true,"observations":[],"presence":[],"health":"#
+      + healthJSON + "}"
+    let segment = try JSONDecoder().decode(CallSpeakerSegment.self, from: Data(json.utf8))
+    var sessionHealth = try Self.maxed(CallSessionHealth())
+    sessionHealth.capacityReason = label
+    let empty = CallSpeakerLog(rules: nil, segments: [], sessionHealth: sessionHealth)
+    let one = CallSpeakerLog(rules: nil, segments: [segment], sessionHealth: sessionHealth)
+    #expect(one.shapeProblem == nil, "every value here is accepted")
+    let frame =
+      try MeetingStore.encoder.encode(one).count - MeetingStore.encoder.encode(empty).count
+    #expect(frame <= 4_096)
+    #expect(try MeetingStore.encoder.encode(empty).count <= 8_192, "root and session health")
+  }
 }

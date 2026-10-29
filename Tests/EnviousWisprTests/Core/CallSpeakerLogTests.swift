@@ -509,5 +509,8 @@ struct CallSpeakerLogTests {
           observations: [], health: health)
       ])
     #expect(log.shapeProblem == "segments[0].health")
+    #expect(CallSpeakerLog.isLabel("capacity_reached"))
+    #expect(!CallSpeakerLog.isLabel("tab\there"), "text that grows when written is no label")
+    #expect(!CallSpeakerLog.isLabel("caf\u{00E9}"))
   }
 }
