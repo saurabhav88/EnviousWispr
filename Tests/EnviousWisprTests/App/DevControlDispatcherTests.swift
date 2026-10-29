@@ -199,6 +199,19 @@
       #expect(settings.copyLastModifiers == [.control, .shift])
     }
 
+    @Test("shortcut.set returns badValue for decoded out-of-range key codes",
+      .bug("https://github.com/saurabhav88/EnviousWispr/issues/3807"))
+    func shortcutSetKeyRange() async throws {
+      let (settings, dispatcher) = Self.make()
+      let before = settings.shortcutBindings
+      for keyCode in [128, 65535] {
+        let data = Data("{\"role\":\"record\",\"keyCode\":\(keyCode),\"modifiers\":393216}".utf8)
+        let args = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(code(await dispatcher.handle(.shortcutSet, args: args)) == "badValue")
+        #expect(settings.shortcutBindings == before)
+      }
+    }
+
     @Test("shortcut.set refuses malformed arguments and clashes without changing anything")
     func shortcutSetRefusals() async throws {
       let (settings, dispatcher) = Self.make()
