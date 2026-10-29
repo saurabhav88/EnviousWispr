@@ -72,14 +72,18 @@ package struct CallAXBounds: Sendable, Equatable {
 /// "More meeting controls") and for the identifier of a banner in its home window; read, those
 /// made every copy unreadable. Rather than call a failed read complete, the Zoom policy does not
 /// read those branches: the home window (no identifier, titled exactly "Zoom Workplace") is
-/// never copied, and a button's children are not read unless the button sits inside a
-/// participant tile or the participants list, the only structures `ZoomAppSpeakerReader` uses.
-/// Every read still made fails as before. Other providers read everything.
+/// never copied, and the children of the two toolbar buttons are not read. Those buttons are
+/// recognised by their identifiers ("leave", "more"), the same in every Zoom language, and only
+/// outside a participant tile or the participants list, the structures `ZoomAppSpeakerReader`
+/// uses. Every read still made fails as before; any other element is read whole. Other providers
+/// read everything.
 package enum CallAXCapturePolicy: Sendable, Equatable {
   case standard
   case zoomApp
 
   static let zoomHomeTitle = "Zoom Workplace"
+  /// The toolbar buttons whose children Zoom never answers for (measured 2026-10-29).
+  static let zoomToolbarIdentifiers: Set<String> = ["leave", "more"]
   /// The roles whose subtrees hold Zoom's speaker evidence: tiles and the participants list.
   static let zoomEvidenceRoles: Set<String> = ["AXTabGroup", "AXOutline"]
 
@@ -90,8 +94,11 @@ package enum CallAXCapturePolicy: Sendable, Equatable {
   }
 
   /// Whether an element's children are left unread.
-  func prunesChildren(role: String, insideEvidence: Bool) -> Bool {
-    self == .zoomApp && role == "AXButton" && !insideEvidence
+  func prunesChildren(role: String, identifier: String?, insideEvidence: Bool) -> Bool {
+    guard self == .zoomApp, role == "AXButton", !insideEvidence, let identifier else {
+      return false
+    }
+    return Self.zoomToolbarIdentifiers.contains(identifier)
   }
 
   func isEvidence(role: String) -> Bool {
@@ -165,9 +172,7 @@ package enum CallSpeakerCapture {
       var title: String?
       switch walk.read(window, .title) {
       case .text(let text)?: title = text
-      case .failed?:
-        walk.failedReads += 1
-        walk.unreadable = true
+      case .failed?: walk.unreadable = true
       default: break
       }
       copied.append(CallAXWindow(title: title, root: root))
@@ -278,7 +283,8 @@ package enum CallSpeakerCapture {
         keptPage = url.map(keepPage) ?? false
       }
       var children: [CallAXNode] = []
-      let pruned = policy.prunesChildren(role: role, insideEvidence: insideEvidence)
+      let pruned = policy.prunesChildren(
+        role: role, identifier: identifier, insideEvidence: insideEvidence)
       if pruned { prunedControls += 1 }
       if keptPage, !pruned {
         let inside = insideEvidence || policy.isEvidence(role: role)

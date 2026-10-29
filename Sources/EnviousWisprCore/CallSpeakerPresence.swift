@@ -135,9 +135,9 @@ public struct CallCaptureHealth: Sendable, Equatable, Codable {
   /// Copies dropped at delivery because something changed while they were taken.
   public var staleResultDrops = 0
   /// Readings not kept because a name in them is longer than a log may hold.
-  public var invalidNameReadings = 0
+  public var invalidNameReadings: Int? = 0
   /// Readings not kept because the recording's evidence reached `CallEvidenceLimits`.
-  public var evidenceCapacityDrops = 0
+  public var evidenceCapacityDrops: Int? = 0
   public var walkDurationCount = 0
   public var walkDurationTotalUs = 0
   public var walkDurationMaxUs = 0
@@ -145,9 +145,11 @@ public struct CallCaptureHealth: Sendable, Equatable, Codable {
   public var nodesVisitedMax = 0
   /// Reads the call app could not answer, button subtrees left unread and windows skipped as
   /// not the call (#4013 13B receipt), summed over copies.
-  public var failedReads = 0
-  public var prunedControls = 0
-  public var skippedWindows = 0
+  /// `invalidNameReadings`, `evidenceCapacityDrops` and these three came later: a health object
+  /// written before them reads them as unknown (`nil`), never zero; a new one starts them at zero.
+  public var failedReads: Int? = 0
+  public var prunedControls: Int? = 0
+  public var skippedWindows: Int? = 0
 
   public init() {}
 
@@ -156,9 +158,9 @@ public struct CallCaptureHealth: Sendable, Equatable, Codable {
     durationUs: Int, nodes: Int, failedReads: Int = 0, prunedControls: Int = 0,
     skippedWindows: Int = 0
   ) {
-    self.failedReads += max(0, failedReads)
-    self.prunedControls += max(0, prunedControls)
-    self.skippedWindows += max(0, skippedWindows)
+    self.failedReads = (self.failedReads ?? 0) + max(0, failedReads)
+    self.prunedControls = (self.prunedControls ?? 0) + max(0, prunedControls)
+    self.skippedWindows = (self.skippedWindows ?? 0) + max(0, skippedWindows)
     walkDurationCount += 1
     walkDurationTotalUs += max(0, durationUs)
     walkDurationMaxUs = max(walkDurationMaxUs, durationUs)

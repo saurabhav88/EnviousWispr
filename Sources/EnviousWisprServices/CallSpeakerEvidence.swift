@@ -267,7 +267,7 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
       return
     }
     guard capacityReached == nil else {
-      health.evidenceCapacityDrops += 1
+      health.evidenceCapacityDrops = (health.evidenceCapacityDrops ?? 0) + 1
       return
     }
     let admission = CallSpeakerAdmission.admission(of: reading, context: context)
@@ -280,7 +280,7 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
     let shown =
       reading.roster.names + reading.roster.selfNames + reading.sharedNames + (speaking ?? [])
     guard shown.allSatisfy(CallSpeakerLog.isName) else {
-      health.invalidNameReadings += 1
+      health.invalidNameReadings = (health.invalidNameReadings ?? 0) + 1
       breakAbsenceRuns()
       return
     }
@@ -292,7 +292,7 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
     }
     if let capacity = usage(of: trial, adding: observation).exceeded(limits) {
       capacityReached = capacity
-      health.evidenceCapacityDrops += 1
+      health.evidenceCapacityDrops = (health.evidenceCapacityDrops ?? 0) + 1
       breakAbsenceRuns()
       return
     }

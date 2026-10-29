@@ -608,14 +608,14 @@ struct CallSpeakerCaptureTests {
   /// list (with a button inside it), and the home window whose banner's identifier fails.
   private static func zoomTree() -> Tree {
     let tree = Tree()
-    tree.node(1, "AXWindow", children: [2, 3, 4, 5, 10])
+    tree.node(1, "AXWindow", children: [2, 3, 4, 5, 10, 11])
     tree.texts[1] = [.identifier: "zm.meeting.window.main", .title: "Zoom Meeting"]
     tree.node(2, "AXTabGroup")
     tree.texts[2] = [.title: "Alex Rivera, Computer audio unmuted, Video off, active speaker"]
     tree.node(3, "AXButton")
-    tree.texts[3] = [.title: "End"]
+    tree.texts[3] = [.description: "End", .identifier: "leave"]
     tree.node(4, "AXButton")
-    tree.texts[4] = [.title: "More meeting controls, collapsed"]
+    tree.texts[4] = [.description: "More meeting controls, collapsed", .identifier: "more"]
     tree.failing = ["3.AXChildren", "4.AXChildren", "21.AXIdentifier"]
     tree.node(5, "AXOutline", children: [6, 7, 8])
     tree.texts[5] = [.description: "Participants list"]
@@ -627,6 +627,10 @@ struct CallSpeakerCaptureTests {
     tree.node(9, "AXImage")
     tree.node(10, "AXStaticText")
     tree.texts[10] = [.value: "Participants (2)"]
+    // A plain button wrapping a tile: read whole, so the tile stays visible.
+    tree.node(11, "AXButton", children: [12])
+    tree.node(12, "AXTabGroup")
+    tree.texts[12] = [.title: "Priya Shah, Computer audio muted, Video off"]
     tree.node(20, "AXWindow", children: [21])
     tree.texts[20] = [.title: "Zoom Workplace"]
     tree.node(21, "AXUnknown")
@@ -642,10 +646,12 @@ struct CallSpeakerCaptureTests {
     #expect(!tree.queried.contains("4.AXChildren"))
     #expect(!tree.queried.contains("21.AXIdentifier"), "the home window is never walked")
     #expect(tree.queried.contains("8.AXChildren"), "a button inside the list is still read")
+    #expect(tree.queried.contains("11.AXChildren"), "a button without a toolbar identifier is read")
     #expect(copy.prunedControls == 2)
     #expect(copy.skippedWindows == 1)
     #expect(copy.failedReads == 0)
     let reading = ZoomAppSpeakerReader.read(windows: copy.windows)
+    #expect(reading.participants.compactMap(\.name) == ["Alex Rivera", "Priya Shah"])
     #expect(reading.roster.names == ["Alex Rivera", "Priya Shah"])
     #expect(reading.speaking == ["Alex Rivera"])
     #expect(reading.participantListComplete)
@@ -656,7 +662,7 @@ struct CallSpeakerCaptureTests {
 
   @Test("under the Zoom policy a failed read the call needs still makes the copy unreadable")
   func zoomPolicyKeepsRealFailures() {
-    for failing in ["6.AXValue", "5.AXChildren", "8.AXChildren", "2.AXRole"] {
+    for failing in ["6.AXValue", "5.AXChildren", "8.AXChildren", "2.AXRole", "11.AXChildren"] {
       let tree = Self.zoomTree()
       tree.failing.insert(failing)
       #expect(
@@ -667,6 +673,34 @@ struct CallSpeakerCaptureTests {
     let tree = Self.zoomTree()
     tree.texts[20] = [.title: "Zoom Workplace", .identifier: "zm.other"]
     #expect(capture(tree, windows: [1, 20], policy: .zoomApp).completeness == .unreadable)
+    // Each failed read counts once.
+    let titled = Self.zoomTree()
+    titled.failing.insert("1.AXTitle")
+    let copy = capture(titled, windows: [1, 20], policy: .zoomApp)
+    let failedQueries = titled.queried.intersection(titled.failing).count
+    #expect(copy.failedReads == failedQueries)
+    #expect(copy.completeness == .unreadable)
+  }
+
+  @Test("a health object written before the newer counters reads them as unknown")
+  func olderHealthDecodes() throws {
+    var object = try #require(
+      JSONSerialization.jsonObject(with: JSONEncoder().encode(CallCaptureHealth()))
+        as? [String: Any])
+    for key in [
+      "invalidNameReadings", "evidenceCapacityDrops", "failedReads", "prunedControls",
+      "skippedWindows",
+    ] {
+      #expect(object.removeValue(forKey: key) != nil, "\(key)")
+    }
+    let health = try JSONDecoder().decode(
+      CallCaptureHealth.self, from: JSONSerialization.data(withJSONObject: object))
+    #expect(health.failedReads == nil)
+    #expect(health.invalidNameReadings == nil)
+    #expect(CallCaptureHealth().failedReads == 0, "a new one starts at zero")
+    var counting = health
+    counting.noteWalk(durationUs: 1, nodes: 1, failedReads: 2)
+    #expect(counting.failedReads == 2)
   }
 
   @Test("only the Zoom app gets the Zoom policy")
