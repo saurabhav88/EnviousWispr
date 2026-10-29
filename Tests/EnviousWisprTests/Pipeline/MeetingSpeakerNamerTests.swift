@@ -138,6 +138,16 @@ struct MeetingSpeakerNamerTests {
     #expect(
       propose([Self.turn(Self.a, 3_000, 5_000)], Self.eligibility([Self.a]), gap).proposals
         .isEmpty)
+    // Exactly at the end: with two votes of its own after 5 s, B must not reach three from A's
+    // segment-end vote (-500 ms lag moves 4,500 to 5,000).
+    let endpoint = CallSpeakerLog(
+      rules: nil,
+      segments: [
+        Self.segment(0, 5_000, [(4_500, ["Priya Shah"])], roster: ["Priya Shah"], lag: -500),
+        Self.segment(
+          5_000, nil, [(6_000, ["Priya Shah"]), (6_100, ["Priya Shah"])], roster: ["Priya Shah"]),
+      ])
+    #expect(propose(turns, eligible, endpoint).proposals[Self.b] == nil)
   }
 
   @Test("a name one segment shows for two people is never named from another segment")

@@ -161,9 +161,10 @@ package enum MeetingSpeakerNamer {
         }
         let (aligned, overflow) = observation.observationMs.subtractingReportingOverflow(
           lag.milliseconds)
-        // The voice it points to must lie in this segment's own stretch, so a lag never carries
-        // a vote onto another call's speech or into a gap nothing read.
-        guard !overflow, aligned >= segment.startMs, aligned <= segment.endMs ?? Int.max else {
+        // The voice it points to must lie in this segment's own stretch, start included and end
+        // excluded (the next segment may start there), so a lag never carries a vote onto
+        // another call's speech or into a gap nothing read.
+        guard !overflow, aligned >= segment.startMs, aligned < segment.endMs ?? Int.max else {
           continue
         }
         // At most one vote per speaker per observation, however many of its turns overlap.
