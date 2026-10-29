@@ -212,7 +212,8 @@ final class CallSpeakerObserver {
     accumulator.noteWalk(
       durationUs: CallSpeakerTimeline.microseconds(
         from: copy.readStartHostTime, to: copy.readEndHostTime),
-      nodes: copy.nodesVisited)
+      nodes: copy.nodesVisited, failedReads: copy.failedReads,
+      prunedControls: copy.prunedControls, skippedWindows: copy.skippedWindows)
     // Read again at delivery: nothing that would have stopped the copy may have happened since.
     guard trustedAfter, taken.generation == generation,
       taken.dictation == dictationChanges.withLock({ $0 }), taken.source == deps.sourceRevision(),

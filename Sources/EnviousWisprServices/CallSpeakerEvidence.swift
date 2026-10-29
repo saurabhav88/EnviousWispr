@@ -46,6 +46,15 @@ package enum CallSpeakerSurfaceChoice {
   }
 
   /// Whether a web page belongs to `family`'s meeting: the only pages a capture copies.
+  /// What a copy of this app skips: Zoom's own app reads only its call (`CallAXCapturePolicy`);
+  /// a browser, or any other app, is read whole.
+  package static func capturePolicy(family: CallAppFamily, rule: CallAppCatalog.Rule)
+    -> CallAXCapturePolicy
+  {
+    if case .browser = rule { return .standard }
+    return family == .zoom ? .zoomApp : .standard
+  }
+
   package static func isMeetingPage(_ url: String, family: CallAppFamily) -> Bool {
     CallMeetingURL.classify(url)?.family == family
   }
@@ -454,8 +463,13 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
   }
 
   /// One copy's walk time and size.
-  package mutating func noteWalk(durationUs: Int, nodes: Int) {
-    health.noteWalk(durationUs: durationUs, nodes: nodes)
+  package mutating func noteWalk(
+    durationUs: Int, nodes: Int, failedReads: Int = 0, prunedControls: Int = 0,
+    skippedWindows: Int = 0
+  ) {
+    health.noteWalk(
+      durationUs: durationUs, nodes: nodes, failedReads: failedReads,
+      prunedControls: prunedControls, skippedWindows: skippedWindows)
   }
 
   /// The log of this one segment, still open.

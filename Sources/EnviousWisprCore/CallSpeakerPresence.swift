@@ -143,11 +143,22 @@ public struct CallCaptureHealth: Sendable, Equatable, Codable {
   public var walkDurationMaxUs = 0
   public var nodesVisitedTotal = 0
   public var nodesVisitedMax = 0
+  /// Reads the call app could not answer, button subtrees left unread and windows skipped as
+  /// not the call (#4013 13B receipt), summed over copies.
+  public var failedReads = 0
+  public var prunedControls = 0
+  public var skippedWindows = 0
 
   public init() {}
 
-  /// Adds one copy's walk time and size.
-  public mutating func noteWalk(durationUs: Int, nodes: Int) {
+  /// Adds one copy's walk time, size and what it could not read or left out.
+  public mutating func noteWalk(
+    durationUs: Int, nodes: Int, failedReads: Int = 0, prunedControls: Int = 0,
+    skippedWindows: Int = 0
+  ) {
+    self.failedReads += max(0, failedReads)
+    self.prunedControls += max(0, prunedControls)
+    self.skippedWindows += max(0, skippedWindows)
     walkDurationCount += 1
     walkDurationTotalUs += max(0, durationUs)
     walkDurationMaxUs = max(walkDurationMaxUs, durationUs)

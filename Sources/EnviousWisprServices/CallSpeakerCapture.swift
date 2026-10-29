@@ -67,6 +67,38 @@ package struct CallAXBounds: Sendable, Equatable {
     maxNodes: 6_000, maxDepth: 64, budget: .milliseconds(400))
 }
 
+/// What a capture skips in one provider's tree (#4013 13B runtime receipt). The live Zoom app
+/// answers a generic failure, every time, for the children of some toolbar buttons ("End",
+/// "More meeting controls") and for the identifier of a banner in its home window; read, those
+/// made every copy unreadable. Rather than call a failed read complete, the Zoom policy does not
+/// read those branches: the home window (no identifier, titled exactly "Zoom Workplace") is
+/// never copied, and a button's children are not read unless the button sits inside a
+/// participant tile or the participants list, the only structures `ZoomAppSpeakerReader` uses.
+/// Every read still made fails as before. Other providers read everything.
+package enum CallAXCapturePolicy: Sendable, Equatable {
+  case standard
+  case zoomApp
+
+  static let zoomHomeTitle = "Zoom Workplace"
+  /// The roles whose subtrees hold Zoom's speaker evidence: tiles and the participants list.
+  static let zoomEvidenceRoles: Set<String> = ["AXTabGroup", "AXOutline"]
+
+  /// Whether a window is skipped before anything below it is read.
+  func skipsWindow(identifier: String?, title: String?) -> Bool {
+    self == .zoomApp && identifier == nil && title == Self.zoomHomeTitle
+      && !ZoomCallWindow.isMeeting(identifier: identifier, title: title)
+  }
+
+  /// Whether an element's children are left unread.
+  func prunesChildren(role: String, insideEvidence: Bool) -> Bool {
+    self == .zoomApp && role == "AXButton" && !insideEvidence
+  }
+
+  func isEvidence(role: String) -> Bool {
+    self == .zoomApp && Self.zoomEvidenceRoles.contains(role)
+  }
+}
+
 /// An immutable copy of one app's windows, and of the meeting pages inside them, with what the
 /// copy can say about itself. A page that is not the meeting is never copied beyond its own node.
 package struct CallAXCapture: Sendable, Equatable {
@@ -78,13 +110,21 @@ package struct CallAXCapture: Sendable, Equatable {
   package let readEndHostTime: UInt64
   /// Elements copied (for the local capture health counts).
   package let nodesVisited: Int
+  /// Reads that failed, button subtrees left unread, and windows skipped (`CallAXCapturePolicy`).
+  package let failedReads: Int
+  package let prunedControls: Int
+  package let skippedWindows: Int
 
   package init(
     windows: [CallAXWindow], documents: [CallAXDocument],
     completeness: CallCaptureContext.Completeness, readStartHostTime: UInt64,
-    readEndHostTime: UInt64, nodesVisited: Int = 0
+    readEndHostTime: UInt64, nodesVisited: Int = 0, failedReads: Int = 0,
+    prunedControls: Int = 0, skippedWindows: Int = 0
   ) {
     self.nodesVisited = nodesVisited
+    self.failedReads = failedReads
+    self.prunedControls = prunedControls
+    self.skippedWindows = skippedWindows
     self.windows = windows
     self.documents = documents
     self.completeness = completeness
@@ -102,18 +142,32 @@ package enum CallSpeakerCapture {
   /// (a cycle) is not copied again.
   package static func capture<Element>(
     windows: [Element], access: CallAXTreeAccess<Element>, bounds: CallAXBounds,
-    keepPage: @escaping (String) -> Bool, hostTime: () -> UInt64
+    policy: CallAXCapturePolicy = .standard, keepPage: @escaping (String) -> Bool,
+    hostTime: () -> UInt64
   ) -> CallAXCapture {
     let started = hostTime()
     let deadline = access.now().advanced(by: bounds.budget)
-    var walk = Walk(access: access, bounds: bounds, deadline: deadline, keepPage: keepPage)
+    var walk = Walk(
+      access: access, bounds: bounds, deadline: deadline, policy: policy, keepPage: keepPage)
     var copied: [CallAXWindow] = []
+    var skippedWindows = 0
     for window in windows {
-      guard let root = walk.node(window, depth: 0) else { continue }
+      if policy != .standard {
+        // Only a window positively known not to be the call is skipped; a failed read keeps it.
+        let identifier = walk.text(window, .identifier)
+        let title = walk.text(window, .title)
+        if !walk.unreadable, policy.skipsWindow(identifier: identifier, title: title) {
+          skippedWindows += 1
+          continue
+        }
+      }
+      guard let root = walk.node(window, depth: 0, insideEvidence: false) else { continue }
       var title: String?
       switch walk.read(window, .title) {
       case .text(let text)?: title = text
-      case .failed?: walk.unreadable = true
+      case .failed?:
+        walk.failedReads += 1
+        walk.unreadable = true
       default: break
       }
       copied.append(CallAXWindow(title: title, root: root))
@@ -124,27 +178,33 @@ package enum CallSpeakerCapture {
       walk.unreadable ? .unreadable : (walk.truncated ? .truncated : .complete)
     return CallAXCapture(
       windows: copied, documents: walk.documents, completeness: completeness,
-      readStartHostTime: started, readEndHostTime: hostTime(), nodesVisited: walk.count)
+      readStartHostTime: started, readEndHostTime: hostTime(), nodesVisited: walk.count,
+      failedReads: walk.failedReads, prunedControls: walk.prunedControls,
+      skippedWindows: skippedWindows)
   }
 
   private struct Walk<Element> {
     let access: CallAXTreeAccess<Element>
     let bounds: CallAXBounds
     let deadline: ContinuousClock.Instant
+    let policy: CallAXCapturePolicy
     let keepPage: (String) -> Bool
     var visited: [Int: [Element]] = [:]
     var count = 0
     var truncated = false
     var unreadable = false
+    var failedReads = 0
+    var prunedControls = 0
     var documents: [CallAXDocument] = []
 
     init(
       access: CallAXTreeAccess<Element>, bounds: CallAXBounds, deadline: ContinuousClock.Instant,
-      keepPage: @escaping (String) -> Bool
+      policy: CallAXCapturePolicy, keepPage: @escaping (String) -> Bool
     ) {
       self.access = access
       self.bounds = bounds
       self.deadline = deadline
+      self.policy = policy
       self.keepPage = keepPage
     }
 
@@ -155,7 +215,9 @@ package enum CallSpeakerCapture {
         truncated = true
         return nil
       }
-      return access.read(element, attribute)
+      let result = access.read(element, attribute)
+      if case .failed = result { failedReads += 1 }
+      return result
     }
 
     /// Whether `element` was copied already; records it when not.
@@ -176,7 +238,7 @@ package enum CallSpeakerCapture {
       }
     }
 
-    mutating func node(_ element: Element, depth: Int) -> CallAXNode? {
+    mutating func node(_ element: Element, depth: Int, insideEvidence: Bool) -> CallAXNode? {
       guard !unreadable else { return nil }
       guard count < bounds.maxNodes, depth <= bounds.maxDepth, access.now() < deadline else {
         truncated = true
@@ -216,11 +278,16 @@ package enum CallSpeakerCapture {
         keptPage = url.map(keepPage) ?? false
       }
       var children: [CallAXNode] = []
-      if keptPage {
+      let pruned = policy.prunesChildren(role: role, insideEvidence: insideEvidence)
+      if pruned { prunedControls += 1 }
+      if keptPage, !pruned {
+        let inside = insideEvidence || policy.isEvidence(role: role)
         switch read(element, .children) {
         case .elements(let list)?:
           for child in list {
-            if let copy = node(child, depth: depth + 1) { children.append(copy) }
+            if let copy = node(child, depth: depth + 1, insideEvidence: inside) {
+              children.append(copy)
+            }
             if unreadable || truncated { break }
           }
         case .missing?, nil: break
@@ -287,16 +354,17 @@ package enum CallSpeakerCapture {
 
   /// Copies every window of the app `pid` within `bounds`. Unreadable when the window list
   /// itself cannot be read; an app with no windows gives an empty, complete copy.
-  package static func live(pid: pid_t, bounds: CallAXBounds, keepPage: @escaping (String) -> Bool)
-    -> CallAXCapture
-  {
+  package static func live(
+    pid: pid_t, bounds: CallAXBounds, policy: CallAXCapturePolicy = .standard,
+    keepPage: @escaping (String) -> Bool
+  ) -> CallAXCapture {
     let app = AXUIElementCreateApplication(pid)
     // Reading the role first wakes a Chromium browser's tree (#3802), as call detection does.
     _ = liveRead(app, .role)
     switch liveRead(app, .windows) {
     case .elements(let windows):
       return capture(
-        windows: windows, access: liveAccess, bounds: bounds, keepPage: keepPage,
+        windows: windows, access: liveAccess, bounds: bounds, policy: policy, keepPage: keepPage,
         hostTime: { mach_absolute_time() })
     case .missing:
       let now = mach_absolute_time()

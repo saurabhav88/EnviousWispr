@@ -24,6 +24,8 @@ struct CallSpeakerCaptureTests {
     var children: [Int: [Int]] = [:]
     var hashes: [Int: Int] = [:]
     var failing: Set<String> = []
+    /// Every `id.attribute` the walk asked for.
+    var queried: Set<String> = []
     var ticks = 0
     var tickPerRead: Duration = .zero
     let start = ContinuousClock.now
@@ -32,6 +34,7 @@ struct CallSpeakerCaptureTests {
       CallAXTreeAccess<Int>(
         read: { [self] id, attribute in
           ticks += 1
+          queried.insert("\(id).\(attribute.rawValue)")
           if failing.contains("\(id).\(attribute.rawValue)") { return .failed }
           switch attribute {
           case .role: return roles[id].map { .text($0) } ?? .missing
@@ -53,11 +56,11 @@ struct CallSpeakerCaptureTests {
 
   private func capture(
     _ tree: Tree, windows: [Int] = [1], bounds: CallAXBounds = .standard,
-    keepPage: @escaping (String) -> Bool = { _ in true }
+    policy: CallAXCapturePolicy = .standard, keepPage: @escaping (String) -> Bool = { _ in true }
   ) -> CallAXCapture {
     var host: UInt64 = 100
     return CallSpeakerCapture.capture(
-      windows: windows, access: tree.access(), bounds: bounds, keepPage: keepPage,
+      windows: windows, access: tree.access(), bounds: bounds, policy: policy, keepPage: keepPage,
       hostTime: {
         host += 10
         return host
@@ -596,5 +599,83 @@ struct CallSpeakerCaptureTests {
     #expect(log.log.segments.first?.presence == kept.segments.first?.presence)
     #expect(log.health.invalidNameReadings == 1)
     #expect(log.capacityReached == nil)
+  }
+
+  // MARK: - Zoom app policy (#4013 13B runtime receipt)
+
+  /// The live Zoom app as measured on 2026-10-29: a meeting window with a talking tile, the
+  /// "End" and "More meeting controls" buttons whose children fail to read, the participants
+  /// list (with a button inside it), and the home window whose banner's identifier fails.
+  private static func zoomTree() -> Tree {
+    let tree = Tree()
+    tree.node(1, "AXWindow", children: [2, 3, 4, 5, 10])
+    tree.texts[1] = [.identifier: "zm.meeting.window.main", .title: "Zoom Meeting"]
+    tree.node(2, "AXTabGroup")
+    tree.texts[2] = [.title: "Alex Rivera, Computer audio unmuted, Video off, active speaker"]
+    tree.node(3, "AXButton")
+    tree.texts[3] = [.title: "End"]
+    tree.node(4, "AXButton")
+    tree.texts[4] = [.title: "More meeting controls, collapsed"]
+    tree.failing = ["3.AXChildren", "4.AXChildren", "21.AXIdentifier"]
+    tree.node(5, "AXOutline", children: [6, 7, 8])
+    tree.texts[5] = [.description: "Participants list"]
+    tree.node(6, "AXStaticText")
+    tree.texts[6] = [.value: "Alex Rivera"]
+    tree.node(7, "AXStaticText")
+    tree.texts[7] = [.value: "Priya Shah"]
+    tree.node(8, "AXButton", children: [9])
+    tree.node(9, "AXImage")
+    tree.node(10, "AXStaticText")
+    tree.texts[10] = [.value: "Participants (2)"]
+    tree.node(20, "AXWindow", children: [21])
+    tree.texts[20] = [.title: "Zoom Workplace"]
+    tree.node(21, "AXUnknown")
+    return tree
+  }
+
+  @Test("the Zoom app copy leaves out its home window and toolbar buttons and reads the call")
+  func zoomPolicyReadsTheCall() throws {
+    let tree = Self.zoomTree()
+    let copy = capture(tree, windows: [1, 20], policy: .zoomApp)
+    #expect(copy.completeness == .complete)
+    #expect(!tree.queried.contains("3.AXChildren"))
+    #expect(!tree.queried.contains("4.AXChildren"))
+    #expect(!tree.queried.contains("21.AXIdentifier"), "the home window is never walked")
+    #expect(tree.queried.contains("8.AXChildren"), "a button inside the list is still read")
+    #expect(copy.prunedControls == 2)
+    #expect(copy.skippedWindows == 1)
+    #expect(copy.failedReads == 0)
+    let reading = ZoomAppSpeakerReader.read(windows: copy.windows)
+    #expect(reading.roster.names == ["Alex Rivera", "Priya Shah"])
+    #expect(reading.speaking == ["Alex Rivera"])
+    #expect(reading.participantListComplete)
+    // Control: read whole, the same app is unreadable.
+    let whole = Self.zoomTree()
+    #expect(capture(whole, windows: [1, 20]).completeness == .unreadable)
+  }
+
+  @Test("under the Zoom policy a failed read the call needs still makes the copy unreadable")
+  func zoomPolicyKeepsRealFailures() {
+    for failing in ["6.AXValue", "5.AXChildren", "8.AXChildren", "2.AXRole"] {
+      let tree = Self.zoomTree()
+      tree.failing.insert(failing)
+      #expect(
+        capture(tree, windows: [1, 20], policy: .zoomApp).completeness == .unreadable,
+        "\(failing)")
+    }
+    // A window that only looks like home (it has an identifier) is walked.
+    let tree = Self.zoomTree()
+    tree.texts[20] = [.title: "Zoom Workplace", .identifier: "zm.other"]
+    #expect(capture(tree, windows: [1, 20], policy: .zoomApp).completeness == .unreadable)
+  }
+
+  @Test("only the Zoom app gets the Zoom policy")
+  func zoomPolicySelection() {
+    #expect(
+      CallSpeakerSurfaceChoice.capturePolicy(family: .zoom, rule: .callWindow(.zoom)) == .zoomApp)
+    #expect(
+      CallSpeakerSurfaceChoice.capturePolicy(family: .zoom, rule: .browser(.chrome)) == .standard)
+    #expect(
+      CallSpeakerSurfaceChoice.capturePolicy(family: .teams, rule: .callApp(.teams)) == .standard)
   }
 }
