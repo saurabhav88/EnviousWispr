@@ -471,13 +471,18 @@ fi
 # --- staging is cleaned by the SAME handler as the locks ----------------------
 # A TERM that releases the lock but leaves a staging copy has half-cleaned.
 STAGE="$TMPROOT/stagecheck"; mkdir -p "$STAGE"
-ew_seed_lock_acquire "stagekey" >/dev/null 2>&1
-ew_seed_begin_temp stagekey "$STAGE" "$STAGE/.SourcePackages.seed.stagekey.999"
-ew_seed_release_all
-if [ ! -e "$STAGE/.SourcePackages.seed.stagekey.999" ]; then
-  ok "release_all removes tracked staging directories, not just locks"
+if ew_seed_lock_acquire stagekey && ew_seed_begin_temp stagekey "$STAGE" "$STAGE/.SourcePackages.seed.stagekey.999" \
+   && printf 'staged-sentinel' > "$STAGE/.SourcePackages.seed.stagekey.999/sentinel" \
+   && [ "$(cat "$STAGE/.SourcePackages.seed.stagekey.999/sentinel")" = staged-sentinel ]; then
+  ew_seed_release_all
+  if [ ! -e "$STAGE/.SourcePackages.seed.stagekey.999" ] && [ "$EW_SEED_CLEANUP_COMPLETE" = 1 ]; then
+    ok "release_all removes tracked staging directories, not just locks"
+  else
+    bad "staging cleanup" "staging survived or cleanup reported incomplete"
+  fi
 else
-  bad "staging cleanup" "staging survived release_all"
+  bad "staging cleanup setup" "lock, staging creation or sentinel precondition failed"
+  ew_seed_release_all
 fi
 
 # --- a seeded tree that will not resolve is DISCARDED and retried unseeded -----
@@ -775,12 +780,16 @@ if ew_seed_resolve_or_unseed "$GUARDED" guarded_fail; then _guard_rc=0; else _gu
 if [ "$_guard_rc" != 0 ] && [ "$(cat "$GUARDED/calls")" = call ] && [ "$(cat "$GUARDED/SourcePackages/sentinel")" = foreign ] && [ "$EW_SEED_CONSUMED" = 1 ]; then ok "unseed refuses a replaced target and preserves its sentinel"; else bad "replacement unseed" "deleted foreign instance or retried"; fi
 EW_SEED_CONSUMED=0
 
-ew_seed_lock_acquire contents
 CONTENTS="$TMPROOT/contents"; mkdir "$CONTENTS"
-ew_seed_begin_temp contents "$CONTENTS" "$CONTENTS/.staging.copy"
-mkdir "$CONTENTS/source"; printf payload > "$CONTENTS/source/marker"
-if cp -Rc "$CONTENTS/source/." "$CONTENTS/.staging.copy/" && [ -f "$CONTENTS/.staging.copy/marker" ] && [ ! -e "$CONTENTS/.staging.copy/source" ]; then ok "exclusive staging copies source contents without nesting"; else bad "copy contents" "unexpected layout"; fi
-ew_seed_lock_release contents
+if ew_seed_lock_acquire contents && ew_seed_begin_temp contents "$CONTENTS" "$CONTENTS/.staging.copy"; then
+  mkdir "$CONTENTS/source"; printf payload > "$CONTENTS/source/marker"
+  if cp -Rc "$CONTENTS/source/." "$CONTENTS/.staging.copy/" && [ "$(cat "$CONTENTS/.staging.copy/marker")" = payload ] && [ ! -e "$CONTENTS/.staging.copy/source" ]; then ok "exclusive staging copies source contents without nesting"; else bad "copy contents" "unexpected layout"; fi
+  ew_seed_lock_release contents
+  if [ "$EW_SEED_CLEANUP_COMPLETE" = 1 ] && [ ! -e "$CONTENTS/.staging.copy" ]; then ok "copied contents retain registered cleanup ownership"; else bad "copied contents cleanup" "unregistered or incomplete staging"; fi
+else
+  bad "copy contents setup" "exclusive staging acquisition failed"
+  ew_seed_lock_release contents
+fi
 
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 if [ "$((PASS + FAIL))" -lt 49 ]; then
