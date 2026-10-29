@@ -2,8 +2,9 @@
 """Environment probes every Live UAT recipe depends on, in one place (#2775).
 
 Each probe answers ONE question about the machine and returns
-`(level, detail)` with level in {"ok", "warn", "fail", "info"}. `uat.py preflight` runs them all and prints the result; `uat.py run` re-asks
-the volume one before an AUDIO recipe. Nothing here drives the app or blocks it.
+`(level, detail)` with level in {"ok", "warn", "fail", "info"}. `uat.py preflight` runs them all and prints the result. After routing, AudioRig and
+take_gate reuse the raw mute reading before admitting loopback takes (#4133); that check
+does not apply the acoustic volume floor. Nothing here drives the app or blocks it.
 
 Why these probes and not others: every one is a trap this repo already paid
 for, written up in `uat-testing.md` FACT: uat-gotchas or `code-tooling.md`

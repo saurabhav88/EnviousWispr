@@ -10,6 +10,7 @@ Entering the rig:
    (silent_audio.AudioRoute / AlertSink, restore file on disk first); the microphone and the
    app's sounds go through the #3765 dev control door, never a Settings click (#3990);
 2. READS BACK all four and refuses (`take_gate.SetupFailed`) unless each is BlackHole;
+   the shared output gate also refuses muted or unreadable BlackHole output (#4133);
    with `quiet_app` (default) it also turns the app's start/stop sounds and "other audio"
    ducking off for the takes (`silent_audio.AppSounds`) and puts them back;
 3. prepares the paste target, proves it is frontmost and names it to `take_gate`, which
@@ -183,7 +184,8 @@ class AudioRig:
             self._old_handlers[sig] = signal.signal(sig, _unwind)
 
     def _prove_route(self):
-        for kind in ("output", "input", "system"):
+        tg.check_loopback_output()
+        for kind in ("input", "system"):
             now = sa._current(kind)
             if now != tg.SILENT_DEVICE:
                 raise tg.SetupFailed("audio-route", f"{kind} device is {now!r}, not {tg.SILENT_DEVICE!r}")
@@ -518,6 +520,45 @@ def _self_test():
         expect("a nested rig is refused before any device moves", exc.step == "rig")
     finally:
         tg.clear_target()
+
+    # #4133 harness contract: real setup/cleanup, fake OS and app boundaries.
+    from unittest import mock
+    import preflight
+
+    class MutedRoute(Fake):
+        client = None
+        def apply(self):
+            pass
+
+    class Alerts(Fake):
+        def apply(self):
+            return True
+
+    class Target(FakeTarget):
+        ready_calls = 0
+        def ready(self):
+            self.ready_calls += 1
+
+    route, alerts, target = MutedRoute(), Alerts(), Target()
+    rig = AudioRig(target=target, quiet_app=False)
+    with mock.patch.object(sa, "AudioRoute", return_value=route), \
+            mock.patch.object(sa, "AlertSink", return_value=alerts), \
+            mock.patch.object(sa, "_current", return_value=tg.SILENT_DEVICE), \
+            mock.patch.object(sa.AppMic, "read", return_value=sa.AppMic(BLACKHOLE_UID, BLACKHOLE_UID)), \
+            mock.patch.object(tg, "output_device", return_value=tg.SILENT_DEVICE), \
+            mock.patch.object(preflight, "output_volume", return_value=("warn", "muted", 75, True)), \
+            mock.patch.object(rig, "_install_restore_handlers"):
+        refused = False
+        try:
+            rig.__enter__()
+        except tg.SetupFailed as exc:
+            refused = exc.step == "audio-output"
+        else:
+            rig.__exit__(None, None, None)
+        expect("muted setup refuses before target readiness and restores both routes",
+               refused and target.ready_calls == 0 and target.closed == 1
+               and route.calls == 1 and alerts.calls == 1 and rig.restored
+               and tg.declared_target() is None)
     print("PASS" if ok else "FAIL")
     return ok
 
