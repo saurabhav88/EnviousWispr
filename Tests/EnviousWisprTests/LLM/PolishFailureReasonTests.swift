@@ -866,35 +866,35 @@ struct PolishFailureReasonTests {
       ),
       (
         .emptyResponse, .openAI, .failed,
-        "AI polish failed: OpenAI returned no cleanup text. Try again."
+        "AI polish failed: OpenAI returned no polished text. Try again."
       ),
       (
         .emptyResponse, .gemini, .failed,
-        "AI polish failed: Gemini returned no cleanup text. Try again."
+        "AI polish failed: Gemini returned no polished text. Try again."
       ),
       (
         .emptyResponse, .claude, .failed,
-        "AI polish failed: Claude returned no cleanup text. Try again."
+        "AI polish failed: Claude returned no polished text. Try again."
       ),
       (
         .emptyResponse, .ollama, .failed,
-        "AI polish failed: Ollama returned no cleanup text. Try again."
+        "AI polish failed: Ollama returned no polished text. Try again."
       ),
       (
         .emptyResponse, .appleIntelligence, .failed,
-        "AI polish failed: Apple Intelligence returned no cleanup text. Try again."
+        "AI polish failed: Apple Intelligence returned no polished text. Try again."
       ),
       (
         .emptyResponse, .egOne, .failed,
-        "AI polish failed: EG-1 returned no cleanup text. Try again."
+        "AI polish failed: EG-1 returned no polished text. Try again."
       ),
       (
         .emptyResponse, .s1Mini, .failed,
-        "AI polish failed: S1-mini returned no cleanup text. Try again."
+        "AI polish failed: S1-mini returned no polished text. Try again."
       ),
       (
         .emptyResponse, .none, .failed,
-        "AI polish failed: None returned no cleanup text. Try again."
+        "AI polish failed: None returned no polished text. Try again."
       ),
       (
         .timedOut, .openAI, .skipped,
@@ -930,35 +930,35 @@ struct PolishFailureReasonTests {
       ),
       (
         .outputTruncated, .openAI, .failed,
-        "AI polish failed: OpenAI ended the response before cleanup finished. Pasted without AI polish. If this keeps happening, choose another model or use a shorter dictation."
+        "AI polish failed: OpenAI ended the response before AI polish finished. Pasted without AI polish. If this keeps happening, choose another model or use a shorter dictation."
       ),
       (
         .outputTruncated, .gemini, .failed,
-        "AI polish failed: Gemini ended the response before cleanup finished. Pasted without AI polish. If this keeps happening, choose another model or use a shorter dictation."
+        "AI polish failed: Gemini ended the response before AI polish finished. Pasted without AI polish. If this keeps happening, choose another model or use a shorter dictation."
       ),
       (
         .outputTruncated, .claude, .failed,
-        "AI polish failed: Claude ended the response before cleanup finished. Pasted without AI polish. If this keeps happening, choose another model or use a shorter dictation."
+        "AI polish failed: Claude ended the response before AI polish finished. Pasted without AI polish. If this keeps happening, choose another model or use a shorter dictation."
       ),
       (
         .outputTruncated, .ollama, .failed,
-        "AI polish failed: Ollama ended the response before cleanup finished. Pasted without AI polish. If this keeps happening, choose another model or use a shorter dictation."
+        "AI polish failed: Ollama ended the response before AI polish finished. Pasted without AI polish. If this keeps happening, choose another model or use a shorter dictation."
       ),
       (
         .outputTruncated, .appleIntelligence, .failed,
-        "AI polish failed: Apple Intelligence ended the response before cleanup finished. Pasted without AI polish. If this keeps happening, choose another model or use a shorter dictation."
+        "AI polish failed: Apple Intelligence ended the response before AI polish finished. Pasted without AI polish. If this keeps happening, choose another model or use a shorter dictation."
       ),
       (
         .outputTruncated, .egOne, .failed,
-        "AI polish failed: EG-1 ended the response before cleanup finished. Pasted without AI polish. If this keeps happening, choose another model or use a shorter dictation."
+        "AI polish failed: EG-1 ended the response before AI polish finished. Pasted without AI polish. If this keeps happening, choose another model or use a shorter dictation."
       ),
       (
         .outputTruncated, .s1Mini, .failed,
-        "AI polish failed: S1-mini ended the response before cleanup finished. Pasted without AI polish. If this keeps happening, choose another model or use a shorter dictation."
+        "AI polish failed: S1-mini ended the response before AI polish finished. Pasted without AI polish. If this keeps happening, choose another model or use a shorter dictation."
       ),
       (
         .outputTruncated, .none, .failed,
-        "AI polish failed: None ended the response before cleanup finished. Pasted without AI polish. If this keeps happening, choose another model or use a shorter dictation."
+        "AI polish failed: None ended the response before AI polish finished. Pasted without AI polish. If this keeps happening, choose another model or use a shorter dictation."
       ),
       (
         .unknown, .openAI, .failed,
