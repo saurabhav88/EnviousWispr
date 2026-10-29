@@ -476,8 +476,8 @@ import EnviousWisprAppKitTestSupport
       text: "return try await activeEngine.transcribe(samples, options, nil)",
       classification: .structurallySafe),
     // #3973 C3: `MeetingWhisperEngine` owns its OWN Turbo handle (an actor built once by the
-    // bootstrapper, loaded per engine operation on the preview lane). Its load, decode and
-    // unloads reach only that handle, never dictation's backend or recovery's engine
+    // bootstrapper, loaded per engine operation on the preview lane). Its load and unloads, and
+    // its decode closure below, reach only that handle, never dictation's backend or recovery's engine
     // (structurallySafe (c): a different engine instance). The bootstrapper lines are the
     // route's injected closures over that one instance.
     CallSite(
@@ -501,14 +501,19 @@ import EnviousWisprAppKitTestSupport
       text: "ownUnload: { [meetingWhisperEngine] in await meetingWhisperEngine.unload() },",
       classification: .structurallySafe),
     // `meetingDecode`: the meeting's Whisper decode, on the meeting's own handle or, when
-    // dictation runs Whisper, on dictation's loaded handle, always at PREVIEW priority. It
-    // mutates no engine state: every session goes through the one executor, whose unload
-    // (dictation's switch, Remove, recovery) aborts and drains preview runs on that handle
-    // before freeing it, and a run whose model went away throws `MeetingEngineYield`, which
-    // the job retries (structurallySafe (c)).
+    // dictation runs Whisper, on dictation's loaded handle at PREVIEW priority with no
+    // `EngineLease`. The executor keeps the handle alive under it (an unload asks the run to
+    // abort, drains it, then frees, and the job retries the `MeetingEngineYield` that run
+    // throws), but nothing excludes recovery's engine claim for the decode's full duration,
+    // so on the shared handle it carries dictation's own decode tag, never a stronger one.
     CallSite(
       file: "Sources/EnviousWisprASR/MeetingWhisperEngine.swift", matcher: "transcribe",
-      text: "run = try await driver.transcribe(", classification: .structurallySafe),
+      text: "run = try await driver.transcribe(",
+      classification: .knownGap(
+        issue: 1749,
+        reason:
+          "a meeting decode on dictation's shared Whisper handle holds no lease, so recovery can claim the engine while it runs"
+      )),
     // #3972 C13a: the meeting SUMMARY provider set-up (keychain read, Ollama version check,
     // connector choice). An AI Polish text model, not the ASR engine; it holds no adapter and no
     // audio. Matched only by method-name coincidence.
@@ -2183,8 +2188,9 @@ import EnviousWisprAppKitTestSupport
       // decodes are.
       // #3735 chunk 10: 14 — the WhisperKit backend decode and the streaming session's three
       // decodes were deleted with WhisperKit.
-      gaps.count == 14,
-      "expected exactly 14 `knownGap` entries (2 for #1745, 12 for #1749), found \(gaps.count)"
+      // #3973 C3: 15 — the meeting's Whisper decode on dictation's shared handle.
+      gaps.count == 15,
+      "expected exactly 15 `knownGap` entries (2 for #1745, 13 for #1749), found \(gaps.count)"
     )
     for gap in gaps {
       #expect(
@@ -2241,6 +2247,9 @@ import EnviousWisprAppKitTestSupport
       SiteKey(
         file: "Sources/EnviousWisprASR/TranscribeCppWhisperBackend.swift", matcher: "transcribe",
         text: "let run = try await driver.transcribe("),
+      SiteKey(
+        file: "Sources/EnviousWisprASR/MeetingWhisperEngine.swift", matcher: "transcribe",
+        text: "run = try await driver.transcribe("),
       SiteKey(
         file: "Sources/EnviousWisprPipeline/WhisperEngineAdapter.swift", matcher: "transcribe",
         text: "return try await backend.transcribe("),

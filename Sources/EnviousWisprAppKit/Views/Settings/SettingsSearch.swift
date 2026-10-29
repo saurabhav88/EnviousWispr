@@ -197,12 +197,13 @@ struct SettingsSearchIndex: Sendable {
     static let exactTitleBonus = 150.0
     static let transcribeFilePage = -80.0
     /// #3973 C3: EnviousMeet's transcript engine menu repeats dictation's engine names as its
-    /// whole titles, so a bare engine name lands on dictation's choice first: this cancels the
-    /// whole title match (the meaning pass then still adds its similarity). The choices stay
-    /// first for a search that also names the meeting setting ("meeting parakeet").
+    /// whole titles, so both choices score the size of a whole-title match lower on every
+    /// search: a bare engine name lands on dictation's choice first, even after the meaning
+    /// pass. A search that also names the meeting setting ("meeting parakeet") still finds them
+    /// first, since dictation's choice does not match "meeting".
     static let meetingEngineChoice = -(titlePrefix + exactTitleBonus)
-    /// The meeting engine row loses only exact ties, such as a misspelt engine name both it and
-    /// dictation's engine choice match by typo.
+    /// One point lower on every search, so the row loses exact ties, such as a misspelt engine
+    /// name both it and dictation's engine choice match by typo.
     static let meetingEngineRow = -1.0
   }
 
