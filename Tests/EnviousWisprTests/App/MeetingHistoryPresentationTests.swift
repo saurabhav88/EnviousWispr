@@ -536,7 +536,7 @@ struct MeetingHistoryPresentationTests {
     }
     let save = MeetingCoordinatorTests.Gate()
     harness.saveGate = save
-    await coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet)
+    await MeetingCoordinatorTests.transcribeAgainOnceOffered(coordinator, meetingID: meetingID)
     #expect(coordinator.record(id: meetingID)?.state == .queued)
     #expect(facts(of: earlier) == ["mic-3"], "queued: the earlier row keeps its echo IDs")
     await eventually("retry save parked") { save.parked }
