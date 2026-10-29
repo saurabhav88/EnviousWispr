@@ -196,6 +196,14 @@ struct SettingsSearchIndex: Sendable {
     static let typo = 8.0
     static let exactTitleBonus = 150.0
     static let transcribeFilePage = -80.0
+    /// #3973 C3: EnviousMeet's transcript engine menu repeats dictation's engine names as its
+    /// whole titles, so a bare engine name lands on dictation's choice first: this cancels the
+    /// whole title match (the meaning pass then still adds its similarity). The choices stay
+    /// first for a search that also names the meeting setting ("meeting parakeet").
+    static let meetingEngineChoice = -(titlePrefix + exactTitleBonus)
+    /// The meeting engine row loses only exact ties, such as a misspelt engine name both it and
+    /// dictation's engine choice match by typo.
+    static let meetingEngineRow = -1.0
   }
 
   static let resultCap = 30
@@ -293,8 +301,15 @@ struct SettingsSearchIndex: Sendable {
       return Document(
         id: entry.id, kind: entry.kind, parentID: node.parent?.rawValue,
         titles: titles, descriptions: descriptions, context: context,
-        bias: node.destination == .transcribeFile ? Weight.transcribeFilePage : 0)
+        bias: bias(for: node))
     }
+  }
+
+  private static func bias(for node: SettingsMapNode) -> Double {
+    if node.destination == .transcribeFile { return Weight.transcribeFilePage }
+    if node.parent == .meetingTranscriptEngine { return Weight.meetingEngineChoice }
+    if node.id == .meetingTranscriptEngine { return Weight.meetingEngineRow }
+    return 0
   }
 
   /// The index search answers from before the vocabulary has loaded, or when it cannot be used
