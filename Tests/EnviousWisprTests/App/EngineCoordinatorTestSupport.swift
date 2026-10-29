@@ -128,7 +128,7 @@ final class FakeEngineDeps {
       isFileImportRunning: { self.fileImportRunning },
       isEngineHeld: { self.engineHeld() },
       isMeetingEngineResident: { self.meetingEngineResident },
-      isMeetingOwnParakeetResident: { self.meetingOwnParakeetResident() },
+      isMeetingOwnModelResident: { $0 == .parakeet && self.meetingOwnParakeetResident() },
       isInstalled: { self.installed($0) },
       stateLabel: { _ in "idle" },
       performSwitch: { backend in

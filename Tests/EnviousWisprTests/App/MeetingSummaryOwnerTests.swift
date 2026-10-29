@@ -54,6 +54,8 @@ struct MeetingSummaryOwnerTests {
     /// #4148: the meeting is known and ready, but has no visible transcript text.
     var noWords = false
     var speakerNames = ["mic:you": "You"]
+    /// #3973 C2: the shown History row's transcript attempt.
+    var transcriptAttemptID: UUID?
     var localTurn = true
     /// When set, replaces `localTurn` (production also waits for final-pass work).
     @ObservationIgnored var localTurnCheck: (@MainActor () -> Bool)?
@@ -145,7 +147,9 @@ struct MeetingSummaryOwnerTests {
           },
           visibleTranscript: { _ in
             world.visible && !world.noWords
-              ? .init(text: world.transcript, speakerNames: world.speakerNames) : nil
+              ? .init(
+                text: world.transcript, speakerNames: world.speakerNames,
+                transcriptAttemptID: world.transcriptAttemptID) : nil
           },
           hasNoWords: { _ in world.visible && world.noWords },
           isLocalTurn: { world.localTurnCheck?() ?? world.localTurn },
@@ -498,7 +502,10 @@ struct MeetingSummaryOwnerTests {
     #expect(rig.world.calls.first?.contains("Ask Priya") == true, "the saved notes reach the call")
   }
 
-  @Test("Transcribe again: the old summary settles before the new mark is written, so the new one stays owed")
+  /// #3973 C2 (plan §3 item 6): a summary still being written over the earlier transcript
+  /// settles before the replacement commits, and the replacement schedules no new summary: the
+  /// existing one (if any) stays, out of date, until Write again.
+  @Test("Transcribe again: a running summary settles first, and the replacement writes no new summary")
   func retryKeepsTheNewMark() async throws {
     let harness = try MeetingCoordinatorTests.Harness()
     let rig = try Rig()
@@ -510,13 +517,8 @@ struct MeetingSummaryOwnerTests {
     await coordinator.stop()
     await Self.eventually("old call") { rig.world.callsWaiting == 1 }
 
-    // Transcribe again; its History save parks, then is let go while the old call still runs.
-    let save = MeetingCoordinatorTests.Gate()
-    harness.saveGate = save
-    await coordinator.retry(meetingID: meetingID)
-    await Self.eventually("save parked") { save.parked }
-    save.open()
-    // The new transcript waits for the old summary: it is not ready while that call runs.
+    await coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet)
+    // The new transcript waits for the old summary: it is not committed while that call runs.
     try await Task.sleep(for: .milliseconds(200))  // deadline-fallback: proves nothing moves
     #expect(coordinator.record(id: meetingID)?.state == .processing)
     #expect(rig.world.finished.isEmpty)
@@ -524,14 +526,57 @@ struct MeetingSummaryOwnerTests {
     rig.world.releaseCall()
     await Self.eventually("old settled") { rig.world.finished.count == 1 }
     #expect(rig.world.finished == [Self.row(.cancelled, .hosted)])
-    await Self.eventually("new call") { rig.world.callsWaiting == 1 }
-    #expect(coordinator.record(id: meetingID)?.state == .ready)
+    await Self.eventually("replaced") {
+      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
+    }
+    #expect(harness.ended.last?.summaryPlan == .notApplicable)
     #expect(
-      try harness.store.loadDocuments(meeting: meetingID).manifest.summaryPending == true,
-      "the new attempt is owed on disk while it runs")
-    rig.world.releaseCall()
-    await Self.eventually("new written") { rig.world.finished.count == 2 }
-    #expect(rig.world.finished.last == Self.row(.written, .hosted))
+      try harness.store.loadDocuments(meeting: meetingID).manifest.summaryPending != true,
+      "nothing is owed")
+    try await Task.sleep(for: .milliseconds(200))  // deadline-fallback: proves no call starts
+    #expect(rig.world.callsWaiting == 0)
+    #expect(rig.world.finished.count == 1)
+  }
+
+  /// #3973 C2 (chunk review 2): a first transcript is committed before its History row is
+  /// written. When the row cannot be written, the scheduled summary stays owed (never started
+  /// against a missing transcript, never dropped) until a launch publishes the row.
+  @Test("an unpublished first transcript keeps its summary owed until a launch publishes it")
+  func unpublishedFirstTranscriptKeepsItsSummaryOwed() async throws {
+    let harness = try MeetingCoordinatorTests.Harness()
+    harness.saveError = CocoaError(.fileWriteOutOfSpace)
+    let rig = try Rig()
+    let coordinator = harness.coordinator
+    coordinator.summaries = rig.makeOwner(documents: coordinator.documents)
+    await coordinator.start(from: .history)
+    let meetingID = try #require(coordinator.meetings.first?.id)
+    await coordinator.stop()
+    await Self.eventually("committed") {
+      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
+    }
+    #expect(rig.world.finished.isEmpty, "no summary without a published row")
+    #expect(try harness.store.loadDocuments(meeting: meetingID).manifest.summaryPending == true)
+
+    // A launch that still cannot publish leaves it owed.
+    let stuck = try MeetingCoordinatorTests.Harness(copying: harness.root)
+    stuck.saveError = CocoaError(.fileWriteOutOfSpace)
+    let stuckRig = try Rig()
+    stuck.coordinator.summaries = stuckRig.makeOwner(documents: stuck.coordinator.documents)
+    stuck.coordinator.launch()
+    await Self.eventually("reconciled") { stuck.coordinator.isCommitReceiptPending(meetingID) }
+    try await Task.sleep(for: .milliseconds(300))  // deadline-fallback: proves nothing starts
+    #expect(stuckRig.world.finished.isEmpty)
+    #expect(stuckRig.world.callsWaiting == 0)
+    #expect(try stuck.store.loadDocuments(meeting: meetingID).manifest.summaryPending == true)
+
+    // A launch that publishes the row then resumes the owed summary.
+    let healed = try MeetingCoordinatorTests.Harness(copying: stuck.root)
+    let healedRig = try Rig()
+    healed.coordinator.summaries = healedRig.makeOwner(documents: healed.coordinator.documents)
+    healed.coordinator.launch()
+    await Self.eventually("published") { healed.saved.count == 1 }
+    await Self.eventually("written") { healedRig.world.finished.count == 1 }
+    #expect(healedRig.world.finished == [Self.row(.written, .hosted)])
   }
 
   @Test("Transcribe again on a meeting whose local summary waits behind another never deadlocks")
@@ -558,13 +603,16 @@ struct MeetingSummaryOwnerTests {
 
     // Transcribe again on the second: its waiting summary is cancelled and settles at once,
     // so the final pass is not held behind the first meeting's summary.
-    await coordinator.retry(meetingID: second)
+    await coordinator.transcribeAgain(meetingID: second, engine: .parakeet)
     await Self.eventually("retry ready") {
       coordinator.record(id: second)?.state == .ready && coordinator.processing == nil
     }
-    #expect(rig.world.finished.contains(Self.row(.cancelled, .local)))
+    // The cancelled summary's row is sent once its task has ended, which may follow the pass.
+    await Self.eventually("waiting summary cancelled") {
+      rig.world.finished.contains(Self.row(.cancelled, .local))
+    }
 
-    // Dictation ends: the summaries run one local call at a time, and both meetings get one.
+    // Dictation ends: the summaries run one local call at a time.
     var concurrent = 0
     var most = 0
     rig.world.duringCall = { [lane = rig.lane] in
@@ -572,11 +620,13 @@ struct MeetingSummaryOwnerTests {
       most = max(most, concurrent)
     }
     rig.world.localTurn = true
-    await Self.eventually("summaries written") {
-      rig.world.finished.filter { $0 == Self.row(.written, .local) }.count == 2
+    // #3973 C2: the replacement schedules no new summary; the first meeting's is written.
+    await Self.eventually("summary written") {
+      rig.world.finished.filter { $0 == Self.row(.written, .local) }.count == 1
     }
     #expect(most == 1, "each call held the lane alone")
-    #expect(rig.world.finished.count == 3, "one cancelled and two written, nothing else")
+    try await Task.sleep(for: .milliseconds(200))  // deadline-fallback: proves no second call
+    #expect(rig.world.finished.count == 2, "one cancelled and one written, nothing else")
   }
 
   @Test("with the setting off, meeting.ended says off and nothing is written")
@@ -963,6 +1013,21 @@ struct MeetingSummaryOwnerTests {
     #expect(await other.documents.load(written))
     other.world.speakerNames = ["mic:you": "Priya"]
     #expect(other.owner.isOutOfDate(written) == false, "the user's own summary records no inputs")
+  }
+
+  /// #3973 C2 (plan §3 item 6): a Transcribe again commits a new transcript generation, so a
+  /// generated summary is out of date even when the new words are byte for byte the same.
+  @Test("a new transcript attempt makes a generated summary out of date, even with identical words")
+  func newAttemptMakesTheSummaryOutOfDate() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    rig.world.transcriptAttemptID = UUID()
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("written") { rig.world.finished.count == 1 }
+    #expect(await rig.documents.load(id))
+    #expect(rig.owner.isOutOfDate(id) == false, "control: the same attempt is current")
+    rig.world.transcriptAttemptID = UUID()
+    #expect(rig.owner.isOutOfDate(id), "same words, a new attempt")
   }
 
   @Test("a final pass's wait names its real reason: dictation, or a meeting summary on this Mac")

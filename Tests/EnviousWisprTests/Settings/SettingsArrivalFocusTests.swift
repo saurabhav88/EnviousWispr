@@ -360,10 +360,11 @@ struct SettingsArrivalFocusTests {
       []
     ),
     // #4105: both menus of each row are pickers. #3973 PR B: they live on the Models tab.
+    // #3973 C3: the Transcript engine menu is a picker too.
     (
       "meetings.models",
       [
-        .meetingLiveWords, .meetingTranscriptLanguage, .meetingsTabGeneral,
+        .meetingLiveWords, .meetingTranscriptEngine, .meetingTranscriptLanguage, .meetingsTabGeneral,
         .meetingsTabModels, .meetingsTabCallApps, .meetingsTabPermissions,
       ],
       []

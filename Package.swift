@@ -202,7 +202,9 @@ let package = Package(
         .product(name: "PostHog", package: "posthog-ios"),
         .product(name: "Sentry", package: "sentry-cocoa"),
       ],
-      path: "Sources/EnviousWisprServices"
+      path: "Sources/EnviousWisprServices",
+      // #4013: the bundled talker rules. Project.swift must say `hasResources: true` too.
+      resources: [.process("Resources")]
     ),
     // #1525 PR I-B: isolates FluidAudio's raw error-classification behind a
     // small, internal-only target. `FluidAudio` exports a struct literally

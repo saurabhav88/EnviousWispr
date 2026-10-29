@@ -481,6 +481,7 @@ struct SettingsInfoButton<Content: View>: View {
   @ViewBuilder let content: () -> Content
 
   @State private var showPopover = false
+  @State private var helpTrace = SettingsHelpTrace.live()
   /// Captured as the popover opens; decides where focus goes when it closes.
   @State private var openedFromKeyboard = false
   @State private var openedFromAccessibility = false
@@ -500,6 +501,7 @@ struct SettingsInfoButton<Content: View>: View {
 
   var body: some View {
     Button {
+      helpTrace.requested(alreadyPresented: showPopover)
       openedFromKeyboard = buttonFocused
       openedFromAccessibility = accessibilityFocused
       showPopover = true
@@ -515,7 +517,10 @@ struct SettingsInfoButton<Content: View>: View {
         // so on a card it never showed (founder, 2026-10-03: "the help icons should
         // have the hover effect").
         .settingsHoverQuiet(tint: .stAccent, recoloursContent: false)
-        .onHover { pointerInside = $0 }
+        .onHover {
+          pointerInside = $0
+          helpTrace.pointerChanged($0)
+        }
     }
     .buttonStyle(.borderless)
     .focused($buttonFocused)
@@ -533,18 +538,23 @@ struct SettingsInfoButton<Content: View>: View {
       // (`SettingsHelpText`); a structured panel sets its own.
       content()
         .padding(14)
-        .onExitCommand { showPopover = false }
+        .onExitCommand {
+          helpTrace.escapeObserved()
+          showPopover = false
+        }
     }
     // The single restoration path: every dismissal (Escape above, a click
     // outside, AppKit closing it) arrives here as the binding turning false.
     .onAppear { isMounted = true }
     .onDisappear {
+      helpTrace.anchorDisappeared()
       isMounted = false
       openedFromKeyboard = false
       openedFromAccessibility = false
     }
     .onChange(of: showPopover) { _, isShowing in
       guard isShowing == false else { return }
+      helpTrace.bindingFalseObserved()
       defer {
         openedFromKeyboard = false
         openedFromAccessibility = false

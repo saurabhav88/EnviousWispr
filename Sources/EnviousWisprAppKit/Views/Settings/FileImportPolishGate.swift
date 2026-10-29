@@ -109,6 +109,9 @@ enum FileImportPolishGate {
     setup: SetupCoordinator,
     savedKeyPresence: SavedKeyPresence
   ) -> FileImportPolishReadiness {
+    // Storage admitted through either editor or the dev door is not ready yet. Cached
+    // saved flags cannot authorize an import while that key is being replaced/cleared.
+    if savedKeyPresence.hasPendingMutation(for: provider) { return .blocked(.checking) }
     // The caller's one saved-key read goes in this provider's slot; no other slot is read.
     let saved = savedKey.asSavedFlag
     return readiness(
@@ -156,10 +159,13 @@ enum FileImportPolishGate {
   /// no editor on screen. Key-less engines answer `.absent`, which the gate ignores for
   /// them; a thrown read answers `.unknown`.
   @MainActor
-  static func savedKey(for provider: LLMProvider, keychain: KeychainManager)
+  static func savedKey(
+    for provider: LLMProvider, keychain: KeychainManager, presence: SavedKeyPresence
+  )
     -> SavedKeyState
   {
-    SavedKeyState.read(provider, keychain: keychain)
+    guard presence.hasPendingMutation(for: provider) == false else { return .unknown }
+    return SavedKeyState.read(provider, keychain: keychain)
   }
 
   /// The whole decision, as a pure function of the same facts `ProviderStatusMapping.status`

@@ -1,0 +1,27 @@
+{
+  "meetingTranscriptEngine": {
+    "language": "fi",
+    "title": "litterointimoottori",
+    "words": [],
+    "phrases": [
+      "valitse kokouksen lopullisen litteroinnin moottori",
+      "vaihda kokouksen jälkeisen litteroinnin moottoria"
+    ]
+  },
+  "meetingTranscriptEngine.parakeet": {
+    "language": "fi",
+    "title": "Parakeet",
+    "words": [],
+    "phrases": [
+      "käytä Parakeetia kokouksen lopulliseen litterointiin"
+    ]
+  },
+  "meetingTranscriptEngine.whisper": {
+    "language": "fi",
+    "title": "Whisper Large v3 Turbo",
+    "words": [],
+    "phrases": [
+      "käytä Whisperiä kokouksen lopulliseen litterointiin"
+    ]
+  }
+}

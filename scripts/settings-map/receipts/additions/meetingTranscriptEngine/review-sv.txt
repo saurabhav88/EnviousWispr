@@ -1,0 +1,27 @@
+{
+  "meetingTranscriptEngine": {
+    "language": "sv",
+    "title": "motor för mötestranskript",
+    "words": [],
+    "phrases": [
+      "välj motor för att transkribera hela mötet",
+      "byt motor för transkribering efter mötet"
+    ]
+  },
+  "meetingTranscriptEngine.parakeet": {
+    "language": "sv",
+    "title": "Parakeet",
+    "words": [],
+    "phrases": [
+      "använd Parakeet för att transkribera möten i efterhand"
+    ]
+  },
+  "meetingTranscriptEngine.whisper": {
+    "language": "sv",
+    "title": "Whisper Large v3 Turbo",
+    "words": [],
+    "phrases": [
+      "använd Whisper för att transkribera möten i efterhand"
+    ]
+  }
+}

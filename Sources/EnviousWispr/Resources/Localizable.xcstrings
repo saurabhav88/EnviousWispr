@@ -414,6 +414,23 @@
         }
       }
     },
+    "%@ is not supported by %@. The transcript uses Auto." : {
+      "comment" : "EnviousMeet page, Transcript language row: the chosen language (first value) is not one the chosen transcript engine (second value, Parakeet or Whisper) can transcribe, so meetings are transcribed with Auto (no language set).",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ is not supported by %2$@. The transcript uses Auto."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ wird von %@ nicht unterstützt. Das Transkript verwendet „Auto“."
+          }
+        }
+      }
+    },
     "%@ is still downloading" : {
       "comment" : "AI Polish, notice when leaving the page during a download. %@ is a model name.\nShort reason, no full stop. %@ is a model name, such as EG-1.",
       "localizations" : {
@@ -1769,7 +1786,7 @@
         }
       }
     },
-    "AI polish failed: %@ ended the response before cleanup finished. Pasted without AI polish. If this keeps happening, choose another model or use a shorter dictation." : {
+    "AI polish failed: %@ ended the response before AI polish finished. Pasted without AI polish. If this keeps happening, choose another model or use a shorter dictation." : {
       "comment" : "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is.",
       "localizations" : {
         "de" : {
@@ -1830,7 +1847,7 @@
         }
       }
     },
-    "AI polish failed: %@ returned no cleanup text. Try again." : {
+    "AI polish failed: %@ returned no polished text. Try again." : {
       "comment" : "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is.",
       "localizations" : {
         "de" : {
@@ -4734,6 +4751,17 @@
         }
       }
     },
+    "Changes apply to new meetings. Use Transcribe again to replace a saved transcript." : {
+      "comment" : "EnviousMeet page: help for Transcript engine. Transcribe again is the button on a meeting's page that writes its transcript again.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Änderungen gelten für neue Meetings. Mit „Erneut transkribieren“ ersetzt du ein gespeichertes Transkript."
+          }
+        }
+      }
+    },
     "Changes apply to the next recording" : {
       "comment" : "AI Polish: the note beside the Model heading. A change made while recording takes effect next time.\nSpeech engine settings: note beside the heading; a change made while recording applies next time.",
       "localizations" : {
@@ -5286,6 +5314,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wähle die Engine, die Wörter beim Sprechen anzeigt."
+          }
+        }
+      }
+    },
+    "Chooses the engine that writes the full transcript after a meeting." : {
+      "comment" : "EnviousMeet page: the short line under Transcript engine.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wählt die Engine, die nach einem Meeting das vollständige Transkript erstellt."
           }
         }
       }
@@ -7215,7 +7254,7 @@
       }
     },
     "Download paused. Resume anytime." : {
-      "comment" : "AI Polish, local model card: the reason under the health status.\nSettings > AI Polish, local model row: the user paused the model download.\nSpeech engine settings, speech model download: the user paused it.\nSpeech model download: why it failed. Shown in setup and in Settings.",
+      "comment" : "AI Polish, local model card: the reason under the health status.\nEnviousMeet page, Transcript engine row: the Whisper download was cancelled and can resume.\nSettings > AI Polish, local model row: the user paused the model download.\nSpeech engine settings, speech model download: the user paused it.\nSpeech model download: why it failed. Shown in setup and in Settings.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -7337,6 +7376,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Parakeet Ultra wird heruntergeladen"
+          }
+        }
+      }
+    },
+    "Downloading Whisper Large v3 Turbo…" : {
+      "comment" : "EnviousMeet page, Transcript engine row: the Whisper download is running.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Whisper Large v3 Turbo wird heruntergeladen …"
           }
         }
       }
@@ -7769,13 +7819,35 @@
         }
       }
     },
-    "EnviousMeet uses Accessibility to see whether a call window or meeting page is open when an app starts using your microphone. It reads this on your Mac and never sends it anywhere. Pasting your dictation uses the same permission." : {
+    "EnviousMeet uses Accessibility to see whether a call window or meeting page is open when an app starts using your microphone. In Zoom, Teams and Meet calls, it also reads who is talking, so a meeting can show people's names instead of numbered speakers when it can tell them apart. It reads this on your Mac and never sends it to Envious Labs. Allow it before a call starts. Pasting your dictation uses the same permission." : {
       "comment" : "EnviousMeet page: help for the Accessibility permission row.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "EnviousMeet nutzt die Bedienungshilfen, um zu prüfen, ob ein Anruffenster oder eine Meeting-Seite offen ist, wenn eine App dein Mikrofon nutzt. Das wird lokal auf deinem Mac ausgelesen und nirgendwohin gesendet. Das Einfügen deines Diktats nutzt dieselbe Berechtigung."
+            "value" : "EnviousMeet nutzt die Bedienungshilfen, um zu prüfen, ob ein Anruffenster oder eine Meeting-Seite geöffnet ist, sobald eine App beginnt, dein Mikrofon zu nutzen. In Anrufen über Zoom, Teams und Meet liest es außerdem, wer gerade spricht, damit ein Meeting Namen statt nummerierter Sprecher anzeigen kann, wenn es die Personen auseinanderhalten kann. Diese Informationen liest es auf deinem Mac aus und sendet sie nie an Envious Labs. Erlaube den Zugriff vor Beginn eines Anrufs. Das Einfügen deines Diktats nutzt dieselbe Berechtigung."
+          }
+        }
+      }
+    },
+    "EnviousMeet uses Parakeet and dictation uses Whisper. Dictating during a meeting can load both engines and slow down your Mac." : {
+      "comment" : "EnviousMeet page, Transcript engine row: warning when meetings and dictation use different speech engines.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousMeet verwendet Parakeet, beim Diktieren wird Whisper verwendet. Wenn du während eines Meetings diktierst, können beide Engines geladen werden und deinen Mac verlangsamen."
+          }
+        }
+      }
+    },
+    "EnviousMeet uses Whisper and dictation uses Parakeet. Dictating during a meeting can load both engines and slow down your Mac." : {
+      "comment" : "EnviousMeet page, Transcript engine row: warning when meetings and dictation use different speech engines.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousMeet verwendet Whisper, beim Diktieren wird Parakeet verwendet. Wenn du während eines Meetings diktierst, können beide Engines geladen werden und deinen Mac verlangsamen."
           }
         }
       }
@@ -14132,6 +14204,17 @@
         }
       }
     },
+    "Open EnviousMeet Settings" : {
+      "comment" : "History: opens the EnviousMeet settings page's Permissions tab.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousMeet-Einstellungen öffnen"
+          }
+        }
+      }
+    },
     "Open EnviousMeet to see why." : {
       "comment" : "EnviousMeet: under EnviousMeet could not start recording.",
       "localizations" : {
@@ -14474,6 +14557,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Papierklopfen"
+          }
+        }
+      }
+    },
+    "Parakeet" : {
+      "comment" : "EnviousMeet page, Transcript engine menu: the Parakeet speech engine. A product name; keep it.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Parakeet"
           }
         }
       }
@@ -18161,6 +18255,17 @@
         }
       }
     },
+    "Speaker names need Accessibility, which was off when this meeting was recorded. Names can't be added to this meeting now, but you can still rename each speaker. Allow Accessibility before your next call." : {
+      "comment" : "History: a meeting recorded without the Accessibility permission, so no participant names were read from the call app.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für Sprechernamen ist der Zugriff auf die Bedienungshilfen nötig. Er war bei der Aufnahme dieses Meetings deaktiviert. Diesem Meeting können jetzt keine Namen mehr hinzugefügt werden, aber du kannst jeden Sprecher weiterhin umbenennen. Erlaube den Zugriff auf die Bedienungshilfen vor deinem nächsten Anruf."
+          }
+        }
+      }
+    },
     "Speakers found" : {
       "comment" : "Transcribe a File, Working page: a live count's label.",
       "localizations" : {
@@ -18661,6 +18766,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Stil"
+          }
+        }
+      }
+    },
+    "Suggestions" : {
+      "comment" : "Speaker rename popover: heading above names to choose from.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorschläge"
           }
         }
       }
@@ -19508,6 +19624,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Engine „Universal“ wird vorbereitet."
+          }
+        }
+      }
+    },
+    "The Whisper download did not finish." : {
+      "comment" : "EnviousMeet page, Transcript engine row: the Whisper download failed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Whisper-Download wurde nicht abgeschlossen."
           }
         }
       }
@@ -21267,6 +21394,17 @@
         }
       }
     },
+    "Transcript engine" : {
+      "comment" : "EnviousMeet page, Models tab: row that picks the speech engine that writes the full meeting transcript.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkript-Engine"
+          }
+        }
+      }
+    },
     "Transcript language" : {
       "comment" : "EnviousMeet page: row that picks the language of the full meeting transcript.",
       "localizations" : {
@@ -22064,6 +22202,17 @@
         }
       }
     },
+    "Used Parakeet because Whisper was unavailable." : {
+      "comment" : "EnviousMeet meeting page: the transcript was written by Parakeet because the chosen Whisper model was missing or turned off.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Parakeet wurde verwendet, weil Whisper nicht verfügbar war."
+          }
+        }
+      }
+    },
     "Uses Apple's speech recognition. No separate preview-model download; some languages may need an Apple language download. Needs macOS 26." : {
       "comment" : "Live Preview settings, preview engine: apple description.",
       "localizations" : {
@@ -22748,6 +22897,28 @@
         }
       }
     },
+    "Whisper Large v3 Turbo" : {
+      "comment" : "EnviousMeet page, Transcript engine menu: the Whisper speech model. A product name; keep it.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Whisper Large v3 Turbo"
+          }
+        }
+      }
+    },
+    "Whisper Large v3 Turbo needs an 886 MB download before meetings can use it." : {
+      "comment" : "EnviousMeet page, Transcript engine row: Whisper is not downloaded yet. The same download serves dictation.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Whisper Large v3 Turbo benötigt einen Download von 886 MB, bevor es für Meetings verwendet werden kann."
+          }
+        }
+      }
+    },
     "Whisper Tick" : {
       "comment" : "Chimes settings: a recording chime's name. A playful name; translate its feel, or keep it.",
       "localizations" : {
@@ -22755,6 +22926,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Flüstertick"
+          }
+        }
+      }
+    },
+    "Whisper is no longer available. Choose another engine." : {
+      "comment" : "EnviousMeet page, Transcript engine row: Whisper is chosen but its model is gone; meetings use Parakeet until it is back.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Whisper ist nicht mehr verfügbar. Wähle eine andere Engine."
           }
         }
       }
@@ -22857,13 +23039,13 @@
         }
       }
     },
-    "With Auto, no language is set and the engine transcribes as it does by default. Choose a language when your meetings are always in it. A change applies to the next meeting; a meeting already recorded keeps its language." : {
-      "comment" : "EnviousMeet page: help for Transcript language. Auto sets no language; it does not detect one.",
+    "With Auto, no language is set and the engine transcribes as it does by default. Choose a language when your meetings are always in it. A change applies to the next meeting; a meeting already recorded keeps its language. Transcribe again uses the language chosen here at that moment." : {
+      "comment" : "EnviousMeet page: help for Transcript language. Auto sets no language; it does not detect one. Transcribe again is the button on a meeting's page that writes its transcript again.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bei „Auto“ wird keine Sprache festgelegt; die Engine transkribiert mit ihren Standardeinstellungen. Wähle eine Sprache, wenn deine Meetings immer in dieser Sprache stattfinden. Eine Änderung gilt ab dem nächsten Meeting; ein bereits aufgenommenes Meeting behält seine Sprache."
+            "value" : "Bei „Auto“ wird keine Sprache festgelegt; die Engine transkribiert mit ihren Standardeinstellungen. Wähle eine Sprache, wenn deine Meetings immer in dieser Sprache stattfinden. Eine Änderung gilt ab dem nächsten Meeting; ein bereits aufgenommenes Meeting behält seine Sprache. „Erneut transkribieren“ verwendet die Sprache, die hier zu diesem Zeitpunkt gewählt ist."
           }
         }
       }

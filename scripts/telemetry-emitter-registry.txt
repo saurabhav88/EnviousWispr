@@ -124,6 +124,7 @@ recovery.press_unblocked	ungraded	ungraded	-	pre-#2987
 settings.change_applied	ungraded	ungraded	-	pre-#2987
 settings.change_blocked	ungraded	ungraded	-	pre-#2987
 settings.search_finished	per_user_action	keep	analytics-operations.md FACT: app-posthog-events (Settings search gaps: founder reviews distinct-install query gaps and sidebar destinations weekly for four weeks after release, then monthly)	#3482
+settings.help_observed	per_user_action	keep	analytics-operations.md FACT: app-posthog-events (#3862: first five eligible openings per process, at most ten captures; compare click request/end observations by OS/build, never a usage or failure rate)	#3862
 settings.changed	ungraded	ungraded	-	pre-#2987
 settings.model_preparing_impression	ungraded	ungraded	-	pre-#2987
 settings.snapshot	ungraded	ungraded	-	pre-#2987
@@ -153,7 +154,7 @@ update.verify_completed	ungraded	ungraded	-	pre-#2987
 update.verify_started	ungraded	ungraded	-	pre-#2987
 wedge_detected	ungraded	ungraded	-	pre-#2987
 feedback.report_refused	rare_failure	keep	analytics-operations.md FACT: app-posthog-events (received refusal observations by kind/status/version; usage capture only, duplicate/loss limits; founder first post-release review then on request)	#3292
-meeting.ended	per_user_action	keep	analytics-operations.md FACT: app-posthog-events (founder adoption and quality query at the first release review: attempts by outcome, system-track status split, engine split, processing RTF, yield count; #3972 R11)	#3972
+meeting.ended	per_user_action	keep	analytics-operations.md FACT: app-posthog-events (founder adoption and quality query at the first release review: attempts by outcome, system-track status split, engine split, processing RTF, yield count; #3972 R11. #4013: speaker-name coverage by speaker_names_surface and speaker_names_outcome, with auto_named_count)	#3972
 meeting.summary_finished	per_user_action	keep	analytics-operations.md FACT: app-posthog-events (founder summary query at the first release review: attempts by outcome, split by provider_kind local/hosted/none; meeting.ended cannot carry it because the summary ends after the transcript-ready row; #3972 R48 R54)	#3972
 meeting.setup	per_user_action	keep	analytics-operations.md FACT: app-posthog-events (founder EnviousMeet setup funnel at the first release review: finished vs left by screen, per-permission answers, seconds; about 1 to 3 rows per install lifetime; #4017 R8)	#4017
 meeting.call_prompt	per_user_action	keep	analytics-operations.md FACT: app-posthog-events (founder call-detection accuracy at the first release review, then two weeks after: answers by call_app and mode, accept rate per app; #4012 c1 C3)	#4012

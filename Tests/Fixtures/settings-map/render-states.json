@@ -1015,6 +1015,7 @@
   },
   "mapped": [
    "meetingLiveWords",
+   "meetingTranscriptEngine",
    "meetingTranscriptLanguage",
    "meetings.tab.callApps",
    "meetings.tab.general",

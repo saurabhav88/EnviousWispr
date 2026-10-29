@@ -971,18 +971,53 @@ final class TranscriptCoordinator {
   /// #3972 C4a: an EnviousMeet meeting's row, written durably (encode, `F_FULLFSYNC`, directory
   /// sync) OFF the main actor, then shown. EnviousMeet marks the meeting ready only after this
   /// returns, and its deletion awaits the commit that calls this, so no delete races the write.
-  func saveAndShowDurably(_ transcript: Transcript) async throws {
+  ///
+  /// #4013 chunk 12B: with `naming`, the pass that proposed the row's automatic names, it
+  /// returns what naming achieved in the row actually written, after the user's names were
+  /// reconciled; `nil` without `naming`. A throw returns nothing.
+  @discardableResult
+  func saveAndShowDurably(_ transcript: Transcript, naming: SpeakerNamingPass? = nil)
+    async throws -> SpeakerNamingSummary?
+  {
     guard !transactionExecutor.isDurableWriteInFlight(transcript.id) else { throw RowWriteInFlight() }
     // Registered at admission and held until its publication or failure, so ordinary writes
     // admitted after it are refused and those admitted before it stay valid.
     transactionExecutor.reserveDurableWrite(transcript.id)
-    try await transactionExecutor.admit { [self] in
+    return try await transactionExecutor.admit { [self] in
       defer { transactionExecutor.finishDurableWrite(transcript.id) }
-      return await transactionExecutor.capture { try await performDurableWrite(transcript) }
+      return await transactionExecutor.capture {
+        try await performDurableWrite(transcript, naming: naming)
+      }
     }.get()
   }
 
-  private func performDurableWrite(_ transcript: Transcript) async throws {
+  /// #3973 C2: a row as its file holds it, read in History's command order, so a write admitted
+  /// before this read has landed. Nil when there is no file; throws when it cannot be read.
+  func durableRow(id: UUID) async throws -> Transcript? {
+    try await transactionExecutor.admit { [self] in
+      await transactionExecutor.capture { try await transactionExecutor.readRow(id: id) }
+    }.get()
+  }
+
+  private func performDurableWrite(_ incoming: Transcript, naming: SpeakerNamingPass?)
+    async throws -> SpeakerNamingSummary?
+  {
+    // #4013 r2 item 4: the user's speaker names are carried over from the row as it is NOW,
+    // read when this command runs, so a rename admitted while the meeting was processing is
+    // kept. The reconciled row is what is written and what is shown. A row History has not
+    // loaded (a launch replay of #3973 C2) is read from its file inside this same command; a
+    // file that cannot be read fails the write rather than writing over it.
+    let existing: Transcript?
+    if let row = currentRow(id: incoming.id) {
+      existing = row
+    } else {
+      existing = try await transactionExecutor.readRow(id: incoming.id)
+    }
+    let transcript = existing.map { incoming.reconcilingSpeakerNames(withCurrent: $0) } ?? incoming
+    // Calculated from this exact reconciled row, released only once it is written.
+    let pending = naming.map {
+      PendingSpeakerNamingSummary(proposed: incoming, reconciled: transcript, pass: $0)
+    }
     try await transactionExecutor.writeDurably(transcript)
     diskReconciler.noteWritten(transcript.id)
     if let existing = transcripts.firstIndex(where: { $0.id == transcript.id }) {
@@ -992,6 +1027,7 @@ final class TranscriptCoordinator {
     }
     reconcileSelectionWithDisplayedSet()
     startPulseIfNeeded()
+    return pending?.committed(.written)
   }
 
   #if DEBUG
@@ -1546,10 +1582,24 @@ final class TranscriptCoordinator {
     if show { echoShownRowIDs.insert(rowID) } else { echoShownRowIDs.remove(rowID) }
   }
 
+  /// #3973 C2: the probable-echo turn IDs of `row`'s own transcript generation, or nil when
+  /// its facts are not known.
+  func meetingEchoTurnIDs(of row: Transcript) -> Set<String>? {
+    guard let meetingID = row.meetingID else { return nil }
+    return meetingInfo?(meetingID)?.matching(row)?.echoTurnIDs
+  }
+
+  /// #3973 C2: whether `row`'s own transcript generation has probable-echo lines, the facts
+  /// "Show probable echo" acts on. False for a row whose facts are not known.
+  func meetingHasProbableEcho(_ row: Transcript) -> Bool {
+    meetingEchoTurnIDs(of: row)?.isEmpty == false
+  }
+
   /// What a meeting row shows; `.unavailable` for a row that is not a meeting.
   func meetingProjection(of row: Transcript) -> MeetingHistoryPresentation.Projection {
     guard let meetingID = row.meetingID else { return .unavailable }
-    let info = meetingInfo?(meetingID)
+    // #3973 C2: only the facts of this row's own transcript generation.
+    let info = meetingInfo?(meetingID)?.matching(row)
     let showEcho = isShowingEcho(rowID: row.id)
     // #4075 R6: the plain text comes from the kept meeting text (the same projection search and
     // the preview read), so a detail redraw does not rebuild the whole meeting's text. Only the

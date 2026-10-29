@@ -86,7 +86,89 @@ final class LLMModelDiscoveryCoordinator {
     case invalid(String)
   }
 
+  /// #3776: identity is reserved before storage can suspend. A later cache/provider/check
+  /// owns a newer generation, even if an older save subsequently commits successfully.
+  struct CredentialAdmission {
+    fileprivate let generation: Int
+    fileprivate let provider: LLMProvider
+    fileprivate let surface: ProviderSetupSurface
+    fileprivate let selectedProvider: LLMProvider?
+    fileprivate let importOverride: LLMProvider?
+    fileprivate let tracksSelection: Bool
+    fileprivate let selectionRevision: UInt64?
+  }
+
+  struct SavedCredential {
+    fileprivate let value: String
+    fileprivate let revision: UInt64?
+    fileprivate let admission: CredentialAdmission
+  }
+
+  func admitCredentialMutation(
+    provider: LLMProvider, settings: SettingsManager?, surface: ProviderSetupSurface
+  ) -> CredentialAdmission {
+    invalidateInFlightDiscovery()
+    // A previous key's terminal display verdict must not label the replacement valid
+    // while it is being stored, even if reopening supersedes its automatic validation.
+    if stateProvider == provider { keyValidationState = .idle }
+    let selected: LLMProvider?
+    switch surface {
+    case .dictation: selected = settings?.llmProvider
+    case .fileImport: selected = settings?.effectiveFileImportLLMProvider
+    }
+    return CredentialAdmission(
+      generation: discoveryGeneration, provider: provider, surface: surface,
+      selectedProvider: selected, importOverride: settings?.fileImportLLMProvider,
+      tracksSelection: settings != nil,
+      selectionRevision: settings.map { surface.selectionRevision(in: $0) })
+  }
+
+  private func admissionIsCurrent(_ admission: CredentialAdmission, settings: SettingsManager?) -> Bool {
+    guard discoveryGeneration == admission.generation else { return false }
+    guard admission.tracksSelection else { return true }
+    guard let settings,
+      admission.surface.selectionRevision(in: settings) == admission.selectionRevision else { return false }
+    switch admission.surface {
+    case .dictation: return settings.llmProvider == admission.selectedProvider
+    case .fileImport:
+      return settings.effectiveFileImportLLMProvider == admission.selectedProvider
+        && settings.fileImportLLMProvider == admission.importOverride
+    }
+  }
+
+  func finishCredentialMutation(
+    _ admission: CredentialAdmission, cleared: Bool, settings: SettingsManager?
+  ) {
+    // Revision changes invalidate this provider's old verdict regardless of who now owns
+    // discovery. Never erase a newer unrelated provider's check after a slow Clear.
+    pendingVerdicts[admission.provider] = nil
+    completedVerdicts[admission.provider] = nil
+    if admissionIsCurrent(admission, settings: settings) {
+      if cleared { reset() }
+      else {
+        invalidateInFlightDiscovery()
+        if stateProvider == admission.provider { keyValidationState = .idle }
+      }
+    }
+  }
+
+  func validateSavedCredential(
+    _ value: String, revision: UInt64?, admission: CredentialAdmission, settings: SettingsManager
+  ) async {
+    guard admissionIsCurrent(admission, settings: settings) else { return }
+    if savedKeyPresence != nil {
+      guard credentialRevision(for: admission.provider) == revision else { return }
+    }
+    await validateKeyAndDiscoverModels(
+      provider: admission.provider, settings: settings, surface: admission.surface, source: .save,
+      savedCredential: SavedCredential(value: value, revision: revision, admission: admission))
+  }
+
   private let keychainManager: KeychainManager
+  private let credentialAccess: CredentialAccessLane
+  /// Isolated fixture injection; production retains the existing telemetry call below.
+  typealias ValidationEmitter = @MainActor (LLMProvider, String, ApiKeyValidationSource, Int?, String?) -> Void
+  private let validationEmitter: ValidationEmitter?
 
   /// Where the per-provider model cache lives.
   ///
@@ -107,12 +189,16 @@ final class LLMModelDiscoveryCoordinator {
   init(
     keychainManager: KeychainManager, cacheDefaults: UserDefaults = .standard,
     savedKeyPresence: SavedKeyPresence? = nil,
+    credentialAccess: CredentialAccessLane = .live,
+    validationEmitter: ValidationEmitter? = nil,
     discoverModels: @escaping @MainActor (LLMProvider, String) async throws -> [LLMModelInfo] = {
       provider, apiKey in
       try await LLMModelDiscovery().discoverModels(provider: provider, apiKey: apiKey)
     }
   ) {
     self.keychainManager = keychainManager
+    self.credentialAccess = credentialAccess
+    self.validationEmitter = validationEmitter
     self.cacheDefaults = cacheDefaults
     self.savedKeyPresence = savedKeyPresence
     self.discoverModels = discoverModels
@@ -163,17 +249,27 @@ final class LLMModelDiscoveryCoordinator {
   func validateKeyAndDiscoverModels(
     provider: LLMProvider, settings: SettingsManager,
     surface: ProviderSetupSurface = .dictation,
-    source: ApiKeyValidationSource = .modelDiscovery
+    source: ApiKeyValidationSource = .modelDiscovery,
+    savedCredential: SavedCredential? = nil
   ) async {
     // Every earlier request is dismissed here, so none of their `.checking` markers can
     // outlive them (a superseded check never publishes again).
-    invalidateInFlightDiscovery()
+    if let savedCredential {
+      guard admissionIsCurrent(savedCredential.admission, settings: settings) else { return }
+      if savedKeyPresence != nil {
+        guard credentialRevision(for: provider) == savedCredential.revision else { return }
+      }
+    } else {
+      invalidateInFlightDiscovery()
+    }
     let generation = discoveryGeneration
     // The surface's OWNERSHIP MODE at the moment the request was made. A discovery started
     // while the import had its own provider must not repair DICTATION's model because the
     // user pressed "Use dictation's polish settings" while it was in flight, even though the
     // provider still matches. Found by Codex.
-    let importOverrideAtStart = settings.fileImportLLMProvider
+    let importOverrideAtStart: LLMProvider?
+    if let savedCredential { importOverrideAtStart = savedCredential.admission.importOverride }
+    else { importOverrideAtStart = settings.fileImportLLMProvider }
     // Owner first. Until this request publishes, the previous provider's catalog must not
     // be sitting under this provider's name — and the synchronous missing-key return below
     // would have left it there permanently. `didSet` clears it on a real owner change and
@@ -182,22 +278,55 @@ final class LLMModelDiscoveryCoordinator {
     stateProvider = provider
     keyValidationState = .validating
     isDiscoveringModels = true
-    // The credential this check is about, captured before any read or network work. A save
-    // or clear while it runs moves the revision, and nothing this request learned about the
-    // old key may then publish (#3438).
-    let revisionAtStart = credentialRevision(for: provider)
-    pendingVerdicts[provider] = revisionAtStart.map {
-      PolishCloudVerdict(
-        provider: provider, credentialRevision: $0, result: .checking,
-        definitive: lastDefinitive(provider, revision: $0))
+    // Exact saved-key checks keep their committed revision. Ordinary Refresh captures the
+    // credential revision again when its ordered read begins, so a preceding Save is not
+    // mistaken for a mutation after that read. Later mutations still reject publication.
+    var revisionAtStart = credentialRevision(for: provider)
+    let selectionRevisionAtStart = surface.selectionRevision(in: settings)
+    @MainActor
+    func requestIdentityIsCurrent() -> Bool {
+      guard discoveryGeneration == generation else { return false }
+      guard surface.selectionRevision(in: settings) == selectionRevisionAtStart else {
+        isDiscoveringModels = false
+        if keyValidationState == .validating { keyValidationState = .idle }
+        pendingVerdicts[provider] = nil
+        return false
+      }
+      return true
+    }
+    @MainActor
+    func requestStillCurrent() -> Bool {
+      requestIdentityIsCurrent() && credentialStillCurrent(provider, revisionAtStart)
+    }
+    if savedCredential != nil || provider == .ollama || provider == .appleIntelligence {
+      pendingVerdicts[provider] = revisionAtStart.map {
+        PolishCloudVerdict(
+          provider: provider, credentialRevision: $0, result: .checking,
+          definitive: lastDefinitive(provider, revision: $0))
+      }
     }
     // Lowered by whoever raised it, and only if nothing newer has raised it since. An
     // unconditional clear on the way out of a SUPERSEDED request turns off the spinner a
     // live one is still showing.
-    defer { if discoveryGeneration == generation { isDiscoveringModels = false } }
+    defer {
+      if discoveryGeneration == generation {
+        isDiscoveringModels = false
+        if keyValidationState == .validating {
+          keyValidationState = .idle
+          pendingVerdicts[provider] = nil
+        }
+      }
+    }
 
     let apiKey: String
-    if provider == .ollama || provider == .appleIntelligence {
+    if let savedCredential {
+      guard savedCredential.value.isEmpty == false else {
+        keyValidationState = .invalid(Self.noKeyMessage)
+        pendingVerdicts[provider] = nil
+        return
+      }
+      apiKey = savedCredential.value
+    } else if provider == .ollama || provider == .appleIntelligence {
       apiKey = ""
     } else {
       let keychainId: String
@@ -212,7 +341,23 @@ final class LLMModelDiscoveryCoordinator {
       // key found" forever, with no compiler complaint.
       case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: keychainId = ""
       }
-      guard let key = try? keychainManager.retrieve(key: keychainId), !key.isEmpty else {
+      let readTurn = credentialAccess.reserve()
+      let read = await credentialAccess.run(turn: readTurn) {
+        guard requestIdentityIsCurrent() else { return nil as Result<String?, any Error>? }
+        // Refresh may wait behind Save. This is the revision of the key actually read,
+        // not the earlier revision present when the refresh request was admitted.
+        revisionAtStart = credentialRevision(for: provider)
+        pendingVerdicts[provider] = revisionAtStart.map {
+          PolishCloudVerdict(provider: provider, credentialRevision: $0, result: .checking,
+            definitive: lastDefinitive(provider, revision: $0))
+        }
+        return await CredentialIO.perform(.read(keychainId), using: keychainManager)
+      }
+      guard let read, requestStillCurrent() else { return }
+      if case .fileImport = surface {
+        guard settings.fileImportLLMProvider == importOverrideAtStart else { return }
+      }
+      guard case .success(let stored) = read, let key = stored, !key.isEmpty else {
         // Missing-key guard: no validation actually ran, so NO
         // `api_key.validation_completed` event (#1173). A missing or unreadable key is a
         // presence fact (`SavedKeyPresence`), never a typed rejection.
@@ -228,8 +373,7 @@ final class LLMModelDiscoveryCoordinator {
 
     do {
       let models = try await discoverModels(provider, apiKey)
-      guard discoveryGeneration == generation else { return }
-      guard credentialStillCurrent(provider, revisionAtStart) else { return }
+      guard requestStillCurrent() else { return }
       discoveredModels = models
       if provider != .appleIntelligence {
         cacheModels(models, for: provider)
@@ -249,8 +393,7 @@ final class LLMModelDiscoveryCoordinator {
         settings.applyDiscoveredModelsForFileImport(models, for: provider)
       }
     } catch LLMError.providerUnavailable {
-      guard discoveryGeneration == generation else { return }
-      guard credentialStillCurrent(provider, revisionAtStart) else { return }
+      guard requestStillCurrent() else { return }
       publishVerdict(.inconclusive, provider: provider, revision: revisionAtStart)
       keyValidationState = .invalid(
         provider == .ollama
@@ -260,8 +403,7 @@ final class LLMModelDiscoveryCoordinator {
       discoveredModels = []
       emitValidationCompleted(provider: provider, result: "provider_unavailable", source: source)
     } catch let error as LLMError where error == .invalidAPIKey {
-      guard discoveryGeneration == generation else { return }
-      guard credentialStillCurrent(provider, revisionAtStart) else { return }
+      guard requestStillCurrent() else { return }
       // The ONE producer of a typed rejection: the provider refused this key.
       publishVerdict(.rejected, provider: provider, revision: revisionAtStart)
       keyValidationState = .invalid(Self.invalidKeyMessage)
@@ -273,15 +415,13 @@ final class LLMModelDiscoveryCoordinator {
       // Gemini 403, or a 400 that only MENTIONS the invalid-key reason: shown exactly as before
       // (an invalid key, with the same telemetry), but neither is evidence the key was refused,
       // so the typed verdict is inconclusive (#3438).
-      guard discoveryGeneration == generation else { return }
-      guard credentialStillCurrent(provider, revisionAtStart) else { return }
+      guard requestStillCurrent() else { return }
       publishVerdict(.inconclusive, provider: provider, revision: revisionAtStart)
       keyValidationState = .invalid(Self.invalidKeyMessage)
       discoveredModels = []
       emitValidationCompleted(provider: provider, result: "invalid", source: source)
     } catch {
-      guard discoveryGeneration == generation else { return }
-      guard credentialStillCurrent(provider, revisionAtStart) else { return }
+      guard requestStillCurrent() else { return }
       publishVerdict(.inconclusive, provider: provider, revision: revisionAtStart)
       keyValidationState = .invalid(Self.validationFailureMessage(for: error))
       discoveredModels = []
@@ -368,6 +508,10 @@ final class LLMModelDiscoveryCoordinator {
     modelCount: Int? = nil, discoveryOutcome: String? = nil
   ) {
     guard provider == .openAI || provider == .gemini || provider == .claude else { return }
+    if let validationEmitter {
+      validationEmitter(provider, result, source, modelCount, discoveryOutcome)
+      return
+    }
     TelemetryService.shared.apiKeyValidationCompleted(
       provider: provider.rawValue, result: result, source: source.rawValue,
       modelCount: modelCount, discoveryOutcome: discoveryOutcome)

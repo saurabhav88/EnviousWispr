@@ -76,10 +76,10 @@
 
     // MARK: - Catalog
 
-    @Test("the table lists exactly the 83 declared keys, once each, in four kinds")
+    @Test("the table lists exactly the 84 declared keys, once each, in four kinds")
     func catalogMatchesDeclaration() throws {
       let declared = try Self.declaredKeyNames()
-      #expect(declared.count == 83)
+      #expect(declared.count == 84)
       #expect(Set(declared).count == declared.count)
       let listed = DevControlSettings.allKeys.map(DevControlSettings.name)
       #expect(listed == declared)
@@ -90,7 +90,7 @@
 
       let (_, _, settings) = Self.fixture()
       let rows = DevControlSettings.catalog(settings)
-      #expect(rows.count == 83)
+      #expect(rows.count == 84)
       #expect(rows.compactMap { $0["key"] as? String } == declared)
       for row in rows {
         #expect(row["value"] != nil)
@@ -101,7 +101,7 @@
       for row in rows {
         kinds[row["kind"] as? String ?? "?", default: []].append(row["key"] as? String ?? "?")
       }
-      #expect(kinds["direct"]?.count == 51)
+      #expect(kinds["direct"]?.count == 52)
       #expect(kinds["viaOwner"]?.count == 8)
       #expect(kinds["extractedCheck"]?.count == 16)
       #expect(kinds["staging"]?.count == 8)
@@ -252,6 +252,9 @@
         name: "meetingLanguageMode", wire: { _ in #"{"mode":"locked","code":"de"}"# },
         holds: { $0.meetingLanguageMode == .locked("de") && $0.languageMode == .auto },
         fires: .meetingLanguageMode),
+      Row(
+        name: "meetingTranscriptEngine", wire: { _ in "\"whisper\"" },
+        holds: { $0.meetingTranscriptEngine == .whisper }, fires: .meetingTranscriptEngine),
       // #4105: meeting live words engine and language; null clears either.
       Row(
         name: "meetingLiveWordsEngine", wire: { _ in "\"universal\"" },
@@ -368,7 +371,7 @@
       "llmModel": "llmModel",
     ]
 
-    @Test("a forced write lands on the right property for every one of the 83 keys and persists")
+    @Test("a forced write lands on the right property for every one of the 84 keys and persists")
     func forcedWriteEveryKey() throws {
       let declared = try Self.declaredKeyNames()
       #expect(Self.rows.map(\.name) == declared)
@@ -402,8 +405,8 @@
         }
         exercised += 1
       }
-      #expect(exercised == 83)
-      #expect(readChecks == 83)
+      #expect(exercised == 84)
+      #expect(readChecks == 84)
     }
 
     @Test("hasCompletedOnboarding is the onboarding alias; forcing it moves onboardingState")
@@ -843,7 +846,7 @@
         if route == .shortcutField { shortcutFields.insert(DevControlSettings.name(key)) }
       }
       #expect(shortcutFields == Self.shortcutNames)
-      #expect(counts[.typed] == 59)
+      #expect(counts[.typed] == 60)
       #expect(counts[.modelCatalog] == 1)
       #expect(counts[.inputDevice] == 2)
       #expect(counts[.spokenPunctuation] == 1)
@@ -855,7 +858,7 @@
       #expect(counts[.ollamaModel] == 2)
       #expect(counts[.channelCommand] == 1)
       #expect(counts[.shortcutField] == 10)
-      #expect(counts.values.reduce(0, +) == 83)
+      #expect(counts.values.reduce(0, +) == 84)
       #expect(DevControlSettings.route(.llmModel) == .modelCatalog)
       #expect(DevControlSettings.route(.hasCompletedOnboarding) == .typed)
     }
@@ -935,6 +938,76 @@
         #expect(fired == 0)
         #expect(stored == defaults.persistentDomain(forName: suite) as NSDictionary?)
       }
+    }
+
+    @Test("checked shortcuts refuse out-of-range codes without saving or notifying",
+      .bug("https://github.com/saurabhav88/EnviousWispr/issues/3807"))
+    func checkedShortcutKeyRange() {
+      let cases: [(ShortcutRole, UInt16)] = ShortcutRole.allCases.map { ($0, 128) }
+        + [(.record, UInt16.max)]
+      for (role, keyCode) in cases {
+        let (suite, defaults, settings) = Self.fixture()
+        let before = settings.shortcutBindings
+        let stored = defaults.persistentDomain(forName: suite) as NSDictionary?
+        var fired = 0
+        settings.onChange = { _ in fired += 1 }
+        let result = DevControlSettings.setShortcut(
+          role, keyCode: keyCode, modifiers: [.control, .shift], to: settings)
+        #expect(result.code == "badValue", "\(role) key \(keyCode) must be refused")
+        #expect(settings.shortcutBindings == before)
+        #expect(defaults.persistentDomain(forName: suite) as NSDictionary? == stored)
+        #expect(fired == 0)
+        #expect(settings.isDevControlWrite == false)
+      }
+      // Admission boundaries, not a claim that every number corresponds to a physical key.
+      for code: UInt16 in [0, 127] {
+        let (_, _, settings) = Self.fixture()
+        #expect(DevControlSettings.setShortcut(
+          .record, keyCode: code, modifiers: [.control, .shift], to: settings)
+          == .written(forced: false))
+        #expect(settings.toggleKeyCode == code)
+      }
+    }
+
+    @Test("individual shortcut fields validate the saved companion and restore attribution",
+      .bug("https://github.com/saurabhav88/EnviousWispr/issues/3807"))
+    func checkedShortcutFieldsPreserveState() throws {
+      for priorAttribution in [false, true] {
+        let (suite, defaults, settings) = Self.fixture()
+        for (key, value): (SettingsManager.SettingKey, String) in [
+          (.toggleKeyCode, "128"), (.toggleModifiers, "262144"),
+        ] {
+          // The modifiers-only route must validate this saved key as part of its candidate.
+          if key == .toggleModifiers { settings.toggleKeyCode = UInt16.max }
+          settings.isDevControlWrite = priorAttribution
+          let before = settings.shortcutBindings
+          let stored = defaults.persistentDomain(forName: suite) as NSDictionary?
+          var fired = 0
+          settings.onChange = { _ in fired += 1 }
+          let result = DevControlSettings.write(
+            key, value: try Self.wire(value), force: false, context: Self.context(), to: settings)
+          #expect(result.code == "badValue", "\(key) must reject the complete candidate")
+          #expect(settings.shortcutBindings == before)
+          #expect(defaults.persistentDomain(forName: suite) as NSDictionary? == stored)
+          #expect(fired == 0)
+          #expect(settings.isDevControlWrite == priorAttribution)
+        }
+      }
+    }
+
+    @Test("force can stage a high key and a checked compound write can repair it",
+      .bug("https://github.com/saurabhav88/EnviousWispr/issues/3807"))
+    func forcedShortcutCanBeRepaired() throws {
+      let (_, defaults, settings) = Self.fixture()
+      #expect(DevControlSettings.write(
+        .toggleKeyCode, value: try Self.wire("65535"), force: true,
+        context: Self.context(), to: settings) == .written(forced: true))
+      #expect(settings.toggleKeyCode == UInt16.max)
+      #expect(SettingsManager(defaults: defaults).toggleKeyCode == UInt16.max)
+      #expect(DevControlSettings.setShortcut(
+        .record, keyCode: 0, modifiers: [.control, .shift], to: settings)
+        == .written(forced: false))
+      #expect(settings.toggleKeyCode == 0 && settings.toggleModifiers == [.control, .shift])
     }
 
     @Test("numbers are stored the way the screen stores the key")
@@ -1035,7 +1108,7 @@
         #expect(fired.contains(row.fires), "\(row.name) fired \(fired)")
         written += 1
       }
-      #expect(written == 59)
+      #expect(written == 60)
     }
 
     private static func model(_ id: String, _ provider: LLMProvider, available: Bool = true, remote: Bool = false)

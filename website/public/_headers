@@ -48,3 +48,9 @@
 /ollama-library.json
   Cache-Control: public, max-age=300
   X-Robots-Tag: noindex
+
+# #4013: the talker rules the app downloads at most once a day. Replaced in place under a fixed
+# name, so an hour lets a fix reach the app the same day.
+/meet/talker-rules.json
+  Cache-Control: public, max-age=3600
+  X-Robots-Tag: noindex

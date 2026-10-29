@@ -59,7 +59,7 @@
         harness = try MeetingCoordinatorTests.Harness()
         history = MeetingHistoryPresentationTests.Rig()
         history.coordinator.meetingInfo = { [unowned self] id in
-          harness.coordinator.record(id: id).map(MeetingHistoryInfo.init(record:))
+          harness.coordinator.record(id: id).flatMap { MeetingHistoryInfo.paired(with: $0) }
         }
       }
 
@@ -330,7 +330,7 @@
       coordinator.summaries = summaryRig.makeOwner(documents: coordinator.documents)
       let meetingID = try await Self.readyMeeting(rig)
       rig.history.coordinator.meetingInfo = { id in
-        coordinator.record(id: id).map(MeetingHistoryInfo.init(record:))
+        coordinator.record(id: id).flatMap { MeetingHistoryInfo.paired(with: $0) }
       }
       summaryRig.world.transcript = "You: ship it"
       let id = meetingID.uuidString

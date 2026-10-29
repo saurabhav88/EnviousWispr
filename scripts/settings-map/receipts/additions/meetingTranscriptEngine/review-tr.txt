@@ -1,0 +1,29 @@
+{
+  "meetingTranscriptEngine": {
+    "language": "tr",
+    "title": "toplantı dökümü motoru",
+    "words": [
+      "toplantı deşifre motoru"
+    ],
+    "phrases": [
+      "toplantının tamamını yazıya dökecek modeli seç",
+      "toplantı sonrası deşifre motorunu değiştir"
+    ]
+  },
+  "meetingTranscriptEngine.parakeet": {
+    "language": "tr",
+    "title": "Parakeet",
+    "words": [],
+    "phrases": [
+      "toplantı bittikten sonra dökümü oluşturmak için Parakeet kullan"
+    ]
+  },
+  "meetingTranscriptEngine.whisper": {
+    "language": "tr",
+    "title": "Whisper Large v3 Turbo",
+    "words": [],
+    "phrases": [
+      "toplantı bittikten sonra dökümü oluşturmak için Whisper kullan"
+    ]
+  }
+}

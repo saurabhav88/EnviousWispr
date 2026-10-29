@@ -49,6 +49,62 @@ struct MeetingRecordTests {
     #expect(record.transcriptLanguage == nil, "an empty lock is Auto")
   }
 
+  /// #3973 C2 (plan G5): a format 2 record (no attempt fields) still decodes; a ready one counts
+  /// as having committed the legacy generation, so its History row stays paired with its facts,
+  /// and starting an attempt pins that generation before the record leaves ready, raising the
+  /// format so an older build never resumes the attempt.
+  @Test("a format 2 record decodes; a new attempt pins its legacy transcript and raises the format")
+  func attemptsOverAFormatTwoRecord() throws {
+    var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    record.transcriptLanguageMode = .locked("de")
+    record.state = .ready
+    var object = try #require(
+      try JSONSerialization.jsonObject(with: try JSONEncoder().encode(record)) as? [String: Any])
+    object["formatVersion"] = 2
+    for key in [
+      "pendingAttempt", "resolvedAttempt", "committedTranscriptAttemptID",
+      "requestedTranscriptEngine", "transcriptEngineUsed", "transcriptEngineFallbackReason",
+    ] {
+      object.removeValue(forKey: key)
+    }
+    var legacy = try JSONDecoder().decode(
+      MeetingRecord.self, from: try JSONSerialization.data(withJSONObject: object))
+    #expect(legacy.formatVersion == 2)
+    #expect(legacy.pendingAttempt == nil)
+    #expect(legacy.committedTranscriptGeneration == MeetingRecord.legacyTranscriptAttemptID)
+
+    let start = legacy.attemptFromStartValues()
+    #expect(start.requestedEngine == .parakeet)
+    #expect(start.languageIntent == "de", "the saved Start language, never Settings")
+    #expect(start.requestedEffectiveLanguage == "de")
+
+    let again = MeetingAttemptConfiguration(requestedEngine: .parakeet, language: .auto)
+    legacy.beginAttempt(again)
+    legacy.state = .queued
+    #expect(legacy.formatVersion == MeetingRecord.attemptFormatVersion)
+    #expect(legacy.pendingAttempt == again)
+    #expect(
+      legacy.committedTranscriptGeneration == MeetingRecord.legacyTranscriptAttemptID,
+      "the shown transcript stays the legacy one while the attempt runs")
+
+    let resolved = MeetingResolvedAttempt(
+      attemptID: again.attemptID, requestedEngine: .parakeet, resolvedEngine: .parakeet,
+      effectiveLanguage: nil, modelIdentity: "ultra:r1", fallbackReason: nil)
+    legacy.state = .ready
+    legacy.commitAttempt(resolved)
+    #expect(legacy.committedTranscriptGeneration == again.attemptID)
+    #expect(legacy.transcriptEngineUsed == .parakeet)
+    #expect(legacy.pendingAttempt == nil)
+    let reloaded = try JSONDecoder().decode(
+      MeetingRecord.self, from: try JSONEncoder().encode(legacy))
+    #expect(reloaded == legacy)
+
+    // A record that never committed has no generation, whatever state it is in.
+    var fresh = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    fresh.state = .failed
+    #expect(fresh.committedTranscriptGeneration == nil)
+  }
+
   @Test("segment names carry track, index and start, and parse back; malformed names are rejected")
   func namingRoundTrip() {
     let name = MeetingSegmentNaming.fileName(
@@ -95,5 +151,31 @@ struct MeetingRecordTests {
     #expect(MeetingRecord.recoveredState(from: .processing) == .queued)
     #expect(MeetingRecord.recoveredState(from: .ready) == nil)
     #expect(MeetingRecord.recoveredState(from: .failed) == nil)
+  }
+
+  @Test("#3973 C3: a Whisper attempt raises the record to format 4; a fallback commit keeps what ran and why")
+  func whisperAttemptIsFormatFour() throws {
+    var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    var old = try #require(
+      try JSONSerialization.jsonObject(with: try JSONEncoder().encode(record)) as? [String: Any])
+    old["formatVersion"] = 3
+    record = try JSONDecoder().decode(
+      MeetingRecord.self, from: try JSONSerialization.data(withJSONObject: old))
+    record.beginAttempt(MeetingAttemptConfiguration(requestedEngine: .parakeet, language: .auto))
+    #expect(record.formatVersion == 3, "a Parakeet attempt needs no Whisper value")
+    let whisper = MeetingAttemptConfiguration(requestedEngine: .whisper, language: .auto)
+    record.beginAttempt(whisper)
+    #expect(record.formatVersion == MeetingRecord.whisperFormatVersion)
+
+    record.state = .ready
+    record.commitAttempt(
+      MeetingResolvedAttempt(
+        attemptID: whisper.attemptID, requestedEngine: .whisper, resolvedEngine: .parakeet,
+        effectiveLanguage: nil, modelIdentity: "ultra:r1", fallbackReason: .notDownloaded))
+    let reloaded = try JSONDecoder().decode(
+      MeetingRecord.self, from: try JSONEncoder().encode(record))
+    #expect(reloaded.requestedTranscriptEngine == .whisper)
+    #expect(reloaded.transcriptEngineUsed == .parakeet)
+    #expect(reloaded.transcriptEngineFallbackReason == .notDownloaded)
   }
 }

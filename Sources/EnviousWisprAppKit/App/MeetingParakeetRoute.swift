@@ -423,7 +423,7 @@ final class MeetingParakeetRoute {
 
 /// One answer handed to one waiter, by whichever side answers first; a later answer is dropped.
 /// An answer that arrives before the waiter is armed is kept for it.
-private final class OnceSlot<Value: Sendable>: Sendable {
+final class OnceSlot<Value: Sendable>: Sendable {
   private enum State: Sendable {
     case empty
     case armed(CheckedContinuation<Value, Never>)

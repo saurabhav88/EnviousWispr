@@ -460,8 +460,10 @@
         #"""
         c = dev_control.Connection(\#(door.pid))
         forced = c.request("settings.set", {"key": "toggleKeyCode", "value": 4321, "force": True})
-        plain = c.request("settings.set", {"key": "cancelKeyCode", "value": 4321})
         got = c.request("settings.get", {"key": "toggleKeyCode"})
+        # Keep forced high-value staging above; use a valid F1 key for the conflict branch (#3807).
+        c.request("settings.set", {"key": "toggleKeyCode", "value": 122, "force": True})
+        plain = c.request("settings.set", {"key": "cancelKeyCode", "value": 122})
         listed = c.request("settings.list")
         print(json.dumps({"forced": forced, "plain": plain, "got": got, "count": len(listed["result"]["settings"])}))
         """#)
@@ -472,12 +474,13 @@
       #expect((plain["error"] as? [String: Any])?["code"] as? String == "checkFailed", "Record's key")
       let got = try #require(reply["got"] as? [String: Any])
       #expect((got["result"] as? [String: Any])?["value"] as? Int == 4321)
-      #expect(reply["count"] as? Int == 83)
+      #expect(reply["count"] as? Int == 84)
 
-      try #require(outcomes.count == 4, "outcomes: \(outcomes)")
+      try #require(outcomes.count == 5, "outcomes: \(outcomes)")
       #expect(outcomes[0].contains("cmd=settings.set ok=true forced=true code=none"))
-      #expect(outcomes[1].contains("cmd=settings.set ok=false forced=false code=checkFailed"))
-      #expect(outcomes[2].contains("cmd=settings.get ok=true forced=false code=none"))
+      #expect(outcomes[1].contains("cmd=settings.get ok=true forced=false code=none"))
+      #expect(outcomes[2].contains("cmd=settings.set ok=true forced=true code=none"))
+      #expect(outcomes[3].contains("cmd=settings.set ok=false forced=false code=checkFailed"))
       for line in outcomes {
         #expect(line.contains("4321") == false)
         #expect(line.contains("toggleKeyCode") == false)

@@ -1,0 +1,27 @@
+{
+  "meetingTranscriptEngine": {
+    "language": "el",
+    "title": "μηχανή απομαγνητοφώνησης",
+    "words": [],
+    "phrases": [
+      "επιλογή μηχανής για την πλήρη απομαγνητοφώνηση της συνάντησης",
+      "ποια μηχανή γράφει το πλήρες κείμενο μετά τη συνάντηση"
+    ]
+  },
+  "meetingTranscriptEngine.parakeet": {
+    "language": "el",
+    "title": "Parakeet",
+    "words": [],
+    "phrases": [
+      "χρήση Parakeet για απομαγνητοφώνηση συναντήσεων"
+    ]
+  },
+  "meetingTranscriptEngine.whisper": {
+    "language": "el",
+    "title": "Whisper Large v3 Turbo",
+    "words": [],
+    "phrases": [
+      "χρήση του Whisper για απομαγνητοφώνηση συναντήσεων"
+    ]
+  }
+}

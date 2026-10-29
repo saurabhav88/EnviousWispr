@@ -34,7 +34,9 @@ public struct MeetingEndedTelemetry: Equatable, Sendable {
   public let durationSeconds: Double
   public let microphoneTrack: MeetingTrackStatus
   public let callSoundTrack: MeetingTrackStatus
-  public let engine: MeetingEngineChoice
+  /// #3973 C3: the engine the attempt resolved to (Parakeet when Whisper fell back); nil when
+  /// it never resolved (a Start that failed, a meeting deleted before its pass began).
+  public let engine: MeetingEngineChoice?
   public let speakerCount: Int
   public let processingSeconds: Double
   public let audioSeconds: Double
@@ -57,6 +59,12 @@ public struct MeetingEndedTelemetry: Equatable, Sendable {
   public let callCaptureRateHz: Int?
   public let callRebuilds: Int?
   public let callReportsOmitted: Int?
+  /// #4013: what automatic speaker naming achieved, from the summary of the reconciled row the
+  /// durable History write stored. Each is nil when not known, and all are nil when the
+  /// attempt has no committed summary; a known zero count stays 0.
+  public let speakerNamesSurface: SpeakerNamingSummary.Surface?
+  public let speakerNamesOutcome: SpeakerNamingSummary.Outcome?
+  public let autoNamedCount: Int?
 
   /// The summary decision taken when the meeting ends (R48, R54).
   public enum SummaryPlan: String, Sendable, CaseIterable {
@@ -68,16 +76,19 @@ public struct MeetingEndedTelemetry: Equatable, Sendable {
     case noProvider = "no_provider"
     /// The selected provider or model cannot write summaries.
     case unsupported
-    /// The meeting did not become ready (failed, start failed, deleted, notes only).
+    /// The meeting did not become ready (failed, start failed, deleted, notes only), or a
+    /// Transcribe again replaced its transcript (#3973 C2: a replacement never writes a summary
+    /// by itself; the existing one shows as out of date until Write again).
     case notApplicable = "not_applicable"
   }
 
   public init(
     outcome: Outcome, entryPoint: MeetingEntryPoint?, durationSeconds: Double,
     microphoneTrack: MeetingTrackStatus, callSoundTrack: MeetingTrackStatus,
-    engine: MeetingEngineChoice = .parakeet, speakerCount: Int, processingSeconds: Double,
+    engine: MeetingEngineChoice?, speakerCount: Int, processingSeconds: Double,
     audioSeconds: Double, yieldCount: Int, gapCount: Int, echoHiddenCount: Int, diskStopped: Bool?,
-    summaryPlan: SummaryPlan, hasNotes: Bool, callSound: CallSoundSummary? = nil
+    summaryPlan: SummaryPlan, hasNotes: Bool, callSound: CallSoundSummary? = nil,
+    speakerNaming: SpeakerNamingSummary? = nil
   ) {
     self.outcome = outcome
     self.entryPoint = entryPoint
@@ -98,6 +109,9 @@ public struct MeetingEndedTelemetry: Equatable, Sendable {
     self.callCaptureRateHz = callSound?.configuredRateHz
     self.callRebuilds = callSound?.rebuilds
     self.callReportsOmitted = callSound?.omittedReports
+    self.speakerNamesSurface = speakerNaming?.surface
+    self.speakerNamesOutcome = speakerNaming?.outcome
+    self.autoNamedCount = speakerNaming?.autoNamedCount
   }
 
   /// Processing seconds per audio second; 0 when there was no audio or either value is not a
@@ -114,7 +128,8 @@ public struct MeetingEndedTelemetry: Equatable, Sendable {
   ) -> MeetingEndedTelemetry {
     MeetingEndedTelemetry(
       outcome: .startFailed, entryPoint: entryPoint, durationSeconds: 0, microphoneTrack: microphone,
-      callSoundTrack: callSound, speakerCount: 0, processingSeconds: 0, audioSeconds: 0,
+      callSoundTrack: callSound, engine: nil, speakerCount: 0, processingSeconds: 0,
+      audioSeconds: 0,
       yieldCount: 0, gapCount: 0, echoHiddenCount: 0, diskStopped: false,
       summaryPlan: .notApplicable, hasNotes: false)
   }

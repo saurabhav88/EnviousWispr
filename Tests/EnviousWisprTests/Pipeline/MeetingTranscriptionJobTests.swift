@@ -184,7 +184,7 @@ struct MeetingTranscriptionJobTests {
     let engine = FakeEngine()
     engine.hearsSlots = true
     let job = makeJob(engine: engine, idle: { true }, wait: {})
-    let result = try await job.run(tracks: [.microphone: MeetingTrackAudio(files: files)], language: nil) { _ in }
+    let result = try await job.runTestAttempt(tracks: [.microphone: MeetingTrackAudio(files: files)], language: nil) { _ in }
 
     #expect(engine.calls.count >= 3)
     // Every padded piece hears the slots it fully holds, so slots near a seam are heard twice;
@@ -246,7 +246,7 @@ struct MeetingTranscriptionJobTests {
           started += 1
         },
         unitEnded: { open -= 1 }))
-    _ = try await job.run(tracks: [.microphone: MeetingTrackAudio(files: files)], language: nil) { _ in }
+    _ = try await job.runTestAttempt(tracks: [.microphone: MeetingTrackAudio(files: files)], language: nil) { _ in }
     #expect(outsideUnit.isEmpty, "engine work outside a reported unit: \(outsideUnit)")
     #expect(open == 0, "every unit that started has ended")
     #expect(started >= 3, "load, decode and unload each report")
@@ -284,7 +284,7 @@ struct MeetingTranscriptionJobTests {
         },
         unloadEngine: {},
         analyzeSpeakers: { _ in MeetingSpeakerAnalysis(outcome: .single, segments: []) }))
-    _ = try await job.run(tracks: [.microphone: MeetingTrackAudio(files: files)], language: nil) { _ in }
+    _ = try await job.runTestAttempt(tracks: [.microphone: MeetingTrackAudio(files: files)], language: nil) { _ in }
     #expect(workWhileTaken.isEmpty, "engine work while the turn was taken: \(workWhileTaken)")
     #expect(waits >= 2)
     #expect(job.yieldCount == 1, "one yield, however many waits it took")
@@ -306,7 +306,7 @@ struct MeetingTranscriptionJobTests {
     // #3972 C5: the page's "Paused while you dictate" reads these reports.
     var waitReports: [Bool] = []
     job.onWaitingForDictation = { waitReports.append($0) }
-    let result = try await job.run(tracks: [.microphone: MeetingTrackAudio(files: files)], language: nil) { _ in }
+    let result = try await job.runTestAttempt(tracks: [.microphone: MeetingTrackAudio(files: files)], language: nil) { _ in }
     #expect(waits >= 1)
     #expect(result.yieldCount >= 1)
     #expect(!engine.dictationActiveDuringCall)
@@ -326,7 +326,7 @@ struct MeetingTranscriptionJobTests {
     #expect(audio.runs.count == 2)
     let engine = FakeEngine()
     let job = makeJob(engine: engine, idle: { true }, wait: {})
-    _ = try await job.run(tracks: [.microphone: audio], language: nil) { _ in }
+    _ = try await job.runTestAttempt(tracks: [.microphone: audio], language: nil) { _ in }
     #expect(engine.calls.allSatisfy { $0 <= 6 * 16_000 })
   }
 
@@ -403,7 +403,7 @@ struct MeetingTranscriptionJobTests {
     let dir = try folder()
     let files = [try segment(in: dir, index: 1, startMs: 0, seconds: 2)]
     let rig = OwnershipRig(contentions: 1)
-    let run = Task { try await rig.job.run(tracks: [.microphone: MeetingTrackAudio(files: files)], language: nil) { _ in } }
+    let run = Task { try await rig.job.runTestAttempt(tracks: [.microphone: MeetingTrackAudio(files: files)], language: nil) { _ in } }
     await rig.untilWaiting()
     // #3973 C1: the claim is given back before the contention wait and taken again after it.
     #expect(!rig.job.isEngineResident, "nothing is held through the wait")
@@ -421,7 +421,7 @@ struct MeetingTranscriptionJobTests {
     let dir = try folder()
     let files = [try segment(in: dir, index: 1, startMs: 0, seconds: 2)]
     let rig = OwnershipRig(contentions: 1)
-    let run = Task { try await rig.job.run(tracks: [.microphone: MeetingTrackAudio(files: files)], language: nil) { _ in } }
+    let run = Task { try await rig.job.runTestAttempt(tracks: [.microphone: MeetingTrackAudio(files: files)], language: nil) { _ in } }
     await rig.untilWaiting()
     rig.job.cancel()
     await #expect(throws: MeetingTranscriptionJob.JobError.cancelled) { _ = try await run.value }
@@ -453,7 +453,7 @@ struct MeetingTranscriptionJobTests {
         },
         unloadEngine: {},
         analyzeSpeakers: { _ in MeetingSpeakerAnalysis(outcome: .single, segments: []) }))
-    let run = Task { try await job.run(tracks: [.microphone: MeetingTrackAudio(files: files)], language: nil) { _ in } }
+    let run = Task { try await job.runTestAttempt(tracks: [.microphone: MeetingTrackAudio(files: files)], language: nil) { _ in } }
     var iterator = asked.makeAsyncIterator()
     _ = await iterator.next()
     job.cancel()
@@ -491,7 +491,7 @@ struct MeetingTranscriptionJobTests {
         analyzeSpeakers: { _ in MeetingSpeakerAnalysis(outcome: .single, segments: []) },
         isModelSourceUsable: { state.usable }))
     await #expect(throws: MeetingTranscriptionJob.JobError.engineUnavailable("model_source_unavailable")) {
-      _ = try await job.run(tracks: [.microphone: MeetingTrackAudio(files: files)], language: nil) { _ in }
+      _ = try await job.runTestAttempt(tracks: [.microphone: MeetingTrackAudio(files: files)], language: nil) { _ in }
     }
     #expect(state.decodes == 0)
     // The identity probe (#3973 C1), then the operation's load, unload and release.
@@ -542,7 +542,7 @@ struct MeetingTranscriptionJobTests {
         unloadEngine: { state.log.append("unload") },
         analyzeSpeakers: { _ in MeetingSpeakerAnalysis(outcome: .single, segments: []) },
         isModelSourceUsable: { state.usable }))
-    let run = Task { try await job.run(tracks: [.microphone: MeetingTrackAudio(files: files)], language: nil) { _ in } }
+    let run = Task { try await job.runTestAttempt(tracks: [.microphone: MeetingTrackAudio(files: files)], language: nil) { _ in } }
     await withCheckedContinuation { state.pausedSignal = $0 }
     state.usable = false  // delivery turned off while the job is paused
     // The identity probe, then the operation's load, given back before the pause.
@@ -566,7 +566,10 @@ struct MeetingTranscriptionJobTests {
   private func checkpointJob(
     engine: FakeEngine, identity: String = "ultra:r1", target: Double = 20,
     analyses: OSAllocatedUnfairLock<Int>? = nil, cutsPieces: Bool = true,
-    languages: OSAllocatedUnfairLock<[String?]>? = nil
+    languages: OSAllocatedUnfairLock<[String?]>? = nil,
+    speakerSegments: [SpeakerSegment] = [
+      SpeakerSegment(speakerId: "1", startMs: 0, endMs: 1_000, quality: 1)
+    ]
   ) -> MeetingTranscriptionJob {
     var config = MeetingTranscriptionJob.Configuration()
     config.pieceTargetSeconds = target
@@ -583,8 +586,7 @@ struct MeetingTranscriptionJobTests {
         unloadEngine: {},
         analyzeSpeakers: { _ in
           analyses?.withLock { $0 += 1 }
-          return MeetingSpeakerAnalysis(
-            outcome: .single, segments: [SpeakerSegment(speakerId: "1", startMs: 0, endMs: 1_000, quality: 1)])
+          return MeetingSpeakerAnalysis(outcome: .single, segments: speakerSegments)
         },
         engineIdentity: { identity }),
       configuration: config)
@@ -630,7 +632,7 @@ struct MeetingTranscriptionJobTests {
     let first = FakeEngine()
     let job1 = checkpointJob(engine: first)
     await #expect(throws: MeetingTranscriptionJob.JobError.cancelled) {
-      _ = try await job1.run(
+      _ = try await job1.runTestAttempt(
         tracks: [.microphone: audio], language: nil,
         checkpoint: access(store, meetingID: meetingID) { saves in if saves == 2 { job1.cancel() } }
       ) { _ in }
@@ -646,10 +648,10 @@ struct MeetingTranscriptionJobTests {
     let second = FakeEngine()
     let analyses = OSAllocatedUnfairLock(initialState: 0)
     let job2 = checkpointJob(engine: second, analyses: analyses)
-    let result = try await job2.run(
+    let result = try await job2.runTestAttempt(
       tracks: [.microphone: audio], language: nil, checkpoint: access(store, meetingID: meetingID)) { _ in }
     let fresh = FakeEngine()
-    let reference = try await checkpointJob(engine: fresh).run(tracks: [.microphone: audio], language: nil) { _ in }
+    let reference = try await checkpointJob(engine: fresh).runTestAttempt(tracks: [.microphone: audio], language: nil) { _ in }
     #expect(second.calls.count == fresh.calls.count - committed)
     #expect(result.resumedPieces == committed)
     #expect(words(result) == words(reference))
@@ -659,11 +661,106 @@ struct MeetingTranscriptionJobTests {
     // Pass 3: everything committed, including speakers. No engine, no analysis.
     let third = FakeEngine()
     let again = OSAllocatedUnfairLock(initialState: 0)
-    let result3 = try await checkpointJob(engine: third, analyses: again).run(
+    let result3 = try await checkpointJob(engine: third, analyses: again).runTestAttempt(
       tracks: [.microphone: audio], language: nil, checkpoint: access(store, meetingID: meetingID)) { _ in }
     #expect(third.calls.isEmpty)
     #expect(again.withLock { $0 } == 0)
     #expect(result3.composition.text == reference.composition.text)
+  }
+
+  // MARK: - Automatic speaker naming (#4013 chunk 12A)
+
+  @Test("a pass names the call speaker from saved evidence; a resumed pass names the same way")
+  func namesFromSavedEvidenceFreshAndResumed() async throws {
+    let dir = try folder()
+    let audio = MeetingTrackAudio(files: [try segment(in: dir, index: 1, startMs: 0, seconds: 50)])
+    let caller = [SpeakerSegment(speakerId: "1", startMs: 0, endMs: 50_000, quality: 1)]
+    let log = try CallSpeakerTestLog.meet()
+
+    let reference = try await checkpointJob(engine: FakeEngine(), speakerSegments: caller)
+      .runTestAttempt(tracks: [.callSound: audio], language: nil, callSpeakers: .usable(log)) { _ in }
+    let naming = try #require(reference.naming)
+    #expect(naming.evidence == .usable(log))
+    #expect(naming.result.outcome == .named)
+    #expect(naming.result.proposals == ["sys:1": "Alex Rivera"])
+    #expect(naming.eligibility.callSpeakerIDs == ["sys:1"])
+
+    // Naming never changes the composition.
+    let unnamed = try await checkpointJob(engine: FakeEngine(), speakerSegments: caller)
+      .runTestAttempt(tracks: [.callSound: audio], language: nil) { _ in }
+    #expect(unnamed.composition == reference.composition)
+    #expect(unnamed.naming?.result.proposals == [:])
+    #expect(unnamed.naming?.result.outcome == .noLog)
+    #expect(unnamed.naming?.evidence == .absent)
+
+    // A pass interrupted after one piece, then resumed from its checkpoint, gives the same
+    // eligibility and the same names as the uninterrupted pass.
+    let store = MeetingProcessingCheckpointStore(meetingFolder: dir)
+    let meetingID = UUID()
+    let first = checkpointJob(engine: FakeEngine(), speakerSegments: caller)
+    await #expect(throws: MeetingTranscriptionJob.JobError.cancelled) {
+      _ = try await first.runTestAttempt(
+        tracks: [.callSound: audio], language: nil,
+        checkpoint: access(store, meetingID: meetingID) { saves in if saves == 1 { first.cancel() } },
+        callSpeakers: .usable(log)
+      ) { _ in }
+    }
+    let resumed = try await checkpointJob(engine: FakeEngine(), speakerSegments: caller)
+      .runTestAttempt(
+        tracks: [.callSound: audio], language: nil, checkpoint: access(store, meetingID: meetingID),
+        callSpeakers: .usable(log)) { _ in }
+    #expect(resumed.resumedPieces > 0)
+    #expect(resumed.naming == reference.naming)
+  }
+
+  @Test("unusable saved evidence leaves the pass successful with no names, and says why")
+  func unusableEvidenceNamesNobody() async throws {
+    let dir = try folder()
+    let audio = MeetingTrackAudio(files: [try segment(in: dir, index: 1, startMs: 0, seconds: 30)])
+    let result = try await checkpointJob(
+      engine: FakeEngine(),
+      speakerSegments: [SpeakerSegment(speakerId: "1", startMs: 0, endMs: 30_000, quality: 1)]
+    ).runTestAttempt(
+      tracks: [.callSound: audio], language: nil, callSpeakers: .unusable(.newerFormat)) { _ in }
+    #expect(result.naming?.evidence == .unusable(.newerFormat))
+    #expect(result.naming?.result.proposals == [:])
+    #expect(!result.composition.text.isEmpty)
+  }
+
+  @Test("eligibility comes from the pieces: speech, failed pieces and unreadable audio per track")
+  func eligibilityFromPieces() {
+    typealias Piece = MeetingProcessingCheckpoint.Piece
+    func spoken(_ start: Int, _ end: Int, _ text: String) -> Piece {
+      Piece(
+        startSample: start, endSample: end, forcedCut: false, text: text,
+        words: text.isEmpty ? [] : [.init(word: text, lower: 0, upper: text.utf16.count, startMs: 0, endMs: 1)])
+    }
+    func failed(_ start: Int, _ end: Int) -> Piece {
+      Piece(startSample: start, endSample: end, forcedCut: false, text: nil, words: nil)
+    }
+    let eligibility = MeetingTranscriptionJob.namingEligibility(
+      pieces: [
+        .callSound: [spoken(0, 16_000, "hi"), failed(16_000, 32_000), spoken(32_000, 48_000, " ")],
+        .microphone: [failed(0, 16_000)],
+      ],
+      callSegments: [
+        SpeakerSegment(speakerId: "1", startMs: 0, endMs: 1_000, quality: 1),
+        SpeakerSegment(speakerId: "2", startMs: 1_000, endMs: 3_000, quality: 1),
+      ],
+      missingAudio: [
+        .callSound: [.init(startMs: 5_000, endMs: nil)],
+        .microphone: [.init(startMs: 7_000, endMs: 8_000)],
+      ])
+    #expect(eligibility.callSpeakerIDs == ["sys:1", "sys:2"])
+    #expect(eligibility.callSpeech == [MeetingNamingInterval(startMs: 0, endMs: 1_000)!])
+    let expected = [
+      MeetingNamingMarker(track: .callSound, startMs: 1_000, endMs: 2_000),
+      MeetingNamingMarker(track: .callSound, startMs: 5_000, endMs: nil),
+      MeetingNamingMarker(track: .microphone, startMs: 0, endMs: 1_000),
+      MeetingNamingMarker(track: .microphone, startMs: 7_000, endMs: 8_000),
+    ]
+    #expect(eligibility.markers.count == expected.count)
+    for marker in expected { #expect(eligibility.markers.contains(marker), "\(marker)") }
   }
 
   @Test("a checkpoint for other settings, another meeting or another model is not reused")
@@ -673,37 +770,132 @@ struct MeetingTranscriptionJobTests {
     let store = MeetingProcessingCheckpointStore(meetingFolder: dir)
     let meetingID = UUID()
     let baseline = FakeEngine()
-    _ = try await checkpointJob(engine: baseline).run(
+    _ = try await checkpointJob(engine: baseline).runTestAttempt(
       tracks: [.microphone: audio], language: nil, checkpoint: access(store, meetingID: meetingID)) { _ in }
     let total = baseline.calls.count
     #expect(total > 1)
 
     let otherSettings = FakeEngine()
-    _ = try await checkpointJob(engine: otherSettings, target: 10).run(
+    _ = try await checkpointJob(engine: otherSettings, target: 10).runTestAttempt(
       tracks: [.microphone: audio], language: nil, checkpoint: access(store, meetingID: meetingID)) { _ in }
     #expect(otherSettings.calls.count > 0, "a different piece length starts over")
 
     let otherMeeting = FakeEngine()
-    _ = try await checkpointJob(engine: otherMeeting).run(
+    _ = try await checkpointJob(engine: otherMeeting).runTestAttempt(
       tracks: [.microphone: audio], language: nil, checkpoint: access(store, meetingID: UUID())) { _ in }
     #expect(otherMeeting.calls.count == total)
 
     // Same meeting and settings, interrupted after one piece, resumed under a different model:
-    // every piece is redone, so two models' words are never mixed. (A pass already complete is
-    // reused whatever model is current: nothing is left to mix.)
+    // every piece is redone, so two models' words are never mixed.
     try store.clear()
     let base2 = FakeEngine()
     let job2 = checkpointJob(engine: base2)
     await #expect(throws: MeetingTranscriptionJob.JobError.cancelled) {
-      _ = try await job2.run(
+      _ = try await job2.runTestAttempt(
         tracks: [.microphone: audio], language: nil,
         checkpoint: access(store, meetingID: meetingID) { saves in if saves == 1 { job2.cancel() } }
       ) { _ in }
     }
     let otherModel = FakeEngine()
-    _ = try await checkpointJob(engine: otherModel, identity: "v3:r9").run(
+    _ = try await checkpointJob(engine: otherModel, identity: "v3:r9").runTestAttempt(
       tracks: [.microphone: audio], language: nil, checkpoint: access(store, meetingID: meetingID)) { _ in }
     #expect(otherModel.calls.count == total)
+  }
+
+  /// #3973 C2 (plan G3): the model and the attempt are checked before the full-reuse branch, so
+  /// a COMPLETE checkpoint from another model, or from an earlier attempt (Transcribe again),
+  /// is never reused: the pass decodes every piece and analyses speakers again.
+  @Test("a complete checkpoint from another model or another attempt is not reused")
+  func completeCheckpointNeedsSameModelAndAttempt() async throws {
+    let dir = try folder()
+    let audio = MeetingTrackAudio(files: [try segment(in: dir, index: 1, startMs: 0, seconds: 30)])
+    let store = MeetingProcessingCheckpointStore(meetingFolder: dir)
+    let meetingID = UUID()
+    let baseline = FakeEngine()
+    _ = try await checkpointJob(engine: baseline).runTestAttempt(
+      tracks: [.microphone: audio], language: nil, checkpoint: access(store, meetingID: meetingID)) { _ in }
+    let total = baseline.calls.count
+    #expect(total > 1)
+
+    let same = FakeEngine()
+    let reused = try await checkpointJob(engine: same).runTestAttempt(
+      tracks: [.microphone: audio], language: nil, checkpoint: access(store, meetingID: meetingID)) { _ in }
+    #expect(same.calls.isEmpty, "control: the same model and attempt reuse the whole pass")
+    #expect(reused.resolved.modelIdentity == "ultra:r1")
+
+    let otherModel = FakeEngine()
+    let analyses = OSAllocatedUnfairLock(initialState: 0)
+    let redone = try await checkpointJob(engine: otherModel, identity: "v3:r9", analyses: analyses).runTestAttempt(
+      tracks: [.microphone: audio], language: nil, checkpoint: access(store, meetingID: meetingID)) { _ in }
+    #expect(otherModel.calls.count == total)
+    #expect(analyses.withLock { $0 } == 1, "speakers are analysed again too")
+    #expect(redone.resolved.modelIdentity == "v3:r9")
+
+    let newAttempt = FakeEngine()
+    _ = try await checkpointJob(engine: newAttempt, identity: "v3:r9").run(
+      tracks: [.microphone: audio], language: nil, checkpoint: access(store, meetingID: meetingID),
+      onStage: { _ in }, attempt: MeetingTestAttempt.attempt(language: nil, id: UUID()))
+    #expect(newAttempt.calls.count == total)
+  }
+
+  /// #3973 C2 (chunk review): the model identity is read under a claim that may load the shared
+  /// model, so memory pressure that rose while the pass waited for dictation is waited out
+  /// before the claim, even when the checkpoint already covers every piece.
+  @Test("pressure that rises during the dictation wait is waited out before the identity claim")
+  func identityClaimWaitsForNormalMemory() async throws {
+    let dir = try folder()
+    let audio = MeetingTrackAudio(files: [try segment(in: dir, index: 1, startMs: 0, seconds: 5)])
+    var dictating = true
+    var pressure = false
+    var log: [String] = []
+    let job = MeetingTranscriptionJob(
+      dependencies: .init(
+        isDictationIdle: { !dictating },
+        waitUntilDictationIdle: {
+          log.append("dictation wait")
+          pressure = true  // rises while dictation runs
+          dictating = false
+        },
+        beginModelUse: { log.append(pressure ? "use under pressure" : "use") },
+        endModelUse: {}, loadEngine: {},
+        transcribe: { samples, _ in FakeSpeech.transcribe(samples) },
+        unloadEngine: {},
+        analyzeSpeakers: { _ in MeetingSpeakerAnalysis(outcome: .single, segments: []) },
+        engineIdentity: { "ultra:r1" },
+        isMemoryPressureElevated: { pressure },
+        waitUntilMemoryNormal: {
+          log.append("memory wait")
+          pressure = false
+        }))
+    _ = try await job.runTestAttempt(tracks: [.microphone: audio], language: nil) { _ in }
+    #expect(Array(log.prefix(3)) == ["dictation wait", "memory wait", "use"])
+    #expect(!log.contains("use under pressure"))
+  }
+
+  /// #3973 C2: the language and the attempt come from the same saved attempt; a pass given two
+  /// that disagree refuses before it reads a checkpoint or decodes anything.
+  @Test("a language that disagrees with the attempt is refused before any work")
+  func languageMustMatchTheAttempt() async throws {
+    let dir = try folder()
+    let audio = MeetingTrackAudio(files: [try segment(in: dir, index: 1, startMs: 0, seconds: 5)])
+    let engine = FakeEngine()
+    let loads = OSAllocatedUnfairLock(initialState: 0)
+    let store = MeetingProcessingCheckpointStore(meetingFolder: dir)
+    let job = checkpointJob(engine: engine)
+    await #expect(throws: MeetingTranscriptionJob.JobError.attemptMismatch) {
+      _ = try await job.run(
+        tracks: [.microphone: audio], language: "de",
+        checkpoint: .init(
+          meetingID: UUID(),
+          load: {
+            loads.withLock { $0 += 1 }
+            if case .checkpoint(let c) = store.load() { return c }
+            return nil
+          }, save: { _ in }),
+        onStage: { _ in }, attempt: MeetingTestAttempt.attempt(language: "fr"))
+    }
+    #expect(engine.calls.isEmpty)
+    #expect(loads.withLock { $0 } == 0)
   }
 
   /// #4105: when this fails, a meeting is transcribed in a language other than the one it was
@@ -718,7 +910,7 @@ struct MeetingTranscriptionJobTests {
     let store = MeetingProcessingCheckpointStore(meetingFolder: dir)
     let meetingID = UUID()
     let reference = FakeEngine()
-    _ = try await checkpointJob(engine: reference).run(tracks: [.microphone: audio], language: nil) { _ in }
+    _ = try await checkpointJob(engine: reference).runTestAttempt(tracks: [.microphone: audio], language: nil) { _ in }
     let total = reference.calls.count
     #expect(total > 2)
 
@@ -726,7 +918,7 @@ struct MeetingTranscriptionJobTests {
     let german = OSAllocatedUnfairLock<[String?]>(initialState: [])
     let job1 = checkpointJob(engine: FakeEngine(), languages: german)
     await #expect(throws: MeetingTranscriptionJob.JobError.cancelled) {
-      _ = try await job1.run(
+      _ = try await job1.runTestAttempt(
         tracks: [.microphone: audio], language: "de",
         checkpoint: access(store, meetingID: meetingID) { saves in if saves == 1 { job1.cancel() } }
       ) { _ in }
@@ -737,7 +929,7 @@ struct MeetingTranscriptionJobTests {
     // The same meeting in Auto (an empty lock is Auto too): the German piece is not reused.
     let autoSeen = OSAllocatedUnfairLock<[String?]>(initialState: [])
     let autoEngine = FakeEngine()
-    let auto = try await checkpointJob(engine: autoEngine, languages: autoSeen).run(
+    let auto = try await checkpointJob(engine: autoEngine, languages: autoSeen).runTestAttempt(
       tracks: [.microphone: audio], language: "", checkpoint: access(store, meetingID: meetingID)
     ) { _ in }
     #expect(auto.resumedPieces == 0)
@@ -750,14 +942,14 @@ struct MeetingTranscriptionJobTests {
     try store.clear()
     let job3 = checkpointJob(engine: FakeEngine())
     await #expect(throws: MeetingTranscriptionJob.JobError.cancelled) {
-      _ = try await job3.run(
+      _ = try await job3.runTestAttempt(
         tracks: [.microphone: audio], language: "de",
         checkpoint: access(store, meetingID: meetingID) { saves in if saves == 1 { job3.cancel() } }
       ) { _ in }
     }
     let resumedSeen = OSAllocatedUnfairLock<[String?]>(initialState: [])
     let resumedEngine = FakeEngine()
-    let resumed = try await checkpointJob(engine: resumedEngine, languages: resumedSeen).run(
+    let resumed = try await checkpointJob(engine: resumedEngine, languages: resumedSeen).runTestAttempt(
       tracks: [.microphone: audio], language: "de", checkpoint: access(store, meetingID: meetingID)
     ) { _ in }
     #expect(resumed.resumedPieces == 1)
@@ -779,7 +971,7 @@ struct MeetingTranscriptionJobTests {
     #expect(audio.runs.count == 2)
     let engine = FakeEngine()
     var fractions: [Double] = []
-    let result = try await checkpointJob(engine: engine, cutsPieces: false).run(
+    let result = try await checkpointJob(engine: engine, cutsPieces: false).runTestAttempt(
       tracks: [.microphone: audio]
     , language: nil) { stage in
       if case .transcribing(_, let fraction) = stage { fractions.append(fraction) }
@@ -836,7 +1028,7 @@ struct MeetingTranscriptionJobTests {
         }, unloadEngine: {},
         analyzeSpeakers: { _ in MeetingSpeakerAnalysis(outcome: .single, segments: []) }),
       configuration: config)
-    let result = try await job.run(tracks: [.microphone: audio], language: nil) { _ in }
+    let result = try await job.runTestAttempt(tracks: [.microphone: audio], language: nil) { _ in }
     #expect(calls == 2)
     #expect(result.failedPieces == 1)
     #expect(result.failedRanges[.microphone] == [0..<(50 * 16_000)])
@@ -857,7 +1049,7 @@ struct MeetingTranscriptionJobTests {
     let first = FakeEngine()
     let job1 = checkpointJob(engine: first, cutsPieces: false)
     await #expect(throws: MeetingTranscriptionJob.JobError.cancelled) {
-      _ = try await job1.run(
+      _ = try await job1.runTestAttempt(
         tracks: [.microphone: audio], language: nil,
         checkpoint: access(store, meetingID: meetingID) { saves in if saves == 1 { job1.cancel() } }
       ) { _ in }
@@ -867,16 +1059,16 @@ struct MeetingTranscriptionJobTests {
       return
     }
     #expect(saved.key.cutsPieces == false)
-    #expect(saved.key.processingVersion == 2)
+    #expect(saved.key.processingVersion == MeetingTranscriptionJob.processingVersion)
     let resumed = FakeEngine()
-    let result = try await checkpointJob(engine: resumed, cutsPieces: false).run(
+    let result = try await checkpointJob(engine: resumed, cutsPieces: false).runTestAttempt(
       tracks: [.microphone: audio], language: nil, checkpoint: access(store, meetingID: meetingID)) { _ in }
     #expect(resumed.calls == [5 * 16_000])
     #expect(words(result) == 70)
 
     // The same meeting under cut pieces starts over: nothing whole-run is reused.
     let cut = FakeEngine()
-    _ = try await checkpointJob(engine: cut, cutsPieces: true).run(
+    _ = try await checkpointJob(engine: cut, cutsPieces: true).runTestAttempt(
       tracks: [.microphone: audio], language: nil, checkpoint: access(store, meetingID: meetingID)) { _ in }
     #expect(cut.calls.count >= 3, "a cut-pieces pass must not reuse whole-run pieces")
   }
@@ -904,7 +1096,7 @@ struct MeetingTranscriptionJobTests {
         unloadEngine: {},
         analyzeSpeakers: { _ in MeetingSpeakerAnalysis(outcome: .single, segments: []) }),
       configuration: config)
-    let result = try await job.run(tracks: [.microphone: audio], language: nil) { _ in }
+    let result = try await job.runTestAttempt(tracks: [.microphone: audio], language: nil) { _ in }
     #expect(result.failedPieces == 1)
     #expect(result.failedRanges[.microphone]?.count == 1)
     #expect(words(result) > 0)
@@ -931,11 +1123,11 @@ struct MeetingTranscriptionJobTests {
         transcribe: { _, _ in ASRResult(text: "", language: nil, duration: 0, processingTime: 0, backendType: .parakeet) },
         unloadEngine: {},
         analyzeSpeakers: { _ in MeetingSpeakerAnalysis(outcome: .single, segments: []) }))
-    let first = Task { try await job.run(tracks: [.microphone: audio], language: nil) { _ in } }
+    let first = Task { try await job.runTestAttempt(tracks: [.microphone: audio], language: nil) { _ in } }
     var iterator = entered.makeAsyncIterator()
     _ = await iterator.next()
     await #expect(throws: MeetingTranscriptionJob.JobError.alreadyRunning) {
-      _ = try await job.run(tracks: [.microphone: audio], language: nil) { _ in }
+      _ = try await job.runTestAttempt(tracks: [.microphone: audio], language: nil) { _ in }
     }
     release?.resume()
     _ = try await first.value
@@ -989,11 +1181,11 @@ struct MeetingTranscriptionJobTests {
 
       var resumedCalls = 0
       let audio = try MeetingProcessingCrash.audio(in: dir)
-      let resumed = try await MeetingProcessingCrash.job(onTranscribe: { resumedCalls += 1 }).run(
+      let resumed = try await MeetingProcessingCrash.job(onTranscribe: { resumedCalls += 1 }).runTestAttempt(
         tracks: [.microphone: audio], language: nil, checkpoint: MeetingProcessingCrash.access(folder: dir)
       ) { _ in }
       var referenceCalls = 0
-      let reference = try await MeetingProcessingCrash.job(onTranscribe: { referenceCalls += 1 }).run(
+      let reference = try await MeetingProcessingCrash.job(onTranscribe: { referenceCalls += 1 }).runTestAttempt(
         tracks: [.microphone: audio], language: nil) { _ in }
       print("MEETING_JOB_KILL resumed_calls=\(resumedCalls) reference_calls=\(referenceCalls) resumed_pieces=\(resumed.resumedPieces)")
       #expect(resumed.resumedPieces == 2)
@@ -1082,7 +1274,7 @@ struct MeetingTranscriptionJobTests {
           state.endDictation()
         }
       }
-      let result = try await job.run(tracks: [.microphone: audio], language: nil) { _ in }
+      let result = try await job.runTestAttempt(tracks: [.microphone: audio], language: nil) { _ in }
       #expect(waitReports.first == true)
       #expect(waitReports.last == false)
       #expect(waitReports.filter { $0 }.count == waitReports.filter { !$0 }.count)
@@ -1101,7 +1293,7 @@ struct MeetingTranscriptionJobTests {
       let audio = MeetingTrackAudio(files: [try segment(in: dir, index: 1, startMs: 0, seconds: 50)])
       let state = PauseState()
       let job = pauseJob(state, onSecondPiece: { state.pressure = true })
-      _ = try await job.run(tracks: [.microphone: audio], language: nil) { _ in }
+      _ = try await job.runTestAttempt(tracks: [.microphone: audio], language: nil) { _ in }
       // #3973 C1: the decode's operation already gave the engine back; the pass then waits for
       // normal with nothing loaded, so no separate pressure unload is counted.
       #expect(job.pressureUnloads == 0)
@@ -1164,7 +1356,7 @@ struct MeetingTranscriptionJobTests {
     let audio = MeetingTrackAudio(files: [try segment(in: dir, index: 1, startMs: 0, seconds: 2)])
     let state = PauseState()
     let job = pressureJob(state, loadRaisesPressure: true, contentions: 0)
-    let result = try await job.run(tracks: [.microphone: audio], language: nil) { _ in }
+    let result = try await job.runTestAttempt(tracks: [.microphone: audio], language: nil) { _ in }
     #expect(
       state.log == [
         "use", "release", "use", "load", "unload", "release", "pressure-wait", "use", "load",
@@ -1183,7 +1375,7 @@ struct MeetingTranscriptionJobTests {
     let audio = MeetingTrackAudio(files: [try segment(in: dir, index: 1, startMs: 0, seconds: 2)])
     let state = PauseState()
     let job = pressureJob(state, loadRaisesPressure: false, contentions: 1)
-    let result = try await job.run(tracks: [.microphone: audio], language: nil) { _ in }
+    let result = try await job.runTestAttempt(tracks: [.microphone: audio], language: nil) { _ in }
     #expect(
       state.log == [
         "use", "release", "use", "busy", "release", "wait", "pressure-wait", "use", "load",
@@ -1203,7 +1395,7 @@ struct MeetingTranscriptionJobTests {
     let store = MeetingProcessingCheckpointStore(meetingFolder: dir)
     let meetingID = UUID()
     let first = FakeEngine()
-    _ = try await checkpointJob(engine: first).run(
+    _ = try await checkpointJob(engine: first).runTestAttempt(
       tracks: [.microphone: audio], language: nil, checkpoint: access(store, meetingID: meetingID)) { _ in }
     let sizeBefore = try FileManager.default.attributesOfItem(atPath: file.url.path)[.size] as? NSNumber
     // Flip bytes near the end of the file: same length, same size, different samples.
@@ -1214,7 +1406,7 @@ struct MeetingTranscriptionJobTests {
     let sizeAfter = try FileManager.default.attributesOfItem(atPath: file.url.path)[.size] as? NSNumber
     #expect(sizeBefore == sizeAfter)
     let second = FakeEngine()
-    let result = try await checkpointJob(engine: second).run(
+    let result = try await checkpointJob(engine: second).runTestAttempt(
       tracks: [.microphone: MeetingTrackAudio(files: [file])], language: nil,
       checkpoint: access(store, meetingID: meetingID)) { _ in }
     #expect(second.calls.count == first.calls.count, "changed audio is transcribed again")
@@ -1229,7 +1421,7 @@ struct MeetingTranscriptionJobTests {
     try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: file.url.path)
     defer { try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: file.url.path) }
     let store = MeetingProcessingCheckpointStore(meetingFolder: dir)
-    _ = try? await checkpointJob(engine: FakeEngine()).run(
+    _ = try? await checkpointJob(engine: FakeEngine()).runTestAttempt(
       tracks: [.microphone: audio], language: nil, checkpoint: access(store, meetingID: UUID())) { _ in }
     #expect(store.load() == .none)
   }
@@ -1250,7 +1442,7 @@ struct MeetingTranscriptionJobTests {
         if !blockThread(on: held, seconds: 5) { timedOut.withLock { $0 = true } }
       })
     let job = checkpointJob(engine: FakeEngine())
-    let run = Task { try await job.run(tracks: [.microphone: audio], language: nil, checkpoint: blocking) { _ in } }
+    let run = Task { try await job.runTestAttempt(tracks: [.microphone: audio], language: nil, checkpoint: blocking) { _ in } }
     var iterator = entered.stream.makeAsyncIterator()
     _ = await iterator.next()
     // This line runs on the main actor while the save is held: the main actor is not blocked.
@@ -1281,7 +1473,7 @@ struct MeetingTranscriptionJobTests {
         loadEngine: { state.log.append("load") }, transcribe: { samples, _ in FakeSpeech.transcribe(samples) },
         unloadEngine: { state.log.append("unload") },
         analyzeSpeakers: { _ in MeetingSpeakerAnalysis(outcome: .single, segments: []) }))
-    let run = Task { try await job.run(tracks: [.microphone: audio], language: nil) { _ in } }
+    let run = Task { try await job.runTestAttempt(tracks: [.microphone: audio], language: nil) { _ in } }
     var iterator = paused.makeAsyncIterator()
     _ = await iterator.next()
     job.cancel()
@@ -1297,7 +1489,7 @@ struct MeetingTranscriptionJobTests {
     let state = PauseState()
     state.pressure = true
     let job = pauseJob(state, onSecondPiece: {})
-    _ = try await job.run(tracks: [.microphone: audio], language: nil) { _ in }
+    _ = try await job.runTestAttempt(tracks: [.microphone: audio], language: nil) { _ in }
     #expect(Array(state.log.prefix(5)) == ["pressure-wait", "use", "release", "use", "load"])
   }
 
@@ -1322,7 +1514,7 @@ struct MeetingTranscriptionJobTests {
         unloadEngine: {},
         analyzeSpeakers: { _ in MeetingSpeakerAnalysis(outcome: .single, segments: []) }),
       configuration: config)
-    let result = try await job.run(tracks: [.microphone: audio], language: nil) { _ in }
+    let result = try await job.runTestAttempt(tracks: [.microphone: audio], language: nil) { _ in }
     let range = try #require(result.failedRanges[.microphone]?.first)
     let marker =
       "[Could not transcribe \(MeetingTranscriptionJob.clock(MeetingTranscriptionJob.ms(range.lowerBound))) "
@@ -1345,7 +1537,7 @@ struct MeetingTranscriptionJobTests {
         isDictationIdle: { true }, waitUntilDictationIdle: {}, beginModelUse: {}, endModelUse: {},
         loadEngine: {}, transcribe: { samples, _ in FakeSpeech.transcribe(samples) }, unloadEngine: {},
         analyzeSpeakers: { _ in MeetingSpeakerAnalysis(outcome: .single, segments: []) }))
-    let result = try await job.run(
+    let result = try await job.runTestAttempt(
       tracks: [.microphone: audio], language: nil,
       missingAudio: [
         .microphone: [.init(startMs: 60_000, endMs: 90_000), .init(startMs: 120_000, endMs: nil)],
@@ -1381,7 +1573,7 @@ struct MeetingTranscriptionJobTests {
         try store.save(checkpoint)
       })
     let job = checkpointJob(engine: FakeEngine())
-    let run = Task { try await job.run(tracks: [.microphone: audio], language: nil, checkpoint: access) { _ in } }
+    let run = Task { try await job.runTestAttempt(tracks: [.microphone: audio], language: nil, checkpoint: access) { _ in } }
     var iterator = entered.stream.makeAsyncIterator()
     _ = await iterator.next()
     job.cancel()
@@ -1397,7 +1589,9 @@ struct MeetingTranscriptionJobTests {
     let audio = MeetingTrackAudio(files: [try segment(in: dir, index: 1, startMs: 0, seconds: 30)])
     let meetingID = UUID()
     let key = try MeetingTranscriptionJob.key(
-      meetingID: meetingID, tracks: [.microphone: audio], order: [.microphone], language: nil,
+      meetingID: meetingID, attemptID: MeetingTestAttempt.id, tracks: [.microphone: audio],
+      order: [.microphone], language: nil,
+      engine: .init(requested: .parakeet, resolved: .parakeet, modelIdentity: "ultra:r1"),
       { var c = MeetingTranscriptionJob.Configuration(); c.pieceTargetSeconds = 20; c.pieceSearchSeconds = 5; return c }())
     let store = MeetingProcessingCheckpointStore(meetingFolder: dir)
     for bad in [
@@ -1412,9 +1606,9 @@ struct MeetingTranscriptionJobTests {
     ] {
       try store.save(
         MeetingProcessingCheckpoint(
-          key: key, engineIdentity: "ultra:r1", tracks: [.microphone: .init(pieces: [bad])]))
+          key: key, tracks: [.microphone: .init(pieces: [bad])]))
       let engine = FakeEngine()
-      let result = try await checkpointJob(engine: engine).run(
+      let result = try await checkpointJob(engine: engine).runTestAttempt(
         tracks: [.microphone: audio], language: nil, checkpoint: access(store, meetingID: meetingID)) { _ in }
       #expect(result.resumedPieces == 0)
       #expect(engine.calls.count > 0)
@@ -1450,7 +1644,7 @@ struct MeetingTranscriptionJobTests {
         analyzeSpeakers: { _ in MeetingSpeakerAnalysis(outcome: .single, segments: []) },
         engineIdentity: { identity }))
     await #expect(throws: MeetingTranscriptionJob.JobError.engineUnavailable("model_changed")) {
-      _ = try await job.run(tracks: [.microphone: audio], language: nil) { _ in }
+      _ = try await job.runTestAttempt(tracks: [.microphone: audio], language: nil) { _ in }
     }
     #expect(log.filter { $0 == "decode" }.count == 1, "no decode ran on the changed model")
     #expect(log.last == "release", "the changed model was given back")
@@ -1488,7 +1682,7 @@ struct MeetingTranscriptionJobTests {
       // #3972 C5: the page's pause line shows during this wait and clears after it.
       var waiting = false
       job.onWaitingForDictation = { waiting = $0 }
-      let run = Task { try await job.run(tracks: [.microphone: audio], language: nil) { _ in } }
+      let run = Task { try await job.runTestAttempt(tracks: [.microphone: audio], language: nil) { _ in } }
       var iterator = paused.makeAsyncIterator()
       _ = await iterator.next()
       #expect(
@@ -1505,5 +1699,157 @@ struct MeetingTranscriptionJobTests {
         state.log == ["use", "release", "use", "load", "unload", "release"], "nothing taken again")
       #expect(!waiting, "cleared after the wait ends")
     }
+  }
+
+
+  // MARK: - #3973 C3: Whisper results, yields and the resolved engine
+
+  /// A whole-run job (the production shape) whose engine is `transcribe`.
+  private func wholeRunJob(
+    transcribe: @escaping @MainActor ([Float], String?) async throws -> ASRResult,
+    analyze: @escaping @Sendable (MeetingTrackAudio) async -> MeetingSpeakerAnalysis = { _ in
+      MeetingSpeakerAnalysis(outcome: .single, segments: [])
+    },
+    resolution: MeetingEngineResolution? = nil,
+    isDictationIdle: @escaping @MainActor () -> Bool = { true },
+    waitUntilDictationIdle: @escaping @MainActor () async -> Void = {}
+  ) -> MeetingTranscriptionJob {
+    var config = MeetingTranscriptionJob.Configuration()
+    config.cutsPieces = false
+    return MeetingTranscriptionJob(
+      dependencies: .init(
+        isDictationIdle: isDictationIdle, waitUntilDictationIdle: waitUntilDictationIdle,
+        beginModelUse: {}, endModelUse: {},
+        loadEngine: {}, transcribe: transcribe, unloadEngine: {}, analyzeSpeakers: analyze,
+        resolution: resolution),
+      configuration: config)
+  }
+
+  @Test("#3973 C3: a Whisper result (sentences, no words) is a success: speakers found per sentence, no gap")
+  func whisperResultIsASuccess() async throws {
+    let dir = try folder()
+    let files = [try segment(in: dir, index: 1, startMs: 0, seconds: 4)]
+    let text = "Hello there. Bye now."
+    let job = wholeRunJob(
+      transcribe: { _, _ in
+        ASRResult(
+          text: text, language: "en", duration: 4, processingTime: 0, backendType: .whisper,
+          wordTimings: nil, wordTimingCoverage: nil,
+          segmentTimings: [
+            ASRSegmentTiming(range: 0..<12, startMs: 0, endMs: 1_000),
+            ASRSegmentTiming(range: 13..<21, startMs: 1_500, endMs: 2_500),
+          ])
+      },
+      analyze: { _ in
+        MeetingSpeakerAnalysis(
+          outcome: .labeled,
+          segments: [
+            SpeakerSegment(speakerId: "1", startMs: 0, endMs: 1_200, quality: 1),
+            SpeakerSegment(speakerId: "2", startMs: 1_300, endMs: 4_000, quality: 1),
+          ])
+      })
+
+    let result = try await job.runTestAttempt(
+      tracks: [.callSound: MeetingTrackAudio(files: files)], language: nil) { _ in }
+
+    #expect(result.failedPieces == 0)
+    #expect(result.failedRanges.isEmpty)
+    #expect(result.speakerOutcomes[.callSound] == .labeled, "speaker analysis ran on it")
+    #expect(result.composition.text == "Hello there.\n\nBye now.")
+    #expect(result.composition.turns.map(\.speakerId) == ["sys:1", "sys:2"])
+    #expect(result.composition.turns.allSatisfy { $0.granularity == .segment })
+  }
+
+  @Test("#3973 C3: a decode that gave way to dictation waits for it and runs again, with no gap counted")
+  func yieldIsRetriedNotFailed() async throws {
+    let dir = try folder()
+    let files = [try segment(in: dir, index: 1, startMs: 0, seconds: 3)]
+    // Dictation is pressed during each of the first four decodes and preempts it: more yields
+    // than the two failures a piece may have, so only the wait-and-retry path can succeed.
+    let yields = 4
+    var calls = 0
+    var waits = 0
+    var dictating = false
+    let job = wholeRunJob(
+      transcribe: { samples, _ in
+        calls += 1
+        if calls <= yields {
+          dictating = true
+          throw MeetingEngineYield()
+        }
+        return FakeSpeech.transcribe(samples)
+      },
+      isDictationIdle: { !dictating },
+      waitUntilDictationIdle: {
+        waits += 1
+        dictating = false
+      })
+
+    let result = try await job.runTestAttempt(
+      tracks: [.microphone: MeetingTrackAudio(files: files)], language: nil) { _ in }
+
+    #expect(calls == yields + 1)
+    #expect(waits == yields, "each yield waited for dictation before decoding again")
+    #expect(result.failedPieces == 0)
+    #expect(!result.composition.text.isEmpty)
+  }
+
+  @Test("#3973 C3: yields with no dictation running stop after a bound and become a visible gap")
+  func idleYieldsAreBounded() async throws {
+    let dir = try folder()
+    let files = [try segment(in: dir, index: 1, startMs: 0, seconds: 3)]
+    var calls = 0
+    let job = wholeRunJob(transcribe: { _, _ in
+      calls += 1
+      throw MeetingEngineYield()
+    })
+
+    let result = try await job.runTestAttempt(
+      tracks: [.microphone: MeetingTrackAudio(files: files)], language: nil) { _ in }
+
+    #expect(calls == 2 * MeetingTranscriptionJob.idleYieldLimit)
+    #expect(result.failedPieces == 1)
+  }
+
+  @Test("#3973 C3: a Whisper result with no bound sentence stays sentence-level, also after a resume")
+  func unboundWhisperResultStaysSegmentLevel() {
+    let result = ASRResult(
+      text: "Hello", language: "en", duration: 4, processingTime: 0, backendType: .whisper,
+      wordTimings: nil, wordTimingCoverage: nil, segmentTimings: [])
+    let piece = MeetingTranscriptionJob.wholeRunPiece(result: result, startMs: 0, endMs: 4_000)
+    #expect(piece.isSegmentLevel)
+
+    // Through the checkpoint writer and reader, as a resumed pass reads it.
+    let stored = MeetingProcessingCheckpoint.Piece(
+      startSample: 0, endSample: 64_000, forcedCut: false, text: piece.text, words: [],
+      segments: MeetingTranscriptionJob.storedSegments(piece))
+    #expect(stored.segments == [])
+    #expect(MeetingTranscriptionJob.trackPiece(stored)?.isSegmentLevel == true)
+
+    let parakeet = ASRResult(
+      text: "Hello", language: "en", duration: 4, processingTime: 0, backendType: .parakeet,
+      wordTimings: nil, wordTimingCoverage: nil, segmentTimings: nil)
+    let wordPiece = MeetingTranscriptionJob.wholeRunPiece(result: parakeet, startMs: 0, endMs: 4_000)
+    #expect(!wordPiece.isSegmentLevel)
+    #expect(MeetingTranscriptionJob.storedSegments(wordPiece) == nil)
+  }
+
+  @Test("#3973 C3: the result names the engine the pass resolved to and why, not the one asked for")
+  func resultCarriesTheResolution() async throws {
+    let dir = try folder()
+    let files = [try segment(in: dir, index: 1, startMs: 0, seconds: 2)]
+    let job = wholeRunJob(
+      transcribe: { samples, _ in FakeSpeech.transcribe(samples) },
+      resolution: MeetingEngineResolution(engine: .parakeet, fallbackReason: .notDownloaded))
+    let attempt = MeetingAttemptConfiguration(
+      requestedEngine: .whisper, languageIntent: nil, requestedEffectiveLanguage: nil)
+
+    let result = try await job.run(
+      tracks: [.microphone: MeetingTrackAudio(files: files)], language: nil,
+      onStage: { _ in }, attempt: attempt)
+
+    #expect(result.resolved.requestedEngine == .whisper)
+    #expect(result.resolved.resolvedEngine == .parakeet)
+    #expect(result.resolved.fallbackReason == .notDownloaded)
   }
 }

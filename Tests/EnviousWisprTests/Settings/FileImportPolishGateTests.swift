@@ -1,5 +1,6 @@
+import AppKit
 import EnviousWisprCore
-import EnviousWisprLLM
+@testable import EnviousWisprLLM
 import EnviousWisprServices
 import Testing
 
@@ -14,6 +15,53 @@ import Testing
 /// that promises cleanup and receiving none.
 @Suite("Transcribe a File polish gate (#2772)", .tags(.productOutcome))
 struct FileImportPolishGateTests {
+
+  @Test("a reserved shared key change blocks import admission before its task starts")
+  @MainActor
+  func pendingSharedMutationBlocksAdmission() async throws {
+    _ = NSApplication.shared
+    let home = try SettingsMapRenderingTests.Home(provider: .openAI)
+    let presence = SavedKeyPresence()
+    presence.recordRead(.present, for: .openAI)
+    let access = CredentialAccessLane()
+    let discovery = LLMModelDiscoveryCoordinator(
+      keychainManager: home.keys, cacheDefaults: home.defaults, savedKeyPresence: presence,
+      credentialAccess: access, validationEmitter: { _, _, _, _, _ in },
+      discoverModels: { _, _ in [] })
+    let runtimes = LocalPolishRuntimeSet(egOne: home.egOne, s1Mini: home.s1)
+    let availability = AIAvailabilityCoordinator(defaults: home.defaults)
+    var writer = CredentialWriter(
+      keychainManager: home.keys, presence: presence, discovery: discovery, access: access)
+    writer.emit = { _, _, _ in }
+    @MainActor
+    func liveGate(_ provider: LLMProvider) -> FileImportPolishReadiness {
+      FileImportPolishGate.readiness(provider: provider, savedKey: .present,
+        hasUnsavedKeyDraft: false, importOllamaModel: "", llmDiscovery: discovery,
+        localPolishRuntimes: runtimes, aiAvailability: availability, setup: home.setup,
+        savedKeyPresence: presence)
+    }
+    #expect(liveGate(.openAI) == .ready)
+    let admission = writer.admit(.openAI, settings: home.settings, surface: .dictation)
+    #expect(liveGate(.openAI) == .blocked(.checking))
+    #expect(liveGate(.gemini) == .ready)
+    _ = await writer.clear(.openAI, settings: home.settings, admission: admission)
+    #expect(presence.state(for: .openAI) == .absent)
+    #expect(presence.hasPendingMutation(for: .openAI) == false)
+  }
+
+  @Test("pending debug import key reads never enter blocking storage")
+  @MainActor
+  func pendingDebugReadSkipsStorage() {
+    let storage = ThreadRecordingCredentialStore()
+    let manager = KeychainManager(backend: .legacyFiles, legacyStore: storage)
+    let presence = SavedKeyPresence()
+    let pending = presence.beginMutation(for: .openAI)
+    #expect(FileImportPolishGate.savedKey(for: .openAI, keychain: manager, presence: presence) == .unknown)
+    #expect(storage.readEntries == 0)
+    presence.endMutation(pending)
+    #expect(FileImportPolishGate.savedKey(for: .openAI, keychain: manager, presence: presence) == .absent)
+    #expect(storage.readEntries == 1)
+  }
 
   /// Everything the gate reads, with the values that mean "healthy" so each test can name
   /// only the one fact it is about.

@@ -11,7 +11,7 @@
     "preview": "astro preview",
     "astro": "astro",
     "prebuild": "node scripts/check-help-content.mjs && node scripts/check-language-count.mjs && node scripts/generate-help-article-catalog.mjs --check && npm run test:home && npm run test:functions && npm run test:catalog",
-    "check:help": "node scripts/check-help-routes.mjs && node scripts/check-help-search.mjs && node scripts/check-features.mjs && node scripts/check-dist-weight.mjs && node scripts/check-help-catalog.mjs && node scripts/check-help-media.mjs",
+    "check:help": "node scripts/check-help-routes.mjs && node scripts/check-help-search.mjs && node scripts/check-features.mjs && node scripts/check-dist-weight.mjs && node scripts/check-help-catalog.mjs && node scripts/check-help-media.mjs && node scripts/check-talker-rules.mjs",
     "test:home": "node --test tests/home/*.test.mjs",
     "test:functions": "node --test functions/*.test.mjs",
     "test:catalog": "node --test scripts/help-catalog.test.mjs scripts/help-media-contract.test.mjs"

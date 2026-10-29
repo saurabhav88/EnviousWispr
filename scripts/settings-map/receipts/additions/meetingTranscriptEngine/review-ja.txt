@@ -1,0 +1,27 @@
+{
+  "meetingTranscriptEngine": {
+    "language": "ja",
+    "title": "会議の全文文字起こしエンジン",
+    "words": [],
+    "phrases": [
+      "会議の全文を書き起こすモデルを選ぶ",
+      "会議後の文字起こしエンジンを変更"
+    ]
+  },
+  "meetingTranscriptEngine.parakeet": {
+    "language": "ja",
+    "title": "Parakeet",
+    "words": [],
+    "phrases": [
+      "会議の文字起こしにParakeetを使う"
+    ]
+  },
+  "meetingTranscriptEngine.whisper": {
+    "language": "ja",
+    "title": "Whisper Large v3 Turbo",
+    "words": [],
+    "phrases": [
+      "会議の文字起こしにWhisperを使う"
+    ]
+  }
+}

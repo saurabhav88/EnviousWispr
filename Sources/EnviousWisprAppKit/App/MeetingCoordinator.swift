@@ -1,7 +1,9 @@
+import ApplicationServices
 import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprLivePreview
 import EnviousWisprPipeline
+import EnviousWisprServices
 import EnviousWisprStorage
 import Foundation
 import Observation
@@ -18,6 +20,8 @@ protocol MeetingRecording: AnyObject {
   var callSoundLevel: Float { get }
   /// #3973: each recorded chunk for live words (`MeetingRecorder.liveSamples`).
   var liveSamples: MeetingRecorder.LiveSamplesObserver? { get set }
+  /// #4013 chunk 13A: the host time the meeting's timeline starts at (`MeetingRecorder.anchor`).
+  var anchor: UInt64 { get }
 }
 
 extension MeetingRecorder: MeetingRecording {}
@@ -29,7 +33,9 @@ protocol MeetingProcessing: AnyObject {
     tracks: [MeetingTrackKind: MeetingTrackAudio], language: String?,
     checkpoint access: MeetingTranscriptionJob.CheckpointAccess?,
     missingAudio: [MeetingTrackKind: [MeetingTranscriptionJob.MissingAudio]],
-    onStage: @escaping @MainActor (MeetingTranscriptionJob.Stage) -> Void
+    callSpeakers: MeetingCallSpeakerEvidence,
+    onStage: @escaping @MainActor (MeetingTranscriptionJob.Stage) -> Void,
+    attempt: MeetingAttemptConfiguration
   ) async throws -> MeetingTranscriptionJob.Result
   func cancel()
   var isEngineResident: Bool { get }
@@ -196,7 +202,8 @@ final class MeetingFileWriter: Sendable {
   ) async -> BoundedOutcome {
     let operation = BoundedOperation()
     pending.withLock { $0 += 1 }
-    return await withUnsafeContinuation { (continuation: UnsafeContinuation<BoundedOutcome, Never>) in
+    return await withUnsafeContinuation {
+      (continuation: UnsafeContinuation<BoundedOutcome, Never>) in
       let answered = OSAllocatedUnfairLock(initialState: false)
       let answer: @Sendable (BoundedOutcome) -> Void = { outcome in
         let first = answered.withLock { done -> Bool in
@@ -227,6 +234,18 @@ final class MeetingFileWriter: Sendable {
   ) -> BoundedOutcome {
     let write = writeRecord
     return runBounded(until: deadline, { try write($0, record) }, late: late)
+  }
+
+  /// #4013: saves the meeting's call-speaker evidence on this queue, so it lands in order with
+  /// the record writes and deletions around it; `saveCallSpeakers` refuses a meeting deleted or
+  /// without audio by then.
+  func saveCallSpeakers(_ log: CallSpeakerLog, meeting id: UUID) async throws {
+    try await run { try $0.saveCallSpeakers(log, meeting: id) }
+  }
+
+  /// #4013: the meeting's call-speaker evidence, read on this queue after every write before it.
+  func loadCallSpeakers(meeting id: UUID) async throws -> MeetingStore.CallSpeakersLoad {
+    try await run { $0.loadCallSpeakers(meeting: id) }
   }
 
   /// `saveBounded` for a caller that may suspend (#4102).
@@ -268,13 +287,31 @@ final class MeetingCoordinator {
         MeetingRecorder.Configuration, @escaping MeetingRecorder.SegmentHandler,
         @escaping MeetingRecorder.FailureHandler
       ) -> MeetingRecording
-    var makeJob: @MainActor () -> MeetingProcessing
+    /// #3973 C3: builds a pass that decodes with the resolved engine.
+    var makeJob: @MainActor (MeetingEngineResolution) -> MeetingProcessing
+    /// #3973 C3: the engine a pass of an attempt that asked for `engine` runs on, decided from
+    /// current availability without downloading: Whisper when it is ready, else Parakeet with
+    /// the reason. Never reads Settings.
+    var resolveEngine:
+      @MainActor (_ attempt: MeetingAttemptConfiguration) async -> MeetingEngineResolution = {
+        MeetingEngineResolution(
+          engine: $0.requestedEngine, effectiveLanguage: $0.requestedEffectiveLanguage)
+      }
+    /// #3973 C3: whether `engine` can decode `language` (a code). A language it cannot is asked
+    /// as Auto (`MeetingAttemptConfiguration`).
+    var engineSupportsLanguage: @Sendable (MeetingEngineChoice, String) -> Bool = { _, _ in true }
     /// Live words while a meeting records (#3973): nil shows none.
     var liveWords: MeetingLiveWords?
     /// The meeting transcript's language (`meetingLanguageMode`, decision 16), read once per
     /// Start and stored on the record (#4105). Live words never read it; they have their own
     /// engine and language (`MeetingLiveWordsChoice`).
     var meetingLanguage: @MainActor () -> LanguageMode = { .auto }
+    /// #3973 C3: the final transcript's engine (`meetingTranscriptEngine`), read once per Start
+    /// beside the language.
+    var meetingTranscriptEngine: @MainActor () -> MeetingEngineChoice = { .parakeet }
+    /// #3973 C3: whether `engine`'s model is ready now, for the Transcribe again menu (the pass
+    /// checks again and falls back when it is gone by then).
+    var isEngineReady: @MainActor (MeetingEngineChoice) -> Bool = { $0 == .parakeet }
     /// Custom Words for live words, read once at each recording's start.
     var liveVocabulary: @MainActor () -> LivePreviewVocabulary = {
       LivePreviewVocabulary(lookups: nil, contextualPhrases: [], dictionaryEnabled: false)
@@ -296,8 +333,16 @@ final class MeetingCoordinator {
     /// call still going), asked after the waits and before anything is created.
     var detectedStartWanted: @MainActor () async -> Bool = { true }
     /// Saves the meeting's History row durably, its disk work off the main actor; throws when
-    /// it could not.
-    var saveTranscript: @MainActor (Transcript) async throws -> Void
+    /// it could not. #4013 chunk 12B: with the naming pass that proposed the row's automatic
+    /// names, returns what naming achieved in the row written (nil when not known).
+    var saveTranscript:
+      @MainActor (Transcript, SpeakerNamingPass?) async throws -> SpeakerNamingSummary?
+    /// #3973 C2: the History row as History holds it now, kept in the commit receipt as the
+    /// previous generation's row. Nil when History has none.
+    var historyRow: @MainActor (UUID) -> Transcript? = { _ in nil }
+    /// #3973 C2: the History row as its file holds it, read in History's command order. Nil
+    /// when there is no file; throws when it cannot be read.
+    var durableHistoryRow: @MainActor (UUID) async throws -> Transcript? = { _ in nil }
     var removeTranscriptRow: @MainActor (UUID) async throws -> Void
     /// The History rows that name this meeting, for a row whose meeting record is gone.
     var meetingRowIDs: @MainActor (UUID) -> [UUID] = { _ in [] }
@@ -309,6 +354,29 @@ final class MeetingCoordinator {
     /// Dictation is idle (the same fact meeting work admits on), so a wait can be told apart
     /// from a wait for a meeting summary.
     var isDictationIdle: @MainActor () -> Bool = { true }
+    /// #4013 13B: which single call is live now, for every recording's speaker session
+    /// (`CallSourceDiscovery`). Nil: no speaker capture.
+    var callSources: (any CallSpeakerSources)?
+    /// #4013 chunk 13A: the speaker rules in force now and the bundled ones, read without the
+    /// network; frozen at recording start. Nil: no speaker capture for this recording.
+    var talkerRules: @MainActor () async -> (selected: TalkerRulesSnapshot, bundled: TalkerRules)? =
+      { nil }
+    /// #4013 chunk 13A: whether this app may read other apps through Accessibility.
+    var isAccessibilityTrusted: @Sendable () -> Bool = { AXIsProcessTrusted() }
+    /// #4013 chunk 13A: one bounded copy of a call app (run off the main actor).
+    var captureCallApp: @Sendable (CallSpeakerTarget, CallAppFamily) -> CallAXCapture = {
+      target, family in
+      CallSpeakerCapture.live(
+        pid: target.pid, bounds: .standard,
+        policy: CallSpeakerSurfaceChoice.capturePolicy(family: family, rule: target.rule),
+        keepPage: { CallSpeakerSurfaceChoice.isMeetingPage($0, family: family) })
+    }
+    /// #4013 chunk 13A: where speaker copies run; the app shares one, a test makes its own.
+    var speakerCaptureLane: CallSpeakerObserver.Lane = .shared
+    /// #4013 13B: the speaker session's timing (tests shorten it).
+    var speakerSessionTiming: (tick: Duration, settle: Duration, observerTick: Duration) = (
+      .milliseconds(500), .seconds(2), .milliseconds(500)
+    )
     var beginActivity: @MainActor () -> NSObjectProtocol? = {
       ProcessInfo.processInfo.beginActivity(
         options: [.idleSystemSleepDisabled, .userInitiated], reason: "Recording a meeting")
@@ -324,6 +392,11 @@ final class MeetingCoordinator {
     var saveCheckpoint:
       @Sendable (MeetingProcessingCheckpointStore, MeetingProcessingCheckpoint) throws -> Void = {
         try $0.save($1)
+      }
+    /// #3973 C2: the commit receipt's write, run on `MeetingFileWriter`'s queue.
+    var writeCommitReceipt: @Sendable (MeetingStore, MeetingTranscriptReplacement) throws -> Void =
+      {
+        try $0.saveTranscriptReplacement($1)
       }
     /// One `meeting.json` write, run on `MeetingFileWriter`'s queue.
     var writeRecord: @Sendable (MeetingStore, MeetingRecord) throws -> Void = { try $0.save($1) }
@@ -428,6 +501,22 @@ final class MeetingCoordinator {
   private var launched = false
   private var launchTask: Task<Void, Never>?
   private var committing = false
+  /// #3973 C2: committed transcripts not yet published to History, by meeting. While one is
+  /// here History still holds the previous row, which pairs with the receipt's previous facts
+  /// (`historyPrevious`). Observable: History redraws when one is published.
+  private var unpublishedReceipts: [UUID: MeetingTranscriptReplacement] = [:]
+  /// #3973 C2: meetings whose commit receipt is not settled in this session (unpublished, a
+  /// ready write that failed, or a receipt this build cannot read). Transcribe again waits for
+  /// the next launch's reconciliation rather than write a second receipt over it. Observable:
+  /// the detail view's Transcribe again follows it.
+  private var unresolvedReceipts: Set<UUID> = []
+  /// #3973 C2: meetings whose failed ready write is being read back, with the edits waiting.
+  @ObservationIgnored private var settlingCommits: [UUID: [CheckedContinuation<Void, Never>]] = [:]
+  /// #3973 C2: meetings whose failed ready write could not be read back: whether it landed is
+  /// unknown for this session, so no edit writes their record until the next launch decides
+  /// (rename, AI title and Delete audio refuse; Transcribe again waits on `unresolvedReceipts`;
+  /// deleting the meeting removes it whatever it holds).
+  @ObservationIgnored private var unknownCommits: Set<UUID> = []
   private var deleting: Set<UUID> = []
   /// Meetings whose Delete audio is under way, from its guard until its files are gone (#3994):
   /// claimed synchronously, so no pass can start on audio that is being removed.
@@ -446,11 +535,59 @@ final class MeetingCoordinator {
   /// The facts of each meeting's last ended attempt, for a Retry of the same recording.
   private var lastAttemptFacts: [UUID: AttemptFacts] = [:]
 
+  /// #4013 chunk 12B: ready attempts closed at the ready barrier whose `meeting.ended` row waits
+  /// for the History publication's result, so it can report the names actually written. Only
+  /// frozen, content-free facts; settled once (`settleEnded`), at the latest at quit.
+  private var pendingEnded: [UUID: PendingEnded] = [:]
+
+  /// #4013 chunk 13A: the recording's speaker observer and the meeting it belongs to.
+  private var speakerSession: (meetingID: UUID, session: CallSpeakerSession)?
+  /// Sessions whose final log is not on disk yet: a Stop is saving it, or that save failed.
+  /// A quit saves them within its deadline; deleting the meeting drops its own.
+  private var unsavedSpeakerSessions: [UUID: CallSpeakerSession] = [:]
+
+  private struct PendingEnded {
+    let attemptID: UUID
+    let event: FrozenEnded
+  }
+
+  /// One attempt's terminal facts, frozen when it closes: everything `meeting.ended` reports
+  /// except the naming summary.
+  private struct FrozenEnded {
+    let outcome: MeetingEndedTelemetry.Outcome
+    let facts: AttemptFacts
+    let durationSeconds: Double
+    let microphoneTrack: MeetingTrackStatus
+    let callSoundTrack: MeetingTrackStatus
+    let engine: MeetingEngineChoice?
+    let speakerCount: Int
+    let processingSeconds: Double
+    let audioSeconds: Double
+    let yieldCount: Int
+    let gapCount: Int
+    let echoHiddenCount: Int
+    let summaryPlan: MeetingEndedTelemetry.SummaryPlan
+    let hasNotes: Bool
+
+    func event(speakerNaming: SpeakerNamingSummary?) -> MeetingEndedTelemetry {
+      MeetingEndedTelemetry(
+        outcome: outcome, entryPoint: facts.entryPoint, durationSeconds: durationSeconds,
+        microphoneTrack: microphoneTrack, callSoundTrack: callSoundTrack, engine: engine,
+        speakerCount: speakerCount, processingSeconds: processingSeconds,
+        audioSeconds: audioSeconds, yieldCount: yieldCount, gapCount: gapCount,
+        echoHiddenCount: echoHiddenCount, diskStopped: facts.diskStopped,
+        summaryPlan: summaryPlan, hasNotes: hasNotes, callSound: facts.callSound,
+        speakerNaming: speakerNaming)
+    }
+  }
+
   struct AttemptFacts: Equatable {
     var entryPoint: MeetingEntryPoint?
     var diskStopped: Bool?
     /// #4121: the recorder's call-sound summary, frozen at stop; nil when none.
     var callSound: CallSoundSummary?
+    /// #3973 C3: the engine this attempt's pass resolved to, once it did.
+    var resolvedEngine: MeetingEngineChoice?
   }
   /// Meetings whose files a timed-out close still owns this session (only `stopForQuit` can time
   /// out; a normal stop awaits the physical close). Nothing reads, promotes or removes them
@@ -517,10 +654,16 @@ final class MeetingCoordinator {
 
   /// A meeting's own engine is loaded or a meeting unit is running: dictation's Ultra
   /// activation waits (C3a, C4a).
-  /// #4052: the final pass is transcribing on its own Parakeet. An engine switch of dictation
-  /// into Parakeet waits until it is released (gate 6d), so two copies never coexist. Live
-  /// words run on Apple speech or the Universal engine, never a meeting Parakeet.
-  var isFinalPassOwnParakeetResident: Bool { job?.isOwnModelResident ?? false }
+  /// #4052, #3973 C3: the final pass is transcribing on its own copy of `backend`. An engine
+  /// switch of dictation into that engine waits until it is released (gate 6d), so two copies
+  /// never coexist. Live words run on Apple speech or the Universal engine, never a meeting
+  /// final engine.
+  func isFinalPassOwnModelResident(_ backend: ASRBackendType) -> Bool {
+    guard job?.isOwnModelResident == true else { return false }
+    return processingResolution?.engine.backendType == backend
+  }
+  /// #3973 C3: the engine the running pass decodes with.
+  private var processingResolution: MeetingEngineResolution?
 
   var isMeetingModelWorkActive: Bool {
     (job?.isEngineResident ?? false) || (job?.isUnitInFlight ?? false)
@@ -566,6 +709,30 @@ final class MeetingCoordinator {
     }
   }
 
+  /// #4013 r3 F3: the participant list saved with the meeting, for the rename suggestions.
+  /// Read on the meeting file queue. `nil` when the meeting is unknown, being deleted or losing
+  /// its audio (the list goes with the audio), at the start of the read OR when it returns, or
+  /// when the file is missing or unusable.
+  func callSpeakerEvidence(meetingID: UUID) async -> CallSpeakerEvidence? {
+    guard rosterReadable(meetingID) else { return nil }
+    #if DEBUG
+      rosterReadAdmittedForTesting?()
+    #endif
+    guard case .usable(let log)? = try? await writer.loadCallSpeakers(meeting: meetingID),
+      rosterReadable(meetingID)
+    else { return nil }
+    return CallSpeakerEvidence(log)
+  }
+
+  /// The latest intended state (`live`) and the open claims, not only what is on disk: a
+  /// deletion or Delete audio counts from the moment it starts.
+  private func rosterReadable(_ meetingID: UUID) -> Bool {
+    guard let record = live[meetingID], record.audioKept, !record.deletionRequested else {
+      return false
+    }
+    return !deleting.contains(meetingID) && !removingAudio.contains(meetingID)
+  }
+
   func dismissNotice() { notice = nil }
 
   // MARK: - Launch
@@ -609,11 +776,23 @@ final class MeetingCoordinator {
       case .unreadable(let id): deps.log("meeting folder unreadable id=\(id.uuidString)")
       }
     }
+    // #3973 C2: commit receipts are settled before History, the queue, summaries or audio
+    // cleanup read these meetings. Committed ones pair History's previous row with its own
+    // facts until published below; uncommitted ones are dropped.
+    let committedReceipts = await reconcileReceipts(loaded)
     publish()
+    for receipt in committedReceipts where isStillOwned(receipt.meetingID) {
+      _ = await publishCommitted(receipt, atLaunch: true)
+    }
     // Notes are searched with their meeting's transcript (R38): read every meeting's notes
     // once, behind the listing, on the file queue.
     let toRead = loaded
-    let ready = loaded.filter { live[$0]?.state == .ready && live[$0]?.deletionRequested != true }
+    // #3973 C2: a meeting whose committed row could not be published keeps its owed summary
+    // for the launch that publishes it; resumed now it would find no transcript and drop it.
+    let ready = loaded.filter {
+      live[$0]?.state == .ready && live[$0]?.deletionRequested != true
+        && unpublishedReceipts[$0] == nil
+    }
     Task { [weak self] in
       for meetingID in toRead { await self?.documents.load(meetingID) }
       // A summary a quit interrupted is finished now (R50), after the notes are read.
@@ -654,6 +833,59 @@ final class MeetingCoordinator {
     startQueueIfNeeded()
   }
 
+  /// #3973 C2: reads each meeting's commit receipt. A receipt whose candidate the record on disk
+  /// committed (the ready barrier passed) is returned for publication; one it did not commit is
+  /// removed (nothing was committed; History and the record still agree on the previous
+  /// generation). A receipt that cannot be read, or removed, is kept and blocks Transcribe again
+  /// for this session. A meeting marked for deletion is left to its deletion.
+  private func reconcileReceipts(_ meetingIDs: [UUID]) async -> [MeetingTranscriptReplacement] {
+    var committed: [MeetingTranscriptReplacement] = []
+    for meetingID in meetingIDs {
+      guard let record = live[meetingID], !record.deletionRequested, record.isWritableByThisBuild
+      else { continue }
+      let loaded: MeetingStore.ReplacementLoad
+      do {
+        loaded = try await writer.run { $0.loadTranscriptReplacement(meeting: meetingID) }
+      } catch {
+        loaded = .unusable
+      }
+      switch loaded {
+      case .none:
+        continue
+      case .unusable where record.state != .ready:
+        // Only the ready write commits a receipt, so a meeting that is not ready committed
+        // none: the receipt is dropped like an uncommitted one, unread.
+        deps.log("meeting commit receipt unreadable id=\(meetingID.uuidString) committed=false")
+        do {
+          try await writer.run { try $0.clearTranscriptReplacement(meeting: meetingID) }
+        } catch {
+          // Kept out of the queue until a launch removes it; the failure is shown.
+          deps.log("meeting commit receipt clear failed error=\(type(of: error))")
+          unresolvedReceipts.insert(meetingID)
+          notice = .storageFailed
+        }
+      case .unusable:
+        deps.log("meeting commit receipt unreadable id=\(meetingID.uuidString)")
+        unresolvedReceipts.insert(meetingID)
+        notice = .storageFailed
+      case .receipt(let receipt):
+        if record.committedTranscriptGeneration == receipt.candidate.generation {
+          unpublishedReceipts[meetingID] = receipt
+          unresolvedReceipts.insert(meetingID)
+          committed.append(receipt)
+        } else {
+          do {
+            try await writer.run { try $0.clearTranscriptReplacement(meeting: meetingID) }
+          } catch {
+            deps.log("meeting commit receipt clear failed error=\(type(of: error))")
+            unresolvedReceipts.insert(meetingID)
+          }
+        }
+      }
+    }
+    return committed
+  }
+
   private func publish() {
     meetings = records.values.sorted { $0.createdAt > $1.createdAt }
     onMeetingsPublished?()
@@ -673,6 +905,9 @@ final class MeetingCoordinator {
     /// coordinator before it releases a held write (#4102).
     func liveRecordForTesting(_ id: UUID) -> MeetingRecord? { live[id] }
     func isDeletingForTesting(_ id: UUID) -> Bool { deleting.contains(id) }
+    /// #4013: called when a roster read has passed its first check and is about to wait on the
+    /// file queue, so a test can start a deletion exactly then.
+    @ObservationIgnored var rosterReadAdmittedForTesting: (@MainActor () -> Void)?
   #endif
 
   // MARK: - Start and stop
@@ -695,6 +930,7 @@ final class MeetingCoordinator {
     // #4105: the transcript language this Start asked for, read before any wait so a change
     // during the waits belongs to the next meeting.
     let transcriptLanguage = deps.meetingLanguage()
+    let transcriptEngine = deps.meetingTranscriptEngine()
     notice = nil
     guard deps.microphoneAuthorized() else {
       notice = .microphoneDenied
@@ -740,12 +976,14 @@ final class MeetingCoordinator {
       }
     }
     var record = MeetingRecord(
-      title: calendarTitle, createdAt: startedAt, engine: .parakeet,
+      title: calendarTitle, createdAt: startedAt, engine: transcriptEngine,
       trackStatus: [.microphone: .captured, .callSound: captureCall ? .captured : .off])
     // #4012: the call app a detected Start was for, so the fallback name says "Zoom call".
     record.callApp = callApp
     // #4105: in the record before its first save, so recovery and retry use this value.
     record.transcriptLanguageMode = transcriptLanguage
+    // #3973 C2: the attempt this Start asked for, frozen from the same read.
+    record.beginAttempt(record.attemptFromStartValues(supports: deps.engineSupportsLanguage))
     let meetingID = record.id
     do {
       let created = record
@@ -860,6 +1098,12 @@ final class MeetingCoordinator {
     deps.log("meeting recording started bound=\(boundMicrophoneUID ?? "unknown")")
     if let token = deps.beginActivity() { activity = token }
     phase = .recording(meetingID: meetingID, startedAt: record.createdAt)
+    // #4013 13B: every recording, however it started, gets one speaker session. Not awaited:
+    // Start goes on at once, and the session checks after its own wait that this recording is
+    // still the one recording.
+    Task { [weak self] in
+      await self?.startSpeakerSession(meetingID: meetingID, recorder: recorder)
+    }
     var captured: Set<MeetingTrackKind> = [.microphone]
     if callSound == .captured { captured.insert(.callSound) }
     deps.liveWords?.captureStarted(
@@ -989,6 +1233,10 @@ final class MeetingCoordinator {
     }
     startGeneration += 1
     phase = .stopping(meetingID: meetingID)
+    // #4013 chunk 13A: speaker capture closes now; its final save lands before the pass reads it.
+    let session = takeSpeakerSession(meetingID)
+    session?.closeAdmission()
+    if let session { unsavedSpeakerSessions[meetingID] = session }
     // #3973, #4097: Stop retires live words without waiting; their cleanup drains kept events
     // and closes admission. The lines stay until the transcript is ready.
     deps.liveWords?.stop()
@@ -997,6 +1245,11 @@ final class MeetingCoordinator {
     let recorder = self.recorder
     let report = await recorder?.stop()
     // A quit during the close owns the outcome (interrupted, its own deadline).
+    guard !quitting else { return }
+    // A final log that could not be saved stays owned here, for a quit to save.
+    if let session, await session.finish(), unsavedSpeakerSessions[meetingID] === session {
+      unsavedSpeakerSessions[meetingID] = nil
+    }
     guard !quitting else { return }
     adoptCallSoundSummary(report, for: meetingID)
     self.recorder = nil
@@ -1117,14 +1370,18 @@ final class MeetingCoordinator {
       // failed pass never adds one (#4008).
       attempted.subtract(retriedDuringDrain)
       retriedDuringDrain = []
-      guard let next = meetings.last(where: {
-        $0.state == .queued && !$0.deletionRequested && !deleting.contains($0.id)
-          && !attempted.contains($0.id) && !closeOwned.contains($0.id)
-          // The live copy decides (#3994): a Delete audio whose save is still on its way has
-          // already changed it, while `meetings` still shows the meeting queued.
-          && live[$0.id]?.state == .queued && live[$0.id]?.audioKept == true
-          && !removingAudio.contains($0.id)
-      })
+      guard
+        let next = meetings.last(where: {
+          $0.state == .queued && !$0.deletionRequested && !deleting.contains($0.id)
+            && !attempted.contains($0.id) && !closeOwned.contains($0.id)
+            // The live copy decides (#3994): a Delete audio whose save is still on its way has
+            // already changed it, while `meetings` still shows the meeting queued.
+            && live[$0.id]?.state == .queued && live[$0.id]?.audioKept == true
+            && !removingAudio.contains($0.id)
+            // #3973 C2: a receipt this launch could not settle is never written over; the
+            // meeting waits for the next launch.
+            && !unresolvedReceipts.contains($0.id)
+        })
       else { break }
       attempted.insert(next.id)
       if let free = deps.freeDiskBytes(), free < Self.diskFloorBytes {
@@ -1147,6 +1404,10 @@ final class MeetingCoordinator {
     else { return }
     processing = Processing(meetingID: meetingID, stage: nil)
     workChanged()
+    // #3973 C2: a meeting queued before attempts existed runs its saved Start values as an
+    // attempt, saved with this write; Settings are never read here.
+    if record.pendingAttempt == nil { record.beginAttempt(record.attemptFromStartValues()) }
+    let attempt = record.pendingAttempt ?? record.attemptFromStartValues()
     record.state = .processing
     guard await persist(record), isStillOwned(meetingID) else {
       // The pass never began: the claim is released without the pass's own ending (its live
@@ -1218,14 +1479,29 @@ final class MeetingCoordinator {
         failed.state = .failed
       }
       if await persist(failed) {
-        endAttempt(failed, outcome: .failed, gapCount: MeetingDamagedAudio.markerCount(missingAudio))
+        endAttempt(
+          failed, outcome: .failed, gapCount: MeetingDamagedAudio.markerCount(missingAudio))
       }
       return
     }
     // The inventory rebuilt from the files, durable before the pass reads it.
     guard await persist(current), isStillOwned(meetingID) else { return }
+    // #4013 chunk 12A: the saved speaker evidence, read once through the file queue; the pass
+    // names from this snapshot even if the file changes while it runs.
+    let callSpeakers = await callSpeakerEvidenceForPass(meetingID)
+    guard isStillOwned(meetingID) else { return }
 
-    let job = deps.makeJob()
+    let resolution = await deps.resolveEngine(attempt)
+    // Read again after the await: a deletion mark or a quit meanwhile wins.
+    guard isStillOwned(meetingID) else { return }
+    if let reason = resolution.fallbackReason {
+      deps.log(
+        "meeting engine fallback requested=\(attempt.requestedEngine.rawValue) resolved=\(resolution.engine.rawValue) reason=\(reason.rawValue)"
+      )
+    }
+    openAttempts[meetingID]?.resolvedEngine = resolution.engine
+    processingResolution = resolution
+    let job = deps.makeJob(resolution)
     self.job = job
     job.onWaitingForDictation = { [weak self] waiting in
       guard self?.processing?.meetingID == meetingID else { return }
@@ -1245,13 +1521,12 @@ final class MeetingCoordinator {
       })
     let result: MeetingTranscriptionJob.Result
     do {
-      // #4105: the language the meeting was started with, from its record only.
+      // #4105, #3973 C2: the saved attempt's language and engine, from the record only.
       result = try await job.run(
-        tracks: tracks, language: record.transcriptLanguage, checkpoint: access,
-        missingAudio: missingAudio
-      ) { [weak self] stage in
-        self?.processing?.stage = stage
-      }
+        tracks: tracks, language: resolution.effectiveLanguage, checkpoint: access,
+        missingAudio: missingAudio, callSpeakers: callSpeakers,
+        onStage: { [weak self] stage in self?.processing?.stage = stage },
+        attempt: attempt)
     } catch MeetingTranscriptionJob.JobError.cancelled {
       return
     } catch {
@@ -1269,13 +1544,30 @@ final class MeetingCoordinator {
     }
     guard isStillOwned(meetingID), let finished = live[meetingID] else { return }
 
-    // Commit, in order: History row, then ready, then clear the checkpoint.
+    // #3973 C2 (plan §3 item 5) commit, in order: the receipt (the new History row and the
+    // previous generation's facts), the ready barrier, then the History row, then the receipt
+    // and the checkpoint are cleared. Before the barrier nothing changed for the user: the
+    // previous transcript stays shown and paired with its own facts. After it, the committed
+    // transcript is published, now or by the next launch, never rolled back.
     committing = true
     defer { committing = false }
+    let previousGeneration = finished.committedTranscriptGeneration
+    let receipt = MeetingTranscriptReplacement(
+      meetingID: meetingID,
+      previous: previousGeneration.map {
+        .init(
+          generation: $0, echoTurnIDs: finished.echoTurnIDs,
+          speakerOutcomes: finished.speakerOutcomes)
+      },
+      previousRow: previousGeneration == nil ? nil : deps.historyRow(finished.transcriptID),
+      candidate: .init(
+        generation: result.resolved.attemptID, echoTurnIDs: result.composition.echoTurnIDs,
+        speakerOutcomes: result.speakerOutcomes),
+      candidateRow: Self.transcript(for: finished, result: result))
     do {
-      try await deps.saveTranscript(Self.transcript(for: finished, result: result))
+      try await writer.run { [write = deps.writeCommitReceipt] in try write($0, receipt) }
     } catch {
-      deps.log("meeting history save failed error=\(type(of: error))")
+      deps.log("meeting commit receipt save failed error=\(type(of: error))")
       // Read again: a deletion mark or a rename during the save stays.
       guard isStillOwned(meetingID), var failed = live[meetingID] else { return }
       failed.state = .failed
@@ -1291,7 +1583,11 @@ final class MeetingCoordinator {
     // The summary decision (R48), taken before the ready barrier so an owed summary is durable
     // before the meeting is ready: a quit right after the barrier never loses it (the relaunch
     // finishes it). Written either way, so an older mark never outlives a decision not to.
-    let summaryPlan = summaries?.decide() ?? .off
+    // #3973 C2 (plan §3 item 6): only a first transcript schedules a summary. A replacement
+    // keeps the existing summary, which its new transcript generation marks out of date; Write
+    // again replaces it.
+    let summaryPlan: MeetingEndedTelemetry.SummaryPlan =
+      previousGeneration == nil ? (summaries?.decide() ?? .off) : .notApplicable
     // A summary still being written over the previous transcript (Transcribe again) ends and
     // settles first: it clears its own owed mark and sends its one row before the new decision
     // writes the new mark, so it can never clear the new one (whole-diff review r1 F1).
@@ -1310,12 +1606,25 @@ final class MeetingCoordinator {
     // Read after that wait: a deletion mark or a rename during it stays.
     guard isStillOwned(meetingID), var ready = live[meetingID] else { return }
     ready.state = .ready
+    // #3973 C2: the ready barrier commits this attempt as the shown transcript's generation.
+    ready.commitAttempt(result.resolved)
     ready.speakerOutcomes = result.speakerOutcomes
     ready.echoTurnIDs = result.composition.echoTurnIDs
     ready.failureCode =
       !missingAudio.isEmpty ? "audio_damaged" : (result.failedPieces > 0 ? "pieces_failed" : nil)
-    // The ready write (file and directory synced) is the barrier before progress is cleared.
-    guard await persist(ready) else { return }
+    // History keeps the previous row, paired with its own facts, until the new one is published.
+    unpublishedReceipts[meetingID] = receipt
+    unresolvedReceipts.insert(meetingID)
+    // The ready write (file and directory synced) is the barrier before progress is cleared. A
+    // failed write is no proof the file is unchanged: the record on disk decides.
+    if !(await persist(ready)) {
+      guard await settleAfterFailedBarrier(receipt) else {
+        unpublishedReceipts[meetingID] = nil
+        return
+      }
+      // The write landed and only its report failed: the adopted record is committed.
+      ready = live[meetingID] ?? ready
+    }
     // #3973: the transcript now replaces this meeting's live words. A failed, cancelled or
     // uncommitted pass keeps them.
     deps.liveWords?.transcriptReady(meetingID: meetingID)
@@ -1326,15 +1635,31 @@ final class MeetingCoordinator {
       ready.wasInterrupted == true
       ? .interruptedReady
       : (result.failedPieces > 0 || !missingAudio.isEmpty ? .readyWithGaps : .ready)
-    endAttempt(
+    // #4013 chunk 12B: its `meeting.ended` row waits for the History publication below, which
+    // says what naming achieved in the row written; the attempt itself is closed now.
+    let attemptID = result.resolved.attemptID
+    if let frozen = closeAttempt(
       ready, outcome: outcome, result: result,
       gapCount: result.failedPieces + MeetingDamagedAudio.markerCount(missingAudio),
       processingSeconds: Date().timeIntervalSince(started), summaryPlan: summaryPlan)
+    {
+      pendingEnded[meetingID] = PendingEnded(attemptID: attemptID, event: frozen)
+    }
+    // A deletion meanwhile removes the folder, receipt included, and the row.
+    let published =
+      isStillOwned(meetingID)
+      ? await publishCommitted(
+        receipt, naming: Self.namingPass(result: result, record: ready), settling: attemptID)
+      : false
+    // Published rows settled it with their summary; anything else reports no naming.
+    settleEnded(meetingID, attemptID: attemptID, speakerNaming: nil)
     if summaryPlan == .scheduled {
-      if owedOnDisk {
-        summaries?.startOwed(meetingID)
-      } else {
+      if !owedOnDisk {
         summaries?.settleUnwritableMark(meetingID)
+      } else if published {
+        // A first transcript's summary starts once its row is in History. An unpublished one
+        // stays owed; the next launch publishes the row, then resumes the summary.
+        summaries?.startOwed(meetingID)
       }
     }
 
@@ -1343,6 +1668,107 @@ final class MeetingCoordinator {
     } catch {
       deps.log("meeting checkpoint clear failed error=\(type(of: error))")
     }
+  }
+
+  /// #3973 C2: publishes a committed receipt's History row, then clears the receipt. False
+  /// (receipt kept, storage failure shown) when the row could not be written: History keeps
+  /// the previous row with its own facts, and the next launch publishes again.
+  ///
+  /// At launch the row may already be published (only the receipt's removal failed) and since
+  /// edited, such as its speaker names. A History file that already holds this generation is
+  /// kept, not rewritten from the receipt; one that cannot be read publishes nothing.
+  ///
+  /// #4013 chunk 12B: `settling` is the attempt whose `meeting.ended` row waits on this
+  /// publication; it is settled with the naming summary the History write returned as soon as
+  /// the row is written, before the receipt is cleared.
+  private func publishCommitted(
+    _ receipt: MeetingTranscriptReplacement, atLaunch: Bool = false,
+    naming: SpeakerNamingPass? = nil, settling attemptID: UUID? = nil
+  ) async -> Bool {
+    let meetingID = receipt.meetingID
+    do {
+      let held = atLaunch ? try await deps.durableHistoryRow(receipt.candidateRow.id) : nil
+      // A deletion that began during the read owns the row now. Checked in the same main-actor
+      // turn the save is admitted to History's queue, so a later deletion's removal runs after it.
+      guard isStillOwned(meetingID) else { return false }
+      var summary: SpeakerNamingSummary?
+      if held?.meetingTranscriptGeneration != receipt.candidate.generation {
+        summary = try await deps.saveTranscript(receipt.candidateRow, naming)
+      }
+      if let attemptID { settleEnded(meetingID, attemptID: attemptID, speakerNaming: summary) }
+    } catch {
+      deps.log("meeting history publish failed error=\(type(of: error))")
+      notice = .storageFailed
+      return false
+    }
+    unpublishedReceipts[meetingID] = nil
+    do {
+      try await writer.run { try $0.clearTranscriptReplacement(meeting: meetingID) }
+      unresolvedReceipts.remove(meetingID)
+    } catch {
+      // History is right; the next launch publishes the same row again and clears it.
+      deps.log("meeting commit receipt clear failed error=\(type(of: error))")
+    }
+    return true
+  }
+
+  /// #3973 C2: a ready write failed, which proves nothing about the file. The record is read
+  /// back. One that committed the candidate (the write landed and only its report failed) is
+  /// adopted as the durable copy, so no later edit writes the older record back over it, and
+  /// the commit goes on (true). One that did not means nothing was committed: the receipt is
+  /// removed and Transcribe again works as before (false). One that cannot be read keeps the
+  /// receipt and blocks Transcribe again for the next launch, which decides from the file.
+  ///
+  /// Edits that build on the live copy (rename, AI title) wait for it (`waitForCommitSettlement`):
+  /// live has rolled back to the earlier record, so one written meanwhile could put that record
+  /// back over a commit that landed. Set in the same main-actor turn the ready write failed in;
+  /// the read is queued on the file writer after every write already sent, so it sees them.
+  private func settleAfterFailedBarrier(_ receipt: MeetingTranscriptReplacement) async -> Bool {
+    let meetingID = receipt.meetingID
+    settlingCommits[meetingID] = []
+    defer {
+      let waiters = settlingCommits.removeValue(forKey: meetingID) ?? []
+      for waiter in waiters { waiter.resume() }
+    }
+    guard let onDisk = try? await writer.run({ try $0.load(id: meetingID) }) else {
+      deps.log("meeting commit unsettled; next launch reconciles")
+      unknownCommits.insert(meetingID)
+      notice = .storageFailed
+      return false
+    }
+    if onDisk.committedTranscriptGeneration == receipt.candidate.generation {
+      records[meetingID] = onDisk
+      live[meetingID] = onDisk
+      publish()
+      return true
+    }
+    do {
+      try await writer.run { try $0.clearTranscriptReplacement(meeting: meetingID) }
+      unresolvedReceipts.remove(meetingID)
+    } catch {
+      deps.log("meeting commit receipt clear failed error=\(type(of: error))")
+      notice = .storageFailed
+    }
+    return false
+  }
+
+  /// #3973 C2: waits while the meeting's failed ready write is being settled
+  /// (`settleAfterFailedBarrier`).
+  private func waitForCommitSettlement(_ meetingID: UUID) async {
+    guard settlingCommits[meetingID] != nil else { return }
+    await withCheckedContinuation { settlingCommits[meetingID, default: []].append($0) }
+  }
+
+  /// #3973 C2: whether the meeting's commit receipt is not settled in this session.
+  func isCommitReceiptPending(_ meetingID: UUID) -> Bool { unresolvedReceipts.contains(meetingID) }
+
+  /// #3973 C2: the previous generation's History facts while a committed transcript is not
+  /// yet published (`MeetingHistoryInfo.paired(with:previous:)`).
+  func historyPrevious(_ meetingID: UUID) -> MeetingHistoryInfo.Previous? {
+    guard let previous = unpublishedReceipts[meetingID]?.previous else { return nil }
+    return MeetingHistoryInfo.Previous(
+      generation: previous.generation, echoTurnIDs: Set(previous.echoTurnIDs),
+      speakerOutcomes: previous.speakerOutcomes)
   }
 
   /// False once the meeting is being deleted (or durably marked for it) or the app is quitting: a
@@ -1354,23 +1780,61 @@ final class MeetingCoordinator {
   /// if the mark then failed or was withdrawn. A step that carries on writes on the live copy,
   /// mark included, so a mark that lands that way still deletes the meeting (`persist`).
   private func isStillOwned(_ meetingID: UUID) -> Bool {
-    !quitting && !deleting.contains(meetingID) && records[meetingID]?.deletionRequested != true
+    // A meeting whose deletion already finished is gone from `records`: not owned either.
+    guard let record = records[meetingID] else { return false }
+    return !quitting && !deleting.contains(meetingID) && !record.deletionRequested
+  }
+
+  /// The saved speaker evidence as a pass receives it. A failure to read is unusable evidence,
+  /// never a failed pass: naming then leaves the fallback labels.
+  private func callSpeakerEvidenceForPass(_ meetingID: UUID) async -> MeetingCallSpeakerEvidence {
+    let load: MeetingStore.CallSpeakersLoad
+    do {
+      load = try await writer.loadCallSpeakers(meeting: meetingID)
+    } catch {
+      deps.log("meeting call speakers read failed error=\(type(of: error))")
+      return .unusable(.unreadable)
+    }
+    switch load {
+    case .usable(let log): return .usable(log)
+    case .absent: return .absent
+    case .unusable(let reason):
+      switch reason {
+      case .unreadable: return .unusable(.unreadable)
+      case .tooLarge: return .unusable(.tooLarge)
+      case .newerFormat: return .unusable(.newerFormat)
+      case .invalid: return .unusable(.invalid)
+      }
+    }
   }
 
   /// The History row a finished meeting is saved as (R5, R19). Always `.labeled` so History keeps
   /// the turns; the truthful per-track outcome lives in the meeting record.
+  ///
+  /// #4013 chunk 12A: the pass's proposed names replace the display names of the speakers they
+  /// were proposed for, marked `.auto`; nothing else about the composition changes. The user's
+  /// own names are applied later, by the durable History write.
   static func transcript(for record: MeetingRecord, result: MeetingTranscriptionJob.Result)
     -> Transcript
   {
     let composition = result.composition
+    var names = composition.speakerNames
+    var sources: [String: SpeakerNameSource] = [:]
+    let present = Set(composition.turns.map(\.speakerId))
+    for (speaker, name) in result.naming?.result.proposals ?? [:] where present.contains(speaker) {
+      names[speaker] = name
+      sources[speaker] = .auto
+    }
     return Transcript(
       id: record.transcriptID, text: composition.text, duration: result.audioSeconds,
-      processingTime: result.processingSeconds, backendType: .parakeet, createdAt: record.createdAt,
+      processingTime: result.processingSeconds,
+      backendType: result.resolved.resolvedEngine.backendType, createdAt: record.createdAt,
       speakerAnalysis: composition.turns.isEmpty
         ? nil : .labeled(count: max(1, composition.speakerCount)),
-      speakerNames: composition.turns.isEmpty ? nil : composition.speakerNames,
+      speakerNames: composition.turns.isEmpty ? nil : names,
       turns: composition.turns.isEmpty ? nil : composition.turns,
-      meetingID: record.id)
+      speakerNameSources: composition.turns.isEmpty || sources.isEmpty ? nil : sources,
+      meetingID: record.id, meetingTranscriptAttemptID: result.resolved.attemptID)
   }
 
   // MARK: - User actions on a meeting
@@ -1384,25 +1848,63 @@ final class MeetingCoordinator {
   func canTranscribeAgain(_ meetingID: UUID) -> Bool {
     guard launchTask == nil, !quitting, let record = live[meetingID],
       record.isWritableByThisBuild, record.audioKept, !record.deletionRequested,
-      !isActive(meetingID), !closeOwned.contains(meetingID)
+      !isActive(meetingID), !closeOwned.contains(meetingID),
+      // #3973 C2: an unsettled commit receipt is settled by the next launch first.
+      !unresolvedReceipts.contains(meetingID)
     else { return false }
     if record.state == .queued { return queueWaitsForSpace || queueTask == nil }
     return [.failed, .ready, .interrupted, .processing].contains(record.state)
   }
 
-  /// Transcribe again. True when the meeting was queued (or, waiting for space, the queue was
-  /// started again); false when it was refused or its queued state could not be saved.
+  /// Transcribe again with `engine` (#3973 C2): a new attempt, frozen now from the current
+  /// meeting language against that engine, so a new Start value never reaches a saved
+  /// attempt and an old one never reaches this. The transcript shown so far stays until the new
+  /// one commits. A meeting left queued or processing with no pass (its attempt never ran to
+  /// an end) continues its saved attempt instead (`resumeAttempt`). True when the meeting was
+  /// queued (or, waiting for space, the queue was started again); false when it was refused or
+  /// its queued state could not be saved.
   @discardableResult
-  func retry(meetingID: UUID) async -> Bool {
+  func transcribeAgain(meetingID: UUID, engine: MeetingEngineChoice) async -> Bool {
     // Launch recovery decides first what an unfinished meeting is (it requeues them itself).
     if let launchTask { await launchTask.value }
+    guard canTranscribeAgain(meetingID), let record = live[meetingID] else { return false }
+    if [.queued, .processing].contains(record.state) {
+      return await resumeAttempt(meetingID: meetingID)
+    }
+    return await queue(
+      meetingID,
+      attempt: MeetingAttemptConfiguration(
+        requestedEngine: engine, language: deps.meetingLanguage(),
+        supports: deps.engineSupportsLanguage))
+  }
+
+  /// #3973 C3: the engines Transcribe again offers: the ready ones, the Transcript engine
+  /// setting's first.
+  var transcribeAgainEngines: [MeetingEngineChoice] {
+    let preferred = deps.meetingTranscriptEngine()
+    return ([preferred] + MeetingEngineChoice.allCases.filter { $0 != preferred })
+      .filter { deps.isEngineReady($0) }
+  }
+
+  /// Continues the meeting's saved attempt (#3973 C2): its engine and language as saved, never
+  /// Settings. For a meeting left queued or processing with no pass running.
+  @discardableResult
+  func resumeAttempt(meetingID: UUID) async -> Bool {
+    if let launchTask { await launchTask.value }
+    guard canTranscribeAgain(meetingID), let record = live[meetingID] else { return false }
+    return await queue(meetingID, attempt: record.pendingAttempt ?? record.attemptFromStartValues())
+  }
+
+  /// Queues `attempt` for the meeting and starts the queue.
+  private func queue(_ meetingID: UUID, attempt: MeetingAttemptConfiguration) async -> Bool {
     guard canTranscribeAgain(meetingID), var record = live[meetingID] else { return false }
-    if record.state == .queued {
+    if record.state == .queued, record.pendingAttempt == attempt {
       // Left queued (a full disk, or a pass whose first save failed): nothing to save, the
       // queue starts again and checks the disk again.
       startQueueIfNeeded()
       return true
     }
+    record.beginAttempt(attempt)
     record.state = .queued
     guard await persist(record) else { return false }
     // Read again after the save: a Delete audio, a deletion or a quit meanwhile wins.
@@ -1419,7 +1921,8 @@ final class MeetingCoordinator {
   }
 
   func rename(meetingID: UUID, title: String) async {
-    guard var record = live[meetingID] else { return }
+    await waitForCommitSettlement(meetingID)
+    guard !unknownCommits.contains(meetingID), var record = live[meetingID] else { return }
     let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
     record.title = trimmed.isEmpty ? nil : String(trimmed.prefix(120))
     await persist(record)
@@ -1429,7 +1932,9 @@ final class MeetingCoordinator {
   /// latest record just before the save, so a rename, the calendar's name or a deletion
   /// meanwhile wins; it never names a meeting the user already named.
   func assignAITitle(meetingID: UUID, title: String) async {
-    guard var record = live[meetingID], record.title == nil, !deleting.contains(meetingID),
+    await waitForCommitSettlement(meetingID)
+    guard !unknownCommits.contains(meetingID), var record = live[meetingID], record.title == nil,
+      !deleting.contains(meetingID),
       !closeOwned.contains(meetingID)
     else { return }
     // `MeetingSummary.splitTitle` keeps titles to one short line.
@@ -1438,7 +1943,9 @@ final class MeetingCoordinator {
   }
 
   func deleteAudio(meetingID: UUID) async {
-    guard var record = live[meetingID], !isActive(meetingID), !closeOwned.contains(meetingID)
+    // #3973 C2: an unknown commit outcome blocks every record edit until the next launch.
+    guard !unknownCommits.contains(meetingID), var record = live[meetingID],
+      !isActive(meetingID), !closeOwned.contains(meetingID)
     else { return }
     // Claimed in the same turn as the guard (#3994): a pass cannot start on this audio while
     // its removal is saved and carried out.
@@ -1498,6 +2005,11 @@ final class MeetingCoordinator {
     deps.liveWords?.delete(meetingID: meetingID)
     record.deletionRequested = true
     guard await persist(record) else { return false }
+    // #4013: once the deletion is marked, the recording's speaker capture adds and saves
+    // nothing more (the store also refuses). A mark that failed leaves it running, since the
+    // recording goes on.
+    takeSpeakerSession(meetingID)?.cancel()
+    unsavedSpeakerSessions.removeValue(forKey: meetingID)?.cancel()
     // The notes this session knows, read before they are forgotten (R54 `has_notes`).
     let hadNotes = !documents.notes(meetingID).isEmpty
     // Marked: no draft may be written any more (the store also refuses).
@@ -1626,6 +2138,10 @@ final class MeetingCoordinator {
       let meetingID = record.id
       try await writer.run { try $0.deleteFolder(meeting: meetingID) }
       discardSegmentSaves(record.id)
+      // #3973 C2: the receipt went with the folder.
+      unpublishedReceipts.removeValue(forKey: record.id)
+      unresolvedReceipts.remove(record.id)
+      unknownCommits.remove(record.id)
       live.removeValue(forKey: record.id)
       records.removeValue(forKey: record.id)
       publish()
@@ -1672,6 +2188,20 @@ final class MeetingCoordinator {
   /// not finish in time stays owned by its queued close; launch recovery handles it.
   func prepareForTermination(deadline: DispatchTime = .now() + 1) {
     quitting = true
+    // #4013 chunk 13A: speaker capture closes first; its final log is saved last, after audio,
+    // the record and notes, within the same deadline.
+    let speakerSessions: [(meetingID: UUID, session: CallSpeakerSession)] =
+      [speakerSession].compactMap { $0 }
+      + unsavedSpeakerSessions.map { (meetingID: $0.key, session: $0.value) }
+    for entry in speakerSessions { entry.session.closeAdmission() }
+    speakerSession = nil
+    unsavedSpeakerSessions = [:]
+    // #4013 chunk 12B: ready attempts still waiting on their History publication send their
+    // row now, with no naming facts (the publication's result is not known). A late
+    // publication finds nothing to settle.
+    for (meetingID, pending) in pendingEnded {
+      settleEnded(meetingID, attemptID: pending.attemptID, speakerNaming: nil)
+    }
     summaries?.prepareForTermination()
     queueTask?.cancel()
     job?.cancel()
@@ -1681,6 +2211,7 @@ final class MeetingCoordinator {
     guard let recorder, let meetingID = activeMeetingID, var record = live[meetingID] else {
       // Notes save whether or not anything records (R46), inside the same deadline.
       documents.flushForQuit(deadline: deadline)
+      saveSpeakersForQuit(speakerSessions, deadline: deadline)
       endActivity()
       phase = .idle
       return
@@ -1701,8 +2232,22 @@ final class MeetingCoordinator {
     }
     // After the audio files and the record, which matter most, and before the same deadline.
     documents.flushForQuit(deadline: deadline)
+    saveSpeakersForQuit(speakerSessions, deadline: deadline)
     endActivity()
     phase = .idle
+  }
+
+  /// #4013 chunk 13A: each session's final speaker log, written behind the writes already
+  /// queued and never past `deadline`; one that does not start in time is withdrawn. A
+  /// session whose final log was already saved has nothing to give.
+  private func saveSpeakersForQuit(
+    _ sessions: [(meetingID: UUID, session: CallSpeakerSession)], deadline: DispatchTime
+  ) {
+    for (meetingID, session) in sessions {
+      guard let log = session.takeFinalLog() else { continue }
+      _ = writer.runBounded(
+        until: deadline, { try $0.saveCallSpeakers(log, meeting: meetingID) }, late: { _ in })
+    }
   }
 
   // MARK: - Persistence and telemetry
@@ -1894,26 +2439,101 @@ final class MeetingCoordinator {
     processingSeconds: Double = 0,
     summaryPlan: MeetingEndedTelemetry.SummaryPlan = .notApplicable, hasNotes: Bool? = nil
   ) {
-    guard let facts = openAttempts.removeValue(forKey: record.id) else { return }
+    guard
+      let frozen = closeAttempt(
+        record, outcome: outcome, result: result, gapCount: gapCount,
+        processingSeconds: processingSeconds, summaryPlan: summaryPlan, hasNotes: hasNotes)
+    else { return }
+    deps.emitEnded(frozen.event(speakerNaming: nil))
+  }
+
+  /// #4013 13B: starts the recording's one speaker session, whatever started the recording,
+  /// with the talker rules frozen now and the recorder's anchor. No call sources or no rules:
+  /// no session.
+  private func startSpeakerSession(meetingID: UUID, recorder: MeetingRecording) async {
+    guard let sources = deps.callSources, let rules = await deps.talkerRules() else { return }
+    // Read again after the await: a Stop or another start meanwhile wins.
+    guard case .recording(let current, _) = phase, current == meetingID, !quitting,
+      speakerSession == nil
+    else { return }
+    let timing = deps.speakerSessionTiming
+    let session = CallSpeakerSession(
+      anchor: recorder.anchor, rules: rules.selected, bundled: rules.bundled,
+      dependencies: .init(
+        sources: sources, capture: deps.captureCallApp, isTrusted: deps.isAccessibilityTrusted,
+        isDictationIdle: { [weak self] in self?.deps.isDictationIdle() ?? false },
+        save: { [weak self] log in
+          guard let self else { return }
+          try await self.writer.run { try $0.saveCallSpeakers(log, meeting: meetingID) }
+        },
+        log: { [weak self] line in self?.deps.log(line) }, lane: deps.speakerCaptureLane,
+        tick: timing.tick, settle: timing.settle, observerTick: timing.observerTick))
+    speakerSession = (meetingID, session)
+    deps.log("meeting speaker session started")
+    session.start()
+  }
+
+  /// The meeting's speaker session, removed from the coordinator; nil when it has none.
+  private func takeSpeakerSession(_ meetingID: UUID) -> CallSpeakerSession? {
+    guard let current = speakerSession, current.meetingID == meetingID else { return nil }
+    speakerSession = nil
+    return current.session
+  }
+
+  /// Closes the attempt and freezes its terminal facts, or nil when no attempt is open for the
+  /// meeting. Sends nothing.
+  private func closeAttempt(
+    _ record: MeetingRecord, outcome: MeetingEndedTelemetry.Outcome,
+    result: MeetingTranscriptionJob.Result? = nil, gapCount: Int = 0,
+    processingSeconds: Double = 0,
+    summaryPlan: MeetingEndedTelemetry.SummaryPlan = .notApplicable, hasNotes: Bool? = nil
+  ) -> FrozenEnded? {
+    guard let facts = openAttempts.removeValue(forKey: record.id) else { return nil }
     lastAttemptFacts[record.id] = facts
-    deps.emitEnded(
-      MeetingEndedTelemetry(
-        outcome: outcome, entryPoint: facts.entryPoint,
-        durationSeconds: Double(record.recordedDurationMs) / 1000,
-        microphoneTrack: record.trackStatus[.microphone] ?? .off,
-        callSoundTrack: record.trackStatus[.callSound] ?? .off,
-        engine: record.engine,
-        speakerCount: result?.composition.speakerCount ?? 0,
-        processingSeconds: processingSeconds,
-        audioSeconds: result?.audioSeconds ?? 0,
-        yieldCount: result?.yieldCount ?? 0,
-        gapCount: gapCount,
-        echoHiddenCount: result?.composition.echoTurnIDs.count ?? 0,
-        diskStopped: facts.diskStopped,
-        summaryPlan: summaryPlan,
-        // The notes this session knows (typed, or read at launch); a meeting without a folder
-        // has none (R54). A deletion passes what it read before forgetting them.
-        hasNotes: hasNotes ?? !documents.notes(record.id).isEmpty,
-        callSound: facts.callSound))
+    return FrozenEnded(
+      outcome: outcome, facts: facts,
+      durationSeconds: Double(record.recordedDurationMs) / 1000,
+      microphoneTrack: record.trackStatus[.microphone] ?? .off,
+      callSoundTrack: record.trackStatus[.callSound] ?? .off,
+      engine: result?.resolved.resolvedEngine ?? facts.resolvedEngine,
+      speakerCount: result?.composition.speakerCount ?? 0,
+      processingSeconds: processingSeconds,
+      audioSeconds: result?.audioSeconds ?? 0,
+      yieldCount: result?.yieldCount ?? 0,
+      gapCount: gapCount,
+      echoHiddenCount: result?.composition.echoTurnIDs.count ?? 0,
+      summaryPlan: summaryPlan,
+      // The notes this session knows (typed, or read at launch); a meeting without a folder
+      // has none (R54). A deletion passes what it read before forgetting them.
+      hasNotes: hasNotes ?? !documents.notes(record.id).isEmpty)
+  }
+
+  /// #4013 chunk 12B: sends a ready attempt's waiting `meeting.ended` row once. Only the
+  /// attempt it was frozen for settles it, so a late callback from an older attempt never
+  /// sends a newer attempt's row; a second call does nothing.
+  private func settleEnded(
+    _ meetingID: UUID, attemptID: UUID, speakerNaming: SpeakerNamingSummary?
+  ) {
+    guard let pending = pendingEnded[meetingID], pending.attemptID == attemptID else { return }
+    pendingEnded[meetingID] = nil
+    deps.emitEnded(pending.event.event(speakerNaming: speakerNaming))
+  }
+
+  /// #4013 chunk 12B: the naming pass the History write summarizes, from the pass's own
+  /// result. Nil when the pass did not name (no naming result). Missing evidence on a meeting
+  /// started for a call app, or evidence that could not be used, is `unavailable`; missing
+  /// evidence otherwise says nothing, since it never proves the meeting was not a call.
+  static func namingPass(result: MeetingTranscriptionJob.Result, record: MeetingRecord)
+    -> SpeakerNamingPass?
+  {
+    guard let naming = result.naming else { return nil }
+    switch naming.evidence {
+    case .usable(let log):
+      return naming.result.pass(log: log)
+    case .unusable:
+      return .abstained(surface: nil, outcome: .unavailable)
+    case .absent:
+      return .abstained(surface: nil, outcome: record.callApp == nil ? nil : .unavailable)
+    }
   }
 }

@@ -94,6 +94,12 @@ import Foundation
 
   /// Runs `work` on the storage worker and resumes with its result. The main actor is never
   /// blocked waiting for it, and caller cancellation does not withdraw work already sent.
+  /// #3973 C2: one permanent row as its file holds it now (`TranscriptStore.rowReader`).
+  func readRow(id: UUID) async throws -> Transcript? {
+    let read = store.rowReader()
+    return try await runOnStorageWorker { try read(id) }
+  }
+
   private func runOnStorageWorker<T: Sendable>(
     _ work: @escaping @Sendable () throws -> T
   ) async throws -> T {

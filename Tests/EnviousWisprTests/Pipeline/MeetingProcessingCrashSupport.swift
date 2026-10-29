@@ -86,7 +86,7 @@ import os
     /// Runs in the child process; never returns when the stop point is reached.
     @MainActor
     static func runChild(folder: URL, stopAfter: Int) async throws {
-      _ = try await job().run(
+      _ = try await job().runTestAttempt(
         tracks: [.microphone: try audio(in: folder)], language: nil,
         checkpoint: access(folder: folder) { count in
           print("EW_JOB_SAVED \(count)")

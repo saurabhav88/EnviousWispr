@@ -89,6 +89,27 @@ struct SavedKeyPresenceTests {
 
   // MARK: - Presence
 
+  @Test("pending key tokens are shared without changing durable presence or revisions")
+  func pendingMutationTokens() {
+    let presence = SavedKeyPresence()
+    let revisions = presence.revisions
+    let first = presence.beginMutation(for: .openAI)
+    let second = presence.beginMutation(for: .openAI)
+    let other = presence.beginMutation(for: .gemini)
+    #expect(presence.hasPendingMutation(for: .openAI) == true)
+    #expect(presence.hasPendingMutation(for: .claude) == false)
+    #expect(presence.state(for: .openAI) == .unknown)
+    #expect(presence.revisions == revisions)
+    presence.endMutation(first)
+    #expect(presence.hasPendingMutation(for: .openAI) == true)
+    presence.endMutation(second)
+    #expect(presence.hasPendingMutation(for: .openAI) == false)
+    #expect(presence.hasPendingMutation(for: .gemini) == true)
+    presence.endMutation(other)
+    #expect(presence.hasPendingMutation(for: .gemini) == false)
+    #expect(presence.revisions == revisions)
+  }
+
   @Test("every cloud provider starts unknown, never absent")
   func startsUnknown() {
     let presence = SavedKeyPresence()

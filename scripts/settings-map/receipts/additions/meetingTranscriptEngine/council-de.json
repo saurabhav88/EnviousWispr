@@ -1,0 +1,38 @@
+{
+  "run_id": "run-1793225780-ba43d0d5",
+  "run_dir": "/Users/m4pro_sv/.local/state/council/runs/run-1793225780-ba43d0d5",
+  "providers": {
+    "openai": {
+      "content": "1. OK. Beide Phrasen f\u00fchren zur Engine f\u00fcr das vollst\u00e4ndige Transkript nach dem Meeting, nicht zum Live Text oder zur Diktierfunktion.\n\n2. {\"words\":[],\"phrases\":[\"Parakeet f\u00fcr das Transkript nach dem Meeting nutzen\"]} Die Phrase macht klar, dass Parakeet das Meetingtranskript erstellt und nicht f\u00fcr die Diktierfunktion gew\u00e4hlt wird.\n\n3. {\"words\":[],\"phrases\":[\"Whisper f\u00fcr das Transkript nach dem Meeting nutzen\"]} Die Phrase grenzt Whisper vom Live Text und von der Diktierfunktion ab.",
+      "latest_response_id": "resp_0b00ed22a46e1449006ae27434e3d48197b7105e71be23dad7",
+      "model": "gpt-6-sol",
+      "provider": "openai",
+      "session": "ew-3973-c3-vocab-de-2026-10-28-gpt",
+      "status": "ok",
+      "usage": {
+        "completion_tokens": 453,
+        "cost_usd": 0.002296,
+        "latency_ms": 5097,
+        "prompt_tokens": 484,
+        "reasoning_tokens": 330,
+        "total_tokens": 937
+      }
+    },
+    "gemini": {
+      "content": "1. OK\nThe phrases accurately target the post-meeting transcript engine setting without dashes and clearly separate it from live transcription and language options.\n\n2. {\"words\": [], \"phrases\": [\"nutze Parakeet f\u00fcr Meetingtranskripte\"]}\nRemoved the hyphen from \"Meeting-Transkripte\" to satisfy the no-dashes rule while keeping the focus on Parakeet for post-meeting transcripts.\n\n3. OK\nThe phrase uses du-form correctly, contains no dashes, and specifically targets the Whisper engine choice for meeting transcripts.",
+      "latest_interaction_id": "v1_ChdOSFRpYXBHVE5iX0gwX2dQbEtETDRRTRIXTkhUaWFwR1ROYl9IMF9nUGxLREw0UU0",
+      "model": "gemini-3.8-flash",
+      "provider": "gemini",
+      "session": "ew-3973-c3-vocab-de-2026-10-28-gemini",
+      "status": "ok",
+      "usage": {
+        "prompt_tokens": 499,
+        "completion_tokens": 115,
+        "reasoning_tokens": 1155,
+        "total_tokens": 1769,
+        "cost_usd": 0.0102735,
+        "latency_ms": 13097
+      }
+    }
+  }
+}

@@ -459,6 +459,8 @@ struct MeetingWiringTests {
     record.state = .ready
     try rig.store.save(record)
     coordinator.launch()
+    // Delete All marks only listed meetings; one still being listed is refused (#3973 C2).
+    await MeetingCoordinatorTests.eventually("listed") { coordinator.meetings.count == 1 }
     try await rig.transcripts.saveAndShowDurably(
       Transcript(
         id: record.transcriptID, text: "standup", backendType: .parakeet, meetingID: record.id))
@@ -479,6 +481,8 @@ struct MeetingWiringTests {
     let folder = rig.store.folder(for: record.id)
     try MeetingAudioFixture.writeSegment(in: folder, index: 1, startMs: 0, frames: 8_000)
     coordinator.launch()
+    // Listed first, so the refusal comes from the unwritable folder (#3973 C2).
+    await MeetingCoordinatorTests.eventually("listed") { coordinator.meetings.count == 1 }
     let row = Transcript(
       id: record.transcriptID, text: "standup", backendType: .parakeet, meetingID: record.id)
     try await rig.transcripts.saveAndShowDurably(row)
@@ -541,7 +545,7 @@ struct MeetingWiringTests {
     #expect(mic.runs.count == 2)
     // Every decode fails twice (the fake cannot transcribe), so each run is a gap marker and no
     // speaker analysis runs; the engine path is what this test reads.
-    let result = try await job.run(tracks: [.microphone: mic, .callSound: call], language: nil, checkpoint: nil) { _ in }
+    let result = try await job.runTestAttempt(tracks: [.microphone: mic, .callSound: call], language: nil, checkpoint: nil) { _ in }
     #expect(result.failedPieces == 3)
     // One unpadded decode per run, retried once: call sound first, then the two microphone runs.
     #expect(rig.dictation.decodes.map(\.samples) == [48_000, 48_000, 32_000, 32_000, 32_000, 32_000])
@@ -627,7 +631,7 @@ struct MeetingWiringTests {
     let saves = SaveProbe(lease: rig.lease)
     let meetingID = UUID()
     let run = Task { @MainActor in
-      try await job.run(
+      try await job.runTestAttempt(
         tracks: [.microphone: try Self.twoRuns("meeting-wiring-handoff")], language: nil,
         checkpoint: .init(meetingID: meetingID, load: { nil }, save: { _ in await saves.record() })
       ) { _ in }
@@ -703,7 +707,7 @@ struct MeetingWiringTests {
       let job = MeetingWiring.makeJob(rig.inputs, lane: MeetingLocalModelLane())
       let decodesBefore = rig.dictation.decodes.count
       let run = Task { @MainActor in
-        try await job.run(
+        try await job.runTestAttempt(
           tracks: tracks, language: nil,
           checkpoint: .init(
             meetingID: meetingID, load: { await store.load() },
@@ -741,7 +745,7 @@ struct MeetingWiringTests {
     rig.dictation.onDecode = { await gate.hold() }
     let job = MeetingWiring.makeJob(rig.inputs, lane: MeetingLocalModelLane())
     let run = Task { @MainActor in
-      try await job.run(
+      try await job.runTestAttempt(
         tracks: [.microphone: try Self.twoRuns("meeting-wiring-withdrawn")], language: nil,
         checkpoint: nil
       ) { _ in }
@@ -780,7 +784,7 @@ struct MeetingWiringTests {
     fake.meetingOwnParakeetResident = { job.isOwnModelResident }
     let coordinator = fake.makeStartedCoordinator()
     let run = Task { @MainActor in
-      try await job.run(
+      try await job.runTestAttempt(
         tracks: [.microphone: try Self.twoRuns("meeting-wiring-own-switch")], language: nil,
         checkpoint: nil
       ) { _ in }
@@ -826,7 +830,7 @@ struct MeetingWiringTests {
     let folder = try MeetingAudioFixture.folder("meeting-wiring-cancel")
     let url = try MeetingAudioFixture.writeSegment(in: folder, index: 1, startMs: 0, frames: 32_000)
     let run = Task { @MainActor in
-      try await job.run(tracks: [.microphone: MeetingTrackAudio(files: [(url: url, startMs: 0)])], language: nil, checkpoint: nil) { _ in }
+      try await job.runTestAttempt(tracks: [.microphone: MeetingTrackAudio(files: [(url: url, startMs: 0)])], language: nil, checkpoint: nil) { _ in }
     }
     #expect(await gate.waitForEntered(1))
     job.cancel()
@@ -852,7 +856,7 @@ struct MeetingWiringTests {
       (url: try MeetingAudioFixture.writeSegment(in: folder, index: 2, startMs: 5_000, frames: 16_000), startMs: 5_000),
     ])
     let run = Task { @MainActor in
-      try await job.run(tracks: [.microphone: audio], language: nil, checkpoint: nil) { _ in }
+      try await job.runTestAttempt(tracks: [.microphone: audio], language: nil, checkpoint: nil) { _ in }
     }
     // First run, first attempt: pressure rises while it decodes.
     #expect(await gate.waitForEntered(1))
@@ -891,7 +895,7 @@ struct MeetingWiringTests {
       (url: try MeetingAudioFixture.writeSegment(in: folder, index: 1, startMs: 0, frames: 48_000), startMs: 0),
       (url: try MeetingAudioFixture.writeSegment(in: folder, index: 2, startMs: 10_000, frames: 32_000), startMs: 10_000),
     ])
-    let result = try await job.run(tracks: [.microphone: audio], language: nil, checkpoint: nil) { _ in }
+    let result = try await job.runTestAttempt(tracks: [.microphone: audio], language: nil, checkpoint: nil) { _ in }
     // One decode per run, the whole run each time.
     #expect(rig.dictation.decodes.map(\.samples) == [48_000, 32_000])
     #expect(rig.dictation.decodes.allSatisfy { $0.holder == .meeting })
@@ -920,7 +924,7 @@ struct MeetingWiringTests {
     let folder = try MeetingAudioFixture.folder("meeting-wiring-own-load")
     let url = try MeetingAudioFixture.writeSegment(in: folder, index: 1, startMs: 0, frames: 16_000)
     let run = Task { @MainActor in
-      try await job.run(tracks: [.microphone: MeetingTrackAudio(files: [(url: url, startMs: 0)])], language: nil, checkpoint: nil) { _ in }
+      try await job.runTestAttempt(tracks: [.microphone: MeetingTrackAudio(files: [(url: url, startMs: 0)])], language: nil, checkpoint: nil) { _ in }
     }
     // The pass's own Parakeet is loading (parked in prepare).
     let loading = rig.ownBackends.backend
@@ -949,10 +953,42 @@ struct MeetingWiringTests {
     let job = MeetingWiring.makeJob(rig.inputs, lane: MeetingLocalModelLane())
     let folder = try MeetingAudioFixture.folder("meeting-wiring-own")
     let url = try MeetingAudioFixture.writeSegment(in: folder, index: 1, startMs: 0, frames: 32_000)
-    _ = try? await job.run(tracks: [.microphone: MeetingTrackAudio(files: [(url: url, startMs: 0)])], language: nil, checkpoint: nil) { _ in }
+    _ = try? await job.runTestAttempt(tracks: [.microphone: MeetingTrackAudio(files: [(url: url, startMs: 0)])], language: nil, checkpoint: nil) { _ in }
     #expect(rig.lease.admissionEpoch == 0)
     #expect(rig.dictation.readyCalls == 0)
     #expect(rig.dictation.decodes.isEmpty)
+  }
+
+  @Test("#3973 C3: a shared Whisper operation re-arms unload timers only when no one took the engine meanwhile")
+  func sharedWhisperRouteLeavesTimersToTheHolder() async throws {
+    let lease = EngineLease()
+    var rearms = 0
+    let route = MeetingWhisperRoute(
+      dependencies: .init(
+        isAdmitted: { true }, isDictationIdle: { true }, isSwitchSettled: { true },
+        activeBackend: { .whisper }, wakes: MeetingWakeSignal(),
+        admission: .live(lease: lease, as: .meeting), ensureDictationReady: { .ready },
+        modelPath: { "/models/turbo.gguf" }, modelIdentity: { "turbo" },
+        transcribeShared: { samples, _ in DictationSide.heard(samples) },
+        disarmEngineTimers: {}, rearmEngineTimers: { rearms += 1 },
+        ownLoad: { _ in }, ownTranscribe: { samples, _ in DictationSide.heard(samples) },
+        ownUnload: {}, ownResidencyEnded: {}, log: { _ in }))
+
+    // Control: nobody took the engine, so the operation's end re-arms the timers.
+    try await route.acquire()
+    #expect(route.route == .shared)
+    await route.endModelUse()
+    #expect(rearms == 1)
+
+    // Transcribe a File takes the engine while the meeting decodes on it.
+    try await route.acquire()
+    guard case .granted(let token) = lease.admit(.fileImport) else {
+      Issue.record("the import could not take the engine")
+      return
+    }
+    await route.endModelUse()
+    #expect(rearms == 1, "the import holds the engine; it re-arms the timers itself")
+    _ = lease.release(token)
   }
 
   @Test("the real job fails cleanly when no model is installed, and holds no model claim")
@@ -964,7 +1000,7 @@ struct MeetingWiringTests {
     let url = try MeetingAudioFixture.writeSegment(in: folder, index: 1, startMs: 0, frames: 32_000)
     let audio = MeetingTrackAudio(files: [(url: url, startMs: 0)])
     await #expect(throws: (any Error).self) {
-      _ = try await job.run(tracks: [.microphone: audio], language: nil, checkpoint: nil) { _ in }
+      _ = try await job.runTestAttempt(tracks: [.microphone: audio], language: nil, checkpoint: nil) { _ in }
     }
     #expect(job.isEngineResident == false)
     #expect(job.isUnitInFlight == false)
@@ -981,7 +1017,7 @@ struct MeetingWiringTests {
     let folder = try MeetingAudioFixture.folder("meeting-wiring-claim")
     let url = try MeetingAudioFixture.writeSegment(in: folder, index: 1, startMs: 0, frames: 32_000)
     let audio = MeetingTrackAudio(files: [(url: url, startMs: 0)])
-    _ = try? await job.run(tracks: [.microphone: audio], language: nil, checkpoint: nil) { _ in }
+    _ = try? await job.runTestAttempt(tracks: [.microphone: audio], language: nil, checkpoint: nil) { _ in }
     #expect(await rig.gate.isInUse(Self.key(missing)) == false)
     #expect(job.isEngineResident == false)
     #expect(rig.changeCounter.count > 0)
@@ -1010,6 +1046,56 @@ struct MeetingWiringTests {
     #expect(answer == .notInstalled)
     #expect(runningReadies == 0)
   }
+
+  // MARK: - #3973 C3: the engine a pass runs on
+
+  static func whisperEngine(path: String?, deliveryOn: Bool = true) -> MeetingWiring.WhisperEngine {
+    MeetingWiring.WhisperEngine(
+      modelPath: { path }, modelIdentity: { "whisper-large-v3-turbo-gguf:rev" },
+      isDeliveryEnabled: { deliveryOn },
+      transcribeShared: { _, _ in throw MeetingEngineYield() },
+      ownLoad: { _ in }, ownTranscribe: { _, _ in throw MeetingEngineYield() }, ownUnload: {},
+      isReadyForMenu: { path != nil })
+  }
+
+  @Test("#3973 C3: Whisper runs when its model is ready; otherwise the whole attempt is Parakeet, with the reason")
+  func engineResolution() async {
+    let whisper = MeetingAttemptConfiguration(requestedEngine: .whisper, language: .locked("de"))
+    let ready = Self.whisperEngine(path: "/models/turbo.gguf")
+    #expect(
+      await MeetingWiring.resolve(whisper, whisper: ready)
+        == .init(engine: .whisper, effectiveLanguage: "de"))
+    #expect(
+      await MeetingWiring.resolve(whisper, whisper: Self.whisperEngine(path: nil))
+        == .init(engine: .parakeet, fallbackReason: .notDownloaded, effectiveLanguage: "de"))
+    #expect(
+      await MeetingWiring.resolve(
+        whisper, whisper: Self.whisperEngine(path: "/models/turbo.gguf", deliveryOn: false))
+        == .init(engine: .parakeet, fallbackReason: .deliveryDisabled, effectiveLanguage: "de"))
+    #expect(
+      await MeetingWiring.resolve(whisper, whisper: nil)
+        == .init(engine: .parakeet, fallbackReason: .modelUnavailable, effectiveLanguage: "de"))
+    let parakeet = MeetingAttemptConfiguration(requestedEngine: .parakeet, language: .auto)
+    #expect(await MeetingWiring.resolve(parakeet, whisper: nil) == .init(engine: .parakeet))
+  }
+
+  @Test("#3973 C3: a language only Whisper decodes is Auto on Parakeet, at Start and after a fallback")
+  func languageFollowsTheEngine() async {
+    // Hawaiian: in Whisper's catalogue, not Parakeet's.
+    #expect(MeetingWiring.engineSupports(.whisper, "haw"))
+    #expect(!MeetingWiring.engineSupports(.parakeet, "haw"))
+    let onParakeet = MeetingAttemptConfiguration(
+      requestedEngine: .parakeet, language: .locked("haw"), supports: MeetingWiring.engineSupports)
+    #expect(onParakeet.languageIntent == "haw")
+    #expect(onParakeet.requestedEffectiveLanguage == nil, "asked as Auto")
+    let onWhisper = MeetingAttemptConfiguration(
+      requestedEngine: .whisper, language: .locked("haw"), supports: MeetingWiring.engineSupports)
+    #expect(onWhisper.requestedEffectiveLanguage == "haw")
+    #expect(
+      await MeetingWiring.resolve(onWhisper, whisper: Self.whisperEngine(path: nil))
+        == .init(engine: .parakeet, fallbackReason: .notDownloaded, effectiveLanguage: nil))
+  }
+
 }
 
 /// #3973 C1: who held the engine at each checkpoint write.

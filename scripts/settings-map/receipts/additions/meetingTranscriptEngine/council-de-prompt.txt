@@ -1,0 +1,10 @@
+You are reviewing German Settings-search vocabulary for a macOS dictation app (EnviousWispr). Each block lists short "words" and everyday "phrases" a German user might type into the app's Settings search to find one place. Use du-form, no dashes, lowercase except nouns. The interface title is supplied separately and is not part of the block. The three places are siblings: each block must fit its own place better than the other two, and better than the existing rows „Live-Transkript“ (the engine for live text while a meeting records), „Transkriptsprache“ (the language of the meeting transcript) and dictation's own engine choice.
+
+1. Place: the row „Transkript-Engine“ on the Modelle tab of the EnviousMeet page: a menu with the speech engines Parakeet and Whisper Large v3 Turbo that write the full meeting transcript after a meeting ends. Whisper can be chosen once its model (886 MB, shared with dictation) is downloaded; the row has Download, Fortsetzen and Abbrechen for it, never during a meeting. It warns when meetings and dictation use different engines. A change applies to new meetings. It does not change dictation's engine, the live text during a meeting, or the transcript language.
+   Block: {"words": [], "phrases": ["Modell für das vollständige Meetingtranskript auswählen", "Engine für die Transkription nach dem Meeting ändern"]}
+2. Place: the choice „Parakeet“ in the Transkript-Engine menu: meeting transcripts written by Parakeet after each meeting. Not dictation's engine choice.
+   Block: {"words": [], "phrases": ["nutze Parakeet für Meeting-Transkripte"]}
+3. Place: the choice „Whisper Large v3 Turbo“ in the Transkript-Engine menu: meeting transcripts written by Whisper after each meeting, in many more languages; needs its 886 MB model. Not dictation's engine choice.
+   Block: {"words": [], "phrases": ["Whisper für die Transkription deiner Meetings verwenden"]}
+
+For each block answer "N. OK" or "N. <corrected JSON block>" plus a one-sentence reason. Keep 0 to 6 words and 1 to 3 phrases.

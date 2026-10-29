@@ -19,6 +19,37 @@ struct FileImportDiscoveryRepairTests {
     return SettingsManager(defaults: TestDefaults.suite(suite)!)
   }
 
+  @Test("provider selection revisions record A to B to A at the setter, before callbacks")
+  func selectionRevisionsTrackEveryMutation() {
+    let settings = Self.freshSettings()
+    settings.llmProvider = .openAI
+    settings.fileImportLLMProvider = nil
+    let dictation = settings.dictationProviderSelectionRevision
+    let importing = settings.importProviderSelectionRevision
+    var observed: [UInt64] = []
+    settings.onChange = { key in
+      if key == .llmProvider { observed.append(settings.dictationProviderSelectionRevision) }
+    }
+    settings.llmProvider = .none
+    settings.llmProvider = .openAI
+    #expect(settings.dictationProviderSelectionRevision == dictation + 2)
+    #expect(settings.importProviderSelectionRevision == importing + 2)
+    #expect(observed == [dictation + 1, dictation + 2])
+    settings.onChange = nil
+    settings.fileImportLLMProvider = .openAI
+    let ownImport = settings.importProviderSelectionRevision
+    let ownDictation = settings.dictationProviderSelectionRevision
+    settings.llmProvider = .gemini
+    #expect(settings.dictationProviderSelectionRevision == ownDictation + 1)
+    #expect(settings.importProviderSelectionRevision == ownImport)
+    settings.fileImportLLMProvider = nil
+    settings.fileImportLLMProvider = .openAI
+    #expect(settings.importProviderSelectionRevision == ownImport + 2)
+    let same = settings.importProviderSelectionRevision
+    settings.fileImportLLMProvider = .openAI
+    #expect(settings.importProviderSelectionRevision == same)
+  }
+
   private static func row(
     _ id: String, provider: LLMProvider, available: Bool = true, remote: Bool = false
   ) -> LLMModelInfo {

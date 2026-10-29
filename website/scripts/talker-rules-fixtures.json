@@ -1,0 +1,885 @@
+{
+  "_comment": "#4013 talker rules: literal documents both validators must agree on. Read by TalkerRulesTests (Swift) and check-talker-rules.mjs (website).",
+  "fixtures": [
+    {
+      "name": "empty rules, revision 0",
+      "accept": true,
+      "document": {
+        "schema": 1,
+        "revision": 0,
+        "lagMs": {},
+        "selectors": []
+      }
+    },
+    {
+      "name": "largest revision",
+      "accept": true,
+      "document": {
+        "schema": 1,
+        "revision": 1000000000,
+        "lagMs": {},
+        "selectors": []
+      }
+    },
+    {
+      "name": "lag at both bounds",
+      "accept": true,
+      "document": {
+        "schema": 1,
+        "revision": 3,
+        "lagMs": {
+          "meet": 5000,
+          "zoom_app": -5000
+        },
+        "selectors": []
+      }
+    },
+    {
+      "name": "every field and combination in use",
+      "accept": true,
+      "document": {
+        "schema": 1,
+        "revision": 3,
+        "lagMs": {
+          "zoom_app": 400,
+          "meet": -120
+        },
+        "selectors": [
+          {
+            "surface": "meet",
+            "tileClass": "dkjMxf",
+            "nameSource": "firstStaticText",
+            "talkingClasses": [
+              "kssMZb"
+            ],
+            "verification": "verified",
+            "participantListClass": "people-list"
+          },
+          {
+            "surface": "teams_web",
+            "tileRole": "AXMenuItem",
+            "nameSource": "ownLabel",
+            "nameSuffix": " Unverified",
+            "talkingClasses": [],
+            "verification": "unverified"
+          },
+          {
+            "surface": "slack_web",
+            "tileClass": "p-huddle_peer_tile",
+            "nameSource": "firstStaticText",
+            "talkingClasses": [
+              "p-huddle_peer_tile__overlay--active_speaker"
+            ],
+            "verification": "unverified"
+          },
+          {
+            "surface": "webex",
+            "nameSource": "firstStaticText",
+            "participantListClass": "roster",
+            "talkingClasses": [],
+            "verification": "unverified"
+          },
+          {
+            "surface": "jitsi",
+            "nameSource": "firstStaticText",
+            "talkingClasses": [],
+            "verification": "unverified"
+          }
+        ]
+      }
+    },
+    {
+      "name": "schema 2 is a different document",
+      "accept": false,
+      "document": {
+        "schema": 2,
+        "revision": 3,
+        "lagMs": {},
+        "selectors": []
+      }
+    },
+    {
+      "name": "schema as text",
+      "accept": false,
+      "document": {
+        "schema": "1",
+        "revision": 3,
+        "lagMs": {},
+        "selectors": []
+      }
+    },
+    {
+      "name": "schema as a boolean",
+      "accept": false,
+      "document": {
+        "schema": true,
+        "revision": 3,
+        "lagMs": {},
+        "selectors": []
+      }
+    },
+    {
+      "name": "negative revision",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": -1,
+        "lagMs": {},
+        "selectors": []
+      }
+    },
+    {
+      "name": "fractional revision",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 1.5,
+        "lagMs": {},
+        "selectors": []
+      }
+    },
+    {
+      "name": "missing lagMs",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 3,
+        "selectors": []
+      }
+    },
+    {
+      "name": "missing selectors",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 3,
+        "lagMs": {}
+      }
+    },
+    {
+      "name": "unknown top-level field",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 3,
+        "lagMs": {},
+        "selectors": [],
+        "extra": 1
+      }
+    },
+    {
+      "name": "document is an array",
+      "accept": false,
+      "document": [
+        {
+          "schema": 1,
+          "revision": 3,
+          "lagMs": {},
+          "selectors": []
+        }
+      ]
+    },
+    {
+      "name": "selectors is an object",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 3,
+        "lagMs": {},
+        "selectors": {}
+      }
+    },
+    {
+      "name": "lag for an unknown surface",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 3,
+        "lagMs": {
+          "skype": 100
+        },
+        "selectors": []
+      }
+    },
+    {
+      "name": "lag beyond five seconds",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 3,
+        "lagMs": {
+          "meet": 5001
+        },
+        "selectors": []
+      }
+    },
+    {
+      "name": "fractional lag",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 3,
+        "lagMs": {
+          "meet": 10.5
+        },
+        "selectors": []
+      }
+    },
+    {
+      "name": "lag as a boolean",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 3,
+        "lagMs": {
+          "meet": true
+        },
+        "selectors": []
+      }
+    },
+    {
+      "name": "selector for a native surface",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 3,
+        "lagMs": {},
+        "selectors": [
+          {
+            "surface": "zoom_app",
+            "tileClass": "dkjMxf",
+            "nameSource": "firstStaticText",
+            "talkingClasses": [
+              "kssMZb"
+            ],
+            "verification": "verified"
+          }
+        ]
+      }
+    },
+    {
+      "name": "unknown surface",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 3,
+        "lagMs": {},
+        "selectors": [
+          {
+            "surface": "skype",
+            "tileClass": "dkjMxf",
+            "nameSource": "firstStaticText",
+            "talkingClasses": [
+              "kssMZb"
+            ],
+            "verification": "verified"
+          }
+        ]
+      }
+    },
+    {
+      "name": "two entries for one surface",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 3,
+        "lagMs": {},
+        "selectors": [
+          {
+            "surface": "meet",
+            "tileClass": "dkjMxf",
+            "nameSource": "firstStaticText",
+            "talkingClasses": [
+              "kssMZb"
+            ],
+            "verification": "verified"
+          },
+          {
+            "surface": "meet",
+            "tileClass": "dkjMxf",
+            "nameSource": "firstStaticText",
+            "talkingClasses": [
+              "kssMZb"
+            ],
+            "verification": "unverified"
+          }
+        ]
+      }
+    },
+    {
+      "name": "unknown selector field",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 3,
+        "lagMs": {},
+        "selectors": [
+          {
+            "surface": "meet",
+            "tileClass": "dkjMxf",
+            "nameSource": "firstStaticText",
+            "talkingClasses": [
+              "kssMZb"
+            ],
+            "verification": "verified",
+            "colour": "red"
+          }
+        ]
+      }
+    },
+    {
+      "name": "missing surface",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 3,
+        "lagMs": {},
+        "selectors": [
+          {
+            "tileClass": "dkjMxf",
+            "nameSource": "firstStaticText",
+            "talkingClasses": [
+              "kssMZb"
+            ],
+            "verification": "verified"
+          }
+        ]
+      }
+    },
+    {
+      "name": "missing talkingClasses",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 3,
+        "lagMs": {},
+        "selectors": [
+          {
+            "surface": "meet",
+            "tileClass": "dkjMxf",
+            "nameSource": "firstStaticText",
+            "verification": "verified"
+          }
+        ]
+      }
+    },
+    {
+      "name": "missing verification",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 3,
+        "lagMs": {},
+        "selectors": [
+          {
+            "surface": "meet",
+            "tileClass": "dkjMxf",
+            "nameSource": "firstStaticText",
+            "talkingClasses": [
+              "kssMZb"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "tile role without the AX prefix",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 3,
+        "lagMs": {},
+        "selectors": [
+          {
+            "surface": "meet",
+            "tileClass": "dkjMxf",
+            "nameSource": "firstStaticText",
+            "talkingClasses": [
+              "kssMZb"
+            ],
+            "verification": "verified",
+            "tileRole": "Group"
+          }
+        ]
+      }
+    },
+    {
+      "name": "class token with a space",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 3,
+        "lagMs": {},
+        "selectors": [
+          {
+            "surface": "meet",
+            "tileClass": "a b",
+            "nameSource": "firstStaticText",
+            "talkingClasses": [
+              "kssMZb"
+            ],
+            "verification": "verified"
+          }
+        ]
+      }
+    },
+    {
+      "name": "empty class token",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 3,
+        "lagMs": {},
+        "selectors": [
+          {
+            "surface": "meet",
+            "tileClass": "",
+            "nameSource": "firstStaticText",
+            "talkingClasses": [
+              "kssMZb"
+            ],
+            "verification": "verified"
+          }
+        ]
+      }
+    },
+    {
+      "name": "class token with selector syntax",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 3,
+        "lagMs": {},
+        "selectors": [
+          {
+            "surface": "meet",
+            "tileClass": ".dkjMxf",
+            "nameSource": "firstStaticText",
+            "talkingClasses": [
+              "kssMZb"
+            ],
+            "verification": "verified"
+          }
+        ]
+      }
+    },
+    {
+      "name": "null instead of a left-out field",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 3,
+        "lagMs": {},
+        "selectors": [
+          {
+            "surface": "meet",
+            "tileClass": "dkjMxf",
+            "nameSource": "firstStaticText",
+            "talkingClasses": [
+              "kssMZb"
+            ],
+            "verification": "verified",
+            "participantListClass": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "talking classes without a tile selector",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 3,
+        "lagMs": {},
+        "selectors": [
+          {
+            "surface": "meet",
+            "nameSource": "firstStaticText",
+            "talkingClasses": [
+              "kssMZb"
+            ],
+            "verification": "verified"
+          }
+        ]
+      }
+    },
+    {
+      "name": "talking class equal to the tile class",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 3,
+        "lagMs": {},
+        "selectors": [
+          {
+            "surface": "meet",
+            "tileClass": "dkjMxf",
+            "nameSource": "firstStaticText",
+            "talkingClasses": [
+              "dkjMxf"
+            ],
+            "verification": "verified"
+          }
+        ]
+      }
+    },
+    {
+      "name": "verified without talking classes",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 3,
+        "lagMs": {},
+        "selectors": [
+          {
+            "surface": "meet",
+            "tileClass": "dkjMxf",
+            "nameSource": "firstStaticText",
+            "talkingClasses": [],
+            "verification": "verified"
+          }
+        ]
+      }
+    },
+    {
+      "name": "roster-only surface with talking classes",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 3,
+        "lagMs": {},
+        "selectors": [
+          {
+            "surface": "webex",
+            "tileClass": "dkjMxf",
+            "nameSource": "firstStaticText",
+            "talkingClasses": [
+              "kssMZb"
+            ],
+            "verification": "unverified"
+          }
+        ]
+      }
+    },
+    {
+      "name": "name suffix with firstStaticText",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 3,
+        "lagMs": {},
+        "selectors": [
+          {
+            "surface": "meet",
+            "tileClass": "dkjMxf",
+            "nameSource": "firstStaticText",
+            "talkingClasses": [
+              "kssMZb"
+            ],
+            "verification": "verified",
+            "nameSuffix": " X"
+          }
+        ]
+      }
+    },
+    {
+      "name": "empty name suffix",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 3,
+        "lagMs": {},
+        "selectors": [
+          {
+            "surface": "meet",
+            "tileClass": "dkjMxf",
+            "nameSource": "ownLabel",
+            "talkingClasses": [
+              "kssMZb"
+            ],
+            "verification": "verified",
+            "nameSuffix": ""
+          }
+        ]
+      }
+    },
+    {
+      "name": "ownLabel without a tile selector",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 3,
+        "lagMs": {},
+        "selectors": [
+          {
+            "surface": "jitsi",
+            "nameSource": "ownLabel",
+            "talkingClasses": [],
+            "verification": "unverified"
+          }
+        ]
+      }
+    },
+    {
+      "name": "duplicate talking class",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 3,
+        "lagMs": {},
+        "selectors": [
+          {
+            "surface": "meet",
+            "tileClass": "dkjMxf",
+            "nameSource": "firstStaticText",
+            "talkingClasses": [
+              "a",
+              "a"
+            ],
+            "verification": "verified"
+          }
+        ]
+      }
+    },
+    {
+      "name": "nine talking classes",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 3,
+        "lagMs": {},
+        "selectors": [
+          {
+            "surface": "meet",
+            "tileClass": "dkjMxf",
+            "nameSource": "firstStaticText",
+            "talkingClasses": [
+              "t0",
+              "t1",
+              "t2",
+              "t3",
+              "t4",
+              "t5",
+              "t6",
+              "t7",
+              "t8"
+            ],
+            "verification": "verified"
+          }
+        ]
+      }
+    },
+    {
+      "name": "unknown verification word",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 3,
+        "lagMs": {},
+        "selectors": [
+          {
+            "surface": "meet",
+            "tileClass": "dkjMxf",
+            "nameSource": "firstStaticText",
+            "talkingClasses": [
+              "kssMZb"
+            ],
+            "verification": "yes"
+          }
+        ]
+      }
+    },
+    {
+      "name": "unknown name source",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 3,
+        "lagMs": {},
+        "selectors": [
+          {
+            "surface": "meet",
+            "tileClass": "dkjMxf",
+            "nameSource": "title",
+            "talkingClasses": [
+              "kssMZb"
+            ],
+            "verification": "verified"
+          }
+        ]
+      }
+    },
+    {
+      "name": "revision one past the largest",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 1000000001,
+        "lagMs": {},
+        "selectors": []
+      }
+    },
+    {
+      "name": "revision too large to be exact",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 1e+100,
+        "lagMs": {},
+        "selectors": []
+      }
+    },
+    {
+      "name": "lag at the smallest 64-bit integer",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 3,
+        "lagMs": {
+          "meet": -9223372036854775808
+        },
+        "selectors": []
+      }
+    },
+    {
+      "name": "lag one past the negative bound",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 3,
+        "lagMs": {
+          "meet": -5001
+        },
+        "selectors": []
+      }
+    },
+    {
+      "name": "meet tiles declared as participants (C1 capture)",
+      "accept": true,
+      "document": {
+        "schema": 1,
+        "revision": 2,
+        "lagMs": {},
+        "selectors": [
+          {
+            "surface": "meet",
+            "tileRole": "AXGroup",
+            "tileClass": "dkjMxf",
+            "nameSource": "firstStaticText",
+            "talkingClasses": [
+              "kssMZb"
+            ],
+            "verification": "verified",
+            "tilesAreParticipants": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "tilesAreParticipants false is allowed",
+      "accept": true,
+      "document": {
+        "schema": 1,
+        "revision": 2,
+        "lagMs": {},
+        "selectors": [
+          {
+            "surface": "meet",
+            "tileRole": "AXGroup",
+            "tileClass": "dkjMxf",
+            "nameSource": "firstStaticText",
+            "talkingClasses": [
+              "kssMZb"
+            ],
+            "verification": "verified",
+            "tilesAreParticipants": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "tilesAreParticipants as a string is refused",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 2,
+        "lagMs": {},
+        "selectors": [
+          {
+            "surface": "meet",
+            "tileRole": "AXGroup",
+            "tileClass": "dkjMxf",
+            "nameSource": "firstStaticText",
+            "talkingClasses": [
+              "kssMZb"
+            ],
+            "verification": "verified",
+            "tilesAreParticipants": "true"
+          }
+        ]
+      }
+    },
+    {
+      "name": "tilesAreParticipants as a number is refused",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 2,
+        "lagMs": {},
+        "selectors": [
+          {
+            "surface": "meet",
+            "tileRole": "AXGroup",
+            "tileClass": "dkjMxf",
+            "nameSource": "firstStaticText",
+            "talkingClasses": [
+              "kssMZb"
+            ],
+            "verification": "verified",
+            "tilesAreParticipants": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "tilesAreParticipants as null is refused",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 2,
+        "lagMs": {},
+        "selectors": [
+          {
+            "surface": "meet",
+            "tileRole": "AXGroup",
+            "tileClass": "dkjMxf",
+            "nameSource": "firstStaticText",
+            "talkingClasses": [
+              "kssMZb"
+            ],
+            "verification": "verified",
+            "tilesAreParticipants": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "tilesAreParticipants without a tile selector is refused",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 2,
+        "lagMs": {},
+        "selectors": [
+          {
+            "surface": "meet",
+            "nameSource": "firstStaticText",
+            "talkingClasses": [],
+            "verification": "unverified",
+            "tilesAreParticipants": true
+          }
+        ]
+      }
+    }
+  ]
+}

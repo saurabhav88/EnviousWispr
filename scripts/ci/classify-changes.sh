@@ -84,10 +84,13 @@ classify() {
   #   - website/public/ollama-library.json (#2778): OllamaLibraryFeedTests parses the
   #     committed file with the production parser, so a feed-only PR must run the Swift
   #     lane; a green build-check with Swift skipped is not parser evidence.
+  #   - website/public/meet/talker-rules.json and website/scripts/talker-rules-fixtures.json
+  #     (#4013): TalkerRulesTests decodes the hosted rules and the shared fixtures with the
+  #     app's decoder, so a rules-only PR must run the Swift lane too.
   # The match is the exact path, not the help directory: every other help
   # article stays a website-only change, and so does a later clip file such as
   # a German one.
-  if grep -qE '^(\.github/(workflows/(pr-check|cache-warm)\.yml$|actions/)|website/src/content/help/(spoken-punctuation-and-emoji|push-to-talk-mode)\.md$|website/public/help-media/push-to-talk-modes(-poster\.jpg|\.mp4)$|website/public/ollama-library\.json$)' <<<"$changed"; then
+  if grep -qE '^(\.github/(workflows/(pr-check|cache-warm)\.yml$|actions/)|website/src/content/help/(spoken-punctuation-and-emoji|push-to-talk-mode)\.md$|website/public/help-media/push-to-talk-modes(-poster\.jpg|\.mp4)$|website/public/ollama-library\.json$|website/public/meet/talker-rules\.json$|website/scripts/talker-rules-fixtures\.json$)' <<<"$changed"; then
     printf 'needs_build=true\n' >>"$GITHUB_OUTPUT"
     printf 'needs_website=%s\n' "$website" >>"$GITHUB_OUTPUT"
     echo "==> CI build workflow, composite action or a help file a Swift parity test reads (spoken-punctuation article, push-to-talk article, its clip) changed — full Xcode build required (needs_website=$website)"
@@ -355,6 +358,11 @@ self_test() {
   _expect_classify $'docs/x.md\nwebsite/public/ollama-library.json' true "ollama feed plus docs -> build and website" true
   _expect_classify "website/public/ollama-library.json.bak" false "near-miss feed name -> website only" true
   _expect_classify "website/public/ollama-library-notes.json" false "another file beside the feed -> website only" true
+  # #4013: the hosted talker rules and the shared fixtures are read by TalkerRulesTests.
+  _expect_classify "website/public/meet/talker-rules.json" true "talker rules alone -> build and website" true
+  _expect_classify "website/scripts/talker-rules-fixtures.json" true "talker rule fixtures -> build and website" true
+  _expect_classify "website/public/meet/talker-rules.json.bak" false "near-miss rules name -> website only" true
+  _expect_classify "website/scripts/check-talker-rules.mjs" false "website rules check -> website only" true
   # The feed tools run in the website-check job, so a change to them must run it too.
   _expect_classify "scripts/ollama-library/library.py" true "feed helpers run website validation" true
   _expect_classify "scripts/ollama-library/validate-feed.py" true "feed validator validates itself" true

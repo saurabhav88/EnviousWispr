@@ -1,0 +1,375 @@
+{
+ "id": "meetingTranscriptEngine",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "محرك التفريغ النصي",
+   "words": [
+    "تحويل الكلام إلى نص"
+   ],
+   "phrases": [
+    "اختيار نموذج لكتابة نص الاجتماع كاملًا",
+    "تغيير محرك التفريغ بعد الاجتماع"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "система за транскрипция",
+   "words": [
+    "транскрибиране"
+   ],
+   "phrases": [
+    "избор на модел за пълния текст на срещата",
+    "смяна на системата за транскрипция след срещата"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "modul přepisu",
+   "words": [
+    "transkripce"
+   ],
+   "phrases": [
+    "vybrat model pro úplný přepis schůzky",
+    "změnit přepisovací modul pro schůzky"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "transskriptionsmotor",
+   "words": [
+    "tale til tekst"
+   ],
+   "phrases": [
+    "vælg model til hele mødets udskrift",
+    "skift motor til transskription efter mødet"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [
+    "Verschriftlichung",
+    "Transkription"
+   ],
+   "phrases": [
+    "Modell für das vollständige Meetingtranskript auswählen",
+    "Engine für die Transkription nach dem Meeting ändern"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "μηχανή απομαγνητοφώνησης",
+   "words": [
+    "μετατροπή ομιλίας σε κείμενο"
+   ],
+   "phrases": [
+    "επιλογή μοντέλου για όλο το κείμενο της συνάντησης",
+    "αλλαγή μηχανής απομαγνητοφώνησης μετά τη συνάντηση"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [
+    "transcription",
+    "speech to text"
+   ],
+   "phrases": [
+    "choose model for the full meeting transcript",
+    "change transcription engine for after the meeting"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "motor de transcripción",
+   "words": [
+    "voz a texto"
+   ],
+   "phrases": [
+    "elegir modelo para transcribir toda la reunión",
+    "cambiar el motor que transcribe después de la reunión"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "transkriptsioonimootor",
+   "words": [
+    "kõne tekstiks",
+    "transkribeerimine"
+   ],
+   "phrases": [
+    "vali mudel koosoleku täielikuks transkriptsiooniks",
+    "muuda koosolekujärgse transkriptsiooni mootorit"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "litterointimoottori",
+   "words": [
+    "puhe tekstiksi",
+    "transkriptio"
+   ],
+   "phrases": [
+    "valitse malli koko kokouksen litterointiin",
+    "vaihda kokouksen jälkeisen litteroinnin moottoria"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "moteur de transcription",
+   "words": [
+    "retranscription"
+   ],
+   "phrases": [
+    "choisir le modèle pour transcrire toute la réunion",
+    "changer le moteur de transcription après la réunion"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "ट्रांसक्रिप्शन इंजन",
+   "words": [
+    "लिप्यंतरण",
+    "बोली से टेक्स्ट"
+   ],
+   "phrases": [
+    "पूरी मीटिंग को टेक्स्ट में लिखने वाला मॉडल चुनें",
+    "मीटिंग के बाद ट्रांसक्रिप्ट बनाने वाला इंजन बदलें"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "sustav za transkripciju",
+   "words": [
+    "prijepis",
+    "govor u tekst"
+   ],
+   "phrases": [
+    "odaberi model za potpuni prijepis sastanka",
+    "promijeni sustav za transkripciju nakon sastanka"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "átírási motor",
+   "words": [
+    "beszédből szöveg",
+    "transzkripció"
+   ],
+   "phrases": [
+    "modell kiválasztása a megbeszélés teljes átiratához",
+    "megbeszélés utáni átírás motorjának módosítása"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "motore di trascrizione",
+   "words": [
+    "parlato in testo"
+   ],
+   "phrases": [
+    "scegliere il modello per trascrivere tutta la riunione",
+    "cambiare il motore di trascrizione dopo la riunione"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "文字起こしエンジン",
+   "words": [
+    "書き起こし",
+    "音声認識"
+   ],
+   "phrases": [
+    "会議の全文を書き起こすモデルを選ぶ",
+    "会議後の文字起こしエンジンを変更"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "전사 엔진",
+   "words": [
+    "음성 텍스트 변환",
+    "받아쓰기"
+   ],
+   "phrases": [
+    "회의 전체를 텍스트로 옮길 모델 선택",
+    "회의 후 전사에 사용할 엔진 변경"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "transkribavimo variklis",
+   "words": [
+    "kalbos vertimas tekstu"
+   ],
+   "phrases": [
+    "pasirinkti modelį visam susitikimui transkribuoti",
+    "pakeisti transkribavimo po susitikimo variklį"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "transkripcijas dzinis",
+   "words": [
+    "runa tekstā",
+    "transkribēšana"
+   ],
+   "phrases": [
+    "izvēlēties modeli pilnai sapulces transkripcijai",
+    "mainīt dzini transkribēšanai pēc sapulces"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "magna tat-traskrizzjoni",
+   "words": [
+    "diskors għal test"
+   ],
+   "phrases": [
+    "agħżel mudell biex jittraskrivi l-laqgħa kollha",
+    "ibdel il-magna tat-traskrizzjoni wara l-laqgħa"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "transcriptie-engine",
+   "words": [
+    "spraak naar tekst",
+    "uitschrijven"
+   ],
+   "phrases": [
+    "model kiezen voor het volledige vergadertranscript",
+    "engine voor transcriptie na de vergadering wijzigen"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "silnik transkrypcji",
+   "words": [
+    "mowa na tekst"
+   ],
+   "phrases": [
+    "wybierz model do pełnej transkrypcji spotkania",
+    "zmień silnik tworzący transkrypcję po spotkaniu"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "motor de transcrição",
+   "words": [
+    "voz para texto"
+   ],
+   "phrases": [
+    "escolher modelo para transcrever a reunião inteira",
+    "mudar o motor de transcrição após a reunião"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "motor de transcriere",
+   "words": [
+    "vorbire în text",
+    "transcripție"
+   ],
+   "phrases": [
+    "alege modelul pentru transcrierea întregii întâlniri",
+    "schimbă motorul de transcriere de după întâlnire"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "движок транскрибации",
+   "words": [
+    "расшифровка",
+    "речь в текст"
+   ],
+   "phrases": [
+    "выбрать модель для полной расшифровки встречи",
+    "сменить движок расшифровки после встречи"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "modul prepisu",
+   "words": [
+    "transkripcia"
+   ],
+   "phrases": [
+    "vybrať model na úplný prepis stretnutia",
+    "zmeniť modul na prepis po stretnutí"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "pogon za prepisovanje",
+   "words": [
+    "transkripcija",
+    "govor v besedilo"
+   ],
+   "phrases": [
+    "izberi model za celoten prepis sestanka",
+    "zamenjaj pogon za prepis po sestanku"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "transkriberingsmotor",
+   "words": [
+    "tal till text",
+    "utskrift"
+   ],
+   "phrases": [
+    "välj modell för att transkribera hela mötet",
+    "byt motor för transkribering efter mötet"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "deşifre motoru",
+   "words": [
+    "transkripsiyon",
+    "sesi metne çevirme"
+   ],
+   "phrases": [
+    "toplantının tamamını yazıya dökecek modeli seç",
+    "toplantı sonrası deşifre motorunu değiştir"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "рушій транскрибування",
+   "words": [
+    "розшифрування",
+    "мовлення в текст"
+   ],
+   "phrases": [
+    "вибрати модель для повного розшифрування зустрічі",
+    "змінити рушій транскрибування після зустрічі"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "bộ máy phiên âm",
+   "words": [
+    "chuyển giọng nói thành văn bản",
+    "chép lời"
+   ],
+   "phrases": [
+    "chọn mô hình chép lại toàn bộ cuộc họp",
+    "đổi bộ máy phiên âm sau cuộc họp"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "转写引擎",
+   "words": [
+    "语音转文字",
+    "转录",
+    "听写"
+   ],
+   "phrases": [
+    "选择转写整场会议的模型",
+    "更改会后生成完整文字稿的引擎"
+   ]
+  }
+ ]
+}

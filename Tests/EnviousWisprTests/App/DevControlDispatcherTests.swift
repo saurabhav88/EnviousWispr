@@ -56,12 +56,12 @@
       return nil
     }
 
-    @Test("settings.list returns all 83 rows; settings.get returns one, and refuses bad keys")
+    @Test("settings.list returns all 84 rows; settings.get returns one, and refuses bad keys")
     func listAndGet() async throws {
       let (settings, dispatcher) = Self.make()
       let listed = try #require(payload(await dispatcher.handle(.settingsList, args: [:])))
       let rows = try #require(listed["settings"] as? [[String: Any]])
-      #expect(rows.count == 83)
+      #expect(rows.count == 84)
 
       settings.fillerRemovalEnabled = false
       let got = try #require(
@@ -197,6 +197,19 @@
       }
       #expect(settings.cancelKeyCode == 120 && settings.copyLastKeyCode == 96)
       #expect(settings.copyLastModifiers == [.control, .shift])
+    }
+
+    @Test("shortcut.set returns badValue for decoded out-of-range key codes",
+      .bug("https://github.com/saurabhav88/EnviousWispr/issues/3807"))
+    func shortcutSetKeyRange() async throws {
+      let (settings, dispatcher) = Self.make()
+      let before = settings.shortcutBindings
+      for keyCode in [128, 65535] {
+        let data = Data("{\"role\":\"record\",\"keyCode\":\(keyCode),\"modifiers\":393216}".utf8)
+        let args = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(code(await dispatcher.handle(.shortcutSet, args: args)) == "badValue")
+        #expect(settings.shortcutBindings == before)
+      }
     }
 
     @Test("shortcut.set refuses malformed arguments and clashes without changing anything")

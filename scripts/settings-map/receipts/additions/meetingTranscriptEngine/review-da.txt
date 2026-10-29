@@ -1,0 +1,27 @@
+{
+  "meetingTranscriptEngine": {
+    "language": "da",
+    "title": "transskriptionsmotor",
+    "words": [],
+    "phrases": [
+      "vælg motor til mødets fulde transskription",
+      "skift motor til transskription efter mødet"
+    ]
+  },
+  "meetingTranscriptEngine.parakeet": {
+    "language": "da",
+    "title": "Parakeet",
+    "words": [],
+    "phrases": [
+      "brug Parakeet til at transskribere møder"
+    ]
+  },
+  "meetingTranscriptEngine.whisper": {
+    "language": "da",
+    "title": "Whisper Large v3 Turbo",
+    "words": [],
+    "phrases": [
+      "brug Whisper til at transskribere møder"
+    ]
+  }
+}

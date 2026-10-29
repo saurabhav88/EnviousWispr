@@ -1,0 +1,27 @@
+{
+  "meetingTranscriptEngine": {
+    "language": "lv",
+    "title": "sapulces atšifrējuma dzinis",
+    "words": [],
+    "phrases": [
+      "izvēlēties dzini pilnam sapulces atšifrējumam",
+      "mainīt dzini atšifrējuma veidošanai pēc sapulces"
+    ]
+  },
+  "meetingTranscriptEngine.parakeet": {
+    "language": "lv",
+    "title": "Parakeet",
+    "words": [],
+    "phrases": [
+      "izmantot Parakeet sapulču transkripcijai"
+    ]
+  },
+  "meetingTranscriptEngine.whisper": {
+    "language": "lv",
+    "title": "Whisper Large v3 Turbo",
+    "words": [],
+    "phrases": [
+      "izmantot Whisper sapulču transkripcijai"
+    ]
+  }
+}

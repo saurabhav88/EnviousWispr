@@ -623,6 +623,24 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
       enableTimestamps: options.enableTimestamps)
   }
 
+  /// #3973 C3: one EnviousMeet final-transcript decode on dictation's loaded model, at PREVIEW
+  /// priority: dictation's own work preempts it at once, and that preemption (or a model
+  /// unloaded under it) throws `MeetingEngineYield` after the native run has physically ended,
+  /// so the meeting runs the decode again later. Holds this backend's operation count like a
+  /// dictation decode, so an unload waits for it.
+  package func transcribeForMeeting(audioSamples: [Float], language: String?) async throws
+    -> ASRResult
+  {
+    guard !admissionClosed else { throw MeetingEngineYield() }
+    inFlight += 1
+    defer { endOperation() }
+    guard let handle = await readyHandleAfterWarmupDrain(), !admissionClosed else {
+      throw MeetingEngineYield()
+    }
+    return try await Self.meetingDecode(
+      driver: driver, handle: handle, samples: audioSamples, language: language)
+  }
+
   static func mapRunError(_ error: any Error) -> any Error {
     switch error {
     case is CancellationError:

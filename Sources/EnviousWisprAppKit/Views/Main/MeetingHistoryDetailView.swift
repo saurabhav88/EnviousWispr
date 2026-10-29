@@ -49,6 +49,9 @@ struct MeetingHistoryDetailView: View {
   }
 
   @State private var tab: Tab = .transcript
+  /// #4013 r3 F3: this meeting's saved participant list, for the rename suggestions; read once
+  /// per meeting and audio state (`RosterKey`).
+  @State private var rosterRead: KeyedRosterRead<RosterKey>?
 
   var body: some View {
     if let record = meetings.record(id: meetingID) {
@@ -82,6 +85,13 @@ struct MeetingHistoryDetailView: View {
       }
       .task(id: meetings.playbackSource(meetingID: meetingID)) {
         reconcilePlayer()
+      }
+      .task(id: rosterKey(record)) {
+        // Stored with the request it answers; shown only while that is still the request.
+        let key = rosterKey(record)
+        let read = await meetings.callSpeakerEvidence(meetingID: meetingID)
+        guard !Task.isCancelled else { return }
+        rosterRead = KeyedRosterRead(key: key, evidence: read)
       }
       .onAppear {
         // A meeting that recorded nothing has only notes to show.
@@ -178,22 +188,54 @@ struct MeetingHistoryDetailView: View {
     let state: MeetingState
   }
 
+  private func rosterKey(_ record: MeetingRecord) -> RosterKey {
+    RosterKey(
+      meetingID: meetingID, audioKept: record.audioKept,
+      deletionRequested: record.deletionRequested, state: record.state)
+  }
+
+  private struct RosterKey: Hashable {
+    let meetingID: UUID
+    let audioKept: Bool
+    let deletionRequested: Bool
+    let state: MeetingState
+  }
+
   // MARK: - Actions
 
   private func actions(_ record: MeetingRecord) -> some View {
     let offered = MeetingsPresentation.actions(
       record, isActive: isActive(record),
       canTranscribeAgain: canOfferTranscribeAgain(record.id))
+    let engines = meetings.transcribeAgainEngines
+    let title = LocalizedStringResource(
+      "Transcribe again",
+      comment: "EnviousMeet: makes the meeting's transcript again from its kept audio.")
     return HStack(spacing: 10) {
-      SettingsActionButton(
-        title: LocalizedStringResource(
-          "Transcribe again",
-          comment: "EnviousMeet: makes the meeting's transcript again from its kept audio."),
-        isEnabled: offered.transcribeAgain, systemImage: "arrow.clockwise"
-      ) {
-        run { meetings in await meetings.retry(meetingID: meetingID) }
+      // #3973 C3: one ready engine is a button; two are a menu, the Transcript engine setting's
+      // first.
+      if engines.count > 1 {
+        Menu {
+          ForEach(engines, id: \.self) { engine in
+            Button(MeetingTranscriptEngineRow.title(of: engine)) {
+              run { meetings in await meetings.transcribeAgain(meetingID: meetingID, engine: engine) }
+            }
+          }
+        } label: {
+          Label(String(localized: title), systemImage: "arrow.clockwise")
+        }
+        .fixedSize()
+        .disabled(!offered.transcribeAgain)
+        .accessibilityIdentifier("meetings.detail.retry")
+      } else {
+        SettingsActionButton(
+          title: title, isEnabled: offered.transcribeAgain, systemImage: "arrow.clockwise"
+        ) {
+          let engine = engines.first ?? .parakeet
+          run { meetings in await meetings.transcribeAgain(meetingID: meetingID, engine: engine) }
+        }
+        .accessibilityIdentifier("meetings.detail.retry")
       }
-      .accessibilityIdentifier("meetings.detail.retry")
       SettingsActionButton(
         title: LocalizedStringResource(
           "Delete audio",
@@ -344,17 +386,20 @@ struct MeetingHistoryDetailView: View {
             localized: "Waiting to be transcribed",
             comment: "History, a meeting: it waits for another meeting's transcript first."))
       }
-      if record.state == .ready, let row = transcripts.currentRow(id: record.transcriptID) {
+      // #3973 C2: a committed transcript stays shown while Transcribe again runs, waits or
+      // fails; it is replaced only once the new one is committed and published.
+      let committed = record.committedTranscriptGeneration != nil
+      if committed, let row = transcripts.currentRow(id: record.transcriptID) {
         transcript(row: row, record: record)
-      } else if record.state == .ready, !transcripts.historyReadFinished {
+      } else if committed, !transcripts.historyReadFinished {
         busyLine(
           String(
             localized: "Loading the transcript",
             comment: "History, a ready meeting: waiting for History's first read attempt to finish."
           ))
-      } else if record.state == .ready {
-        // #4001 H12: ready, History has been read, and the row is still not there (its file is
-        // missing or could not be read). Say so instead of showing nothing.
+      } else if committed {
+        // #4001 H12: committed, History has been read, and the row is still not there (its file
+        // is missing or could not be read). Say so instead of showing nothing.
         missingTranscript(canTranscribeAgain: canOfferTranscribeAgain(record.id))
       } else if record.state != .notesOnly {
         // #3973: processing, queued or failed: the live words stay until a transcript is ready.
@@ -429,7 +474,9 @@ struct MeetingHistoryDetailView: View {
       }()
       VStack(alignment: .leading, spacing: 10) {
         HStack(spacing: 10) {
-          if let record, !record.echoTurnIDs.isEmpty, record.state == .ready {
+          // #3973 C2: the shown row's own generation decides, so a retained transcript keeps
+          // its control while Transcribe again runs.
+          if record != nil, transcripts.meetingHasProbableEcho(row) {
             Toggle(
               isOn: Binding(
                 get: { transcripts.isShowingEcho(rowID: row.id) },
@@ -496,11 +543,16 @@ struct MeetingHistoryDetailView: View {
           }
           .disabled(!permissions.accessibilityGranted || !canDeliver)
         }
+        if record.map({ rosterRead?.permissionMissing(for: rosterKey($0)) == true }) == true {
+          speakerNamesPermissionNote
+        }
         switch projection {
         case .visible(let turns, _):
           MeetingTurnsDocument(
             rowID: row.id, turns: turns, rawText: row.text,
-            speakerNames: row.speakerNames ?? [:], player: player
+            speakerNames: row.speakerNames ?? [:], player: player,
+            renameSuggestions: SpeakerRenameSuggestions(
+              row: row, roster: record.flatMap { rosterRead?.roster(for: rosterKey($0)) })
           )
           .equatable()
         case .everythingHidden:
@@ -513,6 +565,22 @@ struct MeetingHistoryDetailView: View {
             .foregroundStyle(.stTextSecondary)
         }
       }
+    }
+  }
+
+  /// #4013: this meeting recorded without Accessibility, so it has no speaker names to offer.
+  private var speakerNamesPermissionNote: some View {
+    HStack(alignment: .firstTextBaseline, spacing: 8) {
+      Text(MeetingHistoryPresentation.speakerNamesPermissionMessage)
+        .font(.stBody)
+        .foregroundStyle(.stTextSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+      Spacer(minLength: 0)
+      Button(MeetingHistoryPresentation.speakerNamesPermissionButton) {
+        navigationCoordinator.request(.meetings(.permissions))
+        appWindowCoordinator.showWindow()
+      }
+      .accessibilityIdentifier("meetings.history.speakerNamesPermission")
     }
   }
 
@@ -560,10 +628,11 @@ struct MeetingTurnsDocument: View, Equatable {
   let rawText: String
   let speakerNames: [String: String]
   let player: MeetingPlaybackController?
+  let renameSuggestions: SpeakerRenameSuggestions
   @Environment(TranscriptCoordinator.self) private var transcripts
 
   nonisolated static func == (a: MeetingTurnsDocument, b: MeetingTurnsDocument) -> Bool {
-    a.rowID == b.rowID && a.player === b.player
+    a.rowID == b.rowID && a.player === b.player && a.renameSuggestions == b.renameSuggestions
       && MeetingDocumentHash.sameBytes(a.rawText, b.rawText)
       && MeetingDocumentHash.sameBytes(a.speakerNames, b.speakerNames)
       && TranscriptTurnsDocument.Inputs.sameTurns(a.turns, b.turns)
@@ -584,6 +653,7 @@ struct MeetingTurnsDocument: View, Equatable {
           player.play()
         }
       },
+      renameSuggestions: renameSuggestions,
       fallback: { EmptyView() })
   }
 }

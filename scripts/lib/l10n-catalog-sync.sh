@@ -20,7 +20,7 @@
 # Dev updates are partial repairs: they never remove committed keys or translations.
 # Release remains the authority for shipped text, removals and configuration differences:
 # the catalog holds the text that SHIPS, and a Dev build also extracts copy from
-# `#if DEBUG` screens (DEV_ONLY_KEYS), which no customer sees.
+# `#if DEBUG` screens, excluded when listed in DEV_ONLY_KEYS or proven debug-only.
 #
 # Inputs are an EXPLICIT production-target list, never a directory sweep: the same
 # derived-data tree also holds third-party and test-target `.stringsdata`, and a test
@@ -87,6 +87,8 @@ NON_PRODUCTION = {
 # read (they hold resources, not compiled Swift).
 GENERATED_RESOURCE_TARGETS = {
     "EnviousWispr_EnviousWisprAppKit", "EnviousWispr_EnviousWisprPostProcessing",
+    # #4013: the bundled talker rules (`Sources/EnviousWisprServices/Resources`).
+    "EnviousWispr_EnviousWisprServices",
 }
 # Binary-framework wrapper targets Xcode makes for a SwiftPM binaryTarget (#3735: CTranscribe).
 # They compile nothing; with the compilation cache on (CI) Xcode still writes a `.cas-config`
@@ -234,10 +236,10 @@ def verified_dev_snapshot(derived, receipt, expected, work):
     return collect_inputs(mirror, "Dev")
 
 
-# --- New debug-only text in a Dev check (#3524 PR 3, Codex-adopted safeguards) ---
+# --- New debug-only text in Dev checks and updates (#3524 PR 3; #3930) ---
 # A NEW key the Dev build extracts and the committed catalog lacks is a defect, unless the compiler's
-# own record proves every occurrence sits inside `#if DEBUG`: then it is reported as a warning
-# (add it to DEV_ONLY_KEYS before any Dev repair) and the Release check in CI stays the authority.
+# own record proves every occurrence sits inside `#if DEBUG`: then both Dev modes exclude it
+# automatically and report a warning. The Release check in CI stays the authority.
 # The proof is conservative: an unresolved source path, an ambiguous one, a directive the scanner
 # cannot read, malformed nesting, a line the scanner cannot classify, or any condition other than
 # exactly `DEBUG` gives no exemption, so the key stays a defect.
@@ -846,11 +848,11 @@ def main(argv):
     mode.add_argument("--list-inputs", action="store_true")
     parser.add_argument("--derived-data", required=True, type=pathlib.Path)
     parser.add_argument("--configuration", required=True, choices=["Release", "Dev"])
-    parser.add_argument("--expect-inputs", help="Dev --check: the pushed code's input digest "
+    parser.add_argument("--expect-inputs", help="Dev --check/--update: the pushed code's input digest "
                         "(l10n-build-receipt.py input-digest --commit <sha>)")
-    parser.add_argument("--receipt", type=pathlib.Path, help="Dev --check: default <derived-data>/ew-l10n-receipt.json")
+    parser.add_argument("--receipt", type=pathlib.Path, help="Dev --check/--update: default <derived-data>/ew-l10n-receipt.json")
     parser.add_argument("--source-root", type=pathlib.Path, default=REPO,
-                        help="Dev --check: the checkout whose Sources/ the extraction's source paths are read "
+                        help="Dev --check/--update: the checkout whose Sources/ the extraction's source paths are read "
                              "from (default: this script's checkout, the pushed snapshot in the hook)")
     parser.add_argument("--dev-derived-data", type=pathlib.Path,
                         help="Release --check only: a Dev build of the same code (its receipt must match "
@@ -913,9 +915,7 @@ def main(argv):
                 del synced["strings"][k]
             print(f"Dev-only keys ignored: {len(ignored)} of {len(DEV_ONLY_KEYS)} listed")
             new_keys = sorted(k for k in synced["strings"] if k not in committed["strings"] and k not in DEV_ONLY_KEYS)
-            proofs = {}
-            if args.check:
-                proofs = {k: proof for k in new_keys if (proof := debug_only_proof(k, files, args.source_root))}
+            proofs = {k: proof for k in new_keys if (proof := debug_only_proof(k, files, args.source_root))}
             # The source digest is read AFTER every proof read, so an edit made before or during the
             # reads moves the digest and grants nothing.
             if proofs and not source_root_is_receipt_code(args.source_root, args.expect_inputs):
@@ -923,9 +923,8 @@ def main(argv):
             for k, proof in proofs.items():
                 del synced["strings"][k]
                 where = ", ".join(f"{rel}:{line}" for rel, line in proof)
-                print(f"WARNING: new text inside #if DEBUG, judged as Dev-only: {k!r} ({where}). Add it to "
-                      "DEV_ONLY_KEYS in scripts/lib/l10n-catalog-sync.sh before any Dev repair; CI's Release "
-                      "check stays the authority.")
+                print(f"WARNING: new text inside #if DEBUG, judged as Dev-only: {k!r} ({where}). "
+                      "Automatically excluded from Dev checks and updates; CI's Release check stays the authority.")
             unseen = sorted(DEV_ONLY_KEYS - extracted_keys)
             if unseen:
                 print(f"WARNING: {len(unseen)} DEV_ONLY_KEYS member(s) not extracted by this Dev build "

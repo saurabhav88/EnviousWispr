@@ -74,7 +74,8 @@ struct MeetingDocumentsOwnerTests {
     return release
   }
 
-  /// Makes every notes write fail: `notes.md` is a directory, so the atomic replace throws.
+  /// Makes the first document read fail; saves that must read first also fail. Loaded writes
+  /// can replace an empty directory, so use a read-only parent to fail a write after loading.
   static func breakNotesWrites(_ harness: Harness, _ meetingID: UUID) throws {
     try FileManager.default.createDirectory(
       at: harness.store.notesURL(for: meetingID), withIntermediateDirectories: false)
@@ -278,7 +279,8 @@ struct MeetingDocumentsOwnerTests {
         && coordinator.record(id: damaged.id)?.state == .failed
     }
     let notesOnly = try harness.store.load(id: empty.id)
-    #expect(notesOnly.formatVersion == MeetingRecord.notesOnlyFormatVersion)
+    // #3973 C2: a new record starts at the current format; marking it notes-only never lowers it.
+    #expect(notesOnly.formatVersion == MeetingRecord.currentFormatVersion)
     #expect(notesOnly.failureCode == "no_audio")
     #expect(Self.notesOnDisk(harness, empty.id) == "Kept")
     let notesOnlyActions = MeetingsPresentation.actions(
@@ -529,11 +531,19 @@ struct MeetingDocumentsOwnerTests {
     var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
     record.state = .failed
     try harness.store.create(record)
-    try Self.breakNotesWrites(harness, record.id)
     let coordinator = Self.coordinator(harness)
     coordinator.launch()
-    await MeetingCoordinatorTests.eventually("listed") { coordinator.record(id: record.id) != nil }
+    await MeetingCoordinatorTests.eventually("initial documents loaded") {
+      coordinator.record(id: record.id) != nil
+        && coordinator.documents.loadState(record.id) == .loaded
+    }
     #expect(coordinator.isWorkInFlight == false)
+    let folder = harness.store.notesURL(for: record.id).deletingLastPathComponent()
+    try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: folder.path)
+    defer {
+      try? FileManager.default.setAttributes(
+        [.posixPermissions: 0o700], ofItemAtPath: folder.path)
+    }
 
     coordinator.documents.setNotes(record.id, "cannot be written")
     #expect(coordinator.isWorkInFlight, "held from the first keystroke")

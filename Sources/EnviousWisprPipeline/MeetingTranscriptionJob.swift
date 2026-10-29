@@ -62,6 +62,9 @@ package final class MeetingTranscriptionJob {
     /// #4052: whether the engine this job holds is its own separate model (not one borrowed
     /// from dictation). Read by the engine switch gate.
     package var isOwnModelResident: @MainActor () -> Bool
+    /// #3973 C3: the engine this job's dependencies decode with, decided before the job was
+    /// built. Nil means the attempt's requested engine.
+    package var resolution: MeetingEngineResolution?
 
     package init(
       isDictationIdle: @escaping @MainActor () -> Bool,
@@ -81,7 +84,8 @@ package final class MeetingTranscriptionJob {
       unitStarted: @escaping @MainActor () -> Void = {},
       unitEnded: @escaping @MainActor () -> Void = {},
       passStarted: @escaping @MainActor (UUID?, Int) -> Void = { _, _ in },
-      isOwnModelResident: @escaping @MainActor () -> Bool = { false }
+      isOwnModelResident: @escaping @MainActor () -> Bool = { false },
+      resolution: MeetingEngineResolution? = nil
     ) {
       self.isDictationIdle = isDictationIdle
       self.waitUntilDictationIdle = waitUntilDictationIdle
@@ -101,6 +105,7 @@ package final class MeetingTranscriptionJob {
       self.unitEnded = unitEnded
       self.passStarted = passStarted
       self.isOwnModelResident = isOwnModelResident
+      self.resolution = resolution
     }
   }
 
@@ -137,6 +142,11 @@ package final class MeetingTranscriptionJob {
     package let yieldCount: Int
     package let processingSeconds: Double
     package let audioSeconds: Double
+    /// #3973 C2: what the attempt resolved to: the engine and model its words came from.
+    package let resolved: MeetingResolvedAttempt
+    /// #4013 chunk 12A: automatic speaker naming for this pass; `nil` when the pass did not
+    /// run it (a stand-in pass in tests).
+    package var naming: MeetingNamingOutput? = nil
   }
 
   package enum JobError: Error, Equatable {
@@ -144,6 +154,9 @@ package final class MeetingTranscriptionJob {
     case engineUnavailable(String)
     /// `run` was called while a pass was already running on this job.
     case alreadyRunning
+    /// #3973 C2: `language` is not the attempt's effective language. Both come from the same
+    /// saved attempt; a disagreement is a caller defect, refused before any reuse or decode.
+    case attemptMismatch
   }
 
   /// Where a pass keeps its progress (#3972 C3b). The job reads it once at the start and
@@ -173,7 +186,7 @@ package final class MeetingTranscriptionJob {
 
   /// Bumped whenever segmentation or ownership changes what a piece contains; a checkpoint
   /// from another version is discarded.
-  package nonisolated static let processingVersion = 2
+  package nonisolated static let processingVersion = 4
 
   private let dependencies: Dependencies
   private let configuration: Configuration
@@ -304,14 +317,28 @@ package final class MeetingTranscriptionJob {
   /// `missingAudio`: per track, the stretches no readable file covers. Each becomes a visible
   /// gap marker in timeline order, like a piece that failed twice, even for a track with no
   /// readable audio at all.
+  ///
+  /// `attempt` (#3973 C2) is the saved attempt this pass runs; `language` is its effective
+  /// language, passed separately so the existing input stays. They must agree.
+  ///
+  /// `callSpeakers` (#4013 chunk 12A) is the meeting's saved speaker evidence, read once by the
+  /// caller before the pass; the pass names call-sound speakers from it after composition.
   package func run(
     tracks: [MeetingTrackKind: MeetingTrackAudio], language: String?,
     checkpoint access: CheckpointAccess? = nil,
     missingAudio: [MeetingTrackKind: [MissingAudio]] = [:],
-    onStage: @escaping @MainActor (Stage) -> Void
+    callSpeakers: MeetingCallSpeakerEvidence = .absent,
+    onStage: @escaping @MainActor (Stage) -> Void,
+    attempt: MeetingAttemptConfiguration
   ) async throws -> Result {
     guard !running else { throw JobError.alreadyRunning }
+    // #3973 C3: a pass resolved to another engine decodes with the language decided for it.
+    let expectedLanguage =
+      dependencies.resolution.map(\.effectiveLanguage) ?? attempt.requestedEffectiveLanguage
+    guard MeetingAttemptConfiguration.normalized(language) == expectedLanguage
+    else { throw JobError.attemptMismatch }
     running = true
+    firstEngineIdentity = nil
     passLanguage = language?.isEmpty == false ? language : nil
     defer {
       running = false
@@ -328,7 +355,19 @@ package final class MeetingTranscriptionJob {
     dependencies.passStarted(
       access?.meetingID, Int((Double(timelineEnd) / MeetingAudioFormat.sampleRate).rounded()))
 
-    // 0. Progress already committed for exactly these inputs and settings.
+    // 0. Progress already committed for exactly these inputs, settings, attempt and model.
+    // #3973 C2: the model identity is read before any reuse, so even a fully covered checkpoint
+    // from another model is never reused. #3973 C3: the engine was resolved before this job was
+    // built; the key carries it, so progress from another engine is never reused either.
+    if !order.isEmpty {
+      firstEngineIdentity = try await probeEngineIdentity()
+    }
+    let resolution =
+      dependencies.resolution ?? MeetingEngineResolution(engine: attempt.requestedEngine)
+    let resolved = MeetingResolvedAttempt(
+      attemptID: attempt.attemptID, requestedEngine: attempt.requestedEngine,
+      resolvedEngine: resolution.engine, effectiveLanguage: passLanguage,
+      modelIdentity: firstEngineIdentity, fallbackReason: resolution.fallbackReason)
     var progress: MeetingProcessingCheckpoint?
     var saveFailures = 0
     if let access {
@@ -337,9 +376,13 @@ package final class MeetingTranscriptionJob {
       let config = configuration
       let meetingID = access.meetingID
       let language = passLanguage
+      let engine = MeetingProcessingCheckpoint.Engine(
+        requested: resolved.requestedEngine, resolved: resolved.resolvedEngine,
+        modelIdentity: resolved.modelIdentity)
       let key = try? await Task.detached(priority: .utility) {
         try Self.key(
-          meetingID: meetingID, tracks: tracks, order: order, language: language, config)
+          meetingID: meetingID, attemptID: attempt.attemptID, tracks: tracks, order: order,
+          language: language, engine: engine, config)
       }.value
       if let key {
         if let stored = await access.load(), stored.key == key,
@@ -362,23 +405,13 @@ package final class MeetingTranscriptionJob {
     let resumedAtStart = progress?.tracks.values.reduce(0) { $0 + $1.pieces.count } ?? 0
 
     // 1. Speech, both tracks, one engine operation per decode (#3973 C1), only if some range is
-    // not yet committed. The first acquisition here reads the model identity before any reuse.
+    // not yet committed. The model identity was read above; a decode under another model fails
+    // the pass (`prepareModelUnit`).
     let speechNeeded = order.contains { kind in
       guard let audio = tracks[kind] else { return false }
       return !Self.isFullyCovered(audio, by: progress?.tracks[kind]?.pieces ?? [])
     }
     if speechNeeded {
-      try await waitForNormalMemory()
-      firstEngineIdentity = try await probeEngineIdentity()
-      if var current = progress {
-        let identity = firstEngineIdentity
-        if let previous = current.engineIdentity, previous != identity {
-          // Pieces from another model are never mixed with this one's.
-          for kind in current.tracks.keys { current.tracks[kind]?.pieces = [] }
-        }
-        current.engineIdentity = identity
-        progress = current
-      }
       do {
         for kind in order {
           guard let audio = tracks[kind] else { continue }
@@ -437,7 +470,7 @@ package final class MeetingTranscriptionJob {
     var segments: [MeetingTrackKind: [SpeakerSegment]] = [:]
     for kind in order {
       guard let audio = tracks[kind],
-        piecesByTrack[kind]?.contains(where: { $0.words != nil }) == true
+        piecesByTrack[kind]?.contains(where: { !$0.isFailed }) == true
       else { continue }
       if let stored = progress?.tracks[kind]?.speakers {
         outcomes[kind] = stored.outcome
@@ -480,20 +513,65 @@ package final class MeetingTranscriptionJob {
       await Task.detached(priority: .utility) { MeetingTranscriptComposer.compose(tracks: inputs) }
         .value
     }
+    // 4. #4013 chunk 12A: name call-sound speakers from the saved evidence, after composition
+    // and from what the pass knew before composition (real pieces, markers, diarized ids).
+    try checkCancelled()
+    let eligibility = Self.namingEligibility(
+      pieces: piecesByTrack, callSegments: segments[.callSound] ?? [], missingAudio: missingAudio)
+    let naming = await Task.detached(priority: .utility) {
+      MeetingNamingOutput(
+        evidence: callSpeakers, eligibility: eligibility,
+        result: MeetingSpeakerNamer.propose(
+          composition: composition, eligibility: eligibility, log: callSpeakers.log))
+    }.value
+    try checkCancelled()
     let all = piecesByTrack.values.flatMap { $0 }
     var failedRanges: [MeetingTrackKind: [Range<Int>]] = [:]
     for (kind, list) in piecesByTrack {
-      let failed = list.filter { $0.words == nil }.map { $0.startSample..<$0.endSample }
+      let failed = list.filter(\.isFailed).map { $0.startSample..<$0.endSample }
       if !failed.isEmpty { failedRanges[kind] = failed }
     }
     return Result(
       composition: composition, speakerOutcomes: outcomes,
       forcedCuts: all.filter(\.forcedCut).count,
-      failedPieces: all.filter { $0.words == nil }.count, failedRanges: failedRanges,
+      failedPieces: all.filter(\.isFailed).count, failedRanges: failedRanges,
       resumedPieces: resumedAtStart == 0 ? 0 : min(resumedAtStart, all.count),
       checkpointSaveFailures: saveFailures, yieldCount: yieldCount,
       processingSeconds: Date().timeIntervalSince(started),
-      audioSeconds: Double(totalSamples) / MeetingAudioFormat.sampleRate)
+      audioSeconds: Double(totalSamples) / MeetingAudioFormat.sampleRate, resolved: resolved,
+      naming: naming)
+  }
+
+  /// Who automatic naming may consider (#4013 r3 F1), from the pass's own pieces before
+  /// composition discards their provenance: the diarized call-sound speakers as composed ids,
+  /// the stretches of transcribed call speech, and every marker on each track (a piece that
+  /// failed twice, or audio that could not be read, with an open end kept open). A fresh pass
+  /// and one that reused checkpointed pieces give the same answer for the same pieces.
+  nonisolated static func namingEligibility(
+    pieces: [MeetingTrackKind: [MeetingProcessingCheckpoint.Piece]],
+    callSegments: [SpeakerSegment], missingAudio: [MeetingTrackKind: [MissingAudio]]
+  ) -> MeetingNamingEligibility {
+    let prefix = MeetingTrackKind.callSound.speakerPrefix
+    let callSpeech = (pieces[.callSound] ?? []).compactMap { piece -> MeetingNamingInterval? in
+      guard piece.words != nil,
+        piece.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+      else { return nil }
+      return MeetingNamingInterval(startMs: ms(piece.startSample), endMs: ms(piece.endSample))
+    }
+    var markers: [MeetingNamingMarker] = []
+    for kind in MeetingTrackKind.allCases {
+      for piece in pieces[kind] ?? [] where piece.words == nil {
+        markers.append(
+          MeetingNamingMarker(
+            track: kind, startMs: ms(piece.startSample), endMs: ms(piece.endSample)))
+      }
+      for missing in missingAudio[kind] ?? [] {
+        markers.append(MeetingNamingMarker(track: kind, startMs: missing.startMs, endMs: missing.endMs))
+      }
+    }
+    return MeetingNamingEligibility(
+      callSpeakerIDs: Set(callSegments.map { "\(prefix):\($0.speakerId)" }),
+      callSpeech: callSpeech, markers: markers)
   }
 
   /// Pieces of a pass run without a checkpoint, held only for the pass.
@@ -557,7 +635,18 @@ package final class MeetingTranscriptionJob {
   /// any checkpointed piece is reused. Nothing is loaded and nothing stays held: the reused-piece
   /// walk, checkpoint saves and waits that follow run with the engine free.
   private func probeEngineIdentity() async throws -> String? {
-    if !dependencies.isDictationIdle() { try await waitForDictationHoldingNothing() }
+    // #3973 C2: memory pressure that rose during a dictation wait is waited out before the
+    // claim (taking it may load the shared model); both are rechecked in the same main-actor
+    // step as the claim, so neither can change in between.
+    while true {
+      if dependencies.isMemoryPressureElevated() {
+        try await waitForNormalMemory()
+      } else if !dependencies.isDictationIdle() {
+        try await waitForDictationHoldingNothing()
+      } else {
+        break
+      }
+    }
     engineResident = true
     do {
       try await cancellableWait { try await self.dependencies.beginModelUse() }
@@ -600,7 +689,22 @@ package final class MeetingTranscriptionJob {
         .init(
           word: $0.word, lower: $0.range.lowerBound, upper: $0.range.upperBound,
           startMs: $0.startMs, endMs: $0.endMs)
-      })
+      },
+      segments: owned.flatMap(Self.storedSegments))
+  }
+
+  /// A piece's segments as the checkpoint stores them. A segment-level piece stores its
+  /// segments even when there are none, so a resumed pass still knows it has no word times;
+  /// a word-timed piece stores none.
+  nonisolated static func storedSegments(_ piece: MeetingTrackPiece)
+    -> [MeetingProcessingCheckpoint.SegmentTiming]?
+  {
+    guard piece.isSegmentLevel else { return nil }
+    return piece.segments.map {
+      .init(
+        lower: $0.range.lowerBound, upper: $0.range.upperBound, startMs: $0.startMs,
+        endMs: $0.endMs)
+    }
   }
 
   /// The marker turn a piece that failed twice becomes (plan §6): one word spanning the piece,
@@ -645,20 +749,24 @@ package final class MeetingTranscriptionJob {
   }
 
   nonisolated static func trackPiece(_ piece: MeetingProcessingCheckpoint.Piece) -> MeetingTrackPiece? {
-    guard let text = piece.text, let words = piece.words else {
+    guard let text = piece.text else {
       return gapMarker(startSample: piece.startSample, endSample: piece.endSample)
     }
     return MeetingTrackPiece(
       text: text, startMs: ms(piece.startSample), endMs: ms(piece.endSample),
-      words: words.map {
+      words: (piece.words ?? []).map {
         ASRWordTiming(word: $0.word, range: $0.lower..<$0.upper, startMs: $0.startMs, endMs: $0.endMs)
-      })
+      },
+      segments: (piece.segments ?? []).map {
+        ASRSegmentTiming(range: $0.lower..<$0.upper, startMs: $0.startMs, endMs: $0.endMs)
+      }, isSegmentLevel: piece.segments != nil)
   }
 
   /// Whether a stored checkpoint is internally sound for these tracks before any of it is used:
   /// every piece lies inside one current run with a positive length, pieces are ordered and do
-  /// not overlap, a piece has text and words together or neither, and every word range lies
-  /// inside its text. Anything else is rejected and the pass starts fresh.
+  /// not overlap, a piece has text and words together or neither (a failed piece has no
+  /// segments either), and every word and segment range lies inside its text, segments in
+  /// order. Anything else is rejected and the pass starts fresh.
   nonisolated static func isValid(
     _ checkpoint: MeetingProcessingCheckpoint, tracks: [MeetingTrackKind: MeetingTrackAudio]
   ) -> Bool {
@@ -673,11 +781,19 @@ package final class MeetingTranscriptionJob {
         else { return false }
         previousEnd = piece.endSample
         switch (piece.text, piece.words) {
-        case (nil, nil): continue
+        case (nil, nil):
+          guard piece.segments == nil else { return false }
         case (let text?, let words?):
           let length = text.utf16.count
           guard words.allSatisfy({ $0.lower >= 0 && $0.lower <= $0.upper && $0.upper <= length })
           else { return false }
+          var segmentEnd = 0
+          for segment in piece.segments ?? [] {
+            guard segment.lower >= segmentEnd, segment.lower < segment.upper,
+              segment.upper <= length
+            else { return false }
+            segmentEnd = segment.upper
+          }
         default: return false
         }
       }
@@ -704,16 +820,17 @@ package final class MeetingTranscriptionJob {
   /// frame count, byte size and a SHA-256 of its bytes, never by path alone. Throws when any
   /// file cannot be read, so a pass never reuses work against inputs it could not verify.
   nonisolated static func key(
-    meetingID: UUID, tracks: [MeetingTrackKind: MeetingTrackAudio], order: [MeetingTrackKind],
-    language: String?, _ configuration: Configuration
+    meetingID: UUID, attemptID: UUID, tracks: [MeetingTrackKind: MeetingTrackAudio],
+    order: [MeetingTrackKind], language: String?, engine: MeetingProcessingCheckpoint.Engine,
+    _ configuration: Configuration
   ) throws -> MeetingProcessingCheckpoint.Key {
     MeetingProcessingCheckpoint.Key(
-      meetingID: meetingID, processingVersion: processingVersion,
+      meetingID: meetingID, attemptID: attemptID, processingVersion: processingVersion,
       pieceTargetSeconds: configuration.pieceTargetSeconds,
       pieceSearchSeconds: configuration.pieceSearchSeconds,
       seamPaddingSeconds: configuration.seamPaddingSeconds,
       cutsPieces: configuration.cutsPieces,
-      transcriptLanguage: language,
+      transcriptLanguage: language, engine: engine,
       inputs: try order.map { kind in
         MeetingProcessingCheckpoint.TrackInventory(
           track: kind,
@@ -776,7 +893,9 @@ package final class MeetingTranscriptionJob {
     let pad = cutsPieces ? Int(configuration.seamPaddingSeconds * rate) : 0
     let paddedStart = max(run.startSample, start - pad)
     let paddedEnd = min(run.endSample, end + pad)
-    for attempt in 0..<2 {
+    var failures = 0
+    var idleYields = 0
+    while true {
       do {
         return try await engineOperation { () async throws -> MeetingTrackPiece in
           try self.requireModelSource()
@@ -794,26 +913,54 @@ package final class MeetingTranscriptionJob {
         }
       } catch let error as JobError {
         throw error
+      } catch is MeetingEngineYield {
+        // #3973 C3: dictation's engine work came first (Whisper preempted this decode). Not a
+        // failure: wait for dictation, then decode the same piece again. A yield while no
+        // dictation runs (the model kept going away under the decode) counts as a failure
+        // from the third one, so it can never loop for ever.
+        if dependencies.isDictationIdle() {
+          idleYields += 1
+          if idleYields >= Self.idleYieldLimit {
+            idleYields = 0
+            failures += 1
+            if failures == 2 { return nil }
+          }
+        } else {
+          try await waitForDictationHoldingNothing()
+        }
       } catch {
-        if attempt == 1 { return nil }
+        failures += 1
+        if failures == 2 { return nil }
       }
     }
-    return nil
   }
+
+  /// #3973 C3: yields in a row with no dictation running before one counts as a failed attempt.
+  nonisolated static let idleYieldLimit = 3
 
   /// #4052: a whole run decoded in one call has no seam, so nothing is filtered: the engine's
   /// text and every word are kept as returned (boundary and untimed words included), with the
-  /// word times moved onto the meeting timeline. Text ranges are unchanged.
+  /// word times moved onto the meeting timeline. Text ranges are unchanged. #3973 C3: an
+  /// engine with segment timings and no words (Whisper) keeps its segments the same way, and
+  /// its piece stays segment-level when no segment could be bound.
   nonisolated static func wholeRunPiece(result: ASRResult, startMs: Int, endMs: Int)
     -> MeetingTrackPiece
   {
-    MeetingTrackPiece(
+    let words = result.wordTimings ?? []
+    return MeetingTrackPiece(
       text: result.text, startMs: startMs, endMs: endMs,
-      words: (result.wordTimings ?? []).map {
+      words: words.map {
         ASRWordTiming(
           word: $0.word, range: $0.range, startMs: $0.startMs.map { startMs + $0 },
           endMs: $0.endMs.map { startMs + $0 })
-      })
+      },
+      segments: words.isEmpty
+        ? (result.segmentTimings ?? []).map {
+          ASRSegmentTiming(
+            range: $0.range, startMs: $0.startMs.map { startMs + $0 },
+            endMs: $0.endMs.map { startMs + $0 })
+        } : [],
+      isSegmentLevel: words.isEmpty && result.segmentTimings != nil)
   }
 
   /// The words of `result` whose midpoint falls in this piece's own range, as a piece on the

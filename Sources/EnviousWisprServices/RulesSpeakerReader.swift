@@ -1,0 +1,225 @@
+import EnviousWisprCore
+import Foundation
+
+/// How far a selector rule has been checked against a real call (#4013 D3, chunk 4). Only a
+/// `.verified` rule may report who is talking; an `.unverified` rule (copied from another app's
+/// defaults, or written before a capture) still reads names but never a talker.
+package enum TalkerRuleVerification: String, Sendable, Equatable {
+  case verified
+  case unverified
+}
+
+/// Where a participant tile's name comes from.
+package enum TileNameSource: Sendable, Equatable {
+  /// The first static text inside the tile (Meet, Slack).
+  case firstStaticText
+  /// The tile's own label, with an exact structural suffix removed when present
+  /// (Teams web guest tiles read `<Name> Unverified`).
+  case ownLabel(removingSuffix: String?)
+}
+
+/// One surface's selectors (#4013 §3 item 2, chunk 4). Plain values: the rules store (chunk 5)
+/// decodes them from the bundled and downloaded file. A `nil` tile selector means the surface's
+/// tile shape is not known yet: nothing is read from tiles.
+package struct SpeakerSelectorRule: Sendable, Equatable {
+  package let surface: CallSpeakerSurface
+  /// A participant tile is an element whose role equals this, when set...
+  package let tileRole: String?
+  /// ...and whose DOM classes include this exact token, when set. At least one must be set.
+  package let tileClass: String?
+  package let nameSource: TileNameSource
+  /// Exact DOM class tokens that mark a tile as talking when found on the tile or inside it
+  /// (never inside another tile nested within it). Empty for roster-only surfaces.
+  package let talkingClasses: [String]
+  /// The participant list: an element with this exact DOM class whose direct children are one
+  /// entry per person, each named by its first static text. `nil` when the list is not known.
+  package let participantListClass: String?
+  package let verification: TalkerRuleVerification
+  /// Declared from a live capture: each matching tile is one distinct participant, so equal
+  /// names on two tiles are two people (#4013 r5 step 3). `false` (absent in the document) means
+  /// the tiles' identity is unknown and the surface names no one.
+  package let tilesAreParticipants: Bool
+
+  package init(
+    surface: CallSpeakerSurface, tileRole: String?, tileClass: String?,
+    nameSource: TileNameSource, talkingClasses: [String], participantListClass: String?,
+    verification: TalkerRuleVerification, tilesAreParticipants: Bool = false
+  ) {
+    self.surface = surface
+    self.tileRole = tileRole
+    self.tileClass = tileClass
+    self.nameSource = nameSource
+    self.talkingClasses = talkingClasses
+    self.participantListClass = participantListClass
+    self.verification = verification
+    self.tilesAreParticipants = tilesAreParticipants
+  }
+
+  /// A surface whose shape is not captured yet: reads nothing (#4013 chunk 4).
+  package static func unconfigured(_ surface: CallSpeakerSurface) -> Self {
+    Self(
+      surface: surface, tileRole: nil, tileClass: nil, nameSource: .firstStaticText,
+      talkingClasses: [], participantListClass: nil, verification: .unverified)
+  }
+
+  /// Roster-only surfaces never report a talker, whatever the rule says (#4013 D4). The namer
+  /// also reads this, so a saved log is trusted only under rules that could have reported it.
+  package var mayReportTalker: Bool {
+    verification == .verified && !talkingClasses.isEmpty && !Self.rosterOnly.contains(surface)
+  }
+
+  /// The call family a browser page must classify as for this surface; `nil` for app surfaces.
+  var webFamily: CallAppFamily? {
+    switch surface {
+    case .meet: .googleMeet
+    case .teamsWeb: .teams
+    case .slackWeb: .slack
+    case .zoomWeb: .zoom
+    case .whereby: .whereby
+    case .jitsi: .jitsi
+    case .zoomApp, .teamsApp, .slackApp, .facetime, .webex, .dialpad, .gather, .lark, .voov: nil
+    }
+  }
+
+  static let rosterOnly: Set<CallSpeakerSurface> = [
+    .facetime, .webex, .dialpad, .gather, .lark, .voov, .whereby, .jitsi,
+  ]
+
+  func isTile(_ node: CallAXNode) -> Bool {
+    guard tileRole != nil || tileClass != nil else { return false }
+    if let tileRole, node.role != tileRole { return false }
+    if let tileClass, !node.domClassList.contains(tileClass) { return false }
+    return true
+  }
+}
+
+/// Reads a call surface through a `SpeakerSelectorRule` (#4013 chunk 4): Meet, Teams web and
+/// Slack huddles, and the roster-only surfaces. The selectors are data, so a changed call app is
+/// fixed by a new rules file rather than an app release (#4013 D3).
+package enum RulesSpeakerReader {
+
+  /// A browser surface: reads the single page whose address classifies as the rule's surface
+  /// family. An app rule, no call page, or two call pages read nothing.
+  package static func read(documents: [CallAXDocument], rule: SpeakerSelectorRule)
+    -> CallSpeakerReading?
+  {
+    guard let family = rule.webFamily else { return nil }
+    let pages = documents.filter { $0.url.flatMap(CallMeetingURL.classify)?.family == family }
+    guard pages.count == 1, let page = pages.first else { return nil }
+    return read(root: page.root, rule: rule)
+  }
+
+  /// An app surface (Slack app, roster-only apps): reads every window of that app. A browser
+  /// rule reads nothing here.
+  package static func read(windows: [CallAXWindow], rule: SpeakerSelectorRule)
+    -> CallSpeakerReading?
+  {
+    guard rule.webFamily == nil else { return nil }
+    return read(root: CallAXNode(role: "AXApplication", children: windows.map(\.root)), rule: rule)
+  }
+
+  static func read(root: CallAXNode, rule: SpeakerSelectorRule) -> CallSpeakerReading {
+    var tileNames: [String] = []
+    var speaking: [String] = []
+    var unnamedTalker = false
+    var participants: [CallParticipant] = []
+    for (index, tile) in tiles(in: root, rule: rule).enumerated() {
+      let talking = rule.mayReportTalker && isTalking(tile, rule: rule)
+      let tileName = name(of: tile, rule: rule)
+      participants.append(
+        CallParticipant(key: "tile-\(index)", name: tileName, isTalking: talking, isSelf: false))
+      // A signal is never given another tile's name. A talking tile without a readable name
+      // means someone unknown is also talking, so this scan reports no talker at all.
+      guard let name = tileName else {
+        if talking { unnamedTalker = true }
+        continue
+      }
+      tileNames.append(name)
+      if talking { speaking.append(name) }
+    }
+    if unnamedTalker { speaking = [] }
+    let listNames = participantList(in: root, rule: rule)
+    let fromList = listNames != nil
+    return CallSpeakerReading(
+      speaking: uniqueInOrder(speaking),
+      // A participant list shows each person once, so its duplicates are real; tiles repeat one
+      // person, so they are de-duplicated and the roster is marked tile-only.
+      // Declared distinct tiles keep their duplicates; otherwise a name on two tiles may be one
+      // person shown twice, so the roster is de-duplicated.
+      roster: CallSpeakerRoster(
+        names: listNames ?? (rule.tilesAreParticipants ? tileNames : uniqueInOrder(tileNames)),
+        selfNames: []),
+      rosterFromParticipantList: fromList, participants: participants,
+      // Identity only where a live capture declared the tiles to be people (#4013 r5 step 3).
+      participantIdentityEstablished: rule.tilesAreParticipants,
+      sharedNames: repeatedNames(listNames ?? [])
+        .union(rule.tilesAreParticipants ? repeatedNames(tileNames) : []))
+  }
+
+  /// Tiles in document order, outermost first. A tile nested in another is its own tile.
+  static func tiles(in root: CallAXNode, rule: SpeakerSelectorRule) -> [CallAXNode] {
+    root.allNodes.filter(rule.isTile)
+  }
+
+  static func name(of tile: CallAXNode, rule: SpeakerSelectorRule) -> String? {
+    let raw: String?
+    switch rule.nameSource {
+    case .firstStaticText:
+      raw =
+        ownSubtree(of: tile, rule: rule).first { $0.role == "AXStaticText" && $0.label != nil }?
+        .label
+    case .ownLabel(let suffix):
+      if let label = tile.label, let suffix, label.hasSuffix(suffix) {
+        raw = String(label.dropLast(suffix.count))
+      } else {
+        raw = tile.label
+      }
+    }
+    guard let name = raw, !name.isEmpty else { return nil }
+    return name
+  }
+
+  /// A talking class on the tile itself or anywhere inside it, nested tiles excluded.
+  static func isTalking(_ tile: CallAXNode, rule: SpeakerSelectorRule) -> Bool {
+    ownSubtree(of: tile, rule: rule).contains { node in
+      node.domClassList.contains { rule.talkingClasses.contains($0) }
+    }
+  }
+
+  /// The tile and its descendants, stopping at any nested tile.
+  static func ownSubtree(of tile: CallAXNode, rule: SpeakerSelectorRule) -> [CallAXNode] {
+    var nodes = [tile]
+    var queue = tile.children
+    while !queue.isEmpty {
+      let node = queue.removeFirst()
+      if rule.isTile(node) { continue }
+      nodes.append(node)
+      queue.append(contentsOf: node.children)
+    }
+    return nodes
+  }
+
+  /// The participant list's names, one per direct child entry, when exactly one list exists and
+  /// every entry has exactly one name. `nil` otherwise (no list rule, no list, two lists, or an
+  /// entry with no name or several).
+  static func participantList(in root: CallAXNode, rule: SpeakerSelectorRule) -> [String]? {
+    guard let listClass = rule.participantListClass else { return nil }
+    let lists = root.allNodes.filter { $0.domClassList.contains(listClass) }
+    guard lists.count == 1, let list = lists.first else { return nil }
+    // Trust the list only when every entry holds exactly one distinct name; an unreadable or
+    // doubtful entry could hide a person, so the whole list is set aside.
+    var names: [String] = []
+    for entry in list.children {
+      let texts = Set(
+        entry.allNodes.compactMap { node -> String? in
+          guard node.role == "AXStaticText", let label = node.label, !label.isEmpty else {
+            return nil
+          }
+          return label
+        })
+      guard texts.count == 1, let name = texts.first else { return nil }
+      names.append(name)
+    }
+    return names.isEmpty ? nil : names
+  }
+}

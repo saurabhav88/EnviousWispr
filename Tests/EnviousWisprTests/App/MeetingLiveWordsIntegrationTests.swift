@@ -88,7 +88,7 @@ struct MeetingLiveWordsIntegrationTests {
       }
       if realJob {
         let started = passStarted
-        deps.makeJob = { [self] in
+        deps.makeJob = { [self] _ in
           var configuration = MeetingTranscriptionJob.Configuration()
           configuration.cutsPieces = false  // as MeetingWiring builds it (#4052)
           return MeetingTranscriptionJob(
@@ -329,7 +329,7 @@ struct MeetingLiveWordsIntegrationTests {
     }
     #expect(rig.coordinator.liveTranscript?.meetingID == meetingID)
     #expect(rig.coordinator.liveTranscript?.lines.map(\.text) == ["Live line."], "kept on failure")
-    #expect(await rig.coordinator.retry(meetingID: meetingID))
+    #expect(await rig.coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet))
     await MeetingCoordinatorTests.eventually("the transcript ready") {
       rig.coordinator.record(id: meetingID)?.state == .ready
     }

@@ -48,7 +48,8 @@
       var nextOutcome: MeetingStartFlow.Outcome?
       var userStarts: [CallAppFamily?] = []
       /// What every evidence read answers, and how many reads ran (the real async path).
-      let evidenceAnswer = OSAllocatedUnfairLock<CallEvidenceReader.Evidence>(initialState: .unknown)
+      let evidenceAnswer = OSAllocatedUnfairLock<CallEvidenceReader.Evidence>(
+        initialState: .unknown)
       let evidenceReads = OSAllocatedUnfairLock(initialState: 0)
       /// Explicitly supplied only by independent call-state stories; defaults invent no continuity.
       let snapshotAnswer = OSAllocatedUnfairLock<CallEvidenceReader.Snapshot?>(initialState: nil)
@@ -1298,6 +1299,88 @@
       #expect(rig.stops == 0)
     }
 
+    @Test("the live call: one names it; none, two, or an unreadable or ambiguous reading do not")
+    func speakerSource() throws {
+      let rig = try Rig()
+      let sources = rig.coordinator.discovery
+      func zoom(_ pid: Int32 = 900_010) -> CallMicrophoneWatcher.Holder {
+        .init(pid: pid, bundleID: "us.zoom.xos", input: .active, ownerPID: pid)
+      }
+      let zoomCall = CallSpeakerSourceAnswer.unique(
+        .init(family: .zoom, target: CallSpeakerTarget(pid: 900_010, rule: .callWindow(.zoom))))
+      rig.coordinator.deliverWatcherReading([])
+      #expect(sources.speakerSource() == .none)
+      rig.coordinator.deliverWatcherReading([zoom()])
+      #expect(sources.speakerSource() == zoomCall)
+      let first = sources.speakerSourceRevision
+      rig.coordinator.deliverWatcherReading(
+        [zoom()])
+      #expect(sources.speakerSourceRevision == first, "the same reading again is no change")
+      rig.coordinator.deliverWatcherReading(
+        [zoom()], ambiguous: true)
+      #expect(sources.speakerSource() == .unavailable)
+      #expect(sources.speakerSourceRevision > first)
+      let ambiguous = sources.speakerSourceRevision
+      rig.coordinator.deliverWatcherReading(
+        [zoom()])
+      #expect(sources.speakerSourceRevision > ambiguous, "back to the same source is a change")
+      rig.coordinator.deliverWatcherReading(
+        [zoom(), zoom(900_011)])
+      #expect(sources.speakerSource() == .ambiguous, "two app instances")
+      rig.coordinator.deliverWatcherReading(
+        [
+          zoom(),
+          .init(pid: 900_020, bundleID: "com.microsoft.teams2", input: .active, ownerPID: 900_020),
+        ])
+      #expect(sources.speakerSource() == .ambiguous, "two different calls")
+      rig.coordinator.deliverWatcherReading(nil)
+      #expect(sources.speakerSource() == .unavailable, "an unreadable list")
+    }
+
+    @Test("the watcher runs while prompts are on or a recording needs it, and not otherwise")
+    func watcherDemand() throws {
+      let rig = try Rig()
+      rig.settings.meetingCallDetection = CallDetectionPolicy.Mode.off.rawValue
+      rig.coordinator.start()
+      defer { rig.coordinator.shutDown() }
+      let sources = rig.coordinator.discovery
+      #expect(!sources.watching, "prompts off and nothing recording: no watcher")
+      sources.beginRecordingDemand()
+      #expect(sources.watching == CallMicrophoneWatcher.isSupported, "a recording keeps it on")
+      sources.endRecordingDemand()
+      #expect(!sources.watching)
+      rig.settings.meetingCallDetection = CallDetectionPolicy.Mode.ask.rawValue
+      rig.coordinator.tickForTesting()
+      #expect(sources.watching == CallMicrophoneWatcher.isSupported, "prompts on")
+      sources.beginRecordingDemand()
+      rig.settings.meetingCallDetection = CallDetectionPolicy.Mode.off.rawValue
+      rig.coordinator.tickForTesting()
+      #expect(sources.watching == CallMicrophoneWatcher.isSupported, "prompts off mid-recording")
+      sources.endRecordingDemand()
+      #expect(!sources.watching)
+    }
+
+    @Test("with prompts off, a recording's readings never ask about a call")
+    func promptsOffNeverAsk() async throws {
+      let rig = try Rig()
+      rig.settings.meetingCallDetection = CallDetectionPolicy.Mode.off.rawValue
+      rig.coordinator.start()
+      defer { rig.coordinator.shutDown() }
+      rig.coordinator.discovery.beginRecordingDemand()
+      defer { rig.coordinator.discovery.endRecordingDemand() }
+      rig.evidenceAnswer.withLock { $0 = .call(family: .zoom, room: "pid-900010") }
+      rig.coordinator.deliverWatcherReading(
+        [.init(pid: 900_010, bundleID: "us.zoom.xos", input: .active, ownerPID: 900_010)])
+      await settleStarts()
+      #expect(rig.panel.content == nil)
+      #expect(rig.starts.isEmpty)
+      #expect(
+        rig.coordinator.discovery.speakerSource()
+          == .unique(
+            .init(family: .zoom, target: CallSpeakerTarget(pid: 900_010, rule: .callWindow(.zoom))))
+      )
+    }
+
     @Test("a Zoom call asks; Yes records a Zoom meeting")
     func yesRecords() async throws {
       let rig = try Rig()
@@ -1841,8 +1924,12 @@
       let meet = CallEvidenceReader.Evidence.call(family: .googleMeet, room: "abc-defg-hij")
       let both: (CallMicrophoneWatcher.Input) -> Void = { second in
         rig.coordinator.simulate([
-          .init(holder: .init(pid: 900_031, bundleID: "com.google.chrome", input: .active), evidence: meet),
-          .init(holder: .init(pid: 900_032, bundleID: "com.google.chrome.helper", input: second), evidence: meet),
+          .init(
+            holder: .init(pid: 900_031, bundleID: "com.google.chrome", input: .active),
+            evidence: meet),
+          .init(
+            holder: .init(pid: 900_032, bundleID: "com.google.chrome.helper", input: second),
+            evidence: meet),
         ])
       }
       both(.inactive)
@@ -1880,7 +1967,9 @@
       let chrome: (CallMicrophoneWatcher.Input, CallEvidenceReader.Evidence) -> Void = {
         input, evidence in
         rig.coordinator.simulate([
-          .init(holder: .init(pid: 900_041, bundleID: "com.google.chrome", input: input), evidence: evidence)
+          .init(
+            holder: .init(pid: 900_041, bundleID: "com.google.chrome", input: input),
+            evidence: evidence)
         ])
       }
       chrome(.active, meet)
@@ -1915,7 +2004,9 @@
       let roomB = CallEvidenceReader.Evidence.call(family: .googleMeet, room: "bbb-bbbb-bbb")
       let chrome: (CallEvidenceReader.Evidence) -> Void = { evidence in
         rig.coordinator.simulate([
-          .init(holder: .init(pid: 900_051, bundleID: "com.google.chrome", input: .active), evidence: evidence)
+          .init(
+            holder: .init(pid: 900_051, bundleID: "com.google.chrome", input: .active),
+            evidence: evidence)
         ])
       }
       chrome(roomA)
@@ -1944,7 +2035,9 @@
       let chrome: (CallMicrophoneWatcher.Input, CallEvidenceReader.Evidence) -> Void = {
         input, evidence in
         rig.coordinator.simulate([
-          .init(holder: .init(pid: 900_061, bundleID: "com.google.chrome", input: input), evidence: evidence)
+          .init(
+            holder: .init(pid: 900_061, bundleID: "com.google.chrome", input: input),
+            evidence: evidence)
         ])
       }
       chrome(.active, meet)
@@ -1992,7 +2085,9 @@
         CallEvidenceReader.Evidence.call(family: .slack, room: "pid-900080")
       }
       rig.coordinator.simulate([
-        .init(holder: .init(pid: 900_080, bundleID: "com.tinyspeck.slackmacgap", input: .active), evidence: huddle(900_080)),
+        .init(
+          holder: .init(pid: 900_080, bundleID: "com.tinyspeck.slackmacgap", input: .active),
+          evidence: huddle(900_080))
       ])
       rig.advance(CallDetectionPolicy.questionReadiness)
       rig.coordinator.stepForTesting()
@@ -2000,8 +2095,12 @@
       #expect(rig.press("yes"))
       #expect(await settleUntilObserved { rig.starts == [.slack] })
       rig.coordinator.simulate([
-        .init(holder: .init(pid: 900_080, bundleID: "com.tinyspeck.slackmacgap", input: .active), evidence: huddle(900_080)),
-        .init(holder: .init(pid: 900_081, bundleID: "com.tinyspeck.slackmacgap.helper", input: .active), evidence: huddle(900_081)),
+        .init(
+          holder: .init(pid: 900_080, bundleID: "com.tinyspeck.slackmacgap", input: .active),
+          evidence: huddle(900_080)),
+        .init(
+          holder: .init(pid: 900_081, bundleID: "com.tinyspeck.slackmacgap.helper", input: .active),
+          evidence: huddle(900_081)),
       ])
       #expect(rig.panel.shown.filter { $0 == .switchMeeting(appName: "Slack") }.isEmpty)
     }
@@ -2011,7 +2110,9 @@
       let rig = try Rig()
       let meet = CallEvidenceReader.Evidence.call(family: .googleMeet, room: "abc-defg-hij")
       rig.coordinator.simulate([
-        .init(holder: .init(pid: 900_091, bundleID: "com.google.chrome", input: .active), evidence: meet)
+        .init(
+          holder: .init(pid: 900_091, bundleID: "com.google.chrome", input: .active), evidence: meet
+        )
       ])
       rig.advance(CallDetectionPolicy.questionReadiness)
       rig.coordinator.stepForTesting()
@@ -2020,7 +2121,9 @@
       for _ in 0..<30 {
         rig.advance(1)
         rig.coordinator.simulate([
-          .init(holder: .init(pid: 900_092, bundleID: "com.google.chrome.helper", input: .active), evidence: .none)
+          .init(
+            holder: .init(pid: 900_092, bundleID: "com.google.chrome.helper", input: .active),
+            evidence: .none)
         ])
       }
       #expect(rig.stops == 0)
@@ -2064,7 +2167,8 @@
       #expect(rig.panel.content == .switchMeeting(appName: "Zoom"))
       rig.onStop = { rig.zoom(.unknown) }
       #expect(rig.press("yes"))
-      #expect(await settleUntilObserved { rig.stops == 1 && rig.panel.content == .switchNotConfirmed })
+      #expect(
+        await settleUntilObserved { rig.stops == 1 && rig.panel.content == .switchNotConfirmed })
       #expect(rig.starts.isEmpty)
       #expect(rig.press("startNewRecording"))
       #expect(await settleUntilObserved { rig.userStarts == [.zoom] })
