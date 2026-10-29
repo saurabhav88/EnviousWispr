@@ -188,6 +188,8 @@ scripts/lib/*
 !scripts/lib/spm-seed-lock-test.sh
 !scripts/lib/spm-seed.sh
 !scripts/lib/spm-seed-test.sh
+!scripts/lib/remove-tree.py
+!scripts/lib/remove-tree-test.py
 !scripts/lib/log-dir.sh
 !scripts/lib/log-dir-test.sh
 !scripts/lib/lane-verdict.sh
