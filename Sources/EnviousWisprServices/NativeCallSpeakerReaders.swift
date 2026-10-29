@@ -88,7 +88,9 @@ package enum ZoomAppSpeakerReader {
         roster: CallSpeakerRoster(names: names, selfNames: selfList),
         rosterFromParticipantList: true, participants: participants,
         participantIdentityEstablished: identity,
-        sharedNames: listedTwice.union(repeatedNames(thumbnailNames)))
+        sharedNames: listedTwice.union(repeatedNames(thumbnailNames)),
+        // One list on screen whose own "Participants (N)" count equals the entries read.
+        participantListComplete: true)
     }
     return CallSpeakerReading(
       speaking: uniqueInOrder(speaking),
@@ -279,7 +281,11 @@ package enum TeamsAppSpeakerReader {
       // Rows in two windows cannot be matched to each other: no identity.
       participantIdentityEstablished: rosters.count <= 1 && !participants.isEmpty,
       // Each representation's own duplicates are two people; rows and tiles are never added.
-      sharedNames: rosters.reduce(into: repeatedNames(tileNames)) { $0.formUnion(repeatedNames($1.names)) })
+      sharedNames: rosters.reduce(into: repeatedNames(tileNames)) {
+        $0.formUnion(repeatedNames($1.names))
+      },
+      // Rows in one window whose "In this meeting, N total" count equals the rows read.
+      participantListComplete: complete)
   }
 
   static let compactViewPrefix = "Meeting compact view | "

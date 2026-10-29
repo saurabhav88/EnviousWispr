@@ -153,12 +153,17 @@ package enum MeetingSpeakerNamer {
     var votes: [String: [String: Int]] = [:]
     for (segment, lag) in usable {
       let nameable = uniqueRosterNames(segment.roster).subtracting(shared).subtracting(selfNames)
+      let presence = Dictionary(
+        (segment.presence ?? []).map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
       for observation in segment.observations {
         let others = observation.speaking.filter { !selfNames.contains($0) }
         // Exactly one person talking, and that name names one person on this call.
         guard others.count == 1, let name = others.first, nameable.contains(name) else {
           continue
         }
+        // A name the participant list had confirmed gone at that moment contradicts the vote.
+        // Presence is on the recording clock, like the observation before its lag.
+        if presence[name]?.isConfirmedAbsent(at: observation.observationMs) == true { continue }
         let (aligned, overflow) = observation.observationMs.subtractingReportingOverflow(
           lag.milliseconds)
         // The voice it points to must lie in this segment's own stretch, start included and end

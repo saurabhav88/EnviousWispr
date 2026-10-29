@@ -259,6 +259,136 @@ struct CallSpeakerCaptureTests {
     #expect(MeetingSpeakerNamer.uniqueRosterNames(log.log.roster).isEmpty)
   }
 
+  // MARK: - Presence and health (13B)
+
+  /// A complete participant list showing `names`, nobody talking.
+  private func list(_ names: [String], complete: Bool = true) -> CallSpeakerReading {
+    CallSpeakerReading(
+      speaking: [], roster: CallSpeakerRoster(names: names, selfNames: []),
+      rosterFromParticipantList: complete,
+      participants: names.enumerated().map {
+        CallParticipant(key: "\($0.offset)", name: $0.element, isTalking: false, isSelf: false)
+      },
+      participantIdentityEstablished: true, sharedNames: [], participantListComplete: complete)
+  }
+
+  private func presence(_ log: CallSpeakerAccumulator, _ name: String) -> CallNamePresence? {
+    log.log.segments.first?.presence?.first { $0.name == name }
+  }
+
+  @Test("a late joiner's first sighting is when the list first showed them")
+  func lateJoin() {
+    var log = CallSpeakerAccumulator(surface: .teamsApp, rules: nil, lag: nil)
+    log.add(list(["Alex Rivera"]), context: Self.good, observationMs: 1_000)
+    log.add(list(["Alex Rivera", "Priya Shah"]), context: Self.good, observationMs: 4_000)
+    log.add(list(["Alex Rivera", "Priya Shah"]), context: Self.good, observationMs: 4_500)
+    #expect(
+      presence(log, "Priya Shah")?.sightings == [
+        .init(firstSeenMs: 4_000, lastSeenMs: 4_500, absenceConfirmed: false)
+      ])
+    #expect(presence(log, "Alex Rivera")?.sightings.first?.firstSeenMs == 1_000)
+  }
+
+  @Test("one or two missing lists never close a sighting; three over a second do; return reopens")
+  func leaveAndReturn() {
+    var log = CallSpeakerAccumulator(surface: .teamsApp, rules: nil, lag: nil)
+    log.add(list(["Alex Rivera", "Priya Shah"]), context: Self.good, observationMs: 1_000)
+    log.add(list(["Alex Rivera"]), context: Self.good, observationMs: 1_500)
+    log.add(list(["Alex Rivera", "Priya Shah"]), context: Self.good, observationMs: 2_000)
+    #expect(presence(log, "Priya Shah")?.absences.isEmpty == true, "one missing list is not a leave")
+    for ms in [2_500, 3_000] { log.add(list(["Alex Rivera"]), context: Self.good, observationMs: ms) }
+    #expect(presence(log, "Priya Shah")?.absences.isEmpty == true, "two lists over 500 ms")
+    log.add(list(["Alex Rivera"]), context: Self.good, observationMs: 3_500)
+    let gone = presence(log, "Priya Shah")
+    #expect(gone?.absences == [.init(firstMissingMs: 2_500, confirmedAtMs: 3_500)])
+    #expect(
+      gone?.sightings == [.init(firstSeenMs: 1_000, lastSeenMs: 2_000, absenceConfirmed: true)])
+    #expect(gone?.isConfirmedAbsent(at: 3_000) == true)
+    log.add(list(["Alex Rivera", "Priya Shah"]), context: Self.good, observationMs: 9_000)
+    let back = presence(log, "Priya Shah")
+    #expect(back?.sightings.count == 2)
+    #expect(back?.sightings.last == .init(firstSeenMs: 9_000, lastSeenMs: 9_000, absenceConfirmed: false))
+    #expect(back?.isConfirmedAbsent(at: 8_999) == true)
+    #expect(back?.isConfirmedAbsent(at: 9_000) == false)
+    #expect(back?.isConfirmedAbsent(at: 500) == false, "before the first sighting is not absence")
+  }
+
+  @Test("tiles only, a partial list, a gap, an unreadable copy or a dictation pause never prove a leave")
+  func noLeaveWithoutCompleteLists() {
+    // Tiles only: never.
+    var tiles = CallSpeakerAccumulator(surface: .meet, rules: nil, lag: nil)
+    tiles.add(list(["Alex Rivera", "Priya Shah"], complete: false), context: Self.good, observationMs: 0)
+    for ms in stride(from: 500, through: 5_000, by: 500) {
+      tiles.add(list(["Alex Rivera"], complete: false), context: Self.good, observationMs: ms)
+    }
+    #expect(presence(tiles, "Priya Shah")?.absences.isEmpty == true)
+
+    // Each break restarts the run of three.
+    func run(_ interrupt: (inout CallSpeakerAccumulator) -> Void) -> CallSpeakerAccumulator {
+      var log = CallSpeakerAccumulator(surface: .teamsApp, rules: nil, lag: nil)
+      log.add(list(["Alex Rivera", "Priya Shah"]), context: Self.good, observationMs: 0)
+      log.add(list(["Alex Rivera"]), context: Self.good, observationMs: 500)
+      log.add(list(["Alex Rivera"]), context: Self.good, observationMs: 1_000)
+      interrupt(&log)
+      log.add(list(["Alex Rivera"]), context: Self.good, observationMs: 1_500)
+      return log
+    }
+    let unreadable = run {
+      $0.add(nil, context: CallCaptureContext(completeness: .unreadable, scope: .resolved), observationMs: 1_200)
+    }
+    #expect(presence(unreadable, "Priya Shah")?.absences.isEmpty == true)
+    let dictation = run { $0.noteDictationSkip() }
+    #expect(presence(dictation, "Priya Shah")?.absences.isEmpty == true)
+    let stale = run { $0.noteStaleDrop() }
+    #expect(presence(stale, "Priya Shah")?.absences.isEmpty == true)
+    let partial = run { $0.add(list(["Alex Rivera"], complete: false), context: Self.good, observationMs: 1_200) }
+    #expect(presence(partial, "Priya Shah")?.absences.isEmpty == true)
+    let control = run { _ in }
+    #expect(presence(control, "Priya Shah")?.absences.count == 1, "without a break the run confirms")
+
+    // A list read more than 1.5 s after the one before starts a new run.
+    var gap = CallSpeakerAccumulator(surface: .teamsApp, rules: nil, lag: nil)
+    gap.add(list(["Alex Rivera", "Priya Shah"]), context: Self.good, observationMs: 0)
+    for ms in [500, 1_000, 3_000] { gap.add(list(["Alex Rivera"]), context: Self.good, observationMs: ms) }
+    #expect(presence(gap, "Priya Shah")?.absences.isEmpty == true)
+  }
+
+  @Test("health counts every capture, admission and skipped tick, with no names")
+  func healthCounts() {
+    var log = CallSpeakerAccumulator(surface: .meet, rules: nil, lag: nil)
+    log.add(reading([("Alex Rivera", true)]), context: Self.good, observationMs: 1)
+    log.add(reading([("Alex Rivera", false)]), context: Self.good, observationMs: 2)
+    log.add(
+      reading([("Alex Rivera", true), ("Alex Rivera", false)]), context: Self.good,
+      observationMs: 3)
+    log.add(nil, context: CallCaptureContext(completeness: .truncated, scope: .resolved), observationMs: 4)
+    log.add(nil, context: CallCaptureContext(completeness: .complete, scope: .unresolved), observationMs: 5)
+    log.noteBusySkip()
+    log.noteDictationSkip()
+    log.noteNoPermission()
+    log.noteStaleDrop()
+    log.noteWalk(durationUs: 300, nodes: 40)
+    log.noteWalk(durationUs: 100, nodes: 90)
+    let health = log.log.segments.first?.health
+    #expect(health?.captureAttempts == 5)
+    #expect(health?.completeCaptures == 4)
+    #expect(health?.truncatedCaptures == 1)
+    #expect(health?.unresolvedScopeCaptures == 1)
+    #expect(health?.admittedSpeakingObservations == 1)
+    #expect(health?.admittedQuietObservations == 1)
+    #expect(health?.withheldByReason == ["ambiguousTalker": 1])
+    #expect(health?.skippedBusyTicks == 1)
+    #expect(health?.skippedDictationTicks == 1)
+    #expect(health?.missingPermissionTicks == 1)
+    #expect(health?.staleResultDrops == 1)
+    #expect(health?.walkDurationCount == 2)
+    #expect(health?.walkDurationTotalUs == 400)
+    #expect(health?.walkDurationMaxUs == 300)
+    #expect(health?.nodesVisitedTotal == 130)
+    #expect(health?.nodesVisitedMax == 90)
+    #expect(log.log.presencePolicy == .current)
+  }
+
   @Test("status: unreadable copies only, then observed; no permission only before any use")
   func status() {
     var log = CallSpeakerAccumulator(surface: .meet, rules: nil, lag: nil)

@@ -1,0 +1,146 @@
+import Foundation
+
+/// The rule a recording used to turn participant readings into presence (#4013 13B), frozen in
+/// its evidence so Transcribe again never reinterprets an old recording with newer constants.
+///
+/// A name stops being present only when this many consecutive complete participant lists, each
+/// read within `maximumGapMs` of the one before and together spanning at least
+/// `minimumAbsenceSpanMs`, all leave it out. Anything else (a partial list, visible tiles only,
+/// an unreadable copy, a pause for dictation, a lost source) breaks the run: it can never prove
+/// that someone left.
+public struct CallPresencePolicy: Sendable, Equatable, Codable {
+  public let version: Int
+  public let absenceReadings: Int
+  public let minimumAbsenceSpanMs: Int
+  public let maximumGapMs: Int
+
+  public init(version: Int, absenceReadings: Int, minimumAbsenceSpanMs: Int, maximumGapMs: Int) {
+    self.version = version
+    self.absenceReadings = absenceReadings
+    self.minimumAbsenceSpanMs = minimumAbsenceSpanMs
+    self.maximumGapMs = maximumGapMs
+  }
+
+  /// Proposed in the 13B plan: three lists over at least a second, ticks 500 ms apart.
+  public static let current = CallPresencePolicy(
+    version: 1, absenceReadings: 3, minimumAbsenceSpanMs: 1_000, maximumGapMs: 1_500)
+}
+
+/// When one display name was seen in a segment. A name, not a person: two people sharing a
+/// name share this record (the roster keeps how many there were).
+public struct CallNamePresence: Sendable, Equatable, Codable {
+  /// One stretch the name was shown, from its first to its last reading.
+  public struct Sighting: Sendable, Equatable, Codable {
+    public let firstSeenMs: Int
+    public let lastSeenMs: Int
+    /// True when the stretch ended because the participant list confirmed the name gone;
+    /// false while it was still shown when collection ended (no claim that they left).
+    public let absenceConfirmed: Bool
+
+    public init(firstSeenMs: Int, lastSeenMs: Int, absenceConfirmed: Bool) {
+      self.firstSeenMs = firstSeenMs
+      self.lastSeenMs = lastSeenMs
+      self.absenceConfirmed = absenceConfirmed
+    }
+  }
+
+  /// Complete participant lists left the name out from `firstMissingMs`, confirmed at
+  /// `confirmedAtMs`. Neither is an exact time of leaving: the person left after the sighting
+  /// before it and by `firstMissingMs`.
+  public struct Absence: Sendable, Equatable, Codable {
+    public let firstMissingMs: Int
+    public let confirmedAtMs: Int
+
+    public init(firstMissingMs: Int, confirmedAtMs: Int) {
+      self.firstMissingMs = firstMissingMs
+      self.confirmedAtMs = confirmedAtMs
+    }
+  }
+
+  public static let maximumSightings = 200
+
+  public let name: String
+  public let sightings: [Sighting]
+  public let absences: [Absence]
+
+  public init(name: String, sightings: [Sighting], absences: [Absence]) {
+    self.name = name
+    self.sightings = sightings
+    self.absences = absences
+  }
+
+  /// Whether the name was confirmed gone at `ms`: after a confirmed absence began and before it
+  /// was next seen. Time before its first sighting or after its last one is not an absence.
+  public func isConfirmedAbsent(at ms: Int) -> Bool {
+    absences.contains { absence in
+      guard ms >= absence.firstMissingMs else { return false }
+      let back = sightings.first { $0.firstSeenMs > absence.firstMissingMs }
+      return back.map { ms < $0.firstSeenMs } ?? true
+    }
+  }
+
+  var shapeProblem: String? {
+    guard sightings.count <= Self.maximumSightings, absences.count <= Self.maximumSightings
+    else { return "too many" }
+    var previous = Int.min
+    for sighting in sightings {
+      guard sighting.firstSeenMs >= previous, sighting.lastSeenMs >= sighting.firstSeenMs else {
+        return "sightings out of order"
+      }
+      previous = sighting.lastSeenMs
+    }
+    for absence in absences where absence.confirmedAtMs < absence.firstMissingMs {
+      return "absence ends before it starts"
+    }
+    return nil
+  }
+}
+
+/// How one segment's captures went, as counts only: no names, no content (#4013 13B). Kept on
+/// this Mac with the evidence. Counters overlap: an attempt is complete, truncated or unreadable;
+/// a complete one may still be out of scope or withheld; admitted ones are speaking or quiet.
+public struct CallCaptureHealth: Sendable, Equatable, Codable {
+  public var captureAttempts = 0
+  public var completeCaptures = 0
+  public var truncatedCaptures = 0
+  public var unreadableCaptures = 0
+  public var unresolvedScopeCaptures = 0
+  public var admittedSpeakingObservations = 0
+  public var admittedQuietObservations = 0
+  /// By `CallNamingAdmission.Reason` raw value.
+  public var withheldByReason: [String: Int] = [:]
+  public var skippedBusyTicks = 0
+  public var skippedDictationTicks = 0
+  public var missingPermissionTicks = 0
+  /// Copies dropped at delivery because something changed while they were taken.
+  public var staleResultDrops = 0
+  public var walkDurationCount = 0
+  public var walkDurationTotalUs = 0
+  public var walkDurationMaxUs = 0
+  public var nodesVisitedTotal = 0
+  public var nodesVisitedMax = 0
+
+  public init() {}
+
+  /// Adds one copy's walk time and size.
+  public mutating func noteWalk(durationUs: Int, nodes: Int) {
+    walkDurationCount += 1
+    walkDurationTotalUs += max(0, durationUs)
+    walkDurationMaxUs = max(walkDurationMaxUs, durationUs)
+    nodesVisitedTotal += max(0, nodes)
+    nodesVisitedMax = max(nodesVisitedMax, nodes)
+  }
+}
+
+/// How the recording's search for its call went, as counts only (#4013 13B).
+public struct CallSessionHealth: Sendable, Equatable, Codable {
+  /// Discovery answers by kind: one call, none, two competing, or unreadable.
+  public var uniqueSources = 0
+  public var noSource = 0
+  public var ambiguousSources = 0
+  public var unavailableSources = 0
+  public var saveAttempts = 0
+  public var saveFailures = 0
+
+  public init() {}
+}

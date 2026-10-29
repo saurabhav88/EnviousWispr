@@ -76,12 +76,15 @@ package struct CallAXCapture: Sendable, Equatable {
   /// Host times (`mach_absolute_time`) bracketing the reads.
   package let readStartHostTime: UInt64
   package let readEndHostTime: UInt64
+  /// Elements copied (for the local capture health counts).
+  package let nodesVisited: Int
 
   package init(
     windows: [CallAXWindow], documents: [CallAXDocument],
     completeness: CallCaptureContext.Completeness, readStartHostTime: UInt64,
-    readEndHostTime: UInt64
+    readEndHostTime: UInt64, nodesVisited: Int = 0
   ) {
+    self.nodesVisited = nodesVisited
     self.windows = windows
     self.documents = documents
     self.completeness = completeness
@@ -121,7 +124,7 @@ package enum CallSpeakerCapture {
       walk.unreadable ? .unreadable : (walk.truncated ? .truncated : .complete)
     return CallAXCapture(
       windows: copied, documents: walk.documents, completeness: completeness,
-      readStartHostTime: started, readEndHostTime: hostTime())
+      readStartHostTime: started, readEndHostTime: hostTime(), nodesVisited: walk.count)
   }
 
   private struct Walk<Element> {

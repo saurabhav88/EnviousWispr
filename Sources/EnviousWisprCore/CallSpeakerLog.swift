@@ -143,6 +143,13 @@ public struct CallSpeakerSegment: Sendable, Equatable {
   /// written before this was recorded). Neither false nor `nil` confirms the names are unique.
   public let rosterFromParticipantList: Bool?
   public let observations: [CallSpeakerObservation]
+  /// When each name was seen (#4013 13B); `nil` when not recorded (a format-1 log).
+  public let presence: [CallNamePresence]?
+  /// How this segment's captures went; `nil` when not recorded (unknown, never zero).
+  public let health: CallCaptureHealth?
+
+  /// More names than any call shows; bounds the work of reading a damaged file.
+  public static let maximumPresenceNames = 1_000
 
   public var surface: CallSpeakerSurface? { surfaceRaw.flatMap(CallSpeakerSurface.init(rawValue:)) }
   public var source: CallSpeakerSource? { sourceRaw.flatMap(CallSpeakerSource.init(rawValue:)) }
@@ -157,7 +164,8 @@ public struct CallSpeakerSegment: Sendable, Equatable {
     startMs: Int, endMs: Int?, endReason: CallSpeakerSegmentEnd?, surface: CallSpeakerSurface?,
     source: CallSpeakerSource?, status: CallSpeakerObservationStatus?, lag: CallSpeakerLag?,
     roster: CallSpeakerRoster, rosterFromParticipantList: Bool?,
-    observations: [CallSpeakerObservation]
+    observations: [CallSpeakerObservation], presence: [CallNamePresence]? = nil,
+    health: CallCaptureHealth? = nil
   ) {
     self.startMs = startMs
     self.endMs = endMs
@@ -169,6 +177,8 @@ public struct CallSpeakerSegment: Sendable, Equatable {
     self.roster = roster
     self.rosterFromParticipantList = rosterFromParticipantList
     self.observations = observations
+    self.presence = presence
+    self.health = health
   }
 
   /// The first shape problem, or `nil` when the segment may be admitted as evidence.
@@ -198,6 +208,20 @@ public struct CallSpeakerSegment: Sendable, Equatable {
       }
       previous = observation.observationMs
     }
+    if let presence {
+      guard presence.count <= Self.maximumPresenceNames else { return "presence" }
+      for (index, entry) in presence.enumerated() {
+        guard CallSpeakerLog.isName(entry.name) else { return "presence[\(index)].name" }
+        if let problem = entry.shapeProblem { return "presence[\(index)] \(problem)" }
+        // Every time stays inside the segment.
+        let times =
+          entry.sightings.flatMap { [$0.firstSeenMs, $0.lastSeenMs] }
+          + entry.absences.flatMap { [$0.firstMissingMs, $0.confirmedAtMs] }
+        guard times.allSatisfy({ $0 >= startMs && $0 <= (endMs ?? clock.upperBound) }) else {
+          return "presence[\(index)] outside the segment"
+        }
+      }
+    }
     return nil
   }
 }
@@ -205,7 +229,7 @@ public struct CallSpeakerSegment: Sendable, Equatable {
 extension CallSpeakerSegment: Codable {
   private enum CodingKeys: String, CodingKey {
     case startMs, endMs, endReason, surface, source, status, lag, roster
-    case rosterFromParticipantList, observations
+    case rosterFromParticipantList, observations, presence, health
   }
 
   public init(from decoder: Decoder) throws {
@@ -222,6 +246,8 @@ extension CallSpeakerSegment: Codable {
       Bool.self, forKey: .rosterFromParticipantList)
     observations =
       try container.decodeIfPresent([CallSpeakerObservation].self, forKey: .observations) ?? []
+    presence = try container.decodeIfPresent([CallNamePresence].self, forKey: .presence)
+    health = try container.decodeIfPresent(CallCaptureHealth.self, forKey: .health)
   }
 
   public func encode(to encoder: Encoder) throws {
@@ -236,6 +262,8 @@ extension CallSpeakerSegment: Codable {
     try container.encode(roster, forKey: .roster)
     try container.encodeIfPresent(rosterFromParticipantList, forKey: .rosterFromParticipantList)
     try container.encode(observations, forKey: .observations)
+    try container.encodeIfPresent(presence, forKey: .presence)
+    try container.encodeIfPresent(health, forKey: .health)
   }
 }
 
@@ -260,12 +288,21 @@ public struct CallSpeakerLog: Sendable, Equatable {
 
   public let formatVersion: Int
   public let rules: FrozenTalkerRules?
+  /// The presence rule frozen at recording start; `nil` when presence was not recorded.
+  public let presencePolicy: CallPresencePolicy?
   public let segments: [CallSpeakerSegment]
+  /// How the search for the call went; `nil` when not recorded.
+  public let sessionHealth: CallSessionHealth?
 
-  public init(rules: FrozenTalkerRules?, segments: [CallSpeakerSegment]) {
+  public init(
+    rules: FrozenTalkerRules?, presencePolicy: CallPresencePolicy? = nil,
+    segments: [CallSpeakerSegment], sessionHealth: CallSessionHealth? = nil
+  ) {
     self.formatVersion = Self.currentFormatVersion
     self.rules = rules
+    self.presencePolicy = presencePolicy
     self.segments = segments
+    self.sessionHealth = sessionHealth
   }
 
   /// The one surface every segment shares, or `nil` with none or more than one (a mixed
@@ -336,7 +373,7 @@ extension CallSpeakerLog: Codable {
   }
 
   private enum CodingKeys: String, CodingKey {
-    case formatVersion, rules, segments
+    case formatVersion, rules, presencePolicy, segments, sessionHealth
     // Format 1's single-surface fields.
     case surface, source, status, lag, roster, rosterFromParticipantList, observations
   }
@@ -351,6 +388,9 @@ extension CallSpeakerLog: Codable {
     guard version >= 1 else { throw DecodeError.invalid("formatVersion") }
     formatVersion = version
     rules = try container.decodeIfPresent(FrozenTalkerRules.self, forKey: .rules)
+    presencePolicy = try container.decodeIfPresent(
+      CallPresencePolicy.self, forKey: .presencePolicy)
+    sessionHealth = try container.decodeIfPresent(CallSessionHealth.self, forKey: .sessionHealth)
     if version == 1 {
       segments = [
         CallSpeakerSegment(
@@ -380,7 +420,9 @@ extension CallSpeakerLog: Codable {
     var container = encoder.container(keyedBy: CodingKeys.self)
     try container.encode(Self.currentFormatVersion, forKey: .formatVersion)
     try container.encodeIfPresent(rules, forKey: .rules)
+    try container.encodeIfPresent(presencePolicy, forKey: .presencePolicy)
     try container.encode(segments, forKey: .segments)
+    try container.encodeIfPresent(sessionHealth, forKey: .sessionHealth)
   }
 }
 
@@ -412,5 +454,7 @@ extension CallSpeakerSegment {
     self.roster = roster
     self.rosterFromParticipantList = rosterFromParticipantList
     self.observations = observations
+    self.presence = nil
+    self.health = nil
   }
 }

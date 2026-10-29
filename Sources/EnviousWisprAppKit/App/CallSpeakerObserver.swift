@@ -126,6 +126,7 @@ final class CallSpeakerObserver {
     guard open, CallSpeakerSurfaceChoice.hasTalkerReader(accumulator.surface) else { return }
     guard deps.isDictationIdle() else {
       generation += 1
+      accumulator.noteDictationSkip()
       return
     }
     guard deps.isTrusted() else {
@@ -146,7 +147,10 @@ final class CallSpeakerObserver {
       running = true
       return true
     }
-    guard claimed else { return }
+    guard claimed else {
+      accumulator.noteBusySkip()
+      return
+    }
     let taken = Taken(
       target: target, generation: generation, dictation: dictationChanges.withLock { $0 },
       source: deps.sourceRevision())
@@ -176,11 +180,19 @@ final class CallSpeakerObserver {
     #if DEBUG
       deliveriesForTesting += 1
     #endif
+    guard open else { return }
+    accumulator.noteWalk(
+      durationUs: CallSpeakerTimeline.microseconds(
+        from: copy.readStartHostTime, to: copy.readEndHostTime),
+      nodes: copy.nodesVisited)
     // Read again at delivery: nothing that would have stopped the copy may have happened since.
-    guard open, trustedAfter, taken.generation == generation,
+    guard trustedAfter, taken.generation == generation,
       taken.dictation == dictationChanges.withLock({ $0 }), taken.source == deps.sourceRevision(),
       deps.isDictationIdle(), deps.isTrusted(), deps.target() == taken.target
-    else { return }
+    else {
+      accumulator.noteStaleDrop()
+      return
+    }
     guard
       let ms = CallSpeakerTimeline.observationMs(
         readStart: copy.readStartHostTime, readEnd: copy.readEndHostTime, anchor: anchor)

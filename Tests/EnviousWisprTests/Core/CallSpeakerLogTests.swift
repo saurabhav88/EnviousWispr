@@ -85,6 +85,36 @@ struct CallSpeakerLogTests {
     }
   }
 
+  @Test("presence and health round-trip; presence outside its segment is refused")
+  func presenceShape() throws {
+    var health = CallCaptureHealth()
+    health.captureAttempts = 3
+    health.withheldByReason = ["unnamedTalker": 1]
+    let inside = CallNamePresence(
+      name: "Alex Rivera",
+      sightings: [.init(firstSeenMs: 1_000, lastSeenMs: 2_000, absenceConfirmed: true)],
+      absences: [.init(firstMissingMs: 2_500, confirmedAtMs: 3_500)])
+    func log(_ presence: CallNamePresence) -> CallSpeakerLog {
+      CallSpeakerLog(
+        rules: nil, presencePolicy: .current,
+        segments: [
+          CallSpeakerSegment(
+            startMs: 500, endMs: 4_000, endReason: .recordingEnded, surface: .teamsApp,
+            source: .app, status: .observed, lag: nil, roster: .empty,
+            rosterFromParticipantList: true, observations: [], presence: [presence],
+            health: health)
+        ], sessionHealth: CallSessionHealth())
+    }
+    let good = log(inside)
+    #expect(good.shapeProblem == nil)
+    #expect(try JSONDecoder().decode(CallSpeakerLog.self, from: JSONEncoder().encode(good)) == good)
+    let outside = CallNamePresence(
+      name: "Alex Rivera",
+      sightings: [.init(firstSeenMs: 100, lastSeenMs: 2_000, absenceConfirmed: false)],
+      absences: [])
+    #expect(log(outside).shapeProblem != nil)
+  }
+
   @Test("more segments than the bound are refused")
   func segmentBound() {
     let segments = (0...CallSpeakerLog.maximumSegments).map {

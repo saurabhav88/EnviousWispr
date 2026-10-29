@@ -150,6 +150,38 @@ struct MeetingSpeakerNamerTests {
     #expect(propose(turns, eligible, endpoint).proposals[Self.b] == nil)
   }
 
+  @Test("a vote while its name was confirmed gone does not count; one before it was first seen does")
+  func absenceContradicts() {
+    let turns = [Self.turn(Self.a, 0, 20_000)]
+    let eligible = Self.eligibility([Self.a])
+    func log(_ samples: [(Int, [String])]) -> CallSpeakerLog {
+      let presence = CallNamePresence(
+        name: "Alex Rivera",
+        sightings: [
+          .init(firstSeenMs: 5_000, lastSeenMs: 8_000, absenceConfirmed: true),
+          .init(firstSeenMs: 15_000, lastSeenMs: 19_000, absenceConfirmed: false),
+        ],
+        absences: [.init(firstMissingMs: 9_000, confirmedAtMs: 10_000)])
+      return CallSpeakerLog(
+        rules: nil, presencePolicy: .current,
+        segments: [
+          CallSpeakerSegment(
+            startMs: 0, endMs: nil, endReason: nil, surface: .teamsApp, source: .app,
+            status: .observed, lag: CallSpeakerLag(milliseconds: 0),
+            roster: CallSpeakerRoster(names: ["Alex Rivera"], selfNames: []),
+            rosterFromParticipantList: true,
+            observations: samples.map { CallSpeakerObservation(observationMs: $0.0, speaking: $0.1) },
+            presence: [presence])
+        ])
+    }
+    // Three votes while confirmed gone (9-15 s): not counted.
+    #expect(propose(turns, eligible, log(Self.votes("Alex Rivera", from: 11_000, count: 3))).proposals.isEmpty)
+    // Three votes before the first sighting: counted.
+    #expect(
+      propose(turns, eligible, log(Self.votes("Alex Rivera", from: 1_000, count: 3))).proposals
+        == [Self.a: "Alex Rivera"])
+  }
+
   @Test("a name one segment shows for two people is never named from another segment")
   func sharedInAnySegment() {
     let turns = [Self.turn(Self.a, 0, 10_000)]

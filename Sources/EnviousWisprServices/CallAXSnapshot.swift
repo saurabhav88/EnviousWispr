@@ -83,12 +83,17 @@ package struct CallSpeakerReading: Sendable, Equatable {
   package let participants: [CallParticipant]
   package let participantIdentityEstablished: Bool
   package let sharedNames: Set<String>
+  /// The roster is the app's whole participant list, checked against the count the app shows
+  /// (#4013 13B). Only this can show that someone left; visible tiles or a list the app may
+  /// draw only partly never can.
+  package let participantListComplete: Bool
 
   package init(
     speaking: [String], roster: CallSpeakerRoster, rosterFromParticipantList: Bool,
     participants: [CallParticipant], participantIdentityEstablished: Bool,
-    sharedNames: Set<String>
+    sharedNames: Set<String>, participantListComplete: Bool = false
   ) {
+    self.participantListComplete = participantListComplete
     self.speaking = speaking
     self.roster = roster
     self.rosterFromParticipantList = rosterFromParticipantList

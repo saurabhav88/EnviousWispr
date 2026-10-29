@@ -127,6 +127,16 @@ package enum CallSpeakerTimeline {
     return Int(ms)
   }
 
+  /// Microseconds between two host times; 0 when the end is not after the start.
+  package static func microseconds(
+    from start: UInt64, to end: UInt64, timebase: mach_timebase_info_data_t = liveTimebase
+  ) -> Int {
+    guard end > start else { return 0 }
+    let nanos = Double(end - start) * Double(timebase.numer) / Double(timebase.denom)
+    let us = nanos / 1_000
+    return us < Double(Int.max) ? Int(us) : Int.max
+  }
+
   package static let liveTimebase: mach_timebase_info_data_t = {
     var info = mach_timebase_info_data_t()
     mach_timebase_info(&info)
@@ -134,7 +144,7 @@ package enum CallSpeakerTimeline {
   }()
 }
 
-/// One recording's speaker evidence as it is collected (#4013 chunk 13A), and the log it saves.
+/// One segment's speaker evidence as it is collected (#4013 chunk 13A, 13B), and the log it saves.
 ///
 /// Observations: only `CallSpeakerAdmission.observationSpeaking` results are appended; `nil`
 /// (withheld) appends nothing, `[]` is a valid quiet observation.
@@ -145,42 +155,79 @@ package enum CallSpeakerTimeline {
 /// and a later snapshot never erases two people already seen sharing a name. Self names are
 /// the union of the names a reader marked as the user. A name a reader proved two people share
 /// (`CallSpeakerReading.sharedNames`) is kept at least twice, so the namer never names it.
+///
+/// Presence (`CallPresencePolicy`): a name shown by such a reading opens or extends a sighting.
+/// Only a run of complete participant lists that all leave it out, read close together, closes
+/// it as confirmed gone; any other reading, a dropped copy or a pause breaks the run.
+///
+/// Health: counts of how captures and ticks went (`CallCaptureHealth`), no names.
 package struct CallSpeakerAccumulator: Sendable, Equatable {
   package let surface: CallSpeakerSurface
   package let rules: FrozenTalkerRules?
   package let lag: CallSpeakerLag?
+  package let presencePolicy: CallPresencePolicy
   package private(set) var status: CallSpeakerObservationStatus?
   package private(set) var observations: [CallSpeakerObservation] = []
+  package private(set) var health = CallCaptureHealth()
   private var nameCounts: [String: Int] = [:]
   private var nameOrder: [String] = []
   private var selfNames: [String] = []
   private var fromParticipantList = false
-  /// Captures taken; and whether any was complete and about one call.
-  private var captures = 0
+  /// Whether any capture was complete and about one call.
   private var usable = false
+
+  private struct Tracked: Sendable, Equatable {
+    var sightings: [CallNamePresence.Sighting] = []
+    var open: (first: Int, last: Int)?
+    var absences: [CallNamePresence.Absence] = []
+    var missingSince: Int?
+    var missingCount = 0
+
+    static func == (a: Tracked, b: Tracked) -> Bool {
+      a.sightings == b.sightings && a.open?.first == b.open?.first && a.open?.last == b.open?.last
+        && a.absences == b.absences && a.missingSince == b.missingSince
+        && a.missingCount == b.missingCount
+    }
+  }
+
+  private var presenceOrder: [String] = []
+  private var presence: [String: Tracked] = [:]
+  /// The time of the last complete participant list in the current unbroken run.
+  private var lastListMs: Int?
 
   package init(
     surface: CallSpeakerSurface, rules: FrozenTalkerRules?, lag: CallSpeakerLag?,
-    status: CallSpeakerObservationStatus? = nil
+    status: CallSpeakerObservationStatus? = nil, presencePolicy: CallPresencePolicy = .current
   ) {
     self.surface = surface
     self.rules = rules
     self.lag = lag
     self.status = status
+    self.presencePolicy = presencePolicy
   }
 
   /// Adds one reading of a capture taken at `observationMs`.
   package mutating func add(
     _ reading: CallSpeakerReading?, context: CallCaptureContext, observationMs: Int
   ) {
-    captures += 1
+    health.captureAttempts += 1
+    switch context.completeness {
+    case .complete: health.completeCaptures += 1
+    case .truncated: health.truncatedCaptures += 1
+    case .unreadable, .unknown: health.unreadableCaptures += 1
+    }
     guard context.completeness == .complete, context.scope == .resolved else {
+      if context.completeness == .complete { health.unresolvedScopeCaptures += 1 }
+      breakAbsenceRuns()
       if status == nil { status = .unreadable }
       return
     }
     usable = true
     status = .observed
-    guard let reading else { return }
+    guard let reading else {
+      breakAbsenceRuns()
+      return
+    }
     var counts: [String: Int] = [:]
     for name in reading.roster.names { counts[name, default: 0] += 1 }
     // In the order the reader showed them, each name once.
@@ -189,29 +236,119 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
       nameCounts[name] = max(nameCounts[name] ?? 0, counts[name] ?? 0)
       counts[name] = nil
     }
-    for name in reading.roster.selfNames where !selfNames.contains(name) {
-      selfNames.append(name)
-    }
     // A name the reader proved two people share stays at least twice, so a later reading that
     // shows it once never makes it nameable.
     for name in reading.sharedNames.sorted() {
       if nameCounts[name] == nil { nameOrder.append(name) }
       nameCounts[name] = max(nameCounts[name] ?? 0, 2)
     }
+    for name in reading.roster.selfNames where !selfNames.contains(name) {
+      selfNames.append(name)
+    }
     if reading.rosterFromParticipantList { fromParticipantList = true }
-    if let speaking = CallSpeakerAdmission.observationSpeaking(reading, context: context) {
+    notePresence(reading, at: observationMs)
+    switch CallSpeakerAdmission.admission(of: reading, context: context) {
+    case .admitted:
+      let speaking = CallSpeakerAdmission.observationSpeaking(reading, context: context) ?? []
+      if speaking.isEmpty {
+        health.admittedQuietObservations += 1
+      } else {
+        health.admittedSpeakingObservations += 1
+      }
       observations.append(CallSpeakerObservation(observationMs: observationMs, speaking: speaking))
+    case .withheld(let reason):
+      health.withheldByReason[reason.rawValue, default: 0] += 1
+    }
+  }
+
+  private mutating func notePresence(_ reading: CallSpeakerReading, at ms: Int) {
+    let shown = Set(reading.roster.names)
+    for name in reading.roster.names {
+      if presence[name] == nil {
+        guard presenceOrder.count < CallSpeakerSegment.maximumPresenceNames else { continue }
+        presenceOrder.append(name)
+        presence[name] = Tracked()
+      }
+      guard var tracked = presence[name] else { continue }
+      if let open = tracked.open {
+        tracked.open = (open.first, ms)
+      } else if tracked.sightings.count < CallNamePresence.maximumSightings {
+        tracked.open = (ms, ms)
+      }
+      tracked.missingSince = nil
+      tracked.missingCount = 0
+      presence[name] = tracked
+    }
+    guard reading.participantListComplete else {
+      breakAbsenceRuns()
+      return
+    }
+    let continues = lastListMs.map { ms - $0 <= presencePolicy.maximumGapMs } ?? false
+    for name in presenceOrder where !shown.contains(name) {
+      guard var tracked = presence[name], let open = tracked.open else { continue }
+      if let since = tracked.missingSince, continues {
+        tracked.missingCount += 1
+        if tracked.missingCount >= presencePolicy.absenceReadings,
+          ms - since >= presencePolicy.minimumAbsenceSpanMs,
+          tracked.absences.count < CallNamePresence.maximumSightings
+        {
+          tracked.sightings.append(
+            .init(firstSeenMs: open.first, lastSeenMs: open.last, absenceConfirmed: true))
+          tracked.absences.append(.init(firstMissingMs: since, confirmedAtMs: ms))
+          tracked.open = nil
+          tracked.missingSince = nil
+          tracked.missingCount = 0
+        }
+      } else {
+        tracked.missingSince = ms
+        tracked.missingCount = 1
+      }
+      presence[name] = tracked
+    }
+    lastListMs = ms
+  }
+
+  /// Anything that is not a complete participant list read in time: no run of them goes on.
+  private mutating func breakAbsenceRuns() {
+    lastListMs = nil
+    for name in presenceOrder where presence[name]?.missingSince != nil {
+      presence[name]?.missingSince = nil
+      presence[name]?.missingCount = 0
     }
   }
 
   /// Accessibility trust was missing for a capture. Earlier usable evidence keeps `observed`.
   package mutating func noteNoPermission() {
+    health.missingPermissionTicks += 1
+    breakAbsenceRuns()
     if !usable { status = .noPermission }
+  }
+
+  /// A tick took no copy because dictation was running.
+  package mutating func noteDictationSkip() {
+    health.skippedDictationTicks += 1
+    breakAbsenceRuns()
+  }
+
+  /// A tick took no copy because one was still being taken.
+  package mutating func noteBusySkip() {
+    health.skippedBusyTicks += 1
+  }
+
+  /// A copy was dropped at delivery because something changed while it was taken.
+  package mutating func noteStaleDrop() {
+    health.staleResultDrops += 1
+    breakAbsenceRuns()
+  }
+
+  /// One copy's walk time and size.
+  package mutating func noteWalk(durationUs: Int, nodes: Int) {
+    health.noteWalk(durationUs: durationUs, nodes: nodes)
   }
 
   package var log: CallSpeakerLog {
     CallSpeakerLog(
-      rules: rules,
+      rules: rules, presencePolicy: presencePolicy,
       segments: [
         CallSpeakerSegment(
           startMs: 0, endMs: nil, endReason: nil, surface: surface,
@@ -219,7 +356,18 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
           roster: CallSpeakerRoster(
             names: nameOrder.flatMap { Array(repeating: $0, count: nameCounts[$0] ?? 0) },
             selfNames: selfNames),
-          rosterFromParticipantList: fromParticipantList, observations: observations)
+          rosterFromParticipantList: fromParticipantList, observations: observations,
+          presence: presenceOrder.compactMap { name in
+            guard let tracked = presence[name] else { return nil }
+            let open = tracked.open.map {
+              CallNamePresence.Sighting(
+                firstSeenMs: $0.first, lastSeenMs: $0.last, absenceConfirmed: false)
+            }
+            return CallNamePresence(
+              name: name, sightings: tracked.sightings + (open.map { [$0] } ?? []),
+              absences: tracked.absences)
+          },
+          health: health)
       ])
   }
 }
