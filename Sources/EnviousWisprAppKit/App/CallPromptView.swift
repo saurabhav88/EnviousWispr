@@ -97,11 +97,14 @@ private struct CallPromptCard: View {
       LocalizedStringResource(
         "New call in \(app). Start a new recording?",
         comment: "EnviousMeet: a new call started while a meeting records; the app's name.")
+    case .endConfirmation:
+      LocalizedStringResource(
+        "Did your call end?", comment: "EnviousMeet: uncertain browser page ending; recording continues until the user explicitly stops it.")
     case .countdown(let seconds):
       LocalizedStringResource(
         "Meeting ending in \(seconds) seconds",
         comment: "EnviousMeet: the call ended; the recording stops after this many seconds.")
-    case .stopped, .switchNotConfirmed:
+    case .stopped, .stoppedByUser, .switchNotConfirmed:
       LocalizedStringResource(
         "Recording stopped", comment: "EnviousMeet: the detected meeting stopped.")
     case .needsAttention:
@@ -131,6 +134,10 @@ private struct CallPromptCard: View {
       LocalizedStringResource(
         "\(app) is using the microphone. I can start a recording.",
         comment: "EnviousMeet: observed microphone use, including prejoin; the app name. Recording is offered, not started.")
+    case .endConfirmation:
+      LocalizedStringResource(
+        "I'll keep recording unless you choose Stop recording.",
+        comment: "EnviousMeet: uncertain browser ending only, never the native countdown. No answer or Keep recording continues recording.")
     case .stopped:
       // No promise about the transcript: a close that timed out finishes on the next launch.
       LocalizedStringResource(
@@ -165,6 +172,15 @@ private struct CallPromptCard: View {
         ) {
           actions.no()
         }
+      case .endConfirmation:
+        button(
+          LocalizedStringResource("Stop recording", comment: "EnviousMeet: explicitly confirm stopping after an uncertain browser ending."),
+          primary: false
+        ) { actions.stopRecording() }
+        button(
+          LocalizedStringResource("Keep recording", comment: "EnviousMeet: keep recording after an uncertain browser ending."),
+          primary: true
+        ) { actions.keepRecording() }
       case .countdown:
         button(
           LocalizedStringResource(
@@ -173,7 +189,7 @@ private struct CallPromptCard: View {
         ) {
           actions.keepRecording()
         }
-      case .stopped, .switchNotConfirmed:
+      case .stopped, .stoppedByUser, .switchNotConfirmed:
         button(
           LocalizedStringResource(
             "Start a new recording", comment: "EnviousMeet: after a detected meeting stopped."),

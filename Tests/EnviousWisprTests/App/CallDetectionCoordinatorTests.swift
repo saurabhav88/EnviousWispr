@@ -1553,7 +1553,7 @@
       await rig.proof(.ended(family: .googleMeet, room: room), rule: rule, family: .googleMeet, room: room)
       rig.advance(1.6)
       await rig.proof(.ended(family: .googleMeet, room: room), rule: rule, family: .googleMeet, room: room)
-      #expect(rig.panel.content == .countdown(secondsLeft: 10), "active browser microphone cannot veto scoped end")
+      #expect(rig.panel.content == .endConfirmation, "a page ending asks without stopping the recording")
       #expect(rig.userStarts.count == 1 && rig.starts.isEmpty && rig.events.isEmpty)
     }
 
@@ -2052,7 +2052,61 @@
       #expect(rig.stops == 0)
     }
 
-    @Test("fresh ongoing browser-call proof cancels the countdown")
+    @Test("Browser end consent keeps recording until explicit Stop, even while AX is parked")
+    func browserStopDoesNotWaitForAX() async throws {
+      let lane = CallEvidenceRead.Lane()
+      let slow = DispatchSemaphore(value: 0)
+      defer { slow.signal() }
+      let state = OSAllocatedUnfairLock(initialState: (value: CallEvidenceReader.Continuity.ongoing(family: .googleMeet, room: "abc-defg-hij"), park: false, entered: false))
+      let rig = try Rig(snapshotRead: { rule, pid in
+        await CallEvidenceRead.boundedSnapshot(rule: rule, pid: pid, bound: .seconds(10), lane: lane,
+          read: { rule, pid in
+            let captured = state.withLock { state in
+              if state.park { state.entered = true }
+              return (state.value, state.park)
+            }
+            if captured.1 {
+              // deadline-fallback: fixture cleanup, never a timing assertion.
+              _ = slow.wait(timeout: .now() + 30)
+            }
+            return Rig.snapshotValue(rule: rule, pid: pid,
+              evidence: .call(family: .googleMeet, room: "abc-defg-hij"), continuity: captured.0)
+          })
+      })
+      defer { rig.coordinator.shutDown() }
+      rig.coordinator.enablePollingForTesting()
+      rig.reading("com.google.Chrome", .active)
+      #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
+      rig.advance(CallDetectionPolicy.questionReadiness)
+      rig.coordinator.stepForTesting()
+      #expect(rig.press("yes"))
+      #expect(await settleUntilObserved { rig.starts == [.googleMeet] && !rig.coordinator.refreshPendingForTesting })
+      state.withLock { $0.value = .ended(family: .googleMeet, room: "abc-defg-hij") }
+      for _ in 0..<2 {
+        rig.advance(2)
+        rig.reading("com.google.Chrome", .inactive)
+        #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
+      }
+      #expect(rig.panel.content == .endConfirmation)
+      let answers = rig.events
+      rig.advance(CallDetectionPolicy.promptTimeout + CallDetectionPolicy.countdownLength)
+      rig.coordinator.stepForTesting()
+      #expect(rig.panel.content == .endConfirmation && rig.stops == 0)
+      state.withLock { $0.park = true }
+      rig.reading("com.google.Chrome", .inactive)
+      #expect(await settleUntilObserved { state.withLock { $0.entered } })
+      #expect(!rig.press("yes"), "Start Yes is not an end-consent button")
+      #expect(rig.press("stopRecording"))
+      #expect(await settleUntilObserved { rig.stops == 1 }, "explicit Stop must precede parked AX completion")
+      #expect(rig.events == answers)
+      #expect(lane.reading.withLock { $0 }, "Stop was emitted while the physical worker was still occupied")
+      #expect(await releaseWorker(lane, gate: slow))
+      #expect(!lane.reading.withLock { $0 })
+      #expect(await settleUntilObserved { rig.panel.content == .stoppedByUser })
+      #expect(!rig.press("stopRecording"))
+    }
+
+    @Test("fresh ongoing browser-call proof withdraws browser end consent")
     func microphoneBackOnOtherTabCancelsCountdown() async throws {
       let rig = try Rig()
       let rule = CallAppCatalog.Rule.browser(.chrome)
@@ -2067,7 +2121,7 @@
       rig.advance(1.6)
       await rig.proof(.ended(family: .googleMeet, room: room), input: .inactive,
         rule: rule, family: .googleMeet, room: room)
-      #expect(rig.panel.content == .countdown(secondsLeft: 10))
+      #expect(rig.panel.content == .endConfirmation)
       rig.advance(2)
       await rig.proof(.ongoing(family: .googleMeet, room: room),
         rule: rule, family: .googleMeet, room: room)

@@ -545,7 +545,7 @@ enum MeetingsCopy {
     "EnviousMeet can ask to record when a call app starts using your microphone.",
     comment: "EnviousMeet page: the short line under When a call starts.")
   static let callDetectionHelp = LocalizedStringResource(
-    "Ask shows Record this call? under the menu bar. Start by itself starts recording without asking. Off never notices calls. A recording EnviousMeet started stops 10 seconds after the call ends, unless you choose Keep recording. A recording you started yourself never stops by itself.",
+    "Ask offers to record when a call app uses the microphone. Start by itself can record without asking. Off disables call prompts and automatic recording. A recording you start manually can still be linked to an already detected call. Confirmed endings in the native Zoom or Teams app show a 10-second countdown with Keep recording. For uncertain browser endings, recording continues unless you choose Stop recording. Call detection never auto-stops an unlinked recording.",
     comment: "EnviousMeet page: help for When a call starts.")
   static func callDetectionChoice(_ mode: CallDetectionPolicy.Mode) -> LocalizedStringResource {
     switch mode {

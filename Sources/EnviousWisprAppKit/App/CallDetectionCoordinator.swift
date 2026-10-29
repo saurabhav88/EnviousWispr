@@ -327,8 +327,10 @@ final class CallDetectionCoordinator {
     case .none: nil
     case .ask(_, let family, _): .ask(appName: family.displayName)
     case .switchCall(_, let family, _, _): .switchMeeting(appName: family.displayName)
+    case .endConfirmation: .endConfirmation
     case .countdown(_, let deadline):
       .countdown(secondsLeft: max(1, Int(ceil(deadline.timeIntervalSince(deps.now())))))
+    case .stopped(.userConfirmed, _, _): .stoppedByUser
     case .stopped(.callEnded, _, _): .stopped
     case .stopped(.switchNotConfirmed, _, _): .switchNotConfirmed
     case .note(.firstTip, _): .firstTip
@@ -350,7 +352,7 @@ final class CallDetectionCoordinator {
       { [weak self] in self?.pressed(button, token: token) }
     }
     return CallPromptActions(
-      yes: press(.yes), no: press(.no), keepRecording: press(.keepRecording),
+      yes: press(.yes), no: press(.no), stopRecording: press(.stopRecording), keepRecording: press(.keepRecording),
       startNewRecording: press(.startNewRecording), openSettings: press(.openSettings),
       dismiss: press(.close))
   }

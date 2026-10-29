@@ -295,26 +295,27 @@ struct CallDetectionPolicyTests {
     s.wait(2)
     s.observeCall(.ended(family: .googleMeet, room: "abc-defg-hij"), holder: call, retained: target)
     s.read([call])
-    #expect(!isCountdown(s.interaction), "fresh same-scope ongoing in another slot prevents end")
+    #expect(!isEndConfirmation(s.interaction), "fresh same-scope ongoing in another slot prevents end")
     #expect(s.stops == 0)
     s.observeCall(.unknown, holder: call)
     s.read([call])
-    #expect(!isCountdown(s.interaction), "clearing the conflict cannot resurrect consumed ended IDs")
+    #expect(!isEndConfirmation(s.interaction), "clearing the conflict cannot resurrect consumed ended IDs")
     s.observeCall(.ended(family: .googleMeet, room: "abc-defg-hij"), holder: call, retained: target)
     s.read([call])
-    #expect(!isCountdown(s.interaction), "one new end after conflict clearing is insufficient")
+    #expect(!isEndConfirmation(s.interaction), "one new end after conflict clearing is insufficient")
     s.wait(2)
     s.observeCall(.ended(family: .googleMeet, room: "abc-defg-hij"), holder: call, retained: target)
     s.read([call])
-    #expect(isCountdown(s.interaction), "two new scoped ends confirm once ongoing conflict is gone")
+    #expect(isEndConfirmation(s.interaction), "two new scoped page ends qualify consent once ongoing conflict is gone")
     let other = CallEvidenceReader.RetainedTarget(rule: call.rule, holderPID: call.pid,
       owner: target.owner, family: .googleMeet, room: "xyz-wxyz-xyz")
     s.observeCall(.ongoing(family: .googleMeet, room: "xyz-wxyz-xyz"), holder: call, retained: other)
     s.read([call])
-    #expect(isCountdown(s.interaction), "another room's ongoing does not block this confirmed end")
+    #expect(isEndConfirmation(s.interaction), "another room's ongoing does not withdraw this recording's consent")
     s.observeCall(.unknown, holder: call)
     s.read([call])
-    #expect(!isCountdown(s.interaction), "new applicable unknown defeats older convenient end")
+    #expect(isEndConfirmation(s.interaction), "once qualified, uncertainty cannot erase unanswered consent")
+    #expect(s.stops == 0)
   }
 
   @Test("Wrong room, family or process birth cannot end the established call", arguments: [0, 1, 2])
@@ -475,6 +476,261 @@ struct CallDetectionPolicyTests {
     #expect(!isCountdown(s.interaction), "the new run has only one ended observation")
   }
 
+  @Test("An old same-room browser page end never stops a recording without an answer",
+    arguments: [Policy.Input.active, .inactive])
+  func unansweredBrowserPageEndNeverStopsRecording(microphone: Policy.Input) {
+    var s = Story()
+    let call = Self.chrome(.active, url: Self.meetA)
+    s.ongoing(call)
+    s.press(.yes)
+    let recording = UUID()
+    s.startFinished(.recording(meetingID: recording))
+    #expect(s.starts == [.googleMeet])
+    // The existing reader only reports browser run + room. A rejoined tab's live
+    // observation and the old tab's later ended heading share those same identifiers.
+    s.observeCall(.ended(family: .googleMeet, room: "abc-defg-hij"), holder: call)
+    s.read([call])
+    s.wait(0.5)
+    s.observeCall(.ongoing(family: .googleMeet, room: "abc-defg-hij"), holder: call)
+    s.read([call])
+    let oldPage = Policy.Holder(pid: call.pid, rule: call.rule, input: microphone,
+      evidence: CallEvidenceReader.Evidence.none)
+    end(&s, [oldPage], call: call)
+    s.hold([oldPage], for: Policy.countdownLength + Policy.promptTimeout)
+    #expect(s.stops == 0, "a page-end heading is not permission to stop a possibly live browser call")
+    #expect(s.meeting == .recording(meetingID: recording))
+  }
+
+  @Test("Browser end consent persists through silence, stale proof, busy work and wake",
+    arguments: ["silence", "unknown", "busy", "wake"])
+  func browserConsentPersists(kind: String) throws {
+    var s = recordingBrowser()
+    let call = Self.chrome(.active, url: Self.meetA)
+    end(&s, [call], call: call)
+    guard case .endConfirmation = s.interaction else { Issue.record("no end consent"); return }
+    let token = s.policy.token
+    switch kind {
+    case "unknown": s.observeCall(.unknown, holder: call); s.read([Self.chromeUnknown(.inactive)])
+    case "busy": s.meeting = .busy; s.step()
+    case "wake": s.policy.noteWakeOrRestart(at: s.now)
+    default: break
+    }
+    s.wait(Policy.promptTimeout + Policy.countdownLength)
+    s.step()
+    #expect(s.stops == 0)
+    if case .endConfirmation = s.interaction {} else { Issue.record("consent expired") }
+    if kind != "wake" { #expect(s.policy.token == token, "uncertainty never replays presentation") }
+    else { #expect(s.policy.token != token, "wake invalidates captured answers") }
+  }
+
+  @Test("Only explicit browser Stop dispatches once, without a new Start answer")
+  func browserConsentStopOnce() throws {
+    var s = recordingBrowser()
+    let call = Self.chrome(.active, url: Self.meetA)
+    end(&s, [call], call: call)
+    let token = s.policy.token
+    let answers = s.answers
+    s.press(.yes)
+    #expect(s.stops == 0 && s.answers == answers)
+    s.press(.stopRecording, token: token)
+    s.press(.stopRecording, token: token)
+    #expect(s.stops == 1 && s.starts == [.googleMeet] && s.answers == answers)
+    let operation = try #require(s.lastStop)
+    s.stopFinished()
+    #expect(isStopped(s.interaction, .userConfirmed))
+    #expect(s.policy.handle(.stopFinished(operation: operation), s.context).isEmpty)
+    #expect(s.stops == 1)
+  }
+
+  @Test("Browser Keep and dismissal survive old end pages and later live proof",
+    arguments: [Policy.Button.keepRecording, .close])
+  func browserConsentKeep(button: Policy.Button) {
+    var s = recordingBrowser()
+    let call = Self.chrome(.active, url: Self.meetA)
+    end(&s, [call], call: call)
+    s.press(button)
+    let answers = s.answers
+    for _ in 0..<2 {
+      end(&s, [call], call: call)
+      s.ongoing(call)
+    }
+    s.hold([call], for: Policy.questionInterval + 10)
+    #expect(s.interaction == .none && s.stops == 0 && s.starts == [.googleMeet])
+    #expect(s.answers == answers)
+  }
+
+  @Test("Fresh ongoing browser proof withdraws consent; captured Stop cannot affect a new UUID",
+    arguments: [false, true])
+  func browserConsentInvalidation(newRecording: Bool) {
+    var s = recordingBrowser()
+    let call = Self.chrome(.active, url: Self.meetA)
+    end(&s, [call], call: call)
+    let oldToken = s.policy.token
+    if newRecording { s.meeting = .recording(meetingID: UUID()); s.step() }
+    else { s.observeCall(.ongoing(family: .googleMeet, room: "abc-defg-hij"), holder: call); s.read([call]) }
+    #expect(s.interaction == .none)
+    s.press(.stopRecording, token: oldToken)
+    #expect(s.stops == 0)
+  }
+
+  @Test("Disabling detection or its browser clears consent without stopping or accepting an old answer",
+    arguments: [false, true])
+  func browserConsentDisabled(appOnly: Bool) {
+    var s = recordingBrowser()
+    let call = Self.chrome(.active, url: Self.meetA)
+    end(&s, [call], call: call)
+    let token = s.policy.token
+    if appOnly { s.appsOff = [CallAppCatalog.switchID(for: call.rule)] } else { s.mode = .off }
+    s.step()
+    #expect(s.interaction == .none)
+    s.press(.stopRecording, token: token)
+    #expect(s.stops == 0)
+  }
+
+  @Test("Switch has priority over pending browser consent, which returns after No or timeout",
+    arguments: [false, true])
+  func browserConsentSwitchPriority(timeout: Bool) {
+    var s = recordingBrowser()
+    let call = Self.chrome(.active, url: Self.meetA)
+    end(&s, [call], call: call)
+    s.wait(Policy.questionInterval)
+    s.observeCall(.unknown, holder: call)
+    s.ready([Self.zoom(.active)])
+    #expect(isSwitch(s.interaction))
+    s.press(.stopRecording)
+    #expect(s.stops == 0)
+    if timeout { s.wait(Policy.promptTimeout); s.step() } else { s.press(.no) }
+    if case .endConfirmation = s.interaction {} else { Issue.record("pending recording consent lost") }
+    #expect(s.stops == 0)
+  }
+
+  @Test("A frozen manual browser Start survives only its matching uncertain page end",
+    arguments: ["matching", "foreignRoom", "foreignFamily", "changedRun", "stale", "off", "wake", "newRequest"])
+  func browserManualEndDuringStart(kind: String) {
+    var s = Story()
+    let call = Self.chrome(.active, url: Self.meetA)
+    s.ongoing(call)
+    let request = s.acceptManual()
+    end(&s, [call], call: call)
+    switch kind {
+    case "foreignRoom": s.observeCall(.ended(family: .googleMeet, room: "xyz-wxyz-xyz"), holder: call)
+    case "foreignFamily": s.observeCall(.ended(family: .teams, room: "abc-defg-hij"), holder: call)
+    case "changedRun": s.observeCall(.ended(family: .googleMeet, room: "abc-defg-hij"), holder: call,
+      owner: .init(pid: call.pid, bundleIdentifier: "test.200", birthSeconds: 2, birthMicroseconds: 0))
+    case "stale": s.wait(Policy.staleAfter + 1)
+    case "off": s.mode = .off; s.step(); s.mode = .ask
+    case "wake": s.policy.noteWakeOrRestart(at: s.now)
+    case "newRequest": _ = s.acceptManual(generation: 2)
+    default: break
+    }
+    s.read([call])
+    let recording = UUID()
+    s.meeting = .recording(meetingID: recording)
+    s.settleManual(request, recordingID: recording)
+    if kind == "matching" {
+      end(&s, [call], call: call)
+      if case .endConfirmation = s.interaction {} else { Issue.record("frozen matching candidate lost") }
+      s.press(.stopRecording)
+      #expect(s.stops == 1)
+    } else {
+      end(&s, [call], call: call)
+      #expect(s.interaction == .none && s.stops == 0)
+    }
+    #expect(s.starts.isEmpty)
+  }
+
+  @Test("Every browser rule treats service page ends as consent, never an automatic timer",
+    arguments: CallAppCatalog.Browser.allCases, [CallAppFamily.googleMeet, .teams, .zoom])
+  func allBrowserPageEndsRequireConsent(browser: CallAppCatalog.Browser, family: CallAppFamily) {
+    var s = Story()
+    let call = Policy.Holder(pid: 200, rule: .browser(browser), input: .active,
+      evidence: .call(family: family, room: "browser-room"))
+    s.ongoing(call)
+    s.press(.yes)
+    s.startFinished(.recording(meetingID: UUID()))
+    #expect(s.starts == [family])
+    end(&s, [call], call: call)
+    #expect(isEndConfirmation(s.interaction))
+    s.hold([call], for: Policy.countdownLength + Policy.promptTimeout)
+    #expect(s.stops == 0)
+    s.press(.stopRecording)
+    #expect(s.stops == 1)
+  }
+
+  @Test("An uncertain page end cannot cancel an already running detected browser Start",
+    arguments: [Policy.Mode.ask, .startByItself])
+  func browserEndDoesNotCancelStart(mode: Policy.Mode) {
+    var s = Story()
+    s.mode = mode
+    let call = Self.chrome(.active, url: Self.meetA)
+    s.ongoing(call)
+    if mode == .ask { s.press(.yes) }
+    #expect(s.starts == [.googleMeet])
+    end(&s, [call], call: call)
+    #expect(s.policy.isStartWanted(s.context))
+    s.startFinished(.recording(meetingID: UUID()))
+    end(&s, [call], call: call)
+    #expect(isEndConfirmation(s.interaction) && s.stops == 0)
+  }
+
+  @Test("A late explicit-stop completion cannot claim a newer recording or reset policy",
+    arguments: [false, true])
+  func browserStopCompletionIsolation(reset: Bool) {
+    var s = recordingBrowser()
+    let call = Self.chrome(.active, url: Self.meetA)
+    end(&s, [call], call: call)
+    s.press(.stopRecording)
+    #expect(s.stops == 1)
+    if reset { s.mode = .off; s.step(); s.mode = .ask }
+    s.stopFinished(meetingAfter: .recording(meetingID: UUID()))
+    #expect(s.interaction == .none && s.stops == 1)
+  }
+
+  @Test("Foreign-family native uncertainty preserves the existing frozen manual-start contract")
+  func nativeManualForeignEndRemainsUnknown() {
+    var s = Story()
+    let call = Self.zoom(.active)
+    s.ongoing(call)
+    let request = s.acceptManual()
+    s.observeCall(.ended(family: .teams, room: "w"), holder: call)
+    s.read([call])
+    let id = UUID()
+    s.meeting = .recording(meetingID: id)
+    s.settleManual(request, recordingID: id)
+    end(&s)
+    #expect(isCountdown(s.interaction), "only scoped Zoom end, not foreign-family uncertainty, owns its end")
+    s.hold([Self.zoom(.inactive)], for: Policy.countdownLength)
+    #expect(s.stops == 1)
+    #expect(s.commands.contains { if case .stop(_, id) = $0 { true } else { false } })
+  }
+
+  @Test("An old Stop cannot regain presentation after a newer recording has come and gone",
+    arguments: [false, true])
+  func stopCompletionChangeBack(native: Bool) {
+    var s = native ? recordingZoom() : recordingBrowser()
+    let call = native ? Self.zoom(.active) : Self.chrome(.active, url: Self.meetA)
+    end(&s, [call], call: call)
+    if native { s.hold([Self.zoom(.inactive)], for: Policy.countdownLength) }
+    else { s.press(.stopRecording) }
+    #expect(s.stops == 1)
+    s.meeting = .recording(meetingID: UUID())
+    s.step()
+    s.meeting = .idle
+    s.step()
+    #expect(s.interaction == .none)
+    s.stopFinished()
+    #expect(s.interaction == .none, "an old Stop has no presentation authority after a newer recording")
+    #expect(s.stops == 1)
+  }
+
+  func recordingBrowser() -> Story {
+    var s = Story()
+    s.ongoing(Self.chrome(.active, url: Self.meetA))
+    s.press(.yes)
+    s.startFinished(.recording(meetingID: UUID()))
+    return s
+  }
+
   @Test("A verified replacement source gets its own idle episode without borrowing an obsolete Yes",
     arguments: [false, true])
   func verifiedSourceReplacesOwnerlessIdleEpisode(offered: Bool) throws {
@@ -630,7 +886,7 @@ struct CallDetectionPolicyTests {
     s.observeCall(.ongoing(family: .googleMeet, room: "abc-defg-hij"), holder: call)
     s.read([call])
     end(&s, [Self.chrome(.inactive, url: Self.meetA)], call: call)
-    #expect(isCountdown(s.interaction) == ongoing)
+    #expect(isEndConfirmation(s.interaction) == ongoing)
     #expect(s.starts.isEmpty)
     if !ongoing { #expect(s.meeting == .recording(meetingID: id) && s.stops == 0) }
   }
@@ -1103,6 +1359,11 @@ struct CallDetectionPolicyTests {
 
   func isSwitch(_ i: Policy.Interaction) -> Bool {
     if case .switchCall = i { return true }
+    return false
+  }
+
+  func isEndConfirmation(_ i: Policy.Interaction) -> Bool {
+    if case .endConfirmation = i { return true }
     return false
   }
 
@@ -1733,7 +1994,7 @@ struct CallDetectionPolicyTests {
     #expect(s.interaction == .none)
   }
 
-  @Test("another tab never ends a browser meeting; scoped end proof does")
+  @Test("another tab never stops a browser recording; scoped page-end proof asks for consent")
   func browserTabChange() {
     var s = Story()
     s.ongoing(Self.chrome(.active, url: Self.meetA))
@@ -1745,7 +2006,10 @@ struct CallDetectionPolicyTests {
     s.read([Self.chromeUnknown(.active)])
     #expect(s.interaction == .none, "an unreadable page changes nothing")
     end(&s, [Self.chromeUnknown(.inactive)], call: Self.chrome(.active, url: Self.meetA))
-    #expect(isCountdown(s.interaction), "independent scoped call-end proof ends it while another tab is selected")
+    #expect(isEndConfirmation(s.interaction), "scoped page-end proof asks while another tab is selected")
+    #expect(s.stops == 0)
+    s.press(.stopRecording)
+    #expect(s.stops == 1)
   }
 
   @Test("another meeting's page asks to switch and keeps the recorded meeting")

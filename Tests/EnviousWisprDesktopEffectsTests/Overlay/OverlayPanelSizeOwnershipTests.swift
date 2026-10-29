@@ -105,7 +105,7 @@ struct OverlayPanelSizeOwnershipTests {
     var initialPresentationID: Int?
     let contents: [CallPromptContent] = [
       .ask(appName: "Zoom"), .countdown(secondsLeft: 10), .countdown(secondsLeft: 9),
-      .lastTip(appName: "Microsoft Teams (Geschäfts- oder Schulkonto)"), .stopped,
+      .lastTip(appName: "Microsoft Teams (Geschäfts- oder Schulkonto)"), .endConfirmation, .stoppedByUser, .stopped,
     ]
     for content in contents {
       prompt.show(content, actions: .init())

@@ -8,6 +8,8 @@ enum CallPromptContent: Equatable {
   case switchMeeting(appName: String)
   case countdown(secondsLeft: Int)
   case stopped
+  case stoppedByUser
+  case endConfirmation
   /// A switch stopped the old recording, but the new call could not be confirmed.
   case switchNotConfirmed
   case needsAttention
@@ -27,6 +29,7 @@ enum CallPromptContent: Equatable {
 struct CallPromptActions {
   var yes: @MainActor () -> Void = {}
   var no: @MainActor () -> Void = {}
+  var stopRecording: @MainActor () -> Void = {}
   var keepRecording: @MainActor () -> Void = {}
   var startNewRecording: @MainActor () -> Void = {}
   var openSettings: @MainActor () -> Void = {}
@@ -39,13 +42,14 @@ extension CallPromptActions {
     switch (name, content) {
     case ("yes", .ask), ("yes", .switchMeeting): yes
     case ("no", .ask), ("no", .switchMeeting): no
-    case ("keepRecording", .countdown): keepRecording
-    case ("startNewRecording", .stopped), ("startNewRecording", .switchNotConfirmed):
+    case ("keepRecording", .countdown), ("keepRecording", .endConfirmation): keepRecording
+    case ("stopRecording", .endConfirmation): stopRecording
+    case ("startNewRecording", .stoppedByUser), ("startNewRecording", .stopped), ("startNewRecording", .switchNotConfirmed):
       startNewRecording
     case ("openSettings", .needsAttention), ("openSettings", .couldNotStart),
       ("openSettings", .firstTip), ("openSettings", .lastTip):
       openSettings
-    case ("close", .stopped), ("close", .switchNotConfirmed), ("close", .needsAttention), ("close", .couldNotStart),
+    case ("close", .stoppedByUser), ("close", .stopped), ("close", .switchNotConfirmed), ("close", .needsAttention), ("close", .couldNotStart),
       ("close", .firstTip), ("close", .lastTip):
       dismiss
     default: nil

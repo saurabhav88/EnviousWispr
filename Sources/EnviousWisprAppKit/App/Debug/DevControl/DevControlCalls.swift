@@ -20,7 +20,7 @@
     /// Fake pids start here, far above real ones on macOS.
     static let firstFakePID: Int32 = 900_000
     static let buttons: Set<String> = [
-      "yes", "no", "keepRecording", "startNewRecording", "openSettings", "close",
+      "yes", "no", "keepRecording", "stopRecording", "startNewRecording", "openSettings", "close",
     ]
 
     private let sources: Sources
@@ -137,6 +137,8 @@
       case .countdown(let seconds):
         reply["panel"] = "countdown"
         reply["secondsLeft"] = seconds
+      case .endConfirmation: reply["panel"] = "endConfirmation"
+      case .stoppedByUser: reply["panel"] = "stoppedByUser"
       case .stopped: reply["panel"] = "stopped"
       case .switchNotConfirmed: reply["panel"] = "switchNotConfirmed"
       case .needsAttention: reply["panel"] = "needsAttention"

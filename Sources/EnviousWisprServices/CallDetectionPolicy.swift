@@ -201,6 +201,7 @@ public struct CallDetectionPolicy: Sendable {
 
   public enum StopReason: Sendable, Equatable {
     case callEnded
+    case userConfirmed
     /// A switch stopped the old recording, but the new call could not be confirmed.
     case switchNotConfirmed
   }
@@ -214,13 +215,15 @@ public struct CallDetectionPolicy: Sendable {
     case switchCall(episode: Int, family: CallAppFamily, from: UUID, since: Date)
     /// D3: "Meeting ending in N seconds" with Keep recording.
     case countdown(episode: Int, deadline: Date)
+    /// A browser page ended, but the recording continues until explicit consent.
+    case endConfirmation(episode: Int, family: CallAppFamily)
     /// D3 as delivered: "Recording stopped" with Start a new recording.
     case stopped(StopReason, family: CallAppFamily, until: Date)
     case note(Note, until: Date)
   }
 
   public enum Button: String, Sendable, CaseIterable {
-    case yes, no, close, keepRecording, startNewRecording, openSettings
+    case yes, no, close, keepRecording, stopRecording, startNewRecording, openSettings
   }
 
   /// A start's result, as the coordinator maps `MeetingStartFlow.Outcome`.
@@ -284,6 +287,7 @@ public struct CallDetectionPolicy: Sendable {
       /// Keep recording: the meeting is the user's; this call's end never stops it.
       case kept(meetingID: UUID)
       case ending(meetingID: UUID, deadline: Date)
+      case confirmingEnd(meetingID: UUID)
       case stopping(operation: Int)
     }
 
@@ -311,7 +315,8 @@ public struct CallDetectionPolicy: Sendable {
     case start(episode: Int, family: CallAppFamily, byItself: Bool)
     /// D10 Yes: stop `from`, then start the episode.
     case switchTo(episode: Int, family: CallAppFamily, from: UUID)
-    case stopForEnd(episode: Int, family: CallAppFamily)
+    case stopForEnd(episode: Int, family: CallAppFamily, meetingID: UUID)
+    case stopAfterConfirmation(episode: Int, family: CallAppFamily, meetingID: UUID)
     case userStart
   }
 
@@ -420,6 +425,7 @@ public struct CallDetectionPolicy: Sendable {
   /// and every end is counted afresh (a sleep past a countdown's deadline never stops at once).
   public mutating func noteWakeOrRestart(at now: Date) {
     invalidateAcceptedStart()
+    if case .endConfirmation = interaction { token += 1; claimedToken = nil }
     questionOpportunityAt = nil
     holdoffUntil = now.addingTimeInterval(Self.wakeHoldoff)
     let consumed = reading?.continuity.map(\.id).max() ?? 0
@@ -452,6 +458,7 @@ public struct CallDetectionPolicy: Sendable {
     noticeCalls(c)
     noticeQuestionOpportunity(c)
     offer(c, &out)
+    offerEndConfirmation(c)
     return out
   }
 
@@ -529,7 +536,11 @@ public struct CallDetectionPolicy: Sendable {
         .max(by: { $0.id < $1.id }), fresh(latest, c), latest.owner == frozen.owner,
       frozen.sources.contains(latest.source)
     else { return [] }
-    if case .ended? = state(latest, for: episodes[index]) { return [] }
+    if Self.isNative(frozen.rule) {
+      if case .ended? = state(latest, for: episodes[index]) { return [] }
+    } else if case .ended(let family, let room) = latest.value {
+      guard family == frozen.family, room == frozen.room else { return [] }
+    }
     if case .ongoing(let family, let room) = latest.value,
       family != frozen.family || (!Self.isNative(frozen.rule) && room != frozen.room) { return [] }
     // Historical eligibility is not recomputed here; only the frozen episode/run/source/room
@@ -569,7 +580,7 @@ public struct CallDetectionPolicy: Sendable {
     let episodeID: Int
     switch operation {
     case .start(let e, _, _), .switchTo(let e, _, _): episodeID = e
-    case .stopForEnd, .userStart: return false
+    case .stopForEnd, .stopAfterConfirmation, .userStart: return false
     }
     guard let episode = episodes.first(where: { $0.id == episodeID }), !episode.endedWhileStarting
     else { return false }
@@ -673,15 +684,39 @@ public struct CallDetectionPolicy: Sendable {
   private mutating func followMeeting(_ c: Context) {
     if c.meeting != .busy {
       for index in episodes.indices {
+        if case .confirmingEnd(let m) = episodes[index].phase,
+          c.meeting == .recording(meetingID: m),
+          c.appsOff.contains(CallAppCatalog.switchID(for: episodes[index].rule)) {
+          episodes[index].phase = .kept(meetingID: m)
+          episodes[index].ownershipOverridden = true
+          association = .overridden(m)
+          if case .endConfirmation(episodes[index].id, _) = interaction { set(.none) }
+        }
         switch episodes[index].phase {
-        case .recording(let m), .kept(let m), .ending(let m, _):
+        case .recording(let m), .kept(let m), .ending(let m, _), .confirmingEnd(let m):
           if c.meeting != .recording(meetingID: m) {
             episodes[index].ownershipOverridden = true
             if case .linked(let linkedID, _)? = association, linkedID == m {
               association = .rejected(m)
             }
-            if case .countdown(episodes[index].id, _) = interaction { set(.none) }
+            switch interaction {
+            case .countdown(episodes[index].id, _), .endConfirmation(episodes[index].id, _): set(.none)
+            default: break
+            }
             episodes[index].phase = .offered
+            resetEnd(index)
+          }
+        case .stopping(let id):
+          let original: UUID?
+          switch operations[id] {
+          case .stopForEnd(_, _, let m)?, .stopAfterConfirmation(_, _, let m)?: original = m
+          default: original = nil
+          }
+          if let original, case .recording(let current) = c.meeting, current != original {
+            // A later idle state cannot revive this old completion's presentation authority.
+            operations[id] = nil
+            episodes[index].phase = .offered
+            episodes[index].ownershipOverridden = true
             resetEnd(index)
           }
         default: break
@@ -763,6 +798,10 @@ public struct CallDetectionPolicy: Sendable {
         if case .ongoing? = state(observation, for: episodes[index]) { return true }
         return false
       }
+      if ongoing, case .confirmingEnd(let m) = episodes[index].phase {
+        episodes[index].phase = .recording(meetingID: m)
+        if case .endConfirmation(episodes[index].id, _) = interaction { set(.none) }
+      }
       guard !ongoing, let latest = applicable.last, fresh(latest, c),
         case .ended? = state(latest, for: episodes[index])
       else {
@@ -785,24 +824,32 @@ public struct CallDetectionPolicy: Sendable {
       else { continue }
       let episode = episodes[index]
       switch episode.phase {
-      case .waiting, .offered, .kept:
+      case .waiting, .offered:
+        // Do not destroy a browser candidate frozen before its manual Start suspended.
+        if !Self.isNative(episode.rule), pendingManual?.candidate?.episode == episode.id { continue }
         ended.append(episode.id)
+      case .kept:
+        if Self.isNative(episode.rule) { ended.append(episode.id) }
       case .recording(let m):
+        if !Self.isNative(episode.rule) {
+          episodes[index].phase = .confirmingEnd(meetingID: m)
+          continue
+        }
         let deadline = c.now.addingTimeInterval(Self.countdownLength)
         episodes[index].phase = .ending(meetingID: m, deadline: deadline)
         set(.countdown(episode: episode.id, deadline: deadline))
       case .ending(let m, let deadline):
         guard c.now >= deadline else { continue }
         let id = newID()
-        operations[id] = .stopForEnd(episode: episode.id, family: episode.family)
+        operations[id] = .stopForEnd(episode: episode.id, family: episode.family, meetingID: m)
         episodes[index].phase = .stopping(operation: id)
         if case .countdown(episode.id, _) = interaction { set(.none) }
         out.append(.stop(operation: id, meetingID: m))
       case .starting:
-        // Its Start is running: the episode stays until the Start settles, but the Start is no
-        // longer wanted (review r2 F4).
-        episodes[index].endedWhileStarting = true
-      case .stopping:
+        // Proven native end cancels the running Start. A browser page end cannot prove
+        // that the call ended, so its admitted Start remains wanted until settlement.
+        if Self.isNative(episode.rule) { episodes[index].endedWhileStarting = true }
+      case .confirmingEnd, .stopping:
         break
       }
     }
@@ -964,6 +1011,21 @@ public struct CallDetectionPolicy: Sendable {
     }
   }
 
+  /// Consent belongs to the recording, not the current page or an expiring timer.
+  /// A different-call question has presentation priority without erasing this decision.
+  private mutating func offerEndConfirmation(_ c: Context) {
+    switch interaction {
+    case .ask, .switchCall, .countdown: return
+    default: break
+    }
+    for episode in episodes {
+      if case .confirmingEnd(let m) = episode.phase, c.meeting == .recording(meetingID: m) {
+        set(.endConfirmation(episode: episode.id, family: episode.family))
+        return
+      }
+    }
+  }
+
   // MARK: - Events
 
   private mutating func pressed(_ button: Button, _ c: Context, _ out: inout [Command]) {
@@ -1023,6 +1085,25 @@ public struct CallDetectionPolicy: Sendable {
       set(.none)
       out.append(.emit(family: family, answer: .switchNo))
     case (.ask, .close), (.switchCall, .close), (.stopped, .close), (.note, .close):
+      set(.none)
+    case (.endConfirmation(let e, let family), .stopRecording):
+      guard let index = episodes.firstIndex(where: { $0.id == e }),
+        case .confirmingEnd(let m) = episodes[index].phase,
+        c.meeting == .recording(meetingID: m), c.setUp, c.mode != .off,
+        !c.appsOff.contains(CallAppCatalog.switchID(for: episodes[index].rule)) else { return }
+      let id = newID()
+      operations[id] = .stopAfterConfirmation(episode: e, family: family, meetingID: m)
+      episodes[index].phase = .stopping(operation: id)
+      set(.none)
+      out.append(.stop(operation: id, meetingID: m))
+    case (.endConfirmation(let e, _), .keepRecording), (.endConfirmation(let e, _), .close):
+      guard let index = episodes.firstIndex(where: { $0.id == e }),
+        case .confirmingEnd(let m) = episodes[index].phase,
+        c.meeting == .recording(meetingID: m) else { return }
+      episodes[index].phase = .kept(meetingID: m)
+      episodes[index].ownershipOverridden = true
+      association = .overridden(m)
+      resetEnd(index)
       set(.none)
     case (.countdown(let e, _), .keepRecording):
       if let index = episodes.firstIndex(where: { $0.id == e }),
@@ -1105,7 +1186,7 @@ public struct CallDetectionPolicy: Sendable {
       case .notStarted:
         setPhase(e, .offered)
       }
-    case .stopForEnd:
+    case .stopForEnd, .stopAfterConfirmation:
       break
     }
   }
@@ -1113,8 +1194,16 @@ public struct CallDetectionPolicy: Sendable {
   private mutating func stopFinished(_ id: Int, _ c: Context, _ out: inout [Command]) {
     guard let operation = operations[id] else { return }
     switch operation {
-    case .stopForEnd(let e, let family):
+    case .stopAfterConfirmation(let e, let family, _):
       operations[id] = nil
+      guard let episode = episode(e), case .stopping(id) = episode.phase else { return }
+      remove(episode: e)
+      if c.setUp, c.mode != .off, c.meeting == .idle, interaction == .none {
+        set(.stopped(.userConfirmed, family: family, until: c.now.addingTimeInterval(Self.stoppedOffer)))
+      }
+    case .stopForEnd(let e, let family, _):
+      operations[id] = nil
+      guard let episode = episode(e), case .stopping(id) = episode.phase else { return }
       remove(episode: e)
       // A newer recording or a newer question keeps the panel (r3 F1, review r10 F2).
       if c.meeting == .idle, interaction == .none {
@@ -1152,7 +1241,7 @@ public struct CallDetectionPolicy: Sendable {
     operations.values.contains { operation in
       switch operation {
       case .start, .switchTo: true
-      case .stopForEnd, .userStart: false
+      case .stopForEnd, .stopAfterConfirmation, .userStart: false
       }
     }
   }
@@ -1198,7 +1287,7 @@ public struct CallDetectionPolicy: Sendable {
   /// A tip or a "could not start" never covers a question or a countdown (review r8 F2).
   private mutating func showNote(_ note: Note, _ c: Context) {
     switch interaction {
-    case .ask, .switchCall, .countdown: return
+    case .ask, .switchCall, .countdown, .endConfirmation: return
     default: set(.note(note, until: c.now.addingTimeInterval(Self.noteTimeout)))
     }
   }
@@ -1225,7 +1314,7 @@ public struct CallDetectionPolicy: Sendable {
   /// A question whose call ended or was switched off goes away: not a No, not a timeout.
   private mutating func withdrawOrphanQuestion() {
     switch interaction {
-    case .ask(let e, _, _), .switchCall(let e, _, _, _), .countdown(let e, _):
+    case .ask(let e, _, _), .switchCall(let e, _, _, _), .countdown(let e, _), .endConfirmation(let e, _):
       if episode(e) == nil { set(.none) }
     default: break
     }
