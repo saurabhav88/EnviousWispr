@@ -166,6 +166,8 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
   package let rules: FrozenTalkerRules?
   package let lag: CallSpeakerLag?
   package let presencePolicy: CallPresencePolicy
+  /// Where this segment starts on the recording clock.
+  package let startMs: Int
   package private(set) var status: CallSpeakerObservationStatus?
   package private(set) var observations: [CallSpeakerObservation] = []
   package private(set) var health = CallCaptureHealth()
@@ -199,8 +201,10 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
 
   package init(
     surface: CallSpeakerSurface, rules: FrozenTalkerRules?, lag: CallSpeakerLag?,
-    status: CallSpeakerObservationStatus? = nil, presencePolicy: CallPresencePolicy = .current
+    status: CallSpeakerObservationStatus? = nil, presencePolicy: CallPresencePolicy = .current,
+    startMs: Int = 0
   ) {
+    self.startMs = startMs
     self.surface = surface
     self.rules = rules
     self.lag = lag
@@ -357,28 +361,33 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
     health.noteWalk(durationUs: durationUs, nodes: nodes)
   }
 
+  /// The log of this one segment, still open.
   package var log: CallSpeakerLog {
     CallSpeakerLog(
       rules: rules, presencePolicy: presencePolicy,
-      segments: [
-        CallSpeakerSegment(
-          startMs: 0, endMs: nil, endReason: nil, surface: surface,
-          source: CallSpeakerSurfaceChoice.source(for: surface), status: status, lag: lag,
-          roster: CallSpeakerRoster(
-            names: nameOrder.flatMap { Array(repeating: $0, count: nameCounts[$0] ?? 0) },
-            selfNames: selfNames),
-          rosterFromParticipantList: fromParticipantList, observations: observations,
-          presence: presenceOrder.compactMap { name in
-            guard let tracked = presence[name] else { return nil }
-            let open = tracked.open.map {
-              CallNamePresence.Sighting(
-                firstSeenMs: $0.first, lastSeenMs: $0.last, absenceConfirmed: false)
-            }
-            return CallNamePresence(
-              name: name, sightings: tracked.sightings + (open.map { [$0] } ?? []),
-              absences: tracked.absences, sightingsFull: tracked.full ? true : nil)
-          },
-          health: health)
-      ])
+      segments: [segment(endMs: nil, endReason: nil)])
+  }
+
+  /// This segment as saved, open (`endMs` nil) or ended. A sighting still open at the end is
+  /// saved unconfirmed: collection stopped, which says nothing about who left.
+  package func segment(endMs: Int?, endReason: CallSpeakerSegmentEnd?) -> CallSpeakerSegment {
+    CallSpeakerSegment(
+      startMs: startMs, endMs: endMs, endReason: endReason, surface: surface,
+      source: CallSpeakerSurfaceChoice.source(for: surface), status: status, lag: lag,
+      roster: CallSpeakerRoster(
+        names: nameOrder.flatMap { Array(repeating: $0, count: nameCounts[$0] ?? 0) },
+        selfNames: selfNames),
+      rosterFromParticipantList: fromParticipantList, observations: observations,
+      presence: presenceOrder.compactMap { name in
+        guard let tracked = presence[name] else { return nil }
+        let open = tracked.open.map {
+          CallNamePresence.Sighting(
+            firstSeenMs: $0.first, lastSeenMs: $0.last, absenceConfirmed: false)
+        }
+        return CallNamePresence(
+          name: name, sightings: tracked.sightings + (open.map { [$0] } ?? []),
+          absences: tracked.absences, sightingsFull: tracked.full ? true : nil)
+      },
+      health: health)
   }
 }

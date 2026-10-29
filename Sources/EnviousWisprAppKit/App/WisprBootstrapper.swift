@@ -2068,7 +2068,8 @@ package final class WisprBootstrapper {
       kernelDriver.cancelPendingEngineUnload()
       whisperKernelDriver.cancelPendingEngineUnload()
     }
-    let rearmEngineTimers: @MainActor () -> Void = { [kernelDriver, whisperKernelDriver, settings] in
+    let rearmEngineTimers: @MainActor () -> Void = {
+      [kernelDriver, whisperKernelDriver, settings] in
       kernelDriver.applyEngineUnloadPolicy(settings.modelUnloadPolicy)
       whisperKernelDriver.applyEngineUnloadPolicy(settings.modelUnloadPolicy)
     }
@@ -2316,7 +2317,8 @@ package final class WisprBootstrapper {
       currentHistoryRow: { [transcriptCoordinator] id in transcriptCoordinator.currentRow(id: id) },
       historyRowExists: { [transcriptCoordinator] id in transcriptCoordinator.hasRow(id: id) },
       processParts: { [fileImportRunner] parts, language, onOutcome in
-        try await fileImportRunner.process(parts: parts, engineLanguage: language, onOutcome: onOutcome)
+        try await fileImportRunner.process(
+          parts: parts, engineLanguage: language, onOutcome: onOutcome)
       })
     // History announces a deleted row; the wizard drops the retry audio it holds for that
     // row (#2811, cloud review of PR #2846). Late-bound because History's coordinator is
@@ -2393,7 +2395,9 @@ package final class WisprBootstrapper {
           continuingTakeID: { driverFor($0).continuingSessionID },
           lastTakeID: { driverFor($0).lastTakeID },
           terminalFacts: { DevControlDictation.TerminalFacts.of(driverFor($0), takeID: $1) },
-          start: { [dictationRuntime] in await dictationRuntime.toggleRecording(source: .programmatic) },
+          start: { [dictationRuntime] in
+            await dictationRuntime.toggleRecording(source: .programmatic)
+          },
           stop: { [dictationRuntime] in await dictationRuntime.devControlUserStop() },
           cancel: { [dictationRuntime] in
             await dictationRuntime.cancelRecording(trigger: .cancelButton)
@@ -2485,7 +2489,9 @@ package final class WisprBootstrapper {
     let meetingLiveWordsChoice = MeetingLiveWordsChoice.Initializer(
       environment: .init(
         settings: settings,
-        inventory: { await MeetingLiveWordsChoice.liveInventory(universalAdmitted: universalAdmitted) },
+        inventory: {
+          await MeetingLiveWordsChoice.liveInventory(universalAdmitted: universalAdmitted)
+        },
         appleEquivalent: MeetingLiveWordsChoice.liveAppleEquivalent))
     let meetingLiveWords = MeetingLiveWords(
       dependencies: .init(
@@ -2517,69 +2523,70 @@ package final class WisprBootstrapper {
     PreviewModelRemoval.install(
       on: modelDelivery, dictation: livePreview, meeting: meetingLiveWords)
     var meetingInputs = MeetingWiring.Inputs(
-        store: MeetingStore(),
-        settings: settings, permissions: permissions, otherAudioHold: otherAudioHold,
-        transcriptCoordinator: transcriptCoordinator,
-        isDictationIdle: { [liveRecordingState, engineCoordinator] in
-          // Paste runs inside `.polishing`, so `isDictationActive` covers it; the clipboard
-          // restore after it is a pasteboard write, not compute, and is not waited for.
-          !liveRecordingState.isDictationActive && !engineCoordinator.isMintingAnySession
+      store: MeetingStore(),
+      settings: settings, permissions: permissions, otherAudioHold: otherAudioHold,
+      transcriptCoordinator: transcriptCoordinator,
+      isDictationIdle: { [liveRecordingState, engineCoordinator] in
+        // Paste runs inside `.polishing`, so `isDictationActive` covers it; the clipboard
+        // restore after it is a pasteboard write, not compute, and is not waited for.
+        !liveRecordingState.isDictationActive && !engineCoordinator.isMintingAnySession
+      },
+      dictationWakes: meetingWakes,
+      sharedEngine: MeetingWiring.SharedEngine(
+        admission: .live(lease: engineLease, as: .meeting),
+        isSwitchSettled: { [weak engineCoordinator] in
+          // A switch refused because the picked model is not downloaded never applies; the
+          // pass then uses the running engine instead of waiting for it (#4052 review).
+          guard let status = engineCoordinator?.status else { return true }
+          return status.selected == status.active || !status.selectedInstalled
         },
-        dictationWakes: meetingWakes,
-        sharedEngine: MeetingWiring.SharedEngine(
-          admission: .live(lease: engineLease, as: .meeting),
-          isSwitchSettled: { [weak engineCoordinator] in
-            // A switch refused because the picked model is not downloaded never applies; the
-            // pass then uses the running engine instead of waiting for it (#4052 review).
-            guard let status = engineCoordinator?.status else { return true }
-            return status.selected == status.active || !status.selectedInstalled
-          },
-          activeBackend: { [asrManager] in asrManager.activeBackendType },
-          ensureReady: { [weak engineCoordinator, activeEngine] in
-            await MeetingWiring.borrowedEngineReadiness(
-              switchRefused: {
-                guard let status = engineCoordinator?.status else { return false }
-                return status.selected != status.active && !status.selectedInstalled
-              },
-              ensureSelected: {
-                switch await ensureSelectedEngineReady() {
-                case .ready: .ready
-                case .notInstalled: .notInstalled
-                case .notReady: .notReady
-                }
-              },
-              readyRunning: {
-                guard (try? await activeEngine.load()) != nil else { return false }
-                return await activeEngine.isLoaded()
-              })
-          },
-          isModelLoaded: { [asrManager] in asrManager.isModelLoaded },
-          isLoadOrUnloadInFlight: { [concreteASRManager] in concreteASRManager.isLoadOrUnloadInFlight },
-          publishedSelection: { [concreteASRManager] in concreteASRManager.publishedSelection },
-          transcribe: { [activeEngine] samples, language in
-            // #4105: the meeting's transcript language, never dictation's setting.
-            var options = TranscriptionOptions.default
-            options.language = language
-            return try await activeEngine.transcribe(samples, options, nil)
-          },
-          disarmEngineTimers: disarmEngineTimers,
-          rearmEngineTimers: rearmEngineTimers,
-          recoveryRecheck: {
-            recoveryCoordinatorForEngineMutationScope?.requestRecoveryRecheck()
-          }),
-        memoryPressure: meetingMemoryPressure,
-        offlineModeAdmission: concreteASRManager,
-        meetingSelection: { [parakeetUpgrade] in await parakeetUpgrade.meetingSelection() },
-        modelUseGate: modelDelivery.controller.meetingModelUseGate,
-        isDeliveryEnabled: { [modelDelivery] in modelDelivery.parakeetHandle?.isEnabled() ?? false },
-        workChanged: { [weak engineCoordinator] in engineCoordinator?.poke(.parakeetUpgradeOwed) },
-        log: { line in
-          Task { await AppLogger.shared.log(line, level: .info, category: "Meetings") }
+        activeBackend: { [asrManager] in asrManager.activeBackendType },
+        ensureReady: { [weak engineCoordinator, activeEngine] in
+          await MeetingWiring.borrowedEngineReadiness(
+            switchRefused: {
+              guard let status = engineCoordinator?.status else { return false }
+              return status.selected != status.active && !status.selectedInstalled
+            },
+            ensureSelected: {
+              switch await ensureSelectedEngineReady() {
+              case .ready: .ready
+              case .notInstalled: .notInstalled
+              case .notReady: .notReady
+              }
+            },
+            readyRunning: {
+              guard (try? await activeEngine.load()) != nil else { return false }
+              return await activeEngine.isLoaded()
+            })
         },
-        keychain: keychainManager,
-        detectedStartWanted: { [meetingBox] in
-          meetingBox.callDetection?.detectedStartStillWanted() ?? false
-        })
+        isModelLoaded: { [asrManager] in asrManager.isModelLoaded },
+        isLoadOrUnloadInFlight: { [concreteASRManager] in concreteASRManager.isLoadOrUnloadInFlight
+        },
+        publishedSelection: { [concreteASRManager] in concreteASRManager.publishedSelection },
+        transcribe: { [activeEngine] samples, language in
+          // #4105: the meeting's transcript language, never dictation's setting.
+          var options = TranscriptionOptions.default
+          options.language = language
+          return try await activeEngine.transcribe(samples, options, nil)
+        },
+        disarmEngineTimers: disarmEngineTimers,
+        rearmEngineTimers: rearmEngineTimers,
+        recoveryRecheck: {
+          recoveryCoordinatorForEngineMutationScope?.requestRecoveryRecheck()
+        }),
+      memoryPressure: meetingMemoryPressure,
+      offlineModeAdmission: concreteASRManager,
+      meetingSelection: { [parakeetUpgrade] in await parakeetUpgrade.meetingSelection() },
+      modelUseGate: modelDelivery.controller.meetingModelUseGate,
+      isDeliveryEnabled: { [modelDelivery] in modelDelivery.parakeetHandle?.isEnabled() ?? false },
+      workChanged: { [weak engineCoordinator] in engineCoordinator?.poke(.parakeetUpgradeOwed) },
+      log: { line in
+        Task { await AppLogger.shared.log(line, level: .info, category: "Meetings") }
+      },
+      keychain: keychainManager,
+      detectedStartWanted: { [meetingBox] in
+        meetingBox.callDetection?.detectedStartStillWanted() ?? false
+      })
     meetingInputs.liveWords = meetingLiveWords
     let refreshTalkerRules: @Sendable () -> Void = {
       Task.detached(priority: .utility) { _ = await TalkerRulesStore.live.refreshIfDue() }
@@ -2592,12 +2599,7 @@ package final class WisprBootstrapper {
       dependencies: .init(evidence: { rule, pid in
         await CallEvidenceRead.bounded(rule: rule, pid: pid)
       }))
-    meetingInputs.callSpeakerTarget = { [callSources] family in
-      callSources.speakerTarget(for: family)
-    }
-    meetingInputs.callSpeakerSourceRevision = { [callSources] in
-      callSources.speakerSourceRevision
-    }
+    meetingInputs.callSources = callSources
     meetingInputs.liveVocabulary = { [weak livePreview] in
       livePreview?.vocabularySnapshot()
         ?? LivePreviewVocabulary(lookups: nil, contextualPhrases: [], dictionaryEnabled: false)
@@ -2608,7 +2610,8 @@ package final class WisprBootstrapper {
     self.meetingLiveWordsRow = MeetingLiveWordsRowModel(
       environment: .init(
         choice: meetingLiveWordsChoice, settings: settings,
-        isMeetingActive: { [weak meetingCoordinator] in meetingCoordinator?.isMeetingActive ?? false },
+        isMeetingActive: { [weak meetingCoordinator] in meetingCoordinator?.isMeetingActive ?? false
+        },
         appleCatalog: MeetingLiveWordsRowModel.liveMeetingCatalog(),
         universalState: { [modelDelivery] in
           modelDelivery.whisperPreviewHandle == nil ? nil : modelDelivery.whisperPreviewState
@@ -2629,7 +2632,9 @@ package final class WisprBootstrapper {
             from: entryPoint, captureCallSound: captureCallSound, callApp: callApp)
         },
         microphoneNeedsAsking: { [permissions] in permissions.microphoneNeedsAsking },
-        requestMicrophone: { [permissions] in await permissions.requestMicrophoneAccessOrOpenSettings() },
+        requestMicrophone: { [permissions] in
+          await permissions.requestMicrophoneAccessOrOpenSettings()
+        },
         // #4058: the call-sound explainer and setup are on the General tab.
         showMeetingPage: { [navigationCoordinator, appWindowCoordinator] in
           navigationCoordinator.request(.meetings(.general))
@@ -2642,7 +2647,9 @@ package final class WisprBootstrapper {
         // Live, not `permissions.microphoneStatus`: that copy refreshes on its own poll, so a
         // grant made in System Settings could still read as refused on return.
         microphoneStatus: { [permissions] in permissions.microphoneStatusLive },
-        requestMicrophone: { [permissions] in await permissions.requestMicrophoneAccessOrOpenSettings() },
+        requestMicrophone: { [permissions] in
+          await permissions.requestMicrophoneAccessOrOpenSettings()
+        },
         callSoundStatus: { SystemAudioPermission.status() },
         requestCallSound: {
           SystemAudioPermission.isAvailable ? await SystemAudioPermission.request() : nil
@@ -2679,7 +2686,8 @@ package final class WisprBootstrapper {
           navigationCoordinator.request(.meetings(.callApps))
           appWindowCoordinator.showWindow()
         },
-        anchor: { [menuBarControllerHolder] in menuBarControllerHolder.controller?.statusItemFrame },
+        anchor: { [menuBarControllerHolder] in menuBarControllerHolder.controller?.statusItemFrame
+        },
         emit: { TelemetryService.shared.trackMeetingCallPrompt($0) },
         makePresenter: { [overlayEffects] anchor in
           CallPromptPanel(anchor: anchor, makePanel: overlayEffects.makePanel)

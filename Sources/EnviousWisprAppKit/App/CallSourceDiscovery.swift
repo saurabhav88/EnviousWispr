@@ -336,31 +336,41 @@ final class CallSourceDiscovery {
     speakerSourceRevision += 1
   }
 
-  /// #4013 chunk 13A: the one app instance a meeting's speaker capture reads for `family`, from
-  /// the microphone holders of the last reading: a call app of that family, or a browser whose
-  /// page reads as that family's call. `nil` when there is none, more than one app instance
-  /// (two calls, or two copies of one browser), or the reading itself was incomplete or
-  /// ambiguous: the capture then reads nothing, never a guess.
-  func speakerTarget(for family: CallAppFamily) -> CallSpeakerTarget? {
-    guard complete, !ambiguous else { return nil }
-    var owners: [pid_t: CallAppCatalog.Rule] = [:]
+  /// #4013 13B: the one call a recording's speaker session reads now, whatever started the
+  /// recording. A call app holding the microphone, or a browser whose page reads as a call, is a
+  /// candidate, grouped by family and owning app instance. One candidate: `unique`. None: `none`.
+  /// Two or more (two calls, two app instances, two browser copies): `ambiguous`. A reading that
+  /// was incomplete or ambiguous, or a browser holding the microphone whose page is not read
+  /// yet: `unavailable`. Never a guess, never a preference between calls.
+  func speakerSource() -> CallSpeakerSourceAnswer {
+    guard complete, !ambiguous else { return .unavailable }
+    var candidates: [CallSpeakerSourceAnswer.Source] = []
+    var undecided = false
     for holder in holders where holder.input == .active {
       guard let rule = CallAppCatalog.rule(forBundleID: holder.bundleID) else { continue }
-      let matches: Bool
+      let family: CallAppFamily
       switch rule {
-      case .callApp(let ruleFamily), .callWindow(let ruleFamily): matches = ruleFamily == family
+      case .callApp(let ruleFamily), .callWindow(let ruleFamily): family = ruleFamily
       case .browser:
-        if case .call(let pageFamily, _)? = evidence[holder.pid]?.value {
-          matches = pageFamily == family
-        } else {
-          matches = false
+        switch currentEvidence(for: holder) {
+        case .call(let pageFamily, _)?: family = pageFamily
+        case .unknown?, nil:
+          undecided = true
+          continue
+        case .none?, .microphoneOnly?: continue
         }
       }
-      guard matches, let owner = holder.ownerPID else { continue }
-      owners[owner] = rule
+      guard let owner = holder.ownerPID else {
+        undecided = true
+        continue
+      }
+      let source = CallSpeakerSourceAnswer.Source(
+        family: family, target: CallSpeakerTarget(pid: owner, rule: rule))
+      if !candidates.contains(source) { candidates.append(source) }
     }
-    guard owners.count == 1, let (pid, rule) = owners.first else { return nil }
-    return CallSpeakerTarget(pid: pid, rule: rule)
+    if candidates.count > 1 { return .ambiguous }
+    if undecided { return .unavailable }
+    return candidates.first.map { .unique($0) } ?? .none
   }
 
   // MARK: - Dev control (DEBUG)
@@ -431,3 +441,27 @@ final class CallSourceDiscovery {
     return owner.lowercased()
   }
 }
+
+/// What a recording's speaker session may read now (`CallSourceDiscovery.speakerSource()`).
+enum CallSpeakerSourceAnswer: Equatable, Sendable {
+  struct Source: Equatable, Sendable {
+    let family: CallAppFamily
+    let target: CallSpeakerTarget
+  }
+
+  case unique(Source)
+  case none
+  case ambiguous
+  case unavailable
+}
+
+/// What a speaker session needs from call-source discovery; tests stand in for it.
+@MainActor
+protocol CallSpeakerSources: AnyObject {
+  func beginRecordingDemand()
+  func endRecordingDemand()
+  func speakerSource() -> CallSpeakerSourceAnswer
+  var speakerSourceRevision: Int { get }
+}
+
+extension CallSourceDiscovery: CallSpeakerSources {}

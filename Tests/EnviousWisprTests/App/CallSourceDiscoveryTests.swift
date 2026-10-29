@@ -54,10 +54,38 @@ struct CallSourceDiscoveryTests {
 
   private static let zoom = CallMicrophoneWatcher.Holder(
     pid: 900_010, bundleID: "us.zoom.xos", input: .active, ownerPID: 900_010)
+  private static let zoomTarget = CallSpeakerTarget(pid: 900_010, rule: .callWindow(.zoom))
+
+  @Test("a browser holding the microphone is a call only once its page reads as one")
+  func browserNeedsItsPage() async throws {
+    let chrome = CallMicrophoneWatcher.Holder(
+      pid: 900_030, bundleID: "com.google.chrome", input: .active, ownerPID: 900_030)
+    let page = OSAllocatedUnfairLock<CallEvidenceReader.Evidence>(initialState: .unknown)
+    let sources = discovery(
+      Scan([.init(complete: true, holders: [chrome])]),
+      evidence: { _, _ in
+        page.withLock { $0 }
+      })
+    defer { sources.shutDown() }
+    sources.beginRecordingDemand()
+    await sources.refreshNow()
+    #expect(sources.speakerSource() == .unavailable, "an unread or unknown page decides nothing")
+    page.withLock { $0 = .call(family: .googleMeet, room: "abc") }
+    await sources.refreshNow()
+    #expect(
+      sources.speakerSource()
+        == .unique(
+          .init(
+            family: .googleMeet, target: CallSpeakerTarget(pid: 900_030, rule: .browser(.chrome)))))
+    page.withLock { $0 = .none }
+    await sources.refreshNow()
+    #expect(sources.speakerSource() == .none, "a tab that is not a call")
+  }
 
   private func discovery(
     _ scan: Scan,
-    evidence: @escaping @Sendable (CallAppCatalog.Rule, Int32) async ->
+    evidence:
+      @escaping @Sendable (CallAppCatalog.Rule, Int32) async ->
       CallEvidenceReader.Evidence =
       { _, _ in .unknown }
   ) -> CallSourceDiscovery {
@@ -104,7 +132,7 @@ struct CallSourceDiscoveryTests {
     sources.promptDemand = true
     sources.beginRecordingDemand()
     sources.repeatSimulation()
-    #expect(sources.speakerTarget(for: .zoom)?.pid == 900_010)
+    #expect(sources.speakerSource() == .unique(.init(family: .zoom, target: Self.zoomTarget)))
     sources.endRecordingDemand()
     sources.promptDemand = false
     sources.repeatSimulation()
@@ -131,7 +159,7 @@ struct CallSourceDiscoveryTests {
     await eventually("the restart's own read landed") { scan.calls.withLock { $0 } >= 2 }
     await sources.refreshNow()
     #expect(!sawZoom, "the held read from before the stop was dropped")
-    #expect(sources.speakerTarget(for: .zoom) == nil)
+    #expect(sources.speakerSource() == .none)
   }
 
   @Test("evidence reads stop when no one needs discovery any more")

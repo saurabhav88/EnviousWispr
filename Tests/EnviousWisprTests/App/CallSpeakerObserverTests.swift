@@ -95,19 +95,19 @@ struct CallSpeakerObserverTests {
   private func observer(
     capture: Capture, dictation: Dictation = Dictation(), world: World = World(),
     lane: CallSpeakerObserver.Lane = .init(),
-    saved: @escaping @MainActor (CallSpeakerLog) async throws -> Void = { _ in }
+    saved: @escaping @MainActor () async throws -> Void = {}
   ) throws -> CallSpeakerObserver {
     let trusted = world.trustedLock
     return CallSpeakerObserver(
-      surface: .meet, family: .googleMeet, anchor: 0, rules: try Self.bundled(),
-      lag: CallSpeakerLag(milliseconds: 500),
+      surface: .meet, family: .googleMeet, anchor: 0, startMs: 0, rules: try Self.bundled(),
+      presencePolicy: .current, lag: CallSpeakerLag(milliseconds: 500),
       dependencies: .init(
         target: { world.target },
         sourceRevision: { world.sourceRevision },
         capture: { _ in capture.take() },
         isTrusted: { trusted.withLock { $0 } },
         isDictationIdle: { dictation.idle },
-        save: { try await saved($0) }, lane: lane))
+        save: { try await saved() }, lane: lane))
   }
 
   @Test("one copy at a time: ticks while a copy is being taken take none")
@@ -122,12 +122,12 @@ struct CallSpeakerObserverTests {
     observer.tick()
     #expect(capture.calls.withLock { $0 } == 1)
     capture.letGo()
-    await eventually("copy landed") { observer.currentLog.observations.count == 1 }
-    #expect(observer.currentLog.observations.map(\.speaking) == [["Alex Rivera"]])
-    #expect(observer.currentLog.lag?.milliseconds == 500)
-    #expect(observer.currentLog.surface == .meet)
+    await eventually("copy landed") { observer.currentSegment.observations.count == 1 }
+    #expect(observer.currentSegment.observations.map(\.speaking) == [["Alex Rivera"]])
+    #expect(observer.currentSegment.lag?.milliseconds == 500)
+    #expect(observer.currentSegment.surface == .meet)
     observer.tick()
-    await eventually("second copy") { observer.currentLog.observations.count == 2 }
+    await eventually("second copy") { observer.currentSegment.observations.count == 2 }
   }
 
   @Test("a copy still blocked from an ended recording keeps a new recording from starting one")
@@ -138,7 +138,7 @@ struct CallSpeakerObserverTests {
     let ended = try observer(capture: old, lane: lane)
     ended.tick()
     await eventually("old copy started") { old.calls.withLock { $0 } == 1 }
-    ended.cancel()
+    ended.closeAdmission()
     let fresh = Capture()
     let next = try observer(capture: fresh, lane: lane)
     next.tick()
@@ -146,8 +146,8 @@ struct CallSpeakerObserverTests {
     old.letGo()
     await eventually("lane free") { !lane.isBusy }
     next.tick()
-    await eventually("new copy") { next.currentLog.observations.count == 1 }
-    #expect(ended.currentLog.observations.isEmpty)
+    await eventually("new copy") { next.currentSegment.observations.count == 1 }
+    #expect(ended.currentSegment.observations.isEmpty)
   }
 
   @Test("dictation that starts and ends while a copy is taken drops that copy, with no tick")
@@ -162,9 +162,9 @@ struct CallSpeakerObserverTests {
     dictation.idle = true
     capture.letGo()
     await eventually("copy delivered") { observer.deliveriesForTesting == 1 }
-    #expect(observer.currentLog.observations.isEmpty)
+    #expect(observer.currentSegment.observations.isEmpty)
     observer.tick()
-    await eventually("next copy counts") { observer.currentLog.observations.count == 1 }
+    await eventually("next copy counts") { observer.currentSegment.observations.count == 1 }
   }
 
   @Test("no copy is taken while dictating")
@@ -177,7 +177,7 @@ struct CallSpeakerObserverTests {
     #expect(capture.calls.withLock { $0 } == 0)
     dictation.idle = true
     observer.tick()
-    await eventually("copy after dictation") { observer.currentLog.observations.count == 1 }
+    await eventually("copy after dictation") { observer.currentSegment.observations.count == 1 }
   }
 
   @Test("a copy whose app instance changed or whose trust was lost before delivery adds nothing")
@@ -198,71 +198,8 @@ struct CallSpeakerObserverTests {
       }
       capture.letGo()
       await eventually("copy delivered") { observer.deliveriesForTesting == 1 }
-      #expect(observer.currentLog.observations.isEmpty, "\(change)")
+      #expect(observer.currentSegment.observations.isEmpty, "\(change)")
     }
-  }
-
-  @Test("finish saves the final log once; a copy landing after it adds nothing; cancel saves none")
-  func finishAndCancel() async throws {
-    let capture = Capture()
-    capture.hold.withLock { $0 = true }
-    var saves: [CallSpeakerLog] = []
-    let observer = try observer(capture: capture, saved: { saves.append($0) })
-    observer.tick()
-    await eventually("copy started") { capture.calls.withLock { $0 } == 1 }
-    await observer.finish()
-    #expect(saves.count == 1)
-    capture.letGo()
-    await eventually("late copy delivered") { observer.deliveriesForTesting == 1 }
-    #expect(observer.currentLog.observations.isEmpty, "a copy after Stop never counts")
-    await observer.finish()
-    #expect(saves.count == 1)
-    #expect(observer.takeFinalLog() == nil, "quit after the final save has nothing to save")
-
-    var cancelledSaves = 0
-    let cancelled = try self.observer(capture: Capture(), saved: { _ in cancelledSaves += 1 })
-    cancelled.cancel()
-    await cancelled.finish()
-    #expect(cancelledSaves == 0)
-    #expect(cancelled.takeFinalLog() == nil)
-  }
-
-  @Test("a quit while Stop waits on a periodic save takes the final log; Stop then saves none")
-  func quitDuringFinish() async throws {
-    let gate = AsyncStream<Void>.makeStream()
-    var saves = 0
-    let capture = Capture()
-    let observer = try observer(
-      capture: capture,
-      saved: { _ in
-        saves += 1
-        if saves == 1 { for await _ in gate.stream { break } }
-      })
-    observer.tick()
-    await eventually("copy landed") { observer.currentLog.observations.count == 1 }
-    observer.saveNowForTesting()
-    await eventually("periodic save parked") { saves == 1 }
-    var waiting = false
-    observer.finishWillWaitForTesting = { waiting = true }
-    let stopping = Task { await observer.finish() }
-    await eventually("Stop waits on the parked periodic save") { waiting }
-    let final = observer.takeFinalLog()
-    #expect(final?.observations.count == 1)
-    gate.continuation.yield()
-    await stopping.value
-    #expect(saves == 1, "Stop saved nothing after quit took the final log")
-  }
-
-  @Test("a final save that failed leaves the final log for a quit to take")
-  func failedFinalSave() async throws {
-    struct Refused: Error {}
-    let capture = Capture()
-    let observer = try observer(capture: capture, saved: { _ in throw Refused() })
-    observer.tick()
-    await eventually("copy landed") { observer.currentLog.observations.count == 1 }
-    await observer.finish()
-    #expect(observer.takeFinalLog()?.observations.count == 1)
-    #expect(observer.takeFinalLog() == nil, "handed over once")
   }
 
   /// A Teams app copy whose People list (count-checked) shows `names`, read at `ms` on the
@@ -293,12 +230,12 @@ struct CallSpeakerObserverTests {
     _ copies: Copies, dictation: Dictation, saved: @escaping @MainActor () -> Void = {}
   ) throws -> CallSpeakerObserver {
     CallSpeakerObserver(
-      surface: .teamsApp, family: .teams, anchor: 0, rules: try Self.bundled(),
-      lag: CallSpeakerLag(milliseconds: 0),
+      surface: .teamsApp, family: .teams, anchor: 0, startMs: 0, rules: try Self.bundled(),
+      presencePolicy: .current, lag: CallSpeakerLag(milliseconds: 0),
       dependencies: .init(
         target: { CallSpeakerTarget(pid: 1, rule: .callApp(.teams)) },
         capture: { _ in copies.take() }, isTrusted: { true },
-        isDictationIdle: { dictation.idle }, save: { _ in saved() }, lane: .init()))
+        isDictationIdle: { dictation.idle }, save: { saved() }, lane: .init()))
   }
 
   @Test("a whole dictation between two ticks breaks a run of missing lists")
@@ -321,7 +258,7 @@ struct CallSpeakerObserverTests {
         observer.tick()
         await eventually("copy \(n) delivered") { observer.deliveriesForTesting == n }
       }
-      return observer.currentLog.segments.first?.presence?.first { $0.name == "Priya Shah" }
+      return observer.currentSegment.presence?.first { $0.name == "Priya Shah" }
     }
     #expect(try await run(dictateBetween: false)?.absences.count == 1, "control: the run confirms")
     #expect(try await run(dictateBetween: true)?.absences.isEmpty == true)
@@ -341,21 +278,37 @@ struct CallSpeakerObserverTests {
     observer.tick()
     observer.saveNowForTesting()
     await eventually("a skipped tick alone is saved") { saves == 2 }
-    #expect(observer.currentLog.segments.first?.health?.skippedDictationTicks == 1)
+    #expect(observer.currentSegment.health?.skippedDictationTicks == 1)
   }
 
   // MARK: - With a recording
 
-  /// A coordinator whose recording of a Meet call reads `capture`.
+  /// The live call, as a test sets it.
+  @MainActor
+  final class Sources: CallSpeakerSources {
+    var answer: CallSpeakerSourceAnswer
+    var speakerSourceRevision = 0
+    private(set) var demand = 0
+    init(_ answer: CallSpeakerSourceAnswer) { self.answer = answer }
+    func beginRecordingDemand() { demand += 1 }
+    func endRecordingDemand() { demand -= 1 }
+    func speakerSource() -> CallSpeakerSourceAnswer { answer }
+  }
+
+  static let meetCall = CallSpeakerSourceAnswer.unique(
+    .init(family: .googleMeet, target: CallSpeakerTarget(pid: 1, rule: .browser(.chrome))))
+
+  /// A coordinator whose recordings read `sources`' live call through `capture`.
   /// `rulesGate`, when given, holds the rules read until it yields.
   private func coordinator(
-    _ harness: Harness, capture: Capture, rulesGate: AsyncStream<Void>? = nil
+    _ harness: Harness, capture: Capture, sources: Sources = Sources(meetCall),
+    rulesGate: AsyncStream<Void>? = nil
   ) throws -> MeetingCoordinator {
     let rules = try Self.bundled()
     var deps = harness.dependencies()
-    deps.callSpeakerTarget = { family in
-      family == .googleMeet ? CallSpeakerTarget(pid: 1, rule: .browser(.chrome)) : nil
-    }
+    deps.callSources = sources
+    // Changes of call settle after one check, so a test need not wait seconds.
+    deps.speakerSessionTiming = (.milliseconds(100), .zero, .milliseconds(500))
     deps.talkerRules = {
       if let rulesGate { for await _ in rulesGate { break } }
       return (rules, rules.rules)
@@ -394,19 +347,53 @@ struct CallSpeakerObserverTests {
     #expect(capture.calls.withLock { $0 } == taken, "no copy after Stop")
   }
 
-  @Test("a meeting started by hand reads no call app")
-  func handStartReadsNothing() async throws {
+  @Test("a meeting started by hand reads the live call too, through the same session")
+  func handStartReadsLiveCall() async throws {
     let harness = try Harness()
     let capture = Capture()
-    let coordinator = try coordinator(harness, capture: capture)
+    let sources = Sources(Self.meetCall)
+    let coordinator = try coordinator(harness, capture: capture, sources: sources)
     _ = await coordinator.start(from: .history)
     let meetingID = try #require(harness.recorders.first).configuration.meetingID
+    await eventually("copies taken") { capture.calls.withLock { $0 } >= 2 }
+    #expect(sources.demand == 1, "discovery is kept watching while it records")
     await coordinator.stop()
     await eventually("ready") {
       coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
     }
-    #expect(capture.calls.withLock { $0 } == 0)
-    #expect(harness.jobs.last?.receivedCallSpeakers == [.absent])
+    #expect(sources.demand == 0)
+    guard case .usable(let log)? = harness.jobs.last?.receivedCallSpeakers.first else {
+      Issue.record("the pass did not receive saved evidence")
+      return
+    }
+    #expect(log.segments.count == 1)
+    #expect(log.segments.first?.endReason == .recordingEnded)
+    #expect(log.segments.first?.observations.isEmpty == false)
+  }
+
+  @Test("a recording with no call saves evidence with no segment; a call joined later is read")
+  func lateCall() async throws {
+    let harness = try Harness()
+    let capture = Capture()
+    let sources = Sources(.none)
+    let coordinator = try coordinator(harness, capture: capture, sources: sources)
+    _ = await coordinator.start(from: .menu)
+    let meetingID = try #require(harness.recorders.first).configuration.meetingID
+    // settle: absence check; the session checks every 100 ms
+    try await Task.sleep(for: .milliseconds(300))
+    #expect(capture.calls.withLock { $0 } == 0, "no call: nothing is read")
+    sources.answer = Self.meetCall
+    await eventually("the late call is read") { capture.calls.withLock { $0 } >= 2 }
+    await coordinator.stop()
+    await eventually("ready") {
+      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
+    }
+    guard case .usable(let log)? = harness.jobs.last?.receivedCallSpeakers.first else {
+      Issue.record("the pass did not receive saved evidence")
+      return
+    }
+    #expect(log.segments.count == 1)
+    #expect((log.segments.first?.startMs ?? 0) > 0, "the segment starts when the call was found")
   }
 
   @Test("deleting a recording stops its capture and leaves no evidence file")

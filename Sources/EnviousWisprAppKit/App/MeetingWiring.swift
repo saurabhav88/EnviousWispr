@@ -65,10 +65,8 @@ enum MeetingWiring {
     /// #4012: whether a detected Start is still wanted (`CallDetectionCoordinator`), asked
     /// before the meeting is created. Late-bound: call detection is built after the meetings.
     var detectedStartWanted: @MainActor () async -> Bool = { true }
-    /// #4013 chunk 13A: the app instance a recording's speaker capture reads for a call family.
-    var callSpeakerTarget: @MainActor (CallAppFamily) -> CallSpeakerTarget? = { _ in nil }
-    /// #4013 chunk 13A: the revision of what holds the microphone, for speaker capture.
-    var callSpeakerSourceRevision: @MainActor () -> Int = { 0 }
+    /// #4013 13B: call-source discovery, which every recording's speaker session reads.
+    var callSources: (any CallSpeakerSources)?
     /// #4013 chunk 13A: starts the day's talker-rules download without waiting for it
     /// (`TalkerRulesStore.refreshIfDue`, at most once a day). The app passes the live store;
     /// tests never reach the network.
@@ -170,7 +168,8 @@ enum MeetingWiring {
           return await MeetingCalendarTitle.lookup(at: startedAt, bound: .seconds(1))
         },
         detectedStartWanted: inputs.detectedStartWanted,
-        saveTranscript: { [transcriptCoordinator = inputs.transcriptCoordinator] transcript, naming in
+        saveTranscript: {
+          [transcriptCoordinator = inputs.transcriptCoordinator] transcript, naming in
           try await transcriptCoordinator.saveAndShowDurably(transcript, naming: naming)
         },
         historyRow: { [transcriptCoordinator = inputs.transcriptCoordinator] id in
@@ -192,8 +191,7 @@ enum MeetingWiring {
         log: inputs.log,
         workChanged: inputs.workChanged,
         isDictationIdle: inputs.isDictationIdle,
-        callSpeakerTarget: inputs.callSpeakerTarget,
-        callSpeakerSourceRevision: inputs.callSpeakerSourceRevision,
+        callSources: inputs.callSources,
         talkerRules: { [refreshTalkerRules = inputs.refreshTalkerRules] in
           let selected = await TalkerRulesStore.live.current()
           // The day's download, never waited for: this recording keeps the rules read above.
@@ -219,7 +217,8 @@ enum MeetingWiring {
     inputs.transcriptCoordinator.meetingNotes = { [weak coordinator] meetingID in
       coordinator?.documents.notes(meetingID)
     }
-    coordinator.onMeetingsPublished = { [weak transcriptCoordinator = inputs.transcriptCoordinator] in
+    coordinator.onMeetingsPublished = {
+      [weak transcriptCoordinator = inputs.transcriptCoordinator] in
       transcriptCoordinator?.meetingsDidChange()
     }
     inputs.transcriptCoordinator.meetingInfo = { [weak coordinator] meetingID in
@@ -325,72 +324,72 @@ enum MeetingWiring {
     let pressure = inputs.memoryPressure
     let workChanged = inputs.workChanged
     let shared = inputs.sharedEngine
-      let route = MeetingParakeetRoute(
-        dependencies: .init(
-          isAdmitted: isIdle,
-          isDictationIdle: inputs.isDictationIdle,
-          isSwitchSettled: shared.isSwitchSettled,
-          activeBackend: shared.activeBackend,
-          wakes: wakes,
-          admission: shared.admission,
-          ensureDictationReady: shared.ensureReady,
-          isModelSourceUsable: isDeliveryEnabled,
-          isModelLoaded: shared.isModelLoaded,
-          isLoadOrUnloadInFlight: shared.isLoadOrUnloadInFlight,
-          publishedSelection: shared.publishedSelection,
-          transcribeShared: shared.transcribe,
-          disarmEngineTimers: shared.disarmEngineTimers,
-          rearmEngineTimers: shared.rearmEngineTimers,
-          recoveryRecheck: shared.recoveryRecheck,
-          sharedClaim: MeetingModelClaim(
-            gate: inputs.modelUseGate, resolve: { shared.publishedSelection() }),
-          ownClaim: claim,
-          ownLoad: { selection in try await engine.load(selection: selection) },
-          ownTranscribe: { samples, language in
-            try await engine.transcribe(samples: samples, language: language)
-          },
-          ownUnload: { await engine.unload() },
-          ownWaitForAvailability: { try await engine.waitUntilOfflineModeAvailable() },
-          ownResidencyEnded: workChanged,
-          log: inputs.log))
-      var configuration = MeetingTranscriptionJob.Configuration()
-      configuration.cutsPieces = false
-      let job = MeetingTranscriptionJob(
-        dependencies: .init(
-          isDictationIdle: isIdle,
-          waitUntilDictationIdle: { await MeetingWorkAdmission.waitUntil(isIdle, wakes: wakes) },
-          beginModelUse: { try await route.acquire() },
-          endModelUse: {
-            await route.endModelUse()
-            workChanged()
-          },
-          loadEngine: { try await route.loadEngine() },
-          transcribe: { samples, language in
-            try await route.transcribe(samples, language: language)
-          },
-          unloadEngine: { await route.unloadEngine() },
-          analyzeSpeakers: { audio in
-            await analyzeSpeakers(audio, analyze: analyze, workChanged: workChanged)
-          },
-          // Only the meeting's own engine throws this (offline-mode contention); the shared
-          // route waits inside `acquire()` and never surfaces it.
-          isTemporaryEngineContention: { MeetingParakeetEngine.isTemporaryContention($0) },
-          waitForEngineAvailability: { try await route.waitForEngineAvailability() },
-          isModelSourceUsable: isDeliveryEnabled,
-          engineIdentity: { route.engineIdentity },
-          isMemoryPressureElevated: { pressure.isElevated },
-          waitUntilMemoryNormal: { await pressure.waitUntilNormal() },
-          // Every unit, teardown included, holds the lane from its admission to its physical end.
-          unitStarted: { lane.asrBegan() },
-          unitEnded: { lane.asrEnded() },
-          passStarted: { meetingID, seconds in
-            route.beginPass(meetingID: meetingID, meetingSeconds: seconds)
-          },
-          isOwnModelResident: { route.isOwnParakeetResident }),
-        configuration: configuration)
-      // The route's dictation waits show the job's "Paused while you dictate".
-      route.onWaitingForDictation = { [weak job] waiting in job?.onWaitingForDictation?(waiting) }
-      return job
+    let route = MeetingParakeetRoute(
+      dependencies: .init(
+        isAdmitted: isIdle,
+        isDictationIdle: inputs.isDictationIdle,
+        isSwitchSettled: shared.isSwitchSettled,
+        activeBackend: shared.activeBackend,
+        wakes: wakes,
+        admission: shared.admission,
+        ensureDictationReady: shared.ensureReady,
+        isModelSourceUsable: isDeliveryEnabled,
+        isModelLoaded: shared.isModelLoaded,
+        isLoadOrUnloadInFlight: shared.isLoadOrUnloadInFlight,
+        publishedSelection: shared.publishedSelection,
+        transcribeShared: shared.transcribe,
+        disarmEngineTimers: shared.disarmEngineTimers,
+        rearmEngineTimers: shared.rearmEngineTimers,
+        recoveryRecheck: shared.recoveryRecheck,
+        sharedClaim: MeetingModelClaim(
+          gate: inputs.modelUseGate, resolve: { shared.publishedSelection() }),
+        ownClaim: claim,
+        ownLoad: { selection in try await engine.load(selection: selection) },
+        ownTranscribe: { samples, language in
+          try await engine.transcribe(samples: samples, language: language)
+        },
+        ownUnload: { await engine.unload() },
+        ownWaitForAvailability: { try await engine.waitUntilOfflineModeAvailable() },
+        ownResidencyEnded: workChanged,
+        log: inputs.log))
+    var configuration = MeetingTranscriptionJob.Configuration()
+    configuration.cutsPieces = false
+    let job = MeetingTranscriptionJob(
+      dependencies: .init(
+        isDictationIdle: isIdle,
+        waitUntilDictationIdle: { await MeetingWorkAdmission.waitUntil(isIdle, wakes: wakes) },
+        beginModelUse: { try await route.acquire() },
+        endModelUse: {
+          await route.endModelUse()
+          workChanged()
+        },
+        loadEngine: { try await route.loadEngine() },
+        transcribe: { samples, language in
+          try await route.transcribe(samples, language: language)
+        },
+        unloadEngine: { await route.unloadEngine() },
+        analyzeSpeakers: { audio in
+          await analyzeSpeakers(audio, analyze: analyze, workChanged: workChanged)
+        },
+        // Only the meeting's own engine throws this (offline-mode contention); the shared
+        // route waits inside `acquire()` and never surfaces it.
+        isTemporaryEngineContention: { MeetingParakeetEngine.isTemporaryContention($0) },
+        waitForEngineAvailability: { try await route.waitForEngineAvailability() },
+        isModelSourceUsable: isDeliveryEnabled,
+        engineIdentity: { route.engineIdentity },
+        isMemoryPressureElevated: { pressure.isElevated },
+        waitUntilMemoryNormal: { await pressure.waitUntilNormal() },
+        // Every unit, teardown included, holds the lane from its admission to its physical end.
+        unitStarted: { lane.asrBegan() },
+        unitEnded: { lane.asrEnded() },
+        passStarted: { meetingID, seconds in
+          route.beginPass(meetingID: meetingID, meetingSeconds: seconds)
+        },
+        isOwnModelResident: { route.isOwnParakeetResident }),
+      configuration: configuration)
+    // The route's dictation waits show the job's "Paused while you dictate".
+    route.onWaitingForDictation = { [weak job] waiting in job?.onWaitingForDictation?(waiting) }
+    return job
   }
 
   /// Speaker analysis of one track; the speaker unit was an activation blocker and has ended.
