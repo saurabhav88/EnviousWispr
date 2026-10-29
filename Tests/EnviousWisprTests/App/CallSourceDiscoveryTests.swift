@@ -124,6 +124,25 @@ struct CallSourceDiscoveryTests {
     #expect(scan.calls.withLock { $0 } == 2, "six asks during one read cost exactly one more")
   }
 
+  @Test("a call app whose microphone use cannot be read makes the answer unavailable")
+  func unreadableMicrophoneUse() async throws {
+    func answer(_ holders: [CallMicrophoneWatcher.Holder]) async -> CallSpeakerSourceAnswer {
+      let sources = discovery(Scan([.init(complete: true, holders: holders)]))
+      defer { sources.shutDown() }
+      sources.beginRecordingDemand()
+      await sources.refreshNow()
+      return sources.speakerSource()
+    }
+    func teams(_ input: CallMicrophoneWatcher.Input) -> CallMicrophoneWatcher.Holder {
+      .init(pid: 900_020, bundleID: "com.microsoft.teams2", input: input, ownerPID: 900_020)
+    }
+    #expect(await answer([Self.zoom, teams(.unknown)]) == .unavailable, "it may be a second call")
+    #expect(await answer([teams(.unknown)]) == .unavailable)
+    #expect(
+      await answer([Self.zoom, teams(.inactive)])
+        == .unique(.init(family: .zoom, target: Self.zoomTarget)), "control")
+  }
+
   @Test("a simulation survives prompts and recordings starting and stopping")
   func simulationSurvivesDemand() {
     let sources = discovery(Scan())

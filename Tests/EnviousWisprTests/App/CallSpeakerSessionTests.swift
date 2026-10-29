@@ -9,8 +9,9 @@ import os
 
 /// #4013 13B.4: when these fail, a recording reads the wrong call after the user switches
 /// calls, splits one call into pieces on a brief flicker, keeps reading when two calls compete,
-/// saves after Stop, delete or quit, loses its final names when a save fails, or leaves the
-/// microphone watcher running after the recording ended.
+/// saves after Stop, delete or quit, loses its final names when a save fails, stops saving while
+/// no call is read, grows past what a saved log may hold, or leaves the microphone watcher
+/// running after the recording ended.
 ///
 /// The live call is a stand-in (`CallSpeakerObserverTests.Sources`) and the clock is a test
 /// clock; copies are the SYNTHETIC Meet page of `CallSpeakerObserverTests`. Session and observer
@@ -38,7 +39,7 @@ struct CallSpeakerSessionTests {
     .init(family: .zoom, target: CallSpeakerTarget(pid: 2, rule: .callApp(.zoom))))
 
   private func session(
-    _ sources: Sources, clock: Clock, settleMs: Int = 2_000,
+    _ sources: Sources, clock: Clock, settleMs: Int = 2_000, tick: Duration = .seconds(3_600),
     saved: @escaping @MainActor (CallSpeakerLog) async throws -> Void = { _ in }
   ) throws -> CallSpeakerSession {
     let rules = try TalkerRulesSnapshot(
@@ -58,8 +59,8 @@ struct CallSpeakerSessionTests {
             readStartHostTime: host, readEndHostTime: host)
         },
         isTrusted: { true }, isDictationIdle: { true }, save: { try await saved($0) },
-        lane: .init(), hostTime: { clock.host() }, tick: .seconds(3_600),
-        settle: .milliseconds(settleMs), observerTick: .seconds(3_600)))
+        lane: .init(), hostTime: { clock.host() }, tick: tick,
+        settle: .milliseconds(settleMs), observerTick: .seconds(3_600), saveEvery: 2))
   }
 
   /// One observer tick and its copy delivered.
@@ -200,7 +201,7 @@ struct CallSpeakerSessionTests {
     session.start()
     await read(session)
     let observer = try #require(session.currentObserverForTesting)
-    observer.saveNowForTesting()
+    session.saveNowForTesting()
     await eventually("periodic save parked") { saves == 1 }
     let stopping = Task { await session.finish() }
     await eventually("Stop is waiting") { observer.open == false }
@@ -209,5 +210,57 @@ struct CallSpeakerSessionTests {
     gate.continuation.yield()
     #expect(await stopping.value, "handed to the quit")
     #expect(saves == 1, "Stop saved nothing after quit took the final log")
+  }
+
+  @Test("a save asked for by a call change never runs after delete or quit took over")
+  func noSaveAfterCancelOrQuit() async throws {
+    for quit in [false, true] {
+      let sources = Sources(Self.meet)
+      let clock = Clock()
+      var saves = 0
+      let session = try session(sources, clock: clock, settleMs: 0, saved: { _ in saves += 1 })
+      session.start()
+      sources.answer = Self.zoom
+      session.check()
+      session.check()
+      #expect(session.currentLog.segments.count == 2, "the change asked for a save")
+      if quit {
+        #expect(session.takeFinalLog()?.segments.count == 2)
+      } else {
+        session.cancel()
+      }
+      await session.savesSettledForTesting()
+      #expect(saves == 0, quit ? "quit writes the final log itself" : "delete saves nothing")
+    }
+  }
+
+  @Test("a recording with no call still saves every interval")
+  func savesWithNoCall() async throws {
+    var saved: [CallSpeakerLog] = []
+    let session = try session(
+      Sources(.none), clock: Clock(), tick: .milliseconds(1), saved: { saved.append($0) })
+    session.start()
+    await eventually("saved twice with no call") { saved.count >= 2 }
+    session.cancel()
+    #expect(saved.last?.segments.isEmpty == true)
+    #expect((saved.last?.sessionHealth?.noSource ?? 0) >= 2)
+  }
+
+  @Test("past the most segments a log may hold, no segment opens and the refusal is counted")
+  func segmentCapacity() async throws {
+    let sources = Sources(Self.meet)
+    let session = try session(sources, clock: Clock(), settleMs: 0)
+    session.start()
+    // Each switch: the first check sees the change, the second ends one segment and opens the next.
+    for n in 0..<CallSpeakerLog.maximumSegments {
+      sources.answer = n.isMultiple(of: 2) ? Self.zoom : Self.meet
+      session.check()
+      session.check()
+    }
+    let log = session.currentLog
+    #expect(log.segments.count == CallSpeakerLog.maximumSegments)
+    #expect(log.sessionHealth?.refusedSegments == 1)
+    #expect(log.shapeProblem == nil, "the log still saves")
+    session.cancel()
   }
 }

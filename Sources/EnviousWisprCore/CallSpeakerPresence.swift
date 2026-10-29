@@ -94,7 +94,8 @@ public struct CallNamePresence: Sendable, Equatable, Codable {
     else { return "too many" }
     var previous: Int?
     for (index, sighting) in sightings.enumerated() {
-      guard sighting.lastSeenMs >= sighting.firstSeenMs, previous.map({ sighting.firstSeenMs > $0 }) ?? true
+      guard sighting.lastSeenMs >= sighting.firstSeenMs,
+        previous.map({ sighting.firstSeenMs > $0 }) ?? true
       else { return "sightings out of order" }
       if !sighting.absenceConfirmed, index != sightings.count - 1 {
         return "an unconfirmed sighting before another"
@@ -153,13 +154,16 @@ public struct CallCaptureHealth: Sendable, Equatable, Codable {
 
 /// How the recording's search for its call went, as counts only (#4013 13B).
 public struct CallSessionHealth: Sendable, Equatable, Codable {
-  /// Discovery answers by kind: one call, none, two competing, or unreadable.
+  /// Discovery's cached answer, one sample per session check (every 500 ms), by kind: one
+  /// call, none, two competing, or unreadable. Samples, not changes, fresh scans or seconds.
   public var uniqueSources = 0
   public var noSource = 0
   public var ambiguousSources = 0
   public var unavailableSources = 0
   public var saveAttempts = 0
   public var saveFailures = 0
+  /// Segments not opened because the log already held `CallSpeakerLog.maximumSegments`.
+  public var refusedSegments = 0
 
   public init() {}
 }

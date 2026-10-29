@@ -94,8 +94,7 @@ struct CallSpeakerObserverTests {
 
   private func observer(
     capture: Capture, dictation: Dictation = Dictation(), world: World = World(),
-    lane: CallSpeakerObserver.Lane = .init(),
-    saved: @escaping @MainActor () async throws -> Void = {}
+    lane: CallSpeakerObserver.Lane = .init()
   ) throws -> CallSpeakerObserver {
     let trusted = world.trustedLock
     return CallSpeakerObserver(
@@ -106,8 +105,7 @@ struct CallSpeakerObserverTests {
         sourceRevision: { world.sourceRevision },
         capture: { _ in capture.take() },
         isTrusted: { trusted.withLock { $0 } },
-        isDictationIdle: { dictation.idle },
-        save: { try await saved() }, lane: lane))
+        isDictationIdle: { dictation.idle }, lane: lane))
   }
 
   @Test("one copy at a time: ticks while a copy is being taken take none")
@@ -227,7 +225,7 @@ struct CallSpeakerObserverTests {
   }
 
   private func teamsObserver(
-    _ copies: Copies, dictation: Dictation, saved: @escaping @MainActor () -> Void = {}
+    _ copies: Copies, dictation: Dictation
   ) throws -> CallSpeakerObserver {
     CallSpeakerObserver(
       surface: .teamsApp, family: .teams, anchor: 0, startMs: 0, rules: try Self.bundled(),
@@ -235,12 +233,15 @@ struct CallSpeakerObserverTests {
       dependencies: .init(
         target: { CallSpeakerTarget(pid: 1, rule: .callApp(.teams)) },
         capture: { _ in copies.take() }, isTrusted: { true },
-        isDictationIdle: { dictation.idle }, save: { saved() }, lane: .init()))
+        isDictationIdle: { dictation.idle }, lane: .init()))
   }
 
-  @Test("a whole dictation between two ticks breaks a run of missing lists")
-  func dictationBetweenTicksBreaksPresence() async throws {
-    func run(dictateBetween: Bool) async throws -> CallNamePresence? {
+  @Test(
+    "a whole dictation, or a moment on another call, between two ticks breaks a run of missing lists"
+  )
+  func interruptionBetweenTicksBreaksPresence() async throws {
+    enum Between { case nothing, dictation, otherCall }
+    func run(_ between: Between) async throws -> CallNamePresence? {
       let copies = Copies([
         Self.teamsCopy(["Alex Rivera", "Priya Shah"], atMs: 1_000),
         Self.teamsCopy(["Alex Rivera"], atMs: 1_500),
@@ -250,35 +251,26 @@ struct CallSpeakerObserverTests {
       let dictation = Dictation()
       let observer = try teamsObserver(copies, dictation: dictation)
       for n in 1...4 {
-        if n == 4, dictateBetween {
-          // Observation reports each change as it happens, before the next tick.
-          dictation.idle = false
-          dictation.idle = true
+        if n == 4 {
+          switch between {
+          case .nothing: break
+          case .dictation:
+            // Observation reports each change as it happens, before the next tick.
+            dictation.idle = false
+            dictation.idle = true
+          case .otherCall:
+            // The session saw another answer for a moment and told the segment at once.
+            observer.noteSourceInterruption()
+          }
         }
         observer.tick()
         await eventually("copy \(n) delivered") { observer.deliveriesForTesting == n }
       }
       return observer.currentSegment.presence?.first { $0.name == "Priya Shah" }
     }
-    #expect(try await run(dictateBetween: false)?.absences.count == 1, "control: the run confirms")
-    #expect(try await run(dictateBetween: true)?.absences.isEmpty == true)
-  }
-
-  @Test("health-only changes are saved at the next interval")
-  func healthChangesSaved() async throws {
-    let copies = Copies([Self.teamsCopy(["Alex Rivera"], atMs: 1_000)])
-    let dictation = Dictation()
-    var saves = 0
-    let observer = try teamsObserver(copies, dictation: dictation, saved: { saves += 1 })
-    observer.tick()
-    await eventually("copy delivered") { observer.deliveriesForTesting == 1 }
-    observer.saveNowForTesting()
-    await eventually("first save") { saves == 1 }
-    dictation.idle = false
-    observer.tick()
-    observer.saveNowForTesting()
-    await eventually("a skipped tick alone is saved") { saves == 2 }
-    #expect(observer.currentSegment.health?.skippedDictationTicks == 1)
+    #expect(try await run(.nothing)?.absences.count == 1, "control: the run confirms")
+    #expect(try await run(.dictation)?.absences.isEmpty == true)
+    #expect(try await run(.otherCall)?.absences.isEmpty == true)
   }
 
   // MARK: - With a recording

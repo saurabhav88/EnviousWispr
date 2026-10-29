@@ -15,8 +15,11 @@ import Foundation
 ///   call opens the next one. Two competing calls, or an unreadable answer, read nothing.
 /// - Freezes the talker rules and the presence rule once, at recording start, for every
 ///   segment; each segment resolves its own surface's lag from them.
-/// - Owns saving: every save writes all segments so far through `save`, in the order asked, and
-///   the final save after Stop is the last.
+/// - Owns saving, through one queue of saves: every 10 seconds, and when a segment ends, it
+///   writes all segments so far through `save`, in the order asked, even while no call is read.
+///   Once admission closes no new save starts; the final save after Stop is the last.
+/// - Opens at most `CallSpeakerLog.maximumSegments` segments; past that it reads nothing more
+///   and counts the refusal.
 ///
 /// It never starts or stops audio, and nothing here is on the dictation path: discovery's reads
 /// and the copies run off the main actor; a tick only compares cached answers.
@@ -40,7 +43,8 @@ final class CallSpeakerSession {
     var sleep: @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
     /// The observer's own timing (tests shorten it).
     var observerTick: Duration = .milliseconds(500)
-    var observerSaveEvery = 20
+    /// Checks between periodic saves: 10 seconds.
+    var saveEvery = 20
   }
 
   /// `finishing`: Stop is saving the final log. `saved`: the final log is on disk, or was handed
@@ -62,6 +66,9 @@ final class CallSpeakerSession {
   private var health = CallSessionHealth()
   /// Where the recording stopped, fixed when admission closed.
   private var stoppedAtMs: Int?
+  /// The save running now, and whether another was asked for meanwhile.
+  private var saving: Task<Void, Never>?
+  private var saveQueued = false
 
   init(
     anchor: UInt64, rules: TalkerRulesSnapshot, bundled: TalkerRules, dependencies: Dependencies
@@ -91,11 +98,14 @@ final class CallSpeakerSession {
     deps.sources.beginRecordingDemand()
     check()
     loop = Task { [weak self] in
+      var checks = 0
       while !Task.isCancelled {
         guard let self else { return }
         do { try await self.deps.sleep(self.deps.tick) } catch { return }
-        guard self.lifecycle == .open, self.stoppedAtMs == nil else { return }
+        guard self.acceptsSaves else { return }
+        checks += 1
         self.check()
+        if checks % self.deps.saveEvery == 0 { self.requestSave() }
       }
     }
   }
@@ -115,6 +125,9 @@ final class CallSpeakerSession {
       pending = nil
       return
     }
+    // Any other answer interrupts the segment's reading at once, even one that settles back:
+    // copies in flight no longer count and runs of missing names start again.
+    current?.observer.noteSourceInterruption()
     guard current != nil else {
       // Nothing is being read: a single call is read at once.
       pending = nil
@@ -130,13 +143,17 @@ final class CallSpeakerSession {
       } else {
         closeCurrent(at: now, reason: .sourceLost)
       }
-      persist()
+      requestSave()
     } else {
       pending = (answer, now)
     }
   }
 
   private func open(_ source: CallSpeakerSourceAnswer.Source, at startMs: Int) {
+    guard closed.count < CallSpeakerLog.maximumSegments else {
+      health.refusedSegments += 1
+      return
+    }
     guard
       let surface = CallSpeakerSurfaceChoice.surface(
         family: source.family, rule: source.target.rule)
@@ -154,10 +171,8 @@ final class CallSpeakerSession {
         target: { sources.speakerSource() == .unique(source) ? source.target : nil },
         sourceRevision: { sources.speakerSourceRevision },
         capture: { capture($0, family) }, isTrusted: deps.isTrusted,
-        isDictationIdle: deps.isDictationIdle,
-        save: { [weak self] in try await self?.save() },
-        log: deps.log, lane: deps.lane, tick: deps.observerTick,
-        saveEvery: deps.observerSaveEvery, sleep: deps.sleep))
+        isDictationIdle: deps.isDictationIdle, lane: deps.lane, tick: deps.observerTick,
+        sleep: deps.sleep))
     current = (source, observer)
     deps.log("meeting speaker segment started surface=\(surface.rawValue)")
     observer.start()
@@ -172,6 +187,31 @@ final class CallSpeakerSession {
     self.current = nil
   }
 
+  /// Saves still start: the session is open and admission has not closed.
+  private var acceptsSaves: Bool { lifecycle == .open && stoppedAtMs == nil }
+
+  /// Asks for a save of everything so far; one runs at a time, and one asked for meanwhile runs
+  /// next. A save that has not started when admission closes never starts.
+  private func requestSave() {
+    guard acceptsSaves else { return }
+    guard saving == nil else {
+      saveQueued = true
+      return
+    }
+    saving = Task { [weak self] in await self?.runSaves() }
+  }
+
+  private func runSaves() async {
+    defer { saving = nil }
+    repeat {
+      guard acceptsSaves else { return }
+      saveQueued = false
+      do { try await save() } catch {
+        deps.log("call speakers save failed error=\(type(of: error))")
+      }
+    } while saveQueued
+  }
+
   /// Saves everything so far. The log is put together when the write is queued, so writes
   /// land in the order asked and a later one never carries less.
   private func save() async throws {
@@ -184,14 +224,6 @@ final class CallSpeakerSession {
     }
   }
 
-  private func persist() {
-    Task { [weak self] in
-      do { try await self?.save() } catch {
-        self?.deps.log("call speakers save failed error=\(type(of: error))")
-      }
-    }
-  }
-
   /// Closes admission at once: no more checks or copies, results in flight no longer count,
   /// and the stop time is fixed. Synchronous, so a Stop calls it before its first wait.
   func closeAdmission() {
@@ -201,7 +233,7 @@ final class CallSpeakerSession {
     current?.observer.closeAdmission()
   }
 
-  /// Normal stop: closes admission, lets a save already running land, ends the open segment
+  /// Normal stop: closes admission, lets the save already running land, ends the open segment
   /// at the stop time and saves the final log once. True when it is on disk (or was handed to
   /// a quit meanwhile); false when the save failed or the session was cancelled.
   @discardableResult
@@ -209,7 +241,7 @@ final class CallSpeakerSession {
     closeAdmission()
     guard lifecycle == .open else { return lifecycle == .saved }
     lifecycle = .finishing
-    await current?.observer.drain()
+    await saving?.value
     guard lifecycle == .finishing else { return lifecycle == .saved }
     closeCurrent(at: stoppedAtMs ?? nowMs, reason: .recordingEnded)
     endDemand()
@@ -248,5 +280,9 @@ final class CallSpeakerSession {
 
   #if DEBUG
     var currentObserverForTesting: CallSpeakerObserver? { current?.observer }
+    /// The periodic save, now.
+    func saveNowForTesting() { requestSave() }
+    /// Waits for the save running now, if any.
+    func savesSettledForTesting() async { await saving?.value }
   #endif
 }

@@ -16,8 +16,8 @@ import os
 /// while it was taken: dictation did not start or end, Accessibility trust held and this
 /// segment's app instance is still the one to read. Each reading goes through
 /// `CallSpeakerAccumulator` (admission, roster, presence, health), placed on the meeting
-/// timeline from the recorder's anchor. Every 10 seconds it asks the session to save; after
-/// `closeAdmission()` nothing is added and no save starts.
+/// timeline from the recorder's anchor. After `closeAdmission()` nothing is added.
+/// The session saves what it collected.
 @MainActor
 final class CallSpeakerObserver {
   /// Where copies run, and whether one is still running. One for the whole app, so a copy
@@ -43,12 +43,8 @@ final class CallSpeakerObserver {
     /// Read inside Observation tracking, so any change to what it reads invalidates copies in
     /// flight at once, even a whole dictation that starts and ends between two ticks.
     var isDictationIdle: @MainActor () -> Bool
-    /// Asks the session to save everything collected so far; throws when it could not.
-    var save: @MainActor () async throws -> Void
-    var log: @MainActor (String) -> Void = { _ in }
     var lane: Lane = .shared
     var tick: Duration = .milliseconds(500)
-    var saveEvery: Int = 20  // ticks: 10 seconds
     var sleep: @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
   }
 
@@ -67,9 +63,6 @@ final class CallSpeakerObserver {
   private var lastTarget: CallSpeakerTarget?
   /// `dictationChanges` as the last tick saw it.
   private var seenDictationChanges = 0
-  private var savedVersion = -1
-  private var version = 0
-  private var saving: Task<Void, Never>?
 
   /// `rules` and `lag` are the recording's frozen ones; `anchor` is the recorder's; `startMs` is
   /// where this segment starts on the recording clock.
@@ -97,20 +90,14 @@ final class CallSpeakerObserver {
     accumulator.segment(endMs: endMs, endReason: reason)
   }
 
-  /// Whether anything was added since the last save that landed.
-  var hasUnsavedChanges: Bool { version != savedVersion }
-
   func start() {
     guard open, loop == nil else { return }
     loop = Task { [weak self] in
-      var ticks = 0
       while !Task.isCancelled {
         guard let self else { return }
         do { try await self.deps.sleep(self.deps.tick) } catch { return }
         guard self.open else { return }
-        ticks += 1
         self.tick()
-        if ticks % self.deps.saveEvery == 0 { self.saveIfChanged() }
       }
     }
   }
@@ -137,18 +124,15 @@ final class CallSpeakerObserver {
     if changes != seenDictationChanges {
       seenDictationChanges = changes
       accumulator.noteInterruption()
-      version += 1
     }
     guard deps.isDictationIdle() else {
       generation += 1
       accumulator.noteDictationSkip()
-      version += 1
       return
     }
     guard deps.isTrusted() else {
       generation += 1
       accumulator.noteNoPermission()
-      version += 1
       return
     }
     let target = deps.target()
@@ -156,7 +140,10 @@ final class CallSpeakerObserver {
       generation += 1
       lastTarget = target
     }
-    guard let target else { return }
+    guard let target else {
+      accumulator.noteInterruption()
+      return
+    }
     let busy = deps.lane.busy
     let claimed = busy.withLock { running -> Bool in
       if running { return false }
@@ -165,7 +152,6 @@ final class CallSpeakerObserver {
     }
     guard claimed else {
       accumulator.noteBusySkip()
-      version += 1
       return
     }
     let taken = Taken(
@@ -220,8 +206,6 @@ final class CallSpeakerObserver {
       durationUs: CallSpeakerTimeline.microseconds(
         from: copy.readStartHostTime, to: copy.readEndHostTime),
       nodes: copy.nodesVisited)
-    // Every change to what is saved, health included, is saved at the next interval.
-    version += 1
     // Read again at delivery: nothing that would have stopped the copy may have happened since.
     guard trustedAfter, taken.generation == generation,
       taken.dictation == dictationChanges.withLock({ $0 }), taken.source == deps.sourceRevision(),
@@ -236,29 +220,18 @@ final class CallSpeakerObserver {
       ms >= accumulator.startMs
     else { return }
     accumulator.add(parsed.reading, context: parsed.context, observationMs: ms)
-    version += 1
   }
 
-  /// Starts a save when something changed since the last one; never two at once. A save that
-  /// has not reached the writer when admission closes does not run.
-  private func saveIfChanged() {
-    guard open, saving == nil, version != savedVersion else { return }
-    let saved = version
-    saving = Task { [weak self] in
-      guard let self else { return }
-      defer { self.saving = nil }
-      guard self.open else { return }
-      do {
-        try await self.deps.save()
-        self.savedVersion = saved
-      } catch {
-        self.deps.log("call speakers save failed error=\(type(of: error))")
-      }
-    }
+  /// The session saw a different answer about the live call, perhaps only for a moment: copies
+  /// in flight no longer count and runs of missing names start again.
+  func noteSourceInterruption() {
+    guard open else { return }
+    generation += 1
+    accumulator.noteInterruption()
   }
 
-  /// Closes admission at once: no more copies, results in flight no longer count, no periodic
-  /// save starts. Synchronous, so a Stop calls it before its first wait.
+  /// Closes admission at once: no more copies, and results in flight no longer count.
+  /// Synchronous, so a Stop calls it before its first wait.
   func closeAdmission() {
     open = false
     generation += 1
@@ -266,19 +239,9 @@ final class CallSpeakerObserver {
     loop = nil
   }
 
-  /// Closes admission and waits for a save already running, so the session's final save is
-  /// the last one.
-  func drain() async {
-    closeAdmission()
-    await saving?.value
-  }
-
   #if DEBUG
     /// Copies delivered to the main actor, counted or dropped.
     private(set) var deliveriesForTesting = 0
-    func savingForTesting() async { await saving?.value }
     var laneBusy: Bool { deps.lane.isBusy }
-    /// The periodic save, now.
-    func saveNowForTesting() { saveIfChanged() }
   #endif
 }

@@ -326,10 +326,10 @@ final class CallSourceDiscovery {
   private func noteSpeakerSources() {
     // Whether the reading may name a source at all is part of what changed.
     var sources: Set<String> = ["complete=\(complete) ambiguous=\(ambiguous)"]
-    for holder in holders where holder.input == .active {
+    for holder in holders where holder.input != .inactive {
       var page = ""
       if case .call(let family, _)? = evidence[holder.pid]?.value { page = "\(family)" }
-      sources.insert("\(holder.pid)|\(holder.bundleID)|\(page)")
+      sources.insert("\(holder.pid)|\(holder.bundleID)|\(holder.input)|\(page)")
     }
     guard sources != speakerSources else { return }
     speakerSources = sources
@@ -340,14 +340,20 @@ final class CallSourceDiscovery {
   /// recording. A call app holding the microphone, or a browser whose page reads as a call, is a
   /// candidate, grouped by family and owning app instance. One candidate: `unique`. None: `none`.
   /// Two or more (two calls, two app instances, two browser copies): `ambiguous`. A reading that
-  /// was incomplete or ambiguous, or a browser holding the microphone whose page is not read
-  /// yet: `unavailable`. Never a guess, never a preference between calls.
+  /// was incomplete or ambiguous, a call app or browser whose microphone use could not be read,
+  /// or a browser holding the microphone whose page is not read yet: `unavailable`. Never a
+  /// guess, never a preference between calls.
   func speakerSource() -> CallSpeakerSourceAnswer {
     guard complete, !ambiguous else { return .unavailable }
     var candidates: [CallSpeakerSourceAnswer.Source] = []
     var undecided = false
-    for holder in holders where holder.input == .active {
+    for holder in holders where holder.input != .inactive {
       guard let rule = CallAppCatalog.rule(forBundleID: holder.bundleID) else { continue }
+      // It may be holding the microphone for a second call.
+      guard holder.input == .active else {
+        undecided = true
+        continue
+      }
       let family: CallAppFamily
       switch rule {
       case .callApp(let ruleFamily), .callWindow(let ruleFamily): family = ruleFamily
