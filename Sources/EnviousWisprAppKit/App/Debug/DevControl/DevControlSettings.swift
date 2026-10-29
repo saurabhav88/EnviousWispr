@@ -701,6 +701,14 @@
       _ role: ShortcutRole, keyCode: UInt16, modifiers: NSEvent.ModifierFlags,
       to settings: SettingsManager
     ) -> SetOutcome {
+      // #3807: ordinary dev-tool admission, not CGKeyCode's representation or an OS input limit.
+      // Keep this on the complete candidate so individual-field writes share the same policy;
+      // explicit forced writes retain the full UInt16 staging range.
+      guard keyCode < 128 else {
+        return .refused(
+          code: "badValue",
+          message: "keyCode must be 0 to 127; use settings.set with force to stage another UInt16 value")
+      }
       let candidate = ShortcutSettings.binding(keyCode: keyCode, modifiers: modifiers)
       let refusal = attributed(settings) {
         ShortcutSettings.assign(candidate, to: role, in: settings)

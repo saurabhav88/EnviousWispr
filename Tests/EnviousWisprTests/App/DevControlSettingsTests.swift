@@ -940,6 +940,76 @@
       }
     }
 
+    @Test("checked shortcuts refuse out-of-range codes without saving or notifying",
+      .bug("https://github.com/saurabhav88/EnviousWispr/issues/3807"))
+    func checkedShortcutKeyRange() {
+      let cases: [(ShortcutRole, UInt16)] = ShortcutRole.allCases.map { ($0, 128) }
+        + [(.record, UInt16.max)]
+      for (role, keyCode) in cases {
+        let (suite, defaults, settings) = Self.fixture()
+        let before = settings.shortcutBindings
+        let stored = defaults.persistentDomain(forName: suite) as NSDictionary?
+        var fired = 0
+        settings.onChange = { _ in fired += 1 }
+        let result = DevControlSettings.setShortcut(
+          role, keyCode: keyCode, modifiers: [.control, .shift], to: settings)
+        #expect(result.code == "badValue", "\(role) key \(keyCode) must be refused")
+        #expect(settings.shortcutBindings == before)
+        #expect(defaults.persistentDomain(forName: suite) as NSDictionary? == stored)
+        #expect(fired == 0)
+        #expect(settings.isDevControlWrite == false)
+      }
+      // Admission boundaries, not a claim that every number corresponds to a physical key.
+      for code: UInt16 in [0, 127] {
+        let (_, _, settings) = Self.fixture()
+        #expect(DevControlSettings.setShortcut(
+          .record, keyCode: code, modifiers: [.control, .shift], to: settings)
+          == .written(forced: false))
+        #expect(settings.toggleKeyCode == code)
+      }
+    }
+
+    @Test("individual shortcut fields validate the saved companion and restore attribution",
+      .bug("https://github.com/saurabhav88/EnviousWispr/issues/3807"))
+    func checkedShortcutFieldsPreserveState() throws {
+      for priorAttribution in [false, true] {
+        let (suite, defaults, settings) = Self.fixture()
+        for (key, value): (SettingsManager.SettingKey, String) in [
+          (.toggleKeyCode, "128"), (.toggleModifiers, "262144"),
+        ] {
+          // The modifiers-only route must validate this saved key as part of its candidate.
+          if key == .toggleModifiers { settings.toggleKeyCode = UInt16.max }
+          settings.isDevControlWrite = priorAttribution
+          let before = settings.shortcutBindings
+          let stored = defaults.persistentDomain(forName: suite) as NSDictionary?
+          var fired = 0
+          settings.onChange = { _ in fired += 1 }
+          let result = DevControlSettings.write(
+            key, value: try Self.wire(value), force: false, context: Self.context(), to: settings)
+          #expect(result.code == "badValue", "\(key) must reject the complete candidate")
+          #expect(settings.shortcutBindings == before)
+          #expect(defaults.persistentDomain(forName: suite) as NSDictionary? == stored)
+          #expect(fired == 0)
+          #expect(settings.isDevControlWrite == priorAttribution)
+        }
+      }
+    }
+
+    @Test("force can stage a high key and a checked compound write can repair it",
+      .bug("https://github.com/saurabhav88/EnviousWispr/issues/3807"))
+    func forcedShortcutCanBeRepaired() throws {
+      let (_, defaults, settings) = Self.fixture()
+      #expect(DevControlSettings.write(
+        .toggleKeyCode, value: try Self.wire("65535"), force: true,
+        context: Self.context(), to: settings) == .written(forced: true))
+      #expect(settings.toggleKeyCode == UInt16.max)
+      #expect(SettingsManager(defaults: defaults).toggleKeyCode == UInt16.max)
+      #expect(DevControlSettings.setShortcut(
+        .record, keyCode: 0, modifiers: [.control, .shift], to: settings)
+        == .written(forced: false))
+      #expect(settings.toggleKeyCode == 0 && settings.toggleModifiers == [.control, .shift])
+    }
+
     @Test("numbers are stored the way the screen stores the key")
     func setShortcutNormalizes() {
       let (_, _, settings) = Self.fixture()

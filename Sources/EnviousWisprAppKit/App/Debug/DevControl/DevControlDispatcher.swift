@@ -395,7 +395,7 @@
         return .failure(
           .badArgs,
           "shortcut.set takes role (record, cancel, quickAdd, pasteLast or copyLast), keyCode "
-            + "(0 to 65535) and modifiers (a modifier-flags integer)")
+            + "(0 to 127 for checked writes) and modifiers (a modifier-flags integer)")
       }
       switch DevControlSettings.setShortcut(role, keyCode: keyCode, modifiers: modifiers, to: settings)
       {
