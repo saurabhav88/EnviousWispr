@@ -230,13 +230,18 @@ package enum MeetingSpeakerNamer {
     speech: [String: [MeetingNamingInterval]], shared: Set<String>,
     votes: [String: [String: Int]], voteProposals: [String: String]
   ) -> [String: String] {
-    // Every name the recording established as a person who is not the user, judged segment by
-    // segment: a segment's names less the names the app marked as the user in that segment, so
-    // the user's name in one call never erases a real person of that name in another. A segment
-    // with no mark keeps the user among its names, which can only make this set larger.
+    // The 15 s rule is waived only when the whole recording proves the other person was the
+    // only one: every segment was read, and in every segment the app marked exactly one name as
+    // the user (a user who changed name, or none marked, could hide someone). Then every name
+    // the recording showed, less that segment's user, is a person who is not the user; judged
+    // segment by segment, so the user's name in one call never erases a real person of that name
+    // in another.
+    let waivable = log.segments.allSatisfy { segment in
+      segment.status == .observed && marks(in: segment).count == 1
+    }
     let others = Set(
       log.segments.flatMap { segment -> [String] in
-        let marked = Set(segment.roster.selfNames + (segment.pairs ?? []).flatMap(\.selfNames))
+        let marked = marks(in: segment)
         let names =
           segment.roster.names + (segment.presence ?? []).map(\.name)
           + (segment.pairs ?? []).flatMap(\.names)
@@ -250,7 +255,8 @@ package enum MeetingSpeakerNamer {
       for stretch in segment.pairs ?? [] {
         guard let remote = remote(in: stretch, segmentSelf: segment.roster.selfNames),
           !shared.contains(remote),
-          stretch.lastMs - stretch.firstMs >= minimumPairStretchMs || others == [remote],
+          stretch.lastMs - stretch.firstMs >= minimumPairStretchMs
+            || (waivable && others == [remote]),
           let window = MeetingNamingInterval(startMs: stretch.firstMs, endMs: stretch.lastMs)
         else { continue }
         // Exactly one call-sound voice: one speaker with enough speech, nobody else at all.
@@ -308,6 +314,11 @@ package enum MeetingSpeakerNamer {
       user = marked
     }
     return pair.subtracting([user]).first
+  }
+
+  /// Every name the app marked as the user anywhere in a segment.
+  static func marks(in segment: CallSpeakerSegment) -> Set<String> {
+    Set(segment.roster.selfNames + (segment.pairs ?? []).flatMap(\.selfNames))
   }
 
   static func length(_ intervals: [MeetingNamingInterval]) -> Int {

@@ -210,6 +210,42 @@ struct MeetingSpeakerPairNamerTests {
     #expect(result.proposals.isEmpty)
   }
 
+  @Test("the 15 s rule is waived only when the whole recording was read and the user never changed")
+  func waiverNeedsAWholeReading() {
+    let turns = [Self.turn(Self.a, 110_000, 115_000)]
+    let short = [Self.stretch(110_000, 115_000)]
+    func later(selfNames: [String] = [], roster: [String] = [Self.user, Self.alex])
+      -> CallSpeakerSegment
+    {
+      CallSpeakerSegment(
+        startMs: 100_000, endMs: 200_000, endReason: .recordingEnded, surface: .zoomApp,
+        source: .app, status: .observed, lag: CallSpeakerLag(milliseconds: 0),
+        roster: CallSpeakerRoster(names: roster, selfNames: selfNames),
+        rosterFromParticipantList: true, observations: [], pairs: short)
+    }
+    // Control: one healthy segment, Alex the only other person: the waiver applies.
+    #expect(propose(turns, [later()]).proposals == [Self.a: Self.alex])
+    // An earlier call that could not be read may have held anyone.
+    let unreadable = CallSpeakerSegment(
+      startMs: 0, endMs: 100_000, endReason: .sourceChanged, surface: .zoomApp, source: .app,
+      status: .unreadable, lag: CallSpeakerLag(milliseconds: 0), roster: .empty,
+      rosterFromParticipantList: nil, observations: [])
+    #expect(propose(turns, [unreadable, later()]).proposals.isEmpty)
+    // Alex was another person, then the user took the name "Alex Rivera" in the same call.
+    let renamed = later(
+      selfNames: [Self.user, Self.alex], roster: [Self.user, Self.alex, Self.priya])
+    let renamedPairs = CallSpeakerSegment(
+      startMs: renamed.startMs, endMs: renamed.endMs, endReason: .recordingEnded,
+      surface: .zoomApp, source: .app, status: .observed, lag: renamed.lag,
+      roster: renamed.roster, rosterFromParticipantList: true, observations: [],
+      pairs: [
+        CallPairStretch(
+          names: [Self.alex, Self.priya], selfNames: [Self.alex], firstMs: 110_000,
+          lastMs: 115_000)
+      ])
+    #expect(propose(turns, [renamedPairs]).proposals.isEmpty)
+  }
+
   @Test("a name two people share never comes from a stretch")
   func sharedNameAbstains() {
     let result = propose(
