@@ -1988,9 +1988,6 @@ final class MeetingCoordinator {
   /// close that still owns the files, is not a failure.
   @discardableResult
   func delete(meetingID: UUID) async -> Bool {
-    // #4013 chunk 13A: a deleted recording's speaker capture adds and saves nothing more.
-    takeSpeakerSession(meetingID)?.cancel()
-    unsavedSpeakerSessions.removeValue(forKey: meetingID)?.cancel()
     // History can ask before the launch listing finished; the meeting is known after it.
     if live[meetingID] == nil, let launchTask { await launchTask.value }
     guard live[meetingID] != nil else {
@@ -2008,6 +2005,11 @@ final class MeetingCoordinator {
     deps.liveWords?.delete(meetingID: meetingID)
     record.deletionRequested = true
     guard await persist(record) else { return false }
+    // #4013: once the deletion is marked, the recording's speaker capture adds and saves
+    // nothing more (the store also refuses). A mark that failed leaves it running, since the
+    // recording goes on.
+    takeSpeakerSession(meetingID)?.cancel()
+    unsavedSpeakerSessions.removeValue(forKey: meetingID)?.cancel()
     // The notes this session knows, read before they are forgotten (R54 `has_notes`).
     let hadNotes = !documents.notes(meetingID).isEmpty
     // Marked: no draft may be written any more (the store also refuses).

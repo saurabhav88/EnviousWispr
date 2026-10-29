@@ -65,8 +65,8 @@ public final class CallMicrophoneWatcher {
   /// `mayBeCandidate(bundleID)`: whether a process whose executable cannot be read may still
   /// be a call app.
   public typealias UnnamedFilter = @Sendable (String?) -> Bool
-  /// `owner(pid)`: the regular app owning a call process, or nil.
-  public typealias OwnerFilter = @Sendable (Int32) -> Int32?
+  /// `owner(pid, bundleID)`: the regular app owning a call process, or nil.
+  public typealias OwnerFilter = @Sendable (Int32, String) -> Int32?
   /// One whole read of the process list (tests stand in for Core Audio).
   public typealias Scan = @Sendable () -> Reading
 
@@ -95,7 +95,7 @@ public final class CallMicrophoneWatcher {
   public init(
     candidateBundleID: @escaping CandidateFilter,
     mayBeCandidate: @escaping UnnamedFilter,
-    owner: @escaping OwnerFilter = { _ in nil },
+    owner: @escaping OwnerFilter = { _, _ in nil },
     scan: Scan? = nil,
     listens: Bool = true,
     onReading: @escaping @MainActor (Reading) -> Void
@@ -226,7 +226,7 @@ public final class CallMicrophoneWatcher {
           holders.append(
             Holder(
               pid: pid, bundleID: bundle, input: Self.input(of: object), object: object,
-              ownerPID: owner(pid)))
+              ownerPID: owner(pid, bundle)))
         } else if Self.input(of: object) != .inactive {
           // A call app whose process cannot be read: it can never start a call, and while it
           // may hold the microphone no call is confirmed over (review r14 F1).

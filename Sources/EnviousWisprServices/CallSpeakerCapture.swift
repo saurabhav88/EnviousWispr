@@ -397,10 +397,17 @@ package struct CallSpeakerTarget: Sendable, Equatable {
     self.rule = rule
   }
 
-  /// The regular app that owns a microphone-holding process: the process itself when it is a
-  /// regular app, else its parent when that is one (a browser's or call app's helper). `nil`
-  /// when neither is, so a helper is never matched to an app by name alone.
-  package static func owner(ofHolder pid: pid_t) -> pid_t? {
+  /// The regular app that owns a microphone-holding process, found the same way call detection
+  /// finds it (`CallEvidenceReader.app(for:holderPID:)`), so a call detection sees is a call
+  /// speaker capture can read: Safari's shared WebKit audio process included. Otherwise the
+  /// process itself when it is a regular app, else its parent when that is one. `nil` when none
+  /// is.
+  package static func owner(ofHolder pid: pid_t, bundleID: String) -> pid_t? {
+    if let rule = CallAppCatalog.rule(forBundleID: bundleID),
+      let app = CallEvidenceReader.app(for: rule, holderPID: pid)
+    {
+      return app.processIdentifier
+    }
     if NSRunningApplication(processIdentifier: pid)?.activationPolicy == .regular { return pid }
     var info = proc_bsdinfo()
     let size = Int32(MemoryLayout<proc_bsdinfo>.size)

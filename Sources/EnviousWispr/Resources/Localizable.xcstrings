@@ -7819,13 +7819,13 @@
         }
       }
     },
-    "EnviousMeet uses Accessibility to see whether a call window or meeting page is open when an app starts using your microphone. In Zoom, Teams, Meet and Slack calls, it also reads who is talking, so a meeting can show people's names instead of numbered speakers when it can tell them apart. It reads this on your Mac and never sends it to Envious Labs. Allow it before a call starts. Pasting your dictation uses the same permission." : {
+    "EnviousMeet uses Accessibility to see whether a call window or meeting page is open when an app starts using your microphone. In Zoom, Teams and Meet calls, it also reads who is talking, so a meeting can show people's names instead of numbered speakers when it can tell them apart. It reads this on your Mac and never sends it to Envious Labs. Allow it before a call starts. Pasting your dictation uses the same permission." : {
       "comment" : "EnviousMeet page: help for the Accessibility permission row.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "EnviousMeet nutzt die Bedienungshilfen, um zu prüfen, ob ein Anruffenster oder eine Meeting-Seite geöffnet ist, sobald eine App beginnt, dein Mikrofon zu nutzen. In Anrufen über Zoom, Teams, Meet und Slack liest es außerdem, wer gerade spricht, damit ein Meeting Namen statt nummerierter Sprecher anzeigen kann, wenn es die Personen auseinanderhalten kann. Diese Informationen liest es auf deinem Mac aus und sendet sie nie an Envious Labs. Erlaube den Zugriff vor Beginn eines Anrufs. Das Einfügen deines Diktats nutzt dieselbe Berechtigung."
+            "value" : "EnviousMeet nutzt die Bedienungshilfen, um zu prüfen, ob ein Anruffenster oder eine Meeting-Seite geöffnet ist, sobald eine App beginnt, dein Mikrofon zu nutzen. In Anrufen über Zoom, Teams und Meet liest es außerdem, wer gerade spricht, damit ein Meeting Namen statt nummerierter Sprecher anzeigen kann, wenn es die Personen auseinanderhalten kann. Diese Informationen liest es auf deinem Mac aus und sendet sie nie an Envious Labs. Erlaube den Zugriff vor Beginn eines Anrufs. Das Einfügen deines Diktats nutzt dieselbe Berechtigung."
           }
         }
       }

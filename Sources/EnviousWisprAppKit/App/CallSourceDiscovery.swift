@@ -39,7 +39,7 @@ final class CallSourceDiscovery {
     candidateBundleID: { bundle, path in Self.callBundleID(bundle: bundle, executablePath: path) },
     mayBeCandidate: { CallAppCatalog.mayBeCallApp(bundleID: $0) },
     // The owning app is read with the reading, off the main actor, so a speaker tick only looks.
-    owner: { CallSpeakerTarget.owner(ofHolder: $0) },
+    owner: { CallSpeakerTarget.owner(ofHolder: $0, bundleID: $1) },
     scan: deps.scan,
     listens: deps.listens,
     onReading: { [weak self] reading in self?.received(reading) })
