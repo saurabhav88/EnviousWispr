@@ -123,6 +123,18 @@ JSON
 
   # #4174: exercise the real verifier against real Git changes. A private copy
   # keeps PROJECT_ROOT and all fixture mutations away from the caller's repo.
+  # Make signing unavailable so the fixtures prove they need no operator key.
+  cat > "$SELF_TEST_DIR/signing-global.config" <<'CONFIG'
+[commit]
+    gpgsign = true
+[gpg]
+    format = openpgp
+    program = /usr/bin/false
+[user]
+    signingkey = fixture-unavailable-key
+CONFIG
+  export GIT_CONFIG_GLOBAL="$SELF_TEST_DIR/signing-global.config"
+
   check_fixture() {
     local label="$1" expected_status="$2" expected_text="$3" status
     shift 3
@@ -151,6 +163,8 @@ JSON
       printf '#!/bin/bash\n' > "$fixture_repo/$script_path"
     done
     git -C "$fixture_repo" init -q
+    # Disposable test history must not require the operator's signing keys.
+    git -C "$fixture_repo" config --local commit.gpgsign false
     git -C "$fixture_repo" config user.name 'Validation fixture'
     git -C "$fixture_repo" config user.email 'validation-fixture@example.invalid'
     git -C "$fixture_repo" add scripts
