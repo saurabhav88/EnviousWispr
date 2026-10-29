@@ -367,6 +367,30 @@ struct CallSpeakerObserverTests {
     #expect(coordinator.phase == .idle)
   }
 
+  @Test("a final speaker save that failed at Stop is saved by a quit once storage works again")
+  func failedFinalSaveSavedAtQuit() async throws {
+    let harness = try Harness()
+    let capture = Capture()
+    let coordinator = try coordinator(harness, capture: capture)
+    _ = await coordinator.start(from: .detected, callApp: .googleMeet)
+    let meetingID = try #require(harness.recorders.first).configuration.meetingID
+    await eventually("copies taken") { capture.calls.withLock { $0 } >= 2 }
+    // A folder where the file goes makes every save of it fail.
+    let url = harness.store.callSpeakersURL(for: meetingID)
+    try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    await coordinator.stop()
+    await eventually("ready") {
+      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
+    }
+    try FileManager.default.removeItem(at: url)
+    coordinator.prepareForTermination(deadline: .now() + 2)
+    guard case .usable(let log) = harness.store.loadCallSpeakers(meeting: meetingID) else {
+      Issue.record("quit did not save the final log the failed Stop kept")
+      return
+    }
+    #expect(!log.observations.isEmpty)
+  }
+
   @Test("quit while recording saves the speaker log collected so far, within the quit deadline")
   func quitSavesFinalLog() async throws {
     let harness = try Harness()

@@ -299,7 +299,7 @@ struct CallSpeakerCaptureTests {
     #expect(scope([window(nil, "Alex Rivera is speaking")]) == .unresolved)
   }
 
-  @Test("Zoom app: two meeting windows are not one call")
+  @Test("Zoom app: exactly one meeting window, and no meeting content anywhere else")
   func zoomAppScope() {
     func meeting() -> CallAXWindow {
       CallAXWindow(
@@ -313,8 +313,20 @@ struct CallSpeakerCaptureTests {
           readEndHostTime: 0),
         family: .zoom)
     }
-    #expect(scope([meeting()]) == .resolved)
-    #expect(scope([meeting(), meeting()]) == .unresolved)
+    let panel = CallAXWindow(
+      title: "Participants (2)",
+      root: CallAXNode(
+        role: "AXWindow",
+        children: [
+          CallAXNode(
+            role: "AXTabGroup",
+            description: "Alex Rivera, Computer audio unmuted, Video off, active speaker")
+        ]))
+    let home = CallAXWindow(title: "Zoom Workplace", root: CallAXNode(role: "AXWindow"))
+    #expect(scope([meeting(), home]) == .resolved)
+    #expect(scope([meeting(), meeting()]) == .unresolved, "two meeting windows")
+    #expect(scope([home]) == .unresolved, "no meeting window")
+    #expect(scope([meeting(), panel]) == .unresolved, "meeting content in another window")
   }
 
   @Test("the surface comes from the call family and whether a browser held the microphone")

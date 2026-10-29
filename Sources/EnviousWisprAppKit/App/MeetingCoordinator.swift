@@ -521,9 +521,9 @@ final class MeetingCoordinator {
 
   /// #4013 chunk 13A: the recording's speaker observer and the meeting it belongs to.
   private var speakerObserver: (meetingID: UUID, observer: CallSpeakerObserver)?
-  /// The observer a Stop is finishing (its final save not done yet), so a quit meanwhile still
-  /// owns it.
-  private var finishingSpeakerObserver: (meetingID: UUID, observer: CallSpeakerObserver)?
+  /// Observers whose final log is not on disk yet: a Stop is saving it, or that save failed.
+  /// A quit saves them within its deadline; deleting the meeting drops its own.
+  private var unsavedSpeakerObservers: [UUID: CallSpeakerObserver] = [:]
 
   private struct PendingEnded {
     let attemptID: UUID
@@ -1205,8 +1205,8 @@ final class MeetingCoordinator {
     phase = .stopping(meetingID: meetingID)
     // #4013 chunk 13A: speaker capture closes now; its final save lands before the pass reads it.
     let observer = takeSpeakerObserver(meetingID)
-    observer?.close()
-    if let observer { finishingSpeakerObserver = (meetingID, observer) }
+    observer?.closeAdmission()
+    if let observer { unsavedSpeakerObservers[meetingID] = observer }
     // #3973, #4097: Stop retires live words without waiting; their cleanup drains kept events
     // and closes admission. The lines stay until the transcript is ready.
     deps.liveWords?.stop()
@@ -1216,8 +1216,10 @@ final class MeetingCoordinator {
     let report = await recorder?.stop()
     // A quit during the close owns the outcome (interrupted, its own deadline).
     guard !quitting else { return }
-    await observer?.finish()
-    if finishingSpeakerObserver?.observer === observer { finishingSpeakerObserver = nil }
+    // A final log that could not be saved stays owned here, for a quit to save.
+    if let observer, await observer.finish(), unsavedSpeakerObservers[meetingID] === observer {
+      unsavedSpeakerObservers[meetingID] = nil
+    }
     guard !quitting else { return }
     adoptCallSoundSummary(report, for: meetingID)
     self.recorder = nil
@@ -1937,6 +1939,7 @@ final class MeetingCoordinator {
   func delete(meetingID: UUID) async -> Bool {
     // #4013 chunk 13A: a deleted recording's speaker capture adds and saves nothing more.
     takeSpeakerObserver(meetingID)?.cancel()
+    unsavedSpeakerObservers.removeValue(forKey: meetingID)?.cancel()
     // History can ask before the launch listing finished; the meeting is known after it.
     if live[meetingID] == nil, let launchTask { await launchTask.value }
     guard live[meetingID] != nil else {
@@ -2134,10 +2137,12 @@ final class MeetingCoordinator {
     quitting = true
     // #4013 chunk 13A: speaker capture closes first; its final log is saved last, after audio,
     // the record and notes, within the same deadline.
-    let speakerObservers = [speakerObserver, finishingSpeakerObserver].compactMap { $0 }
-    for entry in speakerObservers { entry.observer.close() }
+    let speakerObservers: [(meetingID: UUID, observer: CallSpeakerObserver)] =
+      [speakerObserver].compactMap { $0 }
+      + unsavedSpeakerObservers.map { (meetingID: $0.key, observer: $0.value) }
+    for entry in speakerObservers { entry.observer.closeAdmission() }
     speakerObserver = nil
-    finishingSpeakerObserver = nil
+    unsavedSpeakerObservers = [:]
     // #4013 chunk 12B: ready attempts still waiting on their History publication send their
     // row now, with no naming facts (the publication's result is not known). A late
     // publication finds nothing to settle.

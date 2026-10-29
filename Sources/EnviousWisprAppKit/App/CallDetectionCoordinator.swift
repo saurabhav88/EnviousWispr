@@ -38,6 +38,9 @@ final class CallDetectionCoordinator {
     }
     /// The panel under the menu bar (`CallPromptPanel` in the app); tests hand in a stand-in.
     var makePresenter: @MainActor (@escaping @MainActor () -> NSRect?) -> any CallPromptPresenting
+    /// #4013 chunk 13A: the regular app owning a microphone-holding process
+    /// (`CallSpeakerTarget.owner(ofHolder:)`); tests stand in for running apps.
+    var speakerOwner: @MainActor (pid_t) -> pid_t? = { CallSpeakerTarget.owner(ofHolder: $0) }
   }
 
   /// Seconds between polls while a call may be on; without the process-list listener, between
@@ -60,8 +63,12 @@ final class CallDetectionCoordinator {
   private var holders: [CallMicrophoneWatcher.Holder] = [] {
     didSet { noteSpeakerSources() }
   }
-  private var complete = false
-  private var ambiguous = false
+  private var complete = false {
+    didSet { noteSpeakerSources() }
+  }
+  private var ambiguous = false {
+    didSet { noteSpeakerSources() }
+  }
   private var takenAt = Date.distantPast
   private var sequence = 0
   private var lastPoll = Date.distantPast
@@ -76,14 +83,16 @@ final class CallDetectionCoordinator {
   {
     didSet { noteSpeakerSources() }
   }
-  /// #4013 chunk 13A: goes up whenever the active microphone holders, or the call a browser
-  /// holder's page reads as, change; a new reading of the same holders leaves it alone. Speaker
+  /// #4013 chunk 13A: goes up whenever the active microphone holders, the call a browser
+  /// holder's page reads as, or whether the reading was complete and unambiguous change; a new
+  /// reading of the same holders leaves it alone. Speaker
   /// capture drops a copy taken across a change, even one that changed back.
   private(set) var speakerSourceRevision = 0
   private var speakerSources: Set<String> = []
 
   private func noteSpeakerSources() {
-    var sources: Set<String> = []
+    // Whether the reading may name a source at all is part of what changed.
+    var sources: Set<String> = ["complete=\(complete) ambiguous=\(ambiguous)"]
     for holder in holders where holder.input == .active {
       var page = ""
       if case .call(let family, _)? = evidence[holder.pid]?.value { page = "\(family)" }
@@ -101,9 +110,11 @@ final class CallDetectionCoordinator {
 
   /// #4013 chunk 13A: the one app instance a meeting's speaker capture reads for `family`, from
   /// the microphone holders of the last reading: a call app of that family, or a browser whose
-  /// page reads as that family's call. `nil` when there is none, or more than one app instance
-  /// (two calls, or two copies of one browser): the capture then reads nothing, never a guess.
+  /// page reads as that family's call. `nil` when there is none, more than one app instance
+  /// (two calls, or two copies of one browser), or the reading itself was incomplete or
+  /// ambiguous: the capture then reads nothing, never a guess.
   func speakerTarget(for family: CallAppFamily) -> CallSpeakerTarget? {
+    guard complete, !ambiguous else { return nil }
     var owners: [pid_t: CallAppCatalog.Rule] = [:]
     for holder in holders where holder.input == .active {
       guard let rule = CallAppCatalog.rule(forBundleID: holder.bundleID) else { continue }
@@ -117,7 +128,7 @@ final class CallDetectionCoordinator {
           matches = false
         }
       }
-      guard matches, let owner = CallSpeakerTarget.owner(ofHolder: holder.pid) else { continue }
+      guard matches, let owner = deps.speakerOwner(holder.pid) else { continue }
       owners[owner] = rule
     }
     guard owners.count == 1, let (pid, rule) = owners.first else { return nil }

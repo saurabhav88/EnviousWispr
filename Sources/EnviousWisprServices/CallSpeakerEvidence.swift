@@ -58,7 +58,8 @@ package enum CallSpeakerSurfaceReader {
     surface: CallSpeakerSurface, capture: CallAXCapture, rules: TalkerRules
   ) -> CallSpeakerReading? {
     switch surface {
-    case .zoomApp: ZoomAppSpeakerReader.read(windows: capture.windows)
+    // Only the meeting window; `scope` withholds a capture with meeting content elsewhere.
+    case .zoomApp: ZoomAppSpeakerReader.read(windows: capture.windows.filter(isZoomMeeting))
     case .teamsApp: TeamsAppSpeakerReader.read(windows: capture.windows)
     case .zoomWeb: ZoomWebSpeakerReader.read(documents: capture.documents)
     case .meet, .teamsWeb, .slackWeb:
@@ -72,8 +73,8 @@ package enum CallSpeakerSurfaceReader {
   /// Whether the capture is about one call. A browser capture: exactly one meeting page of the
   /// family. The Teams app: every window showing meeting content belongs to one meeting, the
   /// compact view matched to its main window by title (observed 2026-10-27: "Meeting with
-  /// <title>" and "Meeting compact view | Meeting with <title>"). The Zoom app: at most one
-  /// meeting window (`zm.meeting.window.main`, the identifier Granola reads). Any other app
+  /// <title>" and "Meeting compact view | Meeting with <title>"). The Zoom app: exactly one
+  /// meeting window (`ZoomCallWindow`) and no meeting content in any other window. Any other app
   /// capture comes from the one app instance resolved for the recording.
   package static func scope(
     surface: CallSpeakerSurface, capture: CallAXCapture, family: CallAppFamily
@@ -90,15 +91,23 @@ package enum CallSpeakerSurfaceReader {
       }
       return titles.count <= 1 ? .resolved : .unresolved
     case .zoomApp:
-      let meetings = capture.windows.filter { $0.root.identifier == zoomMeetingWindowID }
-      return meetings.count <= 1 ? .resolved : .unresolved
+      // Exactly one meeting window, and no other window showing tiles, a talker or a
+      // participants list (a popped-out panel or a second meeting's content is not matched).
+      let meetings = capture.windows.filter(isZoomMeeting)
+      let elsewhere = capture.windows.filter { !isZoomMeeting($0) }.contains { window in
+        let reading = ZoomAppSpeakerReader.read(windows: [window])
+        return !reading.participants.isEmpty || !reading.speaking.isEmpty
+          || !reading.roster.names.isEmpty
+      }
+      return meetings.count == 1 && !elsewhere ? .resolved : .unresolved
     default:
       return .resolved
     }
   }
 
-  /// The Zoom app's meeting window.
-  static let zoomMeetingWindowID = "zm.meeting.window.main"
+  static func isZoomMeeting(_ window: CallAXWindow) -> Bool {
+    ZoomCallWindow.isMeeting(identifier: window.root.identifier, title: window.title)
+  }
 }
 
 /// Places a capture on the meeting timeline: milliseconds from the recorder's anchor (the host

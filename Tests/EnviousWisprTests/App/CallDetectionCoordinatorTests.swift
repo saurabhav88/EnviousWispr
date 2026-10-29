@@ -96,7 +96,7 @@
               return evidenceAnswer.withLock { $0 }
             },
             now: { [weak self] in self?.clock ?? Date() },
-            makePresenter: { [panel] _ in panel }))
+            makePresenter: { [panel] _ in panel }, speakerOwner: { $0 }))
       }
 
       /// One faked Zoom process with its meeting window open, the microphone `input`.
@@ -123,6 +123,33 @@
     /// after them, not before.
     func settleStarts() async {
       for _ in 0..<20 { await Task.yield() }
+    }
+
+    @Test("speaker capture's source: one complete reading names it; incomplete or ambiguous does not")
+    func speakerSource() throws {
+      let rig = try Rig()
+      rig.coordinator.deliverWatcherReading(
+        [.init(pid: 900_010, bundleID: "us.zoom.xos", input: .active)])
+      #expect(rig.coordinator.speakerTarget(for: .zoom)?.pid == 900_010)
+      #expect(rig.coordinator.speakerTarget(for: .teams) == nil)
+      let first = rig.coordinator.speakerSourceRevision
+      rig.coordinator.deliverWatcherReading(
+        [.init(pid: 900_010, bundleID: "us.zoom.xos", input: .active)])
+      #expect(rig.coordinator.speakerSourceRevision == first, "the same reading again is no change")
+      rig.coordinator.deliverWatcherReading(
+        [.init(pid: 900_010, bundleID: "us.zoom.xos", input: .active)], ambiguous: true)
+      #expect(rig.coordinator.speakerTarget(for: .zoom) == nil)
+      #expect(rig.coordinator.speakerSourceRevision > first)
+      let ambiguous = rig.coordinator.speakerSourceRevision
+      rig.coordinator.deliverWatcherReading(
+        [.init(pid: 900_010, bundleID: "us.zoom.xos", input: .active)])
+      #expect(rig.coordinator.speakerSourceRevision > ambiguous, "back to the same source is a change")
+      rig.coordinator.deliverWatcherReading(
+        [
+          .init(pid: 900_010, bundleID: "us.zoom.xos", input: .active),
+          .init(pid: 900_011, bundleID: "us.zoom.xos", input: .active),
+        ])
+      #expect(rig.coordinator.speakerTarget(for: .zoom) == nil, "two app instances")
     }
 
     @Test("a Zoom call asks; Yes records a Zoom meeting")

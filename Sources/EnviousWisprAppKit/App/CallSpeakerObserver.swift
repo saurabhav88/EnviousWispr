@@ -216,7 +216,7 @@ final class CallSpeakerObserver {
 
   /// Closes admission at once: no more copies, results in flight no longer count, no periodic
   /// save starts. Synchronous, so a Stop calls it before its first wait.
-  func close() {
+  func closeAdmission() {
     closed = true
     generation += 1
     loop?.cancel()
@@ -225,16 +225,18 @@ final class CallSpeakerObserver {
 
   /// Normal stop: closes admission, waits for a save already running, then saves the final log
   /// once. Returns after the final save, so processing reads it. A quit or cancel meanwhile
-  /// takes over the final log, and this saves nothing.
-  func finish() async {
-    close()
-    guard lifecycle == .open else { return }
+  /// takes over the final log, and this saves nothing. True when the final log is on disk (or
+  /// was handed to a quit); false when its save failed or the observer was cancelled.
+  @discardableResult
+  func finish() async -> Bool {
+    closeAdmission()
+    guard lifecycle == .open else { return lifecycle == .saved }
     lifecycle = .finishing
     #if DEBUG
       finishWillWaitForTesting?()
     #endif
     await saving?.value
-    guard lifecycle == .finishing else { return }
+    guard lifecycle == .finishing else { return lifecycle == .saved }
     do {
       try await deps.save(accumulator.log)
       // Only a save that landed counts; after a failure a quit can still take the final log.
@@ -242,12 +244,13 @@ final class CallSpeakerObserver {
     } catch {
       deps.log("call speakers final save failed error=\(type(of: error))")
     }
+    return lifecycle == .saved
   }
 
   /// Quit: closes admission and hands back the final log for the caller to save within its own
   /// deadline; nil when the final log is already on disk or the observer was cancelled.
   func takeFinalLog() -> CallSpeakerLog? {
-    close()
+    closeAdmission()
     guard lifecycle == .open || lifecycle == .finishing else { return nil }
     lifecycle = .saved
     return accumulator.log
@@ -256,7 +259,7 @@ final class CallSpeakerObserver {
   /// Delete or a failed start: closes admission and saves nothing more. A save already running
   /// finishes on its own; the caller's deletion runs after the file writer drains.
   func cancel() {
-    close()
+    closeAdmission()
     lifecycle = .cancelled
   }
 

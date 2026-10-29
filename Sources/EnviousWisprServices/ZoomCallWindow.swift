@@ -25,6 +25,12 @@ enum ZoomCallWindow {
       "Hội thảo trực tuyến Zoom", "Zoom网络研讨会", "Zoom網路研討會",
     ].map(normalized))
 
+  /// Whether a copied window is the meeting window: the identifier, or an exact meeting title.
+  static func isMeeting(identifier: String?, title: String?) -> Bool {
+    if identifier == meetingIdentifier { return true }
+    return title.map { localizedNames.contains(normalized($0)) } ?? false
+  }
+
   /// One Accessibility attribute read.
   enum Read: Equatable {
     case value(String)
