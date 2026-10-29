@@ -316,6 +316,7 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
       capacityReached = capacity
       health.evidenceCapacityDrops = (health.evidenceCapacityDrops ?? 0) + 1
       breakAbsenceRuns()
+      names.closePair()
       return
     }
     names = trial

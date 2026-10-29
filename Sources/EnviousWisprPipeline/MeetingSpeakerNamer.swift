@@ -230,17 +230,19 @@ package enum MeetingSpeakerNamer {
     speech: [String: [MeetingNamingInterval]], shared: Set<String>,
     votes: [String: [String: Int]], voteProposals: [String: String]
   ) -> [String: String] {
-    // Every name the recording established as a person who is not the user: rosters, shared
-    // names, presence and stretches, less the names the app marked as the user.
-    let marked = Set(
-      log.segments.flatMap { $0.roster.selfNames + ($0.pairs ?? []).flatMap(\.selfNames) })
-    let everyone = Set(
-      log.segments.flatMap { segment in
-        segment.roster.names + (segment.presence ?? []).map(\.name)
+    // Every name the recording established as a person who is not the user, judged segment by
+    // segment: a segment's names less the names the app marked as the user in that segment, so
+    // the user's name in one call never erases a real person of that name in another. A segment
+    // with no mark keeps the user among its names, which can only make this set larger.
+    let others = Set(
+      log.segments.flatMap { segment -> [String] in
+        let marked = Set(segment.roster.selfNames + (segment.pairs ?? []).flatMap(\.selfNames))
+        let names =
+          segment.roster.names + (segment.presence ?? []).map(\.name)
           + (segment.pairs ?? []).flatMap(\.names)
+        return names.filter { !marked.contains($0) }
       }
     ).union(shared)
-    let others = everyone.subtracting(marked)
 
     // Windows that name one speaker, by speaker and name.
     var windows: [String: [String: [MeetingNamingInterval]]] = [:]

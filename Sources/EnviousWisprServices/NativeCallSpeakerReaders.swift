@@ -33,12 +33,15 @@ package enum ZoomAppSpeakerReader {
     // The counts the closed panel's toolbar button shows (C1a: "Open participants panel,
     // closed, 4 participants").
     var buttonCounts: Set<Int> = []
+    // Every "Participants (N)" the call's windows show, with or without a list beside it.
+    var panelCounts: Set<Int> = []
     for window in windows {
       let nodes = window.root.allNodes
       for node in nodes where node.role == "AXButton" {
         if let count = node.label.flatMap(closedPanelCount) { buttonCounts.insert(count) }
       }
       let counts = Set(nodes.compactMap { $0.label.flatMap(participantCount) })
+      panelCounts.formUnion(counts)
       for node in nodes where node.role == "AXOutline" && node.label == participantsListLabel {
         lists.append(
           (node.allNodes.filter { $0.role == "AXStaticText" }.compactMap(\.label), counts))
@@ -88,8 +91,10 @@ package enum ZoomAppSpeakerReader {
     if lists.count == 1, let list = lists.first, !list.entries.isEmpty,
       list.counts == [list.entries.count]
     {
-      // The button, when it also shows a count, must say the same.
-      let count = buttonCounts.isSubset(of: [list.entries.count]) ? list.entries.count : nil
+      // Every other count the call shows, the button's included, must say the same.
+      let count =
+        buttonCounts.union(panelCounts).isSubset(of: [list.entries.count])
+        ? list.entries.count : nil
       let names = list.entries.map { panelEntry($0).name }
       return CallSpeakerReading(
         speaking: uniqueInOrder(speaking),
@@ -109,7 +114,8 @@ package enum ZoomAppSpeakerReader {
       sharedNames: listedTwice.union(repeatedNames(thumbnailNames)),
       // With the panel closed only the button counts; a list on screen that does not match
       // its own count leaves the number unknown.
-      participantCount: lists.isEmpty && buttonCounts.count == 1 ? buttonCounts.first : nil)
+      participantCount: lists.isEmpty && buttonCounts.union(panelCounts).count == 1
+        ? buttonCounts.union(panelCounts).first : nil)
   }
 
   static let closedPanelButtonPrefix = "Open participants panel, closed, "
@@ -211,10 +217,13 @@ package enum TeamsAppSpeakerReader {
     var selfTileTalking = false
     // Each window's roster rows and the "In this meeting, N total" counts shown in that window.
     var rosters: [(names: [String], counts: Set<Int>)] = []
+    // Every "In this meeting, N total" any window of the call shows.
+    var allCounts: Set<Int> = []
     for window in windows {
       let nodes = window.root.allNodes
       let names = nodes.filter { $0.role == "AXRow" }.compactMap { $0.label.flatMap(rosterName) }
       let counts = Set(nodes.compactMap { $0.label.flatMap(meetingCount) })
+      allCounts.formUnion(counts)
       if !names.isEmpty { rosters.append((names, counts)) }
     }
     for node in windows.flatMap({ $0.root.allNodes }) {
@@ -311,8 +320,10 @@ package enum TeamsAppSpeakerReader {
       },
       // Rows in one window whose "In this meeting, N total" count equals the rows read.
       participantListComplete: complete,
-      // That count is the only one Teams shows that this reader trusts.
-      participantCount: complete ? rosters[0].names.count : nil)
+      // The complete list's count, when no other window of the call shows another. The list is
+      // everyone, so a tile this reader could not parse cannot hide a third person.
+      participantCount: complete && allCounts == [rosters[0].names.count]
+        ? rosters[0].names.count : nil)
   }
 
   static let compactViewPrefix = "Meeting compact view | "

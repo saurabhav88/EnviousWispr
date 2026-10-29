@@ -187,6 +187,29 @@ struct MeetingSpeakerPairNamerTests {
     #expect(taken.proposals == [Self.a: Self.alex])
   }
 
+  @Test("the user's name in one call never hides a real person of that name in another")
+  func waiverIsPerSegment() {
+    // Segment 1: the remote is "Alex Rivera". Segment 2: the user is "Alex Rivera" and Priya is
+    // the remote, for only 5 s. Alex was another person earlier, so the 15 s rule applies.
+    let first = CallSpeakerSegment(
+      startMs: 0, endMs: 100_000, endReason: .sourceChanged, surface: .zoomApp, source: .app,
+      status: .observed, lag: CallSpeakerLag(milliseconds: 0),
+      roster: CallSpeakerRoster(names: [Self.user, Self.alex], selfNames: [Self.user]),
+      rosterFromParticipantList: true, observations: [])
+    let second = CallSpeakerSegment(
+      startMs: 100_000, endMs: 200_000, endReason: .recordingEnded, surface: .zoomApp,
+      source: .app, status: .observed, lag: CallSpeakerLag(milliseconds: 0),
+      roster: CallSpeakerRoster(names: [Self.alex, Self.priya], selfNames: [Self.alex]),
+      rosterFromParticipantList: true, observations: [],
+      pairs: [
+        CallPairStretch(
+          names: [Self.alex, Self.priya], selfNames: [Self.alex], firstMs: 110_000,
+          lastMs: 115_000)
+      ])
+    let result = propose([Self.turn(Self.a, 110_000, 115_000)], [first, second])
+    #expect(result.proposals.isEmpty)
+  }
+
   @Test("a name two people share never comes from a stretch")
   func sharedNameAbstains() {
     let result = propose(

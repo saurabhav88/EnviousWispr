@@ -782,5 +782,27 @@ struct CallSpeakerCaptureTests {
     #expect(
       run { $0.add(self.pair(marked: []), context: Self.good, observationMs: 1_200) }.count == 3,
       "different marks are a different stretch")
+    #expect(run { $0.add(nil, context: Self.good, observationMs: 1_200) }.count == 2, "no reading")
+    let tooLong = String(repeating: "x", count: CallSpeakerLog.maximumNameLength + 1)
+    #expect(
+      run { $0.add(self.pair([self.user, tooLong]), context: Self.good, observationMs: 1_200) }
+        .count == 2, "a name no log may hold")
+  }
+
+  private let user = "Saurabh Vaish"
+
+  @Test("reaching a cap ends the open stretch at its last kept reading")
+  func pairStretchEndsAtCapacity() {
+    var limits = CallEvidenceLimits.current
+    limits.pairs = 1
+    var log = CallSpeakerAccumulator(surface: .zoomApp, rules: nil, lag: nil, limits: limits)
+    log.add(pair(), context: Self.good, observationMs: 1_000)
+    log.add(pair(), context: Self.good, observationMs: 1_500)
+    // A different two people would need a second stretch: the cap stops collection.
+    log.add(pair(["Saurabh Vaish", "Priya Shah"]), context: Self.good, observationMs: 2_000)
+    #expect(log.capacityReached == .pairs)
+    let pairs = log.log.segments[0].pairs ?? []
+    #expect(pairs.count == 1)
+    #expect(pairs.first?.lastMs == 1_500)
   }
 }

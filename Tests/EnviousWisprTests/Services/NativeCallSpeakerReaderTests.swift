@@ -213,6 +213,53 @@ struct NativeCallSpeakerReaderTests {
     #expect(ZoomAppSpeakerReader.read(windows: [disagreeing]).participantCount == nil)
   }
 
+  @Test("Zoom: a header count with no list beside it must agree with the button")
+  func zoomHeaderAndButtonDisagree() {
+    let window = zoomOneOnOne(
+      button: "Open participants panel, closed, 2 participants",
+      extra: [CallAXNode(role: "AXStaticText", value: "Participants (3)")])
+    #expect(ZoomAppSpeakerReader.read(windows: [window]).participantCount == nil)
+  }
+
+  @Test("Teams: the complete list's count stands only when no window of the call shows another")
+  func teamsHeadCount() {
+    let rows = ["Saurabh Vaish, Organizer, Muted", "Alex Rivera (Guest), Meeting guest, Muted"]
+    let complete = teamsRoster(rows, counts: ["In this meeting, 2 total"])
+    #expect(TeamsAppSpeakerReader.read(windows: [complete]).participantCount == 2)
+    let otherWindow = window(
+      "Meeting compact view | Meeting with Saurabh Vaish",
+      [CallAXNode(role: "AXGroup", description: "In this meeting, 3 total")])
+    #expect(TeamsAppSpeakerReader.read(windows: [complete, otherWindow]).participantCount == nil)
+    #expect(
+      TeamsAppSpeakerReader.read(windows: [teamsRoster(rows, counts: [])]).participantCount == nil)
+  }
+
+  @Test("Teams: a quiet tile this reader cannot parse never hides a third person")
+  func teamsUnparsedTile() {
+    let rows = ["Saurabh Vaish, Organizer, Muted", "Alex Rivera (Guest), Meeting guest, Muted"]
+    let unknownTile = CallAXNode(role: "AXMenuItem", description: "Someone, a state never seen")
+    // With the complete, counted list, the list is everyone: the app itself says two.
+    let listed = TeamsAppSpeakerReader.read(windows: [
+      window(
+        "Meeting with Saurabh Vaish",
+        [CallAXNode(role: "AXGroup", description: "In this meeting, 2 total")]
+          + rows.map { CallAXNode(role: "AXRow", description: $0) } + [unknownTile])
+    ])
+    #expect(listed.participantCount == 2)
+    // Without the list there is no count, so the tiles alone never make a two-person stretch.
+    let tilesOnly = TeamsAppSpeakerReader.read(windows: [
+      window(
+        "Meeting with Saurabh Vaish",
+        [
+          CallAXNode(role: "AXMenuItem", description: "Myself video, Saurabh Vaish, Muted"),
+          CallAXNode(role: "AXMenuItem", description: "Alex Rivera, Context menu is available"),
+          unknownTile,
+        ])
+    ])
+    #expect(tilesOnly.participantCount == nil)
+    #expect(CallSpeakerAccumulator.pairEvidence(tilesOnly) == nil)
+  }
+
   @Test("Zoom: only Zoom's own tags are taken off a panel entry")
   func zoomPanelEntry() {
     #expect(ZoomAppSpeakerReader.panelEntry("Saurabh A Vaish (Host, me)").name == "Saurabh A Vaish")
