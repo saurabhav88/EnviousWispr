@@ -6,6 +6,13 @@ compatibility_date = "2026-07-09"
 # America/New_York HTTP triggers (#3570). See README.md for exact schedule IDs
 # and recovery. GitHub Daily Report is retained for manual recovery only.
 
+# Workers Logs (free plan: 0.5 GB/day shared across the account, 7-day
+# retention). Kept here so a redeploy cannot switch it off.
+[observability]
+enabled = true
+head_sampling_rate = 1
+redact_query_string = true
+
 [vars]
 POSTHOG_PROJECT_ID = "354235"
 # The version scorecard's release list: OUR OWN Sparkle appcast, written by

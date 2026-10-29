@@ -5,6 +5,13 @@ compatibility_date = "2026-03-27"
 [triggers]
 crons = []  # QStash owns Monday 09:00 America/New_York (#3570).
 
+# Workers Logs (free plan: 0.5 GB/day shared across the account, 7-day
+# retention). Kept here so a redeploy cannot switch it off.
+[observability]
+enabled = true
+head_sampling_rate = 1
+redact_query_string = true
+
 [vars]
 CF_ZONE_ID = "b4416a0f0ebd699e96969a331c7ad7ff"
 GITHUB_REPO = "saurabhav88/EnviousWispr"

@@ -34,3 +34,11 @@ routes = [
 # path (/parakeet/...) which serves bytes natively + edge-cached (#1405); the
 # worker no longer streams from R2, so it needs no bucket binding. A revert of
 # this change restores both the byte-serving code and this binding together.
+
+# Workers Logs (free plan: 0.5 GB/day shared across the account, 7-day
+# retention). Kept here so a redeploy cannot switch it off.
+# Sampled at 10%: this is the busiest Worker on the shared allowance.
+[observability]
+enabled = true
+head_sampling_rate = 0.1
+redact_query_string = true
