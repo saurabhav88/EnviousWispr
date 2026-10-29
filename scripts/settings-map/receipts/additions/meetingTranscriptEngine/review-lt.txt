@@ -1,0 +1,27 @@
+{
+  "meetingTranscriptEngine": {
+    "language": "lt",
+    "title": "susitikimų transkripcijos variklis",
+    "words": [],
+    "phrases": [
+      "pasirinkti variklį susitikimui transkribuoti po įrašymo",
+      "pakeisti susitikimų transkripcijos variklį"
+    ]
+  },
+  "meetingTranscriptEngine.parakeet": {
+    "language": "lt",
+    "title": "Parakeet",
+    "words": [],
+    "phrases": [
+      "naudoti Parakeet susitikimų transkripcijai"
+    ]
+  },
+  "meetingTranscriptEngine.whisper": {
+    "language": "lt",
+    "title": "Whisper Large v3 Turbo",
+    "words": [],
+    "phrases": [
+      "naudoti Whisper susitikimams transkribuoti"
+    ]
+  }
+}

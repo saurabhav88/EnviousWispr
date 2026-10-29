@@ -2384,6 +2384,52 @@
    "seedParent": null
   },
   {
+   "id": "meetingTranscriptEngine",
+   "kind": "setting",
+   "destination": {
+    "page": "meetings",
+    "tab": "models"
+   },
+   "disposition": "mapped",
+   "parent": "meetings.tab.models",
+   "target": "meetingTranscriptEngine",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Chooses the engine that writes the full transcript after a meeting."
+   }
+  },
+  {
+   "id": "meetingTranscriptEngine.parakeet",
+   "kind": "choice",
+   "destination": {
+    "page": "meetings",
+    "tab": "models"
+   },
+   "disposition": "mapped",
+   "parent": "meetingTranscriptEngine",
+   "target": "meetingTranscriptEngine",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null
+  },
+  {
+   "id": "meetingTranscriptEngine.whisper",
+   "kind": "choice",
+   "destination": {
+    "page": "meetings",
+    "tab": "models"
+   },
+   "disposition": "mapped",
+   "parent": "meetingTranscriptEngine",
+   "target": "meetingTranscriptEngine",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null
+  },
+  {
    "id": "meetingTranscriptLanguage",
    "kind": "setting",
    "destination": {

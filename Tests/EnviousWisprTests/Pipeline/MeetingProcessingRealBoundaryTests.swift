@@ -155,6 +155,86 @@ struct MeetingProcessingRealBoundaryTests {
     #expect(!engine.isLoaded, "the engine is unloaded when the pass ends")
   }
 
+  /// #3973 C3: the same pass on the real Whisper Large v3 Turbo (the #3705 evaluation copy,
+  /// never the app's data) through the meeting's own Whisper engine: real speech becomes
+  /// sentence-timed, labeled turns, the engine is freed at the end, and a checkpoint saved by
+  /// the pass rebuilds the same transcript without decoding again.
+  @Test(
+    "#3973 C3: a two-voice recording becomes sentence-timed turns through the real Whisper pass, and resumes from its checkpoint",
+    .enabled(if: WhisperProductionWiringRealBoundaryTests.modelIsPresent),
+    .tags(.realBoundary), .timeLimit(.minutes(3)))
+  func twoVoiceRecordingOnWhisper() async throws {
+    let fixture = WhisperProductionWiringRealBoundaryTests.repoRoot
+      .appending(path: "Tests/Fixtures/speaker-diarization/two-voice-30s.wav")
+    let dir = try folder("two-voice-whisper")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let audio = try segments(from: fixture, into: dir)
+    let speakerBundle = try Self.speakerModelBundle()
+    let engine = LiveMeetingWhisperEngine(driver: LiveWhisperExecutorDriver())
+    let modelPath = WhisperProductionWiringRealBoundaryTests.evaluationModel.path
+    final class Counts { var decodes = 0 }
+    let counts = Counts()
+    func job() -> MeetingTranscriptionJob {
+      var configuration = MeetingTranscriptionJob.Configuration()
+      configuration.cutsPieces = false
+      return MeetingTranscriptionJob(
+        dependencies: .init(
+          isDictationIdle: { true }, waitUntilDictationIdle: {}, beginModelUse: {},
+          endModelUse: {},
+          loadEngine: { try await engine.load(modelPath: modelPath) },
+          transcribe: { samples, language in
+            counts.decodes += 1
+            return try await engine.transcribe(samples: samples, language: language)
+          },
+          unloadEngine: { await engine.unload() },
+          analyzeSpeakers: { audio in
+            await MeetingSpeakerAnalyzer.analyze(
+              audio,
+              makeWork: { track in
+                Task<[SpeakerSegment], Error> {
+                  let models = try BundledSpeakerModelLoader.load(in: speakerBundle)
+                  let analyzer = OfflineSpeakerAnalyzer()
+                  analyzer.initialize(models: models)
+                  return try await analyzer.analyze(meetingTrack: track) { _, _ in }
+                }
+              })
+          },
+          engineIdentity: { "whisper-large-v3-turbo-gguf:eval" },
+          resolution: MeetingEngineResolution(engine: .whisper, effectiveLanguage: "en")),
+        configuration: configuration)
+    }
+    let saved = OSAllocatedUnfairLock<MeetingProcessingCheckpoint?>(initialState: nil)
+    let access = MeetingTranscriptionJob.CheckpointAccess(
+      meetingID: UUID(), load: { saved.withLock { $0 } },
+      save: { checkpoint in saved.withLock { $0 = checkpoint } })
+    let attempt = MeetingAttemptConfiguration(
+      requestedEngine: .whisper, languageIntent: "en", requestedEffectiveLanguage: "en")
+
+    let result = try await job().run(
+      tracks: [.callSound: audio], language: "en", checkpoint: access, onStage: { _ in },
+      attempt: attempt)
+    let words = result.composition.text.split(whereSeparator: \.isWhitespace).count
+    print(
+      "MEETING_REAL whisper two-voice words=\(words) turns=\(result.composition.turns.count) speakers=\(result.composition.speakerCount) outcome=\(result.speakerOutcomes[.callSound].map(\.rawValue) ?? "none")"
+    )
+    #expect(words >= 10)
+    #expect(result.failedPieces == 0)
+    #expect(
+      result.speakerOutcomes[.callSound] == .labeled
+        || result.speakerOutcomes[.callSound] == .single)
+    #expect(result.composition.turns.allSatisfy { $0.granularity == .segment })
+    #expect(result.resolved.resolvedEngine == .whisper)
+    #expect(await engine.isLoaded == false, "the engine is freed when the pass ends")
+    let decodes = counts.decodes
+    #expect(decodes >= 1)
+
+    let resumed = try await job().run(
+      tracks: [.callSound: audio], language: "en", checkpoint: access, onStage: { _ in },
+      attempt: attempt)
+    #expect(counts.decodes == decodes, "every piece came from the checkpoint")
+    #expect(resumed.composition == result.composition)
+  }
+
   /// Footprint of this process (what the system counts against memory), in MB.
   nonisolated static func footprintMB() -> Double {
     var info = task_vm_info_data_t()

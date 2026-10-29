@@ -1,0 +1,24 @@
+{
+  "meetingTranscriptEngine": {
+    "language": "de",
+    "words": [],
+    "phrases": [
+      "Modell für das vollständige Meetingtranskript auswählen",
+      "Engine für die Transkription nach dem Meeting ändern"
+    ]
+  },
+  "meetingTranscriptEngine.parakeet": {
+    "language": "de",
+    "words": [],
+    "phrases": [
+      "nutze Parakeet für Meeting-Transkripte"
+    ]
+  },
+  "meetingTranscriptEngine.whisper": {
+    "language": "de",
+    "words": [],
+    "phrases": [
+      "Whisper für die Transkription deiner Meetings verwenden"
+    ]
+  }
+}

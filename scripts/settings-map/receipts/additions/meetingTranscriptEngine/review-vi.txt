@@ -1,0 +1,27 @@
+{
+  "meetingTranscriptEngine": {
+    "language": "vi",
+    "title": "công cụ chép lời cuộc họp",
+    "words": [],
+    "phrases": [
+      "chọn công cụ tạo bản chép lời đầy đủ sau cuộc họp",
+      "đổi mô hình chép lời cho cuộc họp mới"
+    ]
+  },
+  "meetingTranscriptEngine.parakeet": {
+    "language": "vi",
+    "title": "Parakeet",
+    "words": [],
+    "phrases": [
+      "dùng Parakeet để tạo bản chép lời sau khi cuộc họp kết thúc"
+    ]
+  },
+  "meetingTranscriptEngine.whisper": {
+    "language": "vi",
+    "title": "Whisper Large v3 Turbo",
+    "words": [],
+    "phrases": [
+      "dùng Whisper để chép lời cuộc họp"
+    ]
+  }
+}

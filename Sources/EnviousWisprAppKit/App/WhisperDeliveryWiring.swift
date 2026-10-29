@@ -20,6 +20,13 @@ enum WhisperDeliveryWiring {
     /// The Remove drain's engine-unload seam, assigned by the bootstrapper once the driver
     /// exists (the adapter is constructed after this wiring runs).
     let removal: WhisperRemovalHook
+    /// #3973 C3: the same admitted model as EnviousMeet's final engine reads it: the file when
+    /// admitted now (never cached, never fetched), nil otherwise.
+    let admittedModelPath: @MainActor () async -> String?
+    /// #3973 C3: model name and revision, the meeting checkpoint identity.
+    let modelIdentity: String?
+    /// #3973 C3: the delivery kill switch for this model, read fresh.
+    let isDeliveryEnabled: @MainActor () -> Bool
   }
 
   static func make(
@@ -164,7 +171,9 @@ enum WhisperDeliveryWiring {
         guard migration.decline(.dictation) == .done else { return .failed }
         await handle.cancelActiveFetch()
         await removal.unloadForRemoval()
-        return await handle.remove() ? nil : .failed
+        let removed = await handle.remove()
+        await removal.finishRemoval()
+        return removed ? nil : .failed
       })
 
     // One delivery-state stream projected onto the setup states the Settings row already
@@ -245,7 +254,15 @@ enum WhisperDeliveryWiring {
     }
 
     return Wired(
-      backend: backend, migration: migration, setupService: setupService, removal: removal)
+      backend: backend, migration: migration, setupService: setupService, removal: removal,
+      admittedModelPath: { [weak handle] in
+        guard let handle, let modelPath, await handle.isAdmitted() else { return nil }
+        return modelPath
+      },
+      modelIdentity: registration.map {
+        "\($0.manifest.identity.name):\($0.manifest.identity.revision)"
+      },
+      isDeliveryEnabled: { [weak handle] in handle?.isEnabled() ?? false })
   }
 }
 
@@ -266,6 +283,9 @@ extension WhisperDeliveryWiring {
 /// delivery deletion, so no loaded model is unlinked underneath its engine.
 @MainActor final class WhisperRemovalHook {
   var unloadForRemoval: @MainActor () async -> Void = {}
+  /// Awaited AFTER the deletion, whatever its result: engines closed for the removal may load
+  /// again.
+  var finishRemoval: @MainActor () async -> Void = {}
 }
 
 /// Monotonic freshness guard for the `.notReady` case's async disk read (Codex

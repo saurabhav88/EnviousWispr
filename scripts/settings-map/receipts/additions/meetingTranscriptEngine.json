@@ -1,0 +1,276 @@
+{
+  "id": "meetingTranscriptEngine",
+  "blocks": {
+    "ar": {
+      "title": "محرك تفريغ الاجتماعات",
+      "words": [
+        "محرك نص الاجتماع"
+      ],
+      "phrases": [
+        "اختيار محرك لكتابة نص الاجتماع كاملًا بعد انتهائه",
+        "تغيير محرك تفريغ الاجتماعات"
+      ]
+    },
+    "bg": {
+      "title": "модел за транскрипция на срещи",
+      "words": [],
+      "phrases": [
+        "избор на модел за пълната транскрипция след срещата",
+        "смяна на модела за транскрипция на срещи"
+      ]
+    },
+    "cs": {
+      "title": "modul přepisu schůzek",
+      "words": [],
+      "phrases": [
+        "vybrat model pro úplný přepis schůzky",
+        "změnit modul pro přepis po skončení schůzky"
+      ]
+    },
+    "da": {
+      "title": "transskriptionsmotor",
+      "words": [],
+      "phrases": [
+        "vælg motor til mødets fulde transskription",
+        "skift motor til transskription efter mødet"
+      ]
+    },
+    "de": {
+      "words": [],
+      "phrases": [
+        "Modell für das vollständige Meetingtranskript auswählen",
+        "Engine für die Transkription nach dem Meeting ändern"
+      ]
+    },
+    "el": {
+      "title": "μηχανή απομαγνητοφώνησης",
+      "words": [],
+      "phrases": [
+        "επιλογή μηχανής για την πλήρη απομαγνητοφώνηση της συνάντησης",
+        "ποια μηχανή γράφει το πλήρες κείμενο μετά τη συνάντηση"
+      ]
+    },
+    "en": {
+      "words": [
+        "meeting transcript engine"
+      ],
+      "phrases": [
+        "choose model for the full meeting transcript",
+        "change the engine for full meeting transcripts"
+      ]
+    },
+    "es": {
+      "title": "motor de transcripción de reuniones",
+      "words": [],
+      "phrases": [
+        "elegir motor para la transcripción completa de la reunión",
+        "cambiar el motor que transcribe después de la reunión"
+      ]
+    },
+    "et": {
+      "title": "transkriptsioonimootor",
+      "words": [],
+      "phrases": [
+        "vali koosoleku lõpliku transkriptsiooni mootor",
+        "muuda koosolekujärgse transkriptsiooni mootorit"
+      ]
+    },
+    "fi": {
+      "title": "litterointimoottori",
+      "words": [],
+      "phrases": [
+        "valitse kokouksen lopullisen litteroinnin moottori",
+        "vaihda kokouksen jälkeisen litteroinnin moottoria"
+      ]
+    },
+    "fr": {
+      "title": "moteur de transcription des réunions",
+      "words": [],
+      "phrases": [
+        "choisir le moteur qui transcrit toute la réunion une fois terminée",
+        "changer le moteur de transcription complète des réunions"
+      ]
+    },
+    "hi": {
+      "title": "ट्रांसक्रिप्ट इंजन",
+      "words": [
+        "मीटिंग ट्रांसक्रिप्ट मॉडल"
+      ],
+      "phrases": [
+        "पूरी मीटिंग को टेक्स्ट में लिखने वाला मॉडल चुनें",
+        "मीटिंग के बाद ट्रांसक्रिप्ट बनाने वाला इंजन बदलें"
+      ]
+    },
+    "hr": {
+      "title": "model za prijepis sastanka",
+      "words": [],
+      "phrases": [
+        "odaberi model za potpuni prijepis sastanka",
+        "promijeni model za prijepis koji se izrađuje nakon sastanka"
+      ]
+    },
+    "hu": {
+      "title": "átírási motor",
+      "words": [],
+      "phrases": [
+        "modell kiválasztása a megbeszélés teljes átiratához",
+        "megbeszélés utáni átírás motorjának módosítása"
+      ]
+    },
+    "it": {
+      "title": "motore di trascrizione delle riunioni",
+      "words": [],
+      "phrases": [
+        "scegliere il motore che trascrive le riunioni dopo la registrazione",
+        "cambiare il motore per la trascrizione completa delle riunioni"
+      ]
+    },
+    "ja": {
+      "title": "会議の全文文字起こしエンジン",
+      "words": [],
+      "phrases": [
+        "会議の全文を書き起こすモデルを選ぶ",
+        "会議後の文字起こしエンジンを変更"
+      ]
+    },
+    "ko": {
+      "title": "회의 녹취록 엔진",
+      "words": [],
+      "phrases": [
+        "회의 후 전체 녹취록을 작성할 엔진 선택",
+        "회의 녹취록용 음성 인식 모델 바꾸기"
+      ]
+    },
+    "lt": {
+      "title": "susitikimų transkripcijos variklis",
+      "words": [],
+      "phrases": [
+        "pasirinkti variklį susitikimui transkribuoti po įrašymo",
+        "pakeisti susitikimų transkripcijos variklį"
+      ]
+    },
+    "lv": {
+      "title": "sapulces atšifrējuma dzinis",
+      "words": [],
+      "phrases": [
+        "izvēlēties dzini pilnam sapulces atšifrējumam",
+        "mainīt dzini atšifrējuma veidošanai pēc sapulces"
+      ]
+    },
+    "mt": {
+      "title": "magna tat-traskrizzjoni tal-laqgħat",
+      "words": [
+        "mudell għat-traskrizzjoni tal-laqgħat"
+      ],
+      "phrases": [
+        "agħżel il-magna għat-traskrizzjoni sħiħa tal-laqgħat",
+        "ibdel il-magna li tittraskrivi l-laqgħat wara li jintemmu"
+      ]
+    },
+    "nl": {
+      "title": "transcriptie-engine",
+      "words": [],
+      "phrases": [
+        "model kiezen voor het volledige vergadertranscript",
+        "engine voor transcriptie na de vergadering wijzigen"
+      ]
+    },
+    "pl": {
+      "title": "silnik transkrypcji spotkań",
+      "words": [],
+      "phrases": [
+        "wybierz model do pełnej transkrypcji spotkania",
+        "zmień silnik tworzący transkrypcję po spotkaniu"
+      ]
+    },
+    "pt": {
+      "title": "motor de transcrição de reuniões",
+      "words": [
+        "motor da transcrição completa"
+      ],
+      "phrases": [
+        "escolher o motor da transcrição completa da reunião",
+        "mudar o motor que transcreve a reunião depois que ela termina"
+      ]
+    },
+    "ro": {
+      "title": "motor de transcriere a întâlnirilor",
+      "words": [],
+      "phrases": [
+        "alege motorul pentru transcrierea completă după încheierea întâlnirii",
+        "schimbă motorul de transcriere de după întâlnire"
+      ]
+    },
+    "ru": {
+      "title": "движок полной расшифровки встреч",
+      "words": [],
+      "phrases": [
+        "выбрать движок для полной расшифровки встречи после её завершения",
+        "сменить модель для полной расшифровки встреч"
+      ]
+    },
+    "sk": {
+      "title": "model prepisu stretnutí",
+      "words": [
+        "model prepisu stretnutí"
+      ],
+      "phrases": [
+        "vybrať model na úplný prepis stretnutia",
+        "zmeniť model na prepis po skončení stretnutia"
+      ]
+    },
+    "sl": {
+      "title": "pogon za celotni prepis sestanka",
+      "words": [],
+      "phrases": [
+        "izberi model za celoten prepis sestanka",
+        "zamenjaj pogon za prepis po sestanku"
+      ]
+    },
+    "sv": {
+      "title": "motor för mötestranskript",
+      "words": [],
+      "phrases": [
+        "välj motor för att transkribera hela mötet",
+        "byt motor för transkribering efter mötet"
+      ]
+    },
+    "tr": {
+      "title": "toplantı dökümü motoru",
+      "words": [
+        "toplantı deşifre motoru"
+      ],
+      "phrases": [
+        "toplantının tamamını yazıya dökecek modeli seç",
+        "toplantı sonrası deşifre motorunu değiştir"
+      ]
+    },
+    "uk": {
+      "title": "рушій транскрибування зустрічей",
+      "words": [],
+      "phrases": [
+        "вибрати рушій для повної стенограми зустрічі",
+        "змінити модель для розшифрування записаних зустрічей"
+      ]
+    },
+    "vi": {
+      "title": "công cụ chép lời cuộc họp",
+      "words": [],
+      "phrases": [
+        "chọn công cụ tạo bản chép lời đầy đủ sau cuộc họp",
+        "đổi mô hình chép lời cho cuộc họp mới"
+      ]
+    },
+    "zh": {
+      "title": "会后转写引擎",
+      "words": [
+        "会议转写引擎",
+        "会议转写模型"
+      ],
+      "phrases": [
+        "选择转写整场会议的模型",
+        "更改会后生成完整文字稿的引擎"
+      ]
+    }
+  }
+}

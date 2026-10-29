@@ -517,20 +517,11 @@ struct MeetingLiveWordsRowModelTests {
 
   // MARK: - Transcript language
 
-  @Test(
-    "the transcript picker offers the final engine's languages, and its note never changes live words"
-  )
+  @Test("the transcript language note never changes live words")
   func transcriptLanguage() async throws {
     let rig = Rig()
     rig.settings.commitMeetingLiveWordsChoice(engine: .apple, language: "en-US")
     await rig.model.refresh()
-    let options = rig.model.transcriptLanguageOptions
-    let expected = LanguageCatalog.pickerEntries.filter {
-      ParakeetBackend.lockableLanguageCodes.contains($0.lockCode) && $0 != LanguageCatalog.englishUK
-    }
-    #expect(options == expected, "the final engine's languages, one row each")
-    #expect(!options.contains(LanguageCatalog.englishUK), "British spelling is dictation's choice")
-    #expect(options.contains { $0.code == "de" } && options.contains { $0.code == "en" })
     #expect(rig.model.transcriptLanguage == .auto)
     #expect(rig.model.languagesDiffer == false, "Auto never shows the note")
     rig.model.transcriptLanguage = .locked("de")

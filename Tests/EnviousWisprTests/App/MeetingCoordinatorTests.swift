@@ -377,7 +377,7 @@ struct MeetingCoordinatorTests {
           recorders.append(recorder)
           return recorder
         },
-        makeJob: { [self] in
+        makeJob: { [self] _ in
           let job = FakeJob(behavior: jobBehavior)
           jobs.append(job)
           return job

@@ -104,12 +104,12 @@ public enum MeetingSpeakerOutcome: String, Sendable, Equatable, Codable {
   case timedOut
 }
 
-/// The speech engine a meeting is transcribed with, independent of the dictation engine.
-/// Founder F6 asks for Apple speech, Parakeet and Whisper; this release ships Parakeet only
-/// (#3972 R24, follow-up #3973), so no other case exists yet. A later case needs a
-/// `formatVersion` bump, because this build cannot decode a value it does not know.
+/// The speech engine a meeting's final transcript is written with, independent of the
+/// dictation engine (#3973 decision 19). A new case needs a `formatVersion` bump, because an
+/// older build cannot decode a value it does not know: Whisper arrived with format 4.
 public enum MeetingEngineChoice: String, Sendable, Equatable, Codable, CaseIterable {
   case parakeet
+  case whisper
 }
 
 /// The persisted description of one EnviousMeet recording: `meeting.json` in its folder.
@@ -119,14 +119,17 @@ public enum MeetingEngineChoice: String, Sendable, Equatable, Codable, CaseItera
 /// deleted by this build (#3972 §4).
 public struct MeetingRecord: Sendable, Equatable, Codable, Identifiable {
   /// 2 adds `MeetingState.notesOnly` (#3972 R56). 3 adds transcription attempts and the
-  /// committed transcript generation (#3973 C2). A record keeps the version it was created
-  /// with until it needs a newer value: `markNotesOnly()` and `beginAttempt(_:)` raise it.
-  public static let currentFormatVersion = 3
+  /// committed transcript generation (#3973 C2). 4 adds `MeetingEngineChoice.whisper` (#3973
+  /// C3). A record keeps the version it was created with until it needs a newer value:
+  /// `markNotesOnly()` and `beginAttempt(_:)` raise it.
+  public static let currentFormatVersion = 4
   /// The format that introduced `MeetingState.notesOnly`.
   public static let notesOnlyFormatVersion = 2
   /// The format that introduced attempts (#3973 C2). An older build lists such a meeting
   /// read-only rather than resuming an attempt it cannot see.
   public static let attemptFormatVersion = 3
+  /// The format that introduced `MeetingEngineChoice.whisper` (#3973 C3).
+  public static let whisperFormatVersion = 4
   /// The generation of a transcript committed before attempts existed (#3973 C2): its History
   /// row carries no attempt ID, and its record no committed ID while it is ready.
   public static let legacyTranscriptAttemptID = UUID(
@@ -195,14 +198,19 @@ public struct MeetingRecord: Sendable, Equatable, Codable, Identifiable {
     }
     pendingAttempt = attempt
     resolvedAttempt = nil
-    formatVersion = max(formatVersion, Self.attemptFormatVersion)
+    formatVersion = max(
+      formatVersion,
+      attempt.requestedEngine == .whisper ? Self.whisperFormatVersion : Self.attemptFormatVersion)
   }
 
   /// A new attempt from the record's saved Start values (#3973 C2): its Start language on its
   /// Start engine, never current Settings. Start saves it; a record queued before attempts
   /// existed runs it.
-  public func attemptFromStartValues() -> MeetingAttemptConfiguration {
-    MeetingAttemptConfiguration(requestedEngine: engine, language: transcriptLanguageMode)
+  public func attemptFromStartValues(
+    supports: (MeetingEngineChoice, String) -> Bool = { _, _ in true }
+  ) -> MeetingAttemptConfiguration {
+    MeetingAttemptConfiguration(
+      requestedEngine: engine, language: transcriptLanguageMode, supports: supports)
   }
 
   /// Commits `resolved`'s attempt as the shown transcript's generation (#3973 C2), at the

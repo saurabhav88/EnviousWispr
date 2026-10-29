@@ -1,0 +1,29 @@
+{
+  "meetingTranscriptEngine": {
+    "language": "hi",
+    "title": "ट्रांसक्रिप्ट इंजन",
+    "words": [
+      "मीटिंग ट्रांसक्रिप्ट मॉडल"
+    ],
+    "phrases": [
+      "पूरी मीटिंग को टेक्स्ट में लिखने वाला मॉडल चुनें",
+      "मीटिंग के बाद ट्रांसक्रिप्ट बनाने वाला इंजन बदलें"
+    ]
+  },
+  "meetingTranscriptEngine.parakeet": {
+    "language": "hi",
+    "title": "Parakeet",
+    "words": [],
+    "phrases": [
+      "मीटिंग के बाद पूरी ट्रांसक्रिप्ट बनाने के लिए Parakeet चुनें"
+    ]
+  },
+  "meetingTranscriptEngine.whisper": {
+    "language": "hi",
+    "title": "Whisper Large v3 Turbo",
+    "words": [],
+    "phrases": [
+      "मीटिंग के बाद पूरी ट्रांसक्रिप्ट बनाने के लिए Whisper चुनें"
+    ]
+  }
+}

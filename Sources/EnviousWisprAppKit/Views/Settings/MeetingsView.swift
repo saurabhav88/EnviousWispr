@@ -138,6 +138,7 @@ struct MeetingsView: View {
       VStack(alignment: .leading, spacing: 16) {
         BrandedSection {
           BrandedRow { MeetingLiveWordsRow() }
+          BrandedRow { MeetingTranscriptEngineRow() }
           BrandedRow(showDivider: false) { MeetingTranscriptLanguageRow() }
         }
         BrandedSection {
@@ -468,8 +469,58 @@ enum MeetingsCopy {
     "The language of the full transcript written after a meeting.",
     comment: "EnviousMeet page: the short line under Transcript language.")
   static let transcriptLanguageHelp = LocalizedStringResource(
-    "With Auto, no language is set and the engine transcribes as it does by default. Choose a language when your meetings are always in it. A change applies to the next meeting; a meeting already recorded keeps its language.",
-    comment: "EnviousMeet page: help for Transcript language. Auto sets no language; it does not detect one.")
+    "With Auto, no language is set and the engine transcribes as it does by default. Choose a language when your meetings are always in it. A change applies to the next meeting; a meeting already recorded keeps its language. Transcribe again uses the language chosen here at that moment.",
+    comment: "EnviousMeet page: help for Transcript language. Auto sets no language; it does not detect one. Transcribe again is the button on a meeting's page that writes its transcript again.")
+  /// #3973 C3: the language chosen here is one the transcript engine cannot decode.
+  static func transcriptLanguageUnsupported(language: String, engine: String) -> String {
+    String(
+      localized:
+        "\(language) is not supported by \(engine). The transcript uses Auto.",
+      comment:
+        "EnviousMeet page, Transcript language row: the chosen language (first value) is not one the chosen transcript engine (second value, Parakeet or Whisper) can transcribe, so meetings are transcribed with Auto (no language set).")
+  }
+
+  // MARK: #3973 C3: Transcript engine
+
+  static let transcriptEngineTitle = LocalizedStringResource(
+    "Transcript engine",
+    comment: "EnviousMeet page, Models tab: row that picks the speech engine that writes the full meeting transcript.")
+  static let transcriptEngineShort = LocalizedStringResource(
+    "Chooses the engine that writes the full transcript after a meeting.",
+    comment: "EnviousMeet page: the short line under Transcript engine.")
+  static let transcriptEngineHelp = LocalizedStringResource(
+    "Changes apply to new meetings. Use Transcribe again to replace a saved transcript.",
+    comment: "EnviousMeet page: help for Transcript engine. Transcribe again is the button on a meeting's page that writes its transcript again.")
+  static let engineParakeet = LocalizedStringResource(
+    "Parakeet",
+    comment: "EnviousMeet page, Transcript engine menu: the Parakeet speech engine. A product name; keep it.")
+  static let engineWhisper = LocalizedStringResource(
+    "Whisper Large v3 Turbo",
+    comment: "EnviousMeet page, Transcript engine menu: the Whisper speech model. A product name; keep it.")
+  static let whisperNotDownloaded = LocalizedStringResource(
+    "Whisper Large v3 Turbo needs an 886 MB download before meetings can use it.",
+    comment: "EnviousMeet page, Transcript engine row: Whisper is not downloaded yet. The same download serves dictation.")
+  static let whisperDownloading = LocalizedStringResource(
+    "Downloading Whisper Large v3 Turbo…",
+    comment: "EnviousMeet page, Transcript engine row: the Whisper download is running.")
+  static let whisperPaused = LocalizedStringResource(
+    "Download paused. Resume anytime.",
+    comment: "EnviousMeet page, Transcript engine row: the Whisper download was cancelled and can resume.")
+  static let whisperFailed = LocalizedStringResource(
+    "The Whisper download did not finish.",
+    comment: "EnviousMeet page, Transcript engine row: the Whisper download failed.")
+  static let whisperGone = LocalizedStringResource(
+    "Whisper is no longer available. Choose another engine.",
+    comment: "EnviousMeet page, Transcript engine row: Whisper is chosen but its model is gone; meetings use Parakeet until it is back.")
+  static let warningWhisperMeeting = LocalizedStringResource(
+    "EnviousMeet uses Whisper and dictation uses Parakeet. Dictating during a meeting can load both engines and slow down your Mac.",
+    comment: "EnviousMeet page, Transcript engine row: warning when meetings and dictation use different speech engines.")
+  static let warningParakeetMeeting = LocalizedStringResource(
+    "EnviousMeet uses Parakeet and dictation uses Whisper. Dictating during a meeting can load both engines and slow down your Mac.",
+    comment: "EnviousMeet page, Transcript engine row: warning when meetings and dictation use different speech engines.")
+  static let usedParakeetFallback = LocalizedStringResource(
+    "Used Parakeet because Whisper was unavailable.",
+    comment: "EnviousMeet meeting page: the transcript was written by Parakeet because the chosen Whisper model was missing or turned off.")
   /// The transcript menu's Auto: no language is set (Parakeet's Auto sets no language hint; it
   /// does not detect the language), so the label never promises detection.
   static let transcriptLanguageAuto = LocalizedStringResource(

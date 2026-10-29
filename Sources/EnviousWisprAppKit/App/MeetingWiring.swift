@@ -78,6 +78,9 @@ enum MeetingWiring {
     var liveVocabulary: @MainActor () -> LivePreviewVocabulary = {
       LivePreviewVocabulary(lookups: nil, contextualPhrases: [], dictionaryEnabled: false)
     }
+    /// #3973 C3: the Whisper final engine, or nil when this build has none to offer (every
+    /// Whisper attempt then runs on Parakeet, reason `modelUnavailable`).
+    var whisper: WhisperEngine?
     /// Speaker analysis of one track (bundled speaker models). A seam for the same tests.
     var analyzeSpeakers: @Sendable (MeetingTrackAudio) async -> MeetingSpeakerAnalysis = {
       await MeetingSpeakerAnalyzer.analyze($0)
@@ -103,6 +106,61 @@ enum MeetingWiring {
     let disarmEngineTimers: @MainActor () -> Void
     let rearmEngineTimers: @MainActor () -> Void
     let recoveryRecheck: @MainActor () -> Void
+  }
+
+  /// #3973 C3: the Whisper Large v3 Turbo final engine, as the bootstrapper owns it: the
+  /// shared delivery's admitted model, dictation's backend (its preview-priority meeting
+  /// decode) and the meeting's own copy.
+  struct WhisperEngine {
+    /// The admitted model file, read live (never the setup screen's cached state); nil when it
+    /// is not downloaded or not admitted.
+    let modelPath: @MainActor () async -> String?
+    /// Model name and revision, for checkpoint identity.
+    let modelIdentity: @MainActor () -> String?
+    /// Model delivery is on: a meeting may read the installed model.
+    let isDeliveryEnabled: @MainActor () -> Bool
+    let transcribeShared:
+      @MainActor (_ samples: [Float], _ language: String?) async throws -> ASRResult
+    let ownLoad: @MainActor (_ modelPath: String) async throws -> Void
+    let ownTranscribe:
+      @MainActor (_ samples: [Float], _ language: String?) async throws -> ASRResult
+    let ownUnload: @MainActor () async -> Void
+    /// The setup screen's state is ready (display only; the pass checks the model itself).
+    let isReadyForMenu: @MainActor () -> Bool
+  }
+
+  /// #3973 C3: the engine a pass of an attempt that asked for `engine` runs on, from current
+  /// availability (decision 19): Whisper when its model is admitted and delivery is on, else
+  /// the whole attempt on Parakeet with the closed reason. Never downloads; never reads
+  /// Settings.
+  static func resolve(
+    _ attempt: MeetingAttemptConfiguration, whisper: WhisperEngine?,
+    supports: (MeetingEngineChoice, String) -> Bool = engineSupports
+  ) async -> MeetingEngineResolution {
+    func fallback(_ reason: MeetingTranscriptFallbackReason) -> MeetingEngineResolution {
+      MeetingEngineResolution(
+        engine: .parakeet, fallbackReason: reason,
+        effectiveLanguage: attempt.effectiveLanguage(on: .parakeet, supports: supports))
+    }
+    switch attempt.requestedEngine {
+    case .parakeet:
+      break
+    case .whisper:
+      guard let whisper else { return fallback(.modelUnavailable) }
+      guard whisper.isDeliveryEnabled() else { return fallback(.deliveryDisabled) }
+      guard await whisper.modelPath() != nil else { return fallback(.notDownloaded) }
+    }
+    return MeetingEngineResolution(
+      engine: attempt.requestedEngine, effectiveLanguage: attempt.requestedEffectiveLanguage)
+  }
+
+  /// #3973 C3: whether `engine` can decode `code`: the engine's lockable languages
+  /// (`LanguageLockOptions`, nil there is no restriction).
+  nonisolated static func engineSupports(_ engine: MeetingEngineChoice, _ code: String) -> Bool {
+    guard let codes = LanguageLockOptions.lockableCodes(for: engine.backendType) else {
+      return true
+    }
+    return codes.contains(code)
   }
 
   /// Readiness of the engine the shared pass borrows: the running one. Normally that is the
@@ -139,9 +197,17 @@ enum MeetingWiring {
             configuration: configuration, onSegment: onSegment, onFailure: onFailure,
             onCallSoundReport: MeetingWiring.callSoundReportForwarder(emit))
         },
-        makeJob: { makeJob(inputs, lane: lane) },
+        makeJob: { makeJob(inputs, lane: lane, resolution: $0) },
+        resolveEngine: { [whisper = inputs.whisper] in await resolve($0, whisper: whisper) },
+        engineSupportsLanguage: { engineSupports($0, $1) },
         liveWords: inputs.liveWords,
         meetingLanguage: { [settings = inputs.settings] in settings.meetingLanguageMode },
+        meetingTranscriptEngine: { [settings = inputs.settings] in
+          settings.meetingTranscriptEngine
+        },
+        isEngineReady: { [whisper = inputs.whisper] engine in
+          engine == .parakeet || (whisper?.isReadyForMenu() ?? false)
+        },
         liveVocabulary: inputs.liveVocabulary,
         microphoneSelection: { [settings = inputs.settings] in
           let chosen = settings.preferredInputDeviceIDOverride
@@ -293,7 +359,10 @@ enum MeetingWiring {
 
   /// The final pass's job. It decodes through a `MeetingParakeetRoute` (#4052), whole runs at a
   /// time.
-  static func makeJob(_ inputs: Inputs, lane: MeetingLocalModelLane) -> MeetingTranscriptionJob {
+  static func makeJob(
+    _ inputs: Inputs, lane: MeetingLocalModelLane,
+    resolution: MeetingEngineResolution = MeetingEngineResolution(engine: .parakeet)
+  ) -> MeetingTranscriptionJob {
     let isDeliveryEnabled = inputs.isDeliveryEnabled
     let engine = MeetingParakeetEngine(
       offlineModeAdmission: inputs.offlineModeAdmission, makeBackend: inputs.makeMeetingBackend,
@@ -305,7 +374,29 @@ enum MeetingWiring {
     let pressure = inputs.memoryPressure
     let workChanged = inputs.workChanged
     let shared = inputs.sharedEngine
-      let route = MeetingParakeetRoute(
+      let route: MeetingFinalEngineRoute
+      if resolution.engine == .whisper, let whisper = inputs.whisper {
+        route = MeetingWhisperRoute(
+          dependencies: .init(
+            isAdmitted: isIdle,
+            isDictationIdle: inputs.isDictationIdle,
+            isSwitchSettled: shared.isSwitchSettled,
+            activeBackend: shared.activeBackend,
+            wakes: wakes,
+            admission: shared.admission,
+            ensureDictationReady: shared.ensureReady,
+            modelPath: { whisper.isDeliveryEnabled() ? await whisper.modelPath() : nil },
+            modelIdentity: whisper.modelIdentity,
+            transcribeShared: whisper.transcribeShared,
+            disarmEngineTimers: shared.disarmEngineTimers,
+            rearmEngineTimers: shared.rearmEngineTimers,
+            ownLoad: whisper.ownLoad,
+            ownTranscribe: whisper.ownTranscribe,
+            ownUnload: whisper.ownUnload,
+            ownResidencyEnded: workChanged,
+            log: inputs.log))
+      } else {
+      route = MeetingParakeetRoute(
         dependencies: .init(
           isAdmitted: isIdle,
           isDictationIdle: inputs.isDictationIdle,
@@ -333,6 +424,7 @@ enum MeetingWiring {
           ownWaitForAvailability: { try await engine.waitUntilOfflineModeAvailable() },
           ownResidencyEnded: workChanged,
           log: inputs.log))
+      }
       var configuration = MeetingTranscriptionJob.Configuration()
       configuration.cutsPieces = false
       let job = MeetingTranscriptionJob(
@@ -352,11 +444,17 @@ enum MeetingWiring {
           analyzeSpeakers: { audio in
             await analyzeSpeakers(audio, analyze: analyze, workChanged: workChanged)
           },
-          // Only the meeting's own engine throws this (offline-mode contention); the shared
-          // route waits inside `acquire()` and never surfaces it.
-          isTemporaryEngineContention: { MeetingParakeetEngine.isTemporaryContention($0) },
+          // Only the meeting's own Parakeet throws this (offline-mode contention); the shared
+          // route waits inside `acquire()` and never surfaces it. #3973 C3: a Whisper load that
+          // gave way to dictation is the same: wait, then load again.
+          isTemporaryEngineContention: {
+            $0 is MeetingEngineYield || MeetingParakeetEngine.isTemporaryContention($0)
+          },
           waitForEngineAvailability: { try await route.waitForEngineAvailability() },
-          isModelSourceUsable: isDeliveryEnabled,
+          isModelSourceUsable: { [whisper = inputs.whisper] in
+            resolution.engine == .whisper
+              ? (whisper?.isDeliveryEnabled() ?? false) : isDeliveryEnabled()
+          },
           engineIdentity: { route.engineIdentity },
           isMemoryPressureElevated: { pressure.isElevated },
           waitUntilMemoryNormal: { await pressure.waitUntilNormal() },
@@ -366,7 +464,8 @@ enum MeetingWiring {
           passStarted: { meetingID, seconds in
             route.beginPass(meetingID: meetingID, meetingSeconds: seconds)
           },
-          isOwnModelResident: { route.isOwnParakeetResident }),
+          isOwnModelResident: { route.isOwnModelResident },
+          resolution: resolution),
         configuration: configuration)
       // The route's dictation waits show the job's "Paused while you dictate".
       route.onWaitingForDictation = { [weak job] waiting in job?.onWaitingForDictation?(waiting) }

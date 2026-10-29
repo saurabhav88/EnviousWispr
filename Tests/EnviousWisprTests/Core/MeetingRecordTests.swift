@@ -152,4 +152,30 @@ struct MeetingRecordTests {
     #expect(MeetingRecord.recoveredState(from: .ready) == nil)
     #expect(MeetingRecord.recoveredState(from: .failed) == nil)
   }
+
+  @Test("#3973 C3: a Whisper attempt raises the record to format 4; a fallback commit keeps what ran and why")
+  func whisperAttemptIsFormatFour() throws {
+    var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    var old = try #require(
+      try JSONSerialization.jsonObject(with: try JSONEncoder().encode(record)) as? [String: Any])
+    old["formatVersion"] = 3
+    record = try JSONDecoder().decode(
+      MeetingRecord.self, from: try JSONSerialization.data(withJSONObject: old))
+    record.beginAttempt(MeetingAttemptConfiguration(requestedEngine: .parakeet, language: .auto))
+    #expect(record.formatVersion == 3, "a Parakeet attempt needs no Whisper value")
+    let whisper = MeetingAttemptConfiguration(requestedEngine: .whisper, language: .auto)
+    record.beginAttempt(whisper)
+    #expect(record.formatVersion == MeetingRecord.whisperFormatVersion)
+
+    record.state = .ready
+    record.commitAttempt(
+      MeetingResolvedAttempt(
+        attemptID: whisper.attemptID, requestedEngine: .whisper, resolvedEngine: .parakeet,
+        effectiveLanguage: nil, modelIdentity: "ultra:r1", fallbackReason: .notDownloaded))
+    let reloaded = try JSONDecoder().decode(
+      MeetingRecord.self, from: try JSONEncoder().encode(record))
+    #expect(reloaded.requestedTranscriptEngine == .whisper)
+    #expect(reloaded.transcriptEngineUsed == .parakeet)
+    #expect(reloaded.transcriptEngineFallbackReason == .notDownloaded)
+  }
 }

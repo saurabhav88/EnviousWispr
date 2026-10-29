@@ -86,9 +86,10 @@ final class EngineCoordinator {
     /// switch gate, stalling dictation behind the meeting's work. The meeting pokes
     /// `.parakeetUpgradeOwed` when its engine is released and when its work ends.
     var isMeetingEngineResident: @MainActor () -> Bool = { false }
-    /// #4052: EnviousMeet's final pass holds its OWN Parakeet (dictation was on Whisper). Read
-    /// only by gate 6d. The meeting pokes `.parakeetUpgradeOwed` when it releases it.
-    var isMeetingOwnParakeetResident: @MainActor () -> Bool = { false }
+    /// #4052, #3973 C3: EnviousMeet's final pass holds its OWN copy of `backend` (dictation was
+    /// on the other engine). Read only by gate 6d. The meeting pokes `.parakeetUpgradeOwed` when
+    /// it releases it.
+    var isMeetingOwnModelResident: @MainActor (_ backend: ASRBackendType) -> Bool = { _ in false }
     /// Whether the given engine's model is on disk (gates a load attempt).
     let isInstalled: @MainActor (ASRBackendType) -> Bool
     /// A telemetry label for the given engine's pipeline state.
@@ -420,11 +421,11 @@ final class EngineCoordinator {
       return
     }
 
-    // 6d. #4052 — EnviousMeet's final pass is transcribing on its own Parakeet (dictation was
-    // on Whisper). A switch INTO Parakeet now would load dictation's copy beside it; it waits
-    // until the meeting releases its copy, whose release pokes this coordinator. A switch into
-    // Whisper loads no Parakeet and is not held.
-    if want == .parakeet, deps.isMeetingOwnParakeetResident() {
+    // 6d. #4052, #3973 C3 — EnviousMeet's final pass is transcribing on its own copy of the
+    // engine dictation is switching INTO (Parakeet, or Whisper Large v3 Turbo). Switching now
+    // would load dictation's copy beside it; it waits until the meeting releases its copy,
+    // whose release pokes this coordinator. A switch into the other engine is not held.
+    if deps.isMeetingOwnModelResident(want) {
       markBlocked(.pipelineActive)
       return
     }

@@ -1,0 +1,27 @@
+{
+  "meetingTranscriptEngine": {
+    "language": "ko",
+    "title": "회의 녹취록 엔진",
+    "words": [],
+    "phrases": [
+      "회의 후 전체 녹취록을 작성할 엔진 선택",
+      "회의 녹취록용 음성 인식 모델 바꾸기"
+    ]
+  },
+  "meetingTranscriptEngine.parakeet": {
+    "language": "ko",
+    "title": "Parakeet",
+    "words": [],
+    "phrases": [
+      "회의 후 녹취록 작성에 Parakeet 사용"
+    ]
+  },
+  "meetingTranscriptEngine.whisper": {
+    "language": "ko",
+    "title": "Whisper Large v3 Turbo",
+    "words": [],
+    "phrases": [
+      "회의 전사에 Whisper 사용"
+    ]
+  }
+}

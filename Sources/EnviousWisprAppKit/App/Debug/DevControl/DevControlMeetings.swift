@@ -264,6 +264,8 @@
             "startMs": turn.startMs as Any? ?? NSNull(), "endMs": turn.endMs as Any? ?? NSNull(),
             "range": [turn.originalTextRange.lowerBound, turn.originalTextRange.upperBound],
             "echo": echo.contains(turn.id),
+            // #3973 C3: word or segment (Whisper) timing.
+            "granularity": turn.effectiveGranularity.rawValue,
             "text": TranscriptDocumentPresenter.slice(row.text, turn.originalTextRange),
           ]
         },

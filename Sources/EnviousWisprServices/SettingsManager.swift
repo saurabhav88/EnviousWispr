@@ -45,6 +45,8 @@ public final class SettingsManager {
     case meetingCallFirstTipShown
     /// #3973 (decision 16): the language EnviousMeet transcribes in; its own, never dictation's.
     case meetingLanguageMode
+    /// #3973 C3 (decision 19): the engine that writes a meeting's final transcript.
+    case meetingTranscriptEngine
     /// #4105: the engine meeting live words run on (Apple's meeting module or Universal); unset
     /// until the user picks one or the first ready guess is saved.
     case meetingLiveWordsEngine
@@ -150,7 +152,7 @@ public final class SettingsManager {
   public nonisolated static let unifiedDefaultsKeys: [String] = [
     "selectedBackend", "recordingMode", "llmProvider", "lastLLMProvider", "llmModel", "ollamaModel",
     "s1MiniStyling", "s1MiniStructure", "s1MiniContext",
-    "autoCopyToClipboard", "meetingCaptureCallSound", "meetingCallSoundExplained", "meetingWriteSummary", "meetingTurnsOffDictation", "meetingOnboardingComplete", "meetingUseCalendarForNames", "meetingCallDetection", "meetingCallAppsOff", "meetingCallNoCounts", "meetingCallFirstTipShown", "meetingLanguageMode", "meetingLiveWordsEngine", "meetingLiveWordsLanguage", "hotkeyEnabled", "vadAutoStop", "vadSilenceTimeout",
+    "autoCopyToClipboard", "meetingCaptureCallSound", "meetingCallSoundExplained", "meetingWriteSummary", "meetingTurnsOffDictation", "meetingOnboardingComplete", "meetingUseCalendarForNames", "meetingCallDetection", "meetingCallAppsOff", "meetingCallNoCounts", "meetingCallFirstTipShown", "meetingLanguageMode", "meetingTranscriptEngine", "meetingLiveWordsEngine", "meetingLiveWordsLanguage", "hotkeyEnabled", "vadAutoStop", "vadSilenceTimeout",
     "vadSensitivity", "vadEnergyGate", "onboardingState", "hasCompletedOnboarding",
     "cancelKeyCode", "cancelModifiersRaw", "toggleKeyCode", "toggleModifiersRaw",
     "quickAddKeyCode", "quickAddModifiersRaw",
@@ -628,6 +630,17 @@ public final class SettingsManager {
         defaults.set(data, forKey: "meetingLanguageMode")
       }
       onChange?(.meetingLanguageMode)
+    }
+  }
+
+  /// #3973 C3 (decision 19): the engine that writes a meeting's final transcript, Parakeet by
+  /// default. A meeting reads it once at Start into its saved attempt, so a later change
+  /// belongs to the next meeting (Transcribe again picks its own engine). The Models row
+  /// selects Whisper only while its model is ready.
+  public var meetingTranscriptEngine: MeetingEngineChoice {
+    didSet {
+      defaults.set(meetingTranscriptEngine.rawValue, forKey: "meetingTranscriptEngine")
+      onChange?(.meetingTranscriptEngine)
     }
   }
 
@@ -1554,6 +1567,10 @@ public final class SettingsManager {
       defaults.data(forKey: "meetingLanguageMode")
       .flatMap { try? JSONDecoder().decode(LanguageMode.self, from: $0) }
       .map(Self.validatedLanguageMode) ?? SettingsDefaultValues.meetingLanguageMode
+    // #3973 C3: absent or unknown values load as the default; nothing is written on load.
+    meetingTranscriptEngine =
+      defaults.string(forKey: "meetingTranscriptEngine").flatMap(MeetingEngineChoice.init)
+      ?? SettingsDefaultValues.meetingTranscriptEngine
     // #4105: absent or unknown values load as unset; nothing is written on load.
     meetingLiveWordsEngine =
       defaults.string(forKey: "meetingLiveWordsEngine").flatMap(LivePreviewEngineChoice.init)

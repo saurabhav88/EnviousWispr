@@ -12,9 +12,9 @@ Generated from the compiled Settings Map and the validated search vocabulary. Do
 
 The interface ships in English and German. The other 30 languages (ar, bg, cs, da, el, es, et, fi, fr, hi, hr, hu, it, ja, ko, lt, lv, mt, nl, pl, pt, ro, ru, sk, sl, sv, tr, uk, vi, zh) are search metadata only: words and titles people may type, matched against the same places. Titles below read English / German.
 
-290 nodes, 263 searchable, 8416 vocabulary blocks.
+293 nodes, 266 searchable, 8512 vocabulary blocks.
 
-Fingerprints: mapSHA256 `9917795ed2474d77d9852822bc037ddc203085624d70978a5b3a93e1ed87eda8`, uiCatalogSHA256 `a28df167479a2e68977cc9e6083e957b1969a0646bbd989eb4dea74bb896a729`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `2e35019d9014352b1f131ed67cc84f82ffc652bfdc674508d9b26d2ebcae63e5`
+Fingerprints: mapSHA256 `f269c6a9b2a07ca5cef356d316187ec74b9a0112aaf734f3b4406d77062ce90c`, uiCatalogSHA256 `5cf7608124557336125996324e344454f7d16ae805602d636691c0ab65f7ae41`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `054d757d92dba5995a9bf31ab3ad1af5e7b3df6f57372539e12080c18334c5af`
 
 ## Structure
 
@@ -292,6 +292,9 @@ Fingerprints: mapSHA256 `9917795ed2474d77d9852822bc037ddc203085624d70978a5b3a93e
       - [Live words / Live-Transkript](#node-meetingLiveWords) `meetingLiveWords` (setting)
         - [Apple](#node-meetingLiveWords-apple) `meetingLiveWords.apple` (choice)
         - [Universal / Universal](#node-meetingLiveWords-universal) `meetingLiveWords.universal` (choice)
+      - [Transcript engine / Transkript-Engine](#node-meetingTranscriptEngine) `meetingTranscriptEngine` (setting)
+        - [Parakeet / Parakeet](#node-meetingTranscriptEngine-parakeet) `meetingTranscriptEngine.parakeet` (choice)
+        - [Whisper Large v3 Turbo / Whisper Large v3 Turbo](#node-meetingTranscriptEngine-whisper) `meetingTranscriptEngine.whisper` (choice)
       - [Transcript language / Transkriptsprache](#node-meetingTranscriptLanguage) `meetingTranscriptLanguage` (setting)
     - [Call Apps / Anruf-Apps](#node-meetings-tab-callApps) `meetings.tab.callApps` (feature)
       - [Notice calls in / Anrufe erkennen in](#node-meetingCallApps) `meetingCallApps` (setting)
@@ -2577,6 +2580,28 @@ Fingerprints: mapSHA256 `9917795ed2474d77d9852822bc037ddc203085624d70978a5b3a93e
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: live meeting transcript, real-time meeting text<br>phrases: change meeting live transcript language; choose engine for live meeting transcription |
 | Search (de) | phrases: ändere die Sprache für das Live-Transkript während der Meetingaufnahme; wähle die Engine für das Live-Transkript im Meeting; ändere die Sprache der Mitschrift während des Meetings |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-meetingTranscriptEngine"></a>
+
+### Transcript engine / Transkript-Engine (`meetingTranscriptEngine`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | setting |
+| Parent | [`meetings.tab.models`](#node-meetings-tab-models) |
+| Title source | catalog key `Transcript engine` |
+| Description | Chooses the engine that writes the full transcript after a meeting. / Wählt die Engine, die nach einem Meeting das vollständige Transkript erstellt. |
+| Description source | catalog key `Chooses the engine that writes the full transcript after a meeting.` |
+| Destination | `meetings` › `models` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`meetingTranscriptEngine`](#node-meetingTranscriptEngine) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | words: meeting transcript engine<br>phrases: choose model for the full meeting transcript; change the engine for full meeting transcripts |
+| Search (de) | phrases: Modell für das vollständige Meetingtranskript auswählen; Engine für die Transkription nach dem Meeting ändern |
 | Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingTranscriptLanguage"></a>
@@ -5093,6 +5118,48 @@ Fingerprints: mapSHA256 `9917795ed2474d77d9852822bc037ddc203085624d70978a5b3a93e
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: use Universal for live meeting transcription |
 | Search (de) | phrases: nutze Universal für das Live-Transkript im Meeting |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-meetingTranscriptEngine-parakeet"></a>
+
+### Parakeet / Parakeet (`meetingTranscriptEngine.parakeet`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | choice |
+| Parent | [`meetingTranscriptEngine`](#node-meetingTranscriptEngine) |
+| Title source | catalog key `Parakeet` |
+| Description | none |
+| Destination | `meetings` › `models` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`meetingTranscriptEngine`](#node-meetingTranscriptEngine) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | phrases: use Parakeet for meeting transcripts |
+| Search (de) | phrases: Parakeet für das Transkript nach dem Meeting nutzen |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-meetingTranscriptEngine-whisper"></a>
+
+### Whisper Large v3 Turbo / Whisper Large v3 Turbo (`meetingTranscriptEngine.whisper`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | choice |
+| Parent | [`meetingTranscriptEngine`](#node-meetingTranscriptEngine) |
+| Title source | catalog key `Whisper Large v3 Turbo` |
+| Description | none |
+| Destination | `meetings` › `models` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`meetingTranscriptEngine`](#node-meetingTranscriptEngine) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | phrases: use Whisper for meeting transcripts |
+| Search (de) | phrases: Whisper für das Transkript nach dem Meeting nutzen |
 | Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-unloadModel-never"></a>

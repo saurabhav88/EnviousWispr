@@ -184,17 +184,35 @@ struct MeetingHistoryDetailView: View {
     let offered = MeetingsPresentation.actions(
       record, isActive: isActive(record),
       canTranscribeAgain: canOfferTranscribeAgain(record.id))
+    let engines = meetings.transcribeAgainEngines
+    let title = LocalizedStringResource(
+      "Transcribe again",
+      comment: "EnviousMeet: makes the meeting's transcript again from its kept audio.")
     return HStack(spacing: 10) {
-      SettingsActionButton(
-        title: LocalizedStringResource(
-          "Transcribe again",
-          comment: "EnviousMeet: makes the meeting's transcript again from its kept audio."),
-        isEnabled: offered.transcribeAgain, systemImage: "arrow.clockwise"
-      ) {
-        // #3973 C2: Parakeet is the only meeting engine until C3 adds the engine menu.
-        run { meetings in await meetings.transcribeAgain(meetingID: meetingID, engine: .parakeet) }
+      // #3973 C3: one ready engine is a button; two are a menu, the Transcript engine setting's
+      // first.
+      if engines.count > 1 {
+        Menu {
+          ForEach(engines, id: \.self) { engine in
+            Button(MeetingTranscriptEngineRow.title(of: engine)) {
+              run { meetings in await meetings.transcribeAgain(meetingID: meetingID, engine: engine) }
+            }
+          }
+        } label: {
+          Label(String(localized: title), systemImage: "arrow.clockwise")
+        }
+        .fixedSize()
+        .disabled(!offered.transcribeAgain)
+        .accessibilityIdentifier("meetings.detail.retry")
+      } else {
+        SettingsActionButton(
+          title: title, isEnabled: offered.transcribeAgain, systemImage: "arrow.clockwise"
+        ) {
+          let engine = engines.first ?? .parakeet
+          run { meetings in await meetings.transcribeAgain(meetingID: meetingID, engine: engine) }
+        }
+        .accessibilityIdentifier("meetings.detail.retry")
       }
-      .accessibilityIdentifier("meetings.detail.retry")
       SettingsActionButton(
         title: LocalizedStringResource(
           "Delete audio",
