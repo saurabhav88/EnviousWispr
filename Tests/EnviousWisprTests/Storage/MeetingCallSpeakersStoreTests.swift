@@ -96,6 +96,8 @@ struct MeetingCallSpeakersStoreTests {
       ("not json", .invalid),
       (#"{"formatVersion":3}"#, .newerFormat),
       (#"{"formatVersion":2,"segments":[{"startMs":0},{"startMs":10}]}"#, .invalid),
+      (#"{"formatVersion":2}"#, .invalid),
+      (#"{"formatVersion":2,"segments":null}"#, .invalid),
       (#"{"formatVersion":1,"lag":{"milliseconds":-9223372036854775808}}"#, .invalid),
       (#"{"formatVersion":1,"observations":[{"observationMs":-1,"speaking":[]}]}"#, .invalid),
       (
@@ -218,6 +220,14 @@ struct MeetingCallSpeakersStoreTests {
       try store.saveCallSpeakers(Self.log(), meeting: record.id)
     }
     #expect(try Data(contentsOf: url) == bytes)
+  }
+
+  @Test("a format-2 file with an explicit empty segment list is a recording that read no call")
+  func emptySegments() throws {
+    let (store, record) = try makeMeeting()
+    try writeRaw(#"{"formatVersion":2,"segments":[]}"#, meeting: record.id, in: store)
+    #expect(
+      store.loadCallSpeakers(meeting: record.id) == .usable(CallSpeakerLog(rules: nil, segments: [])))
   }
 
   @Test("a format-1 file is replaced by a format-2 save")

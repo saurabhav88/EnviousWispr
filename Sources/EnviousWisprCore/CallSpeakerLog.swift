@@ -369,7 +369,8 @@ extension CallSpeakerLog: Codable {
             [CallSpeakerObservation].self, forKey: .observations) ?? [])
       ]
     } else {
-      segments = try container.decodeIfPresent([CallSpeakerSegment].self, forKey: .segments) ?? []
+      // Required: a missing or null list is damage, never a recording that read no call.
+      segments = try container.decode([CallSpeakerSegment].self, forKey: .segments)
     }
     if let problem = shapeProblem { throw DecodeError.invalid(problem) }
   }

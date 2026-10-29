@@ -103,6 +103,43 @@ struct MeetingSpeakerNamerTests {
     #expect(result.outcome == .named)
   }
 
+  @Test("a lag never carries a vote out of its segment, either way, or into a gap")
+  func lagStaysInSegment() {
+    let turns = [Self.turn(Self.a, 0, 5_000), Self.turn(Self.b, 5_000, 10_000)]
+    let eligible = Self.eligibility([Self.a, Self.b])
+    // Observed just after the change at 5 s with +500 ms lag: the voice would be in A's call.
+    let late = CallSpeakerLog(
+      rules: nil,
+      segments: [
+        Self.segment(0, 5_000, [], roster: ["Alex Rivera"]),
+        Self.segment(
+          5_000, nil, Self.votes("Priya Shah", from: 5_000, count: 5), roster: ["Priya Shah"],
+          lag: 500),
+      ])
+    #expect(propose(turns, eligible, late).proposals[Self.a] == nil)
+    // Observed just before the change with -500 ms lag: the voice would be in B's call.
+    let early = CallSpeakerLog(
+      rules: nil,
+      segments: [
+        Self.segment(
+          0, 5_000, Self.votes("Alex Rivera", from: 4_600, count: 5), roster: ["Alex Rivera"],
+          lag: -500),
+        Self.segment(5_000, nil, [], roster: ["Priya Shah"]),
+      ])
+    #expect(propose(turns, eligible, early).proposals[Self.b] == nil)
+    // A segment ending at 3 s with -500 ms lag: the voice would be in the gap after it.
+    let gap = CallSpeakerLog(
+      rules: nil,
+      segments: [
+        Self.segment(
+          0, 3_000, Self.votes("Alex Rivera", from: 2_600, count: 5), roster: ["Alex Rivera"],
+          lag: -500)
+      ])
+    #expect(
+      propose([Self.turn(Self.a, 3_000, 5_000)], Self.eligibility([Self.a]), gap).proposals
+        .isEmpty)
+  }
+
   @Test("a name one segment shows for two people is never named from another segment")
   func sharedInAnySegment() {
     let turns = [Self.turn(Self.a, 0, 10_000)]
