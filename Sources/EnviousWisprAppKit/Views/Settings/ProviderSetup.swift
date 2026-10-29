@@ -246,8 +246,11 @@ final class ProviderSetupModel {
   @ObservationIgnored private var keyEdits: [LLMProvider: UInt64] = [:]
   @ObservationIgnored private var keyPresentation: UInt64 = 0
   @ObservationIgnored private var latestKeyMutation: UUID?
-  private var pendingKeyMutations: Set<UUID> = []
+  private var pendingKeyMutations: [UUID: LLMProvider] = [:]
   var hasPendingKeyMutation: Bool { pendingKeyMutations.isEmpty == false }
+  func hasPendingKeyMutation(for provider: LLMProvider) -> Bool {
+    pendingKeyMutations.values.contains(provider)
+  }
   @ObservationIgnored var keyReadTask: Task<Void, Never>?
   @ObservationIgnored var keyReadID: UUID?
   var hasCompletedKeyRead = false
@@ -261,11 +264,23 @@ final class ProviderSetupModel {
   func beginKeyMutation(for provider: LLMProvider) -> KeyOperation {
     let operation = KeyOperation(id: UUID(), provider: provider,
       edit: keyEditRevision(provider), presentation: keyPresentation)
-    pendingKeyMutations.insert(operation.id)
+    pendingKeyMutations[operation.id] = provider
     latestKeyMutation = operation.id
     return operation
   }
-  func endKeyMutation(_ operation: KeyOperation) { pendingKeyMutations.remove(operation.id) }
+  func endKeyMutation(_ operation: KeyOperation) { pendingKeyMutations[operation.id] = nil }
+  /// Hydration advances the existing edit identity but is not user typing that dismisses
+  /// an action failure. In particular, another provider's read must not hide that failure.
+  func setHydratedKey(_ value: String, for provider: LLMProvider) {
+    let status = keyStoreStatus
+    defer { keyStoreStatus = status }
+    switch provider {
+    case .openAI: openAIKey = value
+    case .gemini: geminiKey = value
+    case .claude: claudeKey = value
+    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: break
+    }
+  }
   func keyResultIsVisible(_ operation: KeyOperation) -> Bool {
     latestKeyMutation == operation.id && keyPresentation == operation.presentation
       && keyEditRevision(operation.provider) == operation.edit
@@ -476,8 +491,10 @@ enum ProviderSetupKeys {
     let readID = UUID()
     model.keyReadID = readID
     model.hasCompletedKeyRead = false
-    let edits = Dictionary(uniqueKeysWithValues: CredentialProvider.allCases.map {
-      ($0.llmProvider, model.keyEditRevision($0.llmProvider))
+    let inputs = Dictionary(uniqueKeysWithValues: CredentialProvider.allCases.map {
+      let provider = $0.llmProvider
+      return (provider, (edit: model.keyEditRevision(provider),
+        pending: model.hasPendingKeyMutation(for: provider)))
     })
     let turn = access.reserve()
     let task = Task {
@@ -502,18 +519,20 @@ enum ProviderSetupKeys {
           presence.recordRead(.from(flag), for: provider, readAt: readAt)
           guard model.keyReadID == readID else { continue }
           let mayReplaceDraft = preserveDrafts == false
-            && model.keyEditRevision(provider) == edits[provider]
+            && inputs[provider]?.pending == false
+            && model.hasPendingKeyMutation(for: provider) == false
+            && model.keyEditRevision(provider) == inputs[provider]?.edit
           switch provider {
           case .openAI:
-            if mayReplaceDraft { model.openAIKey = value }
+            if mayReplaceDraft { model.setHydratedKey(value, for: provider) }
             model.openAIKeySaved = flag
             model.openAIKeyPersistedDigest = ProviderSetupModel.digest(value)
           case .gemini:
-            if mayReplaceDraft { model.geminiKey = value }
+            if mayReplaceDraft { model.setHydratedKey(value, for: provider) }
             model.geminiKeySaved = flag
             model.geminiKeyPersistedDigest = ProviderSetupModel.digest(value)
           case .claude:
-            if mayReplaceDraft { model.claudeKey = value }
+            if mayReplaceDraft { model.setHydratedKey(value, for: provider) }
             model.claudeKeySaved = flag
             model.claudeKeyPersistedDigest = ProviderSetupModel.digest(value)
           case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: break

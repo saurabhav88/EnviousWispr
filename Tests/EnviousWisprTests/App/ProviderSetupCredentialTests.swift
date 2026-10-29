@@ -369,6 +369,83 @@ struct ProviderSetupKeyActionTests {
     #expect(owners.presence.state(for: .openAI) == (cleared ? .absent : .present))
   }
 
+  @Test("saved-key hydration preserves admitted action intent", arguments: [false, true], [false, true])
+  func hydrationPreservesAdmittedAction(clearing: Bool, readFirst: Bool) async throws {
+    for importing in [false, true] {
+      for failing in [false, true] {
+        let surface: ProviderSetupSurface = importing ? .fileImport : .dictation
+        let label = "import=\(importing) clear=\(clearing) readFirst=\(readFirst) failing=\(failing)"
+        let pause: CredentialStoreOperation = readFirst ? .read : (clearing ? .delete : .store)
+        let storage = ThreadRecordingCredentialStore(pausing: pause, failing: failing)
+        try storage.seed("stored-A", key: KeychainManager.openAIKeyID)
+        try storage.seed("unrelated-C", key: KeychainManager.geminiKeyID)
+        let owners = Self.owners(storageOverride: storage, surface: surface)
+        owners.settings.llmProvider = .openAI
+        if importing { owners.settings.fileImportLLMProvider = .openAI }
+        let model = ProviderSetupModel()
+        model.openAIKey = "draft-B"
+        model.hasCompletedKeyRead = true
+        if clearing {
+          model.setKeySaved(true, for: .openAI, persistedValue: "stored-A")
+          owners.presence.recordRead(.present, for: .openAI)
+        }
+        var revealReset = false
+        var clearResult: Bool?
+        defer { storage.release() }
+        let startMutation: @MainActor () throws -> Task<Void, Never> = {
+          if clearing {
+            let task = ProviderSetupKeyActions.clear(
+              provider: .openAI, model: model, owners: owners,
+              onCleared: { revealReset = true })
+            return Task { @MainActor in clearResult = await task.value }
+          }
+          return try #require(ProviderSetupKeyActions.save(
+            "draft-B", provider: .openAI, model: model, owners: owners))
+        }
+        let reading: Task<Void, Never>
+        let mutation: Task<Void, Never>
+        if readFirst {
+          reading = ProviderSetupKeys.load(into: model, using: owners.keychainManager,
+            presence: owners.presence, access: owners.access)
+          try #require(await storage.entered.wait(), "\(label): read never entered")
+          mutation = try startMutation()
+        } else {
+          mutation = try startMutation()
+          try #require(await storage.entered.wait(), "\(label): mutation never entered")
+          reading = ProviderSetupKeys.load(into: model, using: owners.keychainManager,
+            presence: owners.presence, access: owners.access)
+        }
+        #expect(model.hasPendingKeyMutation, "\(label): action was not admitted")
+        storage.release()
+        await reading.value
+        await mutation.value
+
+        let stored: String? = failing ? "stored-A" : (clearing ? nil : "draft-B")
+        #expect((try? owners.keychainManager.retrieve(key: KeychainManager.openAIKeyID)) == stored,
+          "\(label): storage outcome")
+        #expect(model.openAIKey == (clearing && !failing ? "" : "draft-B"),
+          "\(label): hydration replaced the accepted draft")
+        #expect(model.openAIKeySaved == (stored != nil), "\(label): saved flag")
+        #expect(model.openAIKeyPersistedDigest == ProviderSetupModel.digest(stored ?? ""),
+          "\(label): persisted digest")
+        #expect(model.geminiKey == "unrelated-C", "\(label): unrelated provider must still hydrate")
+        #expect(model.hasPendingKeyMutation == false, "\(label): action did not settle")
+        if failing {
+          if case .failed = model.keyStoreStatus {} else {
+            Issue.record("\(label): storage failure was not visible")
+          }
+        } else if !clearing {
+          #expect(model.keyStoreStatus == .saved, "\(label): current Save badge was suppressed")
+          #expect(model.openAIKeyEdited == false, "\(label): saved draft appears unsaved")
+        }
+        if clearing {
+          #expect(clearResult == !failing, "\(label): visible Clear outcome")
+          #expect(revealReset == !failing, "\(label): current Clear reveal reset")
+        }
+      }
+    }
+  }
+
   private static func keyID(_ provider: LLMProvider) -> String {
     switch provider {
     case .openAI: return KeychainManager.openAIKeyID
