@@ -51,6 +51,14 @@ import SwiftUI
 enum ProviderSetupSurface {
   case dictation
   case fileImport
+
+  @MainActor
+  func selectionRevision(in settings: SettingsManager) -> UInt64 {
+    switch self {
+    case .dictation: return settings.dictationProviderSelectionRevision
+    case .fileImport: return settings.importProviderSelectionRevision
+    }
+  }
 }
 
 /// Whether leaving Ollama on ONE surface may tear down the Ollama work both surfaces share:
@@ -91,55 +99,127 @@ enum KeyStoreStatus: Equatable {
 /// the view's own, so `clear` returns whether to hide the key again.
 @MainActor
 enum ProviderSetupKeyActions {
+  @MainActor
   struct Owners {
     let keychainManager: KeychainManager
     let presence: SavedKeyPresence
     let discovery: LLMModelDiscoveryCoordinator
     let settings: SettingsManager
     let surface: ProviderSetupSurface
+    var emit: CredentialWriter.Emit? = nil
+    var access: CredentialAccessLane = .live
   }
 
-  /// Save `key` for `provider`. Returns the key check it started, or nil when the store failed.
-  /// The writer stores the key, records it, emits `api_key.changed` and starts the key check
-  /// (#3765); this action owns only what the screen shows.
+  /// Capture input and identity synchronously, then own the complete asynchronous action.
+  /// The returned handle includes validation, but the editor's pending mutation ends at
+  /// storage completion. A disappearing view never cancels the committed storage effects.
   @discardableResult
   static func save(
     _ key: String, provider: LLMProvider, model: ProviderSetupModel, owners: Owners
   ) -> Task<Void, Never>? {
-    // The row is drawn only for a cloud provider (`descriptor.mapID`).
-    guard let credential = CredentialProvider(provider) else { return nil }
-    switch writer(owners).save(key, for: credential, settings: owners.settings, surface: owners.surface) {
-    case .failed(let error):
-      model.keyStoreStatus = .failed(AIPolishKeychainFailureMessage.text(for: error, action: .save))
-      return nil
-    case .stored(let validation):
-      model.showSavedBadge()
-      model.setKeySaved(!key.isEmpty, for: provider)
-      return validation
+    guard let credential = CredentialProvider(provider), model.hasPendingKeyMutation == false else { return nil }
+    let operation = model.beginKeyMutation(for: provider)
+    let selection = selectedProvider(owners)
+    let selectionRevision = owners.surface.selectionRevision(in: owners.settings)
+    let importOverride = owners.settings.fileImportLLMProvider
+    let writer = writer(owners)
+    let admission = writer.admit(credential, settings: owners.settings, surface: owners.surface)
+    return Task {
+      let outcome = await writer.save(
+        key, for: credential, settings: owners.settings, surface: owners.surface, admission: admission)
+      model.endKeyMutation(operation)
+      switch outcome {
+      case .failed(let error, let revision):
+        if owners.presence.revision(for: provider) == revision,
+          current(operation, model: model, owners: owners, selection: selection, importOverride: importOverride, selectionRevision: selectionRevision) {
+          model.keyStoreStatus = .failed(AIPolishKeychainFailureMessage.text(for: error, action: .save))
+        }
+      case .stored(let validation, let revision):
+        if owners.presence.revision(for: provider) == revision {
+          model.setKeySaved(!key.isEmpty, for: provider, persistedValue: key)
+          if current(operation, model: model, owners: owners, selection: selection, importOverride: importOverride, selectionRevision: selectionRevision) {
+            model.showSavedBadge()
+          }
+        } else {
+          ProviderSetupKeys.load(into: model, using: owners.keychainManager,
+            presence: owners.presence, access: owners.access, preserveDrafts: true)
+        }
+        await validation.value
+      }
     }
   }
 
-  /// Clear `provider`'s key. True when it cleared, so the view hides the key field's text.
+  /// `onCleared` updates the view's reveal state inside this same currentness check. An
+  /// extra await/hop between the check and the reveal write would reopen the stale window.
   @discardableResult
-  static func clear(provider: LLMProvider, model: ProviderSetupModel, owners: Owners) -> Bool {
-    guard let credential = CredentialProvider(provider) else { return false }
-    switch writer(owners).clear(credential) {
-    case .failed(let error):
-      model.keyStoreStatus = .failed(AIPolishKeychainFailureMessage.text(for: error, action: .clear))
-      return false
-    case .cleared:
-      model.keyStoreStatus = .none
-      model.clearDraft(for: provider)
-      model.setKeySaved(false, for: provider)
-      return true
+  static func clear(
+    provider: LLMProvider, model: ProviderSetupModel, owners: Owners,
+    onCleared: @escaping @MainActor () -> Void = {}
+  ) -> Task<Bool, Never> {
+    guard let credential = CredentialProvider(provider), model.hasPendingKeyMutation == false else {
+      return Task { false }
+    }
+    let operation = model.beginKeyMutation(for: provider)
+    let selection = selectedProvider(owners)
+    let selectionRevision = owners.surface.selectionRevision(in: owners.settings)
+    let importOverride = owners.settings.fileImportLLMProvider
+    let writer = writer(owners)
+    let admission = writer.admit(credential, settings: owners.settings, surface: owners.surface)
+    return Task {
+      let outcome = await writer.clear(credential, settings: owners.settings,
+        surface: owners.surface, admission: admission)
+      model.endKeyMutation(operation)
+      switch outcome {
+      case .failed(let error, let revision):
+        if owners.presence.revision(for: provider) == revision,
+          current(operation, model: model, owners: owners, selection: selection, importOverride: importOverride, selectionRevision: selectionRevision) {
+          model.keyStoreStatus = .failed(AIPolishKeychainFailureMessage.text(for: error, action: .clear))
+        }
+        return false
+      case .cleared(let revision):
+        guard owners.presence.revision(for: provider) == revision else {
+          ProviderSetupKeys.load(into: model, using: owners.keychainManager,
+            presence: owners.presence, access: owners.access, preserveDrafts: true)
+          return false
+        }
+        let visible = current(operation, model: model, owners: owners,
+          selection: selection, importOverride: importOverride, selectionRevision: selectionRevision)
+        if visible {
+          model.keyStoreStatus = .none
+          model.clearDraft(for: provider)
+          onCleared()
+        }
+        model.setKeySaved(false, for: provider, persistedValue: "")
+        return visible
+      }
     }
   }
 
-  /// The same writer the dev control door uses.
+  private static func selectedProvider(_ owners: Owners) -> LLMProvider {
+    switch owners.surface {
+    case .dictation: return owners.settings.llmProvider
+    case .fileImport: return owners.settings.effectiveFileImportLLMProvider
+    }
+  }
+
+  private static func current(
+    _ operation: ProviderSetupModel.KeyOperation, model: ProviderSetupModel, owners: Owners,
+    selection: LLMProvider, importOverride: LLMProvider?, selectionRevision: UInt64
+  ) -> Bool {
+    guard model.keyResultIsVisible(operation), selectedProvider(owners) == selection,
+      owners.surface.selectionRevision(in: owners.settings) == selectionRevision else { return false }
+    if case .fileImport = owners.surface {
+      return owners.settings.fileImportLLMProvider == importOverride
+    }
+    return true
+  }
+
   private static func writer(_ owners: Owners) -> CredentialWriter {
-    CredentialWriter(
+    var writer = CredentialWriter(
       keychainManager: owners.keychainManager, presence: owners.presence,
-      discovery: owners.discovery)
+      discovery: owners.discovery, access: owners.access)
+    if let emit = owners.emit { writer.emit = emit }
+    return writer
   }
 }
 
@@ -153,9 +233,52 @@ enum ProviderSetupKeyActions {
 @Observable
 final class ProviderSetupModel {
 
-  var openAIKey: String = ""
-  var geminiKey: String = ""
-  var claudeKey: String = ""
+  var openAIKey: String = "" { didSet { if openAIKey != oldValue { recordKeyEdit(.openAI) } } }
+  var geminiKey: String = "" { didSet { if geminiKey != oldValue { recordKeyEdit(.gemini) } } }
+  var claudeKey: String = "" { didSet { if claudeKey != oldValue { recordKeyEdit(.claude) } } }
+
+  struct KeyOperation {
+    let id: UUID
+    let provider: LLMProvider
+    let edit: UInt64
+    let presentation: UInt64
+  }
+  @ObservationIgnored private var keyEdits: [LLMProvider: UInt64] = [:]
+  @ObservationIgnored private var keyPresentation: UInt64 = 0
+  @ObservationIgnored private var latestKeyMutation: UUID?
+  private var pendingKeyMutations: Set<UUID> = []
+  var hasPendingKeyMutation: Bool { pendingKeyMutations.isEmpty == false }
+  @ObservationIgnored var keyReadTask: Task<Void, Never>?
+  @ObservationIgnored var keyReadID: UUID?
+  var hasCompletedKeyRead = false
+  @ObservationIgnored private var savedBadgeID: UUID?
+
+  func keyEditRevision(_ provider: LLMProvider) -> UInt64 { keyEdits[provider, default: 0] }
+  private func recordKeyEdit(_ provider: LLMProvider) {
+    keyEdits[provider, default: 0] &+= 1
+    if case .failed = keyStoreStatus { keyStoreStatus = .none }
+  }
+  func beginKeyMutation(for provider: LLMProvider) -> KeyOperation {
+    let operation = KeyOperation(id: UUID(), provider: provider,
+      edit: keyEditRevision(provider), presentation: keyPresentation)
+    pendingKeyMutations.insert(operation.id)
+    latestKeyMutation = operation.id
+    return operation
+  }
+  func endKeyMutation(_ operation: KeyOperation) { pendingKeyMutations.remove(operation.id) }
+  func keyResultIsVisible(_ operation: KeyOperation) -> Bool {
+    latestKeyMutation == operation.id && keyPresentation == operation.presentation
+      && keyEditRevision(operation.provider) == operation.edit
+  }
+  func invalidateKeyPresentation(discardRead: Bool = false) {
+    keyPresentation &+= 1
+    keyStoreStatus = .none
+    savedBadgeID = nil
+    if discardRead {
+      keyReadID = nil
+      keyReadTask = nil
+    }
+  }
   /// The API-key Save/Clear outcome the badge shows. Typed so the badge's colour and the
   /// clear-on-typing rule never read the (translated) sentence back (#3142).
   var keyStoreStatus: KeyStoreStatus = .none
@@ -181,17 +304,17 @@ final class ProviderSetupModel {
 
   /// Records the outcome of a Save or a Clear, both of which make the field agree with the
   /// Keychain again, so each also re-takes the persisted digest the import gate compares.
-  func setKeySaved(_ saved: Bool, for provider: LLMProvider) {
+  func setKeySaved(_ saved: Bool, for provider: LLMProvider, persistedValue: String) {
     switch provider {
     case .openAI:
       openAIKeySaved = saved
-      openAIKeyPersistedDigest = ProviderSetupModel.digest(openAIKey)
+      openAIKeyPersistedDigest = ProviderSetupModel.digest(persistedValue)
     case .gemini:
       geminiKeySaved = saved
-      geminiKeyPersistedDigest = ProviderSetupModel.digest(geminiKey)
+      geminiKeyPersistedDigest = ProviderSetupModel.digest(persistedValue)
     case .claude:
       claudeKeySaved = saved
-      claudeKeyPersistedDigest = ProviderSetupModel.digest(claudeKey)
+      claudeKeyPersistedDigest = ProviderSetupModel.digest(persistedValue)
     // #2651: enumerated rather than `default:`. There is no saved-key flag to
     // set for these. A NEW cloud provider on a `default:` arm would save its
     // key and never record that it had, so the missing-key notice would stay
@@ -217,11 +340,16 @@ final class ProviderSetupModel {
   func showSavedBadge(
     wait: @escaping @MainActor () async -> Void = { try? await Task.sleep(for: .seconds(2)) }
   ) -> Task<Void, Never> {
+    let badgeID = UUID()
+    savedBadgeID = badgeID
     keyStoreStatus = .saved
     return Task { [weak self] in
       await wait()
       guard let self else { return }
-      if self.keyStoreStatus == .saved { self.keyStoreStatus = .none }
+      if self.savedBadgeID == badgeID && self.keyStoreStatus == .saved {
+        self.savedBadgeID = nil
+        self.keyStoreStatus = .none
+      }
     }
   }
 
@@ -337,56 +465,68 @@ enum ProviderSetupDownloads {
 /// fail-to-empty convention (unchanged from before #1455).
 @MainActor
 enum ProviderSetupKeys {
-  /// #3438: each read is also published to `presence`, so surfaces outside this editor see
-  /// what the editor just read without a second Keychain read.
+  /// Read snapshots on the same lane as writes. The draft may change while I/O is pending;
+  /// the stored digest and current draft are different facts and must stay distinct.
+  @discardableResult
   static func load(
     into model: ProviderSetupModel, using keychainManager: KeychainManager,
-    presence: SavedKeyPresence
-  ) {
-    // Every arm below writes the field from the Keychain or empties it, so what is on screen
-    // afterwards IS the persisted value; the digests are taken at the end, once, which also
-    // covers a THROWN read that emptied the field.
-    defer {
-      presence.recordRead(.from(model.openAIKeySaved), for: .openAI)
-      presence.recordRead(.from(model.geminiKeySaved), for: .gemini)
-      presence.recordRead(.from(model.claudeKeySaved), for: .claude)
-      model.openAIKeyPersistedDigest = ProviderSetupModel.digest(model.openAIKey)
-      model.geminiKeyPersistedDigest = ProviderSetupModel.digest(model.geminiKey)
-      model.claudeKeyPersistedDigest = ProviderSetupModel.digest(model.claudeKey)
+    presence: SavedKeyPresence, access: CredentialAccessLane = .live,
+    preserveDrafts: Bool = false
+  ) -> Task<Void, Never> {
+    let readID = UUID()
+    model.keyReadID = readID
+    model.hasCompletedKeyRead = false
+    let edits = Dictionary(uniqueKeysWithValues: CredentialProvider.allCases.map {
+      ($0.llmProvider, model.keyEditRevision($0.llmProvider))
+    })
+    let turn = access.reserve()
+    let task = Task {
+      await access.run(turn: turn) {
+        for credential in CredentialProvider.allCases {
+          let provider = credential.llmProvider
+          let revision = presence.revision(for: provider)
+          let readAt = ContinuousClock.now
+          let result = await CredentialIO.perform(.read(credential.keyID), using: keychainManager)
+          guard presence.revision(for: provider) == revision else { continue }
+          let value: String
+          let flag: Bool?
+          switch result {
+          case .success(let stored): value = stored ?? ""; flag = !value.isEmpty
+          case .failure(let error):
+            value = ""
+            if let failure = error as? KeyStoreError,
+              case .retrieveFailed(let status) = failure, status == errSecItemNotFound {
+              flag = false
+            } else { flag = nil }
+          }
+          presence.recordRead(.from(flag), for: provider, readAt: readAt)
+          guard model.keyReadID == readID else { continue }
+          let mayReplaceDraft = preserveDrafts == false
+            && model.keyEditRevision(provider) == edits[provider]
+          switch provider {
+          case .openAI:
+            if mayReplaceDraft { model.openAIKey = value }
+            model.openAIKeySaved = flag
+            model.openAIKeyPersistedDigest = ProviderSetupModel.digest(value)
+          case .gemini:
+            if mayReplaceDraft { model.geminiKey = value }
+            model.geminiKeySaved = flag
+            model.geminiKeyPersistedDigest = ProviderSetupModel.digest(value)
+          case .claude:
+            if mayReplaceDraft { model.claudeKey = value }
+            model.claudeKeySaved = flag
+            model.claudeKeyPersistedDigest = ProviderSetupModel.digest(value)
+          case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: break
+          }
+        }
+        if model.keyReadID == readID {
+          model.hasCompletedKeyRead = true
+          model.keyReadTask = nil
+        }
+      }
     }
-    do {
-      let stored = try keychainManager.retrieve(key: KeychainManager.openAIKeyID)
-      model.openAIKey = stored
-      model.openAIKeySaved = !stored.isEmpty
-    } catch KeyStoreError.retrieveFailed(let status) where status == errSecItemNotFound {
-      model.openAIKey = ""
-      model.openAIKeySaved = false
-    } catch {
-      model.openAIKey = ""
-      model.openAIKeySaved = nil
-    }
-    do {
-      let stored = try keychainManager.retrieve(key: KeychainManager.geminiKeyID)
-      model.geminiKey = stored
-      model.geminiKeySaved = !stored.isEmpty
-    } catch KeyStoreError.retrieveFailed(let status) where status == errSecItemNotFound {
-      model.geminiKey = ""
-      model.geminiKeySaved = false
-    } catch {
-      model.geminiKey = ""
-      model.geminiKeySaved = nil
-    }
-    do {
-      let stored = try keychainManager.retrieve(key: KeychainManager.claudeKeyID)
-      model.claudeKey = stored
-      model.claudeKeySaved = !stored.isEmpty
-    } catch KeyStoreError.retrieveFailed(let status) where status == errSecItemNotFound {
-      model.claudeKey = ""
-      model.claudeKeySaved = false
-    } catch {
-      model.claudeKey = ""
-      model.claudeKeySaved = nil
-    }
+    model.keyReadTask = task
+    return task
   }
 }
 
@@ -398,6 +538,7 @@ struct ProviderSetupSection: View {
   /// Which screen's choice this instance edits. Defaults to dictation so every existing
   /// call site keeps its behaviour without restating it.
   var surface: ProviderSetupSurface = .dictation
+  var credentialEvents: CredentialWriter.Emit? = nil
 
   @Environment(SettingsManager.self) private var settings
   @Environment(SetupCoordinator.self) private var setup
@@ -680,7 +821,7 @@ private var cloudRows: some View {
   // here would be a false accusation against a user whose key is fine, so this states
   // the real situation and offers the same read again. Both surfaces get it, because
   // the Keychain is shared and so is the failure.
-  if savedKeyIsUnknownForCurrentProvider {
+  if savedKeyIsUnknownForCurrentProvider && model.hasCompletedKeyRead {
     PolishRow(
       notInSettingsMap: .savedKeyRetry,
       icon: "questionmark.circle", iconTint: .stWarning,
@@ -996,7 +1137,7 @@ private var apiKeyRow: some View {
             keyField(descriptor)
             SettingsActionButton(
               title: SettingsItemCopy.AIPolish.keySave,
-              isEnabled: !activeKeyBinding.wrappedValue.isEmpty && keyDraftIsEdited,
+              isEnabled: !activeKeyBinding.wrappedValue.isEmpty && keyDraftIsEdited && model.hasPendingKeyMutation == false,
               emphasis: .filled, size: .medium
             ) {
               ProviderSetupKeyActions.save(
@@ -1009,13 +1150,11 @@ private var apiKeyRow: some View {
             if savedKeyIsPresentForCurrentProvider {
               SettingsActionButton(
                 title: SettingsItemCopy.AIPolish.keyClear,
-                isEnabled: true, emphasis: .destructive, size: .medium
+                isEnabled: model.hasPendingKeyMutation == false, emphasis: .destructive, size: .medium
               ) {
-                if ProviderSetupKeyActions.clear(
-                  provider: provider, model: model, owners: keyActionOwners)
-                {
-                  revealsKey = false
-                }
+                ProviderSetupKeyActions.clear(
+                  provider: provider, model: model, owners: keyActionOwners,
+                  onCleared: { revealsKey = false })
               }
               .settingsMapRegistration(.apiKeyClear)
             }
@@ -2344,7 +2483,7 @@ private var ollamaBrowseModelsCard: some View {
   private var keyActionOwners: ProviderSetupKeyActions.Owners {
     ProviderSetupKeyActions.Owners(
       keychainManager: keychainManager, presence: savedKeyPresence, discovery: llmDiscovery,
-      settings: settings, surface: surface)
+      settings: settings, surface: surface, emit: credentialEvents)
   }
 
   /// Clears any failed Save/Clear badge the moment the user resumes
@@ -2659,7 +2798,11 @@ struct ProviderSetupLifecycle: ViewModifier {
       }
     }
     .onDisappear {
+      model.invalidateKeyPresentation(discardRead: true)
       setup.stopOllamaStatusWatch()
+    }
+    .onChange(of: surface.selectionRevision(in: settings)) { _, _ in
+      model.invalidateKeyPresentation()
     }
     .onChange(of: provider) { _, newProvider in
       // No `llmDiscovery.reset()` here (#2772). The coordinator is shared, and resetting it

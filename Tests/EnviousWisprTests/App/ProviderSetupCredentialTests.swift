@@ -29,19 +29,24 @@ struct ProviderSetupKeyActionTests {
     var providers: [LLMProvider] = []
   }
 
-  private static func owners(failing: Bool = false, asked: Asked = Asked())
+  private static func owners(
+    failing: Bool = false, asked: Asked = Asked(), storageOverride: (any LegacyKeyFileStorage)? = nil,
+    surface: ProviderSetupSurface = .dictation
+  )
     -> ProviderSetupKeyActions.Owners
   {
     let folder = TestTemporaryDirectory.url
       .appending(path: "ew-tests-key-actions-\(UUID().uuidString)")
     let storage: any LegacyKeyFileStorage =
-      failing ? FailingStorage() : FileLegacyKeyStore(storageDirectory: folder)
+      storageOverride ?? (failing ? FailingStorage() : FileLegacyKeyStore(storageDirectory: folder))
     let keychain = KeychainManager(backend: .legacyFiles, legacyStore: storage)
     let presence = SavedKeyPresence()
+    let access = CredentialAccessLane()
     let discovery = LLMModelDiscoveryCoordinator(
       keychainManager: keychain,
       cacheDefaults: TestDefaults.suite("ew.tests.key-actions.cache.\(UUID().uuidString)")!,
-      savedKeyPresence: presence,
+      savedKeyPresence: presence, credentialAccess: access,
+      validationEmitter: { _, _, _, _, _ in },
       discoverModels: { provider, _ in
         asked.providers.append(provider)
         return [LLMModelInfo(
@@ -51,7 +56,7 @@ struct ProviderSetupKeyActionTests {
       keychainManager: keychain, presence: presence, discovery: discovery,
       settings: SettingsManager(
         defaults: TestDefaults.suite("ew.tests.key-actions.\(UUID().uuidString)")!),
-      surface: .dictation)
+      surface: surface, emit: { _, _, _ in }, access: access)
   }
 
   private static let providers: [LLMProvider] = [.openAI, .gemini, .claude]
@@ -97,18 +102,18 @@ struct ProviderSetupKeyActionTests {
       Self.setDraft(model, provider, "synthetic-\(UUID().uuidString)")
       let check = ProviderSetupKeyActions.save(
         Self.draft(model, provider), provider: provider, model: model, owners: owners)
+      try await #require(check, "\(provider): no save operation started").value
       #expect(model.keyStoreStatus == .saved, "\(provider)")
       #expect(Self.saved(model, provider) == true, "\(provider)")
       #expect(Self.edited(model, provider) == false, "\(provider): the field now matches the store")
       #expect(owners.presence.state(for: provider) == .present)
-      await try #require(check, "\(provider): no key check started").value
       #expect(asked.providers == [provider])
       #expect(try owners.keychainManager.retrieve(key: Self.keyID(provider)) == Self.draft(model, provider))
     }
   }
 
   @Test("Save failure: the failure sentence, the draft and saved flag kept, the key unknown")
-  func saveFailure() throws {
+  func saveFailure() async throws {
     for provider in Self.providers {
       let asked = Asked()
       let owners = Self.owners(failing: true, asked: asked)
@@ -116,7 +121,7 @@ struct ProviderSetupKeyActionTests {
       Self.setDraft(model, provider, "synthetic")
       let check = ProviderSetupKeyActions.save(
         "synthetic", provider: provider, model: model, owners: owners)
-      #expect(check == nil)
+      try await #require(check, "the save operation was not admitted").value
       guard case .failed(let sentence) = model.keyStoreStatus else {
         Issue.record("\(provider): \(model.keyStoreStatus)")
         continue
@@ -137,10 +142,10 @@ struct ProviderSetupKeyActionTests {
       let owners = Self.owners()
       let model = ProviderSetupModel()
       Self.setDraft(model, provider, "synthetic")
-      await try #require(ProviderSetupKeyActions.save(
+      try await #require(ProviderSetupKeyActions.save(
         "synthetic", provider: provider, model: model, owners: owners)).value
       model.keyStoreStatus = .failed("an older failure")
-      let cleared = ProviderSetupKeyActions.clear(provider: provider, model: model, owners: owners)
+      let cleared = await ProviderSetupKeyActions.clear(provider: provider, model: model, owners: owners).value
       #expect(cleared, "\(provider): the view hides the key again")
       #expect(model.keyStoreStatus == .none)
       #expect(Self.draft(model, provider) == "")
@@ -152,13 +157,13 @@ struct ProviderSetupKeyActionTests {
   }
 
   @Test("Clear failure: the failure sentence, the field and saved flag kept, the key unknown")
-  func clearFailure() throws {
+  func clearFailure() async throws {
     for provider in Self.providers {
       let owners = Self.owners(failing: true)
       let model = ProviderSetupModel()
       Self.setDraft(model, provider, "synthetic")
-      model.setKeySaved(true, for: provider)
-      let cleared = ProviderSetupKeyActions.clear(provider: provider, model: model, owners: owners)
+      model.setKeySaved(true, for: provider, persistedValue: "synthetic")
+      let cleared = await ProviderSetupKeyActions.clear(provider: provider, model: model, owners: owners).value
       #expect(cleared == false, "\(provider): the reveal state stays")
       guard case .failed(let sentence) = model.keyStoreStatus else {
         Issue.record("\(provider): \(model.keyStoreStatus)")
@@ -173,14 +178,195 @@ struct ProviderSetupKeyActionTests {
   }
 
   @Test("a provider with no key row does nothing")
-  func noKeyRowProviders() {
+  func noKeyRowProviders() async {
     let owners = Self.owners()
     let model = ProviderSetupModel()
     for provider in LLMProvider.allCases where !Self.providers.contains(provider) {
       #expect(ProviderSetupKeyActions.save("x", provider: provider, model: model, owners: owners) == nil)
-      #expect(ProviderSetupKeyActions.clear(provider: provider, model: model, owners: owners) == false)
+      #expect(await ProviderSetupKeyActions.clear(provider: provider, model: model, owners: owners).value == false)
     }
     #expect(model.keyStoreStatus == .none)
+  }
+
+  @Test("a late Save keeps a newer draft and records the actual stored digest", arguments: [false, true])
+  func savePreservesEdits(returnToOriginal: Bool) async throws {
+    let storage = ThreadRecordingCredentialStore(pausing: .store)
+    let owners = Self.owners(storageOverride: storage)
+    owners.settings.llmProvider = .openAI
+    let model = ProviderSetupModel()
+    model.openAIKey = "saved-A"
+    defer { storage.release() }
+    let saving = try #require(ProviderSetupKeyActions.save(
+      "saved-A", provider: .openAI, model: model, owners: owners))
+    try #require(await storage.entered.wait())
+    #expect(model.hasPendingKeyMutation == true)
+    #expect(model.keyStoreStatus == .none)
+    #expect(ProviderSetupKeyActions.save("duplicate", provider: .openAI, model: model, owners: owners) == nil)
+    #expect(await ProviderSetupKeyActions.clear(provider: .openAI, model: model, owners: owners).value == false)
+    model.openAIKey = "new-B"
+    if returnToOriginal { model.openAIKey = "saved-A" }
+    storage.release()
+    await saving.value
+    #expect(model.openAIKey == (returnToOriginal ? "saved-A" : "new-B"))
+    #expect(model.openAIKeyPersistedDigest == ProviderSetupModel.digest("saved-A"))
+    #expect(model.openAIKeySaved == true)
+    #expect(model.openAIKeyEdited == (returnToOriginal == false))
+    #expect(model.keyStoreStatus == .none)
+    #expect(model.hasPendingKeyMutation == false)
+    #expect(try owners.keychainManager.retrieve(key: KeychainManager.openAIKeyID) == "saved-A")
+  }
+
+  @Test("a late Clear preserves edits and never hides the newer field", arguments: [false, true])
+  func clearPreservesNewerPresentation(changeProvider: Bool) async throws {
+    let storage = ThreadRecordingCredentialStore(pausing: .delete)
+    try storage.seed("saved-A", key: KeychainManager.openAIKeyID)
+    let owners = Self.owners(storageOverride: storage)
+    owners.settings.llmProvider = .openAI
+    owners.presence.recordSaved(.openAI)
+    let model = ProviderSetupModel()
+    model.openAIKey = "saved-A"
+    model.setKeySaved(true, for: .openAI, persistedValue: "saved-A")
+    var hidden = false
+    defer { storage.release() }
+    let clearing = ProviderSetupKeyActions.clear(provider: .openAI, model: model, owners: owners,
+      onCleared: { hidden = true })
+    try #require(await storage.entered.wait())
+    if changeProvider {
+      owners.settings.llmProvider = .gemini
+      model.invalidateKeyPresentation()
+      model.geminiKey = "new-gemini"
+    } else { model.openAIKey = "new-B" }
+    storage.release()
+    #expect(await clearing.value == false)
+    #expect(hidden == false)
+    #expect(model.openAIKey == (changeProvider ? "saved-A" : "new-B"))
+    #expect(model.openAIKeySaved == false)
+    #expect(model.openAIKeyPersistedDigest == ProviderSetupModel.digest(""))
+    #expect(model.keyStoreStatus == .none)
+    #expect(owners.presence.state(for: .openAI) == .absent)
+    if changeProvider { #expect(model.geminiKey == "new-gemini") }
+  }
+
+  @Test("a late failed Save cannot put an old error beside newer typing")
+  func failurePreservesNewerTyping() async throws {
+    let storage = ThreadRecordingCredentialStore(pausing: .store, failing: true)
+    let owners = Self.owners(storageOverride: storage)
+    let model = ProviderSetupModel()
+    model.openAIKey = "saved-A"
+    defer { storage.release() }
+    let saving = try #require(ProviderSetupKeyActions.save(
+      "saved-A", provider: .openAI, model: model, owners: owners))
+    try #require(await storage.entered.wait())
+    model.openAIKey = "new-B"
+    storage.release()
+    await saving.value
+    #expect(model.openAIKey == "new-B")
+    #expect(model.keyStoreStatus == .none)
+    #expect(owners.presence.state(for: .openAI) == .unknown)
+  }
+
+  @Test("asynchronous key loading keeps a newer draft but the stored-value digest")
+  func readPreservesNewerDraft() async throws {
+    let storage = ThreadRecordingCredentialStore(pausing: .read)
+    try storage.seed("stored-A", key: KeychainManager.openAIKeyID)
+    let owners = Self.owners(storageOverride: storage)
+    let model = ProviderSetupModel()
+    defer { storage.release() }
+    let reading = ProviderSetupKeys.load(into: model, using: owners.keychainManager,
+      presence: owners.presence, access: owners.access)
+    try #require(await storage.entered.wait())
+    #expect(model.hasCompletedKeyRead == false)
+    model.openAIKey = "new-B"
+    storage.release()
+    await reading.value
+    #expect(model.openAIKey == "new-B")
+    #expect(model.openAIKeyPersistedDigest == ProviderSetupModel.digest("stored-A"))
+    #expect(model.openAIKeySaved == true)
+    #expect(model.openAIKeyEdited == true)
+    #expect(model.hasCompletedKeyRead == true)
+    #expect(model.keyReadTask == nil)
+  }
+
+  @Test("discarded editor presentation never receives a late Save badge")
+  func disposalDropsPresentation() async throws {
+    let storage = ThreadRecordingCredentialStore(pausing: .store)
+    let owners = Self.owners(storageOverride: storage)
+    let model = ProviderSetupModel()
+    model.openAIKey = "saved-A"
+    defer { storage.release() }
+    let saving = try #require(ProviderSetupKeyActions.save(
+      "saved-A", provider: .openAI, model: model, owners: owners))
+    try #require(await storage.entered.wait())
+    model.invalidateKeyPresentation(discardRead: true)
+    storage.release()
+    await saving.value
+    #expect(model.keyStoreStatus == .none)
+    #expect(owners.presence.state(for: .openAI) == .present)
+    #expect(model.hasPendingKeyMutation == false)
+  }
+
+  @Test("a provider A to B to A change rejects the late Save without a render")
+  func providerABASuppressesLateSave() async throws {
+    let storage = ThreadRecordingCredentialStore(pausing: .store)
+    let asked = Asked()
+    let owners = Self.owners(asked: asked, storageOverride: storage)
+    owners.settings.llmProvider = .openAI
+    let model = ProviderSetupModel()
+    model.openAIKey = "saved-A"
+    defer { storage.release() }
+    let saving = try #require(ProviderSetupKeyActions.save(
+      "saved-A", provider: .openAI, model: model, owners: owners))
+    try #require(await storage.entered.wait())
+    owners.settings.llmProvider = .none
+    owners.settings.llmProvider = .openAI
+    // No model invalidation or view rendering: the setter's revision is the authority.
+    storage.release()
+    await saving.value
+    #expect(model.keyStoreStatus == .none)
+    #expect(model.openAIKeySaved == true)
+    #expect(asked.providers.isEmpty)
+    #expect(owners.presence.state(for: .openAI) == .present)
+  }
+
+  @Test("switching import ownership to a follower suppresses a late Save of the same provider")
+  func importOwnershipProtectsLateSave() async throws {
+    let storage = ThreadRecordingCredentialStore(pausing: .store)
+    let asked = Asked()
+    let owners = Self.owners(asked: asked, storageOverride: storage, surface: .fileImport)
+    owners.settings.llmProvider = .openAI
+    owners.settings.fileImportLLMProvider = .openAI
+    owners.settings.llmModel = "deliberate-model"
+    let model = ProviderSetupModel()
+    model.openAIKey = "saved-A"
+    defer { storage.release() }
+    let saving = try #require(ProviderSetupKeyActions.save(
+      "saved-A", provider: .openAI, model: model, owners: owners))
+    try #require(await storage.entered.wait())
+    owners.settings.fileImportLLMProvider = nil
+    storage.release()
+    await saving.value
+    #expect(model.keyStoreStatus == .none)
+    #expect(asked.providers.isEmpty)
+    #expect(owners.settings.llmModel == "deliberate-model")
+    #expect(model.openAIKeySaved == true)
+  }
+
+  @Test("metadata-only refresh keeps drafts already typed before refresh admission", arguments: [false, true])
+  func metadataRefreshPreservesExistingDraft(cleared: Bool) async throws {
+    let storage = ThreadRecordingCredentialStore()
+    if cleared == false { try storage.seed("current-C", key: KeychainManager.openAIKeyID) }
+    let owners = Self.owners(storageOverride: storage)
+    let model = ProviderSetupModel()
+    model.openAIKey = "new-B"
+    model.setKeySaved(true, for: .openAI, persistedValue: "older-A")
+    let refresh = ProviderSetupKeys.load(into: model, using: owners.keychainManager,
+      presence: owners.presence, access: owners.access, preserveDrafts: true)
+    await refresh.value
+    #expect(model.openAIKey == "new-B")
+    #expect(model.openAIKeySaved == (cleared == false))
+    #expect(model.openAIKeyPersistedDigest == ProviderSetupModel.digest(cleared ? "" : "current-C"))
+    #expect(model.openAIKeyEdited == true)
+    #expect(owners.presence.state(for: .openAI) == (cleared ? .absent : .present))
   }
 
   private static func keyID(_ provider: LLMProvider) -> String {
@@ -224,6 +410,21 @@ struct ProviderSetupSavedBadgeTests {
     #expect(model.keyStoreStatus == .saved)
     gate.open()
     await clearing.value
+    #expect(model.keyStoreStatus == .none)
+  }
+
+  @Test("an older badge expiry never clears a newer Saved badge")
+  func olderExpiryPreservesNewerSave() async {
+    let model = ProviderSetupModel()
+    let first = Gate()
+    let second = Gate()
+    let oldExpiry = model.showSavedBadge(wait: { await first.wait() })
+    let newExpiry = model.showSavedBadge(wait: { await second.wait() })
+    first.open()
+    await oldExpiry.value
+    #expect(model.keyStoreStatus == .saved)
+    second.open()
+    await newExpiry.value
     #expect(model.keyStoreStatus == .none)
   }
 

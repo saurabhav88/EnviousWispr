@@ -14,6 +14,11 @@ public struct KeychainManager: Sendable {
   public static let geminiKeyID = "gemini-api-key"
   public static let claudeKeyID = "claude-api-key"
 
+  // #3776: retrieve can migrate a legacy value and store can roll back after cleanup.
+  // Protect each whole transaction across manager copies, including callers outside the
+  // asynchronous Settings workflow. Never invoke an injected callback while holding this.
+  private static let transactionLock = NSLock()
+
   private static let productionService = "com.enviouswispr.app.api-keys"
   private static let supportedReleaseKeys: Set<String> = [openAIKeyID, geminiKeyID, claudeKeyID]
   private static let logger = Logger(subsystem: "com.enviouswispr.app", category: "Keychain")
@@ -64,6 +69,8 @@ public struct KeychainManager: Sendable {
   }
 
   public func store(key: String, value: String) throws {
+    Self.transactionLock.lock()
+    defer { Self.transactionLock.unlock() }
     switch backend {
     case .legacyFiles:
       try legacyStore.store(key: key, value: value)
@@ -92,6 +99,16 @@ public struct KeychainManager: Sendable {
   }
 
   public func retrieve(key: String) throws -> String {
+    var cleanupFailure: (any Error, String)?
+    Self.transactionLock.lock()
+    defer {
+      Self.transactionLock.unlock()
+      // The sink is injected and may itself read storage. Preserve the one callback and
+      // retrieval result, but call it only after the full transaction has released its lock.
+      if let (error, account) = cleanupFailure {
+        telemetrySink.legacyKeyCleanupFailed(error, account)
+      }
+    }
     switch backend {
     case .legacyFiles:
       return try legacyStore.retrieve(key: key)
@@ -99,10 +116,10 @@ public struct KeychainManager: Sendable {
       try ensureReleaseKeySupported(key)
       do {
         let value = try keychainStore.retrieve(service: service, account: key)
-        deleteLegacyFileOrLog(key: key)
+        cleanupFailure = deleteLegacyFileOrLog(key: key)
         return value
       } catch KeyStoreError.retrieveFailed(let status) where status == errSecItemNotFound {
-        return try retrieveLegacyAndMigrate(key: key, service: service)
+        return try retrieveLegacyAndMigrate(key: key, service: service, cleanupFailure: &cleanupFailure)
       } catch {
         throw error
       }
@@ -110,6 +127,8 @@ public struct KeychainManager: Sendable {
   }
 
   public func delete(key: String) throws {
+    Self.transactionLock.lock()
+    defer { Self.transactionLock.unlock() }
     switch backend {
     case .legacyFiles:
       try legacyStore.delete(key: key)
@@ -120,7 +139,9 @@ public struct KeychainManager: Sendable {
     }
   }
 
-  private func retrieveLegacyAndMigrate(key: String, service: String) throws -> String {
+  private func retrieveLegacyAndMigrate(
+    key: String, service: String, cleanupFailure: inout (any Error, String)?
+  ) throws -> String {
     let legacyValue = try legacyStore.retrieve(key: key)
 
     do {
@@ -136,7 +157,7 @@ public struct KeychainManager: Sendable {
       return legacyValue
     }
 
-    deleteLegacyFileOrLog(key: key)
+    cleanupFailure = deleteLegacyFileOrLog(key: key)
     return legacyValue
   }
 
@@ -149,9 +170,10 @@ public struct KeychainManager: Sendable {
   ///
   /// Surfacing this caller-visibly (banner in Settings, diagnostics flag) is
   /// tracked separately; see the follow-up referenced in the plan.
-  private func deleteLegacyFileOrLog(key: String) {
+  private func deleteLegacyFileOrLog(key: String) -> (any Error, String)? {
     do {
       try legacyStore.delete(key: key)
+      return nil
     } catch {
       Self.logger.error(
         "Legacy plaintext API key file remained on disk after Keychain migration; user-visible polish is unaffected but the security goal is not met. Will retry on next retrieve. account=\(key, privacy: .public) error=\(String(describing: error), privacy: .public)"
@@ -160,7 +182,7 @@ public struct KeychainManager: Sendable {
       // key still sits on disk. The sink's `.live` emits a population event + a
       // fingerprinted Sentry handled error (per-account); fire-and-forget, never the key
       // material (only the account name). `.noop` everywhere except the App root.
-      telemetrySink.legacyKeyCleanupFailed(error, key)
+      return (error, key)
     }
   }
 
