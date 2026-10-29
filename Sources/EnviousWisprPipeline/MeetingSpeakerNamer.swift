@@ -231,13 +231,13 @@ package enum MeetingSpeakerNamer {
     votes: [String: [String: Int]], voteProposals: [String: String]
   ) -> [String: String] {
     // The 15 s rule is waived only when the whole recording proves the other person was the
-    // only one: every segment was read, and in every segment the app marked exactly one name as
-    // the user (a user who changed name, or none marked, could hide someone). Then every name
-    // the recording showed, less that segment's user, is a person who is not the user; judged
-    // segment by segment, so the user's name in one call never erases a real person of that name
-    // in another.
+    // only one: every segment was read whole (`wholeReading`), and in every segment the app
+    // marked exactly one name as the user (a user who changed name, or none marked, could hide
+    // someone). Then every name the recording showed, less that segment's user, is a person who
+    // is not the user; judged segment by segment, so the user's name in one call never erases a
+    // real person of that name in another.
     let waivable = log.segments.allSatisfy { segment in
-      segment.status == .observed && marks(in: segment).count == 1
+      segment.status == .observed && wholeReading(segment) && marks(in: segment).count == 1
     }
     let others = Set(
       log.segments.flatMap { segment -> [String] in
@@ -321,6 +321,19 @@ package enum MeetingSpeakerNamer {
       user = named
     }
     return pair.subtracting([user]).first
+  }
+
+  /// Whether every capture of a segment was read and kept: `.observed` says only that one was.
+  /// A failed, partial, skipped, stale or refused capture is a moment someone could have been on
+  /// the call unseen, so it keeps the 15 s rule. A segment without health counts is not whole.
+  static func wholeReading(_ segment: CallSpeakerSegment) -> Bool {
+    guard let health = segment.health, health.captureAttempts > 0 else { return false }
+    return health.completeCaptures == health.captureAttempts
+      && health.truncatedCaptures == 0 && health.unreadableCaptures == 0
+      && health.unresolvedScopeCaptures == 0 && health.skippedBusyTicks == 0
+      && health.skippedDictationTicks == 0 && health.missingPermissionTicks == 0
+      && health.staleResultDrops == 0 && (health.invalidNameReadings ?? 0) == 0
+      && (health.evidenceCapacityDrops ?? 0) == 0
   }
 
   /// Every name the app marked as the user anywhere in a segment.

@@ -43,9 +43,17 @@ struct MeetingSpeakerPairNamerTests {
       lastMs: last)
   }
 
+  /// A segment every capture of which was read and kept.
+  private static var whole: CallCaptureHealth {
+    var health = CallCaptureHealth()
+    health.captureAttempts = 10
+    health.completeCaptures = 10
+    return health
+  }
+
   private static func segment(
     pairs: [CallPairStretch]?, roster: [String] = [user, alex], selfNames: [String] = [],
-    samples: [(Int, [String])] = []
+    samples: [(Int, [String])] = [], health: CallCaptureHealth? = whole
   ) -> CallSpeakerSegment {
     CallSpeakerSegment(
       startMs: 0, endMs: 600_000, endReason: .recordingEnded, surface: .zoomApp, source: .app,
@@ -53,7 +61,7 @@ struct MeetingSpeakerPairNamerTests {
       roster: CallSpeakerRoster(names: roster, selfNames: selfNames),
       rosterFromParticipantList: true,
       observations: samples.map { CallSpeakerObservation(observationMs: $0.0, speaking: $0.1) },
-      pairs: pairs)
+      health: health, pairs: pairs)
   }
 
   private func propose(_ turns: [Turn], _ segments: [CallSpeakerSegment]) -> MeetingNamingResult {
@@ -244,12 +252,12 @@ struct MeetingSpeakerPairNamerTests {
       startMs: 0, endMs: 100_000, endReason: .sourceChanged, surface: .zoomApp, source: .app,
       status: .observed, lag: CallSpeakerLag(milliseconds: 0),
       roster: CallSpeakerRoster(names: [Self.user, Self.alex], selfNames: [Self.user]),
-      rosterFromParticipantList: true, observations: [])
+      rosterFromParticipantList: true, observations: [], health: Self.whole)
     let second = CallSpeakerSegment(
       startMs: 100_000, endMs: 200_000, endReason: .recordingEnded, surface: .zoomApp,
       source: .app, status: .observed, lag: CallSpeakerLag(milliseconds: 0),
       roster: CallSpeakerRoster(names: [Self.alex, Self.priya], selfNames: [Self.alex]),
-      rosterFromParticipantList: true, observations: [],
+      rosterFromParticipantList: true, observations: [], health: Self.whole,
       pairs: [
         CallPairStretch(
           names: [Self.alex, Self.priya], selfNames: [Self.alex], firstMs: 110_000,
@@ -270,10 +278,32 @@ struct MeetingSpeakerPairNamerTests {
         startMs: 100_000, endMs: 200_000, endReason: .recordingEnded, surface: .zoomApp,
         source: .app, status: .observed, lag: CallSpeakerLag(milliseconds: 0),
         roster: CallSpeakerRoster(names: roster, selfNames: selfNames),
-        rosterFromParticipantList: true, observations: [], pairs: short)
+        rosterFromParticipantList: true, observations: [], health: Self.whole, pairs: short)
     }
     // Control: one healthy segment, Alex the only other person: the waiver applies.
     #expect(propose(turns, [later()]).proposals == [Self.a: Self.alex])
+    // The same segment with some captures unread, or with no health counts, may have hidden a
+    // third person in those moments (cloud review on #4206).
+    var gaps = Self.whole
+    gaps.completeCaptures = 8
+    gaps.unreadableCaptures = 2
+    for health in [gaps, nil] as [CallCaptureHealth?] {
+      let partial = Self.segment(
+        pairs: short, roster: [Self.user, Self.alex], selfNames: [Self.user], health: health)
+      #expect(propose(turns, [partial]).proposals.isEmpty, "\(String(describing: health))")
+    }
+    // Each kind of missed capture keeps the 15 s rule.
+    let missed: [WritableKeyPath<CallCaptureHealth, Int>] = [
+      \.truncatedCaptures, \.unresolvedScopeCaptures, \.skippedBusyTicks,
+      \.skippedDictationTicks, \.missingPermissionTicks, \.staleResultDrops,
+    ]
+    for key in missed {
+      var health = Self.whole
+      health[keyPath: key] = 1
+      let partial = Self.segment(
+        pairs: short, roster: [Self.user, Self.alex], selfNames: [Self.user], health: health)
+      #expect(propose(turns, [partial]).proposals.isEmpty, "\(key)")
+    }
     // An earlier call that could not be read may have held anyone.
     let unreadable = CallSpeakerSegment(
       startMs: 0, endMs: 100_000, endReason: .sourceChanged, surface: .zoomApp, source: .app,
@@ -286,7 +316,7 @@ struct MeetingSpeakerPairNamerTests {
     let renamedPairs = CallSpeakerSegment(
       startMs: renamed.startMs, endMs: renamed.endMs, endReason: .recordingEnded,
       surface: .zoomApp, source: .app, status: .observed, lag: renamed.lag,
-      roster: renamed.roster, rosterFromParticipantList: true, observations: [],
+      roster: renamed.roster, rosterFromParticipantList: true, observations: [], health: Self.whole,
       pairs: [
         CallPairStretch(
           names: [Self.alex, Self.priya], selfNames: [Self.alex], firstMs: 110_000,
